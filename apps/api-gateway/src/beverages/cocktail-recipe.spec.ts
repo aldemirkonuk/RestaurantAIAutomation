@@ -232,6 +232,65 @@ describe("serveCost on a house whose till prices include tax (F-1587)", () => {
       refusal: expect.stringMatching(/time zone isn't set/),
     });
   });
+
+  describe("F-1615: the till category the owner chose for cocktails", () => {
+    const food = {
+      keyKind: "pos_category" as const,
+      key: "Yiyecek",
+      version: 1,
+      rate: 0.1,
+      effectiveFrom: "2026-10-01",
+      effectiveTo: null,
+    };
+    const alcohol = { ...food, key: "Alkol", version: 2, rate: 0.2 };
+    const terms = {
+      day: "2026-10-12",
+      rates: [food, alcohol],
+      since: null,
+      targetReconfirm: false,
+    };
+
+    it("prices cocktails at the chosen category's rate and says which", () => {
+      expect(cocktailTax(terms, "Alkol")).toEqual({
+        rate: 0.2,
+        note: expect.stringMatching(/20% rate of the till category “Alkol”/),
+      });
+      const out = serveCost(
+        [{ inventory_id: GIN, quantity: 50, unit: "ml" }],
+        stock,
+        480,
+        cocktailTax(terms, "Alkol"),
+      );
+      expect(out.margin).toBe(350);
+      expect(out.marginTaxNote).toMatch(/“Alkol”/);
+    });
+
+    it("with no choice made, keeps the named refusal and points to Settings", () => {
+      expect(cocktailTax(terms)).toEqual({
+        refusal: expect.stringMatching(
+          /nobody has said which one prices cocktails.*Settings/,
+        ),
+      });
+    });
+
+    it("a chosen category with no rate in force today refuses, naming it", () => {
+      const ended = { ...alcohol, effectiveTo: "2026-10-12" };
+      expect(cocktailTax({ ...terms, rates: [food, ended] }, "Alkol")).toEqual({
+        refusal: expect.stringMatching(/“Alkol”.*no rate in force today/),
+      });
+    });
+
+    it("a refused margin carries no rate note", () => {
+      const out = serveCost(
+        [{ inventory_id: CAMPARI, quantity: 50, unit: "ml" }],
+        stock,
+        480,
+        cocktailTax(terms, "Alkol"),
+      );
+      expect(out.margin).toBeNull();
+      expect("marginTaxNote" in out).toBe(false);
+    });
+  });
 });
 
 describe("BeveragesService: a recipe line takes from the house's own stock", () => {
@@ -330,6 +389,83 @@ describe("BeveragesService: a recipe line takes from the house's own stock", () 
     expect(row.serve.notLinked).toBe(1);
     expect(out.costsUnread).toBeNull();
   });
+
+  // F-1615: on an inclusive house with till-category rates, the category the
+  // owner chose for cocktails prices the margin; with none chosen, the refusal.
+  it.each([
+    ["Alkol", 350, null],
+    [null, null, /nobody has said which one prices cocktails/],
+  ])(
+    "an inclusive house's cocktail margin follows the category chosen for cocktails (%s)",
+    async (chosen, margin, refusal) => {
+      const { service } = await serviceWith({
+        cocktails: [
+          { data: [{ id: COCKTAIL_ID, name: "Negroni", price: 480 }] },
+          { data: null },
+        ],
+        cocktail_ingredients: [
+          {
+            data: [
+              {
+                cocktail_id: COCKTAIL_ID,
+                inventory_id: GIN,
+                quantity: 50,
+                unit: "ml",
+              },
+            ],
+          },
+        ],
+        restaurant_inventory: [
+          {
+            data: [
+              {
+                id: GIN,
+                display_name: "Gin",
+                bottle_size_ml: 700,
+                last_purchase_price: 700,
+                last_purchase_price_tax_basis: "excludes_tax",
+              },
+            ],
+          },
+        ],
+        inventory_lot_rollup: [{ data: [] }],
+        restaurants: [
+          {
+            data: {
+              currency: "TRY",
+              country: "TR",
+              timezone: "Europe/Istanbul",
+              tax_basis: "prices_include_tax",
+              tax_basis_confirmed_at: "2026-10-01T09:00:00Z",
+              cocktail_tax_category: chosen,
+            },
+          },
+        ],
+        house_tax_rates: [
+          {
+            data: [
+              {
+                id: "r1",
+                version: 1,
+                key_kind: "pos_category",
+                key: "Alkol",
+                rate: 0.2,
+                effective_from: "2026-01-01",
+                effective_to: null,
+              },
+            ],
+          },
+          { data: [] },
+        ],
+      });
+      const out = await service.listCocktails(RID, { limit: 200 });
+      const serve = (out.rows[0] as { serve: Record<string, unknown> }).serve;
+      expect(serve.costPerServe).toBe(50);
+      expect(serve.margin).toBe(margin);
+      if (refusal) expect(serve.marginRefusal).toMatch(refusal);
+      else expect(serve.marginTaxNote).toMatch(/“Alkol”/);
+    },
+  );
 
   // F-1474: an 86'd spirit reaches the cocktails whose recipe takes it.
   it("says a cocktail is not available while a spirit its recipe takes is 86'd, and names it", async () => {

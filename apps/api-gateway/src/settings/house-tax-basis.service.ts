@@ -55,6 +55,8 @@ import { houseDayOf, houseToday, shiftHouseDay } from "../common/house-day";
 
 export const TAX_BASIS_AUDIT_ACTION = "house_tax_basis_confirmed" as const;
 export const TAX_RATE_AUDIT_ACTION = "house_tax_rate_added" as const;
+export const COCKTAIL_TAX_CATEGORY_AUDIT_ACTION =
+  "house_cocktail_tax_category_set" as const;
 
 /** The three answers a person may give. `unset` is not one of them. */
 export const TAX_BASIS_ANSWERS = [
@@ -176,6 +178,13 @@ export interface HouseTaxBasisReadout {
   /** Every rate row, newest version first; null when they could not be read. */
   rates: TaxRateRow[] | null;
   ratesReason: string | null;
+  /**
+   * F-1615: the till category whose rate a cocktail's price holds, as an
+   * owner or manager chose it; null when nobody has (or it was not read).
+   */
+  cocktailCategory: string | null;
+  /** Why `cocktailCategory` could not be read; null when it was. */
+  cocktailCategoryReason: string | null;
   /** The house's date `inForceToday` is judged on. */
   today: string;
   /** False when the house has no time zone and `today` is the UTC date. */
@@ -409,14 +418,17 @@ export class HouseTaxBasisService {
         confirmedBy: null,
         rates: null,
         ratesReason: null,
+        cocktailCategory: null,
+        cocktailCategoryReason: null,
       };
     }
     const basis = asHouseTaxBasis(house.row?.tax_basis ?? "unset");
     const answered = basis !== null && basis !== "unset";
     const by = answered ? (house.row?.tax_basis_confirmed_by ?? null) : null;
-    const [name, rates] = await Promise.all([
+    const [name, rates, cocktail] = await Promise.all([
       this.nameOf(by),
       this.readRates(restaurantId, today),
+      this.readCocktailCategory(restaurantId),
     ]);
     const confirmedAt = answered
       ? (house.row?.tax_basis_confirmed_at ?? null)
@@ -433,6 +445,87 @@ export class HouseTaxBasisService {
       confirmedBy: by ? { userId: by, name } : null,
       rates: rates.rows,
       ratesReason: rates.error,
+      cocktailCategory: cocktail.category,
+      cocktailCategoryReason: cocktail.error,
+    };
+  }
+
+  /**
+   * F-1615 (coordinator's call S230, within ADR 0341 §6: category or item
+   * rate mapping is owner work): say which of the house's till categories
+   * prices its cocktails, or null to take the choice back. Only a category
+   * the house has a rate row for may be chosen; nothing is inferred from a
+   * name. The same choice as recorded writes nothing.
+   */
+  async setCocktailCategory(
+    restaurantId: string,
+    body: { category?: unknown },
+    actorUserId: string,
+  ): Promise<HouseTaxBasisReadout> {
+    const raw = body?.category;
+    if (raw !== null && typeof raw !== "string")
+      throw new BadRequestException(
+        "Name the till category that prices cocktails, or none to take the choice back. Nothing was recorded.",
+      );
+    const category = raw === null ? null : raw.trim() || null;
+    const current = await this.read(restaurantId);
+    if (!current.readable || current.rates === null) {
+      throw new InternalServerErrorException(
+        `This house's rates could not be read, so nothing was changed: ${current.reason ?? current.ratesReason ?? "no reason was given"}`,
+      );
+    }
+    if (current.cocktailCategoryReason !== null) {
+      throw new InternalServerErrorException(
+        `Which till category prices cocktails could not be read, so nothing was changed: ${current.cocktailCategoryReason}`,
+      );
+    }
+    if (
+      category !== null &&
+      !current.rates.some(
+        (r) => r.keyKind === "pos_category" && r.key === category,
+      )
+    )
+      throw new BadRequestException(
+        `This house has no rate for a till category named “${category}”. Choose one of its till-category rates, or add that rate first. Nothing was recorded.`,
+      );
+    if (current.cocktailCategory === category) {
+      return {
+        ...current,
+        changed: false,
+        audited: false,
+        auditReason: "nothing changed, so nothing was filed",
+      };
+    }
+    const { error } = await this.databaseService.client
+      .from("restaurants")
+      .update({ cocktail_tax_category: category })
+      .eq("id", restaurantId);
+    if (error) {
+      this.logger.error(
+        `Could not record the cocktail tax category for ${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        `Could not record which till category prices cocktails. Nothing was changed. ${error.message}`,
+      );
+    }
+    const receipt = await this.audit.record({
+      restaurantId,
+      actorUserId,
+      action: COCKTAIL_TAX_CATEGORY_AUDIT_ACTION,
+      register: "tax-basis",
+      entityType: "restaurant",
+      entityId: restaurantId,
+      subject: "which till category's tax rate prices cocktails",
+      fields: {
+        cocktail_tax_category: { from: current.cocktailCategory, to: category },
+      },
+    });
+    const after = await this.read(restaurantId);
+    return {
+      ...after,
+      changed: true,
+      audited: receipt.recorded,
+      auditReason: receipt.reason,
     };
   }
 
@@ -769,6 +862,27 @@ export class HouseTaxBasisService {
       }
     }
     return { rows, error: null };
+  }
+
+  /**
+   * F-1615: read on its own, so a failure says itself and never makes the
+   * basis or the rates unreadable.
+   */
+  private async readCocktailCategory(
+    restaurantId: string,
+  ): Promise<{ category: string | null; error: string | null }> {
+    const { data, error } = await this.databaseService.client
+      .from("restaurants")
+      .select("cocktail_tax_category")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) return { category: null, error: error.message };
+    const raw = (data as { cocktail_tax_category?: unknown } | null)
+      ?.cocktail_tax_category;
+    return {
+      category: typeof raw === "string" && raw !== "" ? raw : null,
+      error: null,
+    };
   }
 
   /** `public.users.user_id`; a failed lookup is a null name, never the raw id. */

@@ -6,6 +6,8 @@ import {
   TaxBasisSetupLine,
   answerLabel,
   basisConsequence,
+  cocktailCategories,
+  readCocktailChoice,
   readAnswer,
   readRateInputs,
   type TaxBasisReadout,
@@ -311,5 +313,60 @@ describe('TaxBasisSetupLine', () => {
       expect(screen.queryByTestId('tax-basis-setup-line')).toBeNull();
       unmount();
     }
+  });
+});
+
+describe('which till category prices cocktails (F-1615)', () => {
+  const cat = (version: number, key: string, ratePct: number | null) => ({
+    version,
+    keyKind: 'pos_category' as const,
+    key,
+    itemName: null,
+    ratePct,
+    effectiveFrom: '2026-10-01',
+    effectiveTo: null,
+    inForceToday: true,
+    upcoming: false,
+    createdAt: '2026-10-01T09:00:00Z',
+  });
+  const rates = [cat(1, 'Yiyecek', 10), cat(2, 'Alkol', 20)];
+
+  it('offers only the house’s own till categories with a rate, and says what Save writes', () => {
+    expect(cocktailCategories([...rates, cat(3, 'Eski', null)])).toEqual(['Alkol', 'Yiyecek']);
+    expect(readCocktailChoice(null, null).canSave).toBe(false);
+    expect(readCocktailChoice('Alkol', 'Alkol').canSave).toBe(false);
+    expect(readCocktailChoice('Alkol', null)).toEqual({
+      canSave: true,
+      sentence: expect.stringMatching(/till category “Alkol”/),
+    });
+  });
+
+  it('says nothing is chosen, records the owner’s pick, and can take it back', async () => {
+    api.get.mockResolvedValue({
+      data: readout({ basis: 'prices_include_tax', answered: true, rates, cocktailCategory: null }),
+    });
+    api.put.mockResolvedValue({
+      data: readout({ basis: 'prices_include_tax', answered: true, rates, cocktailCategory: 'Alkol' }),
+    });
+    render(<TaxBasisSection canManage />);
+    expect(await screen.findByText(/Not chosen\./)).toBeTruthy();
+    const group = screen.getByRole('group', { name: 'Till category for cocktails' });
+    fireEvent.click(within(group).getByRole('button', { name: 'Alkol' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith('/settings/tax-basis/cocktail-category', { category: 'Alkol' }),
+    );
+    expect(await screen.findByText(/worked out without the rate of the till category “Alkol”/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Take the choice back' }));
+    await waitFor(() =>
+      expect(api.put).toHaveBeenLastCalledWith('/settings/tax-basis/cocktail-category', { category: null }),
+    );
+  });
+
+  it('shows no cocktail row while the house has no till-category rate', async () => {
+    api.get.mockResolvedValue({ data: readout({ basis: 'prices_include_tax', answered: true, rates: [] }) });
+    render(<TaxBasisSection canManage />);
+    await screen.findByText(/No rate is in force today/);
+    expect(screen.queryByRole('group', { name: 'Till category for cocktails' })).toBeNull();
   });
 });

@@ -2,8 +2,9 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsOptional } from "class-validator";
 
 /**
- * The bodies of `PUT /settings/tax-basis`, `POST /settings/tax-rates` and
- * `POST /settings/tax-rates/withdraw` (F-620 / F-1537, lane 2; F-1586).
+ * The bodies of `PUT /settings/tax-basis`, `POST /settings/tax-rates`,
+ * `POST /settings/tax-rates/withdraw` (F-620 / F-1537, lane 2; F-1586) and
+ * `PUT /settings/tax-basis/cocktail-category` (F-1615).
  *
  * Only the property NAMES are declared here (the global pipe forbids any
  * other). Every value is checked in `HouseTaxBasisService` — the answer by
@@ -72,4 +73,15 @@ export class WithdrawHouseTaxRateDto {
   })
   @IsOptional()
   version: number;
+}
+
+export class SetCocktailTaxCategoryDto {
+  @ApiProperty({
+    description:
+      "The till category (one the house has a rate for, as the till names it) whose rate a cocktail's price holds; null takes the choice back (F-1615).",
+    example: "Alkol",
+    nullable: true,
+  })
+  @IsOptional()
+  category: string | null;
 }

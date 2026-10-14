@@ -269,6 +269,11 @@ export const SETTINGS_AUDIT_ACTIONS = [
   "house_tax_basis_confirmed",
   /** A tax rate row was appended for the house (F-1537, 2026-10-12). */
   "house_tax_rate_added",
+  /**
+   * An owner or manager chose which till category's tax rate prices the
+   * house's cocktails, or took the choice back (F-1615, 2026-10-14).
+   */
+  "house_cocktail_tax_category_set",
 ] as const;
 
 export const READ_BACK_ACTIONS = [

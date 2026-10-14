@@ -430,6 +430,21 @@ describe('a recipe linked to stock', () => {
     expect(screen.getAllByTestId('cocktail-margin')[0]).not.toHaveTextContent('at most');
   });
 
+  // F-1615: a margin priced at the till category the owner chose for cocktails says which.
+  it('says which till category’s rate a cocktail’s margin is worked out without', () => {
+    mock.price = 480;
+    mock.serve = {
+      costPerServe: 50, margin: 350, marginPct: 87.5, linked: 1, notLinked: 0, withheldReason: null,
+      marginRefusal: null,
+      marginTaxNote: 'worked out without the 20% rate of the till category “Alkol”, chosen for cocktails in Settings',
+    };
+    draw();
+    expect(screen.getAllByTestId('cocktail-cost')[0]).toHaveTextContent(
+      'margin worked out without the 20% rate of the till category “Alkol”',
+    );
+    expect(screen.getAllByTestId('cocktail-margin')[0]).toHaveTextContent(/350.*87\.5%/);
+  });
+
   // F-1474: an 86'd spirit did not reach the cocktails whose recipe takes it.
   it('says a cocktail is not available while an ingredient is 86’d, and names it', () => {
     mock.soldOut = ['gin'];
