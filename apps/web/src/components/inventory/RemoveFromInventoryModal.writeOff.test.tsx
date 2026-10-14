@@ -39,11 +39,11 @@ function wine(over: Partial<InventoryItem> = {}): InventoryItem {
   } as unknown as InventoryItem
 }
 
-function renderModal(items: InventoryItem[], onRemoved = vi.fn()) {
+function renderModal(items: InventoryItem[], onRemoved = vi.fn(), canRemove = true) {
   const client = new QueryClient()
   render(
     <QueryClientProvider client={client}>
-      <RemoveFromInventoryModal isOpen items={items} onClose={() => {}} onRemoved={onRemoved} />
+      <RemoveFromInventoryModal isOpen items={items} onClose={() => {}} onRemoved={onRemoved} canRemove={canRemove} />
     </QueryClientProvider>,
   )
   return onRemoved
@@ -102,6 +102,49 @@ describe('RemoveFromInventoryModal — a removal is a write-off, not a count (F-
     fireEvent.click(screen.getByRole('button', { name: 'Remove wine' }))
     await waitFor(() => expect(onRemoved).toHaveBeenCalled())
     expect(api.adjustStock).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * F-1693: a wine with bottles on order was written off, then refused by the
+ * server, which blamed bottles "on the books" that were only on order.
+ * F-1694: a staff press wrote the bottles off as waste, then was refused (403).
+ * Both are now refused before anything is taken off.
+ */
+describe('RemoveFromInventoryModal — refused before anything is taken off (F-1693, F-1694)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    api.adjustStock.mockResolvedValue({ quantityAfter: 0 })
+    api.deleteInventoryItem.mockResolvedValue({})
+  })
+
+  it('[REVERT-FAILS] takes nothing off a wine with bottles on order, and says the order comes first', async () => {
+    const onRemoved = renderModal([wine({ liveStock: 3, shadowStock: 6 } as Partial<InventoryItem>)])
+    expect(document.body.textContent).toContain('3 on the shelf · 6 on order')
+    fireEvent.click(screen.getByRole('button', { name: 'Remove wine' }))
+
+    expect(
+      await screen.findByText(/6 bottles are on an order that has not arrived\. Cancel the order or receive the delivery first/),
+    ).toBeInTheDocument()
+    expect(api.adjustStock).not.toHaveBeenCalled()
+    expect(api.deleteInventoryItem).not.toHaveBeenCalled()
+    expect(onRemoved).not.toHaveBeenCalled()
+  })
+
+  it('writes off only the shelf, never the bottles on order', () => {
+    renderModal([wine({ liveStock: 3, shadowStock: 6, wac: 10 } as Partial<InventoryItem>)])
+    expect(document.body.textContent).toMatch(/write off .*30/)
+    expect(document.body.textContent).not.toContain('90')
+  })
+
+  it('[REVERT-FAILS] lets nobody but an owner or a manager press it, and writes nothing', () => {
+    renderModal([wine()], vi.fn(), false)
+    expect(screen.getByText('Only an owner or a manager can remove a wine.')).toBeInTheDocument()
+    const button = screen.getByRole('button', { name: 'Remove wine' })
+    expect(button).toBeDisabled()
+    fireEvent.click(button)
+    expect(api.adjustStock).not.toHaveBeenCalled()
+    expect(api.deleteInventoryItem).not.toHaveBeenCalled()
   })
 })
 

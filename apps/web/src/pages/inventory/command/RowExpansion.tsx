@@ -438,14 +438,27 @@ export function RowExpansion({
               <div className="text-[10.5px] font-semibold text-violet-600 mt-0.5">Shadow count</div>
             </div>
           </div>
+          {/* F-1695 (re-hit of F-143): shelving by hand is an owner/manager act,
+              and the server moves only bottles no open order holds. */}
           {shadow > 0 ? (
-            <button
-              onClick={() => reconcile.mutate()}
-              disabled={reconcile.isPending}
-              className="w-full mt-3 h-9 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg disabled:opacity-60"
-            >
-              Reconcile {shadow} bottle{shadow === 1 ? '' : 's'} into live
-            </button>
+            canSetPar ? (
+              <>
+                <button
+                  onClick={() => reconcile.mutate()}
+                  disabled={reconcile.isPending}
+                  className="w-full mt-3 h-9 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg disabled:opacity-60"
+                >
+                  Put bottles no order is waiting on onto the shelf
+                </button>
+                <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+                  Bottles on an order that has not arrived stay on order until the delivery is received.
+                </p>
+              </>
+            ) : (
+              <p className="text-[11px] text-gray-400 mt-3 leading-relaxed">
+                {shadow} bottle{shadow === 1 ? ' is' : 's are'} on order. {shadow === 1 ? 'It comes' : 'They come'} onto the shelf when the delivery is received.
+              </p>
+            )
           ) : (
             <p className="text-[11px] text-gray-400 mt-3 leading-relaxed">Live and shadow are in sync. No reconciliation needed.</p>
           )}

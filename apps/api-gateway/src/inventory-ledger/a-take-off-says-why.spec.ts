@@ -83,7 +83,7 @@ function build(onHand: number) {
   );
   for (const l of ["error", "warn", "log"])
     (service as any).logger[l] = jest.fn();
-  const controller = new InventoryLedgerController(service);
+  const controller = new InventoryLedgerController(service, {} as any);
   (controller as any).logger.error = jest.fn();
   const post = (over: Record<string, unknown>) =>
     controller.createTransaction(

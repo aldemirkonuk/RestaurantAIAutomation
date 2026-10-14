@@ -135,7 +135,7 @@ describe("softDeleteItem — the zero-stock rule and the record", () => {
     );
   });
 
-  it("counts shadow bottles too", async () => {
+  it("[REVERT-FAILS] names bottles on order as on order, never as on the books (F-1693)", async () => {
     const db = fakeDb({
       rows: [
         {
@@ -150,9 +150,8 @@ describe("softDeleteItem — the zero-stock rule and the record", () => {
     await expect(
       service(db).softDeleteItem("rest-1", "inv-1", "u-1"),
     ).rejects.toMatchObject({
-      message: expect.stringContaining(
-        "Barolo still has 1 bottle on the books",
-      ),
+      message:
+        "Barolo has 1 bottle on an order that has not arrived. Cancel the order or receive the delivery first. Nothing was removed.",
     });
   });
 

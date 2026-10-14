@@ -884,12 +884,24 @@ describe('RowExpansion — Reconcile N into live (F-1166)', () => {
   it('asks the server to move the shadow, never sends a count of live + shadow', async () => {
     renderRow({ liveStock: 3, shadowStock: 10 })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Reconcile 10 bottles into live' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Put bottles no order is waiting on onto the shelf' }))
 
     // A count of 13 set live to 13 and left shadow at 10: on hand grew by 10.
     expect(reconcileItem).not.toHaveBeenCalled()
     expect(reconcileShadowItem).toHaveBeenCalledTimes(1)
     expect(reconcileShadowItem).toHaveBeenCalledWith('inv-1')
+  })
+
+  // F-1695 (re-hit of F-143): any role could put bottles on order onto the shelf.
+  it('[REVERT-FAILS] offers staff no way to put bottles on order onto the shelf', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={client}>
+        <RowExpansion item={{ ...item, liveStock: 3, shadowStock: 10 } as InventoryItem} locations={[]} seesCost={false} />
+      </QueryClientProvider>,
+    )
+    expect(screen.queryByRole('button', { name: /onto the shelf|into live/ })).toBeNull()
+    expect(screen.getByText('10 bottles are on order. They come onto the shelf when the delivery is received.')).toBeInTheDocument()
   })
 })
 

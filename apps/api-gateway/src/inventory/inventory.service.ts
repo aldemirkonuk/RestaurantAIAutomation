@@ -3421,6 +3421,18 @@ export class InventoryService {
       Math.max(0, Number(r.stock_live) || 0) +
       Math.max(0, Number(r.shadow_stock) || 0);
 
+    // F-1693: shadow bottles are on an order that has not arrived. Counting
+    // them down is not the way out; the order is cancelled or received.
+    const onOrder = (r: any): number =>
+      Math.max(0, Number(r.shadow_stock) || 0);
+    const ordered = rows.find((r) => onOrder(r) > 0);
+    if (ordered) {
+      const n = onOrder(ordered);
+      throw new HttpException(
+        `${nameOf(ordered)} has ${n} bottle${n === 1 ? "" : "s"} on an order that has not arrived. Cancel the order or receive the delivery first. Nothing was removed.`,
+        HttpStatus.CONFLICT,
+      );
+    }
     const held = rows.find((r) => bottles(r) > 0);
     if (held) {
       const n = bottles(held);

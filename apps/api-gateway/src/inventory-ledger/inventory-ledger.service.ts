@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   BadRequestException,
+  ConflictException,
   InternalServerErrorException,
   NotFoundException,
   ServiceUnavailableException,
@@ -832,11 +833,40 @@ export class InventoryLedgerService {
         `Could not read the bottles on order: ${lotsError.message}`,
       );
     }
-    const shadow = (lots ?? []).reduce(
+    const onOrder = (lots ?? []).reduce(
       (s: number, l: { qty: number | null }) => s + (l.qty ?? 0),
       0,
     );
-    if (shadow <= 0) return { moved: 0 };
+    if (onOrder <= 0) return { moved: 0 };
+
+    // F-1695 (re-hit of F-143): bottles an open order still holds have not
+    // arrived. Booking them live put them on the shelf before the truck came,
+    // and the delivery then booked them again while releasing nothing. Only
+    // the shadow no order holds (`reserved_bottles`, F-491) may move; the rest
+    // comes onto the shelf when its delivery is received.
+    const { data: orders, error: ordersError } =
+      await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("reserved_bottles")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", inventoryId)
+        .gt("reserved_bottles", 0);
+    if (ordersError) {
+      throw new BadRequestException(
+        `Could not read the orders for this wine, so nothing was moved: ${ordersError.message}`,
+      );
+    }
+    const held = (orders ?? []).reduce(
+      (s: number, o: { reserved_bottles: number | null }) =>
+        s + Math.max(0, Number(o.reserved_bottles) || 0),
+      0,
+    );
+    const shadow = onOrder - held;
+    if (shadow <= 0) {
+      throw new ConflictException(
+        `${onOrder === 1 ? "This bottle is" : `These ${onOrder} bottles are`} still on an order that has not arrived. ${onOrder === 1 ? "It goes" : "They go"} onto the shelf when the delivery is received, or off the order if it is cancelled. Nothing was moved.`,
+      );
+    }
 
     const { data: last, error: lastError } = await this.databaseService.supabase
       .from("inventory_transactions")

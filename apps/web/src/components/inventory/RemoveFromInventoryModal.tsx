@@ -13,6 +13,13 @@
  * count: breakage is written off, a comp is a comp, and none of it is short. This keeps cost-basis / P&L reporting honest: nothing disappears
  * from the ledger silently, and the economic impact (value being written
  * off) is shown to the manager before they confirm.
+ *
+ * F-1693: bottles on an order that has not arrived (shadow) are not on the
+ * shelf and cannot be taken off; the server refuses the removal while they
+ * exist. Such a wine is refused here before anything is written.
+ * F-1694: removing is an owner/manager act (the DELETE is). The take-off went
+ * first and has no role check, so a staff press wrote the bottles off and was
+ * then refused. Nothing is written unless `canRemove`.
  */
 import { useId, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -55,11 +62,13 @@ interface RemoveFromInventoryModalProps {
   onClose: () => void
   /** Called once, after every item has been removed. */
   onRemoved: () => void
+  /** An owner or a manager (F-1694). Anyone else is refused before anything is written. */
+  canRemove?: boolean
 }
 
 type Phase = 'confirm' | 'working' | 'error'
 
-export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: RemoveFromInventoryModalProps) {
+export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved, canRemove = false }: RemoveFromInventoryModalProps) {
   const queryClient = useQueryClient()
   const measurementUnit = useRestaurantSettingsStore((s) => s.measurementUnit)
   const [reason, setReason] = useState(REMOVE_REASONS[0].value)
@@ -74,9 +83,10 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
         const openMl = item.openMl ?? 0
         const total = live + shadow
         // What the house paid, never the library's price (F-1311). With no
-        // recorded cost the value is withheld (null), not counted at 0.
+        // recorded cost the value is withheld (null), not counted at 0. Only
+        // the shelf's bottles are written off; bottles on order are not (F-1693).
         const cost = recordedCost(item)
-        const value = cost == null ? (total > 0 ? null : 0) : cost * total
+        const value = cost == null ? (live > 0 ? null : 0) : cost * live
         return { item, live, shadow, openMl, total, value }
       }),
     [items],
@@ -84,6 +94,7 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
   const totalValue = rows.reduce((s, r) => s + (r.value ?? 0), 0)
   const withheld = rows.filter((r) => r.value == null).length
   const anyStock = rows.some((r) => r.total > 0 || r.openMl > 0)
+  const anyOnOrder = rows.some((r) => r.shadow > 0)
 
   const titleId = useId()
   // Escape goes through the same `close` as the X, so it is refused mid-run too.
@@ -102,9 +113,21 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
     setPhase('working')
     const failed: { name: string; message: string }[] = []
 
-    for (const { item, live } of rows) {
+    for (const { item, live, shadow } of rows) {
       const inventoryId = item.inventoryId
       if (!inventoryId) continue
+      // F-1694, F-1693: refused before any bottle is taken off, never after.
+      if (!canRemove) {
+        failed.push({ name: item.name, message: 'Only an owner or a manager can remove a wine. Nothing was taken off.' })
+        continue
+      }
+      if (shadow > 0) {
+        failed.push({
+          name: item.name,
+          message: `${shadow} bottle${shadow === 1 ? ' is' : 's are'} on an order that has not arrived. Cancel the order or receive the delivery first. Nothing was taken off.`,
+        })
+        continue
+      }
       try {
         // Step 1: take the shelf's bottles off, on the ledger, with the chosen
         // reason. The server refuses more than it holds, so a bottle sold since
@@ -199,7 +222,7 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
                 <div key={item.inventoryId} className="flex items-center justify-between px-3 py-2 text-xs">
                   <span className="font-medium text-gray-800 truncate pr-2">{item.name}</span>
                   <span className="font-mono text-gray-500 shrink-0">
-                    {live + shadow > 0 ? `${live} live / ${shadow} shadow` : 'no stock'}
+                    {live + shadow > 0 ? `${live} on the shelf${shadow > 0 ? ` · ${shadow} on order` : ''}` : 'no stock'}
                     {openMl > 0 ? ` · ${formatVolume(openMl, measurementUnit)} open` : ''}
                     {value == null ? (
                       <span className="ml-2 text-gray-400">no cost recorded</span>
@@ -225,10 +248,17 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
                       {totalValue > 0 ? 'left out of that figure. ' : 'not shown. '}
                     </>
                   ) : null}
-                  The bottles still on the books are taken off on the ledger with the reason below before removal —
+                  The bottles on the shelf are taken off on the ledger with the reason below before removal —
                   nothing is deleted silently, and none of it shows as missing at the month close.
+                  {anyOnOrder ? (
+                    <> A wine with bottles on an order that has not arrived stays until the order is cancelled or received.</>
+                  ) : null}
                 </p>
               </div>
+            )}
+
+            {!canRemove && (
+              <p className="text-xs text-gray-600">Only an owner or a manager can remove a wine.</p>
             )}
 
             {phase === 'error' && (
@@ -257,7 +287,7 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
             </button>
             <button
               onClick={run}
-              disabled={phase === 'working'}
+              disabled={phase === 'working' || !canRemove}
               className="h-9 px-4 flex items-center gap-1.5 rounded-lg text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60"
             >
               {phase === 'working' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
