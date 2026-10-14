@@ -231,6 +231,12 @@ import { type BlanksAtSend, signatureSlotRe, unfilledSlotsRefusal, unfilledTempl
 import { houseFrame } from "../common/house-frame";
 import { readHouseMoney } from "../common/house-money";
 import {
+  costTaxStampFor,
+  readHouseCostTaxTerms,
+  stampLotsCostTaxBasis,
+} from "../common/cost-tax-stamp";
+import type { CostTaxBasis } from "../common/tax-basis";
+import {
   DELIVERY_REFUSED_ALREADY_ARRIVED,
   DELIVERY_REFUSED_STATE_UNREADABLE,
   DELIVERY_REFUSED_STOCK_NOT_BOOKED,
@@ -1953,6 +1959,21 @@ export class ProcurementService {
         ? roundMoney(lineTotalResolution.total, lineCurrency)
         : null;
 
+    const linePriced =
+      dto.quotedPrice != null ||
+      dto.negotiatedPrice != null ||
+      (Number.isFinite(finalPrice) && Boolean(finalPrice));
+    const linePriceTaxBasis = linePriced
+      ? costTaxStampFor(
+          await readHouseCostTaxTerms(
+            this.databaseService.supabase,
+            restaurantId,
+            this.logger,
+          ),
+          dto.priceTaxBasis,
+        )
+      : null;
+
     const line = {
       order_id: orderId,
       restaurant_id: restaurantId,
@@ -2006,6 +2027,12 @@ export class ProcurementService {
       deposit: fees.deposit,
       freight: fees.freight,
       line_total: lineTotal,
+      // ADR 0341 F3: whether tax is inside this line's prices. One EXPLICIT
+      // key, for the capture guard as above. NULL (not stated) at a house
+      // whose till prices do not include tax, or on a line with no price; a
+      // lot booked from this order takes it (trigger
+      // `a_lot_cost_takes_its_order_line_tax_basis`).
+      price_tax_basis: linePriceTaxBasis,
       line_no: 1,
     };
 
@@ -7705,6 +7732,7 @@ export class ProcurementService {
     userId?: string | null,
     unitCostCurrency?: string | null,
     ledgerState?: string | null,
+    unitCostTaxBasis?: CostTaxBasis | null,
   ): Promise<void> {
     // TENANCY. `apply_stock_movement` derives restaurant_id from the inventory
     // row it is pointed at, not from the caller — so an id this method does not
@@ -7890,6 +7918,22 @@ export class ProcurementService {
             `verifyReceipt restated ${inventoryId} on order ${orderId} at ${unitCost}, but the lots still name their old currency, not ${unitCostCurrency}: ${stampError.message}`,
           );
       }
+
+      // WHETHER TAX IS INSIDE IT (ADR 0341 F3). `revalue_lot` changed the
+      // cost and not its basis, so the trigger cleared the basis; it is
+      // written back here, in its own statement, for the same lots. Null (a
+      // house whose prices do not include tax) writes nothing.
+      if (unitCostTaxBasis)
+        await stampLotsCostTaxBasis(
+          this.databaseService.supabase,
+          {
+            restaurantId,
+            inventoryIds: [inventoryId],
+            scope: { orderId },
+            basis: unitCostTaxBasis,
+          },
+          this.logger,
+        );
 
       // A revaluation that reached nothing is reported, not assumed away. It
       // is a legitimate outcome — every bottle from this delivery has already
@@ -8806,6 +8850,19 @@ export class ProcurementService {
             currencyCode((orderRow as any).currency),
           // The ledger this delta was measured against (F-464).
           `${stockedLedger.movements}:${stockedQtyInBottles}${match.ledgerDelta >= 0 ? "+" : ""}${match.ledgerDelta}`,
+          // Whether tax is inside the landed cost (ADR 0341 F3): what the
+          // owner or manager said, else the house's country rule; nothing
+          // where the house's prices do not include tax.
+          landedCost != null
+            ? costTaxStampFor(
+                await readHouseCostTaxTerms(
+                  this.databaseService.supabase,
+                  restaurantId,
+                  this.logger,
+                ),
+                body.invoicePriceTaxBasis,
+              )
+            : null,
         );
         stockMoved = true;
       }

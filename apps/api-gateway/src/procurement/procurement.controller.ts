@@ -220,8 +220,16 @@ export class ProcurementController {
   })
   async createOrder(
     @Body() dto: CreateOrderDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
   ): Promise<OrderResponseDto> {
+    // ADR 0341 F3: whether tax is inside a price is a statement about the
+    // house's money, so only an owner or a manager makes it. Refused before
+    // anything is written; the order itself stays open to whoever placed it.
+    if (dto?.priceTaxBasis != null && !holdsHouseMoney(user?.role ?? null))
+      throw new ForbiddenException(
+        "Saying whether tax is inside an order's price is an owner's or a manager's call, so nothing was saved. Leave it out to place the order, or ask a manager or an owner.",
+      );
     try {
       return await this.procurementService.createOrder(
         user.restaurantId,
@@ -908,6 +916,7 @@ export class ProcurementController {
     // anything is written.
     if (
       body?.invoiceUnitPrice != null ||
+      body?.invoicePriceTaxBasis != null ||
       (body?.priceOverrideReason ?? "").trim() !== "" ||
       (body?.allocatedCharges ?? 0) > 0
     ) {

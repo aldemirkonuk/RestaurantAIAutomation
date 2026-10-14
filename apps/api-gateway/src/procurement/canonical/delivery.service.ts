@@ -11,6 +11,7 @@ import type { CreditReason } from "../documents/credit-ledger";
 import { ProcurementOrderStatus } from "../dto/procurement.dto";
 import { ORDER_ARRIVED_STATUSES, hasStatus } from "../order-status";
 import { decideTransition } from "../order-transitions";
+import type { CostTaxBasis } from "../../common/tax-basis";
 
 /**
  * DeliveryService — the delivery's own doors (ADR 0103 D1/D3/D5/D6/D7, A2, A4, A6).
@@ -1195,6 +1196,8 @@ export class DeliveryService {
     restaurantId: string,
     deliveryId: string,
     userId: string | null,
+    // ADR 0341 F3: whether tax is inside the settled prices, as said.
+    opts: { priceTaxBasis?: CostTaxBasis | null } = {},
   ): Promise<
     WriteResult<{
       delivery: DeliveryRow;
@@ -1314,6 +1317,7 @@ export class DeliveryService {
       restaurantId,
       deliveryId,
       userId,
+      opts.priceTaxBasis ?? null,
     );
     if (!cost.ok) {
       this.logger.error(

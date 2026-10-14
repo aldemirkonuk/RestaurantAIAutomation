@@ -438,6 +438,87 @@ describe("D2 — a verified invoice restates the lot instead of rivalling it", (
     ).toBe(false);
   });
 
+  describe("the restated lots say whether tax is inside the cost (ADR 0341 F3)", () => {
+    const check = {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 43,
+      invoiceCurrency: "TRY",
+      acceptedQuantity: 10,
+      priceOverrideReason: "fuel surcharge agreed by phone",
+    };
+    const taxStamps = (calls: ReturnType<typeof makeDb>["calls"]) =>
+      calls.updates.filter(
+        (u) =>
+          u.table === "inventory_lots" && "unit_cost_tax_basis" in u.values,
+      );
+
+    it("[REVERT-FAILS] a house whose prices include KDV stamps the country rule, after the cost", async () => {
+      const { db, calls } = makeDb(
+        { currency: "TRY" },
+        { tax_basis: "prices_include_tax", country: "TR" },
+      );
+      await service(db).verifyReceipt(REST, ORDER, USER, check as any);
+      const stamps = taxStamps(calls);
+      expect(stamps.map((u) => u.values)).toEqual([
+        { unit_cost_tax_basis: "includes_tax" },
+      ]);
+      expect(stamps[0].filters).toMatchObject({
+        restaurant_id: REST,
+        source_order_id: ORDER,
+        stock_state: "live",
+      });
+      // Its own statement, after the revaluation the trigger clears it on.
+      expect(calls.rpc.some((c) => c.name === "revalue_lot")).toBe(true);
+    });
+
+    it("[REVERT-FAILS] what the owner or manager said beats the country rule", async () => {
+      const { db, calls } = makeDb(
+        { currency: "TRY" },
+        { tax_basis: "prices_include_tax", country: "TR" },
+      );
+      await service(db).verifyReceipt(REST, ORDER, USER, {
+        ...check,
+        invoicePriceTaxBasis: "excludes_tax",
+      } as any);
+      expect(taxStamps(calls).map((u) => u.values)).toEqual([
+        { unit_cost_tax_basis: "excludes_tax" },
+      ]);
+    });
+
+    it.each([
+      ["unset", "TR"],
+      ["prices_exclude_tax", "US"],
+    ])(
+      "a %s house (%s) stamps nothing, even when told",
+      async (basis, country) => {
+        const { db, calls } = makeDb(
+          { currency: "EUR" },
+          { tax_basis: basis, country },
+        );
+        await service(db).verifyReceipt(REST, ORDER, USER, {
+          ...check,
+          invoiceCurrency: "EUR",
+          invoicePriceTaxBasis: "excludes_tax",
+        } as any);
+        expect(calls.rpc.some((c) => c.name === "revalue_lot")).toBe(true);
+        expect(taxStamps(calls)).toEqual([]);
+      },
+    );
+
+    it("a cost that restates nothing stamps nothing", async () => {
+      // Another money than the order's: the lot is not restated (F-341).
+      const { db, calls } = makeDb(
+        { currency: "EUR" },
+        { tax_basis: "prices_include_tax", country: "TR" },
+      );
+      await service(db).verifyReceipt(REST, ORDER, USER, {
+        ...check,
+        invoicePriceTaxBasis: "excludes_tax",
+      } as any);
+      expect(taxStamps(calls)).toEqual([]);
+    });
+  });
+
   it("a receipt correction names a source the enum actually has", async () => {
     const valid = new Set(enumLabels("inventory_transaction_source"));
     const { db, calls } = makeDb();
@@ -490,7 +571,11 @@ const orderRow = {
  *   The provenance assertion below is about the PRICE, so it gets a
  *   pre-delivery order rather than a fixture that agrees with it by accident.
  */
-function makeDb(orderOverrides: Record<string, any> = {}) {
+function makeDb(
+  orderOverrides: Record<string, any> = {},
+  // `restaurants` as the cost stamp reads it (ADR 0341 F3); none by default.
+  house: Record<string, any> | null = null,
+) {
   const calls = {
     rpc: [] as { name: string; args: Record<string, any> }[],
     updates: [] as {
@@ -520,6 +605,8 @@ function makeDb(orderOverrides: Record<string, any> = {}) {
             data: [{ id: "received", quantity_change: 10 }],
             error: null,
           };
+        if (table === "restaurants" && house && shape === "one")
+          return { data: house, error: null };
         if (table === "restaurant_inventory") {
           if (cols.trim() === "id")
             return { data: { id: filters.id }, error: null };
