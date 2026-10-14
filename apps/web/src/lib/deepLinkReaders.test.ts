@@ -25,6 +25,8 @@ const READERS: Record<string, string[]> = {
   team: ['pages/team'],
   'vendor-prices': ['pages/vendor-prices'],
   calendar: ['pages/calendar'],
+  // F-1141: the paid-while-disputed bell (vendor-owed) opens /receipts?doc=.
+  receipts: ['pages/receipts'],
 };
 
 /**
