@@ -18,6 +18,7 @@ import {
   STAND_IN_BOTTLE_ML,
 } from "./stock-count-result";
 import { readHouseZone } from "../common/house-day";
+import { ID_CHUNK } from "../providers/vendor-wine-search";
 import { resolveBellLines } from "../notifications/resolve-bell-lines";
 import {
   CountPeriodRefused,
@@ -373,30 +374,35 @@ export class CountSessionsService {
   }
 
   private async houseLocations(house: string): Promise<HouseLocation[]> {
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("storage_locations")
-      .select(LOCATION_COLUMNS)
-      .eq("restaurant_id", house)
-      .is("deleted_at", null);
-    if (error) throw this.unreadable("shelves read", error);
-    return (data ?? []) as HouseLocation[];
+    const client = this.dbService.getClient();
+    return this.everyRow<HouseLocation>("shelves read", (f, t) =>
+      client
+        .from("storage_locations")
+        .select(LOCATION_COLUMNS)
+        .eq("restaurant_id", house)
+        .is("deleted_at", null)
+        .order("id", { ascending: true })
+        .range(f, t),
+    );
   }
 
   private async personNames(ids: string[]): Promise<Map<string, string>> {
     const out = new Map<string, string>();
     const want = [...new Set(ids.filter(Boolean))];
     if (want.length === 0) return out;
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("users")
-      .select("user_id, name")
-      .in("user_id", want);
-    if (error) throw this.unreadable("people read", error);
-    for (const r of (data ?? []) as Array<{
+    const client = this.dbService.getClient();
+    const rows = await this.everyRowIn<{
       user_id: string;
       name: string | null;
-    }>) {
+    }>("people read", want, (slice, f, t) =>
+      client
+        .from("users")
+        .select("user_id, name")
+        .in("user_id", slice)
+        .order("user_id", { ascending: true })
+        .range(f, t),
+    );
+    for (const r of rows) {
       if (r.name?.trim()) out.set(r.user_id, r.name.trim());
     }
     return out;
@@ -432,20 +438,24 @@ export class CountSessionsService {
     if (error) throw this.unreadable("sessions read", error);
     const sessions = (data ?? []) as SessionRow[];
     if (sessions.length === 0) return { sessions: [], periods, zones, ended };
-    const shelves = await client
-      .from("stock_count_session_shelves")
-      .select("session_id, done_at")
-      .eq("restaurant_id", house)
-      .in(
-        "session_id",
-        sessions.map((s) => s.id),
-      );
-    if (shelves.error) throw this.unreadable("shelves read", shelves.error);
-    const tally = new Map<string, { shelves: number; done: number }>();
-    for (const r of (shelves.data ?? []) as Array<{
+    const shelves = await this.everyRowIn<{
       session_id: string;
       done_at: string | null;
-    }>) {
+    }>(
+      "shelves read",
+      sessions.map((s) => s.id),
+      (slice, f, t) =>
+        client
+          .from("stock_count_session_shelves")
+          .select("session_id, location_id, done_at")
+          .eq("restaurant_id", house)
+          .in("session_id", slice)
+          .order("session_id", { ascending: true })
+          .order("location_id", { ascending: true })
+          .range(f, t),
+    );
+    const tally = new Map<string, { shelves: number; done: number }>();
+    for (const r of shelves) {
       const t = tally.get(r.session_id) ?? { shelves: 0, done: 0 };
       t.shelves += 1;
       if (r.done_at) t.done += 1;
@@ -675,15 +685,7 @@ export class CountSessionsService {
   async pull(house: string, sessionId: string, userId: string) {
     const client = this.dbService.getClient();
     const session = await this.session(house, sessionId);
-    const shelvesRead = await client
-      .from("stock_count_session_shelves")
-      .select(SHELF_COLUMNS)
-      .eq("restaurant_id", house)
-      .eq("session_id", sessionId)
-      .order("sort_order", { ascending: true });
-    if (shelvesRead.error)
-      throw this.unreadable("shelves read", shelvesRead.error);
-    const shelves = (shelvesRead.data ?? []) as ShelfRow[];
+    const shelves = await this.walkShelves(house, sessionId);
     const shelfIds = shelves.map((s) => s.location_id);
 
     const label = new Map<string, string>();
@@ -696,25 +698,23 @@ export class CountSessionsService {
     }> = [];
     if (shelfIds.length) {
       // Names for every shelf, including one deleted since the count opened.
-      const names = await client
-        .from("storage_locations")
-        .select("id, zone, section, name")
-        .eq("restaurant_id", house)
-        .in("id", shelfIds);
-      if (names.error) throw this.unreadable("shelf names read", names.error);
-      for (const l of (names.data ?? []) as HouseLocation[]) {
+      for (const l of await this.placeNames(house, shelfIds)) {
         label.set(l.id, zoneLabel(l));
       }
-      const onShelves = await client
-        .from("inventory_lots")
-        .select("inventory_id, location_id, qty, open_bottle_ml")
-        .eq("restaurant_id", house)
-        .eq("stock_state", "live")
-        .in("location_id", shelfIds);
-      if (onShelves.error) {
-        throw this.unreadable("shelf stock read", onShelves.error);
-      }
-      lotRows = (onShelves.data ?? []) as typeof lotRows;
+      // F-1702: a whole house holds more than 1,000 lots; read them all.
+      lotRows = await this.everyRowIn<(typeof lotRows)[number]>(
+        "shelf stock read",
+        shelfIds,
+        (slice, f, t) =>
+          client
+            .from("inventory_lots")
+            .select("id, inventory_id, location_id, qty, open_bottle_ml")
+            .eq("restaurant_id", house)
+            .eq("stock_state", "live")
+            .in("location_id", slice)
+            .order("id", { ascending: true })
+            .range(f, t),
+      );
     }
     for (const l of lotRows as Array<{
       inventory_id: string;
@@ -777,18 +777,20 @@ export class CountSessionsService {
     >();
     if (itemIds.length === 0) return out;
     const client = this.dbService.getClient();
-    const rows = await client
-      .from("restaurant_inventory")
-      .select("id, display_name, wine_name, master_wine_id")
-      .eq("restaurant_id", house)
-      .in("id", itemIds);
-    if (rows.error) throw this.unreadable("item names read", rows.error);
-    const list = (rows.data ?? []) as Array<{
+    const list = await this.everyRowIn<{
       id: string;
       display_name: string | null;
       wine_name: string | null;
       master_wine_id: string | null;
-    }>;
+    }>("item names read", itemIds, (slice, f, t) =>
+      client
+        .from("restaurant_inventory")
+        .select("id, display_name, wine_name, master_wine_id")
+        .eq("restaurant_id", house)
+        .in("id", slice)
+        .order("id", { ascending: true })
+        .range(f, t),
+    );
     const wineIds = [
       ...new Set(
         list.map((r) => r.master_wine_id).filter((w): w is string => !!w),
@@ -799,12 +801,18 @@ export class CountSessionsService {
       { name: string; producer: string; vintage: string | null }
     >();
     if (wineIds.length) {
-      const w = await client
-        .from("master_wine_library")
-        .select("id, wine_name, name, producer, vintage")
-        .in("id", wineIds);
-      if (w.error) throw this.unreadable("wine names read", w.error);
-      for (const r of (w.data ?? []) as Array<Record<string, unknown>>) {
+      const w = await this.everyRowIn<Record<string, unknown>>(
+        "wine names read",
+        wineIds,
+        (slice, f, t) =>
+          client
+            .from("master_wine_library")
+            .select("id, wine_name, name, producer, vintage")
+            .in("id", slice)
+            .order("id", { ascending: true })
+            .range(f, t),
+      );
+      for (const r of w) {
         wines.set(r.id as string, {
           name: ((r.wine_name as string) || (r.name as string) || "").trim(),
           producer: ((r.producer as string) || "").trim(),
@@ -838,19 +846,22 @@ export class CountSessionsService {
         .map((l) => l.parent_id)
         .filter((p): p is string => !!p),
     );
-    const lots = await this.dbService
-      .getClient()
-      .from("inventory_lots")
-      .select("inventory_id, location_id, qty")
-      .eq("restaurant_id", house)
-      .eq("stock_state", "live")
-      .in("inventory_id", itemIds);
-    if (lots.error) throw this.unreadable("item stock read", lots.error);
-    for (const l of (lots.data ?? []) as Array<{
+    const client = this.dbService.getClient();
+    const lots = await this.everyRowIn<{
       inventory_id: string;
       location_id: string | null;
       qty: number | null;
-    }>) {
+    }>("item stock read", itemIds, (slice, f, t) =>
+      client
+        .from("inventory_lots")
+        .select("id, inventory_id, location_id, qty")
+        .eq("restaurant_id", house)
+        .eq("stock_state", "live")
+        .in("inventory_id", slice)
+        .order("id", { ascending: true })
+        .range(f, t),
+    );
+    for (const l of lots) {
       if (
         (l.qty ?? 0) > 0 &&
         (!l.location_id || parentIds.has(l.location_id))
@@ -1020,41 +1031,37 @@ export class CountSessionsService {
       // A zero that already landed under this act's key is a replay: the
       // shelf's books for it may read 0 now BECAUSE it landed, and refusing
       // it would turn a retried "done" into a failure (ADR 0241).
-      const landedRead = await this.dbService
-        .getClient()
-        .from("stock_counts")
-        .select("inventory_id")
-        .eq("restaurant_id", house)
-        .in(
-          "idempotency_key",
-          zeroItemIds.map((id) => `count:${id}:${clientCountId}`),
-        );
-      if (landedRead.error) {
-        throw this.unreadable("replay read", landedRead.error);
-      }
-      const landed = new Set(
-        ((landedRead.data ?? []) as Array<{ inventory_id: string }>).map(
-          (r) => r.inventory_id,
-        ),
+      const client = this.dbService.getClient();
+      const landedRead = await this.everyRowIn<{ inventory_id: string }>(
+        "replay read",
+        zeroItemIds.map((id) => `count:${id}:${clientCountId}`),
+        (slice, f, t) =>
+          client
+            .from("stock_counts")
+            .select("id, inventory_id")
+            .eq("restaurant_id", house)
+            .in("idempotency_key", slice)
+            .order("id", { ascending: true })
+            .range(f, t),
       );
-      const onShelf = await this.dbService
-        .getClient()
-        .from("inventory_lots")
-        .select("inventory_id, qty, open_bottle_ml")
-        .eq("restaurant_id", house)
-        .eq("stock_state", "live")
-        .eq("location_id", locationId)
-        .in("inventory_id", zeroItemIds);
-      if (onShelf.error)
-        throw this.unreadable("shelf stock read", onShelf.error);
+      const landed = new Set(landedRead.map((r) => r.inventory_id));
+      const onShelf = await this.everyRowIn<{
+        inventory_id: string;
+        qty: number | null;
+        open_bottle_ml: number | null;
+      }>("shelf stock read", zeroItemIds, (slice, f, t) =>
+        client
+          .from("inventory_lots")
+          .select("id, inventory_id, qty, open_bottle_ml")
+          .eq("restaurant_id", house)
+          .eq("stock_state", "live")
+          .eq("location_id", locationId)
+          .in("inventory_id", slice)
+          .order("id", { ascending: true })
+          .range(f, t),
+      );
       const expected = new Set(
-        (
-          (onShelf.data ?? []) as Array<{
-            inventory_id: string;
-            qty: number | null;
-            open_bottle_ml: number | null;
-          }>
-        )
+        onShelf
           .filter((l) => (l.qty ?? 0) > 0 || (l.open_bottle_ml ?? 0) > 0)
           .map((l) => l.inventory_id),
       );
@@ -1488,6 +1495,61 @@ export class CountSessionsService {
   }
 
   /**
+   * Every row of a read keyed on a list of ids (F-1702): `ID_CHUNK` ids a
+   * request, so a big house's list stays inside the URL, each request read
+   * page by page. `page` must order on a unique key.
+   */
+  private async everyRowIn<T>(
+    what: string,
+    ids: readonly string[],
+    page: (
+      slice: string[],
+      from: number,
+      to: number,
+    ) => PromiseLike<{ data: unknown; error: { message?: string } | null }>,
+  ): Promise<T[]> {
+    const want = [...new Set(ids)];
+    const out: T[] = [];
+    for (let at = 0; at < want.length; at += ID_CHUNK) {
+      const slice = want.slice(at, at + ID_CHUNK);
+      out.push(...(await this.everyRow<T>(what, (f, t) => page(slice, f, t))));
+    }
+    return out;
+  }
+
+  /** A count's shelves in walk order, every one of them (F-1702). */
+  private async walkShelves(house: string, sessionId: string) {
+    const client = this.dbService.getClient();
+    return this.everyRow<ShelfRow>("shelves read", (f, t) =>
+      client
+        .from("stock_count_session_shelves")
+        .select(SHELF_COLUMNS)
+        .eq("restaurant_id", house)
+        .eq("session_id", sessionId)
+        .order("sort_order", { ascending: true })
+        .order("location_id", { ascending: true })
+        .range(f, t),
+    );
+  }
+
+  /** The names of these places, including one deleted since (F-1702). */
+  private async placeNames(house: string, ids: readonly string[]) {
+    const client = this.dbService.getClient();
+    return this.everyRowIn<HouseLocation>(
+      "shelf names read",
+      ids,
+      (slice, f, t) =>
+        client
+          .from("storage_locations")
+          .select("id, zone, section, name")
+          .eq("restaurant_id", house)
+          .in("id", slice)
+          .order("id", { ascending: true })
+          .range(f, t),
+    );
+  }
+
+  /**
    * The walk, for the review page. `seesMoney` (an owner or a manager, read
    * by the caller) adds what the books expected, the difference and its
    * value; anyone else sees what was counted, never the books (a blind
@@ -1520,18 +1582,19 @@ export class CountSessionsService {
       open_bottle_ml: number | null;
     };
     const holds = (l: Lot) => (l.qty ?? 0) > 0 || (l.open_bottle_ml ?? 0) > 0;
-    const lots = shelfIds.length
-      ? await this.everyRow<Lot>("shelf stock read", (f, t) =>
-          client
-            .from("inventory_lots")
-            .select("id, inventory_id, location_id, qty, open_bottle_ml")
-            .eq("restaurant_id", house)
-            .eq("stock_state", "live")
-            .in("location_id", shelfIds)
-            .order("id", { ascending: true })
-            .range(f, t),
-        )
-      : [];
+    const lots = await this.everyRowIn<Lot>(
+      "shelf stock read",
+      shelfIds,
+      (slice, f, t) =>
+        client
+          .from("inventory_lots")
+          .select("id, inventory_id, location_id, qty, open_bottle_ml")
+          .eq("restaurant_id", house)
+          .eq("stock_state", "live")
+          .in("location_id", slice)
+          .order("id", { ascending: true })
+          .range(f, t),
+    );
     const countedHere = new Set(
       counts.map((c) => `${c.inventory_id}|${c.location_id ?? ""}`),
     );
@@ -1572,32 +1635,31 @@ export class CountSessionsService {
           .order("id", { ascending: true })
           .range(f, t),
       )),
-      ...(zones.length
-        ? await this.everyRow<Lot>("zone stock read", (f, t) =>
-            client
-              .from("inventory_lots")
-              .select("id, inventory_id, location_id, qty, open_bottle_ml")
-              .eq("restaurant_id", house)
-              .eq("stock_state", "live")
-              .in("location_id", zones)
-              .order("id", { ascending: true })
-              .range(f, t),
-          )
-        : []),
+      ...(await this.everyRowIn<Lot>("zone stock read", zones, (slice, f, t) =>
+        client
+          .from("inventory_lots")
+          .select("id, inventory_id, location_id, qty, open_bottle_ml")
+          .eq("restaurant_id", house)
+          .eq("stock_state", "live")
+          .in("location_id", slice)
+          .order("id", { ascending: true })
+          .range(f, t),
+      )),
     ];
     for (const l of off) if (holds(l)) offShelf.add(l.inventory_id);
     for (const c of counts) if (!c.location_id) offShelf.delete(c.inventory_id);
     if (offShelf.size === 0) return { missed, offShelf };
     // A whole count (on Inventory, all at once) names no shelf and no walk.
-    const whole = await this.everyRow<{ inventory_id: string }>(
+    const whole = await this.everyRowIn<{ inventory_id: string }>(
       "whole counts read",
-      (f, t) =>
+      [...offShelf],
+      (slice, f, t) =>
         client
           .from("stock_counts")
           .select("id, inventory_id")
           .eq("restaurant_id", house)
           .is("location_id", null)
-          .in("inventory_id", [...offShelf])
+          .in("inventory_id", slice)
           .gte("counted_at", session.opened_at)
           .order("id", { ascending: true })
           .range(f, t),
@@ -1624,15 +1686,7 @@ export class CountSessionsService {
       (signed.data as { signed_off_by?: string | null } | null)
         ?.signed_off_by ?? null;
 
-    const shelvesRead = await client
-      .from("stock_count_session_shelves")
-      .select(SHELF_COLUMNS)
-      .eq("restaurant_id", house)
-      .eq("session_id", sessionId)
-      .order("sort_order", { ascending: true });
-    if (shelvesRead.error)
-      throw this.unreadable("shelves read", shelvesRead.error);
-    const shelves = (shelvesRead.data ?? []) as ShelfRow[];
+    const shelves = await this.walkShelves(house, sessionId);
     const shelfIds = shelves.map((s) => s.location_id);
 
     const counts = await this.everyRow<ReviewCountRow>("lines read", (f, t) =>
@@ -1646,17 +1700,7 @@ export class CountSessionsService {
         .order("id", { ascending: true })
         .range(f, t),
     );
-    const heldRead = await client
-      .from("stock_count_held_lines")
-      .select(
-        "id, inventory_id, location_id, counted_qty, counted_open_ml, counted_by, counted_at, held_against, state, idempotency_key",
-      )
-      .eq("restaurant_id", house)
-      .eq("session_id", sessionId)
-      .eq("state", "held")
-      .order("counted_at", { ascending: true });
-    if (heldRead.error) throw this.unreadable("held read", heldRead.error);
-    const held = (heldRead.data ?? []) as Array<{
+    const held = await this.everyRow<{
       id: string;
       inventory_id: string;
       location_id: string | null;
@@ -1666,19 +1710,20 @@ export class CountSessionsService {
       counted_at: string;
       held_against: string | null;
       idempotency_key?: string | null;
-    }>;
-    const parkedRead = await client
-      .from("stock_count_parked_lines")
-      .select(
-        "id, location_id, description, counted_qty, counted_open_ml, counted_by, counted_at, client_line_id",
-      )
-      .eq("restaurant_id", house)
-      .eq("session_id", sessionId)
-      .eq("state", "parked")
-      .order("counted_at", { ascending: true });
-    if (parkedRead.error)
-      throw this.unreadable("parked read", parkedRead.error);
-    const parked = (parkedRead.data ?? []) as Array<{
+    }>("held read", (f, t) =>
+      client
+        .from("stock_count_held_lines")
+        .select(
+          "id, inventory_id, location_id, counted_qty, counted_open_ml, counted_by, counted_at, held_against, state, idempotency_key",
+        )
+        .eq("restaurant_id", house)
+        .eq("session_id", sessionId)
+        .eq("state", "held")
+        .order("counted_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(f, t),
+    );
+    const parked = await this.everyRow<{
       id: string;
       location_id: string;
       description: string;
@@ -1687,7 +1732,19 @@ export class CountSessionsService {
       counted_by: string | null;
       counted_at: string;
       client_line_id?: string | null;
-    }>;
+    }>("parked read", (f, t) =>
+      client
+        .from("stock_count_parked_lines")
+        .select(
+          "id, location_id, description, counted_qty, counted_open_ml, counted_by, counted_at, client_line_id",
+        )
+        .eq("restaurant_id", house)
+        .eq("session_id", sessionId)
+        .eq("state", "parked")
+        .order("counted_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(f, t),
+    );
 
     // F-1683: what the books hold in the count's scope with no line from
     // this walk, shelf by shelf (done or not), and on a Full count what sits
@@ -1705,18 +1762,21 @@ export class CountSessionsService {
     const against = new Map<string, ReviewCountRow>();
     for (const c of counts) against.set(c.id, c);
     const missingAgainst = heldAgainstIds.filter((id) => !against.has(id));
-    if (missingAgainst.length) {
-      const more = await client
-        .from("stock_counts")
-        .select(
-          "id, inventory_id, location_id, counted_qty, expected_qty, variance_qty, counted_open_ml, expected_open_ml, counted_by, counted_at, arrived_at, idempotency_key",
-        )
-        .eq("restaurant_id", house)
-        .in("id", missingAgainst);
-      if (more.error) throw this.unreadable("held-against read", more.error);
-      for (const c of (more.data ?? []) as ReviewCountRow[])
-        against.set(c.id, c);
-    }
+    for (const c of await this.everyRowIn<ReviewCountRow>(
+      "held-against read",
+      missingAgainst,
+      (slice, f, t) =>
+        client
+          .from("stock_counts")
+          .select(
+            "id, inventory_id, location_id, counted_qty, expected_qty, variance_qty, counted_open_ml, expected_open_ml, counted_by, counted_at, arrived_at, idempotency_key",
+          )
+          .eq("restaurant_id", house)
+          .in("id", slice)
+          .order("id", { ascending: true })
+          .range(f, t),
+    ))
+      against.set(c.id, c);
 
     const itemIds = [
       ...new Set([
@@ -1738,16 +1798,8 @@ export class CountSessionsService {
       ]),
     ].filter(Boolean);
     const label = new Map<string, string>();
-    if (placeIds.length) {
-      const where = await client
-        .from("storage_locations")
-        .select("id, zone, section, name")
-        .eq("restaurant_id", house)
-        .in("id", placeIds);
-      if (where.error) throw this.unreadable("shelf names read", where.error);
-      for (const l of (where.data ?? []) as HouseLocation[])
-        label.set(l.id, zoneLabel(l));
-    }
+    for (const l of await this.placeNames(house, placeIds))
+      label.set(l.id, zoneLabel(l));
     const placeName = (id: string | null) =>
       id
         ? (label.get(id) ?? "A shelf no longer in use")
@@ -1804,20 +1856,20 @@ export class CountSessionsService {
     // Each item's bottle size, for everyone: the open bottles are said in
     // tenths of that bottle, as staff entered them (S230 owed item). A size
     // is not money; an item with none is said on a 750 ml stand-in.
-    if (itemIds.length) {
-      const size = await client
+    for (const r of await this.everyRowIn<{
+      id: string;
+      bottle_size_ml: number | null;
+    }>("bottle size read", itemIds, (slice, f, t) =>
+      client
         .from("restaurant_inventory")
         .select("id, bottle_size_ml")
         .eq("restaurant_id", house)
-        .in("id", itemIds);
-      if (size.error) throw this.unreadable("bottle size read", size.error);
-      for (const r of (size.data ?? []) as Array<{
-        id: string;
-        bottle_size_ml: number | null;
-      }>) {
-        if (r.bottle_size_ml && r.bottle_size_ml > 0)
-          ml.set(r.id, Number(r.bottle_size_ml));
-      }
+        .in("id", slice)
+        .order("id", { ascending: true })
+        .range(f, t),
+    )) {
+      if (r.bottle_size_ml && r.bottle_size_ml > 0)
+        ml.set(r.id, Number(r.bottle_size_ml));
     }
     const openTenthsOf = (inventoryId: string, openMl: number | null) =>
       openMl == null
@@ -1834,16 +1886,21 @@ export class CountSessionsService {
       if (cur.error) throw this.unreadable("currency read", cur.error);
       currency =
         (cur.data as { currency?: string | null } | null)?.currency ?? null;
-      const wac = await client
-        .from("inventory_lot_rollup")
-        .select("inventory_id, wac")
-        .eq("restaurant_id", house)
-        .in("inventory_id", itemIds);
-      if (wac.error) throw this.unreadable("cost read", wac.error);
-      for (const r of (wac.data ?? []) as Array<{
+      // The rollup is a view with no id: one row per item and wine.
+      const wac = await this.everyRowIn<{
         inventory_id: string;
         wac: number | null;
-      }>) {
+      }>("cost read", itemIds, (slice, f, t) =>
+        client
+          .from("inventory_lot_rollup")
+          .select("inventory_id, wac")
+          .eq("restaurant_id", house)
+          .in("inventory_id", slice)
+          .order("inventory_id", { ascending: true })
+          .order("master_wine_id", { ascending: true })
+          .range(f, t),
+      );
+      for (const r of wac) {
         cost.set(r.inventory_id, {
           wac: r.wac == null ? null : Number(r.wac),
           bottleMl: ml.get(r.inventory_id) ?? STAND_IN_BOTTLE_ML,
