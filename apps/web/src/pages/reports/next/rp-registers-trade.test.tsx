@@ -678,6 +678,7 @@ describe('same month last year says how many days were on record (F-1646)', () =
     posConnected: true,
     zoneUnset: false,
     days,
+    to: '2025-03-31',
     dailySeries: Array.from({ length: onRecord }, (_, i) => ({
       date: `2025-03-${String(31 - onRecord + i + 1).padStart(2, '0')}`,
       revenue: 9000 / onRecord,
@@ -694,5 +695,56 @@ describe('same month last year says how many days were on record (F-1646)', () =
     const f = lastYearFigure('2026-03', '2025-03', 18_000, lastMarch(31, 31), 'Europe/Istanbul');
     expect(f.value).toMatch(/this year\)$/);
     expect(f.note).toBeUndefined();
+  });
+});
+
+// F-1662 (wave-55 sim): the till sends days with sales only, so a house shut
+// every Monday never had a check on all 31 days and never got its change.
+// Coverage runs from the till's first check to the period's end.
+describe('same month last year counts the days the till was connected (F-1662)', () => {
+  // March 2025: the 3rd, 10th, 17th, 24th and 31st are Mondays.
+  const shutMondays = Array.from({ length: 31 }, (_, i) => i + 1)
+    .filter((d) => (d - 3) % 7 !== 0)
+    .map((d) => ({ date: `2025-03-${String(d).padStart(2, '0')}`, revenue: 350 }));
+  const march = (series: typeof shutMondays, coveredFrom: string | null) => ({
+    revenue: 9100,
+    checkCount: 90,
+    posConnected: true,
+    zoneUnset: false,
+    days: 31,
+    to: '2025-03-31',
+    dailySeries: series,
+    coveredFrom,
+  });
+
+  it('a house shut on Mondays gets the change for a month its till covered whole', () => {
+    expect(shutMondays).toHaveLength(26);
+    const f = lastYearFigure('2026-03', '2025-03', 10_010, march(shutMondays, '2024-11-04'), 'Europe/Istanbul');
+    expect(f.value).toMatch(/this year\)$/);
+    expect(f.note).toBeUndefined();
+  });
+
+  it('a shut first day does not withhold it when the till was on before the month', () => {
+    const f = lastYearFigure('2026-03', '2025-03', 10_010, march(shutMondays.slice(1), '2024-11-04'), 'Europe/Istanbul');
+    expect(f.note).toBeUndefined();
+  });
+
+  it('from an older gateway, the month counts from its own first check', () => {
+    const f = lastYearFigure('2026-03', '2025-03', 10_010, march(shutMondays, null), 'Europe/Istanbul');
+    expect(f.note).toBeUndefined();
+  });
+
+  it('a till first connected on the 20th still gives no change (12 of 31 days)', () => {
+    const late = shutMondays.filter((r) => r.date >= '2025-03-20');
+    const f = lastYearFigure('2026-03', '2025-03', 10_010, march(late, '2025-03-20'), 'Europe/Istanbul');
+    expect(f.value).not.toMatch(/this year/);
+    expect(f.note).toMatch(/^12 of 31 days on record in /);
+  });
+
+  it('reads coveredFrom off the till window', () => {
+    expect(till.select({ posConnected: true, coveredFrom: '2024-11-04' })).toMatchObject({
+      coveredFrom: '2024-11-04',
+    });
+    expect(till.select({ posConnected: true })).toMatchObject({ coveredFrom: null });
   });
 });

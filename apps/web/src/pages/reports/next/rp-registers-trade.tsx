@@ -127,6 +127,12 @@ export interface TillWindow {
   /** True when the house has no time zone: no day can be filed, so nothing is stated. */
   zoneUnset: boolean;
   dailySeries: Array<{ date: string; revenue: number }>;
+  /**
+   * The house day of the first check the till ever sent (F-1662): from then on
+   * the till was connected, so a day after it with no check is a day the house
+   * was shut, not a day missing. null from an older gateway.
+   */
+  coveredFrom: string | null;
 }
 
 /** True for a calendar quarter, YYYY-Qn, which the till reads like a month (F-1577). */
@@ -220,6 +226,7 @@ const trailingTill = analysis<TillWindow>({
         date: str(r.date),
         revenue: num(r.revenue) ?? 0,
       })),
+      coveredFrom: str(d.coveredFrom) || null,
     };
   },
   view: (w) => {
@@ -392,8 +399,10 @@ const till: AnalysisSpec = {
  * may not have been on Mudavym then. The change is given only for a period
  * that has ended, since a month so far set against a whole one is not a
  * change. F-1646: nor is a month the till covered only partly, before its
- * first check or with days that sent none: it says N of M days on record and
- * gives no change.
+ * first check: it says N of M days on record and gives no change. F-1662: the
+ * till covers a period from its first check (`coveredFrom`, or the period's
+ * first check from an older gateway) to the period's end, so a day the house
+ * was shut inside that time does not withhold the change.
  */
 export function lastYearFigure(
   period: string,
@@ -411,10 +420,13 @@ export function lastYearFigure(
       value: EM,
       note: `No check from your till reached Mudavym for ${monthLabel(before)}, so there is nothing to set beside it`,
     };
-  // The read is the till's own window (TillWindow), so it carries the days
-  // in that period and the days its till sent a check on.
-  const { dailySeries, days } = last as Partial<Pick<TillWindow, 'dailySeries' | 'days'>>;
-  const onRecord = dailySeries?.length;
+  // The read is the till's own window (TillWindow): the days in that period,
+  // its last day, and the day the till first sent a check.
+  const { dailySeries, days, to, coveredFrom } = last as Partial<
+    Pick<TillWindow, 'dailySeries' | 'days' | 'to' | 'coveredFrom'>
+  >;
+  const first = coveredFrom || dailySeries?.[0]?.date;
+  const onRecord = first && to && days != null ? Math.min(days, daysThrough(first, to)) : null;
   if (onRecord != null && days != null && onRecord < days)
     return {
       label,
@@ -425,6 +437,12 @@ export function lastYearFigure(
   const change =
     !running && taken != null && last.revenue > 0 ? ` (${pct((taken - last.revenue) / last.revenue)} this year)` : '';
   return { label, value: `${money(last.revenue)}${change}` };
+}
+
+/** Days from one YYYY-MM-DD to another, both counted; 0 when `last` is before `first`. */
+function daysThrough(first: string, last: string): number {
+  const at = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+  return Math.max(0, Math.round((at(last) - at(first)) / 86_400_000) + 1);
 }
 
 /**

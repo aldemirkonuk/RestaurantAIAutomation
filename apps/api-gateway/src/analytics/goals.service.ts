@@ -1617,16 +1617,24 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
    * which is the pattern that lets a broken query masquerade as "no sales";
    * here a failure must reach the caller so the UI can say "couldn't load"
    * rather than "no POS connected".
+   *
+   * It answers with the first check, earliest first, or null when there is
+   * none (F-1662), so the till window can say from which day the till was
+   * connected: a day after it with no check is a day the house was shut, not
+   * a day the till missed.
    */
-  private async hasPosHistory(restaurantId: string): Promise<boolean> {
+  private async hasPosHistory(
+    restaurantId: string,
+  ): Promise<{ opened_at: string | null; closed_at: string | null } | null> {
     const { data, error } = await this.dbService
       .getClient()
       .from("pos_checks")
-      .select("id")
+      .select("id, opened_at, closed_at")
       .eq("restaurant_id", restaurantId)
+      .order("opened_at", { ascending: true })
       .limit(1);
     if (error) throw new Error(error.message);
-    return (data || []).length > 0;
+    return (data || [])[0] ?? null;
   }
 
   /**
@@ -1675,10 +1683,11 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         "A week is named by its Monday, like 2026-09-28, or as last for the last full week.",
       );
     // Both reads are by key and independent; neither error is swallowed.
-    const [connected, house] = await Promise.all([
+    const [firstCheck, house] = await Promise.all([
       this.hasPosHistory(restaurantId),
       readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
+    const connected = firstCheck !== null;
     const zone = house.zone;
     const today = zone ? houseToday(zone) : null;
     if (monthDays && today && monthDays.first > today)
@@ -1735,6 +1744,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       checksRefunded: null,
       refunded: null,
       dailySeries: [],
+      coveredFrom: null,
     };
 
     if (!connected) return { ...unread, posConnected: false };
@@ -1777,6 +1787,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         date,
         revenue: dailySeries[i] ?? 0,
       })),
+      coveredFrom: houseDayOf(firstCheck, zone),
     };
   }
 }
@@ -1892,4 +1903,12 @@ export interface PosRevenueWindow {
   refunded?: number | null;
   /** Sparse — only days that actually had revenue appear. */
   dailySeries: Array<{ date: string; revenue: number }>;
+  /**
+   * The house day of the first check the till ever sent (F-1662): the till is
+   * connected from then on, so a day after it missing from `dailySeries` is a
+   * day the house was shut. A reader judges whether the till covered a period
+   * by this, never by counting days with sales. `null` when `posConnected` is
+   * false or `zoneUnset`.
+   */
+  coveredFrom: string | null;
 }

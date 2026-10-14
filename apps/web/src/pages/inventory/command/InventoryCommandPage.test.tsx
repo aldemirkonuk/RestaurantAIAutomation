@@ -1042,3 +1042,28 @@ describe('the lines about a valuation file (F-1607)', () => {
     expect(saidOf(valuationAbout({ ...aboutBase, house: null, inactive: null })).House).toBe('name not recorded');
   });
 });
+
+// F-1685 (wave-55 sim): a new house with no till and no sales read "0 —
+// stockout inside 5 days", which says nothing runs out when no runway is known.
+describe('InventoryCommandPage — runway alerts before any sale (F-1685)', () => {
+  const unsold = { id: 'row-1', wineId: 'wine-1', wineName: 'Produttori Barbaresco', stockLive: 6, shadowStock: 0, thresholdMin: 2 };
+
+  const tile = () => screen.getByText('Runway alerts').parentElement!;
+
+  it('[REVERT-FAILS] with no wine selling yet, the tile shows a dash and says no sales yet', async () => {
+    routeGets({ 'inventory-list': [unsold, { ...unsold, id: 'row-2', wineId: 'wine-2', wineName: 'Sancerre Les Monts' }] });
+    mount();
+    await screen.findByText('Sancerre Les Monts');
+    expect(screen.getByText('Runway alerts').nextElementSibling!.textContent).toBe('—');
+    expect(tile().textContent).toContain('no sales yet');
+    expect(tile().textContent).not.toContain('stockout inside 5 days');
+  });
+
+  it('a wine selling 2 a day with 6 on the shelf still counts (control)', async () => {
+    routeGets({ 'inventory-list': [{ ...unsold, velocityPerDay: 2 }] });
+    mount();
+    await screen.findByText('Produttori Barbaresco');
+    expect(screen.getByText('Runway alerts').nextElementSibling!.textContent).toBe('1');
+    expect(tile().textContent).toContain('stockout inside 5 days');
+  });
+});

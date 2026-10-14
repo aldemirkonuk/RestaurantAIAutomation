@@ -1290,8 +1290,14 @@ export function InventoryCommandPage() {
       const r = runwayDays(i);
       return r != null && r <= 5;
     }).length;
-    return { valueOnHand, valueWithheld, menuPotential, runwayAlerts };
-  }, [filteredInventory, onHandOf]);
+    // F-1685: with no wine in the house selling yet (no till, no sales) no
+    // runway is known, and 0 would read as "nothing runs out", which no one
+    // can say. Judged on the whole house, so a filter that matches nothing
+    // still reads 0. A rate that could not be read (F-689) is not "no sales".
+    const runwayUnknown = inventory.every((i) => runwayDays(i) == null);
+    const salesUnread = inventory.some((i) => i.analyticsReadable === false);
+    return { valueOnHand, valueWithheld, menuPotential, runwayAlerts, runwayUnknown, salesUnread };
+  }, [inventory, filteredInventory, onHandOf]);
 
   const typeOptions = useMemo(() => {
     const types = Array.from(
@@ -1593,8 +1599,14 @@ export function InventoryCommandPage() {
         />
         <Kpi
           label="Runway alerts"
-          value={fig(kpis.runwayAlerts)}
-          sub="stockout inside 5 days"
+          value={kpis.runwayUnknown ? UNKNOWN : fig(kpis.runwayAlerts)}
+          sub={
+            kpis.runwayUnknown && !figuresUnknown
+              ? kpis.salesUnread
+                ? "sales could not be read"
+                : "no sales yet"
+              : "stockout inside 5 days"
+          }
           tone="red"
         />
       </div>

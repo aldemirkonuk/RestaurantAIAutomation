@@ -438,6 +438,28 @@ describe("GoalsService.getPosRevenueWindow", () => {
     });
   });
 
+  it("(m4) says the house day the till's first check landed, so a shut day reads as shut (F-1662)", async () => {
+    // The first check ever closed 23:30 LA on May 2 (06:30 UTC May 3).
+    const first = {
+      id: "first",
+      opened_at: "2026-05-03T05:00:00Z",
+      closed_at: "2026-05-03T06:30:00Z",
+    };
+    const { service, client } = makeGoals({
+      pos_checks: (call: number) => (call === 0 ? [first] : []),
+    });
+    const result = await service.getPosRevenueWindow("r1", 30, "2026-07");
+    expect(result.coveredFrom).toBe("2026-05-02");
+    // Earliest first: the probe is ordered, not any one check.
+    expect(
+      client.calls.find((c) => c.table === "pos_checks" && c.method === "order")
+        ?.args,
+    ).toEqual(["opened_at", { ascending: true }]);
+
+    const none = makeGoals({ pos_checks: [] }).service;
+    expect((await none.getPosRevenueWindow("r1", 30)).coveredFrom).toBeNull();
+  });
+
   it("(m2) ends a month still running on the house's today", async () => {
     // LA_TODAY is Sep 1, though the server's clock already reads Sep 2.
     const { service } = makeGoals({ pos_checks: probeThen([]) });
