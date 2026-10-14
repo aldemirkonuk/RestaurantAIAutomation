@@ -247,18 +247,78 @@ describe("a basis nobody read is not written on", () => {
     expect(calls.checkUpserts).toHaveLength(0);
     expect(res.errors[0]).toMatch(/tax basis reads as "inclusive"/);
   });
+});
 
-  it("a line rate not readable as a percent is refused before anything is read", async () => {
-    const { service, calls } = makeDb({ house: TR_HOUSE, rates: TR_RATES });
-    const res = await service.ingest("r1", "generic_webhook", [
-      {
-        ...PAYLOAD[0],
-        items: [{ name: "Rakı", qty: 1, price: 240, tax_rate: "0.20" }],
+/**
+ * F-1584: a `tax` or line `tax_rate` the gateway cannot read used to refuse
+ * the check for every house, before its basis was read. Only an inclusive
+ * house reads either; every other house stores the check exactly as before.
+ */
+describe("a tax figure the gateway cannot read", () => {
+  const UNREAD = [
+    {
+      ...PAYLOAD[0],
+      tax: "1.250",
+      items: [
+        { name: "Meze", category: "Food", qty: 1, price: 110, tax_rate: 0.06 },
+        { name: "Rakı", category: "Alcohol", qty: 1, price: 240 },
+      ],
+    },
+  ];
+
+  it.each([
+    [
+      "unset",
+      { tax_basis: "unset", timezone: "America/New_York", country: "US" },
+    ],
+    ["no house row", null],
+  ])(
+    "%s: the check is stored exactly as before, with no error",
+    async (_l, house) => {
+      const { service, calls } = makeDb({
+        house: house as Row | null,
+        rates: TR_RATES,
+      });
+      const res = await service.ingest("r1", "generic_webhook", UNREAD);
+      expect(res.upserted).toBe(1);
+      const [row] = calls.checkUpserts;
+      expect(Object.keys(row).sort()).toEqual(ROW_KEYS_AS_BEFORE);
+      expect(row.subtotal).toBe(330);
+      expect(res.errors).toEqual([]);
+    },
+  );
+
+  it("a US house that says prices exclude tax keeps the till's subtotal", async () => {
+    const { service, calls } = makeDb({
+      house: {
+        tax_basis: "prices_exclude_tax",
+        tax_basis_confirmed_at: "2026-10-12T06:00:00Z",
+        timezone: "America/New_York",
+        country: "US",
       },
+    });
+    const res = await service.ingest("r1", "generic_webhook", UNREAD);
+    expect(res.upserted).toBe(1);
+    expect(calls.checkUpserts[0]).toMatchObject({
+      subtotal: 330,
+      gross_subtotal: 330,
+      tax_basis: "prices_exclude_tax",
+    });
+    expect(res.errors).toEqual([]);
+  });
+
+  it("an inclusive house stores the check with net not recorded, and says why", async () => {
+    const { service, calls } = makeDb({ house: TR_HOUSE, rates: TR_RATES });
+    const res = await service.ingest("r1", "generic_webhook", UNREAD);
+    expect(res.upserted).toBe(1);
+    expect(calls.checkUpserts[0]).toMatchObject({
+      subtotal: null,
+      gross_subtotal: 330,
+      total: 330,
+      tax_basis: "prices_include_tax",
+    });
+    expect(res.errors).toEqual([
+      "1 check was stored with net sales not recorded: the till's tax, or a line's tax rate, could not be read — write tax as 12.50 and a rate as 20 for 20 percent",
     ]);
-    expect(calls.checkUpserts).toHaveLength(0);
-    expect(res.errors[0]).toBe(
-      'chk-1: not imported, items[0].tax_rate not readable as a percent — write 20 for 20 percent (it was "0.20")',
-    );
   });
 });

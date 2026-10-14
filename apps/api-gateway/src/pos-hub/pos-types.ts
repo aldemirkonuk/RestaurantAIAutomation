@@ -82,7 +82,10 @@ export interface CanonicalCheck {
    *  number ("2,000" is two thousand or two): ingest() refuses the check. */
   qtyUnread?: { field: string; value: unknown };
   /** F-1537: set only when a line's `tax_rate` was present but not read as a
-   *  percent ("0.20" is 20 % or a fifth of one): ingest() refuses the check. */
+   *  percent ("0.20" is 20 % or a fifth of one), or the check's `tax` was not
+   *  read as an amount. F-1584: ingest() no longer refuses the check; only a
+   *  house whose prices include tax reads either, and its net is written null
+   *  with the reason (tax-basis-resolver). Every other house ignores it. */
   taxRateUnread?: { field: string; value: unknown };
   /** Source POS table reference — resolved against restaurant_tables.pos_refs
    *  or label. */

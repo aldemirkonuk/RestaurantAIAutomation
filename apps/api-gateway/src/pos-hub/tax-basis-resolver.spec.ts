@@ -345,6 +345,68 @@ describe("rungs 3 and 4", () => {
     ).toMatchObject({ subtotal: null, unresolved: NET_NOT_RECORDED.noZone });
   });
 
+  it("F-1599: a fully comped check under two rates has a net of 0, not unrecorded", () => {
+    const comped = check({
+      subtotal: 0,
+      total: 0,
+      lines: [
+        { qty: 1, price: 0, category: "Food", inventoryId: null },
+        { qty: 2, price: 0, category: "Alcohol", inventoryId: null },
+      ],
+    });
+    expect(resolveCheckSubtotal(comped, inclusive(TWO_RATES))).toMatchObject({
+      subtotal: 0,
+      gross_subtotal: 0,
+      unresolved: null,
+    });
+    // So is one whose lines no rate covers: nothing was taken.
+    expect(resolveCheckSubtotal(comped, inclusive([]))).toMatchObject({
+      subtotal: 0,
+      unresolved: null,
+    });
+  });
+
+  it("F-1599: a refund under two rates is prorated like a sale, not left unrecorded", () => {
+    const s = resolveCheckSubtotal(
+      check({
+        subtotal: -270,
+        total: -270,
+        lines: [
+          { qty: -1, price: 100, category: "Food", inventoryId: null },
+          { qty: -1, price: 200, category: "Alcohol", inventoryId: null },
+        ],
+      }),
+      inclusive(TWO_RATES),
+    );
+    // The sale of the same lines writes 231.82 (above); the refund its mirror.
+    expect(s).toMatchObject({
+      rung: "rates_per_line",
+      subtotal: -231.82,
+      unresolved: null,
+    });
+  });
+
+  it("F-1584: an unreadable till tax leaves an inclusive house's net unrecorded, with the reason", () => {
+    expect(
+      resolveCheckSubtotal(check({ taxUnread: true }), inclusive(TWO_RATES)),
+    ).toMatchObject({
+      subtotal: null,
+      gross_subtotal: 270,
+      unresolved: NET_NOT_RECORDED.taxUnread,
+    });
+    // Before the switch day the till's figure is kept, as for any check.
+    expect(
+      resolveCheckSubtotal(
+        check({
+          taxUnread: true,
+          closedAt: "2026-10-10T18:00:00Z",
+          openedAt: "2026-10-10T17:00:00Z",
+        }),
+        inclusive(TWO_RATES),
+      ),
+    ).toMatchObject({ rung: "before_switch", subtotal: 270 });
+  });
+
   it("no subtotal from the till stays null, stamped", () => {
     expect(
       resolveCheckSubtotal(check({ subtotal: null }), inclusive(TWO_RATES)),
@@ -392,12 +454,13 @@ describe("adapters: what the till states about tax", () => {
     expect(readTaxRate("8,25").rate).toBeCloseTo(0.0825, 10);
   });
 
-  it("an unreadable check tax is named like any unread amount", () => {
+  it("F-1584: an unreadable check tax is not an unread amount of the check", () => {
     const [c] = genericAdapter.normalize({
       externalCheckId: "c1",
       tax: "1.250",
     });
-    expect(c.moneyUnread).toEqual({ field: "tax", value: "1.250" });
+    expect(c.moneyUnread).toBeUndefined();
+    expect(c.taxRateUnread).toEqual({ field: "tax", value: "1.250" });
   });
 
   it("Square says its subtotal is already pre-tax", () => {

@@ -131,6 +131,7 @@ const moneyOf = (r: any) => {
     tip: number | null;
     tax?: number;
     moneyUnread?: { field: string; value: unknown };
+    taxRateUnread?: { field: string; value: unknown };
   } = { subtotal: null, total: null, tip: null };
   for (const field of ["subtotal", "total", "tip"] as const) {
     const m = readMoney(r[field]);
@@ -138,10 +139,12 @@ const moneyOf = (r: any) => {
     if ("unread" in m && !out.moneyUnread)
       out.moneyUnread = { field, value: m.unread };
   }
+  // F-1584: an unread `tax` is not an unread amount of the check. It is
+  // carried with the unread line rates, which only an inclusive house reads
+  // (tax-basis-resolver); every other house stores the check as before.
   const tax = readMoney(r.tax);
   if (tax.value !== null) out.tax = tax.value;
-  if ("unread" in tax && !out.moneyUnread)
-    out.moneyUnread = { field: "tax", value: tax.unread };
+  if ("unread" in tax) out.taxRateUnread = { field: "tax", value: tax.unread };
   (Array.isArray(r.items) ? r.items : []).forEach((it: any, i: number) => {
     const m = readMoney(it?.price);
     if ("unread" in m && !out.moneyUnread) {
@@ -292,12 +295,12 @@ export const genericAdapter: PosAdapter = {
         serverExternalId: r.serverExternalId ?? r.server_external_id ?? null,
         serverName: r.serverName ?? r.server_name ?? r.server ?? null,
         covers: num(r.covers),
+        ...taxRateUnreadOf(Array.isArray(r.items) ? r.items : []),
         ...moneyOf(r),
         ...qtyUnreadOf(
           Array.isArray(r.items) ? r.items : [],
           (it) => it?.qty ?? it?.quantity,
         ),
-        ...taxRateUnreadOf(Array.isArray(r.items) ? r.items : []),
         items: (Array.isArray(r.items) ? r.items : []).map(
           (it: any): CanonicalItem => ({
             name: String(it.name ?? "unknown"),

@@ -928,6 +928,45 @@ describe('DashboardNext — the month calendar (ADR 0290)', () => {
     expect(cellFig('2026-10-01')).toBe('·');
   });
 
+  // F-1591 / F-1588: an include-tax house whose rates did not cover some
+  // checks is told the house's cause with the Settings link, and a month that
+  // spans the switch says where the switch is.
+  it('names the house’s tax cause with a link, and marks the switch day', async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() =>
+      houseMonth({
+        days: TRADING_DAY,
+        monthly_net_sales: 800,
+        monthly_checks: 12,
+        monthly_net_not_recorded_by_tax: 3,
+        tax_switch_day: '2026-10-02',
+        monthly_checks_as_sent: 1,
+      }),
+    );
+    mount();
+
+    const cause = await screen.findByTestId('dn-net-not-recorded-by-tax');
+    expect(cause.textContent).toMatch(/3 checks this month have no net sales/);
+    expect(cause.textContent).toMatch(/no tax rate of this house was in force/);
+    expect(within(cause).getByRole('link', { name: 'Set the tax rates' })).toHaveAttribute(
+      'href',
+      '/settings?tab=tax-basis',
+    );
+    const mark = screen.getByTestId('dn-tax-switch-day');
+    expect(mark.textContent).toMatch(/Net sales are before tax from Friday, October 2\./);
+    expect(mark.textContent).toMatch(/1 check this month is the till’s figures as sent/);
+  });
+
+  it('draws neither line for a month on one basis with every net recorded', async () => {
+    browserAt('2026-10-03T19:00:00Z');
+    routeMonth(() => houseMonth({ days: TRADING_DAY, monthly_net_not_recorded_by_tax: 0, tax_switch_day: null }));
+    mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toBe('$800'));
+    expect(screen.queryByTestId('dn-net-not-recorded-by-tax')).toBeNull();
+    expect(screen.queryByTestId('dn-tax-switch-day')).toBeNull();
+  });
+
   it("marks today on the house's clock when the browser has already turned the day", async () => {
     // Noon UTC on the 4th is the 4th in every browser zone from UTC-11 to
     // UTC+11; the house (Los Angeles) says it is still the 3rd.

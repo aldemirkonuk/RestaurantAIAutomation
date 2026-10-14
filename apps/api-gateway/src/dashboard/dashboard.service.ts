@@ -281,6 +281,22 @@ export interface CalendarMonth {
   monthly_days_counted: number | null;
   /** Days of the month begun on the house's clock (all of them, for a past month). */
   monthly_days_begun: number | null;
+  /**
+   * F-1591: the begun counted days' checks whose net was not recorded because
+   * this house's prices include tax and no tax rate of it was in force for
+   * them (the till did send a subtotal). The cause is the house's tax
+   * settings, not the till. Null when sales are not read.
+   */
+  monthly_net_not_recorded_by_tax?: number | null;
+  /**
+   * F-1588 (ADR 0341 F2, "reports mark the switch date"): the first day of
+   * the month with a check made pre-tax, when the month also holds checks
+   * kept as the till sent them. Null when the month's net is on one basis,
+   * or sales are not read.
+   */
+  tax_switch_day?: string | null;
+  /** F-1588: the begun counted days' checks not made pre-tax (kept as the till sent them), when `tax_switch_day` is set. */
+  monthly_checks_as_sent?: number | null;
   /** Has this house's register ever sent a check? Null when not asked. */
   pos_connected: boolean | null;
   /** True when the caller's role does not see sales; the register was not read. */
@@ -522,6 +538,41 @@ export function netSalesByHouseDay(
   return out;
 }
 
+/** F-1588 / F-1591: a day's checks an inclusive house made pre-tax (ADR 0341). */
+export interface HouseDayTax {
+  /** Checks stamped `prices_include_tax` at ingest (their net may be null). */
+  pre_tax: number;
+  /** Of `pre_tax`, those whose net is null though the till sent a subtotal. */
+  net_not_recorded: number;
+}
+
+/**
+ * The checks an inclusive house made pre-tax at ingest (`tax_basis`
+ * `prices_include_tax`, ADR 0341 §5), per house day, filed as the takings
+ * are. A null net with the till's subtotal kept in `gross_subtotal` is one
+ * the house's tax settings could not make pre-tax (resolver rung 4), not one
+ * the till sent without a subtotal. Exported for its spec.
+ */
+export function taxStampsByHouseDay(
+  rows: ReadonlyArray<Record<string, unknown>>,
+  zone: string,
+): Map<string, HouseDayTax> {
+  const out = new Map<string, HouseDayTax>();
+  for (const row of rows) {
+    const date = houseDayOf(row as CheckTimes, zone);
+    if (!date) continue;
+    const d = out.get(date) ?? { pre_tax: 0, net_not_recorded: 0 };
+    d.pre_tax += 1;
+    if (
+      netSalesOf(row) === null &&
+      netSalesOf({ subtotal: row.gross_subtotal }) !== null
+    )
+      d.net_not_recorded += 1;
+    out.set(date, d);
+  }
+  return out;
+}
+
 /**
  * The month's calendar entries, filed on `event_date` (already a house date).
  * Every row, keyset-paged; only the columns the page draws (AW12). Every
@@ -618,15 +669,32 @@ async function readMonthTakings(
   since: string | null;
   until: string | null;
   days: Map<string, HouseDaySales>;
+  tax: Map<string, HouseDayTax>;
 }> {
   const from = new Date(start.getTime() - CHECK_LOOKBACK_MS);
-  const [rows, first, latest] = await Promise.all([
+  const [rows, stamped, first, latest] = await Promise.all([
     readAll("The month's checks", (after) => {
       let q = client
         .from("pos_checks")
         .select("id, subtotal, opened_at, closed_at")
         .eq("restaurant_id", restaurantId)
         .eq("voided", false)
+        .gte("opened_at", from.toISOString())
+        .lt("opened_at", end.toISOString());
+      if (after) q = q.gt("id", after);
+      return q;
+    }),
+    // F-1588 / F-1591: the same window's checks an inclusive house made
+    // pre-tax. A read of its own, so the takings read above stays exactly
+    // the net-sales read (ADR 0290 AW21); none for a house that never said
+    // its prices include tax.
+    readAll("The month's checks made pre-tax", (after) => {
+      let q = client
+        .from("pos_checks")
+        .select("id, subtotal, gross_subtotal, opened_at, closed_at")
+        .eq("restaurant_id", restaurantId)
+        .eq("voided", false)
+        .eq("tax_basis", "prices_include_tax")
         .gte("opened_at", from.toISOString())
         .lt("opened_at", end.toISOString());
       if (after) q = q.gt("id", after);
@@ -675,6 +743,7 @@ async function readMonthTakings(
     since,
     until,
     days,
+    tax: taxStampsByHouseDay(stamped, zone),
   };
 }
 
@@ -1332,6 +1401,18 @@ export class DashboardService {
         0,
       );
       const monthStated = connected === true && known.length > 0;
+      // F-1588 / F-1591: the counted days' checks an inclusive house made
+      // pre-tax; every other check of those days was kept as the till sent it.
+      const knownTax = known.map((d) => takings?.tax.get(d.date));
+      const preTaxDays = known
+        .filter((_, i) => (knownTax[i]?.pre_tax ?? 0) > 0)
+        .map((d) => d.date);
+      const asSent = known.reduce(
+        (n, d, i) => n + (d.checks ?? 0) - (knownTax[i]?.pre_tax ?? 0),
+        0,
+      );
+      const switchDay =
+        preTaxDays.length > 0 && asSent > 0 ? preTaxDays[0] : null;
       const monthlyNet =
         monthStated && !(monthlyChecks > 0 && monthlyNetChecks === 0)
           ? cents(known.reduce((sum, d) => sum + (d.net_sales ?? 0), 0))
@@ -1360,6 +1441,16 @@ export class DashboardService {
         monthly_net_checks: monthStated ? monthlyNetChecks : null,
         monthly_days_counted: connected === true ? known.length : null,
         monthly_days_begun: connected === true ? begun.length : null,
+        ...(withSales
+          ? {
+              monthly_net_not_recorded_by_tax: monthStated
+                ? knownTax.reduce((n, t) => n + (t?.net_not_recorded ?? 0), 0)
+                : null,
+              tax_switch_day: monthStated ? switchDay : null,
+              monthly_checks_as_sent:
+                monthStated && switchDay !== null ? asSent : null,
+            }
+          : {}),
         pos_connected: connected,
         sales_withheld: !withSales,
       };
