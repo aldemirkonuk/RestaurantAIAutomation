@@ -315,6 +315,18 @@ describe('item rates and earlier answers (S222, F-1624)', () => {
     );
   });
 
+  it('F-1665: says the item list is cut when the house has more items than it carries, and only then', async () => {
+    api.get.mockResolvedValue({ data: readout({ basis: 'prices_include_tax', answered: true, items, itemsCapped: true }) });
+    const { unmount } = render(<TaxBasisSection canManage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'One item' }));
+    expect(screen.getByTestId('tax-items-cut')).toHaveTextContent('Only the first 2 of the house’s items, by name, are listed here');
+    unmount();
+    api.get.mockResolvedValue({ data: readout({ basis: 'prices_include_tax', answered: true, items, itemsCapped: false }) });
+    render(<TaxBasisSection canManage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'One item' }));
+    expect(screen.queryByTestId('tax-items-cut')).toBeNull();
+  });
+
   it('says each answer the house gave, from its day, and that checks keep theirs', async () => {
     const answers = [
       { basis: 'prices_include_tax' as const, answeredAt: '2026-10-03T09:00:00Z', fromDay: '2026-10-03' },

@@ -297,6 +297,7 @@ const FIELD_WORDS: Record<string, string> = {
   grape_variety: 'Grape',
   by_glass_price: 'Glass price',
   bottle_price: 'Bottle price',
+  price: 'Price',
 };
 
 /** What a price changed in place did to the house's own price (ADR 0193). */
@@ -304,6 +305,8 @@ function editPriceNote(
   field: EditableMenuItemField,
   r: Awaited<ReturnType<typeof reviewMenuItem>>,
 ): { tone: 'alert' | 'said'; text: string } | null {
+  // A dish's price is the menu's only; it moves no house price (ADR 0340 rule 7).
+  if (field === 'price') return null;
   const kind = field === 'by_glass_price' ? 'glass' : 'bottle';
   switch (r.priceSync) {
     case 'changed':
@@ -360,7 +363,7 @@ function flagReason(note: string | null | undefined): { hand: boolean; text: str
 /** The changes between a line and what was typed for it, in the order shown. */
 export function editChanges(
   line: MenuLine,
-  typed: { name: string; category: string; glass: string; bottle: string },
+  typed: { name: string; category: string; glass: string; bottle: string; price?: string },
   group: GroupMark | null = null,
   display: GroupMark | null = null,
   section: { title: string; menuId: string } | null = null,
@@ -379,10 +382,16 @@ export function editChanges(
     if (!category) return { changes: [], rename: null, error: 'A section cannot be cleared here; type the section it belongs to.' };
     changes.push({ field: 'category', value: category });
   }
-  for (const [field, raw, was] of [
-    ['by_glass_price', typed.glass.trim(), line.by_glass_price],
-    ['bottle_price', typed.bottle.trim(), line.bottle_price],
-  ] as const) {
+  // A dish has one price and no bottle or glass (ADR 0340 rule 7); the
+  // gateway refuses either kind's price on the other (F-1671).
+  const prices: ReadonlyArray<readonly [EditableMenuItemField, string, number | null]> =
+    line.line_kind === 'dish'
+      ? [['price', (typed.price ?? '').trim(), line.price ?? null]]
+      : [
+          ['by_glass_price', typed.glass.trim(), line.by_glass_price],
+          ['bottle_price', typed.bottle.trim(), line.bottle_price],
+        ];
+  for (const [field, raw, was] of prices) {
     if (raw === '') {
       if (was !== null)
         return { changes: [], rename: null, error: `${FIELD_WORDS[field]} cannot be cleared here. Discard the line to take it off.` };
@@ -617,7 +626,9 @@ function EditRow({ line, saving, onSave, onCancel, section = null }: {
     category: section && line.section_id ? section.title : (line.category ?? ''),
     glass: line.by_glass_price === null ? '' : String(line.by_glass_price),
     bottle: line.bottle_price === null ? '' : String(line.bottle_price),
+    price: line.price == null ? '' : String(line.price),
   });
+  const dish = line.line_kind === 'dish';
   const [error, setError] = useState<string | null>(null);
   const group = useHouseGroupMark();
   const set = (k: keyof typeof typed) => (e: { target: { value: string } }) => {
@@ -646,19 +657,27 @@ function EditRow({ line, saving, onSave, onCancel, section = null }: {
         />
       </td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
-      <td>
-        <input className="cl-field cl-focus cl-num" type="text" inputMode="decimal" aria-label={`Glass price of ${line.name}`} value={typed.glass} onChange={set('glass')} style={{ width: 80 }} />
-      </td>
-      <td>
-        <input className="cl-field cl-focus cl-num" type="text" inputMode="decimal" aria-label={`Bottle price of ${line.name}`} value={typed.bottle} onChange={set('bottle')} style={{ width: 80 }} />
-      </td>
+      {dish ? (
+        <td colSpan={2}>
+          <input className="cl-field cl-focus cl-num" type="text" inputMode="decimal" aria-label={`Price of ${line.name}`} value={typed.price} onChange={set('price')} style={{ width: 80 }} />
+        </td>
+      ) : (
+        <>
+          <td>
+            <input className="cl-field cl-focus cl-num" type="text" inputMode="decimal" aria-label={`Glass price of ${line.name}`} value={typed.glass} onChange={set('glass')} style={{ width: 80 }} />
+          </td>
+          <td>
+            <input className="cl-field cl-focus cl-num" type="text" inputMode="decimal" aria-label={`Bottle price of ${line.name}`} value={typed.bottle} onChange={set('bottle')} style={{ width: 80 }} />
+          </td>
+        </>
+      )}
       <td>
         {error ? (
           <span role="alert" className="cl-note">
             {error}
           </span>
         ) : (
-          <span className="cl-note">A price saved here is the house's own price.</span>
+          <span className="cl-note">{dish ? "A dish's price is on the menu only." : "A price saved here is the house's own price."}</span>
         )}
       </td>
       <td style={{ whiteSpace: 'nowrap' }}>
@@ -753,8 +772,17 @@ function MenuRow({ line, currency, onDiscard, discarding, canDiscard, onEdit, fo
         {menuKind ? <span style={{ display: 'block', fontSize: 11 }}>{menuKind}</span> : null}
       </td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
-      <PriceCell line={line} linePrice={line.by_glass_price} housePrice={line.house_glass_price} currency={currency} kind="glass" canPick={canDiscard} menuKind={menuKind} alsoOn={alsoOn} />
-      <PriceCell line={line} linePrice={line.bottle_price} housePrice={line.house_bottle_price} currency={currency} kind="bottle" canPick={canDiscard} menuKind={menuKind} alsoOn={alsoOn} />
+      {line.line_kind === 'dish' ? (
+        // A dish's one price, across the glass and bottle columns (F-1671).
+        <td className="cl-num" colSpan={2} data-testid="menu-dish-price">
+          {money(line.price ?? null, currency)}
+        </td>
+      ) : (
+        <>
+          <PriceCell line={line} linePrice={line.by_glass_price} housePrice={line.house_glass_price} currency={currency} kind="glass" canPick={canDiscard} menuKind={menuKind} alsoOn={alsoOn} />
+          <PriceCell line={line} linePrice={line.bottle_price} housePrice={line.house_bottle_price} currency={currency} kind="bottle" canPick={canDiscard} menuKind={menuKind} alsoOn={alsoOn} />
+        </>
+      )}
       <td>
         <span className="cl-chip" data-seal={line.status === 'approved' ? 'true' : 'false'}>
           {reason?.hand ? 'by hand' : line.status.replace('_', ' ')}

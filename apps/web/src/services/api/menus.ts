@@ -149,6 +149,8 @@ export type EditableMenuItemField =
   | 'grape_variety'
   | 'by_glass_price'
   | 'bottle_price'
+  /** A dish's one price (ADR 0340 rule 7); the gateway refuses it on a drink (F-1671). */
+  | 'price'
 
 export interface OnboardingProgress {
   id: string

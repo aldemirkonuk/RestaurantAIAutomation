@@ -21,6 +21,7 @@ import {
   COCKTAIL_TAX_CATEGORY_AUDIT_ACTION,
   HouseTaxBasisService,
   TAX_BASIS_AUDIT_ACTION,
+  TAX_ITEM_PICK_CAP,
   TAX_RATE_AUDIT_ACTION,
   notARateBecause,
   proposalFor,
@@ -41,7 +42,7 @@ type Row = Record<string, any>;
 class FakeQuery {
   private filters: ((r: Row) => boolean)[] = [];
   private limitN: number | null = null;
-  private orderBy: { col: string; asc: boolean } | null = null;
+  private orderBy: { col: string; asc: boolean }[] = [];
   private one = false;
   private write: { kind: "insert" | "update"; row: Row } | null = null;
   private many: Row[] | null = null;
@@ -58,12 +59,16 @@ class FakeQuery {
     this.filters.push((r) => r[col] === v);
     return this;
   }
+  is(col: string, v: null) {
+    this.filters.push((r) => (r[col] ?? null) === v);
+    return this;
+  }
   in(col: string, vs: unknown[]) {
     this.filters.push((r) => vs.includes(r[col]));
     return this;
   }
   order(col: string, o?: { ascending?: boolean }) {
-    this.orderBy = { col, asc: o?.ascending !== false };
+    this.orderBy.push({ col, asc: o?.ascending !== false });
     return this;
   }
   limit(n: number) {
@@ -129,12 +134,20 @@ class FakeQuery {
     let rows = (this.db.tables[this.table] ?? []).filter((r) =>
       this.filters.every((f) => f(r)),
     );
-    if (this.orderBy) {
-      const { col, asc } = this.orderBy;
-      rows = [...rows].sort(
-        (a, b) =>
-          (a[col] < b[col] ? -1 : a[col] > b[col] ? 1 : 0) * (asc ? 1 : -1),
-      );
+    if (this.orderBy.length) {
+      // Each key in turn, NULLS LAST as PostgREST orders ascending.
+      const cmp = (a: Row, b: Row): number => {
+        for (const { col, asc } of this.orderBy) {
+          const x = a[col] ?? null;
+          const y = b[col] ?? null;
+          if (x === y) continue;
+          if (x === null) return 1;
+          if (y === null) return -1;
+          return (x < y ? -1 : 1) * (asc ? 1 : -1);
+        }
+        return 0;
+      };
+      rows = [...rows].sort(cmp);
     }
     if (this.limitN !== null) rows = rows.slice(0, this.limitN);
     return this.one
@@ -928,5 +941,42 @@ describe("GET /settings/tax-basis — every answer, and the house's items (F-162
       { id: ITEM_TR, name: "Kavaklıdere Yakut" },
     ]);
     expect((await controller.read(US)).items).toBeNull();
+  });
+
+  it("F-1665: past the cap, removed items never take a live one's place, the cut is by name, and the readout says it is cut", async () => {
+    const { db, controller } = make();
+    answered(db);
+    const pad = (n: number) => String(n).padStart(4, "0");
+    // Removed items first in table order: a cap before the deleted_at filter
+    // read only these and listed nothing.
+    for (let n = 0; n < TAX_ITEM_PICK_CAP; n++)
+      db.tables.restaurant_inventory.unshift({
+        id: `gone-${pad(n)}`,
+        restaurant_id: TR,
+        wine_name: `Removed ${pad(n)}`,
+        deleted_at: "2026-10-01T00:00:00Z",
+      });
+    for (let n = TAX_ITEM_PICK_CAP; n > 0; n--)
+      db.tables.restaurant_inventory.push({
+        id: `live-${pad(n)}`,
+        restaurant_id: TR,
+        display_name: `Item ${pad(n)}`,
+        wine_name: null,
+      });
+    const r = await controller.read(TR);
+    expect(r.items).toHaveLength(TAX_ITEM_PICK_CAP);
+    expect(r.items!.some((i) => i.id.startsWith("gone-"))).toBe(false);
+    // Item 0001..0500 by name; Kavaklıdere Yakut (no display name) is past the cut.
+    expect(r.items![0]).toEqual({ id: "live-0001", name: "Item 0001" });
+    expect(r.items!.some((i) => i.id === ITEM_TR)).toBe(false);
+    expect(r.itemsCapped).toBe(true);
+  });
+
+  it("F-1665: at or under the cap, nothing is said to be cut", async () => {
+    const { db, controller } = make();
+    answered(db);
+    const r = await controller.read(TR);
+    expect(r.items).toEqual([{ id: ITEM_TR, name: "Kavaklıdere Yakut" }]);
+    expect(r.itemsCapped).toBe(false);
   });
 });

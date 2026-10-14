@@ -74,6 +74,8 @@ export interface TaxBasisReadout {
   answersReason?: string | null;
   /** The house's items a rate can be keyed to (S222); null when not listed. */
   items?: { id: string; name: string }[] | null;
+  /** F-1665: the house has more items than the list carries. */
+  itemsCapped?: boolean;
   country: string | null;
   taxWord: string;
   proposal: { basis: TaxBasisAnswer; rates: { label: string; ratePct: number }[]; why: string } | null;
@@ -585,21 +587,28 @@ function TaxBasisBody({
               />
               {covers === 'house_item' &&
                 (reg.items && reg.items.length > 0 ? (
-                  <select
-                    aria-label="Item"
-                    value={itemId}
-                    disabled={!canManage || rateBusy}
-                    onChange={(e) => setItemId(e.target.value)}
-                    className="st-ink st-focus"
-                    style={{ ...fieldStyle, width: 220 }}
-                  >
-                    <option value="">Choose an item</option>
-                    {reg.items.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <select
+                      aria-label="Item"
+                      value={itemId}
+                      disabled={!canManage || rateBusy}
+                      onChange={(e) => setItemId(e.target.value)}
+                      className="st-ink st-focus"
+                      style={{ ...fieldStyle, width: 220 }}
+                    >
+                      <option value="">Choose an item</option>
+                      {reg.items.map((i) => (
+                        <option key={i.id} value={i.id}>
+                          {i.name}
+                        </option>
+                      ))}
+                    </select>
+                    {reg.itemsCapped ? (
+                      <span data-testid="tax-items-cut" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
+                        Only the first {reg.items.length} of the house’s items, by name, are listed here; an item past them is not in this list.
+                      </span>
+                    ) : null}
+                  </>
                 ) : (
                   <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
                     {reg.items === null || reg.items === undefined
