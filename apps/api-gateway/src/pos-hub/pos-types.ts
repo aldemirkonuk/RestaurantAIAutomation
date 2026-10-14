@@ -57,8 +57,14 @@ export function checkChannelOf(v: unknown): CheckChannel | null {
 }
 
 export interface CanonicalCheck {
-  /** Check/order id in the source POS — dedupe key with (restaurant, source). */
+  /** Check/order id in the source POS — dedupe key with (restaurant, source).
+   *  F-1648: when the till names its till or terminal, the id is
+   *  `<till>:<check>`, so two tills, or one that starts its numbers again,
+   *  keep each sale apart. */
   externalCheckId: string;
+  /** F-1648: the till or terminal the check was rung on, when the feed says;
+   *  already part of externalCheckId. */
+  tillId?: string | null;
   openedAt: string; // ISO
   closedAt?: string | null; // null = still open (live/hot-table analytics)
   /** Whole check voided after close (e.g. a mis-fired order). When true, the

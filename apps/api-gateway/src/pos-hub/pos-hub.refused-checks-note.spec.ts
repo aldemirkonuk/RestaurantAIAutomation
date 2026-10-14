@@ -152,6 +152,8 @@ interface Opts {
   prefsFail?: string[];
   /** Users whose own push switch is off (`push: false`); the rest have it on. */
   pushOff?: string[];
+  /** F-1648: the pos_checks rows already kept, by check id; none unless given. */
+  stored?: Record<string, Row>;
 }
 
 const minutesAgo = (m: number) =>
@@ -334,9 +336,18 @@ function makeService(opts: Opts = {}) {
         };
         return q;
       }
+      const keyed: Record<string, unknown> = {};
       const q: any = {
         select: () => q,
-        eq: () => q,
+        eq: (c: string, v: unknown) => ((keyed[c] = v), q),
+        // F-1648: a version-less closed check reads the copy already kept.
+        maybeSingle: async () => ({
+          data:
+            table === "pos_checks"
+              ? (opts.stored?.[String(keyed.external_check_id)] ?? null)
+              : null,
+          error: null,
+        }),
         in: async () => ({ data: [], error: null }),
         // F-1195: a file import reads which till the house has; none here.
         limit: async () => ({ data: [], error: null }),
@@ -2351,5 +2362,56 @@ describe("the phone push carries the note's id and count, never the till's text"
       inventoryId: "inv-1",
       restaurantId: HOUSE,
     });
+  });
+});
+
+describe("F-1648: a check number a till used again on another day is another sale", () => {
+  const kept = {
+    voided: false,
+    closed_at: "2026-10-02T19:00:00+00:00",
+    source_version: null,
+    source_modified_at: null,
+  };
+
+  it("refuses a version-less copy that closes on another house day, and says why", async () => {
+    const { service, calls } = makeService({ stored: { "17": kept } });
+    const res = await ingest(
+      service,
+      [check("17", "2026-10-03T19:00:00Z")],
+      "generic_webhook",
+    );
+    expect(res.upserted).toBe(0);
+    expect(calls.checks).toEqual([]);
+    expect(res.errors.join("\n")).toContain(
+      "17: not imported, this check number is already kept for a sale on 2026-10-02 and this one closed on 2026-10-03",
+    );
+  });
+
+  it("still takes a copy of the same check on the same house day (a correction)", async () => {
+    const { service, calls } = makeService({ stored: { "17": kept } });
+    const res = await ingest(
+      service,
+      [{ ...check("17", "2026-10-02T19:00:00Z"), total: 25 }],
+      "generic_webhook",
+    );
+    expect(res.upserted).toBe(1);
+    expect(calls.persist).toEqual([]);
+  });
+
+  it("keys a check on the till that names itself, so two tills' #17 are two rows", async () => {
+    const { service, calls } = makeService({ stored: { "17": kept } });
+    const res = await ingest(
+      service,
+      [
+        { ...check("17", "2026-10-03T19:00:00Z"), till_id: "kasa-2" },
+        { ...check("17", "2026-10-03T19:05:00Z"), terminalId: 3 },
+      ],
+      "generic_webhook",
+    );
+    expect(res.upserted).toBe(2);
+    expect(calls.checks.map((r) => r.external_check_id)).toEqual([
+      "kasa-2:17",
+      "3:17",
+    ]);
   });
 });

@@ -1617,6 +1617,7 @@ export class PosHubService {
         // ledger instead (applyStockEffects, AFTER_VOID).
         // F-1624: the stored copy, read once here when either rule needs it.
         let storedCopy: StoredCheckCopy | null = null;
+        let storedRead = false;
         if (check.sourceVersion != null || check.sourceModifiedAt) {
           const stored = await this.readStoredCheck(
             restaurantId,
@@ -1640,10 +1641,43 @@ export class PosHubService {
             continue;
           }
           storedCopy = stored.row;
+          storedRead = true;
           if (stored.row?.voided === true && check.voided !== true) {
             // Newer than the stored void, by the till's own word: the till
             // un-voided it, and the stock ledger may take the sale again.
             NEWER_THAN_VOID.add(check);
+          }
+        } else if (typeof when.closedAt === "string") {
+          // F-1648: a till that says no version reuses its check numbers (a
+          // daily fis reset, or a second till on the same feed), so a closed
+          // copy is the stored check only when it closes on the same house
+          // day (F-1324's test). Another day is another sale: it is refused
+          // and said in errors[], rather than overwriting the stored one and taking no
+          // stock. The total is not compared: a correction on the day (a line
+          // removed) changes it, and the stock ledger reads it as one. A
+          // house with no time zone has no day to compare, so its copy is
+          // stored as before.
+          const stored = await this.readStoredCheck(
+            restaurantId,
+            source,
+            check.externalCheckId,
+          );
+          if (!stored.ok) {
+            errors.push(
+              `${check.externalCheckId}: not imported, the check already kept under this number could not be read to tell whether this is the same sale: ${stored.message}`,
+            );
+            continue;
+          }
+          storedCopy = stored.row;
+          storedRead = true;
+          const zone = stored.row?.closed_at ? await houseZone() : null;
+          const keptDay = zone ? houseDayOf(stored.row?.closed_at, zone) : null;
+          const thisDay = zone ? houseDayOf(when.closedAt, zone) : null;
+          if (keptDay !== null && thisDay !== null && keptDay !== thisDay) {
+            errors.push(
+              `${check.externalCheckId}: not imported, this check number is already kept for a sale on ${keptDay} and this one closed on ${thisDay}; a till that starts its check numbers again, or a second till on the same feed, must send its till number with each check`,
+            );
+            continue;
           }
         }
         const items = check.items.map((it) => {
@@ -1720,10 +1754,7 @@ export class PosHubService {
         // unset house reads nothing new (rule 1).
         let keepStamp = false;
         if (taxStamp.kind === "stamped") {
-          if (
-            storedCopy === null &&
-            !(check.sourceVersion != null || check.sourceModifiedAt)
-          ) {
+          if (!storedRead) {
             const stored = await this.readStoredCheck(
               restaurantId,
               source,

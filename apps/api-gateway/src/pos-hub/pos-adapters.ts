@@ -254,6 +254,28 @@ const modifierIdsOf = (mods: unknown, idOf: (m: any) => unknown): string[] =>
 // Generic — the canonical shape itself (webhook + import path)
 // ---------------------------------------------------------------------------
 
+/**
+ * F-1648: the check's id, keyed on its till when the feed names one. Every
+ * Turkish till reaches the hub through this adapter, and a check number is
+ * only unique on one till (and some reset it each day): two tills each
+ * sending #17 were one row, the later sale overwriting the earlier. A feed
+ * that names its till or terminal gets `<till>:<check>`; one that names none
+ * keeps the id as before, so stored checks keep their rows. A feed that
+ * starts naming its till sends its later copies of an earlier check under
+ * the new id.
+ */
+const checkIdOf = (r: any): { externalCheckId: string; tillId?: string } => {
+  const id = String(r.externalCheckId ?? r.external_check_id);
+  const till = r.tillId ?? r.till_id ?? r.terminalId ?? r.terminal_id;
+  const tillText =
+    typeof till === "string" || typeof till === "number"
+      ? String(till).trim()
+      : "";
+  return tillText
+    ? { externalCheckId: `${tillText}:${id}`, tillId: tillText }
+    : { externalCheckId: id };
+};
+
 export const genericAdapter: PosAdapter = {
   key: "generic_webhook",
   normalize(payload: any): CanonicalCheck[] {
@@ -266,7 +288,7 @@ export const genericAdapter: PosAdapter = {
       .filter((r) => r && (r.externalCheckId || r.external_check_id))
       .map((r) => ({
         ...voidedOf(r.voided ?? r.is_voided),
-        externalCheckId: String(r.externalCheckId ?? r.external_check_id),
+        ...checkIdOf(r),
         // F-1194: a check with no opening time is dated by its closing time,
         // never by when it arrived; only an open check with neither keeps
         // the arrival time.
