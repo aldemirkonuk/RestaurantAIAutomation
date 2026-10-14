@@ -24,6 +24,7 @@ import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { X, Check, AlertTriangle, Plus, Receipt, FileText, ShieldCheck } from 'lucide-react'
 import { verifyOrderReceipt } from '../../../services/api/orders'
+import { CostTaxChoice, useHouseCostTax, type CostTaxBasis } from '../../../components/inventory/CostTaxChoice'
 import {
   allocatedChargesFor,
   documentsApi,
@@ -404,6 +405,10 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   // nobody had checked.
   const [invoiceQty, setInvoiceQty] = useState<number | null>(null)
   const [invoiceUnitPrice, setInvoiceUnitPrice] = useState<number | null>(null)
+  // ADR 0341 F3: whether tax is inside the invoice price, as the owner or
+  // manager says it; null = not said, and nothing is sent.
+  const costTax = useHouseCostTax(holdsMoney)
+  const [priceTaxBasis, setPriceTaxBasis] = useState<CostTaxBasis | null>(null)
   /*
    * WHAT THE PRICE IS IN — required beside it since 2026-09-06 (founder batch
    * 67: "a price without money is not a price").
@@ -742,6 +747,10 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         shippedUom: inBottles && shippedQty != null ? 'bottle' : undefined,
         invoiceQuantityInInvoiceUom: invoiceQty ?? undefined,
         invoiceUnitPrice: statedUnitPrice ?? undefined,
+        // With the price only, and only where the house's till prices include
+        // tax; the gateway stamps nothing anywhere else (ADR 0341 §2).
+        invoicePriceTaxBasis:
+          statedUnitPrice != null && costTax?.inclusive && priceTaxBasis ? priceTaxBasis : undefined,
         // Sent whenever it is set, price or no price. The gateway refuses the
         // PAIR (a price with no code) and accepts a code with no price, so a
         // desk that picks the currency before typing the figure is not fought.
@@ -1038,6 +1047,15 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 )}
               </div>
             </div>
+          )}
+          {holdsMoney && !moneyHold && invoiceUnitPrice != null && (
+            <CostTaxChoice
+              terms={costTax}
+              value={priceTaxBasis}
+              onChange={setPriceTaxBasis}
+              disabled={readOnly}
+              what="this price"
+            />
           )}
 
           {/* B (batch 67) — a price with no code, said in words, with the codes

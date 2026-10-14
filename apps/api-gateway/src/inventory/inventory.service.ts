@@ -40,6 +40,13 @@ import { classifyStock } from "../common/stock-status";
 import { readHouseZone, shiftHouseDay } from "../common/house-day";
 import { nameFor, readNamesInHouse } from "../logs/logs-timeline.service";
 import {
+  costTaxStampFor,
+  costedLiveLotIds,
+  readHouseCostTaxTerms,
+  stampLotsCostedByWrite,
+} from "../common/cost-tax-stamp";
+import type { CostTaxBasis } from "../common/tax-basis";
+import {
   houseWallAt,
   type WallReading,
 } from "../notifications/low-stock-digest-clock";
@@ -1320,6 +1327,11 @@ export class InventoryService {
       costPerBottle?: number | null;
       costProvenance?: "invoice" | "estimated" | "manual";
       /**
+       * ADR 0341 F3: whether tax is inside that cost, as an owner or a
+       * manager said it. Stamped only on the bottles the count costed.
+       */
+      costTaxBasis?: unknown;
+      /**
        * F-1544 lane 2: the stock-take this line belongs to (founder
        * 2026-10-12, F2 a: it posts now, as its counter; a second line for the
        * same shelf in the same walk is held). Absent = a spot count, exactly
@@ -1516,6 +1528,15 @@ export class InventoryService {
       dto.locationId ?? null,
       { sessionId, countsOpenMl: openMl !== null, resolvesHeld },
     );
+    // ADR 0341 F3: whether tax is inside the opening cost, as an owner or a
+    // manager said it, stamped only on the bottles this count costed.
+    const countCost = openingCost === null ? null : Number(openingCost);
+    const countStamp = await this.prepareCostTaxStamp(
+      restaurantId,
+      inventoryId,
+      countCost,
+      dto.costTaxBasis,
+    );
     const { data: countResult, error: rpcErr } = await client.rpc(
       "record_stock_count",
       {
@@ -1553,6 +1574,19 @@ export class InventoryService {
           : {}),
       },
     );
+    // F-1524: record_stock_count says whether the cost landed; a wine that
+    // already had one kept it, and nothing is stamped then.
+    if (
+      countStamp &&
+      !rpcErr &&
+      mapStockCountResult(countResult)?.costApplied === true
+    )
+      await this.finishCostTaxStamp(
+        restaurantId,
+        inventoryId,
+        countCost as number,
+        countStamp,
+      );
     if (rpcErr) {
       this.logger.error(
         `Spot count record_stock_count failed: ${rpcErr.message}`,
@@ -2059,6 +2093,75 @@ export class InventoryService {
   }
 
   /**
+   * Run one write that may cost new bottles, then stamp whether tax is inside
+   * that cost (ADR 0341 F3, founder S218: "Yes, stamp cost basis"). Only what
+   * an owner or a manager said for this cost (`stated`), only at a house whose
+   * till prices include tax, only on the lots this write costed
+   * (`stampLotsCostedByWrite`), and only when `applied` says the cost landed.
+   * Nothing said, or any other house, runs the write exactly as before.
+   */
+  private async withCostTaxStamp<T>(
+    restaurantId: string,
+    inventoryId: string,
+    unitCost: number | null,
+    stated: unknown,
+    write: () => PromiseLike<T>,
+    applied: (result: T) => boolean = () => true,
+  ): Promise<T> {
+    const stamp = await this.prepareCostTaxStamp(
+      restaurantId,
+      inventoryId,
+      unitCost,
+      stated,
+    );
+    const result = await write();
+    if (stamp && unitCost !== null && applied(result))
+      await this.finishCostTaxStamp(restaurantId, inventoryId, unitCost, stamp);
+    return result;
+  }
+
+  /**
+   * Before the write: the basis to stamp and the lots already costed, or null
+   * when nothing is to be stamped (nothing said, no cost, any house whose
+   * till prices do not include tax, or the lots could not be read).
+   */
+  private async prepareCostTaxStamp(
+    restaurantId: string,
+    inventoryId: string,
+    unitCost: number | null,
+    stated: unknown,
+  ): Promise<{ basis: CostTaxBasis; before: Set<string> } | null> {
+    if (unitCost === null || stated == null) return null;
+    const client = this.dbService.getClient();
+    const basis = costTaxStampFor(
+      await readHouseCostTaxTerms(client, restaurantId, this.logger),
+      stated,
+    );
+    if (!basis) return null;
+    const before = await costedLiveLotIds(
+      client,
+      restaurantId,
+      inventoryId,
+      this.logger,
+    );
+    return before ? { basis, before } : null;
+  }
+
+  /** After a write whose cost landed: stamp the lots it costed. */
+  private async finishCostTaxStamp(
+    restaurantId: string,
+    inventoryId: string,
+    unitCost: number,
+    { basis, before }: { basis: CostTaxBasis; before: Set<string> },
+  ): Promise<void> {
+    await stampLotsCostedByWrite(
+      this.dbService.getClient(),
+      { restaurantId, inventoryId, before, unitCost, basis },
+      this.logger,
+    );
+  }
+
+  /**
    * Create a new inventory item
    */
   /**
@@ -2173,22 +2276,30 @@ export class InventoryService {
 
         if (dto.stockLive && dto.stockLive > 0) {
           const { unitCost, provenance } = this.resolveLotCost(dto);
-          const { error: rpcErr } = await client.rpc("apply_stock_movement", {
-            p_inventory_id: existing.id,
-            p_stock_state: "live",
-            p_delta: dto.stockLive,
-            p_transaction_type: "initial",
-            p_source: "manual",
-            p_reason: "stock on re-activation",
-            p_unit_cost: unitCost,
-            p_location_id: dto.storageLocationId ?? null,
-            p_cost_provenance: provenance,
-            // ADR 0141 — the house this stock is for. `existing.id` came from a
-            // read scoped to this restaurant, so this agrees by construction;
-            // the primitive is told anyway, because the guarantee must not rest
-            // on each caller having remembered.
-            p_restaurant_id: restaurantId,
-          });
+          const { error: rpcErr } = await this.withCostTaxStamp(
+            restaurantId,
+            existing.id,
+            provenance === "sample" ? null : unitCost,
+            dto.costTaxBasis,
+            () =>
+              client.rpc("apply_stock_movement", {
+                p_inventory_id: existing.id,
+                p_stock_state: "live",
+                p_delta: dto.stockLive,
+                p_transaction_type: "initial",
+                p_source: "manual",
+                p_reason: "stock on re-activation",
+                p_unit_cost: unitCost,
+                p_location_id: dto.storageLocationId ?? null,
+                p_cost_provenance: provenance,
+                // ADR 0141 — the house this stock is for. `existing.id` came from a
+                // read scoped to this restaurant, so this agrees by construction;
+                // the primitive is told anyway, because the guarantee must not rest
+                // on each caller having remembered.
+                p_restaurant_id: restaurantId,
+              }),
+            (r) => !r.error,
+          );
           // "Added with 12 bottles" must not come back as 0 in silence (F-693).
           if (rpcErr) {
             this.logger.error(
@@ -2228,7 +2339,9 @@ export class InventoryService {
           freshReact ?? reactivated,
           reactRollup.get(existing.id),
         );
-        return reactPrice ? { ...reactMapped, priceChange: reactPrice } : reactMapped;
+        return reactPrice
+          ? { ...reactMapped, priceChange: reactPrice }
+          : reactMapped;
       }
 
       // Active item: return its ID so the caller can skip re-creation
@@ -2291,22 +2404,30 @@ export class InventoryService {
     // Initial stock enters as a lot via the RPC so lots are authoritative from creation.
     if (dto.stockLive && dto.stockLive > 0) {
       const { unitCost, provenance } = this.resolveLotCost(dto);
-      const { error: rpcErr } = await client.rpc("apply_stock_movement", {
-        p_inventory_id: data.id,
-        p_stock_state: "live",
-        p_delta: dto.stockLive,
-        p_transaction_type: "initial",
-        p_source: "manual",
-        p_reason: "initial stock on add-to-inventory",
-        p_unit_cost: unitCost,
-        p_location_id: dto.storageLocationId ?? null,
-        p_cost_provenance: provenance,
-        // ADR 0141 — the house this stock is for. `data.id` is the row this
-        // method just INSERTed with `restaurant_id: restaurantId`, so the two
-        // cannot disagree; the argument is passed so the primitive never has to
-        // take that on trust.
-        p_restaurant_id: restaurantId,
-      });
+      const { error: rpcErr } = await this.withCostTaxStamp(
+        restaurantId,
+        data.id,
+        provenance === "sample" ? null : unitCost,
+        dto.costTaxBasis,
+        () =>
+          client.rpc("apply_stock_movement", {
+            p_inventory_id: data.id,
+            p_stock_state: "live",
+            p_delta: dto.stockLive,
+            p_transaction_type: "initial",
+            p_source: "manual",
+            p_reason: "initial stock on add-to-inventory",
+            p_unit_cost: unitCost,
+            p_location_id: dto.storageLocationId ?? null,
+            p_cost_provenance: provenance,
+            // ADR 0141 — the house this stock is for. `data.id` is the row this
+            // method just INSERTed with `restaurant_id: restaurantId`, so the two
+            // cannot disagree; the argument is passed so the primitive never has to
+            // take that on trust.
+            p_restaurant_id: restaurantId,
+          }),
+        (r) => !r.error,
+      );
       // A wine added with 12 bottles must not come back booked with 0 —
       // fail the request the way the reactivation path does (F-1068, F-693).
       if (rpcErr) {
@@ -2329,7 +2450,13 @@ export class InventoryService {
       inventoryId: data.id,
     });
 
-    const price = await this.priceOnAdd(client, restaurantId, data.id, dto, actorUserId);
+    const price = await this.priceOnAdd(
+      client,
+      restaurantId,
+      data.id,
+      dto,
+      actorUserId,
+    );
 
     const { data: fresh } = await client
       .from("restaurant_inventory")
@@ -2358,15 +2485,22 @@ export class InventoryService {
     prices: { menuPriceBottle?: number; menuPriceGlass?: number },
     actorUserId: string | null,
   ): Promise<HousePriceResult | { outcome: "failed"; error: string } | null> {
-    if (prices.menuPriceBottle === undefined && prices.menuPriceGlass === undefined) {
+    if (
+      prices.menuPriceBottle === undefined &&
+      prices.menuPriceGlass === undefined
+    ) {
       return null;
     }
     try {
       return await setHouseMenuPrice(client, {
         restaurantId,
         inventoryId,
-        ...(prices.menuPriceBottle !== undefined ? { bottle: prices.menuPriceBottle } : {}),
-        ...(prices.menuPriceGlass !== undefined ? { glass: prices.menuPriceGlass } : {}),
+        ...(prices.menuPriceBottle !== undefined
+          ? { bottle: prices.menuPriceBottle }
+          : {}),
+        ...(prices.menuPriceGlass !== undefined
+          ? { glass: prices.menuPriceGlass }
+          : {}),
         source: "manual",
         changedBy: actorUserId,
         reason: "set when the wine was added",
@@ -2671,6 +2805,8 @@ export class InventoryService {
             ? {
                 costPerBottle: line.costPerBottle,
                 costProvenance: line.costProvenance ?? "manual",
+                // ADR 0341 F3: whether tax is inside it, as the person said.
+                costTaxBasis: line.costTaxBasis,
               }
             : {}),
         });
@@ -2740,24 +2876,32 @@ export class InventoryService {
       const isSample = line.costProvenance === "sample";
       const unitCost = isSample ? 0 : (line.costPerBottle ?? null);
 
-      const { error: rpcError } = await client.rpc("apply_stock_movement", {
-        p_inventory_id: inventoryId,
-        p_stock_state: "live",
-        p_delta: qty,
-        // Live enum inventory_transaction_type has no 'restock' — topping up an
-        // existing item is a 'purchase'; a brand new row is 'initial'.
-        p_transaction_type: status === "created" ? "initial" : "purchase",
-        p_source: source === "menu_scan" ? "import" : "manual",
-        p_reason: reason || `bulk receive (${source})`,
-        p_unit_cost: unitCost,
-        p_location_id: line.storageLocationId ?? null,
-        p_cost_provenance:
-          line.costProvenance ?? (unitCost !== null ? "manual" : null),
-        // ADR 0141 — the house this line is being received into. `inventoryId`
-        // here is either a row this method just INSERTed under `restaurantId`
-        // or one it read back with `.eq("restaurant_id", restaurantId)`.
-        p_restaurant_id: restaurantId,
-      });
+      const { error: rpcError } = await this.withCostTaxStamp(
+        restaurantId,
+        inventoryId,
+        isSample ? null : unitCost,
+        line.costTaxBasis,
+        () =>
+          client.rpc("apply_stock_movement", {
+            p_inventory_id: inventoryId,
+            p_stock_state: "live",
+            p_delta: qty,
+            // Live enum inventory_transaction_type has no 'restock' — topping up an
+            // existing item is a 'purchase'; a brand new row is 'initial'.
+            p_transaction_type: status === "created" ? "initial" : "purchase",
+            p_source: source === "menu_scan" ? "import" : "manual",
+            p_reason: reason || `bulk receive (${source})`,
+            p_unit_cost: unitCost,
+            p_location_id: line.storageLocationId ?? null,
+            p_cost_provenance:
+              line.costProvenance ?? (unitCost !== null ? "manual" : null),
+            // ADR 0141 — the house this line is being received into. `inventoryId`
+            // here is either a row this method just INSERTed under `restaurantId`
+            // or one it read back with `.eq("restaurant_id", restaurantId)`.
+            p_restaurant_id: restaurantId,
+          }),
+        (r) => !r.error,
+      );
 
       if (rpcError) {
         throw new HttpException(
@@ -2847,7 +2991,10 @@ export class InventoryService {
   ): Promise<{ items: HouseItemResearchView[] }> {
     try {
       return {
-        items: await readHouseItemResearch(this.dbService.getClient(), restaurantId),
+        items: await readHouseItemResearch(
+          this.dbService.getClient(),
+          restaurantId,
+        ),
       };
     } catch (err: any) {
       throw new HttpException(
@@ -3174,8 +3321,12 @@ export class InventoryService {
     return setHouseMenuPrice(client, {
       restaurantId,
       inventoryId: itemId,
-      ...(dto.menuPriceBottle !== undefined ? { bottle: dto.menuPriceBottle } : {}),
-      ...(dto.menuPriceGlass !== undefined ? { glass: dto.menuPriceGlass } : {}),
+      ...(dto.menuPriceBottle !== undefined
+        ? { bottle: dto.menuPriceBottle }
+        : {}),
+      ...(dto.menuPriceGlass !== undefined
+        ? { glass: dto.menuPriceGlass }
+        : {}),
       source: "manual",
       changedBy: performedBy,
       reason: "typed on /inventory",

@@ -14,6 +14,11 @@ const api = vi.hoisted(() => ({
   recordSpotCount: vi.fn(async (..._a: unknown[]) => ({ item: null, count: { costApplied: true } as { costApplied?: boolean } })),
 }));
 vi.mock('../../../services/api/inventory', () => api);
+// ADR 0341 F3: the house's tax basis, unset unless a case says otherwise.
+const tax = vi.hoisted(() => ({
+  getTaxBasis: vi.fn(async () => ({ readable: true, basis: 'unset', taxWord: 'KDV' }) as Record<string, unknown>),
+}));
+vi.mock('../../settings/next/TaxBasisSection', () => tax);
 vi.mock('../../../lib/csvImport', async (orig) => ({
   ...(await orig<typeof import('../../../lib/csvImport')>()),
   readCsvFile: vi.fn(async () => csv.text),
@@ -228,5 +233,57 @@ describe('OpeningStockImport (F-1514)', () => {
         .storageLocationId,
     ).toBe('rack-1');
     csv.text = 'Wine,Vintage,Quantity,Cost\nYakut,2020,7,300';
+  });
+});
+
+/**
+ * ADR 0341 F3 (founder S218: "Yes, stamp cost basis"); ledger S234, owed by
+ * w106-cost-truth. At a house whose till prices include tax, the file's costs
+ * carry the owner's answer to "Is KDV inside?", or nothing when not said.
+ */
+describe('OpeningStockImport: whether tax is inside the costs (ADR 0341 F3)', () => {
+  const load = async (basis: string) => {
+    tax.getTaxBasis.mockResolvedValue({ readable: true, basis, taxWord: 'KDV' });
+    api.recordSpotCount.mockClear();
+    render(
+      <OpeningStockImport
+        carried={[{ inventoryId: 'inv-1', name: 'Yakut', vintage: 2020, hasCost: false }]}
+        shelves={[]}
+        onDone={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Opening stock (CSV)'), {
+      target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
+    });
+    await screen.findByRole('button', { name: 'Load 1 item' });
+  };
+
+  it('[REVERT-FAILS] asks, chooses nothing, and sends the answer with the cost', async () => {
+    await load('prices_include_tax');
+    expect(await screen.findByText('Is KDV inside the costs in this file?')).toBeTruthy();
+    expect(screen.getByTestId('cost-tax-choice-says').textContent).toMatch(/Not said yet/);
+    fireEvent.click(screen.getByLabelText('No, before KDV'));
+    fireEvent.click(screen.getByRole('button', { name: 'Load 1 item' }));
+    await waitFor(() =>
+      expect(api.recordSpotCount).toHaveBeenCalledWith(
+        'inv-1',
+        expect.objectContaining({ costPerBottle: 300, costTaxBasis: 'excludes_tax' }),
+      ),
+    );
+  });
+
+  it('sends nothing for it when not said', async () => {
+    await load('prices_include_tax');
+    await screen.findByTestId('cost-tax-choice');
+    fireEvent.click(screen.getByRole('button', { name: 'Load 1 item' }));
+    await waitFor(() => expect(api.recordSpotCount).toHaveBeenCalled());
+    expect(api.recordSpotCount.mock.calls[0][1]).not.toHaveProperty('costTaxBasis');
+  });
+
+  it('is not asked at a house whose till prices do not include tax', async () => {
+    await load('prices_exclude_tax');
+    await waitFor(() => expect(tax.getTaxBasis).toHaveBeenCalled());
+    expect(screen.queryByTestId('cost-tax-choice')).toBeNull();
   });
 });

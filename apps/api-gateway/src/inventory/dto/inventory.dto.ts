@@ -21,6 +21,7 @@ import {
   MENU_CATEGORY_VOCABULARY,
   type MenuCategory,
 } from "../../menus/wine-extract-item.interface";
+import { COST_TAX_BASES, type CostTaxBasis } from "../../common/tax-basis";
 
 /** Provenances accepted by inventory_lots.cost_provenance (see 20260729120000 migration). */
 export const COST_PROVENANCES = [
@@ -72,6 +73,17 @@ export class CreateInventoryItemDto {
   @IsOptional()
   @IsIn(COST_PROVENANCES as unknown as string[])
   costProvenance?: CostProvenance;
+
+  /**
+   * Whether tax is inside `costPerBottle` (ADR 0341 F3). Read only where the
+   * house's till prices include tax; omitted, it stays not stated
+   * (`common/cost-tax-stamp.ts`). Money, so an owner's or a manager's: it
+   * stamps only a cost, and a cost is already theirs (F-312).
+   */
+  @ApiPropertyOptional({ enum: COST_TAX_BASES })
+  @IsOptional()
+  @IsIn(COST_TAX_BASES as unknown as string[])
+  costTaxBasis?: CostTaxBasis;
 
   @ApiPropertyOptional({ description: "Storage location ID" })
   @IsUUID()
@@ -366,6 +378,17 @@ export class BulkInventoryLineDto {
   @IsOptional()
   @IsIn(COST_PROVENANCES as unknown as string[])
   costProvenance?: CostProvenance;
+
+  /**
+   * Whether tax is inside `costPerBottle` (ADR 0341 F3). Read only where the
+   * house's till prices include tax; omitted, it stays not stated
+   * (`common/cost-tax-stamp.ts`). Money, so an owner's or a manager's: it
+   * stamps only a cost, and a cost is already theirs (F-312).
+   */
+  @ApiPropertyOptional({ enum: COST_TAX_BASES })
+  @IsOptional()
+  @IsIn(COST_TAX_BASES as unknown as string[])
+  costTaxBasis?: CostTaxBasis;
 
   @ApiPropertyOptional({ description: "Storage location ID" })
   @IsOptional()

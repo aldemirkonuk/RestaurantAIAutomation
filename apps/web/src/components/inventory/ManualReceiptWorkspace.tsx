@@ -47,6 +47,7 @@ import {
   writeSessionDraft,
 } from '../../hooks/useUnsavedWorkGuard'
 import { ThemedSelect } from '../ui/ThemedSelect'
+import { CostTaxChoice, useHouseCostTax, type CostTaxBasis } from './CostTaxChoice'
 import {
   BatchReceiveGrid,
   DRAFT_KIND_OPTIONS,
@@ -102,6 +103,10 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
   const { locations } = useStorageLocations()
   // F-780: staff do not see the cost cells (F-312), so the copy does not ask them for a cost.
   const canSetCost = useMayActForTheHouse()
+  // ADR 0341 F3: whether tax is inside this receipt's costs, one answer for
+  // the receipt (one vendor's paper); null = not said, and nothing is sent.
+  const costTax = useHouseCostTax(canSetCost)
+  const [costTaxBasis, setCostTaxBasis] = useState<CostTaxBasis | null>(null)
   const restaurantId = activeRestaurantId || user?.restaurantId || ''
   const { data: providers = [] } = useProviders(restaurantId)
   const scope = user?.userId && restaurantId ? `${user.userId}:${restaurantId}` : null
@@ -256,6 +261,7 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
     setShowDraftForm(false)
     setDraft(EMPTY_DRAFT)
     setError(null)
+    setCostTaxBasis(null)
     saveKeyRef.current = null
     onClose()
   }
@@ -265,7 +271,12 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
     setIsSaving(true)
     setError(null)
     // Costs read with the house's group mark, as the grid shows them (F-779).
-    const lines = batchRowsToBulkLines(rows, { providerId: providerId || undefined }, group)
+    const priced = batchRowsToBulkLines(rows, { providerId: providerId || undefined }, group)
+    // Only on a line with a cost a person typed; never on a sample's zero.
+    const lines =
+      costTax?.inclusive && costTaxBasis
+        ? priced.map((l) => (l.costProvenance === 'manual' ? { ...l, costTaxBasis } : l))
+        : priced
     const saveOptions = { source: 'manual_receipt', reason: reference.trim() || undefined }
     const saveKey = keyForBatchSave(saveKeyRef.current, lines, saveOptions)
     saveKeyRef.current = saveKey
@@ -562,6 +573,15 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
                 <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
+            )}
+            {canSetCost && rows.some((r) => !r.isSample && r.cost.trim() !== '') && (
+              <CostTaxChoice
+                terms={costTax}
+                value={costTaxBasis}
+                onChange={setCostTaxBasis}
+                disabled={isSaving}
+                what="the costs on this receipt"
+              />
             )}
             <BatchReceiveGrid
               rows={rows}

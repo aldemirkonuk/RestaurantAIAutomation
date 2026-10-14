@@ -30,6 +30,11 @@ import {
   type OpeningStockPlan,
 } from "../../../lib/csvImport";
 import { formatHouseMoney } from "../../../lib/houseCurrency";
+import {
+  CostTaxChoice,
+  useHouseCostTax,
+  type CostTaxBasis,
+} from "../../../components/inventory/CostTaxChoice";
 
 interface Outcome {
   received: number;
@@ -70,6 +75,11 @@ export function OpeningStockImport({
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   // F-1683: the shelf new items the file puts on no shelf go on; '' = none.
   const [putAllOn, setPutAllOn] = useState('');
+  // ADR 0341 F3: whether tax is inside the file's costs, one answer for the
+  // file; null = not said, and nothing is sent for it.
+  const costTax = useHouseCostTax(true);
+  const [costTaxBasis, setCostTaxBasis] = useState<CostTaxBasis | null>(null);
+  const saidTax = costTax?.inclusive && costTaxBasis ? { costTaxBasis } : {};
   const insides = new Set(shelves.map((s) => s.parentId).filter(Boolean));
   const leafShelves = shelves.filter((s) => !insides.has(s.id));
   const fallback = leafShelves.find((s) => s.id === putAllOn) ?? null;
@@ -108,7 +118,7 @@ export function OpeningStockImport({
               },
               stockLive: w.qty,
               storageLocationId: w.shelfId ?? fallback?.id ?? null,
-              ...(w.cost !== null ? { costPerBottle: w.cost, costProvenance: "manual" as const } : {}),
+              ...(w.cost !== null ? { costPerBottle: w.cost, costProvenance: "manual" as const, ...saidTax } : {}),
             })),
           },
           undefined,
@@ -139,7 +149,7 @@ export function OpeningStockImport({
             opening: true,
             ...(c.shelfId ? { locationId: c.shelfId } : {}),
             // F-1524: used only if the wine still has no cost when it lands.
-            ...(cost !== null ? { costPerBottle: cost } : {}),
+            ...(cost !== null ? { costPerBottle: cost, ...saidTax } : {}),
           });
           out.counted += 1;
           if (cost !== null && r?.count?.costApplied === false) out.costKept.push(c.name);
@@ -164,6 +174,9 @@ export function OpeningStockImport({
   };
 
   const total = plan ? plan.receive.length + plan.count.length : 0;
+  const fileHasCost = plan
+    ? plan.receive.some((w) => w.cost !== null) || plan.count.some((c) => c.cost !== null)
+    : false;
   const unshelved = plan ? plan.receive.filter((w) => !w.shelfId).length : 0;
   return (
     <section
@@ -229,6 +242,15 @@ export function OpeningStockImport({
               </li>
             ))}
           </ul>
+          {fileHasCost && (
+            <CostTaxChoice
+              terms={costTax}
+              value={costTaxBasis}
+              onChange={setCostTaxBasis}
+              disabled={sending}
+              what="the costs in this file"
+            />
+          )}
           {unshelved > 0 && (
             <div data-testid="opening-stock-no-shelf" className="mb-2">
               <p className="text-gray-900">
