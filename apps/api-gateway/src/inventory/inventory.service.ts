@@ -1076,13 +1076,16 @@ export class InventoryService {
     askedBy: string,
     seenRound: number,
   ): Promise<Record<string, unknown>> {
-    return this.countReviewCall("ask_stock_count_shelf_recount", {
-      p_session_id: sessionId,
-      p_restaurant_id: restaurantId,
-      p_location_id: locationId,
-      p_asked_by: askedBy,
-      p_seen_round: seenRound,
-    });
+    return this.countReviewAnswer(
+      "ask_stock_count_shelf_recount",
+      await this.dbService.getClient().rpc("ask_stock_count_shelf_recount", {
+        p_session_id: sessionId,
+        p_restaurant_id: restaurantId,
+        p_location_id: locationId,
+        p_asked_by: askedBy,
+        p_seen_round: seenRound,
+      }),
+    );
   }
 
   async signOffCountSession(
@@ -1091,19 +1094,25 @@ export class InventoryService {
     signedOffBy: string,
     evenIfUnfinished: boolean,
   ): Promise<Record<string, unknown>> {
-    return this.countReviewCall("sign_off_stock_count_session", {
-      p_session_id: sessionId,
-      p_restaurant_id: restaurantId,
-      p_signed_off_by: signedOffBy,
-      p_even_if_unfinished: evenIfUnfinished,
-    });
+    return this.countReviewAnswer(
+      "sign_off_stock_count_session",
+      await this.dbService.getClient().rpc("sign_off_stock_count_session", {
+        p_session_id: sessionId,
+        p_restaurant_id: restaurantId,
+        p_signed_off_by: signedOffBy,
+        p_even_if_unfinished: evenIfUnfinished,
+      }),
+    );
   }
 
-  private async countReviewCall(
+  /**
+   * The review functions' shared answer. Each caller names its function as a
+   * literal at its own `.rpc(` so the schema-parity guard can read it.
+   */
+  private countReviewAnswer(
     fn: "ask_stock_count_shelf_recount" | "sign_off_stock_count_session",
-    args: Record<string, unknown>,
-  ): Promise<Record<string, unknown>> {
-    const { data, error } = await this.dbService.getClient().rpc(fn, args);
+    { data, error }: { data: unknown; error: { message: string } | null },
+  ): Record<string, unknown> {
     if (error) {
       // The function's own refusals are said in words; anything else is
       // the house's, and the manager tries again.
