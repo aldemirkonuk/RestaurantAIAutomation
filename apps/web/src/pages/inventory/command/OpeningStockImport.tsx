@@ -1,6 +1,7 @@
 /**
- * Load the opening stock from a spreadsheet (F-685, S195): wine, quantity,
- * shelf and cost per bottle. Read the house's way and sorted before anything
+ * Load the opening stock from a spreadsheet (F-685, S195): name, quantity,
+ * type, shelf and cost per bottle. Every drink, not wine alone (F-1684): the
+ * Type travels on the draft so a beer is classified as a beer. Read the house's way and sorted before anything
  * is sent (`planOpeningStock`). Two existing doors write it, nothing new:
  *
  *   - a wine not on the list yet is RECEIVED (`POST .../items/bulk`, the same
@@ -58,7 +59,8 @@ export function OpeningStockImport({
     producer?: string | null;
     hasCost?: boolean;
   }[];
-  shelves: { id: string; name: string }[];
+  /** `parentId`: the place it sits in; a place others sit in is not a shelf (F-945). */
+  shelves: { id: string; name: string; parentId?: string | null }[];
   onDone: () => void;
   onClose: () => void;
 }) {
@@ -66,11 +68,17 @@ export function OpeningStockImport({
   const [problem, setProblem] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  // F-1683: the shelf new items the file puts on no shelf go on; '' = none.
+  const [putAllOn, setPutAllOn] = useState('');
+  const insides = new Set(shelves.map((s) => s.parentId).filter(Boolean));
+  const leafShelves = shelves.filter((s) => !insides.has(s.id));
+  const fallback = leafShelves.find((s) => s.id === putAllOn) ?? null;
 
   const choose = async (file: File | undefined) => {
     setPlan(null);
     setOutcome(null);
     setProblem(null);
+    setPutAllOn('');
     if (!file) return;
     try {
       setPlan(planOpeningStock(parseCsvRows(await readCsvFile(file)), carried, shelves));
@@ -91,9 +99,15 @@ export function OpeningStockImport({
             source: "opening_stock",
             reason: "Opening stock, imported from a spreadsheet",
             items: plan.receive.map((w) => ({
-              wineDraft: { name: w.name, ...(w.producer ? { producer: w.producer } : {}), vintage: w.vintage },
+              wineDraft: {
+                name: w.name,
+                ...(w.producer ? { producer: w.producer } : {}),
+                vintage: w.vintage,
+                // F-1684: the file's Type, so a beer is not filed as a wine.
+                ...(w.category ? { category: w.category } : {}),
+              },
               stockLive: w.qty,
-              storageLocationId: w.shelfId,
+              storageLocationId: w.shelfId ?? fallback?.id ?? null,
               ...(w.cost !== null ? { costPerBottle: w.cost, costProvenance: "manual" as const } : {}),
             })),
           },
@@ -143,13 +157,14 @@ export function OpeningStockImport({
       setPlan(null);
       onDone();
     } catch (e) {
-      setProblem(`No wine was received — ${getErrorMessage(e)}`);
+      setProblem(`Nothing was received — ${getErrorMessage(e)}`);
     } finally {
       setSending(false);
     }
   };
 
   const total = plan ? plan.receive.length + plan.count.length : 0;
+  const unshelved = plan ? plan.receive.filter((w) => !w.shelfId).length : 0;
   return (
     <section
       data-testid="opening-stock-import"
@@ -159,9 +174,9 @@ export function OpeningStockImport({
         <div>
           <h2 className="text-sm font-bold text-gray-900">Load opening stock from a spreadsheet</h2>
           <p className="text-xs text-gray-500 mt-0.5">
-            A CSV with Wine and Quantity columns; Vintage, Producer, Shelf and Cost (per bottle) are read when present.
-            A wine you already carry is counted to the file's number, never added to. Nothing is changed until you
-            confirm below.
+            A CSV with Name and Quantity columns; Type (wine, beer, spirit…), Vintage, Producer, Shelf and Cost (per
+            bottle) are read when present. An item you already carry is counted to the file's number, never added to.
+            Nothing is changed until you confirm below.
           </p>
         </div>
         <button type="button" onClick={onClose} aria-label="Close" className="text-gray-400 hover:text-gray-700">
@@ -188,7 +203,7 @@ export function OpeningStockImport({
               <li key={`r${w.line}`}>
                 {w.name}
                 {w.vintage ? ` ${w.vintage}` : ""}: {w.qty} {w.qty === 1 ? "bottle" : "bottles"}
-                {w.shelfName ? ` on ${w.shelfName}` : ""}
+                {w.shelfName ? ` on ${w.shelfName}` : fallback ? ` on ${fallback.name}` : ""}
                 {w.cost !== null ? `, ${formatHouseMoney(w.cost)} each` : ", cost not stated"}
               </li>
             ))}
@@ -197,7 +212,7 @@ export function OpeningStockImport({
                 {c.name}: counted to {c.qty}
                 {c.shelfName ? ` on ${c.shelfName}` : ""}
                 {c.cost !== null
-                  ? `, ${formatHouseMoney(c.cost)} each (this wine has no cost yet, so this one is used${
+                  ? `, ${formatHouseMoney(c.cost)} each (this item has no cost yet, so this one is used${
                       c.costAcrossShelves === "averaged"
                         ? "; the file gives it different costs on its shelves, so they are averaged by bottles and used on every shelf"
                         : c.costAcrossShelves === "same"
@@ -205,7 +220,7 @@ export function OpeningStockImport({
                           : ""
                     })`
                   : ""}
-                {c.costIgnored ? " (this wine already has a cost, which is kept; the cost on this line is not used)" : ""}
+                {c.costIgnored ? " (this item already has a cost, which is kept; the cost on this line is not used)" : ""}
               </li>
             ))}
             {plan.refused.map((r) => (
@@ -214,6 +229,31 @@ export function OpeningStockImport({
               </li>
             ))}
           </ul>
+          {unshelved > 0 && (
+            <div data-testid="opening-stock-no-shelf" className="mb-2">
+              <p className="text-gray-900">
+                {unshelved} new {unshelved === 1 ? "item names" : "items name"} no shelf. A stock-take on the phone
+                goes shelf by shelf, so bottles on no shelf are not on its list; they are counted on Inventory, all at
+                once.
+                {leafShelves.length > 0 ? " Put them on one shelf to count them there:" : ""}
+              </p>
+              {leafShelves.length > 0 && (
+                <select
+                  aria-label="Shelf for the items with no shelf"
+                  value={putAllOn}
+                  onChange={(e) => setPutAllOn(e.target.value)}
+                  className="mt-1 h-8 rounded-lg border border-gray-200 px-2 text-xs"
+                >
+                  <option value="">No shelf</option>
+                  {leafShelves.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          )}
         </div>
       )}
       {outcome && (
@@ -221,7 +261,7 @@ export function OpeningStockImport({
           <p>
             {outcome.received} received · {outcome.counted} counted
             {outcome.addedToCarried > 0
-              ? ` · ${outcome.addedToCarried} matched a wine you already carry under another name, and were added to it`
+              ? ` · ${outcome.addedToCarried} matched an item you already carry under another name, and were added to it`
               : ""}
           </p>
           {outcome.costKept.length > 0 && (
@@ -251,7 +291,7 @@ export function OpeningStockImport({
         disabled={total === 0 || sending}
         className="mt-1 h-8 px-3 bg-wine-600 hover:bg-wine-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold"
       >
-        {sending ? "Loading…" : `Load ${total} ${total === 1 ? "wine" : "wines"}`}
+        {sending ? "Loading…" : `Load ${total} ${total === 1 ? "item" : "items"}`}
       </button>
     </section>
   );

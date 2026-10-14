@@ -186,7 +186,44 @@ const STOCK_COLUMNS = {
   qty: ['qty', 'quantity', 'bottles', 'count', 'stock', 'adet', 'miktar', 'sise', 'stok'],
   shelf: ['shelf', 'location', 'bin', 'storage', 'raf', 'konum', 'yer', 'depo'],
   cost: ['cost', 'cost per bottle', 'unit cost', 'maliyet', 'alis fiyati', 'birim maliyet'],
+  kind: ['type', 'kind', 'category', 'drink type', 'tur', 'tip', 'kategori', 'cesit', 'icecek turu'],
 } as const;
+
+/**
+ * F-1684: what a Type cell may say, as the gateway's menu-category word
+ * (MENU_CATEGORY_VOCABULARY, menus/wine-extract-item.interface.ts) the
+ * library's classifier reads (wine_classify_beverage_kind). Checked in that
+ * classifier's order, so "non-alcoholic beer" is a beer as it would be from a
+ * menu. A plain "wine" sends no word: an unclassified library row is a wine
+ * (20270103900000), exactly as before.
+ */
+const STOCK_KINDS: { category: string | null; words: RegExp }[] = [
+  { category: 'sake', words: /\bsake\b/ },
+  { category: 'beer', words: /\b(beer|bira|lager|pilsner|pils|ipa|ale|stout|porter|weiss|weizen|bock)\b/ },
+  { category: 'cider', words: /\b(cider|cidre|sidra)\b/ },
+  { category: 'non-alcoholic', words: /\b(non alcoholic|alcohol free|alkolsuz)\b/ },
+  { category: 'whiskey', words: /\b(whisky|whiskey|viski|bourbon|scotch)\b/ },
+  {
+    category: 'spirit',
+    words:
+      /\b(raki|arak|ouzo|vodka|votka|gin|cin|rum|rom|tequila|tekila|mezcal|brandy|cognac|konyak|armagnac|grappa|calvados|liqueur|likor|spirit|spirits)\b/,
+  },
+  { category: 'sparkling', words: /\b(sparkling|kopuklu|champagne|sampanya|cava|prosecco)\b/ },
+  { category: 'rose', words: /\b(rose|roze|pembe)\b/ },
+  { category: 'red', words: /\b(red|kirmizi)\b/ },
+  { category: 'white', words: /\b(white|beyaz)\b/ },
+  { category: 'orange', words: /\b(orange|turuncu)\b/ },
+  { category: 'dessert', words: /\b(dessert|tatli)\b/ },
+  { category: 'fortified', words: /\b(fortified|port|porto|sherry)\b/ },
+  { category: null, words: /\b(wine|wines|sarap)\b/ },
+];
+
+/** The menu-category word a Type cell names; undefined when it names no kind we know. */
+function stockKindOf(raw: string): string | null | undefined {
+  const plain = fold(raw);
+  const hit = STOCK_KINDS.find((k) => k.words.test(plain));
+  return hit ? hit.category : undefined;
+}
 
 export interface StockReceiveRow {
   line: number;
@@ -197,6 +234,11 @@ export interface StockReceiveRow {
   shelfId: string | null;
   shelfName: string | null;
   cost: number | null;
+  /**
+   * F-1684: the file's Type, as the menu-category word sent on the draft so
+   * a beer is classified as a beer; null for a wine or an empty Type.
+   */
+  category: string | null;
 }
 
 export interface StockCountRow {
@@ -248,13 +290,13 @@ export function planOpeningStock(
 ): OpeningStockPlan {
   const plan: OpeningStockPlan = { receive: [], count: [], refused: [], fileProblem: null };
   if (rows.length < 2) {
-    plan.fileProblem = 'The file has no wines under its header row.';
+    plan.fileProblem = 'The file has no items under its header row.';
     return plan;
   }
   const col = columnsOf(rows[0], STOCK_COLUMNS);
   if (col.name < 0 || col.qty < 0) {
     plan.fileProblem =
-      'The file needs a "Wine" column and a "Quantity" column (Shelf and Cost are optional), so nothing could be read.';
+      'The file needs a "Name" (or "Wine") column and a "Quantity" column (Type, Shelf and Cost are optional), so nothing could be read.';
     return plan;
   }
   const group = displayGroupMark(locale);
@@ -266,7 +308,7 @@ export function planOpeningStock(
     const name = at(r, col.name);
     const label = name || `Line ${line}`;
     const refuse = (reason: string) => plan.refused.push({ line, label, reason });
-    if (!name) return refuse('No wine name on this line.');
+    if (!name) return refuse('No name on this line.');
     const qtyRaw = at(r, col.qty);
     const qty = parseDecimal(qtyRaw, group);
     if (qty === null || qty < 0 || !Number.isInteger(qty) || qty > 10000) {
@@ -283,6 +325,13 @@ export function planOpeningStock(
     if (costRaw) {
       cost = parseDecimal(costRaw, group);
       if (cost === null || cost < 0) return refuse(`"${costRaw}" is not a cost per bottle.`);
+    }
+    const kindRaw = at(r, col.kind);
+    const category = kindRaw ? stockKindOf(kindRaw) : null;
+    if (category === undefined) {
+      return refuse(
+        `"${kindRaw}" is not a kind of drink we know. Write wine (or red, white, rosé, sparkling), beer, spirit, whisky, cider, sake or non-alcoholic, or leave it empty for a wine.`,
+      );
     }
     const shelfRaw = at(r, col.shelf);
     let shelf: { id: string; name: string } | null = null;
@@ -339,6 +388,7 @@ export function planOpeningStock(
       shelfId: shelf?.id ?? null,
       shelfName: shelf?.name ?? null,
       cost,
+      category,
     });
   });
   // F-1556: one wine on two shelves is two lines (F-1515), but a wine has one

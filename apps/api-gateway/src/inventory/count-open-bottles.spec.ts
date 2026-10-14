@@ -393,3 +393,66 @@ describe("a held line and a blind answer", () => {
     expect(staff.out.count).toMatchObject({ expectedQty: 6, varianceQty: -1 });
   });
 });
+
+describe("a walk's shelf line for an item counted whole is refused (F-1683, the F-945 rule)", () => {
+  const line = {
+    countedQty: 12,
+    clientCountId: "line-whole",
+    performedBy: ME,
+    locationId: SHELF,
+    sessionId: WALK,
+  };
+
+  it("refuses when the item has live bottles on no shelf (an opening file with no Shelf column)", async () => {
+    const { svc, rpc } = service({
+      ...walk(),
+      inventory_lots: [{ location_id: null, qty: 12 }],
+    });
+    await expect(svc.recordSpotCount(HOUSE, ITEM, line)).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+      message: expect.stringMatching(/Count it on Inventory, all at once/),
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("refuses when the bottles sit on a place that holds other places", async () => {
+    const { svc, rpc } = service({
+      ...walk(),
+      inventory_lots: [{ location_id: "zone-cellar", qty: 12 }],
+      storage_locations: [
+        { parent_id: "zone-cellar", is_active: true, deleted_at: null },
+      ],
+    });
+    await expect(svc.recordSpotCount(HOUSE, ITEM, line)).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("control: bottles on leaf shelves post the line as before", async () => {
+    const { svc, rpc } = service({
+      ...walk(),
+      inventory_lots: [{ location_id: SHELF, qty: 12 }],
+      storage_locations: [
+        { parent_id: "zone-cellar", is_active: true, deleted_at: null },
+      ],
+    });
+    await svc.recordSpotCount(HOUSE, ITEM, line);
+    expect(rpc).toHaveBeenCalledWith(
+      "record_stock_count",
+      expect.objectContaining({ p_location_id: SHELF, p_session_id: WALK }),
+    );
+  });
+
+  it("control: a spot count with no stock-take is not touched", async () => {
+    const { svc, rpc } = service({
+      inventory_lots: [{ location_id: null, qty: 12 }],
+    });
+    await svc.recordSpotCount(HOUSE, ITEM, {
+      countedQty: 12,
+      clientCountId: "spot-1",
+      locationId: SHELF,
+    });
+    expect(rpc).toHaveBeenCalled();
+  });
+});

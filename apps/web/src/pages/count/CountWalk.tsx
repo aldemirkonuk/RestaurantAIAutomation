@@ -853,7 +853,7 @@ function FindBottle({
   onBack: () => void
 }) {
   const [query, setQuery] = useState('')
-  const [all, setAll] = useState<FindableItem[] | null>(null)
+  const [all, setAll] = useState<(FindableItem & { offShelf: boolean })[] | null>(null)
   const [failed, setFailed] = useState(false)
   useEffect(() => {
     let live = true
@@ -868,6 +868,10 @@ function FindBottle({
             alsoKnownAs: (r as { libraryName?: string | null }).libraryName ?? null,
             producer: r.wineProducer ?? null,
             vintage: r.wineVintage ?? null,
+            // F-1683: bottles on no shelf (an opening file with no Shelf
+            // column) are not on any shelf's books, so a shelf line would book
+            // them a second time. Counted whole on Inventory, as the list does.
+            offShelf: (r.locations ?? []).some((l) => !l.locationId && (l.qty ?? 0) > 0),
           })),
         )
       })
@@ -901,7 +905,7 @@ function FindBottle({
                   name: h.name,
                   producer: h.producer ?? '',
                   vintage: h.vintage == null ? null : String(h.vintage),
-                  countWhole: false,
+                  countWhole: h.offShelf,
                 })
               }
             >

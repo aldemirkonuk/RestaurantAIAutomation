@@ -1465,7 +1465,7 @@ export function InventoryCommandPage() {
             // F-1524: a wine with no recorded cost takes the file's.
             hasCost: recordedCost(w) !== null,
           }))}
-          shelves={locations.map((l) => ({ id: l.id, name: l.name }))}
+          shelves={locations.map((l) => ({ id: l.id, name: l.name, parentId: l.parentId }))}
           onDone={() => void refetchInventory()}
           onClose={() => setShowOpeningStock(false)}
         />
