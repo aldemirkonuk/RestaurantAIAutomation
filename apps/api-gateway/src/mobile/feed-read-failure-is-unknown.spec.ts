@@ -164,6 +164,48 @@ describe("today pulse reads the house's register (F-674)", () => {
     expect(pulse.windowStart).toBe("2026-10-09T04:00:00.000Z");
   });
 
+  // F-1656: the figure adds up only the checks that carried a net; the pulse
+  // says how many did, and how many an inclusive house could not make pre-tax.
+  it("counts the checks behind tonight's figure and withholds a partial change", async () => {
+    const noNet = (id: string, at: string): Row => ({
+      ...check(id, at, 0),
+      subtotal: null,
+      gross_subtotal: 60,
+      tax_basis: "prices_include_tax",
+    });
+    const pulse = await buildWithDb({
+      restaurants: [HOUSE],
+      pos_checks: [
+        check("a", "2026-10-09T21:00:00.000Z", 100),
+        noNet("t", "2026-10-09T22:00:00.000Z"),
+        { ...check("n", "2026-10-09T22:15:00.000Z", 0), subtotal: null },
+        check("w1", "2026-10-02T22:00:00.000Z", 120),
+      ],
+    }).getTodayPulse("u-1", "r-1", NOW);
+
+    expect(pulse.revenueToday).toBe(100);
+    expect(pulse.checksToday).toBe(3);
+    expect(pulse.netChecksToday).toBe(1);
+    expect(pulse.netNotRecordedByTaxToday).toBe(1);
+    expect(pulse.revenueLastWeek).toBe(120);
+    expect(pulse.deltaPct).toBeNull();
+  });
+
+  it("withholds the change when last week's window was partial", async () => {
+    const pulse = await buildWithDb({
+      restaurants: [HOUSE],
+      pos_checks: [
+        check("a", "2026-10-09T21:00:00.000Z", 150),
+        check("w1", "2026-10-02T22:00:00.000Z", 120),
+        { ...check("w2", "2026-10-02T22:10:00.000Z", 0), subtotal: null },
+      ],
+    }).getTodayPulse("u-1", "r-1", NOW);
+
+    expect(pulse.netChecksToday).toBe(1);
+    expect(pulse.netNotRecordedByTaxToday).toBe(0);
+    expect(pulse.deltaPct).toBeNull();
+  });
+
   it("says a connected register's quiet night is a real zero", async () => {
     const pulse = await buildWithDb({
       restaurants: [HOUSE],

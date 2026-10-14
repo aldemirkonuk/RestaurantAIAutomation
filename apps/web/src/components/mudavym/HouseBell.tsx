@@ -134,6 +134,14 @@ export function HouseBell() {
         ? `Notifications (${unread} unread)`
         : 'Notifications (nothing unread)';
 
+  /* F-1659: "Rule all off" ruled off the house's whole unread book, lines
+     past this page and lines put to sleep among them, unseen. It now rules
+     off only the unread lines on screen, and never an approval line: the
+     seal is answered, not ruled off. */
+  const ruleOffIds = items
+    .filter((n) => n.status === 'unread' && approvableOrderIdOf(n) === null)
+    .map((n) => n.id);
+
   /* The eyebrow says how much of the book this is, in the register's own
      figures. Never a derived guess: an unknown prints as an em dash. */
   const shown = items.length;
@@ -173,9 +181,14 @@ export function HouseBell() {
         title="Notifications"
         showClose={false}
         action={
-          register.state === 'ready' && items.length > 0 ? (
-            <button type="button" className="mdv-link" onClick={book.markAllRead}>
-              Rule all off
+          register.state === 'ready' && ruleOffIds.length > 0 ? (
+            <button
+              type="button"
+              className="mdv-link"
+              onClick={() => book.ruleOffShown(ruleOffIds)}
+              data-testid="bell-rule-off-shown"
+            >
+              {ruleOffIds.length === 1 ? 'Rule this line off' : `Rule these ${ruleOffIds.length} off`}
             </button>
           ) : null
         }

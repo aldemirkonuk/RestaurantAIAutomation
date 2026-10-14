@@ -24,6 +24,9 @@ export const REVENUE_UNAVAILABLE_MESSAGES = {
   zone_unset: "Set your restaurant's time zone on the web to see tonight's sales.",
   unread: "Couldn't read tonight's sales just now.",
   no_amounts: "Tonight's checks came in without amounts.",
+  // F-1656: an inclusive house whose checks could not be made pre-tax.
+  tax_not_taken_off:
+    "Tonight's prices include tax and the tax could not be taken off.",
   // F-957: staff are not sent the house's takings (ADR 0145, DASH-W22).
   withheld: "Tonight's sales are kept for the owner and managers.",
 } as const;
@@ -89,9 +92,25 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 function revenueMessage(data: TodayPulse): string {
   if (data.salesState === "no_register") return REVENUE_UNAVAILABLE_MESSAGES.no_register;
   if (data.salesState === "zone_unset") return REVENUE_UNAVAILABLE_MESSAGES.zone_unset;
-  if (data.salesState === "known") return REVENUE_UNAVAILABLE_MESSAGES.no_amounts;
+  if (data.salesState === "known") {
+    return (data.netNotRecordedByTaxToday ?? 0) > 0
+      ? REVENUE_UNAVAILABLE_MESSAGES.tax_not_taken_off
+      : REVENUE_UNAVAILABLE_MESSAGES.no_amounts;
+  }
   if (data.salesState === "withheld") return REVENUE_UNAVAILABLE_MESSAGES.withheld;
   return REVENUE_UNAVAILABLE_MESSAGES.unread;
+}
+
+/**
+ * How many checks the figure adds up (F-1656): "from 1 of 3 checks" when some
+ * carried no net, as the web says it (`fromChecks`), else "3 checks".
+ */
+function checksLabel(data: TodayPulse): string {
+  const all = data.checksToday;
+  if (all == null) return "sales so far";
+  const net = data.netChecksToday;
+  if (net != null && net < all) return `from ${net} of ${all} checks`;
+  return `${all} check${all === 1 ? "" : "s"}`;
 }
 
 export function resolvePulseStripView(
@@ -130,10 +149,7 @@ export function resolvePulseStripView(
     ? {
         status: "known",
         amount: data.revenueToday as number,
-        checksLabel:
-          data.checksToday != null
-            ? `${data.checksToday} check${data.checksToday === 1 ? "" : "s"}`
-            : "sales so far",
+        checksLabel: checksLabel(data),
         deltaPct: data.deltaPct,
       }
     : {

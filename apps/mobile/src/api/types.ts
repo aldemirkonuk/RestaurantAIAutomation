@@ -60,6 +60,12 @@ export interface TodayPulse {
   salesState?: PulseSalesState;
   revenueToday: number | null;
   checksToday: number | null;
+  /** Of `checksToday`, those that carried a net; `revenueToday` sums only
+   *  these (F-1656). Absent from an older gateway. */
+  netChecksToday?: number | null;
+  /** Of `checksToday`, those whose prices include tax and whose tax could not
+   *  be taken off (F-1656). Absent from an older gateway. */
+  netNotRecordedByTaxToday?: number | null;
   revenueLastWeek: number | null;
   deltaPct: number | null;
   /**
