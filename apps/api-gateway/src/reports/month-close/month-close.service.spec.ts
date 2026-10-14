@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException } from "@nestjs/common";
 import {
   MonthCloseService,
   againstNow,
+  writeOffFigures,
   type MonthFigures,
 } from "./month-close.service";
 
@@ -175,6 +176,76 @@ function houseHandler(
           error: null,
           count: 2,
         };
+      case "inventory_transactions":
+        // F-1609: July's take-offs. A lot's cost is the bottle's; a sample's
+        // or a missing one leaves it uncosted; a return to the vendor and a
+        // correction are not write-offs.
+        return {
+          data: [
+            {
+              id: "x1",
+              transaction_type: "waste",
+              reason: "Removed from inventory — Breakage",
+              quantity_change: -2,
+              metadata: {
+                lots_taken: [
+                  { qty: 1, unit_cost: 40, cost_provenance: "invoice" },
+                  { qty: 1, unit_cost: 44, cost_provenance: "invoice" },
+                ],
+              },
+            },
+            {
+              id: "x2",
+              transaction_type: "comp",
+              reason: "Comp / gift",
+              quantity_change: -1,
+              metadata: {
+                lots_taken: [
+                  { qty: 1, unit_cost: 30, cost_provenance: "invoice" },
+                ],
+              },
+            },
+            {
+              id: "x3",
+              transaction_type: "adjustment",
+              reason: "Staff pour",
+              quantity_change: -1,
+              metadata: {
+                lots_taken: [
+                  { qty: 1, unit_cost: null, cost_provenance: null },
+                ],
+              },
+            },
+            {
+              id: "x4",
+              transaction_type: "adjustment",
+              reason: "Removed from inventory — Return to vendor",
+              quantity_change: -3,
+              metadata: {},
+            },
+            {
+              id: "x5",
+              transaction_type: "waste",
+              reason: "Spoiled",
+              quantity_change: -1,
+              unit_cost: 25,
+              metadata: {},
+            },
+            {
+              id: "x6",
+              transaction_type: "adjustment",
+              reason: "Breakage",
+              quantity_change: -1,
+              metadata: {
+                lots_taken: [
+                  { qty: 1, unit_cost: 12.5, cost_provenance: "sample" },
+                ],
+              },
+            },
+          ],
+          error: null,
+          count: 6,
+        };
       case "month_closes":
         if (has(ops, "insert")) {
           const row = arg(ops, "insert")![0] as Record<string, unknown>;
@@ -273,6 +344,56 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
       // F-1544 lane 5: no count here named its open bottles.
       openMl: { counts: 0, netMl: 0, shortMl: 0, overMl: 0 },
     });
+    // F-1609: the month's write-offs, a figure with its cost and count, by
+    // reason, read from the typed take-offs dated on the month's house days.
+    expect(f.writeOffs).toEqual({
+      movements: 5,
+      bottles: 6,
+      cost: 139,
+      uncostedBottles: 2,
+      byReason: [
+        {
+          reason: "breakage",
+          label: "Breakage",
+          movements: 2,
+          bottles: 3,
+          cost: 84,
+          uncostedBottles: 1,
+        },
+        {
+          reason: "comp",
+          label: "Comps",
+          movements: 1,
+          bottles: 1,
+          cost: 30,
+          uncostedBottles: 0,
+        },
+        {
+          reason: "staff_pour",
+          label: "Staff pours",
+          movements: 1,
+          bottles: 1,
+          cost: null,
+          uncostedBottles: 1,
+        },
+        {
+          reason: "other",
+          label: "Other write-offs",
+          movements: 1,
+          bottles: 1,
+          cost: 25,
+          uncostedBottles: 0,
+        },
+      ],
+    });
+    expect(dto.figures.writeOffs?.cost).toBe(139);
+    const offs = calls.find((c) => c.table === "inventory_transactions")!;
+    expect(arg(offs.ops, "in")).toEqual([
+      "transaction_type",
+      ["waste", "comp", "adjustment"],
+    ]);
+    expect(arg(offs.ops, "lt")).toEqual(["quantity_change", 0]);
+    expect(offs.ops.find((o) => o.m === "gte")?.a[0]).toBe("transaction_date");
     // A value the engine could not compute stays null, never 0.
     expect(f.valuation.inventoryValue).toBeNull();
     expect(f.valuation.pricedInventoryValue).toBe(4200);
@@ -912,6 +1033,126 @@ describe("MonthCloseService.getClose — changed after close", () => {
     expect(rows).toHaveLength(2);
   });
 
+  it("sets the kept write-offs against now, and a close kept before them as unknown (F-1609)", async () => {
+    const takeOffs = (ops: Op[]) =>
+      has(ops, "gt")
+        ? { data: [], error: null, count: 0 }
+        : {
+            data: [
+              {
+                id: "x1",
+                transaction_type: "waste",
+                reason: "Breakage",
+                quantity_change: -3,
+                metadata: {
+                  lots_taken: [
+                    { qty: 3, unit_cost: 20, cost_provenance: "invoice" },
+                  ],
+                },
+              },
+            ],
+            error: null,
+            count: 1,
+          };
+    const withOffs = {
+      ...closeRow,
+      figures: {
+        ...kept,
+        writeOffs: writeOffFigures([
+          {
+            transaction_type: "waste",
+            reason: "Breakage",
+            quantity_change: -2,
+            metadata: {
+              lots_taken: [
+                { qty: 2, unit_cost: 20, cost_provenance: "invoice" },
+              ],
+            },
+          },
+        ]),
+      },
+    };
+    const { svc } = service(
+      detailHandler({
+        month_closes: () => ({ data: withOffs, error: null }),
+        inventory_transactions: takeOffs,
+      }),
+    );
+    const detail = await svc.getClose(HOUSE, "close-1");
+    const by = Object.fromEntries(detail.againstNow.map((a) => [a.figure, a]));
+    expect(by.writeoffs_bottles).toMatchObject({
+      label: "Written off, bottles",
+      atClose: 2,
+      now: 3,
+      delta: 1,
+    });
+    expect(by.writeoffs_cost).toMatchObject({
+      atClose: 40,
+      now: 60,
+      delta: 20,
+      currency: "TRY",
+    });
+    expect(detail.figures.writeOffs?.bottles).toBe(2);
+
+    // Kept before F-1609: unknown, never 0.
+    const { svc: old } = service(
+      detailHandler({ inventory_transactions: takeOffs }),
+    );
+    const before = await old.getClose(HOUSE, "close-1");
+    expect(
+      before.againstNow.find((a) => a.figure === "writeoffs_bottles"),
+    ).toMatchObject({ atClose: null, now: 3, delta: null });
+  });
+
+  it("writes the kept write-offs as a file, and refuses for a close kept before them (F-1609)", async () => {
+    const withOffs = {
+      ...closeRow,
+      figures: {
+        ...kept,
+        writeOffs: writeOffFigures([
+          {
+            transaction_type: "comp",
+            reason: "Comp / gift",
+            quantity_change: -2,
+            metadata: {
+              lots_taken: [
+                { qty: 2, unit_cost: 35.5, cost_provenance: "invoice" },
+              ],
+            },
+          },
+          {
+            transaction_type: "adjustment",
+            reason: "Staff pour",
+            quantity_change: -1,
+            metadata: {},
+          },
+        ]),
+      },
+    };
+    const { svc } = service(
+      houseHandler({ month_closes: () => ({ data: withOffs, error: null }) }),
+    );
+    const file = await svc.writeOffsCsv(HOUSE, "close-1");
+    expect(file.filename).toBe("mudavym-writeoffs-2026-07-closed-v1.csv");
+    // A Turkish house's file is in its own marks: ";" between cells.
+    const lines = file.body.split("\r\n");
+    expect(lines).toContain("Cutting;Write-offs");
+    expect(lines).toContain("Bottles written off;3;bottles;");
+    expect(lines).toContain("Written off, at cost;71;TRY;");
+    expect(lines).toContain("Comps;1;2;71;0");
+    // A cost no bottle carried is withheld, never 0.
+    expect(lines.some((l) => l.startsWith("Staff pours;1;1;withheld;1"))).toBe(
+      true,
+    );
+
+    const { svc: old } = service(
+      houseHandler({ month_closes: () => ({ data: closeRow, error: null }) }),
+    );
+    await expect(old.writeOffsCsv(HOUSE, "close-1")).rejects.toThrow(
+      /closed before write-offs were kept/,
+    );
+  });
+
   it("reads one house's closes only", async () => {
     const { svc, calls } = service(
       houseHandler({ month_closes: () => ({ data: null, error: null }) }),
@@ -924,6 +1165,34 @@ describe("MonthCloseService.getClose — changed after close", () => {
       ["id", "close-x"],
       ["restaurant_id", HOUSE],
     ]);
+  });
+});
+
+describe("writeOffFigures (F-1609)", () => {
+  it("is a measured zero when nothing was written off, and unknown when no bottle carried a cost", () => {
+    expect(writeOffFigures([])).toEqual({
+      movements: 0,
+      bottles: 0,
+      cost: 0,
+      uncostedBottles: 0,
+      byReason: [],
+    });
+    const none = writeOffFigures([
+      { transaction_type: "waste", reason: "Breakage", quantity_change: -2 },
+      // A count correction and a bottle coming back are not write-offs.
+      { transaction_type: "correction", reason: "x", quantity_change: -4 },
+      {
+        transaction_type: "adjustment",
+        reason: "Count correction",
+        quantity_change: -1,
+      },
+    ]);
+    expect(none).toMatchObject({
+      movements: 1,
+      bottles: 2,
+      cost: null,
+      uncostedBottles: 2,
+    });
   });
 });
 

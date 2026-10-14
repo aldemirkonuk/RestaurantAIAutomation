@@ -22,12 +22,19 @@ import {
   COUNT_PERIOD_GRACE_MS,
   filedMonth,
 } from "../../inventory/count-period";
+import { takeOffOnlyReason } from "../../inventory-ledger/inventory-ledger.service";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { orderSpend } from "../../procurement/order-spend";
 import {
   EXPORT_CUTTINGS,
   countWithheld,
 } from "../exports/report-export-cuttings";
+import {
+  withheld,
+  type Cell,
+  type ExportDoc,
+} from "../exports/report-export-doc";
+import { writtenLabel } from "../exports/report-export-naming";
 import { renderCsv } from "../exports/report-export-render";
 import { taxWordFor } from "../../settings/house-tax-basis.service";
 
@@ -39,7 +46,8 @@ import { taxWordFor } from "../../settings/house-tax-basis.service";
  * reads the month's figures once and keeps them in `month_closes`, a table
  * that refuses every edit (20270105600000): the till's month (and its file,
  * written as the export shelf writes it), the cellar's value, the purchases
- * delivered in the month and the count variance. That row is the record.
+ * delivered in the month, the count variance and the month's write-offs
+ * (F-1609). That row is the record.
  *
  * Live data stays editable. Nothing here locks a write. Instead, reading a
  * close lists what changed inside its month AFTER it was closed — who, what,
@@ -68,6 +76,10 @@ import { taxWordFor } from "../../settings/house-tax-basis.service";
  *    was made within 6 hours after that month ended (F-1544 lane 5, the
  *    founder's F1 b, 2026-10-12 S224). Its counted moment is not moved; only
  *    the month it is filed in. Every other count is filed by its moment.
+ *  - The month's write-offs (F-1609) are read from the typed stock movements:
+ *    breakage, comps, staff pours and other bottles written off, each at the
+ *    cost of the delivery lots it came off. A close kept before F-1609 has no
+ *    write-off figure, and says so; it is never read as none.
  */
 
 /** How many changed rows of one kind a close lists before it says "and N more". */
@@ -179,6 +191,43 @@ export interface VarianceFigures {
   };
 }
 
+/** Why bottles were written off, as the movement that took them off says. */
+export type WriteOffReason = "breakage" | "comp" | "staff_pour" | "other";
+
+export const WRITE_OFF_LABELS: Record<WriteOffReason, string> = {
+  breakage: "Breakage",
+  comp: "Comps",
+  staff_pour: "Staff pours",
+  other: "Other write-offs",
+};
+
+/** One reason's share of the month's write-offs. */
+export interface WriteOffLine {
+  /** Take-off movements. */
+  movements: number;
+  bottles: number;
+  /**
+   * The bottles' cost, from the delivery lots they came off, in the house's
+   * money; null when none of them carried a cost. 0 only when nothing was
+   * written off.
+   */
+  cost: number | null;
+  /** Bottles left out of `cost`: their lot carried no cost. */
+  uncostedBottles: number;
+}
+
+/**
+ * Bottles taken off on purpose on the month's house days (F-1609): written
+ * off (`waste`), given on the house (`comp`), and a manual adjustment that
+ * names breakage, a comp or a staff pour. A shelf count is variance, a
+ * correction is a data-entry fix and a return to the vendor comes back as
+ * money, so none of those is a write-off.
+ */
+export interface WriteOffFigures extends WriteOffLine {
+  /** Only reasons with a movement, in WRITE_OFF_LABELS order. */
+  byReason: Array<WriteOffLine & { reason: WriteOffReason; label: string }>;
+}
+
 export interface MonthFigures {
   /** The house's money when the month was closed; null when none is recorded. */
   currency: string | null;
@@ -195,6 +244,8 @@ export interface MonthFigures {
   valuation: ValuationFigures;
   purchases: PurchaseFigures;
   variance: VarianceFigures;
+  /** Absent on a close kept before F-1609: unknown, never none. */
+  writeOffs?: WriteOffFigures;
 }
 
 export interface MonthCloseDto {
@@ -238,7 +289,9 @@ export interface FigureAgainstNow {
     | "till_checks"
     | "purchases"
     | "variance_net"
-    | "variance_open_ml";
+    | "variance_open_ml"
+    | "writeoffs_bottles"
+    | "writeoffs_cost";
   label: string;
   atClose: number | null;
   now: number | null;
@@ -326,6 +379,118 @@ function withoutSnapshot(f: MonthFigures): MonthFigures {
   const { kept: _till, ...till } = f.till;
   const { kept: _orders, ...purchases } = f.purchases;
   return { ...f, till, purchases };
+}
+
+/**
+ * The write-off reason of one take-off movement, or null when it is not a
+ * write-off (F-1609). A manual adjustment counts only when its reason is one
+ * the ledger already holds to take bottles off (`takeOffOnlyReason`, F-1163).
+ */
+export function writeOffReasonOf(
+  type: unknown,
+  reason: unknown,
+): WriteOffReason | null {
+  const r = typeof reason === "string" ? reason : "";
+  if (type === "comp") return "comp";
+  if (type === "waste") return /breakage/i.test(r) ? "breakage" : "other";
+  if (type === "adjustment") {
+    const t = takeOffOnlyReason(r);
+    return t === "Breakage"
+      ? "breakage"
+      : t === "A comp"
+        ? "comp"
+        : t === "A staff pour"
+          ? "staff_pour"
+          : null;
+  }
+  return null;
+}
+
+/**
+ * What one take-off cost, from the lots it took (`metadata.lots_taken`, kept
+ * by apply_stock_movement), else the row's own cost. A lot with no cost, or a
+ * sample's (never a real cost), leaves its bottles uncosted.
+ */
+function takeOffCost(t: Record<string, unknown>): {
+  bottles: number;
+  cost: number;
+  uncosted: number;
+} {
+  const bottles = Math.abs(finite(t.quantity_change) ?? 0);
+  const meta = (t.metadata ?? {}) as Record<string, unknown>;
+  const lots = Array.isArray(meta.lots_taken)
+    ? (meta.lots_taken as Array<Record<string, unknown>>)
+    : [];
+  let cost = 0;
+  let costed = 0;
+  if (lots.length > 0) {
+    for (const l of lots) {
+      const qty = finite(l?.qty);
+      const unit = finite(l?.unit_cost);
+      if (qty === null || qty <= 0) continue;
+      if (unit === null || l.cost_provenance === "sample") continue;
+      cost += qty * unit;
+      costed += qty;
+    }
+  } else {
+    const total = finite(t.total_cost);
+    const unit = finite(t.unit_cost);
+    if (total !== null) {
+      cost = Math.abs(total);
+      costed = bottles;
+    } else if (unit !== null) {
+      cost = unit * bottles;
+      costed = bottles;
+    }
+  }
+  costed = Math.min(costed, bottles);
+  return { bottles, cost, uncosted: bottles - costed };
+}
+
+/** The month's take-off movements summed into the write-off figure. */
+export function writeOffFigures(
+  rows: Array<Record<string, unknown>>,
+): WriteOffFigures {
+  const zero = (): WriteOffLine => ({
+    movements: 0,
+    bottles: 0,
+    cost: 0,
+    uncostedBottles: 0,
+  });
+  const all = zero();
+  const by = new Map<WriteOffReason, WriteOffLine>();
+  for (const t of rows) {
+    if ((finite(t.quantity_change) ?? 0) >= 0) continue;
+    const reason = writeOffReasonOf(t.transaction_type, t.reason);
+    if (reason === null) continue;
+    const { bottles, cost, uncosted } = takeOffCost(t);
+    const line = by.get(reason) ?? zero();
+    by.set(reason, line);
+    for (const l of [all, line]) {
+      l.movements += 1;
+      l.bottles += bottles;
+      l.cost = (l.cost ?? 0) + cost;
+      l.uncostedBottles += uncosted;
+    }
+  }
+  // A cost none of the bottles carried is unknown, never 0.
+  const settle = (l: WriteOffLine): WriteOffLine => ({
+    ...l,
+    cost:
+      l.bottles > 0 && l.uncostedBottles === l.bottles
+        ? null
+        : cents(l.cost ?? 0),
+  });
+  return {
+    ...settle(all),
+    byReason: (Object.keys(WRITE_OFF_LABELS) as WriteOffReason[])
+      .filter((r) => by.has(r))
+      .map((r) => ({
+        reason: r,
+        label: WRITE_OFF_LABELS[r],
+        ...settle(by.get(r)!),
+      })),
+  };
 }
 
 const MOVEMENT_WORDS: Record<string, string> = {
@@ -602,6 +767,40 @@ export class MonthCloseService {
     };
   }
 
+  /**
+   * The month's write-offs as they were kept at the close (F-1609), written
+   * up as the export shelf writes a file. Drawn from the record only, so it
+   * says what the close said however the books have moved since.
+   */
+  async writeOffsCsv(
+    restaurantId: string,
+    closeId: string,
+  ): Promise<{ filename: string; body: string }> {
+    const row = await this.readRow(restaurantId, closeId, false);
+    const w = row.figures.writeOffs;
+    if (!w)
+      throw new NotFoundException(
+        `${monthName(row.month)} was closed before write-offs were kept with a close. Close it again to keep them.`,
+      );
+    const house = await this.readHouse(restaurantId);
+    const doc = writeOffsDoc(w, row);
+    const csv = renderCsv(doc, {
+      houseName: house.name,
+      currency: row.figures.currency ?? null,
+      title: "Write-offs",
+      windowLabel: `${monthName(row.month)}, by the house’s days, as closed (version ${row.version})`,
+      writtenAt: new Date().toISOString(),
+      timezone: row.zone,
+      locale: houseFrame({ timezone: house.timezone, country: house.country })
+        .locale,
+      withheldCount: countWithheld(doc),
+    });
+    return {
+      filename: `mudavym-writeoffs-${row.month}-closed-v${row.version}.csv`,
+      body: csv,
+    };
+  }
+
   /* ────────────────────────────────────────────────────────── internals ── */
 
   private async readRow(
@@ -676,7 +875,7 @@ export class MonthCloseService {
   }> {
     const { first, last } = monthDays(month);
     const bounds = houseDayBounds(first, last, zone);
-    const [tillWindow, rawChecks, summary, orders, monthCounts] =
+    const [tillWindow, rawChecks, summary, orders, monthCounts, takeOffs] =
       await Promise.all([
       this.goals.getPosRevenueWindow(restaurantId, 30, month),
       // The month's checks, voided ones too: the net figure is summed from
@@ -727,6 +926,23 @@ export class MonthCloseService {
             .neq("source", OPENING_COUNT_SOURCE)
             .gte("counted_at", bounds.startIso)
             .lt("counted_at", bounds.endIso) as never,
+      ),
+      // F-1609: the month's take-offs, written off on purpose; which of them
+      // is a write-off is `writeOffReasonOf`'s call.
+      readWholeWindow<Record<string, unknown>>(
+        "The bottles written off in this month",
+        () =>
+          this.db
+            .from("inventory_transactions")
+            .select(
+              "id, transaction_type, reason, quantity_change, unit_cost, total_cost, metadata, transaction_date",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .in("transaction_type", ["waste", "comp", "adjustment"])
+            .lt("quantity_change", 0)
+            .gte("transaction_date", bounds.startIso)
+            .lt("transaction_date", bounds.endIso) as never,
       ),
     ]);
     const counts = await this.countsFiledIn(
@@ -870,6 +1086,7 @@ export class MonthCloseService {
         overBottles,
         openMl,
       },
+      writeOffs: writeOffFigures(takeOffs),
     };
     return { figures, tillWindow, checks };
   }
@@ -1397,6 +1614,59 @@ export class MonthCloseService {
   }
 }
 
+/** The kept write-offs as an export document (F-1609). */
+export function writeOffsDoc(
+  w: WriteOffFigures,
+  row: Pick<CloseRow, "closed_at" | "zone">,
+): ExportDoc {
+  const noCost = "none of these bottles came off a delivery with a cost";
+  const cost = (l: WriteOffLine): Cell =>
+    l.cost === null ? withheld(noCost) : l.cost;
+  return {
+    say: null,
+    figures: [
+      { label: "Bottles written off", value: w.bottles, unit: "bottles" },
+      { label: "Take-offs", value: w.movements, unit: "count" },
+      { label: "Written off, at cost", value: cost(w), unit: "money" },
+      {
+        label: "Bottles with no recorded cost",
+        value: w.uncostedBottles,
+        unit: "bottles",
+      },
+    ],
+    tables: [
+      {
+        title: "By reason",
+        columns: [
+          { label: "Reason", unit: "text" },
+          { label: "Take-offs", unit: "count" },
+          { label: "Bottles", unit: "bottles" },
+          { label: "At cost", unit: "money" },
+          { label: "Bottles with no recorded cost", unit: "bottles" },
+        ],
+        rows: w.byReason.map((l) => [
+          l.label,
+          l.movements,
+          l.bottles,
+          cost(l),
+          l.uncostedBottles,
+        ]),
+        note:
+          w.byReason.length === 0
+            ? "Nothing was written off in this month."
+            : undefined,
+      },
+    ],
+    notes: [
+      `Kept when the month was closed, ${writtenLabel(row.closed_at, row.zone)}.`,
+    ],
+    basis: [
+      "Write-offs are the bottles taken off on purpose on the month's house days: written off, given on the house, and a stock adjustment for breakage, a comp or a staff pour. Shelf-count differences, corrections and returns to the vendor are not write-offs.",
+      "Each bottle is at the cost of the delivery it came off. A bottle whose delivery carried no cost is counted, and left out of the cost.",
+    ],
+  };
+}
+
 /** Each figure that can be read again for the month, as kept against as read now. */
 export function againstNow(
   kept: MonthFigures,
@@ -1450,6 +1720,22 @@ export function againstNow(
       kept.variance.netBottles,
       now.variance.netBottles,
       null,
+    ),
+    // F-1609: a close kept before write-offs were kept has none to set
+    // against now: unknown, never 0.
+    pair(
+      "writeoffs_bottles",
+      "Written off, bottles",
+      kept.writeOffs?.bottles ?? null,
+      now.writeOffs?.bottles ?? null,
+      null,
+    ),
+    pair(
+      "writeoffs_cost",
+      "Written off, at cost",
+      kept.writeOffs?.cost ?? null,
+      now.writeOffs?.cost ?? null,
+      kept.currency,
     ),
   );
   // F-1544 F3 (a): open bottles, once either side has a count that named
