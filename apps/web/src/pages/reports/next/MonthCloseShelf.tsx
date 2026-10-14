@@ -18,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/services/api/client';
 import { AuthContext } from '@/contexts/AuthContext';
 import { houseToday } from '@/lib/houseZone';
+import { getHouseLocale } from '@/lib/houseCurrency';
 import { exportHouseWord } from '@/lib/tableExport';
 import { EM, countOf, failureLine, failureOf, figure, money } from './rp-format';
 import { monthLabel, thisMonth } from './rp-registers-trade';
@@ -65,6 +66,11 @@ export interface MonthCloseFigures {
     /** F-1606: gross less net where ingest took tax out; absent on older closes. */
     taxInside?: number | null;
     taxInsideCheckCount?: number | null;
+    /** F-1691: the month's tips as money; null when no check carried one; absent on older closes. */
+    tips?: number | null;
+    tipsCheckCount?: number | null;
+    /** Most first; a null server is a check that named no one. */
+    tipsByServer?: Array<{ server: string | null; tips: number; checks: number }>;
   };
   /** F-1606: the house day its tax basis was stated; absent on older closes. */
   taxBasisSince?: string | null;
@@ -217,14 +223,26 @@ export function monthBefore(month: string): string {
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
 }
 
+/**
+ * When a month was closed, on the house's clock and in its formats, with the
+ * year (F-1692): a December closed in January, and one closed again a year
+ * later, must not read alike. Digits only, so the page stays English for a
+ * Turkish house (ADR 0207 q7, F-1279), as F-1209 writes /receipts' dates.
+ */
 function when(iso: string, zone: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return EM;
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+  const opts: Intl.DateTimeFormatOptions = {
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  };
   try {
-    return d.toLocaleString(undefined, zone ? { ...opts, timeZone: zone } : opts);
+    return d.toLocaleString(getHouseLocale(), zone ? { ...opts, timeZone: zone } : opts);
   } catch {
-    return d.toLocaleString(undefined, opts);
+    return d.toLocaleString(getHouseLocale(), opts);
   }
 }
 
@@ -296,6 +314,33 @@ function taxInsideWords(close: MonthClose): string | null {
       ? ` from ${t.taxInsideCheckCount} of ${countOf(t.netSalesCheckCount, 'check', 'checks')}`
       : '';
   return `${label}: ${money(t.taxInside, 'full', close.figures.currency)}${of}`;
+}
+
+/** F-1691: the month's tips as money, in total and by who served. Null when the close kept none. */
+function Tips({ f }: { f: MonthCloseFigures }) {
+  const t = f.till;
+  if (t.tips === undefined) return <>not kept with this close; close the month again to keep them</>;
+  if (t.tips === null) return <>{EM}, not recorded: no check this month carried a tip</>;
+  const of =
+    t.tipsCheckCount != null && t.checkCount != null && t.tipsCheckCount < t.checkCount
+      ? ` from ${t.tipsCheckCount} of ${countOf(t.checkCount, 'check', 'checks')}; the rest carried no tip amount`
+      : '';
+  return (
+    <>
+      {money(t.tips, 'full', f.currency)}
+      {of}
+      {(t.tipsByServer ?? []).length > 0 && (
+        <ul aria-label="Tips by server">
+          {(t.tipsByServer ?? []).map((s) => (
+            <li key={s.server ?? ''}>
+              {s.server ?? 'No server named'}: {money(s.tips, 'full', f.currency)} over{' '}
+              {countOf(s.checks, 'check', 'checks')}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
 }
 
 /** "7 bottles, €240 at cost" — the cost said only for what carried one. */
@@ -391,6 +436,11 @@ function Kept({ close }: { close: MonthClose }) {
             : ` over ${countOf(f.till.checkCount, 'check', 'checks')}`}
       </li>
       {taxInsideWords(close) !== null && <li>{taxInsideWords(close)}</li>}
+      {f.till.posConnected && (
+        <li>
+          Tips: <Tips f={f} />
+        </li>
+      )}
       <li>{taxBasisWords(close)}</li>
       {close.figures.taxChangeNote && <li data-testid="close-tax-change-note">{close.figures.taxChangeNote}</li>}
       <li>

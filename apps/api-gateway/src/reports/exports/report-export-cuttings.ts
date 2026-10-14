@@ -315,6 +315,35 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
   const taxWord = str(d.taxWord) || "tax";
   const taxChecks = num(d.taxInsideCheckCount) ?? 0;
   const netChecks = num(d.netSalesCheckCount);
+  // F-1691: a month close's till file carries the month's tips as money, in
+  // total and by who served; a plain window read carries no such key.
+  const tipsSaid = "tips" in d;
+  const tipChecks = num(d.tipsCheckCount) ?? 0;
+  const tipOf = num(d.tipsOfChecks);
+  const tipServers = arr(d.tipsByServer).map((r) => ({
+    server: str(r.server) || "No server named",
+    checks: num(r.checks),
+    tips: num(r.tips),
+  }));
+
+  const tipTables: ExportTable[] =
+    tipsSaid && tipServers.length > 0
+      ? [
+          {
+            title: "Tips by server",
+            columns: [
+              { label: "Server", unit: "text" },
+              { label: "Checks with a tip", unit: "count" },
+              { label: "Tips", unit: "money" },
+            ],
+            rows: tipServers.map((s) => [
+              s.server,
+              figure(s.checks, "the till returned no count"),
+              figure(s.tips, "the till returned no tip"),
+            ]),
+          },
+        ]
+      : [];
 
   return doc({
     say:
@@ -341,6 +370,15 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
             ),
           ]
         : []),
+      ...(tipsSaid
+        ? [
+            f(
+              "Tips",
+              figure(num(d.tips), "No check this month recorded a tip"),
+              "money",
+            ),
+          ]
+        : []),
     ],
     // F-1644 (was F-412): a refund the till sends as a check with a minus
     // total (the CSV till, pos-hub/pos-adapters.ts) is taken off Taken. A
@@ -356,11 +394,20 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
             `The ${taxWord} figure is from ${taxChecks} of ${netChecks} checks: the rest were rung before the house said its prices include ${taxWord}, or the till sent them without it.`,
           ]
         : []),
+      ...(tipsSaid && num(d.tips) != null
+        ? [
+            `Tips are the tips your till recorded on this month's checks, voided checks left out. On most tills they are inside Taken.${
+              tipOf != null && tipChecks < tipOf
+                ? ` They are from ${tipChecks} of ${tipOf} checks: the rest came from the till with no tip amount.`
+                : ""
+            }`,
+          ]
+        : []),
     ],
-    tables:
-      series.length === 0
+    tables: [
+      ...(series.length === 0
         ? []
-        : [
+        : ([
             {
               title: "Taken, day by day",
               columns: [
@@ -376,12 +423,19 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
                   ? `${series.length} of the ${days} days in the window rang up a check; the rest are absent rather than zero.`
                   : undefined,
             },
-          ],
+          ] satisfies ExportTable[])),
+      ...tipTables,
+    ],
     basis: [
       timezone
         ? `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}, each check filed on the house's day in ${timezone} by when it closed, else when it opened.`
         : `Non-voided pos_checks.total between ${from || "—"} and ${to || "—"}.`,
       "The series is sparse on purpose: a day with no check is absent, not written as zero.",
+      ...(tipsSaid
+        ? [
+            "Tips: non-voided pos_checks.tip in the month, by server_name, else server_external_id.",
+          ]
+        : []),
     ],
   });
 }
