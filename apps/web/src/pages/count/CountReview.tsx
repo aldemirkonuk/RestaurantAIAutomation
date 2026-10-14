@@ -57,11 +57,24 @@ function countedWords(counted: number, openMl: number | null): string {
   return openMl != null && openMl > 0 ? `${b} and ${openMl} ml open` : b
 }
 
-/** "+1" / "−2" / "0", in bottles. */
-function differenceWords(variance: number): string {
-  if (variance > 0) return `+${variance}`
-  if (variance < 0) return `−${Math.abs(variance)}`
-  return '0'
+const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0')
+
+/**
+ * "+1" / "−2" / "0" in full bottles, then the open bottles in tenths as staff
+ * entered them -- "0, −3/10 open" -- so the column says what its value
+ * counts (F-1621).
+ */
+function differenceWords(variance: number, openTenths: number | null | undefined): string {
+  if (!openTenths) return signed(variance)
+  const whole = Math.floor(Math.abs(openTenths) / 10)
+  const part = Math.abs(openTenths) % 10
+  const open = whole === 0 ? `${part}/10` : part === 0 ? `${whole}` : `${whole} and ${part}/10`
+  return `${signed(variance)}, ${openTenths > 0 ? '+' : '−'}${open} open`
+}
+
+/** Short, counting the open bottles too: the amber is keyed on what the value says. */
+function isShort(line: ReviewLine): boolean {
+  return (line.variance ?? 0) * 10 + (line.openDifferenceTenths ?? 0) < 0
 }
 
 function moneyWords(value: number | null | undefined, currency: string | null): string {
@@ -90,9 +103,9 @@ function Line({ line, money, currency }: { line: ReviewLine; money: boolean; cur
       {money && line.variance != null && (
         <span className="shrink-0 text-right">
           <span
-            className={`block font-semibold ${line.variance < 0 ? 'text-amber-300' : 'text-inkm-1'}`}
+            className={`block font-semibold ${isShort(line) ? 'text-amber-300' : 'text-inkm-1'}`}
           >
-            {differenceWords(line.variance)}
+            {differenceWords(line.variance, line.openDifferenceTenths)}
           </span>
           <span className="block text-sm text-inkm-2">{moneyWords(line.value, currency)}</span>
         </span>
@@ -524,6 +537,8 @@ function MatchItem({
           rows.map((r) => ({
             id: r.id,
             name: r.wineName?.trim() || 'An item with no name',
+            // ADR 0124: the label's own name finds a wine the house renamed.
+            alsoKnownAs: (r as { libraryName?: string | null }).libraryName ?? null,
             producer: r.wineProducer ?? null,
             vintage: r.wineVintage ?? null,
           })),

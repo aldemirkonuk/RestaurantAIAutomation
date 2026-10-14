@@ -18,6 +18,7 @@ import type {
   CountSessionKind,
   CountShelf,
   CountShelfItem,
+  ShelfDoneResult,
 } from '../../services/api/countSessions'
 
 export type LineState = 'sent' | 'saved' | 'held' | 'refused'
@@ -180,6 +181,53 @@ export function untouchedOnShelf(shelf: CountShelf, walk: WalkRecord): CountShel
   )
 }
 
+/**
+ * The house's answer to a "shelf done" that did not close the shelf
+ * (F-1616, F-1619), kept on this phone: which items to count again, and the
+ * zeros that did post, written as this shelf's lines so they read as counted
+ * and the next "done" does not send them again. Same for an answer that came
+ * straight back and one a queued "done" got later.
+ */
+export function refusedDone(
+  walk: WalkRecord,
+  shelf: Pick<CountShelf, 'locationId' | 'items'>,
+  clientDoneId: string,
+  answer: Pick<ShelfDoneResult, 'posted' | 'held' | 'refused' | 'message'>,
+  at: string,
+): WalkRecord {
+  const lines = { ...walk.lines }
+  const label = new Map(shelf.items.map((i) => [i.inventoryId, [i.name, i.vintage].filter(Boolean).join(' ')]))
+  const zero = (itemId: string, state: LineState) => {
+    const k = lineKey(shelf.locationId, itemId)
+    if (lines[k]) return
+    lines[k] = {
+      locationId: shelf.locationId,
+      itemId,
+      itemLabel: label.get(itemId) ?? '',
+      sealed: 0,
+      tenths: 0,
+      clientCountId: `shelf-done:${clientDoneId}`,
+      at,
+      state,
+    }
+  }
+  for (const id of answer.posted ?? []) zero(id, 'sent')
+  for (const id of answer.held ?? []) zero(id, 'held')
+  return {
+    ...walk,
+    lines,
+    dones: {
+      ...walk.dones,
+      [shelf.locationId]: {
+        clientDoneId,
+        state: 'refused',
+        recount: (answer.refused ?? []).map((r) => r.inventoryId),
+        message: answer.message,
+      },
+    },
+  }
+}
+
 /** How a shelf reads on the list. */
 export function shelfStatus(
   shelf: CountShelf,
@@ -222,17 +270,19 @@ export function fold(text: string): string {
 export interface FindableItem {
   id: string
   name: string
+  /** The library's own name, searched but never shown (ADR 0124: both names searchable). */
+  alsoKnownAs?: string | null
   producer?: string | null
   vintage?: string | number | null
 }
 
-/** The house's items whose name, maker or year hold every word typed. */
+/** The house's items whose name (the house's or the library's), maker or year hold every word typed. */
 export function findItems<T extends FindableItem>(items: T[], query: string, limit = 8): T[] {
   const words = fold(query).split(/\s+/).filter(Boolean)
   if (words.length === 0) return []
   return items
     .filter((it) => {
-      const hay = fold(`${it.name} ${it.producer ?? ''} ${it.vintage ?? ''}`)
+      const hay = fold(`${it.name} ${it.alsoKnownAs ?? ''} ${it.producer ?? ''} ${it.vintage ?? ''}`)
       return words.every((w) => hay.includes(w))
     })
     .slice(0, limit)

@@ -20,10 +20,10 @@ const api = vi.hoisted(() => ({
   claimCountShelf: vi.fn(),
 }))
 vi.mock('@/services/api/countSessions', () => api)
-vi.mock('@/services/api/inventory', () => ({ getInventory: vi.fn().mockResolvedValue([]) }))
-vi.mock('@/lib/offline-storage', () => ({
-  offlineStorage: { getPendingMutationsByType: vi.fn().mockResolvedValue([]) },
-}))
+const inv = vi.hoisted(() => ({ getInventory: vi.fn() }))
+vi.mock('@/services/api/inventory', () => inv)
+const store = vi.hoisted(() => ({ getPendingMutationsByType: vi.fn() }))
+vi.mock('@/lib/offline-storage', () => ({ offlineStorage: store }))
 const outbox = vi.hoisted(() => ({
   submitSpotCount: vi.fn(),
   submitShelfDone: vi.fn(),
@@ -88,6 +88,8 @@ beforeEach(() => {
   window.localStorage.clear()
   auth.value.activeRole = 'staff'
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+  inv.getInventory.mockResolvedValue([])
+  store.getPendingMutationsByType.mockResolvedValue([])
   api.pullCountSession.mockResolvedValue(structuredClone(SESSION))
   api.claimCountShelf.mockResolvedValue({ locationId: 'L1', claimedByMe: true, claimedAt: 'x' })
   outbox.submitSpotCount.mockResolvedValue({ synced: true, count: { expectedQty: null } })
@@ -207,6 +209,100 @@ describe('shelf done', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Shelf done' }))
     fireEvent.click(screen.getByRole('button', { name: /Shelf done/ }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/Count this shelf again/)
+  })
+})
+
+describe('a done that comes back partly refused (F-1616, F-1619)', () => {
+  const PARTLY = {
+    done: false,
+    posted: ['a'],
+    held: [],
+    refused: [{ inventoryId: 'b', reason: 'moved' }],
+    message: 'Count this shelf again: some bottles moved after it was counted.',
+  }
+
+  it('keeps the zeros that posted as counted, marks the item to count again, and pulls the list again', async () => {
+    outbox.submitShelfDone.mockResolvedValueOnce({ synced: true, result: PARTLY })
+    await openBackBar()
+    const pulls = api.pullCountSession.mock.calls.length
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Shelf done' }))
+    fireEvent.click(screen.getByRole('button', { name: /Shelf done/ }))
+    expect(await screen.findByText('Bottles moved. Count it again.')).toBeInTheDocument()
+    expect(screen.getByText(/0 bottles, no open bottle\. Sent\./)).toBeInTheDocument()
+    await waitFor(() => expect(api.pullCountSession.mock.calls.length).toBeGreaterThan(pulls))
+    // Saying done again sends only what is still not counted, never the zero that posted.
+    fireEvent.click(screen.getByRole('button', { name: 'Shelf done' }))
+    fireEvent.click(screen.getByRole('button', { name: /Shelf done/ }))
+    await waitFor(() => expect(outbox.submitShelfDone).toHaveBeenCalledTimes(2))
+    expect(outbox.submitShelfDone.mock.calls[1][0].body.zeroItemIds).toEqual(['b'])
+  })
+
+  it('a queued done the house answered later keeps which items to count again', async () => {
+    window.localStorage.setItem(
+      'mdv:count-walk:h1:u1:S1',
+      JSON.stringify({ lines: {}, extras: {}, parked: [], dones: { L1: { clientDoneId: 'd1', state: 'saved' } } }),
+    )
+    store.getPendingMutationsByType.mockImplementation(async (type: string) =>
+      type === 'inventory.countShelfDone'
+        ? [
+            {
+              id: 'm1',
+              type,
+              lastError: PARTLY.message,
+              parked: { reason: 'refused', status: 409, at: 'x' },
+              data: {
+                sessionId: 'S1',
+                locationId: 'L1',
+                shelfLabel: 'Back bar',
+                body: { clientDoneId: 'd1', zeroItemIds: ['a', 'b'] },
+                countedAt: '2026-10-12T22:00:00.000Z',
+                answer: PARTLY,
+              },
+            },
+          ]
+        : [],
+    )
+    renderWalk()
+    expect(await screen.findByText('Count again')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Back bar/ }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Close' }))
+    expect(await screen.findByText('Bottles moved. Count it again.')).toBeInTheDocument()
+    expect(screen.getByText(/0 bottles, no open bottle\. Sent\./)).toBeInTheDocument()
+    expect(screen.queryByText('Not counted yet')).not.toBeInTheDocument()
+  })
+
+  it('a done that closed the shelf names an item it did not count', async () => {
+    outbox.submitShelfDone.mockResolvedValueOnce({
+      synced: true,
+      result: {
+        done: true,
+        posted: ['a'],
+        held: [],
+        refused: [],
+        skipped: [{ inventoryId: 'b', name: 'Rakı' }],
+        message: "Not counted, no longer on this shelf's books: Rakı.",
+      },
+    })
+    await openBackBar()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Shelf done' }))
+    fireEvent.click(screen.getByRole('button', { name: /Shelf done/ }))
+    expect(await screen.findByRole('status')).toHaveTextContent(/no longer on this shelf's books: Rakı/)
+  })
+})
+
+describe('find (F-1620, ADR 0124)', () => {
+  it('finds a renamed wine by the name on its label', async () => {
+    inv.getInventory.mockResolvedValue([
+      { id: 'c', wineName: 'Ev Kırmızısı', libraryName: 'Kavaklıdere Yakut', wineProducer: null, wineVintage: null },
+    ])
+    await openBackBar()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(screen.getByRole('button', { name: /Find/ }))
+    await waitFor(() => expect(inv.getInventory).toHaveBeenCalled())
+    fireEvent.change(screen.getByLabelText('Name on the label'), { target: { value: 'yakut' } })
+    expect(await screen.findByText('Ev Kırmızısı')).toBeInTheDocument()
   })
 })
 
