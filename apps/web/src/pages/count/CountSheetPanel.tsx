@@ -24,8 +24,9 @@ import {
 import { getInventory, recordSpotCount } from '@/services/api/inventory'
 import { parseCsvRows, readCsvFile } from '@/lib/csvImport'
 import { exportDay, exportHouseWord, exportTable } from '@/lib/tableExport'
-import { getHouseLocale } from '@/lib/houseCurrency'
-import { useHouseZone } from '@/lib/houseZone'
+import { localeOfCountry } from '@/lib/houseCurrency'
+import { readHouseZone, useHouseZone } from '@/lib/houseZone'
+import { settingsApi } from '@/services/api/settings'
 import {
   countSheetColumns,
   countSheetRows,
@@ -123,8 +124,27 @@ export function CountSheetPanel({ sessionId, house, onSent }: { sessionId: strin
         producer: r.wineProducer ?? null,
         vintage: r.wineVintage ?? null,
       }))
+      // F-1680: the sheet is read in this house's way of writing and on its
+      // clock, asked for now, never what the last house left behind in the
+      // moment after a switch. Unknown is said, not guessed (a US date read
+      // day first would land on the wrong day).
+      const [houseZone, said] = await Promise.all([
+        house ? readHouseZone(house) : Promise.resolve(zone ?? null),
+        settingsApi.houseCurrency().catch(() => null),
+      ])
+      if (!said?.readable) {
+        throw new Error("This house's way of writing dates could not be read, so the sheet was not read. Try again.")
+      }
       const rows = parseCsvRows(await readCsvFile(file))
-      setPlan(planCountSheet(rows, { session: s, items, zone, locale: getHouseLocale(), now: Date.now() }))
+      setPlan(
+        planCountSheet(rows, {
+          session: s,
+          items,
+          zone: houseZone,
+          locale: localeOfCountry(said.country),
+          now: Date.now(),
+        }),
+      )
     } catch (err) {
       setProblem(
         err instanceof Error && !(err as { response?: unknown }).response

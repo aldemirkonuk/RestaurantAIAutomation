@@ -166,6 +166,8 @@ export class CountSessionsController {
       locationId?: string;
       description?: string;
       countedQty?: number;
+      /** The open bottle in tenths, as staff enter it (S234 owed). */
+      openTenths?: number | null;
       countedAgoMs?: number;
     },
     @CurrentUser() user: SessionUser,

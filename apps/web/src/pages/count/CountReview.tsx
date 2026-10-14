@@ -76,6 +76,21 @@ function countedWords(
   return `${b}, ${tenthsWords(open.openTenths)}${standIn}`
 }
 
+/**
+ * F-1683: why sign-off asks -- "2 shelves are not counted, and 5 items on
+ * the books were never counted. Sign off anyway?"
+ */
+function unfinishedWords(shelves: number, items: number): string {
+  const parts: string[] = []
+  if (shelves > 0) parts.push(shelves === 1 ? '1 shelf is not counted' : `${shelves} shelves are not counted`)
+  if (items > 0)
+    parts.push(
+      items === 1 ? '1 item on the books was never counted' : `${items} items on the books were never counted`,
+    )
+  const said = parts.join(', and ')
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)}. Sign off anyway?`
+}
+
 const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0')
 
 /**
@@ -168,7 +183,7 @@ export default function CountReview() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
-  const [unfinished, setUnfinished] = useState<number | null>(null)
+  const [unfinished, setUnfinished] = useState<{ shelves: number; items: number } | null>(null)
   const [matching, setMatching] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -203,8 +218,9 @@ export default function CountReview() {
   const signOff = (evenIfUnfinished: boolean) =>
     act('sign-off', async () => {
       const r = await signOffCountSession(sessionId, evenIfUnfinished)
-      if (!r.signedOff && r.notCounted > 0) {
-        setUnfinished(r.notCounted)
+      const items = r.itemsNotCounted ?? 0
+      if (!r.signedOff && (r.notCounted > 0 || items > 0)) {
+        setUnfinished({ shelves: r.notCounted, items })
         return null
       }
       setUnfinished(null)
@@ -262,6 +278,15 @@ export default function CountReview() {
               </li>
             ))}
           </ul>
+        </Section>
+      )}
+
+      {(review.offShelf?.length ?? 0) > 0 && (
+        <Section title="Not on a shelf, not counted">
+          <p className="text-sm text-inkm-2">
+            On the books with no shelf of their own, so the walk could not count them. Count each on Inventory, all at once.
+          </p>
+          <p className={`${CARD} text-amber-300`}>{review.offShelf!.map((o) => o.name).join(', ')}</p>
         </Section>
       )}
 
@@ -434,7 +459,8 @@ export default function CountReview() {
               )}
               {s.missed.length > 0 && (
                 <p className="pt-2 text-sm text-amber-300">
-                  On the books here, no count sent: {s.missed.map((m) => m.name).join(', ')}
+                  {s.done ? 'On the books here, no count sent' : 'On the books here, not counted'}:{' '}
+                  {s.missed.map((m) => m.name).join(', ')}
                 </p>
               )}
               {canAct && open && s.done && (
@@ -488,7 +514,7 @@ export default function CountReview() {
           {unfinished != null ? (
             <>
               <p role="alert" className="text-amber-300">
-                {unfinished === 1 ? '1 shelf is' : `${unfinished} shelves are`} not counted. Sign off anyway?
+                {unfinishedWords(unfinished.shelves, unfinished.items)}
               </p>
               <button
                 type="button"

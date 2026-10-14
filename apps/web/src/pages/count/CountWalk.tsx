@@ -62,6 +62,7 @@ import {
   lineKey,
   newWalkId,
   nextShelf,
+  parkedWords,
   pullStorageKey,
   readSealed,
   readStored,
@@ -732,6 +733,7 @@ function ShelfWalk({
                 locationId: shelf.locationId,
                 description,
                 countedQty,
+                openTenths,
                 state: out.synced ? 'sent' : 'saved',
               },
             ],
@@ -808,8 +810,7 @@ function ShelfWalk({
         <ul className="space-y-1">
           {parkedHere.map((p) => (
             <li key={p.clientLineId} className="rounded-xl bg-white/5 px-3 py-2 text-sm text-inkm-2">
-              {p.description}: {p.countedQty}, for the manager
-              {p.state === 'saved' ? ' (saved on this phone)' : ''}
+              {parkedWords(p)}
             </li>
           ))}
         </ul>
