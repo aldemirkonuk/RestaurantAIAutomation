@@ -472,6 +472,8 @@ export async function recordSpotCount(
     opening?: boolean;
     /** F-1524: an opening count's cost per bottle, used only when the wine has no cost yet. */
     costPerBottle?: number;
+    /** ADR 0341 F3: whether tax is inside that cost; absent = not said. */
+    costTaxBasis?: 'includes_tax' | 'excludes_tax';
     /** F-1544: the stock-take this line belongs to; absent = a spot count. */
     sessionId?: string;
     /** F-1544 (F3 a): what is left in the open bottles, in tenths of a bottle. */

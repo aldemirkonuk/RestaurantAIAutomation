@@ -20,6 +20,13 @@ vi.mock('../../hooks/queries', () => ({
 }))
 vi.mock('../../hooks/queries/useProviderQueries', () => ({ useProviders: () => ({ data: [] }) }))
 vi.mock('../../hooks/useStorageLocations', () => ({ useStorageLocations: () => ({ locations: [] }) }))
+// A manager: the cost cells are shown (F-312).
+vi.mock('../../hooks/useMayActForTheHouse', () => ({ useMayActForTheHouse: () => true }))
+// ADR 0341 F3: the house's tax basis, unset unless a case says otherwise.
+const tax = vi.hoisted(() => ({
+  getTaxBasis: vi.fn(async () => ({ readable: true, basis: 'unset', taxWord: 'KDV' }) as Record<string, unknown>),
+}))
+vi.mock('../../pages/settings/next/TaxBasisSection', () => tax)
 
 import { ManualReceiptWorkspace } from './ManualReceiptWorkspace'
 
@@ -97,5 +104,48 @@ describe('ManualReceiptWorkspace: a save with no answer (F-566)', () => {
     await user.click(screen.getByRole('button', { name: /Record 1 bottle/ }))
 
     expect(await screen.findByText('That storage spot is gone.')).toBeTruthy()
+  })
+})
+
+/**
+ * ADR 0341 F3 (founder S218: "Yes, stamp cost basis"); ledger S234, owed by
+ * w106-cost-truth. A manual receipt at a house whose till prices include tax
+ * asks whether KDV is inside its costs, and sends the answer with each cost.
+ */
+describe('ManualReceiptWorkspace: whether tax is inside the costs (ADR 0341 F3)', () => {
+  beforeEach(() => {
+    bulkCreateInventoryItems.mockReset()
+    bulkCreateInventoryItems.mockResolvedValue({
+      results: [{ index: 0, status: 'stock_added', inventoryItemId: 'i1', wineId: 'w1' }],
+    })
+  })
+
+  it('[REVERT-FAILS] sends the owner\'s answer with the typed cost', async () => {
+    tax.getTaxBasis.mockResolvedValue({ readable: true, basis: 'prices_include_tax', taxWord: 'KDV' })
+    const user = userEvent.setup()
+    renderWorkspace()
+    await addOneLine(user)
+    await user.type(screen.getByLabelText('Cost per bottle for Barolo Cannubi'), '420')
+    expect(await screen.findByText('Is KDV inside the costs on this receipt?')).toBeTruthy()
+    await user.click(screen.getByLabelText('Yes, KDV is inside'))
+    await user.click(screen.getByRole('button', { name: /Record 1 bottle/ }))
+    await waitFor(() => expect(bulkCreateInventoryItems).toHaveBeenCalled())
+    expect(bulkCreateInventoryItems.mock.calls[0][0].items[0]).toMatchObject({
+      costPerBottle: 420,
+      costTaxBasis: 'includes_tax',
+    })
+  })
+
+  it('sends nothing for it at a house whose till prices do not include tax', async () => {
+    tax.getTaxBasis.mockResolvedValue({ readable: true, basis: 'prices_exclude_tax', taxWord: 'tax' })
+    const user = userEvent.setup()
+    renderWorkspace()
+    await addOneLine(user)
+    await user.type(screen.getByLabelText('Cost per bottle for Barolo Cannubi'), '420')
+    await waitFor(() => expect(tax.getTaxBasis).toHaveBeenCalled())
+    expect(screen.queryByTestId('cost-tax-choice')).toBeNull()
+    await user.click(screen.getByRole('button', { name: /Record 1 bottle/ }))
+    await waitFor(() => expect(bulkCreateInventoryItems).toHaveBeenCalled())
+    expect(bulkCreateInventoryItems.mock.calls[0][0].items[0]).not.toHaveProperty('costTaxBasis')
   })
 })

@@ -774,6 +774,11 @@ export async function verifyOrderReceipt(
      */
     invoiceCurrency?: string;
     /**
+     * Whether tax is inside `invoiceUnitPrice` (ADR 0341 F3). Read only where
+     * the house's till prices include tax; absent = not said. Owner/manager only.
+     */
+    invoicePriceTaxBasis?: 'includes_tax' | 'excludes_tax';
+    /**
      * From the vendor's own packing slip / EDI 856. When this disagrees with the
      * invoice quantity, the overbill is proven by their paperwork and the resulting
      * claim needs no argument.

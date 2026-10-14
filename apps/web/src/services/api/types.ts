@@ -152,6 +152,8 @@ export interface CreateInventoryItemRequest {
   stockLive: number;
   costPerBottle?: number;
   costProvenance?: CostProvenance;
+  /** Whether tax is inside `costPerBottle` (ADR 0341 F3); absent = not said. Owner/manager only. */
+  costTaxBasis?: 'includes_tax' | 'excludes_tax';
   storageLocationId?: string;
   notes?: string;
   thresholdMin?: number;
@@ -198,6 +200,8 @@ export interface BulkInventoryLine {
   stockLive?: number;
   costPerBottle?: number | null;
   costProvenance?: CostProvenance;
+  /** Whether tax is inside `costPerBottle` (ADR 0341 F3); absent = not said. Owner/manager only. */
+  costTaxBasis?: 'includes_tax' | 'excludes_tax';
   storageLocationId?: string | null;
   providerId?: string | null;
   thresholdMin?: number;

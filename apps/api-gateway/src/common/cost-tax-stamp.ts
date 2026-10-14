@@ -5,8 +5,9 @@
  * Margin advice at a house whose till prices include tax works only on a cost
  * proven to be without tax (`margin-advice.service.ts` `costTaxProof`). The
  * columns exist (migration `house_tax_basis_and_rates`); this is their writer
- * at the three places a cost is recorded: the order line, the receipt check
- * and the delivery's verification.
+ * where a cost is recorded: the order line, the receipt check, the delivery's
+ * verification, and the bottles a manual receipt, a wine added with stock or
+ * an opening count book (`stampLotsCostedByWrite`).
  *
  * THE RULE:
  *   1. A house whose till prices do NOT include tax (unset, prices exclude
@@ -125,5 +126,97 @@ export async function stampLotsCostTaxBasis(
     log?.warn(
       `the cost of ${args.inventoryIds.join(", ")} was recorded, but whether tax is inside it (${args.basis}) was not: ${err?.message ?? "unknown error"}`,
     );
+  }
+}
+
+/**
+ * The ids of an item's live lots that already carry a cost, read just before
+ * a write that may cost new ones: a manual receipt, a wine added with stock,
+ * an opening count (ADR 0341 F3; ledger S234, owed by w106-cost-truth). Null
+ * when they could not be read, and then nothing is stamped: a lot this write
+ * did not cost must never take a statement made about another one.
+ */
+export async function costedLiveLotIds(
+  client: Client,
+  restaurantId: string,
+  inventoryId: string,
+  log?: Log,
+): Promise<Set<string> | null> {
+  try {
+    const { data, error } = await client
+      .from("inventory_lots")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("inventory_id", inventoryId)
+      .eq("stock_state", "live")
+      .not("unit_cost", "is", null);
+    if (error || !Array.isArray(data)) {
+      log?.warn(
+        `item ${inventoryId}: its costed bottles could not be read (${error?.message ?? "no rows"}), so whether tax is inside the new cost is not recorded`,
+      );
+      return null;
+    }
+    return new Set(data.map((r: { id: string }) => r.id));
+  } catch (err: any) {
+    log?.warn(
+      `item ${inventoryId}: its costed bottles could not be read (${err?.message ?? "unknown error"}), so whether tax is inside the new cost is not recorded`,
+    );
+    return null;
+  }
+}
+
+/**
+ * Stamp the lots one write just costed: the item's live lots that carry
+ * `unitCost` now, state no basis, and were not costed before the write
+ * (`before`, from `costedLiveLotIds`). A lot costed earlier, or at another
+ * figure, is left as it was. Logged, never thrown: the cost stands either way.
+ */
+export async function stampLotsCostedByWrite(
+  client: Client,
+  args: {
+    restaurantId: string;
+    inventoryId: string;
+    before: Set<string>;
+    unitCost: number;
+    basis: CostTaxBasis;
+  },
+  log?: Log,
+): Promise<void> {
+  const notRecorded = (why: string) =>
+    log?.warn(
+      `the cost of ${args.inventoryId} was recorded, but whether tax is inside it (${args.basis}) was not: ${why}`,
+    );
+  try {
+    const { data, error } = await client
+      .from("inventory_lots")
+      .select("id, unit_cost, unit_cost_tax_basis")
+      .eq("restaurant_id", args.restaurantId)
+      .eq("inventory_id", args.inventoryId)
+      .eq("stock_state", "live");
+    if (error || !Array.isArray(data)) {
+      notRecorded(error?.message ?? "its bottles could not be read");
+      return;
+    }
+    const ids = data
+      .filter(
+        (l: { id: string; unit_cost: unknown; unit_cost_tax_basis: unknown }) =>
+          !args.before.has(l.id) &&
+          l.unit_cost != null &&
+          Number(l.unit_cost) === args.unitCost &&
+          l.unit_cost_tax_basis == null,
+      )
+      .map((l: { id: string }) => l.id);
+    if (!ids.length) {
+      notRecorded("no bottles this write costed were found");
+      return;
+    }
+    const { error: stampError } = await client
+      .from("inventory_lots")
+      .update({ unit_cost_tax_basis: args.basis })
+      .eq("restaurant_id", args.restaurantId)
+      .in("id", ids);
+    if (stampError) notRecorded(stampError.message);
+  } catch (err: any) {
+    notRecorded(err?.message ?? "unknown error");
   }
 }

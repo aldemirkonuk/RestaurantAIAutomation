@@ -50,6 +50,9 @@ vi.mock('../../../stores', () => ({
  */
 const houseCurrency = vi.hoisted(() => vi.fn())
 vi.mock('../../../services/api/settings', () => ({ settingsApi: { houseCurrency } }))
+// ADR 0341 F3: the house's tax basis, unset unless a case says otherwise.
+const getTaxBasis = vi.hoisted(() => vi.fn())
+vi.mock('../../settings/next/TaxBasisSection', () => ({ getTaxBasis }))
 // The real select renders a portal/popover that this test has no reason to drive.
 vi.mock('../../../components/ui/ThemedSelect', () => ({
   ThemedSelect: () => null,
@@ -146,6 +149,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mayAct.value = true
   verifyOrderReceipt.mockResolvedValue({ ...order, status: 'COMPLETED' })
+  getTaxBasis.mockResolvedValue({ readable: true, basis: 'unset', taxWord: 'KDV' })
   forOrder.mockResolvedValue([])
   orderBlock = null
   /*
@@ -1230,5 +1234,48 @@ describe('ReceivingWorkspace — a keyboard and a screen reader can use it (F-10
     expect(screen.getByRole('textbox', { name: 'Why accept this price?' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Why were 1 rejected?' })).toBeInTheDocument()
     expect(screen.getByRole('textbox', { name: 'Note on this delivery' })).toBeInTheDocument()
+  })
+})
+
+/**
+ * ADR 0341 F3 (founder S218: "Yes, stamp cost basis"); ledger S234, owed by
+ * w106-cost-truth. The gateway took `invoicePriceTaxBasis` (lot-cost-truth),
+ * but no screen sent it, so every checked price stayed "not stated".
+ */
+describe('ReceivingWorkspace — whether tax is inside the invoice price (ADR 0341 F3)', () => {
+  it('[REVERT-FAILS] asks at a house whose till prices include tax, and sends the answer', async () => {
+    getTaxBasis.mockResolvedValue({ readable: true, basis: 'prices_include_tax', taxWord: 'KDV' })
+    const user = userEvent.setup()
+    renderWorkspace()
+    await enterInvoice(user, 24, 22, 'EUR')
+    expect(await screen.findByText('Is KDV inside this price?')).toBeInTheDocument()
+    await user.click(screen.getByLabelText('No, before KDV'))
+    await user.click(submit())
+    expect(verifyOrderReceipt).toHaveBeenCalledWith(
+      'order-1',
+      expect.objectContaining({ invoiceUnitPrice: 22, invoicePriceTaxBasis: 'excludes_tax' }),
+    )
+  })
+
+  it.each(['prices_include_tax', 'prices_exclude_tax'])(
+    'sends nothing for it when not said, or where prices exclude tax (%s)',
+    async (basis) => {
+      getTaxBasis.mockResolvedValue({ readable: true, basis, taxWord: 'KDV' })
+      const user = userEvent.setup()
+      renderWorkspace()
+      await enterInvoice(user, 24, 22, 'EUR')
+      await user.click(submit())
+      expect(verifyOrderReceipt).toHaveBeenCalled()
+      expect(verifyOrderReceipt.mock.calls[0][1].invoicePriceTaxBasis).toBeUndefined()
+    },
+  )
+
+  it('never asks staff, and never reads the house for them', async () => {
+    mayAct.value = false
+    getTaxBasis.mockResolvedValue({ readable: true, basis: 'prices_include_tax', taxWord: 'KDV' })
+    renderWorkspace()
+    await screen.findByTestId('receiving-price-held')
+    expect(screen.queryByTestId('cost-tax-choice')).not.toBeInTheDocument()
+    expect(getTaxBasis).not.toHaveBeenCalled()
   })
 })
