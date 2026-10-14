@@ -284,9 +284,9 @@ export interface ChangedAfterClose {
   /** Who made it, as plainly as the record says. */
   who: string;
   what: string;
-  /** Bottles for stock; money for the till and purchases. */
+  /** Bottles for stock; ml for open bottles counted; money for the till and purchases. */
   delta: number | null;
-  unit: "bottles" | "money";
+  unit: "bottles" | "ml" | "money";
   /** For money: the code it is in; null is the house's money. */
   currency: string | null;
 }
@@ -732,17 +732,19 @@ export class MonthCloseService {
     const bounds = houseDayBounds(first, last, row.zone);
     const currency = row.figures.currency ?? null;
 
-    const [{ figures: now, checks }, stock] = await Promise.all([
+    const [{ figures: now, checks, counts }, stock] = await Promise.all([
       this.readFigures(restaurantId, row.month, row.zone, currency, false),
       this.stockChanges(restaurantId, row, bounds),
     ]);
     const till = this.tillChanges(row, checks);
     const purchases = await this.purchaseChanges(restaurantId, row, now);
+    const openMl = await this.openMlChanges(row, counts);
 
     const people = await this.peopleNames([
       row.closed_by,
       ...stock.rows.map((r) => r.who),
       ...purchases.rows.map((r) => r.who),
+      ...openMl.rows.map((r) => r.who),
     ]);
     // A user id is named, or said to be gone; a phrase ("The till", "not
     // recorded") is already the answer (F-1468).
@@ -754,12 +756,13 @@ export class MonthCloseService {
     const changes = [
       ...till.rows,
       ...stock.rows.map(named),
+      ...openMl.rows.map(named),
       ...purchases.rows.map(named),
     ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
     return {
       ...this.toDto(row, typeof row.till_csv === "string", people),
       changes,
-      changesNotListed: till.more + stock.more + purchases.more,
+      changesNotListed: till.more + stock.more + openMl.more + purchases.more,
       againstNow: againstNow(row.figures, now),
     };
   }
@@ -888,6 +891,8 @@ export class MonthCloseService {
     figures: MonthFigures;
     tillWindow: unknown;
     checks: TillCheck[];
+    /** The shelf counts filed in the month (F-1544 lane 5). */
+    counts: Array<Record<string, unknown>>;
   }> {
     const { first, last } = monthDays(month);
     const bounds = houseDayBounds(first, last, zone);
@@ -932,7 +937,7 @@ export class MonthCloseService {
             this.db
               .from("stock_counts")
               .select(
-                "id, expected_qty, counted_qty, variance_qty, variance_open_ml, counted_at, session_id",
+                "id, inventory_id, expected_qty, counted_qty, variance_qty, variance_open_ml, counted_by, counted_at, arrived_at, session_id",
                 {
                   count: "exact",
                 },
@@ -1123,7 +1128,7 @@ export class MonthCloseService {
       },
       writeOffs: writeOffFigures(takeOffs),
     };
-    return { figures, tillWindow, checks };
+    return { figures, tillWindow, checks, counts };
   }
 
   /**
@@ -1178,7 +1183,7 @@ export class MonthCloseService {
         this.db
           .from("stock_counts")
           .select(
-            "id, expected_qty, counted_qty, variance_qty, variance_open_ml, counted_at, session_id",
+            "id, inventory_id, expected_qty, counted_qty, variance_qty, variance_open_ml, counted_by, counted_at, arrived_at, session_id",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
@@ -1405,6 +1410,53 @@ export class MonthCloseService {
         currency: null,
       })),
       more: Math.max(0, total - CHANGED_AFTER_CLOSE_CAP),
+    };
+  }
+
+  /**
+   * S227 owed (F-1544 F3 a): each count filed in the month that named its
+   * open bottles and reached the books after the close (`arrived_at`, so a
+   * paper sheet or a queued phone line dated inside the month is found by
+   * when it arrived, not by when it was counted). A count that agreed with
+   * the books in whole bottles moves no stock, so the stock list cannot show
+   * it; its open bottles still move the open-bottle figure. The listed ml add
+   * up to that figure's move. A count with no `arrived_at` predates the
+   * column, and so the close.
+   */
+  private async openMlChanges(
+    row: CloseRow,
+    counts: Array<Record<string, unknown>>,
+  ): Promise<{ rows: ChangedAfterClose[]; more: number }> {
+    const closed = Date.parse(row.closed_at);
+    const late = counts
+      .filter(
+        (c) =>
+          finite(c.variance_open_ml) !== null &&
+          typeof c.arrived_at === "string" &&
+          Date.parse(c.arrived_at) > closed,
+      )
+      .sort(
+        (x, y) =>
+          Date.parse(String(y.arrived_at)) - Date.parse(String(x.arrived_at)),
+      );
+    const list = late.slice(0, CHANGED_AFTER_CLOSE_CAP);
+    const wines = await this.wineNames(
+      list.map((c) =>
+        typeof c.inventory_id === "string" ? c.inventory_id : null,
+      ),
+    );
+    return {
+      rows: list.map((c) => ({
+        kind: "stock" as const,
+        at: String(c.arrived_at),
+        day: houseDayOf(String(c.counted_at), row.zone) ?? "",
+        who: typeof c.counted_by === "string" ? c.counted_by : NOT_RECORDED,
+        what: `Open bottles counted: ${wines.get(String(c.inventory_id)) ?? "an item no longer listed"}`,
+        delta: finite(c.variance_open_ml),
+        unit: "ml" as const,
+        currency: null,
+      })),
+      more: Math.max(0, late.length - CHANGED_AFTER_CLOSE_CAP),
     };
   }
 

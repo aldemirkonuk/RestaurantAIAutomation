@@ -37,7 +37,7 @@ function fakeDb(tables: Record<string, Row[]>, rpcAnswer?: any) {
   const from = (table: string) => {
     const rows = (tables[table] ??= []);
     const filters: Array<(r: Row) => boolean> = [];
-    let op: "select" | "update" = "select";
+    let op: "select" | "update" | "insert" = "select";
     let payload: any = null;
     let returning = false;
     let single = false;
@@ -64,11 +64,19 @@ function fakeDb(tables: Record<string, Row[]>, rpcAnswer?: any) {
       limit: (n: number) => ((cap = n), q),
       range: (a: number, b: number) => ((range = [a, b]), q),
       update: (p: any) => ((op = "update"), (payload = p), q),
+      insert: (p: any) => ((op = "insert"), (payload = p), q),
       maybeSingle: () => ((single = true), q),
       single: () => ((single = true), q),
       then: (res: any, rej: any) => Promise.resolve(run()).then(res, rej),
     };
     const run = () => {
+      if (op === "insert") {
+        const row = { id: `${table}-${rows.length + 1}`, ...payload };
+        rows.push(row);
+        const data = returning ? [row] : null;
+        if (single) return { data: row, error: null };
+        return { data, error: null };
+      }
       let out = rows.filter((r) => filters.every((f) => f(r)));
       if (op === "update") out.forEach((r) => Object.assign(r, payload));
       if (range) out = out.slice(range[0], range[1] + 1);
@@ -904,5 +912,105 @@ describe("a shelf sent back, and sign-off", () => {
       signs.svc.signOff(HOUSE, WALK, BOSS, { evenIfUnfinished: true }),
     ).resolves.toMatchObject({ signedOff: true, stamped: 2 });
     expect(signs.db.rpc.mock.calls[0][1].p_even_if_unfinished).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S227 owed: a count sheet's load is written down (ADR 0335 §3) with who
+// counted on paper, and the review names them on the sheet's lines. Each case
+// fails on the base, which had no load to write and named only the loader.
+// ---------------------------------------------------------------------------
+
+describe("a loaded count sheet is written down, and the review names who counted on paper", () => {
+  const SHELF_KEY = `sheet:${WALK}:Bar:1760313000000`;
+
+  it("keeps the load and logs how many lines went in and were refused", async () => {
+    const { svc, db } = walkDb();
+    const r = await svc.recordSheetLoad(HOUSE, WALK, BOSS, {
+      countedByName: "  Mert  ",
+      rowsIn: 4,
+      rowsRefused: 1,
+      rowsNotSent: 0,
+      shelfKeys: [SHELF_KEY, SHELF_KEY],
+    });
+    expect(r.logged).toBe(true);
+    expect(db.tables.stock_count_sheet_loads).toEqual([
+      expect.objectContaining({
+        session_id: WALK,
+        restaurant_id: HOUSE,
+        loaded_by: BOSS,
+        counted_by_name: "Mert",
+        shelf_keys: [SHELF_KEY],
+        rows_in: 4,
+        rows_refused: 1,
+        rows_not_sent: 0,
+      }),
+    ]);
+    expect(db.tables.system_audit_log).toEqual([
+      expect.objectContaining({
+        actor_id: BOSS,
+        action: "count_sheet_loaded",
+        entity_id: WALK,
+        restaurant_id: HOUSE,
+        changes: expect.objectContaining({
+          subject: "4 lines in, 1 refused, counted on paper by Mert",
+          rows_in: 4,
+          rows_refused: 1,
+        }),
+      }),
+    ]);
+  });
+
+  it("refuses another count's shelves, an unreadable figure, and another house's count", async () => {
+    const { svc, db } = walkDb();
+    await expect(
+      svc.recordSheetLoad(HOUSE, WALK, BOSS, {
+        rowsIn: 1,
+        rowsRefused: 0,
+        shelfKeys: ["sheet:walk-9:Bar:1"],
+      }),
+    ).rejects.toMatchObject({ status: HttpStatus.BAD_REQUEST });
+    await expect(
+      svc.recordSheetLoad(HOUSE, WALK, BOSS, { rowsIn: -1, rowsRefused: 0 }),
+    ).rejects.toMatchObject({ status: HttpStatus.BAD_REQUEST });
+    await expect(
+      svc.recordSheetLoad(OTHER, WALK, BOSS, { rowsIn: 1, rowsRefused: 0 }),
+    ).rejects.toMatchObject({ status: HttpStatus.NOT_FOUND });
+    expect(db.tables.stock_count_sheet_loads ?? []).toEqual([]);
+  });
+
+  it("names the paper counter on the sheet's lines, the loader when the load named nobody", async () => {
+    const { svc, db } = walkDb();
+    const c2 = db.tables.stock_counts.find((c) => c.id === "c2")!;
+    c2.idempotency_key = `count:${ITEM}:${SHELF_KEY}:1:n`;
+    db.tables.stock_count_parked_lines[0].client_line_id = `${SHELF_KEY}:kavaklidere:2`;
+    db.tables.stock_count_sheet_loads = [
+      {
+        restaurant_id: HOUSE,
+        session_id: WALK,
+        counted_by_name: "Mert",
+        shelf_keys: [SHELF_KEY],
+        loaded_at: ago(HOUR),
+      },
+    ];
+    const r = await svc.review(HOUSE, WALK, false);
+    const bar = r.shelves.find((s) => s.locationId === "Bar")!;
+    expect(bar.lines.find((l) => l.countId === "c2")).toMatchObject({
+      countedBy: "Deniz",
+      paperBy: "Mert",
+    });
+    // A line counted on the phone is as it was.
+    expect(bar.lines.find((l) => l.countId === "c3")).not.toHaveProperty(
+      "paperBy",
+    );
+    expect(r.parked[0]).toMatchObject({ paperBy: "Mert" });
+
+    db.tables.stock_count_sheet_loads[0].counted_by_name = null;
+    const again = await svc.review(HOUSE, WALK, false);
+    expect(
+      again.shelves
+        .find((s) => s.locationId === "Bar")!
+        .lines.find((l) => l.countId === "c2"),
+    ).toMatchObject({ paperBy: "Deniz" });
   });
 });

@@ -174,6 +174,32 @@ export class CountSessionsController {
     return this.sessions.park(house, sessionId, userId, body ?? {});
   }
 
+  @Post(":sessionId/sheet-loads")
+  @ApiOperation({
+    summary:
+      "Write down a loaded count sheet (owner or manager): who counted on paper, and how many lines went in and were refused (ADR 0335 §3)",
+  })
+  async sheetLoad(
+    @Param("sessionId") sessionId: string,
+    @Body()
+    body: {
+      countedByName?: string;
+      rowsIn?: number;
+      rowsRefused?: number;
+      rowsNotSent?: number;
+      shelfKeys?: string[];
+    },
+    @CurrentUser() user: SessionUser,
+  ) {
+    const { house, userId } = this.who(user);
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      house,
+      "load a count sheet",
+    );
+    return this.sessions.recordSheetLoad(house, sessionId, userId, body ?? {});
+  }
+
   @Post(":sessionId/abandon")
   @ApiOperation({
     summary: "Stop a count (owner or manager); the counts it already made stay",

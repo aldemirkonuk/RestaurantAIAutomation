@@ -10,6 +10,7 @@ const sessions = vi.hoisted(() => ({
   pullCountSession: vi.fn(),
   parkCountLine: vi.fn(async () => ({})),
   markCountShelfDone: vi.fn(async () => ({ done: true })),
+  recordCountSheetLoad: vi.fn(async (..._a: unknown[]) => ({ id: 'load-1', logged: true })),
 }))
 const inventory = vi.hoisted(() => ({
   getInventory: vi.fn(async () => [{ id: 'gin', wineName: 'Gin', wineProducer: null, wineVintage: null }]),
@@ -136,6 +137,59 @@ describe('CountSheetPanel (F-1544 lane 6)', () => {
     )
     expect(await screen.findByText('Back bar: 1 counted, shelf done')).toBeTruthy()
     expect(onSent).toHaveBeenCalled()
+  })
+
+  it('writes the load down: who counted on paper, lines in and refused (S227 owed, ADR 0335 §3)', async () => {
+    csv.text = [
+      'Count;Shelf;Shelf code;Item;Item code;Full bottles;Open (tenths);Counted at',
+      'S1;Back bar;L1;Gin;gin;3;5;13.10.2026 01:30',
+      'S1;Back bar;L1;Rum;;x;;13.10.2026 01:30',
+      'S1;Cellar;L2;Kavaklıdere;kav;2;;',
+    ].join('\n')
+    const who = { user: { name: 'Selin' }, availableRestaurants: [] }
+    render(
+      <AuthContext.Provider value={who as never}>
+        <CountSheetPanel sessionId="S1" house="h1" onSent={vi.fn()} />
+      </AuthContext.Provider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Count on paper' }))
+    load()
+    const name = (await screen.findByLabelText('Who counted on paper?')) as HTMLInputElement
+    // The person loading it, by default.
+    expect(name.value).toBe('Selin')
+    fireEvent.change(name, { target: { value: 'Mert' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Send 1 line' }))
+    await waitFor(() => expect(sessions.recordCountSheetLoad).toHaveBeenCalled())
+    expect(sessions.recordCountSheetLoad).toHaveBeenCalledWith('S1', {
+      countedByName: 'Mert',
+      rowsIn: 1,
+      // The unreadable bottles line, and the Cellar line with no time.
+      rowsRefused: 2,
+      rowsNotSent: 0,
+      shelfKeys: [`sheet:S1:L1:${Date.parse('2026-10-12T22:30:00.000Z')}`],
+    })
+    expect(screen.queryByText(/could not be written down/)).toBeNull()
+  })
+
+  it('names nobody else when the loader counted it, and says so when the load is not written down', async () => {
+    csv.text = [
+      'Count;Shelf;Shelf code;Item;Item code;Full bottles;Open (tenths);Counted at',
+      'S1;Back bar;L1;Gin;gin;3;;13.10.2026 01:30',
+    ].join('\n')
+    sessions.recordCountSheetLoad.mockRejectedValueOnce(new Error('offline'))
+    const who = { user: { name: 'Selin' }, availableRestaurants: [] }
+    render(
+      <AuthContext.Provider value={who as never}>
+        <CountSheetPanel sessionId="S1" house="h1" onSent={vi.fn()} />
+      </AuthContext.Provider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Count on paper' }))
+    load()
+    fireEvent.click(await screen.findByRole('button', { name: 'Send 1 line' }))
+    expect(await screen.findByText(/this load could not be written down/)).toBeTruthy()
+    expect(sessions.recordCountSheetLoad).toHaveBeenCalledWith('S1', expect.objectContaining({ countedByName: '' }))
+    // The lines went in all the same.
+    expect(screen.getByText('Back bar: 1 counted, shelf done')).toBeTruthy()
   })
 
   it('says a whole file from another count is refused and offers nothing to send', async () => {

@@ -111,7 +111,8 @@ export interface MonthCloseChange {
   who: string;
   what: string;
   delta: number | null;
-  unit: 'bottles' | 'money';
+  /** 'ml': a count's open bottles that reached the books after the close (S227). */
+  unit: 'bottles' | 'ml' | 'money';
   currency: string | null;
 }
 
@@ -221,9 +222,10 @@ function signed(text: string, n: number | null): string {
   return n > 0 ? `+${text}` : text;
 }
 
-/** By how much, in its own unit: money in its code (null is the house's), bottles as bottles. */
+/** By how much, in its own unit: money in its code (null is the house's), bottles as bottles, open bottles in ml. */
 function delta(c: Pick<MonthCloseChange, 'delta' | 'unit' | 'currency'>): string {
   if (c.delta === null) return '';
+  if (c.unit === 'ml') return signed(`${figure(c.delta)} ml`, c.delta);
   if (c.unit === 'bottles')
     // "-1 bottle", not "-1 bottles": the word follows how many, not the sign.
     return `${c.delta > 0 ? '+' : c.delta < 0 ? '-' : ''}${countOf(Math.abs(c.delta), 'bottle', 'bottles')}`;
