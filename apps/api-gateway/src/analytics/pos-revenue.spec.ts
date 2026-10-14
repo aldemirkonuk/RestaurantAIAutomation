@@ -6,6 +6,7 @@ import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { RecommendationsService } from "./recommendations.service";
 import { RecommendationActionsService } from "./recommendation-actions.service";
 import { TableAnalyticsService } from "./table-analytics.service";
+import { netSalesOf } from "../dashboard/dashboard.service";
 import { ConfigService } from "@nestjs/config";
 import {
   GoalsService,
@@ -32,7 +33,10 @@ import {
 import { ScenarioVerifyService } from "../simpos/scenario-verify.service";
 import {
   EXPORT_CUTTINGS,
+  REGISTER_NET_SALES,
+  REGISTER_TOTALS_NOT_NET,
   TILL_TOTALS_NOT_NET,
+  checksWithoutNetSaid,
   zeroChecksSaid,
 } from "../reports/exports/report-export-cuttings";
 import type { ExportDoc } from "../reports/exports/report-export-doc";
@@ -2243,37 +2247,149 @@ describe("till totals say they include tax where the house's till prices do (w10
     );
   });
 
-  it("the room and server registers carry it at an inclusive house, and nothing elsewhere", async () => {
-    const waiterCheck = {
+  // w111-net-table-revenue (AW17): the room and server registers summed
+  // pos_checks.total, so at a KDV-inclusive house a table's Taken held KDV
+  // (and tips) beside a dashboard whose net sales leave both out. They now
+  // read the dashboard's own netSalesOf, so the same checks give one number.
+  it("the room and server registers take net sales at an inclusive house, as the dashboard does", async () => {
+    // ₺1,000 net, ₺180 KDV (18%), ₺100 tip: the till's total is ₺1,280.
+    const trCheck = {
       id: "c1",
       table_id: "t1",
       server_name: "Ayşe",
       opened_at: day,
       closed_at: day,
       covers: 2,
-      total: 600,
-      tip: 0,
+      subtotal: 1000,
+      gross_subtotal: 1180,
+      tax_basis: "prices_include_tax",
+      total: 1280,
+      tip: 100,
       items: [],
     };
     const tr = new TableAnalyticsService({
       getClient: () =>
-        makeClient({ restaurants: [TR_INCLUSIVE], pos_checks: [waiterCheck] }),
+        makeClient({
+          restaurants: [TR_INCLUSIVE],
+          restaurant_tables: [{ id: "t1", label: "T1", seats: 4 }],
+          pos_checks: [trCheck],
+        }),
     } as unknown as DatabaseService);
-    const trOut: any = await tr.getWaiterPerformance("r1", 90);
-    expect(trOut.totalsTaxNote).toBe(KDV_TOTALS);
-    const trTables: any = await tr.getTablePerformance("r1", 90);
-    expect(trTables.totalsTaxNote).toBe(KDV_TOTALS);
+    const servers: any = await tr.getWaiterPerformance("r1", 90);
+    expect(servers.revenueBasis).toBe("net");
+    expect(servers.waiters[0].revenue).toBe(1000);
+    expect(servers.waiters[0].avgCheck).toBe(1000);
+    expect("totalsTaxNote" in servers).toBe(false);
+    const room: any = await tr.getTablePerformance("r1", 90);
+    expect(room.revenueBasis).toBe("net");
+    expect(room.tables[0].revenue).toBe(1000);
+    expect(room.tables[0].avgCheck).toBe(1000);
+    expect(room.tables[0].revenuePerSeat).toBe(250);
+    expect("totalsTaxNote" in room).toBe(false);
+    // One check, one number: the dashboard's net for it.
+    expect(room.tables[0].revenue).toBe(netSalesOf(trCheck));
+    // No switch inside the window: nothing to say.
+    expect("netSalesTaxNote" in room).toBe(false);
+  });
 
+  it("a window across the day the house said its prices include KDV says its net is not on one basis", async () => {
+    const said = new Date(Date.now() - 10 * 86400000).toISOString();
+    const tr = new TableAnalyticsService({
+      getClient: () =>
+        makeClient({
+          restaurants: [{ ...TR_INCLUSIVE, tax_basis_confirmed_at: said }],
+          restaurant_tables: [{ id: "t1", label: "T1", seats: 4 }],
+          pos_checks: [],
+        }),
+    } as unknown as DatabaseService);
+    const room: any = await tr.getTablePerformance("r1", 90);
+    expect(room.netSalesTaxNote).toMatch(
+      /^The house said its till prices include KDV from .+, so this period's net is not on one basis\./,
+    );
+    const servers: any = await tr.getWaiterPerformance("r1", 90);
+    expect(servers.netSalesTaxNote).toBe(room.netSalesTaxNote);
+  });
+
+  it("a US house reads the same net reader and gets no tax key; a check with no net is counted, not read as its total", async () => {
+    // $100 food, $8 tax on top, $20 tip: total 128, subtotal 100.
+    const usCheck = (id: string, subtotal: number | null) => ({
+      id,
+      table_id: "t1",
+      server_name: "Maya",
+      opened_at: day,
+      closed_at: day,
+      covers: 2,
+      subtotal,
+      total: 128,
+      tip: 20,
+      items: [],
+    });
     const us = new TableAnalyticsService({
       getClient: () =>
-        makeClient({ restaurants: [LA_HOUSE], pos_checks: [waiterCheck] }),
+        makeClient({
+          restaurants: [LA_HOUSE],
+          restaurant_tables: [{ id: "t1", label: "T1", seats: 4 }],
+          pos_checks: [usCheck("a", 100), usCheck("b", null)],
+        }),
     } as unknown as DatabaseService);
-    expect("totalsTaxNote" in (await us.getWaiterPerformance("r1", 90))).toBe(
-      false,
+    const room: any = await us.getTablePerformance("r1", 90);
+    expect(room.tables[0].revenue).toBe(100);
+    expect(room.tables[0].checks).toBe(2);
+    expect(room.tables[0].avgCheck).toBe(100);
+    expect(room.checksWithoutNet).toBe(1);
+    expect("netSalesTaxNote" in room).toBe(false);
+    expect("totalsTaxNote" in room).toBe(false);
+    const servers: any = await us.getWaiterPerformance("r1", 90);
+    expect(servers.waiters[0].revenue).toBe(100);
+    expect(servers.checksWithoutNet).toBe(1);
+    expect("netSalesTaxNote" in servers).toBe(false);
+
+    // Checks, and not one stated its net: "not recorded", never 0.
+    const blank = new TableAnalyticsService({
+      getClient: () =>
+        makeClient({
+          restaurants: [LA_HOUSE],
+          restaurant_tables: [{ id: "t1", label: "T1", seats: 4 }],
+          pos_checks: [usCheck("b", null)],
+        }),
+    } as unknown as DatabaseService);
+    const none: any = await blank.getTablePerformance("r1", 90);
+    expect(none.tables[0].revenue).toBeNull();
+    expect(none.tables[0].revenuePerSeat).toBeNull();
+  });
+
+  it("the room and server exports call net Taken net, say the switch, and never print a not-recorded Taken as nothing", () => {
+    const switchNote =
+      "The house said its till prices include KDV from 10 September 2026, so this period's net is not on one basis.";
+    for (const key of ["seats", "service"] as const) {
+      const out = EXPORT_CUTTINGS[key].write(
+        {
+          ...(PAYLOADS[key] as Record<string, unknown>),
+          revenueBasis: "net",
+          checksWithoutNet: 2,
+          netSalesTaxNote: switchNote,
+        },
+        { days: 90 },
+      );
+      expect(out.basis).toContain(REGISTER_NET_SALES);
+      expect(out.basis).not.toContain(REGISTER_TOTALS_NOT_NET);
+      expect(out.basis).toContain(switchNote);
+      expect(out.notes).toContain(checksWithoutNetSaid(2));
+      // An older gateway (gross totals) keeps its own sentence.
+      const old = EXPORT_CUTTINGS[key].write(PAYLOADS[key], { days: 90 });
+      expect(old.basis).toContain(REGISTER_TOTALS_NOT_NET);
+      expect(old.basis).not.toContain(REGISTER_NET_SALES);
+    }
+    const seats = PAYLOADS.seats as any;
+    const blank = EXPORT_CUTTINGS.seats.write(
+      {
+        ...seats,
+        revenueBasis: "net",
+        tables: [{ ...seats.tables[0], checks: 3, revenue: null }],
+      },
+      { days: 90 },
     );
-    expect("totalsTaxNote" in (await us.getTablePerformance("r1", 90))).toBe(
-      false,
-    );
+    expect(JSON.stringify(blank.tables)).toContain("net sales not recorded");
   });
 
   it("the till, room, server and goals exports print it only when the gateway sent it", () => {

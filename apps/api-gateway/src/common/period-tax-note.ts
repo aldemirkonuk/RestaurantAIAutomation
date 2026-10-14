@@ -65,7 +65,8 @@ export const PERIOD_TAX_NOTE_UNREAD =
 
 /**
  * w109-gross-basis (ADR 0341): the readers that sum `pos_checks.total` (the
- * till register's Taken, the room and server registers) or the till's own
+ * till register's Taken; the room and server registers until w111 moved them
+ * to net sales) or the till's own
  * line prices (Average check and Wine revenue goals) stay on what the till
  * rang, which is what /reports Taken is; ingest changes only `subtotal`
  * (Decision 5), so those figures keep one basis across the switch day. At a
