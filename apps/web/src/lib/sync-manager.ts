@@ -130,6 +130,11 @@ function parkedChangeOf(m: PendingMutation): ParkedChange {
     }
     case 'inventory.spotCount':
       return { id: m.id, label: `Count of ${text(d.itemLabel) ?? 'an item'}` }
+    // F-1678: a row's pour and manual adjust, named by the wine.
+    case 'inventory.pour':
+      return { id: m.id, label: `Pour of ${text(d.itemLabel) ?? 'a wine'}` }
+    case 'inventory.adjust':
+      return { id: m.id, label: `Stock change to ${text(d.itemLabel) ?? 'a wine'}` }
     // F-1544: a stock-take's "shelf done" and a parked unknown bottle, named
     // by the shelf and the label, and sent back to the walk they belong to.
     case 'inventory.countShelfDone':

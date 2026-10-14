@@ -497,6 +497,22 @@ describe('F-1258: every parked change is named for the strip, and Discard remove
   })
 })
 
+describe('F-1678: a refused pour or row adjust is named by its wine', () => {
+  it('says "Pour of" and "Stock change to", never "A change"', async () => {
+    const parked = { reason: 'refused' as const, status: 422, at: '2026-10-14T21:00:00.000Z' }
+    vi.mocked(offlineStorage.getPendingMutations).mockResolvedValue([
+      { ...mutation('pour-1', 'inventory.pour', 0), data: { itemId: 'i1', itemLabel: 'Kavaklıdere Yakut', body: {} }, parked },
+      { ...mutation('adj-1', 'inventory.adjust', 0), data: { itemId: 'i1', itemLabel: 'Kavaklıdere Yakut', body: {} }, parked },
+    ])
+    await syncManager.refresh()
+
+    expect(syncManager.getStatus().parkedChanges).toEqual([
+      { id: 'pour-1', label: 'Pour of Kavaklıdere Yakut' },
+      { id: 'adj-1', label: 'Stock change to Kavaklıdere Yakut' },
+    ])
+  })
+})
+
 describe('F-1544: a stock-take\'s parked acts are named by shelf and label, and point back at the walk', () => {
   const parked = { reason: 'refused' as const, status: 409, at: '2026-10-12T23:00:00.000Z' }
   it('names a shelf done and a parked bottle in plain words', async () => {

@@ -7,6 +7,7 @@ import { RowExpansion } from './RowExpansion'
 import type { InventoryItem } from '../useInventoryPage'
 import { setHouseLocale } from '../../../lib/houseCurrency'
 import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsStore'
+import { offlineStorage } from '../../../lib/offline-storage'
 
 const navigate = vi.hoisted(() => vi.fn())
 const getItemActivity = vi.hoisted(() => vi.fn())
@@ -929,7 +930,8 @@ const lostReply = () => new AxiosError('timeout of 30000ms exceeded', 'ECONNABOR
  * F-1594: a pour, an adjust or a move whose reply was lost said "failed", and
  * the next tap minted a new key, so a second movement landed. The same act
  * re-sent now carries the same key (the gateway answers it with the first
- * result), and a lost reply is said as not confirmed, not failed.
+ * result), and a lost reply is said as not confirmed, not failed. A pour or an
+ * adjust is now kept on this phone with that key instead (F-1678).
  */
 describe('RowExpansion — a re-tap after a lost reply books once (F-1594)', () => {
   const shelves = [
@@ -947,56 +949,72 @@ describe('RowExpansion — a re-tap after a lost reply books once (F-1594)', () 
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true)
+    vi.spyOn(offlineStorage, 'addPendingMutation').mockResolvedValue('m-1')
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
     getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
   })
 
-  it('[REVERT-FAILS] a manual adjust re-sent after a lost reply carries the same key; the next act a new one', async () => {
+  // F-1678: a pour or an adjust whose reply was lost is no longer left to a
+  // re-tap: it is kept on this phone with the key it was sent with, so its
+  // replay is answered with the first result, and the next tap is a new act.
+  const queued = () => vi.mocked(offlineStorage.addPendingMutation).mock.calls.map((c) => c[0])
+
+  it('[REVERT-FAILS] a manual adjust whose reply was lost is kept with the same key; the next act a new one', async () => {
     adjustStock.mockRejectedValueOnce(lostReply()).mockResolvedValue({})
     renderRow({ liveStock: 10 })
     await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
-    await waitFor(() => expect(toastApi.error).toHaveBeenCalledWith('Adjustment not confirmed', expect.stringMatching(/may have been saved/)))
+    await waitFor(() => expect(toastApi.success).toHaveBeenCalledWith('Change saved on this phone', expect.stringMatching(/kept on this phone/)))
+    expect(toastApi.error).not.toHaveBeenCalled()
+    expect(queued()).toEqual([
+      expect.objectContaining({
+        type: 'inventory.adjust',
+        data: expect.objectContaining({ itemId: 'inv-1', body: expect.objectContaining({ quantityChange: -1, idempotencyKey: adjustStock.mock.calls[0][1].idempotencyKey }) }),
+      }),
+    ])
 
-    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
-    await waitFor(() => expect(adjustStock).toHaveBeenCalledTimes(2))
-    expect(adjustStock.mock.calls[1][1].idempotencyKey).toBe(adjustStock.mock.calls[0][1].idempotencyKey)
-
-    // Landed: the same words again on purpose are a second act.
-    await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
-    await waitFor(() => expect(adjustStock).toHaveBeenCalledTimes(3))
-    expect(adjustStock.mock.calls[2][1].idempotencyKey).not.toBe(adjustStock.mock.calls[0][1].idempotencyKey)
-  })
-
-  it('[REVERT-FAILS] a changed adjust after a lost reply is a different act, with a different key', async () => {
-    adjustStock.mockRejectedValueOnce(lostReply()).mockResolvedValue({})
-    renderRow({ liveStock: 10 })
-    await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
-    await waitFor(() => expect(toastApi.error).toHaveBeenCalled())
     await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
     await waitFor(() => expect(adjustStock).toHaveBeenCalledTimes(2))
     expect(adjustStock.mock.calls[1][1].idempotencyKey).not.toBe(adjustStock.mock.calls[0][1].idempotencyKey)
   })
 
-  it('[REVERT-FAILS] a pour re-tapped after a lost reply carries the same key', async () => {
+  it('[REVERT-FAILS] a pour whose reply was lost is kept with the same key; the next tap a new pour', async () => {
     recordPour.mockRejectedValueOnce(lostReply()).mockResolvedValue({ pour: {}, item: null })
     renderRow(split, shelves)
     await userEvent.selectOptions(screen.getByLabelText('Which shelf'), 'loc-bar')
     await userEvent.click(screen.getByRole('button', { name: 'Record pour' }))
-    await waitFor(() => expect(toastApi.error).toHaveBeenCalledWith('Pour not confirmed', expect.any(String)))
-    await userEvent.click(screen.getByRole('button', { name: 'Record pour' }))
-    await waitFor(() => expect(recordPour).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(toastApi.success).toHaveBeenCalledWith('Pour saved on this phone', expect.any(String)))
     const first = recordPour.mock.calls[0][1].idempotencyKey
     expect(first).toMatch(/^pour:inv-1:/)
-    expect(recordPour.mock.calls[1][1].idempotencyKey).toBe(first)
+    expect(queued()).toEqual([
+      expect.objectContaining({
+        type: 'inventory.pour',
+        data: expect.objectContaining({ itemId: 'inv-1', body: expect.objectContaining({ locationId: 'loc-bar', idempotencyKey: first }) }),
+      }),
+    ])
 
     await userEvent.click(screen.getByRole('button', { name: 'Record pour' }))
-    await waitFor(() => expect(recordPour).toHaveBeenCalledTimes(3))
-    expect(recordPour.mock.calls[2][1].idempotencyKey).not.toBe(first)
+    await waitFor(() => expect(recordPour).toHaveBeenCalledTimes(2))
+    expect(recordPour.mock.calls[1][1].idempotencyKey).not.toBe(first)
+  })
+
+  it('[REVERT-FAILS] with no signal a pour and a breakage are kept on this phone, not sent and not lost', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    renderRow(split, shelves)
+    await userEvent.selectOptions(screen.getByLabelText('Which shelf'), 'loc-bar')
+    await userEvent.click(screen.getByRole('button', { name: 'Record pour' }))
+    await waitFor(() => expect(toastApi.success).toHaveBeenCalledWith('Pour saved on this phone', expect.stringMatching(/when the signal is back/)))
+    await userEvent.selectOptions(screen.getByLabelText('Reason'), 'Breakage')
+    await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(toastApi.success).toHaveBeenCalledWith('Change saved on this phone', expect.any(String)))
+    expect(recordPour).not.toHaveBeenCalled()
+    expect(adjustStock).not.toHaveBeenCalled()
+    expect(queued().map((q) => q.type)).toEqual(['inventory.pour', 'inventory.adjust'])
+    expect(queued()[1].data).toMatchObject({ body: { quantityChange: -1, reason: 'Breakage', transactionType: 'waste', fromLocationId: 'loc-bar' } })
   })
 
   it('[REVERT-FAILS] a move re-sent after a lost reply carries the same key', async () => {
