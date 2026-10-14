@@ -133,6 +133,9 @@ function houseHandler(
               external_check_id: "T-1",
               subtotal: 900,
               total: 1000,
+              tip: 90,
+              server_name: "Deniz",
+              server_external_id: "emp-3",
               voided: false,
               opened_at: "2026-07-03T18:00:00Z",
               closed_at: "2026-07-03T20:00:00Z",
@@ -142,6 +145,8 @@ function houseHandler(
               external_check_id: "T-2",
               subtotal: 50,
               total: 60,
+              tip: 10,
+              server_name: "Deniz",
               voided: true,
               opened_at: "2026-07-03T18:00:00Z",
               closed_at: "2026-07-03T20:00:00Z",
@@ -151,6 +156,9 @@ function houseHandler(
               external_check_id: "T-3",
               subtotal: null,
               total: 30,
+              tip: 15.5,
+              server_name: null,
+              server_external_id: "emp-7",
               voided: false,
               opened_at: "2026-07-04T18:00:00Z",
               closed_at: "2026-07-04T20:00:00Z",
@@ -160,6 +168,8 @@ function houseHandler(
               external_check_id: "T-4",
               subtotal: 70,
               total: 80,
+              tip: 20,
+              server_name: "Deniz",
               voided: false,
               opened_at: "2026-07-31T22:30:00Z",
               closed_at: "2026-07-31T23:00:00Z",
@@ -361,6 +371,13 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
       // F-1606: no check here was made pre-tax, so no tax figure.
       taxInside: null,
       taxInsideCheckCount: 0,
+      // F-1691: the month's tips, voided and out-of-month checks left out.
+      tips: 105.5,
+      tipsCheckCount: 2,
+      tipsByServer: [
+        { server: "Deniz", tips: 90, checks: 1 },
+        { server: "emp-7", tips: 15.5, checks: 1 },
+      ],
       kept: { k1: 900, k3: null },
     });
     expect(f.purchases.kept).toEqual({
@@ -543,6 +560,61 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
     expect(dto.taxBasis).toBe("prices_include_tax");
     expect(row.till_csv).toContain("KDV inside till prices");
     expect(row.till_csv).toContain("from 1 of 3 checks");
+  });
+
+  it("[REVERT-FAILS] keeps the month's tips as money, in total and by server, in the record and its till file (F-1691)", async () => {
+    const { svc, calls } = service(houseHandler());
+    const dto = await svc.closeMonth(HOUSE, ACTOR, "2026-07");
+    const insert = calls.find(
+      (c) => c.table === "month_closes" && has(c.ops, "insert"),
+    )!;
+    const row = arg(insert.ops, "insert")![0] as Record<string, any>;
+    const read = calls.find((c) => c.table === "pos_checks")!.ops;
+    expect(String(arg(read, "select")![0])).toContain(
+      "tip, server_name, server_external_id",
+    );
+    // The page gets them too: owners and managers only, as every close route.
+    expect(dto.figures.till.tips).toBe(105.5);
+    expect(dto.figures.till.tipsCheckCount).toBe(2);
+    const csv = row.till_csv as string;
+    expect(csv).toContain("Tips by server");
+    // A TR house's file: ";" between cells, "," before the decimals.
+    expect(csv).toContain("Tips;105,5;TRY");
+    expect(csv).toContain("Deniz;1;90");
+    expect(csv).toContain("emp-7;1;15,5");
+    expect(csv).toContain("voided checks left out");
+  });
+
+  it("says a month's tips are not recorded, never 0, when no check carried one (F-1691)", async () => {
+    const { svc, calls } = service(
+      houseHandler({
+        pos_checks: () => ({
+          data: [
+            {
+              id: "k1",
+              external_check_id: "T-1",
+              subtotal: 900,
+              total: 1000,
+              tip: null,
+              voided: false,
+              opened_at: "2026-07-03T18:00:00Z",
+              closed_at: "2026-07-03T20:00:00Z",
+            },
+          ],
+          error: null,
+          count: 1,
+        }),
+      }),
+    );
+    await svc.closeMonth(HOUSE, ACTOR, "2026-07");
+    const insert = calls.find(
+      (c) => c.table === "month_closes" && has(c.ops, "insert"),
+    )!;
+    const row = arg(insert.ops, "insert")![0] as Record<string, any>;
+    expect(row.figures.till.tips).toBeNull();
+    expect(row.figures.till.tipsCheckCount).toBe(0);
+    expect(row.figures.till.tipsByServer).toEqual([]);
+    expect(row.till_csv).not.toContain("Tips by server");
   });
 
   it("keeps no basis when the house row names none, and no tax figure", async () => {

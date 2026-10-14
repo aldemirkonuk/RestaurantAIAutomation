@@ -513,6 +513,46 @@ describe('MonthCloseShelf (F-1013)', () => {
     ]);
   });
 
+  it('keeps the month\'s tips as money, in total and by server (F-1691)', async () => {
+    const f = close().figures;
+    const till = {
+      ...f.till,
+      tips: 105.5,
+      tipsCheckCount: 8,
+      tipsByServer: [
+        { server: 'Deniz', tips: 90, checks: 6 },
+        { server: null, tips: 15.5, checks: 2 },
+      ],
+    };
+    api.get.mockResolvedValueOnce({ data: { closes: [close({ figures: { ...f, till } })] } });
+    wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    const kept = await screen.findByLabelText(/Figures kept for/);
+    expect(kept.textContent).toContain('Tips: €105.50 from 8 of 10 checks; the rest carried no tip amount');
+    const by = within(kept).getByLabelText('Tips by server');
+    expect(within(by).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Deniz: €90 over 6 checks',
+      'No server named: €15.50 over 2 checks',
+    ]);
+  });
+
+  it('says a close kept before tips were kept, never as none (F-1691)', async () => {
+    api.get.mockResolvedValueOnce({ data: { closes: [close()] } });
+    wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    const kept = await screen.findByLabelText(/Figures kept for/);
+    expect(kept.textContent).toContain('Tips: not kept with this close; close the month again to keep them');
+  });
+
+  it('writes when a month was closed with its year, the house\'s way (F-1692)', async () => {
+    setHouseLocale('tr-TR');
+    api.get.mockResolvedValueOnce({
+      data: { closes: [close({ month: '2025-12', closedAt: '2026-01-03T07:00:00Z' })] },
+    });
+    const { container } = wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    await screen.findByLabelText(/Figures kept for/);
+    // 10:00 on 3 January 2026, Istanbul time, in digits: never "Jan 3, 10:00".
+    expect(container.textContent).toContain('03.01.2026 10:00 by Ayla');
+  });
+
   it('says the list could not be read rather than showing an empty house', async () => {
     api.get.mockRejectedValueOnce(new Error('Network Error'));
     wrap(<MonthCloseShelf restaurantId="r1" zone={null} />);

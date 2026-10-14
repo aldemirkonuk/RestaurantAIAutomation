@@ -134,6 +134,17 @@ export interface TillFigures {
   /** Checks whose tax is in `taxInside`; the rest of `netSalesCheckCount` carry none. */
   taxInsideCheckCount?: number | null;
   /**
+   * F-1691: the month's tips as money, the sum of `tip` over the non-voided
+   * checks that carried one (a 0 is a tip recorded as none). Null when no
+   * check carried one or the till could not say. Absent on a close kept
+   * before F-1691: unknown, never none.
+   */
+  tips?: number | null;
+  /** Checks whose tip is in `tips`; the rest of `checkCount` carried none. */
+  tipsCheckCount?: number | null;
+  /** `tips` by who served the check, most first; null is a check naming no one. */
+  tipsByServer?: TipsByServer[];
+  /**
    * Each counted check's net figure at the close, by id (F-1467). A later void
    * or change is found by setting the month's checks against this, not by a
    * timestamp: a re-sent check keeps its first `imported_at`, and the till's
@@ -141,6 +152,15 @@ export interface TillFigures {
    * the record; never sent to the page.
    */
   kept?: Record<string, number | null>;
+}
+
+/** One server's share of the month's tips (F-1691). */
+export interface TipsByServer {
+  /** As the till names them (`server_name`, else its own id); null when it named no one. */
+  server: string | null;
+  tips: number;
+  /** Their checks that carried a tip. */
+  checks: number;
 }
 
 /** The cellar's value when the month was closed (`AnalyticsService.getFinancialSummary`). */
@@ -370,6 +390,9 @@ interface TillCheck {
   /** F-1606: `gross_subtotal`, and the basis ingest wrote it under. */
   gross: number | null;
   taxBasis: string | null;
+  /** F-1691: its `tip`, and who served it; null when the till sent none. */
+  tip: number | null;
+  server: string | null;
   voided: boolean;
   imported_at: string | null;
   source_modified_at: string | null;
@@ -687,14 +710,28 @@ export class MonthCloseService {
       house.taxBasis === "prices_include_tax" ||
       (figures.till.taxInside ?? null) !== null;
     const tillCsv = this.tillFile(
-      // The month's tax rides with the till's file (F-1606).
-      tillWindow && typeof tillWindow === "object" && saysTaxInside
+      tillWindow && typeof tillWindow === "object"
         ? {
             ...tillWindow,
-            taxInside: figures.till.taxInside ?? null,
-            taxInsideCheckCount: figures.till.taxInsideCheckCount ?? null,
-            netSalesCheckCount: figures.till.netSalesCheckCount,
-            taxWord: figures.taxWord,
+            // F-1691: the month's tips ride with the till's file, so Taken's
+            // "includes tips" says how much.
+            ...(figures.till.posConnected
+              ? {
+                  tips: figures.till.tips ?? null,
+                  tipsCheckCount: figures.till.tipsCheckCount ?? null,
+                  tipsOfChecks: figures.till.checkCount,
+                  tipsByServer: figures.till.tipsByServer ?? [],
+                }
+              : {}),
+            // The month's tax rides with the till's file (F-1606).
+            ...(saysTaxInside
+              ? {
+                  taxInside: figures.till.taxInside ?? null,
+                  taxInsideCheckCount: figures.till.taxInsideCheckCount ?? null,
+                  netSalesCheckCount: figures.till.netSalesCheckCount,
+                  taxWord: figures.taxWord,
+                }
+              : {}),
           }
         : tillWindow,
       month,
@@ -1016,7 +1053,7 @@ export class MonthCloseService {
             this.db
               .from("pos_checks")
               .select(
-                "id, external_check_id, subtotal, gross_subtotal, tax_basis, voided, opened_at, closed_at, imported_at, source_modified_at",
+                "id, external_check_id, subtotal, gross_subtotal, tax_basis, tip, server_name, server_external_id, voided, opened_at, closed_at, imported_at, source_modified_at",
                 { count: "exact" },
               )
               .eq("restaurant_id", restaurantId)
@@ -1125,6 +1162,13 @@ export class MonthCloseService {
         net: finite(c.subtotal),
         gross: finite(c.gross_subtotal),
         taxBasis: typeof c.tax_basis === "string" ? c.tax_basis : null,
+        tip: finite(c.tip),
+        // Who served it, as the server register names them.
+        server:
+          (typeof c.server_name === "string" && c.server_name.trim()) ||
+          (typeof c.server_external_id === "string" &&
+            c.server_external_id.trim()) ||
+          null,
         voided: c.voided === true,
         imported_at: typeof c.imported_at === "string" ? c.imported_at : null,
         source_modified_at:
@@ -1140,10 +1184,27 @@ export class MonthCloseService {
     let checkCount = 0;
     let taxInside: number | null = null;
     let taxInsideCheckCount = 0;
+    let tips: number | null = null;
+    let tipsCheckCount = 0;
+    const tipsByServer = new Map<string | null, TipsByServer>();
     for (const c of checks) {
       if (c.voided) continue;
       checkCount += 1;
       keptChecks[c.id] = c.net;
+      // F-1691: a tip is money of its own, whether or not the check carried
+      // a net figure.
+      if (c.tip !== null) {
+        tips = (tips ?? 0) + c.tip;
+        tipsCheckCount += 1;
+        const s = tipsByServer.get(c.server) ?? {
+          server: c.server,
+          tips: 0,
+          checks: 0,
+        };
+        s.tips += c.tip;
+        s.checks += 1;
+        tipsByServer.set(c.server, s);
+      }
       if (c.net === null) continue;
       netSales = (netSales ?? 0) + c.net;
       netSalesCheckCount += 1;
@@ -1194,6 +1255,15 @@ export class MonthCloseService {
               .map(([date, net]) => ({ date, netSales: cents(net) })),
             taxInside: taxInside === null ? null : cents(taxInside),
             taxInsideCheckCount,
+            tips: tips === null ? null : cents(tips),
+            tipsCheckCount,
+            tipsByServer: [...tipsByServer.values()]
+              .map((s) => ({ ...s, tips: cents(s.tips) }))
+              .sort(
+                (a, b) =>
+                  b.tips - a.tips ||
+                  String(a.server ?? "").localeCompare(String(b.server ?? "")),
+              ),
             kept: keptChecks,
           }
         : {
@@ -1204,6 +1274,9 @@ export class MonthCloseService {
             days: [],
             taxInside: null,
             taxInsideCheckCount: null,
+            tips: null,
+            tipsCheckCount: null,
+            tipsByServer: [],
             kept: {},
           },
       valuation: {
