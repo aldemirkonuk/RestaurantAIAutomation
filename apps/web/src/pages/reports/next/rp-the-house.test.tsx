@@ -64,8 +64,23 @@ describe('the till month follows the house clock (F-909)', () => {
   it('offers the months up to the house’s month, not the device’s', () => {
     const behind = firstMonth(BEHIND);
     expect(behind[0]).toBe('2026-10');
-    expect(behind).toHaveLength(12);
+    expect(behind).toHaveLength(24);
     expect(firstMonth(AHEAD)[0]).toBe('2026-11');
+  });
+
+  it('reaches the whole closing year in January, and its quarters (F-1604)', () => {
+    vi.setSystemTime(new Date('2027-01-10T12:00:00Z'));
+    const { unmount } = render(
+      <TillWindowPicker days={30} onChange={() => {}} onMonth={() => {}} zone="Europe/Istanbul" />,
+    );
+    const values = (name: string) =>
+      within(screen.getByRole('combobox', { name }))
+        .getAllByRole('option')
+        .map((o) => (o as HTMLOptionElement).value)
+        .filter(Boolean);
+    expect(values('Calendar month')).toEqual(expect.arrayContaining(['2026-01', '2025-02']));
+    expect(values('Calendar quarter')).toEqual(expect.arrayContaining(['2026-Q1', '2025-Q2']));
+    unmount();
   });
 
   it('says "so far" of the house’s current month only', () => {

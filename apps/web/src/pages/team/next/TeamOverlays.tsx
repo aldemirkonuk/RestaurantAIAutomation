@@ -34,6 +34,7 @@ import {
   createSchedule,
   createTimeOff,
   getTextSenders,
+  getWeek,
   publishSchedule,
   reviewTimeOff,
   type HouseMoney,
@@ -51,6 +52,7 @@ import {
   addDays,
   fmtDayShort,
   fmtWeekRange,
+  mondayOf,
   resolveName,
   todayIso,
   workedHours,
@@ -1210,6 +1212,49 @@ export function TimeOffSheet({
 
 /* ── export ──────────────────────────────────────────────────────────────── */
 
+/* ── export periods (F-1610) ─────────────────────────────────────────────────
+   Labour was exported one week at a time, so a year was 52 files and a week
+   straddling 31 December could not be cut at the year. A period is a week
+   (`week`), a calendar month (YYYY-MM) or a calendar year (YYYY). */
+
+/** First and last day of a month or year period, or null for a week or anything else. */
+export function periodBounds(period: string): { from: string; to: string } | null {
+  const y = /^(\d{4})$/.exec(period);
+  if (y) return { from: `${y[1]}-01-01`, to: `${y[1]}-12-31` };
+  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(period);
+  if (!m) return null;
+  const last = new Date(Date.UTC(Number(m[1]), Number(m[2]), 0)).getUTCDate();
+  return { from: `${period}-01`, to: `${period}-${String(last).padStart(2, '0')}` };
+}
+
+/** The Monday of every week that has a day in [from, to], in order. */
+export function weeksCovering(from: string, to: string): string[] {
+  const [y, mo, d] = from.split('-').map(Number);
+  const weeks: string[] = [];
+  for (let w = mondayOf(new Date(y, mo - 1, d)); w <= to; w = addDays(w, 7)) weeks.push(w);
+  return weeks;
+}
+
+/**
+ * What the export offers beside the week shown: the 13 months up to the
+ * week's month, then its year and the one before.
+ */
+export function exportPeriods(weekStart: string): string[] {
+  const [y, mo] = weekStart.split('-').map(Number);
+  const months = Array.from({ length: 13 }, (_, i) => {
+    const d = new Date(Date.UTC(y, mo - 1 - i, 1));
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  });
+  return [...months, String(y), String(y - 1)];
+}
+
+/** "March 2026" for 2026-03, "2026" for a year. */
+export function periodLabel(period: string): string {
+  if (/^\d{4}$/.test(period)) return period;
+  const d = new Date(`${period}-01T12:00:00`);
+  return Number.isNaN(d.getTime()) ? period : d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
 const FORMATS: ReadonlyArray<[TableExportFormat, string]> = [
   ['csv', 'CSV'],
   ['excel', 'Excel'],
@@ -1239,6 +1284,9 @@ export function ExportPopover({
   onClose: () => void;
 }) {
   const [failed, setFailed] = useState<string | null>(null);
+  /** The week shown, or a month or a year (F-1610). */
+  const [period, setPeriod] = useState('week');
+  const [reading, setReading] = useState<string | null>(null);
   /** Hours on the house's country's breaks (founder S195). */
   const rules = useHouseLabourRules();
   /** And on the house's clock: a DST night is the hours it is priced on (F-1481). */
@@ -1297,18 +1345,55 @@ export function ExportPopover({
       : []),
   ];
 
+  /**
+   * A month or a year is read week by week through the same reader as the
+   * grid, so hours and cost are priced exactly as the week shows them, and
+   * cut at the period's first and last day (F-1610). A week that could not be
+   * read stops the file: one missing would read as a week with no shifts.
+   */
+  const periodRows = async (bounds: { from: string; to: string }): Promise<Shift[] | string> => {
+    const weeks = weeksCovering(bounds.from, bounds.to);
+    const seen = new Map<string, Shift>();
+    for (let i = 0; i < weeks.length; i += 4) {
+      setReading(`Reading week ${i + 1} of ${weeks.length}…`);
+      const batch = weeks.slice(i, i + 4);
+      const read = await Promise.all(
+        batch.map((w) => getWeek(w).then((p) => p.shifts ?? [], () => null)),
+      );
+      const lost = read.findIndex((r) => r === null);
+      if (lost >= 0) return `the week of ${batch[lost]} could not be read, so no file was written`;
+      for (const s of read.flat() as Shift[])
+        if (s.shift_date >= bounds.from && s.shift_date <= bounds.to) seen.set(s.id, s);
+    }
+    return [...seen.values()].sort(
+      (a, b) => a.shift_date.localeCompare(b.shift_date) || a.start_time.localeCompare(b.start_time),
+    );
+  };
+
   const run = async (format: TableExportFormat) => {
     setFailed(null);
+    const bounds = periodBounds(period);
     try {
+      let out = rows;
+      if (bounds) {
+        const read = await periodRows(bounds);
+        setReading(null);
+        if (typeof read === 'string') {
+          setFailed(read);
+          return;
+        }
+        out = read;
+      }
       await exportTable({
         format,
-        rows,
+        rows: out,
         columns,
-        filename: `schedule-${weekStart}`,
-        title: `Schedule — week of ${weekStart}`,
+        filename: bounds ? `schedule-${period}` : `schedule-${weekStart}`,
+        title: bounds ? `Schedule — ${periodLabel(period)}` : `Schedule — week of ${weekStart}`,
       });
       onClose();
     } catch (e) {
+      setReading(null);
       setFailed(e instanceof Error ? e.message : 'the export did not complete');
     }
   };
@@ -1323,9 +1408,26 @@ export function ExportPopover({
       showClose={false}
     >
       <span className="mdv-sect">
-        {shifts === null ? 'The week has not answered' : `${rows.length} shifts`}
+        {shifts === null ? 'The week has not answered' : `${rows.length} shifts this week`}
       </span>
-      {shifts === null ? (
+      <label className="mdv-item">
+        <span className="mdv-item__text">Export</span>
+        <select
+          aria-label="Period to export"
+          value={period}
+          disabled={reading !== null}
+          onChange={(e) => setPeriod(e.target.value)}
+        >
+          <option value="week">This week</option>
+          {exportPeriods(weekStart).map((p) => (
+            <option key={p} value={p}>
+              {periodLabel(p)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {reading && <p className="mdv-note">{reading}</p>}
+      {shifts === null && period === 'week' ? (
         <p className="mdv-note">
           Nothing is exported while the week is unknown — an empty file would read as a
           week with no shifts.
@@ -1336,6 +1438,7 @@ export function ExportPopover({
             key={format}
             type="button"
             className="mdv-item"
+            disabled={reading !== null}
             onClick={() => void run(format)}
           >
             {format === 'clipboard' ? (

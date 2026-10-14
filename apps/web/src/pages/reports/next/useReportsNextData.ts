@@ -29,7 +29,7 @@
  */
 
 import { useCallback, useMemo } from 'react';
-import { useQueries, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
@@ -37,6 +37,8 @@ import { failureOf, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
 import { useReportExports, type ExportDesk } from './useReportExports';
+import { yearBefore, type TillWindow } from './rp-registers-trade';
+import type { ViewCtx } from './rp-spec';
 import {
   ANALYSIS_IDS,
   DEFAULT_ON,
@@ -257,6 +259,11 @@ export interface ReportsNextData {
   sheetKnown: boolean;
   /** The analyses this reader's role may put on the sheet (`offeredFor`). */
   offered: AnalysisId[];
+  /**
+   * The till over the same month or quarter a year before the one it is set
+   * to (F-1604); absent on a trailing window or with the till off the sheet.
+   */
+  tillLastYear?: ViewCtx['lastYear'];
   refetchAll: () => void;
 }
 
@@ -323,6 +330,29 @@ export function useReportsNextData(
     }),
   });
 
+  // F-1604: the same month or quarter a year before, by the till's own reader.
+  const before = tillMonth && active.includes('till') ? yearBefore(tillMonth) : null;
+  const lastYearQuery = useQuery({
+    queryKey: [ROOT, 'till', rid, 'year-before', before],
+    enabled: !!rid && before !== null,
+    staleTime: 60_000,
+    retry: 1,
+    queryFn: async () => {
+      const { data } = await apiClient.get<unknown>(
+        CATALOGUE.till.path!(rid as string, { days: tillDays, month: before }),
+      );
+      return CATALOGUE.till.select(data) as TillWindow;
+    },
+  });
+  const tillLastYear: ViewCtx['lastYear'] =
+    before === null
+      ? undefined
+      : lastYearQuery.isError
+        ? 'unread'
+        : lastYearQuery.data === undefined
+          ? 'reading'
+          : lastYearQuery.data;
+
   const registers = useMemo(() => {
     const map: Partial<Record<AnalysisId, Register<unknown>>> = {};
     active.forEach((id, i) => {
@@ -375,6 +405,7 @@ export function useReportsNextData(
     saveSheet,
     sheetKnown: !prefsLoading,
     offered,
+    tillLastYear,
     refetchAll,
   };
 }

@@ -358,8 +358,9 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       zone,
       goals: data.goalsDesk,
       goalsNow: goalsNowFrom(data.registers.goals?.data),
+      lastYear: data.tillLastYear,
     }),
-    [data.goalsDesk, tillDays, tillMonth, tillWeek, zone, data.registers.goals?.data],
+    [data.goalsDesk, tillDays, tillMonth, tillWeek, zone, data.registers.goals?.data, data.tillLastYear],
   );
 
   // F-1423: the grid places each cutting by transform, so the DOM order is

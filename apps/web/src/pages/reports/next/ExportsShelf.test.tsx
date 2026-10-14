@@ -25,7 +25,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 vi.mock('@/services/api/client', () => ({ apiClient: api }));
 
-import ExportsShelf from './ExportsShelf';
+import ExportsShelf, { KEPT_SAID, emptyShelfSaid } from './ExportsShelf';
 import { REVOKE_AFTER_MS, reasonOf, saveFile, useReportExports, type ExportDesk } from './useReportExports';
 
 const base: ReportExport = {
@@ -73,6 +73,23 @@ function desk(over: Partial<ExportDesk> = {}): ExportDesk {
 
 const shelf = (d: ExportDesk, onSheet = ['reading', 'till', 'ledger', 'writing'] as never[]) =>
   render(<ExportsShelf desk={d} onSheet={onSheet} tillDays={30} />);
+
+describe('the shelf says how long it keeps a file (F-1605)', () => {
+  it('names the 90 days and the 50 per house, and the day each file is cleared', () => {
+    shelf(desk({ exports: [base], total: 1 }));
+    expect(screen.getByText(new RegExp(KEPT_SAID.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeInTheDocument();
+    expect(KEPT_SAID).toContain('90 days');
+    expect(KEPT_SAID).toContain('newest 50');
+    const row = screen.getAllByRole('listitem')[0];
+    expect(within(row).getByText(/kept until 16 Dec 2026|kept until Dec 16, 2026/)).toBeInTheDocument();
+  });
+
+  it('dates the clearing on the house’s calendar', () => {
+    const now = Date.parse('2026-10-12T22:30:00Z');
+    expect(emptyShelfSaid('Europe/Istanbul', now)).toMatch(/before (15 Jul 2026|Jul 15, 2026) has been cleared/);
+    expect(emptyShelfSaid('America/Detroit', now)).toMatch(/before (14 Jul 2026|Jul 14, 2026) has been cleared/);
+  });
+});
 
 describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
   it('a written export offers its two files and says how many figures are withheld', () => {
@@ -151,7 +168,7 @@ describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
     const d = desk({ exports: undefined, total: null, listFailure: { status: 500, message: 'permission denied', forbidden: false } });
     shelf(d);
     expect(screen.getByRole('alert')).toHaveTextContent('The list of exports could not be read (permission denied).');
-    expect(screen.queryByText('Nothing has been written up for this house yet.')).toBeNull();
+    expect(screen.queryByText(/Nothing is on the shelf/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Read again' }));
     expect(d.refetch).toHaveBeenCalled();
   });
@@ -159,7 +176,7 @@ describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
   it('while the list is in flight it says it is reading, not that there is nothing', () => {
     shelf(desk({ exports: undefined, total: null, loading: true }));
     expect(screen.getByRole('status')).toHaveTextContent('Reading this house’s exports…');
-    expect(screen.queryByText('Nothing has been written up for this house yet.')).toBeNull();
+    expect(screen.queryByText(/Nothing is on the shelf/)).toBeNull();
   });
 
   it('states the range and total on the current page, and offers Next when there is more', () => {
@@ -209,7 +226,9 @@ describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
 
   it('says a page 1 empty list is the house’s own, and a later empty page is stale, not empty', () => {
     const { unmount } = shelf(desk({ exports: [], total: 0, page: 1 }));
-    expect(screen.getByText('Nothing has been written up for this house yet.')).toBeInTheDocument();
+    // F-1605: an empty shelf may be a swept one, so it never says "nothing yet".
+    expect(screen.queryByText('Nothing has been written up for this house yet.')).toBeNull();
+    expect(screen.getByText(/^Nothing is on the shelf\. Anything written up before .+ has been cleared, as files are kept for 90 days\.$/)).toBeInTheDocument();
     unmount();
     const d = desk({ exports: [], total: 20, page: 2, canPrevPage: true });
     shelf(d);

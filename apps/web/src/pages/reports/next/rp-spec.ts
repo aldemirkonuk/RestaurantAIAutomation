@@ -50,6 +50,15 @@ export interface ViewCtx {
    * Goals cutting asks. Absent when that read has not answered.
    */
   goalsNow?: Record<string, number | null>;
+  /**
+   * The same month (or quarter) a year before the one the till is set to
+   * (F-1604), read by the same reader: `reading` while in flight, `unread`
+   * when the read failed, else what it answered. Absent on a trailing window.
+   */
+  lastYear?:
+    | 'reading'
+    | 'unread'
+    | { revenue: number | null; checkCount: number | null; posConnected: boolean; zoneUnset: boolean };
 }
 
 export interface AnalysisSpec {

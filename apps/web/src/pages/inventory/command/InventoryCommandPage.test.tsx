@@ -89,7 +89,7 @@ vi.mock('../../../lib/tableExport', async (importOriginal) => ({
   },
 }));
 
-import { InventoryCommandPage } from './InventoryCommandPage';
+import { InventoryCommandPage, asOfSaid, valuationAbout } from './InventoryCommandPage';
 
 const unresolvedLinesBody = {
   restaurant_id: 'rest-A',
@@ -834,6 +834,26 @@ describe('InventoryCommandPage — value comes from what the house paid, and a c
     expect(barbaresco.Value).toBe(240);
   });
 
+  it('[REVERT-FAILS] the valuation file names its house, and the inactive wines it leaves out (F-1607)', async () => {
+    routeGets({ 'inventory-list': [costed, uncosted] });
+    const base = api.get.getMockImplementation()!;
+    // The inactive read is the list with active=false: one wine, 3 bottles.
+    api.get.mockImplementation((url: string, config?: { params?: { active?: string } }) =>
+      config?.params?.active === 'false'
+        ? Promise.resolve({ data: [{ ...costed, id: 'gone', stockLive: 3, shadowStock: 0 }] })
+        : base(url),
+    );
+    mount();
+    await screen.findByText('Sancerre Les Monts');
+    await exportValuation();
+    const about = Object.fromEntries(
+      (exported.mock.calls.at(-1)![0] as { about?: Array<[string, string]> }).about ?? [],
+    );
+    expect(about.House).toBe('Test House');
+    expect(about['As of']).toBeTruthy();
+    expect(about['Left out']).toMatch(/^1 inactive wine still holding 3 bottles\./);
+  });
+
   it('[REVERT-FAILS] with a chip on, the tile and the export count that zone and name it', async () => {
     routeGets({
       'inventory-list': [
@@ -939,5 +959,55 @@ describe('InventoryCommandPage — value comes from what the house paid, and a c
     expect(barbaresco.Live).toBe(2);
     // Shadow is kept for the whole house, so the zone's sheet leaves it blank.
     expect(barbaresco.Shadow).toBe('');
+  });
+});
+
+/*
+ * F-1607: the valuation file says its house, when it was read, its filters,
+ * and what it leaves out and why.
+ */
+
+const aboutNow = new Date('2026-12-31T21:30:00Z');
+const aboutBase = { house: 'Tuzlu Rüzgar', zone: 'Europe/Istanbul', now: aboutNow, shown: [], leftByFilters: 0 };
+const saidOf = (about: Array<[string, string]>) => Object.fromEntries(about);
+
+describe('the lines about a valuation file (F-1607)', () => {
+  it('names the house and the as-of time on the house clock', () => {
+    const about = saidOf(valuationAbout({ ...aboutBase, inactive: { wines: 0, bottles: 0 } }));
+    expect(about.House).toBe('Tuzlu Rüzgar');
+    // 21:30 UTC on 31 Dec is already 1 Jan in Istanbul.
+    expect(about['As of']).toMatch(/2027/);
+    expect(about['As of']).toContain('house time (Europe/Istanbul)');
+    expect(about.Shows).toBe('Every active wine on the list.');
+    expect(about['Left out']).toBe('Nothing.');
+  });
+
+  it('says the filters, and how many wines they leave out', () => {
+    const about = saidOf(
+      valuationAbout({
+        ...aboutBase,
+        shown: ['Search: barolo', 'Only wines marked Below par'],
+        leftByFilters: 41,
+        inactive: { wines: 0, bottles: 0 },
+      }),
+    );
+    expect(about.Shows).toBe('Search: barolo; Only wines marked Below par');
+    expect(about['Left out']).toBe('41 wines on the list that the filters above leave out.');
+  });
+
+  it('lists inactive wines still holding bottles, and why they are not in it', () => {
+    const about = saidOf(valuationAbout({ ...aboutBase, inactive: { wines: 2, bottles: 14 } }));
+    expect(about['Left out']).toMatch(/^2 inactive wines still holding 14 bottles\. Reports and the month close still count them/);
+    expect(about['Left out']).toContain('make them active again from Inactive wines');
+  });
+
+  it('says inactive wines could not be read, never that there are none', () => {
+    const about = saidOf(valuationAbout({ ...aboutBase, inactive: null }));
+    expect(about['Left out']).toBe('Inactive wines could not be read, so this file cannot say whether any still hold bottles.');
+  });
+
+  it('falls back to the device clock, and says so, with no zone', () => {
+    expect(asOfSaid(aboutNow, null)).toMatch(/this device's time$/);
+    expect(saidOf(valuationAbout({ ...aboutBase, house: null, inactive: null })).House).toBe('name not recorded');
   });
 });

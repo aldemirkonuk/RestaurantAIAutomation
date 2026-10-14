@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, within, configure } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within, configure } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRef, type ReactNode } from 'react';
 
@@ -17,6 +17,8 @@ configure({ asyncUtilTimeout: 5000 });
 
 const api = vi.hoisted(() => ({
   week: {} as Record<string, unknown>,
+  /** One week's payload by its Monday, for a month or year export (F-1610); else `week`. */
+  weeks: {} as Record<string, Record<string, unknown> | 'reject'>,
   members: [] as unknown[],
   reviewTimeOff: vi.fn((..._args: unknown[]) => Promise.resolve({})),
   createTimeOff: vi.fn((..._args: unknown[]) => Promise.resolve({})),
@@ -56,7 +58,8 @@ vi.mock('../../../services/api/team', () => ({
   deleteTeamMember: vi.fn(() => Promise.resolve(undefined)),
   ingestSales: vi.fn(() => Promise.resolve({})),
   ingestSalesBatch: vi.fn(() => Promise.resolve({})),
-  getWeek: () => Promise.resolve(api.week),
+  getWeek: (w: string) =>
+    api.weeks[w] === 'reject' ? Promise.reject(new Error('down')) : Promise.resolve(api.weeks[w] ?? api.week),
   getTeamMembers: () => Promise.resolve(api.members),
   getCertifications: () => Promise.resolve([]),
   getCoverageTemplates: () => Promise.resolve([]),
@@ -98,7 +101,7 @@ import {
 } from '../../../services/api/team';
 import { MemberSheet, RosterSheet } from './RosterSheet';
 import { WeekGrid } from './WeekGrid';
-import { CopyWeekPanel, ExportPopover, TimeOffSheet } from './TeamOverlays';
+import { CopyWeekPanel, ExportPopover, TimeOffSheet, periodBounds, weeksCovering } from './TeamOverlays';
 import { ShiftSheet } from './ShiftSheet';
 import {
   fmtHours,
@@ -151,6 +154,7 @@ function wrapper({ children }: { children: ReactNode }) {
 
 beforeEach(() => {
   api.week = weekPayload();
+  api.weeks = {};
   api.members = [];
   api.reviewTimeOff.mockClear();
   api.exportTable.mockClear();
@@ -305,6 +309,54 @@ describe('a manager is shown hours and told the money is the owner’s', () => {
     fireEvent.click(screen.getByRole('button', { name: /CSV/ }));
     const ownerCols = (api.exportTable.mock.calls[1][0] as { columns: { header: string }[] }).columns;
     expect(ownerCols.map((c) => c.header)).toContain('Labour cost (TRY)');
+  });
+});
+
+describe('labour exports a month or a year, not only one week (F-1610)', () => {
+  const at = (id: string, date: string) => ({
+    id, restaurant_id: 'r1', schedule_id: 'sch1', member_id: 'm1', shift_date: date,
+    start_time: '09:00', end_time: '17:00', role: 'line', shift_type: 'am', state: 'scheduled', note: null, shift_breaks: [],
+  });
+
+  it('cuts a period at its first and last day, and reads every week touching it', () => {
+    expect(periodBounds('2026-02')).toEqual({ from: '2026-02-01', to: '2026-02-28' });
+    expect(periodBounds('2026')).toEqual({ from: '2026-01-01', to: '2026-12-31' });
+    expect(periodBounds('week')).toBeNull();
+    expect(weeksCovering('2026-12-01', '2026-12-31')).toEqual([
+      '2026-11-30', '2026-12-07', '2026-12-14', '2026-12-21', '2026-12-28',
+    ]);
+    expect(weeksCovering('2026-01-01', '2026-12-31')).toHaveLength(53);
+  });
+
+  it('writes December alone, leaving out the days of its weeks that fall in other months', async () => {
+    api.weeks = {
+      '2026-11-30': weekPayload({ shifts: [at('nov', '2026-11-30'), at('d1', '2026-12-01')] }),
+      '2026-12-28': weekPayload({ shifts: [at('d31', '2026-12-31'), at('jan', '2027-01-01')] }),
+    };
+    api.week = weekPayload({ shifts: [] });
+    render(
+      <ExportPopover anchorRef={createRef<HTMLElement>()} weekStart="2026-12-28" shifts={[] as never} members={[]} moneyVisible={false} money={null} onClose={() => {}} />,
+      { wrapper },
+    );
+    fireEvent.change(screen.getByLabelText('Period to export'), { target: { value: '2026-12' } });
+    fireEvent.click(screen.getByRole('button', { name: /CSV/ }));
+    await waitFor(() => expect(api.exportTable).toHaveBeenCalled());
+    const opts = api.exportTable.mock.calls[0][0] as { rows: { id: string }[]; filename: string; title: string };
+    expect(opts.rows.map((r) => r.id)).toEqual(['d1', 'd31']);
+    expect(opts.filename).toBe('schedule-2026-12');
+    expect(opts.title).toMatch(/^Schedule — December 2026$/);
+  });
+
+  it('writes no file when a week of the period could not be read, and says which', async () => {
+    api.weeks = { '2026-12-14': 'reject' };
+    render(
+      <ExportPopover anchorRef={createRef<HTMLElement>()} weekStart="2026-12-28" shifts={[] as never} members={[]} moneyVisible={false} money={null} onClose={() => {}} />,
+      { wrapper },
+    );
+    fireEvent.change(screen.getByLabelText('Period to export'), { target: { value: '2026-12' } });
+    fireEvent.click(screen.getByRole('button', { name: /CSV/ }));
+    expect(await screen.findByText(/the week of 2026-12-14 could not be read, so no file was written/)).toBeInTheDocument();
+    expect(api.exportTable).not.toHaveBeenCalled();
   });
 });
 

@@ -109,6 +109,8 @@ import { HousePriceCell, addedPriceNote, type AdviceLoad } from "./HousePriceCel
 import { getPriceAdvice } from "../../../services/api/pricing";
 import { ReceivingWorkspace } from "./ReceivingWorkspace";
 import { CellarMapView } from "./CellarMapView";
+import { getInventory } from "../../../services/api/inventory";
+import { readHouseZone } from "../../../lib/houseZone";
 
 // "Your price" (ADR 0193) sits between Runway and Market: the house's own
 // bottle / glass price, editable, beside the market figure it is not.
@@ -156,6 +158,65 @@ const FLAG_DEFS: Array<{ key: RowFlag; label: string; dot: string }> = [
   { key: "dead", label: "Dead stock", dot: "bg-gray-300" },
   { key: "price", label: "Price signals", dot: "bg-emerald-500" },
 ];
+
+/**
+ * The lines a valuation file says about itself (F-1607).
+ *
+ * The file is the list as filtered on screen, and inactive wines are off that
+ * list while Reports and the month close still count their bottles (F-442).
+ * A CSV of rows alone read as the whole cellar, so an accountant's valuation
+ * could disagree with the closed month's with nothing in it saying why. These
+ * lines say whose file it is, when it was read, what it shows and what it
+ * leaves out, and why.
+ */
+const countWord = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+export interface ValuationAboutInput {
+  /** The house's name, null when it is not known. */
+  house: string | null;
+  /** The house's IANA zone; null and the reader's clock stands in. */
+  zone: string | null;
+  now: Date;
+  /** The filters on, in words ("Search: barolo"); empty for none. */
+  shown: string[];
+  /** Wines on the list that the filters keep out of the file. */
+  leftByFilters: number;
+  /** Inactive wines holding bottles; null when they could not be read. */
+  inactive: { wines: number; bottles: number } | null;
+}
+
+/** When the file was read, on the house's clock when it has one. */
+export function asOfSaid(now: Date, zone: string | null): string {
+  const opts: Intl.DateTimeFormatOptions = { dateStyle: "medium", timeStyle: "short" };
+  if (zone) {
+    try {
+      return `${now.toLocaleString(undefined, { ...opts, timeZone: zone })}, house time (${zone})`;
+    } catch {
+      // A zone this browser cannot read: the reader's clock stands in, and says so.
+    }
+  }
+  return `${now.toLocaleString(undefined, opts)}, this device's time`;
+}
+
+export function valuationAbout(i: ValuationAboutInput): Array<[string, string]> {
+  const left: string[] = [];
+  if (i.leftByFilters > 0)
+    left.push(`${countWord(i.leftByFilters, "wine", "wines")} on the list that the filters above leave out.`);
+  if (i.inactive === null)
+    left.push("Inactive wines could not be read, so this file cannot say whether any still hold bottles.");
+  else if (i.inactive.wines > 0)
+    left.push(
+      `${countWord(i.inactive.wines, "inactive wine", "inactive wines")} still holding ` +
+        `${countWord(i.inactive.bottles, "bottle", "bottles")}. Reports and the month close still count ` +
+        "them in what your stock is worth; make them active again from Inactive wines to put them in this file.",
+    );
+  return [
+    ["House", i.house ?? "name not recorded"],
+    ["As of", asOfSaid(i.now, i.zone)],
+    ["Shows", i.shown.length > 0 ? i.shown.join("; ") : "Every active wine on the list."],
+    ["Left out", left.length > 0 ? left.join(" ") : "Nothing."],
+  ];
+}
 
 /** An unknown figure, never a fabricated zero (CLAUDE.md §9). */
 const UNKNOWN = "—";
@@ -968,6 +1029,7 @@ export function InventoryCommandPage() {
       columns: TableExportColumn<T>[],
       filename: string,
       title: string,
+      about?: () => Promise<Array<[string, string]>>,
     ) => {
       try {
         await exportTable({
@@ -976,6 +1038,7 @@ export function InventoryCommandPage() {
           columns,
           filename,
           title,
+          about: about ? await about() : undefined,
         });
         toast.success(
           format === "clipboard"
@@ -1007,6 +1070,36 @@ export function InventoryCommandPage() {
       valuationColumns,
       `inventory-valuation-${exportDay()}`,
       chipZoneName ? `Inventory valuation — ${chipZoneName}` : "Inventory valuation",
+      // F-1607: the file says whose it is, when, what it shows and what it
+      // leaves out — the filters, and inactive wines still holding bottles.
+      async () => {
+        let inactive: { wines: number; bottles: number } | null = null;
+        try {
+          const held = (await getInventory(undefined, { inactive: true }))
+            .map((w) => (w.stockLive ?? 0) + (w.shadowStock ?? 0))
+            .filter((n) => n > 0);
+          inactive = { wines: held.length, bottles: held.reduce((a, b) => a + b, 0) };
+        } catch {
+          // Unread is said as unread in the file, never as none.
+        }
+        const flag = activeFlag ? FLAG_DEFS.find((f) => f.key === activeFlag)?.label : null;
+        return valuationAbout({
+          house:
+            availableRestaurants.find((b) => b.id === activeRestaurantId)?.name ?? null,
+          zone: activeRestaurantId
+            ? await readHouseZone(activeRestaurantId).catch(() => null)
+            : null,
+          now: new Date(),
+          shown: [
+            ...(searchQuery ? [`Search: ${searchQuery}`] : []),
+            ...(filterType !== "all" ? [`Type: ${filterType}`] : []),
+            ...(flag ? [`Only wines marked ${flag}`] : []),
+            ...(chipZoneName ? [`Only the bottles in ${chipZoneName}`] : []),
+          ],
+          leftByFilters: Math.max(0, inventory.length - rows.length),
+          inactive,
+        });
+      },
     );
 
   // Houses may keep different money, so each row names its own and the

@@ -34,6 +34,13 @@ export interface TableExportOptions<T> {
   title?: string
   /** The formats tag the text files are written in; the house's own by default (F-1401). */
   locale?: string
+  /**
+   * Lines said above the table, as label and value: whose file it is, when it
+   * was read, what it shows and what it leaves out (F-1607). A spreadsheet's
+   * rows carry none of that, so a file handed on read as the whole book.
+   * Written into every file but JSON and the clipboard, which stay the table.
+   */
+  about?: Array<[string, string]>
 }
 
 const EXTENSIONS: Partial<Record<TableExportFormat, string>> = {
@@ -215,7 +222,12 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
-function buildHtmlDocument(title: string, headers: string[], matrix: string[][]): string {
+function buildHtmlDocument(
+  title: string,
+  headers: string[],
+  matrix: string[][],
+  about: Array<[string, string]> = [],
+): string {
   return `<!doctype html>
 <html>
 <head>
@@ -234,6 +246,7 @@ function buildHtmlDocument(title: string, headers: string[], matrix: string[][])
 <body>
 <h1>${escapeHtml(title)}</h1>
 <p class="meta">${matrix.length} row${matrix.length === 1 ? '' : 's'} · generated ${new Date().toLocaleString()}</p>
+${about.map(([k, v]) => `<p class="meta">${escapeHtml(k)}: ${escapeHtml(v)}</p>`).join('\n')}
 <table>
 <thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
 <tbody>
@@ -251,6 +264,7 @@ export async function exportTable<T>({
   filename,
   title = filename,
   locale = getHouseLocale(),
+  about = [],
 }: TableExportOptions<T>): Promise<void> {
   const headers = columns.map((c) => c.header)
   const cells = toCells(rows, columns)
@@ -258,10 +272,12 @@ export async function exportTable<T>({
   const matrix = cells.map((row) => row.map((c) => cellText(c)))
   const ext = EXTENSIONS[format]
   const fullName = ext ? `${filename}.${ext}` : filename
+  // The lines above the table, then one blank row, as the gateway's report CSV.
+  const aboutRows: string[][] = about.length > 0 ? [...about.map(([k, v]) => [k, String(guardFormula(v))]), []] : []
 
   switch (format) {
     case 'csv': {
-      const body = [headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c), marks.decimal)))]
+      const body = [...aboutRows, headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c), marks.decimal)))]
         .map((row) => row.map(escapeCsv).join(marks.sep))
         .join('\n')
       // BOM so Excel opens it as UTF-8 (Turkish letters, em dashes), as the
@@ -273,7 +289,7 @@ export async function exportTable<T>({
     case 'tsv': {
       // Tabs survive a paste straight into Excel / Google Sheets cells.
       const clean = (v: string) => v.replace(/[\t\r\n]+/g, ' ')
-      const body = [headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c), marks.decimal)))]
+      const body = [...aboutRows, headers, ...cells.map((row) => row.map((c) => cellText(guardFormula(c), marks.decimal)))]
         .map((row) => row.map(clean).join('\t'))
         .join('\n')
       downloadBlob(new Blob([body], { type: 'text/tab-separated-values;charset=utf-8' }), fullName)
@@ -301,6 +317,7 @@ export async function exportTable<T>({
       const lines = [
         `# ${title}`,
         '',
+        ...about.flatMap(([k, v]) => [`${cell(k)}: ${cell(v)}`, '']),
         `| ${headers.map(cell).join(' | ')} |`,
         `| ${headers.map(() => '---').join(' | ')} |`,
         ...matrix.map((row) => `| ${row.map(cell).join(' | ')} |`),
@@ -311,7 +328,7 @@ export async function exportTable<T>({
 
     case 'html': {
       downloadBlob(
-        new Blob([buildHtmlDocument(title, headers, matrix)], { type: 'text/html;charset=utf-8' }),
+        new Blob([buildHtmlDocument(title, headers, matrix, about)], { type: 'text/html;charset=utf-8' }),
         fullName,
       )
       break
@@ -323,19 +340,24 @@ export async function exportTable<T>({
       workbook.creator = 'Mudavym'
       workbook.created = new Date()
 
+      // The header sits under the lines about the file, when there are any.
+      const headAt = aboutRows.length + 1
       const sheet = workbook.addWorksheet(title.slice(0, 31) || 'Export', {
-        views: [{ state: 'frozen', ySplit: 1 }],
+        views: [{ state: 'frozen', ySplit: headAt }],
       })
       sheet.columns = columns.map((col) => ({
-        header: col.header,
         key: col.header,
         width: Math.min(Math.max(col.header.length + 6, 14), 40),
       }))
+      aboutRows.forEach((row, i) => {
+        sheet.getRow(i + 1).values = row
+      })
+      sheet.getRow(headAt).values = headers
       // Typed cells: numbers as numbers. A string is written as a text cell,
       // which Excel shows and never evaluates, so no formula guard is needed.
       cells.forEach((row) => sheet.addRow(row))
 
-      const headerRow = sheet.getRow(1)
+      const headerRow = sheet.getRow(headAt)
       headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
       headerRow.fill = {
         type: 'pattern',
@@ -345,8 +367,8 @@ export async function exportTable<T>({
       headerRow.alignment = { vertical: 'middle' }
       headerRow.height = 22
       sheet.autoFilter = {
-        from: { row: 1, column: 1 },
-        to: { row: 1, column: columns.length },
+        from: { row: headAt, column: 1 },
+        to: { row: headAt, column: columns.length },
       }
 
       const buffer = await workbook.xlsx.writeBuffer()
@@ -375,8 +397,10 @@ export async function exportTable<T>({
         25,
       )
 
+      about.forEach(([k, v], i) => doc.text(`${k}: ${v}`, 14, 31 + i * 5))
+
       autoTable(doc, {
-        startY: 32,
+        startY: 32 + about.length * 5,
         head: [headers],
         body: matrix,
         theme: 'grid',
@@ -392,7 +416,7 @@ export async function exportTable<T>({
     case 'print': {
       const win = window.open('', '_blank', 'width=1024,height=768')
       if (!win) throw new Error('Popup blocked — allow popups to print.')
-      win.document.write(buildHtmlDocument(title, headers, matrix))
+      win.document.write(buildHtmlDocument(title, headers, matrix, about))
       win.document.close()
       win.focus()
       win.print()
