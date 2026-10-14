@@ -1133,7 +1133,10 @@ describe("MonthCloseService.getClose — changed after close", () => {
       houseHandler({ month_closes: () => ({ data: withOffs, error: null }) }),
     );
     const file = await svc.writeOffsCsv(HOUSE, "close-1");
-    expect(file.filename).toBe("mudavym-writeoffs-2026-07-closed-v1.csv");
+    // Named for its house (F-1631).
+    expect(file.filename).toBe(
+      "mudavym-synthetic-house-writeoffs-2026-07-closed-v1.csv",
+    );
     // A Turkish house's file is in its own marks: ";" between cells.
     const lines = file.body.split("\r\n");
     expect(lines).toContain("Cutting;Write-offs");
@@ -1150,6 +1153,27 @@ describe("MonthCloseService.getClose — changed after close", () => {
     );
     await expect(old.writeOffsCsv(HOUSE, "close-1")).rejects.toThrow(
       /closed before write-offs were kept/,
+    );
+  });
+
+  it("names the kept till file for its house, and still hands it over when the name cannot be read (F-1631)", async () => {
+    const { svc } = service(
+      houseHandler({ month_closes: () => ({ data: closeRow, error: null }) }),
+    );
+    const file = await svc.tillCsv(HOUSE, "close-1");
+    expect(file.filename).toBe(
+      "mudavym-synthetic-house-till-2026-07-closed-v1.csv",
+    );
+    expect(file.body).toBe("Day,Taken");
+
+    const { svc: blind } = service(
+      houseHandler({
+        month_closes: () => ({ data: closeRow, error: null }),
+        restaurants: () => ({ data: null, error: { message: "down" } }),
+      }),
+    );
+    expect((await blind.tillCsv(HOUSE, "close-1")).filename).toBe(
+      "mudavym-house-till-2026-07-closed-v1.csv",
     );
   });
 
@@ -1193,6 +1217,19 @@ describe("writeOffFigures (F-1609)", () => {
       cost: null,
       uncostedBottles: 2,
     });
+  });
+
+  it("files a staff pour from /inventory under Staff pours, not Comps (F-1614)", () => {
+    // The rows exactly as RowExpansion.tsx writes them: ADJUST_MOVEMENT sends
+    // 'Staff pour' and 'Comp / gift' both as transactionType 'comp'.
+    const w = writeOffFigures([
+      { transaction_type: "comp", reason: "Staff pour", quantity_change: -1 },
+      { transaction_type: "comp", reason: "Comp / gift", quantity_change: -2 },
+    ]);
+    expect(w.byReason.map((l) => [l.reason, l.bottles])).toEqual([
+      ["comp", 2],
+      ["staff_pour", 1],
+    ]);
   });
 });
 

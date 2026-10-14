@@ -34,7 +34,7 @@ import {
   type Cell,
   type ExportDoc,
 } from "../exports/report-export-doc";
-import { writtenLabel } from "../exports/report-export-naming";
+import { houseSlug, writtenLabel } from "../exports/report-export-naming";
 import { renderCsv } from "../exports/report-export-render";
 import { taxWordFor } from "../../settings/house-tax-basis.service";
 
@@ -391,18 +391,15 @@ export function writeOffReasonOf(
   reason: unknown,
 ): WriteOffReason | null {
   const r = typeof reason === "string" ? reason : "";
+  if (type !== "comp" && type !== "waste" && type !== "adjustment") return null;
+  // The reason first (F-1614): /inventory files a staff pour as type "comp",
+  // so reading the type first put every staff pour under Comps.
+  const t = takeOffOnlyReason(r);
+  if (t === "Breakage") return "breakage";
+  if (t === "A comp") return "comp";
+  if (t === "A staff pour") return "staff_pour";
   if (type === "comp") return "comp";
   if (type === "waste") return /breakage/i.test(r) ? "breakage" : "other";
-  if (type === "adjustment") {
-    const t = takeOffOnlyReason(r);
-    return t === "Breakage"
-      ? "breakage"
-      : t === "A comp"
-        ? "comp"
-        : t === "A staff pour"
-          ? "staff_pour"
-          : null;
-  }
   return null;
 }
 
@@ -761,8 +758,14 @@ export class MonthCloseService {
     const row = await this.readRow(restaurantId, closeId, true);
     if (typeof row.till_csv !== "string")
       throw new NotFoundException("No till file was kept with this close.");
+    // Named for its house (F-1631). The kept file does not depend on the
+    // name, so a failed name read gives the shelf's "house", not a refusal.
+    const name = await this.readHouse(restaurantId).then(
+      (h) => h.name,
+      () => null,
+    );
     return {
-      filename: `mudavym-till-${row.month}-closed-v${row.version}.csv`,
+      filename: `mudavym-${houseSlug(name)}-till-${row.month}-closed-v${row.version}.csv`,
       body: row.till_csv,
     };
   }
@@ -796,7 +799,7 @@ export class MonthCloseService {
       withheldCount: countWithheld(doc),
     });
     return {
-      filename: `mudavym-writeoffs-${row.month}-closed-v${row.version}.csv`,
+      filename: `mudavym-${houseSlug(house.name)}-writeoffs-${row.month}-closed-v${row.version}.csv`,
       body: csv,
     };
   }

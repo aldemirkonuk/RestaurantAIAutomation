@@ -14,6 +14,7 @@ vi.mock('@/services/api/client', () => ({ apiClient: api }));
 
 import MonthCloseShelf, { monthBefore, type MonthClose, type MonthCloseDetail } from './MonthCloseShelf';
 import { houseToday } from '@/lib/houseZone';
+import { AuthContext } from '@/contexts/AuthContext';
 import { monthLabel, thisMonth } from './rp-registers-trade';
 
 const close = (over: Partial<MonthClose> = {}): MonthClose => ({
@@ -349,8 +350,14 @@ describe('MonthCloseShelf (F-1013)', () => {
     // saveFile revokes on a timer that may outlive the test; jsdom has none.
     URL.revokeObjectURL ??= () => undefined;
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(saved);
+    // An owner of two houses (F-1631): the file is named for this one.
+    const houses = { availableRestaurants: [{ id: 'r0', name: 'Detroit' }, { id: 'r1', name: 'Kadıköy Meyhane' }] };
     try {
-      wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+      wrap(
+        <AuthContext.Provider value={houses as never}>
+          <MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />
+        </AuthContext.Provider>,
+      );
       const kept = await screen.findAllByLabelText(/Figures kept for/);
       expect(kept[0].textContent).toContain('Written off: 5 bottles, €210 at cost for 4 of them over 4 take-offs');
       const by = within(kept[0]).getByLabelText('Written off by reason');
@@ -370,6 +377,9 @@ describe('MonthCloseShelf (F-1013)', () => {
         expect(api.get).toHaveBeenCalledWith('/reports/month-close/c1/writeoffs.csv', expect.anything()),
       );
       await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
+      expect((saved.mock.contexts[0] as HTMLAnchorElement).download).toMatch(
+        /^mudavym-kadikoy-meyhane-writeoffs-\d{4}-\d{2}-closed-v\d+\.csv$/,
+      );
 
       fireEvent.click(screen.getAllByRole('button', { name: 'What changed since' })[0]);
       const against = await screen.findByLabelText('Kept against now');

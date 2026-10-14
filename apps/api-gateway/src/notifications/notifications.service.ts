@@ -955,6 +955,10 @@ export class NotificationsService {
             title: payload.title,
             body: payload.message,
             priority: payload.priority === "critical" ? "high" : "default",
+            // F-1630: the title names the house, as team pushes do (F-1183),
+            // so an owner of two houses can tell a low-stock push of one
+            // from the other's before tapping it.
+            house: restaurantId,
             data: {
               type: payload.type,
               actionUrl: payload.actionUrl ?? null,

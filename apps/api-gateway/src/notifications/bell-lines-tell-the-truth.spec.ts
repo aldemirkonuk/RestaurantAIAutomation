@@ -33,13 +33,17 @@ function seed(extra: Partial<Record<string, any[]>> = {}): StubDb {
 }
 
 function funnel(db: StubDb) {
-  const pushes: Array<{ ids: string[]; data: Record<string, unknown> }> = [];
+  const pushes: Array<{
+    ids: string[];
+    data: Record<string, unknown>;
+    house?: string;
+  }> = [];
   const socket = { server: { to: () => ({ emit: () => undefined }) } };
   const expo = {
     sendToUsers: async (
       ids: string[],
-      msg: { data: Record<string, unknown> },
-    ) => void pushes.push({ ids, data: msg.data }),
+      msg: { data: Record<string, unknown>; house?: string },
+    ) => void pushes.push({ ids, data: msg.data, house: msg.house }),
   };
   const database = {
     supabase: db.supabase,
@@ -244,6 +248,17 @@ describe("F-530 — a push never carries house money", () => {
     expect(pushes[0].data).not.toHaveProperty("revenue");
     expect(pushes[0].data).not.toHaveProperty("tieOutDelta");
     expect(pushes[0].data.documentId).toBe("d1");
+  });
+
+  it("names its house, so an owner of two houses tells their pushes apart (F-1630)", async () => {
+    const db = seed();
+    const { svc, pushes } = funnel(db);
+
+    await svc.persistForRestaurant(HOUSE, LINE);
+
+    expect(pushes).toHaveLength(1);
+    // ExpoPushService puts the house's name in the title when `house` is set.
+    expect(pushes[0].house).toBe(HOUSE);
   });
 });
 

@@ -387,3 +387,75 @@ describe("GET …/members/:id/performance — the house median has a unit and a 
     expect(out.analytic.median).toBe(70);
   });
 });
+
+describe("GET …/members/:id/performance — a staff member's own card (F-1636)", () => {
+  const LUCAS_USER = "user-lucas";
+
+  /** The seed above, with Lucas signed in as staff and linked to his member row. */
+  function staffSeed(sales: Sale[]): StubDb {
+    const db = seed(sales);
+    db.tables.user_restaurant_access.push({
+      id: "a2",
+      user_id: LUCAS_USER,
+      restaurant_id: RID,
+      role: "staff",
+      is_active: true,
+    });
+    db.tables.team_members[0].user_id = LUCAS_USER;
+    return db;
+  }
+
+  /** One service at `perCover` for each of `n` servers, Lucas first. */
+  function servers(n: number): Sale[] {
+    return Array.from({ length: n }, (_, i) => ({
+      member_id: i === 0 ? LUCAS : `member-${i}`,
+      service_date: "2026-09-01",
+      net_sales: 100 * (60 + i),
+      covers: 100,
+    }));
+  }
+
+  it("withholds the median and band when fewer than five servers fed them", async () => {
+    // Two servers, one service each: the band was [Maya, Lucas], so Lucas read
+    // Maya's exact sales per cover off his own card.
+    const out = await build(staffSeed(TWO_SERVERS)).getMemberPerformance(
+      LUCAS_USER,
+      RID,
+      LUCAS,
+    );
+    expect(out.analytic.median).toBeNull();
+    expect(out.analytic.band).toBeNull();
+    expect(out.analytic.benchmark.state).toBe("withheld");
+    // His own figures are unaffected.
+    expect(out.metrics.salesPerCover).toBe(76);
+
+    const four = await build(staffSeed(servers(4))).getMemberPerformance(
+      LUCAS_USER,
+      RID,
+      LUCAS,
+    );
+    expect(four.analytic.band).toBeNull();
+    expect(four.analytic.benchmark).toMatchObject({
+      state: "withheld",
+      servers: 4,
+    });
+  });
+
+  it("sends the median to staff once five servers fed it, and a manager's read is unchanged", async () => {
+    const five = await build(staffSeed(servers(5))).getMemberPerformance(
+      LUCAS_USER,
+      RID,
+      LUCAS,
+    );
+    expect(five.analytic.benchmark.state).toBe("computed");
+    expect(five.analytic.median).toBe(62);
+
+    const manager = await build(staffSeed(TWO_SERVERS)).getMemberPerformance(
+      MANAGER,
+      RID,
+      LUCAS,
+    );
+    expect(manager.analytic.benchmark.state).toBe("computed");
+    expect(manager.analytic.median).not.toBeNull();
+  });
+});

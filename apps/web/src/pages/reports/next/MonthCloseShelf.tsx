@@ -13,10 +13,12 @@
  * Shown to owners and managers only (the routes refuse anyone else). Its own
  * section under the export shelf, in the shelf's styles.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/services/api/client';
+import { AuthContext } from '@/contexts/AuthContext';
 import { houseToday } from '@/lib/houseZone';
+import { exportHouseWord } from '@/lib/tableExport';
 import { EM, countOf, failureLine, failureOf, figure, money } from './rp-format';
 import { monthLabel, thisMonth } from './rp-registers-trade';
 import { reasonOf, saveFile } from './useReportExports';
@@ -152,6 +154,7 @@ export async function getMonthClose(id: string): Promise<MonthCloseDetail> {
 /** The till's month as it was written up at the close, ready to hand to the reader. */
 export async function downloadMonthCloseTill(
   close: Pick<MonthClose, 'id' | 'month' | 'version'>,
+  houseName: string | null,
 ): Promise<{ filename: string; mime: string; body: string }> {
   const { data } = await apiClient.get<string>(
     `/reports/month-close/${encodeURIComponent(close.id)}/till.csv`,
@@ -160,7 +163,8 @@ export async function downloadMonthCloseTill(
   if (typeof data !== 'string') throw new Error('the gateway answered without the file');
   // Reading the body as text drops the BOM; put it back so Excel reads UTF-8.
   return {
-    filename: `mudavym-till-${close.month}-closed-v${close.version}.csv`,
+    // Named for its house, as the exports shelf names its files (F-1631).
+    filename: `mudavym-${exportHouseWord(houseName)}-till-${close.month}-closed-v${close.version}.csv`,
     mime: 'text/csv;charset=utf-8',
     body: data.startsWith('\uFEFF') ? data : `\uFEFF${data}`,
   };
@@ -169,6 +173,7 @@ export async function downloadMonthCloseTill(
 /** The month's write-offs as they were kept at the close (F-1609). */
 export async function downloadMonthCloseWriteOffs(
   close: Pick<MonthClose, 'id' | 'month' | 'version'>,
+  houseName: string | null,
 ): Promise<{ filename: string; mime: string; body: string }> {
   const { data } = await apiClient.get<string>(
     `/reports/month-close/${encodeURIComponent(close.id)}/writeoffs.csv`,
@@ -176,7 +181,7 @@ export async function downloadMonthCloseWriteOffs(
   );
   if (typeof data !== 'string') throw new Error('the gateway answered without the file');
   return {
-    filename: `mudavym-writeoffs-${close.month}-closed-v${close.version}.csv`,
+    filename: `mudavym-${exportHouseWord(houseName)}-writeoffs-${close.month}-closed-v${close.version}.csv`,
     mime: 'text/csv;charset=utf-8',
     body: data.startsWith('\uFEFF') ? data : `\uFEFF${data}`,
   };
@@ -400,7 +405,17 @@ function Since({ detail }: { detail: MonthCloseDetail }) {
   );
 }
 
-function Row({ close, zone, latest }: { close: MonthClose; zone: string | null; latest: boolean }) {
+function Row({
+  close,
+  zone,
+  latest,
+  houseName,
+}: {
+  close: MonthClose;
+  zone: string | null;
+  latest: boolean;
+  houseName: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const detail = useQuery({
@@ -467,7 +482,7 @@ function Row({ close, zone, latest }: { close: MonthClose; zone: string | null; 
             onClick={async () => {
               setError(null);
               try {
-                const file = await downloadMonthCloseTill(close);
+                const file = await downloadMonthCloseTill(close, houseName);
                 saveFile(file.filename, file.mime, file.body);
               } catch (err) {
                 setError(`The till file did not download: ${reasonOf(err)}`);
@@ -485,7 +500,7 @@ function Row({ close, zone, latest }: { close: MonthClose; zone: string | null; 
             onClick={async () => {
               setError(null);
               try {
-                const file = await downloadMonthCloseWriteOffs(close);
+                const file = await downloadMonthCloseWriteOffs(close, houseName);
                 saveFile(file.filename, file.mime, file.body);
               } catch (err) {
                 setError(`The write-offs file did not download: ${reasonOf(err)}`);
@@ -503,6 +518,8 @@ function Row({ close, zone, latest }: { close: MonthClose; zone: string | null; 
 export default function MonthCloseShelf({ restaurantId, zone }: MonthCloseShelfProps) {
   const qc = useQueryClient();
   const lastMonth = monthBefore(thisMonth(houseToday(zone)));
+  const houseName =
+    useContext(AuthContext)?.availableRestaurants?.find((b) => b.id === restaurantId)?.name ?? null;
   const [chosen, setMonth] = useState<string | null>(null);
   const key = ['month-closes', restaurantId];
   const list = useQuery({ queryKey: key, queryFn: listMonthCloses });
@@ -599,7 +616,7 @@ export default function MonthCloseShelf({ restaurantId, zone }: MonthCloseShelfP
             // The list is newest close first, so the first row of a month is its latest version.
             const latest = !seen.has(c.month);
             seen.add(c.month);
-            return <Row key={c.id} close={c} zone={zone} latest={latest} />;
+            return <Row key={c.id} close={c} zone={zone} latest={latest} houseName={houseName} />;
           })}
         </ul>
       )}
