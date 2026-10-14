@@ -19,7 +19,8 @@ import { beverageCategoryOf } from "../common/beverage-category";
  * builds them on; the house-day filing itself is asserted in
  * `insight-unread-sources.spec.ts`.
  */
-const HOUSE_ROW = [{ timezone: "UTC", country: null }];
+// tax_basis is NOT NULL on every house (ADR 0341); unset reads as before (F-1587).
+const HOUSE_ROW = [{ timezone: "UTC", country: null, tax_basis: "unset" }];
 
 /**
  * A glass is not a bottle (AW02, ADR 0297).
@@ -1345,6 +1346,7 @@ describe("menu engineering: a wine with no bottle price", () => {
     default_pour_ml: 150,
     pour_size_confirmed_by: "u-owner",
     pour_size_confirmed_at: "2026-09-21T10:00:00Z",
+    tax_basis: "unset",
   };
 
   it("is priced from its glass price at the confirmed pour", async () => {

@@ -219,6 +219,36 @@ describe('MonthCloseShelf (F-1013)', () => {
     expect(kept[1].textContent).not.toContain('€0');
   });
 
+  it('says the tax inside the till and the basis each close’s net was on (F-1606)', async () => {
+    const f = close().figures;
+    api.get.mockResolvedValueOnce({
+      data: {
+        closes: [
+          // Switched mid-month: net holds KDV before the day, not after.
+          close({
+            taxBasis: 'prices_include_tax',
+            figures: {
+              ...f,
+              taxWord: 'KDV',
+              taxBasisSince: '2026-07-15',
+              till: { ...f.till, taxInside: 100, taxInsideCheckCount: 4 },
+            },
+          }),
+          // Kept before closes recorded a basis.
+          close({ id: 'c0', month: '2026-06' }),
+        ],
+      },
+    });
+    wrap(<MonthCloseShelf restaurantId="r1" zone={null} />);
+    const kept = await screen.findAllByLabelText(/Figures kept for/);
+    expect(kept[0].textContent).toContain('KDV inside till prices: €100 from 4 of 10 checks');
+    expect(kept[0].textContent).toContain(
+      'Tax basis: till prices include KDV. Net is as the till sent it, with KDV inside, before 2026-07-15, and without KDV from that day on.',
+    );
+    expect(kept[1].textContent).not.toContain('inside till prices');
+    expect(kept[1].textContent).toContain('Tax basis: not recorded with this close');
+  });
+
   it('says beside the net figure that the kept Till CSV is gross check totals (F-1578)', async () => {
     api.get.mockResolvedValueOnce({ data: { closes: [close(), close({ id: 'c0', month: '2026-06', hasTillFile: false })] } });
     wrap(<MonthCloseShelf restaurantId="r1" zone={null} />);

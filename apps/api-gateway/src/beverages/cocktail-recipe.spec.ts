@@ -1,7 +1,7 @@
 import { ForbiddenException } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { DatabaseService } from "../database/database.service";
-import { BeveragesService } from "./beverages.service";
+import { BeveragesService, cocktailTax } from "./beverages.service";
 import { lineCost, recipeMeasure, serveCost } from "./cocktail-recipe";
 import { BeveragesController, cocktailsForRole } from "./beverages.controller";
 import { OrganizationsService } from "../organizations/organizations.service";
@@ -129,6 +129,111 @@ describe("serveCost: cost per serve from the linked lines", () => {
   });
 });
 
+describe("serveCost on a house whose till prices include tax (F-1587)", () => {
+  const stock = new Map([
+    [
+      GIN,
+      {
+        unitCost: 700,
+        bottleMl: 700,
+        costTax: "pre_tax" as const,
+        name: "Gin",
+      },
+    ],
+    [
+      CAMPARI,
+      {
+        unitCost: 700,
+        bottleMl: 700,
+        costTax: "not_stated" as const,
+        name: "Campari",
+      },
+    ],
+  ]);
+
+  it("works the margin on the price without tax (480 with 20% inside is 400)", () => {
+    const out = serveCost(
+      [{ inventory_id: GIN, quantity: 50, unit: "ml" }],
+      stock,
+      480,
+      { rate: 0.2 },
+    );
+    expect(out.costPerServe).toBe(50);
+    expect(out.margin).toBe(350);
+    expect(out.marginPct).toBe(87.5);
+    expect(out.marginRefusal).toBeNull();
+  });
+
+  it("keeps the cost and refuses the margin, naming the line whose cost is not proven without tax", () => {
+    const out = serveCost(
+      [
+        { inventory_id: GIN, quantity: 30, unit: "ml" },
+        { inventory_id: CAMPARI, quantity: 30, unit: "ml" },
+      ],
+      stock,
+      480,
+      { rate: 0.2 },
+    );
+    expect(out.costPerServe).toBe(60);
+    expect(out.margin).toBeNull();
+    expect(out.marginPct).toBeNull();
+    expect(out.marginRefusal).toMatch(
+      /^No margin: cost basis not stated.*Campari/,
+    );
+  });
+
+  it("says the house's own refusal when no rate covers a cocktail", () => {
+    const out = serveCost(
+      [{ inventory_id: GIN, quantity: 50, unit: "ml" }],
+      stock,
+      480,
+      { refusal: "No margin: no rate." },
+    );
+    expect(out.margin).toBeNull();
+    expect(out.marginRefusal).toBe("No margin: no rate.");
+  });
+
+  it("a house that does not include tax keeps its margin, key for key", () => {
+    const out = serveCost(
+      [{ inventory_id: GIN, quantity: 50, unit: "ml" }],
+      stock,
+      480,
+    );
+    expect(out.margin).toBe(430);
+    expect("marginRefusal" in out).toBe(false);
+  });
+
+  it("takes the whole-house rate only when no till-category rate is in force", () => {
+    const house = {
+      keyKind: "house" as const,
+      key: "",
+      version: 1,
+      rate: 0.2,
+      effectiveFrom: "2026-01-01",
+      effectiveTo: null,
+    };
+    const terms = {
+      day: "2026-10-12",
+      rates: [house],
+      since: null,
+      targetReconfirm: false,
+    };
+    expect(cocktailTax(terms)).toEqual({ rate: 0.2 });
+    const category = {
+      ...house,
+      keyKind: "pos_category" as const,
+      key: "Alcohol",
+      version: 2,
+    };
+    expect(cocktailTax({ ...terms, rates: [house, category] })).toEqual({
+      refusal: expect.stringMatching(/set by till category/),
+    });
+    expect(cocktailTax({ ...terms, day: null })).toEqual({
+      refusal: expect.stringMatching(/time zone isn't set/),
+    });
+  });
+});
+
 describe("BeveragesService: a recipe line takes from the house's own stock", () => {
   it("writes the stock row a line names", async () => {
     const { service, log } = await serviceWith({
@@ -213,7 +318,8 @@ describe("BeveragesService: a recipe line takes from the house's own stock", () 
         },
       ],
       inventory_lot_rollup: [{ data: [] }],
-      restaurants: [{ data: { currency: "TRY" } }],
+      // tax_basis is NOT NULL on every house (ADR 0341); unset reads as before.
+      restaurants: [{ data: { currency: "TRY", tax_basis: "unset" } }],
     });
     const out = await service.listCocktails(RID, { limit: 200 });
     const row = out.rows[0] as {

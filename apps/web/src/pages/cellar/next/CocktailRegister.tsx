@@ -206,6 +206,11 @@ function serveWords(c: CocktailVM): { cost: string; margin: string; title?: stri
     s.margin === null || s.margin === undefined
       ? EM
       : `${money(s.margin)}${s.marginPct === null || s.marginPct === undefined ? '' : ` · ${s.marginPct}%`}`;
+  // F-1587: a till whose prices include tax has its margin on the price
+  // without tax; when that cannot be worked out, the row says why.
+  if (s.marginRefusal) {
+    return { cost: s.notLinked > 0 ? `at least ${money(s.costPerServe)}` : money(s.costPerServe), margin: EM, partial: s.marginRefusal };
+  }
   if (s.notLinked > 0) {
     return {
       cost: `at least ${money(s.costPerServe)}`,

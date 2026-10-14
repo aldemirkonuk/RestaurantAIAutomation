@@ -302,6 +302,12 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
     date: str(r.date),
     revenue: num(r.revenue),
   }));
+  // F-1606: a month close's till file carries the tax inside the till's
+  // prices (gross less net); a plain window read carries no such key.
+  const taxSaid = "taxInside" in d;
+  const taxWord = str(d.taxWord) || "tax";
+  const taxChecks = num(d.taxInsideCheckCount) ?? 0;
+  const netChecks = num(d.netSalesCheckCount);
 
   return doc({
     say:
@@ -316,6 +322,18 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
         figure(avg, "Needs both revenue and a check count"),
         "money",
       ),
+      ...(taxSaid
+        ? [
+            f(
+              `${taxWord[0].toUpperCase()}${taxWord.slice(1)} inside till prices`,
+              figure(
+                num(d.taxInside),
+                `No check this month had ${taxWord} taken out of its price: it is recorded only after the house says its till prices include ${taxWord}`,
+              ),
+              "money",
+            ),
+          ]
+        : []),
     ],
     // F-412: no refund reaches the till. The POS check carries no refund
     // field (pos-hub/pos-types.ts CanonicalCheck), no adapter reads one, and
@@ -327,6 +345,11 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
         : []),
       ...(untotaled > 0 ? [tillUntotaledSaid(untotaled)] : []),
       ...(zeroRung > 0 ? [zeroChecksSaid(zeroRung)] : []),
+      ...(taxSaid && taxChecks > 0 && netChecks != null && taxChecks < netChecks
+        ? [
+            `The ${taxWord} figure is from ${taxChecks} of ${netChecks} checks: the rest were rung before the house said its prices include ${taxWord}, or the till sent them without it.`,
+          ]
+        : []),
     ],
     tables:
       series.length === 0
@@ -720,6 +743,8 @@ function writeQuadrants(payload: unknown): ExportDoc {
     margin: num(i.marginPerBottle),
     marginPct: num(i.marginPct),
     quadrant: typeof i.quadrant === "string" ? i.quadrant : null,
+    // F-1587: why a costed wine has no margin on a price that includes tax.
+    refusal: typeof i.marginRefusal === "string" ? i.marginRefusal : null,
   }));
   const uncosted = "no recorded cost — unknown, not a dog";
   // A costed wine whose sales include a line with no bottle figure has no
@@ -733,6 +758,7 @@ function writeQuadrants(payload: unknown): ExportDoc {
   const unclassified = counts === null ? null : (num(counts.unclassified) ?? 0);
   const unmeasuredCount =
     counts === null ? null : (num(counts.unmeasured) ?? 0);
+  const taxRefused = counts === null ? null : (num(counts.taxRefused) ?? 0);
   const priced = items.filter((i) => i.margin != null).length;
 
   return doc({
@@ -751,7 +777,7 @@ function writeQuadrants(payload: unknown): ExportDoc {
         "No quadrant",
         counts === null
           ? count("unclassified")
-          : (unclassified ?? 0) + (unmeasuredCount ?? 0),
+          : (unclassified ?? 0) + (unmeasuredCount ?? 0) + (taxRefused ?? 0),
         "count",
       ),
       f("Median bottles per day", figure(medians.velocityPerDay, "the register published no median"), "bottles"),
@@ -776,10 +802,12 @@ function writeQuadrants(payload: unknown): ExportDoc {
                   i.velocity,
                   i.margin != null ? unmeasured : "no movement figure returned",
                 ),
-                figure(i.margin, uncosted),
-                figure(i.marginPct, uncosted),
+                figure(i.margin, i.refusal ?? uncosted),
+                figure(i.marginPct, i.refusal ?? uncosted),
                 i.quadrant ??
-                  withheld(i.margin == null ? uncosted : unmeasured),
+                  withheld(
+                    i.margin == null ? (i.refusal ?? uncosted) : unmeasured,
+                  ),
               ]),
               note:
                 items.length > 40
@@ -790,6 +818,9 @@ function writeQuadrants(payload: unknown): ExportDoc {
     notes: [
       unclassified && unclassified > 0
         ? `${nounCount(unclassified, "wine has", "wines have")} no quadrant because no cost was ever recorded for ${unclassified === 1 ? "it" : "them"} — an uncosted wine is unknown, not a dog.`
+        : "",
+      taxRefused && taxRefused > 0
+        ? `${nounCount(taxRefused, "wine has", "wines have")} no margin: the till's prices include tax, so margin is worked out on the price without tax, and each such row says why it could not be.`
         : "",
       unmeasuredCount && unmeasuredCount > 0
         ? `${nounCount(unmeasuredCount, "item has", "items have")} no velocity and no quadrant: some of ${unmeasuredCount === 1 ? "its" : "their"} sales carry no bottle figure.`

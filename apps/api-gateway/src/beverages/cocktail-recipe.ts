@@ -76,7 +76,21 @@ export interface StockRowCost {
   /** Recorded cost of one bottle or unit, or null when none is recorded. */
   unitCost: number | null;
   bottleMl: number | null;
+  /**
+   * F-1587: whether that cost is proven without tax (margin advice's
+   * `costTaxProof`). Read only for a house whose till prices include tax.
+   */
+  costTax?: "pre_tax" | "includes_tax" | "not_stated";
+  /** The row's name, as a refusal names it. */
+  name?: string;
 }
+
+/**
+ * F-1587: what a house whose till prices include tax adds to a cocktail's
+ * margin (ADR 0341 §6, margin advice's rule): the rate its price holds, or why
+ * no rate does. Omitted for every other house, whose margin is as before.
+ */
+export type ServeTax = { rate: number } | { refusal: string };
 
 /** One recipe line's cost per serve, or the reason it is withheld. */
 export type LineCost =
@@ -124,6 +138,12 @@ export interface ServeCost {
   notLinked: number;
   /** Why the cost is withheld, or null when it is not. */
   withheldReason: string | null;
+  /**
+   * F-1587, only for a house whose till prices include tax: why there is a
+   * cost and no margin, or null when the margin is stated on the price
+   * without tax.
+   */
+  marginRefusal?: string | null;
 }
 
 export function serveCost(
@@ -134,6 +154,7 @@ export function serveCost(
   }>,
   stock: Map<string, StockRowCost>,
   price: unknown,
+  tax?: ServeTax,
 ): ServeCost {
   let total = 0;
   let linked = 0;
@@ -151,23 +172,46 @@ export function serveCost(
   }
   const costPerServe =
     linked === 0 || withheldReason ? null : Math.round(total * 100) / 100;
-  const p = price == null || price === "" ? NaN : Number(price);
-  const priced = Number.isFinite(p) && p > 0;
+  const menu = price == null || price === "" ? NaN : Number(price);
+  const priced = Number.isFinite(menu) && menu > 0;
+  // F-1587: on an inclusive house the margin is on the price without tax,
+  // and only when every linked line's cost is proven without tax too.
+  const marginRefusal =
+    tax && costPerServe != null && priced
+      ? serveTaxRefusal(lines, stock, tax)
+      : null;
+  const p = tax && "rate" in tax ? menu / (1 + tax.rate) : menu;
+  const stated = costPerServe != null && priced && marginRefusal === null;
   return {
     costPerServe,
-    margin:
-      costPerServe != null && priced
-        ? Math.round((p - costPerServe) * 100) / 100
-        : null,
-    marginPct:
-      costPerServe != null && priced
-        ? Math.round(((p - costPerServe) / p) * 1000) / 10
-        : null,
+    margin: stated ? Math.round((p - costPerServe) * 100) / 100 : null,
+    marginPct: stated ? Math.round(((p - costPerServe) / p) * 1000) / 10 : null,
     linked,
     notLinked,
     withheldReason:
       linked === 0 ? "no recipe line is linked to stock" : withheldReason,
+    ...(tax ? { marginRefusal } : {}),
   };
+}
+
+/** Why a costed cocktail on an inclusive house has no margin, or null (F-1587). */
+function serveTaxRefusal(
+  lines: Array<{ inventory_id?: string | null }>,
+  stock: Map<string, StockRowCost>,
+  tax: ServeTax,
+): string | null {
+  if ("refusal" in tax) return tax.refusal;
+  for (const l of lines) {
+    const row = l.inventory_id ? stock.get(l.inventory_id) : undefined;
+    if (!row || row.costTax === "pre_tax") continue;
+    const what = row.name
+      ? `the recorded cost of ${row.name}`
+      : "a linked line's recorded cost";
+    return row.costTax === "includes_tax"
+      ? `No margin: ${what} includes tax. Your till prices include tax, so margin is worked out without tax, and only a cost recorded without tax can be used.`
+      : `No margin: cost basis not stated. Your till prices include tax, so margin is worked out without tax, and ${what} does not say whether tax is inside it.`;
+  }
+  return null;
 }
 
 /**
