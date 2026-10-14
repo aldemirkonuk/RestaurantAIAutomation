@@ -45,6 +45,7 @@ import {
   saleInstant,
 } from "./pos-hub.service";
 import { DatabaseService } from "../database/database.service";
+import { houseDayOf } from "../common/house-day";
 
 type Row = Record<string, any>;
 type Result = { data?: any; error: any };
@@ -55,6 +56,8 @@ interface DbOpts {
   rpc?: (fn: string, args: Row) => Result;
   consumption?: (row: Row) => Result;
   queue?: (row: Row) => Result;
+  /** F-1601: the house's own row; none by default (no zone). */
+  house?: Row;
 }
 
 function makeDb(opts: DbOpts = {}) {
@@ -123,6 +126,9 @@ function makeDb(opts: DbOpts = {}) {
           data: (opts.inventory ?? []).filter((r) => ids.includes(r.id)),
           error: null,
         });
+      }
+      if (table === "restaurants") {
+        q.maybeSingle = async () => ({ data: opts.house ?? null, error: null });
       }
       if (table === "restaurant_tables") {
         q.eq = () => ({ eq: async () => ({ data: [], error: null }) });
@@ -533,6 +539,68 @@ describe("one reading of closed_at dates the check, its stock and its consumptio
       expect(res.errors).toEqual([]);
     },
   );
+});
+
+describe("a closed_at with no offset is read on the house's clock (F-1601)", () => {
+  const NOW = Date.parse("2026-12-01T12:00:00Z");
+
+  it.each([
+    // A US house's daily export: the date is the house's day, never the day
+    // before (UTC midnight is 20:00 the evening before in Detroit).
+    ["2026-10-12", "America/Detroit", "2026-10-12T04:00:00.000Z"],
+    ["2026-10-01", "America/Detroit", "2026-10-01T04:00:00.000Z"],
+    // Dinner in Istanbul stays on its own day on a UTC gateway.
+    ["2026-10-12 23:30:00", "Europe/Istanbul", "2026-10-12T20:30:00.000Z"],
+    ["2026-10-12T23:30:00.250", "Europe/Istanbul", "2026-10-12T20:30:00.250Z"],
+    // Across the US clock change: EDT before, EST after.
+    ["2026-11-01 00:30", "America/Detroit", "2026-11-01T04:30:00.000Z"],
+    ["2026-11-01 03:00", "America/Detroit", "2026-11-01T08:00:00.000Z"],
+    // A written offset is the till's, whatever the house's zone.
+    [
+      "2026-10-12T23:30:00+03:00",
+      "America/Detroit",
+      "2026-10-12T20:30:00.000Z",
+    ],
+    ["2026-10-12T23:30:00Z", "Europe/Istanbul", "2026-10-12T23:30:00.000Z"],
+  ])("reads %p in %p as %p", (closedAt, zone, read) => {
+    const got = saleInstant(closedAt, NOW, zone);
+    expect(got).toMatchObject({ closedAt: read, at: read, fellBack: false });
+    // With no offset written, the sale is filed on the day the till wrote.
+    if (!/(Z|[+-]\d{2}:\d{2})$/.test(closedAt)) {
+      expect(houseDayOf(got.closedAt as string, zone)).toBe(
+        closedAt.slice(0, 10),
+      );
+    }
+  });
+
+  it("still refuses a date it does not read, zone or no zone", () => {
+    expect(saleInstant("2026-02-30", NOW, "America/Detroit").fellBack).toBe(
+      true,
+    );
+    expect(saleInstant("12.10.2026", NOW, "Europe/Istanbul").fellBack).toBe(
+      true,
+    );
+  });
+
+  it("ingest dates a date-only check, its stock and its consumption on the house's day", async () => {
+    jest.spyOn(Date, "now").mockReturnValue(NOW);
+    const { service, calls } = makeDb({
+      mappings: [BOTTLE],
+      inventory: INVENTORY,
+      house: { timezone: "America/Detroit", country: "US", tax_basis: "unset" },
+    });
+    const res = await ingest(service, [
+      check("c-us", "2026-10-12", [line(BOTTLE)]),
+    ]);
+    expect(res.errors).toEqual([]);
+    const at = "2026-10-12T04:00:00.000Z";
+    expect(calls.checks[0].closed_at).toBe(at);
+    expect(calls.rpc[0].args.p_occurred_at).toBe(at);
+    expect(calls.consumption[0]).toMatchObject({
+      recorded_at: at,
+      created_at: at,
+    });
+  });
 });
 
 describe("ingest says what it did to stock (A-029)", () => {

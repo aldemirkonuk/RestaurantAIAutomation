@@ -138,4 +138,36 @@ describe('OpeningStockImport (F-1514)', () => {
     expect(screen.queryByText(/Already had a cost/)).toBeNull();
     csv.text = 'Wine,Vintage,Quantity,Cost\nYakut,2020,7,300';
   });
+
+  // F-1582: when the costed last line fails, the earlier shelf's bottles are
+  // already counted uncosted. The outcome names the wine under "cost not
+  // applied", says those bottles have no cost, and that a re-send applies it.
+  it('[REVERT-FAILS] says the cost was not applied when the last line of a wine on two shelves fails', async () => {
+    api.recordSpotCount.mockClear();
+    csv.text = 'Wine,Vintage,Quantity,Shelf,Cost\nYakut,2020,4,Cellar,300\nYakut,2020,2,Bar,';
+    api.recordSpotCount
+      .mockResolvedValueOnce({ item: null, count: {} })
+      .mockRejectedValueOnce(new Error('The count could not be saved'));
+    render(
+      <OpeningStockImport
+        carried={[{ inventoryId: 'inv-1', name: 'Yakut', vintage: 2020, hasCost: false }]}
+        shelves={[
+          { id: 'shelf-c', name: 'Cellar' },
+          { id: 'shelf-b', name: 'Bar' },
+        ]}
+        onDone={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Opening stock (CSV)'), {
+      target: { files: [new File(['x'], 'stock.csv', { type: 'text/csv' })] },
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'Load 2 wines' }));
+    const said = await screen.findByTestId('opening-stock-cost-not-applied');
+    expect(said.textContent).toBe(
+      'Cost not applied: Yakut. The bottles already counted on its other shelves have no cost yet. Sending the file again applies it.',
+    );
+    expect(screen.getByText(/Not changed: Yakut/)).toBeTruthy();
+    csv.text = 'Wine,Vintage,Quantity,Cost\nYakut,2020,7,300';
+  });
 });

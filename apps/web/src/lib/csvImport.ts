@@ -55,13 +55,16 @@ export async function readCsvFile(file: Blob, locale: string = getHouseLocale())
   return decodeCsvBytes(await file.arrayBuffer(), locale);
 }
 
+// F-1602: letters of every script are kept, so a Greek, Georgian or Cyrillic
+// name is not folded to nothing and matched to another one. ı and İ become i
+// first; NFKD then splits off every accent, and the marks go.
 const fold = (s: string) =>
   s
-    .toLocaleLowerCase('tr')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/ı/g, 'i')
-    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/[ıİ]/g, 'i')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim();
 
 /** Which column each field is in, by the header's own words (English or Turkish). */
@@ -147,8 +150,8 @@ export function planVendorImport(
     }
     const key = fold(name);
     const mail = email.toLowerCase();
-    if (names.has(key) || (mail && emails.has(mail))) {
-      const inBook = existing.some((v) => fold(v.name) === key || (mail && (v.email ?? '').toLowerCase() === mail));
+    if ((key && names.has(key)) || (mail && emails.has(mail))) {
+      const inBook = existing.some((v) => (key && fold(v.name) === key) || (mail && (v.email ?? '').toLowerCase() === mail));
       plan.duplicate.push({
         line,
         label: name,
@@ -307,6 +310,7 @@ export function planOpeningStock(
     const match = carried.find(
       (w) =>
         !!w.inventoryId &&
+        fold(name) !== '' &&
         fold(w.name) === fold(name) &&
         (w.vintage ?? null) === vintage &&
         (!producer || !w.producer || fold(w.producer) === fold(producer)),

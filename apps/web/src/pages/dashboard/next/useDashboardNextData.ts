@@ -31,6 +31,7 @@ import type {
   Order,
 } from "@/services/api/types";
 import { formatMoney } from "@/lib/utils";
+import { getHouseLocale } from "@/lib/houseCurrency";
 import { houseMidnight } from "@/lib/houseCalendar";
 
 /* ── Gateway DTO shapes (dashboard.service.ts) ──────────────────────────── */
@@ -276,17 +277,19 @@ export function unpricedOf(day: DayLedger): number {
     : 0;
 }
 
+/** A count beside house money, grouped the house's way (F-1603). */
+const count = (n: number) => n.toLocaleString(getHouseLocale());
+
 /** "N with price not known, not counted", or null when there are none. */
 export function unpricedSaid(n: number | null | undefined): string | null {
   return typeof n === "number" && n > 0
-    ? `${n.toLocaleString("en-US")} with ${PRICE_NOT_KNOWN}, not counted`
+    ? `${count(n)} with ${PRICE_NOT_KNOWN}, not counted`
     : null;
 }
 
 /** What a net figure reads when checks came and not one carried a subtotal. */
 export const NOT_RECORDED = "not recorded";
 
-const count = (n: number) => n.toLocaleString("en-US");
 
 /**
  * "from N of M checks" when only some of the checks carried a subtotal, so

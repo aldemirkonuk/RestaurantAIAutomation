@@ -1,6 +1,13 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { useDashboardSpine, useMonthLedger } from "./useDashboardNextData";
+import {
+  fromChecks,
+  fromDays,
+  unpricedSaid,
+  useDashboardSpine,
+  useMonthLedger,
+} from "./useDashboardNextData";
+import { setHouseLocale } from "@/lib/houseCurrency";
 import { dashboardApi, inventoryApi, ordersApi } from "@/services/api";
 
 vi.mock("@/services/api", () => ({
@@ -154,4 +161,17 @@ it("a house switch shows nothing of the last house while the next one's figures 
   expect(result.current.pending).toBeUndefined();
   expect(result.current.lowStock).toBeUndefined();
   expect(result.current.stats).toBeUndefined();
+});
+
+// F-1603: counts beside house money are grouped the house's way, not en-US.
+it("[REVERT-FAILS] groups the counts beside money the house's way", () => {
+  setHouseLocale("tr-TR");
+  try {
+    expect(fromChecks(1180, 1240)).toBe("from 1.180 of 1.240 checks");
+    expect(fromDays(3, 1500)).toBe("from 3 of 1.500 days");
+    expect(unpricedSaid(2400)).toMatch(/^2\.400 with /);
+  } finally {
+    setHouseLocale("en-US");
+  }
+  expect(fromChecks(1180, 1240)).toBe("from 1,180 of 1,240 checks");
 });

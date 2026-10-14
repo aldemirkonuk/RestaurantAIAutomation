@@ -11,6 +11,7 @@ import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
 import { houseDayOf, readHouseZone } from "../common/house-day";
+import { zoneOffsetMs } from "../calendar/zoned-time";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { CanonicalCheck, CheckChannel } from "./pos-types";
@@ -156,16 +157,19 @@ const MAX_OFFSET_MS = 14 * 60 * 60 * 1000;
  *
  * - with `Z` or an offset, the instant is the written wall clock minus the
  *   offset, computed here; no `Date.parse`;
- * - a date alone is UTC midnight, which is how ECMAScript reads a date-only
- *   form;
- * - a date and time with no zone is `Date.parse`'s reading in the gateway's
- *   own zone, kept only when it lies within 14 hours of the written wall
- *   clock.
+ * - with no offset, in a house whose zone is known, the wall clock is read on
+ *   the house's clock, and a date alone is the house's midnight that opens
+ *   that day (F-1601: the till writes the house's time, and a US house's
+ *   daily export read as UTC midnight landed every check on the day before);
+ * - with no offset in a house with no zone, a date alone is UTC midnight,
+ *   which is how ECMAScript reads a date-only form, and a date and time is
+ *   `Date.parse`'s reading in the gateway's own zone, kept only when it lies
+ *   within 14 hours of the written wall clock.
  *
  * Anything else is NaN: saleInstant falls back, and ingest() refuses the
  * check.
  */
-function readClosedAt(raw: string): number {
+function readClosedAt(raw: string, houseZone: string | null): number {
   const m = ISO_CLOSED_AT.exec(raw);
   if (!m) return NaN;
   const [, yy, mo, dd, hh, mi, ss, frac, zone] = m;
@@ -192,7 +196,16 @@ function readClosedAt(raw: string): number {
     return NaN;
   }
   const wallMs = wall.getTime();
-  if (hh === undefined || zone === "Z") return wallMs;
+  if (zone === "Z") return wallMs;
+  if (zone === undefined && houseZone) {
+    // Two passes, as zonedWallClockToUtc: the offset depends on the instant.
+    // The offset is read on the whole second; Intl does not format millis.
+    const whole = wallMs - millis;
+    let at = whole - zoneOffsetMs(new Date(whole), houseZone);
+    at = whole - zoneOffsetMs(new Date(at), houseZone);
+    return at + millis;
+  }
+  if (hh === undefined) return wallMs;
   if (zone !== undefined) {
     const digits = zone.slice(1).replace(":", "");
     const offsetMs =
@@ -210,6 +223,13 @@ function readClosedAt(raw: string): number {
     : NaN;
 }
 
+/** True when closed_at is a date, or a date and time, written with no offset. */
+function closedAtHasNoOffset(closedAt: unknown): boolean {
+  if (typeof closedAt !== "string") return false;
+  const m = ISO_CLOSED_AT.exec(closedAt.trim());
+  return m !== null && m[8] === undefined;
+}
+
 /**
  * Date a closed check's stock by when it closed, not by when it arrived.
  *
@@ -219,19 +239,24 @@ function readClosedAt(raw: string): number {
  * string when the gateway's zone and the database session's differ; measured
  * in the ADR 0090 audit of PR #603 at 01ac04eaa) the ledger, the consumption
  * row and the check could land on different days. So a zone-less string is
- * read in the gateway's own zone for all of them. A value readClosedAt does
- * not read (a dotted or slashed date such as "03.10.2026" or
+ * read in one zone for all of them: the house's when it is known (F-1601),
+ * else the gateway's own. A value readClosedAt does not read (a dotted or slashed date such as "03.10.2026" or
  * "10/03/2026 3:00 PM", a two-digit year such as "1/1/50", a POSIX-looking
  * "UTC+3", RFC 2822, "12", "2026-02-30", a number) falls back here, and
  * ingest() refuses its check: the founder ruled that such a date is not
  * imported rather than guessed at (ADR 0281, F4).
  *
  * Pure, so the boundaries are tested without a database. `nowMs` is the
- * import's clock, read once per check.
+ * import's clock, read once per check. `houseZone` reads a closed_at written
+ * with no offset on the house's clock (F-1601); null keeps the reading above.
  */
-export function saleInstant(closedAt: unknown, nowMs: number): SaleInstant {
+export function saleInstant(
+  closedAt: unknown,
+  nowMs: number,
+  houseZone: string | null = null,
+): SaleInstant {
   const raw = typeof closedAt === "string" ? closedAt.trim() : "";
-  const parsed = raw ? readClosedAt(raw) : NaN;
+  const parsed = raw ? readClosedAt(raw, houseZone) : NaN;
   const importTime = new Date(nowMs).toISOString();
   if (!Number.isFinite(parsed)) {
     return {
@@ -1492,7 +1517,13 @@ export class PosHubService {
         // ADR 0281: the one reading of this check's closed_at, taken before
         // the check is stored. The check row and every stock and consumption
         // row below are dated from it (see SaleInstant).
-        const when = saleInstant(check.closedAt, Date.now());
+        // F-1601: a closed_at with no offset is the house's own clock, so
+        // the house's zone is read for it (once per import).
+        const when = saleInstant(
+          check.closedAt,
+          Date.now(),
+          closedAtHasNoOffset(check.closedAt) ? await houseZone() : null,
+        );
         // ADR 0281, founder ruling F4 ("Refuse, say why"): a closed_at that is
         // present but not read is not imported, so it is never guessed at,
         // here or by Postgres. The check is refused before anything is
