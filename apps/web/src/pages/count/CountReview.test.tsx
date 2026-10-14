@@ -13,7 +13,12 @@ const auth = vi.hoisted(() => ({
     activeRole: 'manager' as string | null,
   },
 }))
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth.value }))
+// CountSheetPanel reads the house name through useContext(AuthContext) (F-1631),
+// so the mock carries the context too, holding the same person.
+vi.mock('@/contexts/AuthContext', async () => {
+  const { createContext } = await import('react')
+  return { useAuth: () => auth.value, AuthContext: createContext<unknown>(auth.value) }
+})
 
 const api = vi.hoisted(() => ({
   reviewCountSession: vi.fn(),
