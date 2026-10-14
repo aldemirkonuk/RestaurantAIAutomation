@@ -423,16 +423,17 @@ describe("inventory-ledger reads withhold each movement's cost (F-565)", () => {
       reason: "delivery",
     }) as any;
   const controller = () =>
-    new InventoryLedgerController({
-      listTransactions: jest.fn(async () => ({
-        transactions: [tx()],
-        total: 1,
-        page: 1,
-        limit: 50,
-        hasMore: false,
-      })),
-      getTransaction: jest.fn(async () => tx()),
-      getTransactionHistory: jest.fn(async () => [tx()]),
+    new InventoryLedgerController(
+      {
+        listTransactions: jest.fn(async () => ({
+          transactions: [tx()],
+          total: 1,
+          page: 1,
+          limit: 50,
+          hasMore: false,
+        })),
+        getTransaction: jest.fn(async () => tx()),
+        getTransactionHistory: jest.fn(async () => [tx()]),
       } as any,
       {} as any,
     );
