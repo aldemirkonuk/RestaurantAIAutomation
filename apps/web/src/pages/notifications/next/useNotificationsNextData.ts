@@ -220,7 +220,13 @@ export interface NotificationsNextData {
   failureNote: string | null;
   refresh: () => void;
   readFurtherBack: () => void;
-  markRead: (id: string) => void;
+  /**
+   * Rule a line off. `opened`: the reader has the row open and ruled it off
+   * from inside it, so a crew note on it counts as opened; every other
+   * rule-off (the `e` key on a closed row, "Rule this line off") does not
+   * (F-1687).
+   */
+  markRead: (id: string, opened?: boolean) => void;
   markUnread: (id: string) => void;
   archive: (id: string) => void;
   remove: (id: string) => void;
@@ -533,9 +539,9 @@ export function useNotificationsNextData(): NotificationsNextData {
   );
 
   const markRead = useCallback(
-    (id: string) => {
+    (id: string, opened = false) => {
       const ids = openMembersOf(id);
-      void patchRow(ids, 'read', () => ruleOffRows(ids), 'rule this off');
+      void patchRow(ids, 'read', () => ruleOffRows(ids, opened ? id : undefined), 'rule this off');
     },
     [patchRow, openMembersOf],
   );

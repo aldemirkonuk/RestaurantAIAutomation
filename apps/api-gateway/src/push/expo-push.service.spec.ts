@@ -29,7 +29,17 @@ function svc(db: StubDb): ExpoPushService {
   // The token fan-out is Expo's HTTP call and is not what this suite is about.
   // Stubbed so a green run can never depend on a network being up — a test that
   // passed because a network was down would be the first thing here to lie.
-  (s as unknown as { sendToTokens: () => Promise<void> }).sendToTokens = async () => {};
+  (
+    s as unknown as {
+      sendToTokens: (
+        tokens: string[],
+      ) => Promise<{ accepted: number; refused: number; reasons: string[] }>;
+    }
+  ).sendToTokens = async (tokens) => ({
+    accepted: tokens.length,
+    refused: 0,
+    reasons: [],
+  });
   return s;
 }
 
@@ -109,5 +119,76 @@ describe("ExpoPushService.sendToUsers reports what push actually did", () => {
     const out = await s.sendToUsers(["u1"], PAYLOAD);
     expect(out.outcome).toBe("read_failed");
     expect(out.tokens).toBe(0);
+  });
+});
+
+/**
+ * F-1696: Expo answers every message with a ticket, and a refused ticket is
+ * not a push it took. A low-stock digest naming twenty wines was over Expo's
+ * 4096-byte limit (`MessageTooBig`) and was still reported as
+ * `accepted_by_service`. These run the real `sendToTokens` against a stubbed
+ * Expo answer.
+ */
+describe("ExpoPushService.sendToUsers reads Expo's tickets (F-1696)", () => {
+  const realFetch = global.fetch;
+  afterEach(() => {
+    global.fetch = realFetch;
+  });
+
+  function expoAnswers(tickets: unknown[], status = 200) {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: status < 400,
+      status,
+      json: async () => ({ data: tickets }),
+    }) as unknown as typeof fetch;
+  }
+
+  const twoDevices = () =>
+    makeStubDb({
+      mobile_devices: [
+        { user_id: "u1", expo_push_token: "ExponentPushToken[a]" },
+        { user_id: "u2", expo_push_token: "ExponentPushToken[b]" },
+      ],
+    });
+
+  it("a push Expo refuses as too big is `refused_by_service`, never accepted", async () => {
+    const tooBig = {
+      status: "error",
+      message: "Message too big",
+      details: { error: "MessageTooBig" },
+    };
+    expoAnswers([tooBig, tooBig]);
+    const out = await new ExpoPushService(
+      asDatabaseService(twoDevices()),
+    ).sendToUsers(["u1", "u2"], PAYLOAD);
+    expect(out.outcome).toBe("refused_by_service");
+    expect(out.tokens).toBe(0);
+    expect(out.detail).toMatch(/MessageTooBig/);
+  });
+
+  it("counts only the devices Expo took, and says how many it refused", async () => {
+    expoAnswers([
+      { status: "ok", id: "t1" },
+      {
+        status: "error",
+        message: "rate",
+        details: { error: "MessageRateExceeded" },
+      },
+    ]);
+    const out = await new ExpoPushService(
+      asDatabaseService(twoDevices()),
+    ).sendToUsers(["u1", "u2"], PAYLOAD);
+    expect(out.outcome).toBe("accepted_by_service");
+    expect(out.tokens).toBe(1);
+    expect(out.detail).toMatch(/refused it for 1 more \(MessageRateExceeded\)/);
+  });
+
+  it("an HTTP refusal of the whole request is not an acceptance", async () => {
+    expoAnswers([], 413);
+    const out = await new ExpoPushService(
+      asDatabaseService(twoDevices()),
+    ).sendToUsers(["u1", "u2"], PAYLOAD);
+    expect(out.outcome).toBe("refused_by_service");
+    expect(out.detail).toMatch(/HTTP 413/);
   });
 });

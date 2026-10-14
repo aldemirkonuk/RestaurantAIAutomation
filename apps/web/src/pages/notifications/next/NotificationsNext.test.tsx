@@ -297,7 +297,8 @@ describe('NotificationsNext — the day-book', () => {
     draw();
     fireEvent.click(screen.getByText('3 wines dropped below par'));
     fireEvent.click(screen.getByText('Rule it off'));
-    expect(spies.markRead).toHaveBeenCalledWith('n1');
+    // Ruled off from inside the opened row: the open is real (F-1687).
+    expect(spies.markRead).toHaveBeenCalledWith('n1', true);
   });
 
   it('marks what the house did on its own `--calm`, unsent, with a human control', () => {
@@ -513,7 +514,8 @@ describe('NotificationsNext — what the inbox lens asked for', () => {
     fireEvent.keyDown(window, { key: 'j' });
 
     fireEvent.keyDown(window, { key: 'e' });
-    expect(spies.markRead).toHaveBeenCalledWith('n1');
+    // The row is not open, so `e` never counts a crew note as opened (F-1687).
+    expect(spies.markRead).toHaveBeenCalledWith('n1', false);
 
     fireEvent.keyDown(window, { key: 's' });
     expect(spies.snooze).toHaveBeenCalledWith('n1', expect.any(Number));

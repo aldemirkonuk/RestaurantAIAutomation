@@ -315,3 +315,145 @@ describe("ProducerLedgerService run ledger", () => {
     expect(recorder).toBeInstanceOf(Function);
   });
 });
+
+/**
+ * F-1697: the audience is today's members, and the claim index hands anybody
+ * without a claim every event still in a producer's window. A cook hired this
+ * morning got yesterday's deliveries as fresh lines; a manager promoted today
+ * got two weeks of ceilings.
+ */
+describe("ProducerLedgerService.emit — events before a member joined or was promoted (F-1697)", () => {
+  const OCCURRED = new Date("2026-09-02T23:04:00Z");
+
+  it("a member who joined after the event gets no line; one who was there does", async () => {
+    const { db, notifications, service } = build();
+    db.tables.user_restaurant_access.push(
+      {
+        user_id: "user-1",
+        restaurant_id: TENANT,
+        is_active: true,
+        created_at: "2026-08-01T00:00:00Z",
+        valid_from: "2026-08-01T00:00:00Z",
+      },
+      {
+        user_id: "user-2",
+        restaurant_id: TENANT,
+        is_active: true,
+        created_at: "2026-09-03T09:00:00Z",
+        valid_from: "2026-09-03T09:00:00Z",
+      },
+    );
+
+    const out = await service.emit(
+      {
+        restaurantId: TENANT,
+        producer: "delivery_recorded",
+        audience: { ready: [...MEMBERS], deferred: [] },
+        tally: emptyTally(),
+      },
+      event({ occurredAt: OCCURRED }),
+    );
+
+    expect(out).toBe("written");
+    expect(notifications.persistForRestaurant.calls[0][2].onlyUserIds).toEqual([
+      "user-1",
+    ]);
+    expect(
+      db.tables.notification_producer_claims.map((c) => c.user_id),
+    ).toEqual(["user-1"]);
+  });
+
+  it("a member promoted after the event gets no line; a demotion holds nobody back", async () => {
+    const { db, notifications, service } = build();
+    db.tables.user_restaurant_access.push(
+      {
+        user_id: "user-1",
+        restaurant_id: TENANT,
+        is_active: true,
+        created_at: "2026-08-01T00:00:00Z",
+      },
+      {
+        user_id: "user-2",
+        restaurant_id: TENANT,
+        is_active: true,
+        created_at: "2026-08-01T00:00:00Z",
+      },
+    );
+    db.tables.system_audit_log = [
+      {
+        restaurant_id: TENANT,
+        action: "member_role_changed",
+        entity_id: "user-1",
+        created_at: "2026-09-03T10:00:00Z",
+        changes: { role: { from: "staff", to: "manager" } },
+      },
+      {
+        restaurant_id: TENANT,
+        action: "member_role_changed",
+        entity_id: "user-2",
+        created_at: "2026-09-03T10:00:00Z",
+        changes: { role: { from: "owner", to: "manager" } },
+      },
+    ];
+
+    await service.emit(
+      {
+        restaurantId: TENANT,
+        producer: "invoice_confirmed",
+        audience: { ready: [...MEMBERS], deferred: [] },
+        tally: emptyTally(),
+      },
+      event({ occurredAt: OCCURRED }),
+    );
+
+    expect(notifications.persistForRestaurant.calls[0][2].onlyUserIds).toEqual([
+      "user-2",
+    ]);
+  });
+
+  it("an event after the member joined still reaches them", async () => {
+    const { db, notifications, service } = build(["user-2"]);
+    db.tables.user_restaurant_access.push({
+      user_id: "user-2",
+      restaurant_id: TENANT,
+      is_active: true,
+      created_at: "2026-09-01T00:00:00Z",
+    });
+
+    const out = await service.emit(
+      {
+        restaurantId: TENANT,
+        producer: "delivery_recorded",
+        audience: { ready: ["user-2"], deferred: [] },
+        tally: emptyTally(),
+      },
+      event({ occurredAt: OCCURRED }),
+    );
+    expect(out).toBe("written");
+    expect(notifications.persistForRestaurant.calls).toHaveLength(1);
+  });
+
+  it("an unreadable access list holds nobody back", async () => {
+    const { db, notifications, service } = build();
+    db.tables.user_restaurant_access.push({
+      user_id: "user-2",
+      restaurant_id: TENANT,
+      is_active: true,
+      created_at: "2026-09-03T09:00:00Z",
+    });
+    db.failures.user_restaurant_access = "timeout";
+
+    await service.emit(
+      {
+        restaurantId: TENANT,
+        producer: "delivery_recorded",
+        audience: { ready: [...MEMBERS], deferred: [] },
+        tally: emptyTally(),
+      },
+      event({ occurredAt: OCCURRED }),
+    );
+    expect(notifications.persistForRestaurant.calls[0][2].onlyUserIds).toEqual(
+      MEMBERS,
+    );
+  });
+});

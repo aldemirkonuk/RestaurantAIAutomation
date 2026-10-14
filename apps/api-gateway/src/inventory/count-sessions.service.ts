@@ -18,6 +18,7 @@ import {
   STAND_IN_BOTTLE_ML,
 } from "./stock-count-result";
 import { readHouseZone } from "../common/house-day";
+import { resolveBellLines } from "../notifications/resolve-bell-lines";
 import {
   CountPeriodRefused,
   periodChoiceAt,
@@ -83,6 +84,9 @@ const uncountedTotal = (
   offShelf: Set<string>,
 ): number =>
   [...missed.values()].reduce((n, set) => n + set.size, 0) + offShelf.size;
+
+/** The `group_key` every bell line about one count carries (F-1699). */
+export const countGroupKey = (sessionId: string) => `count:${sessionId}`;
 
 /**
  * The leaf shelves of a house -- live places no live place sits inside -- in
@@ -264,7 +268,7 @@ export class CountSessionsService {
     house: string,
     by: string,
     what: "count_opened" | "count_recount",
-    payload: { title: string; message: string; actionUrl: string },
+    payload: { title: string; message: string; sessionId: string },
     only?: string[],
   ) {
     if (!this.notifications) return;
@@ -283,8 +287,11 @@ export class CountSessionsService {
           title: payload.title,
           message: payload.message,
           priority: "medium",
-          actionUrl: payload.actionUrl,
+          actionUrl: `/count/${payload.sessionId}`,
           actionLabel: "Open the count",
+          // F-1699: one key per count, so its lines clear when it is
+          // signed off or stopped (`clearCountLines`).
+          groupKey: countGroupKey(payload.sessionId),
           metadata: { action: what },
         },
         only
@@ -295,6 +302,23 @@ export class CountSessionsService {
     } catch (e) {
       this.logger.warn(
         `count ${what} notice for ${house} failed: ${(e as Error)?.message}`,
+      );
+    }
+  }
+
+  /**
+   * A count that is signed off or stopped has nothing left to take: its
+   * "A stock count is open" and "A shelf to count again" lines clear for
+   * everyone (F-1699, the F-526 rule). Never throws; a line that could not
+   * be cleared is logged, the count's own change stands.
+   */
+  private async clearCountLines(house: string, sessionId: string) {
+    const cleared = await resolveBellLines(this.dbService.getClient(), house, {
+      groupKey: countGroupKey(sessionId),
+    });
+    if (!cleared.ok) {
+      this.logger.warn(
+        `count ${sessionId} lines for ${house} did not clear: ${cleared.error}`,
       );
     }
   }
@@ -636,7 +660,7 @@ export class CountSessionsService {
       await this.tellTheFloor(house, userId, "count_opened", {
         title: "A stock count is open",
         message: `${COUNT_KIND_WORDS[kind]}: ${shelves.length} ${shelves.length === 1 ? "shelf" : "shelves"} to count. Take a shelf when you can.`,
-        actionUrl: `/count/${sessionId}`,
+        sessionId,
       });
     return this.pull(house, sessionId, userId);
   }
@@ -1417,10 +1441,13 @@ export class CountSessionsService {
         abandoned_at: string;
       }>
     )[0];
-    if (row)
+    if (row) {
+      await this.clearCountLines(house, sessionId);
       return { id: row.id, status: row.status, abandonedAt: row.abandoned_at };
+    }
     const session = await this.session(house, sessionId);
     if (session.status === "abandoned") {
+      await this.clearCountLines(house, sessionId);
       return {
         id: session.id,
         status: session.status,
@@ -2321,7 +2348,7 @@ export class CountSessionsService {
           {
             title: "A shelf to count again",
             message: `${where ? zoneLabel(where) : "A shelf you counted"} was sent back. Count it again when you can.`,
-            actionUrl: `/count/${sessionId}`,
+            sessionId,
           },
           told,
         );
@@ -2402,6 +2429,7 @@ export class CountSessionsService {
       userId,
       evenIfUnfinished,
     );
+    if (r.status === "signed_off") await this.clearCountLines(house, sessionId);
     return {
       id: sessionId,
       status: String(r.status ?? ""),

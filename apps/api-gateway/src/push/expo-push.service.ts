@@ -29,7 +29,7 @@ const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const CHUNK_SIZE = 100;
 
 /**
- * What a push attempt actually did. Four outcomes, none of which is "sent".
+ * What a push attempt actually did. Five outcomes, none of which is "sent".
  *
  * `accepted_by_service` is the strongest claim this service is entitled to
  * make: Expo took the ticket. Whether a handset displayed anything is not
@@ -40,7 +40,14 @@ export type PushOutcomeKind =
   | "no_recipients"
   | "no_device_registered"
   | "read_failed"
-  | "accepted_by_service";
+  | "accepted_by_service"
+  /**
+   * F-1696: Expo answered and took none of it — a ticket error other than a
+   * gone device (`MessageTooBig` for a payload over 4096 bytes, a rate
+   * limit), or the request itself refused. It used to be reported as
+   * `accepted_by_service`.
+   */
+  | "refused_by_service";
 
 export interface PushOutcome {
   outcome: PushOutcomeKind;
@@ -159,14 +166,27 @@ export class ExpoPushService {
         };
       }
 
-      await this.sendToTokens(
+      const sent = await this.sendToTokens(
         data.map((row: any) => row.expo_push_token),
         payload.house ? await this.forHouse(payload.house, payload) : payload,
       );
+      // F-1696: a ticket Expo refused is not a push it accepted.
+      const why = sent.reasons.length ? ` (${sent.reasons.join(", ")})` : "";
+      if (sent.refused > 0 && sent.accepted === 0) {
+        return {
+          outcome: "refused_by_service",
+          tokens: 0,
+          detail: `Expo refused the push for all ${sent.refused} registered device(s)${why}, so no phone was reached.`,
+        };
+      }
       return {
         outcome: "accepted_by_service",
-        tokens: data.length,
-        detail: `Handed to Expo for ${data.length} registered device(s). Expo accepting it is not proof a handset showed it.`,
+        tokens: sent.accepted,
+        detail:
+          `Handed to Expo for ${sent.accepted} registered device(s). Expo accepting it is not proof a handset showed it.` +
+          (sent.refused > 0
+            ? ` Expo refused it for ${sent.refused} more${why}.`
+            : ""),
       };
     } catch (e: any) {
       this.logger.warn(`sendToUsers failed: ${e?.message}`);
@@ -240,12 +260,25 @@ export class ExpoPushService {
     return counts;
   }
 
+  /**
+   * Counts what Expo took and what it refused (F-1696). A gone device is
+   * pruned and counted as refused; any other ticket error, an HTTP refusal or
+   * a thrown send is logged with its reason and counted as refused too, so
+   * `sendToUsers` never reports `accepted_by_service` for a push Expo turned
+   * away.
+   */
   private async sendToTokens(
     tokens: string[],
     payload: ExpoPushPayload,
-  ): Promise<void> {
+  ): Promise<{ accepted: number; refused: number; reasons: string[] }> {
+    const sent = { accepted: 0, refused: 0, reasons: [] as string[] };
+    const because = (reason: string) => {
+      if (!sent.reasons.includes(reason)) sent.reasons.push(reason);
+    };
     const valid = tokens.filter((t) => t?.startsWith("ExponentPushToken"));
-    if (!valid.length) return;
+    sent.refused += tokens.length - valid.length;
+    if (tokens.length > valid.length) because("not an Expo push token");
+    if (!valid.length) return sent;
 
     for (let i = 0; i < valid.length; i += CHUNK_SIZE) {
       const chunk = valid.slice(i, i + CHUNK_SIZE);
@@ -271,18 +304,28 @@ export class ExpoPushService {
         });
         if (!res.ok) {
           this.logger.warn(`Expo push HTTP ${res.status}`);
+          sent.refused += chunk.length;
+          because(`HTTP ${res.status}`);
           continue;
         }
         const json = (await res.json()) as { data?: ExpoPushTicket[] };
         const tickets = json.data ?? [];
         // Prune tokens Expo says are gone (uninstalled app, revoked perms).
         const dead: string[] = [];
-        tickets.forEach((ticket, idx) => {
-          if (
-            ticket.status === "error" &&
-            ticket.details?.error === "DeviceNotRegistered"
-          ) {
-            dead.push(chunk[idx]);
+        chunk.forEach((token, idx) => {
+          const ticket = tickets[idx];
+          if (ticket?.status === "ok") {
+            sent.accepted += 1;
+            return;
+          }
+          sent.refused += 1;
+          const reason =
+            ticket?.details?.error ?? ticket?.message ?? "no ticket returned";
+          because(reason);
+          if (ticket?.details?.error === "DeviceNotRegistered") {
+            dead.push(token);
+          } else {
+            this.logger.warn(`Expo refused a push ticket: ${reason}`);
           }
         });
         if (dead.length) {
@@ -294,7 +337,10 @@ export class ExpoPushService {
         }
       } catch (e: any) {
         this.logger.warn(`Expo push send failed: ${e?.message}`);
+        sent.refused += chunk.length;
+        because(String(e?.message ?? "the send threw"));
       }
     }
+    return sent;
   }
 }

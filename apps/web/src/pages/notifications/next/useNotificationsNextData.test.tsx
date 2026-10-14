@@ -130,7 +130,7 @@ describe('ruleOffShown — only the lines on screen (F-1659)', () => {
     expect(left?.status).toBe('unread');
   });
 
-  it('one line goes through its own route', async () => {
+  it('one line goes through the bulk route, so a crew note is not counted as opened (F-1698)', async () => {
     serve(3);
     const { result } = renderHook(() => useNotificationsNextData());
     await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
@@ -140,7 +140,9 @@ describe('ruleOffShown — only the lines on screen (F-1659)', () => {
     });
 
     await waitFor(() => expect(api.patch).toHaveBeenCalled());
-    expect(api.patch.mock.calls[0][0]).toBe('/notifications/n-rest-A-1/read');
+    // `PATCH /notifications/:id/read` records a note open; the bulk route does not.
+    expect(api.patch.mock.calls.map((c) => c[0])).not.toContain('/notifications/n-rest-A-1/read');
+    expect(api.patch).toHaveBeenCalledWith('/notifications/read/bulk', { ids: ['n-rest-A-1'] });
   });
 
   it('sends nothing when no line is named', async () => {
@@ -412,7 +414,7 @@ describe('a folded line — every act reaches every row it folds', () => {
     expect([...(config as { data: { ids: string[] } }).data.ids].sort()).toEqual(['f-0', 'f-1']);
   });
 
-  it('leaves a single line on the single-row route', async () => {
+  it('rules a closed single line off without counting it opened (F-1687)', async () => {
     serve(1);
     const { result } = renderHook(() => useNotificationsNextData());
     await waitFor(() => expect(result.current.stack.items).toHaveLength(1));
@@ -420,7 +422,20 @@ describe('a folded line — every act reaches every row it folds', () => {
       result.current.markRead(result.current.stack.items[0].id);
     });
     await waitFor(() => expect(api.patch).toHaveBeenCalled());
+    expect(api.patch.mock.calls.map((c) => c[0])).not.toContain('/notifications/n-rest-A-0/read');
+    expect(api.patch).toHaveBeenCalledWith('/notifications/read/bulk', { ids: ['n-rest-A-0'] });
+  });
+
+  it('leaves the opened line on the single-row route, which records the open', async () => {
+    serve(1);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.stack.items).toHaveLength(1));
+    await act(async () => {
+      result.current.markRead(result.current.stack.items[0].id, true);
+    });
+    await waitFor(() => expect(api.patch).toHaveBeenCalled());
     expect(api.patch.mock.calls[0][0]).toBe('/notifications/n-rest-A-0/read');
+    expect(api.patch.mock.calls).toHaveLength(1);
     // a line that folds nothing names no fold members
     expect(result.current.stack.membersById).toEqual({});
   });
