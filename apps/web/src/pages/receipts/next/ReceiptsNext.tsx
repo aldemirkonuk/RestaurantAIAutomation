@@ -193,8 +193,9 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
   const [amountText, setAmountText] = useState('');
   const [paidOn, setPaidOn] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
+  const rid = useActiveRestaurantId();
   const ledger = useQuery({
-    queryKey: ['invoice-payments', doc.id, doc.paid_at ?? null],
+    queryKey: ['invoice-payments', rid, doc.id, doc.paid_at ?? null],
     queryFn: () => documentsApi.payments(doc.id),
     enabled: canMark,
   });
