@@ -10,7 +10,9 @@
  * handler keeps per-state lots and replays a seen idempotency key, as the
  * primitive does.
  */
+import { ForbiddenException } from "@nestjs/common";
 import { InventoryLedgerService } from "./inventory-ledger.service";
+import { InventoryLedgerController } from "./inventory-ledger.controller";
 import { FakeDb } from "../notifications/producers/testing/fake-db";
 
 const HOUSE = "house-1";
@@ -119,6 +121,84 @@ describe("Reconcile N into live moves the shadow once (F-1166)", () => {
   it("refuses another house's item before moving anything", async () => {
     const { stock, press } = build(3, 10);
     await expect(press(OTHER)).rejects.toThrow(/does not belong/);
+    expect(stock("live")).toBe(3);
+    expect(stock("shadow")).toBe(10);
+  });
+});
+
+/**
+ * F-1695 (re-hit of F-143): the bottles an open order still holds had not
+ * arrived, and "Reconcile" booked them onto the shelf anyway; the delivery then
+ * booked them again and released nothing. And any role could press it.
+ */
+describe("Bottles still on an open order stay on order (F-1695)", () => {
+  function onOrder(held: number) {
+    const b = build(3, 10);
+    b.db.tables.procurement_orders = [
+      {
+        id: "o-1",
+        restaurant_id: HOUSE,
+        inventory_id: ITEM,
+        reserved_bottles: held,
+      },
+      // Another house's order for the same id never counts.
+      {
+        id: "o-2",
+        restaurant_id: OTHER,
+        inventory_id: ITEM,
+        reserved_bottles: 10,
+      },
+    ];
+    return b;
+  }
+
+  it("[REVERT-FAILS] refuses, and moves nothing, when an open order holds every bottle", async () => {
+    const { stock, press } = onOrder(10);
+    await expect(press()).rejects.toThrow(
+      /still on an order that has not arrived/,
+    );
+    expect(stock("live")).toBe(3);
+    expect(stock("shadow")).toBe(10);
+  });
+
+  it("[REVERT-FAILS] moves only the bottles no order holds", async () => {
+    const { stock, press } = onOrder(6);
+    await expect(press()).resolves.toEqual({ moved: 4 });
+    expect(stock("live")).toBe(7);
+    expect(stock("shadow")).toBe(6);
+  });
+
+  it("a released order (0 held) no longer holds anything", async () => {
+    const { press } = onOrder(0);
+    await expect(press()).resolves.toEqual({ moved: 10 });
+  });
+
+  it("[REVERT-FAILS] a staff press is refused before anything moves", async () => {
+    const { stock, db } = build(3, 10);
+    const service = new InventoryLedgerService(
+      { supabase: db, getClient: () => db } as any,
+      { createEvent: async () => undefined } as any,
+    );
+    const organizations = {
+      assertCanManageRestaurant: jest.fn(async () => {
+        throw new ForbiddenException("owner or manager only");
+      }),
+    };
+    const controller = new InventoryLedgerController(
+      service,
+      organizations as any,
+    );
+    await expect(
+      controller.reconcileShadowIntoLive(ITEM, {
+        userId: USER,
+        restaurantId: HOUSE,
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(organizations.assertCanManageRestaurant).toHaveBeenCalledWith(
+      USER,
+      HOUSE,
+      expect.any(String),
+    );
     expect(stock("live")).toBe(3);
     expect(stock("shadow")).toBe(10);
   });

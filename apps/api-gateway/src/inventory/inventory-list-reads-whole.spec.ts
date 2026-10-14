@@ -277,7 +277,7 @@ describe("F-292: a manual adjust is a delta on the ledger's transactions route",
         message: "stock would go negative: 2 + -5",
       }),
     };
-    const controller = new InventoryLedgerController(ledger as any);
+    const controller = new InventoryLedgerController(ledger as any, {} as any);
 
     const err = await controller
       .createTransaction({} as any, { userId: "u", restaurantId: HOUSE })

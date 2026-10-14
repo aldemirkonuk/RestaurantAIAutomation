@@ -21,6 +21,7 @@ import {
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { InventoryLedgerService } from "./inventory-ledger.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 import {
   CreateInventoryTransactionDto,
   GetTransactionsQueryDto,
@@ -64,7 +65,10 @@ export function transactionForRole(
 export class InventoryLedgerController {
   private readonly logger = new Logger(InventoryLedgerController.name);
 
-  constructor(private readonly ledgerService: InventoryLedgerService) {}
+  constructor(
+    private readonly ledgerService: InventoryLedgerService,
+    private readonly organizations: OrganizationsService,
+  ) {}
 
   // ==========================================================================
   // TRANSACTIONS
@@ -413,6 +417,13 @@ export class InventoryLedgerController {
     @Param("inventoryId") inventoryId: string,
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<{ moved: number }> {
+    // F-1695 (re-hit of F-143): putting bottles on the shelf by hand, with no
+    // delivery behind them, is an owner/manager act, as removing a wine is.
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "move bottles on order onto the shelf",
+    );
     return this.ledgerService.reconcileShadowIntoLive(
       user.restaurantId,
       user.userId,

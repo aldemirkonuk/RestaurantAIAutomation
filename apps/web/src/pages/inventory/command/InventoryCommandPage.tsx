@@ -1868,12 +1868,15 @@ export function InventoryCommandPage() {
                 >
                   <Copy className="w-3.5 h-3.5" /> Copy names
                 </button>
-                <button
-                  onClick={() => setRemoveTargets(selectedRows)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-rose-500/20 hover:bg-rose-500/30 text-rose-100 rounded-lg"
-                >
-                  <Trash2 className="w-3.5 h-3.5" /> Remove selected
-                </button>
+                {/* F-1694: removing is an owner/manager act; the gateway refuses anyone else. */}
+                {canEditPrice && (
+                  <button
+                    onClick={() => setRemoveTargets(selectedRows)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-rose-500/20 hover:bg-rose-500/30 text-rose-100 rounded-lg"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Remove selected
+                  </button>
+                )}
                 <button
                   onClick={clearSelect}
                   className="p-1.5 hover:bg-white/20 rounded-lg"
@@ -2520,17 +2523,21 @@ export function InventoryCommandPage() {
                   setMenu(null);
                 }}
               />
-              <div className="h-px bg-gray-100 my-1" />
-              <button
-                onClick={() => {
-                  setRemoveTargets([item]);
-                  setMenu(null);
-                }}
-                className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-rose-600 hover:bg-rose-50 rounded-lg"
-              >
-                <Trash2 className="w-4 h-4 text-rose-400" /> Remove from
-                inventory
-              </button>
+              {canEditPrice && (
+                <>
+                  <div className="h-px bg-gray-100 my-1" />
+                  <button
+                    onClick={() => {
+                      setRemoveTargets([item]);
+                      setMenu(null);
+                    }}
+                    className="flex items-center gap-2 w-full text-left px-3 py-1.5 text-sm text-rose-600 hover:bg-rose-50 rounded-lg"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-400" /> Remove from
+                    inventory
+                  </button>
+                </>
+              )}
             </div>
           );
         })()}
@@ -2557,6 +2564,7 @@ export function InventoryCommandPage() {
         <RemoveFromInventoryModal
           isOpen
           items={removeTargets}
+          canRemove={canEditPrice}
           onClose={() => setRemoveTargets(null)}
           onRemoved={() => {
             clearSelect();

@@ -433,7 +433,9 @@ describe("inventory-ledger reads withhold each movement's cost (F-565)", () => {
       })),
       getTransaction: jest.fn(async () => tx()),
       getTransactionHistory: jest.fn(async () => [tx()]),
-    } as any);
+      } as any,
+      {} as any,
+    );
 
   it("sends staff no unit or total cost on the list, one movement or the history", async () => {
     const c = controller();
