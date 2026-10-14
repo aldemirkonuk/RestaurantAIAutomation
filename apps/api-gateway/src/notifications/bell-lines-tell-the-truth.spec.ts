@@ -260,6 +260,34 @@ describe("F-530 — a push never carries house money", () => {
     // ExpoPushService puts the house's name in the title when `house` is set.
     expect(pushes[0].house).toBe(HOUSE);
   });
+
+  it("names its house on the one-person path too: approvals, counter-offers (F-1630)", async () => {
+    const db = seed();
+    const { svc, pushes } = funnel(db);
+
+    await svc.sendToUser(
+      OWNER,
+      { type: "order_approval", title: "Approve order", body: "Narince x6" },
+      HOUSE,
+    );
+
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].house).toBe(HOUSE);
+  });
+
+  it("a push with no house pushes as before, unnamed (F-1630)", async () => {
+    const db = seed();
+    const { svc, pushes } = funnel(db);
+
+    await svc.sendToUser(
+      OWNER,
+      { type: "order_approval", title: "Approve order", body: "Narince x6" },
+      null,
+    );
+
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].house).toBeUndefined();
+  });
 });
 
 describe("F-526 — a line clears when its thing is dealt with", () => {
