@@ -30,7 +30,13 @@ jest.mock("expo-secure-store", () => ({
   deleteItemAsync: jest.fn(async () => undefined),
 }));
 
-import { pushSwitchOn, savedPushProblem, turnPushOn, PUSH_PROBLEM_WORDS } from "../pushSwitch";
+import {
+  pushProblemOnRecheck,
+  pushSwitchOn,
+  savedPushProblem,
+  turnPushOn,
+  PUSH_PROBLEM_WORDS,
+} from "../pushSwitch";
 
 function load(): typeof import("../push") {
   let mod!: { session: typeof import("@/state/session"); push: typeof import("../push") };
@@ -103,6 +109,28 @@ describe("the switch follows the real state", () => {
     expect(await savedPushProblem(true, async () => true)).toBeNull();
     expect(await savedPushProblem(true, async () => null)).toBeNull();
     expect(await savedPushProblem(false, async () => false)).toBeNull();
+  });
+
+  it("F-1583: allowing notifications in the phone clears the refusal on return", () => {
+    // Saved on, refused, then allowed in the phone's settings.
+    expect(pushProblemOnRecheck("refused", true, true)).toBeNull();
+    // Turning on was refused (nothing saved), then allowed in the phone.
+    expect(pushProblemOnRecheck("refused", false, true)).toBeNull();
+    // Still refused, or unreadable: the reason stays.
+    expect(pushProblemOnRecheck("refused", true, false)).toBe("refused");
+    expect(pushProblemOnRecheck("refused", true, null)).toBe("refused");
+    // A failed set-up is not the phone's to clear; it waits for "Try again".
+    expect(pushProblemOnRecheck("failed", true, true)).toBe("failed");
+    // A saved on the phone has since turned off reads as refused.
+    expect(pushProblemOnRecheck(null, true, false)).toBe("refused");
+    expect(pushProblemOnRecheck(null, false, false)).toBeNull();
+  });
+
+  it("F-1583: the Settings screen reads the phone again on focus and on return to the front", () => {
+    const screen = fs.readFileSync(path.resolve(__dirname, "../../../app/settings.tsx"), "utf8");
+    expect(screen).toMatch(/useFocusEffect\(recheckPush\)/);
+    expect(screen).toMatch(/AppState\.addEventListener\("change"/);
+    expect(screen).toMatch(/pushProblemOnRecheck\(p, pushSaved, allowed\)/);
   });
 
   it("offers a fix for a refusal and a retry for a failure, in plain words", () => {

@@ -412,6 +412,94 @@ describe("TeamService — F-1545: removing a 'no account yet' person cancels the
   });
 });
 
+describe("TeamService — F-1580: removing a person with an account cancels invites emailed to them", () => {
+  const LATER = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
+  // Sam joined with a code handed over in person; the invite emailed to his
+  // address earlier was never used and is still good.
+  function withSamAndEmailedInvite(db: StubDb, email: string | null) {
+    db.tables.organization_invites = [
+      {
+        id: "inv-emailed",
+        restaurant_id: RID,
+        invited_by: OWNER,
+        role: "staff",
+        target_email: "sam@example.test",
+        used_at: null,
+        expires_at: LATER,
+      },
+      {
+        id: "inv-other-house",
+        restaurant_id: OTHER_RID,
+        invited_by: OWNER,
+        role: "staff",
+        target_email: "sam@example.test",
+        used_at: null,
+        expires_at: LATER,
+      },
+      {
+        id: "inv-other-address",
+        restaurant_id: RID,
+        invited_by: OWNER,
+        role: "staff",
+        target_email: "someone@example.test",
+        used_at: null,
+        expires_at: LATER,
+      },
+    ];
+    db.tables.team_members.push({
+      id: "m-sam",
+      restaurant_id: RID,
+      user_id: STAFF,
+      email,
+      display_name: "Sam",
+      status: "active",
+    });
+  }
+
+  const expiresAt = (db: StubDb, id: string) =>
+    db.tables.organization_invites.find((i) => i.id === id)!.expires_at;
+
+  it("expires the live emailed invite to their address in this house only", async () => {
+    const db = seed();
+    withSamAndEmailedInvite(db, " Sam@Example.test ");
+    const receipt: any = await service(db).deleteMember(MANAGER, RID, "m-sam");
+
+    expect(
+      new Date(String(expiresAt(db, "inv-emailed"))).getTime(),
+    ).toBeLessThanOrEqual(Date.now());
+    expect(expiresAt(db, "inv-other-house")).toBe(LATER);
+    expect(expiresAt(db, "inv-other-address")).toBe(LATER);
+    expect(receipt.inviteCancelled).toBe(true);
+    expect(db.tables.system_audit_log[0].changes?.invite_cancelled).toBe(true);
+  });
+
+  it("reads the address from their account when the roster row has none", async () => {
+    const db = seed();
+    withSamAndEmailedInvite(db, null);
+    await service(db).deleteMember(MANAGER, RID, "m-sam");
+
+    expect(
+      new Date(String(expiresAt(db, "inv-emailed"))).getTime(),
+    ).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("refuses the removal, keeping their access, when the invite cannot be cancelled", async () => {
+    const db = seed();
+    withSamAndEmailedInvite(db, "sam@example.test");
+    db.errors["organization_invites:update"] = { message: "invites down" };
+
+    await expect(
+      service(db).deleteMember(MANAGER, RID, "m-sam"),
+    ).rejects.toThrow("Failed to remove member");
+    expect(db.tables.team_members.find((m) => m.id === "m-sam")).toBeDefined();
+    expect(
+      db.tables.user_restaurant_access.find((a) => a.user_id === STAFF),
+    ).toBeDefined();
+    expect(expiresAt(db, "inv-emailed")).toBe(LATER);
+  });
+});
+
 describe("TeamService — T5: an authorisation default must not escalate", () => {
   it("treats a users-table row as proof of membership, never of privilege", async () => {
     const db = seed();

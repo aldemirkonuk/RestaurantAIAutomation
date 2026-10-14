@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
-import { Linking, ScrollView, Switch, View } from "react-native";
-import { Stack, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useState } from "react";
+import { AppState, Linking, ScrollView, Switch, View } from "react-native";
+import { Stack, useFocusEffect, useRouter } from "expo-router";
 import Constants from "expo-constants";
 import { Ionicons } from "@expo/vector-icons";
 import { AppText } from "@/components/ui/AppText";
@@ -15,8 +15,8 @@ import { confirmSignOut } from "@/lib/confirmSignOut";
 import { pushAllowedByPhone, registerPush, unregisterPush } from "@/lib/push";
 import {
   PUSH_PROBLEM_WORDS,
+  pushProblemOnRecheck,
   pushSwitchOn,
-  savedPushProblem,
   turnPushOn,
   type PushProblem,
 } from "@/lib/pushSwitch";
@@ -52,15 +52,35 @@ export default function SettingsScreen() {
   const pushOn = pushSwitchOn(pushSaved, pushProblem);
   const pushWords = pushProblem ? PUSH_PROBLEM_WORDS[pushProblem] : null;
 
-  useEffect(() => {
+  // The phone's answer is read on open, whenever the app comes back to the
+  // front (say, from "Open phone settings") and whenever this screen is shown
+  // again, so allowing notifications in the phone clears the refusal (F-1583).
+  const recheckPush = useCallback(() => {
     let live = true;
-    void savedPushProblem(pushSaved, pushAllowedByPhone).then((p) => {
-      if (live && p) setPushProblem(p);
-    });
+    void pushAllowedByPhone()
+      .catch(() => null)
+      .then((allowed) => {
+        if (live) setPushProblem((p) => pushProblemOnRecheck(p, pushSaved, allowed));
+      });
     return () => {
       live = false;
     };
   }, [pushSaved]);
+
+  useFocusEffect(recheckPush);
+
+  useEffect(() => {
+    let stop: (() => void) | null = null;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      stop?.();
+      stop = recheckPush();
+    });
+    return () => {
+      stop?.();
+      sub.remove();
+    };
+  }, [recheckPush]);
 
   const turnOn = async () => {
     setPushBusy(true);
