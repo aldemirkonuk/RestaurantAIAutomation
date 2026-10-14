@@ -668,8 +668,14 @@ export class AuthService {
     const houses = await this.memberHouses(userId);
     if (houses.length === 0) return null;
 
-    const { data, error } = await this.databaseService.supabase
-      .from(table)
+    // Each branch names its table literally, so the schema-code-parity guard
+    // can resolve it (its blind-spot ceiling stays at 27).
+    const db = this.databaseService.supabase;
+    const rows =
+      table === "procurement_orders"
+        ? db.from("procurement_orders")
+        : db.from("stock_count_sessions");
+    const { data, error } = await rows
       .select("restaurant_id")
       .eq("id", id)
       .in(
