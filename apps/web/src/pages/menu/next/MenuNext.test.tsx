@@ -847,6 +847,46 @@ describe('MenuNext — edit a line in place (F-065)', () => {
   });
 });
 
+describe("MenuNext — a dish's one price is changed from the menu (F-1671)", () => {
+  const dish = () =>
+    line({ id: 'd1', name: 'Köfte', category: null, by_glass_price: null, bottle_price: null, price: 24, line_kind: 'dish' });
+
+  it('the row shows the dish price, and Edit offers one price field, not glass or bottle', async () => {
+    auth.role = 'owner';
+    mockGetMenu.mockResolvedValue(menu({ items: [dish()] }));
+    mount();
+    expect(await screen.findByTestId('menu-dish-price')).toHaveTextContent('24');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Köfte' }));
+    expect(screen.getByLabelText('Price of Köfte')).toHaveValue('24');
+    expect(screen.queryByLabelText('Glass price of Köfte')).toBeNull();
+    expect(screen.queryByLabelText('Bottle price of Köfte')).toBeNull();
+  });
+
+  it("a manager's new dish price is sent as the field 'price', and says nothing about a house price", async () => {
+    auth.role = 'manager';
+    mockGetMenu.mockResolvedValue(menu({ items: [dish()] }));
+    mockReview.mockResolvedValueOnce({ menuItemId: 'd1', fieldName: 'price', newValue: '28' });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Köfte' }));
+    fireEvent.change(screen.getByLabelText('Price of Köfte'), { target: { value: '28' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mockReview).toHaveBeenCalledTimes(1));
+    expect(mockReview.mock.calls).toEqual([['d1', 'price', '28']]);
+    const said = await screen.findByTestId('menu-edit-said');
+    expect(said).toHaveTextContent('Köfte: Saved: Price.');
+    expect(said).not.toHaveTextContent("house's own");
+  });
+
+  it('a drink line still edits its glass and bottle, never a dish price', async () => {
+    auth.role = 'owner';
+    mockGetMenu.mockResolvedValue(menu());
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit Turkish coffee' }));
+    expect(screen.queryByLabelText('Price of Turkish coffee')).toBeNull();
+    expect(screen.getByLabelText('Glass price of Turkish coffee')).toBeInTheDocument();
+  });
+});
+
 describe('MenuNext — focus follows the edit in and back out (F-1038)', () => {
   it('Edit puts focus on the name field, and Cancel returns it to Edit', async () => {
     auth.role = 'manager';

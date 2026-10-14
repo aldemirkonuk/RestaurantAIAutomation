@@ -191,6 +191,11 @@ export interface HouseTaxBasisReadout {
    * prices include tax; null otherwise, or when they could not be read.
    */
   items?: Array<{ id: string; name: string }> | null;
+  /**
+   * F-1665: true when the house has more live items than the picker lists,
+   * so the page says the list is cut instead of letting one go missing.
+   */
+  itemsCapped?: boolean;
   /** The house's recorded country, as a code; null when none is recorded or known. */
   country: string | null;
   /** KDV, sales tax, or tax: the word the page uses. */
@@ -493,7 +498,8 @@ export class HouseTaxBasisService {
       confirmedBy: by ? { userId: by, name } : null,
       answers,
       answersReason: history.error,
-      items,
+      items: items?.items ?? null,
+      itemsCapped: items?.capped ?? false,
       rates: rates.rows,
       ratesReason: rates.error,
       cocktailCategory: cocktail.category,
@@ -938,24 +944,34 @@ export class HouseTaxBasisService {
 
   /**
    * The house's own items, by name, for the item-rate picker. A failed read is
-   * null (the picker says so), never an empty list.
+   * null (the picker says so), never an empty list. F-1665: removed items are
+   * left out in the query and the read is ordered before the cap, so the cap
+   * cuts the same live items every time, never a live one for a removed one;
+   * one row past the cap says whether it cut anything.
    */
-  private async readItems(
-    restaurantId: string,
-  ): Promise<Array<{ id: string; name: string }> | null> {
+  private async readItems(restaurantId: string): Promise<{
+    items: Array<{ id: string; name: string }>;
+    capped: boolean;
+  } | null> {
     const { data, error } = await this.databaseService.client
       .from("restaurant_inventory")
       .select("id, display_name, wine_name, deleted_at")
       .eq("restaurant_id", restaurantId)
-      .limit(TAX_ITEM_PICK_CAP);
+      .is("deleted_at", null)
+      .order("display_name", { ascending: true })
+      .order("wine_name", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(TAX_ITEM_PICK_CAP + 1);
     if (error) {
       this.logger.warn(
         `The items of ${restaurantId} could not be listed: ${error.message}`,
       );
       return null;
     }
+    const rows = (data as Record<string, unknown>[] | null) ?? [];
+    const capped = rows.length > TAX_ITEM_PICK_CAP;
     const out: Array<{ id: string; name: string }> = [];
-    for (const r of (data as Record<string, unknown>[] | null) ?? []) {
+    for (const r of rows.slice(0, TAX_ITEM_PICK_CAP)) {
       const name =
         (typeof r.display_name === "string" && r.display_name.trim()) ||
         (typeof r.wine_name === "string" && r.wine_name.trim()) ||
@@ -964,7 +980,7 @@ export class HouseTaxBasisService {
       if (r.deleted_at != null) continue;
       if (typeof r.id === "string" && name) out.push({ id: r.id, name });
     }
-    return out.sort((a, b) => a.name.localeCompare(b.name));
+    return { items: out.sort((a, b) => a.name.localeCompare(b.name)), capped };
   }
 
   /** `public.users.user_id`; a failed lookup is a null name, never the raw id. */

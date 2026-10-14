@@ -10,15 +10,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 
-const { createFirstHouse, get, put } = vi.hoisted(() => ({
+const { createFirstHouse, get, put, auth } = vi.hoisted(() => ({
   createFirstHouse: vi.fn(),
   get: vi.fn(),
   put: vi.fn(),
+  // A new arrival by default; F-1686 reloads into an open house.
+  auth: { user: { id: 'u-1', name: 'Selin Kaya', emailVerified: true } as Record<string, unknown> },
 }))
 
 vi.mock('../../contexts/AuthContext', () => ({
   useAuth: () => ({
-    user: { id: 'u-1', name: 'Selin Kaya', emailVerified: true },
+    user: auth.user,
     createFirstHouse,
   }),
 }))
@@ -91,6 +93,7 @@ describe('GetStarted — the tax basis before the till (F-1590)', () => {
     put.mockReset()
     sessionStorage.clear()
     localStorage.clear()
+    auth.user = { id: 'u-1', name: 'Selin Kaya', emailVerified: true }
   })
 
   it('asks an unanswered house, records the answer, then goes on to the menu', async () => {
@@ -140,5 +143,54 @@ describe('GetStarted — the tax basis before the till (F-1590)', () => {
     await openHouse()
     await screen.findByRole('heading', { name: 'Your menu' })
     expect(put).not.toHaveBeenCalled()
+  })
+
+  describe('a reload on the tax step asks it again (F-1686)', () => {
+    const DRAFT = {
+      userId: 'u-1',
+      role: 'Owner',
+      restaurantName: 'Tuzlu Rüzgar',
+      address: '1 Kordon',
+      city: 'İzmir',
+      country: 'Turkey',
+      stateProvince: '',
+      postalCode: '',
+      restaurantPhone: '',
+      placePoint: null,
+    }
+    const reload = () => {
+      // The house is open; the draft written on the restaurant step is still kept.
+      auth.user = { id: 'u-1', userId: 'u-1', name: 'Selin Kaya', emailVerified: true, restaurantId: 'r-1', role: 'owner' }
+      localStorage.setItem('mudavym:arrival-draft', JSON.stringify(DRAFT))
+      render(
+        <MemoryRouter>
+          <GetStarted />
+        </MemoryRouter>,
+      )
+    }
+
+    it('an open house whose basis is unset is asked before the menu', async () => {
+      get.mockResolvedValue({ data: readout('unset') })
+      reload()
+      expect(
+        await screen.findByRole('heading', { name: 'Do the prices on your till include KDV?' }),
+      ).toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: 'Your menu' })).not.toBeInTheDocument()
+    })
+
+    it('an answered house goes straight to the menu', async () => {
+      get.mockResolvedValue({ data: readout('prices_include_tax') })
+      reload()
+      await screen.findByRole('heading', { name: 'Your menu' })
+      expect(screen.queryByText(/Do the prices on your till include/)).not.toBeInTheDocument()
+    })
+
+    it('a question skipped in this tab is not asked again on a reload', async () => {
+      get.mockResolvedValue({ data: readout('unset') })
+      sessionStorage.setItem('mudavym:arrival-tax-passed:u-1', '1')
+      reload()
+      await screen.findByRole('heading', { name: 'Your menu' })
+      expect(get).not.toHaveBeenCalledWith('/settings/tax-basis')
+    })
   })
 })

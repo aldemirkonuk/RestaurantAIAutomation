@@ -82,6 +82,21 @@ const MOBILE_NOT_KEPT = 'Your mobile number was not saved; you can add it on you
 
 const arrivalRoleKey = (userId: string) => `mudavym:arrival-role:${userId}`
 
+/**
+ * The tax question was answered or skipped in this tab (F-1686): a reload on
+ * the menu step after a skip does not ask it again. A reload on the tax step
+ * itself never set it, so that one is asked again.
+ */
+const arrivalTaxPassedKey = (userId: string) => `mudavym:arrival-tax-passed:${userId}`
+
+function taxStepPassed(userId: string): boolean {
+  try {
+    return sessionStorage.getItem(arrivalTaxPassedKey(userId)) === '1'
+  } catch {
+    return false
+  }
+}
+
 function readArrivalDraft(userId: string): ArrivalDraft | null {
   try {
     const raw = localStorage.getItem(ARRIVAL_DRAFT_KEY)
@@ -187,6 +202,8 @@ function GetStartedSteps() {
   const [postalCode, setPostalCode] = useState('')
   /** The house's tax-basis readout, while the arrival asks it (F-1590). */
   const [taxReg, setTaxReg] = useState<TaxBasisReadout | null>(null)
+  /** A resumed arrival is reading whether its tax question is still open (F-1686). */
+  const [checkingTax, setCheckingTax] = useState(false)
   const [restaurantPhone, setRestaurantPhone] = useState('')
   const [placePoint, setPlacePoint] = useState<{
     latitude: number
@@ -248,7 +265,20 @@ function GetStartedSteps() {
     setCurrencyChoice(draft.currencyChoice ?? null)
     if (draft.mobile) setMobile(draft.mobile)
     setStep(hasHouse ? (askedThreshold ? 'threshold' : 'menu') : 'restaurant')
-  }, [askedThreshold, hasHouse, userId])
+    // F-1686: a reload on the tax step came back on the menu, and the question
+    // was left to the dashboard's line. An open house whose basis is still
+    // unset is asked again first, unless this tab already answered or skipped it.
+    if (hasHouse && !askedThreshold && setsHouseNumbers && !taxStepPassed(userId)) {
+      setCheckingTax(true)
+      void taxBasisToAsk().then((ask) => {
+        if (ask) {
+          setTaxReg(ask)
+          setStep('tax')
+        }
+        setCheckingTax(false)
+      })
+    }
+  }, [askedThreshold, hasHouse, setsHouseNumbers, userId])
 
   useEffect(() => {
     if (!userId || (step !== 'restaurant' && step !== 'menu')) return
@@ -278,6 +308,17 @@ function GetStartedSteps() {
     }, 1200)
     return () => window.clearTimeout(timer)
   }, [activeRestaurantId, navigate, pendingResult, sourceImage, step])
+
+  const passTaxStep = () => {
+    if (userId) {
+      try {
+        sessionStorage.setItem(arrivalTaxPassedKey(userId), '1')
+      } catch {
+        // A tab that keeps nothing asks again after a reload; nothing is recorded.
+      }
+    }
+    setStep('menu')
+  }
 
   const saveYou = async () => {
     setSaving(true)
@@ -487,10 +528,12 @@ function GetStartedSteps() {
     return <ThresholdArrival onMenu={() => setStep('menu')} />
   }
 
+  if (checkingTax) return null
+
   if (step === 'tax' && taxReg) {
     return (
       <ArrivalShell step={step}>
-        <TaxBasisStep reg={taxReg} onDone={() => setStep('menu')} />
+        <TaxBasisStep reg={taxReg} onDone={passTaxStep} />
       </ArrivalShell>
     )
   }
