@@ -1202,7 +1202,8 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                   {
                     status: 'snoozed',
                     snoozeFor: data.canSnoozeForEveryone ? 'house' : 'me',
-                    snoozeUntil: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+                    // F-1745: the same week as the single snooze (F-927).
+                    snoozeUntil: snoozeWake('week', zone),
                   },
                   data.canSnoozeForEveryone
                     ? `Snoozed ${picked.length} entries for a week, for everyone.`

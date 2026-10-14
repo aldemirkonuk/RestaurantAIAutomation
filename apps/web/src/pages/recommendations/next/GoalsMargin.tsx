@@ -17,8 +17,10 @@ import { Link } from 'react-router-dom';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import {
   MARGIN_ROWS,
+  barSaysOf,
   fillOf,
   inUnit,
+  overLimitOf,
   paceOf,
   type GoalBookVM,
   type GoalSuggestion,
@@ -84,11 +86,14 @@ export default function GoalsMargin({
       {shown.map((g) => {
         const pace = paceOf(g);
         const fill = fillOf(g);
+        // F-1742: a "keep at most" goal past its limit is broken, not met.
+        const over = overLimitOf(g);
         return (
           <div
             key={g.id}
             className="rc-mgoal"
             data-pace={pace === 'Behind' ? 'behind' : undefined}
+            data-over={over ? 'true' : undefined}
             data-testid="rc-mgoal"
           >
             <div className="rc-mgoal-name">{g.name}</div>
@@ -100,10 +105,15 @@ export default function GoalsMargin({
                   <div
                     className="rc-mgoal-bar"
                     role="img"
-                    aria-label={`${Math.round(fill * 100)}% of the target`}
+                    aria-label={barSaysOf(g) ?? undefined}
                   >
                     <i style={{ width: `${fill * 100}%` }} />
                   </div>
+                )}
+                {over && (
+                  <p className="rc-mgoal-over" data-testid="rc-mgoal-over">
+                    {barSaysOf(g)}
+                  </p>
                 )}
                 <div className="rc-mgoal-foot">
                   <span className="rc-num">

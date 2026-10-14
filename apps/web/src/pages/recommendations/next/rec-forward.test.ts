@@ -77,6 +77,13 @@ describe('rec-forward — the goal door', () => {
     }
   });
 
+  it('F-1744: the spend goal claims no demand comparison — the rule reads none', () => {
+    const offer = goalOfferFor(e({ ruleKey: 'spend_acceleration', category: 'purchasing' }));
+    if (offer.kind !== 'plan') throw new Error('expected a plan');
+    expect(offer.plan.basis).not.toMatch(/demand/i);
+    expect(offer.plan.basis).toMatch(/30 days before/);
+  });
+
   it('refuses — with a reason — every rule no supported metric can measure', () => {
     for (const ruleKey of [
       'stockout_imminent',

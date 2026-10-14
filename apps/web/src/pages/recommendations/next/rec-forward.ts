@@ -208,7 +208,8 @@ const RULE_GOAL: Record<string, RuleGoal> = {
     direction: 'at_most',
     name: () => 'Hold purchasing spend',
     basis:
-      'The rule is about spend running ahead of demand, and purchasing spend is the same number the rule read — the one goal on this page that counts DOWN.',
+      // F-1744: was "spend running ahead of demand"; the rule reads no demand.
+      'The rule is about buying well above the 30 days before, and purchasing spend is the same number the rule read — the one goal on this page that counts DOWN.',
   },
   staff_spread: {
     metricKey: 'avg_check',

@@ -65,6 +65,8 @@
 .rc-mgoal[data-pace='behind'] .rc-mgoal-bar i { background: var(--alarm, #a33a2b); }
 .rc-mgoal-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 10.5px; color: var(--ink-4, #665d50); }
 .rc-mgoal[data-pace='behind'] .rc-mgoal-pace { color: var(--alarm-deep, #8c3322); font-weight: 600; }
+.rc-mgoal[data-over='true'] .rc-mgoal-bar i { background: var(--alarm, #a33a2b); }
+.rc-mgoal-over { margin: 0 0 2px; font-size: 10.5px; font-weight: 600; color: var(--alarm-deep, #8c3322); }
 .rc-mgoal-suggest {
   margin-top: 8px; padding: 8px 9px; border-radius: 8px;
   border: 1.5px dashed var(--seal-ring, rgba(26, 94, 107, 0.32));

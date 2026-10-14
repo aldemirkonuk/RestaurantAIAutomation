@@ -1727,3 +1727,149 @@ describe("margin against movement places only the wines on a live menu (F-1667)"
     expect(out.menuStanding).toBe("on_menu");
   });
 });
+
+/* F-1733: the house's confirmed pour is a WINE's pour (F-1171). A glass-only
+   rakı, spirit or draft beer was priced at it, as a fifth of its bottle. */
+describe("menu engineering: a glass-only drink that is not a wine (F-1733)", () => {
+  const CONFIRMED_HOUSE = {
+    id: RESTAURANT,
+    default_pour_ml: 150,
+    pour_size_confirmed_by: "u-owner",
+    pour_size_confirmed_at: "2026-09-21T10:00:00Z",
+    tax_basis: "unset",
+  };
+
+  it("is never priced at the house's wine pour; its own confirmed pour prices it", async () => {
+    const out: any = await advanced({
+      restaurants: [CONFIRMED_HOUSE],
+      restaurant_inventory: [
+        item(1),
+        item(2, {
+          kind: "wine",
+          menu_price_current: null,
+          menu_price_glass: 14,
+        }),
+        item(3, {
+          kind: "spirit",
+          menu_price_current: null,
+          menu_price_glass: 14,
+        }),
+        item(4, {
+          kind: "spirit",
+          menu_price_current: null,
+          menu_price_glass: 6,
+          pour_size_ml: 50,
+          pour_size_confirmed_by: "u-owner",
+          pour_size_confirmed_at: "2026-09-21T10:00:00Z",
+        }),
+      ],
+      wine_consumption_log: lines(1, 4, BOTTLE),
+    }).getMenuEngineering(RESTAURANT, 90);
+    // The wine still uses the house's pour: 14 × 750 / 150 = 70.
+    expect(
+      out.items.find((i: any) => i.id === "inv-2").marginPerBottle,
+    ).toBeCloseTo(50, 9);
+    // The spirit with no pour of its own is named, not priced at 150 ml.
+    expect(out.items.find((i: any) => i.id === "inv-3")).toBeUndefined();
+    expect(out.leftOut).toEqual([
+      { id: "inv-3", name: "Item 3", reason: "glass_pour_unconfirmed" },
+    ]);
+    // Its own confirmed 50 ml: 6 × 750 / 50 = 90, less the 20 it cost.
+    const own = out.items.find((i: any) => i.id === "inv-4");
+    expect(own.priceBasis).toBe("glass");
+    expect(own.marginPerBottle).toBeCloseTo(70, 9);
+  });
+});
+
+/* F-1735: one margin median and one velocity median across every kind filed
+   every beer a Plowhorse beside the wines' margins. Each kind is judged
+   against its own (Kasavana-Smith classify within a category). */
+describe("menu engineering judges each drink against its own kind (F-1735)", () => {
+  const rows = () => ({
+    restaurant_inventory: [
+      // Wines: margins 40 and 80.
+      item(1, { kind: "wine" }),
+      item(2, { kind: "wine", menu_price_current: 100 }),
+      // Beers: margins 8 and 6, both far under any wine's.
+      item(3, { kind: "beer", menu_price_current: 12, last_purchase_price: 4 }),
+      item(4, { kind: "beer", menu_price_current: 10, last_purchase_price: 4 }),
+    ],
+    wine_consumption_log: [
+      ...lines(1, 10, BOTTLE),
+      ...lines(2, 2, BOTTLE),
+      ...lines(3, 30, BOTTLE),
+      ...lines(4, 4, BOTTLE),
+    ],
+  });
+
+  it("the beer that sells fastest with the better beer margin is a Star among beers, not a Plowhorse beside the wines", async () => {
+    const out: any = await advanced(rows()).getMenuEngineering(RESTAURANT, 90);
+    const q = (id: string) => out.items.find((i: any) => i.id === id).quadrant;
+    expect(q("inv-3")).toBe("star");
+    expect(q("inv-4")).toBe("dog");
+    expect(q("inv-1")).toBe("plowhorse");
+    expect(q("inv-2")).toBe("puzzle");
+    // No one pair divides a list of two kinds; each kind's is published.
+    expect(out.medians).toEqual({
+      velocityPerDay: null,
+      marginPerBottle: null,
+    });
+    expect(
+      out.mediansByKind.map((k: any) => [k.kind, k.marginPerBottle]),
+    ).toEqual([
+      ["wine", 60],
+      ["beer", 7],
+    ]);
+  });
+
+  it("a kind with one drink has nothing to compare it to: no quadrant, counted apart, never a Dog", async () => {
+    const r = rows();
+    r.restaurant_inventory.push(item(5, { kind: "spirit" }));
+    r.wine_consumption_log.push(...lines(5, 1, BOTTLE));
+    const out: any = await advanced(r).getMenuEngineering(RESTAURANT, 90);
+    const lone = out.items.find((i: any) => i.id === "inv-5");
+    expect(lone.quadrant).toBeNull();
+    expect(lone.aloneInKind).toBe(true);
+    expect(out.counts.aloneInKind).toBe(1);
+    expect(out.counts.dog).toBe(1);
+  });
+
+  it("a list of one kind keeps its one pair of medians, as before", async () => {
+    const out: any = await advanced({
+      restaurant_inventory: [item(1), item(2, { menu_price_current: 100 })],
+      wine_consumption_log: [...lines(1, 10, BOTTLE), ...lines(2, 2, BOTTLE)],
+    }).getMenuEngineering(RESTAURANT, 90);
+    expect(out.medians.marginPerBottle).toBe(60);
+    expect(out.counts.aloneInKind).toBe(0);
+  });
+});
+
+/* F-1744: a house in its first weeks read its first month of buying against
+   an empty one as a 30%+ rise. The pace says whether the prior window is whole. */
+describe("spend pacing says whether the prior 30 days were a whole month of buying (F-1744)", () => {
+  const delivered = (id: string, ago: number) => ({
+    id,
+    status: "DELIVERED",
+    total_cost: 500,
+    final_price: 500,
+    currency: "EUR",
+    created_at: daysAgo(ago + 2),
+    delivered_at: daysAgo(ago),
+  });
+
+  it("not whole when the first delivery is inside it", async () => {
+    const out: any = await advanced({
+      restaurants: [{ id: RESTAURANT, timezone: "UTC", currency: "EUR" }],
+      procurement_orders: [delivered("o-1", 40), delivered("o-2", 5)],
+    }).getCashflow(RESTAURANT);
+    expect(out.priorWindowWhole).toBe(false);
+  });
+
+  it("whole when the house was buying before it began", async () => {
+    const out: any = await advanced({
+      restaurants: [{ id: RESTAURANT, timezone: "UTC", currency: "EUR" }],
+      procurement_orders: [delivered("o-0", 75), delivered("o-2", 5)],
+    }).getCashflow(RESTAURANT);
+    expect(out.priorWindowWhole).toBe(true);
+  });
+});

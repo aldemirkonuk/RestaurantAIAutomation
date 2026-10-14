@@ -194,7 +194,7 @@ export class AdvancedAnalyticsService {
           // Same schema-drift fix as AnalyticsService.loadInventory: a single
           // unknown column 42703s the whole PostgREST query.
           .select(
-            "id, wine_name, created_at, stock_live, menu_price_current, menu_price_glass, last_purchase_price, last_purchase_price_tax_basis, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_id, master_wine_library(primary_type, bottle_size_ml)",
+            "id, wine_name, kind, created_at, stock_live, menu_price_current, menu_price_glass, last_purchase_price, last_purchase_price_tax_basis, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_id, master_wine_library(primary_type, bottle_size_ml)",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
@@ -251,6 +251,9 @@ export class AdvancedAnalyticsService {
         masterWineId: i.master_wine_id,
         name: i.wine_name || i.master_wine_id || i.id,
         type: i.master_wine_library?.primary_type || "unknown",
+        // F-1733 / F-1735: what the drink is (ADR 0115). Null reads as a wine,
+        // as margin advice reads it (F-1171).
+        kind: (i.kind as string | null | undefined) ?? null,
         // F-1645: the day the wine went on the list, as the reorder register reads it.
         listedAt: (i.created_at as string | null | undefined) ?? null,
         qty: lot?.live_qty ?? i.stock_live ?? 0,
@@ -670,6 +673,8 @@ export class AdvancedAnalyticsService {
     // its glass price times the glasses a bottle pours at the CONFIRMED pour
     // (F-472). Velocity is bottles a day, so both axes stay per bottle. A wine
     // with neither is left out BY NAME, never dropped without a word.
+    // A glass price on a drink that is not a wine, with no confirmed pour of
+    // its own, is `glass_pour_unconfirmed` too (F-1733).
     const leftOut: Array<{
       id: string;
       name: string;
@@ -687,7 +692,11 @@ export class AdvancedAnalyticsService {
         leftOut.push({ id: i.id, name: i.name, reason: "no_price" });
         continue;
       }
-      const pourMl = i.winePourMl ?? housePourMl;
+      // F-1733: the house's pour is a WINE's pour (F-1171, margin advice). A
+      // rakı, a spirit or a draft beer poured at it was priced as a fifth of
+      // its bottle; it is priced on its own confirmed pour, or not at all.
+      const isWine = i.kind == null || i.kind === "wine";
+      const pourMl = i.winePourMl ?? (isWine ? housePourMl : null);
       if (pourMl == null || i.bottleMl == null) {
         leftOut.push({
           id: i.id,
@@ -727,6 +736,7 @@ export class AdvancedAnalyticsService {
         id: i.id,
         name: i.name,
         type: i.type,
+        kind: i.kind,
         velocityPerDay: unmeasuredWines.has(i.id)
           ? null
           : (soldByWine.get(i.id) || 0) / velocityDays,
@@ -748,18 +758,45 @@ export class AdvancedAnalyticsService {
       };
     });
 
-    const velocities = items
-      .filter((i) => !("tooFewDays" in i))
-      .map((i) => i.velocityPerDay)
-      .filter((v): v is number => v != null);
-    // The margin cutoff is a median over the wines that HAVE a margin. Rows
-    // with an unknown cost cannot be on either side of it, so they are left
-    // unclassified below rather than dragged to one side by a stand-in 0.
-    const margins = items
-      .map((i) => i.marginPerBottle)
-      .filter((m): m is number => m != null);
-    const medVel = E.median(velocities) ?? 0;
-    const medMargin = margins.length > 0 ? E.median(margins) : null;
+    // F-1735: each drink is judged against the drinks of its OWN kind
+    // (Kasavana-Smith classify within a category). One median across every
+    // kind filed every beer a Plowhorse beside wine's margins and every keg a
+    // Star on its pour count. A null kind is a wine (F-1171). Within a kind,
+    // the cutoffs are as before: the margin median over the drinks that HAVE
+    // a margin (an unknown cost is on neither side of it), the velocity
+    // median over the known velocities of drinks with enough days.
+    const kindKey = (i: { kind: string | null }) => i.kind ?? "wine";
+    const byKind = new Map<
+      string,
+      { medVel: number; medMargin: number | null; placeable: number }
+    >();
+    for (const key of new Set(items.map(kindKey))) {
+      const own = items.filter((i) => kindKey(i) === key);
+      const velocities = own
+        .filter((i) => !("tooFewDays" in i))
+        .map((i) => i.velocityPerDay)
+        .filter((v): v is number => v != null);
+      const margins = own
+        .map((i) => i.marginPerBottle)
+        .filter((m): m is number => m != null);
+      byKind.set(key, {
+        medVel: E.median(velocities) ?? 0,
+        medMargin: margins.length > 0 ? E.median(margins) : null,
+        // Drinks with both axes: a kind with one has nothing to compare it to.
+        placeable: own.filter(
+          (i) =>
+            i.marginPerBottle != null &&
+            i.velocityPerDay != null &&
+            !("tooFewDays" in i),
+        ).length,
+      });
+    }
+    // One kind on the list: its medians, exactly as before. Several: no one
+    // pair divides the list, so the top-level pair is null and each kind's
+    // is in `mediansByKind`.
+    const oneKind = byKind.size <= 1 ? [...byKind.values()][0] : undefined;
+    const medVel = byKind.size <= 1 ? (oneKind?.medVel ?? 0) : null;
+    const medMargin = byKind.size <= 1 ? (oneKind?.medMargin ?? null) : null;
 
     const ACTIONS: Record<string, string> = {
       star: "Protect: keep in stock, feature prominently, never discount.",
@@ -777,14 +814,24 @@ export class AdvancedAnalyticsService {
     // so there is no quadrant and no action — `dog` ("candidate to delist") is
     // not the safe default for a wine we simply never costed.
     const classified = items.map((i) => {
-      if (i.marginPerBottle == null || medMargin == null)
+      const own = byKind.get(kindKey(i))!;
+      if (i.marginPerBottle == null || own.medMargin == null)
         return { ...i, quadrant: null, action: null };
       // Same for the other axis: no bottle figure, no velocity, no quadrant.
       if (i.velocityPerDay == null)
         return { ...i, quadrant: null, action: null };
       if ("tooFewDays" in i) return { ...i, quadrant: null, action: null };
-      const highVel = i.velocityPerDay > medVel;
-      const highMargin = i.marginPerBottle > medMargin;
+      // F-1735: the only placeable drink of its kind is its own median, so
+      // it would read slow and thin -- a Dog -- by construction.
+      if (own.placeable < 2)
+        return {
+          ...i,
+          aloneInKind: true as const,
+          quadrant: null,
+          action: null,
+        };
+      const highVel = i.velocityPerDay > own.medVel;
+      const highMargin = i.marginPerBottle > own.medMargin;
       const quadrant = highVel
         ? highMargin
           ? "star"
@@ -809,15 +856,21 @@ export class AdvancedAnalyticsService {
       offMenu: offMenu.length,
       // F-1645: a costed, measured wine with too few days of sales.
       tooFewDays: 0,
+      // F-1735: a costed, measured drink with no other of its kind to compare.
+      aloneInKind: 0,
       // F-1587: a costed wine with no pre-tax margin, for its named reason.
       ...(taxed ? { taxRefused: 0 } : {}),
     };
     for (const c of classified)
       if ("marginRefusal" in c && c.marginRefusal != null)
         counts.taxRefused += 1;
-      else if (c.marginPerBottle == null || medMargin == null)
+      else if (
+        c.marginPerBottle == null ||
+        byKind.get(kindKey(c))!.medMargin == null
+      )
         counts.unclassified += 1;
       else if (c.velocityPerDay == null) counts.unmeasured += 1;
+      else if ("aloneInKind" in c) counts.aloneInKind += 1;
       else if (c.quadrant == null) counts.tooFewDays += 1;
       else counts[c.quadrant] = (counts[c.quadrant] || 0) + 1;
 
@@ -840,7 +893,9 @@ export class AdvancedAnalyticsService {
         // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
         // that came from WAC on ~2 rows in 72 and from a fabricated
         // 0.6 × menu price on the rest.
-        margin: `menu_price_current − unit cost (a wine with no bottle price: menu_price_glass × bottle ml ÷ confirmed pour ml) — ${costBasisSentence(costCoverage)}${taxed ? `. ${tax.terms === null ? TAX_BASIS_UNREAD : PRE_TAX_MARGIN_BASIS}` : ""}`,
+        kinds:
+          "each drink is placed against the medians of its own kind (mediansByKind; a drink with no kind stated is a wine); with more than one kind on the list there is no one pair, so medians is null; a kind with only one costed, measured drink gives it no quadrant (counts.aloneInKind)",
+        margin: `menu_price_current − unit cost (a wine with no bottle price: menu_price_glass × bottle ml ÷ confirmed pour ml; a drink of another kind uses only its own confirmed pour, never the house's wine pour) — ${costBasisSentence(costCoverage)}${taxed ? `. ${tax.terms === null ? TAX_BASIS_UNREAD : PRE_TAX_MARGIN_BASIS}` : ""}`,
         unpriced:
           "a wine with no bottle price and no glass price, or a glass price with no confirmed pour or bottle size, is not in items[]; it is named in leftOut[] and counted under counts.unpriced",
         costDerived:
@@ -851,6 +906,12 @@ export class AdvancedAnalyticsService {
       costCoverage,
       unitsCoverage,
       medians: { velocityPerDay: medVel, marginPerBottle: medMargin },
+      // F-1735: each kind's own pair, which its drinks are placed against.
+      mediansByKind: [...byKind.entries()].map(([kind, k]) => ({
+        kind,
+        velocityPerDay: k.medVel,
+        marginPerBottle: k.medMargin,
+      })),
       counts,
       leftOut,
       // Unclassified rows sort after every classified one — ordering them by
@@ -1308,10 +1369,13 @@ export class AdvancedAnalyticsService {
       ? houseToday(zone)
       : new Date().toISOString().slice(0, 10);
     const byDay = new Map<string, number>();
+    // F-1744: the house's first delivery in the read, priced or not.
+    let firstDay: string | null = null;
     for (const o of delivered as any[]) {
       const at = o.delivered_at || o.created_at || null;
       const day = zone ? houseDayOf(at, zone) : (at || "").substring(0, 10);
       if (!day) continue;
+      if (firstDay === null || day < firstDay) firstDay = day;
       // An order with no price is left out and counted (F-701).
       const spend = orderSpend(o);
       if (spend == null) continue;
@@ -1324,6 +1388,11 @@ export class AdvancedAnalyticsService {
     const last30 = daily.slice(-30).reduce((a, b) => a + b, 0);
     const prev30 = daily.slice(-60, -30).reduce((a, b) => a + b, 0);
     const pace = E.periodOverPeriod(daily, 30);
+    // F-1744: the prior 30 days are a whole month of buying only when the
+    // house had a delivery on or before their first day. A house in its first
+    // weeks read its first month against an empty one as a 30%+ rise.
+    const priorWindowWhole =
+      firstDay !== null && firstDay <= shiftHouseDay(today, -59);
 
     // Weekly series → Holt projection 4 weeks out.
     const weekly: number[] = [];
@@ -1389,12 +1458,15 @@ export class AdvancedAnalyticsService {
         days: zone
           ? `each 30-day window ends today, on the house's own date (${zone})`
           : "each 30-day window ends today, on UTC dates, because the house has no time zone set",
+        priorWindow:
+          "priorWindowWhole is true only when the house had a delivery on or before the first of the prior 30 days; otherwise the pace sets this month against a month it was not yet buying in",
         notCounted:
           "orders approved but not yet confirmed by the vendor, orders still being negotiated, and orders partly received and still open are in neither figure until they are confirmed or closed; they are counted here at their order value, and one with no price is left out of that value and counted",
       },
       spendLast30d: spendNote ? null : last30,
       spendPrev30d: spendNote ? null : prev30,
       paceDeltaPct: spendNote ? null : (pace?.deltaPct ?? null),
+      priorWindowWhole,
       projectedNext4Weeks: holt?.forecast.map((v) => Math.max(0, v)) ?? null,
       // The code the paid-out figures are in; one other currency keeps its
       // code, never read as the house's (F-1088).

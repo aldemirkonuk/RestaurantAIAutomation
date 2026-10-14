@@ -25,6 +25,7 @@ import {
   type HouseAdvice,
 } from "../pricing/margin-advice.service";
 import type { PriceAdvice } from "../pricing/margin-to-target";
+import type { LockKind } from "../pricing/price-locks";
 import { PriceLocksService, type LockReadout } from "../pricing/price-locks.service";
 import { resolveItemState, stateBookFrom } from "./insights/item-state";
 import {
@@ -583,9 +584,14 @@ export class RecommendationsService {
       periodKey: salesBaseline!.periodKey ?? null,
     }));
 
+    // F-1743: the HOUSE's week only (`overall.*`). The wine mover
+    // (`wine.bottles.vs_prev_period_7d`) is one wine's week, as small as 2
+    // bottles to 1, and in a week the house's sales rose it was the only
+    // falling match: house-wide "selling energy" advice on one wine's dip.
     const demandDown = ctx.insights.find(
       (i: any) =>
-        i.candidateKey?.includes("vs_prev_period_7d") &&
+        i.candidateKey?.startsWith("overall.") &&
+        i.candidateKey.includes("vs_prev_period_7d") &&
         i.category === "sales" &&
         (i.effectPct ?? 0) < -0.1,
     );
@@ -650,22 +656,62 @@ export class RecommendationsService {
     );
 
     // ---- Menu engineering rules ------------------------------------------
-    const plowhorses = ctx.menu?.items?.filter(
-      (i: any) => i.quadrant === "plowhorse",
+    // F-1734: a plowhorse is fast and thin against the other drinks of its
+    // own kind (F-1735), not against the house's target margin. That target
+    // is what margin advice judges (ADR 0193) and a lock holds (L22), so a
+    // plowhorse the advice calls on target or says to lower, or whose price
+    // is locked, is not one to raise; one the advice says to raise is sent to
+    // that advice's own price, never a flat 5–8% on top of it. Only a drink
+    // with no advice to check (no target set, no cost, no pour) keeps the
+    // general nudge.
+    const kindOfPrice = (i: any): LockKind =>
+      i.priceBasis === "glass" ? "glass" : "bottle";
+    const adviceFor = (i: any) => {
+      const w = ctx.priceAdvice?.wines.find((x) => x.inventoryId === i.id);
+      return (kindOfPrice(i) === "glass" ? w?.glass : w?.bottle) ?? null;
+    };
+    const lockHolds = (i: any) =>
+      !!ctx.priceLocks?.locks.some(
+        (l) => l.inventoryId === i.id && l.kind === kindOfPrice(i),
+      );
+    const plowhorses: any[] = (ctx.menu?.items ?? []).filter((i: any) => {
+      if (i.quadrant !== "plowhorse" || lockHolds(i)) return false;
+      const a = adviceFor(i);
+      return (
+        !a || (!a.locked && a.state !== "on_target" && a.state !== "lower")
+      );
+    });
+    const raiseAdvised = plowhorses.filter(
+      (i) => adviceFor(i)?.state === "raise",
     );
-    rule("plowhorse_repricing", (plowhorses?.length ?? 0) >= 2, () => ({
-      observation: `${plowhorses.length} wines sell fast but earn below-median margin (top: ${plowhorses[0].name}).`,
-      recommendation:
-        "Raise those prices 5–8% or renegotiate cost on the next PO — volume holds on small moves for high-velocity wines.",
+    const unjudged = plowhorses.filter((i) => adviceFor(i)?.state !== "raise");
+    const namesOf = (list: any[]) =>
+      list
+        .slice(0, 3)
+        .map((i) => i.name)
+        .join(", ") + (list.length > 3 ? ` and ${list.length - 3} more` : "");
+    rule("plowhorse_repricing", plowhorses.length >= 2, () => ({
+      observation: `${plowhorses.length} drinks sell fast but earn less than most of their own kind (top: ${plowhorses[0].name}).`,
+      recommendation: [
+        raiseAdvised.length > 0
+          ? `Your price advice already has a raise-to price for ${namesOf(raiseAdvised)}: accept it on Inventory, under Your price, or renegotiate the cost on the next order.`
+          : null,
+        unjudged.length > 0
+          ? `${raiseAdvised.length > 0 ? `For ${namesOf(unjudged)}, with no price advice to check against yet: r` : "R"}aise ${unjudged.length === 1 ? "that price" : "those prices"} 5–8% or renegotiate cost on the next PO — volume holds on small moves for fast sellers.`
+          : null,
+      ]
+        .filter((x): x is string => !!x)
+        .join(" "),
       rationale:
-        "Menu-engineering plowhorses are proven demand with underpriced margin; small price moves on high-velocity items compound faster than any new listing.",
+        "Menu-engineering plowhorses are proven demand with a thin margin for their kind; a price already on your target margin, or held by a lock, is left alone.",
       category: "efficiency",
       urgency: "this_week",
       score: 2.5,
     }));
 
+    // F-1734: a drink sold only by the glass is by the glass already.
     const puzzles = ctx.menu?.items?.filter(
-      (i: any) => i.quadrant === "puzzle",
+      (i: any) => i.quadrant === "puzzle" && i.priceBasis !== "glass",
     );
     rule("puzzle_activation", (puzzles?.length ?? 0) >= 2, () => ({
       observation: `${puzzles.length} high-margin wines barely move (top: ${puzzles[0].name}).`,
@@ -886,13 +932,17 @@ export class RecommendationsService {
     rule(
       "spend_acceleration",
       (ctx.cashflow?.paceDeltaPct ?? 0) > 0.3 &&
-        (ctx.cashflow?.spendLast30d ?? 0) > 0,
+        (ctx.cashflow?.spendLast30d ?? 0) > 0 &&
+        // F-1744: a house that was not yet buying for all of the 30 days
+        // before reads its first month as a rise; the prior window must be whole.
+        ctx.cashflow?.priorWindowWhole === true,
       () => ({
         observation: `Purchasing spend is up ${pct(ctx.cashflow.paceDeltaPct)} vs the prior 30 days (${money(ctx.cashflow.spendLast30d)}).`,
         recommendation:
           "Audit open orders against days-of-cover before the next PO run; push slow-mover orders a cycle and consolidate to hit vendor volume breaks.",
         rationale:
-          "Spend accelerating faster than demand converts cash into shelf risk — days-of-cover is the arbiter of which orders can wait.",
+          // F-1744: was "accelerating faster than demand"; no demand is read here.
+          "Buying well ahead of last month ties cash up in bottles until they sell — days-of-cover is the arbiter of which orders can wait.",
         category: "purchasing",
         urgency: "this_week",
         score: 2,

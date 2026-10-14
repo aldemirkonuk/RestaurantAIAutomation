@@ -829,6 +829,7 @@ function writeQuadrants(payload: unknown): ExportDoc {
   const b = obj(q.basis);
   const counts = q.counts == null ? null : obj(q.counts);
   const medians = obj(q.medians);
+  const byKind = arr(q.mediansByKind).length > 1;
   const cc = q.costCoverage == null ? null : obj(q.costCoverage);
   const items = arr(q.items).map((i) => ({
     name: str(i.name),
@@ -900,8 +901,28 @@ function writeQuadrants(payload: unknown): ExportDoc {
       ...(offMenu.length > 0
         ? [f("Not on any menu", offMenu.length, "count")]
         : []),
-      f("Median bottles per day", figure(medians.velocityPerDay, "the register published no median"), "bottles"),
-      f("Median margin per bottle", figure(medians.marginPerBottle, "no wine carries a recorded cost"), "money"),
+      // F-1735: with more than one kind of drink on the list, each kind is
+      // placed against its own medians and no one pair is published.
+      f(
+        "Median bottles per day",
+        figure(
+          medians.velocityPerDay,
+          byKind
+            ? "each kind of drink has its own median"
+            : "the register published no median",
+        ),
+        "bottles",
+      ),
+      f(
+        "Median margin per bottle",
+        figure(
+          medians.marginPerBottle,
+          byKind
+            ? "each kind of drink has its own median"
+            : "no wine carries a recorded cost",
+        ),
+        "money",
+      ),
     ],
     tables:
       items.length === 0

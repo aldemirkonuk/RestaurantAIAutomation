@@ -164,6 +164,25 @@ export function fillOf(g: GoalProgressRow): number | null {
   return Math.max(0, Math.min(1, g.progressPct));
 }
 
+/**
+ * A "keep at most" goal past its limit (F-1742). The fill is current/target
+ * either way, so a broken limit drew a full bar that read as met. The phone
+ * fixed the same defect under F-1304 (`apps/mobile/src/lib/goalBars.ts`);
+ * the words below are its words, so web and phone say the same thing.
+ */
+export function overLimitOf(g: GoalProgressRow): boolean {
+  return g.direction === 'at_most' && g.progressPct !== null && g.progressPct > 1;
+}
+
+/** What the bar says, in words, for its label. null = no bar (unread). */
+export function barSaysOf(g: GoalProgressRow): string | null {
+  if (g.progressPct === null) return null;
+  const whole = Math.round(g.progressPct * 100);
+  if (g.direction === 'at_most')
+    return overLimitOf(g) ? `Over the limit (${whole}%)` : `${whole}% of the limit`;
+  return `${whole}% of the target`;
+}
+
 /** How many goals the column holds before it crowds (sketch 122's own limit). */
 export const MARGIN_ROWS = 3;
 

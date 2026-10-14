@@ -619,11 +619,16 @@ describe("getMenuEngineering", () => {
     expect(out.counts.unclassified).toBe(1);
   });
 
-  it("keeps classifying the wine that does have a recorded cost", async () => {
+  it("keeps the wine that does have a recorded cost out of the uncosted count", async () => {
     const out = await build().getMenuEngineering(RESTAURANT);
     const row = out.items.find((i: any) => i.id === RECORDED.id)!;
     expect(row.marginPerBottle).toBe(40); // 60 − 20
-    expect(row.quadrant).not.toBeNull();
+    // F-1735: it is the only costed wine, so it is its own median and has
+    // nothing to be placed against -- said, not filed a Dog by construction.
+    expect(row.quadrant).toBeNull();
+    expect((row as { aloneInKind?: true }).aloneInKind).toBe(true);
+    expect(out.counts.unclassified).toBe(1);
+    expect(out.counts.aloneInKind).toBe(1);
   });
 
   it("takes the margin median over costed wines only", async () => {

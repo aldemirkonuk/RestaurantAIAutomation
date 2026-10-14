@@ -106,6 +106,14 @@ export function menuEngineeringForRole(m: Lens, role?: string | null): Lens {
   return withheld({
     ...m,
     medians: without(m.medians ?? {}, ["marginPerBottle"]),
+    // F-1735: each kind's pair carries a margin too.
+    ...(Array.isArray(m.mediansByKind)
+      ? {
+          mediansByKind: m.mediansByKind.map((k: Lens) =>
+            without(k, ["marginPerBottle"]),
+          ),
+        }
+      : {}),
     items: (m.items ?? []).map((i: Lens) => without(i, MENU_ITEM_MONEY)),
   });
 }

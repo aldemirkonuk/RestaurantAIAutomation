@@ -2051,7 +2051,9 @@ describe('rule-wide acts are owner/manager only; snooze and done are the item', 
     fireEvent.click(screen.getByText('Snooze a week — just me'));
     expect(bulk).toHaveBeenCalledWith(
       [expect.objectContaining({ ruleKey: 'sales_below_weekday_baseline' })],
-      expect.objectContaining({ status: 'snoozed', snoozeFor: 'me' }),
+      // F-1745: the single snooze's week (F-927) — the next Monday at
+      // midnight on the house's clock, not 7 x 24 h from the click.
+      { status: 'snoozed', snoozeFor: 'me', snoozeUntil: '2026-09-21T04:00:00.000Z' },
       expect.stringContaining('for you alone'),
       true,
     );
@@ -2274,6 +2276,31 @@ describe('round 6 — the masthead, the one-tap acts, the delta and the post cou
     expect(ribbon).not.toBeNull();
     expect(mast.compareDocumentPosition(ribbon!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(ribbon!.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('F-1742: a "keep at most" goal past its limit says so, in the phone\'s words, and is not drawn as met', () => {
+    mockData.current = {
+      ...base,
+      entries: [entry()],
+      goalBook: {
+        goals: [
+          goalRow({ current: 11400, progressPct: 11400 / 9500, onTrack: true }),
+          goalRow({ id: 'g-under', name: 'Waste ≤ 40', current: 30, target: 40, progressPct: 0.75, onTrack: true }),
+          goalRow({ id: 'g-up', name: 'Bottles sold ≥ 340', metricKey: 'bottles_sold', unit: 'units', direction: 'at_least', current: 210, target: 340, progressPct: 210 / 340, onTrack: true }),
+        ],
+        total: 3,
+        truncated: false,
+      },
+    };
+    draw();
+    const rows = within(screen.getByTestId('rc-mast')).getAllByTestId('rc-mgoal');
+    expect(rows[0]).toHaveAttribute('data-over', 'true');
+    expect(within(rows[0]).getByRole('img')).toHaveAttribute('aria-label', 'Over the limit (120%)');
+    expect(within(rows[0]).getByTestId('rc-mgoal-over')).toHaveTextContent('Over the limit (120%)');
+    expect(rows[1]).not.toHaveAttribute('data-over');
+    expect(within(rows[1]).getByRole('img')).toHaveAttribute('aria-label', '75% of the limit');
+    expect(within(rows[1]).queryByTestId('rc-mgoal-over')).toBeNull();
+    expect(within(rows[2]).getByRole('img')).toHaveAttribute('aria-label', '62% of the target');
   });
 
   it('says every goal state in words: reading, unread, none, a goal whose figure failed, and more than the column holds', () => {

@@ -37,7 +37,11 @@ function serviceFor(
     {
       getMenuEngineering: async () => null,
       getSeasonality: async () => null,
-      getCashflow: async () => ({ paceDeltaPct: 0.5, spendLast30d: 8300 }),
+      getCashflow: async () => ({
+        paceDeltaPct: 0.5,
+        spendLast30d: 8300,
+        priorWindowWhole: true,
+      }),
     } as any,
     { generate: async () => ({ insights: [] }) } as any,
     { listGoals: async () => [] } as any,
