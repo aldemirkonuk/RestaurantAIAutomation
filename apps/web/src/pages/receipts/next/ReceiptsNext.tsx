@@ -38,6 +38,8 @@ import { HoldToApprove, Wordmark } from '@/components/mudavym';
 import {
   documentsApi,
   type DocumentLineMatch,
+  type InvoicePaidBy,
+  type InvoicePaymentInput,
   type PairedOrderLine,
   type ProcurementDocument,
   type ProcurementDocumentLine,
@@ -165,44 +167,192 @@ function TieOutLine({ doc }: { doc: ProcurementDocument }) {
  * invoice, recorded in any state. Nothing could set it, so no invoice could be
  * marked paid and nothing could say what is owed. Owners and managers mark it
  * and undo it; staff see whether it is paid, and who can change it.
+ *
+ * EACH PAYMENT (F-1672, F-1674, sim 55). A marking was "the whole bill, today,
+ * by the house", so an instalment could not be recorded and nothing could say
+ * a credit note paid it — Owed then took that credit off the vendor's other
+ * bills too. The block now asks how it was paid (we paid / with a credit note,
+ * which one / the vendor took it), how much (empty = what is left) and on
+ * which day, and lists the payments made. Only the same vendor's credit notes
+ * in the invoice's money are offered: the gateway refuses any other.
  */
+const PAID_HOW: Record<string, string> = {
+  restaurant: 'paid by the house',
+  eft_wholesaler_initiated: 'taken by the vendor',
+  credit_applied: 'paid with credit note',
+  other: 'paid another way',
+};
+
 function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: () => void }) {
   const { activeRole, user } = useAuth();
   const canMark = canSeeCreditLedger(activeRole, user?.role);
+  const group = useHouseGroupMark();
   const paid = Boolean(doc.paid_at);
-  const mark = useMutation({
-    mutationFn: (next: boolean) => documentsApi.markPaid(doc.id, next),
-    onSuccess: () => onChanged(),
+  const [how, setHow] = useState<InvoicePaidBy>('restaurant');
+  const [creditId, setCreditId] = useState('');
+  const [amountText, setAmountText] = useState('');
+  const [paidOn, setPaidOn] = useState('');
+  const [problem, setProblem] = useState<string | null>(null);
+  const ledger = useQuery({
+    queryKey: ['invoice-payments', doc.id, doc.paid_at ?? null],
+    queryFn: () => documentsApi.payments(doc.id),
+    enabled: canMark,
   });
+  const after = () => {
+    setAmountText('');
+    setPaidOn('');
+    setCreditId('');
+    void ledger.refetch();
+    onChanged();
+  };
+  const record = useMutation({
+    mutationFn: (payment: InvoicePaymentInput) => documentsApi.markPaid(doc.id, true, payment),
+    onSuccess: after,
+  });
+  const undo = useMutation({
+    mutationFn: () => documentsApi.markPaid(doc.id, false),
+    onSuccess: after,
+  });
+  const l = ledger.data;
+  const money = l?.currency ?? doc.currency ?? null;
+  const credits = l?.credits ?? [];
+  const someMade = (l?.payments.length ?? 0) > 0;
+
+  const submit = () => {
+    setProblem(null);
+    const payment: InvoicePaymentInput = { paidBy: how };
+    const parsed = parseCell(amountText, group);
+    if (parsed === 'invalid' || (typeof parsed === 'number' && parsed <= 0)) {
+      setProblem('Write the amount paid as a number more than zero, or leave it empty to pay what is left.');
+      return;
+    }
+    if (parsed !== null) payment.amount = parsed;
+    if (paidOn) payment.paidOn = paidOn;
+    if (how === 'credit_applied') {
+      if (!creditId) {
+        setProblem('Pick the credit note that paid it.');
+        return;
+      }
+      payment.creditNoteId = creditId;
+    }
+    record.mutate(payment);
+  };
+
+  const status = paid
+    ? `Paid in full on ${fmtDate(doc.paid_at)}.`
+    : l && l.paid !== null && l.paid > 0
+      ? `Paid ${fmtMoney(l.paid, money)} so far; ${fmtMoney(l.left, money)} left to pay.`
+      : 'Not marked paid yet.';
+  const failure = record.error ?? undo.error;
   return (
     <div className="flex flex-wrap items-center gap-2" style={{ fontSize: 12.5, marginTop: 8 }}>
-      <span style={{ color: 'var(--ink-2, #4F473C)' }}>
-        {paid ? `Marked paid on ${fmtDate(doc.paid_at)}.` : 'Not marked paid yet.'}
-      </span>
-      {canMark ? (
-        <button
-          type="button"
-          onClick={() => mark.mutate(!paid)}
-          disabled={mark.isPending}
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            padding: '3px 9px',
-            borderRadius: 6,
-            border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-            background: 'transparent',
-            color: 'var(--seal-deep, #14515C)',
-            cursor: 'pointer',
-          }}
-        >
-          {paid ? 'Mark not paid' : 'Mark paid'}
-        </button>
-      ) : (
-        <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>An owner or a manager can mark it paid.</span>
+      <span style={{ color: 'var(--ink-2, #4F473C)' }}>{status}</span>
+      {canMark && someMade && (
+        <ul aria-label="Payments on this invoice" style={{ flexBasis: '100%', margin: 0, paddingLeft: 16 }}>
+          {(l?.payments ?? []).map((p, i) => (
+            <li key={i} style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+              {fmtMoney(p.amount, p.currency)} on {fmtDate(p.paidOn)}, {PAID_HOW[p.paidBy] ?? PAID_HOW.other}
+              {p.paidBy === 'credit_applied' ? ` ${p.creditNoteNumber ?? '(no number)'}` : ''}.
+            </li>
+          ))}
+        </ul>
       )}
-      {mark.isError && (
+      {!canMark ? (
+        <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>An owner or a manager can mark it paid.</span>
+      ) : (
+        <>
+          {!paid && (
+            <span className="flex flex-wrap items-center gap-2" style={{ flexBasis: '100%' }}>
+              <label style={{ fontSize: 11.5 }}>
+                How was it paid?{' '}
+                <select value={how} onChange={(e) => setHow(e.target.value as InvoicePaidBy)}>
+                  <option value="restaurant">We paid it</option>
+                  <option value="credit_applied" disabled={credits.length === 0}>
+                    With a credit note{credits.length === 0 ? ' (none from this vendor with credit left)' : ''}
+                  </option>
+                  <option value="eft_wholesaler_initiated">The vendor took it</option>
+                </select>
+              </label>
+              {how === 'credit_applied' && (
+                <label style={{ fontSize: 11.5 }}>
+                  Which credit note?{' '}
+                  <select value={creditId} onChange={(e) => setCreditId(e.target.value)}>
+                    <option value="">Pick one</option>
+                    {credits.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.number ?? 'No number'}, {fmtMoney(c.left, c.currency)} left
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label style={{ fontSize: 11.5 }}>
+                Amount{' '}
+                <input
+                  inputMode="decimal"
+                  value={amountText}
+                  onChange={(e) => setAmountText(e.target.value)}
+                  placeholder={l?.left != null ? `all that is left, ${fmtMoney(l.left, money)}` : 'all of it'}
+                  style={{ width: 150 }}
+                />
+              </label>
+              <label style={{ fontSize: 11.5 }}>
+                Paid on{' '}
+                <input
+                  type="date"
+                  value={paidOn}
+                  max={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setPaidOn(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={submit}
+                disabled={record.isPending}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: '3px 9px',
+                  borderRadius: 6,
+                  border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                  background: 'transparent',
+                  color: 'var(--seal-deep, #14515C)',
+                  cursor: 'pointer',
+                }}
+              >
+                {amountText.trim() ? 'Record payment' : 'Mark paid'}
+              </button>
+            </span>
+          )}
+          {(paid || someMade) && (
+            <button
+              type="button"
+              onClick={() => undo.mutate()}
+              disabled={undo.isPending}
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                padding: '3px 9px',
+                borderRadius: 6,
+                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                background: 'transparent',
+                color: 'var(--seal-deep, #14515C)',
+                cursor: 'pointer',
+              }}
+            >
+              Mark not paid
+            </button>
+          )}
+          {ledger.isError && (
+            <span role="status" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', flexBasis: '100%' }}>
+              The payments on this invoice could not be read: {serverMessage(ledger.error, 'try again.')}
+            </span>
+          )}
+        </>
+      )}
+      {(problem || failure) && (
         <span role="alert" style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', flexBasis: '100%' }}>
-          {serverMessage(mark.error, 'Nothing was changed.')}
+          {problem ?? serverMessage(failure, 'Nothing was changed.')}
         </span>
       )}
     </div>

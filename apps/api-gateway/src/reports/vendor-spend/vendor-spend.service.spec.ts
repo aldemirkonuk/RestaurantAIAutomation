@@ -79,6 +79,7 @@ function service(tables: Record<string, unknown[] | Record<string, unknown>>) {
   const { db, calls } = fakeDb({
     restaurants: house,
     providers: [],
+    procurement_invoice_payments: [],
     ...tables,
   });
   return { svc: new VendorSpendService({ supabase: db } as any), calls };
@@ -578,6 +579,172 @@ describe("VendorSpendService — owed, and not marked (F-1635)", () => {
     const rossi = out.vendors[0];
     expect(rossi.owed).toEqual([{ currency: "TRY", total: 250 }]);
     expect(rossi.owedInvoices).toBe(1);
+  });
+});
+
+/**
+ * F-1672 / F-1673 / F-1674 (sim 55, buying-week findings 1-3). Every
+ * [REVERT-FAILS] case failed on a build that ignored the payments kept on an
+ * invoice (a used credit note came off Owed again; a part payment left the
+ * whole bill owed, or none of it; a back-dated marking moved owedSince) or
+ * that added every vendor's Owed together, credits of one against another.
+ */
+describe("VendorSpendService — each payment, and credit kept to its vendor (F-1672..F-1674)", () => {
+  const inv = (over: Record<string, unknown>) => ({
+    provider_id: ROSSI,
+    doc_type: "invoice",
+    status: "verified",
+    currency: "TRY",
+    paid_at: null,
+    paid_by: null,
+    ...over,
+  });
+  let payId = 0;
+  const pay = (over: Record<string, unknown>) => ({
+    id: `pay-${++payId}`,
+    credit_note_id: null,
+    recorded_at: "2026-03-10T09:00:00Z",
+    ...over,
+  });
+
+  it("[REVERT-FAILS] a credit note that paid an invoice is not taken off what the vendor is still owed (F-1672)", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        // INV-905, 10.000, paid with CN-88's 1.200 and 8.800 by the house.
+        inv({
+          id: "i905",
+          doc_number: "INV-905",
+          doc_date: "2026-03-08",
+          total: 10000,
+          paid_at: "2026-03-10T09:00:00Z",
+          paid_by: "restaurant",
+        }),
+        inv({
+          id: "cn88",
+          doc_type: "credit_memo",
+          doc_number: "CN-88",
+          doc_date: "2026-03-11",
+          total: -1200,
+        }),
+        inv({
+          id: "i906",
+          doc_number: "INV-906",
+          doc_date: "2026-03-12",
+          total: 5000,
+        }),
+      ],
+      procurement_invoice_payments: [
+        pay({ invoice_id: "i905", amount: 1200, credit_note_id: "cn88" }),
+        pay({ invoice_id: "i905", amount: 8800 }),
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    expect(out.owedSince).toBe("2026-03-10");
+    const rossi = out.owing.find((o) => o.providerId === ROSSI)!;
+    expect(rossi.owed).toEqual([{ currency: "TRY", total: 5000 }]);
+    expect(rossi.owedCreditNotes).toBe(0);
+    expect(out.basis.join(" ")).not.toContain(
+      "A credit already used to pay an invoice is not taken off again",
+    );
+    expect(out.basis.join(" ")).toContain(
+      "A credit note comes off only by what it has not paid yet",
+    );
+  });
+
+  it("[REVERT-FAILS] a part payment leaves what is left owed; a back-dated one does not move owedSince (F-1674)", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        // Paid in full, recorded 10 March, back-dated to 1 March.
+        inv({
+          id: "p1",
+          doc_number: "A-1",
+          doc_date: "2026-02-25",
+          total: 500,
+          paid_at: "2026-03-01T09:00:00Z",
+          paid_by: "restaurant",
+        }),
+        // Dated before the first recorded marking: not marked, never owed.
+        inv({
+          id: "o1",
+          doc_number: "A-0",
+          doc_date: "2026-03-05",
+          total: 900,
+        }),
+        // Paid 4.000 of 10.000 in a first instalment.
+        inv({
+          id: "v1",
+          doc_number: "A-2",
+          doc_date: "2026-03-12",
+          total: 10000,
+        }),
+      ],
+      procurement_invoice_payments: [
+        pay({ invoice_id: "p1", amount: 500 }),
+        pay({
+          invoice_id: "v1",
+          amount: 4000,
+          recorded_at: "2026-03-14T09:00:00Z",
+        }),
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    expect(out.owedSince).toBe("2026-03-10");
+    const rossi = out.owing.find((o) => o.providerId === ROSSI)!;
+    expect(rossi.owed).toEqual([{ currency: "TRY", total: 6000 }]);
+    expect(rossi.owedInvoices).toBe(1);
+    expect(rossi.unpaid).toEqual([{ currency: "TRY", total: 900 }]);
+  });
+
+  it("[REVERT-FAILS] one vendor's credit is never taken off another vendor's bills, and is said apart (F-1673)", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        inv({
+          id: "p1",
+          doc_number: "A-1",
+          doc_date: "2026-03-01",
+          total: 500,
+          paid_at: "2026-03-10T09:00:00Z",
+          paid_by: "restaurant",
+        }),
+        inv({
+          id: "a2",
+          doc_number: "A-2",
+          doc_date: "2026-03-12",
+          total: 10000,
+        }),
+        inv({
+          id: "k1",
+          provider_id: KAYA,
+          doc_type: "credit_memo",
+          doc_number: "K-C1",
+          doc_date: "2026-03-13",
+          total: -3000,
+        }),
+      ],
+      providers: [
+        { id: ROSSI, name: "Rossi Wines" },
+        { id: KAYA, name: "Kaya Gida" },
+      ],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    expect(out.owing.find((o) => o.providerId === KAYA)!.owed).toEqual([
+      { currency: "TRY", total: -3000 },
+    ]);
+    expect(out.totals.owed).toEqual([{ currency: "TRY", total: 10000 }]);
+    expect(out.totals.inFavour).toEqual([{ currency: "TRY", total: 3000 }]);
+    const figures = spendDoc(out).figures;
+    expect(figures.find((f) => f.label === "Owed, all vendors")!.value).toBe(
+      10000,
+    );
+    expect(
+      figures.find((f) => f.label === "Credit in your favour, all vendors")!
+        .value,
+    ).toBe(3000);
   });
 });
 

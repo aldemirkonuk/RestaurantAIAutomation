@@ -155,6 +155,13 @@ function requireUuid(value: string, label: string): void {
   );
 }
 
+/** A real calendar day written YYYY-MM-DD; 2026-02-30 is not one. */
+function isCalendarDay(v: unknown): v is string {
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const t = Date.parse(`${v}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v;
+}
+
 /**
  * Vendor documents — upload, review, and the four-way match's evidence base.
  *
@@ -2441,6 +2448,17 @@ export class DocumentsController {
    * verification. The columns existed with no writer, so no invoice could be
    * marked paid and nothing could say what is owed.
    *
+   * EACH PAYMENT, ITS DAY, AND THE CREDIT IT USED (F-1672, F-1674, S235).
+   * A payment now carries an amount (absent = whatever is left), the day it
+   * was paid (absent = today on the house's clock, never after it), how, and —
+   * paid with a credit note — which one. `record_invoice_payment` writes it:
+   * a credit note pays only the same vendor's invoice in the same currency,
+   * never past what is left on either, and the invoice reads paid (ADR 0103's
+   * `paid_at`, the covering payment's day) once its payments cover the printed
+   * total. Before this, every marking was "the whole bill, today, by the
+   * house", so a used credit note still came off what the vendor was owed.
+   * "Not paid" removes the invoice's payments; the audit row keeps them.
+   *
    * Managers and owners only, in words. It moves no money and is undone by
    * the same route, so it takes no seal (no decision names it; the seal guard
    * lists it as outside every census); who did it goes to the audit log,
@@ -2450,15 +2468,29 @@ export class DocumentsController {
    */
   @Patch(":id/paid")
   @ApiOperation({
-    summary: "Mark a vendor invoice paid, or not paid",
+    summary: "Record a payment on a vendor invoice, or mark it not paid",
     description:
-      "Body `{ paid: boolean, paidBy?: 'restaurant' | 'eft_wholesaler_initiated' | 'credit_applied' | 'other' }`. Managers and owners only. Invoices only; a credit note or a delivery note is refused in words. Returns the invoice's `paidAt` and `paidBy`.",
+      "Body `{ paid: boolean, paidBy?: 'restaurant' | 'eft_wholesaler_initiated' | 'credit_applied' | 'other', amount?: number, paidOn?: 'YYYY-MM-DD', creditNoteId?: uuid }`. `amount` absent pays what is left; `paidOn` absent is today; `creditNoteId` is required with, and only with, `credit_applied`, and must be the same vendor's credit note in the same currency. Managers and owners only. Invoices only; a credit note or a delivery note is refused in words. Returns the invoice's `paidAt` and `paidBy` (set once its payments cover it), what is `paid` so far and what is `left`, in its `currency`.",
   })
   async markPaid(
     @Param("id") id: string,
-    @Body() body: { paid?: unknown; paidBy?: unknown },
+    @Body()
+    body: {
+      paid?: unknown;
+      paidBy?: unknown;
+      amount?: unknown;
+      paidOn?: unknown;
+      creditNoteId?: unknown;
+    },
     @CurrentUser() user: AuthedUser,
-  ): Promise<{ id: string; paidAt: string | null; paidBy: string | null }> {
+  ): Promise<{
+    id: string;
+    paidAt: string | null;
+    paidBy: string | null;
+    paid?: number | null;
+    left?: number | null;
+    currency?: string | null;
+  }> {
     requireUuid(id, "invoice id");
     if (typeof body?.paid !== "boolean")
       throw new HttpException(
@@ -2470,6 +2502,49 @@ export class DocumentsController {
     if (asked !== null && how === null)
       throw new HttpException(
         "That is not a way an invoice can be paid here. Nothing was changed.",
+        HttpStatus.BAD_REQUEST,
+      );
+    const amount =
+      body.amount === undefined || body.amount === null
+        ? null
+        : Number(body.amount);
+    if (
+      amount !== null &&
+      (typeof body.amount !== "number" ||
+        !Number.isFinite(amount) ||
+        amount <= 0)
+    )
+      throw new HttpException(
+        "Say the amount paid as a number more than zero. Nothing was changed.",
+        HttpStatus.BAD_REQUEST,
+      );
+    const paidOn =
+      body.paidOn === undefined || body.paidOn === null ? null : body.paidOn;
+    if (paidOn !== null && !isCalendarDay(paidOn))
+      throw new HttpException(
+        "Say the day it was paid as a date, YYYY-MM-DD. Nothing was changed.",
+        HttpStatus.BAD_REQUEST,
+      );
+    const creditNoteId =
+      body.creditNoteId === undefined || body.creditNoteId === null
+        ? null
+        : String(body.creditNoteId);
+    if (how === "credit_applied" && creditNoteId === null)
+      throw new HttpException(
+        "Say which credit note paid it. Nothing was changed.",
+        HttpStatus.BAD_REQUEST,
+      );
+    if (creditNoteId !== null) {
+      if (how !== "credit_applied")
+        throw new HttpException(
+          "Only a payment with a credit note names a credit note. Nothing was changed.",
+          HttpStatus.BAD_REQUEST,
+        );
+      requireUuid(creditNoteId, "credit note id");
+    }
+    if (!body.paid && (amount !== null || paidOn !== null))
+      throw new HttpException(
+        "Marking an invoice not paid takes no amount or date. Nothing was changed.",
         HttpStatus.BAD_REQUEST,
       );
     const role = await this.organizations.resolveRestaurantRole(
@@ -2508,18 +2583,40 @@ export class DocumentsController {
         HttpStatus.BAD_REQUEST,
       );
 
-    const paidAt = body.paid ? new Date().toISOString() : null;
-    const { error: writeError } = await this.db
-      .getClient()
-      .from("procurement_documents")
-      .update({ paid_at: paidAt, paid_by: how })
-      .eq("id", id)
-      .eq("restaurant_id", user.restaurantId);
-    if (writeError)
+    // One writer, in one transaction: it locks the invoice and the credit note.
+    const { data: wrote, error: writeError } = body.paid
+      ? await this.db.getClient().rpc("record_invoice_payment", {
+          p_restaurant_id: user.restaurantId,
+          p_invoice_id: id,
+          p_amount: amount,
+          p_paid_on: paidOn,
+          p_paid_by: how,
+          p_credit_note_id: creditNoteId,
+          p_recorded_by: user.userId,
+        })
+      : await this.db.getClient().rpc("clear_invoice_payments", {
+          p_restaurant_id: user.restaurantId,
+          p_invoice_id: id,
+        });
+    if (writeError) {
+      // The writer's refusals (23514) are already said in plain words.
+      const refused = (writeError as { code?: string }).code === "23514";
       throw new HttpException(
-        `The invoice was not marked ${body.paid ? "paid" : "not paid"}: ${writeError.message}`,
-        HttpStatus.INTERNAL_SERVER_ERROR,
+        refused
+          ? `${writeError.message} Nothing was changed.`
+          : `The invoice was not marked ${body.paid ? "paid" : "not paid"}: ${writeError.message}`,
+        refused ? HttpStatus.BAD_REQUEST : HttpStatus.INTERNAL_SERVER_ERROR,
       );
+    }
+    const state = (body.paid ? wrote : null) as {
+      paid_at?: string | null;
+      paid_by?: string | null;
+      paid?: number | null;
+      left?: number | null;
+      currency?: string | null;
+    } | null;
+    const paidAt = state?.paid_at ?? null;
+    const paidBy = state?.paid_by ?? null;
 
     const number = (doc as { doc_number?: string | null }).doc_number;
     const { error: auditError } = await this.db
@@ -2528,7 +2625,11 @@ export class DocumentsController {
       .insert({
         actor_type: "user",
         actor_id: user.userId,
-        action: body.paid ? "invoice_marked_paid" : "invoice_marked_unpaid",
+        action: !body.paid
+          ? "invoice_marked_unpaid"
+          : paidAt
+            ? "invoice_marked_paid"
+            : "invoice_payment_recorded",
         entity_type: "procurement_document",
         entity_id: id,
         changes: {
@@ -2537,7 +2638,16 @@ export class DocumentsController {
             from: (doc as { paid_at?: string | null }).paid_at ?? null,
             to: paidAt,
           },
-          paid_by: how,
+          paid_by: body.paid ? how : null,
+          ...(body.paid
+            ? {
+                payment: {
+                  amount: amount ?? "what was left",
+                  paid_on: paidOn ?? "today",
+                  credit_note_id: creditNoteId,
+                },
+              }
+            : { payments_removed: wrote ?? [] }),
         },
         restaurant_id: user.restaurantId,
       });
@@ -2547,7 +2657,169 @@ export class DocumentsController {
       );
     if (body.paid)
       await this.tellPaidWhileDisputed(user.restaurantId, id, number ?? null);
-    return { id, paidAt, paidBy: how };
+    return body.paid
+      ? {
+          id,
+          paidAt,
+          paidBy,
+          paid: state?.paid ?? null,
+          left: state?.left ?? null,
+          currency: state?.currency ?? null,
+        }
+      : { id, paidAt: null, paidBy: null };
+  }
+
+  /**
+   * THE PAYMENTS ON ONE INVOICE, AND THE CREDIT NOTES THAT COULD PAY IT
+   * (F-1672, F-1674). What was paid, on which day, how, and with which credit
+   * note; what is left; and the same vendor's credit notes in the same
+   * currency that still hold credit — the only ones that can pay it (S235).
+   * Owners and managers only: it is the invoice's money.
+   */
+  @Get(":id/payments")
+  @ApiOperation({
+    summary:
+      "The payments on a vendor invoice, and the credit notes that could pay it",
+    description:
+      "Owners and managers only. `payments` each with `amount`, `currency`, `paidOn`, `paidBy` and the credit note's number; `paid` and `left` (null when the invoice has no total); `credits` = the same vendor's credit notes in the invoice's currency with credit `left` on them.",
+  })
+  async payments(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    requireUuid(id, "invoice id");
+    try {
+      await this.organizations.assertCanManageRestaurant(
+        user.userId,
+        user.restaurantId,
+        "see an invoice's payments",
+      );
+    } catch {
+      throw new HttpException(
+        "An invoice's payments are kept for the house's owners and managers.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    const client = this.db.getClient();
+    const { data: inv, error: invError } = await client
+      .from("procurement_documents")
+      .select("id, doc_type, provider_id, currency, total")
+      .eq("id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .maybeSingle();
+    if (invError)
+      throw new HttpException(
+        `This invoice could not be read: ${invError.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (!inv || (inv as { doc_type?: string }).doc_type !== "invoice")
+      throw new HttpException("Not found", HttpStatus.NOT_FOUND);
+    const invoice = inv as {
+      provider_id: string | null;
+      currency: string | null;
+      total: number | string | null;
+    };
+    const code = invoice.currency?.trim().toUpperCase() || null;
+
+    const { data: paidRows, error: payError } = await client
+      .from("procurement_invoice_payments")
+      .select("amount, currency, paid_on, paid_by, credit_note_id, recorded_at")
+      .eq("invoice_id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .order("paid_on", { ascending: true });
+    if (payError)
+      throw new HttpException(
+        `This invoice's payments could not be read: ${payError.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    const rows = (paidRows ?? []) as Array<{
+      amount: number | string;
+      currency: string;
+      paid_on: string;
+      paid_by: string;
+      credit_note_id: string | null;
+    }>;
+
+    // The same vendor's credit notes in this currency, and what each has left.
+    let notes: Array<{
+      id: string;
+      doc_number: string | null;
+      total: number | string | null;
+      currency: string | null;
+      status: string | null;
+    }> = [];
+    if (invoice.provider_id) {
+      const { data: cn, error: cnError } = await client
+        .from("procurement_documents")
+        .select("id, doc_number, total, currency, status")
+        .eq("restaurant_id", user.restaurantId)
+        .eq("provider_id", invoice.provider_id)
+        .eq("doc_type", "credit_memo");
+      if (cnError)
+        throw new HttpException(
+          `This vendor's credit notes could not be read: ${cnError.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      notes = (cn ?? []) as typeof notes;
+    }
+    const named = new Map(notes.map((n) => [n.id, n.doc_number]));
+    const usable = notes.filter(
+      (n) =>
+        n.status !== "rejected" &&
+        n.status !== "superseded" &&
+        n.total !== null &&
+        Number.isFinite(Number(n.total)) &&
+        (n.currency?.trim().toUpperCase() || null) === code,
+    );
+    const used = new Map<string, number>();
+    if (usable.length) {
+      const { data: spent, error: spentError } = await client
+        .from("procurement_invoice_payments")
+        .select("credit_note_id, amount")
+        .eq("restaurant_id", user.restaurantId)
+        .in(
+          "credit_note_id",
+          usable.map((n) => n.id),
+        );
+      if (spentError)
+        throw new HttpException(
+          `What the credit notes have already paid could not be read: ${spentError.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      for (const s of (spent ?? []) as Array<{
+        credit_note_id: string;
+        amount: number | string;
+      }>)
+        used.set(
+          s.credit_note_id,
+          (used.get(s.credit_note_id) ?? 0) + Number(s.amount),
+        );
+    }
+    const cents = (n: number) => Math.round(n * 100) / 100;
+    const paid = cents(rows.reduce((n, r) => n + Number(r.amount), 0));
+    const total =
+      invoice.total === null || !Number.isFinite(Number(invoice.total))
+        ? null
+        : Math.abs(Number(invoice.total));
+    return {
+      currency: code,
+      paid: total === null ? null : paid,
+      left: total === null ? null : cents(Math.max(total - paid, 0)),
+      payments: rows.map((r) => ({
+        amount: Number(r.amount),
+        currency: r.currency,
+        paidOn: r.paid_on,
+        paidBy: r.paid_by,
+        creditNoteNumber: r.credit_note_id
+          ? (named.get(r.credit_note_id) ?? null)
+          : null,
+      })),
+      credits: usable
+        .map((n) => ({
+          id: n.id,
+          number: n.doc_number,
+          currency: code,
+          left: cents(Math.abs(Number(n.total)) - (used.get(n.id) ?? 0)),
+        }))
+        .filter((n) => n.left > 0),
+    };
   }
 
   /**

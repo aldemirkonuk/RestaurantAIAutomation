@@ -69,7 +69,13 @@ export interface VendorSpend {
     invoiced: SpendMoney[];
     credited: SpendMoney[];
     unpaid: SpendMoney[];
+    /** Only the vendors still owed something, added up; never less another vendor's credit (F-1673). */
     owed: SpendMoney[];
+    /**
+     * Vendors whose credit is more than their bills: credit in the house's
+     * favour, kept apart (F-1673). Optional so an older gateway's answer reads.
+     */
+    inFavour?: SpendMoney[];
   };
   /** The house day it first marked an invoice paid; null when it never has. */
   owedSince: string | null;
@@ -302,7 +308,13 @@ export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShel
             {s.from} to {s.to}, both days included. Delivered: {amounts(s.totals.received, s.currency)}.
             Invoiced: {amounts(s.totals.invoiced, s.currency)}
             {s.totals.credited.length ? `, and ${amounts(s.totals.credited, s.currency)} in credit notes` : ''}.
-            {s.owedSince && s.totals.owed.length ? ` Owed now: ${owedAmounts(s.totals.owed, s.currency)}.` : ''}
+            {/* F-1673: one vendor's credit is not set against another's bills; it is said apart. */}
+            {s.owedSince && (s.totals.owed.length || s.totals.inFavour?.length)
+              ? ` Owed now: ${amounts(s.totals.owed, s.currency)}.`
+              : ''}
+            {s.owedSince && s.totals.inFavour?.length
+              ? ` Credit in your favour, from vendors whose credit is more than their bills: ${amounts(s.totals.inFavour, s.currency)}.`
+              : ''}
             {s.totals.unpaid.length
               ? ` Not marked paid, ${s.owedSince ? `dated before ${s.owedSince}` : 'any date'}: ${amounts(s.totals.unpaid, s.currency)}.`
               : ''}

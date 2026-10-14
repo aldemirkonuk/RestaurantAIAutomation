@@ -86,6 +86,37 @@ export interface ProcurementDocument {
   paid_by?: string | null
 }
 
+/** How an invoice was paid (`procurement_documents_paid_by_check`). */
+export type InvoicePaidBy = 'restaurant' | 'eft_wholesaler_initiated' | 'credit_applied' | 'other'
+
+/** One payment to record (F-1672, F-1674). */
+export interface InvoicePaymentInput {
+  paidBy?: InvoicePaidBy
+  /** Absent = whatever is left on the invoice. */
+  amount?: number
+  /** YYYY-MM-DD; absent = today on the house's clock. */
+  paidOn?: string
+  /** Required with, and only with, `credit_applied`. */
+  creditNoteId?: string
+}
+
+/** `GET /procurement/documents/:id/payments` (F-1672, F-1674). */
+export interface InvoicePayments {
+  currency: string | null
+  /** Null when the invoice has no total yet. */
+  paid: number | null
+  left: number | null
+  payments: Array<{
+    amount: number
+    currency: string
+    paidOn: string
+    paidBy: InvoicePaidBy
+    creditNoteNumber: string | null
+  }>
+  /** The same vendor's credit notes in this currency that still hold credit. */
+  credits: Array<{ id: string; number: string | null; currency: string | null; left: number }>
+}
+
 export interface ProcurementDocumentLine {
   id: string
   line_no: number
@@ -210,10 +241,36 @@ export const documentsApi = {
     return data
   },
 
-  /** Mark an invoice paid, or not paid (F-1635). Owners and managers only, at the gateway. */
-  async markPaid(id: string, paid: boolean): Promise<{ id: string; paidAt: string | null; paidBy: string | null }> {
+  /**
+   * Record a payment on an invoice, or mark it not paid (F-1635). With a
+   * payment (F-1672, F-1674): how it was paid, the amount (absent = what is
+   * left), the day (absent = today) and, paid with a credit note, which one.
+   * Owners and managers only, at the gateway.
+   */
+  async markPaid(
+    id: string,
+    paid: boolean,
+    payment?: InvoicePaymentInput,
+  ): Promise<{
+    id: string
+    paidAt: string | null
+    paidBy: string | null
+    paid?: number | null
+    left?: number | null
+    currency?: string | null
+  }> {
     try {
-      const { data } = await apiClient.patch(`/procurement/documents/${id}/paid`, { paid })
+      const { data } = await apiClient.patch(`/procurement/documents/${id}/paid`, { paid, ...(payment ?? {}) })
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /** The payments on an invoice, and the same vendor's credit notes that can pay it (F-1672). */
+  async payments(id: string): Promise<InvoicePayments> {
+    try {
+      const { data } = await apiClient.get(`/procurement/documents/${id}/payments`)
       return data
     } catch (error) {
       return rethrowSpoken(error)

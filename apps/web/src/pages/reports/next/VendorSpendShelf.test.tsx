@@ -159,6 +159,26 @@ describe('VendorSpendShelf (F-1608)', () => {
     expect(screen.getByText(/Owed now: €1,000/)).toBeInTheDocument();
   });
 
+  it('[REVERT-FAILS] says one vendor\'s credit apart, never netted into Owed now (F-1673)', async () => {
+    const base = spend();
+    api.get.mockResolvedValue({
+      data: spend({
+        owedSince: '2026-10-14',
+        totals: {
+          ...base.totals,
+          owed: [{ currency: 'EUR', total: 10000 }],
+          inFavour: [{ currency: 'EUR', total: 3000 }],
+        },
+      }),
+    });
+    wrap(<VendorSpendShelf restaurantId="h1" zone="Europe/Istanbul" />);
+    const said = await screen.findByText(/Owed now: €10,000(\.00)?\./);
+    expect(said.textContent).toMatch(
+      /Credit in your favour, from vendors whose credit is more than their bills: €3,000(\.00)?\./,
+    );
+    expect(said.textContent).not.toMatch(/Owed now: €7,000/);
+  });
+
   it('switches to last year with one tap', async () => {
     api.get.mockResolvedValue({ data: spend() });
     wrap(<VendorSpendShelf restaurantId="h1" zone="Europe/Istanbul" />);
