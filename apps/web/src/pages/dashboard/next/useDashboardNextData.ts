@@ -139,6 +139,8 @@ export interface MonthLedger {
   /** F-1588: the first day net is before tax, when the month mixes it with checks as sent. */
   taxSwitchDay: string | null;
   monthlyChecksAsSent: number | null;
+  /** F-1624: the gateway's sentence naming each stretch when the house changed its tax answer this month; null = one answer. */
+  taxChangeNote?: string | null;
   /** The zone the days are filed in; null = the house has none; undefined = not said. */
   timezone: string | null | undefined;
   zoneUnset: boolean;
@@ -617,6 +619,7 @@ export function useMonthLedger(
           monthly_net_not_recorded_by_reason?: unknown;
           tax_switch_day?: unknown;
           monthly_checks_as_sent?: unknown;
+          tax_change_note?: unknown;
         };
         const summedSpend = daily.every((d) => d.procurement_spend !== null)
           ? daily.reduce((sum, d) => sum + (d.procurement_spend ?? 0), 0)
@@ -644,6 +647,7 @@ export function useMonthLedger(
           monthlyNetNotRecordedByReason: countsByReasonFrom(legacyTotals.monthly_net_not_recorded_by_reason),
           taxSwitchDay: typeof legacyTotals.tax_switch_day === 'string' ? legacyTotals.tax_switch_day : null,
           monthlyChecksAsSent: num(legacyTotals.monthly_checks_as_sent),
+          taxChangeNote: typeof legacyTotals.tax_change_note === 'string' ? legacyTotals.tax_change_note : null,
           timezone: res.timezone,
           zoneUnset: res.zone_unset === true,
           today: res.today,

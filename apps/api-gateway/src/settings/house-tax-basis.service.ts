@@ -15,6 +15,10 @@ import {
 } from "../common/tax-basis";
 import { countryCodeOf, houseFrame } from "../common/house-frame";
 import { houseDayOf, houseToday, shiftHouseDay } from "../common/house-day";
+import {
+  readTaxBasisHistory,
+  type TaxBasisAnswerKind,
+} from "../common/tax-basis-history";
 
 /**
  * Whether this house's till prices include tax, and the rates it charges —
@@ -73,6 +77,9 @@ export const POS_CATEGORY_MAX_LENGTH = 120;
 
 /** How many rate rows a readout carries; the table is append-only, so it is capped. */
 export const TAX_RATE_READ_CAP = 500;
+
+/** How many of the house's items the item-rate picker lists (S222 owed). */
+export const TAX_ITEM_PICK_CAP = 500;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -168,6 +175,20 @@ export interface HouseTaxBasisReadout {
    */
   switchDay: string | null;
   confirmedBy: { userId: string; name: string | null } | null;
+  /**
+   * F-1624: every answer the house gave, oldest first, each with the house
+   * day it took effect (null without a time zone), so include, then "added
+   * on top", then include again shows each stretch. Null when they could not
+   * be read (`answersReason`).
+   */
+  answers?: TaxBasisAnswerRow[] | null;
+  answersReason?: string | null;
+  /**
+   * The house's items a rate can be keyed to (S222 owed: the item-rate
+   * picker), by name, at most TAX_ITEM_PICK_CAP. Read only for a house whose
+   * prices include tax; null otherwise, or when they could not be read.
+   */
+  items?: Array<{ id: string; name: string }> | null;
   /** The house's recorded country, as a code; null when none is recorded or known. */
   country: string | null;
   /** KDV, sales tax, or tax: the word the page uses. */
@@ -184,6 +205,13 @@ export interface HouseTaxBasisReadout {
   changed?: boolean;
   audited?: boolean;
   auditReason?: string | null;
+}
+
+export interface TaxBasisAnswerRow {
+  basis: TaxBasisAnswerKind;
+  answeredAt: string;
+  /** The house day it took effect; null when the house has no time zone. */
+  fromDay: string | null;
 }
 
 interface HouseRow {
@@ -414,13 +442,33 @@ export class HouseTaxBasisService {
     const basis = asHouseTaxBasis(house.row?.tax_basis ?? "unset");
     const answered = basis !== null && basis !== "unset";
     const by = answered ? (house.row?.tax_basis_confirmed_by ?? null) : null;
-    const [name, rates] = await Promise.all([
-      this.nameOf(by),
-      this.readRates(restaurantId, today),
-    ]);
     const confirmedAt = answered
       ? (house.row?.tax_basis_confirmed_at ?? null)
       : null;
+    const [name, rates, history, items] = await Promise.all([
+      this.nameOf(by),
+      this.readRates(restaurantId, today),
+      readTaxBasisHistory(this.databaseService.client, restaurantId, {
+        basis,
+        confirmedAt,
+        confirmedBy: by,
+      }).then(
+        (answers) => ({ answers, error: null as string | null }),
+        (e: Error) => ({ answers: null, error: e.message }),
+      ),
+      basis === "prices_include_tax"
+        ? this.readItems(restaurantId)
+        : Promise.resolve(null),
+    ]);
+    // Each answer with the day it took effect: the stretch it starts.
+    const answers =
+      history.answers === null
+        ? null
+        : history.answers.map((a) => ({
+            basis: a.basis,
+            answeredAt: a.answeredAt,
+            fromDay: frame.zone ? houseDayOf(a.answeredAt, frame.zone) : null,
+          }));
     return {
       ...base,
       readable: true,
@@ -431,6 +479,9 @@ export class HouseTaxBasisService {
       switchDay:
         confirmedAt && frame.zone ? houseDayOf(confirmedAt, frame.zone) : null,
       confirmedBy: by ? { userId: by, name } : null,
+      answers,
+      answersReason: history.error,
+      items,
       rates: rates.rows,
       ratesReason: rates.error,
     };
@@ -769,6 +820,37 @@ export class HouseTaxBasisService {
       }
     }
     return { rows, error: null };
+  }
+
+  /**
+   * The house's own items, by name, for the item-rate picker. A failed read is
+   * null (the picker says so), never an empty list.
+   */
+  private async readItems(
+    restaurantId: string,
+  ): Promise<Array<{ id: string; name: string }> | null> {
+    const { data, error } = await this.databaseService.client
+      .from("restaurant_inventory")
+      .select("id, display_name, wine_name, deleted_at")
+      .eq("restaurant_id", restaurantId)
+      .limit(TAX_ITEM_PICK_CAP);
+    if (error) {
+      this.logger.warn(
+        `The items of ${restaurantId} could not be listed: ${error.message}`,
+      );
+      return null;
+    }
+    const out: Array<{ id: string; name: string }> = [];
+    for (const r of (data as Record<string, unknown>[] | null) ?? []) {
+      const name =
+        (typeof r.display_name === "string" && r.display_name.trim()) ||
+        (typeof r.wine_name === "string" && r.wine_name.trim()) ||
+        "";
+      // A removed item is kept for its history, never offered for a new rate.
+      if (r.deleted_at != null) continue;
+      if (typeof r.id === "string" && name) out.push({ id: r.id, name });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /** `public.users.user_id`; a failed lookup is a null name, never the raw id. */

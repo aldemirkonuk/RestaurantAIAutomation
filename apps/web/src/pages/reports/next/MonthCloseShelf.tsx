@@ -64,6 +64,8 @@ export interface MonthCloseFigures {
   };
   /** F-1606: the house day its tax basis was stated; absent on older closes. */
   taxBasisSince?: string | null;
+  /** F-1624: each stretch, when the house changed its tax answer inside the month; absent on older closes. */
+  taxChangeNote?: string | null;
   /** "KDV", "sales tax" or "tax". */
   taxWord?: string;
   valuation: {
@@ -325,6 +327,7 @@ function Kept({ close }: { close: MonthClose }) {
       </li>
       {taxInsideWords(close) !== null && <li>{taxInsideWords(close)}</li>}
       <li>{taxBasisWords(close)}</li>
+      {close.figures.taxChangeNote && <li data-testid="close-tax-change-note">{close.figures.taxChangeNote}</li>}
       <li>
         Bought (delivered): {bought}
         {f.purchases.unpriced > 0 ? `, and ${countOf(f.purchases.unpriced, 'order', 'orders')} with no price` : ''}

@@ -5,6 +5,7 @@ import {
   TaxBasisSection,
   TaxBasisSetupLine,
   answerLabel,
+  answersSaid,
   basisConsequence,
   readAnswer,
   readRateInputs,
@@ -277,6 +278,57 @@ describe('TaxBasisSection', () => {
     const include = (await screen.findByRole('button', { name: 'Prices on your till include KDV' })) as HTMLButtonElement;
     expect(include.disabled).toBe(true);
     expect(screen.queryByRole('button', { name: 'Choose it' })).toBeNull();
+  });
+});
+
+describe('item rates and earlier answers (S222, F-1624)', () => {
+  const items = [
+    { id: 'i-raki', name: 'Rakı 70cl' },
+    { id: 'i-tea', name: 'Tea' },
+  ];
+
+  it('reads an item rate as one item, by id, and refuses Add until an item is chosen', () => {
+    expect(readRateInputs('house_item', '', '20', '2026-10-12', 'KDV', null).canAdd).toBe(false);
+    const read = readRateInputs('house_item', '', '20', '2026-10-12', 'KDV', items[0]);
+    expect(read.body).toEqual({ keyKind: 'house_item', key: 'i-raki', ratePct: 20, effectiveFrom: '2026-10-12' });
+    expect(read.sentence).toMatch(/20 percent KDV on “Rakı 70cl”, from 2026-10-12/);
+  });
+
+  it('adds a rate for one item picked from the house’s items', async () => {
+    const answered = readout({ basis: 'prices_include_tax', answered: true, items });
+    api.get.mockResolvedValue({ data: answered });
+    api.post.mockResolvedValue({ data: answered });
+    render(<TaxBasisSection canManage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'One item' }));
+    fireEvent.change(screen.getByLabelText('Item'), { target: { value: 'i-raki' } });
+    fireEvent.change(screen.getByLabelText('Rate'), { target: { value: '20' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add rate' }));
+    await waitFor(() =>
+      expect(api.post).toHaveBeenCalledWith('/settings/tax-rates', {
+        keyKind: 'house_item',
+        key: 'i-raki',
+        ratePct: 20,
+        effectiveFrom: '2026-10-12',
+      }),
+    );
+  });
+
+  it('says each answer the house gave, from its day, and that checks keep theirs', async () => {
+    const answers = [
+      { basis: 'prices_include_tax' as const, answeredAt: '2026-10-03T09:00:00Z', fromDay: '2026-10-03' },
+      { basis: 'prices_exclude_tax' as const, answeredAt: '2026-10-10T09:00:00Z', fromDay: '2026-10-10' },
+      { basis: 'prices_include_tax' as const, answeredAt: '2026-10-20T09:00:00Z', fromDay: '2026-10-20' },
+    ];
+    expect(answersSaid({ answers: answers.slice(0, 1), taxWord: 'KDV' })).toBeNull();
+    api.get.mockResolvedValue({
+      data: readout({ basis: 'prices_include_tax', answered: true, confirmedAt: '2026-10-20T09:00:00Z', switchDay: '2026-10-20', answers }),
+    });
+    render(<TaxBasisSection canManage />);
+    const line = await screen.findByTestId('tax-basis-answers');
+    expect(line.textContent).toMatch(/from 2026-10-03, .*include kdv/i);
+    expect(line.textContent).toMatch(/from 2026-10-10, /);
+    expect(line.textContent).toMatch(/from 2026-10-20, /);
+    expect(screen.getByText(/keep the answer they were recorded under/)).toBeTruthy();
   });
 });
 

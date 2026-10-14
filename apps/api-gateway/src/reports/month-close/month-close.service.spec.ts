@@ -259,6 +259,9 @@ function houseHandler(
         return { data: null, error: null };
       case "users":
         return { data: [{ user_id: ACTOR, name: "Ayla" }], error: null };
+      // F-1624: no answer kept; the house row's answer stands alone.
+      case "house_tax_basis_answers":
+        return { data: [], error: null };
       default:
         throw new Error(`unexpected table ${table}`);
     }
@@ -540,6 +543,73 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
     // F-1625: a US or unset house's till file carries no tax line at all.
     expect(typeof row.till_csv).toBe("string");
     expect(row.till_csv).not.toContain("inside till prices");
+  });
+
+  // F-1624 remainder / F-1588: include on 3 July, "added on top" on 10 July,
+  // include again on 20 July. The close kept 20 July as the only switch, so
+  // the accountant read 3-19 July as the till's figures with KDV inside.
+  it("names each stretch when the house changed its tax answer inside the month", async () => {
+    const answer = (basis: string, at: string) => ({
+      basis,
+      answered_at: at,
+      answered_by: ACTOR,
+    });
+    const { svc, calls } = service(
+      houseHandler({
+        restaurants: () => ({
+          data: {
+            name: "SYNTHETIC House",
+            currency: "try",
+            timezone: ZONE,
+            country: "TR",
+            tax_basis: "prices_include_tax",
+            tax_basis_confirmed_at: "2026-07-20T09:00:00Z",
+          },
+          error: null,
+        }),
+        house_tax_basis_answers: () => ({
+          data: [
+            answer("prices_include_tax", "2026-07-03T09:00:00Z"),
+            answer("prices_exclude_tax", "2026-07-10T09:00:00Z"),
+            answer("prices_include_tax", "2026-07-20T09:00:00Z"),
+          ],
+          error: null,
+        }),
+      }),
+    );
+    await svc.closeMonth(HOUSE, ACTOR, "2026-07");
+    const insert = calls.find(
+      (c) => c.table === "month_closes" && has(c.ops, "insert"),
+    )!;
+    const f = (arg(insert.ops, "insert")![0] as Record<string, any>)
+      .figures as MonthFigures;
+    expect(f.taxBasisSince).toBe("2026-07-03");
+    expect(f.taxChangeNote).toContain(
+      "From 10 July 2026, KDV is added on top of till prices, so net is as the till sent it.",
+    );
+    expect(f.taxChangeNote).toContain(
+      "From 20 July 2026, till prices include KDV, and net is without it.",
+    );
+    expect(f.taxChangeNote).toContain(
+      "Until 2 July 2026, nobody had said whether till prices include KDV",
+    );
+  });
+
+  it("refuses the close when the house's earlier tax answers cannot be read", async () => {
+    const { svc, calls } = service(
+      houseHandler({
+        house_tax_basis_answers: () => ({
+          data: null,
+          error: { message: "permission denied" },
+        }),
+      }),
+    );
+    await expect(svc.closeMonth(HOUSE, ACTOR, "2026-07")).rejects.toThrow(
+      /earlier tax answers could not be read/,
+    );
+    expect(
+      calls.some((c) => c.table === "month_closes" && has(c.ops, "insert")),
+    ).toBe(false);
   });
 
   it("says an inclusive house's month with no tax taken out as such (F-1625)", async () => {

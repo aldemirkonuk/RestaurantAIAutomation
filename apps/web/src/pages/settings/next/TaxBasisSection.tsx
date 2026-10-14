@@ -49,6 +49,12 @@ export interface TaxRateRow {
   createdAt: string | null;
 }
 
+export interface TaxBasisAnswerRow {
+  basis: TaxBasisAnswer;
+  answeredAt: string;
+  fromDay: string | null;
+}
+
 /** Mirrors `HouseTaxBasisReadout` (apps/api-gateway/src/settings/house-tax-basis.service.ts). */
 export interface TaxBasisReadout {
   restaurantId: string;
@@ -60,6 +66,14 @@ export interface TaxBasisReadout {
   /** The house day of `confirmedAt`, the day ingest switches (F-1585). */
   switchDay?: string | null;
   confirmedBy: { userId: string; name: string | null } | null;
+  /**
+   * F-1624: every answer, oldest first, with the house day each took effect
+   * (null without a time zone); null when they could not be read.
+   */
+  answers?: TaxBasisAnswerRow[] | null;
+  answersReason?: string | null;
+  /** The house's items a rate can be keyed to (S222); null when not listed. */
+  items?: { id: string; name: string }[] | null;
   country: string | null;
   taxWord: string;
   proposal: { basis: TaxBasisAnswer; rates: { label: string; ratePct: number }[]; why: string } | null;
@@ -82,8 +96,10 @@ export async function confirmTaxBasis(basis: TaxBasisAnswer): Promise<TaxBasisRe
   return data;
 }
 
+export type RateCovers = 'house' | 'pos_category' | 'house_item';
+
 export async function addTaxRate(body: {
-  keyKind: 'house' | 'pos_category';
+  keyKind: RateCovers;
   key?: string;
   ratePct: number;
   effectiveFrom: string;
@@ -131,13 +147,20 @@ export function answerLabel(basis: TaxBasisAnswer, taxWord: string): string {
 export const ANSWERS: readonly TaxBasisAnswer[] = ['prices_include_tax', 'prices_exclude_tax', 'not_vat_charging'];
 
 /** What the recorded answer means for the figures, in one sentence. */
-export function basisConsequence(reg: Pick<TaxBasisReadout, 'basis' | 'taxWord' | 'confirmedAt' | 'switchDay'>): string {
+export function basisConsequence(
+  reg: Pick<TaxBasisReadout, 'basis' | 'taxWord' | 'confirmedAt' | 'switchDay' | 'answers'>,
+): string {
   // F-1585: the HOUSE day the answer was given, the day ingest switches on —
   // never the UTC date of the instant, which is a day off near midnight.
   const since = reg.switchDay ?? null;
+  // F-1624: after an earlier answer, the checks before this one keep it.
+  const before =
+    (reg.answers?.length ?? 0) > 1
+      ? 'Checks recorded before then keep the answer they were recorded under.'
+      : 'Checks recorded before then stay as your till sent them.';
   switch (reg.basis) {
     case 'prices_include_tax':
-      return `Net sales are taken before ${reg.taxWord} for every check from ${since ?? 'the day this was answered'}: by the tax your till states, or by your rates below. Checks recorded before then stay as your till sent them.`;
+      return `Net sales are taken before ${reg.taxWord} for every check from ${since ?? 'the day this was answered'}: by the tax your till states, or by your rates below. ${before}`;
     case 'prices_exclude_tax':
       return `Your till’s subtotal is already before ${reg.taxWord}, so net sales read as the till sends them.`;
     case 'not_vat_charging':
@@ -162,13 +185,26 @@ export function readAnswer(
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * F-1624: the house's answers as stretches, in the owner's words. Null when
+ * there is only one answer (the row above already says it).
+ */
+export function answersSaid(reg: Pick<TaxBasisReadout, 'answers' | 'taxWord'>): string | null {
+  const answers = reg.answers ?? [];
+  if (answers.length < 2) return null;
+  return `Your answers: ${answers
+    .map((a) => `from ${a.fromDay ?? a.answeredAt.slice(0, 10)}, ${answerLabel(a.basis, reg.taxWord).toLowerCase()}`)
+    .join('; ')}. Each covers the days until the next.`;
+}
+
 /** What Add will write, before it does. One pass, so the button and the sentence agree. */
 export function readRateInputs(
-  covers: 'house' | 'pos_category',
+  covers: RateCovers,
   category: string,
   rateRaw: string,
   from: string,
   taxWord: string,
+  item: { id: string; name: string } | null = null,
 ): { canAdd: boolean; sentence: string; body: Parameters<typeof addTaxRate>[0] | null } {
   // '20%', '%20' (how Turkish writes it) and '20,5' all read as a percent (F-1589).
   const t = rateRaw.trim().replace(/^%\s*/, '').replace(/\s*%$/, '');
@@ -183,14 +219,24 @@ export function readRateInputs(
   const cat = category.trim();
   if (covers === 'pos_category' && cat === '')
     return { canAdd: false, sentence: 'Type the till category the rate covers, exactly as your till names it.', body: null };
+  if (covers === 'house_item' && item === null)
+    return { canAdd: false, sentence: 'Choose the item the rate covers.', body: null };
   if (!ISO_DATE.test(from)) return { canAdd: false, sentence: 'Say the first day the rate applies.', body: null };
-  const what = covers === 'house' ? 'everything the house sells' : `the till category “${cat}”`;
+  const what =
+    covers === 'house'
+      ? 'everything the house sells'
+      : covers === 'house_item' && item
+        ? `“${item.name}”`
+        : `the till category “${cat}”`;
   return {
     canAdd: true,
     sentence: `Add will record ${pct} percent ${taxWord} on ${what}, from ${from}. A rate is never edited: a change is a new rate from its own date.`,
-    body: covers === 'house'
-      ? { keyKind: 'house', ratePct: pct, effectiveFrom: from }
-      : { keyKind: 'pos_category', key: cat, ratePct: pct, effectiveFrom: from },
+    body:
+      covers === 'house'
+        ? { keyKind: 'house', ratePct: pct, effectiveFrom: from }
+        : covers === 'house_item' && item
+          ? { keyKind: 'house_item', key: item.id, ratePct: pct, effectiveFrom: from }
+          : { keyKind: 'pos_category', key: cat, ratePct: pct, effectiveFrom: from },
   };
 }
 
@@ -245,13 +291,16 @@ function TaxBasisBody({
   const [failed, setFailed] = useState<string | null>(null);
   const answer = readAnswer(chosen, reg);
 
-  const [covers, setCovers] = useState<'house' | 'pos_category'>('house');
+  const [covers, setCovers] = useState<RateCovers>('house');
   const [category, setCategory] = useState('');
+  const [itemId, setItemId] = useState('');
+  const item = (reg.items ?? []).find((i) => i.id === itemId) ?? null;
   const [rate, setRate] = useState('');
   const [from, setFrom] = useState(reg.today);
   const [rateBusy, setRateBusy] = useState(false);
   const [rateFailed, setRateFailed] = useState<string | null>(null);
-  const rateRead = readRateInputs(covers, category, rate, from, reg.taxWord);
+  const rateRead = readRateInputs(covers, category, rate, from, reg.taxWord, item);
+  const answersLine = answersSaid(reg);
   const showRates = reg.basis === 'prices_include_tax' || chosen === 'prices_include_tax';
   const inForce = (reg.rates ?? []).filter((r) => r.inForceToday);
   // F-1627: a withdrawn rate restates as a row with no percent; it is not a rate in force.
@@ -297,6 +346,7 @@ function TaxBasisBody({
       setRate('');
       // F-1611: the next rate starts from an empty category, never this one's.
       setCategory('');
+      setItemId('');
     } catch (err) {
       setRateFailed(messageOf(err));
     } finally {
@@ -389,6 +439,16 @@ function TaxBasisBody({
             )}
           </p>
         )}
+        {answersLine && (
+          <p data-testid="tax-basis-answers" style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
+            {answersLine}
+          </p>
+        )}
+        {reg.answered && reg.answers === null && (
+          <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
+            Earlier answers could not be read — {reg.answersReason ?? 'no reason was given'}.
+          </p>
+        )}
         {reg.confirmedBy?.name && (
           <p style={{ fontFamily: MONO, fontSize: 9.5, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4)', margin: '6px 0 0' }}>
             answered by · {reg.confirmedBy.name}
@@ -465,9 +525,34 @@ function TaxBasisBody({
                 options={[
                   { value: 'house', label: 'Everything' },
                   { value: 'pos_category', label: 'One till category' },
+                  { value: 'house_item', label: 'One item' },
                 ]}
                 onChange={setCovers}
               />
+              {covers === 'house_item' &&
+                (reg.items && reg.items.length > 0 ? (
+                  <select
+                    aria-label="Item"
+                    value={itemId}
+                    disabled={!canManage || rateBusy}
+                    onChange={(e) => setItemId(e.target.value)}
+                    className="st-ink st-focus"
+                    style={{ ...fieldStyle, width: 220 }}
+                  >
+                    <option value="">Choose an item</option>
+                    {reg.items.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
+                    {reg.items === null || reg.items === undefined
+                      ? 'The house’s items could not be listed.'
+                      : 'This house has no items yet.'}
+                  </span>
+                ))}
               {covers === 'pos_category' && (
                 <input
                   aria-label="Till category"
