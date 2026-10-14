@@ -2465,4 +2465,142 @@ describe("F-1648: a check number a till used again on another day is another sal
       "3:17",
     ]);
   });
+
+  // 23:55 and 00:10 on the house's clock (Europe/Istanbul, UTC+3).
+  const lateKept = {
+    ...kept,
+    opened_at: "2026-10-03T20:00:00+00:00",
+    closed_at: "2026-10-03T20:55:00+00:00",
+  };
+
+  it("F-1661: kasa-2's #17 on a second day is kept as its own sale, under that day", async () => {
+    const { service, calls } = makeService({
+      stored: { "kasa-2:17": { ...kept, opened_at: "2026-10-02T18:00:00Z" } },
+    });
+    const res = await ingest(
+      service,
+      [{ ...check("17", "2026-10-03T19:00:00Z"), till_id: "kasa-2" }],
+      "generic_webhook",
+    );
+    expect(res.upserted).toBe(1);
+    expect(res.errors.join("\n")).not.toMatch(/not imported/);
+    expect(calls.persist).toEqual([]);
+    expect(calls.checks.map((r) => r.external_check_id)).toEqual([
+      "kasa-2:2026-10-03:17",
+    ]);
+  });
+
+  it("F-1661: that second day's sale corrected at 00:10 is the same sale, under the same key", async () => {
+    const { service, calls } = makeService({
+      stored: {
+        "kasa-2:17": { ...kept, opened_at: "2026-10-02T18:00:00Z" },
+        "kasa-2:2026-10-03:17": lateKept,
+      },
+    });
+    const res = await ingest(
+      service,
+      [
+        {
+          ...check("17", "2026-10-03T21:10:00Z"),
+          openedAt: "2026-10-03T20:00:00Z",
+          till_id: "kasa-2",
+          total: 25,
+        },
+      ],
+      "generic_webhook",
+    );
+    expect(res.upserted).toBe(1);
+    expect(calls.persist).toEqual([]);
+    expect(calls.checks.map((r) => r.external_check_id)).toEqual([
+      "kasa-2:2026-10-03:17",
+    ]);
+  });
+
+  it("F-1681: a check closed at 23:55 and corrected at 00:10 is taken, not refused", async () => {
+    const { service, calls } = makeService({ stored: { "17": lateKept } });
+    const res = await ingest(
+      service,
+      [
+        {
+          ...check("17", "2026-10-03T21:10:00Z"),
+          openedAt: "2026-10-03T20:00:00Z",
+        },
+      ],
+      "generic_webhook",
+    );
+    expect(res.upserted).toBe(1);
+    expect(calls.persist).toEqual([]);
+    expect(calls.checks.map((r) => r.external_check_id)).toEqual(["17"]);
+  });
+
+  it("F-1681: with no opening time sent, a re-close a quarter hour later is the same sale", async () => {
+    const { service, calls } = makeService({
+      stored: { "17": { ...kept, closed_at: "2026-10-03T20:55:00+00:00" } },
+    });
+    const res = await ingest(
+      service,
+      [
+        {
+          externalCheckId: "17",
+          closedAt: "2026-10-03T21:10:00Z",
+          items: [line()],
+        },
+      ],
+      "generic_webhook",
+    );
+    expect(res.upserted).toBe(1);
+    expect(calls.persist).toEqual([]);
+  });
+
+  it("F-1664: a till that sends updated_at does not overwrite an earlier day's sale; it is refused and rings the bell", async () => {
+    const { service, calls } = makeService({
+      stored: {
+        "17": { ...kept, source_modified_at: "2026-10-02T19:00:00+00:00" },
+      },
+    });
+    const res = await ingest(
+      service,
+      [
+        {
+          ...check("17", "2026-10-03T19:00:00Z"),
+          updated_at: "2026-10-03T19:00:00Z",
+        },
+      ],
+      "generic_webhook",
+    );
+    expect(res.upserted).toBe(0);
+    expect(calls.checks).toEqual([]);
+    expect(res.errors.join("\n")).toContain(
+      "17: not imported, this check number is already kept for a sale on 2026-10-02 and this one closed on 2026-10-03",
+    );
+    expect(calls.persist[0].payload.title).toBe(
+      "1 check not imported: check number already used",
+    );
+  });
+
+  it("F-1664: the same till naming itself keeps the later day's sale apart", async () => {
+    const { service, calls } = makeService({
+      stored: {
+        "kasa-2:17": {
+          ...kept,
+          source_modified_at: "2026-10-02T19:00:00+00:00",
+        },
+      },
+    });
+    const res = await ingest(
+      service,
+      [
+        {
+          ...check("17", "2026-10-03T19:00:00Z"),
+          updated_at: "2026-10-03T19:00:00Z",
+          till_id: "kasa-2",
+        },
+      ],
+      "generic_webhook",
+    );
+    expect(res.upserted).toBe(1);
+    expect(calls.checks.map((r) => r.external_check_id)).toEqual([
+      "kasa-2:2026-10-03:17",
+    ]);
+  });
 });

@@ -60,7 +60,8 @@ export interface CanonicalCheck {
   /** Check/order id in the source POS — dedupe key with (restaurant, source).
    *  F-1648: when the till names its till or terminal, the id is
    *  `<till>:<check>`, so two tills, or one that starts its numbers again,
-   *  keep each sale apart. */
+   *  keep each sale apart. F-1661: a later sale under a number the till
+   *  already used is kept as `<till>:<day>:<check>` (ingest, keptSaleOnItsDay). */
   externalCheckId: string;
   /** F-1648: the till or terminal the check was rung on, when the feed says;
    *  already part of externalCheckId. */

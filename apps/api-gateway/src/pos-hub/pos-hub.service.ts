@@ -810,6 +810,8 @@ export function webhookTimestampIsFresh(
 /** What the hub holds for a check, read before a new copy is stored. */
 export interface StoredCheckCopy {
   voided: boolean | null;
+  /** F-1681: when the kept copy opened (absent from an older read). */
+  opened_at?: string | null;
   closed_at: string | null;
   source_version: number | string | null;
   source_modified_at: string | null;
@@ -870,6 +872,45 @@ export function copyIsStale(
   }
   return null;
 }
+
+/**
+ * F-1681: how far apart two closes of one check can be and still be one sale.
+ * A correction re-closes a check minutes or an hour later, often after
+ * midnight (the house day ends at midnight by close, ADR 0296); a reused
+ * number is a day apart.
+ */
+const SAME_SALE_RECLOSE_MS = 4 * 60 * 60 * 1000;
+
+/**
+ * F-1648 / F-1681: whether a closed copy is the sale already kept under its
+ * check number, not another sale that reused the number. It is when both
+ * close on the same house day, or open on the same house day, or close within
+ * a few hours of each other. Only a copy that differs on all three is another
+ * sale. A copy or kept check whose close cannot be dated is taken as the same.
+ */
+export function isSameSale(
+  kept: StoredCheckCopy,
+  incoming: { openedAt: string | null; closedAt: string },
+  zone: string,
+): boolean {
+  const keptClose = houseDayOf(kept.closed_at, zone);
+  const thisClose = houseDayOf(incoming.closedAt, zone);
+  if (keptClose === null || thisClose === null || keptClose === thisClose)
+    return true;
+  const keptOpen = houseDayOf(kept.opened_at ?? null, zone);
+  if (keptOpen !== null && keptOpen === houseDayOf(incoming.openedAt, zone))
+    return true;
+  const gap = Math.abs(
+    Date.parse(incoming.closedAt) - Date.parse(String(kept.closed_at)),
+  );
+  return Number.isFinite(gap) && gap <= SAME_SALE_RECLOSE_MS;
+}
+
+/** The house day before a `YYYY-MM-DD` house day. */
+const dayBefore = (day: string): string =>
+  new Date(Date.parse(`${day}T12:00:00Z`) - 86_400_000)
+    .toISOString()
+    .slice(0, 10);
 
 /**
  * F-640: POS category words that say a line is food. An unmapped line is
@@ -1635,7 +1676,11 @@ export class PosHubService {
         // F-1624: the stored copy, read once here when either rule needs it.
         let storedCopy: StoredCheckCopy | null = null;
         let storedRead = false;
-        if (check.sourceVersion != null || check.sourceModifiedAt) {
+        const versioned =
+          check.sourceVersion != null || Boolean(check.sourceModifiedAt);
+        const closedText =
+          typeof when.closedAt === "string" ? when.closedAt : null;
+        if (versioned || closedText !== null) {
           const stored = await this.readStoredCheck(
             restaurantId,
             source,
@@ -1643,63 +1688,97 @@ export class PosHubService {
           );
           if (!stored.ok) {
             errors.push(
-              `${check.externalCheckId}: not imported, the copy already kept could not be read to tell which is newer: ${stored.message}`,
+              versioned
+                ? `${check.externalCheckId}: not imported, the copy already kept could not be read to tell which is newer: ${stored.message}`
+                : `${check.externalCheckId}: not imported, the check already kept under this number could not be read to tell whether this is the same sale: ${stored.message}`,
             );
             continue;
           }
-          const stale = copyIsStale(stored.row, {
-            voided: check.voided === true,
-            closedAt: check.closedAt ? String(check.closedAt) : null,
-            sourceVersion: check.sourceVersion,
-            sourceModifiedAt: check.sourceModifiedAt,
-          });
-          if (stale) {
-            olderCopies++;
-            continue;
-          }
-          storedCopy = stored.row;
-          storedRead = true;
-          if (stored.row?.voided === true && check.voided !== true) {
-            // Newer than the stored void, by the till's own word: the till
-            // un-voided it, and the stock ledger may take the sale again.
-            NEWER_THAN_VOID.add(check);
-          }
-        } else if (typeof when.closedAt === "string") {
-          // F-1648: a till that says no version reuses its check numbers (a
-          // daily fis reset, or a second till on the same feed), so a closed
-          // copy is the stored check only when it closes on the same house
-          // day (F-1324's test). Another day is another sale: it is refused
-          // and said, rather than overwriting the stored one and taking no
-          // stock. The total is not compared: a correction on the day (a line
-          // removed) changes it, and the stock ledger reads it as one. A
+          let kept = stored.row;
+          // F-1648: a till reuses its check numbers (a daily fis reset, or a
+          // second till on the same feed), so a closed copy is the kept check
+          // only when it is the same sale (isSameSale: the same house day by
+          // close or by opening, or a re-close within a few hours, as a
+          // correction rung after midnight is, F-1681). F-1664: asked before
+          // the newer-copy rule too, so a till that sends updated_at does not
+          // overwrite an earlier sale with a later one. Another sale is kept
+          // on its own day when the till names itself (F-1661), else refused
+          // and said, rather than overwriting the kept one and taking no
+          // stock. The total is not compared: a correction changes it. A
           // house with no time zone has no day to compare, so its copy is
           // stored as before.
-          const stored = await this.readStoredCheck(
-            restaurantId,
-            source,
-            check.externalCheckId,
-          );
-          if (!stored.ok) {
-            errors.push(
-              `${check.externalCheckId}: not imported, the check already kept under this number could not be read to tell whether this is the same sale: ${stored.message}`,
-            );
-            continue;
+          const zone =
+            kept?.closed_at && closedText !== null ? await houseZone() : null;
+          if (
+            kept &&
+            zone &&
+            closedText !== null &&
+            !isSameSale(
+              kept,
+              { openedAt: check.openedAt ?? null, closedAt: closedText },
+              zone,
+            )
+          ) {
+            const daySale = check.tillId
+              ? await this.keptSaleOnItsDay(
+                  restaurantId,
+                  source,
+                  check.tillId,
+                  check,
+                  closedText,
+                  zone,
+                )
+              : null;
+            if (daySale && !daySale.ok) {
+              errors.push(
+                `${check.externalCheckId}: not imported, the check already kept under this number could not be read to tell whether this is the same sale: ${daySale.message}`,
+              );
+              continue;
+            }
+            // isSameSale said the two close on different house days, so a
+            // refusal here always names two days.
+            const keptRow = daySale ? daySale.row : kept;
+            const keptDay = houseDayOf(keptRow?.closed_at, zone);
+            const thisDay = houseDayOf(closedText, zone);
+            if (daySale && !daySale.taken) {
+              check.externalCheckId = daySale.key;
+              kept = daySale.row;
+            } else if (
+              keptDay !== null &&
+              thisDay !== null &&
+              keptDay !== thisDay
+            ) {
+              refusedChecks.push({
+                externalCheckId: check.externalCheckId,
+                reason: "number_reused",
+              });
+              errors.push(
+                daySale
+                  ? `${check.externalCheckId}: not imported, this till already has a sale under this check number on ${keptDay} and this one closed on ${thisDay}`
+                  : `${check.externalCheckId}: not imported, this check number is already kept for a sale on ${keptDay} and this one closed on ${thisDay}; a till that starts its check numbers again, or a second till on the same feed, must send its till number with each check`,
+              );
+              continue;
+            }
           }
-          storedCopy = stored.row;
-          storedRead = true;
-          const zone = stored.row?.closed_at ? await houseZone() : null;
-          const keptDay = zone ? houseDayOf(stored.row?.closed_at, zone) : null;
-          const thisDay = zone ? houseDayOf(when.closedAt, zone) : null;
-          if (keptDay !== null && thisDay !== null && keptDay !== thisDay) {
-            refusedChecks.push({
-              externalCheckId: check.externalCheckId,
-              reason: "number_reused",
+          if (versioned) {
+            const stale = copyIsStale(kept, {
+              voided: check.voided === true,
+              closedAt: check.closedAt ? String(check.closedAt) : null,
+              sourceVersion: check.sourceVersion,
+              sourceModifiedAt: check.sourceModifiedAt,
             });
-            errors.push(
-              `${check.externalCheckId}: not imported, this check number is already kept for a sale on ${keptDay} and this one closed on ${thisDay}; a till that starts its check numbers again, or a second till on the same feed, must send its till number with each check`,
-            );
-            continue;
+            if (stale) {
+              olderCopies++;
+              continue;
+            }
+            if (kept?.voided === true && check.voided !== true) {
+              // Newer than the stored void, by the till's own word: the till
+              // un-voided it, and the stock ledger may take the sale again.
+              NEWER_THAN_VOID.add(check);
+            }
           }
+          storedCopy = kept;
+          storedRead = true;
         }
         const items = check.items.map((it) => {
           const modifierIds = it.modifierIds ?? [];
@@ -2196,7 +2275,7 @@ export class PosHubService {
         .getClient()
         .from("pos_checks")
         .select(
-          "voided, closed_at, source_version, source_modified_at, subtotal, gross_subtotal, tax_basis",
+          "voided, opened_at, closed_at, source_version, source_modified_at, subtotal, gross_subtotal, tax_basis",
         )
         .eq("restaurant_id", restaurantId)
         .eq("source", source)
@@ -2207,6 +2286,47 @@ export class PosHubService {
     } catch (err: any) {
       return { ok: false, message: err?.message ?? String(err) };
     }
+  }
+
+  /**
+   * F-1661: a till that names itself and starts its check numbers again keeps
+   * a later sale under `<till>:<day>:<check>`, the house day it opened on. A
+   * copy is that sale when one is kept under the day it opened, the day it
+   * closed, or the day before it closed (a correction rung after midnight).
+   * Otherwise it is a new sale on its opening day; `taken` says a different
+   * sale already holds that day's key.
+   */
+  private async keptSaleOnItsDay(
+    restaurantId: string,
+    source: string,
+    tillId: string,
+    check: CanonicalCheck,
+    closedAt: string,
+    zone: string,
+  ): Promise<
+    | { ok: true; key: string; row: StoredCheckCopy | null; taken: boolean }
+    | { ok: false; message: string }
+  > {
+    const number = check.externalCheckId.slice(tillId.length + 1);
+    const incoming = { openedAt: check.openedAt ?? null, closedAt };
+    const closeDay = houseDayOf(closedAt, zone) ?? "";
+    const openDay = houseDayOf(incoming.openedAt, zone) ?? closeDay;
+    const days = [...new Set([openDay, closeDay, dayBefore(closeDay)])];
+    let own: StoredCheckCopy | null = null;
+    for (const day of days) {
+      const key = `${tillId}:${day}:${number}`;
+      const read = await this.readStoredCheck(restaurantId, source, key);
+      if (!read.ok) return read;
+      if (read.row && isSameSale(read.row, incoming, zone))
+        return { ok: true, key, row: read.row, taken: false };
+      if (day === openDay) own = read.row;
+    }
+    return {
+      ok: true,
+      key: `${tillId}:${openDay}:${number}`,
+      row: own,
+      taken: own !== null,
+    };
   }
 
   /**
