@@ -327,6 +327,96 @@ describe("open -- an owner or manager opens one count over the chosen shelves", 
   });
 });
 
+describe("listOpen -- the places a count can cover, and the counts that ended (S227 owed)", () => {
+  it("offers each top-level place that holds a shelf, with its shelves, in walk order", async () => {
+    const { svc } = setup();
+    const list: any = await svc.listOpen(HOUSE);
+    // Bar is a shelf of its own; Cellar holds Shelf 1 and Shelf 2 through
+    // Rack A; the switched-off fridge and the other house's bar are not here.
+    expect(list.zones).toEqual([
+      { id: "Bar", name: "Bar", shelves: 1 },
+      { id: "Cellar", name: "Cellar", shelves: 2 },
+    ]);
+  });
+
+  it("a count opened on one place walks only that place's shelves", async () => {
+    const { svc, db } = setup();
+    const list: any = await svc.listOpen(HOUSE);
+    await svc.open(HOUSE, BOSS, {
+      kind: "closing",
+      zoneIds: [list.zones[1].id],
+    });
+    expect(
+      db.tables.stock_count_session_shelves.map((s) => s.location_id),
+    ).toEqual(["Shelf 1", "Shelf 2"]);
+  });
+
+  it("lists this house's signed-off and stopped counts with when, the month and who", async () => {
+    const { svc } = setup({
+      stock_count_sessions: [
+        {
+          id: "s-open",
+          restaurant_id: HOUSE,
+          kind: "closing",
+          status: "open",
+          opened_at: "2026-10-13T20:00:00Z",
+        },
+        {
+          id: "s-signed",
+          restaurant_id: HOUSE,
+          kind: "month_end",
+          status: "signed_off",
+          opened_at: "2026-09-30T20:00:00Z",
+          signed_off_at: "2026-10-01T01:00:00Z",
+          signed_off_by: BOSS,
+          attributed_period: "2026-09",
+        },
+        {
+          id: "s-stopped",
+          restaurant_id: HOUSE,
+          kind: "full",
+          status: "abandoned",
+          opened_at: "2026-09-20T10:00:00Z",
+          abandoned_at: "2026-09-20T11:00:00Z",
+          abandoned_by: BOSS,
+          attributed_period: "2026-09",
+        },
+        {
+          id: "s-theirs",
+          restaurant_id: OTHER,
+          kind: "full",
+          status: "signed_off",
+          opened_at: "2026-09-01T10:00:00Z",
+          signed_off_at: "2026-09-01T12:00:00Z",
+          signed_off_by: BOSS,
+        },
+      ],
+    });
+    const list: any = await svc.listOpen(HOUSE);
+    expect(list.sessions.map((s: any) => s.id)).toEqual(["s-open"]);
+    expect(list.ended).toEqual([
+      {
+        id: "s-signed",
+        kind: "month_end",
+        status: "signed_off",
+        openedAt: "2026-09-30T20:00:00Z",
+        endedAt: "2026-10-01T01:00:00Z",
+        endedBy: "Selin",
+        period: "2026-09",
+      },
+      {
+        id: "s-stopped",
+        kind: "full",
+        status: "abandoned",
+        openedAt: "2026-09-20T10:00:00Z",
+        endedAt: "2026-09-20T11:00:00Z",
+        endedBy: "Selin",
+        period: "2026-09",
+      },
+    ]);
+  });
+});
+
 describe("open -- a count states the month it is filed in (F-1544 lane 5, F1 b)", () => {
   // 00:30 on 1 November in Istanbul (UTC+3).
   beforeEach(() => {

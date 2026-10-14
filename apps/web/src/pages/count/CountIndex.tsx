@@ -6,9 +6,10 @@
  * the role again). A start carries one key made at the tap, so a double tap
  * or a retry opens one count, not two (count-sessions.service.ts `openKey`).
  *
- * Not here (said, not hidden): choosing zones. A count started here covers
- * every leaf shelf of the house; a narrower walk is the gateway's `zoneIds`,
- * which this page does not offer yet.
+ * S227 owed: a manager may narrow a count to some of the house's places
+ * (the gateway's `zoneIds`; the shelves under each are the gateway's own leaf
+ * rule). None chosen is every shelf. The counts that ended are listed under
+ * the open ones, with when, the month and who signed off or stopped them.
  *
  * F-1544 lane 5 (the founder's F1 b, 2026-10-12): a count says which month it
  * is for. In the 6 hours after a month ends the page asks, so a count started
@@ -26,9 +27,12 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   listOpenCountSessions,
   openCountSession,
+  periodWords,
   type CountPeriods,
   type CountSessionKind,
   type CountSessionSummary,
+  type CountZone,
+  type EndedCountSession,
 } from '@/services/api/countSessions'
 import { kindWords, newWalkId } from './countWalkModel'
 import { CountHouseLine } from './CountHouse'
@@ -36,17 +40,23 @@ import { CountHouseLine } from './CountHouse'
 const TAP = 'min-h-[56px] min-w-[56px]'
 const KINDS: CountSessionKind[] = ['closing', 'month_end', 'full', 'opening']
 
-/** "October" for 2026-10, in the reader's language. */
-function monthWords(period: string): string {
-  const [y, m] = period.split('-').map(Number)
-  return new Intl.DateTimeFormat(undefined, { month: 'long', timeZone: 'UTC' }).format(
-    new Date(Date.UTC(y, m - 1, 1)),
-  )
+/** "Bar", "Bar and Cellar", "Bar, Cellar and Terrace". */
+function listWords(names: string[]): string {
+  return names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
-/** What a start covers, said before it starts (F-1617). */
-function coverWords(kind: CountSessionKind, house: string): string {
-  const where = `every shelf of ${house}`
+/** "14 Oct, 01:10", or nothing when the moment is unknown. */
+function endedWords(iso: string | null): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime())
+    ? ''
+    : d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+/** What a start covers, said before it starts (F-1617); `places` narrows it (S227 owed). */
+function coverWords(kind: CountSessionKind, house: string, places: string[] = []): string {
+  const where = places.length ? `every shelf in ${listWords(places)} at ${house}` : `every shelf of ${house}`
   if (kind === 'opening')
     return (
       `Opening stock counts ${where} to set what the house starts with. Only an owner or a manager can count ` +
@@ -66,6 +76,10 @@ export default function CountIndex() {
   const { activeRole, availableRestaurants, activeRestaurantId } = useAuth()
   const manager = activeRole === 'owner' || activeRole === 'manager'
   const [sessions, setSessions] = useState<CountSessionSummary[] | null>(null)
+  const [ended, setEnded] = useState<EndedCountSession[]>([])
+  const [zones, setZones] = useState<CountZone[]>([])
+  // The places chosen for the next start; none = every shelf (S227 owed).
+  const [chosenZones, setChosenZones] = useState<string[]>([])
   const [periods, setPeriods] = useState<CountPeriods | null>(null)
   // The month chosen while a month has just ended; the month that ended
   // until the manager taps the other.
@@ -77,13 +91,18 @@ export default function CountIndex() {
   const here = (availableRestaurants ?? []).find((r) => r.id === activeRestaurantId)
   const houseName = here?.name ? (here.city ? `${here.name}, ${here.city}` : here.name) : null
   // One key per start, kept across a retry of the same start.
-  const openKey = useRef<{ kind: CountSessionKind; period: string | null; key: string } | null>(null)
+  const openKey = useRef<{ kind: CountSessionKind; period: string | null; zones: string; key: string } | null>(null)
 
   const load = useCallback(async () => {
     try {
       const out = await listOpenCountSessions()
       setSessions(out.sessions)
       setPeriods(out.periods)
+      const places = out.zones ?? []
+      setEnded(out.ended ?? [])
+      setZones(places)
+      // A place that is gone is no longer chosen.
+      setChosenZones((c) => c.filter((id) => places.some((z) => z.id === id)))
       setPeriod((p) =>
         out.periods?.ended && (p === out.periods.ended || p === out.periods.current) ? p : (out.periods?.ended ?? null),
       )
@@ -103,13 +122,15 @@ export default function CountIndex() {
     setError(null)
     // Named only while there is a choice; otherwise the gateway says this month.
     const chosen = periods?.ended ? period : null
-    if (openKey.current?.kind !== kind || openKey.current.period !== chosen)
-      openKey.current = { kind, period: chosen, key: newWalkId() }
+    const zoneKey = [...chosenZones].sort().join(',')
+    if (openKey.current?.kind !== kind || openKey.current.period !== chosen || openKey.current.zones !== zoneKey)
+      openKey.current = { kind, period: chosen, zones: zoneKey, key: newWalkId() }
     try {
       const s = await openCountSession({
         kind,
         openKey: openKey.current.key,
         ...(chosen ? { period: chosen } : {}),
+        ...(chosenZones.length ? { zoneIds: chosenZones } : {}),
       })
       openKey.current = null
       navigate(`/count/${s.id}`)
@@ -162,7 +183,7 @@ export default function CountIndex() {
               >
                 <span className="font-semibold">
                   {kindWords(s.kind)}
-                  {s.period ? <span className="font-normal text-inkm-2"> · {monthWords(s.period)}</span> : null}
+                  {s.period ? <span className="font-normal text-inkm-2"> · {periodWords(s.period)}</span> : null}
                 </span>
                 <span className="text-sm text-inkm-2">
                   {s.shelvesDone} of {s.shelves} shelves done
@@ -187,17 +208,52 @@ export default function CountIndex() {
                         period === m ? 'bg-white text-black' : 'bg-white/10 active:bg-white/20'
                       }`}
                     >
-                      {monthWords(m)}
+                      {periodWords(m)}
                     </button>
                   ))}
                 </div>
               </div>
             )}
-            <p className="text-sm text-inkm-4">Start a count of every shelf</p>
+            {zones.length > 1 && (
+              <div className="space-y-2" role="group" aria-label="Which places does it count?">
+                <p className="text-sm text-inkm-4">Which places does it count? None chosen counts every shelf.</p>
+                <div className="flex flex-wrap gap-2">
+                  {zones.map((z) => {
+                    const on = chosenZones.includes(z.id)
+                    return (
+                      <button
+                        key={z.id}
+                        type="button"
+                        aria-pressed={on}
+                        disabled={busy || asking !== null}
+                        onClick={() =>
+                          setChosenZones((c) => (on ? c.filter((id) => id !== z.id) : [...c, z.id]))
+                        }
+                        className={`${TAP} rounded-xl px-4 font-semibold disabled:opacity-50 ${
+                          on ? 'bg-white text-black' : 'bg-white/10 active:bg-white/20'
+                        }`}
+                      >
+                        {z.name}
+                        <span className="font-normal"> · {z.shelves === 1 ? '1 shelf' : `${z.shelves} shelves`}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            <p className="text-sm text-inkm-4">
+              {chosenZones.length
+                ? `Start a count of ${listWords(zones.filter((z) => chosenZones.includes(z.id)).map((z) => z.name))}`
+                : 'Start a count of every shelf'}
+            </p>
             {asking ? (
               <div className="space-y-2 rounded-xl bg-white/5 px-4 py-3">
                 <p role="alert" className="text-inkm-1">
-                  {coverWords(asking, houseName ?? 'this house')}
+                  {coverWords(
+                    asking,
+                    houseName ?? 'this house',
+                    zones.filter((z) => chosenZones.includes(z.id)).map((z) => z.name),
+                  )}
                 </p>
                 <button
                   type="button"
@@ -229,6 +285,33 @@ export default function CountIndex() {
               ))
             )}
           </div>
+        )}
+        {ended.length > 0 && (
+          <section className="space-y-2 pt-4" aria-label="Counts that ended">
+            <h2 className="text-sm text-inkm-4">Counts that ended</h2>
+            <ul className="space-y-2">
+              {ended.map((e) => (
+                <li key={e.id}>
+                  <button
+                    type="button"
+                    data-ux-key="count:ended-session"
+                    onClick={() => navigate(`/count/${e.id}/review`)}
+                    className={`${TAP} w-full rounded-xl bg-white/5 px-4 py-2 text-left active:bg-white/10`}
+                  >
+                    <span className="block font-semibold">
+                      {kindWords(e.kind)}
+                      {e.period ? <span className="font-normal text-inkm-2"> · {periodWords(e.period)}</span> : null}
+                    </span>
+                    <span className="block text-sm text-inkm-2">
+                      {e.status === 'signed_off' ? 'Signed off' : 'Stopped'}
+                      {e.endedBy ? ` by ${e.endedBy}` : ''}
+                      {e.endedAt ? `, ${endedWords(e.endedAt)}` : ''}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
       </div>
     </div>

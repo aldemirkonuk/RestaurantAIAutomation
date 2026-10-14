@@ -305,6 +305,17 @@ describe('the pay switch on a manager’s row', () => {
     expect(note).toHaveTextContent(/2 shifts of theirs may already have started.*kept with them, whole/);
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it('says how many stock-count shelves the removal freed (F-1637)', async () => {
+    const { onClose } = removeWith({
+      shiftsUnjudged: 0,
+      clock: { zone: 'Europe/Istanbul', source: 'house' },
+      countShelvesReleased: 2,
+    });
+    const note = await screen.findByRole('status');
+    expect(note).toHaveTextContent(/2 shelves they had taken in an open stock count are free again, so someone else can count them/);
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
 
 const PERSON = {

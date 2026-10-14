@@ -34,6 +34,7 @@ import {
   chooseHeldCountLine,
   dropHeldCountLine,
   dropParkedCountLine,
+  periodWords,
   reviewCountSession,
   signOffCountSession,
   type CountReview as Review,
@@ -41,7 +42,7 @@ import {
 } from '@/services/api/countSessions'
 import { getInventory } from '@/services/api/inventory'
 import { formatHouseMoney } from '@/lib/houseCurrency'
-import { findItems, kindWords, type FindableItem } from './countWalkModel'
+import { findItems, kindWords, tenthsWords, type FindableItem } from './countWalkModel'
 import { CountSheetPanel } from './CountSheetPanel'
 import { CountHeldElsewhere, CountHouseLine, StopCount } from './CountHouse'
 
@@ -56,10 +57,21 @@ function saidBy(err: unknown, fallback: string): string {
   return typeof m === 'string' && m.trim() ? m : fallback
 }
 
-/** "5 bottles and 350 ml open". */
-function countedWords(counted: number, openMl: number | null): string {
+/**
+ * "5 bottles, 5/10 of a bottle open": the open bottles in tenths of the
+ * item's own bottle, as staff entered them, never ml (S230 owed). An item
+ * that names no bottle size is said on a 750 ml bottle, and the line says so.
+ */
+function countedWords(
+  counted: number,
+  open: { openMl: number | null; openTenths?: number | null; bottleSizeKnown?: boolean },
+): string {
   const b = `${counted} ${counted === 1 ? 'bottle' : 'bottles'}`
-  return openMl != null && openMl > 0 ? `${b} and ${openMl} ml open` : b
+  if (open.openMl == null || open.openMl <= 0) return b
+  if (open.openTenths == null) return `${b} and ${open.openMl} ml open`
+  if (open.openTenths === 0) return `${b}, less than 1/10 of a bottle open`
+  const standIn = open.bottleSizeKnown === false ? ' (on a 750 ml bottle: this item has no bottle size)' : ''
+  return `${b}, ${tenthsWords(open.openTenths)}${standIn}`
 }
 
 const signed = (n: number) => (n > 0 ? `+${n}` : n < 0 ? `−${Math.abs(n)}` : '0')
@@ -101,7 +113,7 @@ function Line({ line, money, currency }: { line: ReviewLine; money: boolean; cur
       <span className="min-w-0">
         <span className="block font-semibold">{line.name}</span>
         <span className="block text-sm text-inkm-2">
-          {countedWords(line.counted, line.openMl)}
+          {countedWords(line.counted, line)}
           {line.countedBy ? `, by ${line.countedBy}` : ''}
         </span>
       </span>
@@ -195,7 +207,10 @@ export default function CountReview() {
   const money = review.seesMoney
   const canAct = manager
   return (
-    <Frame title={`Review: ${kindWords(review.kind)}`} onBack={() => navigate(`/count/${sessionId}`)}>
+    <Frame
+      title={`Review: ${kindWords(review.kind)}${review.period ? ` · ${periodWords(review.period)}` : ''}`}
+      onBack={() => navigate(`/count/${sessionId}`)}
+    >
       {notice && (
         <p role="status" className="rounded-xl bg-white/10 px-3 py-2 text-sm text-inkm-1">
           {notice}
@@ -237,12 +252,12 @@ export default function CountReview() {
                   </p>
                   {h.against && (
                     <p className="text-sm text-inkm-1">
-                      First: {countedWords(h.against.counted, h.against.openMl)}
+                      First: {countedWords(h.against.counted, h.against)}
                       {h.against.countedBy ? `, by ${h.against.countedBy}` : ''}
                     </p>
                   )}
                   <p className="text-sm text-inkm-1">
-                    Second: {countedWords(h.counted, h.openMl)}
+                    Second: {countedWords(h.counted, h)}
                     {h.countedBy ? `, by ${h.countedBy}` : ''}
                   </p>
                   {canAct && (
@@ -304,7 +319,7 @@ export default function CountReview() {
               <li key={p.id} className={`${CARD} space-y-2`}>
                 <p className="font-semibold">{p.description}</p>
                 <p className="text-sm text-inkm-2">
-                  {countedWords(p.counted, null)} on {p.shelf}
+                  {countedWords(p.counted, { openMl: null })} on {p.shelf}
                   {p.countedBy ? `, by ${p.countedBy}` : ''}
                 </p>
                 {canAct &&

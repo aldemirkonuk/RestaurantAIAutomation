@@ -35,6 +35,37 @@ export interface CountPeriods {
   ended: string | null;
 }
 
+/**
+ * The month a count is filed in -- "October" for 2026-10 -- in the reader's
+ * language (F-1544 lane 5, F1 b). Shown on the list, the walk and the review.
+ */
+export function periodWords(period: string): string {
+  const [y, m] = period.split('-').map(Number);
+  return new Intl.DateTimeFormat(undefined, { month: 'long', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(y, m - 1, 1)),
+  );
+}
+
+/** A place a count can be narrowed to when it is opened (S227 owed: zone choice). */
+export interface CountZone {
+  id: string;
+  name: string;
+  /** Leaf shelves under it -- what a count of it walks. */
+  shelves: number;
+}
+
+/** A count that has ended: signed off, or stopped (S227 owed). */
+export interface EndedCountSession {
+  id: string;
+  kind: CountSessionKind;
+  status: 'signed_off' | 'abandoned';
+  openedAt: string;
+  endedAt: string | null;
+  /** Who signed it off or stopped it. */
+  endedBy: string | null;
+  period: string | null;
+}
+
 export interface CountShelfItem {
   inventoryId: string;
   name: string;
@@ -86,9 +117,21 @@ export interface ShelfDoneResult {
 export async function listOpenCountSessions(): Promise<{
   sessions: CountSessionSummary[];
   periods: CountPeriods | null;
+  zones: CountZone[];
+  ended: EndedCountSession[];
 }> {
-  const res = await apiClient.get<{ sessions: CountSessionSummary[]; periods?: CountPeriods | null }>(PATH);
-  return { sessions: res.data?.sessions ?? [], periods: res.data?.periods ?? null };
+  const res = await apiClient.get<{
+    sessions: CountSessionSummary[];
+    periods?: CountPeriods | null;
+    zones?: CountZone[];
+    ended?: EndedCountSession[];
+  }>(PATH);
+  return {
+    sessions: res.data?.sessions ?? [],
+    periods: res.data?.periods ?? null,
+    zones: res.data?.zones ?? [],
+    ended: res.data?.ended ?? [],
+  };
 }
 
 export async function openCountSession(body: {
@@ -156,6 +199,10 @@ export interface ReviewLine {
   name: string;
   counted: number;
   openMl: number | null;
+  /** S230 owed: the open bottles in tenths of the item's bottle; null when not counted. */
+  openTenths?: number | null;
+  /** False: the item names no bottle size, so the tenths stand on 750 ml. */
+  bottleSizeKnown?: boolean;
   countedBy: string | null;
   countedAt: string;
   afterSignOff: boolean;
@@ -172,6 +219,8 @@ export interface CountReview {
   kind: CountSessionKind;
   status: 'open' | 'signed_off' | 'abandoned';
   openedAt: string;
+  /** The month (YYYY-MM) its counts are filed in; null when it names none. */
+  period?: string | null;
   signedOffAt: string | null;
   signedOffBy: string | null;
   seesMoney: boolean;
@@ -198,6 +247,8 @@ export interface CountReview {
     shelf: string;
     counted: number;
     openMl: number | null;
+    openTenths?: number | null;
+    bottleSizeKnown?: boolean;
     countedBy: string | null;
     countedAt: string;
     against: ReviewLine | null;

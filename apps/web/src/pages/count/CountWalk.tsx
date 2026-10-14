@@ -34,6 +34,7 @@ import { ArrowLeft, CloudOff, Minus, Plus, Search } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   claimCountShelf,
+  periodWords,
   pullCountSession,
   type CountSession,
   type CountShelf,
@@ -317,7 +318,11 @@ export default function CountWalk() {
 
   const doneCount = session.shelves.filter((s) => shelfStatus(s, walk).tone === 'done').length
   return (
-    <Frame online={online} title={kindWords(session.kind)} onBack={() => navigate('/count')}>
+    <Frame
+      online={online}
+      title={`${kindWords(session.kind)}${session.period ? ` · ${periodWords(session.period)}` : ''}`}
+      onBack={() => navigate('/count')}
+    >
       <div className="space-y-3 px-4 py-4">
         <p className="text-sm text-inkm-2">
           {doneCount} of {session.shelves.length} shelves done

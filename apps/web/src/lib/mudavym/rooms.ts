@@ -68,6 +68,11 @@ export const ROOM_GROUPS: readonly RoomGroup[] = [
     name: 'The cellar',
     rooms: [
       { name: 'Inventory', path: '/inventory' },
+      // ADR 0343: anyone in the house counts a shelf, staff included, so the
+      // stock count has no minRole (the gateway lets every member walk one;
+      // only opening and stopping a count are owner/manager). The page
+      // itself stands outside the shell, like the door.
+      { name: 'Stock count', path: '/count' },
       { name: 'Cellar', path: '/cellar' },
     ],
   },

@@ -22,7 +22,11 @@ const api = vi.hoisted(() => ({
   abandonCountSession: vi.fn(),
   houseHoldingCount: vi.fn(),
 }))
-vi.mock('@/services/api/countSessions', () => api)
+// The calls are mocked; the module's word helpers (periodWords) are its own.
+vi.mock('@/services/api/countSessions', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ...api,
+}))
 
 import CountIndex from './CountIndex'
 
@@ -122,5 +126,79 @@ describe('CountIndex -- a start asks first and names the house (F-1617, F-1628)'
     const pick = screen.getByRole('combobox', { name: 'Switch to another house' })
     fireEvent.change(pick, { target: { value: 'h2' } })
     await waitFor(() => expect(auth.value.setActiveRestaurantId).toHaveBeenCalledWith('h2'))
+  })
+})
+
+describe('CountIndex -- choosing places, and the counts that ended (S227 owed)', () => {
+  it('[REVERT-FAILS] a count of the places chosen sends them, says them first, and is its own start', async () => {
+    api.listOpenCountSessions.mockResolvedValue({
+      sessions: [],
+      periods: { current: '2026-11', ended: null },
+      zones: [
+        { id: 'z-bar', name: 'Bar', shelves: 1 },
+        { id: 'z-cellar', name: 'Cellar', shelves: 4 },
+      ],
+      ended: [],
+    })
+    show()
+    const group = await screen.findByRole('group', { name: 'Which places does it count?' })
+    expect(group.textContent).toContain('4 shelves')
+    fireEvent.click(screen.getByRole('button', { name: /^Cellar/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Closing count' }))
+    expect(screen.getByRole('alert').textContent).toContain('every shelf in Cellar at Kadıköy, Istanbul')
+    fireEvent.click(screen.getByRole('button', { name: 'Start it' }))
+    await waitFor(() => expect(api.openCountSession).toHaveBeenCalledTimes(1))
+    expect(api.openCountSession.mock.calls[0][0]).toMatchObject({ kind: 'closing', zoneIds: ['z-cellar'] })
+  })
+
+  it('control: none chosen counts every shelf and names no place', async () => {
+    api.listOpenCountSessions.mockResolvedValue({
+      sessions: [],
+      periods: { current: '2026-11', ended: null },
+      zones: [
+        { id: 'z-bar', name: 'Bar', shelves: 1 },
+        { id: 'z-cellar', name: 'Cellar', shelves: 4 },
+      ],
+      ended: [],
+    })
+    show()
+    fireEvent.click(await screen.findByRole('button', { name: 'Full count' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Start it' }))
+    await waitFor(() => expect(api.openCountSession).toHaveBeenCalledTimes(1))
+    expect(api.openCountSession.mock.calls[0][0]).not.toHaveProperty('zoneIds')
+  })
+
+  it('[REVERT-FAILS] lists the counts that ended, with the month, who and when', async () => {
+    api.listOpenCountSessions.mockResolvedValue({
+      sessions: [],
+      periods: { current: '2026-11', ended: null },
+      zones: [],
+      ended: [
+        {
+          id: 'E1',
+          kind: 'month_end',
+          status: 'signed_off',
+          openedAt: '2026-10-31T20:00:00Z',
+          endedAt: '2026-11-01T01:00:00Z',
+          endedBy: 'Selin',
+          period: '2026-10',
+        },
+        {
+          id: 'E2',
+          kind: 'full',
+          status: 'abandoned',
+          openedAt: '2026-10-20T10:00:00Z',
+          endedAt: '2026-10-20T11:00:00Z',
+          endedBy: 'Selin',
+          period: '2026-10',
+        },
+      ],
+    })
+    show()
+    const list = await screen.findByRole('region', { name: 'Counts that ended' })
+    expect(list.textContent).toContain('Month-end count')
+    expect(list.textContent).toContain(`· ${october}`)
+    expect(list.textContent).toContain('Signed off by Selin')
+    expect(list.textContent).toContain('Stopped by Selin')
   })
 })

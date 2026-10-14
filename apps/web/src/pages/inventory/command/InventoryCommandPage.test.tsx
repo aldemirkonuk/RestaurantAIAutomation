@@ -27,6 +27,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
+import { visibleGroups } from '../../../lib/mudavym/rooms';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const api = vi.hoisted(() => ({
@@ -559,6 +560,36 @@ describe('InventoryCommandPage — an empty house is not a filtered one (F-354)'
     await screen.findByRole('alert');
     expect(screen.queryByTestId('inventory-nothing-yet')).not.toBeInTheDocument();
     expect(screen.queryByText(/Nothing matches your search/)).not.toBeInTheDocument();
+  });
+});
+
+describe('InventoryCommandPage — the way into the stock count (ADR 0343, S227 owed)', () => {
+  let path = '';
+  function Where() {
+    path = useLocation().pathname;
+    return null;
+  }
+  it.each(['owner', 'manager', 'staff'])('offers a %s the stock count and goes to /count', async (role) => {
+    who.role = role;
+    routeGets({ 'inventory-low-stock': [], 'inventory-summary': { totalWines: 0, totalValue: 0 }, 'inventory-list': [] });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/inventory']}>
+          <InventoryCommandPage />
+          <Where />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Stock count' }));
+    await waitFor(() => expect(path).toBe('/count'));
+  });
+
+  // The shell's rooms table (rail and phone Rooms sheet) offers it to every
+  // role too: staff count shelves, so it carries no minRole.
+  it.each(['owner', 'manager', 'staff'] as const)('the shell offers a %s the stock count', (role) => {
+    const cellar = visibleGroups(role, { connections: true }).find((g) => g.name === 'The cellar')!;
+    expect(cellar.rooms.find((r) => r.name === 'Stock count')?.path).toBe('/count');
   });
 });
 
