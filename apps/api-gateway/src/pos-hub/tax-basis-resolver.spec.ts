@@ -12,6 +12,7 @@ import {
   squareAdapter,
   toastAdapter,
 } from "./pos-adapters";
+import { taxBasisStretches } from "../common/tax-basis-history";
 
 /**
  * F-1537 lane 3: a till's subtotal made pre-tax at ingest, by the house's
@@ -679,5 +680,86 @@ describe("F-1624: a stored check keeps the stamp it was written with", () => {
       ),
     ).toBe(false);
     expect(keepsStoredStamp(day12, exclusive, null)).toBe(false);
+  });
+});
+
+// F-1700: the answer in force on the check's own house day, from the house's
+// answer history, not the answer in force when the check arrives.
+describe("F-1700: a late or corrected check takes its own day's answer", () => {
+  const ZONE = "Europe/Istanbul";
+  const at = (
+    basis: "prices_include_tax" | "prices_exclude_tax",
+    answeredAt: string,
+  ) => ({ basis, answeredAt, answeredBy: null });
+  const include1 = at("prices_include_tax", "2026-10-01T06:00:00Z");
+  const exclude15 = at("prices_exclude_tax", "2026-10-15T06:00:00Z");
+  const include20 = at("prices_include_tax", "2026-10-20T06:00:00Z");
+  const day12 = check();
+  const day17 = check({
+    closedAt: "2026-10-17T18:00:00Z",
+    openedAt: "2026-10-17T17:00:00Z",
+  });
+
+  it("include -> exclude -> late check of an include day: made pre-tax", () => {
+    const now = inclusive(TWO_RATES, {
+      basis: "prices_exclude_tax",
+      confirmedAt: exclude15.answeredAt,
+      stretches: taxBasisStretches([include1, exclude15], ZONE),
+    });
+    expect(resolveCheckSubtotal(day12, now)).toMatchObject({
+      rung: "rates_per_line",
+      subtotal: 231.82,
+      gross_subtotal: 270,
+      tax_basis: "prices_include_tax",
+    });
+    // A check of an exclude day is as the till sent it.
+    expect(resolveCheckSubtotal(day17, now)).toMatchObject({
+      rung: "not_inclusive",
+      subtotal: 270,
+      tax_basis: "prices_exclude_tax",
+    });
+  });
+
+  it("include -> exclude -> include: a check of the first include days is made pre-tax, not set back to the till's figure", () => {
+    const now = inclusive(TWO_RATES, {
+      confirmedAt: include20.answeredAt,
+      stretches: taxBasisStretches([include1, exclude15, include20], ZONE),
+    });
+    expect(resolveCheckSubtotal(day12, now)).toMatchObject({
+      rung: "rates_per_line",
+      subtotal: 231.82,
+      tax_basis: "prices_include_tax",
+    });
+    expect(resolveCheckSubtotal(day17, now)).toMatchObject({
+      rung: "not_inclusive",
+      subtotal: 270,
+      tax_basis: "prices_exclude_tax",
+    });
+  });
+
+  it("a check from before the house's first answer is as before (F2)", () => {
+    const include13 = at("prices_include_tax", "2026-10-13T06:00:00Z");
+    expect(
+      resolveCheckSubtotal(
+        day12,
+        inclusive(TWO_RATES, {
+          confirmedAt: include13.answeredAt,
+          stretches: taxBasisStretches([include13], ZONE),
+        }),
+      ),
+    ).toMatchObject({ rung: "before_switch", subtotal: 270, tax_basis: null });
+  });
+
+  it("an unset house is still a strict no-op", () => {
+    expect(
+      resolveCheckSubtotal(
+        day12,
+        inclusive(TWO_RATES, {
+          basis: "unset",
+          confirmedAt: null,
+          stretches: taxBasisStretches([include1], ZONE),
+        }),
+      ),
+    ).toEqual({ kind: "as_before" });
   });
 });
