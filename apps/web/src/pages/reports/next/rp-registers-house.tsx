@@ -14,7 +14,8 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { FigureRow } from './rp-plot';
 import { EM, MONO, codeOf, countOf, figure, money, num, ratioPct } from './rp-format';
-import { analysis, arr, obj, str } from './rp-spec';
+import { analysis, arr, obj, str, type AnalysisSpec } from './rp-spec';
+import { monthLabel, till } from './rp-registers-trade';
 import { countsByReasonFrom, netNotRecordedReasonsSaid } from '../../dashboard/next/useDashboardNextData';
 
 /** What a staff reader is told in place of the house's money (F-203). */
@@ -517,6 +518,8 @@ const ledger = analysis<LedgerRegister>({
  */
 export interface PosWindow {
   sinceDays: number;
+  /** The calendar month read instead of `sinceDays` (w111-tips-owed); null or absent for the trailing window. */
+  month?: string | null;
   /** null: the gateway did not say (it predates the field). */
   checksInWindow: number | null;
   /** The newest non-voided check's `opened_at`; null when none is on record. */
@@ -526,6 +529,7 @@ export interface PosWindow {
 function posWindowOf(d: Record<string, unknown>): PosWindow {
   return {
     sinceDays: num(d.sinceDays) ?? 90,
+    month: typeof d.month === 'string' && d.month ? d.month : null,
     checksInWindow: num(d.checksInWindow),
     latestCheckAt: typeof d.latestCheckAt === 'string' && d.latestCheckAt ? d.latestCheckAt : null,
   };
@@ -544,10 +548,15 @@ function onDay(iso: string): string {
  * (or the gateway did not say). Only the caller's `checksInWindow > 0` branch
  * may blame a missing field — there are checks, and none of them carries it.
  */
+/** "in the last 90 days", or "in July 2026" for a month (w111-tips-owed). */
+function spanSaid(w: PosWindow): string {
+  return w.month ? `in ${monthLabel(w.month)}` : `in the last ${w.sinceDays} days`;
+}
+
 export function emptyWindowLine(w: PosWindow): string | null {
   if (w.checksInWindow !== 0) return null;
   return w.latestCheckAt
-    ? `No POS check was opened in the last ${w.sinceDays} days — the latest this house has is from ${onDay(w.latestCheckAt)}. The window is empty; no field is missing.`
+    ? `No POS check was opened ${spanSaid(w)} — the latest this house has is from ${onDay(w.latestCheckAt)}. The window is empty; no field is missing.`
     : 'No POS check has reached Mudavym for this house yet (voided checks are not counted), so there is nothing to attribute.';
 }
 
@@ -801,6 +810,8 @@ export interface ServiceRegister extends PosWindow {
   /** w109-gross-basis (ADR 0341): only where till prices include tax, or that answer is unread. */
   totalsTaxNote?: string | null;
   adjusted: { method?: string; r2?: number | null } | null;
+  /** Every server's tips as money; null when no check carried one, or from an older gateway. */
+  tips: number | null;
   waiters: Array<{
     name: string;
     checks: number;
@@ -808,11 +819,13 @@ export interface ServiceRegister extends PosWindow {
     avgCheck: number | null;
     wineAttachRate: number | null;
     tipPct: number | null;
+    /** The money tipped on their checks; null when none carried a tip, or from an older gateway. */
+    tips: number | null;
     revenuePerCover: number | null;
   }>;
 }
 
-const service = analysis<ServiceRegister>({
+const trailingService = analysis<ServiceRegister>({
   title: 'Who served it',
   register: 'server register',
   answers: 'What each server’s checks look like, before and after the table they were given',
@@ -820,7 +833,7 @@ const service = analysis<ServiceRegister>({
   path: (rid) => `/analytics/waiters/${rid}?sinceDays=90`,
   graphs: ['bars', 'table'],
   graphNote:
-    'Bars rank one measure; the table carries all five. No scatter — the endpoint publishes no second axis a server can be placed on without a fixed effect, and its own adjusted model is a fit, not a coordinate.',
+    'Bars rank one measure; the table carries all six. No scatter — the endpoint publishes no second axis a server can be placed on without a fixed effect, and its own adjusted model is a fit, not a coordinate.',
   select: (raw) => {
     const d = obj(raw);
     const adj = d.adjusted ? obj(d.adjusted) : null;
@@ -836,6 +849,7 @@ const service = analysis<ServiceRegister>({
       checksRefunded: num(d.checksRefunded) ?? 0,
       totalsTaxNote: str(d.totalsTaxNote) || null,
       adjusted: adj ? { method: str(adj.method), r2: num(adj.r2) } : null,
+      tips: num(d.tips),
       waiters: arr(d.waiters).map((w) => ({
         name: str(w.name),
         checks: num(w.checks) ?? 0,
@@ -843,13 +857,14 @@ const service = analysis<ServiceRegister>({
         avgCheck: num(w.avgCheck),
         wineAttachRate: num(w.wineAttachRate),
         tipPct: num(w.tipPct),
+        tips: num(w.tips),
         revenuePerCover: num(w.revenuePerCover),
       })),
     };
   },
   view: (s) => {
     const basis = [
-      `Non-voided pos_checks grouped by server name over the last ${s.sinceDays} days.`,
+      `Non-voided pos_checks grouped by server name ${s.month ? `in ${monthLabel(s.month)}, by the house’s days` : `over the last ${s.sinceDays} days`}.`,
       REGISTER_TOTALS_NOT_NET,
       s.totalsTaxNote ?? null,
       s.tipBasis === 'net' ? REGISTER_TIP_ON_NET : null,
@@ -860,6 +875,11 @@ const service = analysis<ServiceRegister>({
     const figures = [
       { label: 'Servers with a check', value: figure(s.waiters.length) },
       {
+        label: 'Tips',
+        value: money(s.tips, 'full'),
+        note: 'The money tipped on the checks that carried a tip; a dash when none did',
+      },
+      {
         label: 'Table-adjusted fit (R²)',
         value: s.adjusted?.r2 == null ? EM : ratioPct(s.adjusted.r2, 2),
         note: 'Needs 10 checks across at least two tables before a server can be separated from their section',
@@ -869,14 +889,14 @@ const service = analysis<ServiceRegister>({
       const n = s.checksInWindow;
       const none =
         n === 1
-          ? `The one check in the last ${s.sinceDays} days carries no`
-          : `None of the ${countOf(n, 'check', 'checks')} in the last ${s.sinceDays} days carries a`;
+          ? `The one check ${spanSaid(s)} carries no`
+          : `None of the ${countOf(n, 'check', 'checks')} ${spanSaid(s)} carries a`;
       return {
         say:
           emptyWindowLine(s) ??
           (n !== null && n > 0
             ? `${none} server name, so nothing can be attributed to anyone. That is an absent field on the POS feed, not a shift nobody worked.`
-            : `No check in the last ${s.sinceDays} days names a server. This register does not say whether the window held any check, so an empty window and checks that carry no server name cannot be told apart here.`),
+            : `No check ${spanSaid(s)} names a server. This register does not say whether the window held any check, so an empty window and checks that carry no server name cannot be told apart here.`),
         figures,
         notes: [],
         basis,
@@ -901,6 +921,7 @@ const service = analysis<ServiceRegister>({
           { key: 'a', label: 'Avg check', numeric: true },
           { key: 'w', label: 'Wine attach', numeric: true },
           { key: 't', label: 'Tip', numeric: true },
+          { key: 'm', label: 'Tips', numeric: true },
         ],
         rows: s.waiters.slice(0, 40).map((w) => ({
           key: w.name,
@@ -910,6 +931,7 @@ const service = analysis<ServiceRegister>({
             money(w.avgCheck, 'table'),
             ratioPct(w.wineAttachRate),
             ratioPct(w.tipPct),
+            money(w.tips, 'table'),
           ],
         })),
       },
@@ -927,6 +949,21 @@ const service = analysis<ServiceRegister>({
     };
   },
 });
+
+/**
+ * Who served it over one calendar month when the reader picked one, on the
+ * house's days as the till's month is read (w111-tips-owed), otherwise the
+ * trailing 90 days above, unchanged: the export desk pins that one against
+ * its own catalogue, and it still writes only the trailing window.
+ */
+const service: AnalysisSpec = {
+  ...trailingService,
+  takesMonth: true,
+  // The till's own month line, so the two read the same month alike.
+  window: (ctx) => (ctx.month ? till.window({ ...ctx, week: null }) : trailingService.window(ctx)),
+  path: (rid, ctx) =>
+    ctx.month ? `/analytics/waiters/${rid}?month=${ctx.month}` : trailingService.path!(rid, ctx),
+};
 
 /**
  * F-1581: tipped checks with no net because the house's prices include tax

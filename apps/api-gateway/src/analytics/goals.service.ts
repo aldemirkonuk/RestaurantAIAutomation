@@ -1862,7 +1862,9 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
  * First and last calendar day of a YYYY-MM month, or of a YYYY-Qn quarter
  * (F-1577), or null when it is neither.
  */
-function monthBounds(month: string): { first: string; last: string } | null {
+export function monthBounds(
+  month: string,
+): { first: string; last: string } | null {
   const q = /^(\d{4})-Q([1-4])$/.exec(month);
   if (q) {
     const firstMonth = (Number(q[2]) - 1) * 3 + 1;

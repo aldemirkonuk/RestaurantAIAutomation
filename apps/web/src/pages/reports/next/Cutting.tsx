@@ -102,6 +102,7 @@ export function TillWindowPicker({
   onChange,
   onMonth,
   zone = null,
+  monthOnly = false,
 }: {
   days: number;
   month?: string | null;
@@ -111,6 +112,8 @@ export function TillWindowPicker({
   onMonth?: (m: string | null) => void;
   /** The house's zone: the months offered end at the HOUSE's month (F-909). */
   zone?: string | null;
+  /** A register with its own fixed window: no day chips, only a month or a quarter. */
+  monthOnly?: boolean;
 }) {
   const options = useMemo(() => [7, 30, 90], []);
   const months = useMemo(() => {
@@ -127,8 +130,8 @@ export function TillWindowPicker({
   }, [zone]);
   const quarter = month !== null && isQuarter(month);
   return (
-    <div role="group" aria-label="Till window" style={{ display: 'flex', gap: 3 }}>
-      {options.map((d) => (
+    <div role="group" aria-label={monthOnly ? 'Month' : 'Till window'} style={{ display: 'flex', gap: 3 }}>
+      {!monthOnly && options.map((d) => (
         <button
           key={d}
           type="button"
@@ -339,6 +342,15 @@ export default function Cutting({
             zone={ctx.zone}
             onChange={onDays}
             onMonth={onMonth}
+          />
+        ) : spec.takesMonth && onMonth ? (
+          <TillWindowPicker
+            days={ctx.days}
+            month={ctx.month}
+            zone={ctx.zone}
+            onChange={onDays}
+            onMonth={onMonth}
+            monthOnly
           />
         ) : null}
       </div>

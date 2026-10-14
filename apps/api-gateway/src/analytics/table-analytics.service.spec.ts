@@ -1,4 +1,7 @@
-import { ServiceUnavailableException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { TableAnalyticsService } from "./table-analytics.service";
 
@@ -36,7 +39,7 @@ function makeService(queue: Record<string, Result[]>) {
       (table === "restaurants" ? { data: null, error: null } : undefined);
     if (!next) throw new Error(`unexpected read of ${table}`);
     const builder: Record<string, unknown> = {};
-    for (const method of ["select", "eq", "gte", "order", "limit"])
+    for (const method of ["select", "eq", "gte", "lt", "order", "limit"])
       builder[method] = (...args: unknown[]) => {
         calls.push({ table, method, args });
         return builder;
@@ -568,5 +571,86 @@ describe("TableAnalyticsService — Tip says when its window spans a tax-basis s
     expect(from.mock.calls.map((c) => c[0])).not.toContain(
       "house_tax_basis_answers",
     );
+  });
+});
+
+// w111-tips-owed (S239, after F-1691): "Who served it" read a fixed 90 days
+// and gave each server's tip only as a rate. It now reads one calendar month
+// on the house's days when one is asked for, as the till's month does, and
+// gives each server's tips as money.
+describe("TableAnalyticsService — Who served it: a month window and tips as money", () => {
+  const US = { timezone: "America/Detroit", country: "US", tax_basis: "unset" };
+  beforeEach(() => {
+    jest.useFakeTimers({
+      now: new Date("2026-10-09T18:00:00Z"),
+      doNotFake: ["nextTick", "setImmediate", "setTimeout", "queueMicrotask"],
+    });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it("gives each server's tips as money, null when none carried one, never 0", async () => {
+    const { service } = makeService({
+      pos_checks: [
+        ok([
+          check({ id: "a", tip: 20 }),
+          check({ id: "b", tip: 7.5, subtotal: null }),
+          check({ id: "c", tip: null }),
+          check({ id: "d", server_name: "Ali", tip: null }),
+        ]),
+      ],
+    });
+    const out: any = await service.getWaiterPerformance("r1", 90);
+    const by = (n: string) => out.waiters.find((w: any) => w.name === n);
+    // A tip on a check with no net is still money tipped.
+    expect(by("Maya").tips).toBe(27.5);
+    expect(by("Maya").tipsCheckCount).toBe(2);
+    expect(by("Ali").tips).toBeNull();
+    expect(out.tips).toBe(27.5);
+    expect(out.month).toBeNull();
+  });
+
+  it("reads one calendar month on the house's days, and only that month", async () => {
+    const { service, calls } = makeService({
+      restaurants: [ok(US), ok(US), ok(US)],
+      pos_checks: [
+        ok([
+          // 31 Aug 23:30 in Detroit: an August check, though it is September in UTC.
+          check({
+            id: "aug",
+            opened_at: "2026-09-01T03:30:00Z",
+            closed_at: "2026-09-01T03:40:00Z",
+            tip: 5,
+          }),
+          check({
+            id: "sep",
+            opened_at: "2026-09-15T20:00:00Z",
+            closed_at: "2026-09-15T21:00:00Z",
+            tip: 12,
+          }),
+        ]),
+      ],
+    });
+    const out: any = await service.getWaiterPerformance("r1", 90, "2026-09");
+    expect(out.month).toBe("2026-09");
+    expect(out.checksInWindow).toBe(1);
+    expect(out.tips).toBe(12);
+    // A check opened after the month's last house day is not read at all.
+    const lt = calls.find((c) => c.table === "pos_checks" && c.method === "lt");
+    expect(lt?.args).toEqual(["opened_at", "2026-10-01T04:00:00.000Z"]);
+  });
+
+  it("refuses a month written wrong, one not begun, and one at a house with no zone", async () => {
+    const run = (month: string, house: unknown) =>
+      makeService({
+        restaurants: [ok(house)],
+        pos_checks: [ok([])],
+      }).service.getWaiterPerformance("r1", 90, month);
+    await expect(run("2026-13", US)).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(run("2026-11", US)).rejects.toThrow(
+      /has not begun on this house's clock/,
+    );
+    await expect(run("2026-09", null)).rejects.toThrow(/no time zone set/);
   });
 });

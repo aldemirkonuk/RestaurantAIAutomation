@@ -379,6 +379,8 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
         { server: "emp-7", tips: 15.5, checks: 1 },
       ],
       kept: { k1: 900, k3: null },
+      // w111-tips-owed: each counted check's tip, so a later change is listed.
+      keptTips: { k1: 90, k3: 15.5 },
     });
     expect(f.purchases.kept).toEqual({
       o1: { total: 300, currency: "TRY" },
@@ -1401,6 +1403,93 @@ describe("MonthCloseService.getClose — changed after close", () => {
     expect(
       before.againstNow.find((a) => a.figure === "writeoffs_bottles"),
     ).toMatchObject({ atClose: null, now: 3, delta: null });
+  });
+
+  it("[REVERT-FAILS] a tip changed after the close is listed on its own line and set against the kept Tips, never a silent move (w111-tips-owed)", async () => {
+    const tipped = {
+      ...closeRow,
+      figures: {
+        ...kept,
+        till: {
+          ...kept.till,
+          tips: 30,
+          tipsCheckCount: 2,
+          keptTips: { k1: 10, k5: 20 },
+        },
+      },
+    };
+    const check = (
+      id: string,
+      ref: string,
+      subtotal: number,
+      tip: number | null,
+      voided: boolean,
+      imported_at: string,
+    ) => ({
+      id,
+      external_check_id: ref,
+      subtotal,
+      total: subtotal + 10,
+      tip,
+      voided,
+      ...july,
+      imported_at,
+      source_modified_at: null,
+    });
+    const { svc } = service(
+      detailHandler({
+        month_closes: () => ({ data: tipped, error: null }),
+        pos_checks: () => ({
+          data: [
+            check("k1", "T-17", 120, 10, true, "2026-07-20T20:01:00Z"),
+            // The net stayed; only the tip was raised at the till.
+            check("k5", "T-20", 880, 25, false, "2026-07-20T20:01:00Z"),
+            check("k6", "T-21", 40, 4, false, "2026-08-03T11:00:00Z"),
+          ],
+          error: null,
+          count: 3,
+        }),
+      }),
+    );
+    const detail = await svc.getClose(HOUSE, "close-1");
+    const tips = detail.changes
+      .filter((c) => c.kind === "tips")
+      .map((c) => [c.what, c.delta]);
+    expect(tips).toEqual(
+      expect.arrayContaining([
+        ["Check T-17: tip taken off at the till", -10],
+        ["Check T-20: tip changed at the till", 5],
+        ["Check T-21: tip added at the till", 4],
+      ]),
+    );
+    expect(tips).toHaveLength(3);
+    const tipsNow = detail.againstNow.find((a) => a.figure === "till_tips");
+    // The closed figure is the one kept; the move is said beside it.
+    expect(tipsNow).toMatchObject({
+      label: "Tips through the till",
+      atClose: 30,
+      now: 29,
+      delta: -1,
+      currency: "TRY",
+    });
+    expect(tips.reduce((n, [, d]) => n + (d as number), 0)).toBe(
+      tipsNow!.delta,
+    );
+    expect(detail.figures.till.tips).toBe(30);
+    expect(detail.figures.till).not.toHaveProperty("keptTips");
+    // The net figure's lines still add up to the net figure alone.
+    const net = detail.changes
+      .filter((c) => c.kind === "till")
+      .reduce((n, c) => n + (c.delta ?? 0), 0);
+    expect(net).toBe(
+      detail.againstNow.find((a) => a.figure === "till_net_sales")!.delta,
+    );
+
+    // A close kept before tips were kept per check lists no tip line, and its
+    // Tips is unknown, never 0.
+    const { svc: old } = service(detailHandler());
+    const before = await old.getClose(HOUSE, "close-1");
+    expect(before.changes.filter((c) => c.kind === "tips")).toEqual([]);
   });
 
   it("writes the kept write-offs as a file, and refuses for a close kept before them (F-1609)", async () => {

@@ -24,6 +24,7 @@ import {
   TILL_TOTALS_TAX_UNREAD,
 } from "../common/period-tax-note";
 import * as E from "./engine";
+import { monthBounds } from "./goals.service";
 
 /** A table's id as Postgres stores it; anything else cannot be one of the house's. */
 const UUID_RE =
@@ -239,8 +240,16 @@ export class TableAnalyticsService {
    * to the till's "Taken" over the same 90 days. A house with no zone has no
    * house days and the till states no figure for it, so there is nothing to
    * reconcile with: it keeps the rolling window.
+   *
+   * A `month` (YYYY-MM, or YYYY-Qn) reads that calendar month on the house's
+   * days instead, as the till's month does (F-128), to the house's today
+   * while it runs; a house with no zone cannot be cut into one, and is told.
    */
-  private async loadChecks(restaurantId: string, sinceDays = 90) {
+  private async loadChecks(
+    restaurantId: string,
+    sinceDays = 90,
+    month: string | null = null,
+  ) {
     const client = this.dbService.getClient();
     let zone: string | null;
     try {
@@ -251,18 +260,18 @@ export class TableAnalyticsService {
         "The house's time zone could not be read, so no day's checks are claimed.",
       );
     }
-    const { from, to } = houseWindowOf(zone, sinceDays);
+    const { from, to } = houseWindowOf(zone, sinceDays, month);
     // A check opened up to a day before the first midnight may close on it,
     // so the read starts at the till's own lookback and the filing below
     // drops whatever falls before the window.
-    const since =
-      zone && from && to
-        ? houseDayBounds(from, to, zone).readFromIso
-        : new Date(Date.now() - sinceDays * 86400000).toISOString();
+    const bounds = zone && from && to ? houseDayBounds(from, to, zone) : null;
+    const since = bounds
+      ? bounds.readFromIso
+      : new Date(Date.now() - sinceDays * 86400000).toISOString();
     let rows: any[];
     try {
-      rows = await readWholeWindow<any>("The POS checks in this window", () =>
-        client
+      rows = await readWholeWindow<any>("The POS checks in this window", () => {
+        const q = client
           .from("pos_checks")
           .select(
             "id, table_id, server_name, server_external_id, opened_at, closed_at, covers, subtotal, gross_subtotal, tax_basis, net_not_recorded_reason, total, tip, items",
@@ -273,8 +282,11 @@ export class TableAnalyticsService {
           // its `total` used to keep counting here forever — every table and
           // waiter figure inherited it.
           .eq("voided", false)
-          .gte("opened_at", since),
-      );
+          .gte("opened_at", since);
+        // A month ends: a check opened after its last house day cannot be
+        // filed in it, so it is not read.
+        return month && bounds ? q.lt("opened_at", bounds.endIso) : q;
+      });
     } catch (err: any) {
       if (!(err instanceof WholeReadError)) throw err;
       this.logger.warn(`loadChecks failed: ${err.message}`);
@@ -300,11 +312,12 @@ export class TableAnalyticsService {
   private async windowTaxNote(
     restaurantId: string,
     sinceDays: number,
+    month: string | null = null,
   ): Promise<string | null> {
     const client = this.dbService.getClient();
     try {
       const { zone } = await readHouseZone(client, restaurantId);
-      const { from, to } = houseWindowOf(zone, sinceDays);
+      const { from, to } = houseWindowOf(zone, sinceDays, month);
       if (!from || !to) return null;
       return await readPeriodTaxNote(client, restaurantId, zone, from, to);
     } catch (err: any) {
@@ -365,6 +378,7 @@ export class TableAnalyticsService {
     restaurantId: string,
     sinceDays: number,
     checks: Array<{ opened_at?: string | null }>,
+    month: string | null = null,
   ): Promise<{
     dataStatus: string;
     checksInWindow: number;
@@ -406,7 +420,7 @@ export class TableAnalyticsService {
       };
     const latest = isoOf(raw);
     return {
-      dataStatus: `no POS check opened in the last ${sinceDays} days — the latest was opened ${latest.slice(0, 10)} (UTC)`,
+      dataStatus: `no POS check opened ${month ? `in ${month} on this house's days` : `in the last ${sinceDays} days`} — the latest was opened ${latest.slice(0, 10)} (UTC)`,
       checksInWindow: 0,
       latestCheckAt: latest,
     };
@@ -701,8 +715,19 @@ export class TableAnalyticsService {
   // Waiter performance — raw + table-adjusted
   // ==========================================================================
 
-  async getWaiterPerformance(restaurantId: string, sinceDays = 90) {
-    const checks = await this.loadChecks(restaurantId, sinceDays);
+  /**
+   * w111-tips-owed: `month` reads one calendar month on the house's days, as
+   * the till's month does (F-128), and each server's `tips` is the money
+   * tipped on their checks, as the month close keeps it (F-1691): the sum of
+   * `tip` over the checks that carried one, null when none did, never 0.
+   * The route is the owner's and the manager's (ADR 0145, DASH-G6).
+   */
+  async getWaiterPerformance(
+    restaurantId: string,
+    sinceDays = 90,
+    month: string | null = null,
+  ) {
+    const checks = await this.loadChecks(restaurantId, sinceDays, month);
     const byWaiter = new Map<
       string,
       {
@@ -719,6 +744,8 @@ export class TableAnalyticsService {
         paidRevenue: number;
         zeroChecks: number;
         refundChecks: number;
+        tipMoney: number;
+        tipChecks: number;
       }
     >();
     const obs = {
@@ -744,10 +771,18 @@ export class TableAnalyticsService {
         paidRevenue: 0,
         zeroChecks: 0,
         refundChecks: 0,
+        tipMoney: 0,
+        tipChecks: 0,
       };
       a.revenue += c.total || 0;
       a.checks += 1;
       tallyCheck(a, c);
+      // A tip is money of its own, whether or not the check carried a net.
+      const tip = recorded(c.tip);
+      if (Number.isFinite(tip)) {
+        a.tipMoney += tip;
+        a.tipChecks += 1;
+      }
       a.covers += c.covers || 0;
       const items: any[] = Array.isArray(c.items) ? c.items : [];
       a.wineChecks += items.some((it) => it?.is_wine) ? 1 : 0;
@@ -770,6 +805,10 @@ export class TableAnalyticsService {
       avgCheck: a.paidChecks > 0 ? a.paidRevenue / a.paidChecks : null,
       wineAttachRate: a.checks > 0 ? a.wineChecks / a.checks : null,
       tipPct: a.tipBase > 0 ? a.tips / a.tipBase : null,
+      /** The money tipped on their checks; null when none carried a tip. */
+      tips: a.tipChecks > 0 ? Math.round(a.tipMoney * 100) / 100 : null,
+      /** Their checks that carried a tip. */
+      tipsCheckCount: a.tipChecks,
       /** F-1573: why Tip is blank when tips were recorded; null otherwise. */
       tipPctWhy:
         a.tipBase > 0 || a.tipsWithoutNet === 0
@@ -811,8 +850,18 @@ export class TableAnalyticsService {
     }
 
     const tipBasis = tipBasisOf(Array.from(byWaiter.values()));
+    const tipped = waiters.filter((w) => w.tips !== null);
     return {
       sinceDays,
+      /** The calendar month read instead of `sinceDays`; null for the trailing window. */
+      month,
+      /** Every server's tips together; null when no check carried one. */
+      tips:
+        tipped.length > 0
+          ? Math.round(
+              tipped.reduce((n, w) => n + (w.tips as number), 0) * 100,
+            ) / 100
+          : null,
       waiters: waiters.sort(
         (a: any, b: any) => (b.revenue ?? 0) - (a.revenue ?? 0),
       ),
@@ -835,10 +884,10 @@ export class TableAnalyticsService {
        */
       tipTaxNote:
         tipBasis.tipBasis === "net"
-          ? await this.windowTaxNote(restaurantId, sinceDays)
+          ? await this.windowTaxNote(restaurantId, sinceDays, month)
           : null,
       ...(await this.totalsTaxNote(restaurantId)),
-      ...(await this.feedStatus(restaurantId, sinceDays, checks)),
+      ...(await this.feedStatus(restaurantId, sinceDays, checks, month)),
       generatedAt: new Date().toISOString(),
     };
   }
@@ -1064,11 +1113,33 @@ export const TIP_SOME_NET_NOT_RECORDED =
 export const TIP_SOME_WITHOUT_NET =
   "Some checks carried a tip but no amount before tax. Their tips are left out of Tip, which is worked out only on checks that carried both.";
 
-/** The `sinceDays` house days ending today, which `loadChecks` files on; nulls with no zone. */
+/**
+ * The `sinceDays` house days ending today, which `loadChecks` files on; nulls
+ * with no zone. With a `month`, that month's house days instead, to today
+ * while it runs, worded and refused as the till's month is (F-128).
+ */
 function houseWindowOf(
   zone: string | null,
   sinceDays: number,
+  month: string | null = null,
 ): { from: string | null; to: string | null } {
+  if (month !== null) {
+    const days = monthBounds(month);
+    if (!days)
+      throw new BadRequestException(
+        "A month is written as year and month, like 2026-07, and a quarter as year and quarter, like 2026-Q3.",
+      );
+    if (!zone)
+      throw new BadRequestException(
+        "This house has no time zone set, so its checks cannot be put on its days by calendar month. Set the house's time zone first.",
+      );
+    const today = houseToday(zone);
+    if (days.first > today)
+      throw new BadRequestException(
+        `${month} has not begun on this house's clock, so there is nothing to read yet.`,
+      );
+    return { from: days.first, to: days.last > today ? today : days.last };
+  }
   const to = zone ? houseToday(zone) : null;
   return { from: to ? shiftHouseDay(to, -(sinceDays - 1)) : null, to };
 }

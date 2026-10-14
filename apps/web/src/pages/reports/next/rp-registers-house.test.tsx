@@ -5,7 +5,7 @@
  * says they are not all of it, and the page says how many wines it left out.
  */
 import { describe, expect, it } from 'vitest';
-import { ledger, type LedgerRegister } from './rp-registers-house';
+import { ledger, service, type LedgerRegister } from './rp-registers-house';
 import { EM, money } from './rp-format';
 
 const ctx = { days: 30 };
@@ -154,5 +154,54 @@ describe('Figures of record — the dash on turns gives its own reason', () => {
       turnsSpanShort: false,
     };
     expect(view(raw).notes).toContain(SCALED);
+  });
+});
+
+/**
+ * w111-tips-owed (S239, after F-1691): Who served it read a fixed 90 days and
+ * gave each server's tip only as a rate. It now follows the page's calendar
+ * month on the house's days, as the till does, and gives tips as money.
+ */
+describe('Who served it — a month window and tips as money', () => {
+  const raw = {
+    sinceDays: 90,
+    month: '2026-07',
+    dataStatus: 'live',
+    checksInWindow: 3,
+    adjusted: null,
+    tips: 42.5,
+    waiters: [
+      { name: 'Deniz', checks: 2, revenue: 300, avgCheck: 150, wineAttachRate: 0.5, tipPct: 0.1, tips: 42.5 },
+      { name: 'Ali', checks: 1, revenue: 80, avgCheck: 80, wineAttachRate: 0, tipPct: null, tips: null },
+    ],
+  };
+
+  it('[REVERT-FAILS] reads the page’s month on the house’s days, and its 90 days without one', () => {
+    expect(service.takesMonth).toBe(true);
+    const july = { days: 30, month: '2026-07', zone: 'Europe/Istanbul' };
+    expect(service.path!('r1', july)).toBe('/analytics/waiters/r1?month=2026-07');
+    expect(service.window(july)).toMatch(/of POS checks, by the house’s days$/);
+    expect(service.path!('r1', { days: 30 })).toBe('/analytics/waiters/r1?sinceDays=90');
+    expect(service.window({ days: 30 })).toBe('the last 90 days of POS checks');
+  });
+
+  it('[REVERT-FAILS] gives each server’s tips as money in a Tips column, and the month’s total', () => {
+    const v = service.view(service.select(raw), { days: 30 });
+    const cols = v.table!.cols.map((c) => c.label);
+    expect(cols).toEqual(['Server', 'Checks', 'Avg check', 'Wine attach', 'Tip', 'Tips']);
+    const tipsAt = cols.indexOf('Tips');
+    expect(v.table!.rows[0].cells[tipsAt]).toBe(money(42.5, 'table'));
+    // No tip on any of their checks is a dash, never 0.
+    expect(v.table!.rows[1].cells[tipsAt]).toBe(EM);
+    expect(v.figures).toContainEqual(expect.objectContaining({ label: 'Tips', value: money(42.5, 'full') }));
+    expect(v.basis.join(' ')).toContain('in July 2026, by the house’s days');
+  });
+
+  it('an empty month says the month, not 90 days', () => {
+    const v = service.view(
+      service.select({ ...raw, waiters: [], checksInWindow: 0, latestCheckAt: '2026-09-02T12:00:00.000Z' }),
+      { days: 30 },
+    );
+    expect(v.say).toMatch(/^No POS check was opened in July 2026 — /);
   });
 });

@@ -246,6 +246,17 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     );
   });
 
+  it("service: a month (w111-tips-owed) answers exactly what the page's month read answers", async () => {
+    const { controller, reader } = build();
+    const fromPage = await controller.getWaiters(RID, "90", "2026-07");
+    const fromExport = await reader.read(RID, "service", null, "2026-07");
+    expect(fromExport).toEqual(fromPage);
+    expect(fromExport).toEqual({
+      served: "getWaiterPerformance",
+      args: [RID, 90, "2026-07"],
+    });
+  });
+
   it("reading: on a cold start both compute once, live, and persist — the same call", async () => {
     const page = build([]);
     const exp = build([]);
