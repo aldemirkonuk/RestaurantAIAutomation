@@ -168,6 +168,20 @@ describe('PerformanceCard — every figure has its unit (A-048)', () => {
     expect(text(el)).not.toContain('no other server');
   });
 
+  it("[REVERT-FAILS] says why a staff member's benchmark is held back in a small house (F-1642)", async () => {
+    const el = await card({
+      ...COMPUTED,
+      analytic: {
+        ...COMPUTED.analytic!,
+        median: null,
+        band: null,
+        benchmark: { state: 'withheld', services: 6, servers: 3, includesMember: true },
+      },
+    });
+    expect(text(el)).toContain('staff see it only once 5 or more servers');
+    expect(text(el)).not.toContain('these figures stand alone');
+  });
+
   it('prints an unknown average check as the dash, never as zero', async () => {
     await card({ ...COMPUTED, metrics: { ...COMPUTED.metrics!, avgCheck: null } });
     const row = screen.getByText('Average check').closest('.tm-kv') as HTMLElement;
