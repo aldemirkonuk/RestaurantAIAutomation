@@ -79,7 +79,14 @@ export class CountSessionsController {
       "Open a count over the leaf shelves under the chosen zones (owner or manager)",
   })
   async open(
-    @Body() body: { kind?: string; zoneIds?: string[]; openKey?: string },
+    // F-1544 lane 5: `period` (YYYY-MM) is the month its counts are filed in.
+    @Body()
+    body: {
+      kind?: string;
+      zoneIds?: string[];
+      openKey?: string;
+      period?: string;
+    },
     @CurrentUser() user: SessionUser,
   ) {
     const { house, userId } = this.who(user);

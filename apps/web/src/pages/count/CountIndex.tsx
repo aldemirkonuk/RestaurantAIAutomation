@@ -9,6 +9,10 @@
  * Not here (said, not hidden): choosing zones. A count started here covers
  * every leaf shelf of the house; a narrower walk is the gateway's `zoneIds`,
  * which this page does not offer yet.
+ *
+ * F-1544 lane 5 (the founder's F1 b, 2026-10-12): a count says which month it
+ * is for. In the 6 hours after a month ends the page asks, so a count started
+ * at 00:30 on the 1st can be the month that ended; otherwise it is this month.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -18,6 +22,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   listOpenCountSessions,
   openCountSession,
+  type CountPeriods,
   type CountSessionKind,
   type CountSessionSummary,
 } from '@/services/api/countSessions'
@@ -25,6 +30,14 @@ import { kindWords, newWalkId } from './countWalkModel'
 
 const TAP = 'min-h-[56px] min-w-[56px]'
 const KINDS: CountSessionKind[] = ['closing', 'month_end', 'full', 'opening']
+
+/** "October" for 2026-10, in the reader's language. */
+function monthWords(period: string): string {
+  const [y, m] = period.split('-').map(Number)
+  return new Intl.DateTimeFormat(undefined, { month: 'long', timeZone: 'UTC' }).format(
+    new Date(Date.UTC(y, m - 1, 1)),
+  )
+}
 
 function saidBy(err: unknown, fallback: string): string {
   const m = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message
@@ -36,14 +49,23 @@ export default function CountIndex() {
   const { activeRole } = useAuth()
   const manager = activeRole === 'owner' || activeRole === 'manager'
   const [sessions, setSessions] = useState<CountSessionSummary[] | null>(null)
+  const [periods, setPeriods] = useState<CountPeriods | null>(null)
+  // The month chosen while a month has just ended; the month that ended
+  // until the manager taps the other.
+  const [period, setPeriod] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // One key per start, kept across a retry of the same start.
-  const openKey = useRef<{ kind: CountSessionKind; key: string } | null>(null)
+  const openKey = useRef<{ kind: CountSessionKind; period: string | null; key: string } | null>(null)
 
   const load = useCallback(async () => {
     try {
-      setSessions(await listOpenCountSessions())
+      const out = await listOpenCountSessions()
+      setSessions(out.sessions)
+      setPeriods(out.periods)
+      setPeriod((p) =>
+        out.periods?.ended && (p === out.periods.ended || p === out.periods.current) ? p : (out.periods?.ended ?? null),
+      )
       setError(null)
     } catch (err) {
       setError(saidBy(err, 'The counts could not be read. Check the signal and try again.'))
@@ -57,15 +79,26 @@ export default function CountIndex() {
   const start = async (kind: CountSessionKind) => {
     setBusy(true)
     setError(null)
-    if (openKey.current?.kind !== kind) openKey.current = { kind, key: newWalkId() }
+    // Named only while there is a choice; otherwise the gateway says this month.
+    const chosen = periods?.ended ? period : null
+    if (openKey.current?.kind !== kind || openKey.current.period !== chosen)
+      openKey.current = { kind, period: chosen, key: newWalkId() }
     try {
-      const s = await openCountSession({ kind, openKey: openKey.current.key })
+      const s = await openCountSession({
+        kind,
+        openKey: openKey.current.key,
+        ...(chosen ? { period: chosen } : {}),
+      })
       openKey.current = null
       navigate(`/count/${s.id}`)
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status
       // A refusal is final for this key; a lost answer keeps it for the retry.
-      if (status && status >= 400 && status < 500) openKey.current = null
+      if (status && status >= 400 && status < 500) {
+        openKey.current = null
+        // The 6 hours may have run out since the page was read.
+        void load()
+      }
       setError(saidBy(err, 'The count could not be started. Try again.'))
       setBusy(false)
     }
@@ -104,7 +137,10 @@ export default function CountIndex() {
                 onClick={() => navigate(`/count/${s.id}`)}
                 className={`${TAP} flex w-full items-center justify-between rounded-xl bg-white/5 px-4 text-left active:bg-white/10`}
               >
-                <span className="font-semibold">{kindWords(s.kind)}</span>
+                <span className="font-semibold">
+                  {kindWords(s.kind)}
+                  {s.period ? <span className="font-normal text-inkm-2"> · {monthWords(s.period)}</span> : null}
+                </span>
                 <span className="text-sm text-inkm-2">
                   {s.shelvesDone} of {s.shelves} shelves done
                 </span>
@@ -114,6 +150,26 @@ export default function CountIndex() {
         </ul>
         {manager && (
           <div className="space-y-2 pt-4">
+            {periods?.ended && (
+              <div className="space-y-2" role="group" aria-label="Which month is this count for?">
+                <p className="text-sm text-inkm-4">Which month is this count for?</p>
+                <div className="flex gap-2">
+                  {[periods.ended, periods.current].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      aria-pressed={period === m}
+                      onClick={() => setPeriod(m)}
+                      className={`${TAP} flex-1 rounded-xl px-4 font-semibold ${
+                        period === m ? 'bg-white text-black' : 'bg-white/10 active:bg-white/20'
+                      }`}
+                    >
+                      {monthWords(m)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <p className="text-sm text-inkm-4">Start a count of every shelf</p>
             {KINDS.map((k) => (
               <button

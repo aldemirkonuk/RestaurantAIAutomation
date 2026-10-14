@@ -157,6 +157,45 @@ describe('MonthCloseShelf (F-1013)', () => {
     expect(api.get).toHaveBeenCalledWith('/reports/month-close/c1');
   });
 
+  it('says the open bottles a count named, kept and against now (F-1544 lane 5)', async () => {
+    const f = close().figures;
+    const withMl = close({
+      figures: { ...f, variance: { ...f.variance, openMl: { counts: 2, netMl: -200, shortMl: 300, overMl: 100 } } },
+    });
+    api.get.mockImplementation(async (url: string) =>
+      url === '/reports/month-close'
+        ? { data: { closes: [withMl] } }
+        : {
+            data: {
+              ...detail(),
+              againstNow: [
+                {
+                  figure: 'variance_open_ml',
+                  label: 'Count variance, open bottles, ml',
+                  atClose: -200,
+                  now: -450,
+                  delta: -250,
+                  currency: null,
+                },
+              ],
+            },
+          },
+    );
+    wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    expect(await screen.findByText('Open bottles counted: 300 ml short, 100 ml over')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'What changed since' }));
+    expect((await screen.findByLabelText('Kept against now')).textContent).toContain(
+      'Count variance, open bottles, ml: -200 ml kept, -450 ml now (-250 ml)',
+    );
+  });
+
+  it('says nothing of open bottles when no count named them', async () => {
+    api.get.mockResolvedValue({ data: { closes: [close()] } });
+    wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    await screen.findByText(/Count variance:/);
+    expect(screen.queryByText(/Open bottles counted/)).toBeNull();
+  });
+
   it('says when net sales come from only some checks, or from none (F-1494)', async () => {
     const f = close().figures;
     api.get.mockResolvedValueOnce({

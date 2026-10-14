@@ -18,6 +18,10 @@ import {
 import { houseFrame } from "../../common/house-frame";
 import { readWholeWindow } from "../../common/read-whole-window";
 import { OPENING_COUNT_SOURCE } from "../../inventory/stock-count-result";
+import {
+  COUNT_PERIOD_GRACE_MS,
+  filedMonth,
+} from "../../inventory/count-period";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { orderSpend } from "../../procurement/order-spend";
 import {
@@ -59,6 +63,10 @@ import { renderCsv } from "../exports/report-export-render";
  *  - What changed after the close is found by setting the month as read now
  *    against a per-check and per-order snapshot kept with the figures, so the
  *    listed changes add up to each figure's move (F-1466, F-1467).
+ *  - A stock-take's count is filed in the month its session states, when it
+ *    was made within 6 hours after that month ended (F-1544 lane 5, the
+ *    founder's F1 b, 2026-10-12 S224). Its counted moment is not moved; only
+ *    the month it is filed in. Every other count is filed by its moment.
  */
 
 /** How many changed rows of one kind a close lists before it says "and N more". */
@@ -134,7 +142,10 @@ export interface PurchaseFigures {
   kept?: Record<string, { total: number | null; currency: string | null }>;
 }
 
-/** Shelf counts taken on the month's house days. */
+/**
+ * Shelf counts filed in the month: taken on its house days, and a
+ * stock-take's counts made within 6 hours after it ended (F-1544 lane 5).
+ */
 export interface VarianceFigures {
   counts: number;
   /** Counted less expected, in bottles, over every count. */
@@ -143,6 +154,17 @@ export interface VarianceFigures {
   shortBottles: number;
   /** Bottles found over (counts above the books). */
   overBottles: number;
+  /**
+   * Open bottles, in ml, over the counts that named them (F-1544, F3 a).
+   * Absent on a close kept before lane 5: unknown, never 0.
+   */
+  openMl?: {
+    /** Counts that named their open bottles. */
+    counts: number;
+    netMl: number;
+    shortMl: number;
+    overMl: number;
+  };
 }
 
 export interface MonthFigures {
@@ -185,7 +207,12 @@ export interface ChangedAfterClose {
 }
 
 export interface FigureAgainstNow {
-  figure: "till_net_sales" | "till_checks" | "purchases" | "variance_net";
+  figure:
+    | "till_net_sales"
+    | "till_checks"
+    | "purchases"
+    | "variance_net"
+    | "variance_open_ml";
   label: string;
   atClose: number | null;
   now: number | null;
@@ -586,7 +613,8 @@ export class MonthCloseService {
   }> {
     const { first, last } = monthDays(month);
     const bounds = houseDayBounds(first, last, zone);
-    const [tillWindow, rawChecks, summary, orders, counts] = await Promise.all([
+    const [tillWindow, rawChecks, summary, orders, monthCounts] =
+      await Promise.all([
       this.goals.getPosRevenueWindow(restaurantId, 30, month),
       // The month's checks, voided ones too: the net figure is summed from
       // them, and a later read sets each against the one kept (F-1467).
@@ -624,9 +652,12 @@ export class MonthCloseService {
         () =>
           this.db
             .from("stock_counts")
-            .select("id, expected_qty, counted_qty, variance_qty, counted_at", {
-              count: "exact",
-            })
+              .select(
+                "id, expected_qty, counted_qty, variance_qty, variance_open_ml, counted_at, session_id",
+                {
+                  count: "exact",
+                },
+              )
             .eq("restaurant_id", restaurantId)
             // F-1514, ADR 0335 §2: an opening count is the first count
             // variance is measured from, never a variance itself.
@@ -635,6 +666,13 @@ export class MonthCloseService {
             .lt("counted_at", bounds.endIso) as never,
       ),
     ]);
+    const counts = await this.countsFiledIn(
+      restaurantId,
+      month,
+      zone,
+      bounds,
+      monthCounts,
+    );
 
     const totals = new Map<string | null, number>();
     const keptOrders: NonNullable<PurchaseFigures["kept"]> = {};
@@ -691,6 +729,7 @@ export class MonthCloseService {
     let netBottles = 0;
     let shortBottles = 0;
     let overBottles = 0;
+    const openMl = { counts: 0, netMl: 0, shortMl: 0, overMl: 0 };
     for (const c of counts) {
       const v =
         finite(c.variance_qty) ??
@@ -698,6 +737,13 @@ export class MonthCloseService {
       netBottles += v;
       if (v < 0) shortBottles += -v;
       else overBottles += v;
+      // F-1544 F3 (a): a count that named its open bottles; null = not named.
+      const ml = finite(c.variance_open_ml);
+      if (ml === null) continue;
+      openMl.counts += 1;
+      openMl.netMl += ml;
+      if (ml < 0) openMl.shortMl += -ml;
+      else openMl.overMl += ml;
     }
 
     const s = (summary ?? {}) as Record<string, unknown>;
@@ -742,9 +788,96 @@ export class MonthCloseService {
         netBottles,
         shortBottles,
         overBottles,
+        openMl,
       },
     };
     return { figures, tillWindow, checks };
+  }
+
+  /**
+   * The stock-take months the month's counts and its 6-hour tail name, by
+   * session id. A read that fails refuses, as every figure read does: a
+   * count filed in the wrong month is a short record.
+   */
+  private async sessionPeriods(
+    restaurantId: string,
+    sessionIds: string[],
+  ): Promise<Map<string, string | null>> {
+    const out = new Map<string, string | null>();
+    const want = [...new Set(sessionIds)];
+    if (want.length === 0) return out;
+    const { data, error } = await this.db
+      .from("stock_count_sessions")
+      .select("id, attributed_period")
+      .eq("restaurant_id", restaurantId)
+      .in("id", want);
+    if (error)
+      throw new Error(
+        `The stock-takes the counts belong to could not be read: ${error.message}`,
+      );
+    for (const s of (data ?? []) as Array<{
+      id: string;
+      attributed_period: string | null;
+    }>)
+      out.set(s.id, s.attributed_period ?? null);
+    return out;
+  }
+
+  /**
+   * F-1544 lane 5 (F1 b): the counts filed in the month. The month's own
+   * counts, less a stock-take's counts made in the first 6 hours that its
+   * session files in the month before; plus this month's stock-take counts
+   * made in the 6 hours after it ended. A count with no session is filed by
+   * its moment, exactly as before: the tail read asks only for session counts.
+   */
+  private async countsFiledIn(
+    restaurantId: string,
+    month: string,
+    zone: string,
+    bounds: { startIso: string; endIso: string },
+    monthCounts: Array<Record<string, unknown>>,
+  ): Promise<Array<Record<string, unknown>>> {
+    const tailEndIso = new Date(
+      Date.parse(bounds.endIso) + COUNT_PERIOD_GRACE_MS,
+    ).toISOString();
+    const tail = await readWholeWindow<Record<string, unknown>>(
+      "The stock-take counts made just after this month ended",
+      () =>
+        this.db
+          .from("stock_counts")
+          .select(
+            "id, expected_qty, counted_qty, variance_qty, variance_open_ml, counted_at, session_id",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .neq("source", OPENING_COUNT_SOURCE)
+          .not("session_id", "is", null)
+          .gte("counted_at", bounds.endIso)
+          .lt("counted_at", tailEndIso) as never,
+    );
+    const sid = (c: Record<string, unknown>) =>
+      typeof c.session_id === "string" ? c.session_id : null;
+    const periods = await this.sessionPeriods(
+      restaurantId,
+      [...monthCounts.map(sid), ...tail.map(sid)].filter(
+        (s): s is string => s !== null,
+      ),
+    );
+    const filed = (c: Record<string, unknown>) =>
+      filedMonth(
+        typeof c.counted_at === "string" ? c.counted_at : null,
+        periods.get(sid(c) ?? "") ?? null,
+        zone,
+      );
+    return [
+      // A month row is kept unless its session files it elsewhere.
+      ...monthCounts.filter((c) => {
+        if (sid(c) === null) return true;
+        const m = filed(c);
+        return m === null || m === month;
+      }),
+      ...tail.filter((c) => filed(c) === month),
+    ];
   }
 
   /** The till's month written up as the export shelf writes it, kept with the record. */
@@ -846,13 +979,24 @@ export class MonthCloseService {
     };
   }
 
-  /** Stock movements dated inside the month and recorded after the close. */
+  /**
+   * Stock movements filed in the month and recorded after the close: those
+   * dated inside it, and (F-1544 lane 5) a stock-take count's movement made
+   * in the 6 hours after it ended that its session files in it. A stock-take
+   * count's movement in the first 6 hours that its session files in the month
+   * before is that month's change, not this one's.
+   */
   private async stockChanges(
     restaurantId: string,
     row: CloseRow,
     bounds: { startIso: string; endIso: string },
   ): Promise<{ rows: ChangedAfterClose[]; more: number }> {
-    const { data, error, count } = await this.db
+    const { elsewhere, here } = await this.sessionMovementsAcross(
+      restaurantId,
+      row,
+      bounds,
+    );
+    let inMonth = this.db
       .from("inventory_transactions")
       .select(
         "id, inventory_id, transaction_type, source, quantity_change, performed_by, transaction_date, created_at",
@@ -863,14 +1007,48 @@ export class MonthCloseService {
       .eq("restaurant_id", restaurantId)
       .gt("created_at", row.closed_at)
       .gte("transaction_date", bounds.startIso)
-      .lt("transaction_date", bounds.endIso)
+      .lt("transaction_date", bounds.endIso);
+    if (elsewhere.length > 0)
+      inMonth = inMonth.not("id", "in", `(${elsewhere.join(",")})`);
+    const { data, error, count } = await inMonth
       .order("created_at", { ascending: false })
       .limit(CHANGED_AFTER_CLOSE_CAP);
     if (error)
       throw new Error(
         `The stock movements since the close could not be read: ${error.message}`,
       );
-    const list = (data ?? []) as Array<Record<string, unknown>>;
+    let late: Array<Record<string, unknown>> = [];
+    if (here.length > 0) {
+      const tail = await this.db
+        .from("inventory_transactions")
+        .select(
+          "id, inventory_id, transaction_type, source, quantity_change, performed_by, transaction_date, created_at",
+        )
+        .eq("restaurant_id", restaurantId)
+        .gt("created_at", row.closed_at)
+        .in("id", here.slice(0, CHANGED_AFTER_CLOSE_CAP));
+      if (tail.error)
+        throw new Error(
+          `The stock-take counts made just after this month could not be read: ${tail.error.message}`,
+        );
+      late = (tail.data ?? []) as Array<Record<string, unknown>>;
+    }
+    const all = [
+      ...((data ?? []) as Array<Record<string, unknown>>),
+      ...late,
+    ].sort((x, y) =>
+      String(x.created_at) < String(y.created_at)
+        ? 1
+        : String(x.created_at) > String(y.created_at)
+          ? -1
+          : 0,
+    );
+    const list = all.slice(0, CHANGED_AFTER_CLOSE_CAP);
+    const lateIds = new Set(late.map((t) => String(t.id)));
+    const total =
+      (count ?? (data ?? []).length) +
+      late.length +
+      Math.max(0, here.length - CHANGED_AFTER_CLOSE_CAP);
     const wines = await this.wineNames(
       list.map((t) =>
         typeof t.inventory_id === "string" ? t.inventory_id : null,
@@ -889,12 +1067,69 @@ export class MonthCloseService {
             : t.source === "pos"
               ? "The till"
               : NOT_RECORDED,
-        what: `${MOVEMENT_WORDS[String(t.transaction_type)] ?? "Stock changed"}: ${wines.get(String(t.inventory_id)) ?? "a wine no longer listed"}`,
+        what: `${MOVEMENT_WORDS[String(t.transaction_type)] ?? "Stock changed"}: ${wines.get(String(t.inventory_id)) ?? "a wine no longer listed"}${lateIds.has(String(t.id)) ? " (counted just after the month ended; the count was for this month)" : ""}`,
         delta: finite(t.quantity_change),
         unit: "bottles" as const,
         currency: null,
       })),
-      more: Math.max(0, (count ?? 0) - CHANGED_AFTER_CLOSE_CAP),
+      more: Math.max(0, total - CHANGED_AFTER_CLOSE_CAP),
+    };
+  }
+
+  /**
+   * F-1544 lane 5: the movements of stock-take counts made within 6 hours
+   * after a month line that their session files on the other side of it.
+   * `elsewhere`: made in this month's first 6 hours, filed in the month
+   * before. `here`: made in the 6 hours after this month, filed in it.
+   * A count that moved no stock (it agreed with the books) has no movement.
+   */
+  private async sessionMovementsAcross(
+    restaurantId: string,
+    row: CloseRow,
+    bounds: { startIso: string; endIso: string },
+  ): Promise<{ elsewhere: string[]; here: string[] }> {
+    const after = (iso: string) =>
+      new Date(Date.parse(iso) + COUNT_PERIOD_GRACE_MS).toISOString();
+    const read = async (fromIso: string) => {
+      const { data, error } = await this.db
+        .from("stock_counts")
+        .select("id, counted_at, session_id, transaction_id")
+        .eq("restaurant_id", restaurantId)
+        .not("session_id", "is", null)
+        .not("transaction_id", "is", null)
+        .gte("counted_at", fromIso)
+        .lt("counted_at", after(fromIso));
+      if (error)
+        throw new Error(
+          `The stock-take counts at the month's edges could not be read: ${error.message}`,
+        );
+      return (data ?? []) as Array<Record<string, unknown>>;
+    };
+    const [head, tail] = await Promise.all([
+      read(bounds.startIso),
+      read(bounds.endIso),
+    ]);
+    const sid = (c: Record<string, unknown>) =>
+      typeof c.session_id === "string" ? c.session_id : null;
+    const periods = await this.sessionPeriods(
+      restaurantId,
+      [...head, ...tail].map(sid).filter((s): s is string => s !== null),
+    );
+    const filed = (c: Record<string, unknown>) =>
+      filedMonth(
+        typeof c.counted_at === "string" ? c.counted_at : null,
+        periods.get(sid(c) ?? "") ?? null,
+        row.zone,
+      );
+    const tx = (c: Record<string, unknown>) =>
+      typeof c.transaction_id === "string" ? [c.transaction_id] : [];
+    return {
+      elsewhere: head
+        .filter((c) => sid(c) !== null && filed(c) !== row.month)
+        .flatMap(tx),
+      here: tail
+        .filter((c) => sid(c) !== null && filed(c) === row.month)
+        .flatMap(tx),
     };
   }
 
@@ -1136,5 +1371,19 @@ export function againstNow(
       null,
     ),
   );
+  // F-1544 F3 (a): open bottles, once either side has a count that named
+  // them. A close kept before lane 5 has no figure: unknown, never 0.
+  const keptMl = kept.variance.openMl;
+  const nowMl = now.variance.openMl;
+  if ((keptMl?.counts ?? 0) > 0 || (nowMl?.counts ?? 0) > 0)
+    out.push(
+      pair(
+        "variance_open_ml",
+        "Count variance, open bottles, ml",
+        keptMl ? keptMl.netMl : null,
+        nowMl ? nowMl.netMl : null,
+        null,
+      ),
+    );
   return out;
 }

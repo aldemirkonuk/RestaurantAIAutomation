@@ -4,6 +4,12 @@ import { InventoryService } from "./inventory.service";
 import { zoneLabel } from "../cellar/zones.service";
 import { FACT_TIME_TRUST_MS } from "../common/fact-time";
 import { STAND_IN_BOTTLE_ML } from "./stock-count-result";
+import { readHouseZone } from "../common/house-day";
+import {
+  CountPeriodRefused,
+  periodChoiceAt,
+  sessionPeriodFor,
+} from "./count-period";
 
 /**
  * A stock-take walked shelf by shelf on a phone (F-1544; F-076: a 112-wine
@@ -115,6 +121,9 @@ interface SessionRow {
   opened_at: string;
   signed_off_at: string | null;
   abandoned_at: string | null;
+  // F-1544 lane 5 (F1 b): the month its counts are filed in, YYYY-MM; null
+  // for an opening count and every session opened before lane 5.
+  attributed_period: string | null;
 }
 
 interface ShelfRow {
@@ -131,7 +140,7 @@ interface ShelfRow {
 }
 
 const SESSION_COLUMNS =
-  "id, restaurant_id, kind, status, opened_by, opened_at, signed_off_at, abandoned_at";
+  "id, restaurant_id, kind, status, opened_by, opened_at, signed_off_at, abandoned_at, attributed_period";
 const SHELF_COLUMNS =
   "location_id, sort_order, claimed_by, claimed_at, done_by, done_at, recount_round, recount_asked_at";
 
@@ -251,9 +260,25 @@ export class CountSessionsService {
     return out;
   }
 
+  /**
+   * The months a count opened now may be for (F-1544 lane 5, F1 b): this
+   * month, and the month that just ended while within its 6 hours. Null when
+   * the house names no time zone (its counts are then filed by their moment).
+   */
+  private async periodChoice(house: string) {
+    let zone: string | null;
+    try {
+      ({ zone } = await readHouseZone(this.dbService.getClient(), house));
+    } catch (e) {
+      throw this.unreadable("house zone read", e as { message?: string });
+    }
+    return zone ? periodChoiceAt(new Date(), zone) : null;
+  }
+
   /** The house's open counts, newest first, with how many shelves are done. */
   async listOpen(house: string) {
     const client = this.dbService.getClient();
+    const periods = await this.periodChoice(house);
     const { data, error } = await client
       .from("stock_count_sessions")
       .select(SESSION_COLUMNS)
@@ -262,7 +287,7 @@ export class CountSessionsService {
       .order("opened_at", { ascending: false });
     if (error) throw this.unreadable("sessions read", error);
     const sessions = (data ?? []) as SessionRow[];
-    if (sessions.length === 0) return { sessions: [] };
+    if (sessions.length === 0) return { sessions: [], periods };
     const shelves = await client
       .from("stock_count_session_shelves")
       .select("session_id, done_at")
@@ -288,9 +313,11 @@ export class CountSessionsService {
         kind: s.kind,
         status: s.status,
         openedAt: s.opened_at,
+        period: s.attributed_period ?? null,
         shelves: tally.get(s.id)?.shelves ?? 0,
         shelvesDone: tally.get(s.id)?.done ?? 0,
       })),
+      periods,
     };
   }
 
@@ -299,11 +326,21 @@ export class CountSessionsService {
    * house's leaf shelves when none are chosen). The caller has checked the
    * person is an owner or a manager (ADR 0238 / 0334). `openKey` makes a
    * double tap or a retry open one count, not two.
+   *
+   * F-1544 lane 5 (F1 b): `period` (YYYY-MM) is the month its counts are
+   * filed in -- this month, or last month only within 6 hours after it ended
+   * (`sessionPeriodFor`). Not named: this month. A replayed open keeps the
+   * period it was opened with.
    */
   async open(
     house: string,
     userId: string,
-    dto: { kind?: unknown; zoneIds?: unknown; openKey?: unknown },
+    dto: {
+      kind?: unknown;
+      zoneIds?: unknown;
+      openKey?: unknown;
+      period?: unknown;
+    },
   ) {
     const kind = dto?.kind as CountSessionKind;
     if (!COUNT_SESSION_KINDS.includes(kind)) {
@@ -353,6 +390,19 @@ export class CountSessionsService {
       );
     }
 
+    let attributedPeriod: string | null;
+    try {
+      const { zone } = await readHouseZone(client, house);
+      attributedPeriod = sessionPeriodFor(dto?.period, kind, new Date(), zone);
+    } catch (e) {
+      if (e instanceof CountPeriodRefused)
+        throw new HttpException(
+          `${e.message} Nothing was opened.`,
+          HttpStatus.BAD_REQUEST,
+        );
+      throw this.unreadable("house zone read", e as { message?: string });
+    }
+
     const made = await client
       .from("stock_count_sessions")
       .insert({
@@ -360,6 +410,7 @@ export class CountSessionsService {
         kind,
         opened_by: userId,
         open_key: openKey,
+        attributed_period: attributedPeriod,
       })
       .select("id")
       .single();
@@ -491,6 +542,7 @@ export class CountSessionsService {
       kind: session.kind,
       status: session.status,
       openedAt: session.opened_at,
+      period: session.attributed_period ?? null,
       shelves: shelves.map((s) => ({
         locationId: s.location_id,
         name: label.get(s.location_id) ?? "A shelf no longer in use",

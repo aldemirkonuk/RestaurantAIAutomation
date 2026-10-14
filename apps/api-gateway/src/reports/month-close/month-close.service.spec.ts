@@ -267,6 +267,8 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
       netBottles: -1,
       shortBottles: 2,
       overBottles: 1,
+      // F-1544 lane 5: no count here named its open bottles.
+      openMl: { counts: 0, netMl: 0, shortMl: 0, overMl: 0 },
     });
     // A value the engine could not compute stays null, never 0.
     expect(f.valuation.inventoryValue).toBeNull();
@@ -382,6 +384,8 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
       netBottles: -2,
       shortBottles: 2,
       overBottles: 0,
+      // F-1544 lane 5: no count here named its open bottles.
+      openMl: { counts: 0, netMl: 0, shortMl: 0, overMl: 0 },
     });
   });
 
@@ -891,5 +895,414 @@ describe("againstNow", () => {
       ["TRY", 0],
       ["EUR", 7],
     ]);
+  });
+});
+
+/**
+ * F-1544 lane 5, the founder's F1 (b), 2026-10-12 (sim-ledger S224): a
+ * stock-take's count made within 6 hours after its session's month ended is
+ * filed in that month; its counted moment is not moved. A count with no
+ * session is filed by its moment exactly as before. July 2026 in Istanbul
+ * (UTC+3): it starts 2026-06-30T21:00Z and ends 2026-07-31T21:00Z, and its
+ * 6 hours run to 2026-08-01T03:00Z.
+ */
+describe("MonthCloseService — a stock-take's count files in its session's month", () => {
+  const S_JUNE = "sess-june";
+  const S_JULY = "sess-july";
+  const S_OLD = "sess-before-lane-5";
+  const sessions = [
+    { id: S_JUNE, attributed_period: "2026-06" },
+    { id: S_JULY, attributed_period: "2026-07" },
+    { id: S_OLD, attributed_period: null },
+  ];
+  const sessionsAnswer = (ops: Op[]): Answer => {
+    const ids = (arg(ops, "in")?.[1] ?? []) as string[];
+    return {
+      data: sessions.filter((s) => ids.includes(s.id)),
+      error: null,
+    };
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers({
+      now: new Date("2026-08-02T09:00:00Z"),
+      doNotFake: ["nextTick", "setImmediate"],
+    });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it("files the count made at 01:30 on 1 August in July, and the June walk's 01:00 count in June", async () => {
+    const month = [
+      // A spot count: filed by its moment, as before.
+      {
+        id: "m1",
+        expected_qty: 6,
+        counted_qty: 4,
+        variance_qty: -2,
+        counted_at: "2026-07-15T10:00:00Z",
+        session_id: null,
+        variance_open_ml: null,
+      },
+      // 01:00 on 1 July of a June walk: June's, not July's.
+      {
+        id: "m2",
+        expected_qty: 9,
+        counted_qty: 4,
+        variance_qty: -5,
+        counted_at: "2026-06-30T22:00:00Z",
+        session_id: S_JUNE,
+        variance_open_ml: null,
+      },
+      // 01:00 on 1 July of a walk opened before lane 5: by its moment, July.
+      {
+        id: "m3",
+        expected_qty: 2,
+        counted_qty: 1,
+        variance_qty: -1,
+        counted_at: "2026-06-30T22:00:00Z",
+        session_id: S_OLD,
+        variance_open_ml: null,
+      },
+      {
+        id: "m4",
+        expected_qty: 3,
+        counted_qty: 4,
+        variance_qty: 1,
+        counted_at: "2026-07-10T10:00:00Z",
+        session_id: S_JULY,
+        variance_open_ml: -300,
+      },
+    ];
+    const tail = [
+      // 01:30 on 1 August of the July walk: July's.
+      {
+        id: "t1",
+        expected_qty: 8,
+        counted_qty: 5,
+        variance_qty: -3,
+        counted_at: "2026-07-31T22:30:00Z",
+        session_id: S_JULY,
+        variance_open_ml: 100,
+      },
+      // Not a session's count, and one of a walk with no month: never July's.
+      {
+        id: "t2",
+        expected_qty: 8,
+        counted_qty: 1,
+        variance_qty: -7,
+        counted_at: "2026-07-31T22:00:00Z",
+        session_id: null,
+        variance_open_ml: null,
+      },
+      {
+        id: "t3",
+        expected_qty: 8,
+        counted_qty: 2,
+        variance_qty: -6,
+        counted_at: "2026-07-31T22:00:00Z",
+        session_id: S_OLD,
+        variance_open_ml: null,
+      },
+    ];
+    const { svc, calls } = service(
+      houseHandler({
+        stock_counts: (ops) => {
+          const rows = has(ops, "not") ? tail : month;
+          return { data: rows, error: null, count: rows.length };
+        },
+        stock_count_sessions: sessionsAnswer,
+      }),
+    );
+    await svc.closeMonth(HOUSE, ACTOR, "2026-07");
+    const insert = calls.find(
+      (c) => c.table === "month_closes" && has(c.ops, "insert"),
+    )!;
+    const f = (arg(insert.ops, "insert")![0] as any).figures as MonthFigures;
+    // m1, m3, m4 and t1.
+    expect(f.variance).toEqual({
+      counts: 4,
+      netBottles: -5,
+      shortBottles: 6,
+      overBottles: 1,
+      openMl: { counts: 2, netMl: -200, shortMl: 300, overMl: 100 },
+    });
+    // The tail read asks only for a session's counts, in the 6 hours.
+    const tailRead = calls.find(
+      (c) => c.table === "stock_counts" && has(c.ops, "not"),
+    )!;
+    expect(arg(tailRead.ops, "not")).toEqual(["session_id", "is", null]);
+    expect(arg(tailRead.ops, "gte")).toEqual([
+      "counted_at",
+      "2026-07-31T21:00:00.000Z",
+    ]);
+    expect(arg(tailRead.ops, "lt")).toEqual([
+      "counted_at",
+      "2026-08-01T03:00:00.000Z",
+    ]);
+    // The months are read from this house's sessions only.
+    const read = calls.find((c) => c.table === "stock_count_sessions")!;
+    expect(arg(read.ops, "eq")).toEqual(["restaurant_id", HOUSE]);
+  });
+
+  it("files a month of spot counts exactly as before, reading no session", async () => {
+    const spot = [
+      {
+        id: "c1",
+        expected_qty: 12,
+        counted_qty: 10,
+        variance_qty: null,
+        counted_at: "2026-07-03T10:00:00Z",
+        session_id: null,
+      },
+      {
+        id: "c2",
+        expected_qty: 5,
+        counted_qty: 6,
+        variance_qty: 1,
+        counted_at: "2026-07-31T20:59:00Z",
+        session_id: null,
+      },
+    ];
+    const { svc, calls } = service(
+      houseHandler({
+        stock_counts: (ops) =>
+          has(ops, "not")
+            ? { data: [], error: null, count: 0 }
+            : { data: spot, error: null, count: spot.length },
+      }),
+    );
+    await svc.closeMonth(HOUSE, ACTOR, "2026-07");
+    const insert = calls.find(
+      (c) => c.table === "month_closes" && has(c.ops, "insert"),
+    )!;
+    const f = (arg(insert.ops, "insert")![0] as any).figures as MonthFigures;
+    expect(f.variance).toEqual({
+      counts: 2,
+      netBottles: -1,
+      shortBottles: 2,
+      overBottles: 1,
+      openMl: { counts: 0, netMl: 0, shortMl: 0, overMl: 0 },
+    });
+    expect(calls.some((c) => c.table === "stock_count_sessions")).toBe(false);
+    // The month's own read is the one it always was.
+    const monthRead = calls.find(
+      (c) => c.table === "stock_counts" && !has(c.ops, "not"),
+    )!;
+    expect(arg(monthRead.ops, "gte")).toEqual([
+      "counted_at",
+      "2026-06-30T21:00:00.000Z",
+    ]);
+    expect(arg(monthRead.ops, "lt")).toEqual([
+      "counted_at",
+      "2026-07-31T21:00:00.000Z",
+    ]);
+  });
+
+  it("refuses the close when the stock-takes cannot be read", async () => {
+    const { svc, calls } = service(
+      houseHandler({
+        stock_counts: () => ({
+          data: [
+            {
+              id: "m4",
+              expected_qty: 3,
+              counted_qty: 4,
+              variance_qty: 1,
+              counted_at: "2026-07-10T10:00:00Z",
+              session_id: S_JULY,
+            },
+          ],
+          error: null,
+          count: 1,
+        }),
+        stock_count_sessions: () => ({
+          data: null,
+          error: { message: "down" },
+        }),
+      }),
+    );
+    await expect(svc.closeMonth(HOUSE, ACTOR, "2026-07")).rejects.toThrow();
+    expect(
+      calls.some((c) => c.table === "month_closes" && has(c.ops, "insert")),
+    ).toBe(false);
+  });
+
+  it("lists a July walk's count that arrived after the close, and leaves out the June walk's", async () => {
+    const closeRow = {
+      id: "close-1",
+      restaurant_id: HOUSE,
+      month: "2026-07",
+      version: 1,
+      closed_by: ACTOR,
+      // Closed at 00:45 on 1 August, before the walk's last shelf synced.
+      closed_at: "2026-07-31T21:45:00+00:00",
+      zone: ZONE,
+      figures: {
+        currency: "TRY",
+        till: {
+          posConnected: false,
+          netSales: null,
+          netSalesCheckCount: null,
+          checkCount: null,
+          days: [],
+          kept: {},
+        },
+        valuation: {
+          inventoryValue: null,
+          pricedInventoryValue: null,
+          unpricedWines: null,
+          valuedAt: "2026-07-31T21:45:00Z",
+        },
+        purchases: { orders: 0, unpriced: 0, totals: [], kept: {} },
+        variance: {
+          counts: 0,
+          netBottles: 0,
+          shortBottles: 0,
+          overBottles: 0,
+          openMl: { counts: 0, netMl: 0, shortMl: 0, overMl: 0 },
+        },
+      } as MonthFigures,
+      till_csv: null,
+    };
+    const lateMove = {
+      id: "tx-late",
+      inventory_id: "w1",
+      transaction_type: "reconciliation",
+      source: "mobile_count",
+      quantity_change: -3,
+      performed_by: ACTOR,
+      transaction_date: "2026-07-31T22:30:00Z",
+      created_at: "2026-07-31T23:10:00Z",
+    };
+    const { svc, calls } = service(
+      houseHandler({
+        month_closes: () => ({ data: closeRow, error: null }),
+        pos_checks: () => ({ data: [], error: null, count: 0 }),
+        procurement_orders: () => ({ data: [], error: null, count: 0 }),
+        stock_counts: (ops) => {
+          const cols = String(arg(ops, "select")?.[0] ?? "");
+          if (cols.includes("transaction_id")) {
+            const from = String(arg(ops, "gte")?.[1]);
+            const rows =
+              from === "2026-06-30T21:00:00.000Z"
+                ? [
+                    {
+                      id: "h1",
+                      counted_at: "2026-06-30T22:00:00Z",
+                      session_id: S_JUNE,
+                      transaction_id: "tx-head",
+                    },
+                  ]
+                : from === "2026-07-31T21:00:00.000Z"
+                  ? [
+                      {
+                        id: "l1",
+                        counted_at: "2026-07-31T22:30:00Z",
+                        session_id: S_JULY,
+                        transaction_id: "tx-late",
+                      },
+                    ]
+                  : [];
+            return { data: rows, error: null };
+          }
+          return { data: [], error: null, count: 0 };
+        },
+        stock_count_sessions: sessionsAnswer,
+        inventory_transactions: (ops) =>
+          has(ops, "in")
+            ? { data: [lateMove], error: null }
+            : { data: [], error: null, count: 0 },
+        restaurant_inventory: () => ({
+          data: [{ id: "w1", display_name: "Barolo 2019", wine_name: null }],
+          error: null,
+        }),
+      }),
+      { ...till, posConnected: false },
+    );
+    const detail = await svc.getClose(HOUSE, "close-1");
+    expect(detail.changes).toEqual([
+      expect.objectContaining({
+        kind: "stock",
+        who: "Ayla",
+        what: "Shelf count: Barolo 2019 (counted just after the month ended; the count was for this month)",
+        delta: -3,
+        // The day it was counted, honestly.
+        day: "2026-08-01",
+      }),
+    ]);
+    // The June walk's movement made on 1 July is June's change, not July's.
+    const inMonth = calls.find(
+      (c) => c.table === "inventory_transactions" && !has(c.ops, "in"),
+    )!;
+    expect(arg(inMonth.ops, "not")).toEqual(["id", "in", "(tx-head)"]);
+    // Only a movement made after the close is listed.
+    const lateRead = calls.find(
+      (c) => c.table === "inventory_transactions" && has(c.ops, "in"),
+    )!;
+    expect(arg(lateRead.ops, "gt")).toEqual([
+      "created_at",
+      "2026-07-31T21:45:00+00:00",
+    ]);
+  });
+});
+
+describe("againstNow — open bottles (F-1544 lane 5)", () => {
+  const base = (openMl?: { counts: number; netMl: number }): MonthFigures => ({
+    currency: "TRY",
+    till: {
+      posConnected: false,
+      netSales: null,
+      netSalesCheckCount: null,
+      checkCount: null,
+      days: [],
+    },
+    valuation: {
+      inventoryValue: null,
+      pricedInventoryValue: null,
+      unpricedWines: null,
+      valuedAt: "2026-08-02T09:00:00Z",
+    },
+    purchases: { orders: 0, unpriced: 0, totals: [] },
+    variance: {
+      counts: 0,
+      netBottles: 0,
+      shortBottles: 0,
+      overBottles: 0,
+      ...(openMl
+        ? {
+            openMl: {
+              ...openMl,
+              shortMl: Math.max(0, -openMl.netMl),
+              overMl: Math.max(0, openMl.netMl),
+            },
+          }
+        : {}),
+    },
+  });
+
+  it("sets the open bottles kept against now once a count named them, unknown for an older close", () => {
+    const rows = againstNow(
+      base({ counts: 1, netMl: -150 }),
+      base({ counts: 2, netMl: -400 }),
+    );
+    expect(rows.find((r) => r.figure === "variance_open_ml")).toEqual({
+      figure: "variance_open_ml",
+      label: "Count variance, open bottles, ml",
+      atClose: -150,
+      now: -400,
+      delta: -250,
+      currency: null,
+    });
+    const older = againstNow(base(), base({ counts: 1, netMl: -100 }));
+    expect(older.find((r) => r.figure === "variance_open_ml")).toMatchObject({
+      atClose: null,
+      delta: null,
+    });
+    expect(
+      againstNow(
+        base({ counts: 0, netMl: 0 }),
+        base({ counts: 0, netMl: 0 }),
+      ).some((r) => r.figure === "variance_open_ml"),
+    ).toBe(false);
   });
 });

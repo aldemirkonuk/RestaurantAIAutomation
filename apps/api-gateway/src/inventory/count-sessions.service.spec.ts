@@ -5,6 +5,14 @@ import {
   type HouseLocation,
 } from "./count-sessions.service";
 import { InventoryService } from "./inventory.service";
+import {
+  COUNT_PERIOD_GRACE_MS,
+  CountPeriodRefused,
+  filedMonth,
+  periodChoiceAt,
+  previousMonth,
+  sessionPeriodFor,
+} from "./count-period";
 
 /**
  * F-1544, lane 1: the count session envelope. A session groups a walk of
@@ -316,6 +324,64 @@ describe("open -- an owner or manager opens one count over the chosen shelves", 
     expect(b.id).toBe(a.id);
     expect(db.tables.stock_count_sessions).toHaveLength(1);
     expect(db.tables.stock_count_session_shelves).toHaveLength(3);
+  });
+});
+
+describe("open -- a count states the month it is filed in (F-1544 lane 5, F1 b)", () => {
+  // 00:30 on 1 November in Istanbul (UTC+3).
+  beforeEach(() => {
+    jest.useFakeTimers({
+      now: new Date("2026-10-31T21:30:00Z"),
+      doNotFake: ["nextTick", "setImmediate"],
+    });
+  });
+  afterEach(() => jest.useRealTimers());
+  const zoned = () =>
+    setup({
+      restaurants: [
+        { id: HOUSE, timezone: "Europe/Istanbul", country: "TR" },
+        { id: OTHER, timezone: "America/New_York", country: "US" },
+      ],
+    });
+
+  it("is for October when the manager says so in the 6 hours after October ends", async () => {
+    const { svc, db } = zoned();
+    const out: any = await svc.open(HOUSE, BOSS, {
+      kind: "month_end",
+      period: "2026-10",
+    });
+    expect(db.tables.stock_count_sessions[0].attributed_period).toBe("2026-10");
+    expect(out.period).toBe("2026-10");
+    const list: any = await svc.listOpen(HOUSE);
+    expect(list.periods).toEqual({ current: "2026-11", ended: "2026-10" });
+    expect(list.sessions[0].period).toBe("2026-10");
+  });
+
+  it("is this month when no month is named, and an opening count has none", async () => {
+    const { svc, db } = zoned();
+    await svc.open(HOUSE, BOSS, { kind: "closing" });
+    await svc.open(HOUSE, BOSS, { kind: "opening", period: "2026-10" });
+    expect(
+      db.tables.stock_count_sessions.map((r) => r.attributed_period),
+    ).toEqual(["2026-11", null]);
+  });
+
+  it("refuses any other month and opens nothing", async () => {
+    const { svc, db } = zoned();
+    await expect(
+      svc.open(HOUSE, BOSS, { kind: "month_end", period: "2026-09" }),
+    ).rejects.toMatchObject({ status: HttpStatus.BAD_REQUEST });
+    expect(db.tables.stock_count_sessions ?? []).toHaveLength(0);
+  });
+
+  it("past the 6 hours offers no other month", async () => {
+    jest.setSystemTime(new Date("2026-11-01T03:00:00Z"));
+    const { svc } = zoned();
+    const list: any = await svc.listOpen(HOUSE);
+    expect(list.periods).toEqual({ current: "2026-11", ended: null });
+    await expect(
+      svc.open(HOUSE, BOSS, { kind: "month_end", period: "2026-10" }),
+    ).rejects.toMatchObject({ status: HttpStatus.BAD_REQUEST });
   });
 });
 
@@ -824,5 +890,106 @@ describe("shelf done in lane 2 -- held zeros and old acts (F2 a, ADR 0286)", () 
       isManager,
     );
     expect(isManager).not.toHaveBeenCalled();
+  });
+});
+
+// ---- count-period.ts, the pure rule the open and the month close share ----
+/**
+ * F-1544 lane 5, the founder's F1 (b), 2026-10-12 (sim-ledger S224): a count
+ * session states its period; the month close files its counts by it, only
+ * for counts made within 6 hours after the period ends; the counted moment
+ * is never moved. Every case failed before lane 5 (no count-period.ts).
+ */
+
+const IST = "Europe/Istanbul"; // UTC+3 all year
+const NYC = "America/New_York"; // clocks go back at 02:00 on 1 Nov 2026
+
+describe("filedMonth -- which month a count is filed in", () => {
+  it("files a count with no session month by its own moment, as before", () => {
+    // 00:30 on 1 November in Istanbul.
+    expect(filedMonth("2026-10-31T21:30:00Z", null, IST)).toBe("2026-11");
+    expect(filedMonth("2026-10-31T20:59:00Z", null, IST)).toBe("2026-10");
+    expect(filedMonth(null, "2026-10", IST)).toBeNull();
+    expect(filedMonth("not a time", "2026-10", IST)).toBeNull();
+  });
+
+  it("files an October count made up to 6 hours after October ended in October", () => {
+    expect(filedMonth("2026-10-31T21:30:00Z", "2026-10", IST)).toBe("2026-10");
+    // 05:59 on 1 November, house time: still October's.
+    expect(filedMonth("2026-11-01T02:59:59Z", "2026-10", IST)).toBe("2026-10");
+    // 06:00: the new month's, as the house's day says.
+    expect(filedMonth("2026-11-01T03:00:00Z", "2026-10", IST)).toBe("2026-11");
+    // Inside the month: October either way.
+    expect(filedMonth("2026-10-20T10:00:00Z", "2026-10", IST)).toBe("2026-10");
+  });
+
+  it("never pulls a count made before the period into it", () => {
+    // 23:00 on 30 September, house time.
+    expect(filedMonth("2026-09-30T20:00:00Z", "2026-10", IST)).toBe("2026-09");
+  });
+
+  it("counts the 6 hours in real time across a clock change (US house)", () => {
+    // October ends at 04:00Z (midnight EDT); six real hours later is 10:00Z,
+    // which the house's clock calls 05:00 EST.
+    expect(filedMonth("2026-11-01T09:59:00Z", "2026-10", NYC)).toBe("2026-10");
+    expect(filedMonth("2026-11-01T10:00:00Z", "2026-10", NYC)).toBe("2026-11");
+    expect(COUNT_PERIOD_GRACE_MS).toBe(6 * 3_600_000);
+  });
+});
+
+describe("periodChoiceAt -- what a count opened now may be for", () => {
+  it("offers the month that just ended only within its 6 hours", () => {
+    // 04:00 on 1 November, Istanbul.
+    expect(periodChoiceAt(new Date("2026-11-01T01:00:00Z"), IST)).toEqual({
+      current: "2026-11",
+      ended: "2026-10",
+    });
+    // 06:00: too late for October.
+    expect(periodChoiceAt(new Date("2026-11-01T03:00:00Z"), IST)).toEqual({
+      current: "2026-11",
+      ended: null,
+    });
+    // 1 January goes back a year.
+    expect(periodChoiceAt(new Date("2026-12-31T22:00:00Z"), IST)).toEqual({
+      current: "2027-01",
+      ended: "2026-12",
+    });
+    expect(previousMonth("2027-01")).toBe("2026-12");
+  });
+});
+
+describe("sessionPeriodFor -- the month a count being opened states", () => {
+  const at0030 = new Date("2026-10-31T21:30:00Z"); // 00:30, 1 Nov, Istanbul
+  const later = new Date("2026-11-02T09:00:00Z");
+
+  it("is this month when none is named", () => {
+    expect(sessionPeriodFor(undefined, "month_end", at0030, IST)).toBe(
+      "2026-11",
+    );
+    expect(sessionPeriodFor(null, "closing", later, IST)).toBe("2026-11");
+  });
+
+  it("takes last month only in the 6 hours after it ended", () => {
+    expect(sessionPeriodFor("2026-10", "month_end", at0030, IST)).toBe(
+      "2026-10",
+    );
+    expect(() => sessionPeriodFor("2026-10", "month_end", later, IST)).toThrow(
+      CountPeriodRefused,
+    );
+  });
+
+  it("refuses any other month and anything that is not a month", () => {
+    for (const bad of ["2026-12", "2026-09", "October", 202610, "2026-1"])
+      expect(() => sessionPeriodFor(bad, "full", at0030, IST)).toThrow(
+        CountPeriodRefused,
+      );
+  });
+
+  it("gives an opening count no month, and a house with no zone none unless asked", () => {
+    expect(sessionPeriodFor("2026-10", "opening", at0030, IST)).toBeNull();
+    expect(sessionPeriodFor(undefined, "closing", at0030, null)).toBeNull();
+    expect(() => sessionPeriodFor("2026-11", "closing", at0030, null)).toThrow(
+      CountPeriodRefused,
+    );
   });
 });

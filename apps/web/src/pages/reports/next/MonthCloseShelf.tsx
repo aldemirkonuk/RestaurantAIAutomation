@@ -51,7 +51,14 @@ export interface MonthCloseFigures {
     valuedAt: string;
   };
   purchases: { orders: number; unpriced: number; totals: MonthCloseMoney[] };
-  variance: { counts: number; netBottles: number; shortBottles: number; overBottles: number };
+  variance: {
+    counts: number;
+    netBottles: number;
+    shortBottles: number;
+    overBottles: number;
+    /** F-1544: open bottles, in ml, over the counts that named them; absent on an older close. */
+    openMl?: { counts: number; netMl: number; shortMl: number; overMl: number };
+  };
 }
 
 export interface MonthClose {
@@ -77,7 +84,7 @@ export interface MonthCloseChange {
 }
 
 export interface MonthCloseAgainstNow {
-  figure: 'till_net_sales' | 'till_checks' | 'purchases' | 'variance_net';
+  figure: 'till_net_sales' | 'till_checks' | 'purchases' | 'variance_net' | 'variance_open_ml';
   label: string;
   atClose: number | null;
   now: number | null;
@@ -204,6 +211,12 @@ function Kept({ close }: { close: MonthClose }) {
           ? 'no shelf counts in the month'
           : `${countOf(f.variance.shortBottles, 'bottle', 'bottles')} short, ${countOf(f.variance.overBottles, 'bottle', 'bottles')} over`}
       </li>
+      {/* F-1544 (F3 a): said only when a count named its open bottles. */}
+      {f.variance.openMl && f.variance.openMl.counts > 0 && (
+        <li>
+          Open bottles counted: {figure(f.variance.openMl.shortMl)} ml short, {figure(f.variance.openMl.overMl)} ml over
+        </li>
+      )}
       <li>
         Cellar value when closed:{' '}
         {f.valuation.inventoryValue !== null
@@ -222,7 +235,13 @@ function Since({ detail }: { detail: MonthCloseDetail }) {
       <ul className="rp-cap" aria-label="Kept against now">
         {detail.againstNow.map((a) => {
           const fmt = (v: number | null) =>
-            a.figure === 'till_checks' || a.figure === 'variance_net' ? figure(v) : money(v, 'full', a.currency);
+            a.figure === 'variance_open_ml'
+              ? v === null
+                ? figure(v)
+                : `${figure(v)} ml`
+              : a.figure === 'till_checks' || a.figure === 'variance_net'
+                ? figure(v)
+                : money(v, 'full', a.currency);
           return (
             <li key={`${a.figure}:${a.currency ?? ''}`}>
               {a.label}

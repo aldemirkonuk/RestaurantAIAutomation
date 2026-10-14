@@ -19,8 +19,20 @@ export interface CountSessionSummary {
   kind: CountSessionKind;
   status: 'open' | 'signed_off' | 'abandoned';
   openedAt: string;
+  /** F-1544 lane 5: the month (YYYY-MM) its counts are filed in; null when it names none. */
+  period?: string | null;
   shelves: number;
   shelvesDone: number;
+}
+
+/**
+ * The months a count opened now may be for (F-1544 lane 5, F1 b): this
+ * month, and the month that just ended while within its 6 hours. Null when
+ * the house has no time zone.
+ */
+export interface CountPeriods {
+  current: string;
+  ended: string | null;
 }
 
 export interface CountShelfItem {
@@ -54,6 +66,7 @@ export interface CountSession {
   kind: CountSessionKind;
   status: 'open' | 'signed_off' | 'abandoned';
   openedAt: string;
+  period?: string | null;
   shelves: CountShelf[];
 }
 
@@ -68,15 +81,20 @@ export interface ShelfDoneResult {
   message?: string;
 }
 
-export async function listOpenCountSessions(): Promise<CountSessionSummary[]> {
-  const res = await apiClient.get<{ sessions: CountSessionSummary[] }>(PATH);
-  return res.data?.sessions ?? [];
+export async function listOpenCountSessions(): Promise<{
+  sessions: CountSessionSummary[];
+  periods: CountPeriods | null;
+}> {
+  const res = await apiClient.get<{ sessions: CountSessionSummary[]; periods?: CountPeriods | null }>(PATH);
+  return { sessions: res.data?.sessions ?? [], periods: res.data?.periods ?? null };
 }
 
 export async function openCountSession(body: {
   kind: CountSessionKind;
   zoneIds?: string[];
   openKey: string;
+  /** YYYY-MM; not named = this month. */
+  period?: string;
 }): Promise<CountSession> {
   const res = await apiClient.post<CountSession>(PATH, body);
   return res.data;
