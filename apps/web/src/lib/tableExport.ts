@@ -5,7 +5,9 @@
  * always matches the active filters. Heavy writers (ExcelJS, jsPDF) are
  * dynamically imported so they stay out of the main bundle.
  */
+import { currencyMinorUnits } from './currency'
 import { getHouseLocale } from './houseCurrency'
+import { getHouseZone } from './houseZone'
 
 export type TableExportFormat =
   | 'csv'
@@ -41,6 +43,8 @@ export interface TableExportOptions<T> {
    * Written into every file but JSON and the clipboard, which stay the table.
    */
   about?: Array<[string, string]>
+  /** The house's IANA zone for the "generated" stamp; the picked house's by default (F-1740). */
+  zone?: string | null
 }
 
 const EXTENSIONS: Partial<Record<TableExportFormat, string>> = {
@@ -73,6 +77,62 @@ function toCells<T>(rows: T[], columns: TableExportColumn<T>[]): Cell[][] {
 
 function cellText(cell: Cell, decimal = '.'): string {
   return typeof cell === 'number' ? String(cell).replace('.', decimal) : cell
+}
+
+/** A header `moneyHeader` wrote, with the unit it names (F-599). */
+const MONEY_HEADER = / \(([A-Z]{3}|currency not read|currency not recorded)\)$/
+
+/**
+ * How a number reads in a file a person reads (PDF, print, HTML, Markdown),
+ * per column (F-1740): money the way the screen shows it — the house's decimal
+ * mark and grouping, to its currency's places (two; "1.234,56" in a lira
+ * house); any other number with the house's decimal mark and no grouping, so
+ * a vintage stays "2019" and never "2.019". CSV, TSV, the clipboard and the
+ * workbook keep the raw figure a sheet can sum.
+ */
+function documentNumbers(headers: string[], locale: string): Array<(n: number) => string> {
+  const make = (o: Intl.NumberFormatOptions) => {
+    try {
+      return new Intl.NumberFormat(locale, o)
+    } catch {
+      return new Intl.NumberFormat('en-US', o)
+    }
+  }
+  return headers.map((h) => {
+    const unit = MONEY_HEADER.exec(h)?.[1]
+    if (unit === undefined) {
+      const plain = make({ maximumFractionDigits: 3, useGrouping: false })
+      return (n) => plain.format(n)
+    }
+    const places = currencyMinorUnits(unit) ?? 2
+    const money = make({ minimumFractionDigits: places, maximumFractionDigits: places })
+    return (n) => money.format(n)
+  })
+}
+
+/**
+ * When a file was made, on the house's clock when it has one and in the
+ * house's formats, as the valuation file's "As of" line says it (F-1740).
+ */
+function generatedSaid(locale: string, zone: string | null): string {
+  const now = new Date()
+  const opts: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 'short' }
+  const said = (o: Intl.DateTimeFormatOptions) => {
+    try {
+      return now.toLocaleString(locale, o)
+    } catch {
+      return now.toLocaleString('en-US', o)
+    }
+  }
+  if (zone) {
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: zone })
+      return `${said({ ...opts, timeZone: zone })}, house time (${zone})`
+    } catch {
+      // A zone this browser cannot read: the reader's clock stands in, and says so.
+    }
+  }
+  return `${said(opts)}, this device's time`
 }
 
 /**
@@ -247,7 +307,8 @@ function buildHtmlDocument(
   title: string,
   headers: string[],
   matrix: string[][],
-  about: Array<[string, string]> = [],
+  about: Array<[string, string]>,
+  generated: string,
 ): string {
   return `<!doctype html>
 <html>
@@ -266,7 +327,7 @@ function buildHtmlDocument(
 </head>
 <body>
 <h1>${escapeHtml(title)}</h1>
-<p class="meta">${matrix.length} row${matrix.length === 1 ? '' : 's'} · generated ${new Date().toLocaleString()}</p>
+<p class="meta">${matrix.length} row${matrix.length === 1 ? '' : 's'} · generated ${escapeHtml(generated)}</p>
 ${about.map(([k, v]) => `<p class="meta">${escapeHtml(k)}: ${escapeHtml(v)}</p>`).join('\n')}
 <table>
 <thead><tr>${headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>
@@ -286,11 +347,15 @@ export async function exportTable<T>({
   title = filename,
   locale = getHouseLocale(),
   about = [],
+  zone = getHouseZone(),
 }: TableExportOptions<T>): Promise<void> {
   const headers = columns.map((c) => c.header)
   const cells = toCells(rows, columns)
   const marks = csvMarks(locale)
-  const matrix = cells.map((row) => row.map((c) => cellText(c)))
+  // The document formats only: the house's marks, money to its places (F-1740).
+  const numbers = documentNumbers(headers, locale)
+  const matrix = cells.map((row) => row.map((c, j) => (typeof c === 'number' ? numbers[j](c) : c)))
+  const generated = generatedSaid(locale, zone)
   const ext = EXTENSIONS[format]
   const fullName = ext ? `${filename}.${ext}` : filename
   // The lines above the table, then one blank row, as the gateway's report CSV.
@@ -349,7 +414,7 @@ export async function exportTable<T>({
 
     case 'html': {
       downloadBlob(
-        new Blob([buildHtmlDocument(title, headers, matrix, about)], { type: 'text/html;charset=utf-8' }),
+        new Blob([buildHtmlDocument(title, headers, matrix, about, generated)], { type: 'text/html;charset=utf-8' }),
         fullName,
       )
       break
@@ -413,7 +478,7 @@ export async function exportTable<T>({
       doc.setFontSize(10)
       doc.setTextColor(130)
       doc.text(
-        `${matrix.length} row${matrix.length === 1 ? '' : 's'} · generated ${new Date().toLocaleString()}`,
+        `${matrix.length} row${matrix.length === 1 ? '' : 's'} · generated ${generated}`,
         14,
         25,
       )
@@ -437,7 +502,7 @@ export async function exportTable<T>({
     case 'print': {
       const win = window.open('', '_blank', 'width=1024,height=768')
       if (!win) throw new Error('Popup blocked — allow popups to print.')
-      win.document.write(buildHtmlDocument(title, headers, matrix, about))
+      win.document.write(buildHtmlDocument(title, headers, matrix, about, generated))
       win.document.close()
       win.focus()
       win.print()

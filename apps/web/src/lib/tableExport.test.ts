@@ -285,3 +285,52 @@ describe('the lines about a file (F-1607)', () => {
     expect(sheet.views[0]).toMatchObject({ state: 'frozen', ySplit: 4 })
   })
 })
+
+describe('Numbers in a file a person reads (F-1740)', () => {
+  type Wine = { name: string; vintage: number; live: number; wac: number; value: number }
+  const wineColumns: TableExportColumn<Wine>[] = [
+    { header: 'Wine', value: (w) => w.name },
+    { header: 'Vintage', value: (w) => w.vintage },
+    { header: 'Live', value: (w) => w.live },
+    { header: moneyHeader('WAC', 'TRY'), value: (w) => w.wac },
+    { header: moneyHeader('Value', 'TRY'), value: (w) => w.value },
+  ]
+  const wines = [{ name: 'Öküzgözü', vintage: 2019, live: 2.5, wac: 12.3456, value: 1234.5 }]
+  const textOf = async (b: Blob) => new TextDecoder().decode(await bytesOf(b))
+
+  it('HTML writes money the house way, to two places, and leaves a vintage ungrouped', async () => {
+    await exportTable({ format: 'html', rows: wines, columns: wineColumns, filename: 'x', locale: 'tr-TR', zone: null })
+    const html = await textOf(created[0])
+    expect(html).toContain('<td>2019</td><td>2,5</td><td>12,35</td><td>1.234,50</td>')
+  })
+
+  it('a point-decimal house reads 1,234.50 in Markdown', async () => {
+    await exportTable({ format: 'markdown', rows: wines, columns: wineColumns, filename: 'x', locale: 'en-US' })
+    const md = await textOf(created[0])
+    expect(md).toContain('| Öküzgözü | 2019 | 2.5 | 12.35 | 1,234.50 |')
+  })
+
+  it('the PDF table takes the same cells, and the CSV keeps the raw figures', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array([0]), { status: 200 })))
+    pdf.autoTable.mockClear()
+    await exportTable({ format: 'pdf', rows: wines, columns: wineColumns, filename: 'x', locale: 'tr-TR', zone: null })
+    expect(pdf.autoTable.mock.calls[0][1].body).toEqual([['Öküzgözü', '2019', '2,5', '12,35', '1.234,50']])
+    await exportTable({ format: 'csv', rows: wines, columns: wineColumns, filename: 'x', locale: 'en-US' })
+    const csv = (await textOf(created[0])).split('\n')
+    expect(csv[1]).toBe('"Öküzgözü","2019","2.5","12.3456","1234.5"')
+  })
+
+  it("'generated' is stamped on the house's clock and says so", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-10-14T21:30:00Z'))
+    try {
+      await exportTable({ format: 'html', rows: wines, columns: wineColumns, filename: 'x', locale: 'en-US', zone: 'Europe/Istanbul' })
+      const html = await textOf(created[0])
+      expect(html).toContain('generated Oct 15, 2026, 12:30 AM, house time (Europe/Istanbul)')
+      await exportTable({ format: 'html', rows: wines, columns: wineColumns, filename: 'x', locale: 'en-US', zone: null })
+      expect(await textOf(created[1])).toContain(", this device's time</p>")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
