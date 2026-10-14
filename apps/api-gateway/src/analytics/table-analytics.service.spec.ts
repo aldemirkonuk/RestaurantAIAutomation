@@ -444,3 +444,38 @@ describe("TableAnalyticsService — the tip rate is over net sales, and a check 
     expect(String(select?.args[0])).toMatch(/\btax_basis\b/);
   });
 });
+
+// F-1644 (wave-54 sim): a refund the till sends as a check with a minus total
+// was counted as a paid check, so it pulled every average check down by a
+// sale nobody made. It is taken off Taken and kept out of the average.
+describe("TableAnalyticsService — a refund check is no paid check (F-1644)", () => {
+  const sale = (id: string) =>
+    check({ id, subtotal: 1000, total: 1000, tip: null });
+  const refund = (id: string) =>
+    check({ id, subtotal: -1000, total: -1000, tip: null });
+
+  it("the server register takes the refund off Taken and out of Avg check", async () => {
+    const { service } = makeService({
+      pos_checks: [ok([sale("a"), sale("b"), refund("r")])],
+    });
+    const out: any = await service.getWaiterPerformance("r1", 90);
+    const maya = out.waiters.find((w: any) => w.name === "Maya");
+    expect(maya.revenue).toBeCloseTo(1000, 6);
+    expect(maya.avgCheck).toBeCloseTo(1000, 6);
+    expect(maya.paidChecks).toBe(2);
+    expect(maya.checksRefunded).toBe(1);
+    expect(out.checksRefunded).toBe(1);
+  });
+
+  it("the table register does the same per table", async () => {
+    const { service } = makeService({
+      restaurant_tables: [ok([{ id: "t1", label: "T1", seats: 4 }])],
+      pos_checks: [ok([sale("a"), refund("r")])],
+    });
+    const out: any = await service.getTablePerformance("r1", 90);
+    const t1 = out.tables.find((t: any) => t.tableId === "t1");
+    expect(t1.avgCheck).toBeCloseTo(1000, 6);
+    expect(t1.revenue).toBeCloseTo(0, 6);
+    expect(out.checksRefunded).toBe(1);
+  });
+});

@@ -658,7 +658,9 @@ describe("ReportExportsService — a report export is written, or says why not (
     expect(written).toMatch(
       /^Written,"\d{4}-\d{2}-\d{2} \d{2}:\d{2}, house time \(America\/Los_Angeles\)"$/,
     );
-    expect(a.body).toContain("Refunds are not taken off.");
+    expect(a.body).toContain(
+      "Refunds your till sends as a check with a minus total are taken off Taken.",
+    );
   });
 
   it("lists newest first, bounded, with the exact total — and never carries the files", async () => {

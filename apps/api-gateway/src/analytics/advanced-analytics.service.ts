@@ -2,7 +2,11 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readForKeys, readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
-import { AnalyticsService } from "./analytics.service";
+import {
+  AnalyticsService,
+  demandDaysOnList,
+  salesRecordedFromOf,
+} from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
 import {
@@ -188,7 +192,7 @@ export class AdvancedAnalyticsService {
           // Same schema-drift fix as AnalyticsService.loadInventory: a single
           // unknown column 42703s the whole PostgREST query.
           .select(
-            "id, wine_name, stock_live, menu_price_current, menu_price_glass, last_purchase_price, last_purchase_price_tax_basis, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_id, master_wine_library(primary_type, bottle_size_ml)",
+            "id, wine_name, created_at, stock_live, menu_price_current, menu_price_glass, last_purchase_price, last_purchase_price_tax_basis, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_id, master_wine_library(primary_type, bottle_size_ml)",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
@@ -245,6 +249,8 @@ export class AdvancedAnalyticsService {
         masterWineId: i.master_wine_id,
         name: i.wine_name || i.master_wine_id || i.id,
         type: i.master_wine_library?.primary_type || "unknown",
+        // F-1645: the day the wine went on the list, as the reorder register reads it.
+        listedAt: (i.created_at as string | null | undefined) ?? null,
         qty: lot?.live_qty ?? i.stock_live ?? 0,
         unitCost,
         costBasis,
@@ -514,10 +520,44 @@ export class AdvancedAnalyticsService {
   // 1. Menu engineering — Stars / Plowhorses / Puzzles / Dogs  (#124, #301)
   // =========================================================================
 
+  /** F-1645: fewer days of sales than this give a wine no quadrant. */
+  static readonly MENU_MIN_DAYS = 7;
+
+  /**
+   * F-1645: the house's zone and the day it was set up here, for the days a
+   * wine's sales are averaged over. Unread, the zone is UTC's and the house's
+   * age unknown, so every wine keeps its own days on the list.
+   */
+  private async readHouseDays(
+    restaurantId: string,
+  ): Promise<{ zone: string | null; openedOn: string | null }> {
+    try {
+      const { data, error } = await this.dbService
+        .getClient()
+        .from("restaurants")
+        .select("timezone, country, created_at")
+        .eq("id", restaurantId)
+        .maybeSingle();
+      if (error) throw error;
+      const opened =
+        typeof data?.created_at === "string"
+          ? data.created_at.slice(0, 10)
+          : "";
+      return {
+        zone: houseFrame(data ?? null).zone,
+        openedOn: /^\d{4}-\d{2}-\d{2}$/.test(opened) ? opened : null,
+      };
+    } catch (err: any) {
+      this.logQueryFailure("restaurants", err);
+      return { zone: null, openedOn: null };
+    }
+  }
+
   async getMenuEngineering(restaurantId: string, sinceDays = 90) {
+    const { zone, openedOn } = await this.readHouseDays(restaurantId);
     const [inventory, consumption, house, tax] = await Promise.all([
       this.loadInventoryWithCost(restaurantId),
-      this.loadConsumption(restaurantId, sinceDays),
+      this.loadConsumption(restaurantId, sinceDays, zone ? { zone } : {}),
       readHouseTargetMargin(this.dbService.getClient(), restaurantId),
       // F-1587: the house's tax basis, as margin advice reads it.
       readAdviceTaxTerms(this.dbService.getClient(), restaurantId, null),
@@ -529,10 +569,24 @@ export class AdvancedAnalyticsService {
     const housePourMl = confirmedPourFrom(house.row);
     // Sales per house item, the ledger's key (ADR 0115): keyed by master
     // wine, a drink that is not a wine read zero velocity — a Dog (F-1014).
+    //
+    // F-1645: each wine's sales are averaged over the days it has been on the
+    // list, from the house's first recorded sale, ending yesterday: the
+    // reorder register's window (F-687, F-1516, F-1647). A fixed 90 days read
+    // a 9-day house's wines ten times too slow.
+    const today = zone
+      ? houseToday(zone)
+      : new Date().toISOString().slice(0, 10);
+    const recordsFrom = salesRecordedFromOf(openedOn, consumption, sinceDays);
     const soldByWine = new Map<string, number>();
+    const saleDaysByWine = new Map<string, Array<{ date: string }>>();
     const standInWines = new Set<string>();
     for (const c of consumption) {
       if (!c.inventoryId || c.qty == null) continue;
+      if (c.date >= today) continue;
+      const days = saleDaysByWine.get(c.inventoryId) || [];
+      days.push({ date: c.date });
+      saleDaysByWine.set(c.inventoryId, days);
       soldByWine.set(
         c.inventoryId,
         (soldByWine.get(c.inventoryId) || 0) + c.qty,
@@ -592,13 +646,26 @@ export class AdvancedAnalyticsService {
                 ? null
                 : E.grossMargin(i.unitCost, i.unitPrice),
           };
+      const velocityDays = demandDaysOnList(
+        i.listedAt,
+        saleDaysByWine.get(i.id) || [],
+        sinceDays,
+        zone,
+        recordsFrom,
+        true,
+      );
       return {
         id: i.id,
         name: i.name,
         type: i.type,
         velocityPerDay: unmeasuredWines.has(i.id)
           ? null
-          : (soldByWine.get(i.id) || 0) / sinceDays,
+          : (soldByWine.get(i.id) || 0) / velocityDays,
+        velocityDays,
+        // F-1645: too few days of sales to say whether it moves; no quadrant.
+        ...(velocityDays < AdvancedAnalyticsService.MENU_MIN_DAYS
+          ? { tooFewDays: true as const }
+          : {}),
         sizeStandIn: standInWines.has(i.id),
         priceBasis: i.priceBasis,
         marginPerBottle: m.marginPerBottle,
@@ -609,6 +676,7 @@ export class AdvancedAnalyticsService {
     });
 
     const velocities = items
+      .filter((i) => !("tooFewDays" in i))
       .map((i) => i.velocityPerDay)
       .filter((v): v is number => v != null);
     // The margin cutoff is a median over the wines that HAVE a margin. Rows
@@ -638,6 +706,7 @@ export class AdvancedAnalyticsService {
       // Same for the other axis: no bottle figure, no velocity, no quadrant.
       if (i.velocityPerDay == null)
         return { ...i, quadrant: null, action: null };
+      if ("tooFewDays" in i) return { ...i, quadrant: null, action: null };
       const highVel = i.velocityPerDay > medVel;
       const highMargin = i.marginPerBottle > medMargin;
       const quadrant = highVel
@@ -656,6 +725,8 @@ export class AdvancedAnalyticsService {
       unclassified: 0,
       unmeasured: 0,
       unpriced: leftOut.length,
+      // F-1645: a costed, measured wine with too few days of sales.
+      tooFewDays: 0,
       // F-1587: a costed wine with no pre-tax margin, for its named reason.
       ...(taxed ? { taxRefused: 0 } : {}),
     };
@@ -664,7 +735,8 @@ export class AdvancedAnalyticsService {
         counts.taxRefused += 1;
       else if (c.marginPerBottle == null || medMargin == null)
         counts.unclassified += 1;
-      else if (c.quadrant == null) counts.unmeasured += 1;
+      else if (c.velocityPerDay == null) counts.unmeasured += 1;
+      else if (c.quadrant == null) counts.tooFewDays += 1;
       else counts[c.quadrant] = (counts[c.quadrant] || 0) + 1;
 
     return {
@@ -673,7 +745,7 @@ export class AdvancedAnalyticsService {
         ? { taxBasisUnread: true }
         : {}),
       basis: {
-        velocity: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}`,
+        velocity: `bottles/day over ${sinceDays}d at most, ending yesterday: each wine over the days since it was listed when that is fewer (items[].velocityDays)${recordsFrom ? `, and never from before the house's first recorded sale on ${recordsFrom}` : ""}; a wine with fewer than ${AdvancedAnalyticsService.MENU_MIN_DAYS} days is given no quadrant (counts.tooFewDays) — ${unitsBasisSentence(unitsCoverage)}`,
         // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
         // that came from WAC on ~2 rows in 72 and from a fabricated
         // 0.6 × menu price on the rest.

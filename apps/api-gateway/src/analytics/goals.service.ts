@@ -1229,6 +1229,10 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     untotaled?: number;
     /** pos_revenue only: checks rung at 0, a comp or a staff meal (F-1534). */
     zeroTotaled?: number;
+    /** pos_revenue only: refund checks, with a minus total (F-1644). */
+    refundTotaled?: number;
+    /** pos_revenue only: the money those refunds gave back, as a positive sum. */
+    refundedSum?: number;
   }> {
     /**
      * Days of stock, before everything else, and deliberately OUTSIDE the
@@ -1325,6 +1329,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     let units: UnitsLabel | undefined;
     let untotaled = 0;
     let zeroTotaled = 0;
+    let refundTotaled = 0;
+    let refundedSum = 0;
     const add = (date: string, v: number) => {
       daily.set(date, (daily.get(date) || 0) + v);
     };
@@ -1467,6 +1473,13 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
             // F-1534: a check rung at 0 took no money; it is in the sum as
             // nothing and counted, so the page's average can leave it out.
             if (t === 0) zeroTotaled += 1;
+            // F-1644: a refund the till sends as a check with a minus total
+            // is taken off the sum above, and counted, so the average check
+            // can leave it out of both its sum and its count.
+            if (t != null && t < 0) {
+              refundTotaled += 1;
+              refundedSum -= t;
+            }
           }
         } else if (metricKey === "checks") {
           for (const { day } of checks) add(day, 1);
@@ -1477,8 +1490,9 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
             .map(({ row: c }) => checkTotal(c))
             .filter((t): t is number => t != null);
           // F-1534: nor is a check rung at 0 (a comp, a staff meal) a sale;
-          // it would pull the average down by a check nobody paid.
-          const totals = stated.filter((t) => t !== 0);
+          // it would pull the average down by a check nobody paid. F-1644:
+          // nor is a refund, a check with a minus total.
+          const totals = stated.filter((t) => t > 0);
           if (!checks.length)
             throw new UnmeasuredGoalError(
               "No check has been filed since this goal was set, so there is no average check to measure yet.",
@@ -1489,7 +1503,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
             );
           if (!totals.length)
             throw new UnmeasuredGoalError(
-              "Every check filed since this goal was set was rung at 0, such as a comp or a staff meal, so there is no average check to measure yet.",
+              "Every check filed since this goal was set was rung at 0, such as a comp or a staff meal, or was a refund, so there is no average check to measure yet.",
             );
           return {
             current: totals.reduce((a, b) => a + b, 0) / totals.length,
@@ -1554,7 +1568,9 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       dailyDates: dates,
       rowCount,
       units,
-      ...(metricKey === "pos_revenue" ? { untotaled, zeroTotaled } : {}),
+      ...(metricKey === "pos_revenue"
+        ? { untotaled, zeroTotaled, refundTotaled, refundedSum }
+        : {}),
     };
   }
 
@@ -1716,6 +1732,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       checkCount: null,
       checksWithoutTotal: null,
       checksTakingNoMoney: null,
+      checksRefunded: null,
+      refunded: null,
       dailySeries: [],
     };
 
@@ -1729,6 +1747,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       rowCount,
       untotaled,
       zeroTotaled,
+      refundTotaled,
+      refundedSum,
     } = await this.computeMetricWithSeries(
         restaurantId,
         "pos_revenue",
@@ -1751,6 +1771,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       checkCount: rowCount,
       checksWithoutTotal: untotaled ?? 0,
       checksTakingNoMoney: zeroTotaled ?? 0,
+      checksRefunded: refundTotaled ?? 0,
+      refunded: refundedSum ?? 0,
       dailySeries: dailyDates.map((date, i) => ({
         date,
         revenue: dailySeries[i] ?? 0,
@@ -1860,6 +1882,14 @@ export interface PosRevenueWindow {
    * out of its count. `null` when `checkCount` is.
    */
   checksTakingNoMoney?: number | null;
+  /**
+   * Of `checkCount`, the refunds the till sent as checks with a minus total
+   * (F-1644). They are taken off `revenue`, and an average check leaves them
+   * out of its count; `refunded` is the money they gave back, as a positive
+   * sum, so the average can add it back. `null` when `checkCount` is.
+   */
+  checksRefunded?: number | null;
+  refunded?: number | null;
   /** Sparse — only days that actually had revenue appear. */
   dailySeries: Array<{ date: string; revenue: number }>;
 }
