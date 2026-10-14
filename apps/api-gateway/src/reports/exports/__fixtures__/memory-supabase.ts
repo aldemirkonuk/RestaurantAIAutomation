@@ -247,9 +247,19 @@ class MemoryQuery implements PromiseLike<{ data: unknown; error: DbError | null;
     }
 
     if (this.op === "delete") {
-      const keep = this.db.rows(this.table).filter((r) => !this.filters.every((f) => f(r)));
+      const all = this.db.rows(this.table);
+      const keep = all.filter((r) => !this.filters.every((f) => f(r)));
+      const removed = all.filter((r) => this.filters.every((f) => f(r)));
       this.db.tables[this.table] = keep;
-      return { data: null, error: null };
+      // `.delete().select(cols)` returns the rows removed, as PostgREST's
+      // `return=representation` does; a bare delete returns none.
+      return {
+        data:
+          this.columns === undefined
+            ? null
+            : removed.map((r) => project(r, this.columns)),
+        error: null,
+      };
     }
 
     let rows = this.matching();

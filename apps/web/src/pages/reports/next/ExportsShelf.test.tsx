@@ -25,7 +25,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 }));
 vi.mock('@/services/api/client', () => ({ apiClient: api }));
 
-import ExportsShelf, { KEPT_SAID, emptyShelfSaid } from './ExportsShelf';
+import ExportsShelf, { KEPT_SAID, emptyShelfSaid, sweptSaid } from './ExportsShelf';
 import { REVOKE_AFTER_MS, reasonOf, saveFile, useReportExports, type ExportDesk } from './useReportExports';
 
 const base: ReportExport = {
@@ -88,6 +88,37 @@ describe('the shelf says how long it keeps a file (F-1605)', () => {
     const now = Date.parse('2026-10-12T22:30:00Z');
     expect(emptyShelfSaid('Europe/Istanbul', now)).toMatch(/before (15 Jul 2026|Jul 15, 2026) has been cleared/);
     expect(emptyShelfSaid('America/Detroit', now)).toMatch(/before (14 Jul 2026|Jul 14, 2026) has been cleared/);
+  });
+
+  const sweep = { sweptAt: '2027-01-12T01:00:00.000Z', removedCount: 3, keptDays: 90 };
+
+  it('an emptied shelf says how many files the sweep removed, and on which day (F-1605)', () => {
+    render(
+      <ExportsShelf desk={desk({ exports: [], total: 0, lastSweep: sweep })} onSheet={['ledger'] as never[]} tillDays={30} zone="Europe/Istanbul" />,
+    );
+    expect(
+      screen.getByText(/^Nothing is on the shelf\. 3 older files were removed on (12 Jan 2027|Jan 12, 2027) under the 90-day rule\.$/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/has been cleared, as files are kept/)).not.toBeInTheDocument();
+  });
+
+  it('dates the sweep on the house’s calendar, and says one file in the singular', () => {
+    expect(sweptSaid({ ...sweep, removedCount: 1 }, 'America/Detroit')).toMatch(
+      /^1 older file was removed on (11 Jan 2027|Jan 11, 2027) under the 90-day rule\.$/,
+    );
+    expect(sweptSaid(null, 'Europe/Istanbul')).toBeNull();
+    expect(sweptSaid(undefined, 'Europe/Istanbul')).toBeNull();
+  });
+
+  it('with no sweep record, or an unread one, the shelf keeps the rule’s own sentence', () => {
+    shelf(desk({ exports: [], total: 0, lastSweep: undefined }));
+    expect(screen.getByText(/has been cleared, as files are kept for 90 days/)).toBeInTheDocument();
+    expect(screen.queryByText(/were removed on/)).not.toBeInTheDocument();
+  });
+
+  it('a shelf with files still says what the last sweep removed', () => {
+    shelf(desk({ exports: [base], total: 1, lastSweep: sweep }));
+    expect(screen.getByText(/Export 1 of 1 stored\. 3 older files were removed on/)).toBeInTheDocument();
   });
 });
 
@@ -312,6 +343,24 @@ describe('useReportExports — the desk (OD-81)', () => {
     vi.useRealTimers();
   });
 
+  it('carries the gateway’s sweep record, and drops a malformed one as unread (F-1605)', async () => {
+    const swept = { sweptAt: '2027-01-12T01:00:00.000Z', removedCount: 3, keptDays: 90 };
+    api.get.mockResolvedValueOnce({ data: { exports: [], total: 0, lastSweep: swept } });
+    const first = renderHook(() => useReportExports({ queryRoot: 'reports-next' }), { wrapper: wrapper() });
+    await waitFor(() => expect(first.result.current.exports).toEqual([]));
+    expect(first.result.current.lastSweep).toEqual(swept);
+
+    api.get.mockResolvedValueOnce({ data: { exports: [], total: 0, lastSweep: null } });
+    const none = renderHook(() => useReportExports({ queryRoot: 'reports-next' }), { wrapper: wrapper() });
+    await waitFor(() => expect(none.result.current.exports).toEqual([]));
+    expect(none.result.current.lastSweep).toBeNull();
+
+    api.get.mockResolvedValueOnce({ data: { exports: [], total: 0, lastSweep: { sweptAt: 'x', removedCount: 0, keptDays: 90 } } });
+    const bad = renderHook(() => useReportExports({ queryRoot: 'reports-next' }), { wrapper: wrapper() });
+    await waitFor(() => expect(bad.result.current.exports).toEqual([]));
+    expect(bad.result.current.lastSweep).toBeUndefined();
+  });
+
   it('lists through the authenticated client, and re-reads a queued export until it settles', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const queued = { ...base, status: 'queued', finishedAt: null };
@@ -322,6 +371,8 @@ describe('useReportExports — the desk (OD-81)', () => {
 
     await waitFor(() => expect(result.current.exports?.[0].status).toBe('queued'));
     expect(api.get).toHaveBeenCalledWith('/reports/exports', { params: { limit: 20, offset: 0 } });
+    // No sweep record on the answer (an older gateway): unread, never "none removed".
+    expect(result.current.lastSweep).toBeUndefined();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2600);
     });

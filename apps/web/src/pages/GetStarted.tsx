@@ -11,6 +11,8 @@ import { MenuScanUpload } from '../components/onboarding/MenuScanUpload'
 import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
 import { CurrencyStep } from '../components/onboarding/CurrencyStep'
 import { ThresholdStep } from '../components/onboarding/ThresholdStep'
+import { TaxBasisStep, taxBasisToAsk } from '../components/onboarding/TaxBasisStep'
+import type { TaxBasisReadout } from './settings/next/TaxBasisSection'
 import { useAuth, type JobRole } from '../contexts/AuthContext'
 import { apiClient } from '../services/api/client'
 import { getOnboardingProgress, importMenu, type MenuImportResult } from '../services/api/menus'
@@ -23,7 +25,7 @@ import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWor
 import { READ_WITHOUT_ANSWER, readWithoutAnswer } from '../lib/menuReadWithoutAnswer'
 import { SCAN_ACCEPT, isImageFile, isScannable, isTabular, resetFileInput, tooLargeRefusal, validateSelection } from '../lib/uploadAccept'
 
-type Step = 'you' | 'restaurant' | 'menu' | 'reading' | 'threshold'
+type Step = 'you' | 'restaurant' | 'tax' | 'menu' | 'reading' | 'threshold'
 type Role = 'Owner' | 'General manager' | 'Beverage lead' | 'Chef'
 type MenuMethod = 'photo' | 'file' | 'typed' | null
 
@@ -117,6 +119,7 @@ function ArrivalShell({
   const label = {
     you: '01 · You',
     restaurant: '02 · Your restaurant',
+    tax: 'Your till’s prices',
     menu: '03 · Your menu',
     reading: '04 · Reading',
     threshold: 'Low stock',
@@ -182,6 +185,8 @@ function GetStartedSteps() {
   const [country, setCountry] = useState('')
   const [stateProvince, setStateProvince] = useState('')
   const [postalCode, setPostalCode] = useState('')
+  /** The house's tax-basis readout, while the arrival asks it (F-1590). */
+  const [taxReg, setTaxReg] = useState<TaxBasisReadout | null>(null)
   const [restaurantPhone, setRestaurantPhone] = useState('')
   const [placePoint, setPlacePoint] = useState<{
     latitude: number
@@ -370,7 +375,11 @@ function GetStartedSteps() {
         mobileKept ? null : MOBILE_NOT_KEPT,
       ].filter(Boolean)
       setNotice(said.length ? said.join(' ') : null)
-      setStep('menu')
+      // F-1590: the tax basis is asked here, before any till is connected,
+      // when the house has not answered; otherwise straight to the menu.
+      const ask = await taxBasisToAsk()
+      setTaxReg(ask)
+      setStep(ask ? 'tax' : 'menu')
     } catch (cause) {
       // Said from the status alone (F-006). A 409 means an earlier press
       // opened the house; going on into it from here is F-006 OPEN-2.
@@ -476,6 +485,14 @@ function GetStartedSteps() {
 
   if (step === 'threshold') {
     return <ThresholdArrival onMenu={() => setStep('menu')} />
+  }
+
+  if (step === 'tax' && taxReg) {
+    return (
+      <ArrivalShell step={step}>
+        <TaxBasisStep reg={taxReg} onDone={() => setStep('menu')} />
+      </ArrivalShell>
+    )
   }
 
   if (step === 'you') {

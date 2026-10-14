@@ -38,6 +38,7 @@ import {
   retryReportExport,
   type ReportExport,
   type ReportExportFormat,
+  type ReportExportSweep,
 } from '@/services/api/reports';
 import { failureOf, type Failure } from './rp-format';
 
@@ -50,6 +51,8 @@ export interface ExportDesk {
   readOnlyReason: string | null;
   exports: ReportExport[] | undefined;
   total: number | null;
+  /** The newest sweep that removed this house's files (F-1605); see `ReportExportList.lastSweep`. */
+  lastSweep?: ReportExportSweep | null;
   /** 1-indexed. The shelf shows REPORT_EXPORTS_PAGE_LIMIT (20) per page. */
   page: number;
   /** Null until `total` is known (an unreadable count leaves this null too). */
@@ -222,6 +225,7 @@ export function useReportExports({ queryRoot }: { queryRoot: string }): ExportDe
     readOnlyReason,
     exports: list.data?.exports,
     total,
+    lastSweep: list.data?.lastSweep,
     page,
     pageCount,
     canPrevPage,

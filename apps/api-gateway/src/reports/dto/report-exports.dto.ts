@@ -128,4 +128,15 @@ export class ReportExportListResponseDto {
   /** The exact count over the house's exports, or null when it could not be counted — never the page length. */
   @ApiProperty({ type: Number, nullable: true })
   total: number | null;
+
+  /**
+   * The newest retention sweep that removed files from this house (F-1605):
+   * null when none has since sweeps were recorded, absent when it could not be read.
+   */
+  @ApiProperty({ required: false, nullable: true })
+  lastSweep?: {
+    sweptAt: string;
+    removedCount: number;
+    keptDays: number;
+  } | null;
 }

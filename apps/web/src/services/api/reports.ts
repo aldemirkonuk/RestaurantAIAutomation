@@ -244,10 +244,22 @@ export interface ReportExport {
   fileStem?: string | null
 }
 
+/** The newest retention sweep that removed files from this house (F-1605). */
+export interface ReportExportSweep {
+  sweptAt: string
+  removedCount: number
+  keptDays: number
+}
+
 export interface ReportExportList {
   exports: ReportExport[]
   /** The exact count, or null when the gateway could not count — never the page length. */
   total: number | null
+  /**
+   * Null: no sweep has removed a file from this house since sweeps were
+   * recorded. Undefined: the record could not be read (or an older gateway).
+   */
+  lastSweep?: ReportExportSweep | null
 }
 
 /** The server's default page, and the shelf's page size (`report-exports.service.ts` listExports). */
@@ -267,7 +279,18 @@ export async function listReportExports(
   if (!data || !Array.isArray(data.exports))
     // A 200 without the list is not "no exports": say the answer was unreadable.
     throw new Error('the gateway answered without a list of exports')
-  return { exports: data.exports, total: typeof data.total === 'number' ? data.total : null }
+  const sweep = data.lastSweep
+  const lastSweep =
+    sweep === null
+      ? null
+      : sweep &&
+          typeof sweep.sweptAt === 'string' &&
+          Number.isInteger(sweep.removedCount) &&
+          sweep.removedCount > 0 &&
+          Number.isInteger(sweep.keptDays)
+        ? sweep
+        : undefined
+  return { exports: data.exports, total: typeof data.total === 'number' ? data.total : null, lastSweep }
 }
 
 /**
