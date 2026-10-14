@@ -180,6 +180,8 @@ export interface RemovalReceipt {
    * (F-1545), or one emailed to an account holder's address (F-1580).
    */
   inviteCancelled: boolean;
+  /** F-1637: shelves they had taken in an open stock count, given back. */
+  countShelvesReleased: number;
 }
 
 @Injectable()
@@ -1265,6 +1267,8 @@ export class TeamService {
     handover?: Handover | null,
   ): Promise<RemovalReceipt> {
     const userId = actor.userId;
+    // F-1637: their claimed, not-done shelves in this house's open counts.
+    let countShelvesReleased = 0;
     // An unused invite this removal expired: the one a "no account yet" row
     // stood in for (F-1545), or one emailed to the person's address (F-1580).
     let inviteCancelled = false;
@@ -1399,6 +1403,14 @@ export class TeamService {
         via: actor.via,
       });
 
+      // Their shelves taken in an open stock count go back to the house
+      // (F-1637), so a colleague can take one without a manager. A shelf they
+      // said was done stays done: its counts are already on the books.
+      countShelvesReleased = await this.releaseCountShelvesOf(
+        restaurantId,
+        member.user_id,
+      );
+
       // The `users` row stops naming this house (only this house) before the
       // access row goes; the reverse order could leave the person a member by
       // a `users` row nobody meant to keep (v3.0-TECH-DEBT 44.1j).
@@ -1523,6 +1535,8 @@ export class TeamService {
         self_leave: selfLeave,
         // F-1545: the unused invite a "no account yet" row stood in for.
         invite_cancelled: inviteCancelled,
+        // F-1637: count shelves they had taken, given back to the house.
+        count_shelves_released: countShelvesReleased,
       },
       notice: selfLeave
         ? undefined
@@ -1609,8 +1623,52 @@ export class TeamService {
       shiftsHandedOver: released.handedOver.length,
       handedTo: released.handedTo,
       inviteCancelled,
+      countShelvesReleased,
       ...receipt,
     };
+  }
+
+  /**
+   * F-1637: a person leaving the house lets go of the shelves they took in its
+   * open stock counts and had not said were done. Their `users` row stays, so
+   * the claim's ON DELETE SET NULL never fires, and only a manager could take
+   * a claimed shelf over. Before the first membership write; a failed read or
+   * write refuses the removal, so nobody leaves holding a shelf.
+   */
+  private async releaseCountShelvesOf(
+    restaurantId: string,
+    userId: string,
+  ): Promise<number> {
+    const { data: open, error: openErr } = await this.sb
+      .from("stock_count_sessions")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "open");
+    if (openErr) {
+      this.logger.error(
+        `releaseCountShelvesOf could not read the open counts of ` +
+          `${restaurantId}: ${openErr.message}`,
+      );
+      throw new InternalServerErrorException("Failed to remove member");
+    }
+    const ids = (open ?? []).map((s: any) => s.id as string);
+    if (ids.length === 0) return 0;
+    const { data: freed, error } = await this.sb
+      .from("stock_count_session_shelves")
+      .update({ claimed_by: null, claimed_at: null })
+      .eq("restaurant_id", restaurantId)
+      .eq("claimed_by", userId)
+      .is("done_at", null)
+      .in("session_id", ids)
+      .select("location_id");
+    if (error) {
+      this.logger.error(
+        `releaseCountShelvesOf could not let go of ${userId}'s shelves in ` +
+          `${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException("Failed to remove member");
+    }
+    return (freed ?? []).length;
   }
 
   /**

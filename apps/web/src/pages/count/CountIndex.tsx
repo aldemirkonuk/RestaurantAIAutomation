@@ -13,6 +13,10 @@
  * F-1544 lane 5 (the founder's F1 b, 2026-10-12): a count says which month it
  * is for. In the 6 hours after a month ends the page asks, so a count started
  * at 00:30 on the 1st can be the month that ended; otherwise it is this month.
+ *
+ * F-1617 / F-1628: a start asks first, naming the house and what the count
+ * covers; Opening stock says what it is, because it locks staff out and sets
+ * where the books start. The page names the house and offers the others.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -27,6 +31,7 @@ import {
   type CountSessionSummary,
 } from '@/services/api/countSessions'
 import { kindWords, newWalkId } from './countWalkModel'
+import { CountHouseLine } from './CountHouse'
 
 const TAP = 'min-h-[56px] min-w-[56px]'
 const KINDS: CountSessionKind[] = ['closing', 'month_end', 'full', 'opening']
@@ -39,6 +44,18 @@ function monthWords(period: string): string {
   )
 }
 
+/** What a start covers, said before it starts (F-1617). */
+function coverWords(kind: CountSessionKind, house: string): string {
+  const where = `every shelf of ${house}`
+  if (kind === 'opening')
+    return (
+      `Opening stock counts ${where} to set what the house starts with. Only an owner or a manager can count ` +
+      "it, so staff cannot count while it is open. Its lines are where the books start, so the month's " +
+      'differences leave them out.'
+    )
+  return `${kindWords(kind)} of ${where}. Everyone in the house can count it, and each line goes on the books when it is sent.`
+}
+
 function saidBy(err: unknown, fallback: string): string {
   const m = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message
   return typeof m === 'string' && m.trim() ? m : fallback
@@ -46,7 +63,7 @@ function saidBy(err: unknown, fallback: string): string {
 
 export default function CountIndex() {
   const navigate = useNavigate()
-  const { activeRole } = useAuth()
+  const { activeRole, availableRestaurants, activeRestaurantId } = useAuth()
   const manager = activeRole === 'owner' || activeRole === 'manager'
   const [sessions, setSessions] = useState<CountSessionSummary[] | null>(null)
   const [periods, setPeriods] = useState<CountPeriods | null>(null)
@@ -55,6 +72,10 @@ export default function CountIndex() {
   const [period, setPeriod] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // The kind tapped, waiting for "Start it" (F-1617).
+  const [asking, setAsking] = useState<CountSessionKind | null>(null)
+  const here = (availableRestaurants ?? []).find((r) => r.id === activeRestaurantId)
+  const houseName = here?.name ? (here.city ? `${here.name}, ${here.city}` : here.name) : null
   // One key per start, kept across a retry of the same start.
   const openKey = useRef<{ kind: CountSessionKind; period: string | null; key: string } | null>(null)
 
@@ -77,6 +98,7 @@ export default function CountIndex() {
   }, [load])
 
   const start = async (kind: CountSessionKind) => {
+    setAsking(null)
     setBusy(true)
     setError(null)
     // Named only while there is a choice; otherwise the gateway says this month.
@@ -120,6 +142,7 @@ export default function CountIndex() {
         </button>
         <h1 className="flex-1 text-base font-semibold">Stock count</h1>
       </div>
+      <CountHouseLine onSwitched={() => void load()} />
       <div className="space-y-3 px-4 py-4">
         {error && (
           <p role="alert" className="rounded-xl bg-white/10 px-3 py-2 text-sm text-amber-300">
@@ -171,17 +194,40 @@ export default function CountIndex() {
               </div>
             )}
             <p className="text-sm text-inkm-4">Start a count of every shelf</p>
-            {KINDS.map((k) => (
-              <button
-                key={k}
-                type="button"
-                disabled={busy}
-                onClick={() => void start(k)}
-                className={`${TAP} w-full rounded-xl bg-white/10 px-4 text-left font-semibold active:bg-white/20 disabled:opacity-50`}
-              >
-                {kindWords(k)}
-              </button>
-            ))}
+            {asking ? (
+              <div className="space-y-2 rounded-xl bg-white/5 px-4 py-3">
+                <p role="alert" className="text-inkm-1">
+                  {coverWords(asking, houseName ?? 'this house')}
+                </p>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void start(asking)}
+                  className={`${TAP} w-full rounded-xl bg-white px-4 font-semibold text-black disabled:opacity-50`}
+                >
+                  Start it
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAsking(null)}
+                  className={`${TAP} w-full rounded-xl bg-white/10 px-4 font-semibold active:bg-white/20`}
+                >
+                  Not now
+                </button>
+              </div>
+            ) : (
+              KINDS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setAsking(k)}
+                  className={`${TAP} w-full rounded-xl bg-white/10 px-4 text-left font-semibold active:bg-white/20 disabled:opacity-50`}
+                >
+                  {kindWords(k)}
+                </button>
+              ))
+            )}
           </div>
         )}
       </div>

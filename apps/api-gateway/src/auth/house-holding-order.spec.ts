@@ -51,6 +51,10 @@ function world(errors: Record<string, { message: string }> = {}): StubDb {
         { id: IN_C, restaurant_id: C },
         { id: IN_D, restaurant_id: D },
       ],
+      stock_count_sessions: [
+        { id: IN_B, restaurant_id: B },
+        { id: IN_C, restaurant_id: C },
+      ],
     },
     errors,
   );
@@ -112,5 +116,40 @@ describe("an order link names which of your houses holds it (F-245)", () => {
     await expect(
       controller.houseHolding(req, undefined as any),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe("a count link names which of your houses holds it (F-1629)", () => {
+  it("[REVERT-FAILS] names the other house of yours that holds the count", async () => {
+    const res = await new AuthController(service(world())).houseHolding(
+      req,
+      undefined as any,
+      IN_B,
+    );
+    expect(res).toEqual({
+      success: true,
+      house: { id: B, name: "Kadikoy", city: "Istanbul" },
+    });
+  });
+
+  it("says nothing of a count in a house the person is not in", async () => {
+    expect(await service(world()).houseHoldingCount(U, IN_C)).toBeNull();
+  });
+
+  it("refuses a count id that is not an id", async () => {
+    await expect(
+      new AuthController(service(world())).houseHolding(
+        req,
+        undefined as any,
+        "nope",
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("a failed read is a 503, never 'not in your houses'", async () => {
+    const db = world({ "stock_count_sessions:select": { message: "boom" } });
+    await expect(service(db).houseHoldingCount(U, IN_B)).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
   });
 });

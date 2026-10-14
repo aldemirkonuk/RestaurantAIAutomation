@@ -745,6 +745,7 @@ export class AuthController {
   /**
    * Which of the person's own houses holds an order (F-245): `/orders` asks
    * when a link names an order its house does not have, and offers to switch.
+   * `?count=` asks the same of a stock count, for `/count/:id` (F-1629).
    * `house` is one of `GET /auth/houses` or null; another house's order, a
    * house the person is not in, and no such order all read as null, so this
    * never says whether anyone else has it.
@@ -754,7 +755,19 @@ export class AuthController {
   async houseHolding(
     @Req() req: Request & { user: any },
     @Query("order") order: string,
+    // F-1629: a stock count link, under the same rule.
+    @Query("count") count?: string,
   ) {
+    if (count !== undefined) {
+      if (typeof count !== "string" || !UUID.test(count)) {
+        throw new BadRequestException("That is not a count link.");
+      }
+      const house = await this.authService.houseHoldingCount(
+        req.user.userId,
+        count,
+      );
+      return { success: true, house };
+    }
     if (typeof order !== "string" || !UUID.test(order)) {
       throw new BadRequestException("That is not an order link.");
     }

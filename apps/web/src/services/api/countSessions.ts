@@ -265,3 +265,33 @@ export async function signOffCountSession(
   const res = await apiClient.post<SignOffResult>(`${at(sessionId)}/sign-off`, { evenIfUnfinished });
   return res.data;
 }
+
+/**
+ * F-1617: an owner or a manager stops a count. The counts it already made
+ * stay on the books (each posted when it arrived); stopping twice is the same
+ * stop, and a signed-off count cannot be stopped (count-sessions.service.ts
+ * `abandon`).
+ */
+export async function abandonCountSession(
+  sessionId: string,
+): Promise<{ id: string; status: string; abandonedAt: string | null }> {
+  const res = await apiClient.post(`${at(sessionId)}/abandon`, {});
+  return res.data;
+}
+
+export interface HoldingHouse {
+  id: string;
+  name: string;
+  city: string | null;
+}
+
+/**
+ * F-1629: which of the person's own houses holds a count, for a link opened
+ * in another of their houses. Null when none of theirs does (the gateway
+ * never names a house the person is not in).
+ */
+export async function houseHoldingCount(sessionId: string): Promise<HoldingHouse | null> {
+  const res = await apiClient.get('/auth/houses/holding', { params: { count: sessionId } });
+  const house = res.data?.house;
+  return house && typeof house.id === 'string' ? (house as HoldingHouse) : null;
+}

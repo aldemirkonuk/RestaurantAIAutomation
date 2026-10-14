@@ -18,6 +18,10 @@
  *
  * What the books expected, the difference and its value come only to an
  * owner or a manager -- the gateway leaves them out for anyone else.
+ *
+ * F-1628 / F-1629 / F-1617: the page names its house and offers the others,
+ * offers to open a count held by another of the person's houses, and lets an
+ * owner or a manager stop an open count.
  */
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
@@ -39,6 +43,7 @@ import { getInventory } from '@/services/api/inventory'
 import { formatHouseMoney } from '@/lib/houseCurrency'
 import { findItems, kindWords, type FindableItem } from './countWalkModel'
 import { CountSheetPanel } from './CountSheetPanel'
+import { CountHeldElsewhere, CountHouseLine, StopCount } from './CountHouse'
 
 const TAP = 'min-h-[56px] min-w-[56px]'
 const BTN = `${TAP} rounded-xl px-4 text-base font-semibold`
@@ -122,9 +127,10 @@ export default function CountReview() {
     }
   }, [sessionId])
 
+  // Read again when the house changes (F-1629: "Open it there").
   useEffect(() => {
     void load()
-  }, [load])
+  }, [load, activeRestaurantId])
 
   /** One act at a time; the page is read again after each. */
   const act = async (key: string, run: () => Promise<string | null>) => {
@@ -160,6 +166,7 @@ export default function CountReview() {
             <p role="alert" className="text-amber-300">
               {error}
             </p>
+            <CountHeldElsewhere sessionId={sessionId} />
             <button type="button" className={`${QUIET} w-full`} onClick={() => void load()}>
               Try again
             </button>
@@ -455,6 +462,13 @@ export default function CountReview() {
               Sign off this count
             </button>
           )}
+          <StopCount
+            sessionId={sessionId}
+            onStopped={() => {
+              setNotice('This count is stopped. What was counted stays on the books.')
+              void load()
+            }}
+          />
         </div>
       )}
     </Frame>
@@ -479,6 +493,7 @@ function Frame({
   onBack: () => void
   children: ReactNode
 }) {
+  const navigate = useNavigate()
   return (
     <div
       className="mudavym mx-auto flex min-h-screen w-full max-w-[480px] flex-col bg-paper-0 text-inkm-1"
@@ -495,6 +510,7 @@ function Frame({
         </button>
         <h1 className="flex-1 text-base font-semibold">{title}</h1>
       </div>
+      <CountHouseLine onSwitched={() => navigate('/count')} />
       <div className="space-y-3 px-4 py-4">{children}</div>
     </div>
   )

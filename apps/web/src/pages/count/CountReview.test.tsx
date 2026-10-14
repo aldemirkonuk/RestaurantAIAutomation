@@ -23,6 +23,8 @@ const api = vi.hoisted(() => ({
   dropParkedCountLine: vi.fn(),
   askShelfRecount: vi.fn(),
   signOffCountSession: vi.fn(),
+  abandonCountSession: vi.fn(),
+  houseHoldingCount: vi.fn(),
 }))
 vi.mock('@/services/api/countSessions', () => api)
 vi.mock('@/services/api/inventory', () => ({
@@ -226,5 +228,27 @@ describe('the manager settles what the walk could not', () => {
     expect(screen.queryByText('Count this shelf again')).toBeNull()
     // A paper count that arrives after sign-off still lands (ADR 0241).
     expect(screen.getByRole('button', { name: 'Count on paper' })).toBeTruthy()
+  })
+})
+
+describe('stopping a count from the review (F-1617)', () => {
+  it('[REVERT-FAILS] a manager stops an open count after the question', async () => {
+    api.reviewCountSession.mockResolvedValue(review(true))
+    api.abandonCountSession.mockResolvedValue({ id: 'S1', status: 'abandoned', abandonedAt: 'x' })
+    show()
+    fireEvent.click(await screen.findByRole('button', { name: 'Stop this count' }))
+    expect(api.abandonCountSession).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop it' }))
+    await waitFor(() => expect(api.abandonCountSession).toHaveBeenCalledWith('S1'))
+    // The page reads the count again, now stopped.
+    await waitFor(() => expect(api.reviewCountSession).toHaveBeenCalledTimes(2))
+  })
+
+  it('staff are not offered it', async () => {
+    auth.value.activeRole = 'staff'
+    api.reviewCountSession.mockResolvedValue(review(false))
+    show()
+    await screen.findByText('Not counted', { selector: 'h2' })
+    expect(screen.queryByRole('button', { name: 'Stop this count' })).toBeNull()
   })
 })

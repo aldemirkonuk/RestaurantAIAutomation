@@ -617,3 +617,68 @@ describe("TeamService — tenant scoping is not weakened by any of the above", (
     ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
+
+describe("TeamService — F-1637: a person who leaves lets go of their count shelves", () => {
+  function withSamOnAShelf(db: StubDb) {
+    db.tables.team_members.push({
+      id: "m-sam",
+      restaurant_id: RID,
+      user_id: STAFF,
+      email: "sam@example.test",
+      display_name: "Sam",
+      status: "active",
+    });
+    db.tables.stock_count_sessions = [
+      { id: "s-open", restaurant_id: RID, status: "open" },
+      { id: "s-done", restaurant_id: RID, status: "signed_off" },
+      { id: "s-there", restaurant_id: OTHER_RID, status: "open" },
+    ];
+    const shelf = (session: string, loc: string, rid = RID, done = false) => ({
+      session_id: session,
+      restaurant_id: rid,
+      location_id: loc,
+      claimed_by: STAFF,
+      claimed_at: "2026-10-14T00:00:00Z",
+      done_by: done ? STAFF : null,
+      done_at: done ? "2026-10-14T00:30:00Z" : null,
+    });
+    db.tables.stock_count_session_shelves = [
+      shelf("s-open", "bar"),
+      shelf("s-open", "cellar", RID, true),
+      shelf("s-done", "bar"),
+      shelf("s-there", "bar", OTHER_RID),
+    ];
+  }
+  const claim = (db: StubDb, session: string, loc: string) =>
+    db.tables.stock_count_session_shelves.find(
+      (s) => s.session_id === session && s.location_id === loc,
+    )!.claimed_by;
+
+  it("[REVERT-FAILS] frees the not-done shelves of this house's open counts only, and says how many", async () => {
+    const db = seed();
+    withSamOnAShelf(db);
+    const receipt: any = await service(db).deleteMember(MANAGER, RID, "m-sam");
+
+    expect(claim(db, "s-open", "bar")).toBeNull();
+    expect(claim(db, "s-open", "cellar")).toBe(STAFF);
+    expect(claim(db, "s-done", "bar")).toBe(STAFF);
+    expect(claim(db, "s-there", "bar")).toBe(STAFF);
+    expect(receipt.countShelvesReleased).toBe(1);
+    expect(db.tables.system_audit_log[0].changes?.count_shelves_released).toBe(
+      1,
+    );
+  });
+
+  it("refuses the removal, keeping their access, when the shelves cannot be freed", async () => {
+    const db = seed();
+    withSamOnAShelf(db);
+    db.errors["stock_count_session_shelves:update"] = { message: "down" };
+
+    await expect(
+      service(db).deleteMember(MANAGER, RID, "m-sam"),
+    ).rejects.toThrow("Failed to remove member");
+    expect(
+      db.tables.user_restaurant_access.find((a) => a.user_id === STAFF),
+    ).toBeDefined();
+  });
+});
