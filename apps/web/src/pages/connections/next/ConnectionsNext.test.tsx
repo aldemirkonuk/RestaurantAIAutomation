@@ -2582,3 +2582,50 @@ describe('the till can be disconnected and reconnected', () => {
     ).toBeInTheDocument();
   });
 });
+
+/**
+ * F-1651: a check in the last 30 days is not a till sending now. Past two
+ * quiet days the row says when the newest check came, from any till, and
+ * each till shows its own last check.
+ */
+describe('the till row says when a till went quiet (F-1651)', () => {
+  const ago = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+
+  it('reads "Quiet since" once every till has been silent past the gap', () => {
+    const d = base();
+    const latest = ago(5 * 24);
+    d.pos = reg({
+      unavailable: false,
+      totalChecks: 12,
+      sources: [{ source: 'toast', providerName: 'Toast', checks: 12, latest }],
+      windowDays: 30,
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    const day = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(
+      new Date(latest),
+    );
+    expect(screen.getByText(`Quiet since ${day}`)).toBeInTheDocument();
+    expect(screen.queryByText('Sending')).not.toBeInTheDocument();
+    expect(screen.getByText(/Toast: 12, last check 5 days ago/)).toBeInTheDocument();
+  });
+
+  it('reads the newest check across tills, and names the quiet one', () => {
+    const d = base();
+    d.pos = reg({
+      unavailable: false,
+      totalChecks: 15,
+      sources: [
+        { source: 'square', providerName: 'Square', checks: 3, latest: ago(5 * 24) },
+        { source: 'toast', providerName: 'Toast', checks: 12, latest: ago(2) },
+      ],
+      windowDays: 30,
+    });
+    mockData.current = d;
+    render(<ConnectionsNext />);
+
+    expect(screen.getByText('Sending')).toBeInTheDocument();
+    expect(screen.getByText(/Square: 3, last check 5 days ago · Toast: 12, last check 2 hours ago/)).toBeInTheDocument();
+  });
+});

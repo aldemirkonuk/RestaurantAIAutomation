@@ -522,6 +522,28 @@ export function fmtExpiry(
   return `Expires in ${days} days`;
 }
 
+/* ── The till's last check ───────────────────────────────────────────────── */
+
+/**
+ * F-1651: the newest check any till sent, from the gateway's per-till
+ * `latest`. Reading the first till only hid one till's silence behind the
+ * other's order in the reply. Null when no till carries a readable date.
+ */
+export function newestCheck(
+  sources: ReadonlyArray<{ latest?: string | null }> | null | undefined,
+): string | null {
+  let best: string | null = null;
+  let bestT = -Infinity;
+  for (const s of sources ?? []) {
+    const t = s.latest ? Date.parse(s.latest) : NaN;
+    if (Number.isFinite(t) && t > bestT) {
+      bestT = t;
+      best = s.latest ?? null;
+    }
+  }
+  return best;
+}
+
 /* ── Flag names ──────────────────────────────────────────────────────────── */
 
 /**

@@ -1623,3 +1623,49 @@ describe('the collapse — four connection tabs become one line', () => {
     expect(within(nav).queryByRole('link', { name: /Connections/ })).not.toBeInTheDocument();
   });
 });
+
+/**
+ * F-1651: Settings › Point of sale dates the last check by the newest from
+ * any till (it read the first till only), names each till's own, and an
+ * empty 30-day window is 30 quiet days, never "no connection has been made".
+ */
+describe('SettingsNext — the till’s last check (F-1651)', () => {
+  const ago = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString();
+  const providers = { summary: { total: 0, byTier: {}, byStatus: {} }, providers: [] };
+
+  it('dates the last check by the newest till, and names each till’s own', () => {
+    mock.current = base({
+      pos: remote({
+        providers,
+        status: {
+          unavailable: false,
+          totalChecks: 15,
+          windowDays: 30,
+          sources: [
+            { source: 'square', providerName: 'Square', checks: 3, latest: ago(5 * 24) },
+            { source: 'toast', providerName: 'Toast', checks: 12, latest: ago(2) },
+          ],
+        },
+        statusError: null,
+      }),
+    });
+    mount('/settings?tab=pos');
+    expect(screen.getByText(/last check · 2 hours ago/)).toBeInTheDocument();
+    expect(
+      screen.getByText('Square: 3, last check 5 days ago · Toast: 12, last check 2 hours ago'),
+    ).toBeInTheDocument();
+  });
+
+  it('says 30 quiet days over an empty window, not a till never connected', () => {
+    mock.current = base({
+      pos: remote({
+        providers,
+        status: { unavailable: false, totalChecks: 0, windowDays: 30, sources: [] },
+        statusError: null,
+      }),
+    });
+    mount('/settings?tab=pos');
+    expect(screen.getByText(/No till has sent a check in the last 30 days/)).toBeInTheDocument();
+    expect(screen.queryByText(/no connection has been made yet/)).not.toBeInTheDocument();
+  });
+});

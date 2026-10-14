@@ -122,6 +122,7 @@ import {
 import { grantHolds, wouldAskFor } from './cx-permissions';
 import { HouseServerControls } from './HouseServerControls';
 import { TaxBasisSetupLine } from '../../settings/next/TaxBasisSection';
+import { newestCheck } from '../../settings/next/st-format';
 import { DistributorFeedPanel } from './DistributorFeedPanel';
 import { StripeCardPanel } from '../../../components/mudavym/StripeCardPanel';
 import {
@@ -1895,24 +1896,49 @@ function Tally({ n, k, seal }: { n: number | null; k: string; seal?: boolean }) 
   );
 }
 
+/**
+ * F-1651: how long the tills may all be silent before the row stops saying
+ * "Sending". Two days, so a house shut one day a week does not read as an
+ * outage on its day off.
+ */
+const TILL_QUIET_AFTER_MS = 48 * 3_600_000;
+
 function posChips(
-  pos: { unavailable: boolean; totalChecks: number | null } | null,
+  pos: {
+    unavailable: boolean;
+    totalChecks: number | null;
+    sources?: Array<{ latest?: string | null }> | null;
+  } | null,
 ): RowChip[] {
   if (!pos) return [{ label: 'Did not report', tone: 'off' }];
   if (pos.unavailable) return [{ label: 'Could not be read', tone: 'warn' }];
-  return (pos.totalChecks ?? 0) > 0
-    ? [{ label: 'Sending', tone: 'on' }]
-    : [{ label: 'Nothing in 30 days', tone: 'off' }];
+  if ((pos.totalChecks ?? 0) === 0) return [{ label: 'Nothing in 30 days', tone: 'off' }];
+  // F-1651: a check in the last 30 days is not a till sending now. Past the
+  // gap, the row says when the newest check came, from any till.
+  const last = newestCheck(pos.sources);
+  if (last && Date.now() - Date.parse(last) > TILL_QUIET_AFTER_MS) {
+    return [{ label: `Quiet since ${onDate(last)}`, tone: 'warn' }];
+  }
+  return [{ label: 'Sending', tone: 'on' }];
 }
 
 function posSources(
   pos: {
-    sources: Array<{ source: string; providerName?: string; checks?: number }> | null;
+    sources: Array<{
+      source: string;
+      providerName?: string;
+      checks?: number;
+      latest?: string | null;
+    }> | null;
   } | null,
 ) {
   if (!pos?.sources?.length) return 'No source has sent a check in the window.';
+  // F-1651: each till's own last check, so one till's silence shows.
   return pos.sources
-    .map((s) => `${s.providerName ?? s.source}: ${count(s.checks ?? null)}`)
+    .map(
+      (s) =>
+        `${s.providerName ?? s.source}: ${count(s.checks ?? null)}, last check ${when(s.latest).replace(/^(Just now|Yesterday)$/, (w) => w.toLowerCase())}`,
+    )
     .join(' · ');
 }
 

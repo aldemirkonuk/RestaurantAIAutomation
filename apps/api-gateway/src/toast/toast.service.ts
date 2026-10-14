@@ -504,21 +504,27 @@ export class ToastService {
       .select("id")
       .single();
 
-    if (error) {
-      // Check for duplicate (idempotency)
-      if (error.code === "23505") {
-        this.logger.log({
-          message: "Duplicate webhook event (idempotent)",
-          eventId: webhookDto.eventId,
-        });
-        return undefined;
-      }
+    // F-1649: a duplicate is NOT a replay to skip. The log row is written
+    // before the check is kept, so a first delivery refused at the door (409
+    // disconnected, 503 unreadable) or not stored left the row behind, and
+    // Toast's retry of the same eventId used to stop here: the order was
+    // never kept. The hub is the idempotency for the sale (a copy it already
+    // keeps is re-stored as itself and its stock ledger moves only the
+    // difference), so the retry is handed over again below.
+    const replayed = error?.code === "23505";
+    if (error && !replayed) {
       // The event row is a log line, not the sale. A failed log must never
       // stop the sale taking stock off the shelf (F-554), so it is said
       // loudly and the effects below still run.
       this.logger.error(
         `Toast order event ${webhookDto.eventId} was not logged: ${error.message}`,
       );
+    }
+    if (replayed) {
+      this.logger.log({
+        message: "Toast order event delivered again; handing it to the hub",
+        eventId: webhookDto.eventId,
+      });
     }
 
     // F-642: the order goes through the POS hub as a Toast check: it is kept
@@ -579,7 +585,7 @@ export class ToastService {
 
     // A disconnected house refuses Toast as it refuses every till (F-643).
     await this.posHub.assertConnected(restaurantId, "toast");
-    const result = await this.posHub.ingest(restaurantId, "toast", {
+    const result = await this.ingestToast(this.posHub, restaurantId, {
       checks: [
         {
           guid: order.guid,
@@ -603,9 +609,53 @@ export class ToastService {
         },
       ],
     });
+    // F-1649: a check the hub did not keep is not answered "processed".
+    // Toast retries a non-2xx, and the retry is handed over again (above),
+    // so the order is kept once the cause clears. A copy older than the one
+    // kept, or one refused for an unreadable date (said on the bell, ADR
+    // 0281), is handled: retrying it changes nothing.
+    const notStored =
+      (result.received ?? 0) -
+      (result.upserted ?? 0) -
+      (result.olderCopies ?? 0) -
+      (result.refusedUnreadableDate ?? 0);
+    if (notStored > 0) {
+      this.logger.error(
+        `Toast order ${order.guid} was not kept: ${result.errors.slice(0, 5).join("; ")}`,
+      );
+      throw new HttpException(
+        `Toast order ${order.guid} was not kept; send it again`,
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    }
     if (result.errors.length > 0) {
       this.logger.warn(
         `Toast order ${order.guid}: ${result.errors.slice(0, 5).join("; ")}`,
+      );
+    }
+  }
+
+  /**
+   * F-1649: the hub's ingest, where a throw is a check not kept. processWebhook
+   * answers any other throw with a 200 "error" body, which Toast never
+   * retries, so it is turned into a 503 here.
+   */
+  private async ingestToast(
+    hub: PosHubService,
+    restaurantId: string,
+    payload: { checks: Array<{ guid: string } & Record<string, unknown>> },
+  ) {
+    const orderGuid = payload.checks[0]?.guid;
+    try {
+      return await hub.ingest(restaurantId, "toast", payload);
+    } catch (err: any) {
+      if (err instanceof HttpException) throw err;
+      this.logger.error(
+        `Toast order ${orderGuid} was not kept: ${err?.message ?? err}`,
+      );
+      throw new HttpException(
+        `Toast order ${orderGuid} was not kept; send it again`,
+        HttpStatus.SERVICE_UNAVAILABLE,
       );
     }
   }
