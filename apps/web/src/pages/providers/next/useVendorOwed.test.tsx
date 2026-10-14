@@ -42,13 +42,14 @@ const row = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const answer = (vendors: unknown[], owedSince: string | null) => ({
+const answer = (vendors: unknown[], owedSince: string | null, owing: unknown[] = vendors) => ({
   data: {
     from: '2026-10-14',
     to: '2026-10-14',
     zone: 'Europe/Istanbul',
     currency: 'EUR',
     vendors,
+    owing,
     totals: { received: [], awaiting: [], invoiced: [], credited: [], unpaid: [], owed: [] },
     owedSince,
     unverifiedPaper: 0,
@@ -111,5 +112,16 @@ describe('useVendorOwed (F-1635)', () => {
     const staff = renderHook(() => useVendorOwed(ROSSI, false), { wrapper });
     expect(staff.result.current).toEqual([]);
     expect(api.get).not.toHaveBeenCalled();
+  });
+
+  // F-1643 (sim 54): the period ("today") lists only vendors with activity
+  // today, so the sheet reads the any-date `owing` list, not the period's rows.
+  it('[REVERT-FAILS] says what a vendor with nothing today is owed (F-1643)', async () => {
+    api.get.mockResolvedValue(
+      answer([], '2026-10-01', [row({ owed: [{ currency: 'EUR', total: 420 }], owedInvoices: 1 })]),
+    );
+    const { result } = renderHook(() => useVendorOwed(ROSSI, true), { wrapper });
+    await waitFor(() => expect(result.current[0].value).not.toBe('Reading…'));
+    expect(result.current[0].value).toMatch(/^€420(\.00)? over 1 invoice$/);
   });
 });

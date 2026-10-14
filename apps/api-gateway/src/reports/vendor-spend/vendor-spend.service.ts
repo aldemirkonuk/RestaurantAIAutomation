@@ -117,13 +117,35 @@ export interface VendorSpendRow {
   owedWithoutTotal: number;
 }
 
+/**
+ * One vendor's Owed and Not marked paid, any date (F-1643, sim 54): every
+ * vendor the house owes or has unmarked invoices from, whether or not it had
+ * any activity in the period. The period's rows carry the same figures for
+ * their own vendors; this list is where a vendor with only old paper is said.
+ */
+export type VendorOwedRow = Pick<
+  VendorSpendRow,
+  | "providerId"
+  | "name"
+  | "unpaid"
+  | "unpaidInvoices"
+  | "unpaidWithoutTotal"
+  | "owed"
+  | "owedInvoices"
+  | "owedCreditNotes"
+  | "owedWithoutTotal"
+>;
+
 export interface VendorSpendDto {
   from: string;
   to: string;
   zone: string;
   /** The house's money; null when it has stated none. */
   currency: string | null;
+  /** Vendors with orders or paper in the period only (F-1643). */
   vendors: VendorSpendRow[];
+  /** Every vendor with something owed or not marked paid, any date (F-1643). */
+  owing: VendorOwedRow[];
   totals: {
     received: MoneyTotal[];
     awaiting: MoneyTotal[];
@@ -315,33 +337,47 @@ export class VendorSpendService {
       ),
     ]);
 
+    const blank = (key: string | null): VendorSpendRow => ({
+      providerId: key,
+      name: null,
+      received: [],
+      receivedOrders: 0,
+      unpricedOrders: 0,
+      awaitingOrders: 0,
+      awaiting: [],
+      invoiced: [],
+      invoices: 0,
+      credited: [],
+      creditNotes: 0,
+      paperWithoutTotal: 0,
+      unpaid: [],
+      unpaidInvoices: 0,
+      unpaidWithoutTotal: 0,
+      owed: [],
+      owedInvoices: 0,
+      owedCreditNotes: 0,
+      owedWithoutTotal: 0,
+    });
     const rows = new Map<string | null, VendorSpendRow>();
     const rowOf = (id: unknown): VendorSpendRow => {
       const key = typeof id === "string" && id ? id : null;
       let r = rows.get(key);
       if (!r) {
-        r = {
-          providerId: key,
-          name: null,
-          received: [],
-          receivedOrders: 0,
-          unpricedOrders: 0,
-          awaitingOrders: 0,
-          awaiting: [],
-          invoiced: [],
-          invoices: 0,
-          credited: [],
-          creditNotes: 0,
-          paperWithoutTotal: 0,
-          unpaid: [],
-          unpaidInvoices: 0,
-          unpaidWithoutTotal: 0,
-          owed: [],
-          owedInvoices: 0,
-          owedCreditNotes: 0,
-          owedWithoutTotal: 0,
-        };
+        r = blank(key);
         rows.set(key, r);
+      }
+      return r;
+    };
+    // Owed and not marked are any date, so they are kept apart from the
+    // period's rows: a vendor with only old unpaid paper is not a row in
+    // every period (F-1643). They are copied onto the period's rows below.
+    const owing = new Map<string | null, VendorSpendRow>();
+    const owingOf = (id: unknown): VendorSpendRow => {
+      const key = typeof id === "string" && id ? id : null;
+      let r = owing.get(key);
+      if (!r) {
+        r = blank(key);
+        owing.set(key, r);
       }
       return r;
     };
@@ -392,14 +428,14 @@ export class VendorSpendService {
     // Owed, and not marked (F-1635): the same one-bill rule, any date.
     const ledger = owedLedger(allPaper, zone);
     for (const d of ledger.notMarked) {
-      const r = rowOf(d.provider_id);
+      const r = owingOf(d.provider_id);
       r.unpaidInvoices += 1;
       const money = moneyOf(d);
       if (!money) r.unpaidWithoutTotal += 1;
       else add(r.unpaid, money.code, money.n);
     }
     for (const d of ledger.owed) {
-      const r = rowOf(d.provider_id);
+      const r = owingOf(d.provider_id);
       r.owedInvoices += 1;
       const money = moneyOf(d);
       if (!money) r.owedWithoutTotal += 1;
@@ -417,7 +453,7 @@ export class VendorSpendService {
       return c;
     };
     for (const d of ledger.credits) {
-      const r = rowOf(d.provider_id);
+      const r = owingOf(d.provider_id);
       r.owedCreditNotes += 1;
       const money = moneyOf(d);
       if (!money) r.owedWithoutTotal += 1;
@@ -426,7 +462,8 @@ export class VendorSpendService {
     }
     for (const d of ledger.paidByCredit) {
       const money = moneyOf(d);
-      if (money) add(creditOf(rowOf(d.provider_id)).spent, money.code, money.n);
+      if (money)
+        add(creditOf(owingOf(d.provider_id)).spent, money.code, money.n);
     }
     for (const [r, c] of credit)
       for (const t of c.notes) {
@@ -436,7 +473,23 @@ export class VendorSpendService {
         if (left > 0) add(r.owed, t.currency, -left);
       }
 
-    const ids = [...rows.keys()].filter((k): k is string => k !== null);
+    // A vendor with activity in the period carries its Owed and Not marked
+    // paid on its row too; the rest are said only in `owing` (F-1643).
+    for (const [key, o] of owing) {
+      const r = rows.get(key);
+      if (!r) continue;
+      r.unpaid = o.unpaid;
+      r.unpaidInvoices = o.unpaidInvoices;
+      r.unpaidWithoutTotal = o.unpaidWithoutTotal;
+      r.owed = o.owed;
+      r.owedInvoices = o.owedInvoices;
+      r.owedCreditNotes = o.owedCreditNotes;
+      r.owedWithoutTotal = o.owedWithoutTotal;
+    }
+
+    const ids = [...new Set([...rows.keys(), ...owing.keys()])].filter(
+      (k): k is string => k !== null,
+    );
     if (ids.length) {
       const { data: named, error: nameError } = await this.db
         .from("providers")
@@ -448,9 +501,9 @@ export class VendorSpendService {
           `The vendors' names could not be read: ${nameError.message}`,
         );
       for (const p of (named ?? []) as Array<{ id: string; name?: unknown }>) {
-        const r = rows.get(p.id);
-        if (r && typeof p.name === "string" && p.name.trim())
-          r.name = p.name.trim();
+        if (typeof p.name !== "string" || !p.name.trim()) continue;
+        for (const r of [rows.get(p.id), owing.get(p.id)])
+          if (r) r.name = p.name.trim();
       }
     }
 
@@ -467,8 +520,6 @@ export class VendorSpendService {
       for (const t of r.awaiting) add(totals.awaiting, t.currency, t.total);
       for (const t of r.invoiced) add(totals.invoiced, t.currency, t.total);
       for (const t of r.credited) add(totals.credited, t.currency, t.total);
-      for (const t of r.unpaid) add(totals.unpaid, t.currency, t.total);
-      for (const t of r.owed) add(totals.owed, t.currency, t.total);
       return {
         ...r,
         received: ordered(r.received, currency),
@@ -490,6 +541,35 @@ export class VendorSpendService {
           ) ||
         String(a.name ?? "").localeCompare(String(b.name ?? "")),
     );
+    // Owed and Not marked paid total every vendor, not only the period's.
+    const owingRows: VendorOwedRow[] = [...owing.values()]
+      .filter(
+        (o) => o.unpaidInvoices > 0 || o.owedInvoices + o.owedCreditNotes > 0,
+      )
+      .map((o) => {
+        for (const t of o.unpaid) add(totals.unpaid, t.currency, t.total);
+        for (const t of o.owed) add(totals.owed, t.currency, t.total);
+        return {
+          providerId: o.providerId,
+          name: o.name,
+          unpaid: ordered(o.unpaid, currency),
+          unpaidInvoices: o.unpaidInvoices,
+          unpaidWithoutTotal: o.unpaidWithoutTotal,
+          owed: ordered(o.owed, currency),
+          owedInvoices: o.owedInvoices,
+          owedCreditNotes: o.owedCreditNotes,
+          owedWithoutTotal: o.owedWithoutTotal,
+        };
+      })
+      // Most owed first in the house's money; a vendor with no name last.
+      .sort(
+        (a, b) =>
+          Number(a.providerId === null) - Number(b.providerId === null) ||
+          inHouse(b.owed, currency) +
+            inHouse(b.unpaid, currency) -
+            (inHouse(a.owed, currency) + inHouse(a.unpaid, currency)) ||
+          String(a.name ?? "").localeCompare(String(b.name ?? "")),
+      );
 
     return {
       from,
@@ -497,6 +577,7 @@ export class VendorSpendService {
       zone,
       currency,
       vendors,
+      owing: owingRows,
       totals: {
         received: ordered(totals.received, currency),
         awaiting: ordered(totals.awaiting, currency),
@@ -705,8 +786,9 @@ export function spendDoc(s: VendorSpendDto): ExportDoc {
   const unpriced = s.vendors.reduce((n, v) => n + v.unpricedOrders, 0);
   const noTotal = s.vendors.reduce((n, v) => n + v.paperWithoutTotal, 0);
   const awaiting = s.vendors.reduce((n, v) => n + v.awaitingOrders, 0);
-  const unpaidNoTotal = s.vendors.reduce((n, v) => n + v.unpaidWithoutTotal, 0);
-  const owedNoTotal = s.vendors.reduce((n, v) => n + v.owedWithoutTotal, 0);
+  // Any date, every vendor (F-1643): the same set as the two totals.
+  const unpaidNoTotal = s.owing.reduce((n, v) => n + v.unpaidWithoutTotal, 0);
+  const owedNoTotal = s.owing.reduce((n, v) => n + v.owedWithoutTotal, 0);
   if (awaiting > 0)
     notes.push(
       `${awaiting} ${awaiting === 1 ? "order was" : "orders were"} delivered in this period but ${awaiting === 1 ? "is" : "are"} still open — part still to come, or the invoice not checked yet — so Received leaves ${awaiting === 1 ? "it" : "them"} out until ${awaiting === 1 ? "it is" : "they are"} closed. Still open, at order total: ${moneyWords(s.totals.awaiting, s.currency)}.`,
@@ -810,6 +892,29 @@ export function spendDoc(s: VendorSpendDto): ExportDoc {
           v.awaitingOrders,
           owedCell(s, v.owed),
           v.owedInvoices,
+          moneyCell(v.unpaid, s.currency),
+          v.unpaidInvoices,
+        ]),
+      },
+      {
+        // Any date, so a vendor with only old unpaid invoices is listed here
+        // and not as a row of the period (F-1643).
+        title: "Owed and not marked paid, any date",
+        columns: [
+          { label: "Vendor", unit: "text" },
+          { label: "Owed", unit: "money" },
+          { label: "Invoices owed", unit: "count" },
+          { label: "Credit notes taken off", unit: "count" },
+          { label: "Not marked paid", unit: "money" },
+          { label: "Invoices not marked paid", unit: "count" },
+        ],
+        rows: s.owing.map((v) => [
+          v.providerId === null
+            ? "No vendor named"
+            : (v.name ?? "A vendor no longer on your list"),
+          owedCell(s, v.owed),
+          v.owedInvoices,
+          v.owedCreditNotes,
           moneyCell(v.unpaid, s.currency),
           v.unpaidInvoices,
         ]),

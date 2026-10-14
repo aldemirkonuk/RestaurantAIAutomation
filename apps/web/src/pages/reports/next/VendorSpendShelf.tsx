@@ -56,7 +56,13 @@ export interface VendorSpend {
   to: string;
   zone: string;
   currency: string | null;
+  /** Vendors with orders or paper in the period only (F-1643). */
   vendors: VendorSpendRow[];
+  /**
+   * Every vendor with something owed or not marked paid, any date (F-1643).
+   * Optional only so an older gateway's answer still reads.
+   */
+  owing?: VendorOwedRow[];
   totals: {
     received: SpendMoney[];
     awaiting: SpendMoney[];
@@ -152,6 +158,9 @@ type OwedFacts = Pick<
   VendorSpendRow,
   'owed' | 'owedInvoices' | 'owedCreditNotes' | 'owedWithoutTotal' | 'unpaid' | 'unpaidInvoices' | 'unpaidWithoutTotal'
 >;
+
+/** One vendor's Owed and Not marked paid, any date (`VendorOwedRow` at the gateway). */
+export type VendorOwedRow = OwedFacts & Pick<VendorSpendRow, 'providerId' | 'name'>;
 
 /**
  * What one vendor is owed, in words (F-1635) — the reports shelf and the
@@ -350,6 +359,36 @@ export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShel
               ))}
             </ul>
           )}
+          {/* F-1643: vendors with nothing in the period but money still owed or
+              not marked paid are said apart, not as rows of the period. */}
+          {(() => {
+            const inPeriod = new Set(s.vendors.map((v) => v.providerId));
+            const rest = (s.owing ?? []).filter((o) => !inPeriod.has(o.providerId));
+            if (rest.length === 0) return null;
+            return (
+              <>
+                <p className="rp-cap">Also owed or not marked paid, from vendors with nothing in this period:</p>
+                <ul className="rp-list rp-exports__list" aria-label="Owed and not marked paid, any date">
+                  {rest.map((o) => {
+                    const w = owedWords(o, s.owedSince, s.currency);
+                    return (
+                      <li key={o.providerId ?? 'none'} className="rp-export" data-status="ready">
+                        <div className="rp-export__what">
+                          <p className="rp-sentence">
+                            <strong>
+                              {o.providerId === null ? 'No vendor named' : (o.name ?? 'A vendor no longer on your list')}
+                            </strong>
+                          </p>
+                          {w.owed && o.owedInvoices + o.owedCreditNotes > 0 && <p className="rp-cap">{w.owed}</p>}
+                          {w.notMarked && <p className="rp-cap">{w.notMarked}</p>}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            );
+          })()}
           {s.unverifiedPaper > 0 && (
             <p className="rp-cap">
               {countOf(s.unverifiedPaper, 'invoice or credit note has', 'invoices or credit notes have')} not

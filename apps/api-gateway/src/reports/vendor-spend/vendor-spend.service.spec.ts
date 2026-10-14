@@ -23,13 +23,20 @@ function fakeDb(tables: Record<string, unknown[] | Record<string, unknown>>) {
       // Paged reads (`readWholeWindow`) come back on page 2 with nothing left.
       const paged = ops.some((o) => o.m === "gt");
       // `eq` and `is` filter a row only on a key the row carries.
+      // `gte` / `lte` / `lt` cut a dated row the same way (F-1643: a period
+      // read must not see an invoice dated outside it).
       const kept = rows.filter((row: any) =>
-        ops.every(
-          (o) =>
-            (o.m !== "eq" && o.m !== "is") ||
-            !(String(o.a[0]) in row) ||
-            (row[String(o.a[0])] ?? null) === o.a[1],
-        ),
+        ops.every((o) => {
+          const k = String(o.a[0]);
+          if (!(k in row)) return true;
+          const v = row[k] ?? null;
+          if (o.m === "eq" || o.m === "is") return v === o.a[1];
+          if (v === null || typeof v !== "string") return true;
+          if (o.m === "gte") return v >= String(o.a[1]);
+          if (o.m === "lte") return v <= String(o.a[1]);
+          if (o.m === "lt") return v < String(o.a[1]);
+          return true;
+        }),
       );
       const data = paged ? [] : kept;
       return Promise.resolve({ data, error: null, count: data.length });
@@ -571,5 +578,102 @@ describe("VendorSpendService — owed, and not marked (F-1635)", () => {
     const rossi = out.vendors[0];
     expect(rossi.owed).toEqual([{ currency: "TRY", total: 250 }]);
     expect(rossi.owedInvoices).toBe(1);
+  });
+});
+
+/**
+ * F-1643 (sim 54): Owed and Not marked paid are any date, so before this every
+ * vendor with an old unpaid invoice was a row of every period, and the empty
+ * period could never say so. [REVERT-FAILS] on a build that adds the any-date
+ * ledger to the period's rows.
+ */
+describe("VendorSpendService — a period lists its own vendors (F-1643)", () => {
+  it("[REVERT-FAILS] keeps a vendor with only old unpaid paper off the period, and says it in owing", async () => {
+    const { svc } = service({
+      procurement_orders: [
+        {
+          id: "o1",
+          provider_id: KAYA,
+          status: "delivered",
+          total_cost: 400,
+          currency: "TRY",
+          delivered_at: "2026-03-05T10:00:00Z",
+        },
+      ],
+      procurement_documents: [
+        // Rossi: one invoice from last year, never marked paid.
+        {
+          id: "old",
+          provider_id: ROSSI,
+          doc_type: "invoice",
+          doc_number: "R-1",
+          doc_date: "2025-06-01",
+          status: "verified",
+          total: 900,
+          currency: "TRY",
+          paid_at: null,
+        },
+        // Kaya: an invoice in the period, also unmarked.
+        {
+          id: "k1",
+          provider_id: KAYA,
+          doc_type: "invoice",
+          doc_number: "K-1",
+          doc_date: "2026-03-05",
+          status: "verified",
+          total: 400,
+          currency: "TRY",
+          paid_at: null,
+        },
+      ],
+      providers: [
+        { id: ROSSI, name: "Rossi Wines" },
+        { id: KAYA, name: "Kaya Et" },
+      ],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    // The period: Kaya only, still carrying its own unmarked line.
+    expect(out.vendors.map((v) => v.providerId)).toEqual([KAYA]);
+    expect(out.vendors[0].unpaid).toEqual([{ currency: "TRY", total: 400 }]);
+    // Any date: both vendors, named, and the total is not cut to the period.
+    expect(out.owing.map((v) => [v.name, v.unpaidInvoices])).toEqual([
+      ["Rossi Wines", 1],
+      ["Kaya Et", 1],
+    ]);
+    expect(out.totals.unpaid).toEqual([{ currency: "TRY", total: 1300 }]);
+    // The file: the period table has Kaya only; the any-date table has both.
+    const doc = spendDoc(out);
+    expect(doc.tables[0].rows.map((r) => r[0])).toEqual(["Kaya Et"]);
+    expect(doc.tables[1].title).toBe("Owed and not marked paid, any date");
+    expect(doc.tables[1].rows.map((r) => r[0])).toEqual([
+      "Rossi Wines",
+      "Kaya Et",
+    ]);
+  });
+
+  it("[REVERT-FAILS] an empty period says so even with old unpaid paper on file", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        {
+          id: "old",
+          provider_id: ROSSI,
+          doc_type: "invoice",
+          doc_number: "R-1",
+          doc_date: "2025-06-01",
+          status: "verified",
+          total: 900,
+          currency: "TRY",
+          paid_at: null,
+        },
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    expect(out.vendors).toEqual([]);
+    expect(out.owing).toHaveLength(1);
+    expect(spendDoc(out).say).toBe(
+      "No order was delivered and no invoice is dated in this period.",
+    );
   });
 });

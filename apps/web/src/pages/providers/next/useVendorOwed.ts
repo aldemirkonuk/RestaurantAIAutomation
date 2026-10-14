@@ -12,7 +12,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getVendorSpend, owedWords, type VendorSpend } from '../../reports/next/VendorSpendShelf';
+import { getVendorSpend, owedWords, type VendorOwedRow, type VendorSpend } from '../../reports/next/VendorSpendShelf';
 import { failureOf } from '../../reports/next/rp-format';
 
 export interface OwedLine {
@@ -51,7 +51,10 @@ export function useVendorOwed(providerId: string, enabled: boolean): OwedLine[] 
   }
   const s = mine?.data;
   if (!s) return [{ label: 'Owed', value: 'Reading…' }];
-  const row = s.vendors.find((v) => v.providerId === providerId);
+  // Every vendor owed anything is in `owing`, whatever the period (F-1643);
+  // `vendors` holds only the period's, which for "today" is almost nobody.
+  const pool: VendorOwedRow[] = s.owing ?? s.vendors;
+  const row = pool.find((v) => v.providerId === providerId);
   if (s.owedSince === null && !row?.unpaidInvoices)
     return [{ label: 'Owed', value: 'Not worked out yet: no invoice has been marked paid here' }];
   if (!row) return [{ label: 'Owed', value: 'Nothing' }];
