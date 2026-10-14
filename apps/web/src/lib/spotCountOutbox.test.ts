@@ -9,7 +9,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const recordSpotCount = vi.hoisted(() => vi.fn())
-vi.mock('../services/api/inventory', () => ({ recordSpotCount }))
+const recordPour = vi.hoisted(() => vi.fn())
+const adjustStock = vi.hoisted(() => vi.fn())
+vi.mock('../services/api/inventory', () => ({ recordSpotCount, recordPour, adjustStock }))
 const sessionsApi = vi.hoisted(() => ({ markCountShelfDone: vi.fn(), parkCountLine: vi.fn() }))
 vi.mock('../services/api/countSessions', () => sessionsApi)
 
@@ -28,6 +30,10 @@ import {
   submitParkedLine,
   submitShelfDone,
   submitSpotCount,
+  submitAdjust,
+  submitPour,
+  ADJUST_TYPE,
+  POUR_TYPE,
   PARK_TYPE,
   SHELF_DONE_TYPE,
   SPOT_COUNTS_CHANGED_EVENT,
@@ -610,5 +616,84 @@ describe('F-1544: "shelf done" and a parked bottle queue like a count', () => {
       }),
     ).rejects.toThrow()
     expect(store.addPendingMutation).not.toHaveBeenCalled()
+  })
+})
+
+describe('F-1678: a pour and a row adjust ride this queue', () => {
+  const pourBody = { pours: 1, source: 'manual', reason: 'manual pour', locationId: 'L-bar', idempotencyKey: 'pour:i1:n:h' }
+  const adjustBody = { quantityChange: -1, reason: 'Breakage', transactionType: 'waste' as const, idempotencyKey: 'adjust:i1:n:h' }
+  const pour = (id: string, at: string) => ({
+    ...count(id),
+    type: POUR_TYPE,
+    data: { itemId: 'i1', itemLabel: 'Yakut', body: pourBody },
+    timestamp: new Date(at),
+  })
+
+  it('[REVERT-FAILS] a pour with no signal is kept, not sent', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    const res = await submitPour({ itemId: 'i1', itemLabel: 'Yakut', body: pourBody })
+    expect(res).toEqual({ synced: false })
+    expect(recordPour).not.toHaveBeenCalled()
+    expect(store.addPendingMutation).toHaveBeenCalledWith(
+      expect.objectContaining({ type: POUR_TYPE, data: expect.objectContaining({ body: pourBody }) }),
+    )
+  })
+
+  it('[REVERT-FAILS] an adjust whose answer never came back, or met a 5xx, is kept with its key', async () => {
+    adjustStock.mockRejectedValueOnce(new Error('Network Error')).mockRejectedValueOnce(httpError(503))
+    expect(await submitAdjust({ itemId: 'i1', itemLabel: 'Yakut', body: adjustBody })).toEqual({ synced: false })
+    expect(await submitAdjust({ itemId: 'i1', itemLabel: 'Yakut', body: adjustBody })).toEqual({ synced: false })
+    expect(store.addPendingMutation).toHaveBeenCalledTimes(2)
+    expect(store.addPendingMutation.mock.calls[0][0]).toMatchObject({ type: ADJUST_TYPE, data: { body: adjustBody } })
+  })
+
+  it("a refusal is the house's answer: thrown to the screen, not queued", async () => {
+    recordPour.mockRejectedValueOnce(httpError(400))
+    await expect(submitPour({ itemId: 'i1', itemLabel: 'Yakut', body: pourBody })).rejects.toThrow('HTTP 400')
+    expect(store.addPendingMutation).not.toHaveBeenCalled()
+  })
+
+  it('[REVERT-FAILS] a queued pour and adjust are sent once, with the key the tap minted', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([
+      pour('p', '2026-10-14T20:00:00.000Z'),
+      { ...count('a'), type: ADJUST_TYPE, data: { itemId: 'i1', itemLabel: 'Yakut', body: adjustBody } },
+    ])
+    recordPour.mockResolvedValue({ pour: {}, item: null })
+    adjustStock.mockResolvedValue({})
+
+    const res = await flushSpotCountOutbox()
+
+    expect(recordPour).toHaveBeenCalledWith('i1', pourBody)
+    expect(adjustStock).toHaveBeenCalledWith('i1', adjustBody)
+    expect(store.removePendingMutation.mock.calls.map((c) => c[0]).sort()).toEqual(['a', 'p'])
+    expect(res).toEqual({ sent: 2, failed: 0, parked: 0 })
+  })
+
+  it('a pour poured before a count is sent before it (tap order)', async () => {
+    const order: string[] = []
+    store.getPendingMutationsByType.mockResolvedValue([
+      { ...count('c'), timestamp: new Date('2026-10-14T21:00:00.000Z') },
+      pour('p', '2026-10-14T20:00:00.000Z'),
+    ])
+    recordSpotCount.mockImplementation(async () => void order.push('count'))
+    recordPour.mockImplementation(async () => void order.push('pour'))
+
+    await flushSpotCountOutbox()
+
+    expect(order).toEqual(['pour', 'count'])
+  })
+
+  it('parks — never drops — a queued pour the house refuses', async () => {
+    store.getPendingMutationsByType.mockResolvedValue([pour('p', '2026-10-14T20:00:00.000Z')])
+    recordPour.mockRejectedValue(httpError(422))
+
+    const res = await flushSpotCountOutbox()
+
+    expect(store.removePendingMutation).not.toHaveBeenCalled()
+    expect(store.updatePendingMutation).toHaveBeenCalledWith(
+      'p',
+      expect.objectContaining({ parked: expect.objectContaining({ reason: 'refused', status: 422 }) }),
+    )
+    expect(res.parked).toBe(1)
   })
 })

@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adjustStock, getItemActivity, recordPour, reconcileShadowItem, transferStock, fetchAuctionLotRecords, updateInventoryItem } from '../../../services/api/inventory'
+import { getItemActivity, reconcileShadowItem, transferStock, fetchAuctionLotRecords, updateInventoryItem } from '../../../services/api/inventory'
 import { getOrderBook } from '../../../services/api/orders'
 import { invalidateZoneCounts, type StorageLocation } from '../../../hooks/useStorageLocations'
 import { useNotificationStore } from '../../../stores'
@@ -23,6 +23,7 @@ import { getHouseLocale } from '../../../lib/houseCurrency'
 import { useHouseZone } from '../../../lib/houseZone'
 import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel, shelvesFor } from './SpotCountPanel'
+import { submitAdjust, submitPour } from '../../../lib/spotCountOutbox'
 import { NameThisWine } from './NameThisWine'
 import { useDraftWriteKey, writeOutcomeUnknown } from '../../../lib/draftWriteKey'
 import { getActiveRestaurantId } from '../../../services/api/client'
@@ -136,6 +137,14 @@ const ADJUST_MOVEMENT: Record<string, 'adjustment' | 'waste' | 'comp' | 'correct
  */
 const NOT_CONFIRMED =
   'The answer did not come back, so it may have been saved. Check the stock before changing anything; pressing again as it is will not book it twice.'
+
+/**
+ * A pour or an adjust with no signal, or whose answer never came back, is kept
+ * on this phone and sent by itself with the same key (F-1678), so the next tap
+ * is a new act.
+ */
+const KEPT_ON_PHONE =
+  'No answer from the house yet. It is kept on this phone and will be sent by itself when the signal is back, never twice.'
 
 export function RowExpansion({
   item,
@@ -282,23 +291,28 @@ export function RowExpansion({
         // A take-off leaves FROM the shelf; bottles found go TO it.
         ...(shelfPicked ? { [p.quantityChange < 0 ? 'fromLocationId' : 'toLocationId']: shelfPicked } : {}),
       }
-      return adjustStock(inventoryId, {
-        wineId: item.id || undefined,
-        ...act,
-        transactionType: ADJUST_MOVEMENT[p.reason] ?? 'adjustment',
-        idempotencyKey: adjustKey.keyFor(act),
+      return submitAdjust({
+        itemId: inventoryId,
+        itemLabel: item.name,
+        body: {
+          wineId: item.id || undefined,
+          ...act,
+          transactionType: ADJUST_MOVEMENT[p.reason] ?? 'adjustment',
+          idempotencyKey: adjustKey.keyFor(act),
+        },
       })
     },
-    onSuccess: () => {
+    onSuccess: ({ synced }) => {
+      // Sent or queued, the act now holds its key; the next tap is a new one.
       adjustKey.renew()
-      invalidate()
-      toast.success('Ledger updated')
+      if (synced) {
+        invalidate()
+        toast.success('Ledger updated')
+      } else toast.success('Change saved on this phone', KEPT_ON_PHONE)
       setDelta(0)
     },
-    onError: (e: any) =>
-      writeOutcomeUnknown(e)
-        ? toast.error('Adjustment not confirmed', NOT_CONFIRMED)
-        : toast.error('Adjustment failed', e?.response?.data?.message || e?.message),
+    // Only the house's own refusal reaches here; anything else was queued.
+    onError: (e: any) => toast.error('Adjustment failed', e?.response?.data?.message || e?.message),
   })
 
   /**
@@ -330,13 +344,18 @@ export function RowExpansion({
       ...(shelfPicked ? { locationId: shelfPicked } : {}),
     }
     try {
-      await recordPour(inventoryId, { ...act, idempotencyKey: pourKey.keyFor(act) })
+      const { synced } = await submitPour({
+        itemId: inventoryId,
+        itemLabel: item.name,
+        body: { ...act, idempotencyKey: pourKey.keyFor(act) },
+      })
       pourKey.renew()
-      invalidate()
-      toast.success('Pour recorded')
+      if (synced) {
+        invalidate()
+        toast.success('Pour recorded')
+      } else toast.success('Pour saved on this phone', KEPT_ON_PHONE)
     } catch (e: any) {
-      if (writeOutcomeUnknown(e)) toast.error('Pour not confirmed', NOT_CONFIRMED)
-      else toast.error('Pour failed', e?.response?.data?.message || e?.message)
+      toast.error('Pour failed', e?.response?.data?.message || e?.message)
     } finally {
       setPouring(false)
     }

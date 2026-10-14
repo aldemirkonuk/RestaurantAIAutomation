@@ -14,7 +14,12 @@
  */
 
 import { offlineStorage, type PendingMutation } from './offline-storage'
-import { recordSpotCount, type SpotCountRecord } from '../services/api/inventory'
+import {
+  adjustStock,
+  recordPour,
+  recordSpotCount,
+  type SpotCountRecord,
+} from '../services/api/inventory'
 import {
   markCountShelfDone,
   parkCountLine,
@@ -216,6 +221,58 @@ export async function submitParkedLine(entry: QueuedParkedLine): Promise<{ synce
   return { synced: false }
 }
 
+// ── F-1678: a pour and a row's manual adjust ride the same queue ──────────
+//
+// A pour or a broken bottle is taken at the bar, where the signal is no better
+// than in the cellar. With no signal, "Record pour" used to end as "Pour not
+// confirmed" and the pour was kept nowhere. They queue like a count (stamped
+// with their person and house, ADR 0241) and replay with the key the tap
+// minted (F-1594), so a pour that did land before the reply was lost is
+// answered with the first result, never booked twice. Both send a change, not
+// a total (F-292), so they carry no age: a pour sent late still takes off one.
+
+export const POUR_TYPE = 'inventory.pour'
+export const ADJUST_TYPE = 'inventory.adjust'
+
+export interface QueuedPour {
+  itemId: string
+  itemLabel: string
+  body: Parameters<typeof recordPour>[1] & { idempotencyKey: string }
+}
+
+export interface QueuedAdjust {
+  itemId: string
+  itemLabel: string
+  body: Parameters<typeof adjustStock>[1]
+}
+
+/**
+ * Send now, or keep it on this phone. Only the house's own refusal reaches
+ * the screen; no signal, no answer, a 5xx or an ended session all queue it.
+ */
+async function sendOrQueue(type: string, data: unknown, send: () => Promise<unknown>) {
+  if (navigator.onLine) {
+    try {
+      await send()
+      return { synced: true }
+    } catch (err) {
+      if (isPermanentRefusal(statusOf(err))) throw err
+    }
+  }
+  await offlineStorage.addPendingMutation({ type, data, timestamp: new Date() })
+  return { synced: false }
+}
+
+/** Record a pour; `synced: false` means it is kept on this phone. */
+export function submitPour(entry: QueuedPour): Promise<{ synced: boolean }> {
+  return sendOrQueue(POUR_TYPE, entry, () => recordPour(entry.itemId, entry.body))
+}
+
+/** Record a manual adjust (breakage, a comp, …); `synced: false` = kept on this phone. */
+export function submitAdjust(entry: QueuedAdjust): Promise<{ synced: boolean }> {
+  return sendOrQueue(ADJUST_TYPE, entry, () => adjustStock(entry.itemId, entry.body))
+}
+
 /** How many spot counts are waiting to sync. Drives the pending badge. */
 export async function pendingSpotCountCount(): Promise<number> {
   const all = await offlineStorage.getPendingMutationsByType(MUTATION_TYPE)
@@ -242,8 +299,17 @@ export async function flushSpotCountOutbox(): Promise<{
   // a done's zeros are for the items NOT counted, so it never depends on a
   // count queued before it, but sending the counts first keeps the shelf's
   // books in the order the person walked it.
-  const pending = [
+  // F-1678: a row's pours and adjusts go in tap order with the counts. A pour
+  // poured before a count and sent after it would take the bottle off twice;
+  // sent first, it makes the house refuse that count as overtaken (F-249), and
+  // the person is told to count again.
+  const tapped = [
     ...(await pendingOf(MUTATION_TYPE)),
+    ...(await pendingOf(POUR_TYPE)),
+    ...(await pendingOf(ADJUST_TYPE)),
+  ].sort((a, b) => tapTime(a) - tapTime(b))
+  const pending = [
+    ...tapped,
     ...(await pendingOf(SHELF_DONE_TYPE)),
     ...(await pendingOf(PARK_TYPE)),
   ]
@@ -307,6 +373,20 @@ export async function flushSpotCountOutbox(): Promise<{
         sent++
         continue
       }
+      if (m.type === POUR_TYPE) {
+        const p = m.data as QueuedPour
+        await recordPour(p.itemId, p.body)
+        await offlineStorage.removePendingMutation(m.id)
+        sent++
+        continue
+      }
+      if (m.type === ADJUST_TYPE) {
+        const a = m.data as QueuedAdjust
+        await adjustStock(a.itemId, a.body)
+        await offlineStorage.removePendingMutation(m.id)
+        sent++
+        continue
+      }
       const entry = m.data as QueuedSpotCount
       await recordSpotCount(entry.itemId, replayBody(entry), entry.restaurantId)
       await offlineStorage.removePendingMutation(m.id)
@@ -342,6 +422,12 @@ export async function flushSpotCountOutbox(): Promise<{
 async function pendingOf(type: string): Promise<PendingMutation[]> {
   const all = (await offlineStorage.getPendingMutationsByType(type)) ?? []
   return all.filter((m) => m.type === type)
+}
+
+/** When a queued act was tapped; one with no readable stamp goes first. */
+function tapTime(m: PendingMutation): number {
+  const t = new Date(m.timestamp).getTime()
+  return Number.isFinite(t) ? t : 0
 }
 
 /** A queued act's age at send time (F-249); nothing for one with no stamp. */
