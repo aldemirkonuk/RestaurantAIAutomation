@@ -260,6 +260,20 @@ describe("ADR 0340: onboarding reads the live kinds and fails loud", () => {
     ).getOnboardingProgress("owner", RID);
     expect(p.menu_current).toBe(false);
     expect(p.activated).toBe(false);
+    // F-1713: and it says the live menu has no drinks, so the checklist asks
+    // for the drinks menu instead of making current a menu that already is.
+    expect(p.menu_live_no_drinks).toBe(true);
+  });
+
+  it("a house with no live menu, or a live drink line, is not told its menu lacks drinks (F-1713)", async () => {
+    const none = await service(
+      withProgress({ restaurant_menus: [], menu_items: [] }),
+    ).getOnboardingProgress("owner", RID);
+    expect(none.menu_live_no_drinks).toBe(false);
+    const both = await service(
+      withProgress(twoKindsLive()),
+    ).getOnboardingProgress("owner", RID);
+    expect(both.menu_live_no_drinks).toBe(false);
   });
 
   it("a dessert wine stored as a drink on a live Desserts menu activates it", async () => {

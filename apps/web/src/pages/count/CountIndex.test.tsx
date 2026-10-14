@@ -276,3 +276,33 @@ describe('CountIndex -- the house\'s clock and its way of writing (F-1679, F-168
     expect(currencyHook.useHouseCurrency).toHaveBeenCalled()
   })
 })
+
+describe('CountIndex -- a house with no shelves (F-1712)', () => {
+  it('[REVERT-FAILS] says there are no shelves and links to add them, instead of a start that is refused', async () => {
+    api.listOpenCountSessions.mockResolvedValue({ sessions: [], periods: { current: '2026-11', ended: '2026-10' }, zones: [] })
+    show()
+    const note = await screen.findByTestId('count-no-shelves')
+    expect(note.textContent).toContain('No shelves yet')
+    expect(screen.getByRole('link', { name: 'Add them on Inventory' }).getAttribute('href')).toBe('/inventory?shelves=1')
+    expect(screen.queryByRole('button', { name: 'Full count' })).toBeNull()
+    expect(screen.queryByRole('group', { name: 'Which month is this count for?' })).toBeNull()
+    expect(api.openCountSession).not.toHaveBeenCalled()
+  })
+
+  it('offers the starts when the house has shelves, or the gateway sent no places', async () => {
+    api.listOpenCountSessions.mockResolvedValue({
+      sessions: [],
+      periods: { current: '2026-11', ended: null },
+      zones: [{ id: 'z1', name: 'Bar', shelves: 2 }],
+    })
+    const { unmount } = show()
+    expect(await screen.findByRole('button', { name: 'Full count' })).toBeTruthy()
+    expect(screen.queryByTestId('count-no-shelves')).toBeNull()
+    unmount()
+
+    api.listOpenCountSessions.mockResolvedValue({ sessions: [], periods: { current: '2026-11', ended: null }, zones: null })
+    show()
+    expect(await screen.findByRole('button', { name: 'Full count' })).toBeTruthy()
+    expect(screen.queryByTestId('count-no-shelves')).toBeNull()
+  })
+})

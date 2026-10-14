@@ -181,19 +181,22 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
       />
       {seesAmounts ? (
         <>
+          {/* F-1711: these sum delivered purchase orders, not payments made
+              (procurement_invoice_payments is not read here), so they say
+              "Bought", never "Paid". Payments owed and made live on /vendors. */}
           <KpiTile
-            label="Paid to vendors · today"
+            label="Bought · today"
             value={todaySpend}
             format={(n) => spendMoney(n, todayIn.currency, 'compact')}
-            sub={zoneUnset ? noZone : (apart(todayIn, todaySpend) ?? todayUnpriced ?? 'delivered purchase orders')}
+            sub={zoneUnset ? noZone : (apart(todayIn, todaySpend) ?? todayUnpriced ?? 'delivered orders')}
             to="/orders?station=delivered"
             loading={loading}
           />
           <KpiTile
-            label="Paid to vendors · month"
+            label="Bought · month"
             value={monthSpend}
             format={(n) => spendMoney(n, monthIn.currency, 'compact')}
-            sub={zoneUnset ? noZone : (apart(monthIn, monthSpend) ?? monthUnpriced ?? 'procurement, not sales')}
+            sub={zoneUnset ? noZone : (apart(monthIn, monthSpend) ?? monthUnpriced ?? 'delivered orders')}
             to="/reports"
             loading={loading}
           />

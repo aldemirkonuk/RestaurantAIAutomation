@@ -700,6 +700,16 @@ export function InventoryCommandPage() {
     setSearchParams(next, { replace: true });
   }, [searchParams, setSearchParams]);
 
+  // Deep-link: /inventory?shelves=1 -- /count's "No shelves yet" (F-1712)
+  // opens the shelf manager, then drops the param as `add` does.
+  useEffect(() => {
+    if (searchParams.get("shelves") !== "1") return;
+    setShowStorageManager(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("shelves");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
+
   const closeVerify = () => {
     setVerifyOrder(null);
     if (searchParams.has("verify")) {

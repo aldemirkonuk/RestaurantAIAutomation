@@ -212,6 +212,49 @@ describe("VendorResolutionService (ADR 0104 D15)", () => {
       });
     });
 
+    // F-1714: Get started's "Add your first vendor" read only a vendor typed
+    // on /vendors, so a house whose first vendor came off an invoice never
+    // saw the step tick.
+    it("ticks the house's first-vendor step when it creates one", async () => {
+      answers.providers = [
+        { data: [], error: null },
+        { data: { id: "prov-new" }, error: null },
+      ];
+      await resolve();
+      expect(
+        updates.filter((u) => u.table === "user_onboarding_progress"),
+      ).toEqual([
+        { table: "user_onboarding_progress", payload: { vendor_added: true } },
+      ]);
+      expect(filters).toContainEqual({
+        table: "user_onboarding_progress",
+        column: "restaurant_id",
+        value: RESTAURANT,
+      });
+    });
+
+    it("still returns the vendor when the step could not be ticked", async () => {
+      answers.providers = [
+        { data: [], error: null },
+        { data: { id: "prov-new" }, error: null },
+      ];
+      answers.user_onboarding_progress = {
+        data: null,
+        error: { message: "permission denied" },
+      };
+      const r = await resolve();
+      expect(r.state).toBe("created");
+      expect(r.providerId).toBe("prov-new");
+    });
+
+    it("ticks nothing when it only matches a vendor on file", async () => {
+      answers.providers = { data: [{ id: "prov-1" }], error: null };
+      await resolve();
+      expect(
+        updates.filter((u) => u.table === "user_onboarding_progress"),
+      ).toHaveLength(0);
+    });
+
     it("refuses to create a vendor it cannot NAME", async () => {
       answers.providers = { data: [], error: null };
       const r = await resolve({

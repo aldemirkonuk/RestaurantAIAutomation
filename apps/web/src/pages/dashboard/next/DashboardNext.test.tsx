@@ -548,7 +548,7 @@ describe('DashboardNext', () => {
         day.click();
         expect(await screen.findByText('Chablis Les Clos')).toBeInTheDocument();
 
-        expect(screen.queryByText(/Paid to vendors/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/Paid to vendors|^Bought/i)).not.toBeInTheDocument();
         expect(container.textContent).not.toMatch(/\$/);
         // Its name says what the cells hold for this role.
         expect(container.querySelector('section[aria-label="Month calendar — deliveries per day"]')).not.toBeNull();
@@ -563,7 +563,7 @@ describe('DashboardNext', () => {
       mount();
 
       expect(await screen.findByText('Deliveries · today')).toBeInTheDocument();
-      expect(screen.queryByText(/Paid to vendors/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Paid to vendors|^Bought/i)).not.toBeInTheDocument();
     });
 
     it('reads a month the gateway sent without its money as counts', async () => {
@@ -573,7 +573,7 @@ describe('DashboardNext', () => {
 
         mount();
 
-        expect(await screen.findByText('Paid to vendors · today')).toBeInTheDocument();
+        expect(await screen.findByText('Bought · today')).toBeInTheDocument();
         await screen.findByRole('button', { name: /^Tuesday, September 1: 2 deliveries/ });
         // The month header carries only the bottles, never a "$0" for money withheld.
         expect(
@@ -605,7 +605,7 @@ describe('DashboardNext', () => {
 
       mount();
 
-      expect(await screen.findByText('Paid to vendors · today')).toBeInTheDocument();
+      expect(await screen.findByText('Bought · today')).toBeInTheDocument();
       expect(screen.queryByText('Deliveries · today')).not.toBeInTheDocument();
     });
   });
@@ -1484,7 +1484,7 @@ describe('DashboardNext — the KPI tiles say why a day figure is blank (F-783)'
       </MemoryRouter>,
     );
     expect(screen.getAllByText('unknown until the time zone is set')).toHaveLength(2);
-    expect(screen.queryByText('procurement, not sales')).toBeNull();
+    expect(screen.queryByText('delivered orders')).toBeNull();
   });
 
   it('says the same on the count tiles a role without amounts reads', () => {
@@ -1671,9 +1671,17 @@ describe('KpiRow — spend left out for want of a price', () => {
 
   it('keeps the plain subtitles when every delivery is priced, or the gateway sends no count', () => {
     draw(stats({ todayProcurementUnpriced: 0 }));
-    expect(screen.getByText('delivered purchase orders')).toBeInTheDocument();
-    expect(screen.getByText('procurement, not sales')).toBeInTheDocument();
+    expect(screen.getAllByText('delivered orders')).toHaveLength(2);
     expect(screen.queryByText(/with no price/)).not.toBeInTheDocument();
+  });
+
+  // F-1711: the figure is delivered purchase orders, not payments made, so the
+  // tiles must not say money was paid.
+  it('names the spend tiles for what they sum: bought, not paid', () => {
+    draw(stats({}));
+    expect(screen.getByText('Bought · today')).toBeInTheDocument();
+    expect(screen.getByText('Bought · month')).toBeInTheDocument();
+    expect(screen.queryByText(/Paid to vendors/)).not.toBeInTheDocument();
   });
 });
 

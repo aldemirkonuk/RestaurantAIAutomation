@@ -21,7 +21,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -97,6 +97,9 @@ export default function CountIndex() {
   const [sessions, setSessions] = useState<CountSessionSummary[] | null>(null)
   const [ended, setEnded] = useState<EndedCountSession[]>([])
   const [zones, setZones] = useState<CountZone[]>([])
+  // F-1712: the gateway said the house has no shelves, so a start would be
+  // refused after the confirm tap; the page says so before any tap.
+  const [noShelves, setNoShelves] = useState(false)
   // The places chosen for the next start; none = every shelf (S227 owed).
   const [chosenZones, setChosenZones] = useState<string[]>([])
   const [periods, setPeriods] = useState<CountPeriods | null>(null)
@@ -120,6 +123,7 @@ export default function CountIndex() {
       const places = out.zones ?? []
       setEnded(out.ended ?? [])
       setZones(places)
+      setNoShelves(out.zones !== null && out.zones !== undefined && out.zones.length === 0)
       // A place that is gone is no longer chosen.
       setChosenZones((c) => c.filter((id) => places.some((z) => z.id === id)))
       setPeriod((p) =>
@@ -213,7 +217,7 @@ export default function CountIndex() {
         </ul>
         {manager && (
           <div className="space-y-2 pt-4">
-            {periods?.ended && (
+            {periods?.ended && !noShelves && (
               <div className="space-y-2" role="group" aria-label="Which month is this count for?">
                 <p className="text-sm text-inkm-4">Which month is this count for?</p>
                 <div className="flex gap-2">
@@ -260,6 +264,15 @@ export default function CountIndex() {
                 </div>
               </div>
             )}
+            {noShelves ? (
+              <p className="rounded-xl bg-white/5 px-4 py-3 text-inkm-1" data-testid="count-no-shelves">
+                No shelves yet. A count walks the house shelf by shelf, so add them first.{' '}
+                <Link to="/inventory?shelves=1" className="font-semibold underline">
+                  Add them on Inventory
+                </Link>
+              </p>
+            ) : (
+            <>
             <p className="text-sm text-inkm-4">
               {chosenZones.length
                 ? `Start a count of ${listWords(zones.filter((z) => chosenZones.includes(z.id)).map((z) => z.name))}`
@@ -302,6 +315,8 @@ export default function CountIndex() {
                   {kindWords(k)}
                 </button>
               ))
+            )}
+            </>
             )}
           </div>
         )}

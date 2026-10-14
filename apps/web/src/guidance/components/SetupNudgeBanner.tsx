@@ -53,7 +53,13 @@ export function SetupNudgeBanner() {
       title="Finish setting up Mudavym."
       // Nothing waits on these two answers; they are what lets low stock be
       // flagged (F-1061). Said for every kind of drink, not wine alone.
-      body="Make your menu current and set a low-stock number, so we can flag what is running low. Everything else works without them."
+      // F-1713: a live menu with no drinks on it (Food alone) asks for the
+      // drinks menu, not for a menu that is already current.
+      body={
+        progress?.menu_live_no_drinks
+          ? 'Add your drinks menu and set a low-stock number, so we can flag what is running low. Everything else works without them.'
+          : 'Make your menu current and set a low-stock number, so we can flag what is running low. Everything else works without them.'
+      }
       primaryLabel="Finish setup"
       // The threshold is asked on its own step; the menu on /get-started's
       // menu step. The nudge goes to whichever half is still missing (F-985).
@@ -63,7 +69,9 @@ export function SetupNudgeBanner() {
         navigate(
           !progress?.threshold_configured
             ? '/get-started?step=threshold'
-            : progress?.menu_uploaded
+            : progress?.menu_live_no_drinks
+              ? '/get-started'
+              : progress?.menu_uploaded
               ? '/house/menu'
               : '/get-started',
         )
