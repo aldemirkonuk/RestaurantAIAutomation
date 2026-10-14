@@ -468,7 +468,10 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
     // `applyTieOut`.
     const docWrites = updates.filter((u) => u.table === "procurement_documents");
     expect(docWrites).toHaveLength(1);
-    expect(docWrites[0].row).toEqual({ currency: "TRY" });
+    expect(docWrites[0].row).toEqual({
+      currency: "TRY",
+      corrected_currency: "TRY",
+    });
     expect(
       updates.filter((u) => u.table === "procurement_document_lines"),
     ).toHaveLength(0);
@@ -564,7 +567,10 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
     // The currency still moves through the same single-key write, so a
     // confirmation and a restatement leave the row in the same shape.
     expect(updates).toHaveLength(1);
-    expect(updates[0].row).toEqual({ currency: "TRY" });
+    expect(updates[0].row).toEqual({
+      currency: "TRY",
+      corrected_currency: "TRY",
+    });
     // The sentence says it did NOT change — a confirmation that reads like a
     // change is how a manager comes to believe they corrected something.
     expect(res.sentence).toContain("CONFIRMED");
@@ -615,7 +621,10 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
     // nulls that would erase figures already on the row.
     const docWrites = updates.filter((u) => u.table === "procurement_documents");
     expect(docWrites).toHaveLength(1);
-    expect(docWrites[0].row).toEqual({ currency: "TRY" });
+    expect(docWrites[0].row).toEqual({
+      currency: "TRY",
+      corrected_currency: "TRY",
+    });
   });
 
   it("names a failed read instead of reporting the document as missing", async () => {
@@ -1503,12 +1512,16 @@ describe("DocumentsController.markPaid — paid while disputed tells the owners 
     claims?: Array<{ id: string }>;
     positions?: Array<{ id: string }>;
     claimError?: string;
+    wrote?: Record<string, unknown>;
   }) {
     const reads: Array<{ table: string; calls: any[] }> = [];
     const client = {
       rpc: () =>
         Promise.resolve({
-          data: { paid_at: "2026-10-14T09:00:00Z", paid_by: "restaurant" },
+          data: opts.wrote ?? {
+            paid_at: "2026-10-14T09:00:00Z",
+            paid_by: "restaurant",
+          },
           error: null,
         }),
       from: (table: string) => {
@@ -1642,6 +1655,27 @@ describe("DocumentsController.markPaid — paid while disputed tells the owners 
     expect(told[0].payload.message).toContain("could not be checked");
   });
 
+  it("[REVERT-FAILS] a part payment on a disputed invoice tells nobody: money is still owed (F-1688)", async () => {
+    const { controller, told } = disputeHarness({
+      claims: [{ id: "c-1" }],
+      wrote: {
+        paid_at: null,
+        paid_by: null,
+        paid: 500,
+        left: 1500,
+        currency: "TRY",
+      },
+    });
+    const out = await controller.markPaid(
+      DOC,
+      { paid: true, amount: 500 },
+      user,
+    );
+    expect(out.paidAt).toBeNull();
+    expect(out.left).toBe(1500);
+    expect(told).toHaveLength(0);
+  });
+
   it("an invoice with nothing disputed, or one marked not paid, tells nobody", async () => {
     const quiet = disputeHarness({});
     await quiet.controller.markPaid(DOC, { paid: true }, user);
@@ -1659,7 +1693,11 @@ describe("DocumentsController.markPaid — paid while disputed tells the owners 
  */
 describe("DocumentsController.payments — what was paid, and the credit that can pay it (F-1672)", () => {
   const INV = "12121212-1212-4121-8121-121212121212";
-  function payHarness(role: string, taken: any[] = []) {
+  function payHarness(
+    role: string,
+    taken: any[] = [],
+    corrected: Record<string, Record<string, unknown>> = {},
+  ) {
     const tables: Record<string, any> = {
       procurement_documents_one: {
         id: INV,
@@ -1716,11 +1754,33 @@ describe("DocumentsController.payments — what was paid, and the credit that ca
       from: (table: string) => {
         const ops: any[] = [];
         calls.push({ table, ops });
+        // The paper as the database hands it back: `effective_*` is the
+        // correction a case names, else the value as read (F-1690), and a
+        // select's `name:column` returns the column under the name.
+        const shown = (row: any) => {
+          const full = {
+            ...row,
+            effective_total: row.total,
+            effective_currency: row.currency,
+            effective_doc_number: row.doc_number,
+            ...corrected[row.id],
+          };
+          const out = { ...full };
+          const select = ops.find((o) => o[0] === "select");
+          for (const part of String(select?.[1] ?? "").split(",")) {
+            const [name, column] = part.trim().split(":");
+            if (column) out[name] = full[column];
+          }
+          return out;
+        };
         const answer = () => {
           if (table === "procurement_documents")
             return ops.some((o) => o[0] === "eq" && o[1] === "doc_type")
-              ? { data: tables.procurement_documents_many, error: null }
-              : { data: tables.procurement_documents_one, error: null };
+              ? {
+                  data: tables.procurement_documents_many.map(shown),
+                  error: null,
+                }
+              : { data: shown(tables.procurement_documents_one), error: null };
           if (table === "procurement_credit_taken_on_invoice")
             return { data: taken, error: null };
           if (ops.some((o) => o[0] === "in"))
@@ -1841,6 +1901,20 @@ describe("DocumentsController.payments — what was paid, and the credit that ca
       (c) => c.table === "procurement_credit_taken_on_invoice",
     )!;
     expect(read.ops).toContainEqual(["eq", "restaurant_id", "r-1"]);
+  });
+
+  it("[REVERT-FAILS] what is left, and the credit a note holds, are against the corrected totals (F-1690)", async () => {
+    // INV read as 10.000 and corrected to 8.000; CN-90 read as 500, corrected to 700.
+    const { controller } = payHarness("manager", [], {
+      [INV]: { effective_total: 8000 },
+      cn2: { effective_total: 700, effective_doc_number: "CN-90A" },
+    });
+    const out = await controller.payments(INV, user);
+    expect(out.paid).toBe(4200);
+    expect(out.left).toBe(3800);
+    expect(out.credits).toEqual([
+      { id: "cn2", number: "CN-90A", currency: "TRY", left: 700 },
+    ]);
   });
 
   it("keeps an invoice's payments from staff", async () => {

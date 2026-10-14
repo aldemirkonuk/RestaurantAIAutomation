@@ -127,6 +127,7 @@ describe("DocumentCorrectionService", () => {
       "select",
       "eq",
       "in",
+      "or",
       "order",
       "limit",
       "single",
@@ -465,6 +466,70 @@ describe("DocumentCorrectionService", () => {
       expect(res.ok).toBe(true);
       const audit = inserts.find((i) => i.table === "document_corrections");
       expect((audit?.payload.after as { value: unknown }).value).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe("a header money reads (F-1690)", () => {
+    it("[REVERT-FAILS] refuses an issue date that is not a day, and writes nothing", async () => {
+      for (const value of ["31.12.2026", "2026-02-30"]) {
+        const res = await service.correct("rest-1", "doc-1", "u1", {
+          path: "issueDate",
+          value,
+        });
+        expect(res).toMatchObject({ ok: false, status: 400 });
+        if (!res.ok) expect(res.error).toContain("2026-12-31");
+      }
+      expect(inserts).toEqual([]);
+    });
+
+    it("[REVERT-FAILS] refuses a currency correction on paper with money already paid in another currency", async () => {
+      answers.procurement_invoice_payments = {
+        data: [{ currency: "TRY" }],
+        error: null,
+      };
+      const res = await service.correct("rest-1", "doc-1", "u1", {
+        path: "currency",
+        value: "EUR",
+      });
+      expect(res).toMatchObject({ ok: false, status: 400 });
+      if (!res.ok) {
+        expect(res.error).toContain("already recorded in TRY");
+        expect(res.error).toContain("Nothing was changed");
+      }
+      expect(inserts).toEqual([]);
+      expect(verbs).toContain("procurement_invoice_payments.or");
+      expect(verbs).toContain("procurement_credit_taken_on_invoice.or");
+    });
+
+    it("[REVERT-FAILS] never reads a failed payments read as 'no money recorded'", async () => {
+      answers.procurement_credit_taken_on_invoice = {
+        data: null,
+        error: { message: "timeout" },
+      };
+      const res = await service.correct("rest-1", "doc-1", "u1", {
+        path: "currency",
+        value: "EUR",
+      });
+      expect(res).toMatchObject({ ok: false, status: 500 });
+      expect(inserts).toEqual([]);
+    });
+
+    it("corrects the currency of paper with no money on it, and a total, as an append", async () => {
+      const cur = await service.correct("rest-1", "doc-1", "u1", {
+        path: "currency",
+        value: "EUR",
+      });
+      expect(cur.ok).toBe(true);
+      const total = await service.correct("rest-1", "doc-1", "u1", {
+        path: "totals.taxInclusiveAmount",
+        value: 1234.56,
+      });
+      expect(total.ok).toBe(true);
+      // The money columns follow by trigger; this service still edits nothing.
+      expect(verbs.some((v) => /\.(update|upsert|delete)$/.test(v))).toBe(
+        false,
+      );
     });
   });
 

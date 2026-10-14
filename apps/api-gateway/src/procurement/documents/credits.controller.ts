@@ -426,7 +426,10 @@ async function refuseUnfitMemo(
     );
   const { data: memo, error } = await client
     .from("procurement_documents")
-    .select("id, doc_type, provider_id, total, currency")
+    // As corrected (F-1690): a memo's corrected total is what it can credit.
+    .select(
+      "id, doc_type, provider_id, total:effective_total, currency:effective_currency",
+    )
     .eq("id", memoId)
     .eq("restaurant_id", user.restaurantId)
     .maybeSingle();

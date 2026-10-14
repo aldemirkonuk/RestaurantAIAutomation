@@ -57,7 +57,7 @@ import {
 import { displayGroupMark, twoReadingsProblem, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
 import { useHouseCurrency } from '@/hooks/useHouseCurrency';
-import { useHouseZone } from '@/lib/houseZone';
+import { houseToday, useHouseZone } from '@/lib/houseZone';
 import { ink, settle } from '../../../lib/mudavym/motion';
 import { vendorClause } from '../../../lib/mudavym/vendor';
 import {
@@ -201,6 +201,10 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
   const [problem, setProblem] = useState<string | null>(null);
   const [takenId, setTakenId] = useState('');
   const [takenText, setTakenText] = useState('');
+  // The latest "Paid on" is the house's today, the day the gateway checks
+  // against (F-1689); the UTC day let a Detroit evening pick tomorrow.
+  const today = houseToday(useHouseZone());
+  const latestDay = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const rid = useActiveRestaurantId();
   const ledger = useQuery({
     queryKey: ['invoice-payments', rid, doc.id, doc.paid_at ?? null],
@@ -331,7 +335,7 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
                 <input
                   type="date"
                   value={paidOn}
-                  max={new Date().toISOString().slice(0, 10)}
+                  max={latestDay}
                   onChange={(e) => setPaidOn(e.target.value)}
                 />
               </label>

@@ -41,10 +41,12 @@ function harness(opts: {
     const filters: Record<string, unknown> = {};
     let patch: Row | null = null;
     let head = false;
+    let columns = "";
     const b: Record<string, unknown> = {
       // The house check counts the memo (`head: true`) before this guard reads it.
-      select: (_c?: string, o?: { head?: boolean }) => {
+      select: (c?: string, o?: { head?: boolean }) => {
         head = !!o?.head;
+        columns = c ?? "";
         return b;
       },
       eq: (k: string, v: unknown) => {
@@ -65,7 +67,9 @@ function harness(opts: {
         if (table === "procurement_documents")
           return {
             data:
-              opts.memo && filters.restaurant_id === "r1" ? opts.memo : null,
+              opts.memo && filters.restaurant_id === "r1"
+                ? shown(opts.memo, columns)
+                : null,
             error: null,
           };
         return { data: null, error: null };
@@ -95,6 +99,25 @@ function harness(opts: {
   };
   const db = { getClient: () => ({ from }) };
   return { c: new CreditsController(db as never, {} as never), updates };
+}
+
+/**
+ * The memo as the database hands it back: `effective_*` is its correction,
+ * else the value as read (F-1690), and `name:column` returns the column under
+ * the name.
+ */
+function shown(row: Row, columns: string): Row {
+  const full: Row = {
+    effective_total: row.total,
+    effective_currency: row.currency,
+    ...row,
+  };
+  const out: Row = { ...full };
+  for (const part of columns.split(",")) {
+    const [name, column] = part.trim().split(":");
+    if (column) out[name] = full[column];
+  }
+  return out;
 }
 
 const memo = (o: Row = {}): Row => ({
@@ -145,6 +168,16 @@ describe("crediting a claim against a memo (F-672)", () => {
       creditedOnMemo: [{ id: "c0", credited_amount: "60.00" }],
     });
     await c.transition("c1", credit(40), user);
+    expect(updates).toHaveLength(1);
+    expect(updates[0].state).toBe("credited");
+  });
+
+  it("[REVERT-FAILS] holds a claim to the memo's corrected total, not the one misread (F-1690)", async () => {
+    // Read as 40.00, corrected to 400.00: the 400 claim fits.
+    const { c, updates } = harness({
+      memo: memo({ total: "40.00", effective_total: "400.00" }),
+    });
+    await c.transition("c1", credit(400), user);
     expect(updates).toHaveLength(1);
     expect(updates[0].state).toBe("credited");
   });

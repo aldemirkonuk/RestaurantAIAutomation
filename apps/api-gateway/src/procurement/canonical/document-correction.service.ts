@@ -7,6 +7,7 @@ import {
 import { CanonicalDocument, FieldEnvelope } from "./canonical-types";
 import { CORRECTABLE_PATHS, labelFor, splitPath } from "./correctable-paths";
 import { normalizeUom, UOMS } from "../documents/document-types";
+import { isIso4217 } from "../../common/iso-4217";
 
 /**
  * DocumentCorrectionService — the correction door of ADR 0104 D5 (slice 3).
@@ -37,6 +38,15 @@ import { normalizeUom, UOMS } from "../documents/document-types";
  * lost: it is inside the correction row's `before` envelope, which is
  * append-only. A correction that re-states the SAME value keeps the tick,
  * because nothing about what was verified changed.
+ *
+ * THE HEADER REACHES THE MONEY (F-1690). A correction of the total, the
+ * issue date, the number or the currency is carried onto the document's
+ * `corrected_*` columns by a trigger on the audit row (migration
+ * `a_corrected_invoice_header_is_the_one_money_reads`), and Spend by vendor,
+ * Owed and the payment writer read `effective_*`. The columns as read are not
+ * touched, and this service still issues no UPDATE. So a date must be a day
+ * (YYYY-MM-DD) and a currency a currency, and a currency cannot be corrected
+ * on paper whose money is already recorded in another one.
  *
  * THE MAPPING MEMORY (slice 4) IS NOT BUILT HERE. `correctable-paths.ts`
  * declares `learnableKey` per field as the named seam; nothing reads it.
@@ -205,6 +215,14 @@ export class DocumentCorrectionService {
         error: `\`${String(input.value)}\` is not a unit this system can convert. Readable units: ${UOMS.join(", ")}.`,
       };
 
+    const header = await this.refuseHeaderValue(
+      restaurantId,
+      documentId,
+      parsedPath.template,
+      input.value ?? null,
+    );
+    if (header) return header;
+
     return this.append(restaurantId, documentId, userId, {
       path: input.path,
       template: parsedPath.template,
@@ -274,6 +292,82 @@ export class DocumentCorrectionService {
   }
 
   // -------------------------------------------------------------------------
+
+  /**
+   * A header value money will read (F-1690), refused at the door when it
+   * cannot be one: a date that is not a day, a code that is not a currency,
+   * or a currency other than the one money on this paper was recorded in —
+   * a payment, or a credit note used, stays in the currency it was paid in
+   * (the same-currency rule of `record_invoice_payment`).
+   */
+  private async refuseHeaderValue(
+    restaurantId: string,
+    documentId: string,
+    template: string,
+    value: unknown,
+  ): Promise<{ ok: false; status: number; error: string } | null> {
+    if (value === null) return null;
+    if (template === "issueDate") {
+      const day = String(value);
+      const d = new Date(`${day}T00:00:00Z`);
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(day) ||
+        Number.isNaN(d.getTime()) ||
+        d.toISOString().slice(0, 10) !== day
+      )
+        return {
+          ok: false,
+          status: 400,
+          error:
+            "Write the issue date as year-month-day, for example 2026-12-31. Nothing was changed.",
+        };
+      return null;
+    }
+    if (template !== "currency") return null;
+    const code = String(value).trim().toUpperCase();
+    if (!isIso4217(code))
+      return {
+        ok: false,
+        status: 400,
+        error: `${String(value)} is not a currency. Write its three-letter code, for example TRY or EUR. Nothing was changed.`,
+      };
+    const onThisPaper = `invoice_id.eq.${documentId},credit_note_id.eq.${documentId}`;
+    const [payments, taken] = await Promise.all([
+      this.db
+        .getClient()
+        .from("procurement_invoice_payments")
+        .select("currency")
+        .eq("restaurant_id", restaurantId)
+        .or(onThisPaper),
+      this.db
+        .getClient()
+        .from("procurement_credit_taken_on_invoice")
+        .select("currency")
+        .eq("restaurant_id", restaurantId)
+        .or(onThisPaper),
+    ]);
+    // A failed read is never "no money recorded" (ADR 0067).
+    const failed = payments.error ?? taken.error;
+    if (failed)
+      return {
+        ok: false,
+        status: 500,
+        error: `Whether money is already recorded on this paper could not be read, so its currency was not changed: ${failed.message}`,
+      };
+    const other = [
+      ...((payments.data ?? []) as { currency: string | null }[]),
+      ...((taken.data ?? []) as { currency: string | null }[]),
+    ]
+      .map((r) => (r.currency ?? "").trim().toUpperCase())
+      .find((c) => c !== code);
+    if (other !== undefined)
+      return {
+        ok: false,
+        status: 400,
+        error: `Money on this paper is already recorded in ${other || "another currency"}, as a payment or a credit note used, and it stays in the currency it was paid in, so the currency cannot be corrected to ${code}. Undo those first ("Mark not paid", and any credit note said taken off it), then correct the currency. Nothing was changed.`,
+      };
+    return null;
+  }
 
   private checkType(
     expected: "string" | "number",

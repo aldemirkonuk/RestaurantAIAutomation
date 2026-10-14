@@ -259,7 +259,7 @@ export function spendBasis(
   return [
     "Received is the delivered and completed orders, at each order's total, filed on the house day they were delivered — the same figure the month close keeps as Bought (delivered). Once an invoice is checked against an order, the order's total is what the invoice charged for the goods plus its freight and fees, without tax; an invoice in another currency leaves the order's total as it was. So Received does not include tax, and Invoiced does.",
     "An order delivered in the period that is still open — part of it still to come, or its invoice not checked yet — is not in Received until it is closed. It is listed beside Received at its order total.",
-    "Invoiced is the vendor's invoices dated in the period, at the total printed on them, so any tax on the invoice is inside it. Credit notes are their own column and are not taken off. Rejected and replaced paper is left out, and the same invoice number from one vendor counts once.",
+    "Invoiced is the vendor's invoices dated in the period, at the total printed on them, so any tax on the invoice is inside it. Where someone corrected an invoice's total, date, number or currency, the corrected one is used. Credit notes are their own column and are not taken off. Rejected and replaced paper is left out, and the same invoice number from one vendor counts once.",
     "Received and Invoiced are two views of the same buying and are never added together.",
     owedSince
       ? `Owed is every invoice dated from ${owedSince}, the day this house first marked an invoice paid, that is not paid in full yet: what is left on it after the payments recorded on it, less that vendor's credit notes dated since then that are not used yet. A credit note comes off only by what it has not paid yet; the part of it recorded as paying an invoice is in that invoice's payments, and credit the vendor already took off an invoice's printed total is used and does not come off again. A credit note dated before ${owedSince} is not taken off Owed, since nothing then could say whether it was used; it is listed beside it. Any copy of an invoice marked paid marks the whole invoice paid. Owed, all vendors adds only the vendors still owed something: one vendor's credit is never taken off another vendor's bills, and a vendor whose credit is more than its bills is said apart, as credit in your favour.`
@@ -346,14 +346,19 @@ export class VendorSpendService {
         () =>
           this.db
             .from("procurement_documents")
+            // THE DOCUMENT AS CORRECTED (F-1690): a correction never edits the paper
+            // as read; the corrected number, date, total and currency sit in
+            // `effective_*` beside it, read here under the plain names. Literal
+            // so check_read_columns_exist.py can check every column.
             .select(
-              "id, provider_id, doc_type, doc_number, doc_date, status, total, currency, created_at",
+              "id, provider_id, doc_type, doc_number:effective_doc_number, doc_date:effective_doc_date, status, total:effective_total, currency:effective_currency, created_at",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
             .in("doc_type", ["invoice", "credit_memo"])
-            .gte("doc_date", from)
-            .lte("doc_date", to) as never,
+            // Cut on the corrected date: 31 Dec misread as 3 Jan is December's.
+            .gte("effective_doc_date", from)
+            .lte("effective_doc_date", to) as never,
       ),
       // Every invoice and credit note on file, paid or not, any date (F-1635):
       // a bill is paid when ANY copy of it is, and the first marking dates Owed.
@@ -362,8 +367,9 @@ export class VendorSpendService {
         () =>
           this.db
             .from("procurement_documents")
+            // As corrected (F-1690), same as the read above.
             .select(
-              "id, provider_id, doc_type, doc_number, doc_date, status, total, currency, created_at, paid_at, paid_by",
+              "id, provider_id, doc_type, doc_number:effective_doc_number, doc_date:effective_doc_date, status, total:effective_total, currency:effective_currency, created_at, paid_at, paid_by",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)

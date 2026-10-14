@@ -2369,10 +2369,12 @@ export class DocumentsController {
      * stored reading cannot be parsed is still re-LABELLED without having the
      * money it already carries erased by a null fallback.
      */
+    // `corrected_currency` too (F-1690): where a correction named the
+    // currency, the deliberate restatement after it is the one money reads.
     const { error: writeError } = await this.db
       .getClient()
       .from("procurement_documents")
-      .update({ currency: next })
+      .update({ currency: next, corrected_currency: next })
       .eq("id", id)
       .eq("restaurant_id", user.restaurantId);
     if (writeError)
@@ -2665,7 +2667,10 @@ export class DocumentsController {
       this.logger.error(
         `invoice ${id} marked ${body.paid ? "paid" : "not paid"}, but the audit row failed: ${auditError.message}`,
       );
-    if (body.paid)
+    // Only when the payments now cover it (F-1688): a part payment leaves
+    // money owed, so "the money is gone" would be false, and the bell would
+    // spend its one-a-day on the instalment rather than on the full payment.
+    if (body.paid && paidAt)
       await this.tellPaidWhileDisputed(user.restaurantId, id, number ?? null);
     return body.paid
       ? {
@@ -2710,7 +2715,10 @@ export class DocumentsController {
     const client = this.db.getClient();
     const { data: inv, error: invError } = await client
       .from("procurement_documents")
-      .select("id, doc_type, provider_id, currency, total")
+      // As corrected (F-1690): what is left is against the corrected total.
+      .select(
+        "id, doc_type, provider_id, currency:effective_currency, total:effective_total",
+      )
       .eq("id", id)
       .eq("restaurant_id", user.restaurantId)
       .maybeSingle();
@@ -2758,7 +2766,9 @@ export class DocumentsController {
     if (invoice.provider_id) {
       const { data: cn, error: cnError } = await client
         .from("procurement_documents")
-        .select("id, doc_number, total, currency, status")
+        .select(
+          "id, doc_number:effective_doc_number, total:effective_total, currency:effective_currency, status",
+        )
         .eq("restaurant_id", user.restaurantId)
         .eq("provider_id", invoice.provider_id)
         .eq("doc_type", "credit_memo");

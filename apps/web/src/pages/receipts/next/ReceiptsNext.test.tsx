@@ -66,6 +66,16 @@ const api = vi.hoisted(() => ({
   mintCurrencySeal: vi.fn(() => Promise.resolve('seal-currency' as string | null)),
 }));
 
+/** F-1689: a test may stand in for the house's zone; `real` reads it as the page does. */
+const houseZoneSays = vi.hoisted(() => ({ real: true, zone: null as string | null }));
+vi.mock('@/lib/houseZone', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('@/lib/houseZone')>();
+  return {
+    ...mod,
+    useHouseZone: () => (houseZoneSays.real ? mod.useHouseZone() : houseZoneSays.zone),
+  };
+});
+
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ activeRestaurantId: api.restaurantId, activeRole: api.role, user: null }),
   // `useMudavymDesign` reads the CONTEXT OBJECT directly (not the hook), so a
@@ -1477,6 +1487,26 @@ describe('ReceiptsNext — marking an invoice paid (F-1635)', () => {
     await waitFor(() =>
       expect(api.markPaid).toHaveBeenCalledWith('d1', true, { paidBy: 'restaurant', amount: 4000, paidOn: '2026-10-01' }),
     );
+  });
+
+  it('[REVERT-FAILS] the latest "Paid on" day is the house\'s today, not the UTC day (F-1689)', async () => {
+    // 23:30 UTC on 14 Oct is already 02:30 on 15 Oct in Istanbul.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-14T23:30:00Z'));
+    houseZoneSays.real = false;
+    houseZoneSays.zone = 'Europe/Istanbul';
+    try {
+      const owed = doc({ total: 10000, currency: 'TRY' });
+      api.queue = [owed];
+      api.detail = { document: owed, lines: [line], links: [] };
+      api.payments.mockResolvedValue({ currency: 'TRY', paid: 0, left: 10000, payments: [], credits: [] });
+      render(<ReceiptsNext />, { wrapper });
+      await openFirstDoc();
+      expect((screen.getByLabelText(/^Paid on/) as HTMLInputElement).max).toBe('2026-10-15');
+    } finally {
+      houseZoneSays.real = true;
+      vi.useRealTimers();
+    }
   });
 
   it('[REVERT-FAILS] says a credit note paid it, naming which one of this vendor\'s (F-1672)', async () => {

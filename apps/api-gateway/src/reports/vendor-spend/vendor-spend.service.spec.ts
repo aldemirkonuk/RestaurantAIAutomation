@@ -17,9 +17,24 @@ function fakeDb(tables: Record<string, unknown[] | Record<string, unknown>>) {
     const ops: Op[] = [];
     calls.push({ table, ops });
     const answer = (): Promise<Answer> => {
-      const rows = tables[table];
-      if (!Array.isArray(rows))
-        return Promise.resolve({ data: rows ?? null, error: null });
+      const raw = tables[table];
+      if (!Array.isArray(raw))
+        return Promise.resolve({ data: raw ?? null, error: null });
+      // The paper's `effective_*` columns, as the database generates them
+      // (F-1690): the corrected value a fixture names, else the one as read.
+      const rows =
+        table === "procurement_documents"
+          ? raw.map((row: any) => ({
+              ...row,
+              effective_total: row.effective_total ?? row.total ?? null,
+              effective_doc_date:
+                row.effective_doc_date ?? row.doc_date ?? null,
+              effective_doc_number:
+                row.effective_doc_number ?? row.doc_number ?? null,
+              effective_currency:
+                row.effective_currency ?? row.currency ?? null,
+            }))
+          : raw;
       // Paged reads (`readWholeWindow`) come back on page 2 with nothing left.
       const paged = ops.some((o) => o.m === "gt");
       // `eq` and `is` filter a row only on a key the row carries.
@@ -38,7 +53,19 @@ function fakeDb(tables: Record<string, unknown[] | Record<string, unknown>>) {
           return true;
         }),
       );
-      const data = paged ? [] : kept;
+      // A select's `name:column` hands the column back under the name.
+      const select = ops.find((o) => o.m === "select");
+      const renames = String(select?.a[0] ?? "")
+        .split(",")
+        .map((p) => p.trim().split(":"))
+        .filter((p) => p.length === 2);
+      const shown = kept.map((row: any) => {
+        const out = { ...row };
+        for (const [name, column] of renames)
+          if (column in row) out[name] = row[column];
+        return out;
+      });
+      const data = paged ? [] : shown;
       return Promise.resolve({ data, error: null, count: data.length });
     };
     const chain: any = new Proxy(
@@ -170,8 +197,14 @@ describe("VendorSpendService (F-1608)", () => {
     });
     const paper = calls.find((c) => c.table === "procurement_documents")!.ops;
     expect(paper).toContainEqual({ m: "eq", a: ["restaurant_id", HOUSE] });
-    expect(paper).toContainEqual({ m: "gte", a: ["doc_date", "2026-01-01"] });
-    expect(paper).toContainEqual({ m: "lte", a: ["doc_date", "2026-12-31"] });
+    expect(paper).toContainEqual({
+      m: "gte",
+      a: ["effective_doc_date", "2026-01-01"],
+    });
+    expect(paper).toContainEqual({
+      m: "lte",
+      a: ["effective_doc_date", "2026-12-31"],
+    });
     const names = calls.find((c) => c.table === "providers")!.ops;
     expect(names).toContainEqual({ m: "eq", a: ["restaurant_id", HOUSE] });
   });
@@ -698,6 +731,69 @@ describe("VendorSpendService — each payment, and credit kept to its vendor (F-
     expect(rossi.owed).toEqual([{ currency: "TRY", total: 6000 }]);
     expect(rossi.owedInvoices).toBe(1);
     expect(rossi.unpaid).toEqual([{ currency: "TRY", total: 900 }]);
+  });
+
+  it("[REVERT-FAILS] a corrected total, date, number and currency are what Invoiced and Owed read (F-1690)", async () => {
+    const { svc, calls } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        // Marked paid in March: Owed counts from then.
+        inv({
+          id: "p1",
+          doc_number: "A-1",
+          doc_date: "2026-03-01",
+          total: 100,
+          paid_at: "2026-03-01T09:00:00Z",
+          paid_by: "restaurant",
+        }),
+        // 1.234,56 read as 123.456 and 31 Mar read as 3 Apr, both corrected;
+        // 500 was paid against it before the correction.
+        inv({
+          id: "m1",
+          doc_number: "A-2O",
+          doc_date: "2026-04-03",
+          total: 123456,
+          effective_doc_number: "A-20",
+          effective_doc_date: "2026-03-31",
+          effective_total: 1234.56,
+        }),
+        // Read as TRY, corrected to EUR: its money stays in its own code.
+        inv({
+          id: "e1",
+          doc_number: "A-21",
+          doc_date: "2026-03-20",
+          total: 80,
+          effective_currency: "EUR",
+        }),
+      ],
+      procurement_invoice_payments: [
+        pay({ invoice_id: "p1", amount: 100 }),
+        pay({ invoice_id: "m1", amount: 500 }),
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const march = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    const rossi = march.vendors.find((v) => v.providerId === ROSSI)!;
+    expect(rossi.invoiced).toEqual([
+      { currency: "TRY", total: 1334.56 },
+      { currency: "EUR", total: 80 },
+    ]);
+    const owing = march.owing.find((o) => o.providerId === ROSSI)!;
+    expect(owing.owed).toEqual([
+      { currency: "TRY", total: 734.56 },
+      { currency: "EUR", total: 80 },
+    ]);
+    // The period is cut on the corrected day, in the database.
+    const period = calls.find(
+      (c) =>
+        c.table === "procurement_documents" && c.ops.some((o) => o.m === "gte"),
+    )!;
+    expect(period.ops).toContainEqual({
+      m: "gte",
+      a: ["effective_doc_date", "2026-03-01"],
+    });
+    const april = await svc.read(HOUSE, "2026-04-01", "2026-04-30");
+    expect(april.vendors.find((v) => v.providerId === ROSSI)).toBeUndefined();
   });
 
   it("[REVERT-FAILS] one vendor's credit is never taken off another vendor's bills, and is said apart (F-1673)", async () => {
