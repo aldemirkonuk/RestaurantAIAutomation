@@ -12,7 +12,7 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { InventoryService } from "./inventory.service";
 import { zoneLabel } from "../cellar/zones.service";
 import { FACT_TIME_TRUST_MS } from "../common/fact-time";
-import { STAND_IN_BOTTLE_ML } from "./stock-count-result";
+import { countEndedBefore, STAND_IN_BOTTLE_ML } from "./stock-count-result";
 import { readHouseZone } from "../common/house-day";
 import {
   CountPeriodRefused,
@@ -882,8 +882,10 @@ export class CountSessionsService {
    * marked done only when every zero landed. A retry replays: each zero's key
    * is `count:<item>:shelf-done:<clientDoneId>`.
    *
-   * Accepted on an ended count too: an offline change is never dropped for
-   * arriving late (ADR 0241); review lists it as arriving after sign-off.
+   * Accepted on an ended count when it was done before the count was stopped
+   * or signed off: an offline change is never dropped for arriving late (ADR
+   * 0241); review lists it as arriving after sign-off. One done after the end
+   * is refused, so nobody zeroes a shelf of an ended count (F-1660).
    */
   async shelfDone(
     house: string,
@@ -923,6 +925,8 @@ export class CountSessionsService {
     const at = countedMoment(dto?.countedAgoMs);
 
     const session = await this.session(house, sessionId);
+    const ended = countEndedBefore(session, at ?? new Date());
+    if (ended) throw new HttpException(ended, HttpStatus.CONFLICT);
     const shelf = await this.shelf(house, sessionId, locationId);
     // F-1544 lane 4: a "done" from before a manager sent the shelf back is
     // the old pass. It posts no zeros and does not close the shelf again.
@@ -1183,7 +1187,9 @@ export class CountSessionsService {
     const locationId =
       typeof dto?.locationId === "string" ? dto.locationId : "";
     const at = countedMoment(dto?.countedAgoMs) ?? new Date();
-    await this.session(house, sessionId);
+    // F-1660: as a shelf done, a bottle found after the count ended is refused.
+    const ended = countEndedBefore(await this.session(house, sessionId), at);
+    if (ended) throw new HttpException(ended, HttpStatus.CONFLICT);
     await this.shelf(house, sessionId, locationId);
 
     const client = this.dbService.getClient();

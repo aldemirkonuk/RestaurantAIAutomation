@@ -240,8 +240,19 @@ export default function CountWalk() {
   const openShelf = async (s: CountShelf, force = false) => {
     setNotice(null)
     setTakeOver(null)
-    if (ended || s.claimedByMe || s.done) {
+    if (s.claimedByMe || s.done) {
       setShelfId(s.locationId)
+      return
+    }
+    // F-1660: an ended count is not counted any more. A shelf this phone
+    // already worked opens to show what it saved; no other shelf opens.
+    if (ended) {
+      const worked =
+        Object.values(walk.lines).some((l) => l.locationId === s.locationId) ||
+        !!walk.dones[s.locationId] ||
+        walk.parked.some((p) => p.locationId === s.locationId)
+      if (worked) setShelfId(s.locationId)
+      else setNotice('This count has ended, so this shelf is not counted now.')
       return
     }
     if (!navigator.onLine) {
@@ -303,7 +314,7 @@ export default function CountWalk() {
           walk={walk}
           setWalk={setWalk}
           provisional={!!provisional[shelf.locationId]}
-          lockedOut={lockedOut}
+          lockedOut={lockedOut || ended}
           reload={() => void load()}
           onFinished={(said) => {
             const next = nextShelf(session.shelves, walk, shelf.locationId)
@@ -353,7 +364,8 @@ export default function CountWalk() {
         )}
         {ended && (
           <p className="rounded-xl bg-white/5 px-3 py-2 text-sm text-inkm-2">
-            This count has ended. Anything saved on this phone is still sent.
+            This count has ended, so nothing more is counted on it. What this phone saved before it ended is
+            still sent.
           </p>
         )}
         {lockedOut && (

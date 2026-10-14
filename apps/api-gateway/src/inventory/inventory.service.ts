@@ -19,6 +19,7 @@ import { NfEventRef } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
 import { HUMAN_COUNT_BASIS, humanCountVerdict } from "./photo-count-verdict";
 import {
+  countEndedBefore,
   mapStockCountResult,
   openTenthsToMl,
   OPENING_COUNT_SOURCE,
@@ -1162,17 +1163,20 @@ export class InventoryService {
    * F-1544 lane 2: a line names a stock-take of this house, and an opening
    * stock-take's lines are opening counts (ADR 0335 §2-3; the controller lets
    * only an owner or a manager send one). Any other stock-take's lines are
-   * counts. The writer checks the house again under its lock.
+   * counts. The writer checks the house again under its lock. A line taken
+   * after the stock-take was stopped or signed off is refused (F-1660); one
+   * taken before it still lands, however late it arrives.
    */
   private async assertCountLineFitsSession(
     client: ReturnType<DatabaseService["getClient"]>,
     restaurantId: string,
     sessionId: string,
     opening: boolean,
+    at: Date,
   ): Promise<void> {
     const { data, error } = await client
       .from("stock_count_sessions")
-      .select("id, kind")
+      .select("id, kind, status, signed_off_at, abandoned_at")
       .eq("restaurant_id", restaurantId)
       .eq("id", sessionId)
       .maybeSingle();
@@ -1198,6 +1202,15 @@ export class InventoryService {
         HttpStatus.BAD_REQUEST,
       );
     }
+    const ended = countEndedBefore(
+      data as {
+        status?: string;
+        signed_off_at?: string | null;
+        abandoned_at?: string | null;
+      },
+      at,
+    );
+    if (ended) throw new HttpException(ended, HttpStatus.CONFLICT);
   }
 
   /**
@@ -1388,6 +1401,7 @@ export class InventoryService {
         restaurantId,
         sessionId,
         dto.opening === true,
+        countedAt == null ? new Date() : new Date(countedAt),
       );
       // ADR 0286, which names counts: a line taken more than 72 h before it
       // reached the server is kept only on an owner's or a manager's word.

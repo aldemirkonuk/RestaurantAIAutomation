@@ -183,6 +183,37 @@ describe("a line of a stock-take names its walk and its open bottles", () => {
     expect(closing.rpc).not.toHaveBeenCalled();
   });
 
+  it("[REVERT-FAILS] a line taken after the walk was stopped or signed off counts nothing; one taken before lands (F-1660)", async () => {
+    const tenMinAgo = new Date(Date.now() - 10 * 60_000).toISOString();
+    for (const ended of [
+      { status: "abandoned", abandoned_at: tenMinAgo },
+      { status: "signed_off", signed_off_at: tenMinAgo },
+    ]) {
+      const late = service({
+        stock_count_sessions: [{ id: WALK, kind: "closing", ...ended }],
+      });
+      await expect(
+        late.svc.recordSpotCount(HOUSE, ITEM, {
+          countedQty: 0,
+          clientCountId: "line-after",
+          sessionId: WALK,
+          countedAgoMs: 60_000,
+        }),
+      ).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
+      expect(late.rpc).not.toHaveBeenCalled();
+      const early = service({
+        stock_count_sessions: [{ id: WALK, kind: "closing", ...ended }],
+      });
+      await early.svc.recordSpotCount(HOUSE, ITEM, {
+        countedQty: 5,
+        clientCountId: "line-before",
+        sessionId: WALK,
+        countedAgoMs: 20 * 60_000,
+      });
+      expect(early.rpc).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it("refuses open bottles said twice, below nothing, or in parts of a tenth", async () => {
     const { svc, rpc } = service(walk());
     for (const open of [

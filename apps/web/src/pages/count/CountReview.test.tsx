@@ -43,7 +43,15 @@ vi.mock('@/services/api/inventory', () => ({
   ]),
 }))
 
+// F-1658: the house's zone, as the bell reads it.
+const zone = vi.hoisted(() => ({ value: null as string | null }))
+vi.mock('@/lib/houseZone', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useHouseZone: () => zone.value,
+}))
+
 import CountReview from './CountReview'
+import { setHouseLocale } from '@/lib/houseCurrency'
 
 const line = (over: Record<string, unknown> = {}) => ({
   countId: 'c1',
@@ -276,6 +284,32 @@ describe('the manager settles what the walk could not', () => {
     expect(api.signOffCountSession).toHaveBeenLastCalledWith('S1', false)
     fireEvent.click(screen.getByText('Sign off anyway'))
     await waitFor(() => expect(api.signOffCountSession).toHaveBeenLastCalledWith('S1', true))
+  })
+
+  it('[REVERT-FAILS] says when it was signed off on the house clock, in digits (F-1658)', async () => {
+    zone.value = 'Europe/Istanbul'
+    setHouseLocale('tr-TR')
+    try {
+      api.reviewCountSession.mockResolvedValue(
+        review(true, { status: 'signed_off', signedOffAt: '2026-10-12T22:00:00.000Z', signedOffBy: 'Selin' }),
+      )
+      show()
+      const said = await screen.findByText(/Signed off by Selin/)
+      // 01:00 on 13 October in Istanbul; the device (New York) is still on the 12th.
+      expect(said.textContent).toContain(
+        new Date('2026-10-12T22:00:00.000Z').toLocaleString('tr-TR', {
+          day: 'numeric',
+          month: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Europe/Istanbul',
+        }),
+      )
+      expect(said.textContent).not.toMatch(/Eki/)
+    } finally {
+      zone.value = null
+      setHouseLocale(null)
+    }
   })
 
   it('lists the lines that came in after sign-off, and offers no act on an ended count', async () => {

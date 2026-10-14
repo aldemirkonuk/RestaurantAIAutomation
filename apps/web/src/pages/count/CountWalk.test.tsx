@@ -364,6 +364,50 @@ describe('the house and stopping (F-1628, F-1629, F-1617)', () => {
     expect(api.houseHoldingCount).toHaveBeenCalledWith('S1')
   })
 
+  it('after "Open it in Detroit" the walk reads the count again in Detroit (F-1641)', async () => {
+    api.pullCountSession.mockRejectedValue({
+      response: { status: 404, data: { message: "That count is not one of this house's." } },
+    })
+    api.houseHoldingCount.mockResolvedValue({ id: 'h2', name: 'Detroit', city: 'Detroit' })
+    auth.value.setActiveRestaurantId.mockImplementation(async (id: string) => {
+      auth.value.activeRestaurantId = id
+      api.pullCountSession.mockResolvedValue(structuredClone(SESSION))
+      return true
+    })
+    try {
+      const view = renderWalk()
+      fireEvent.click(await screen.findByRole('button', { name: 'Open it in Detroit' }))
+      await waitFor(() => expect(auth.value.setActiveRestaurantId).toHaveBeenCalledWith('h2'))
+      // The auth context re-renders the page with the new house.
+      view.rerender(
+        <MemoryRouter initialEntries={['/count/S1']}>
+          <Routes>
+            <Route path="/count/:sessionId" element={<CountWalk />} />
+          </Routes>
+        </MemoryRouter>,
+      )
+      expect(await screen.findByText('Ayşe is counting')).toBeInTheDocument()
+      expect(screen.queryByText("That count is not one of this house's.")).toBeNull()
+    } finally {
+      auth.value.activeRestaurantId = 'h1'
+    }
+  })
+
+  it('[REVERT-FAILS] an ended count opens no new shelf, and a shelf of mine has no Find or Shelf done (F-1660)', async () => {
+    const ended = structuredClone(SESSION) as typeof SESSION & { status: string }
+    ended.status = 'abandoned'
+    ended.shelves[1] = { ...ended.shelves[1], claimedByMe: true, claimedBy: null }
+    api.pullCountSession.mockResolvedValue(ended)
+    renderWalk()
+    fireEvent.click(await screen.findByRole('button', { name: /Back bar/ }))
+    expect(await screen.findByText('This count has ended, so this shelf is not counted now.')).toBeInTheDocument()
+    expect(api.claimCountShelf).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: /Cellar rack 1/ }))
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Cellar rack 1/ })).toBeNull())
+    expect(screen.queryByRole('button', { name: /Find/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Shelf done' })).toBeNull()
+  })
+
   it('staff are not offered "Stop this count"', async () => {
     renderWalk()
     await screen.findByText('Ayşe is counting')

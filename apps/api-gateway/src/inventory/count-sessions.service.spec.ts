@@ -821,12 +821,64 @@ describe("shelf done -- the not-found items post as counts of 0, through the one
     expect(inventory.recordSpotCount).not.toHaveBeenCalled();
   });
 
-  it("an offline 'done' that lands after the count ended still lands (ADR 0241)", async () => {
+  it("an offline 'done' taken before the count was stopped still lands when it arrives after (ADR 0241)", async () => {
     const { svc, id } = await opened();
     await svc.abandon(HOUSE, id, BOSS);
     await expect(
-      svc.shelfDone(HOUSE, id, "Shelf 2", ME, { clientDoneId: "late" }, no),
+      svc.shelfDone(
+        HOUSE,
+        id,
+        "Shelf 2",
+        ME,
+        { clientDoneId: "late", countedAgoMs: 600000 },
+        no,
+      ),
     ).resolves.toMatchObject({ done: true, sessionStatus: "abandoned" });
+  });
+
+  it("[REVERT-FAILS] a 'done' taken after the count was stopped zeroes nothing and closes nothing (F-1660)", async () => {
+    const { svc, id, db, inventory } = await opened();
+    await svc.abandon(HOUSE, id, BOSS);
+    db.tables.stock_count_sessions[0].abandoned_at = new Date(
+      Date.now() - 60000,
+    ).toISOString();
+    const late = svc.shelfDone(
+      HOUSE,
+      id,
+      "Shelf 1",
+      ME,
+      { clientDoneId: "after", zeroItemIds: ["item-yakut"] },
+      no,
+    );
+    await expect(late).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+    });
+    await expect(late).rejects.toThrow("This count was stopped");
+    expect(inventory.recordSpotCount).not.toHaveBeenCalled();
+    expect(
+      db.tables.stock_count_session_shelves.find(
+        (s) => s.location_id === "Shelf 1",
+      )?.done_at,
+    ).toBeFalsy();
+  });
+
+  it("[REVERT-FAILS] a 'done' taken after sign-off is refused too (F-1660)", async () => {
+    const { svc, id, inventory, db } = await opened();
+    Object.assign(db.tables.stock_count_sessions[0], {
+      status: "signed_off",
+      signed_off_at: new Date(Date.now() - 60000).toISOString(),
+    });
+    await expect(
+      svc.shelfDone(
+        HOUSE,
+        id,
+        "Shelf 1",
+        ME,
+        { clientDoneId: "after-sign", zeroItemIds: ["item-yakut"] },
+        no,
+      ),
+    ).rejects.toThrow("This count was signed off");
+    expect(inventory.recordSpotCount).not.toHaveBeenCalled();
   });
 });
 
@@ -859,6 +911,31 @@ describe("park -- an item the house does not carry is parked once, nothing creat
       }),
     ).rejects.toMatchObject({ status: HttpStatus.NOT_FOUND });
     expect(db.tables.restaurant_inventory).toHaveLength(2);
+  });
+
+  it("[REVERT-FAILS] parks a bottle found before the count was stopped, refuses one found after (F-1660)", async () => {
+    const { svc, db } = setup();
+    const s: any = await svc.open(HOUSE, BOSS, { kind: "full" });
+    await svc.abandon(HOUSE, s.id, BOSS);
+    db.tables.stock_count_sessions[0].abandoned_at = new Date(
+      Date.now() - 60000,
+    ).toISOString();
+    const body = {
+      locationId: "Shelf 1",
+      description: "Unlabelled red",
+      countedQty: 2,
+    };
+    await expect(
+      svc.park(HOUSE, s.id, ME, {
+        ...body,
+        clientLineId: "before",
+        countedAgoMs: 600000,
+      }),
+    ).resolves.toMatchObject({ sessionId: s.id });
+    await expect(
+      svc.park(HOUSE, s.id, ME, { ...body, clientLineId: "after" }),
+    ).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
+    expect(db.tables.stock_count_parked_lines).toHaveLength(1);
   });
 });
 
