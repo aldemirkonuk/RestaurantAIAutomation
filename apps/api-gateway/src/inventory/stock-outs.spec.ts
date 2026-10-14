@@ -437,7 +437,7 @@ describe("a delivery turned away opens the 86 it ended again (F-1520)", () => {
   });
 });
 
-describe("bottles on order shelved bring a ran-out drink back (F-1523)", () => {
+describe("bottles a count finds on the shelf bring a ran-out drink back (F-1523)", () => {
   function shelved(cause: string) {
     const { db, quiet } = house();
     db.tables.inventory_lots = [
@@ -455,6 +455,18 @@ describe("bottles on order shelved bring a ran-out drink back (F-1523)", () => {
       data: db.id("txn"),
       error: null,
     });
+    // F-143 orphan shadow: the bottles post only through a count (ADR 0078).
+    db.rpcHandlers.record_stock_count = (args) => ({
+      data: {
+        count_id: db.id("count"),
+        expected_qty: 0,
+        counted_qty: args.p_counted_qty,
+        variance_qty: args.p_counted_qty,
+        transaction_id: null,
+        replayed: false,
+      },
+      error: null,
+    });
     const ledger = new InventoryLedgerService(
       { supabase: db, getClient: () => db } as any,
       { createEvent: async () => undefined } as any,
@@ -465,21 +477,27 @@ describe("bottles on order shelved bring a ran-out drink back (F-1523)", () => {
 
   it("ends a ran-out 86, as the person who shelved them", async () => {
     const { db, ledger } = shelved("ran_out");
-    await ledger.reconcileShadowIntoLive(HOUSE, "user-ayse", ITEM);
+    await ledger.confirmShadowByCount(HOUSE, "user-ayse", ITEM, 6);
     expect(db.tables.stock_outs[0].ended_at).not.toBeNull();
     expect(db.tables.stock_outs[0].ended_by).toBe("user-ayse");
     expect(db.tables.system_audit_log).toEqual([
       expect.objectContaining({
         action: "drink_back_on",
         actor_id: "user-ayse",
-        reason: "bottles on order counted onto the shelf",
+        reason: "bottles found by a count of the shelf",
       }),
     ]);
   });
 
+  it("[REVERT-FAILS] a count that finds no bottle leaves a ran-out 86 on", async () => {
+    const { db, ledger } = shelved("ran_out");
+    await ledger.confirmShadowByCount(HOUSE, "user-ayse", ITEM, 0);
+    expect(db.tables.stock_outs[0].ended_at).toBeNull();
+  });
+
   it("leaves a pulled 86 alone", async () => {
     const { db, ledger } = shelved("pulled");
-    await ledger.reconcileShadowIntoLive(HOUSE, "user-ayse", ITEM);
+    await ledger.confirmShadowByCount(HOUSE, "user-ayse", ITEM, 6);
     expect(db.tables.stock_outs[0].ended_at).toBeNull();
     expect(db.tables.system_audit_log).toEqual([]);
   });

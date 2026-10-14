@@ -408,26 +408,28 @@ export class InventoryLedgerController {
 
   @Post("inventory/:inventoryId/reconcile-shadow")
   @ApiOperation({
-    summary: "Move an item's shadow bottles into live",
+    summary: "Confirm by a count the bottles on order that no order holds",
     description:
-      "F-1166: live +N and shadow -N, N read by the server. A second press, a retry or a second tab moves nothing more.",
+      "F-143 orphan shadow: shadow no open order holds is a count to confirm. The body names the bottles counted on the shelf; the count is recorded through record_stock_count (ADR 0078) and the leftover shadow is taken off the order book. Bottles an open order holds are refused.",
   })
   @ApiParam({ name: "inventoryId", description: "Inventory item ID" })
-  async reconcileShadowIntoLive(
+  async confirmShadowByCount(
     @Param("inventoryId") inventoryId: string,
+    @Body() body: { counted: number },
     @CurrentUser() user: { userId: string; restaurantId: string },
-  ): Promise<{ moved: number }> {
-    // F-1695 (re-hit of F-143): putting bottles on the shelf by hand, with no
-    // delivery behind them, is an owner/manager act, as removing a wine is.
+  ): Promise<{ cleared: number; count: ReconcileResultDto["count"] }> {
+    // F-1695 (re-hit of F-143): settling bottles no delivery stands behind is
+    // an owner/manager act, as removing a wine is.
     await this.organizations.assertCanManageRestaurant(
       user.userId,
       user.restaurantId,
-      "move bottles on order onto the shelf",
+      "confirm bottles on order by a count",
     );
-    return this.ledgerService.reconcileShadowIntoLive(
+    return this.ledgerService.confirmShadowByCount(
       user.restaurantId,
       user.userId,
       inventoryId,
+      Number(body?.counted),
     );
   }
 }

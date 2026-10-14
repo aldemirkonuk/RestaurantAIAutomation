@@ -112,8 +112,19 @@ It is written in Python and reads the files itself, rather than shelling out to 
 - **Migration is UNAPPLIED.** `supabase/migrations/20260902190000_a_count_is_a_record.sql` has not been run against production. The Supabase GitHub integration tracks `main` and applies on merge using the version from the repo filename; hand-applying is the only way to manufacture a version mismatch.
 - **Revisit when:** `stock_counts` is being read by a product surface (that read is D14's other half and wants its own ADR), or when the table needs a retention policy, or if a count path appears that legitimately cannot supply an idempotency key.
 
+## Coordinator's call 2026-10-14 — shadow no order holds is a count to confirm (F-143 orphan shadow)
+
+**Recorded as the coordinator's call under the founder's /goal delegation, not a founder lock.** Basis: inventory industry practice — stock with no source document (no order, no receipt) is unconfirmed until a count or a receipt confirms it.
+
+- Shadow that an open order holds (`procurement_orders.reserved_bottles`, F-491) comes onto the shelf with its delivery (F-1695).
+- Shadow that **no** order holds is shown to the owner or manager as **"N bottles to confirm by count"** on the stock page's row. It is never booked into live, never valued and never sold from on its own say-so.
+- It posts only when a person counts the shelf: `POST /inventory-ledger/inventory/:id/reconcile-shadow` takes `{ counted }`, records it through `record_stock_count` (via `reconcileInventory`, this ADR's single writer, and ADR 0343's), then takes the leftover shadow off the order book with one `apply_stock_movement` (shadow −N). No row is deleted.
+- **Rejected:** booking it live silently (what "Reconcile N into live" did — bottles with no source document on the shelf, valued); deleting it silently (loses the trace of what the books once said).
+- **Not done here, named:** the page's "On hand" header and the row's "Reconcile N" chip still read live + shadow, because the list does not carry which shadow an order holds; and the phone stock-take walk does not yet draw the "to confirm" line or clear the leftover when it counts that wine.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-09-02 | — | Created. Number 0078 taken after `scripts/check_adr_numbers_unique.py` swept 487 refs and reported 0075 held by `feat/ledger-unit-typed-quantities`. |
+| 2026-10-14 | coordinator (sim lane w111-orphan-shadow) | Amended: shadow no order holds is a count to confirm, posted only through a count (F-143 orphan shadow). |
