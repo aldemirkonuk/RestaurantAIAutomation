@@ -52,6 +52,8 @@ const api = vi.hoisted(() => ({
   role: 'manager' as 'owner' | 'manager' | 'staff' | null,
   restateCurrency: vi.fn(),
   markPaid: vi.fn(),
+  /** F-1672 / F-1674: the payments on an invoice and the credit that can pay it. */
+  payments: vi.fn(),
   /**
    * The three mints (founder, 2026-09-06, batch 64: "Decide as a module: seal
    * all three"). Each returns a token the write then has to carry back; the
@@ -102,6 +104,7 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       linkLine: api.linkLine,
       restateCurrency: api.restateCurrency,
       markPaid: api.markPaid,
+      payments: api.payments,
       mintVerifySeal: api.mintVerifySeal,
       mintLineEditSeal: api.mintLineEditSeal,
       mintCurrencySeal: api.mintCurrencySeal,
@@ -228,6 +231,8 @@ function wrapperAt(entry: string) {
 }
 
 beforeEach(() => {
+  api.payments.mockReset();
+  api.payments.mockResolvedValue({ currency: 'TRY', paid: 0, left: 412.5, payments: [], credits: [] });
   api.queue = [doc({})];
   api.verified = [];
   api.clean = [];
@@ -1431,7 +1436,7 @@ describe('ReceiptsNext — marking an invoice paid (F-1635)', () => {
     await openFirstDoc();
     expect(screen.getByText('Not marked paid yet.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Mark paid' }));
-    await waitFor(() => expect(api.markPaid).toHaveBeenCalledWith('d1', true));
+    await waitFor(() => expect(api.markPaid).toHaveBeenCalledWith('d1', true, { paidBy: 'restaurant' }));
   });
 
   it('[REVERT-FAILS] says when a paid invoice was marked paid, and offers to undo it', async () => {
@@ -1442,9 +1447,72 @@ describe('ReceiptsNext — marking an invoice paid (F-1635)', () => {
     api.detail = { document: paid, lines: [line], links: [] };
     render(<ReceiptsNext />, { wrapper });
     await openFirstDoc();
-    expect(await screen.findByText(/^Marked paid on /)).toBeTruthy();
+    expect(await screen.findByText(/^Paid in full on /)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Mark not paid' }));
     await waitFor(() => expect(api.markPaid).toHaveBeenCalledWith('d1', false));
+  });
+
+  it('[REVERT-FAILS] records a part payment on the day it was made (F-1674)', async () => {
+    api.markPaid.mockReset();
+    api.markPaid.mockResolvedValue({ id: 'd1', paidAt: null, paidBy: null, paid: 4000, left: 6000, currency: 'TRY' });
+    const owed = doc({ total: 10000, currency: 'TRY' });
+    api.queue = [owed];
+    api.detail = { document: owed, lines: [line], links: [] };
+    api.payments.mockResolvedValue({
+      currency: 'TRY',
+      paid: 1000,
+      left: 9000,
+      payments: [{ amount: 1000, currency: 'TRY', paidOn: '2026-09-20', paidBy: 'restaurant', creditNoteNumber: null }],
+      credits: [],
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    expect(await screen.findByText(/^Paid .* so far; .* left to pay\.$/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/^Amount/), { target: { value: '4000' } });
+    fireEvent.change(screen.getByLabelText(/^Paid on/), { target: { value: '2026-10-01' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record payment' }));
+    await waitFor(() =>
+      expect(api.markPaid).toHaveBeenCalledWith('d1', true, { paidBy: 'restaurant', amount: 4000, paidOn: '2026-10-01' }),
+    );
+  });
+
+  it('[REVERT-FAILS] says a credit note paid it, naming which one of this vendor\'s (F-1672)', async () => {
+    api.markPaid.mockReset();
+    api.markPaid.mockResolvedValue({ id: 'd1', paidAt: null, paidBy: null, paid: 500, left: 9500, currency: 'TRY' });
+    const owed = doc({ total: 10000, currency: 'TRY' });
+    api.queue = [owed];
+    api.detail = { document: owed, lines: [line], links: [] };
+    api.payments.mockResolvedValue({
+      currency: 'TRY',
+      paid: 0,
+      left: 10000,
+      payments: [],
+      credits: [{ id: 'cn2', number: 'CN-90', currency: 'TRY', left: 500 }],
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const how = screen.getByLabelText(/^How was it paid\?/);
+    await waitFor(() =>
+      expect((screen.getByRole('option', { name: /^With a credit note/ }) as HTMLOptionElement).disabled).toBe(false),
+    );
+    fireEvent.change(how, { target: { value: 'credit_applied' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Mark paid' }));
+    expect(await screen.findByText('Pick the credit note that paid it.')).toBeTruthy();
+    expect(api.markPaid).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(/^Which credit note\?/), { target: { value: 'cn2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Mark paid' }));
+    await waitFor(() =>
+      expect(api.markPaid).toHaveBeenCalledWith('d1', true, { paidBy: 'credit_applied', creditNoteId: 'cn2' }),
+    );
+  });
+
+  it('offers no credit note when this vendor has none with credit left', async () => {
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    await waitFor(() => expect(api.payments).toHaveBeenCalled());
+    const option = screen.getByRole('option', { name: /^With a credit note/ }) as HTMLOptionElement;
+    expect(option.disabled).toBe(true);
+    expect(option.textContent).toContain('none from this vendor with credit left');
   });
 
   it('shows staff whether it is paid, with no button', async () => {
@@ -1455,5 +1523,7 @@ describe('ReceiptsNext — marking an invoice paid (F-1635)', () => {
     expect(screen.getByText('Not marked paid yet.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Mark paid' })).toBeNull();
     expect(container.textContent).toContain('An owner or a manager can mark it paid.');
+    // An invoice's payments are its money: never read for staff.
+    expect(api.payments).not.toHaveBeenCalled();
   });
 });

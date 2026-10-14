@@ -159,6 +159,26 @@ describe('VendorSpendShelf (F-1608)', () => {
     expect(screen.getByText(/Owed now: €1,000/)).toBeInTheDocument();
   });
 
+  it('[REVERT-FAILS] says one vendor\'s credit apart, never netted into Owed now (F-1673)', async () => {
+    const base = spend();
+    api.get.mockResolvedValue({
+      data: spend({
+        owedSince: '2026-10-14',
+        totals: {
+          ...base.totals,
+          owed: [{ currency: 'EUR', total: 10000 }],
+          inFavour: [{ currency: 'EUR', total: 3000 }],
+        },
+      }),
+    });
+    wrap(<VendorSpendShelf restaurantId="h1" zone="Europe/Istanbul" />);
+    const said = await screen.findByText(/Owed now: €10,000(\.00)?\./);
+    expect(said.textContent).toMatch(
+      /Credit in your favour, from vendors whose credit is more than their bills: €3,000(\.00)?\./,
+    );
+    expect(said.textContent).not.toMatch(/Owed now: €7,000/);
+  });
+
   it('switches to last year with one tap', async () => {
     api.get.mockResolvedValue({ data: spend() });
     wrap(<VendorSpendShelf restaurantId="h1" zone="Europe/Istanbul" />);
@@ -207,5 +227,31 @@ describe('VendorSpendShelf (F-1608)', () => {
     expect(periods('2028-03-02').lastMonth).toEqual({ from: '2028-02-01', to: '2028-02-29' });
     // houseToday is a local-midnight Date; the period is its YYYY-MM-DD.
     expect(dayOf(new Date(2027, 0, 5))).toBe('2027-01-05');
+  });
+
+  // F-1643 (sim 54): a vendor with only old unpaid paper is not a row of the
+  // period; its money is said in its own list, and an empty period says so.
+  it('[REVERT-FAILS] says an empty period, and old unpaid paper apart from it (F-1643)', async () => {
+    const base = spend();
+    const kaya = {
+      providerId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      name: 'Kaya Et',
+      unpaid: [{ currency: 'EUR', total: 900 }],
+      unpaidInvoices: 1,
+      unpaidWithoutTotal: 0,
+      owed: [],
+      owedInvoices: 0,
+      owedCreditNotes: 0,
+      owedWithoutTotal: 0,
+    };
+    api.get.mockResolvedValue({
+      data: spend({ vendors: [], owing: [kaya], totals: { ...base.totals, unpaid: kaya.unpaid } }),
+    });
+    wrap(<VendorSpendShelf restaurantId="h1" zone="Europe/Istanbul" />);
+    expect(await screen.findByText('No order was delivered and no invoice is dated in this period.')).toBeInTheDocument();
+    const list = screen.getByRole('list', { name: 'Owed and not marked paid, any date' });
+    expect(within(list).getByText('Kaya Et').closest('li')!.textContent).toMatch(
+      /Not marked paid: €900(\.00)? over 1 invoice/,
+    );
   });
 });

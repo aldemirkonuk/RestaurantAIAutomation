@@ -23,13 +23,20 @@ function fakeDb(tables: Record<string, unknown[] | Record<string, unknown>>) {
       // Paged reads (`readWholeWindow`) come back on page 2 with nothing left.
       const paged = ops.some((o) => o.m === "gt");
       // `eq` and `is` filter a row only on a key the row carries.
+      // `gte` / `lte` / `lt` cut a dated row the same way (F-1643: a period
+      // read must not see an invoice dated outside it).
       const kept = rows.filter((row: any) =>
-        ops.every(
-          (o) =>
-            (o.m !== "eq" && o.m !== "is") ||
-            !(String(o.a[0]) in row) ||
-            (row[String(o.a[0])] ?? null) === o.a[1],
-        ),
+        ops.every((o) => {
+          const k = String(o.a[0]);
+          if (!(k in row)) return true;
+          const v = row[k] ?? null;
+          if (o.m === "eq" || o.m === "is") return v === o.a[1];
+          if (v === null || typeof v !== "string") return true;
+          if (o.m === "gte") return v >= String(o.a[1]);
+          if (o.m === "lte") return v <= String(o.a[1]);
+          if (o.m === "lt") return v < String(o.a[1]);
+          return true;
+        }),
       );
       const data = paged ? [] : kept;
       return Promise.resolve({ data, error: null, count: data.length });
@@ -72,6 +79,7 @@ function service(tables: Record<string, unknown[] | Record<string, unknown>>) {
   const { db, calls } = fakeDb({
     restaurants: house,
     providers: [],
+    procurement_invoice_payments: [],
     ...tables,
   });
   return { svc: new VendorSpendService({ supabase: db } as any), calls };
@@ -571,5 +579,268 @@ describe("VendorSpendService — owed, and not marked (F-1635)", () => {
     const rossi = out.vendors[0];
     expect(rossi.owed).toEqual([{ currency: "TRY", total: 250 }]);
     expect(rossi.owedInvoices).toBe(1);
+  });
+});
+
+/**
+ * F-1672 / F-1673 / F-1674 (sim 55, buying-week findings 1-3). Every
+ * [REVERT-FAILS] case failed on a build that ignored the payments kept on an
+ * invoice (a used credit note came off Owed again; a part payment left the
+ * whole bill owed, or none of it; a back-dated marking moved owedSince) or
+ * that added every vendor's Owed together, credits of one against another.
+ */
+describe("VendorSpendService — each payment, and credit kept to its vendor (F-1672..F-1674)", () => {
+  const inv = (over: Record<string, unknown>) => ({
+    provider_id: ROSSI,
+    doc_type: "invoice",
+    status: "verified",
+    currency: "TRY",
+    paid_at: null,
+    paid_by: null,
+    ...over,
+  });
+  let payId = 0;
+  const pay = (over: Record<string, unknown>) => ({
+    id: `pay-${++payId}`,
+    credit_note_id: null,
+    recorded_at: "2026-03-10T09:00:00Z",
+    ...over,
+  });
+
+  it("[REVERT-FAILS] a credit note that paid an invoice is not taken off what the vendor is still owed (F-1672)", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        // INV-905, 10.000, paid with CN-88's 1.200 and 8.800 by the house.
+        inv({
+          id: "i905",
+          doc_number: "INV-905",
+          doc_date: "2026-03-08",
+          total: 10000,
+          paid_at: "2026-03-10T09:00:00Z",
+          paid_by: "restaurant",
+        }),
+        inv({
+          id: "cn88",
+          doc_type: "credit_memo",
+          doc_number: "CN-88",
+          doc_date: "2026-03-11",
+          total: -1200,
+        }),
+        inv({
+          id: "i906",
+          doc_number: "INV-906",
+          doc_date: "2026-03-12",
+          total: 5000,
+        }),
+      ],
+      procurement_invoice_payments: [
+        pay({ invoice_id: "i905", amount: 1200, credit_note_id: "cn88" }),
+        pay({ invoice_id: "i905", amount: 8800 }),
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    expect(out.owedSince).toBe("2026-03-10");
+    const rossi = out.owing.find((o) => o.providerId === ROSSI)!;
+    expect(rossi.owed).toEqual([{ currency: "TRY", total: 5000 }]);
+    expect(rossi.owedCreditNotes).toBe(0);
+    expect(out.basis.join(" ")).not.toContain(
+      "A credit already used to pay an invoice is not taken off again",
+    );
+    expect(out.basis.join(" ")).toContain(
+      "A credit note comes off only by what it has not paid yet",
+    );
+  });
+
+  it("[REVERT-FAILS] a part payment leaves what is left owed; a back-dated one does not move owedSince (F-1674)", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        // Paid in full, recorded 10 March, back-dated to 1 March.
+        inv({
+          id: "p1",
+          doc_number: "A-1",
+          doc_date: "2026-02-25",
+          total: 500,
+          paid_at: "2026-03-01T09:00:00Z",
+          paid_by: "restaurant",
+        }),
+        // Dated before the first recorded marking: not marked, never owed.
+        inv({
+          id: "o1",
+          doc_number: "A-0",
+          doc_date: "2026-03-05",
+          total: 900,
+        }),
+        // Paid 4.000 of 10.000 in a first instalment.
+        inv({
+          id: "v1",
+          doc_number: "A-2",
+          doc_date: "2026-03-12",
+          total: 10000,
+        }),
+      ],
+      procurement_invoice_payments: [
+        pay({ invoice_id: "p1", amount: 500 }),
+        pay({
+          invoice_id: "v1",
+          amount: 4000,
+          recorded_at: "2026-03-14T09:00:00Z",
+        }),
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    expect(out.owedSince).toBe("2026-03-10");
+    const rossi = out.owing.find((o) => o.providerId === ROSSI)!;
+    expect(rossi.owed).toEqual([{ currency: "TRY", total: 6000 }]);
+    expect(rossi.owedInvoices).toBe(1);
+    expect(rossi.unpaid).toEqual([{ currency: "TRY", total: 900 }]);
+  });
+
+  it("[REVERT-FAILS] one vendor's credit is never taken off another vendor's bills, and is said apart (F-1673)", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        inv({
+          id: "p1",
+          doc_number: "A-1",
+          doc_date: "2026-03-01",
+          total: 500,
+          paid_at: "2026-03-10T09:00:00Z",
+          paid_by: "restaurant",
+        }),
+        inv({
+          id: "a2",
+          doc_number: "A-2",
+          doc_date: "2026-03-12",
+          total: 10000,
+        }),
+        inv({
+          id: "k1",
+          provider_id: KAYA,
+          doc_type: "credit_memo",
+          doc_number: "K-C1",
+          doc_date: "2026-03-13",
+          total: -3000,
+        }),
+      ],
+      providers: [
+        { id: ROSSI, name: "Rossi Wines" },
+        { id: KAYA, name: "Kaya Gida" },
+      ],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    expect(out.owing.find((o) => o.providerId === KAYA)!.owed).toEqual([
+      { currency: "TRY", total: -3000 },
+    ]);
+    expect(out.totals.owed).toEqual([{ currency: "TRY", total: 10000 }]);
+    expect(out.totals.inFavour).toEqual([{ currency: "TRY", total: 3000 }]);
+    const figures = spendDoc(out).figures;
+    expect(figures.find((f) => f.label === "Owed, all vendors")!.value).toBe(
+      10000,
+    );
+    expect(
+      figures.find((f) => f.label === "Credit in your favour, all vendors")!
+        .value,
+    ).toBe(3000);
+  });
+});
+
+/**
+ * F-1643 (sim 54): Owed and Not marked paid are any date, so before this every
+ * vendor with an old unpaid invoice was a row of every period, and the empty
+ * period could never say so. [REVERT-FAILS] on a build that adds the any-date
+ * ledger to the period's rows.
+ */
+describe("VendorSpendService — a period lists its own vendors (F-1643)", () => {
+  it("[REVERT-FAILS] keeps a vendor with only old unpaid paper off the period, and says it in owing", async () => {
+    const { svc } = service({
+      procurement_orders: [
+        {
+          id: "o1",
+          provider_id: KAYA,
+          status: "delivered",
+          total_cost: 400,
+          currency: "TRY",
+          delivered_at: "2026-03-05T10:00:00Z",
+        },
+      ],
+      procurement_documents: [
+        // Rossi: one invoice from last year, never marked paid.
+        {
+          id: "old",
+          provider_id: ROSSI,
+          doc_type: "invoice",
+          doc_number: "R-1",
+          doc_date: "2025-06-01",
+          status: "verified",
+          total: 900,
+          currency: "TRY",
+          paid_at: null,
+        },
+        // Kaya: an invoice in the period, also unmarked.
+        {
+          id: "k1",
+          provider_id: KAYA,
+          doc_type: "invoice",
+          doc_number: "K-1",
+          doc_date: "2026-03-05",
+          status: "verified",
+          total: 400,
+          currency: "TRY",
+          paid_at: null,
+        },
+      ],
+      providers: [
+        { id: ROSSI, name: "Rossi Wines" },
+        { id: KAYA, name: "Kaya Et" },
+      ],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    // The period: Kaya only, still carrying its own unmarked line.
+    expect(out.vendors.map((v) => v.providerId)).toEqual([KAYA]);
+    expect(out.vendors[0].unpaid).toEqual([{ currency: "TRY", total: 400 }]);
+    // Any date: both vendors, named, and the total is not cut to the period.
+    expect(out.owing.map((v) => [v.name, v.unpaidInvoices])).toEqual([
+      ["Rossi Wines", 1],
+      ["Kaya Et", 1],
+    ]);
+    expect(out.totals.unpaid).toEqual([{ currency: "TRY", total: 1300 }]);
+    // The file: the period table has Kaya only; the any-date table has both.
+    const doc = spendDoc(out);
+    expect(doc.tables[0].rows.map((r) => r[0])).toEqual(["Kaya Et"]);
+    expect(doc.tables[1].title).toBe("Owed and not marked paid, any date");
+    expect(doc.tables[1].rows.map((r) => r[0])).toEqual([
+      "Rossi Wines",
+      "Kaya Et",
+    ]);
+  });
+
+  it("[REVERT-FAILS] an empty period says so even with old unpaid paper on file", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        {
+          id: "old",
+          provider_id: ROSSI,
+          doc_type: "invoice",
+          doc_number: "R-1",
+          doc_date: "2025-06-01",
+          status: "verified",
+          total: 900,
+          currency: "TRY",
+          paid_at: null,
+        },
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    expect(out.vendors).toEqual([]);
+    expect(out.owing).toHaveLength(1);
+    expect(spendDoc(out).say).toBe(
+      "No order was delivered and no invoice is dated in this period.",
+    );
   });
 });

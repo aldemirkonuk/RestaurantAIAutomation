@@ -1251,10 +1251,24 @@ describe("DocumentsController.markPaid — payment is a fact on the invoice (F-1
   function paidHarness(
     role: string | null,
     doc: Record<string, unknown> | null,
+    rpcAnswer: { data: unknown; error: unknown } = {
+      data: {
+        paid_at: "2026-10-14T09:00:00Z",
+        paid_by: "restaurant",
+        paid: 500,
+        left: 0,
+        currency: "TRY",
+      },
+      error: null,
+    },
   ) {
     const writes: Array<{ table: string; op: string; row: any; eqs: any[] }> =
       [];
     const client = {
+      rpc: (fn: string, args: any) => {
+        writes.push({ table: fn, op: "rpc", row: args, eqs: [] });
+        return Promise.resolve(rpcAnswer);
+      },
       from: (table: string) => {
         const eqs: any[] = [];
         let op = "select";
@@ -1317,10 +1331,18 @@ describe("DocumentsController.markPaid — payment is a fact on the invoice (F-1
     const out = await controller.markPaid(PAID_DOC, { paid: true }, user);
     expect(out.paidBy).toBe("restaurant");
     expect(typeof out.paidAt).toBe("string");
-    const update = writes.find((w) => w.op === "update")!;
-    expect(update.table).toBe("procurement_documents");
-    expect(update.row).toEqual({ paid_at: out.paidAt, paid_by: "restaurant" });
-    expect(update.eqs).toContainEqual(["restaurant_id", "r-1"]);
+    // One writer: whatever is left, today, by the house, in this house.
+    const call = writes.find((w) => w.op === "rpc")!;
+    expect(call.table).toBe("record_invoice_payment");
+    expect(call.row).toEqual({
+      p_restaurant_id: "r-1",
+      p_invoice_id: PAID_DOC,
+      p_amount: null,
+      p_paid_on: null,
+      p_paid_by: "restaurant",
+      p_credit_note_id: null,
+      p_recorded_by: "u-1",
+    });
     const audit = writes.find((w) => w.table === "system_audit_log")!;
     expect(audit.row.action).toBe("invoice_marked_paid");
     expect(audit.row.actor_id).toBe("u-1");
@@ -1333,10 +1355,115 @@ describe("DocumentsController.markPaid — payment is a fact on the invoice (F-1
     });
     const out = await controller.markPaid(PAID_DOC, { paid: false }, user);
     expect(out).toEqual({ id: PAID_DOC, paidAt: null, paidBy: null });
-    expect(writes.find((w) => w.op === "update")!.row).toEqual({
-      paid_at: null,
-      paid_by: null,
+    const call = writes.find((w) => w.op === "rpc")!;
+    expect(call.table).toBe("clear_invoice_payments");
+    expect(call.row).toEqual({
+      p_restaurant_id: "r-1",
+      p_invoice_id: PAID_DOC,
     });
+  });
+
+  it("[REVERT-FAILS] records a part payment on its own day; the invoice stays unpaid with the rest left (F-1674)", async () => {
+    const { controller, writes } = paidHarness("owner", invoice, {
+      data: {
+        paid_at: null,
+        paid_by: null,
+        paid: 4000,
+        left: 6000,
+        currency: "TRY",
+      },
+      error: null,
+    });
+    const out = await controller.markPaid(
+      PAID_DOC,
+      { paid: true, amount: 4000, paidOn: "2026-10-01" },
+      user,
+    );
+    const call = writes.find((w) => w.op === "rpc")!;
+    expect(call.row.p_amount).toBe(4000);
+    expect(call.row.p_paid_on).toBe("2026-10-01");
+    expect(out).toEqual({
+      id: PAID_DOC,
+      paidAt: null,
+      paidBy: null,
+      paid: 4000,
+      left: 6000,
+      currency: "TRY",
+    });
+    const audit = writes.find((w) => w.table === "system_audit_log")!;
+    expect(audit.row.action).toBe("invoice_payment_recorded");
+    expect(audit.row.changes.payment).toEqual({
+      amount: 4000,
+      paid_on: "2026-10-01",
+      credit_note_id: null,
+    });
+  });
+
+  it("[REVERT-FAILS] a payment with a credit note names the note, and only then (F-1672)", async () => {
+    const CN = "99999999-9999-4999-8999-999999999999";
+    const used = paidHarness("owner", invoice);
+    await used.controller.markPaid(
+      PAID_DOC,
+      { paid: true, paidBy: "credit_applied", creditNoteId: CN },
+      user,
+    );
+    const call = used.writes.find((w) => w.op === "rpc")!;
+    expect(call.row.p_paid_by).toBe("credit_applied");
+    expect(call.row.p_credit_note_id).toBe(CN);
+    const unnamed = paidHarness("owner", invoice);
+    await expect(
+      unnamed.controller.markPaid(
+        PAID_DOC,
+        { paid: true, paidBy: "credit_applied" },
+        user,
+      ),
+    ).rejects.toThrow("Say which credit note paid it");
+    const stray = paidHarness("owner", invoice);
+    await expect(
+      stray.controller.markPaid(
+        PAID_DOC,
+        { paid: true, creditNoteId: CN },
+        user,
+      ),
+    ).rejects.toThrow("Only a payment with a credit note names a credit note");
+    expect([...unnamed.writes, ...stray.writes]).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] refuses a day that is not a day, a bad amount, and says the writer's refusal as a 400", async () => {
+    const day = paidHarness("owner", invoice);
+    await expect(
+      day.controller.markPaid(
+        PAID_DOC,
+        { paid: true, paidOn: "2026-02-30" },
+        user,
+      ),
+    ).rejects.toThrow("Say the day it was paid as a date");
+    await expect(
+      day.controller.markPaid(PAID_DOC, { paid: true, amount: -5 }, user),
+    ).rejects.toThrow("Say the amount paid as a number more than zero");
+    expect(day.writes).toHaveLength(0);
+    const refused = paidHarness("owner", invoice, {
+      data: null,
+      error: {
+        code: "23514",
+        message: "A credit note can only pay an invoice from the same vendor.",
+      },
+    });
+    const err = await refused.controller
+      .markPaid(
+        PAID_DOC,
+        {
+          paid: true,
+          paidBy: "credit_applied",
+          creditNoteId: "99999999-9999-4999-8999-999999999999",
+        },
+        user,
+      )
+      .catch((e) => e);
+    expect(err.getStatus()).toBe(400);
+    expect(err.message).toBe(
+      "A credit note can only pay an invoice from the same vendor. Nothing was changed.",
+    );
   });
 
   it("refuses staff in words, before any read or write", async () => {
@@ -1379,6 +1506,11 @@ describe("DocumentsController.markPaid — paid while disputed tells the owners 
   }) {
     const reads: Array<{ table: string; calls: any[] }> = [];
     const client = {
+      rpc: () =>
+        Promise.resolve({
+          data: { paid_at: "2026-10-14T09:00:00Z", paid_by: "restaurant" },
+          error: null,
+        }),
       from: (table: string) => {
         const calls: any[] = [];
         reads.push({ table, calls });
@@ -1517,5 +1649,154 @@ describe("DocumentsController.markPaid — paid while disputed tells the owners 
     const undo = disputeHarness({ claims: [{ id: "c-1" }] });
     await undo.controller.markPaid(DOC, { paid: false }, user);
     expect(undo.told).toHaveLength(0);
+  });
+});
+
+/**
+ * F-1672 (sim 55): no screen could say an invoice was paid with a credit note,
+ * because nothing listed the payments or the credit notes that could pay it.
+ * `payments` did not exist; every case here failed on a build without it.
+ */
+describe("DocumentsController.payments — what was paid, and the credit that can pay it (F-1672)", () => {
+  const INV = "12121212-1212-4121-8121-121212121212";
+  function payHarness(role: string) {
+    const tables: Record<string, any> = {
+      procurement_documents_one: {
+        id: INV,
+        doc_type: "invoice",
+        provider_id: "v-1",
+        currency: "try",
+        total: 10000,
+      },
+      procurement_documents_many: [
+        // Same vendor, same money, 1.200 of which 1.200 is used: nothing left.
+        {
+          id: "cn1",
+          doc_number: "CN-88",
+          total: -1200,
+          currency: "TRY",
+          status: "verified",
+        },
+        // Same vendor, same money, untouched: offered.
+        {
+          id: "cn2",
+          doc_number: "CN-90",
+          total: 500,
+          currency: "TRY",
+          status: "verified",
+        },
+        // Same vendor, another currency: never offered.
+        {
+          id: "cn3",
+          doc_number: "CN-E1",
+          total: 80,
+          currency: "EUR",
+          status: "verified",
+        },
+        // Rejected paper is not a credit.
+        {
+          id: "cn4",
+          doc_number: "CN-X",
+          total: 300,
+          currency: "TRY",
+          status: "rejected",
+        },
+      ],
+    };
+    const calls: Array<{ table: string; ops: any[] }> = [];
+    const client = {
+      from: (table: string) => {
+        const ops: any[] = [];
+        calls.push({ table, ops });
+        const answer = () => {
+          if (table === "procurement_documents")
+            return ops.some((o) => o[0] === "eq" && o[1] === "doc_type")
+              ? { data: tables.procurement_documents_many, error: null }
+              : { data: tables.procurement_documents_one, error: null };
+          if (ops.some((o) => o[0] === "in"))
+            return {
+              data: [{ credit_note_id: "cn1", amount: 1200 }],
+              error: null,
+            };
+          return {
+            data: [
+              {
+                amount: 1200,
+                currency: "TRY",
+                paid_on: "2026-10-01",
+                paid_by: "credit_applied",
+                credit_note_id: "cn1",
+              },
+              {
+                amount: 3000,
+                currency: "TRY",
+                paid_on: "2026-10-03",
+                paid_by: "restaurant",
+                credit_note_id: null,
+              },
+            ],
+            error: null,
+          };
+        };
+        const chain: any = {};
+        for (const m of ["select", "eq", "in", "order"])
+          chain[m] = (...a: any[]) => {
+            ops.push([m, ...a]);
+            return chain;
+          };
+        chain.maybeSingle = () => Promise.resolve(answer());
+        chain.then = (res: any, rej: any) =>
+          Promise.resolve(answer()).then(res, rej);
+        return chain;
+      },
+    };
+    const none = {} as any;
+    const controller = new DocumentsController(
+      none,
+      { getClient: () => client } as any,
+      none,
+      none,
+      none,
+      none,
+      {
+        assertCanManageRestaurant: async () => {
+          if (role !== "owner" && role !== "manager") throw new Error("no");
+        },
+      } as any,
+      none,
+      none,
+      none,
+      none,
+    );
+    return { controller, calls };
+  }
+  const user = { userId: "u-1", restaurantId: "r-1" } as any;
+
+  it("[REVERT-FAILS] lists the payments and offers only the same vendor's credit, in the same money, with credit left", async () => {
+    const { controller, calls } = payHarness("manager");
+    const out = await controller.payments(INV, user);
+    expect(out.currency).toBe("TRY");
+    expect(out.paid).toBe(4200);
+    expect(out.left).toBe(5800);
+    expect(out.payments[0]).toEqual({
+      amount: 1200,
+      currency: "TRY",
+      paidOn: "2026-10-01",
+      paidBy: "credit_applied",
+      creditNoteNumber: "CN-88",
+    });
+    expect(out.credits).toEqual([
+      { id: "cn2", number: "CN-90", currency: "TRY", left: 500 },
+    ]);
+    for (const c of calls)
+      expect(c.ops).toContainEqual(["eq", "restaurant_id", "r-1"]);
+  });
+
+  it("keeps an invoice's payments from staff", async () => {
+    const { controller, calls } = payHarness("staff");
+    await expect(controller.payments(INV, user)).rejects.toThrow(
+      "kept for the house's owners and managers",
+    );
+    expect(calls).toHaveLength(0);
   });
 });

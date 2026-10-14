@@ -56,14 +56,26 @@ export interface VendorSpend {
   to: string;
   zone: string;
   currency: string | null;
+  /** Vendors with orders or paper in the period only (F-1643). */
   vendors: VendorSpendRow[];
+  /**
+   * Every vendor with something owed or not marked paid, any date (F-1643).
+   * Optional only so an older gateway's answer still reads.
+   */
+  owing?: VendorOwedRow[];
   totals: {
     received: SpendMoney[];
     awaiting: SpendMoney[];
     invoiced: SpendMoney[];
     credited: SpendMoney[];
     unpaid: SpendMoney[];
+    /** Only the vendors still owed something, added up; never less another vendor's credit (F-1673). */
     owed: SpendMoney[];
+    /**
+     * Vendors whose credit is more than their bills: credit in the house's
+     * favour, kept apart (F-1673). Optional so an older gateway's answer reads.
+     */
+    inFavour?: SpendMoney[];
   };
   /** The house day it first marked an invoice paid; null when it never has. */
   owedSince: string | null;
@@ -152,6 +164,9 @@ type OwedFacts = Pick<
   VendorSpendRow,
   'owed' | 'owedInvoices' | 'owedCreditNotes' | 'owedWithoutTotal' | 'unpaid' | 'unpaidInvoices' | 'unpaidWithoutTotal'
 >;
+
+/** One vendor's Owed and Not marked paid, any date (`VendorOwedRow` at the gateway). */
+export type VendorOwedRow = OwedFacts & Pick<VendorSpendRow, 'providerId' | 'name'>;
 
 /**
  * What one vendor is owed, in words (F-1635) — the reports shelf and the
@@ -293,7 +308,13 @@ export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShel
             {s.from} to {s.to}, both days included. Delivered: {amounts(s.totals.received, s.currency)}.
             Invoiced: {amounts(s.totals.invoiced, s.currency)}
             {s.totals.credited.length ? `, and ${amounts(s.totals.credited, s.currency)} in credit notes` : ''}.
-            {s.owedSince && s.totals.owed.length ? ` Owed now: ${owedAmounts(s.totals.owed, s.currency)}.` : ''}
+            {/* F-1673: one vendor's credit is not set against another's bills; it is said apart. */}
+            {s.owedSince && (s.totals.owed.length || s.totals.inFavour?.length)
+              ? ` Owed now: ${amounts(s.totals.owed, s.currency)}.`
+              : ''}
+            {s.owedSince && s.totals.inFavour?.length
+              ? ` Credit in your favour, from vendors whose credit is more than their bills: ${amounts(s.totals.inFavour, s.currency)}.`
+              : ''}
             {s.totals.unpaid.length
               ? ` Not marked paid, ${s.owedSince ? `dated before ${s.owedSince}` : 'any date'}: ${amounts(s.totals.unpaid, s.currency)}.`
               : ''}
@@ -350,6 +371,36 @@ export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShel
               ))}
             </ul>
           )}
+          {/* F-1643: vendors with nothing in the period but money still owed or
+              not marked paid are said apart, not as rows of the period. */}
+          {(() => {
+            const inPeriod = new Set(s.vendors.map((v) => v.providerId));
+            const rest = (s.owing ?? []).filter((o) => !inPeriod.has(o.providerId));
+            if (rest.length === 0) return null;
+            return (
+              <>
+                <p className="rp-cap">Also owed or not marked paid, from vendors with nothing in this period:</p>
+                <ul className="rp-list rp-exports__list" aria-label="Owed and not marked paid, any date">
+                  {rest.map((o) => {
+                    const w = owedWords(o, s.owedSince, s.currency);
+                    return (
+                      <li key={o.providerId ?? 'none'} className="rp-export" data-status="ready">
+                        <div className="rp-export__what">
+                          <p className="rp-sentence">
+                            <strong>
+                              {o.providerId === null ? 'No vendor named' : (o.name ?? 'A vendor no longer on your list')}
+                            </strong>
+                          </p>
+                          {w.owed && o.owedInvoices + o.owedCreditNotes > 0 && <p className="rp-cap">{w.owed}</p>}
+                          {w.notMarked && <p className="rp-cap">{w.notMarked}</p>}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </>
+            );
+          })()}
           {s.unverifiedPaper > 0 && (
             <p className="rp-cap">
               {countOf(s.unverifiedPaper, 'invoice or credit note has', 'invoices or credit notes have')} not
