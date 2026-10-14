@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import { VendorSpendService } from "./vendor-spend.service";
+import { VendorSpendService, spendDoc } from "./vendor-spend.service";
 
 /**
  * F-1608 (sim 52, owner-year-and-accountant finding 5): there was no spend by
@@ -405,12 +405,171 @@ describe("VendorSpendService (F-1608)", () => {
       { currency: "TRY", total: 12000 },
       { currency: "EUR", total: 744 },
     ]);
-    // Any date: the unpaid read is not cut to the period.
+    // Any date: the unpaid read is not cut to the period. It reads paid and
+    // unpaid alike, so a paid copy of a bill marks the bill paid (F-1635 rest).
     const unpaidRead = calls.filter(
       (c) => c.table === "procurement_documents",
     )[1].ops;
-    expect(unpaidRead).toContainEqual({ m: "is", a: ["paid_at", null] });
     expect(unpaidRead).toContainEqual({ m: "eq", a: ["restaurant_id", HOUSE] });
     expect(unpaidRead.some((o) => o.m === "gte" || o.m === "lte")).toBe(false);
+  });
+});
+
+/**
+ * F-1635 remainder (S230): what is owed to a vendor, credit notes taken off,
+ * and only for invoices dated since the house could mark one paid; older
+ * unmarked invoices are "not marked", never owed. Every [REVERT-FAILS] case
+ * failed on a build without `owed` / `owedSince`.
+ */
+describe("VendorSpendService — owed, and not marked (F-1635)", () => {
+  const inv = (over: Record<string, unknown>) => ({
+    provider_id: ROSSI,
+    doc_type: "invoice",
+    status: "verified",
+    currency: "TRY",
+    paid_at: null,
+    paid_by: null,
+    ...over,
+  });
+
+  it("[REVERT-FAILS] calls invoices since the first marking owed, credit notes off, and older ones not marked", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        // Marked paid on 10 March (house day): Owed starts then.
+        inv({
+          id: "p1",
+          doc_number: "A-1",
+          doc_date: "2026-03-01",
+          total: 500,
+          paid_at: "2026-03-10T09:00:00Z",
+          paid_by: "restaurant",
+        }),
+        // Before the first marking: not marked, never owed.
+        inv({
+          id: "o1",
+          doc_number: "A-0",
+          doc_date: "2026-02-20",
+          total: 9000,
+        }),
+        // Since then, unpaid: owed.
+        inv({
+          id: "n1",
+          doc_number: "A-2",
+          doc_date: "2026-03-12",
+          total: 1200,
+        }),
+        inv({
+          id: "n2",
+          doc_number: "A-3",
+          doc_date: "2026-03-20",
+          total: 300,
+          currency: "EUR",
+        }),
+        // A credit note since then comes off; one before does not.
+        inv({
+          id: "c1",
+          doc_type: "credit_memo",
+          doc_number: "C-1",
+          doc_date: "2026-03-15",
+          total: -200,
+        }),
+        inv({
+          id: "c0",
+          doc_type: "credit_memo",
+          doc_number: "C-0",
+          doc_date: "2026-02-01",
+          total: -50,
+        }),
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    expect(out.owedSince).toBe("2026-03-10");
+    const rossi = out.vendors[0];
+    expect(rossi.owed).toEqual([
+      { currency: "TRY", total: 1000 },
+      { currency: "EUR", total: 300 },
+    ]);
+    expect(rossi.owedInvoices).toBe(2);
+    expect(rossi.owedCreditNotes).toBe(1);
+    expect(rossi.unpaid).toEqual([{ currency: "TRY", total: 9000 }]);
+    expect(rossi.unpaidInvoices).toBe(1);
+    expect(out.totals.owed).toEqual([
+      { currency: "TRY", total: 1000 },
+      { currency: "EUR", total: 300 },
+    ]);
+    expect(out.basis.join(" ")).toContain(
+      "Owed is every invoice dated from 2026-03-10",
+    );
+    expect(out.basis.join(" ")).toContain("not what is owed");
+  });
+
+  it("[REVERT-FAILS] a house that never marked an invoice paid owes nothing it can name: all are not marked", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        inv({
+          id: "n1",
+          doc_number: "A-2",
+          doc_date: "2026-03-12",
+          total: 1200,
+        }),
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    expect(out.owedSince).toBeNull();
+    expect(out.vendors[0].owed).toEqual([]);
+    expect(out.vendors[0].unpaid).toEqual([{ currency: "TRY", total: 1200 }]);
+    expect(out.basis.join(" ")).toContain("Owed is not worked out yet");
+    // The file says it is not known, never a zero.
+    const doc = spendDoc(out);
+    const owedFigure = doc.figures.find(
+      (f) => f.label === "Owed, all vendors",
+    )!;
+    expect(owedFigure.value).not.toBe(0);
+  });
+
+  it("[REVERT-FAILS] a bill paid on one copy is paid; a credit spent paying an invoice is not taken off twice", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        inv({
+          id: "a",
+          doc_number: "4411",
+          doc_date: "2026-03-11",
+          total: 700,
+          paid_at: "2026-03-11T09:00:00Z",
+          paid_by: "credit_applied",
+        }),
+        // The emailed copy of 4411, nobody marked it: still the same, paid bill.
+        inv({
+          id: "b",
+          doc_number: "4411",
+          doc_date: "2026-03-11",
+          total: 700,
+          status: "needs_review",
+        }),
+        inv({
+          id: "c",
+          doc_type: "credit_memo",
+          doc_number: "C-9",
+          doc_date: "2026-03-11",
+          total: 700,
+        }),
+        inv({
+          id: "d",
+          doc_number: "4412",
+          doc_date: "2026-03-12",
+          total: 250,
+        }),
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    const rossi = out.vendors[0];
+    expect(rossi.owed).toEqual([{ currency: "TRY", total: 250 }]);
+    expect(rossi.owedInvoices).toBe(1);
   });
 });

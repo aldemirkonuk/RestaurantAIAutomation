@@ -13,6 +13,8 @@ import {
   UseGuards,
   Logger,
   Optional,
+  Inject,
+  forwardRef,
 } from "@nestjs/common";
 import {
   ApiBearerAuth,
@@ -52,6 +54,7 @@ import { assertOrderBelongsToRestaurant } from "../../common/tenant/assert-order
 import { assertProviderBelongsToRestaurant } from "../../common/tenant/assert-provider-belongs-to-restaurant";
 import { SealChallengeService } from "../../common/seal/seal-challenge.service";
 import { VendorSendAuthorityService } from "../../organizations/vendor-send-authority.service";
+import { NotificationsService } from "../../notifications/notifications.service";
 import {
   DOCUMENT_SEAL_SUBJECT_KIND,
   DocumentSealAct,
@@ -225,6 +228,12 @@ export class DocumentsController {
     // house's money is given the link.
     @Optional()
     private readonly sendAuthority?: VendorSendAuthorityService,
+    // THE PAID-WHILE-DISPUTED NOTICE (ADR 0103 A3, F-1635). After the
+    // authority, for the positional specs; `ProcurementModule` imports
+    // `NotificationsModule` behind a forwardRef, as `ProcurementService` does.
+    @Optional()
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notifications?: NotificationsService,
   ) {}
 
   /**
@@ -2536,7 +2545,116 @@ export class DocumentsController {
       this.logger.error(
         `invoice ${id} marked ${body.paid ? "paid" : "not paid"}, but the audit row failed: ${auditError.message}`,
       );
+    if (body.paid)
+      await this.tellPaidWhileDisputed(user.restaurantId, id, number ?? null);
     return { id, paidAt, paidBy: how };
+  }
+
+  /**
+   * "PAID WHILE DISPUTED" (ADR 0103 A3: "a named condition with its own
+   * notification", F-1635). An invoice is disputed while a vendor claim on it
+   * or on an order it is linked to is still unsettled (open, asked, promised),
+   * or while a position on it at the door is still open. Marking it paid then
+   * tells the house's owners and managers, so the money already gone is not
+   * forgotten by whoever is chasing the claim.
+   *
+   * A dispute that could not be read is never "not disputed": they are told it
+   * could not be checked. Best-effort: the invoice IS marked paid whatever
+   * happens here; a failure is logged, never read as "told".
+   */
+  private async tellPaidWhileDisputed(
+    restaurantId: string,
+    id: string,
+    number: string | null,
+  ): Promise<void> {
+    const client = this.db.getClient();
+    let disputed: "yes" | "no" | "unknown" = "unknown";
+    try {
+      const { data: links, error: linkError } = await client
+        .from("procurement_document_links")
+        .select("order_id")
+        .eq("restaurant_id", restaurantId)
+        .eq("document_id", id);
+      if (linkError) throw new Error(linkError.message);
+      const orderIds = ((links ?? []) as Array<{ order_id?: unknown }>)
+        .map((l) => l.order_id)
+        .filter((o): o is string => typeof o === "string" && o !== "");
+      const claims = client
+        .from("procurement_credits")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .in("state", ["open", "requested", "promised"]);
+      const [
+        { data: open, error: claimError },
+        { data: positions, error: positionError },
+      ] = await Promise.all([
+        orderIds.length
+          ? claims.or(
+              `document_id.eq.${id},order_id.in.(${orderIds.join(",")})`,
+            )
+          : claims.eq("document_id", id),
+        client
+          .from("delivery_proposals")
+          .select("id")
+          .eq("document_id", id)
+          .eq("status", "open"),
+      ]);
+      if (claimError) throw new Error(claimError.message);
+      if (positionError) throw new Error(positionError.message);
+      disputed =
+        (open ?? []).length + (positions ?? []).length > 0 ? "yes" : "no";
+    } catch (err) {
+      this.logger.warn(
+        `invoice ${id} was marked paid, but whether it is disputed could not be read: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (disputed === "no") return;
+    if (!this.notifications || !this.sendAuthority) {
+      this.logger.warn(
+        `invoice ${id} was marked paid ${disputed === "yes" ? "while disputed" : "and its dispute could not be checked"}, but the owners and managers cannot be told on this server.`,
+      );
+      return;
+    }
+    try {
+      const { owners, managers } =
+        await this.sendAuthority.ownersAndManagers(restaurantId);
+      const audience = [...new Set([...owners, ...managers])];
+      if (audience.length === 0) {
+        this.logger.warn(
+          `invoice ${id} was marked paid while disputed, but this house has no owner or manager to tell.`,
+        );
+        return;
+      }
+      const invoice = number ? `Invoice ${number}` : "An invoice";
+      const { inserted } = await this.notifications.persistForRestaurant(
+        restaurantId,
+        {
+          type: "invoice_paid_while_disputed",
+          title:
+            disputed === "yes"
+              ? `${invoice} was marked paid while disputed`
+              : `${invoice} was marked paid; check its claims`,
+          message:
+            disputed === "yes"
+              ? `${invoice} was marked paid while a claim or a question on it with the vendor is still open. The money is gone; the claim still needs chasing.`
+              : `${invoice} was marked paid, but whether a claim on it is still open could not be checked just now. Look at its claims before you count it settled.`,
+          priority: "high",
+          actionUrl: `/receipts?doc=${id}`,
+          actionLabel: "Open the invoice",
+          groupKey: `invoice_paid_while_disputed:${id}`,
+          metadata: { documentId: id, disputed },
+        },
+        { onlyUserIds: audience, dedupeWithinMinutes: 24 * 60 },
+      );
+      if (inserted === 0)
+        this.logger.warn(
+          `invoice ${id} was marked paid while disputed, but no bell row was written for its owners and managers.`,
+        );
+    } catch (err) {
+      this.logger.warn(
+        `invoice ${id} was marked paid while disputed, but the owners and managers could not be told (${err instanceof Error ? err.message : String(err)}).`,
+      );
+    }
   }
 
   /**

@@ -40,10 +40,15 @@ export interface VendorSpendRow {
   credited: SpendMoney[];
   creditNotes: number;
   paperWithoutTotal: number;
-  /** Invoices on file, any date, nobody has marked paid (F-1635). */
+  /** Unmarked invoices dated before `owedSince` (all, when it is null): not marked, never owed (F-1635). */
   unpaid: SpendMoney[];
   unpaidInvoices: number;
   unpaidWithoutTotal: number;
+  /** Unmarked invoices dated since `owedSince`, less credit notes since then (F-1635). */
+  owed: SpendMoney[];
+  owedInvoices: number;
+  owedCreditNotes: number;
+  owedWithoutTotal: number;
 }
 
 export interface VendorSpend {
@@ -58,7 +63,10 @@ export interface VendorSpend {
     invoiced: SpendMoney[];
     credited: SpendMoney[];
     unpaid: SpendMoney[];
+    owed: SpendMoney[];
   };
+  /** The house day it first marked an invoice paid; null when it never has. */
+  owedSince: string | null;
   unverifiedPaper: number;
   duplicatePaper: number;
   paperWithoutCurrency: number;
@@ -126,6 +134,50 @@ const QUICK: Array<{ key: keyof ReturnType<typeof periods>; label: string }> = [
 function amounts(totals: SpendMoney[], house: string | null): string {
   if (totals.length === 0) return money(0, 'full', house);
   return totals.map((t) => money(t.total, 'full', t.currency ?? house)).join(' + ');
+}
+
+/** Owed per currency; a credit bigger than the bills is the vendor's debt, said so. */
+function owedAmounts(totals: SpendMoney[], house: string | null): string {
+  if (totals.length === 0) return money(0, 'full', house);
+  return totals
+    .map((t) =>
+      t.total < 0
+        ? `${money(-t.total, 'full', t.currency ?? house)} in your favour`
+        : money(t.total, 'full', t.currency ?? house),
+    )
+    .join(' + ');
+}
+
+type OwedFacts = Pick<
+  VendorSpendRow,
+  'owed' | 'owedInvoices' | 'owedCreditNotes' | 'owedWithoutTotal' | 'unpaid' | 'unpaidInvoices' | 'unpaidWithoutTotal'
+>;
+
+/**
+ * What one vendor is owed, in words (F-1635) — the reports shelf and the
+ * vendor's sheet on /vendors say it the same way. `owed` is null until the
+ * house has marked an invoice paid: before that nothing says which invoices
+ * are still to pay. `notMarked` is the older unmarked invoices, never "owed".
+ */
+export function owedWords(
+  v: OwedFacts,
+  owedSince: string | null,
+  house: string | null,
+): { owed: string | null; notMarked: string | null } {
+  const owed =
+    owedSince === null
+      ? null
+      : v.owedInvoices + v.owedCreditNotes === 0
+        ? 'Owed: nothing'
+        : `Owed: ${v.owed.length ? owedAmounts(v.owed, house) : EM} over ${countOf(v.owedInvoices, 'invoice', 'invoices')}` +
+          (v.owedCreditNotes > 0 ? `, less ${countOf(v.owedCreditNotes, 'credit note', 'credit notes')}` : '') +
+          (v.owedWithoutTotal > 0 ? `; ${v.owedWithoutTotal} with no total yet` : '');
+  const notMarked =
+    v.unpaidInvoices === 0
+      ? null
+      : `Not marked paid${owedSince ? `, dated before ${owedSince}` : ''}: ${v.unpaid.length ? amounts(v.unpaid, house) : EM} over ${countOf(v.unpaidInvoices, 'invoice', 'invoices')}` +
+        (v.unpaidWithoutTotal > 0 ? `, ${v.unpaidWithoutTotal} with no total yet` : '');
+  return { owed, notMarked };
 }
 
 export interface VendorSpendShelfProps {
@@ -241,7 +293,10 @@ export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShel
             {s.from} to {s.to}, both days included. Delivered: {amounts(s.totals.received, s.currency)}.
             Invoiced: {amounts(s.totals.invoiced, s.currency)}
             {s.totals.credited.length ? `, and ${amounts(s.totals.credited, s.currency)} in credit notes` : ''}.
-            {s.totals.unpaid.length ? ` Not marked paid, any date: ${amounts(s.totals.unpaid, s.currency)}.` : ''}
+            {s.owedSince && s.totals.owed.length ? ` Owed now: ${owedAmounts(s.totals.owed, s.currency)}.` : ''}
+            {s.totals.unpaid.length
+              ? ` Not marked paid, ${s.owedSince ? `dated before ${s.owedSince}` : 'any date'}: ${amounts(s.totals.unpaid, s.currency)}.`
+              : ''}
           </p>
           {s.vendors.length === 0 ? (
             <p className="rp-cap">No order was delivered and no invoice is dated in this period.</p>
@@ -280,14 +335,16 @@ export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShel
                         ? `; ${countOf(v.paperWithoutTotal, 'invoice', 'invoices')} with no total yet`
                         : ''}
                     </p>
-                    {/* F-1635: what the house has not marked paid, any date. */}
-                    {v.unpaidInvoices > 0 && (
-                      <p className="rp-cap">
-                        Not marked paid: {v.unpaid.length ? amounts(v.unpaid, s.currency) : EM} over{' '}
-                        {countOf(v.unpaidInvoices, 'invoice', 'invoices')}
-                        {v.unpaidWithoutTotal > 0 ? `, ${v.unpaidWithoutTotal} with no total yet` : ''}
-                      </p>
-                    )}
+                    {/* F-1635: what is owed since the house could mark invoices paid, and the older unmarked ones. */}
+                    {(() => {
+                      const w = owedWords(v, s.owedSince, s.currency);
+                      return (
+                        <>
+                          {w.owed && v.owedInvoices + v.owedCreditNotes > 0 && <p className="rp-cap">{w.owed}</p>}
+                          {w.notMarked && <p className="rp-cap">{w.notMarked}</p>}
+                        </>
+                      );
+                    })()}
                   </div>
                 </li>
               ))}
