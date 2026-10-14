@@ -225,13 +225,44 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
 
     mount();
 
-    // "On hand" and the page header both show `liveTotal + shadowTotal` (6),
-    // so this scopes to the KPI card the way the em-dash assertions below do.
+    // "On hand" and the page header both show `liveTotal` (6), so this
+    // scopes to the KPI card the way the em-dash assertions below do.
     const onHandLabel = await screen.findByText('On hand');
     const onHandCard = onHandLabel.closest('div')?.parentElement as HTMLElement;
     await waitFor(() => expect(within(onHandCard).getByText('6')).toBeInTheDocument());
     expect(within(onHandCard).getByText('1 items')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] bottles on order are not on hand: the header, the gauge and the chip say them apart (F-143 orphan shadow)', async () => {
+    routeGets({
+      'inventory-low-stock': [],
+      'inventory-summary': { totalWines: 0, totalValue: 0 },
+      'inventory-list': [
+        {
+          id: 'row-1',
+          wineId: 'wine-1',
+          wineName: 'Produttori Barbaresco',
+          wineProducer: 'Produttori del Barbaresco',
+          stockLive: 6,
+          shadowStock: 3,
+          thresholdMin: 2,
+        },
+      ],
+    });
+
+    mount();
+
+    const onHandLabel = await screen.findByText('On hand');
+    const onHandCard = onHandLabel.closest('div')?.parentElement as HTMLElement;
+    await waitFor(() => expect(within(onHandCard).getByText('6')).toBeInTheDocument());
+    expect(within(onHandCard).queryByText('9')).not.toBeInTheDocument();
+    expect(screen.getByText(/1 items, 6 bottles on hand/)).toBeInTheDocument();
+    const notShelvedLabel = screen.getByText('Not on the shelf yet');
+    const notShelvedCard = notShelvedLabel.closest('div')?.parentElement as HTMLElement;
+    expect(within(notShelvedCard).getByText('3')).toBeInTheDocument();
+    expect(screen.getAllByText('Not shelved: 3').length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Reconcile 3/)).not.toBeInTheDocument();
   });
 
   it('an unread sales rate prints a dash and an unset par says so, never 0.0 or a par of 10 (F-689, F-391)', async () => {

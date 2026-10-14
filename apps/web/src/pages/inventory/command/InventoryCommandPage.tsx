@@ -1365,8 +1365,9 @@ export function InventoryCommandPage() {
           <p className="text-xs text-gray-500 mt-0.5">
             {/* "items", not "wines": a bar's book carries beer, spirits and
                 soft drinks too, and they are counted here (F-722). */}
-            {fig(stats.total)} items, {fig(stats.liveTotal + stats.shadowTotal)}{" "}
-            bottles on hand
+            {/* F-143 orphan shadow: bottles on order are not on hand until a
+                delivery or a count puts them on the shelf (ADR 0078). */}
+            {fig(stats.total)} items, {fig(stats.liveTotal)} bottles on hand
           </p>
         </div>
         <div
@@ -1578,7 +1579,7 @@ export function InventoryCommandPage() {
       >
         <Kpi
           label="On hand"
-          value={fig(stats.liveTotal + stats.shadowTotal)}
+          value={fig(stats.liveTotal)}
           sub={figuresUnknown ? UNKNOWN : `${stats.total} items`}
         />
         <Kpi
@@ -1588,9 +1589,9 @@ export function InventoryCommandPage() {
           tone="blue"
         />
         <Kpi
-          label="Shadow"
+          label="Not on the shelf yet"
           value={fig(stats.shadowTotal)}
-          sub="awaiting reconcile"
+          sub="on order, or to confirm by count"
           tone="violet"
           active={activeFlag === "recon"}
           onClick={() => setActiveFlag(activeFlag === "recon" ? null : "recon")}

@@ -79,12 +79,17 @@ const LOCATION_COLUMNS =
 /** A live location: not soft-deleted (the read filters) and not switched off. */
 const isLive = (l: HouseLocation) => l.is_active !== false;
 
-/** F-1683: how many items in a count's scope nobody counted (each item once a shelf). */
+/**
+ * F-1683: how many items in a count's scope nobody counted. F-1710: each item
+ * once, however many shelves it was missed on -- the sign-off question says
+ * "items", so a wine missed on two shelves is one item, not two.
+ */
 const uncountedTotal = (
   missed: Map<string, Set<string>>,
   offShelf: Set<string>,
 ): number =>
-  [...missed.values()].reduce((n, set) => n + set.size, 0) + offShelf.size;
+  new Set([...[...missed.values()].flatMap((set) => [...set]), ...offShelf])
+    .size;
 
 /** The `group_key` every bell line about one count carries (F-1699). */
 export const countGroupKey = (sessionId: string) => `count:${sessionId}`;
@@ -1851,7 +1856,18 @@ export class CountSessionsService {
     // Money: the house's own currency and each item's cost per bottle. Read
     // only for the people who see money.
     let currency: string | null = null;
-    const cost = new Map<string, { wac: number | null; bottleMl: number }>();
+    // F-1717: `costCurrency` is the money the cost is in when its lots state
+    // one other than the house's; `mixed` when they state more than one, so
+    // the average is no figure at all (the rollup's own rule, F-343).
+    const cost = new Map<
+      string,
+      {
+        wac: number | null;
+        bottleMl: number;
+        costCurrency: string | null;
+        mixed: boolean;
+      }
+    >();
     const ml = new Map<string, number>();
     // Each item's bottle size, for everyone: the open bottles are said in
     // tenths of that bottle, as staff entered them (S230 owed item). A size
@@ -1890,26 +1906,43 @@ export class CountSessionsService {
       const wac = await this.everyRowIn<{
         inventory_id: string;
         wac: number | null;
+        cost_currency: string | null;
+        cost_currency_count: number | null;
       }>("cost read", itemIds, (slice, f, t) =>
         client
           .from("inventory_lot_rollup")
-          .select("inventory_id, wac")
+          .select("inventory_id, wac, cost_currency, cost_currency_count")
           .eq("restaurant_id", house)
           .in("inventory_id", slice)
           .order("inventory_id", { ascending: true })
           .order("master_wine_id", { ascending: true })
           .range(f, t),
       );
+      const houseMoney = currency?.trim().toUpperCase() || null;
       for (const r of wac) {
+        // A lot booked before lots stated a currency states none: it is read
+        // as the house's, as every other cost reader does (inventory-cost.ts).
+        const code = r.cost_currency?.trim().toUpperCase() || null;
+        const before = cost.get(r.inventory_id);
+        // A second row of the item (another wine) with no cost changes nothing.
+        if (before && r.wac == null) continue;
+        const mixed =
+          Number(r.cost_currency_count ?? 0) > 1 ||
+          !!before?.mixed ||
+          (before != null &&
+            before.wac != null &&
+            (before.costCurrency ?? houseMoney) !== (code ?? houseMoney));
         cost.set(r.inventory_id, {
           wac: r.wac == null ? null : Number(r.wac),
           bottleMl: ml.get(r.inventory_id) ?? STAND_IN_BOTTLE_ML,
+          costCurrency: code && code !== houseMoney ? code : null,
+          mixed,
         });
       }
     }
     const valueOf = (c: ReviewCountRow): number | null => {
       const k = cost.get(c.inventory_id);
-      if (!k || k.wac == null) return null;
+      if (!k || k.wac == null || k.mixed) return null;
       const openDiff =
         c.counted_open_ml != null && c.expected_open_ml != null
           ? (c.counted_open_ml - c.expected_open_ml) / k.bottleMl
@@ -1926,6 +1959,18 @@ export class CountSessionsService {
               10,
           )
         : null;
+
+    // F-1717: the value is said in the money its cost is in. No rate is on
+    // record to turn another currency into the house's, so it is never added
+    // into the house's figures or labelled as the house's money.
+    const moneyOf = (
+      c: ReviewCountRow,
+    ): Pick<ReviewLine, "valueCurrency" | "costInManyCurrencies"> => {
+      const k = cost.get(c.inventory_id);
+      if (!k || k.wac == null) return {};
+      if (k.mixed) return { costInManyCurrencies: true };
+      return k.costCurrency ? { valueCurrency: k.costCurrency } : {};
+    };
 
     const signedAt = session.signed_off_at
       ? Date.parse(session.signed_off_at)
@@ -1952,6 +1997,7 @@ export class CountSessionsService {
             variance: c.variance_qty,
             openDifferenceTenths: openDifferenceOf(c),
             value: valueOf(c),
+            ...moneyOf(c),
           }
         : {}),
     });
@@ -2013,7 +2059,16 @@ export class CountSessionsService {
           .sort((a, b) => a.name.localeCompare(b.name)),
         ...(seesMoney
           ? {
-              value: lines.some((l) => l.value == null)
+              // F-1717: a shelf adds up only in the house's money.
+              otherMoney: lines.some(
+                (l) => !!l.valueCurrency || !!l.costInManyCurrencies,
+              ),
+              value: lines.some(
+                (l) =>
+                  l.value == null ||
+                  !!l.valueCurrency ||
+                  !!l.costInManyCurrencies,
+              )
                 ? null
                 : Math.round(
                     lines.reduce((t, l) => t + (l.value ?? 0), 0) * 100,
@@ -2249,6 +2304,89 @@ export class CountSessionsService {
   }
 
   /**
+   * F-1726: the count a parked line became under one item, by the writer's
+   * key (`count:<item>:parked:<line>`): its id, "held" when it was held as a
+   * second count of its shelf, null when none landed, undefined when it
+   * could not be read.
+   */
+  private async parkedCountLanded(
+    house: string,
+    inventoryId: string,
+    parkedId: string,
+  ): Promise<string | "held" | null | undefined> {
+    const key = `count:${inventoryId}:parked:${parkedId}`;
+    const client = this.dbService.getClient();
+    const count = await client
+      .from("stock_counts")
+      .select("id")
+      .eq("restaurant_id", house)
+      .eq("idempotency_key", key)
+      .limit(1);
+    if (count.error) return undefined;
+    const id = (count.data as Array<{ id: string }> | null)?.[0]?.id;
+    if (id) return id;
+    const held = await client
+      .from("stock_count_held_lines")
+      .select("id")
+      .eq("restaurant_id", house)
+      .eq("idempotency_key", key)
+      .limit(1);
+    if (held.error) return undefined;
+    return (held.data as unknown[] | null)?.length ? "held" : null;
+  }
+
+  /**
+   * F-1726: a parked line someone already matched. The same item replays;
+   * another item is refused, naming the one it was counted as, so a second
+   * manager is never told "Counted as" an item that was not counted.
+   */
+  private async carriedAlready(
+    house: string,
+    p: { id: string; resolved_count_id: string | null },
+    inventoryId: string,
+  ) {
+    const replay = (countId: string | null) => ({
+      parkedId: p.id,
+      state: "carried",
+      countId,
+      replayed: true,
+    });
+    let countedAs: string | null = null;
+    if (p.resolved_count_id) {
+      const read = await this.dbService
+        .getClient()
+        .from("stock_counts")
+        .select("inventory_id")
+        .eq("restaurant_id", house)
+        .eq("id", p.resolved_count_id)
+        .maybeSingle();
+      if (read.error) throw this.unreadable("parked count read", read.error);
+      countedAs =
+        (read.data as { inventory_id?: string } | null)?.inventory_id ?? null;
+    }
+    if (countedAs === inventoryId) return replay(p.resolved_count_id);
+    if (!countedAs) {
+      const landed = await this.parkedCountLanded(house, inventoryId, p.id);
+      if (landed === undefined)
+        throw this.unreadable("parked count read", {
+          message: "count lookup",
+        });
+      if (landed) return replay(landed === "held" ? null : landed);
+      throw new HttpException(
+        "Someone else is matching this bottle, or matched it to another item. Read the review again. Nothing more was counted.",
+        HttpStatus.CONFLICT,
+      );
+    }
+    const name =
+      (await this.itemNames(house, [countedAs])).get(countedAs)?.name ??
+      "another item";
+    throw new HttpException(
+      `This bottle was already counted as ${name}. Nothing more was counted. If that is wrong, count the shelf again.`,
+      HttpStatus.CONFLICT,
+    );
+  }
+
+  /**
    * A parked line the manager matched to an item the house already carries:
    * its bottles are counted on its shelf, as its counter, at its moment,
    * through the one count writer. Creating a new item from a parked line
@@ -2270,14 +2408,8 @@ export class CountSessionsService {
       );
     }
     const p = await this.parkedLine(house, sessionId, parkedId);
-    if (p.state === "carried") {
-      return {
-        parkedId: p.id,
-        state: "carried",
-        countId: p.resolved_count_id,
-        replayed: true,
-      };
-    }
+    if (p.state === "carried")
+      return this.carriedAlready(house, p, inventoryId);
     if (p.state === "dropped") {
       throw new HttpException(
         "This line was set aside, so it cannot be counted now.",
@@ -2285,36 +2417,72 @@ export class CountSessionsService {
       );
     }
     const session = await this.session(house, sessionId);
-    const out = await this.inventory.recordSpotCount(house, inventoryId, {
-      countedQty: p.counted_qty,
-      stockState: "live",
-      // One key per parked line: a retry replays, never counts twice.
-      clientCountId: `parked:${p.id}`,
-      reason: "Stock-take: found on the shelf, matched in review",
-      performedBy: p.counted_by,
-      countedAgoMs: Math.max(0, Date.now() - Date.parse(p.counted_at)),
-      locationId: p.location_id,
-      opening: session.kind === "opening",
-      sessionId,
-      role: "manager",
-      // S234 owed: the open bottle as tenths, sized on the matched item.
-      ...(parkedTenths(p.counted_open_ml) != null
-        ? { openTenths: parkedTenths(p.counted_open_ml) as number }
-        : {}),
-    });
-    const countId = out?.count?.countId ?? null;
-    const upd = await this.dbService
-      .getClient()
+    // F-1726: the line is taken (compare-and-set) BEFORE anything is
+    // counted, so two managers matching it at once cannot both post: the
+    // writer's key names the item, so two items would be two counts.
+    const client = this.dbService.getClient();
+    const claimedAt = new Date().toISOString();
+    const claim = await client
       .from("stock_count_parked_lines")
-      .update({
-        state: "carried",
-        resolved_by: userId,
-        resolved_at: new Date().toISOString(),
-        resolved_count_id: countId,
-      })
+      .update({ state: "carried", resolved_by: userId, resolved_at: claimedAt })
       .eq("restaurant_id", house)
+      .eq("session_id", sessionId)
       .eq("id", p.id)
       .eq("state", "parked")
+      .select("id");
+    if (claim.error) throw this.unreadable("parked carry", claim.error);
+    if (!(claim.data as unknown[] | null)?.length) {
+      const now = await this.parkedLine(house, sessionId, parkedId);
+      if (now.state === "dropped") {
+        throw new HttpException(
+          "This line was set aside, so it cannot be counted now.",
+          HttpStatus.CONFLICT,
+        );
+      }
+      return this.carriedAlready(house, now, inventoryId);
+    }
+    let out: Awaited<ReturnType<InventoryService["recordSpotCount"]>>;
+    try {
+      out = await this.inventory.recordSpotCount(house, inventoryId, {
+        countedQty: p.counted_qty,
+        stockState: "live",
+        // One key per parked line: a retry replays, never counts twice.
+        clientCountId: `parked:${p.id}`,
+        reason: "Stock-take: found on the shelf, matched in review",
+        performedBy: p.counted_by,
+        countedAgoMs: Math.max(0, Date.now() - Date.parse(p.counted_at)),
+        locationId: p.location_id,
+        opening: session.kind === "opening",
+        sessionId,
+        role: "manager",
+        // S234 owed: the open bottle as tenths, sized on the matched item.
+        ...(parkedTenths(p.counted_open_ml) != null
+          ? { openTenths: parkedTenths(p.counted_open_ml) as number }
+          : {}),
+      });
+    } catch (err) {
+      // Nothing counted: the line goes back to the list to be matched again.
+      // Left taken when a count did land, or when that cannot be read.
+      const landed = await this.parkedCountLanded(house, inventoryId, p.id);
+      if (landed === null)
+        await client
+          .from("stock_count_parked_lines")
+          .update({ state: "parked", resolved_by: null, resolved_at: null })
+          .eq("restaurant_id", house)
+          .eq("id", p.id)
+          .eq("state", "carried")
+          .eq("resolved_at", claimedAt)
+          .is("resolved_count_id", null);
+      throw err;
+    }
+    const countId = out?.count?.countId ?? null;
+    const upd = await client
+      .from("stock_count_parked_lines")
+      .update({ resolved_count_id: countId })
+      .eq("restaurant_id", house)
+      .eq("id", p.id)
+      .eq("state", "carried")
+      .eq("resolved_at", claimedAt)
       .select("id");
     if (upd.error) throw this.unreadable("parked carry", upd.error);
     return {
@@ -2538,8 +2706,15 @@ export interface ReviewLine {
   variance?: number;
   /** F-1621: open bottles' difference in tenths; null when open was not counted. */
   openDifferenceTenths?: number | null;
-  /** In the house's currency; null when the item has no cost. */
+  /**
+   * In the house's currency, or in `valueCurrency` when set; null when the
+   * item has no cost or `costInManyCurrencies`.
+   */
   value?: number | null;
+  /** F-1717: the money `value` is in, set only when it is not the house's. */
+  valueCurrency?: string;
+  /** F-1717: the item's cost averages lots in more than one currency. */
+  costInManyCurrencies?: boolean;
 }
 
 export interface CountReview {
@@ -2563,7 +2738,10 @@ export interface CountReview {
     recountAskedAt: string | null;
     lines: ReviewLine[];
     missed: Array<{ inventoryId: string; name: string }>;
+    /** Null when a line has no cost, or its cost is not in the house's money. */
     value?: number | null;
+    /** F-1717: a line's cost is in another currency, so the shelf is not added up. */
+    otherMoney?: boolean;
   }>;
   notCounted: Array<{ locationId: string; name: string; round: number }>;
   /**
@@ -2571,7 +2749,7 @@ export interface CountReview {
    * or a zone that holds shelves) not counted whole since the count opened.
    */
   offShelf: Array<{ inventoryId: string; name: string }>;
-  /** F-1683: every shelf's `missed` plus `offShelf`: items nobody counted. */
+  /** F-1683: every shelf's `missed` plus `offShelf`: items nobody counted, each once (F-1710). */
   itemsNotCounted: number;
   elsewhere: ReviewLine[];
   held: Array<{

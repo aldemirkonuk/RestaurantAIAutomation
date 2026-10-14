@@ -78,7 +78,8 @@ function countedWords(
 
 /**
  * F-1683: why sign-off asks -- "2 shelves are not counted, and 5 items on
- * the books were never counted. Sign off anyway?"
+ * the books were never counted. Sign off anyway?" Each item once, however
+ * many shelves it was missed on (F-1710).
  */
 function unfinishedWords(shelves: number, items: number): string {
   const parts: string[] = []
@@ -114,6 +115,17 @@ function isShort(line: ReviewLine): boolean {
 function moneyWords(value: number | null | undefined, currency: string | null): string {
   if (value == null) return 'no cost on record'
   return formatHouseMoney(value, currency)
+}
+
+/**
+ * F-1717: a line's value in the money its cost was paid in. A cost in
+ * another currency is said in that currency, never as the house's money; a
+ * cost that mixes currencies has no value, and the line says why.
+ */
+function lineMoneyWords(line: ReviewLine, currency: string | null): string {
+  if (line.costInManyCurrencies) return 'no value: its cost is in more than one currency'
+  if (line.value != null && line.valueCurrency) return `${formatHouseMoney(line.value, line.valueCurrency)}, paid in ${line.valueCurrency}`
+  return moneyWords(line.value, currency)
 }
 
 /**
@@ -162,7 +174,7 @@ function Line({ line, money, currency }: { line: ReviewLine; money: boolean; cur
           >
             {differenceWords(line.variance, line.openDifferenceTenths)}
           </span>
-          <span className="block text-sm text-inkm-2">{moneyWords(line.value, currency)}</span>
+          <span className="block text-sm text-inkm-2">{lineMoneyWords(line, currency)}</span>
         </span>
       )}
     </li>
@@ -384,6 +396,8 @@ export default function CountReview() {
                         void act(`carry:${p.id}`, async () => {
                           const r = await carryParkedCountLine(sessionId, p.id, item.id)
                           setMatching(null)
+                          // F-1726: a match someone else made first is said as theirs.
+                          if (r.replayed) return `It was counted as ${item.name} already.`
                           return r.held
                             ? `Counted as ${item.name}. It was counted on that shelf already, so it waits below.`
                             : `Counted as ${item.name}.`
@@ -444,7 +458,9 @@ export default function CountReview() {
               <div className="flex items-baseline justify-between gap-3">
                 <span className="font-semibold">{s.name}</span>
                 {money && s.done && (
-                  <span className="text-sm text-inkm-2">{moneyWords(s.value, review.currency)}</span>
+                  <span className="text-sm text-inkm-2">
+                    {s.otherMoney ? 'not added up: some costs are in another currency' : moneyWords(s.value, review.currency)}
+                  </span>
                 )}
               </div>
               <p className="text-sm text-inkm-2">

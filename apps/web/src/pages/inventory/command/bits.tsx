@@ -171,6 +171,10 @@ export function rowFlags(item: InventoryItem): RowFlag[] {
  * `zone`: a location chip is on, so the gauge shows that zone's bottles. Shadow
  * and par are kept for the whole house, so neither is drawn against a shelf's
  * count (F-1360).
+ *
+ * F-143 orphan shadow: shadow is bottles on order -- held by an order, or with
+ * no order behind them and so to confirm by count (ADR 0078). Neither is on the
+ * shelf, so the figure and the bar are live only; shadow is said beside them.
  */
 export function StockGauge({
   item,
@@ -184,7 +188,7 @@ export function StockGauge({
   const live = zone ? zone.qty : (item.liveStock ?? 0)
   const shadow = zone ? 0 : (item.shadowStock ?? 0)
   const par = item.threshold != null && item.threshold > 0 ? item.threshold : 1
-  const scale = zone ? Math.max(live, 1) : Math.max(live + shadow, par * 1.5, 1)
+  const scale = zone ? Math.max(live, 1) : Math.max(live, par * 1.5, 1)
   const status = classifyStock(item.liveStock, item.threshold)
   const numColor =
     status.key === 'critical' ? 'text-rose-600' : status.key === 'low' ? 'text-amber-600' : 'text-gray-900'
@@ -192,19 +196,18 @@ export function StockGauge({
   return (
     <div>
       <div className="flex items-baseline gap-1.5 font-mono">
-        <span className={cn('text-sm font-bold', numColor)}>{live + shadow}</span>
+        <span className={cn('text-sm font-bold', numColor)}>{live}</span>
         <span className="text-[10px] text-gray-400">
           {zone ? `in ${zone.name ?? 'this place'}` : item.threshold != null ? `/ ${item.threshold} par` : 'no par set'}
         </span>
         {shadow > 0 && (
           <span className="ml-auto text-[9px] font-bold tracking-wide text-violet-600 bg-violet-50 rounded-full px-2 py-px">
-            RECONCILE
+            NOT SHELVED
           </span>
         )}
       </div>
       <div className="relative flex h-1.5 my-1 bg-gray-100 rounded-full">
-        <div className="h-full bg-blue-600 rounded-l-full" style={{ width: `${(live / scale) * 100}%` }} />
-        {shadow > 0 && <div className="h-full bg-violet-600" style={{ width: `${(shadow / scale) * 100}%` }} />}
+        <div className="h-full bg-blue-600 rounded-full" style={{ width: `${(live / scale) * 100}%` }} />
         {item.threshold != null && !zone && (
           <div
             className="absolute -top-1 w-0.5 h-3.5 bg-gray-900/60 rounded"
@@ -215,7 +218,9 @@ export function StockGauge({
       {!compact && (
         <div className="flex gap-2.5 font-mono text-[9px]">
           <span className="text-blue-600">{live} live</span>
-          {!zone && <span className={shadow > 0 ? 'text-violet-600' : 'text-gray-300'}>{shadow} shadow</span>}
+          {!zone && (
+            <span className={shadow > 0 ? 'text-violet-600' : 'text-gray-300'}>{shadow} on order or to confirm</span>
+          )}
         </div>
       )}
     </div>
@@ -282,7 +287,8 @@ export function StatusChip({ item }: { item: InventoryItem }) {
   if (s.key === 'low')
     return <span className="text-[11px] font-semibold rounded-full px-2.5 py-1 bg-amber-50 text-amber-600 whitespace-nowrap">Below par</span>
   if (shadow > 0)
-    return <span className="text-[11px] font-semibold rounded-full px-2.5 py-1 bg-violet-50 text-violet-600 whitespace-nowrap">Reconcile {shadow}</span>
+    // F-143 orphan shadow: on order or to confirm by count, never stock to shelve.
+    return <span className="text-[11px] font-semibold rounded-full px-2.5 py-1 bg-violet-50 text-violet-600 whitespace-nowrap">Not shelved: {shadow}</span>
   if (item.deadStock)
     return <span className="text-[11px] font-semibold rounded-full px-2.5 py-1 border border-dashed border-gray-300 text-gray-500 whitespace-nowrap">No sale {item.daysSinceSale ?? '30+'}d</span>
   if (counted == null || counted > COUNT_DUE_DAYS)

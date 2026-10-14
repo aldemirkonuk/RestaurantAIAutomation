@@ -269,6 +269,55 @@ describe('the manager settles what the walk could not', () => {
     await waitFor(() => expect(api.carryParkedCountLine).toHaveBeenCalledWith('S1', 'p1', 'gin'))
   })
 
+  it('[REVERT-FAILS] a match someone made first is said as theirs, never as a fresh count (F-1726)', async () => {
+    api.reviewCountSession.mockResolvedValue(review(true))
+    api.carryParkedCountLine.mockResolvedValue({ state: 'carried', held: false, replayed: true })
+    show()
+    fireEvent.click(await screen.findByText('It is one of ours'))
+    fireEvent.change(await screen.findByLabelText("Which of the house's items is it"), {
+      target: { value: 'gin' },
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Gin' }))
+    expect(await screen.findByText('It was counted as Gin already.')).toBeTruthy()
+    expect(screen.queryByText('Counted as Gin.')).toBeNull()
+  })
+
+  it('says a refused match in the words the server gave, naming the item it was counted as (F-1726)', async () => {
+    api.reviewCountSession.mockResolvedValue(review(true))
+    api.carryParkedCountLine.mockRejectedValue({
+      response: { data: { message: 'This bottle was already counted as Yakut. Nothing more was counted. If that is wrong, count the shelf again.' } },
+    })
+    show()
+    fireEvent.click(await screen.findByText('It is one of ours'))
+    fireEvent.change(await screen.findByLabelText("Which of the house's items is it"), {
+      target: { value: 'gin' },
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Gin' }))
+    expect(await screen.findByText(/already counted as Yakut/)).toBeTruthy()
+  })
+
+  it('[REVERT-FAILS] a cost paid in another currency is said in it, and the shelf is not added up as the house money (F-1717)', async () => {
+    const r = review(true)
+    const back = r.shelves[0] as Record<string, unknown>
+    back.lines = [line({ expected: 6, variance: -2, value: -800, valueCurrency: 'EUR' })]
+    back.value = null
+    back.otherMoney = true
+    r.held = []
+    api.reviewCountSession.mockResolvedValue(r)
+    show()
+    expect(await screen.findByText(/paid in EUR/)).toBeTruthy()
+    expect(screen.getByText('not added up: some costs are in another currency')).toBeTruthy()
+  })
+
+  it('[REVERT-FAILS] a cost that mixes currencies says it has no value (F-1717)', async () => {
+    const r = review(true)
+    r.shelves[0].lines = [line({ expected: 6, variance: -2, value: null, costInManyCurrencies: true })]
+    r.held = []
+    api.reviewCountSession.mockResolvedValue(r)
+    show()
+    expect(await screen.findByText('no value: its cost is in more than one currency')).toBeTruthy()
+  })
+
   it('finds a renamed wine by the name on its label (F-1620, ADR 0124)', async () => {
     api.reviewCountSession.mockResolvedValue(review(true))
     show()

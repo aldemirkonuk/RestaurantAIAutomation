@@ -121,6 +121,7 @@ It is written in Python and reads the files itself, rather than shelling out to 
 - It posts only when a person counts the shelf: `POST /inventory-ledger/inventory/:id/reconcile-shadow` takes `{ counted }`, records it through `record_stock_count` (via `reconcileInventory`, this ADR's single writer, and ADR 0343's), then takes the leftover shadow off the order book with one `apply_stock_movement` (shadow −N). No row is deleted.
 - **Rejected:** booking it live silently (what "Reconcile N into live" did — bottles with no source document on the shelf, valued); deleting it silently (loses the trace of what the books once said).
 - **Not done here, named:** the page's "On hand" header and the row's "Reconcile N" chip still read live + shadow, because the list does not carry which shadow an order holds; and the phone stock-take walk does not yet draw the "to confirm" line or clear the leftover when it counts that wine.
+- **Amended 2026-10-14 (sim lane w113-count-truth):** "On hand" (header and KPI) and the row gauge now read live only. Shadow is said apart as "Not on the shelf yet — on order, or to confirm by count" and the chip "Not shelved: N" — one figure for both kinds, because the list still does not carry which shadow an order holds (claim `ADR-0078-ORPHAN-SHADOW-NOT-ON-HAND`). **Still not done:** the phone stock-take walk (ADR 0343) does not draw the "to confirm" line, and a walk's count of that wine does not clear the leftover shadow; what a "whole-walk count" of a wine is, outside a Full count, is not settled here.
 
 ## Review trail
 
@@ -128,3 +129,4 @@ It is written in Python and reads the files itself, rather than shelling out to 
 |---|---|---|
 | 2026-09-02 | — | Created. Number 0078 taken after `scripts/check_adr_numbers_unique.py` swept 487 refs and reported 0075 held by `feat/ledger-unit-typed-quantities`. |
 | 2026-10-14 | coordinator (sim lane w111-orphan-shadow) | Amended: shadow no order holds is a count to confirm, posted only through a count (F-143 orphan shadow). |
+| 2026-10-14 | sim lane w113-count-truth | Amended: on hand reads live only; shadow said apart. Phone walk still owed. |

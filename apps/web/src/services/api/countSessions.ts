@@ -216,7 +216,12 @@ export interface ReviewLine {
   variance?: number;
   /** F-1621: the open bottles' difference, in tenths of a bottle; null when not counted. */
   openDifferenceTenths?: number | null;
+  /** In the house's currency, or in `valueCurrency` when that is set. */
   value?: number | null;
+  /** F-1717: the money `value` is in, set only when it is not the house's. */
+  valueCurrency?: string;
+  /** F-1717: the item's cost mixes currencies, so it has no value. */
+  costInManyCurrencies?: boolean;
 }
 
 export interface CountReview {
@@ -241,11 +246,13 @@ export interface CountReview {
     lines: ReviewLine[];
     missed: Array<{ inventoryId: string; name: string }>;
     value?: number | null;
+    /** F-1717: a line's cost is in another currency, so the shelf is not added up. */
+    otherMoney?: boolean;
   }>;
   notCounted: Array<{ locationId: string; name: string; round: number }>;
   /** F-1683: on a Full count, items off the shelves not counted whole since it opened. */
   offShelf?: Array<{ inventoryId: string; name: string }>;
-  /** F-1683: every shelf's missed items plus offShelf: items nobody counted. */
+  /** F-1683: every shelf's missed items plus offShelf: items nobody counted, each once (F-1710). */
   itemsNotCounted?: number;
   elsewhere: ReviewLine[];
   held: Array<{
@@ -338,7 +345,8 @@ export async function carryParkedCountLine(sessionId: string, parkedId: string, 
   const res = await apiClient.post(`${at(sessionId)}/parked/${encodeURIComponent(parkedId)}/carry`, {
     inventoryId,
   });
-  return res.data as { parkedId: string; state: string; countId: string | null; held?: boolean };
+  // F-1726: `replayed` -- it was already counted as this item.
+  return res.data as { parkedId: string; state: string; countId: string | null; held?: boolean; replayed?: boolean };
 }
 
 export async function dropParkedCountLine(sessionId: string, parkedId: string) {

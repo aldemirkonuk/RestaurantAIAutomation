@@ -535,6 +535,59 @@ describe("the review shows the walk; the books and money only to an owner or a m
     expect(raki.value).toBe(-70);
   });
 
+  it("[REVERT-FAILS] a cost in another currency is said in that currency, and the shelf is not added up (F-1717)", async () => {
+    const { svc, db } = walkDb();
+    db.tables.inventory_lot_rollup[0] = {
+      restaurant_id: HOUSE,
+      inventory_id: ITEM,
+      wac: 400,
+      cost_currency: "EUR",
+      cost_currency_count: 1,
+    };
+    const r = await svc.review(HOUSE, WALK, true);
+    expect(r.currency).toBe("TRY");
+    const shelf1 = r.shelves.find((s) => s.locationId === "Shelf 1")!;
+    expect(shelf1.lines[0]).toMatchObject({
+      value: -800,
+      valueCurrency: "EUR",
+    });
+    expect(shelf1).toMatchObject({ value: null, otherMoney: true });
+  });
+
+  it("[REVERT-FAILS] a cost that mixes currencies has no value, and says so (F-1717)", async () => {
+    const { svc, db } = walkDb();
+    db.tables.inventory_lot_rollup[0] = {
+      restaurant_id: HOUSE,
+      inventory_id: ITEM,
+      wac: 400,
+      cost_currency: null,
+      cost_currency_count: 2,
+    };
+    const r = await svc.review(HOUSE, WALK, true);
+    const shelf1 = r.shelves.find((s) => s.locationId === "Shelf 1")!;
+    expect(shelf1.lines[0]).toMatchObject({
+      value: null,
+      costInManyCurrencies: true,
+    });
+    expect(shelf1.lines[0]).not.toHaveProperty("valueCurrency");
+  });
+
+  it("control: a cost in the house's money, or stating none, is the house's (F-1717)", async () => {
+    const { svc, db } = walkDb();
+    db.tables.inventory_lot_rollup[0] = {
+      restaurant_id: HOUSE,
+      inventory_id: ITEM,
+      wac: 400,
+      cost_currency: "TRY",
+      cost_currency_count: 1,
+    };
+    const r = await svc.review(HOUSE, WALK, true);
+    const shelf1 = r.shelves.find((s) => s.locationId === "Shelf 1")!;
+    expect(shelf1.lines[0].value).toBe(-800);
+    expect(shelf1.lines[0]).not.toHaveProperty("valueCurrency");
+    expect(shelf1).toMatchObject({ value: -800, otherMoney: false });
+  });
+
   it("the difference names the open bottles in tenths, as the value counts them (F-1621)", async () => {
     const { svc } = walkDb();
     const r = await svc.review(HOUSE, WALK, true);
@@ -723,9 +776,114 @@ describe("a held line: use it or set it aside", () => {
   });
 });
 
+/** The mocked writer leaves its count row, as record_stock_count does. */
+function landsAs(
+  inventory: { recordSpotCount: jest.Mock },
+  db: { tables: Record<string, Row[]> },
+  countId: string,
+  gate?: Promise<void>,
+) {
+  inventory.recordSpotCount.mockImplementation(
+    async (house: string, item: string, dto: { clientCountId: string }) => {
+      if (gate) await gate;
+      db.tables.stock_counts.push({
+        id: countId,
+        restaurant_id: house,
+        session_id: null,
+        inventory_id: item,
+        location_id: null,
+        idempotency_key: `count:${item}:${dto.clientCountId}`,
+        counted_at: ago(0),
+      });
+      return { count: { countId, held: false } };
+    },
+  );
+}
+
+describe("a parked line matched by two managers is counted once, as the first one's item (F-1726)", () => {
+  it("[REVERT-FAILS] a second match to another item is refused, naming the item it was counted as", async () => {
+    const { svc, inventory, db } = walkDb();
+    landsAs(inventory, db, "c-gin");
+    await svc.carryParked(HOUSE, WALK, "park-1", BOSS, {
+      inventoryId: "item-gin",
+    });
+    const second = svc.carryParked(HOUSE, WALK, "park-1", AYSE, {
+      inventoryId: "item-raki",
+    });
+    await expect(second).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+    });
+    await expect(
+      svc.carryParked(HOUSE, WALK, "park-1", AYSE, {
+        inventoryId: "item-raki",
+      }),
+    ).rejects.toThrow(/already counted as Gin/);
+    expect(inventory.recordSpotCount).toHaveBeenCalledTimes(1);
+  });
+
+  it("control: a second match to the same item replays the first count", async () => {
+    const { svc, inventory, db } = walkDb();
+    landsAs(inventory, db, "c-gin");
+    await svc.carryParked(HOUSE, WALK, "park-1", BOSS, {
+      inventoryId: "item-gin",
+    });
+    await expect(
+      svc.carryParked(HOUSE, WALK, "park-1", AYSE, { inventoryId: "item-gin" }),
+    ).resolves.toMatchObject({ replayed: true, countId: "c-gin" });
+    expect(inventory.recordSpotCount).toHaveBeenCalledTimes(1);
+  });
+
+  it("[REVERT-FAILS] two managers matching it at once to two items post one count", async () => {
+    const { svc, inventory, db } = walkDb();
+    let open!: () => void;
+    landsAs(inventory, db, "c-first", new Promise<void>((r) => (open = r)));
+    const a = svc.carryParked(HOUSE, WALK, "park-1", BOSS, {
+      inventoryId: "item-gin",
+    });
+    const b = svc.carryParked(HOUSE, WALK, "park-1", AYSE, {
+      inventoryId: "item-raki",
+    });
+    const settledB = b.then(
+      () => "posted",
+      (e) => e.status,
+    );
+    await new Promise((r) => setTimeout(r, 0));
+    open();
+    await expect(a).resolves.toMatchObject({ countId: "c-first" });
+    await expect(settledB).resolves.toBe(HttpStatus.CONFLICT);
+    expect(inventory.recordSpotCount).toHaveBeenCalledTimes(1);
+    expect(db.tables.stock_count_parked_lines[0]).toMatchObject({
+      state: "carried",
+      resolved_by: BOSS,
+      resolved_count_id: "c-first",
+    });
+  });
+
+  it("a match the writer refuses gives the line back, so it can be matched again", async () => {
+    const { svc, inventory, db } = walkDb();
+    inventory.recordSpotCount.mockRejectedValueOnce(
+      new HttpException("Sold from that shelf since.", HttpStatus.CONFLICT),
+    );
+    await expect(
+      svc.carryParked(HOUSE, WALK, "park-1", BOSS, { inventoryId: "item-gin" }),
+    ).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
+    expect(db.tables.stock_count_parked_lines[0]).toMatchObject({
+      state: "parked",
+      resolved_at: null,
+    });
+    landsAs(inventory, db, "c-raki");
+    await expect(
+      svc.carryParked(HOUSE, WALK, "park-1", BOSS, {
+        inventoryId: "item-raki",
+      }),
+    ).resolves.toMatchObject({ countId: "c-raki", replayed: false });
+  });
+});
+
 describe("a parked line: count it as a house item, or set it aside", () => {
   it("counts it on its shelf as its counter under one key per line, then marks it", async () => {
     const { svc, inventory, db } = walkDb();
+    landsAs(inventory, db, "c-new");
     const out = await svc.carryParked(HOUSE, WALK, "park-1", BOSS, {
       inventoryId: "item-gin",
     });
@@ -953,6 +1111,26 @@ describe("stock nobody counted is said, in review and before sign-off (F-1683)",
     expect(back.missed).toEqual([{ inventoryId: ITEM, name: "Yakut 2020" }]);
     // Gin on the done Bar shelf, Yakut on the Back room shelf.
     expect(r.itemsNotCounted).toBe(2);
+  });
+
+  it("[REVERT-FAILS] an item missed on two shelves is one item in the count (F-1710)", async () => {
+    const { svc, db } = walkDb();
+    // Gin sits on the done Bar shelf (no count sent) and on the Back room.
+    db.tables.inventory_lots.push({
+      id: "lot-gin-back",
+      restaurant_id: HOUSE,
+      inventory_id: "item-gin",
+      location_id: "Back room",
+      stock_state: "live",
+      qty: 1,
+      open_bottle_ml: 0,
+    });
+    const r = await svc.review(HOUSE, WALK, false);
+    const shelvesMissingGin = r.shelves.filter((s) =>
+      s.missed.some((m) => m.inventoryId === "item-gin"),
+    );
+    expect(shelvesMissingGin.length).toBe(2);
+    expect(r.itemsNotCounted).toBe(1);
   });
 
   it("on a Full count, names bottles off the shelves not counted whole since it opened", async () => {
