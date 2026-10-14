@@ -1590,9 +1590,13 @@ describe("MonthCloseService — a stock-take's count files in its session's mont
       (c) => c.table === "inventory_transactions" && !has(c.ops, "in"),
     )!;
     expect(arg(inMonth.ops, "not")).toEqual(["id", "in", "(tx-head)"]);
-    // Only a movement made after the close is listed.
+    // Only a movement made after the close is listed. The late read is the
+    // one keyed on the walk's movement ids; the month's write-off read
+    // (F-1609) also has an `in`, on transaction_type.
     const lateRead = calls.find(
-      (c) => c.table === "inventory_transactions" && has(c.ops, "in"),
+      (c) =>
+        c.table === "inventory_transactions" &&
+        (arg(c.ops, "in") as unknown[] | undefined)?.[0] === "id",
     )!;
     expect(arg(lateRead.ops, "gt")).toEqual([
       "created_at",
