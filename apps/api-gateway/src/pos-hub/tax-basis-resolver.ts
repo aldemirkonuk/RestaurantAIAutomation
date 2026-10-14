@@ -8,6 +8,12 @@ import {
   type TaxRateKeyKind,
 } from "../common/tax-basis";
 import { rateRowInForce } from "../settings/house-tax-basis.service";
+import {
+  readTaxBasisHistory,
+  stretchOn,
+  taxBasisStretches,
+  type TaxBasisStretch,
+} from "../common/tax-basis-history";
 
 /**
  * A till's subtotal made pre-tax AT INGEST — lane 3 of the tax-inclusive
@@ -47,9 +53,16 @@ import { rateRowInForce } from "../settings/house-tax-basis.service";
  *   4. A check dated before the switch day keeps the till's figure and writes
  *      the three stamp columns as NULL (F2), so a late re-send of an old check
  *      never carries a stamp that no longer describes its figure.
+ *   5. F-1700: the answer is the one in force on the check's own house day
+ *      (`house_tax_basis_answers`, the stretches the readers mark), not the
+ *      one in force when the check arrives. A late or corrected check of an
+ *      "include" day is made pre-tax after the house says "added on top", and
+ *      one of the first "include" days still is after it says "include" again.
+ *      A day before the house's first answer is as rules 2 and 4 say.
  *
- * Pure apart from `loadHouseTaxContext`, which reads the house row and, for an
- * inclusive house only, its rate rows.
+ * Pure apart from `loadHouseTaxContext`, which reads the house row, its
+ * answer history when asked, and, for a house that has ever said "include",
+ * its rate rows.
  */
 
 /** One `house_tax_rates` row, as ingest uses it. `rate` is a fraction. */
@@ -69,10 +82,16 @@ export interface HouseTaxContext {
   confirmedAt: string | null;
   /** The house's zone (own, else its country's only one); null when none. */
   zone: string | null;
-  /** Read only for `prices_include_tax`; empty otherwise. */
+  /** Read only when an answer in force on some day is `prices_include_tax`; empty otherwise. */
   rates: HouseRateRow[];
   /** The highest version read: "the table as of version V". */
   rateVersion: number | null;
+  /**
+   * F-1700: every answer the house gave and the house days each covers
+   * (`taxBasisStretches`). Read for ingest only; absent, every check is on
+   * the answer in force now.
+   */
+  stretches?: TaxBasisStretch[];
 }
 
 export type HouseTaxContextRead =
@@ -86,13 +105,15 @@ interface TaxReadClient {
 
 /**
  * The house's basis, switch moment and zone, and for an inclusive house its
- * whole rate table. A failed read, or a basis this build does not know, is
- * `ok: false`: the hub then refuses the house's checks rather than writing a
- * figure on a basis nobody read (ADR 0020).
+ * whole rate table. With `history`, also every answer it gave (F-1700), and
+ * the rate table when any of them is "include". A failed read, or a basis
+ * this build does not know, is `ok: false`: the hub then refuses the house's
+ * checks rather than writing a figure on a basis nobody read (ADR 0020).
  */
 export async function loadHouseTaxContext(
   client: TaxReadClient,
   restaurantId: string,
+  opts: { history?: boolean } = {},
 ): Promise<HouseTaxContextRead> {
   let data: any;
   try {
@@ -136,10 +157,37 @@ export async function loadHouseTaxContext(
     typeof data.tax_basis_confirmed_at === "string"
       ? data.tax_basis_confirmed_at
       : null;
-  if (basis !== "prices_include_tax") {
+  let stretches: TaxBasisStretch[] | undefined;
+  if (opts.history === true && basis !== "unset") {
+    try {
+      stretches = taxBasisStretches(
+        await readTaxBasisHistory(client, restaurantId, {
+          basis,
+          confirmedAt,
+        }),
+        zone,
+      );
+    } catch (err: any) {
+      // readTaxBasisHistory's sentence already names what failed.
+      const m = String(err?.message ?? err);
+      return { ok: false, message: m.charAt(0).toLowerCase() + m.slice(1) };
+    }
+  }
+  const history = stretches ? { stretches } : {};
+  if (
+    basis !== "prices_include_tax" &&
+    !(stretches ?? []).some((s) => s.basis === "prices_include_tax")
+  ) {
     return {
       ok: true,
-      ctx: { basis, confirmedAt, zone, rates: [], rateVersion: null },
+      ctx: {
+        basis,
+        confirmedAt,
+        zone,
+        rates: [],
+        rateVersion: null,
+        ...history,
+      },
     };
   }
   let raw: any[];
@@ -189,7 +237,10 @@ export async function loadHouseTaxContext(
   const rateVersion = rates.length
     ? Math.max(...rates.map((r) => r.version))
     : null;
-  return { ok: true, ctx: { basis, confirmedAt, zone, rates, rateVersion } };
+  return {
+    ok: true,
+    ctx: { basis, confirmedAt, zone, rates, rateVersion, ...history },
+  };
 }
 
 /** What the resolver needs of a check. */
@@ -327,6 +378,25 @@ function ratesInForce(
 }
 
 /**
+ * F-1700: the house's answer as it stood on the check's own house day, with
+ * that answer's moment as the switch. The answer in force now when there is
+ * no history, no zone, no day, or the day is before the house's first answer.
+ */
+function answerOnCheckDay(
+  check: Pick<CheckForTax, "closedAt" | "openedAt">,
+  ctx: HouseTaxContext,
+): HouseTaxContext {
+  if (!ctx.stretches?.length || !ctx.zone) return ctx;
+  const day = houseDayOf(
+    { closed_at: check.closedAt, opened_at: check.openedAt },
+    ctx.zone,
+  );
+  const inForce = day === null ? null : stretchOn(ctx.stretches, day);
+  if (inForce === null) return ctx;
+  return { ...ctx, basis: inForce.basis, confirmedAt: inForce.answeredAt };
+}
+
+/**
  * How one check's subtotal is written under the house's basis. Pure.
  */
 export function resolveCheckSubtotal(
@@ -334,6 +404,7 @@ export function resolveCheckSubtotal(
   ctx: HouseTaxContext,
 ): TaxStamp {
   if (ctx.basis === "unset") return { kind: "as_before" };
+  const at = answerOnCheckDay(check, ctx);
   const gross = check.subtotal;
   const stamped = (
     rung: TaxRung,
@@ -345,22 +416,21 @@ export function resolveCheckSubtotal(
     rung,
     subtotal,
     gross_subtotal: gross,
-    tax_basis: ctx.basis,
+    tax_basis: at.basis,
     tax_rate_version: version,
     unresolved: why === null ? null : NET_NOT_RECORDED[why],
     reason: why === null ? null : NET_NOT_RECORDED_REASON[why],
   });
-  if (ctx.basis !== "prices_include_tax")
-    return stamped("not_inclusive", gross);
+  if (at.basis !== "prices_include_tax") return stamped("not_inclusive", gross);
 
-  const day = ctx.zone
+  const day = at.zone
     ? houseDayOf(
         { closed_at: check.closedAt, opened_at: check.openedAt },
-        ctx.zone,
+        at.zone,
       )
     : null;
   const switchDay =
-    ctx.zone && ctx.confirmedAt ? houseDayOf(ctx.confirmedAt, ctx.zone) : null;
+    at.zone && at.confirmedAt ? houseDayOf(at.confirmedAt, at.zone) : null;
   if (day === null || switchDay === null)
     return stamped("unresolved", null, null, "noZone");
   // F2: only from now. A check filed before the switch day keeps the till's
@@ -406,7 +476,7 @@ export function resolveCheckSubtotal(
   let usedHouseRate = false;
   const rated = check.lines.map((l) => {
     if (l.taxRate !== undefined) return l.taxRate;
-    const r = houseRateForLine(ctx.rates, day, l);
+    const r = houseRateForLine(at.rates, day, l);
     if (r !== null) usedHouseRate = true;
     return r;
   });
@@ -434,12 +504,12 @@ export function resolveCheckSubtotal(
     return stamped(
       "rates_per_line",
       net,
-      usedHouseRate ? ctx.rateVersion : null,
+      usedHouseRate ? at.rateVersion : null,
     );
   }
 
   // Rung 3: one whole-house rate, and no other rate in force that day.
-  const { values, houseWide } = ratesInForce(ctx.rates, day);
+  const { values, houseWide } = ratesInForce(at.rates, day);
   const tillRates = check.lines
     .map((l) => l.taxRate)
     .filter((r): r is number => r !== undefined);
@@ -451,7 +521,7 @@ export function resolveCheckSubtotal(
     return stamped(
       "single_rate",
       round2(gross / (1 + houseWide)),
-      ctx.rateVersion,
+      at.rateVersion,
     );
   }
 
@@ -485,7 +555,8 @@ const cents = (v: number | string | null | undefined): number | null => {
  * is dated before the day of the answer in force now (include, exclude, then
  * include again: a check of the first include days stays as it was written).
  * A copy whose subtotal the till changed is a new figure, and is written
- * under the answer in force now. Pure; `unset` never keeps (rule 1).
+ * under the answer in force on its own day (F-1700, rule 5). Pure; `unset`
+ * never keeps (rule 1).
  */
 export function keepsStoredStamp(
   check: Pick<CheckForTax, "subtotal" | "closedAt" | "openedAt">,

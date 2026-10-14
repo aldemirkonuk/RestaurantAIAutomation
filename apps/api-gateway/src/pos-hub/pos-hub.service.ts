@@ -1533,10 +1533,13 @@ export class PosHubService {
       (zoneRead ??= readHouseZone(client, restaurantId).then((z) => z.zone));
     // F-1537: the house's tax basis, read once, when the first check reaches
     // the write. An unset house is a strict no-op: its rows are written
-    // exactly as before (tax-basis-resolver, rule 1).
+    // exactly as before (tax-basis-resolver, rule 1). F-1700: with every
+    // answer the house gave, so a late check is netted by its own day's.
     let taxRead: Promise<HouseTaxContextRead> | null = null;
     const houseTax = () =>
-      (taxRead ??= loadHouseTaxContext(client, restaurantId));
+      (taxRead ??= loadHouseTaxContext(client, restaurantId, {
+        history: true,
+      }));
     const netNotRecorded = new Map<string, number>();
 
     for (const check of checks) {

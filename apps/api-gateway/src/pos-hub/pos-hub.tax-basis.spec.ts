@@ -16,6 +16,9 @@ function makeDb(opts: {
   /** F-1624: the copy of the check already stored. */
   stored?: Row | null;
   storedError?: { message: string };
+  /** F-1700: the house's earlier answers (`house_tax_basis_answers`). */
+  answers?: Row[];
+  answersError?: { message: string };
 }) {
   const calls = {
     checkUpserts: [] as Row[],
@@ -57,6 +60,18 @@ function makeDb(opts: {
               error: null,
               count: rows.length,
             }).then(ok, bad),
+        };
+        return b;
+      }
+      if (table === "house_tax_basis_answers") {
+        const b: any = {
+          select: () => b,
+          eq: () => b,
+          order: () => b,
+          limit: async () =>
+            opts.answersError
+              ? { data: null, error: opts.answersError }
+              : { data: opts.answers ?? [], error: null },
         };
         return b;
       }
@@ -394,7 +409,7 @@ describe("a check already stored under an earlier answer", () => {
       expect(calls.checkUpserts[0]).not.toHaveProperty(k);
   });
 
-  it("a check never stored before is written under the answer now", async () => {
+  it("with no earlier answer, a check never stored before is written under the answer now", async () => {
     const { service, calls } = makeDb({ house: NOW_EXCLUDE, stored: null });
     await service.ingest("r1", "generic_webhook", PAYLOAD);
     expect(calls.checkUpserts[0]).toMatchObject({
@@ -426,5 +441,109 @@ describe("a check already stored under an earlier answer", () => {
     });
     await service.ingest("r1", "generic_webhook", PAYLOAD);
     expect(calls.storedReads).toBe(0);
+  });
+});
+
+// F-1700: a check that arrives late, or comes back corrected, is netted by the
+// answer the house had given for its own day, not the one in force when it
+// arrives. PAYLOAD's check is 12 October (house day, Istanbul).
+describe("a late or corrected check takes the answer in force on its day", () => {
+  const answer = (basis: string, answered_at: string) => ({
+    basis,
+    answered_at,
+    answered_by: null,
+  });
+  const INCLUDE_1_OCT = answer("prices_include_tax", "2026-10-01T06:00:00Z");
+  const EXCLUDE_15_OCT = answer("prices_exclude_tax", "2026-10-15T06:00:00Z");
+  const INCLUDE_20_OCT = answer("prices_include_tax", "2026-10-20T06:00:00Z");
+  const NOW_EXCLUDE = {
+    ...TR_HOUSE,
+    tax_basis: "prices_exclude_tax",
+    tax_basis_confirmed_at: EXCLUDE_15_OCT.answered_at,
+  };
+  const NET_UNDER_INCLUDE = {
+    subtotal: 282.86,
+    gross_subtotal: 330,
+    tax_basis: "prices_include_tax",
+    tax_rate_version: 2,
+  };
+
+  it("include, then exclude: a check of an include day arriving late is made pre-tax", async () => {
+    const { service, calls } = makeDb({
+      house: NOW_EXCLUDE,
+      answers: [INCLUDE_1_OCT, EXCLUDE_15_OCT],
+      rates: TR_RATES,
+    });
+    const res = await service.ingest("r1", "generic_webhook", PAYLOAD);
+    expect(res.errors).toEqual([]);
+    expect(calls.checkUpserts[0]).toMatchObject(NET_UNDER_INCLUDE);
+  });
+
+  it("include, then exclude: a check of an include day corrected later is made pre-tax", async () => {
+    const { service, calls } = makeDb({
+      house: NOW_EXCLUDE,
+      answers: [INCLUDE_1_OCT, EXCLUDE_15_OCT],
+      rates: TR_RATES,
+      stored: {
+        voided: false,
+        closed_at: null,
+        source_version: null,
+        source_modified_at: null,
+        subtotal: "254.57",
+        gross_subtotal: "297.00",
+        tax_basis: "prices_include_tax",
+      },
+    });
+    await service.ingest("r1", "generic_webhook", PAYLOAD);
+    expect(calls.checkUpserts[0]).toMatchObject(NET_UNDER_INCLUDE);
+  });
+
+  it("include, exclude, include: a check of the first include days is made pre-tax, one of the exclude days is not", async () => {
+    const answers = [INCLUDE_1_OCT, EXCLUDE_15_OCT, INCLUDE_20_OCT];
+    const house = {
+      ...TR_HOUSE,
+      tax_basis_confirmed_at: INCLUDE_20_OCT.answered_at,
+    };
+    const first = makeDb({ house, answers, rates: TR_RATES });
+    await first.service.ingest("r1", "generic_webhook", PAYLOAD);
+    expect(first.calls.checkUpserts[0]).toMatchObject(NET_UNDER_INCLUDE);
+
+    const between = makeDb({ house, answers, rates: TR_RATES });
+    await between.service.ingest("r1", "generic_webhook", [
+      { ...PAYLOAD[0], openedAt: "2026-10-17T17:00:00Z" },
+    ]);
+    expect(between.calls.checkUpserts[0]).toMatchObject({
+      subtotal: 330,
+      gross_subtotal: 330,
+      tax_basis: "prices_exclude_tax",
+    });
+  });
+
+  it("a check from before the first answer still keeps the till's figure (F2)", async () => {
+    const { service, calls } = makeDb({
+      house: NOW_EXCLUDE,
+      answers: [
+        answer("prices_include_tax", "2026-10-13T06:00:00Z"),
+        EXCLUDE_15_OCT,
+      ],
+      rates: TR_RATES,
+    });
+    await service.ingest("r1", "generic_webhook", PAYLOAD);
+    expect(calls.checkUpserts[0]).toMatchObject({
+      subtotal: 330,
+      tax_basis: "prices_exclude_tax",
+    });
+  });
+
+  it("an unreadable answer history stores nothing", async () => {
+    const { service, calls } = makeDb({
+      house: NOW_EXCLUDE,
+      answersError: { message: "boom" },
+    });
+    const res = await service.ingest("r1", "generic_webhook", PAYLOAD);
+    expect(calls.checkUpserts).toHaveLength(0);
+    expect(res.errors[0]).toMatch(
+      /^chk-1: not imported, the house's earlier tax answers could not be read/,
+    );
   });
 });
