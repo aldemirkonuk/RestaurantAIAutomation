@@ -139,6 +139,8 @@ describe('the review shows the walk', () => {
     expect(screen.getAllByText(/800/).length).toBeGreaterThan(0)
     expect(screen.getByText(/On the books here, no count sent: Gin/)).toBeTruthy()
     expect(screen.getByText(/1 short on Back bar, found on Cellar/)).toBeTruthy()
+    // F-1544 lane 6: an owner or a manager can load a count made on paper.
+    expect(screen.getByRole('button', { name: 'Count on paper' })).toBeTruthy()
   })
 
   it('a bartender sees what was counted, never a difference or money, and no act', async () => {
@@ -150,6 +152,14 @@ describe('the review shows the walk', () => {
     expect(screen.queryByText(/800/)).toBeNull()
     expect(screen.queryByText('Use the second')).toBeNull()
     expect(screen.queryByText('Sign off this count')).toBeNull()
+    expect(screen.queryByText('Count on paper')).toBeNull()
+  })
+
+  it('offers no paper count on a stopped count (F-1544 lane 6)', async () => {
+    api.reviewCountSession.mockResolvedValue(review(true, { status: 'abandoned' }))
+    show()
+    expect(await screen.findByText(/This count was stopped/)).toBeTruthy()
+    expect(screen.queryByText('Count on paper')).toBeNull()
   })
 })
 
@@ -214,5 +224,7 @@ describe('the manager settles what the walk could not', () => {
     expect(screen.getByText('Rakı')).toBeTruthy()
     expect(screen.queryByText('Sign off this count')).toBeNull()
     expect(screen.queryByText('Count this shelf again')).toBeNull()
+    // A paper count that arrives after sign-off still lands (ADR 0241).
+    expect(screen.getByRole('button', { name: 'Count on paper' })).toBeTruthy()
   })
 })

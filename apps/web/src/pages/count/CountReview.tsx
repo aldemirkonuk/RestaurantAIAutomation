@@ -38,6 +38,7 @@ import {
 import { getInventory } from '@/services/api/inventory'
 import { formatHouseMoney } from '@/lib/houseCurrency'
 import { findItems, kindWords, type FindableItem } from './countWalkModel'
+import { CountSheetPanel } from './CountSheetPanel'
 
 const TAP = 'min-h-[56px] min-w-[56px]'
 const BTN = `${TAP} rounded-xl px-4 text-base font-semibold`
@@ -412,6 +413,11 @@ export default function CountReview() {
             ))}
           </ul>
         </Section>
+      )}
+
+      {/* F-1544 lane 6: a count on paper, loaded through the walk's own path. */}
+      {canAct && review.status !== 'abandoned' && (
+        <CountSheetPanel sessionId={sessionId} house={activeRestaurantId ?? ''} onSent={() => void load()} />
       )}
 
       {canAct && open && (
