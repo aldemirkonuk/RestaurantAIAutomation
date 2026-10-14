@@ -13,6 +13,7 @@ import {
   stockValueCell,
   stockValueTotal,
   toInventoryItem,
+  costedPart,
   zoneAndChildren,
 } from './useInventoryPage'
 
@@ -51,7 +52,7 @@ describe('a wine with no recorded cost is withheld, never priced (F-1281)', () =
       toInventoryItem(row({ id: 'inv-2', wineId: 'w-2', stockLive: 3 }), { ...libraryWine, id: 'w-2' }),
       toInventoryItem(row({ id: 'inv-3', wineId: 'w-3', stockLive: 0 })),
     ]
-    expect(stockValueTotal(items)).toEqual({ value: 240, withheld: 1 })
+    expect(stockValueTotal(items)).toEqual({ value: 240, withheld: 1, partial: 0, bottles: 9, costedBottles: 6 })
   })
 })
 
@@ -74,7 +75,49 @@ describe('a location chip values its zone’s bottles (F-1282)', () => {
     const cellar = zoneAndChildren('cellar', zones)
     expect(qtyIn(item, cellar)).toBe(7)
     expect(stockValueCell(item, qtyIn(item, cellar))).toBe(70)
-    expect(stockValueTotal([item], (i) => qtyIn(i, cellar))).toEqual({ value: 70, withheld: 0 })
+    expect(stockValueTotal([item], (i) => qtyIn(i, cellar))).toEqual({
+      value: 70,
+      withheld: 0,
+      partial: 0,
+      bottles: 7,
+      costedBottles: 7,
+    })
     expect(qtyIn(item, zoneAndChildren('bar', zones))).toBe(4)
+  })
+})
+
+describe('a wine costed for only some of its bottles is not valued whole (F-1652)', () => {
+  // 36 on hand: 24 loaded with no cost, then 12 invoiced at 600.
+  const part = toInventoryItem(row({ stockLive: 36, wac: 600, wacQty: 12 }), libraryWine)
+
+  it('[REVERT-FAILS] the wine\u2019s cell is withheld, not 36 x 600', () => {
+    expect(costedPart(part)).toBe(12)
+    expect(stockValueCell(part)).toBe('withheld')
+  })
+
+  it('[REVERT-FAILS] the total adds only the costed bottles and says how many', () => {
+    const whole = toInventoryItem(row({ id: 'inv-2', wineId: 'w-2', wac: 40 }), libraryWine)
+    expect(stockValueTotal([part, whole])).toEqual({
+      value: 7440,
+      withheld: 0,
+      partial: 1,
+      bottles: 42,
+      costedBottles: 18,
+    })
+  })
+
+  it('[REVERT-FAILS] one zone\u2019s share of a part-costed wine is left out', () => {
+    expect(stockValueTotal([part], () => 5)).toEqual({
+      value: 0,
+      withheld: 1,
+      partial: 0,
+      bottles: 5,
+      costedBottles: 0,
+    })
+  })
+
+  it('a cost covering every bottle, or a gateway that sends no wacQty, values them all', () => {
+    expect(costedPart(toInventoryItem(row({ wac: 40, wacQty: 6 }), libraryWine))).toBeNull()
+    expect(stockValueCell(toInventoryItem(row({ wac: 40 }), libraryWine))).toBe(240)
   })
 })

@@ -1275,10 +1275,13 @@ export function InventoryCommandPage() {
     // shelf, and the house has not paid for them on hand. A wine with no
     // recorded cost is left out and counted, not priced (F-1281); a chip
     // values its zone's bottles only (F-1282).
-    const { value: valueOnHand, withheld: valueWithheld } = stockValueTotal(
-      filteredInventory,
-      onHandOf,
-    );
+    const {
+      value: valueOnHand,
+      withheld: valueWithheld,
+      partial: valuePartial,
+      bottles: valueBottles,
+      costedBottles: valueCostedBottles,
+    } = stockValueTotal(filteredInventory, onHandOf);
     const menuPotential = filteredInventory.reduce(
       (s, i) =>
         // The house's bottle price (ADR 0193), not the library's `menuPrice`,
@@ -1290,7 +1293,15 @@ export function InventoryCommandPage() {
       const r = runwayDays(i);
       return r != null && r <= 5;
     }).length;
-    return { valueOnHand, valueWithheld, menuPotential, runwayAlerts };
+    return {
+      valueOnHand,
+      valueWithheld,
+      valuePartial,
+      valueBottles,
+      valueCostedBottles,
+      menuPotential,
+      runwayAlerts,
+    };
   }, [filteredInventory, onHandOf]);
 
   const typeOptions = useMemo(() => {
@@ -1573,7 +1584,10 @@ export function InventoryCommandPage() {
             sub={
               figuresUnknown
                 ? UNKNOWN
-                : kpis.valueWithheld > 0
+                : kpis.valuePartial > 0
+                  ? // F-1652: a wine costed for some of its bottles, said in bottles.
+                    `${kpis.valueCostedBottles} of ${kpis.valueBottles} bottles costed`
+                  : kpis.valueWithheld > 0
                   ? `${kpis.valueWithheld} ${kpis.valueWithheld === 1 ? "wine" : "wines"} left out: no cost recorded`
                   : kpis.menuPotential > 0
                   ? `${fmtMoney(kpis.menuPotential)} menu`

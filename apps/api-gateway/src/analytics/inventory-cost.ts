@@ -199,13 +199,29 @@ export interface CostCoverage {
   priced: number;
   /** Rows with no recorded unit cost. */
   unpriced: number;
-  /** True when every considered row is priced — i.e. a total is computable. */
+  /**
+   * Priced rows whose cost covers only some of their bottles
+   * (`invoice_lot_wac_partial`, F-1652). Each is in `priced`, because its
+   * costed bottles have a value; none of them is whole, so `complete` is false.
+   */
+  partial: number;
+  /** The bottles of those partial rows that carry no cost of their own. */
+  uncostedBottles: number;
+  /**
+   * True when every considered row is priced for every bottle it holds —
+   * i.e. a total is computable.
+   */
   complete: boolean;
   byBasis: Record<CostBasis, number>;
 }
 
 export function summarizeCostBasis(
-  rows: Array<{ unitCost: number | null; costBasis: CostBasis }>,
+  rows: Array<{
+    unitCost: number | null;
+    costBasis: CostBasis;
+    /** A partial row's bottles with no cost; absent reads as 0. */
+    uncostedBottles?: number | null;
+  }>,
 ): CostCoverage {
   const byBasis: Record<CostBasis, number> = {
     invoice_lot_wac: 0,
@@ -215,15 +231,26 @@ export function summarizeCostBasis(
     unknown: 0,
   };
   let priced = 0;
+  let partial = 0;
+  let uncostedBottles = 0;
   for (const r of rows) {
     byBasis[r.costBasis] = (byBasis[r.costBasis] ?? 0) + 1;
     if (r.unitCost != null) priced += 1;
+    if (r.unitCost != null && r.costBasis === "invoice_lot_wac_partial") {
+      partial += 1;
+      const u = Number(r.uncostedBottles ?? 0);
+      if (Number.isFinite(u) && u > 0) uncostedBottles += u;
+    }
   }
   return {
     total: rows.length,
     priced,
     unpriced: rows.length - priced,
-    complete: rows.length > 0 && priced === rows.length,
+    partial,
+    uncostedBottles,
+    // F-1652: a row costed for 12 bottles of 36 is not a costed row; a total
+    // that took it whole would hold 24 bottles nobody recorded a cost for.
+    complete: rows.length > 0 && priced === rows.length && partial === 0,
     byBasis,
   };
 }
@@ -242,7 +269,16 @@ export function costBasisSentence(coverage: CostCoverage): string {
     .filter((b) => coverage.byBasis[b] > 0)
     .map((b) => `${COST_BASIS_LABEL[b]} (${coverage.byBasis[b]})`);
   const head = `per row — ${parts.join("; ")}`;
-  return coverage.complete
-    ? `${head}; every row in scope has a recorded cost`
-    : `${head}; ${coverage.unpriced} of ${coverage.total} row(s) have no recorded cost, so any figure needing a complete valuation is null`;
+  if (coverage.complete)
+    return `${head}; every row in scope has a recorded cost`;
+  const gaps = [
+    coverage.unpriced > 0
+      ? `${coverage.unpriced} of ${coverage.total} row(s) have no recorded cost`
+      : null,
+    // F-1652: a partly costed row is a gap too, and it is named as one.
+    coverage.partial > 0
+      ? `${coverage.partial} of ${coverage.total} row(s) have a recorded cost for only part of their bottles (${coverage.uncostedBottles} bottle(s) with none)`
+      : null,
+  ].filter((g): g is string => g !== null);
+  return `${head}; ${gaps.join("; ")}, so any figure needing a complete valuation is null`;
 }

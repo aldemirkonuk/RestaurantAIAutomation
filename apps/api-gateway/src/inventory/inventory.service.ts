@@ -277,6 +277,9 @@ export class InventoryService {
           : "estimated"
         : undefined,
       lotLiveQty: rollup?.live_qty ?? undefined,
+      // F-1652: the bottles `wac` averages. Fewer than the live bottles means
+      // the rest carry no cost, and Value on hand says how many.
+      wacQty: rollup?.wac_qty ?? undefined,
       lotLocationCount: rollup?.live_location_count ?? undefined,
       // Phase 2 (2c) by-the-glass: total open-bottle ml across live lots.
       openMl: rollup?.open_ml ?? 0,
@@ -315,7 +318,7 @@ export class InventoryService {
       client
         .from("inventory_lot_rollup")
         .select(
-          "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count, open_ml",
+          "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count, open_ml, wac_qty",
           { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)

@@ -150,6 +150,19 @@ export interface ValuationFigures {
   /** The priced bottles' own total, beside how many wines it leaves out. */
   pricedInventoryValue: number | null;
   unpricedWines: number | null;
+  /**
+   * F-1652: wines whose cost covers only some of their bottles, and those
+   * bottles; the priced total holds their costed bottles only. Absent on a
+   * close kept before.
+   */
+  partlyCostedWines?: number | null;
+  uncostedBottles?: number | null;
+  /**
+   * F-1654: of `unpricedWines`, those whose bottles carry a cost the house
+   * typed in or an order's price, but no invoice. Absent on a close kept
+   * before.
+   */
+  notInvoicedWines?: number | null;
   valuedAt: string;
 }
 
@@ -227,8 +240,24 @@ export interface WriteOffLine {
    * written off.
    */
   cost: number | null;
-  /** Bottles left out of `cost`: their lot carried no cost. */
+  /**
+   * Bottles left out of `cost`: their lot carried no cost, or a cost in
+   * another money than the house's.
+   */
   uncostedBottles: number;
+  /**
+   * F-1653: of `uncostedBottles`, those whose cost is in another money than
+   * the house's (a lot from an order in EUR, at a TRY house): nothing
+   * converts, so it is never added in. Absent on a close kept before.
+   */
+  otherMoneyBottles?: number;
+  /**
+   * F-1653: of the bottles in `cost`, those whose cost is not from an invoice
+   * — an order's price, a cost the house typed in, or one carried by a bottle
+   * that came back. The cellar value counts only invoiced costs, so these are
+   * said. Absent on a close kept before.
+   */
+  notInvoicedBottles?: number;
 }
 
 /**
@@ -431,27 +460,49 @@ export function writeOffReasonOf(
  * What one take-off cost, from the lots it took (`metadata.lots_taken`, kept
  * by apply_stock_movement), else the row's own cost. A lot with no cost, or a
  * sample's (never a real cost), leaves its bottles uncosted.
+ *
+ * F-1653: a lot whose cost states another money than the house's is never
+ * added into the house-money total; its bottles are uncosted and counted as
+ * in another money. A cost not from an invoice (`estimated` order price,
+ * `manual` typed cost, a row's own cost with no lot behind it) is added, and
+ * its bottles are counted, so the page can say so.
  */
-function takeOffCost(t: Record<string, unknown>): {
+function takeOffCost(
+  t: Record<string, unknown>,
+  houseCurrency: string | null = null,
+): {
   bottles: number;
   cost: number;
   uncosted: number;
+  otherMoney: number;
+  notInvoiced: number;
 } {
   const bottles = Math.abs(finite(t.quantity_change) ?? 0);
   const meta = (t.metadata ?? {}) as Record<string, unknown>;
   const lots = Array.isArray(meta.lots_taken)
     ? (meta.lots_taken as Array<Record<string, unknown>>)
     : [];
+  const house = codeOf(houseCurrency);
   let cost = 0;
   let costed = 0;
+  let otherMoney = 0;
+  let notInvoiced = 0;
   if (lots.length > 0) {
     for (const l of lots) {
       const qty = finite(l?.qty);
       const unit = finite(l?.unit_cost);
       if (qty === null || qty <= 0) continue;
       if (unit === null || l.cost_provenance === "sample") continue;
+      // A lot that states no money (kept before the key) is the house's, as
+      // the cellar reads one; one that states another is never added in.
+      const money = codeOf(l.unit_cost_currency);
+      if (money !== null && house !== null && money !== house) {
+        otherMoney += qty;
+        continue;
+      }
       cost += qty * unit;
       costed += qty;
+      if (l.cost_provenance !== "invoice") notInvoiced += qty;
     }
   } else {
     const total = finite(t.total_cost);
@@ -463,20 +514,31 @@ function takeOffCost(t: Record<string, unknown>): {
       cost = unit * bottles;
       costed = bottles;
     }
+    // No lot names where this cost came from, so it is not an invoice's.
+    notInvoiced = costed;
   }
   costed = Math.min(costed, bottles);
-  return { bottles, cost, uncosted: bottles - costed };
+  return {
+    bottles,
+    cost,
+    uncosted: bottles - costed,
+    otherMoney: Math.min(otherMoney, bottles - costed),
+    notInvoiced: Math.min(notInvoiced, costed),
+  };
 }
 
 /** The month's take-off movements summed into the write-off figure. */
 export function writeOffFigures(
   rows: Array<Record<string, unknown>>,
+  houseCurrency: string | null = null,
 ): WriteOffFigures {
   const zero = (): WriteOffLine => ({
     movements: 0,
     bottles: 0,
     cost: 0,
     uncostedBottles: 0,
+    otherMoneyBottles: 0,
+    notInvoicedBottles: 0,
   });
   const all = zero();
   const by = new Map<WriteOffReason, WriteOffLine>();
@@ -484,7 +546,10 @@ export function writeOffFigures(
     if ((finite(t.quantity_change) ?? 0) >= 0) continue;
     const reason = writeOffReasonOf(t.transaction_type, t.reason);
     if (reason === null) continue;
-    const { bottles, cost, uncosted } = takeOffCost(t);
+    const { bottles, cost, uncosted, otherMoney, notInvoiced } = takeOffCost(
+      t,
+      houseCurrency,
+    );
     const line = by.get(reason) ?? zero();
     by.set(reason, line);
     for (const l of [all, line]) {
@@ -492,6 +557,8 @@ export function writeOffFigures(
       l.bottles += bottles;
       l.cost = (l.cost ?? 0) + cost;
       l.uncostedBottles += uncosted;
+      l.otherMoneyBottles = (l.otherMoneyBottles ?? 0) + otherMoney;
+      l.notInvoicedBottles = (l.notInvoicedBottles ?? 0) + notInvoiced;
     }
   }
   // A cost none of the bottles carried is unknown, never 0.
@@ -1143,6 +1210,9 @@ export class MonthCloseService {
         inventoryValue: finite(s.inventoryValue),
         pricedInventoryValue: finite(s.pricedInventoryValue),
         unpricedWines: finite(coverage.unpriced),
+        partlyCostedWines: finite(coverage.partial),
+        uncostedBottles: finite(coverage.uncostedBottles),
+        notInvoicedWines: finite(s.notInvoicedWines),
         valuedAt: new Date().toISOString(),
       },
       purchases: {
@@ -1168,7 +1238,7 @@ export class MonthCloseService {
         overBottles,
         openMl,
       },
-      writeOffs: writeOffFigures(takeOffs),
+      writeOffs: writeOffFigures(takeOffs, currency),
     };
     return { figures, tillWindow, checks, counts };
   }
@@ -1748,7 +1818,9 @@ export function writeOffsDoc(
   w: WriteOffFigures,
   row: Pick<CloseRow, "closed_at" | "zone">,
 ): ExportDoc {
-  const noCost = "none of these bottles came off a delivery with a cost";
+  const noCost =
+    "none of these bottles came off stock with a cost in the house's money";
+  const notKept = "not counted when this month was closed";
   const cost = (l: WriteOffLine): Cell =>
     l.cost === null ? withheld(noCost) : l.cost;
   return {
@@ -1760,6 +1832,24 @@ export function writeOffsDoc(
       {
         label: "Bottles with no recorded cost",
         value: w.uncostedBottles,
+        unit: "bottles",
+      },
+      // F-1653: said beside the total, never folded into it. A close kept
+      // before these were counted withholds them rather than saying 0.
+      {
+        label: "Of them, at a cost in another money",
+        value:
+          w.otherMoneyBottles === undefined
+            ? withheld(notKept)
+            : w.otherMoneyBottles,
+        unit: "bottles",
+      },
+      {
+        label: "Bottles at a cost not from an invoice",
+        value:
+          w.notInvoicedBottles === undefined
+            ? withheld(notKept)
+            : w.notInvoicedBottles,
         unit: "bottles",
       },
     ],
@@ -1791,7 +1881,7 @@ export function writeOffsDoc(
     ],
     basis: [
       "Write-offs are the bottles taken off on purpose on the month's house days: written off, given on the house, and a stock adjustment for breakage, a comp or a staff pour. Shelf-count differences, corrections and returns to the vendor are not write-offs.",
-      "Each bottle is at the cost of the delivery it came off. A bottle whose delivery carried no cost is counted, and left out of the cost.",
+      "Each bottle is at the cost of the stock it came off: an invoice's, an order's price, a cost the house typed in, or the cost a bottle that came back carried. Bottles at a cost that is not an invoice's are counted beside the total. A bottle with no cost, or with a cost in another money than the house's, is counted, and left out of the cost.",
     ],
   };
 }

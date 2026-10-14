@@ -68,7 +68,8 @@ function service(handle: Handler, tillWindow = till) {
     getFinancialSummary: jest.fn(async () => ({
       inventoryValue: null,
       pricedInventoryValue: 4200,
-      costCoverage: { unpriced: 3 },
+      costCoverage: { unpriced: 3, partial: 1, uncostedBottles: 24 },
+      notInvoicedWines: 2,
     })),
   };
   const svc = new MonthCloseService(
@@ -396,6 +397,9 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
       bottles: 6,
       cost: 139,
       uncostedBottles: 2,
+      // F-1653: x5's cost has no lot behind it, so it is not an invoice's.
+      otherMoneyBottles: 0,
+      notInvoicedBottles: 1,
       byReason: [
         {
           reason: "breakage",
@@ -404,6 +408,8 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
           bottles: 3,
           cost: 84,
           uncostedBottles: 1,
+          otherMoneyBottles: 0,
+          notInvoicedBottles: 0,
         },
         {
           reason: "comp",
@@ -412,6 +418,8 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
           bottles: 1,
           cost: 30,
           uncostedBottles: 0,
+          otherMoneyBottles: 0,
+          notInvoicedBottles: 0,
         },
         {
           reason: "staff_pour",
@@ -420,6 +428,8 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
           bottles: 1,
           cost: null,
           uncostedBottles: 1,
+          otherMoneyBottles: 0,
+          notInvoicedBottles: 0,
         },
         {
           reason: "other",
@@ -428,6 +438,8 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
           bottles: 1,
           cost: 25,
           uncostedBottles: 0,
+          otherMoneyBottles: 0,
+          notInvoicedBottles: 1,
         },
       ],
     });
@@ -443,6 +455,10 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
     expect(f.valuation.inventoryValue).toBeNull();
     expect(f.valuation.pricedInventoryValue).toBe(4200);
     expect(f.valuation.unpricedWines).toBe(3);
+    // F-1652 / F-1654: what the priced total leaves out is kept with it.
+    expect(f.valuation.partlyCostedWines).toBe(1);
+    expect(f.valuation.uncostedBottles).toBe(24);
+    expect(f.valuation.notInvoicedWines).toBe(2);
 
     const audit = calls.find((c) => c.table === "system_audit_log")!;
     expect(arg(audit.ops, "insert")![0]).toMatchObject({
@@ -1410,6 +1426,8 @@ describe("writeOffFigures (F-1609)", () => {
       bottles: 0,
       cost: 0,
       uncostedBottles: 0,
+      otherMoneyBottles: 0,
+      notInvoicedBottles: 0,
       byReason: [],
     });
     const none = writeOffFigures([
@@ -1428,6 +1446,98 @@ describe("writeOffFigures (F-1609)", () => {
       cost: null,
       uncostedBottles: 2,
     });
+  });
+
+  it("never adds a cost in another money into the house's total, and counts the bottles not at an invoice's cost (F-1653)", () => {
+    const w = writeOffFigures(
+      [
+        {
+          transaction_type: "waste",
+          reason: "Breakage",
+          quantity_change: -4,
+          metadata: {
+            lots_taken: [
+              // Invoiced in lira: in the total.
+              {
+                qty: 1,
+                unit_cost: 600,
+                cost_provenance: "invoice",
+                unit_cost_currency: "TRY",
+              },
+              // From a EUR order at a TRY house: left out, and counted.
+              {
+                qty: 1,
+                unit_cost: 20,
+                cost_provenance: "invoice",
+                unit_cost_currency: "EUR",
+              },
+              // An order's price, and a cost the house typed in: in, and said.
+              {
+                qty: 1,
+                unit_cost: 500,
+                cost_provenance: "estimated",
+                unit_cost_currency: "TRY",
+              },
+              { qty: 1, unit_cost: 450, cost_provenance: "manual" },
+            ],
+          },
+        },
+      ],
+      "TRY",
+    );
+    expect(w).toMatchObject({
+      bottles: 4,
+      cost: 1550,
+      uncostedBottles: 1,
+      otherMoneyBottles: 1,
+      notInvoicedBottles: 2,
+    });
+    // Every bottle in another money: no house-money cost at all, never 0.
+    const eur = writeOffFigures(
+      [
+        {
+          transaction_type: "comp",
+          reason: "Comp / gift",
+          quantity_change: -2,
+          metadata: {
+            lots_taken: [
+              {
+                qty: 2,
+                unit_cost: 20,
+                cost_provenance: "invoice",
+                unit_cost_currency: "EUR",
+              },
+            ],
+          },
+        },
+      ],
+      "TRY",
+    );
+    expect(eur).toMatchObject({
+      cost: null,
+      uncostedBottles: 2,
+      otherMoneyBottles: 2,
+    });
+    // A house with no money on record reads every lot as before.
+    expect(
+      writeOffFigures([
+        {
+          transaction_type: "comp",
+          reason: "Comp / gift",
+          quantity_change: -2,
+          metadata: {
+            lots_taken: [
+              {
+                qty: 2,
+                unit_cost: 20,
+                cost_provenance: "invoice",
+                unit_cost_currency: "EUR",
+              },
+            ],
+          },
+        },
+      ]).cost,
+    ).toBe(40);
   });
 
   it("files a staff pour from /inventory under Staff pours, not Comps (F-1614)", () => {

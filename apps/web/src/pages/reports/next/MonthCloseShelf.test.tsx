@@ -106,8 +106,8 @@ describe('MonthCloseShelf (F-1013)', () => {
     expect(kept.textContent).toContain('Net sales through the till: €1,000 over 10 checks');
     expect(kept.textContent).toContain('1 order with no price');
     expect(kept.textContent).toContain('2 bottles short, 1 bottle over');
-    // The cellar's value is not invented: only the priced wines, and how many have no cost.
-    expect(kept.textContent).toContain('for the priced wines; 3 wines have no cost');
+    // The cellar's value is not invented: only the priced bottles, and how many wines have no cost.
+    expect(kept.textContent).toContain('for the priced bottles; 3 wines have no cost');
   });
 
   it('brings itself into view when /logs links to it (F-1513)', async () => {
@@ -478,6 +478,39 @@ describe('MonthCloseShelf (F-1013)', () => {
       click.mockRestore();
       URL.createObjectURL = before;
     }
+  });
+
+  // F-1652 / F-1654 (sim 54): a wine costed for part of its bottles was
+  // valued whole, and a typed-in or order-price cost read as "no cost".
+  // F-1653: a write-off at a cost in another money or not from an invoice was
+  // added into the total without a word.
+  it('[REVERT-FAILS] says what the kept cellar and write-offs leave out (F-1652, F-1653, F-1654)', async () => {
+    const f = close().figures;
+    const valuation = { ...f.valuation, unpricedWines: 3, notInvoicedWines: 1, partlyCostedWines: 1, uncostedBottles: 24 };
+    const writeOffs = {
+      movements: 3,
+      bottles: 4,
+      cost: 1550,
+      uncostedBottles: 1,
+      otherMoneyBottles: 1,
+      notInvoicedBottles: 2,
+      byReason: [
+        { reason: 'breakage' as const, label: 'Breakage', movements: 1, bottles: 1, cost: null, uncostedBottles: 1, otherMoneyBottles: 1, notInvoicedBottles: 0 },
+      ],
+    };
+    api.get.mockResolvedValueOnce({ data: { closes: [close({ figures: { ...f, valuation, writeOffs } })] } });
+    wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    const kept = await screen.findByLabelText(/Figures kept for/);
+    expect(kept.textContent).toContain(
+      'for the priced bottles; 2 wines have no cost; 1 wine has a cost typed in by the house or an order\'s price, not invoiced, so it is left out; 24 bottles of 1 wine costed only in part have no cost',
+    );
+    expect(kept.textContent).toContain(
+      "Written off: 4 bottles, €1,550 at cost for 3 of them; 2 bottles are at an order's price or a cost typed in, not an invoice's; 1 bottle is at a cost in another money, left out",
+    );
+    const by = within(kept).getByLabelText('Written off by reason');
+    expect(within(by).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      "Breakage: 1 bottle, no cost in the house's money; 1 bottle is at a cost in another money, left out",
+    ]);
   });
 
   it('says the list could not be read rather than showing an empty house', async () => {
