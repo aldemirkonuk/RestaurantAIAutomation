@@ -126,7 +126,7 @@ const spies = {
   markUnread: vi.fn(),
   archive: vi.fn(),
   remove: vi.fn(),
-  markAllRead: vi.fn(),
+  ruleOffShown: vi.fn(),
   snooze: vi.fn(),
   wake: vi.fn(),
   wakeAll: vi.fn(),
@@ -1088,5 +1088,40 @@ describe('a line handed over by the bell', () => {
 
     const handedOver = drawWith({ selectedNotificationId: 'n9' });
     expect(handedOver.container.querySelector('.nt-expand')?.getAttribute('data-open')).toBe('true');
+  });
+});
+
+describe('ruling off says what it reaches (F-1659)', () => {
+  it('rules off only the lines in "Needs a hand", never an approval, and says what stays open', () => {
+    const a = row({ id: 'a', title: 'Line a' });
+    const b = row({ id: 'b', title: 'Line b' });
+    const seal = row({ id: 's', type: 'order_pending', title: 'Order waits', metadata: { orderId: 'o-1' } });
+    const sleeping = row({ id: 'z', title: 'Asleep line' });
+    mockData.current = {
+      ...base([a, b, seal, sleeping]),
+      asleep: new Set(['z']),
+      // The register holds 40 more open lines than the page has read.
+      unread: 44,
+    };
+    draw();
+
+    const button = screen.getByTestId('nt-rule-off-shown');
+    expect(button).toHaveTextContent('Rule these 2 off');
+    // The scope is in visible words, not a hover title a phone never shows.
+    expect(button).not.toHaveAttribute('title');
+    expect(screen.getByTestId('nt-rule-off-scope')).toHaveTextContent(
+      'Rules off only the lines listed here. These stay open: 1 waiting for your approval, 1 put to sleep, 40 further back or outside your filters.',
+    );
+
+    fireEvent.click(button);
+    expect(spies.ruleOffShown).toHaveBeenCalledWith(['a', 'b']);
+  });
+
+  it('offers nothing when the only open line is an approval', () => {
+    const seal = row({ id: 's', type: 'order_pending', title: 'Order waits', metadata: { orderId: 'o-1' } });
+    mockData.current = base([seal]);
+    draw();
+
+    expect(screen.queryByTestId('nt-rule-off-shown')).toBeNull();
   });
 });

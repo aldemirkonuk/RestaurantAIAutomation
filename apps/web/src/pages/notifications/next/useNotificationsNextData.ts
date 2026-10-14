@@ -224,7 +224,8 @@ export interface NotificationsNextData {
   markUnread: (id: string) => void;
   archive: (id: string) => void;
   remove: (id: string) => void;
-  markAllRead: () => void;
+  /** Rule off these shown lines, folds and all; nothing past them (F-1659). */
+  ruleOffShown: (lineIds: string[]) => void;
   /**
    * Put a line down until `until` (epoch ms; `snoozeUntil` in `nt-snooze.ts`
    * turns a choice into the house's instant). It wakes on its own.
@@ -570,28 +571,25 @@ export function useNotificationsNextData(): NotificationsNextData {
   );
 
   /**
-   * Rule off every open line IN THIS RESTAURANT.
-   *
-   * `restaurantId` is load-bearing, not decoration. The gateway applies the
-   * tenant filter only `if (params.restaurantId)`
-   * (`notifications.service.ts:943-945`), so omitting it updates every unread
-   * row for this `userId` in every restaurant they belong to — a cross-tenant
-   * WRITE behind a button whose label names one book.
+   * Rule off the lines the page shows in "Needs a hand", each with every open
+   * row it folds (F-1659). This used to send `PATCH /notifications/read/all`
+   * for the restaurant, which ruled off lines on pages never read, lines put
+   * to sleep and orders waiting for a seal, unseen. The page names the lines
+   * and keeps approvals and sleeping lines out; nothing else is touched.
    */
-  const markAllRead = useCallback(() => {
-    if (!userId || !activeRestaurantId) return;
-    setFailureNote(null);
-    apiClient
-      .patch('/notifications/read/all', undefined, {
-        params: { userId, restaurantId: activeRestaurantId },
-      })
-      .then(() => read())
-      .catch((err) => {
-        setFailureNote(
-          `Ruling this restaurant’s open lines off failed (${failureOf(err).message}). Nothing changed.`,
-        );
-      });
-  }, [userId, activeRestaurantId, read]);
+  const ruleOffShown = useCallback(
+    (lineIds: string[]) => {
+      const ids = [...new Set(lineIds.flatMap((id) => openMembersOf(id)))];
+      if (ids.length === 0) return;
+      void patchRow(
+        ids,
+        'read',
+        () => ruleOffRows(ids),
+        lineIds.length === 1 ? 'rule this line off' : `rule these ${lineIds.length} lines off`,
+      );
+    },
+    [patchRow, openMembersOf],
+  );
 
   /**
    * Put a line down, remembering the two things that will wake it: the
@@ -735,7 +733,7 @@ export function useNotificationsNextData(): NotificationsNextData {
     markUnread,
     archive,
     remove,
-    markAllRead,
+    ruleOffShown,
     snooze,
     wake,
     wakeAll,

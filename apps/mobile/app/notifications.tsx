@@ -11,8 +11,10 @@ import { color, font, radius, space } from "@/design/tokens";
 import {
   useNotificationActions,
   useNotifications,
+  useUnreadCount,
   type InboxFilter,
 } from "@/api/queries";
+import { markReadScope, markReadWords } from "@/lib/inboxMarkRead";
 import { routeForActionUrl } from "@/lib/notificationRoute";
 import type { AppNotification } from "@/api/types";
 
@@ -195,6 +197,28 @@ export default function NotificationsScreen() {
   const actions = useNotificationActions();
 
   const items = data ?? [];
+  const unreadInHouse = useUnreadCount();
+
+  /* F-1659: mark only the unread lines on this screen, never an order
+     waiting for approval, and ask first, saying how many and what stays. */
+  const markScope = markReadScope(items);
+  const markWords = markReadWords(
+    markScope,
+    unreadInHouse.isError ? null : (unreadInHouse.data ?? null),
+  );
+  const confirmMarkRead = () => {
+    Alert.alert(markWords.title, markWords.message, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: markWords.button,
+        onPress: () =>
+          actions.markAllRead.mutate(
+            markScope.ids,
+            sayFailed("Marking these read"),
+          ),
+      },
+    ]);
+  };
 
   const open = (item: AppNotification) => {
     const destination = routeForActionUrl(item.actionUrl);
@@ -233,18 +257,13 @@ export default function NotificationsScreen() {
             </PressableScale>
           ),
           headerRight: () =>
-            filter === "unread" && items.length > 0 ? (
+            filter === "unread" && markScope.ids.length > 0 ? (
               <PressableScale
-                onPress={() => {
-                  actions.markAllRead.mutate(
-                    undefined,
-                    sayFailed("Marking all as read"),
-                  );
-                }}
-                accessibilityLabel="Mark all read"
+                onPress={confirmMarkRead}
+                accessibilityLabel={markWords.button}
               >
                 <AppText variant="caption" tone="wine">
-                  Mark all read
+                  {markWords.button}
                 </AppText>
               </PressableScale>
             ) : null,

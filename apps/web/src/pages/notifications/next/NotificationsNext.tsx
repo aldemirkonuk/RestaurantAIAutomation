@@ -85,7 +85,9 @@ import {
   iconForKind,
   isHouseActed,
   kindOf,
+  ruleOffScopeWords,
 } from './nt-format';
+import { approvableOrderIdOf } from '@/components/notifications/ApproveFromBellPanel';
 import { POLL_MS, useNotificationsNextData } from './useNotificationsNextData';
 
 /** How long the house's `g` go-to chord waits for its second key (CommandProvider). */
@@ -426,6 +428,26 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
   const onPage = ready ? visible.length : null;
   const needCount = ready ? bands.needs.length + bands.drafts.length : null;
 
+  /* F-1659: "Rule off" reaches only the lines in "Needs a hand" on screen,
+     never an approval (the seal is answered, not ruled off), and says in
+     visible words what stays open. It used to rule off the whole unread book,
+     with its scope only in a hover title. */
+  const ruleOffIds = bands.needs.filter((n) => approvableOrderIdOf(n) === null).map((n) => n.id);
+  const ruleOffScope = (() => {
+    if (!ready) return '';
+    const rows = data.book.register.state === 'ready' ? data.book.register.rows : [];
+    const openHere = rows.filter((n) => String(n.status) === 'unread').length;
+    const shownIds = new Set(visible.map((n) => n.id));
+    return ruleOffScopeWords({
+      asleep: bands.sleeping.length,
+      seals: bands.needs.length - ruleOffIds.length,
+      drafts: bands.drafts.length,
+      hidden: data.stack.items.filter((n) => String(n.status) === 'unread' && !shownIds.has(n.id))
+        .length,
+      elsewhere: typeof data.unread === 'number' ? Math.max(0, data.unread - openHere) : null,
+    });
+  })();
+
   let standing: string;
   if (failure) {
     standing = failure.forbidden
@@ -590,11 +612,11 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                   <Hand size={12} strokeWidth={1.75} aria-hidden />
                   Needs a hand
                 </h2>
-                {bands.needs.length > 0 && (
+                {ruleOffIds.length > 0 && (
                   <button
                     type="button"
-                    onClick={data.markAllRead}
-                    title="Every unread line in THIS restaurant's book, including pages not on screen. No other restaurant is touched."
+                    onClick={() => data.ruleOffShown(ruleOffIds)}
+                    data-testid="nt-rule-off-shown"
                     className="nt-ink inline-flex items-center gap-1.5 rounded px-2 py-1 text-[11px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-seal"
                     style={{
                       border: '1px solid var(--paper-2)',
@@ -604,10 +626,21 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                     }}
                   >
                     <Stamp size={12} strokeWidth={1.75} aria-hidden />
-                    Rule off every open line
+                    {ruleOffIds.length === 1
+                      ? 'Rule this line off'
+                      : `Rule these ${ruleOffIds.length} off`}
                   </button>
                 )}
               </div>
+              {ruleOffIds.length > 0 && (
+                <p
+                  data-testid="nt-rule-off-scope"
+                  className="mt-1 text-[11px]"
+                  style={{ fontFamily: SANS, color: 'var(--ink-4)' }}
+                >
+                  {ruleOffScope}
+                </p>
+              )}
 
               {!ready && !failure && (
                 <div className="mt-2 space-y-1.5">

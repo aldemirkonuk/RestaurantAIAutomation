@@ -106,33 +106,50 @@ beforeEach(() => {
   resetSharedUnreadCount();
 });
 
-describe('markAllRead — tenant scope', () => {
-  it('names the active restaurant, so it can never rule off another tenant’s book', async () => {
+describe('ruleOffShown — only the lines on screen (F-1659)', () => {
+  it('rules off the named lines and never the restaurant’s whole book', async () => {
     serve(3);
     const { result } = renderHook(() => useNotificationsNextData());
     await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
 
     await act(async () => {
-      result.current.markAllRead();
+      result.current.ruleOffShown(['n-rest-A-0', 'n-rest-A-2']);
     });
 
     await waitFor(() => expect(api.patch).toHaveBeenCalled());
-    const [url, body, config] = api.patch.mock.calls[0];
-    expect(url).toBe('/notifications/read/all');
-    expect(body).toBeUndefined();
-    expect(config.params).toEqual({ userId: 'user-1', restaurantId: 'rest-A' });
-    // The gateway filters by tenant ONLY when the parameter is present
-    // (notifications.service.ts:943-945), so its absence is the whole bug.
-    expect(config.params.restaurantId).toBeDefined();
+    const urls = api.patch.mock.calls.map((c) => c[0]);
+    // `read/all` ruled off pages never read and lines put to sleep, unseen.
+    expect(urls).not.toContain('/notifications/read/all');
+    expect(api.patch).toHaveBeenCalledWith('/notifications/read/bulk', {
+      ids: ['n-rest-A-0', 'n-rest-A-2'],
+    });
+    // The line left out stays open.
+    const left = (result.current.book.register as { rows: Notification[] }).rows.find(
+      (r) => r.id === 'n-rest-A-1',
+    );
+    expect(left?.status).toBe('unread');
   });
 
-  it('does not fire at all before the restaurant is known', async () => {
-    auth.current = { user: { userId: 'user-1' }, activeRestaurantId: null };
-    serve(0);
+  it('one line goes through its own route', async () => {
+    serve(3);
     const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
 
     await act(async () => {
-      result.current.markAllRead();
+      result.current.ruleOffShown(['n-rest-A-1']);
+    });
+
+    await waitFor(() => expect(api.patch).toHaveBeenCalled());
+    expect(api.patch.mock.calls[0][0]).toBe('/notifications/n-rest-A-1/read');
+  });
+
+  it('sends nothing when no line is named', async () => {
+    serve(3);
+    const { result } = renderHook(() => useNotificationsNextData());
+    await waitFor(() => expect(result.current.book.register.state).toBe('ready'));
+
+    await act(async () => {
+      result.current.ruleOffShown([]);
     });
 
     expect(api.patch).not.toHaveBeenCalled();
