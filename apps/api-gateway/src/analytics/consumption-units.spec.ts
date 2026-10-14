@@ -240,7 +240,11 @@ function project(cols: string, row: any) {
   return out;
 }
 
-/** Keyset paging on `id`, an exact count past the cursor, filters ignored. */
+/**
+ * Keyset paging on `id`, an exact count past the cursor, filters ignored but
+ * one: `.in("menu_type", …)`, so a reader that asks for some menu kinds only
+ * is seen to (F-1667 repair).
+ */
 function dbOver(rowsByTable: Rows) {
   const client = {
     from(table: string) {
@@ -251,6 +255,7 @@ function dbOver(rowsByTable: Rows) {
       let lim: number | null = null;
       let counted = false;
       let selected: string | null = null;
+      let kinds: Set<unknown> | null = null;
       const b: any = {};
       for (const m of [
         "eq",
@@ -258,12 +263,15 @@ function dbOver(rowsByTable: Rows) {
         "gte",
         "lte",
         "lt",
-        "in",
         "is",
         "or",
         "not",
       ])
         b[m] = () => b;
+      b.in = (col: string, v: unknown[]) => {
+        if (col === "menu_type") kinds = new Set(v);
+        return b;
+      };
       b.select = (cols: string, opts?: { count?: string }) => {
         if (opts?.count === "exact") counted = true;
         if (table === "wine_consumption_log") selected = cols;
@@ -288,10 +296,14 @@ function dbOver(rowsByTable: Rows) {
       b.single = () => Promise.resolve({ data: all[0] ?? null, error: null });
       b.update = () => b;
       b.then = (resolve: any, reject: any) => {
+        const kept =
+          kinds === null
+            ? all
+            : all.filter((r) => (kinds as Set<unknown>).has(r.menu_type));
         const past =
           cursor === null
-            ? all
-            : all.filter(
+            ? kept
+            : kept.filter(
                 (r) => String(r.id).localeCompare(cursor as string) > 0,
               );
         const page = lim === null ? past : past.slice(0, lim);
@@ -1654,7 +1666,7 @@ describe("margin against movement places only the wines on a live menu (F-1667)"
     expect(out.offMenu).toEqual([{ id: "inv-3", name: "Item 3" }]);
     expect(out.counts.offMenu).toBe(1);
     expect(out.menuStanding).toBe("on_menu");
-    expect(out.basis.list).toContain("live menus");
+    expect(out.basis.list).toContain("live Drinks and Desserts menus");
   });
 
   it("a house with no live menu keeps every priced wine, and says why", async () => {
@@ -1665,5 +1677,53 @@ describe("margin against movement places only the wines on a live menu (F-1667)"
     expect(out.items).toHaveLength(3);
     expect(out.offMenu).toEqual([]);
     expect(out.menuStanding).toBe("no_current_menu");
+  });
+
+  // Audit repair: a house keeps one live menu per kind (ADR 0340 rule 2). A
+  // live Food menu with no live Drinks menu is no drinks list at all, so it
+  // must not file every wine as "not on any menu".
+  it("a live Food menu alone is no drinks list: every priced wine stays", async () => {
+    const out: any = await advanced({
+      restaurant_inventory: [item(1), item(2), item(3)],
+      wine_consumption_log: lines(1, 3, BOTTLE),
+      restaurant_menus: [
+        { id: "m-f", name: "Food", status: "active", menu_type: "food" },
+      ],
+      menu_items: [
+        { id: "l-f", inventory_item_id: null, wine_library_id: null },
+      ],
+    }).getMenuEngineering(RESTAURANT, 90);
+    expect(out.items).toHaveLength(3);
+    expect(out.offMenu).toEqual([]);
+    expect(out.menuStanding).toBe("no_current_menu");
+    expect(out.basis.list).toContain("no live Drinks menu");
+  });
+
+  it("a dessert wine on the live Desserts menu is on the list beside Drinks", async () => {
+    const out: any = await advanced({
+      restaurant_inventory: [item(1), item(2), item(3)],
+      wine_consumption_log: lines(1, 3, BOTTLE),
+      restaurant_menus: [
+        ...menu.restaurant_menus,
+        {
+          id: "m-d",
+          name: "Desserts",
+          status: "active",
+          menu_type: "desserts",
+        },
+        { id: "m-f", name: "Food", status: "active", menu_type: "food" },
+      ],
+      menu_items: [
+        ...menu.menu_items,
+        { id: "l-3", inventory_item_id: "inv-3", wine_library_id: null },
+      ],
+    }).getMenuEngineering(RESTAURANT, 90);
+    expect(out.items.map((i: any) => i.id).sort()).toEqual([
+      "inv-1",
+      "inv-2",
+      "inv-3",
+    ]);
+    expect(out.offMenu).toEqual([]);
+    expect(out.menuStanding).toBe("on_menu");
   });
 });

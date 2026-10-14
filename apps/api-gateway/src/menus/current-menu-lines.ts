@@ -200,8 +200,18 @@ export async function readCurrentMenuLines(
 export const CURRENT_MENU_STOCK_LINK_COLUMNS =
   "id, inventory_item_id, wine_library_id";
 
+/**
+ * The menu kinds a wine can be listed on (F-1667): Drinks, and Desserts for a
+ * dessert wine (ADR 0340 rule 25). Food is not a wine list.
+ */
+export const WINE_LIST_MENU_KINDS = ["beverage", "desserts"] as const;
+
 export interface CurrentMenuStockLinks {
-  /** How many menus are live. 0 is "no current menu", and no line is read. */
+  /**
+   * How many wine-list menus are live (Drinks, plus Desserts beside it). 0 is
+   * "no current menu", and no line is read: a house with no live Drinks menu
+   * has no wine list, whatever Food or Desserts menu is live.
+   */
   currentMenus: number;
   /** Stock rows a live, undiscarded line names. */
   inventoryIds: Set<string>;
@@ -210,19 +220,28 @@ export interface CurrentMenuStockLinks {
 }
 
 /**
- * F-1667: what is on the house's live menus, as stock links, so a reader
- * of the stock list can tell a wine on a menu from one off every menu. A
- * discarded line is not on the menu. A failed read THROWS, as every read
- * here does; it is never "nothing is on the menu".
+ * F-1667: what is on the house's live wine list, as stock links, so a reader
+ * of the stock list can tell a wine on a menu from one off every menu. Only
+ * the Drinks menu and the Desserts menu beside it are read: a house keeps one
+ * live menu per kind (ADR 0340 rule 2), and a live Food menu with no live
+ * Drinks menu is no wine list, so it answers "no current menu" rather than
+ * filing every wine as off the menu. A discarded line is not on the menu. A
+ * failed read THROWS, as every read here does; it is never "nothing is on
+ * the menu".
  */
 export async function readCurrentMenuStockLinks(
   db: any,
   restaurantId: string,
 ): Promise<CurrentMenuStockLinks> {
-  const menus = await readCurrentMenuRows(db, restaurantId);
+  const menus = await readCurrentMenuRows(
+    db,
+    restaurantId,
+    WINE_LIST_MENU_KINDS,
+  );
   const inventoryIds = new Set<string>();
   const wineIds = new Set<string>();
-  if (menus.length === 0) return { currentMenus: 0, inventoryIds, wineIds };
+  if (!menus.some((m) => m.menu_type === "beverage"))
+    return { currentMenus: 0, inventoryIds, wineIds };
   const rows = await readAll(
     "The current menu's lines (menu_items)",
     (after) => {

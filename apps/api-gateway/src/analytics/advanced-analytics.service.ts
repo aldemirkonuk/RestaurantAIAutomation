@@ -833,9 +833,9 @@ export class AdvancedAnalyticsService {
         velocity: `bottles/day over ${sinceDays}d at most, ending yesterday: each wine over the days since it was listed when that is fewer (items[].velocityDays)${recordsFrom ? `, and never from before the house's first recorded sale on ${recordsFrom}` : ""}; a wine with fewer than ${AdvancedAnalyticsService.MENU_MIN_DAYS} days is given no quadrant (counts.tooFewDays)${cocktailPours > 0 ? `; ${cocktailPours} pour${cocktailPours === 1 ? "" : "s"} into cocktails ${cocktailPours === 1 ? "is" : "are"} not counted as sales of the drink poured, since a cocktail's price is not that drink's (items[].pouredIntoCocktails)` : ""} — ${unitsBasisSentence(unitsCoverage)}`,
         list:
           menuStanding === "on_menu"
-            ? "the wines on the house's live menus; a priced wine on no live menu is not placed, and is named in offMenu[] (counts.offMenu)"
+            ? "the wines on the house's live Drinks and Desserts menus; a priced wine on neither is not placed, and is named in offMenu[] (counts.offMenu)"
             : menuStanding === "no_current_menu"
-              ? "every priced wine in stock: the house has no live menu"
+              ? "every priced wine in stock: the house has no live Drinks menu"
               : "every priced wine in stock: which wines are on a live menu could not be read just now",
         // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
         // that came from WAC on ~2 rows in 72 and from a fabricated

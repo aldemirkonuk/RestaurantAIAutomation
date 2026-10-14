@@ -64,7 +64,7 @@ const quadrants = analysis<QuadrantRegister>({
   register: 'menu-engineering register',
   answers: 'Which wines earn their place: margin against how fast they move',
   // F-1667: the list is the live menus' wines; a house with none places its priced stock (basis.list says which).
-  window: () => 'the wines on your live menus (your priced stock when no menu is live), each against its own days on the list, up to 90 days to yesterday',
+  window: () => 'the wines on your live Drinks and Desserts menus (your priced stock when no Drinks menu is live), each against its own days on the list, up to 90 days to yesterday',
   path: (rid) => `/analytics/menu-engineering/${rid}`,
   graphs: ['scatter', 'bars', 'table'],
   graphNote:

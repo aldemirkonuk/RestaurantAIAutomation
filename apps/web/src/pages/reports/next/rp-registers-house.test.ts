@@ -100,6 +100,6 @@ describe('Margin against movement: wines on no live menu (F-1667)', () => {
     );
     expect(v.notes?.join(' ')).toMatch(/Not on any menu, so not placed.*Reserve Syrah/);
     expect(v.figures?.find((f) => f.label === 'Not on any menu')?.value).toBe('1');
-    expect(quadrants.window({ days: 90 } as ViewCtx)).toMatch(/live menus/);
+    expect(quadrants.window({ days: 90 } as ViewCtx)).toMatch(/live Drinks and Desserts menus/);
   });
 });

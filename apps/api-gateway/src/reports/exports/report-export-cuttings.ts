@@ -1537,7 +1537,7 @@ export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
     quadrants: {
       title: "Margin against movement",
       window: () =>
-        "the wines on your live menus (your priced stock when no menu is live), each against its own days on the list, up to 90 days to yesterday",
+        "the wines on your live Drinks and Desserts menus (your priced stock when no Drinks menu is live), each against its own days on the list, up to 90 days to yesterday",
       takesWindow: false,
       write: writeQuadrants,
     },
