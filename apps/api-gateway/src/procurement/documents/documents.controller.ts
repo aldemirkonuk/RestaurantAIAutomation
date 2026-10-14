@@ -118,6 +118,14 @@ type AuthedUser = {
   role?: string | null;
 };
 
+/** `procurement_documents_paid_by_check`'s values (20260903160000). */
+const PAID_BY = [
+  "eft_wholesaler_initiated",
+  "restaurant",
+  "credit_applied",
+  "other",
+] as const;
+
 /** The house shape (`procurement.service.ts`, `vendor-intel.controller.ts`). */
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -2415,6 +2423,120 @@ export class DocumentsController {
       linesRefiled: refile.linesRefiled,
       lineFailures: refile.lineFailures,
     };
+  }
+
+  /**
+   * MARK AN INVOICE PAID, OR NOT PAID (F-1635, sim 53). ADR 0103 A3: payment
+   * is a fact on the invoice (`paid_at`, `paid_by`), reachable from any
+   * delivery state — "paid while disputed" included — so this is not gated on
+   * verification. The columns existed with no writer, so no invoice could be
+   * marked paid and nothing could say what is owed.
+   *
+   * Managers and owners only, in words. It moves no money and is undone by
+   * the same route, so it takes no seal (no decision names it; the seal guard
+   * lists it as outside every census); who did it goes to the audit log,
+   * since `paid_by` is HOW it was paid, not who said so. `paid_by` is
+   * `restaurant` — the house paid it — unless the caller names another of the
+   * column's values.
+   */
+  @Patch(":id/paid")
+  @ApiOperation({
+    summary: "Mark a vendor invoice paid, or not paid",
+    description:
+      "Body `{ paid: boolean, paidBy?: 'restaurant' | 'eft_wholesaler_initiated' | 'credit_applied' | 'other' }`. Managers and owners only. Invoices only; a credit note or a delivery note is refused in words. Returns the invoice's `paidAt` and `paidBy`.",
+  })
+  async markPaid(
+    @Param("id") id: string,
+    @Body() body: { paid?: unknown; paidBy?: unknown },
+    @CurrentUser() user: AuthedUser,
+  ): Promise<{ id: string; paidAt: string | null; paidBy: string | null }> {
+    requireUuid(id, "invoice id");
+    if (typeof body?.paid !== "boolean")
+      throw new HttpException(
+        "Say whether the invoice is paid (paid: true) or not paid (paid: false). Nothing was changed.",
+        HttpStatus.BAD_REQUEST,
+      );
+    const asked = body.paid ? (body.paidBy ?? "restaurant") : null;
+    const how = PAID_BY.find((p) => p === asked) ?? null;
+    if (asked !== null && how === null)
+      throw new HttpException(
+        "That is not a way an invoice can be paid here. Nothing was changed.",
+        HttpStatus.BAD_REQUEST,
+      );
+    const role = await this.organizations.resolveRestaurantRole(
+      user.userId,
+      user.restaurantId,
+    );
+    try {
+      await this.organizations.assertCanManageRestaurant(
+        user.userId,
+        user.restaurantId,
+        "mark an invoice paid",
+      );
+    } catch {
+      throw new HttpException(
+        `Marking an invoice paid changes what the house owes its vendor, so it is a manager's or an owner's call. ${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was changed.`,
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const { data: doc, error: readError } = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id, doc_type, doc_number, paid_at")
+      .eq("id", id)
+      .eq("restaurant_id", user.restaurantId)
+      .maybeSingle();
+    if (readError)
+      throw new HttpException(
+        `This invoice could not be read, so nothing was changed: ${readError.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    if (!doc) throw new HttpException("Not found", HttpStatus.NOT_FOUND);
+    if ((doc as { doc_type?: string }).doc_type !== "invoice")
+      throw new HttpException(
+        "Only an invoice can be marked paid. Nothing was changed.",
+        HttpStatus.BAD_REQUEST,
+      );
+
+    const paidAt = body.paid ? new Date().toISOString() : null;
+    const { error: writeError } = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .update({ paid_at: paidAt, paid_by: how })
+      .eq("id", id)
+      .eq("restaurant_id", user.restaurantId);
+    if (writeError)
+      throw new HttpException(
+        `The invoice was not marked ${body.paid ? "paid" : "not paid"}: ${writeError.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+
+    const number = (doc as { doc_number?: string | null }).doc_number;
+    const { error: auditError } = await this.db
+      .getClient()
+      .from("system_audit_log")
+      .insert({
+        actor_type: "user",
+        actor_id: user.userId,
+        action: body.paid ? "invoice_marked_paid" : "invoice_marked_unpaid",
+        entity_type: "procurement_document",
+        entity_id: id,
+        changes: {
+          subject: number ? `Invoice ${number}` : "An invoice",
+          paid_at: {
+            from: (doc as { paid_at?: string | null }).paid_at ?? null,
+            to: paidAt,
+          },
+          paid_by: how,
+        },
+        restaurant_id: user.restaurantId,
+      });
+    if (auditError)
+      this.logger.error(
+        `invoice ${id} marked ${body.paid ? "paid" : "not paid"}, but the audit row failed: ${auditError.message}`,
+      );
+    return { id, paidAt, paidBy: how };
   }
 
   /**

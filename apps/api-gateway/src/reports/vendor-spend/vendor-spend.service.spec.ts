@@ -22,7 +22,16 @@ function fakeDb(tables: Record<string, unknown[] | Record<string, unknown>>) {
         return Promise.resolve({ data: rows ?? null, error: null });
       // Paged reads (`readWholeWindow`) come back on page 2 with nothing left.
       const paged = ops.some((o) => o.m === "gt");
-      const data = paged ? [] : rows;
+      // `eq` and `is` filter a row only on a key the row carries.
+      const kept = rows.filter((row: any) =>
+        ops.every(
+          (o) =>
+            (o.m !== "eq" && o.m !== "is") ||
+            !(String(o.a[0]) in row) ||
+            (row[String(o.a[0])] ?? null) === o.a[1],
+        ),
+      );
+      const data = paged ? [] : kept;
       return Promise.resolve({ data, error: null, count: data.length });
     };
     const chain: any = new Proxy(
@@ -144,10 +153,11 @@ describe("VendorSpendService (F-1608)", () => {
       m: "lt",
       a: ["delivered_at", "2026-12-31T21:00:00.000Z"],
     });
-    // The month close's statuses, as the enum writes them.
+    // The month close's statuses, plus the still-open deliveries said
+    // beside them (F-1632), as the enum writes them.
     expect(orders).toContainEqual({
       m: "in",
-      a: ["status", ["DELIVERED", "COMPLETED"]],
+      a: ["status", ["DELIVERED", "PARTIALLY_RECEIVED", "COMPLETED"]],
     });
     const paper = calls.find((c) => c.table === "procurement_documents")!.ops;
     expect(paper).toContainEqual({ m: "eq", a: ["restaurant_id", HOUSE] });
@@ -276,5 +286,130 @@ describe("VendorSpendService (F-1608)", () => {
     expect(csv).toContain(
       "Received and Invoiced are two views of the same buying",
     );
+  });
+
+  it("[REVERT-FAILS] says a delivery still open beside Received, never silently (F-1632)", async () => {
+    const { svc } = service({
+      procurement_orders: [
+        {
+          id: "o1",
+          provider_id: ROSSI,
+          status: "COMPLETED",
+          total_cost: 1000,
+          currency: "TRY",
+        },
+        // 12 ordered, 10 accepted, 2 backordered: delivered, still open.
+        {
+          id: "o2",
+          provider_id: ROSSI,
+          status: "PARTIALLY_RECEIVED",
+          total_cost: 28800,
+          currency: "TRY",
+        },
+      ],
+      procurement_documents: [],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    const rossi = out.vendors[0];
+    expect(rossi.received).toEqual([{ currency: "TRY", total: 1000 }]);
+    expect(rossi.receivedOrders).toBe(1);
+    expect(rossi.awaitingOrders).toBe(1);
+    expect(rossi.awaiting).toEqual([{ currency: "TRY", total: 28800 }]);
+    expect(out.totals.awaiting).toEqual([{ currency: "TRY", total: 28800 }]);
+    const csv = (await svc.csv(HOUSE, "2026-03-01", "2026-03-31")).body;
+    expect(csv).toContain(
+      "1 order was delivered in this period but is still open",
+    );
+    expect(csv).toContain("Still open, at order total: 28800 TRY");
+  });
+
+  it("[REVERT-FAILS] the basis says a checked order's total is without tax (F-1634)", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    const basis = out.basis.join(" ");
+    expect(basis).not.toContain("the order's total is the invoiced total");
+    expect(basis).toContain("without tax");
+    expect(basis).toContain("Received does not include tax, and Invoiced does");
+  });
+
+  it("[REVERT-FAILS] totals each vendor's invoices not marked paid, any date, per currency (F-1635)", async () => {
+    const { svc, calls } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        {
+          id: "d1",
+          provider_id: ROSSI,
+          doc_type: "invoice",
+          doc_number: "A-1",
+          status: "verified",
+          total: 12000,
+          currency: "TRY",
+          paid_at: null,
+        },
+        {
+          id: "d2",
+          provider_id: ROSSI,
+          doc_type: "invoice",
+          doc_number: "A-2",
+          status: "verified",
+          total: 744,
+          currency: "EUR",
+          paid_at: null,
+        },
+        {
+          id: "d3",
+          provider_id: ROSSI,
+          doc_type: "invoice",
+          doc_number: "A-3",
+          status: "verified",
+          total: 500,
+          currency: "TRY",
+          paid_at: "2026-03-10T09:00:00Z",
+        },
+        {
+          id: "d4",
+          provider_id: ROSSI,
+          doc_type: "credit_memo",
+          doc_number: "C-1",
+          status: "verified",
+          total: -80,
+          currency: "TRY",
+          paid_at: null,
+        },
+        {
+          id: "d5",
+          provider_id: ROSSI,
+          doc_type: "invoice",
+          doc_number: "A-4",
+          status: "rejected",
+          total: 999,
+          currency: "TRY",
+          paid_at: null,
+        },
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    const rossi = out.vendors[0];
+    expect(rossi.unpaid).toEqual([
+      { currency: "TRY", total: 12000 },
+      { currency: "EUR", total: 744 },
+    ]);
+    expect(rossi.unpaidInvoices).toBe(2);
+    expect(out.totals.unpaid).toEqual([
+      { currency: "TRY", total: 12000 },
+      { currency: "EUR", total: 744 },
+    ]);
+    // Any date: the unpaid read is not cut to the period.
+    const unpaidRead = calls.filter(
+      (c) => c.table === "procurement_documents",
+    )[1].ops;
+    expect(unpaidRead).toContainEqual({ m: "is", a: ["paid_at", null] });
+    expect(unpaidRead).toContainEqual({ m: "eq", a: ["restaurant_id", HOUSE] });
+    expect(unpaidRead.some((o) => o.m === "gte" || o.m === "lte")).toBe(false);
   });
 });

@@ -35,6 +35,8 @@ const spend = (over: Partial<VendorSpend> = {}): VendorSpend => ({
       received: [{ currency: 'EUR', total: 1500 }],
       receivedOrders: 2,
       unpricedOrders: 1,
+      awaitingOrders: 0,
+      awaiting: [],
       invoiced: [
         { currency: 'EUR', total: 1180 },
         { currency: 'TRY', total: 900 },
@@ -43,15 +45,20 @@ const spend = (over: Partial<VendorSpend> = {}): VendorSpend => ({
       credited: [],
       creditNotes: 0,
       paperWithoutTotal: 0,
+      unpaid: [],
+      unpaidInvoices: 0,
+      unpaidWithoutTotal: 0,
     },
   ],
   totals: {
     received: [{ currency: 'EUR', total: 1500 }],
+    awaiting: [],
     invoiced: [
       { currency: 'EUR', total: 1180 },
       { currency: 'TRY', total: 900 },
     ],
     credited: [],
+    unpaid: [],
   },
   unverifiedPaper: 1,
   duplicatePaper: 0,
@@ -92,6 +99,31 @@ describe('VendorSpendShelf (F-1608)', () => {
     expect(screen.getByRole('list', { name: 'How these figures are counted' }).textContent).toContain(
       'Received is the delivered and completed orders',
     );
+  });
+
+  it('[REVERT-FAILS] says a delivery still open and what is not marked paid, per vendor (F-1632, F-1635)', async () => {
+    const base = spend();
+    const v = {
+      ...base.vendors[0],
+      awaitingOrders: 1,
+      awaiting: [{ currency: 'EUR', total: 744 }],
+      unpaid: [
+        { currency: 'EUR', total: 1180 },
+        { currency: 'TRY', total: 900 },
+      ],
+      unpaidInvoices: 2,
+    };
+    api.get.mockResolvedValue({
+      data: spend({ vendors: [v], totals: { ...base.totals, unpaid: v.unpaid } }),
+    });
+    wrap(<VendorSpendShelf restaurantId="h1" zone="Europe/Istanbul" />);
+    const list = await screen.findByRole('list', { name: 'Spend by vendor' });
+    const row = within(list).getByText('Rossi Wines').closest('li')!;
+    expect(row.textContent).toMatch(
+      /Not in Delivered yet: 1 order delivered but still open \(part still to come, or the invoice not checked yet\), €744(\.00)? at order total/,
+    );
+    expect(row.textContent).toMatch(/Not marked paid: €1,180(\.00)? \+ (TRY|₺)\s?900(\.00)? over 2 invoices/);
+    expect(screen.getByText(/Not marked paid, any date:/)).toBeInTheDocument();
   });
 
   it('switches to last year with one tap', async () => {

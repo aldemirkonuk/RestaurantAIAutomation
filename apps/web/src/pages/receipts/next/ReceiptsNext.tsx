@@ -161,6 +161,55 @@ function TieOutLine({ doc }: { doc: ProcurementDocument }) {
 }
 
 /**
+ * PAID, OR NOT (F-1635, sim 53). ADR 0103 A3: payment is a fact on the
+ * invoice, recorded in any state. Nothing could set it, so no invoice could be
+ * marked paid and nothing could say what is owed. Owners and managers mark it
+ * and undo it; staff see whether it is paid, and who can change it.
+ */
+function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: () => void }) {
+  const { activeRole, user } = useAuth();
+  const canMark = canSeeCreditLedger(activeRole, user?.role);
+  const paid = Boolean(doc.paid_at);
+  const mark = useMutation({
+    mutationFn: (next: boolean) => documentsApi.markPaid(doc.id, next),
+    onSuccess: () => onChanged(),
+  });
+  return (
+    <div className="flex flex-wrap items-center gap-2" style={{ fontSize: 12.5, marginTop: 8 }}>
+      <span style={{ color: 'var(--ink-2, #4F473C)' }}>
+        {paid ? `Marked paid on ${fmtDate(doc.paid_at)}.` : 'Not marked paid yet.'}
+      </span>
+      {canMark ? (
+        <button
+          type="button"
+          onClick={() => mark.mutate(!paid)}
+          disabled={mark.isPending}
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            padding: '3px 9px',
+            borderRadius: 6,
+            border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+            background: 'transparent',
+            color: 'var(--seal-deep, #14515C)',
+            cursor: 'pointer',
+          }}
+        >
+          {paid ? 'Mark not paid' : 'Mark paid'}
+        </button>
+      ) : (
+        <span style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>An owner or a manager can mark it paid.</span>
+      )}
+      {mark.isError && (
+        <span role="alert" style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', flexBasis: '100%' }}>
+          {serverMessage(mark.error, 'Nothing was changed.')}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
  * RULE 3 — what money this invoice is in, and the house's deliberate change.
  *
  * Founder, 2026-09-06 (batch 63): *"take the houses own currency, but AI needs
@@ -1403,6 +1452,16 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       {/* RULE 3 — the house's deliberate restatement of this invoice's money */}
       <CardPart label="The money">
         <CurrencyBlock doc={shownDoc} onChanged={() => void detailQ.refetch()} />
+        {/* F-1635 — whether the house has paid this invoice */}
+        {shownDoc.doc_type === 'invoice' && (
+          <PaidBlock
+            doc={shownDoc}
+            onChanged={() => {
+              void detailQ.refetch();
+              void qc.invalidateQueries({ queryKey: ['vendor-spend'] });
+            }}
+          />
+        )}
       </CardPart>
 
       {/*

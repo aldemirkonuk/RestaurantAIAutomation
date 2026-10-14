@@ -8604,11 +8604,30 @@ export class ProcurementService {
                 100,
             ) / 100
           : null;
-      if (invoicedTotal != null) {
+      // AN INVOICE IN ANOTHER MONEY DOES NOT RESTATE THE ORDER (F-1633). The
+      // order's total is summed under the order's currency by every purchases
+      // reader; writing a euro figure there under a lira code made a ₺28.800
+      // order read ₺744. Nothing converts (20260905120000 rule 3), so the
+      // order keeps its own total in its own money and the invoice keeps its
+      // total, in its money, on the invoice — the same guard the lot cost
+      // below takes. A money not stated on either side reads as before.
+      const orderTotalMoney =
+        currencyCode((orderRow as any).currency) ??
+        currencyCode(agreedLine.currency);
+      const invoiceMoney = currencyCode(body.invoiceCurrency);
+      const otherMoney =
+        orderTotalMoney != null &&
+        invoiceMoney != null &&
+        orderTotalMoney !== invoiceMoney;
+      if (invoicedTotal != null && !otherMoney) {
         update.total_cost = invoicedTotal;
         if ((orderRow as any).total_estimated_cost == null) {
           update.total_estimated_cost = (orderRow as any).total_cost ?? null;
         }
+      } else if (invoicedTotal != null) {
+        this.logger.log(
+          `verifyReceipt: order ${orderId} kept its ${orderTotalMoney} total; the invoice is in ${invoiceMoney}.`,
+        );
       }
     }
 

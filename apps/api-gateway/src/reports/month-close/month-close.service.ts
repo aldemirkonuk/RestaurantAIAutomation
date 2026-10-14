@@ -23,7 +23,8 @@ import {
   filedMonth,
 } from "../../inventory/count-period";
 import { takeOffOnlyReason } from "../../inventory-ledger/inventory-ledger.service";
-import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
+import { ORDER_ARRIVED_STATUSES } from "../../procurement/order-status";
+import { ProcurementOrderStatus } from "../../procurement/dto/procurement.dto";
 import { orderSpend } from "../../procurement/order-spend";
 import {
   EXPORT_CUTTINGS,
@@ -158,6 +159,13 @@ export interface PurchaseFigures {
   unpriced: number;
   /** One total per currency: there is no rate to add one to another. */
   totals: MoneyTotal[];
+  /**
+   * Delivered on the month's house days but still open (F-1632): a backorder
+   * still to come, or the invoice not checked yet (`PARTIALLY_RECEIVED`). Not
+   * in `totals` — widening the spend statuses is a money-rule change (F-130 /
+   * D6) — and said beside them at order total. Absent on a close kept before.
+   */
+  awaiting?: { orders: number; totals: MoneyTotal[] };
   /**
    * Each counted order's total and money at the close, by id (F-1466): an
    * order is listed as changed only when what it counts for moved. Kept in
@@ -901,11 +909,12 @@ export class MonthCloseService {
           () =>
             this.db
               .from("procurement_orders")
-              .select("id, total_cost, currency, delivered_at", {
+              .select("id, status, total_cost, currency, delivered_at", {
                 count: "exact",
               })
               .eq("restaurant_id", restaurantId)
-              .in("status", ORDER_SPEND_STATUSES as unknown as string[])
+              // Spend statuses, and the still-open deliveries said beside them (F-1632).
+              .in("status", ORDER_ARRIVED_STATUSES as unknown as string[])
               .gte("delivered_at", bounds.startIso)
               .lt("delivered_at", bounds.endIso) as never,
         ),
@@ -956,10 +965,20 @@ export class MonthCloseService {
     const totals = new Map<string | null, number>();
     const keptOrders: NonNullable<PurchaseFigures["kept"]> = {};
     let unpriced = 0;
+    const awaitingTotals = new Map<string | null, number>();
+    let awaitingOrders = 0;
+    let spendOrders = 0;
     for (const o of orders) {
       const cost = orderSpend(o);
       // An order naming no currency is in the house's money (F-1052).
       const code = codeOf(o.currency) ?? currency;
+      if (o.status === ProcurementOrderStatus.PARTIALLY_RECEIVED) {
+        awaitingOrders += 1;
+        if (cost !== null)
+          awaitingTotals.set(code, (awaitingTotals.get(code) ?? 0) + cost);
+        continue;
+      }
+      spendOrders += 1;
       keptOrders[String(o.id)] = { total: cost, currency: code };
       if (cost === null) {
         unpriced += 1;
@@ -1072,11 +1091,19 @@ export class MonthCloseService {
         valuedAt: new Date().toISOString(),
       },
       purchases: {
-        orders: orders.length,
+        orders: spendOrders,
         unpriced,
         totals: [...totals.entries()]
           .map(([c, total]) => ({ currency: c, total }))
           .sort((a, b) => String(a.currency).localeCompare(String(b.currency))),
+        awaiting: {
+          orders: awaitingOrders,
+          totals: [...awaitingTotals.entries()]
+            .map(([c, total]) => ({ currency: c, total }))
+            .sort((a, b) =>
+              String(a.currency).localeCompare(String(b.currency)),
+            ),
+        },
         kept: keptOrders,
       },
       variance: {

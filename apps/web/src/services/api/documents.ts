@@ -80,6 +80,10 @@ export interface ProcurementDocument {
   provider_id?: string | null
   order_id?: string | null
   filename?: string | null
+  /** When the house marked this invoice paid; null = not marked (ADR 0103 A3, F-1635). */
+  paid_at?: string | null
+  /** How it was paid (`restaurant`, `eft_wholesaler_initiated`, `credit_applied`, `other`). */
+  paid_by?: string | null
 }
 
 export interface ProcurementDocumentLine {
@@ -204,6 +208,16 @@ export const documentsApi = {
   }> {
     const { data } = await apiClient.get(`/procurement/documents/${id}`)
     return data
+  },
+
+  /** Mark an invoice paid, or not paid (F-1635). Owners and managers only, at the gateway. */
+  async markPaid(id: string, paid: boolean): Promise<{ id: string; paidAt: string | null; paidBy: string | null }> {
+    try {
+      const { data } = await apiClient.patch(`/procurement/documents/${id}/paid`, { paid })
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
   },
 
   /**
