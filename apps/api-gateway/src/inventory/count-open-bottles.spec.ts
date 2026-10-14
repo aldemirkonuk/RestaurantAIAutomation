@@ -52,9 +52,7 @@ function service(
       gt: () => chain,
       // A row that states the column answers `.in` as the database would.
       in: (column: string, values: unknown[]) => {
-        rows = rows.filter(
-          (r) => !(column in r) || values.includes(r[column]),
-        );
+        rows = rows.filter((r) => !(column in r) || values.includes(r[column]));
         return chain;
       },
       is: () => chain,
