@@ -22,6 +22,7 @@ import {
   HouseTaxBasisService,
   TAX_BASIS_AUDIT_ACTION,
   TAX_ITEM_PICK_CAP,
+  TAX_ITEM_SEARCH_MAX_LENGTH,
   TAX_RATE_AUDIT_ACTION,
   notARateBecause,
   proposalFor,
@@ -65,6 +66,25 @@ class FakeQuery {
   }
   in(col: string, vs: unknown[]) {
     this.filters.push((r) => vs.includes(r[col]));
+    return this;
+  }
+  gt(col: string, v: string) {
+    this.filters.push((r) => r[col] > v);
+    return this;
+  }
+  /** `a.ilike.%x%,b.ilike.%x%`: a contains match on any column (F-1703). */
+  or(expr: string) {
+    const conds = expr.split(",").map((c) => {
+      const m = /^(\w+)\.ilike\.%(.*)%$/.exec(c);
+      if (!m) throw new Error(`fake or(): unsupported ${c}`);
+      return { col: m[1], needle: m[2].toLowerCase() };
+    });
+    this.filters.push((r) =>
+      conds.some(
+        ({ col, needle }) =>
+          typeof r[col] === "string" && r[col].toLowerCase().includes(needle),
+      ),
+    );
     return this;
   }
   order(col: string, o?: { ascending?: boolean }) {
@@ -978,5 +998,107 @@ describe("GET /settings/tax-basis — every answer, and the house's items (F-162
     const r = await controller.read(TR);
     expect(r.items).toEqual([{ id: ITEM_TR, name: "Kavaklıdere Yakut" }]);
     expect(r.itemsCapped).toBe(false);
+  });
+});
+
+describe("GET /settings/tax-basis/items — an item past the first list can be found by name (F-1703)", () => {
+  it("finds an item the first list cuts, by part of its name, only in this house", async () => {
+    const { db, controller } = make();
+    Object.assign(house(db, TR), {
+      tax_basis: "prices_include_tax",
+      tax_basis_confirmed_by: "owner-tr",
+      tax_basis_confirmed_at: "2026-10-20T09:00:00Z",
+    });
+    const pad = (n: number) => String(n).padStart(4, "0");
+    for (let n = 1; n <= TAX_ITEM_PICK_CAP; n++)
+      db.tables.restaurant_inventory.push({
+        id: `live-${pad(n)}`,
+        restaurant_id: TR,
+        display_name: `Item ${pad(n)}`,
+        wine_name: null,
+      });
+    db.tables.restaurant_inventory.push(
+      {
+        id: "item-zz-gone",
+        restaurant_id: TR,
+        display_name: null,
+        wine_name: "Yakut Eski",
+        deleted_at: "2026-10-01T00:00:00Z",
+      },
+      { id: "item-us-yakut", restaurant_id: US, wine_name: "Yakut Napa" },
+    );
+    const first = await controller.read(TR);
+    expect(first.itemsCapped).toBe(true);
+    expect(first.items!.some((i) => i.id === ITEM_TR)).toBe(false);
+    const found = await controller.searchItems(TR, "  yakut ");
+    expect(found).toEqual({
+      items: [{ id: ITEM_TR, name: "Kavaklıdere Yakut" }],
+      capped: false,
+    });
+    expect(db.writes).toHaveLength(0);
+  });
+
+  it("refuses an empty or overlong search, and says a failed read", async () => {
+    const { db, controller } = make();
+    await expect(controller.searchItems(TR, "   ")).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
+    await expect(
+      controller.searchItems(TR, "x".repeat(TAX_ITEM_SEARCH_MAX_LENGTH + 1)),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    db.failures.restaurant_inventory = "statement timeout";
+    await expect(controller.searchItems(TR, "yakut")).rejects.toThrow(
+      /could not be searched/,
+    );
+  });
+});
+
+describe("GET /settings/tax-basis — every rate row is read, as ingest reads them (F-1704)", () => {
+  it("past 500 rows the oldest are still read, newest first, and what is in force is worked out from all of them", async () => {
+    const { db, controller } = make();
+    const pad = (n: number) => String(n).padStart(4, "0");
+    // Version 1 is the only whole-house rate; 2..1201 are item rates, so a
+    // read of the newest 500 lost the rate in force for everything else.
+    db.tables.house_tax_rates.push({
+      id: `rate-${pad(1)}`,
+      restaurant_id: TR,
+      version: 1,
+      key_kind: "house",
+      key: "",
+      rate: 0.2,
+      effective_from: "2020-01-01",
+      effective_to: null,
+      created_at: "2026-10-01T00:00:00Z",
+    });
+    for (let v = 2; v <= 1201; v++)
+      db.tables.house_tax_rates.push({
+        id: `rate-${pad(v)}`,
+        restaurant_id: TR,
+        version: v,
+        key_kind: "pos_category",
+        key: `Category ${pad(v)}`,
+        rate: 0.1,
+        effective_from: "2020-01-01",
+        effective_to: null,
+        created_at: "2026-10-01T00:00:00Z",
+      });
+    const r = await controller.read(TR);
+    expect(r.ratesReason).toBeNull();
+    expect(r.rates).toHaveLength(1201);
+    expect(r.rates![0].version).toBe(1201);
+    expect(r.rates![1200]).toMatchObject({
+      version: 1,
+      keyKind: "house",
+      ratePct: 20,
+      inForceToday: true,
+    });
+  });
+
+  it("a rate read that fails says so, never an empty list", async () => {
+    const { db, controller } = make();
+    db.failures.house_tax_rates = "statement timeout";
+    const r = await controller.read(TR);
+    expect(r.rates).toBeNull();
+    expect(r.ratesReason).toMatch(/statement timeout/);
   });
 });

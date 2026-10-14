@@ -115,6 +115,17 @@ export async function addTaxRate(body: {
 }
 
 /**
+ * The house's own items whose name holds `q` (F-1703): the first list carries
+ * only the first 500 by name, so an item past them is found by searching.
+ */
+export async function searchTaxItems(q: string): Promise<{ items: { id: string; name: string }[]; capped: boolean }> {
+  const { data } = await apiClient.get<{ items: { id: string; name: string }[]; capped: boolean }>('/settings/tax-basis/items', {
+    params: { q },
+  });
+  return data;
+}
+
+/**
  * Withdraw one rate (F-1586). The table is append-only, so the gateway
  * appends rows restating what applied before it; nothing is edited.
  */
@@ -330,7 +341,13 @@ function TaxBasisBody({
   const [covers, setCovers] = useState<RateCovers>('house');
   const [category, setCategory] = useState('');
   const [itemId, setItemId] = useState('');
-  const item = (reg.items ?? []).find((i) => i.id === itemId) ?? null;
+  // F-1703: a name search replaces the first list while it is shown.
+  const [findText, setFindText] = useState('');
+  const [found, setFound] = useState<{ term: string; items: { id: string; name: string }[]; capped: boolean } | null>(null);
+  const [findBusy, setFindBusy] = useState(false);
+  const [findFailed, setFindFailed] = useState<string | null>(null);
+  const listed = found ? found.items : (reg.items ?? []);
+  const item = listed.find((i) => i.id === itemId) ?? null;
   const [rate, setRate] = useState('');
   const [from, setFrom] = useState(reg.today);
   const [rateBusy, setRateBusy] = useState(false);
@@ -407,6 +424,22 @@ function TaxBasisBody({
       setRateFailed(messageOf(err));
     } finally {
       setRateBusy(false);
+    }
+  };
+
+  const find = async () => {
+    const term = findText.trim();
+    if (!term) return;
+    setFindBusy(true);
+    setFindFailed(null);
+    try {
+      const out = await searchTaxItems(term);
+      setFound({ term, ...out });
+      if (!out.items.some((i) => i.id === itemId)) setItemId('');
+    } catch (err) {
+      setFindFailed(messageOf(err));
+    } finally {
+      setFindBusy(false);
     }
   };
 
@@ -588,6 +621,26 @@ function TaxBasisBody({
               {covers === 'house_item' &&
                 (reg.items && reg.items.length > 0 ? (
                   <>
+                    {reg.itemsCapped ? (
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <input
+                          aria-label="Find an item by name"
+                          type="search"
+                          placeholder="part of its name"
+                          value={findText}
+                          disabled={!canManage || rateBusy || findBusy}
+                          onChange={(e) => setFindText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') void find();
+                          }}
+                          className="st-ink st-focus"
+                          style={{ ...fieldStyle, width: 150 }}
+                        />
+                        <Action tone="quiet" disabled={!canManage || rateBusy || findBusy || !findText.trim()} onClick={() => void find()}>
+                          Find
+                        </Action>
+                      </span>
+                    ) : null}
                     <select
                       aria-label="Item"
                       value={itemId}
@@ -597,15 +650,37 @@ function TaxBasisBody({
                       style={{ ...fieldStyle, width: 220 }}
                     >
                       <option value="">Choose an item</option>
-                      {reg.items.map((i) => (
+                      {listed.map((i) => (
                         <option key={i.id} value={i.id}>
                           {i.name}
                         </option>
                       ))}
                     </select>
-                    {reg.itemsCapped ? (
+                    {findFailed ? (
+                      <span role="alert" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-2)' }}>
+                        The search did not work: {findFailed}
+                      </span>
+                    ) : found ? (
+                      <span data-testid="tax-items-found" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
+                        {found.items.length === 0
+                          ? `No item of this house has “${found.term}” in its name.`
+                          : found.capped
+                            ? `Only the first ${found.items.length} items with “${found.term}” in their name are listed; type more of the name to find the one you want.`
+                            : `Items with “${found.term}” in their name.`}{' '}
+                        <Action
+                          tone="quiet"
+                          onClick={() => {
+                            setFound(null);
+                            setFindText('');
+                            if (!(reg.items ?? []).some((i) => i.id === itemId)) setItemId('');
+                          }}
+                        >
+                          Show the first list
+                        </Action>
+                      </span>
+                    ) : reg.itemsCapped ? (
                       <span data-testid="tax-items-cut" style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
-                        Only the first {reg.items.length} of the house’s items, by name, are listed here; an item past them is not in this list.
+                        Only the first {reg.items.length} of the house’s items, by name, are listed here; find any other item by its name.
                       </span>
                     ) : null}
                   </>
