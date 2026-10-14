@@ -1265,6 +1265,9 @@ export class TeamService {
     handover?: Handover | null,
   ): Promise<RemovalReceipt> {
     const userId = actor.userId;
+    // An unused invite this removal expired: the one a "no account yet" row
+    // stood in for (F-1545), or one emailed to the person's address (F-1580).
+    let inviteCancelled = false;
     // Set once this removal has sent the person's unstarted shifts back to
     // the open pool and cut any in progress (item 26); `null` until then.
     let released: Released | null = null;
@@ -1283,9 +1286,6 @@ export class TeamService {
 
     let previousRole: string | null = null;
     let accessRevoked = false;
-    // An unused invite this removal expired: the one a "no account yet" row
-    // stood in for (F-1545), or one emailed to the person's address (F-1580).
-    let inviteCancelled = false;
 
     if (member?.user_id) {
       // The access row in any state, because this removal deletes it in any
