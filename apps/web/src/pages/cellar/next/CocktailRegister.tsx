@@ -211,14 +211,17 @@ function serveWords(c: CocktailVM): { cost: string; margin: string; title?: stri
   if (s.marginRefusal) {
     return { cost: s.notLinked > 0 ? `at least ${money(s.costPerServe)}` : money(s.costPerServe), margin: EM, partial: s.marginRefusal };
   }
+  // F-1615: a margin priced at the till category the owner chose for cocktails says which.
+  const taxNote = s.marginTaxNote ? `margin ${s.marginTaxNote}` : undefined;
   if (s.notLinked > 0) {
+    const lines = `from ${s.linked} of ${s.linked + s.notLinked} lines; ${s.notLinked === 1 ? 'one is' : `${s.notLinked} are`} not linked to stock`;
     return {
       cost: `at least ${money(s.costPerServe)}`,
       margin: margin === EM ? EM : `at most ${margin}`,
-      partial: `from ${s.linked} of ${s.linked + s.notLinked} lines; ${s.notLinked === 1 ? 'one is' : `${s.notLinked} are`} not linked to stock`,
+      partial: taxNote ? `${lines}; ${taxNote}` : lines,
     };
   }
-  return { cost: money(s.costPerServe), margin };
+  return { cost: money(s.costPerServe), margin, partial: taxNote };
 }
 
 function Recipe({

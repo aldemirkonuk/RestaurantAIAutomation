@@ -491,7 +491,8 @@ export interface ServeVM {
   notLinked: number;
   withheldReason?: string | null;
   /** F-1587: why a costed cocktail has no margin when the till's prices include tax. */
-  marginRefusal?: string | null;
+  marginRefusal?: string | null;  /** F-1615: which till category's rate the margin is without, when the owner chose it. */
+  marginTaxNote?: string;
 }
 
 export interface CocktailListVM {

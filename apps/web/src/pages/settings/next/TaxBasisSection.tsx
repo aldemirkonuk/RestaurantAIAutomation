@@ -65,6 +65,10 @@ export interface TaxBasisReadout {
   proposal: { basis: TaxBasisAnswer; rates: { label: string; ratePct: number }[]; why: string } | null;
   rates: TaxRateRow[] | null;
   ratesReason: string | null;
+  /** F-1615: the till category whose rate prices cocktails; null when nobody has chosen. */
+  cocktailCategory?: string | null;
+  /** Why `cocktailCategory` could not be read; null when it was. */
+  cocktailCategoryReason?: string | null;
   today: string;
   todayOnHouseClock: boolean;
   changed?: boolean;
@@ -99,6 +103,36 @@ export async function addTaxRate(body: {
 export async function withdrawTaxRate(version: number): Promise<TaxBasisReadout> {
   const { data } = await apiClient.post<TaxBasisReadout>('/settings/tax-rates/withdraw', { version });
   return data;
+}
+
+/**
+ * Say which till category's rate prices cocktails, or null to take it back
+ * (F-1615). Only one of the house's own till categories is accepted.
+ */
+export async function setCocktailTaxCategory(category: string | null): Promise<TaxBasisReadout> {
+  const { data } = await apiClient.put<TaxBasisReadout>('/settings/tax-basis/cocktail-category', { category });
+  return data;
+}
+
+/** The till categories the house has a rate for, the only ones cocktails may be priced at (F-1615). */
+export function cocktailCategories(rates: TaxRateRow[] | null): string[] {
+  return [...new Set((rates ?? []).filter((r) => r.keyKind === 'pos_category' && r.ratePct !== null).map((r) => r.key))].sort(
+    (a, b) => a.localeCompare(b),
+  );
+}
+
+/** What Save will write for cocktails, before it does (F-1615). */
+export function readCocktailChoice(
+  picked: string | null,
+  current: string | null,
+): { canSave: boolean; sentence: string } {
+  if (picked === null)
+    return { canSave: false, sentence: 'Choose the till category your cocktails are rung up under.' };
+  if (picked === current) return { canSave: false, sentence: 'That is the category already chosen.' };
+  return {
+    canSave: true,
+    sentence: `Save will price cocktails at the rate of the till category “${picked}”, so their margins are worked out without it.`,
+  };
 }
 
 /** The day after a house date, calendar-safe. */
@@ -261,6 +295,26 @@ function TaxBasisBody({
     .filter((r) => r.upcoming === true)
     .sort((a, b) => (a.effectiveFrom < b.effectiveFrom ? -1 : a.effectiveFrom > b.effectiveFrom ? 1 : 0));
   const [withdrawing, setWithdrawing] = useState<TaxRateRow | null>(null);
+  // F-1615: which till category's rate prices cocktails; nothing is guessed from a name.
+  const cocktailChoices = cocktailCategories(reg.rates);
+  const cocktailNow = reg.cocktailCategory ?? null;
+  const [cocktailPick, setCocktailPick] = useState<string | null>(cocktailNow);
+  const [cocktailBusy, setCocktailBusy] = useState(false);
+  const [cocktailFailed, setCocktailFailed] = useState<string | null>(null);
+  const cocktailRead = readCocktailChoice(cocktailPick, cocktailNow);
+  const saveCocktail = async (category: string | null) => {
+    setCocktailBusy(true);
+    setCocktailFailed(null);
+    try {
+      const next = await setCocktailTaxCategory(category);
+      setCocktailPick(next.cocktailCategory ?? null);
+      onRecorded(next);
+    } catch (err) {
+      setCocktailFailed(messageOf(err));
+    } finally {
+      setCocktailBusy(false);
+    }
+  };
   const [withdrawFailed, setWithdrawFailed] = useState<string | null>(null);
 
   /**
@@ -550,6 +604,61 @@ function TaxBasisBody({
                 </span>
               ))}
               . Each covers one kind of sale, so it fills in a till category: change it to the name your till uses.
+            </p>
+          )}
+        </Row>
+      )}
+
+      {reg.basis === 'prices_include_tax' && reg.rates !== null && (cocktailChoices.length > 0 || cocktailNow !== null) && (
+        <Row
+          label="Cocktails"
+          consequence={
+            reg.cocktailCategoryReason ? (
+              <>Which till category prices cocktails could not be read — {reg.cocktailCategoryReason}.</>
+            ) : cocktailNow !== null ? (
+              <>
+                Cocktail margins are worked out without the rate of the till category “{cocktailNow}”.
+                {!cocktailChoices.includes(cocktailNow) && ' That category has no rate now, so cocktails show no margin until it has one or another is chosen.'}
+              </>
+            ) : (
+              <>
+                <strong>Not chosen.</strong> A cocktail is not one of your stock items, so while your rates are set by till
+                category its margin is not shown until you say which category it is rung up under.
+              </>
+            )
+          }
+          control={
+            <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+              <Choice
+                label="Till category for cocktails"
+                value={cocktailPick}
+                disabled={!canManage || cocktailBusy}
+                options={cocktailChoices.map((c) => ({ value: c, label: c }))}
+                onChange={setCocktailPick}
+              />
+              <Action disabled={!canManage || cocktailBusy || !cocktailRead.canSave} onClick={() => void saveCocktail(cocktailPick)}>
+                {cocktailBusy ? 'Saving…' : 'Save'}
+              </Action>
+            </span>
+          }
+        >
+          <p data-testid="cocktail-tax-sentence" style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
+            {cocktailRead.sentence}{' '}
+            {canManage && cocktailNow !== null && (
+              <button
+                type="button"
+                className="st-ink st-focus"
+                disabled={cocktailBusy}
+                onClick={() => void saveCocktail(null)}
+                style={{ fontFamily: SANS, fontSize: 11.5, border: 'none', background: 'none', padding: 0, textDecoration: 'underline', cursor: 'pointer', color: 'var(--ink-1)' }}
+              >
+                Take the choice back
+              </button>
+            )}
+          </p>
+          {cocktailFailed && (
+            <p role="alert" style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-1)', margin: '5px 0 0' }}>
+              That did not go through — {cocktailFailed}. Nothing was recorded.
             </p>
           )}
         </Row>

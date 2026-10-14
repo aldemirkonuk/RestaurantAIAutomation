@@ -90,7 +90,16 @@ export interface StockRowCost {
  * margin (ADR 0341 §6, margin advice's rule): the rate its price holds, or why
  * no rate does. Omitted for every other house, whose margin is as before.
  */
-export type ServeTax = { rate: number } | { refusal: string };
+export type ServeTax =
+  | {
+      rate: number;
+      /**
+       * F-1615: which rate the margin used, when the owner chose it, in
+       * plain words for the margin cell. Omitted for the whole-house rate.
+       */
+      note?: string;
+    }
+  | { refusal: string };
 
 /** One recipe line's cost per serve, or the reason it is withheld. */
 export type LineCost =
@@ -144,6 +153,11 @@ export interface ServeCost {
    * without tax.
    */
   marginRefusal?: string | null;
+  /**
+   * F-1615: which till category's rate the stated margin is without, when
+   * the owner chose it for cocktails. Present only with a stated margin.
+   */
+  marginTaxNote?: string;
 }
 
 export function serveCost(
@@ -191,6 +205,9 @@ export function serveCost(
     withheldReason:
       linked === 0 ? "no recipe line is linked to stock" : withheldReason,
     ...(tax ? { marginRefusal } : {}),
+    ...(stated && tax && "note" in tax && tax.note
+      ? { marginTaxNote: tax.note }
+      : {}),
   };
 }
 

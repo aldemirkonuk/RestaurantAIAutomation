@@ -22,6 +22,7 @@ import { OrganizationsService } from "../organizations/organizations.service";
 import {
   AddHouseTaxRateDto,
   ConfirmHouseTaxBasisDto,
+  SetCocktailTaxCategoryDto,
   WithdrawHouseTaxRateDto,
 } from "./dto/house-tax-basis.dto";
 import {
@@ -100,6 +101,36 @@ export class HouseTaxBasisController {
     return this.taxBasis.confirm(
       house,
       dto ?? ({} as ConfirmHouseTaxBasisDto),
+      userId,
+    );
+  }
+
+  @Put("tax-basis/cocktail-category")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Say which till category's tax rate prices cocktails — owner or manager only",
+    description:
+      "F-1615. A cocktail is not a stock row, so on a house whose rates are set by till category its margin needs the owner to say which category's rate its price holds. Only a category the house has a rate for; null takes the choice back. Nothing is inferred from a name. The same choice writes nothing. Audited as house_cocktail_tax_category_set.",
+  })
+  @ApiResponse({
+    status: 403,
+    description: "The caller is not an owner or manager of this restaurant.",
+  })
+  async setCocktailCategory(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
+    @Body() dto: SetCocktailTaxCategoryDto,
+  ): Promise<HouseTaxBasisReadout> {
+    const house = this.requireHouse(restaurantId, "nothing was recorded");
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      house,
+      "say which tax rate prices this restaurant's cocktails",
+    );
+    return this.taxBasis.setCocktailCategory(
+      house,
+      dto ?? ({} as SetCocktailTaxCategoryDto),
       userId,
     );
   }

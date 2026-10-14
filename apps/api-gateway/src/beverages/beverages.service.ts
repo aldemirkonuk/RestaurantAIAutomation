@@ -312,14 +312,40 @@ const ROLLUP_SELECT =
  * include tax, by margin advice's rule (ADR 0341 §6) with no item rate, since
  * a cocktail is not a stock row: the whole-house rate in force today, only
  * when no till-category rate is. Otherwise the named reason.
+ *
+ * F-1615 (coordinator's call S230, within ADR 0341 §6 "category or item rate
+ * mapping is owner work"): an owner or manager may say which of the house's
+ * till categories prices its cocktails (`restaurants.cocktail_tax_category`,
+ * Settings). That category's rate in force today is then the cocktail's, and
+ * the margin says which rate it used. Nothing guesses a category from a name:
+ * with no choice made, a house with till-category rates keeps the refusal.
  */
-export function cocktailTax(terms: AdviceTaxTerms): ServeTax {
+export function cocktailTax(
+  terms: AdviceTaxTerms,
+  cocktailCategory: string | null = null,
+): ServeTax {
   if (terms.day === null)
     return {
       refusal:
         "No margin: this house's time zone isn't set, so the tax rate in force today is not known. Set it in Settings.",
     };
   const day = terms.day;
+  if (cocktailCategory !== null) {
+    const chosen = rateRowInForce(
+      terms.rates,
+      "pos_category",
+      cocktailCategory,
+      day,
+    );
+    if (chosen && chosen.rate !== null)
+      return {
+        rate: chosen.rate,
+        note: `worked out without the ${toPct(chosen.rate)}% rate of the till category “${cocktailCategory}”, chosen for cocktails in Settings`,
+      };
+    return {
+      refusal: `No margin: cocktails are priced at the rate of the till category “${cocktailCategory}”, and that category has no rate in force today. Add one, or choose another, in Settings, under “Do its prices include tax?”.`,
+    };
+  }
   const byCategory = terms.rates.some(
     (r) =>
       r.keyKind === "pos_category" &&
@@ -329,9 +355,14 @@ export function cocktailTax(terms: AdviceTaxTerms): ServeTax {
   if (!byCategory && house && house.rate !== null) return { rate: house.rate };
   return {
     refusal: byCategory
-      ? "No margin: your tax rates are set by till category, and a cocktail is not matched to one here, so the tax inside its price is not known."
+      ? "No margin: your tax rates are set by till category, and nobody has said which one prices cocktails, so the tax inside their price is not known. Choose it in Settings, under “Do its prices include tax?”."
       : "No margin: no tax rate of this house is in force today, so the tax inside this price is not known. Add one in Settings, under “Do its prices include tax?”.",
   };
+}
+
+/** A fraction as a percent, without float dust (0.2 -> 20). */
+function toPct(fraction: number): number {
+  return Math.round(fraction * 1_000_000) / 10_000;
 }
 
 /**
@@ -1297,20 +1328,55 @@ export class BeveragesService {
       restaurantId,
       null,
     );
+    // F-1615: which till category prices cocktails is read only for an
+    // inclusive house, so every other house reads nothing new.
+    const chosen = read.terms
+      ? await this.readCocktailTaxCategory(restaurantId)
+      : { category: null, error: null };
     const tax: ServeTax | undefined =
       read.error !== null
         ? {
             refusal: `No margin: whether this house's prices include tax could not be read (${read.error}).`,
           }
-        : read.terms
-          ? cocktailTax(read.terms)
-          : undefined;
+        : !read.terms
+          ? undefined
+          : chosen.error !== null
+            ? {
+                refusal: `No margin: which till category prices cocktails could not be read (${chosen.error}).`,
+              }
+            : cocktailTax(read.terms, chosen.category);
     for (const c of cocktails) {
       const own = lines.filter((l) => l.cocktail_id === c.id);
       if (own.length > 0)
         serves.set(c.id, serveCost(own, stock.rows, c.price, tax));
     }
     return { serves, error: null, lines, linesError: null };
+  }
+
+  /**
+   * F-1615: the till category the house chose for its cocktails' tax, or
+   * null when nobody has chosen. A failed read is said, never read as "none
+   * chosen", which would put the wrong refusal on every cocktail.
+   */
+  private async readCocktailTaxCategory(
+    restaurantId: string,
+  ): Promise<{ category: string | null; error: string | null }> {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("restaurants")
+      .select("cocktail_tax_category")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(`Cocktail tax category read failed: ${error.message}`);
+      return { category: null, error: error.message };
+    }
+    const raw = (data as { cocktail_tax_category?: unknown } | null)
+      ?.cocktail_tax_category;
+    return {
+      category: typeof raw === "string" && raw !== "" ? raw : null,
+      error: null,
+    };
   }
 
   /**

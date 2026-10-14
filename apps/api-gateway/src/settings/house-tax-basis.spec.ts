@@ -18,6 +18,7 @@ import {
 } from "@nestjs/common";
 import { HouseTaxBasisController } from "./house-tax-basis.controller";
 import {
+  COCKTAIL_TAX_CATEGORY_AUDIT_ACTION,
   HouseTaxBasisService,
   TAX_BASIS_AUDIT_ACTION,
   TAX_RATE_AUDIT_ACTION,
@@ -763,5 +764,81 @@ describe("POST /settings/tax-rates/withdraw — appended, never edited (F-1586)"
       { ratePct: null, effectiveFrom: "2027-03-01", effectiveTo: "2027-06-01" },
       { ratePct: 12, effectiveFrom: "2027-06-01", effectiveTo: null },
     ]);
+  });
+});
+
+describe("PUT /settings/tax-basis/cocktail-category — the owner says which rate prices cocktails (F-1615)", () => {
+  async function withCategories() {
+    const m = make();
+    for (const [key, ratePct] of [
+      ["Yiyecek", 10],
+      ["Alkol", 20],
+    ] as const)
+      await m.service.addRate(
+        TR,
+        { keyKind: "pos_category", key, ratePct, effectiveFrom: "2026-10-01" },
+        "owner-tr",
+      );
+    return m;
+  }
+
+  it("nobody has chosen on any house until someone does", async () => {
+    const { service } = await withCategories();
+    const out = await service.read(TR);
+    expect(out.cocktailCategory).toBeNull();
+    expect(out.cocktailCategoryReason).toBeNull();
+  });
+
+  it("records one of the house's own till categories, audited, and reads it back", async () => {
+    const { db, controller } = await withCategories();
+    const out = await controller.setCocktailCategory(TR, "manager-tr", {
+      category: " Alkol ",
+    });
+    expect(out.cocktailCategory).toBe("Alkol");
+    expect(out.changed).toBe(true);
+    expect(house(db, TR).cocktail_tax_category).toBe("Alkol");
+    expect(db.tables.system_audit_log.at(-1)).toMatchObject({
+      action: COCKTAIL_TAX_CATEGORY_AUDIT_ACTION,
+    });
+    expect(SETTINGS_AUDIT_ACTIONS).toContain(
+      COCKTAIL_TAX_CATEGORY_AUDIT_ACTION,
+    );
+  });
+
+  it("refuses a category the house has no rate for: nothing is guessed from a name", async () => {
+    const { db, controller } = await withCategories();
+    const before = db.writes.length;
+    await expect(
+      controller.setCocktailCategory(TR, "owner-tr", { category: "Kokteyl" }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      controller.setCocktailCategory(TR, "owner-tr", {} as never),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(db.writes.length).toBe(before);
+  });
+
+  it("the same choice writes nothing; null takes it back", async () => {
+    const { db, controller } = await withCategories();
+    await controller.setCocktailCategory(TR, "owner-tr", { category: "Alkol" });
+    const before = db.writes.length;
+    const same = await controller.setCocktailCategory(TR, "owner-tr", {
+      category: "Alkol",
+    });
+    expect(same.changed).toBe(false);
+    expect(db.writes.length).toBe(before);
+    const back = await controller.setCocktailCategory(TR, "owner-tr", {
+      category: null,
+    });
+    expect(back.cocktailCategory).toBeNull();
+    expect(house(db, TR).cocktail_tax_category).toBeNull();
+  });
+
+  it("refuses staff, writing nothing", async () => {
+    const { db, controller } = await withCategories();
+    const before = db.writes.length;
+    await expect(
+      controller.setCocktailCategory(TR, "staff-tr", { category: "Alkol" }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.writes.length).toBe(before);
   });
 });
