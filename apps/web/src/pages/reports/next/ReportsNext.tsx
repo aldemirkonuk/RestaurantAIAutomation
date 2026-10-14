@@ -77,6 +77,7 @@ import {
 } from './rp-sheet';
 import ExportsShelf from './ExportsShelf';
 import MonthCloseShelf from './MonthCloseShelf';
+import VendorSpendShelf from './VendorSpendShelf';
 import Sheet, { type SheetCutting } from './Sheet';
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
 import { useHouseZone } from '@/lib/houseZone';
@@ -521,6 +522,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             owner and managers who may write up the house's books. */}
         {data.restaurantId !== null && !arranging && data.exportDesk.canExport && (
           <MonthCloseShelf restaurantId={data.restaurantId} zone={zone ?? null} />
+        )}
+
+        {/* F-1608: spend by vendor for any period, for the same readers. */}
+        {data.restaurantId !== null && !arranging && data.exportDesk.canExport && (
+          <VendorSpendShelf restaurantId={data.restaurantId} zone={zone ?? null} />
         )}
 
         <footer className="rp-foot">

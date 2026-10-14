@@ -7,6 +7,8 @@ import { ReportCuttingReader } from "./exports/report-cutting-reader.service";
 import { ReportExportRetentionCron } from "./exports/report-export-retention.cron";
 import { MonthCloseController } from "./month-close/month-close.controller";
 import { MonthCloseService } from "./month-close/month-close.service";
+import { VendorSpendController } from "./vendor-spend/vendor-spend.controller";
+import { VendorSpendService } from "./vendor-spend/vendor-spend.service";
 import { DatabaseModule } from "../database/database.module";
 import { AuthModule } from "../auth/auth.module";
 import { AnalyticsModule } from "../analytics/analytics.module";
@@ -18,10 +20,11 @@ import { AnalyticsModule } from "../analytics/analytics.module";
   // ORDER IS LOAD-BEARING. Nest registers routes in this order, and
   // ReportsController's `GET /reports/:id` would otherwise answer
   // `GET /reports/exports` with id = "exports" (and `/reports/month-close`
-  // with id = "month-close").
+  // with id = "month-close", `/reports/vendor-spend` with id = "vendor-spend").
   controllers: [
     ReportExportsController,
     MonthCloseController,
+    VendorSpendController,
     ReportsController,
   ],
   // ReportExportRetentionCron: the daily 90-day sweep (ScheduleModule.forRoot()
@@ -33,6 +36,7 @@ import { AnalyticsModule } from "../analytics/analytics.module";
     ReportCuttingReader,
     ReportExportRetentionCron,
     MonthCloseService,
+    VendorSpendService,
   ],
   exports: [ReportsService],
 })

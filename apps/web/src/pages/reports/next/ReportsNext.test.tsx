@@ -55,6 +55,8 @@ const asked = vi.hoisted(() => ({
 // The closed-months shelf reads its own routes (MonthCloseShelf.test.tsx); this
 // file pins the sheet, so it stands in as a marker.
 vi.mock('./MonthCloseShelf', () => ({ default: () => <section aria-label="Closed months" /> }));
+// So does spend by vendor (VendorSpendShelf.test.tsx, F-1608).
+vi.mock('./VendorSpendShelf', () => ({ default: () => <section aria-label="Spend by vendor" /> }));
 
 vi.mock('./useReportsNextData', async () => {
   const actual = await vi.importActual<typeof import('./useReportsNextData')>(
@@ -1934,11 +1936,14 @@ describe('ReportsNext — written up (OD-81)', () => {
   it('lays the closed months under the shelf for an owner or manager, and not for a reader who cannot export (F-1013)', () => {
     const owner = paint();
     expect(screen.getByRole('region', { name: 'Closed months' })).toBeInTheDocument();
+    // F-1608: spend by vendor, for the same readers.
+    expect(screen.getByRole('region', { name: 'Spend by vendor' })).toBeInTheDocument();
     owner.unmount();
     exportStub.canExport = false;
     try {
       paint();
       expect(screen.queryByRole('region', { name: 'Closed months' })).toBeNull();
+      expect(screen.queryByRole('region', { name: 'Spend by vendor' })).toBeNull();
     } finally {
       exportStub.canExport = true;
     }
