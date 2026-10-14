@@ -765,6 +765,8 @@ export class InventoryController {
       source?: string;
       reason?: string;
       idempotencyKey?: string | null;
+      /** F-1731: a pour kept on a phone says how long ago it was tapped. */
+      occurredAgoMs?: number;
     },
     @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
@@ -774,6 +776,7 @@ export class InventoryController {
         itemId,
         dto,
         user?.userId ?? null,
+        user?.role ?? null,
       );
       return (
         out && { ...out, item: inventoryItemForRole(out.item, user?.role) }

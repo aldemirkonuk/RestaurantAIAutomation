@@ -14,6 +14,10 @@ import { EventsService } from "../events/events.service";
 import { EventType, SourcePage } from "../events/dto/event.dto";
 import { queueResearchIfLibraryLacks } from "../inventory/house-item-research";
 import {
+  lateActTime,
+  refuseActCountedAfter,
+} from "../inventory/a-late-act-is-dated-by-its-tap";
+import {
   CreateInventoryTransactionDto,
   GetTransactionsQueryDto,
   InventoryTransactionResponseDto,
@@ -95,6 +99,7 @@ export class InventoryLedgerService {
     restaurantId: string,
     userId: string,
     dto: CreateInventoryTransactionDto,
+    role?: string | null,
   ): Promise<InventoryTransactionResponseDto> {
     const startTime = Date.now();
 
@@ -161,6 +166,31 @@ export class InventoryLedgerService {
       );
     }
 
+    // F-1731: a change kept on a phone is dated by its tap, and refused when
+    // the shelf was counted after it (the count already has it).
+    const late = lateActTime(dto.occurredAgoMs, "change", role);
+    const stockState = dto.stockType || StockType.LIVE;
+    const locationId =
+      dto.quantityChange < 0
+        ? dto.fromLocationId || dto.toLocationId || null
+        : dto.toLocationId || dto.fromLocationId || null;
+    if (late) {
+      await refuseActCountedAfter(
+        this.databaseService.supabase,
+        {
+          restaurantId,
+          inventoryId: dto.inventoryId,
+          stockState,
+          occurredAt: late.tappedAt,
+          locationId,
+          keyTable: "inventory_transactions",
+          idempotencyKey: dto.idempotencyKey,
+          what: "change",
+        },
+        this.logger,
+      );
+    }
+
     // record_inventory_transaction referenced a `live_stock` column that does
     // not exist on restaurant_inventory and 500'd against the real database
     // (spine repair, decision A5) — every call now goes through
@@ -173,7 +203,7 @@ export class InventoryLedgerService {
       "apply_stock_movement",
       {
         p_inventory_id: dto.inventoryId,
-        p_stock_state: dto.stockType || StockType.LIVE,
+        p_stock_state: stockState,
         p_delta: dto.quantityChange,
         p_transaction_type: dto.transactionType,
         p_source: dto.source,
@@ -187,10 +217,7 @@ export class InventoryLedgerService {
         p_cost_provenance: dto.unitCost != null ? "manual" : null,
         // F-646 b: a take-off comes off the place it left FROM (the primitive
         // drains that place first); bottles coming in go TO theirs.
-        p_location_id:
-          dto.quantityChange < 0
-            ? dto.fromLocationId || dto.toLocationId || null
-            : dto.toLocationId || dto.fromLocationId || null,
+        p_location_id: locationId,
         p_order_id: dto.orderId || null,
         p_idempotency_key: dto.idempotencyKey,
         p_reference_type: dto.referenceType || null,
@@ -203,6 +230,8 @@ export class InventoryLedgerService {
         // The check above and this argument are not redundant — one gives the
         // caller a sentence, the other holds when a future caller forgets.
         p_restaurant_id: restaurantId,
+        // F-1731: a change sent at once leaves it out (now(), as before).
+        ...(late ? { p_occurred_at: late.bookedAt } : {}),
       },
     );
 

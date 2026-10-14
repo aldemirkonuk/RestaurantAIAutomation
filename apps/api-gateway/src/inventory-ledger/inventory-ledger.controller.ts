@@ -83,13 +83,14 @@ export class InventoryLedgerController {
   })
   async createTransaction(
     @Body() dto: CreateInventoryTransactionDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: LedgerReader,
   ): Promise<InventoryTransactionResponseDto> {
     try {
       return await this.ledgerService.createTransaction(
         user.restaurantId,
         user.userId,
         dto,
+        user.role ?? null,
       );
     } catch (error) {
       this.logger.error({

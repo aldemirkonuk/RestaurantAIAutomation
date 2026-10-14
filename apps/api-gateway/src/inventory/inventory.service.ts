@@ -32,6 +32,10 @@ import {
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { assertLocationsBelongToRestaurant } from "../common/tenant/assert-location-belongs-to-restaurant";
 import {
+  lateActTime,
+  refuseActCountedAfter,
+} from "./a-late-act-is-dated-by-its-tap";
+import {
   enqueueHouseItemResearch,
   readHouseItemResearch,
   type HouseItemResearchView,
@@ -691,10 +695,14 @@ export class InventoryService {
       source?: string;
       reason?: string;
       idempotencyKey?: string | null;
+      /** F-1731: how long ago a pour kept on a phone was tapped. */
+      occurredAgoMs?: number;
     },
     performedBy?: string | null,
+    role?: string | null,
   ) {
     const client = this.dbService.getClient();
+    const late = lateActTime(dto.occurredAgoMs, "pour", role);
     // pour_events.idempotency_key is now mandatory (spine repair, decision
     // A12): a full unique constraint on a nullable column meant every
     // key-less manual pour after the first collided on a duplicate NULL.
@@ -724,6 +732,22 @@ export class InventoryService {
       "recordPour",
       this.logger,
     );
+    if (late) {
+      await refuseActCountedAfter(
+        client,
+        {
+          restaurantId,
+          inventoryId,
+          stockState: "live",
+          occurredAt: late.tappedAt,
+          locationId: dto.locationId ?? null,
+          keyTable: "pour_events",
+          idempotencyKey,
+          what: "pour",
+        },
+        this.logger,
+      );
+    }
     const { data: pourResult, error } = await client.rpc("record_glass_pour", {
       p_inventory_id: inventoryId,
       p_pours: dto.pours ?? 1,
@@ -733,6 +757,8 @@ export class InventoryService {
       p_performed_by: performedBy ?? null,
       p_reason: dto.reason ?? null,
       p_idempotency_key: idempotencyKey,
+      // F-1731: dated by the tap; a live pour leaves it out (now(), as before).
+      ...(late ? { p_occurred_at: late.bookedAt } : {}),
     });
     if (error) {
       this.logger.error(`record_glass_pour failed: ${error.message}`);

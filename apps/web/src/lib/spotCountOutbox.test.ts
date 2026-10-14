@@ -697,3 +697,65 @@ describe('F-1678: a pour and a row adjust ride this queue', () => {
     expect(res.parked).toBe(1)
   })
 })
+
+describe('F-1731: a queued pour or adjust is dated by its tap', () => {
+  const pourBody = { pours: 1, source: 'manual', reason: 'manual pour', locationId: 'L-cellar', idempotencyKey: 'pour:i1:n:t' }
+  const adjustBody = { quantityChange: -1, reason: 'Breakage', transactionType: 'waste' as const, idempotencyKey: 'adjust:i1:n:t' }
+
+  it('[REVERT-FAILS] stamps the moment of the tap on a pour and an adjust it keeps', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    const before = Date.now()
+
+    await submitPour({ itemId: 'i1', itemLabel: 'Yakut', body: pourBody })
+    await submitAdjust({ itemId: 'i1', itemLabel: 'Yakut', body: adjustBody })
+
+    for (const [call] of store.addPendingMutation.mock.calls) {
+      expect(Date.parse(call.data.tappedAt)).toBeGreaterThanOrEqual(before)
+    }
+    expect(store.addPendingMutation).toHaveBeenCalledTimes(2)
+  })
+
+  it('a pour sent at once carries no age, exactly as before', async () => {
+    recordPour.mockResolvedValue({ pour: {}, item: null })
+    await submitPour({ itemId: 'i1', itemLabel: 'Yakut', body: pourBody })
+    expect(recordPour).toHaveBeenCalledWith('i1', pourBody)
+  })
+
+  it('[REVERT-FAILS] a pour tapped at 23:40 and sent 30 minutes later says how old it is', async () => {
+    const tappedAt = new Date(Date.now() - 30 * 60_000).toISOString()
+    store.getPendingMutationsByType.mockResolvedValue([
+      { ...count('p'), type: POUR_TYPE, data: { itemId: 'i1', itemLabel: 'Yakut', body: pourBody, tappedAt } },
+      { ...count('a'), type: ADJUST_TYPE, data: { itemId: 'i1', itemLabel: 'Yakut', body: adjustBody, tappedAt } },
+    ])
+    recordPour.mockResolvedValue({ pour: {}, item: null })
+    adjustStock.mockResolvedValue({})
+
+    await flushSpotCountOutbox()
+
+    for (const sent of [recordPour.mock.calls[0][1], adjustStock.mock.calls[0][1]]) {
+      expect(sent.idempotencyKey).toMatch(/:t$/)
+      expect(sent.occurredAgoMs).toBeGreaterThanOrEqual(30 * 60_000)
+      expect(sent.occurredAgoMs).toBeLessThan(31 * 60_000)
+    }
+  })
+
+  it('parks a pour the house refuses because the shelf was counted after it', async () => {
+    const tappedAt = new Date(Date.now() - 30 * 60_000).toISOString()
+    store.getPendingMutationsByType.mockResolvedValue([
+      { ...count('p'), type: POUR_TYPE, data: { itemId: 'i1', itemLabel: 'Yakut', body: pourBody, tappedAt } },
+    ])
+    const said = 'This shelf was counted after this pour was made, so the count already has it. It was not applied again.'
+    recordPour.mockRejectedValue(
+      Object.assign(new Error('HTTP 409'), { response: { status: 409, data: { message: said } } }),
+    )
+
+    const res = await flushSpotCountOutbox()
+
+    expect(store.removePendingMutation).not.toHaveBeenCalled()
+    expect(store.updatePendingMutation).toHaveBeenCalledWith(
+      'p',
+      expect.objectContaining({ lastError: said, parked: expect.objectContaining({ status: 409 }) }),
+    )
+    expect(res.parked).toBe(1)
+  })
+})

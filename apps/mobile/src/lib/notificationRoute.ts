@@ -69,8 +69,26 @@ export function routeForActionUrl(actionUrl: string | null | undefined): MobileR
   if (head === "settings") return "/settings";
   if (head === "help") return "/help";
 
+  // F-1732: "A stock count is open" (`/count/<id>`). The phone app has no
+  // count screen yet (mobile L7), so the tap opens the web count page in the
+  // browser: expo-router hands an https route to the phone's browser. A build
+  // that does not know the web address has nowhere to send it and stays put.
+  if (head === "count") {
+    const web = webOrigin();
+    if (!web) return null;
+    return segments[1] ? `${web}/count/${encodeURIComponent(segments[1])}` : `${web}/count`;
+  }
+
   // Everything else is a web-only surface today.
   return null;
+}
+
+/**
+ * The web dashboard's address, as `config.ts`'s WEB_URL reads it, at call
+ * time (Expo inlines `process.env.EXPO_PUBLIC_*` in the build).
+ */
+function webOrigin(): string {
+  return (process.env.EXPO_PUBLIC_WEB_URL ?? "").replace(/\/$/, "");
 }
 
 /**

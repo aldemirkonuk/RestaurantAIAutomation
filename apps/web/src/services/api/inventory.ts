@@ -204,6 +204,8 @@ export async function adjustStock(
      * left on purpose, never as bottles missing from a count.
      */
     transactionType?: 'adjustment' | 'waste' | 'comp' | 'correction';
+    /** F-1731: how long ago a change kept on this phone was tapped. */
+    occurredAgoMs?: number;
   }
 ): Promise<unknown> {
   const response = await apiClient.post('/inventory-ledger/transactions', {
@@ -216,6 +218,7 @@ export async function adjustStock(
     quantityChange: body.quantityChange,
     reason: body.reason,
     idempotencyKey: body.idempotencyKey,
+    ...(body.occurredAgoMs != null ? { occurredAgoMs: body.occurredAgoMs } : {}),
   });
   return response.data;
 }
@@ -416,6 +419,8 @@ export async function recordPour(
     source?: string;
     reason?: string;
     idempotencyKey?: string | null;
+    /** F-1731: how long ago a pour kept on this phone was tapped. */
+    occurredAgoMs?: number;
   },
   restaurantId?: string
 ): Promise<{ pour: any; item: InventoryItem | null }> {

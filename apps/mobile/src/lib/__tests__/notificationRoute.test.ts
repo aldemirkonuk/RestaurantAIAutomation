@@ -223,3 +223,25 @@ describe("name-the-item and delivery pushes open the place they name (F-1309)", 
     }
   });
 });
+
+describe('F-1732: "A stock count is open" opens the count, not the inbox', () => {
+  const saved = process.env.EXPO_PUBLIC_WEB_URL;
+  afterEach(() => {
+    if (saved === undefined) delete process.env.EXPO_PUBLIC_WEB_URL;
+    else process.env.EXPO_PUBLIC_WEB_URL = saved;
+  });
+
+  it("[REVERT-FAILS] a tap opens the web count page in the browser", () => {
+    process.env.EXPO_PUBLIC_WEB_URL = "https://web.example/";
+    expect(routeForActionUrl("/count/s-1")).toBe("https://web.example/count/s-1");
+    expect(
+      routeForNotificationData({ type: "system", actionUrl: "/count/s-1" }),
+    ).toBe("https://web.example/count/s-1");
+  });
+
+  it("a build that does not know the web address stays put, as before", () => {
+    delete process.env.EXPO_PUBLIC_WEB_URL;
+    expect(routeForActionUrl("/count/s-1")).toBeNull();
+    expect(routeForNotificationData({ actionUrl: "/count/s-1" })).toBe("/notifications");
+  });
+});

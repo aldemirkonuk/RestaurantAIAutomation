@@ -147,6 +147,17 @@ export class CreateInventoryTransactionDto {
   })
   @IsString()
   idempotencyKey: string;
+
+  @ApiPropertyOptional({
+    description:
+      "F-1731: how long ago (ms) a change kept on a phone with no signal was " +
+      "tapped. Dates the ledger row by the tap, and refuses the change when " +
+      "the shelf was counted after it. Absent for a change sent at once.",
+  })
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  occurredAgoMs?: number;
 }
 
 // ============================================================================

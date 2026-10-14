@@ -229,7 +229,10 @@ export async function submitParkedLine(entry: QueuedParkedLine): Promise<{ synce
 // with their person and house, ADR 0241) and replay with the key the tap
 // minted (F-1594), so a pour that did land before the reply was lost is
 // answered with the first result, never booked twice. Both send a change, not
-// a total (F-292), so they carry no age: a pour sent late still takes off one.
+// a total (F-292). F-1731: each is stamped at the tap and a late one says how
+// old it is, so the house dates it by the tap (a pour at 23:40 sent at 00:10
+// stays in its day and month) and refuses it when another phone counted the
+// shelf after it: that count already has it.
 
 export const POUR_TYPE = 'inventory.pour'
 export const ADJUST_TYPE = 'inventory.adjust'
@@ -238,12 +241,16 @@ export interface QueuedPour {
   itemId: string
   itemLabel: string
   body: Parameters<typeof recordPour>[1] & { idempotencyKey: string }
+  /** When it was tapped (this phone's clock); a replay sends its age (F-1731). */
+  tappedAt?: string
 }
 
 export interface QueuedAdjust {
   itemId: string
   itemLabel: string
   body: Parameters<typeof adjustStock>[1]
+  /** When it was tapped (this phone's clock); a replay sends its age (F-1731). */
+  tappedAt?: string
 }
 
 /**
@@ -265,11 +272,13 @@ async function sendOrQueue(type: string, data: unknown, send: () => Promise<unkn
 
 /** Record a pour; `synced: false` means it is kept on this phone. */
 export function submitPour(entry: QueuedPour): Promise<{ synced: boolean }> {
+  entry = { ...entry, tappedAt: entry.tappedAt ?? new Date().toISOString() }
   return sendOrQueue(POUR_TYPE, entry, () => recordPour(entry.itemId, entry.body))
 }
 
 /** Record a manual adjust (breakage, a comp, …); `synced: false` = kept on this phone. */
 export function submitAdjust(entry: QueuedAdjust): Promise<{ synced: boolean }> {
+  entry = { ...entry, tappedAt: entry.tappedAt ?? new Date().toISOString() }
   return sendOrQueue(ADJUST_TYPE, entry, () => adjustStock(entry.itemId, entry.body))
 }
 
@@ -299,10 +308,9 @@ export async function flushSpotCountOutbox(): Promise<{
   // a done's zeros are for the items NOT counted, so it never depends on a
   // count queued before it, but sending the counts first keeps the shelf's
   // books in the order the person walked it.
-  // F-1678: a row's pours and adjusts go in tap order with the counts. A pour
-  // poured before a count and sent after it would take the bottle off twice;
-  // sent first, it makes the house refuse that count as overtaken (F-249), and
-  // the person is told to count again.
+  // F-1678: a row's pours and adjusts go in tap order with the counts, so a
+  // pour poured before a count on this phone is booked before that count
+  // arrives. Another phone's count is checked by the house (F-1731).
   const tapped = [
     ...(await pendingOf(MUTATION_TYPE)),
     ...(await pendingOf(POUR_TYPE)),
@@ -375,14 +383,14 @@ export async function flushSpotCountOutbox(): Promise<{
       }
       if (m.type === POUR_TYPE) {
         const p = m.data as QueuedPour
-        await recordPour(p.itemId, p.body)
+        await recordPour(p.itemId, { ...p.body, ...occurredAge(p.tappedAt) })
         await offlineStorage.removePendingMutation(m.id)
         sent++
         continue
       }
       if (m.type === ADJUST_TYPE) {
         const a = m.data as QueuedAdjust
-        await adjustStock(a.itemId, a.body)
+        await adjustStock(a.itemId, { ...a.body, ...occurredAge(a.tappedAt) })
         await offlineStorage.removePendingMutation(m.id)
         sent++
         continue
@@ -434,6 +442,12 @@ function tapTime(m: PendingMutation): number {
 function ageOf(countedAt: string | undefined): { countedAgoMs?: number } {
   const at = countedAt ? Date.parse(countedAt) : NaN
   return Number.isFinite(at) ? { countedAgoMs: Math.max(0, Date.now() - at) } : {}
+}
+
+/** A queued pour's or adjust's age at send time (F-1731); nothing without a stamp. */
+function occurredAge(tappedAt: string | undefined): { occurredAgoMs?: number } {
+  const age = ageOf(tappedAt).countedAgoMs
+  return age == null ? {} : { occurredAgoMs: age }
 }
 
 /** The house's refusal in its own words, else the error's own message. */
