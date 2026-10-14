@@ -877,74 +877,74 @@ export class MonthCloseService {
     const bounds = houseDayBounds(first, last, zone);
     const [tillWindow, rawChecks, summary, orders, monthCounts, takeOffs] =
       await Promise.all([
-      this.goals.getPosRevenueWindow(restaurantId, 30, month),
-      // The month's checks, voided ones too: the net figure is summed from
-      // them, and a later read sets each against the one kept (F-1467).
-      readWholeWindow<Record<string, unknown>>(
-        "The till's checks in this month",
-        () =>
-          this.db
-            .from("pos_checks")
-            .select(
-              "id, external_check_id, subtotal, gross_subtotal, tax_basis, voided, opened_at, closed_at, imported_at, source_modified_at",
-              { count: "exact" },
-            )
-            .eq("restaurant_id", restaurantId)
-            .gte("opened_at", bounds.readFromIso)
-            .lt("opened_at", bounds.endIso) as never,
-      ),
-      withValuation
-        ? this.analytics.getFinancialSummary(restaurantId, 0)
-        : Promise.resolve(null),
-      readWholeWindow<Record<string, unknown>>(
-        "The orders delivered in this month",
-        () =>
-          this.db
-            .from("procurement_orders")
-            .select("id, total_cost, currency, delivered_at", {
-              count: "exact",
-            })
-            .eq("restaurant_id", restaurantId)
-            .in("status", ORDER_SPEND_STATUSES as unknown as string[])
-            .gte("delivered_at", bounds.startIso)
-            .lt("delivered_at", bounds.endIso) as never,
-      ),
-      readWholeWindow<Record<string, unknown>>(
-        "The shelf counts taken in this month",
-        () =>
-          this.db
-            .from("stock_counts")
+        this.goals.getPosRevenueWindow(restaurantId, 30, month),
+        // The month's checks, voided ones too: the net figure is summed from
+        // them, and a later read sets each against the one kept (F-1467).
+        readWholeWindow<Record<string, unknown>>(
+          "The till's checks in this month",
+          () =>
+            this.db
+              .from("pos_checks")
+              .select(
+                "id, external_check_id, subtotal, gross_subtotal, tax_basis, voided, opened_at, closed_at, imported_at, source_modified_at",
+                { count: "exact" },
+              )
+              .eq("restaurant_id", restaurantId)
+              .gte("opened_at", bounds.readFromIso)
+              .lt("opened_at", bounds.endIso) as never,
+        ),
+        withValuation
+          ? this.analytics.getFinancialSummary(restaurantId, 0)
+          : Promise.resolve(null),
+        readWholeWindow<Record<string, unknown>>(
+          "The orders delivered in this month",
+          () =>
+            this.db
+              .from("procurement_orders")
+              .select("id, total_cost, currency, delivered_at", {
+                count: "exact",
+              })
+              .eq("restaurant_id", restaurantId)
+              .in("status", ORDER_SPEND_STATUSES as unknown as string[])
+              .gte("delivered_at", bounds.startIso)
+              .lt("delivered_at", bounds.endIso) as never,
+        ),
+        readWholeWindow<Record<string, unknown>>(
+          "The shelf counts taken in this month",
+          () =>
+            this.db
+              .from("stock_counts")
               .select(
                 "id, expected_qty, counted_qty, variance_qty, variance_open_ml, counted_at, session_id",
                 {
                   count: "exact",
                 },
               )
-            .eq("restaurant_id", restaurantId)
-            // F-1514, ADR 0335 §2: an opening count is the first count
-            // variance is measured from, never a variance itself.
-            .neq("source", OPENING_COUNT_SOURCE)
-            .gte("counted_at", bounds.startIso)
-            .lt("counted_at", bounds.endIso) as never,
-      ),
-      // F-1609: the month's take-offs, written off on purpose; which of them
-      // is a write-off is `writeOffReasonOf`'s call.
-      readWholeWindow<Record<string, unknown>>(
-        "The bottles written off in this month",
-        () =>
-          this.db
-            .from("inventory_transactions")
-            .select(
-              "id, transaction_type, reason, quantity_change, unit_cost, total_cost, metadata, transaction_date",
-              { count: "exact" },
-            )
-            .eq("restaurant_id", restaurantId)
-            .in("transaction_type", ["waste", "comp", "adjustment"])
-            .lt("quantity_change", 0)
-            .gte("transaction_date", bounds.startIso)
-            .lt("transaction_date", bounds.endIso) as never,
-      ),
-    ]);
+              .eq("restaurant_id", restaurantId)
+              // F-1514, ADR 0335 §2: an opening count is the first count
+              // variance is measured from, never a variance itself.
+              .neq("source", OPENING_COUNT_SOURCE)
+              .gte("counted_at", bounds.startIso)
+              .lt("counted_at", bounds.endIso) as never,
+        ),
+        // F-1609: the month's take-offs, written off on purpose; which of them
+        // is a write-off is `writeOffReasonOf`'s call.
+        readWholeWindow<Record<string, unknown>>(
+          "The bottles written off in this month",
+          () =>
+            this.db
+              .from("inventory_transactions")
+              .select(
+                "id, transaction_type, reason, quantity_change, unit_cost, total_cost, metadata, transaction_date",
+                { count: "exact" },
+              )
+              .eq("restaurant_id", restaurantId)
+              .in("transaction_type", ["waste", "comp", "adjustment"])
+              .lt("quantity_change", 0)
+              .gte("transaction_date", bounds.startIso)
+              .lt("transaction_date", bounds.endIso) as never,
+        ),
+      ]);
     const counts = await this.countsFiledIn(
       restaurantId,
       month,
