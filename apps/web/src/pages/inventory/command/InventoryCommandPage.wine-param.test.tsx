@@ -242,6 +242,25 @@ describe('?add=1 deep link', () => {
   });
 });
 
+/**
+ * F-1712: /count, on a house with no shelves, links `/inventory?shelves=1`;
+ * the shelf manager opens on it.
+ */
+describe('?shelves=1 deep link', () => {
+  it('opens the shelf manager and drops the param', async () => {
+    harness('/inventory?shelves=1');
+
+    expect(await screen.findByText('Storage Locations')).toBeInTheDocument();
+    expect(screen.getByTestId('where').textContent).toBe('');
+  });
+
+  it('keeps the shelf manager shut without the param', () => {
+    harness('/inventory');
+
+    expect(screen.queryByText('Storage Locations')).not.toBeInTheDocument();
+  });
+});
+
 describe('?filter=low-stock deep link (F-217)', () => {
   // The low-stock notifications, the digest email and its push all link
   // /inventory?filter=low-stock; the page opens on "Below par" for it.

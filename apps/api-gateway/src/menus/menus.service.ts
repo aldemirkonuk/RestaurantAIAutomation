@@ -4860,6 +4860,10 @@ export class MenusService {
       ...data,
       menu_uploaded: menuUploaded,
       menu_current: menuCurrent,
+      // F-1713: a menu is live but none of it is drinks (a Food menu alone).
+      // Rule 26 keeps it not current, so the checklist asks for the drinks
+      // menu to be read, never to make current a menu that already is.
+      menu_live_no_drinks: !menuCurrent && live.currentMenus > 0,
       threshold_configured: thresholdConfigured,
       // "Activated" = the two soft-gate essentials — the house has a current
       // menu (so a stocked inventory) and a low-stock signal. A draft read is

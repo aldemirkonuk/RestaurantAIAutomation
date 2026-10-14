@@ -165,6 +165,8 @@ export interface OnboardingProgress {
   threshold_configured: boolean
   /** The house has a current menu (a draft read is not one, F-1061). */
   menu_current?: boolean
+  /** A menu is live but holds no drink line, e.g. Food alone (ADR 0340 rule 26, F-1713). */
+  menu_live_no_drinks?: boolean
   /** menu_current AND threshold_configured — the soft-gate "done enough" signal. */
   activated: boolean
 }

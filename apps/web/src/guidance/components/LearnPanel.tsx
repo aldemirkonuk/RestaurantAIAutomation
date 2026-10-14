@@ -64,7 +64,10 @@ export function LearnPanel({
   // The same steps the Finish setup nudge reads (F-1239): a menu read but not
   // yet current is not ticked, and the low-stock number is on the list.
   const steps = progress ? setUpSteps(progress) : null
-  const readNotCurrent = !!progress?.menu_uploaded && !steps?.menu
+  // F-1713: a live menu with no drinks on it (Food alone) is not made
+  // current again; the drinks menu is still to be read.
+  const needsDrinks = !!progress?.menu_live_no_drinks && !steps?.menu
+  const readNotCurrent = !needsDrinks && !!progress?.menu_uploaded && !steps?.menu
   const tasks = [
     {
       id: 'account',
@@ -74,10 +77,10 @@ export function LearnPanel({
     },
     {
       id: 'menu',
-      label: readNotCurrent ? 'Make your menu current' : 'Upload your menu',
+      label: needsDrinks ? 'Add your drinks menu' : readNotCurrent ? 'Make your menu current' : 'Upload your menu',
       done: !!steps?.menu,
       cta: {
-        label: readNotCurrent ? 'Open the menu' : 'Upload Now',
+        label: needsDrinks ? 'Read it' : readNotCurrent ? 'Open the menu' : 'Upload Now',
         onClick: () => {
           navigate(readNotCurrent ? '/house/menu' : '/get-started')
           onClose()

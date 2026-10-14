@@ -286,6 +286,18 @@ export class VendorResolutionService {
       );
     }
 
+    // F-1714: a vendor filed from a document is a vendor the house has, as
+    // much as one added on /vendors (providers.service's create), so Get
+    // started's "Add your first vendor" ticks. Not fatal: the vendor stands.
+    const ticked = await client
+      .from("user_onboarding_progress")
+      .update({ vendor_added: true })
+      .eq("restaurant_id", input.restaurantId);
+    if (ticked.error)
+      this.logger.warn(
+        `vendor ${(created.data as { id: string }).id} was created from document ${input.documentId} but onboarding vendor_added was not set (non-fatal): ${ticked.error.message}`,
+      );
+
     return {
       state: "created",
       providerId: (created.data as { id: string }).id,

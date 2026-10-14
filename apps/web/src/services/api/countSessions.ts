@@ -117,7 +117,8 @@ export interface ShelfDoneResult {
 export async function listOpenCountSessions(): Promise<{
   sessions: CountSessionSummary[];
   periods: CountPeriods | null;
-  zones: CountZone[];
+  /** Null when the gateway sent no places, so "no shelves" is never guessed (F-1712). */
+  zones: CountZone[] | null;
   ended: EndedCountSession[];
 }> {
   const res = await apiClient.get<{
@@ -129,7 +130,7 @@ export async function listOpenCountSessions(): Promise<{
   return {
     sessions: res.data?.sessions ?? [],
     periods: res.data?.periods ?? null,
-    zones: res.data?.zones ?? [],
+    zones: res.data?.zones ?? null,
     ended: res.data?.ended ?? [],
   };
 }
