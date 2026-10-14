@@ -29,6 +29,9 @@ vi.mock("../../stores/restaurantSettingsStore", () => ({
 }));
 // The scanner flow pulls in the orchestrator client; this test never opens it.
 vi.mock("../scanner/MenuScannerFlow", () => ({ MenuScannerFlow: () => null }));
+// ADR 0341 F3: the house's tax basis, unset unless a case says otherwise.
+const getTaxBasis = vi.hoisted(() => vi.fn());
+vi.mock("../../pages/settings/next/TaxBasisSection", () => ({ getTaxBasis }));
 
 const wine = {
   id: "wine-1",
@@ -48,6 +51,7 @@ beforeEach(() => {
   screenMark.value = null;
   useWines.mockReturnValue({ data: [wine] });
   useStorageLocations.mockReturnValue({ locations: [] });
+  getTaxBasis.mockResolvedValue({ readable: true, basis: "unset", taxWord: "KDV" });
 });
 
 function renderModal(onAddWine = vi.fn()) {
@@ -360,5 +364,52 @@ describe("AddWineToInventoryModal — a custom size reads the house's way, or ho
     expect(add).toBeDisabled();
     await user.click(add);
     expect(onAddWine).not.toHaveBeenCalled();
+  });
+});
+
+/*
+ * ADR 0341 F3 (founder 2026-10-12, S218: "Yes, stamp cost basis"). A wine
+ * added with a cost is asked, like the receive form, whether KDV is inside it,
+ * at a house whose till prices include tax. Other houses send nothing new.
+ */
+describe("AddWineToInventoryModal — whether tax is inside the cost (ADR 0341 F3)", () => {
+  async function addWithCost(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(await screen.findByText("Tsantali Rapsani"));
+    await user.type(screen.getByPlaceholderText(/leave blank if unknown/i), "38.5");
+  }
+
+  it("sends what the owner said at a house whose prices include tax", async () => {
+    getTaxBasis.mockResolvedValue({ readable: true, basis: "prices_include_tax", taxWord: "KDV" });
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await addWithCost(user);
+    await user.click(await screen.findByLabelText("No, before KDV"));
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    expect(onAddWine.mock.calls[0][4]).toMatchObject({
+      costPerBottle: 38.5,
+      costTaxBasis: "excludes_tax",
+    });
+  });
+
+  it("sends no basis when nobody answered", async () => {
+    getTaxBasis.mockResolvedValue({ readable: true, basis: "prices_include_tax", taxWord: "KDV" });
+    const user = userEvent.setup();
+    const onAddWine = renderModal();
+    await addWithCost(user);
+    await screen.findByTestId("cost-tax-choice");
+    await user.click(screen.getByRole("button", { name: /Add to Inventory/i }));
+
+    await waitFor(() => expect(onAddWine).toHaveBeenCalled());
+    expect("costTaxBasis" in onAddWine.mock.calls[0][4]).toBe(false);
+  });
+
+  it("asks nothing at a house whose prices are not said to include tax", async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await addWithCost(user);
+    await waitFor(() => expect(getTaxBasis).toHaveBeenCalled());
+    expect(screen.queryByTestId("cost-tax-choice")).toBeNull();
   });
 });

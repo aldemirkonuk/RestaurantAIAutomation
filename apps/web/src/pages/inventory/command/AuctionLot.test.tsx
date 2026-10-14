@@ -43,6 +43,9 @@ vi.mock('@/services/api/inventory', () => ({
 vi.mock('@/services/api/settings', () => ({
   settingsApi: { houseCurrency: () => house.currency() },
 }));
+// ADR 0341 F3: the house's tax basis, unset unless a case says otherwise.
+const getTaxBasis = vi.hoisted(() => vi.fn());
+vi.mock('@/pages/settings/next/TaxBasisSection', () => ({ getTaxBasis }));
 
 import { AuctionLotStart, lotCost, lotWords, EMPTY_LOT } from './AuctionLotStart';
 
@@ -73,6 +76,7 @@ beforeEach(() => {
   auctionApi.createAuctionLotRecord.mockReset().mockResolvedValue({ id: 'rec-1' });
   // A house that keeps its books in the lot's own currency, unless a test says otherwise.
   house.currency.mockReset().mockResolvedValue({ readable: true, code: 'GBP' });
+  getTaxBasis.mockReset().mockResolvedValue({ readable: true, basis: 'unset', taxWord: 'KDV' });
 });
 
 describe('lotCost — the working, and what it refuses', () => {
@@ -394,5 +398,35 @@ describe('the sheet', () => {
     expect(
       await screen.findByText(/Nothing in the register matches/, undefined, { timeout: 2000 }),
     ).toBeInTheDocument();
+  });
+});
+
+/*
+ * ADR 0341 F3 (founder 2026-10-12, S218: "Yes, stamp cost basis"). The lot's
+ * booked cost is asked, like the receive form, whether KDV is inside it, at a
+ * house whose till prices include tax. Other houses carry exactly as before.
+ */
+describe('AuctionLotStart — whether tax is inside the booked cost (ADR 0341 F3)', () => {
+  it('carries what the owner said at a house whose prices include tax', async () => {
+    getTaxBasis.mockResolvedValue({ readable: true, basis: 'prices_include_tax', taxWord: 'KDV' });
+    const { onCarry } = draw();
+    await fillALot('6');
+    fireEvent.click(await screen.findByLabelText('Yes, KDV is inside'));
+    fireEvent.click(screen.getByTestId('auction-carry'));
+    await waitFor(() =>
+      expect(onCarry).toHaveBeenCalledWith(
+        expect.objectContaining({ costPerBottle: 250, costTaxBasis: 'includes_tax' }),
+      ),
+    );
+  });
+
+  it('asks nothing, and carries no basis, at a house whose prices are not said to include tax', async () => {
+    const { onCarry } = draw();
+    await fillALot('6');
+    await waitFor(() => expect(getTaxBasis).toHaveBeenCalled());
+    expect(screen.queryByTestId('cost-tax-choice')).toBeNull();
+    fireEvent.click(screen.getByTestId('auction-carry'));
+    await waitFor(() => expect(onCarry).toHaveBeenCalled());
+    expect('costTaxBasis' in onCarry.mock.calls[0][0]).toBe(false);
   });
 });

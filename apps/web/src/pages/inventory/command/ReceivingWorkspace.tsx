@@ -48,7 +48,7 @@ import { useHouseGroupMark } from '../../../hooks/useHouseGroupMark'
  * would skip the preview and hit the web's turbo cache, and ship yesterday's words.
  */
 import { RECEIVING_PRICE_CURRENCY_RUNGS } from '../../../../../api-gateway/src/procurement/price-currency'
-import { ThemedSelect } from '../../../components/ui/ThemedSelect'
+import { findItems } from '../../count/countWalkModel'
 import { computeMatch, verdictStyle, money, differentMoney } from '../../../lib/invoiceMatch'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
@@ -462,7 +462,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   }>({ invoiceQty: null, invoiceUnitPrice: null, shippedQty: null, freeGoodsQty: null })
 
   const [extras, setExtras] = useState<ExtraLine[]>([])
-  const [addingId, setAddingId] = useState('')
+  const [addQuery, setAddQuery] = useState('')
 
   /*
    * A + B4 (founder, 2026-09-06 batch 64/65). The same request now also brings
@@ -725,11 +725,35 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
     [items, extras],
   )
 
-  const addExtra = () => {
-    const item = addable.find((i) => i.inventoryId === addingId)
+  /*
+   * F-1705: the house's items are searched by what is typed, over every item,
+   * never a first-200 slice. Names, the library's name (ADR 0124), maker and
+   * year all match, as the count's own item finder does. A few hits show; the
+   * rest are counted, so a cut list always says it is cut.
+   */
+  const ADD_HITS = 8
+  const addMatches = useMemo(
+    () =>
+      findItems(
+        addable.map((i) => ({
+          id: i.inventoryId!,
+          name: i.name,
+          alsoKnownAs: (i as { libraryName?: string | null }).libraryName ?? null,
+          producer: i.producer ?? null,
+          vintage: i.vintage ?? null,
+        })),
+        addQuery,
+        Number.MAX_SAFE_INTEGER,
+      ),
+    [addable, addQuery],
+  )
+  const addHits = addMatches.slice(0, ADD_HITS)
+
+  const addExtra = (inventoryId: string) => {
+    const item = addable.find((i) => i.inventoryId === inventoryId)
     if (!item) return
     setExtras((ls) => [...ls, { inventoryId: item.inventoryId!, label: item.name, countedQty: 1 }])
-    setAddingId('')
+    setAddQuery('')
   }
 
   const verify = useMutation({
@@ -1249,24 +1273,39 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
           ))}
 
           {!readOnly && (
-            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
-              <ThemedSelect
-                value={addingId}
-                options={[
-                  { value: '', label: 'Add unlisted item' },
-                  ...addable.slice(0, 200).map((i) => ({ value: i.inventoryId!, label: i.name })),
-                ]}
-                onChange={setAddingId}
-                align="left"
-                className="flex-1"
+            <div className="mt-3 pt-3 border-t border-gray-100">
+              <input
+                type="search"
+                aria-label="Add an item not on the invoice"
+                placeholder="Add an item not on the invoice: type its name"
+                value={addQuery}
+                onChange={(e) => setAddQuery(e.target.value)}
+                className="h-9 w-full px-3 border border-gray-200 rounded-lg text-xs text-gray-900"
               />
-              <button
-                onClick={addExtra}
-                disabled={!addingId}
-                className="h-9 px-3 inline-flex items-center gap-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add
-              </button>
+              {addQuery.trim() !== '' && (
+                <ul className="mt-1.5 space-y-1">
+                  {addHits.map((h) => (
+                    <li key={h.id}>
+                      <button
+                        type="button"
+                        onClick={() => addExtra(h.id)}
+                        className="w-full h-9 px-3 inline-flex items-center gap-1.5 border border-gray-200 rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50 text-left"
+                      >
+                        <Plus className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{[h.name, h.vintage].filter(Boolean).join(' ')}</span>
+                      </button>
+                    </li>
+                  ))}
+                  {addMatches.length === 0 && (
+                    <li className="text-[11px] text-gray-500">No item of the house matches that.</li>
+                  )}
+                  {addMatches.length > addHits.length && (
+                    <li className="text-[11px] text-gray-500">
+                      {addMatches.length - addHits.length} more match. Type more of the name to find yours.
+                    </li>
+                  )}
+                </ul>
+              )}
             </div>
           )}
 

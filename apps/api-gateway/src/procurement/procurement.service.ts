@@ -11996,6 +11996,8 @@ export class ProcurementService {
       finalPrice?: number;
       quantity?: number;
       sendConfirmation?: boolean;
+      /** ADR 0341 F3: whether tax is inside the confirmed price; the controller lets only an owner or a manager send it. */
+      priceTaxBasis?: unknown;
     },
     challenge: string | null | undefined,
   ): Promise<{ confirmed: boolean; sentConfirmation: boolean }> {
@@ -12114,6 +12116,35 @@ export class ProcurementService {
           `the header, which names no unit. The price register refuses it and ` +
           `the invoice matcher has no line to pair against.`,
       );
+    }
+    // ADR 0341 F3 (founder 2026-10-12, S218: "Yes, stamp cost basis"). The
+    // price write above clears the line's tax basis when the price changed
+    // (`a_changed_cost_loses_its_unstated_tax_basis`). What the confirmer said
+    // is stamped back in a SECOND write, because restating the same basis in
+    // the price's own write is cleared too. Never the old basis carried over:
+    // a new price is not known to be on it. Nothing said, nothing read and
+    // nothing written; a house whose prices do not include tax gets no stamp.
+    if (agreedLine.id && opts.priceTaxBasis != null) {
+      const basis = costTaxStampFor(
+        await readHouseCostTaxTerms(
+          this.databaseService.supabase,
+          restaurantId,
+          this.logger,
+        ),
+        opts.priceTaxBasis,
+      );
+      if (basis) {
+        const { error: basisErr } = await this.databaseService.supabase
+          .from("procurement_order_items")
+          .update({ price_tax_basis: basis })
+          .eq("id", agreedLine.id)
+          .eq("restaurant_id", restaurantId);
+        // Logged, never thrown: the deal stands, and its basis reads as not stated.
+        if (basisErr)
+          this.logger.warn(
+            `Order ${orderId} was confirmed, but whether tax is inside its price (${basis}) was not recorded: ${basisErr.message}`,
+          );
+      }
     }
 
     const { error: upErr } = await this.databaseService.supabase

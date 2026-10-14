@@ -1409,9 +1409,17 @@ export class ProcurementController {
   async confirmDeal(
     @Param("id") orderId: string,
     @Body() body: ConfirmDealDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser()
+    user: { userId: string; restaurantId: string; role?: string | null },
     @Headers("x-seal-challenge") challenge?: string,
   ): Promise<{ confirmed: boolean; sentConfirmation: boolean }> {
+    // ADR 0341 F3, as `createOrder` holds it: whether tax is inside a price is
+    // the house's money, so a grantee may confirm but not say it. Refused
+    // before the seal is spent and before anything is written.
+    if (body?.priceTaxBasis != null && !holdsHouseMoney(user?.role ?? null))
+      throw new ForbiddenException(
+        "Saying whether tax is inside the confirmed price is an owner's or a manager's call, so nothing was confirmed. Leave it out to confirm, or ask a manager or an owner.",
+      );
     try {
       return await this.procurementService.confirmDeal(
         user.restaurantId,
@@ -1421,6 +1429,7 @@ export class ProcurementController {
           finalPrice: body?.finalPrice,
           quantity: body?.quantity,
           sendConfirmation: body?.sendConfirmation,
+          priceTaxBasis: body?.priceTaxBasis,
         },
         challenge,
       );
