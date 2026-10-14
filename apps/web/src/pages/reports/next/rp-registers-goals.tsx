@@ -71,6 +71,12 @@ export interface GoalRow {
    * only when `deadline` is null too.
    */
   paceUnread: string | null;
+  /**
+   * w109-gross-basis (ADR 0341): an Average check or Wine revenue goal at a
+   * house whose till prices include tax says the figure holds it, in the
+   * gateway's words; null for every other goal and house.
+   */
+  taxNote: string | null;
   projected: number | null;
   projectionHitsTarget: boolean | null;
   baseline: number | null;
@@ -863,6 +869,7 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
                         </>
                       )}
                     </p>
+                    {g.taxNote && <p className="rp-cap">{g.taxNote}</p>}
                   </>
                 )}
               </>
@@ -970,6 +977,7 @@ export const goals = analysis<GoalsRegister>({
         onTrack: typeof entry.onTrack === 'boolean' ? entry.onTrack : null,
         daysLeft: num(entry.daysLeft),
         paceUnread: str(entry.paceUnread) || null,
+        taxNote: str(entry.taxNote) || null,
         projected: num(entry.projectedAtDeadline),
         projectionHitsTarget:
           typeof entry.projectionHitsTarget === 'boolean' ? entry.projectionHitsTarget : null,
@@ -1080,6 +1088,9 @@ export const goals = analysis<GoalsRegister>({
           ? null
           : 'The desk is not wired on this rendering, so this cutting is read-only here.',
         'Every figure is this house against its own baseline. No other restaurant’s books are in it.',
+        ...reg.goals
+          .filter((g) => g.taxNote && !g.unreadable)
+          .map((g) => `${g.name}: ${g.taxNote}`),
       ].filter((n): n is string => n !== null),
       basis: reg.basis,
     };

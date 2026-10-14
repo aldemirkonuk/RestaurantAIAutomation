@@ -770,3 +770,64 @@ describe('same month last year counts the days the till was connected (F-1662)',
     expect(till.select({ posConnected: true })).toMatchObject({ coveredFrom: null });
   });
 });
+
+// w109-gross-basis (ADR 0341): Taken, the room and server registers and the
+// Average check / Wine revenue goals add up what the till rang. At a house
+// whose till prices include KDV the gateway now says so, and every surface
+// prints it; any other house's payload carries no key and reads as before.
+describe('till totals say they include KDV where the house says its till prices do (w109-gross-basis)', () => {
+  const KDV = 'Prices on your till include KDV, so these totals include KDV.';
+  const GOAL_KDV =
+    "Average check is worked out on your till's prices, which include KDV, so it reads higher than net sales.";
+
+  it('the till prints it beside Taken, and an older or US payload reads as before', () => {
+    expect(till.view(read({ ...OLD_PAYLOAD, totalsTaxNote: KDV }), ctx).notes).toContain(KDV);
+    expect(till.view(read(OLD_PAYLOAD), ctx).notes).not.toContain(KDV);
+  });
+
+  it('the room and server registers name it in their basis', () => {
+    const room = {
+      sinceDays: 90,
+      dataStatus: 'live',
+      checksInWindow: 4,
+      tables: [{ tableId: 't1', label: 'T1', seats: 4, checks: 4, revenue: 300, covers: 8, avgCheck: 75 }],
+    };
+    expect(seats.view(seats.select({ ...room, totalsTaxNote: KDV }) as SeatsRegister, { days: 90 } as never).basis).toContain(KDV);
+    expect(seats.view(seats.select(room) as SeatsRegister, { days: 90 } as never).basis).not.toContain(KDV);
+    const servers = {
+      sinceDays: 90,
+      dataStatus: 'live',
+      checksInWindow: 9,
+      waiters: [{ name: 'Maya', checks: 9, revenue: 882, avgCheck: 98 }],
+    };
+    expect(
+      service.view(service.select({ ...servers, totalsTaxNote: KDV }) as ServiceRegister, { days: 90 } as never).basis,
+    ).toContain(KDV);
+    expect(service.view(service.select(servers) as ServiceRegister, { days: 90 } as never).basis).not.toContain(KDV);
+  });
+
+  it('an Average check goal says it on the desk, in the notes and on the recommendations margin', () => {
+    const AVG = {
+      goal: { id: 'g-avg', name: 'Lift the check', metric_key: 'avg_check', direction: 'at_least', deadline: null, period: 'custom' },
+      metricLabel: 'Average check',
+      unit: 'currency',
+      current: 500,
+      target: 700,
+      progressPct: 0.71,
+      onTrack: null,
+      paceUnread: null,
+      taxNote: GOAL_KDV,
+    };
+    const view = goals.view(book(AVG), { days: 30, goals: desk });
+    expect(view.notes).toContain(`Lift the check: ${GOAL_KDV}`);
+    render(<MemoryRouter>{view.node}</MemoryRouter>);
+    expect(screen.getByText(GOAL_KDV)).toBeInTheDocument();
+    expect(toProgressRow(AVG).taxNote).toBe(GOAL_KDV);
+
+    const plain: Record<string, unknown> = { ...AVG };
+    delete plain.taxNote;
+    expect(book(plain).goals[0].taxNote).toBeNull();
+    expect(toProgressRow(plain).taxNote).toBeNull();
+    expect(goals.view(book(plain), { days: 30, goals: desk }).notes?.join(' ')).not.toMatch(/include KDV/);
+  });
+});

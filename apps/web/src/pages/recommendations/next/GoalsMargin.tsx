@@ -111,6 +111,11 @@ export default function GoalsMargin({
                   </span>
                   <span className="rc-mgoal-pace">{pace}</span>
                 </div>
+                {g.taxNote && (
+                  <p className="rc-why" data-testid="rc-mgoal-tax">
+                    {g.taxNote}
+                  </p>
+                )}
               </>
             )}
           </div>

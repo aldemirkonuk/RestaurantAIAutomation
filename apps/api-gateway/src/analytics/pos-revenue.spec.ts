@@ -2133,3 +2133,194 @@ describe("a refund check is taken off Taken and kept out of the average (F-1644)
     expect(out.rowCount).toBe(2);
   });
 });
+
+// w109-gross-basis (ADR 0341, sim-ledger S236 owed): Taken, the room and
+// server registers and the Average check / Wine revenue goals add up what
+// the till rang, `pos_checks.total` or the lines' own prices. Ingest makes
+// only `subtotal` pre-tax, so these stay on one basis across a switch day,
+// the basis /reports Taken is on; at a house whose till prices include KDV
+// they hold it, and said nothing. Now they say so, and every other house is
+// left exactly as it was: no key at all.
+describe("till totals say they include tax where the house's till prices do (w109-gross-basis)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(NOW));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const IST = "Europe/Istanbul";
+  const TR_INCLUSIVE = {
+    timezone: IST,
+    country: "TR",
+    tax_basis: "prices_include_tax",
+  };
+  const KDV_TOTALS =
+    "Prices on your till include KDV, so these totals include KDV.";
+  const day = "2026-09-01T12:00:00Z";
+  const checks = [
+    { total: 600, opened_at: day, closed_at: day, items: [] },
+    { total: 400, opened_at: day, closed_at: day, items: [] },
+  ];
+
+  it("Taken at an inclusive Turkish house says it includes KDV, and keeps the till's figure", async () => {
+    const { service } = makeGoals({
+      restaurants: [TR_INCLUSIVE],
+      pos_checks: probeThen(checks),
+    });
+    const w = await service.getPosRevenueWindow("r1", 30);
+    expect(w.revenue).toBe(1000);
+    expect(w.totalsTaxNote).toBe(KDV_TOTALS);
+  });
+
+  it("a US, an unset and an exclusive house get no key at all", async () => {
+    for (const house of [
+      LA_HOUSE,
+      { timezone: IST, country: "TR", tax_basis: "unset" },
+      { timezone: IST, country: "TR", tax_basis: "prices_exclude_tax" },
+    ]) {
+      const { service } = makeGoals({
+        restaurants: [house],
+        pos_checks: probeThen(checks),
+      });
+      const w = await service.getPosRevenueWindow("r1", 30);
+      expect(w.revenue).toBe(1000);
+      expect("totalsTaxNote" in w).toBe(false);
+    }
+  });
+
+  it("an Average check goal says it includes KDV; a US house's goal carries no key", async () => {
+    const goalOf = (metric_key: string) => ({
+      id: "g1",
+      restaurant_id: "r1",
+      name: "Lift the check",
+      metric_key,
+      target_value: 700,
+      direction: "at_least",
+      period: "custom",
+      deadline: null,
+      created_at: "2026-08-15T09:00:00Z",
+    });
+    const { service } = makeGoals({
+      restaurants: [TR_INCLUSIVE],
+      analytics_goals: [goalOf("avg_check")],
+      pos_checks: checks,
+    });
+    const p: any = await service.getGoalProgress("r1", "g1");
+    expect(p.current).toBe(500);
+    expect(p.taxNote).toBe(
+      "Average check is worked out on your till's prices, which include KDV, so it reads higher than net sales.",
+    );
+
+    const us = makeGoals({
+      analytics_goals: [goalOf("avg_check")],
+      pos_checks: checks,
+    });
+    const usP: any = await us.service.getGoalProgress("r1", "g1");
+    expect(usP.current).toBe(500);
+    expect("taxNote" in usP).toBe(false);
+  });
+
+  it("an unread tax answer is said, never taken as no tax", async () => {
+    const { service } = makeGoals({ pos_checks: probeThen(checks) });
+    // The house read the zone; the tax answer's read alone fails.
+    const client: any = (service as any).dbService.getClient();
+    const from = client.from;
+    client.from = (table: string) => {
+      const b = from(table);
+      const select = b.select;
+      b.select = (cols: string, ...rest: any[]) => {
+        if (table === "restaurants" && cols === "tax_basis, country") {
+          b.maybeSingle = () =>
+            Promise.resolve({ data: null, error: { message: "boom" } });
+        }
+        return select(cols, ...rest);
+      };
+      return b;
+    };
+    const w = await service.getPosRevenueWindow("r1", 30);
+    expect(w.totalsTaxNote).toBe(
+      "Whether your till's prices include tax could not be read, so these totals may or may not include it.",
+    );
+  });
+
+  it("the room and server registers carry it at an inclusive house, and nothing elsewhere", async () => {
+    const waiterCheck = {
+      id: "c1",
+      table_id: "t1",
+      server_name: "Ayşe",
+      opened_at: day,
+      closed_at: day,
+      covers: 2,
+      total: 600,
+      tip: 0,
+      items: [],
+    };
+    const tr = new TableAnalyticsService({
+      getClient: () =>
+        makeClient({ restaurants: [TR_INCLUSIVE], pos_checks: [waiterCheck] }),
+    } as unknown as DatabaseService);
+    const trOut: any = await tr.getWaiterPerformance("r1", 90);
+    expect(trOut.totalsTaxNote).toBe(KDV_TOTALS);
+    const trTables: any = await tr.getTablePerformance("r1", 90);
+    expect(trTables.totalsTaxNote).toBe(KDV_TOTALS);
+
+    const us = new TableAnalyticsService({
+      getClient: () =>
+        makeClient({ restaurants: [LA_HOUSE], pos_checks: [waiterCheck] }),
+    } as unknown as DatabaseService);
+    expect("totalsTaxNote" in (await us.getWaiterPerformance("r1", 90))).toBe(
+      false,
+    );
+    expect("totalsTaxNote" in (await us.getTablePerformance("r1", 90))).toBe(
+      false,
+    );
+  });
+
+  it("the till, room, server and goals exports print it only when the gateway sent it", () => {
+    const till = EXPORT_CUTTINGS.till.write(
+      {
+        ...(PAYLOADS.till as Record<string, unknown>),
+        totalsTaxNote: KDV_TOTALS,
+      },
+      { days: 30 },
+    );
+    expect(till.notes).toContain(KDV_TOTALS);
+    expect(
+      EXPORT_CUTTINGS.till.write(PAYLOADS.till, { days: 30 }).notes,
+    ).not.toContain(KDV_TOTALS);
+    for (const key of ["seats", "service"] as const) {
+      const out = EXPORT_CUTTINGS[key].write(
+        {
+          ...(PAYLOADS[key] as Record<string, unknown>),
+          totalsTaxNote: KDV_TOTALS,
+        },
+        { days: 90 },
+      );
+      expect(out.basis).toContain(KDV_TOTALS);
+      expect(
+        EXPORT_CUTTINGS[key].write(PAYLOADS[key], { days: 90 }).basis,
+      ).not.toContain(KDV_TOTALS);
+    }
+    const note =
+      "Average check is worked out on your till's prices, which include KDV, so it reads higher than net sales.";
+    const g = PAYLOADS.goals as any;
+    const goals = EXPORT_CUTTINGS.goals.write(
+      {
+        ...g,
+        goals: [
+          {
+            ...g.goals[0],
+            goal: {
+              ...g.goals[0].goal,
+              name: "Lift the check",
+              metric_key: "avg_check",
+            },
+            taxNote: note,
+          },
+        ],
+      },
+      { days: 30 },
+    );
+    expect(goals.notes).toContain(`Lift the check: ${note}`);
+  });
+});

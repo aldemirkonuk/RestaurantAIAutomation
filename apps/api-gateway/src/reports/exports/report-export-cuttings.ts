@@ -348,6 +348,11 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
     // never reaches Mudavym, and the file says both.
     notes: [
       ...(revenue != null ? [TILL_TOTALS_NOT_NET, TILL_REFUNDS_TAKEN_OFF] : []),
+      // w109-gross-basis: a house whose till prices include tax is told
+      // Taken holds it, in the tax's own name; absent for any other house.
+      ...(revenue != null && str(d.totalsTaxNote)
+        ? [str(d.totalsTaxNote)]
+        : []),
       ...(untotaled > 0 ? [tillUntotaledSaid(untotaled)] : []),
       ...(zeroRung > 0 ? [zeroChecksSaid(zeroRung)] : []),
       ...(refunds > 0 ? [refundChecksSaid(refunds)] : []),
@@ -1013,6 +1018,7 @@ function writeSeats(payload: unknown): ExportDoc {
   const basis = sentences(
     `Non-voided pos_checks the till attributed to a shown table over the last ${sinceDays} days.`,
     REGISTER_TOTALS_NOT_NET,
+    str(s.totalsTaxNote) || null,
     str(s.dataStatus) ? `Feed: ${str(s.dataStatus)}.` : null,
   );
   const tables = arr(s.tables).map((t) => ({
@@ -1120,6 +1126,7 @@ function writeService(payload: unknown): ExportDoc {
   const basis = sentences(
     `Non-voided pos_checks grouped by server name over the last ${sinceDays} days.`,
     REGISTER_TOTALS_NOT_NET,
+    str(s.totalsTaxNote) || null,
     s.tipBasis === "net" ? REGISTER_TIP_ON_NET : null,
     // F-1573: the gateway's own reason when Tip is not (all) over net sales.
     str(s.tipBasisWhy) || null,
@@ -1431,6 +1438,9 @@ function writeGoals(payload: unknown): ExportDoc {
       // A Bottles sold goal's lines on the 750 ml stand-in (ADR 0297).
       standInLines: num(obj(entry.units).standInLines) ?? 0,
       standInItems: num(obj(entry.units).standInItems) ?? 0,
+      // w109-gross-basis: an Average check or Wine revenue goal at a house
+      // whose till prices include tax.
+      taxNote: str(entry.taxNote) || null,
     };
   });
   const total = num(d.total) ?? goals.length;
@@ -1495,6 +1505,9 @@ function writeGoals(payload: unknown): ExportDoc {
           (g) =>
             `${g.name}: ${nounCount(g.standInLines, "glass line", "glass lines")} across ${nounCount(g.standInItems, "item", "items")} with no stated bottle size ${g.standInLines === 1 ? "is" : "are"} read at the 750 ml stand-in the stock moves by.`,
         ),
+      ...goals
+        .filter((g) => g.taxNote && !g.unreadable)
+        .map((g) => `${g.name}: ${g.taxNote}`),
     ],
     basis: sentences(b.current, b.peers, b.units),
   });
