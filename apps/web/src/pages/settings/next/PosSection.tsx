@@ -41,7 +41,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, getErrorMessage } from '../../../services/api/client';
 import { Action, Disclosure, Micro, Note, Register, Row, SaveFailure, fieldStyle } from './SectionKit';
-import { EM, MONO, SANS, fmtWhen } from './st-format';
+import { EM, MONO, SANS, fmtWhen, newestCheck } from './st-format';
 import type { PosRegister, SettingsNextData } from './useSettingsNextData';
 
 export function PosSection({ data }: { data: SettingsNextData }) {
@@ -86,16 +86,23 @@ export function PosSection({ data }: { data: SettingsNextData }) {
                   provenance={{
                     kept: 'restaurant',
                     verb: 'last check',
-                    when: sources?.[0]?.latest ?? null,
-                    whenUnknown: 'no check has arrived, so nothing carries a date',
+                    // F-1651: the newest check from any till, not the first till's.
+                    when: newestCheck(sources),
+                    whenUnknown: 'no check in the last 30 days, so nothing carries a date',
                   }}
                   consequence={
                     sources && sources.length > 0 ? (
                       <>
-                        {sources.map((s) => `${s.providerName ?? s.source}: ${s.checks ?? EM}`).join(' · ')}
+                        {sources
+                          .map(
+                            (s) =>
+                              `${s.providerName ?? s.source}: ${s.checks ?? EM}, last check ${s.latest ? fmtWhen(s.latest) : EM}`,
+                          )
+                          .join(' · ')}
                       </>
                     ) : (
-                      <>No till has sent a check. The register answered, and it is empty — no connection has been made yet.</>
+                      // F-1651: an empty window is 30 quiet days, not a till never connected.
+                      <>No till has sent a check in the last 30 days. The register answered, and it is empty for that time.</>
                     )
                   }
                   control={

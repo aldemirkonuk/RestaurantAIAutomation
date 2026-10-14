@@ -257,6 +257,73 @@ describe("F-642: a Toast order webhook is a check the POS hub ingests", () => {
   });
 });
 
+describe("F-1649: a Toast delivery that was not kept is kept on its retry", () => {
+  const orderClosed = () => webhookDto(ToastWebhookEventType.ORDER_CLOSED);
+  const kept = (over: Row = {}) => ({
+    received: 1,
+    upserted: 1,
+    olderCopies: 0,
+    refusedUnreadableDate: 0,
+    errors: [],
+    ...over,
+  });
+
+  it("a retry whose event row is already logged is still handed to the hub", async () => {
+    // The first delivery logged its row, then was refused (409/503); Toast
+    // sends the same eventId again and the log answers 23505.
+    const { service, posHub } = makeService({
+      eventsError: { code: "23505", message: "duplicate key value" },
+    });
+    posHub.ingest.mockResolvedValueOnce(kept());
+
+    const res = await service.processWebhook(orderClosed(), "{}", null, null);
+
+    expect(res.status).toBe("processed");
+    expect(handedCheck(posHub).externalCheckId).toBe("order-1");
+  });
+
+  it("a check the hub did not store answers 503, so Toast retries it", async () => {
+    const { service, posHub } = makeService({});
+    posHub.ingest.mockResolvedValueOnce(
+      kept({
+        upserted: 0,
+        errors: ["order-1: not imported, tax basis unread"],
+      }),
+    );
+
+    await expect(
+      service.processWebhook(orderClosed(), "{}", null, null),
+    ).rejects.toMatchObject({ status: HttpStatus.SERVICE_UNAVAILABLE });
+  });
+
+  it("a hub that throws answers 503, not a 200 error body Toast never retries", async () => {
+    const { service, posHub } = makeService({});
+    posHub.ingest.mockRejectedValueOnce(new Error("connection reset"));
+
+    await expect(
+      service.processWebhook(orderClosed(), "{}", null, null),
+    ).rejects.toMatchObject({ status: HttpStatus.SERVICE_UNAVAILABLE });
+  });
+
+  it("an older copy the hub skipped, or one refused for an unreadable date, is processed", async () => {
+    const older = makeService({});
+    older.posHub.ingest.mockResolvedValueOnce(
+      kept({ upserted: 0, olderCopies: 1 }),
+    );
+    await expect(
+      older.service.processWebhook(orderClosed(), "{}", null, null),
+    ).resolves.toMatchObject({ status: "processed" });
+
+    const unreadable = makeService({});
+    unreadable.posHub.ingest.mockResolvedValueOnce(
+      kept({ upserted: 0, refusedUnreadableDate: 1 }),
+    );
+    await expect(
+      unreadable.service.processWebhook(orderClosed(), "{}", null, null),
+    ).resolves.toMatchObject({ status: "processed" });
+  });
+});
+
 describe("F-639: a Toast signature is good only near its own time", () => {
   function signed(secret: string, ts: string, body: string) {
     return `v1=${crypto.createHmac("sha256", secret).update(`${ts}.${body}`).digest("hex")}`;
