@@ -1148,6 +1148,7 @@ export class NotificationsService {
       throw error;
     }
     if (!data) throw new NotFoundException("Notification not found");
+    await this.recordTeamNoteOpens([data], userId);
 
     return this.mapNotificationRow(data);
   }
@@ -1181,14 +1182,66 @@ export class NotificationsService {
       .update({ status: "read", read_at: now })
       .in("id", ids)
       .eq("user_id", userId)
-      .select("id");
+      .select("id, restaurant_id, metadata");
 
     if (error) {
       this.logger.error(`markBulkAsRead error: ${error.message}`);
       throw error;
     }
+    await this.recordTeamNoteOpens(data ?? [], userId);
 
     return data?.length || 0;
+  }
+
+  /**
+   * F-1657: a crew note's inbox line carries its `teamNoteId`. Reading that
+   * line in the bell or on the phone is opening the note, so the owner's
+   * "opened" tally counts it: the same first-open-only write as
+   * `POST /team/notes/:id/opened` (`NotesService.markOpened`), on this
+   * person's own recipient row. Ruling off every line at once
+   * (`markAllAsRead`) is not reading one, so it records nothing. Best effort:
+   * the line is ruled off either way, and a failed write is logged.
+   */
+  private async recordTeamNoteOpens(
+    rows: ReadonlyArray<{ restaurant_id?: unknown; metadata?: unknown }>,
+    userId: string,
+  ): Promise<void> {
+    const byHouse = new Map<string, Set<string>>();
+    for (const r of rows) {
+      const meta = r?.metadata as Record<string, unknown> | null | undefined;
+      const noteId = meta && typeof meta === "object" ? meta.teamNoteId : null;
+      if (typeof noteId !== "string" || !noteId) continue;
+      if (typeof r.restaurant_id !== "string" || !r.restaurant_id) continue;
+      const set = byHouse.get(r.restaurant_id) ?? new Set<string>();
+      set.add(noteId);
+      byHouse.set(r.restaurant_id, set);
+    }
+    const sb = this.databaseService.supabase;
+    const now = new Date().toISOString();
+    for (const [house, notes] of byHouse) {
+      try {
+        const { data: member, error } = await sb
+          .from("team_members")
+          .select("id")
+          .eq("restaurant_id", house)
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (error) throw error;
+        if (!member?.id) continue;
+        // `opened_at IS NULL`: the first open is the one that counts.
+        const { error: writeErr } = await sb
+          .from("team_note_recipients")
+          .update({ opened_at: now })
+          .in("note_id", [...notes])
+          .eq("member_id", member.id)
+          .is("opened_at", null);
+        if (writeErr) throw writeErr;
+      } catch (e: any) {
+        this.logger.warn(
+          `team note open not recorded for user ${userId} in ${house}: ${e?.message}`,
+        );
+      }
+    }
   }
 
   /**

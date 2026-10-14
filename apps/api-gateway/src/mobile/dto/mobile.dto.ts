@@ -94,7 +94,14 @@ export interface TodayPulseResponse {
   salesState: PulseSalesState;
   revenueToday: number | null;
   checksToday: number | null;
+  /** Of `checksToday`, those that carried a net; `revenueToday` sums only
+   *  these, so the phone says "from N of M checks" (F-1656). */
+  netChecksToday: number | null;
+  /** Of `checksToday`, those whose prices include tax and whose tax could
+   *  not be taken off, so their net was not recorded (ADR 0341, F-1656). */
+  netNotRecordedByTaxToday: number | null;
   revenueLastWeek: number | null;
+  /** null when either window adds up only some of its checks (F-1656). */
   deltaPct: number | null;
   /** Orders, replies and deliveries waiting (`counts.decisions`; F-1450).
    *  null when the decision feed could not be read — unknown, not zero. */

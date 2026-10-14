@@ -137,6 +137,10 @@ describe("NotesService — F-1226: a note's notice opens the week it is about", 
     expect(push.sendToUsers.mock.calls[0][1].data.actionUrl).toBe(
       "/team?week=2026-10-12",
     );
+    // F-1657: the inbox line names its note, so reading it records the open.
+    expect(
+      notifications.persistForRestaurant.mock.calls[0][1].metadata.teamNoteId,
+    ).toEqual(expect.any(String));
   });
 });
 

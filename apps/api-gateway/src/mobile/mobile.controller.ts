@@ -41,6 +41,8 @@ export function pulseForRole(
     salesState: "withheld",
     revenueToday: null,
     checksToday: null,
+    netChecksToday: null,
+    netNotRecordedByTaxToday: null,
     revenueLastWeek: null,
     deltaPct: null,
   };

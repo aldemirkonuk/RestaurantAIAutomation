@@ -264,7 +264,8 @@ export interface BellBook {
   actionNote: string | null;
   refresh: () => void;
   markRead: (id: string) => void;
-  markAllRead: () => void;
+  /** Rule off these shown lines, each by its fold (F-1659). */
+  ruleOffShown: (ids: string[]) => void;
 }
 
 /**
@@ -455,20 +456,32 @@ export function useBellBook(open: boolean): BellBook {
     [read],
   );
 
-  const markAllRead = useCallback(() => {
-    if (!userId || !activeRestaurantId) return;
-    setActionNote(null);
-    apiClient
-      .patch('/notifications/read/all', undefined, {
-        params: { userId, restaurantId: activeRestaurantId },
-      })
-      .then(() => read())
-      .catch((err) => {
-        setActionNote(
-          `Ruling this house’s open lines off failed (${bellFailureOf(err).message}). Nothing changed.`,
-        );
-      });
-  }, [userId, activeRestaurantId, read]);
+  /**
+   * Rule off the lines the bell shows, each by its fold as one click on it
+   * does (F-1659). It used to rule off the house's whole unread book: lines
+   * past this page and lines put to sleep went too, unseen. The caller names
+   * the lines, and keeps approval lines out (the seal is answered, not ruled
+   * off).
+   */
+  const ruleOffShown = useCallback(
+    (ids: string[]) => {
+      if (ids.length === 0) return;
+      setActionNote(null);
+      void Promise.allSettled(
+        ids.map((id) => apiClient.patch(`/notifications/${encodeURIComponent(id)}/read/fold`)),
+      )
+        .then((results) => {
+          const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+          if (failed.length === 0) return;
+          const n = failed.length;
+          setActionNote(
+            `${n} of ${ids.length} line${ids.length === 1 ? '' : 's'} did not reach the server (${bellFailureOf(failed[0].reason).message}). ${n === 1 ? 'It is' : 'They are'} still open.`,
+          );
+        })
+        .finally(() => void read());
+    },
+    [read],
+  );
 
   return {
     register,
@@ -485,6 +498,6 @@ export function useBellBook(open: boolean): BellBook {
     actionNote,
     refresh: () => void read(),
     markRead,
-    markAllRead,
+    ruleOffShown,
   };
 }

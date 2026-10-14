@@ -128,6 +128,37 @@ describe("resolvePulseStripView", () => {
     }
   });
 
+  /**
+   * F-1656: the figure adds up only checks that carried a net, but the strip
+   * counted every check; with no net at all it said the checks "came in
+   * without amounts" though the till sent them and the tax was the trouble.
+   */
+  it("says the figure is from N of M checks when some carried no net", () => {
+    const view = resolvePulseStripView(
+      pulse({ salesState: "known", revenueToday: 100, checksToday: 3, netChecksToday: 1 }),
+    );
+
+    expect(view.revenue.status === "known" && view.revenue.checksLabel).toBe(
+      "from 1 of 3 checks",
+    );
+  });
+
+  it("says the tax could not be taken off when no check has a net for that reason", () => {
+    const view = resolvePulseStripView(
+      pulse({
+        salesState: "known",
+        revenueToday: null,
+        checksToday: 2,
+        netChecksToday: 0,
+        netNotRecordedByTaxToday: 2,
+      }),
+    );
+
+    expect(view.revenue.status === "unavailable" && view.revenue.message).toBe(
+      "Tonight's prices include tax and the tax could not be taken off.",
+    );
+  });
+
   it("says one check, not one checks", () => {
     const view = resolvePulseStripView(pulse({ revenueToday: 40, checksToday: 1 }));
 

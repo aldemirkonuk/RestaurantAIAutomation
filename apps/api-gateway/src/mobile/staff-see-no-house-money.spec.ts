@@ -33,6 +33,8 @@ const PULSE: TodayPulseResponse = {
   salesState: "known",
   revenueToday: 48250,
   checksToday: 61,
+  netChecksToday: 61,
+  netNotRecordedByTaxToday: 0,
   revenueLastWeek: 41000,
   deltaPct: 18,
   pendingDecisions: 3,
@@ -65,6 +67,8 @@ describe("today pulse by role (F-957)", () => {
       expect(pulse.salesState).toBe("withheld");
       expect(pulse.revenueToday).toBeNull();
       expect(pulse.checksToday).toBeNull();
+      expect(pulse.netChecksToday).toBeNull();
+      expect(pulse.netNotRecordedByTaxToday).toBeNull();
       expect(pulse.revenueLastWeek).toBeNull();
       expect(pulse.deltaPct).toBeNull();
       expect(JSON.stringify(pulse)).not.toMatch(/48250|41000/);

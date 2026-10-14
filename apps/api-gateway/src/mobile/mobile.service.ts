@@ -21,6 +21,7 @@ import { readAll } from "../providers/vendor-menu-supply";
 import {
   CHECK_LOOKBACK_MS,
   netSalesByHouseDay,
+  taxStampsByHouseDay,
 } from "../dashboard/dashboard.service";
 import {
   DecisionKind,
@@ -43,10 +44,17 @@ const DECISION_KINDS: ReadonlySet<DecisionKind> = new Set<DecisionKind>([
   "receipt_verification",
 ]);
 
-/** One window of the register's takings: net sales and checks, or unknown. */
+/**
+ * One window of the register's takings: net sales and checks, or unknown.
+ * `netChecks` of the `checks` carried a net (F-1656); `netNotRecordedByTax`
+ * of them are checks whose prices include tax and whose tax could not be
+ * taken off (ADR 0341), so their net was not recorded.
+ */
 interface WindowTakings {
   revenue: number | null;
   checks: number;
+  netChecks: number;
+  netNotRecordedByTax: number;
 }
 
 /**
@@ -328,8 +336,16 @@ export class MobileService {
     const salesState: PulseSalesState = sales?.state ?? "unread";
     const revenueToday = sales?.today?.revenue ?? null;
     const revenueLastWeek = sales?.lastWeek?.revenue ?? null;
+    // F-1656: a window that adds up only some of its checks is not compared;
+    // a change over a partial figure would read as a real one.
+    const whole = (w: WindowTakings | null | undefined) =>
+      !!w && w.netChecks === w.checks;
     const deltaPct =
-      revenueToday != null && revenueLastWeek != null && revenueLastWeek > 0
+      revenueToday != null &&
+      revenueLastWeek != null &&
+      revenueLastWeek > 0 &&
+      whole(sales?.today) &&
+      whole(sales?.lastWeek)
         ? Math.round(((revenueToday - revenueLastWeek) / revenueLastWeek) * 100)
         : null;
 
@@ -337,6 +353,10 @@ export class MobileService {
       salesState,
       revenueToday,
       checksToday: sales?.today ? sales.today.checks : null,
+      netChecksToday: sales?.today ? sales.today.netChecks : null,
+      netNotRecordedByTaxToday: sales?.today
+        ? sales.today.netNotRecordedByTax
+        : null,
       revenueLastWeek,
       deltaPct,
       // null = the feed could not be read; the strip must not say "All clear".
@@ -407,7 +427,9 @@ export class MobileService {
       readAll(what, (after) => {
         let q = client
           .from("pos_checks")
-          .select("id, subtotal, opened_at, closed_at")
+          .select(
+            "id, subtotal, gross_subtotal, tax_basis, opened_at, closed_at",
+          )
           .eq("restaurant_id", restaurantId)
           .eq("voided", false)
           .gte(
@@ -452,10 +474,21 @@ export class MobileService {
         return !!at && new Date(at).getTime() <= until.getTime();
       });
       const fold = netSalesByHouseDay(inWindow, zone).get(day);
+      // F-1656: only stamped rows are counted by tax; an unstamped house
+      // (US, unset) has none, as before.
+      const tax = taxStampsByHouseDay(
+        inWindow.filter((r) => r.tax_basis != null),
+        zone,
+      ).get(day);
       // A day with no check is a measured zero: the register is connected.
       return fold
-        ? { revenue: fold.net_sales, checks: fold.checks }
-        : { revenue: 0, checks: 0 };
+        ? {
+            revenue: fold.net_sales,
+            checks: fold.checks,
+            netChecks: fold.net_checks,
+            netNotRecordedByTax: tax?.net_not_recorded ?? 0,
+          }
+        : { revenue: 0, checks: 0, netChecks: 0, netNotRecordedByTax: 0 };
     };
 
     return {

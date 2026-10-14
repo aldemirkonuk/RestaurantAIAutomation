@@ -519,6 +519,9 @@ export class NotesService {
           // where a note about another week is not shown.
           actionUrl: `/team?week=${weekStart}`,
           actionLabel: "Open Team",
+          // F-1657: reading this line in the bell or on the phone records
+          // the note as opened (`NotificationsService.recordTeamNoteOpens`).
+          metadata: { teamNoteId: noteId },
         },
         // F-1337: the note sends its own push below, through `pushHolds`.
         // Without `skipMobilePush` the funnel pushed too: two buzzes each.
