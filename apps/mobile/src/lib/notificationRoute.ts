@@ -138,6 +138,10 @@ export function deliveryToResolve(data: Record<string, any> | null | undefined):
  * the session moves to that house first, and only then is the screen opened.
  * When the move is refused, nothing is opened and the person is told why.
  * A push that names no house opens as before.
+ *
+ * F-1724: a session that names no house yet (a two-house owner signed in and
+ * sent to the house chooser) moves to the push's house too — under no house,
+ * every read on the order is refused and the screen can never load.
  */
 export async function openNotificationTap(
   data: Record<string, any> | null | undefined,
@@ -158,7 +162,7 @@ export async function openNotificationTap(
   const raw = d.restaurantId ?? d.restaurant_id;
   const house = typeof raw === "string" && raw.length > 0 ? raw : null;
   let route = routeForNotificationData(d);
-  if (house && deps.currentHouse && house !== deps.currentHouse) {
+  if (house && house !== deps.currentHouse) {
     // Moving house clears everything read under this one, and a count being
     // typed in is lost with it (F-1452). The person is asked first; "stay"
     // opens nothing.

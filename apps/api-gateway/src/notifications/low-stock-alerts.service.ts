@@ -62,6 +62,9 @@ interface EffectiveLowStockPrefs {
   audience?: { instant: string[]; critical: string[]; digest: string[] };
 }
 
+/** Wines an instant line's push names before it counts the rest (F-1709). */
+const INSTANT_PUSH_NAMES = 3;
+
 const LOW_STOCK_PREF_DEFAULTS: EffectiveLowStockPrefs = {
   enabled: true,
   instantFirstAlert: true,
@@ -878,9 +881,16 @@ export class LowStockAlertsService {
     const criticalCount = wines.filter((w) => w.severity === "critical").length;
     const priority: "critical" | "high" =
       criticalCount > 0 ? "critical" : "high";
-    const list = wines
-      .map((w) => `${w.wineName} (${w.currentStock}/${w.threshold})`)
-      .join(", ");
+    const named = wines.map(
+      (w) => `${w.wineName} (${w.currentStock}/${w.threshold})`,
+    );
+    const list = named.join(", ");
+    // F-1709: the push names the first few and counts the rest, so a large
+    // burst still fits Expo's 4096 bytes. The bell row keeps the whole list.
+    const pushBody =
+      named.length > INSTANT_PUSH_NAMES
+        ? `Just crossed below par: ${named.slice(0, INSTANT_PUSH_NAMES).join(", ")} and ${named.length - INSTANT_PUSH_NAMES} more`
+        : undefined;
     // No emoji in a stored title (ADR 0042 / the 2026-09-03 house rule): the
     // inbox draws the register's mark itself, and an emoji written into the
     // row is unstylable, unsearchable and permanent. The severity the emoji
@@ -921,7 +931,7 @@ export class LowStockAlertsService {
           })),
         },
       },
-      opts,
+      pushBody ? { ...opts, pushBody } : opts,
     );
   }
 

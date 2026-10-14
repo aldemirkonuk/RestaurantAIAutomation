@@ -207,6 +207,32 @@ describe("LowStockAlertsService — edge vs. batch decision", () => {
     );
   });
 
+  it("F-1709: a large burst's push names three wines and counts the rest; the bell keeps all", async () => {
+    const svc = build([]);
+    const rows = Array.from({ length: 40 }, (_, i) =>
+      makeRow({ inventoryId: `inv-${i}`, wineName: `Wine ${i}` }),
+    );
+    await svc.evaluateRestaurant("r1", rows, "R1");
+
+    const [, payload, opts] = notifications.persistForRestaurant.mock.calls[0];
+    expect(opts.pushBody).toBe(
+      "Just crossed below par: Wine 0 (5/8), Wine 1 (5/8), Wine 2 (5/8) and 37 more",
+    );
+    expect(payload.message).toContain("Wine 39 (5/8)");
+  });
+
+  it("F-1709: a small burst pushes its row's own message", async () => {
+    const svc = build([]);
+    const rows = [0, 1, 2].map((i) =>
+      makeRow({ inventoryId: `inv-${i}`, wineName: `Wine ${i}` }),
+    );
+    await svc.evaluateRestaurant("r1", rows, "R1");
+
+    expect(
+      notifications.persistForRestaurant.mock.calls[0][2].pushBody,
+    ).toBeUndefined();
+  });
+
   it("HOLDS a new crossing for the digest when instant-first is off", async () => {
     const svc = build(
       [],

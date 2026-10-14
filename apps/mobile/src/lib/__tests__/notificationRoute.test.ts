@@ -142,6 +142,20 @@ describe("openNotificationTap (F-523)", () => {
     expect(d.refused).toHaveBeenCalledWith(expect.stringMatching(/another of your restaurants/));
   });
 
+  it("chooses the push's house first when the session names none (F-1724)", async () => {
+    const { d, calls } = deps(null);
+    await openNotificationTap({ orderId: "o1", restaurantId: "house-a" }, d);
+    expect(calls).toEqual(["switch:house-a", "open:/supply/o1"]);
+  });
+
+  it("opens nothing, and says so, when no house is chosen and the move is refused (F-1724)", async () => {
+    const { d, calls } = deps(null, false);
+    await openNotificationTap({ orderId: "o1", restaurantId: "house-a" }, d);
+    expect(calls[0]).toBe("switch:house-a");
+    expect(d.navigate).not.toHaveBeenCalled();
+    expect(d.refused).toHaveBeenCalledWith(expect.stringMatching(/could not be opened/));
+  });
+
   it("opens a push that names no house as before", async () => {
     const { d, calls } = deps("house-b");
     await openNotificationTap({ orderId: "o1" }, d);
