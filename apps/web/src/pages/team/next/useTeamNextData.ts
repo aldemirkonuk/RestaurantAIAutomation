@@ -311,6 +311,11 @@ export interface LaborVM {
    */
   laborPct: number | null;
   laborPctWhy: string | null;
+  /**
+   * F-1588 (ADR 0341 F2): the gateway's sentence when the week's net sales
+   * sit on two tax bases, naming the day it changed; null when they do not.
+   */
+  netSalesTaxNote: string | null;
   costComplete: boolean | null;
   pricedShifts: number | null;
   unpricedShifts: number | null;
@@ -706,6 +711,10 @@ export function useTeamNextData(anchor: Date | string = new Date()): TeamNextDat
         targetPct: typeof laborRaw.targetPct === 'number' ? laborRaw.targetPct : null,
         laborPct: typeof laborRaw.laborPct === 'number' ? laborRaw.laborPct : null,
         laborPctWhy: typeof laborRaw.laborPctWhy === 'string' ? laborRaw.laborPctWhy : null,
+        netSalesTaxNote:
+          typeof laborRaw.netSalesTaxNote === 'string' && laborRaw.netSalesTaxNote
+            ? laborRaw.netSalesTaxNote
+            : null,
         costComplete:
           typeof laborRaw.costComplete === 'boolean' ? laborRaw.costComplete : null,
         pricedShifts:

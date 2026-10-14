@@ -479,3 +479,94 @@ describe("TableAnalyticsService — a refund check is no paid check (F-1644)", (
     expect(out.checksRefunded).toBe(1);
   });
 });
+
+// F-1588 remainder (ADR 0341 F2): the server register's Tip is tips over net
+// sales. A window across the day a house's prices began to include tax takes
+// tips over the till's figure before that day and over net after it, and
+// said nothing. It now says so, as the servers export already did.
+describe("TableAnalyticsService — Tip says when its window spans a tax-basis switch (F-1588)", () => {
+  const TR = {
+    timezone: "Europe/Istanbul",
+    country: "TR",
+    tax_basis: "prices_include_tax",
+    // 10 September, house day: inside the 12 July – 9 October window.
+    tax_basis_confirmed_at: "2026-09-10T09:00:00Z",
+  };
+  const answer = (at: string) => ({
+    restaurant_id: "r1",
+    basis: "prices_include_tax",
+    answered_at: at,
+    answered_by: "u1",
+  });
+  const trCheck = (id: string, at: string) =>
+    check({
+      id,
+      subtotal: 100,
+      total: 120,
+      tip: 10,
+      opened_at: at,
+      closed_at: at,
+    });
+  beforeEach(() => {
+    jest.useFakeTimers({
+      now: new Date("2026-10-09T18:00:00Z"),
+      doNotFake: ["nextTick", "setImmediate", "setTimeout", "queueMicrotask"],
+    });
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it("names the switch day beside Tip, keeps the figure, and says an unread history", async () => {
+    const checks = [
+      trCheck("a", "2026-08-20T12:00:00Z"),
+      trCheck("b", "2026-09-20T12:00:00Z"),
+    ];
+    let { service } = makeService({
+      restaurants: [ok(TR), ok(TR), ok(TR)],
+      house_tax_basis_answers: [ok([answer("2026-09-10T09:00:00Z")])],
+      pos_checks: [ok(checks)],
+    });
+    let out: any = await service.getWaiterPerformance("r1", 90);
+    expect(out.tipBasis).toBe("net");
+    expect(out.waiters[0].tipPct).toBeCloseTo(0.1, 6);
+    expect(out.tipTaxNote).toMatch(
+      /include KDV from 10 September 2026, so this period's net is not on one basis/,
+    );
+
+    // The house answered before the window opened: every day is on one basis.
+    const early = { ...TR, tax_basis_confirmed_at: "2026-07-01T09:00:00Z" };
+    ({ service } = makeService({
+      restaurants: [ok(early), ok(early), ok(early)],
+      house_tax_basis_answers: [ok([answer("2026-07-01T09:00:00Z")])],
+      pos_checks: [ok(checks)],
+    }));
+    out = await service.getWaiterPerformance("r1", 90);
+    expect(out.tipTaxNote).toBeNull();
+
+    // An unread answer history is said, never taken as no change.
+    ({ service } = makeService({
+      restaurants: [ok(TR), ok(TR), ok(TR)],
+      house_tax_basis_answers: [fail("boom")],
+      pos_checks: [ok(checks)],
+    }));
+    out = await service.getWaiterPerformance("r1", 90);
+    expect(out.waiters[0].tipPct).toBeCloseTo(0.1, 6);
+    expect(out.tipTaxNote).toMatch(/could not be read/);
+  });
+
+  it("an unset house reads no answer history and gets no note", async () => {
+    const unset = {
+      timezone: "America/Detroit",
+      country: "US",
+      tax_basis: "unset",
+    };
+    const { service, from } = makeService({
+      restaurants: [ok(unset), ok(unset), ok(unset)],
+      pos_checks: [ok([trCheck("a", "2026-09-20T16:00:00Z")])],
+    });
+    const out: any = await service.getWaiterPerformance("r1", 90);
+    expect(out.tipTaxNote).toBeNull();
+    expect(from.mock.calls.map((c) => c[0])).not.toContain(
+      "house_tax_basis_answers",
+    );
+  });
+});

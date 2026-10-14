@@ -630,6 +630,17 @@ function TeamNextManager({
                       "This week's sales are not known yet, so its labour cost is not given as a share of sales."}
                   </p>
                 )}
+                {/* F-1588 (ADR 0341 F2): the share rests on the week's net
+                    sales; when they sit on two tax bases, the gateway says
+                    which day changed, and the share keeps its figure. */}
+                {labor.laborPct !== null && labor.netSalesTaxNote && (
+                  <p
+                    data-testid="labour-share-tax-note"
+                    style={{ fontSize: 11.5, color: 'var(--ink-4)', margin: '6px 0 0' }}
+                  >
+                    The share of sales is worked out on net sales. {labor.netSalesTaxNote}
+                  </p>
+                )}
                 <p style={{ fontSize: 11.5, color: 'var(--ink-4)', margin: '6px 0 0' }}>
                   {labour.country === 'TR'
                     ? 'Wages only, for the shifts on the schedule — not SGK, meals or bonuses.'

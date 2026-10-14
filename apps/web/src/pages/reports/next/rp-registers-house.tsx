@@ -753,6 +753,8 @@ export interface ServiceRegister extends PosWindow {
   tipsNetNotRecorded: number;
   /** F-1612: the same, by the reason kept on each check; empty from an older gateway. */
   tipsNetNotRecordedByReason: Record<string, number>;
+  /** F-1588: Tip's net is not on one tax basis across this window, and why; null when it is, or from an older gateway. */
+  tipTaxNote: string | null;
   /** Checks rung at 0, out of Avg check (F-1534); 0 from an older gateway. */
   checksTakingNoMoney: number;
   /** Refunds, checks with a minus total (F-1644). 0 from an older gateway. */
@@ -788,6 +790,7 @@ const service = analysis<ServiceRegister>({
       tipBasisWhy: str(d.tipBasisWhy) || null,
       tipsNetNotRecorded: num(d.tipsNetNotRecorded) ?? 0,
       tipsNetNotRecordedByReason: countsByReasonFrom(d.tipsNetNotRecordedByReason),
+      tipTaxNote: str(d.tipTaxNote) || null,
       checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
       checksRefunded: num(d.checksRefunded) ?? 0,
       adjusted: adj ? { method: str(adj.method), r2: num(adj.r2) } : null,
@@ -873,6 +876,9 @@ const service = analysis<ServiceRegister>({
         ...(s.checksTakingNoMoney > 0 ? [zeroChecksSaid(s.checksTakingNoMoney)] : []),
         ...(s.checksRefunded > 0 ? [refundChecksSaid(s.checksRefunded)] : []),
         ...(s.tipsNetNotRecorded > 0 ? [tipsNetNotRecordedSaid(s.tipsNetNotRecorded, s.tipsNetNotRecordedByReason)] : []),
+        // F-1588: Tip is over net sales; the gateway's sentence when this
+        // window's net changes tax basis (ADR 0341 F2), as the export says it.
+        ...(s.tipTaxNote ? [`Tip is worked out on net sales. ${s.tipTaxNote}`] : []),
       ],
       basis,
     };

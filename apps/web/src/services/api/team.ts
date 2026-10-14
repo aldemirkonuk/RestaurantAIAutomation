@@ -200,6 +200,8 @@ export interface WeekPayload {
     targetPct?: number | null
     /** The week's net sales from the till; null when not all known (F-1549). */
     netSales?: number | null
+    /** F-1588: why `netSales` is not on one tax basis this week (ADR 0341 F2); null when it is. */
+    netSalesTaxNote?: string | null
     /** Cost as a percentage of `netSales`; null with `laborPctWhy` saying why. */
     laborPct?: number | null
     laborPctWhy?: string | null
