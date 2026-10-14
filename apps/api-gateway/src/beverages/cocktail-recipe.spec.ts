@@ -218,7 +218,11 @@ describe("serveCost on a house whose till prices include tax (F-1587)", () => {
       since: null,
       targetReconfirm: false,
     };
-    expect(cocktailTax(terms)).toEqual({ rate: 0.2 });
+    // F-1669: the whole-house rate says the margin is without it, too.
+    expect(cocktailTax(terms)).toEqual({
+      rate: 0.2,
+      note: "worked out on the price without the 20% tax inside it",
+    });
     const category = {
       ...house,
       keyKind: "pos_category" as const,
@@ -466,6 +470,46 @@ describe("BeveragesService: a recipe line takes from the house's own stock", () 
       else expect(serve.marginTaxNote).toMatch(/“Alkol”/);
     },
   );
+
+  // F-1668: the margin is on the /cocktails price; the live menu's price for
+  // the same cocktail is carried beside it, so a difference can be shown.
+  it("carries the live menu's price for a cocktail beside its own price", async () => {
+    const { service } = await serviceWith({
+      cocktails: [
+        {
+          data: [
+            { id: COCKTAIL_ID, name: "Negroni", price: 450 },
+            { id: "c-2", name: "Spritz", price: 300 },
+          ],
+        },
+        { data: null },
+      ],
+      restaurant_menus: [
+        { data: [{ id: "m-1", status: "active", menu_type: "beverage" }] },
+      ],
+      menu_items: [
+        {
+          data: [
+            {
+              id: "l-1",
+              menu_id: "m-1",
+              name: "negroni ",
+              category: "Cocktails",
+              line_kind: "drink",
+              drink_category: "cocktail",
+              by_glass_price: 520,
+              bottle_price: null,
+            },
+          ],
+        },
+      ],
+    });
+    const out = await service.listCocktails(RID, { limit: 200 });
+    const rows = out.rows as Array<{ id: string; menuPrices: unknown }>;
+    expect(rows.find((r) => r.id === COCKTAIL_ID)!.menuPrices).toEqual([520]);
+    expect(rows.find((r) => r.id === "c-2")!.menuPrices).toEqual([]);
+    expect(out.menuPricesUnread).toBeNull();
+  });
 
   // F-1474: an 86'd spirit reaches the cocktails whose recipe takes it.
   it("says a cocktail is not available while a spirit its recipe takes is 86'd, and names it", async () => {

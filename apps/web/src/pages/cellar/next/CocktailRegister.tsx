@@ -211,7 +211,8 @@ function serveWords(c: CocktailVM): { cost: string; margin: string; title?: stri
   if (s.marginRefusal) {
     return { cost: s.notLinked > 0 ? `at least ${money(s.costPerServe)}` : money(s.costPerServe), margin: EM, partial: s.marginRefusal };
   }
-  // F-1615: a margin priced at the till category the owner chose for cocktails says which.
+  // F-1615, F-1669: a margin worked out without tax says so, at the till
+  // category the owner chose or at the whole-house rate.
   const taxNote = s.marginTaxNote ? `margin ${s.marginTaxNote}` : undefined;
   if (s.notLinked > 0) {
     const lines = `from ${s.linked} of ${s.linked + s.notLinked} lines; ${s.notLinked === 1 ? 'one is' : `${s.notLinked} are`} not linked to stock`;
@@ -222,6 +223,25 @@ function serveWords(c: CocktailVM): { cost: string; margin: string; title?: stri
     };
   }
   return { cost: money(s.costPerServe), margin, partial: taxNote };
+}
+
+/**
+ * F-1668: the live menu's price for a cocktail, when it differs from the
+ * price kept here. The margin is worked out on this page's price, which no
+ * menu writes, so the row says which one the margin uses and how to carry
+ * the menu's over. Null when they agree, or the cocktail is on no live menu.
+ */
+function menuPriceWords(c: CocktailVM, showsMargin: boolean): string | null {
+  const menu = c.menuPrices ?? [];
+  if (menu.length === 0) return null;
+  const own = c.price == null ? null : Math.round(Number(c.price) * 100) / 100;
+  const differs = menu.filter((p) => own === null || Math.abs(p - own) >= 0.005);
+  if (differs.length === 0) return null;
+  const said = `your live menu says ${menu.map((p) => money(p)).join(' or ')}`;
+  if (!showsMargin) return `${said}, not the price kept here`;
+  return own === null
+    ? `${said}; it has no price here, so no margin. Amend it to carry the menu’s price over`
+    : `${said}; the margin uses this price. Amend it to carry the menu’s price over`;
 }
 
 function Recipe({
@@ -670,6 +690,9 @@ export default function CocktailRegister({
             {data.soldOutUnread
               ? ` Which cocktails an 86'd ingredient stops could not be read (${data.soldOutUnread}); none is marked, and that is not the same as all available.`
               : ''}
+            {data.menuPricesUnread
+              ? ` What your live menu charges for each cocktail could not be read (${data.menuPricesUnread}), so a price that differs from it is not flagged.`
+              : ''}
           </p>
 
           {rows.length === 0 ? (
@@ -727,7 +750,17 @@ export default function CocktailRegister({
                       <td>{c.method ?? <span className="cl-dim">{EM}</span>}</td>
                       <td>{c.glass ?? <span className="cl-dim">{EM}</span>}</td>
                       <td>{c.garnish ?? <span className="cl-dim">{EM}</span>}</td>
-                      <td className="cl-num" style={{ textAlign: 'right' }}>{money(c.price)}</td>
+                      <td className="cl-num" style={{ textAlign: 'right' }}>
+                        {money(c.price)}
+                        {(() => {
+                          const said = menuPriceWords(c, !data.amountsWithheld);
+                          return said ? (
+                            <span className="cl-dim" style={{ display: 'block', fontSize: 11 }} data-testid="cocktail-menu-price">
+                              {said}
+                            </span>
+                          ) : null;
+                        })()}
+                      </td>
                       {data.amountsWithheld ? null : (() => {
                         const w: ReturnType<typeof serveWords> = data.costsUnread ? { cost: 'unread', margin: EM, title: data.costsUnread } : serveWords(c);
                         return (

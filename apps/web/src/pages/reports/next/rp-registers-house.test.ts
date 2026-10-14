@@ -67,3 +67,39 @@ describe('Margin against movement: a tax basis that could not be read (F-1626)',
     expect(said).not.toContain('No pre-tax margin');
   });
 });
+
+/**
+ * F-1670 (wave-55 sim): with every wine costed, the first note still read
+ * "0 wines are off the plot for want of a recorded cost".
+ */
+describe('Margin against movement: the uncosted sentence (F-1670)', () => {
+  it('is not said when no wine is uncosted', () => {
+    expect(draw().notes?.join(' ')).not.toMatch(/off the plot for want of a recorded cost/);
+  });
+
+  it('is said once, in its own note, when a wine is uncosted', () => {
+    const v = quadrants.view(
+      quadrants.select({ ...payload, counts: { ...payload.counts, unclassified: 2 } }),
+      { days: 90 } as ViewCtx,
+    );
+    const said = (v.notes ?? []).map(String).filter((n) => /for want of a recorded cost/.test(n));
+    expect(said).toHaveLength(1);
+    expect(said[0]).toMatch(/^2 wines are off the plot/);
+  });
+});
+
+/**
+ * F-1667 (wave-55 sim): a wine off every menu was filed in a quadrant, under
+ * a window that called the stock list "the list as it stands".
+ */
+describe('Margin against movement: wines on no live menu (F-1667)', () => {
+  it('names them apart and counts them on their own tile', () => {
+    const v = quadrants.view(
+      quadrants.select({ ...payload, offMenu: [{ id: 'w9', name: 'Reserve Syrah' }] }),
+      { days: 90 } as ViewCtx,
+    );
+    expect(v.notes?.join(' ')).toMatch(/Not on any menu, so not placed.*Reserve Syrah/);
+    expect(v.figures?.find((f) => f.label === 'Not on any menu')?.value).toBe('1');
+    expect(quadrants.window({ days: 90 } as ViewCtx)).toMatch(/live menus/);
+  });
+});

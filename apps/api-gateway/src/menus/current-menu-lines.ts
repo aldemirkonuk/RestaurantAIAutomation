@@ -190,3 +190,60 @@ export async function readCurrentMenuLines(
     }),
   };
 }
+
+/**
+ * The stock link of each live line (F-1667): which stock row it names
+ * (`inventory_item_id`, the link the price triggers follow) and which library
+ * wine (`wine_library_id`, the link price locks match on). A const so
+ * check_read_columns_exist.py checks it.
+ */
+export const CURRENT_MENU_STOCK_LINK_COLUMNS =
+  "id, inventory_item_id, wine_library_id";
+
+export interface CurrentMenuStockLinks {
+  /** How many menus are live. 0 is "no current menu", and no line is read. */
+  currentMenus: number;
+  /** Stock rows a live, undiscarded line names. */
+  inventoryIds: Set<string>;
+  /** Library wines a live, undiscarded line names. */
+  wineIds: Set<string>;
+}
+
+/**
+ * F-1667: what is on the house's live menus, as stock links, so a reader
+ * of the stock list can tell a wine on a menu from one off every menu. A
+ * discarded line is not on the menu. A failed read THROWS, as every read
+ * here does; it is never "nothing is on the menu".
+ */
+export async function readCurrentMenuStockLinks(
+  db: any,
+  restaurantId: string,
+): Promise<CurrentMenuStockLinks> {
+  const menus = await readCurrentMenuRows(db, restaurantId);
+  const inventoryIds = new Set<string>();
+  const wineIds = new Set<string>();
+  if (menus.length === 0) return { currentMenus: 0, inventoryIds, wineIds };
+  const rows = await readAll(
+    "The current menu's lines (menu_items)",
+    (after) => {
+      let q = db
+        .from("menu_items")
+        .select(CURRENT_MENU_STOCK_LINK_COLUMNS)
+        .in(
+          "menu_id",
+          menus.map((m) => m.id),
+        )
+        .eq("restaurant_id", restaurantId)
+        .neq("status", "discarded");
+      if (after) q = q.gt("id", after);
+      return q;
+    },
+  );
+  for (const r of rows) {
+    if (typeof r.inventory_item_id === "string" && r.inventory_item_id)
+      inventoryIds.add(r.inventory_item_id);
+    if (typeof r.wine_library_id === "string" && r.wine_library_id)
+      wineIds.add(r.wine_library_id);
+  }
+  return { currentMenus: menus.length, inventoryIds, wineIds };
+}

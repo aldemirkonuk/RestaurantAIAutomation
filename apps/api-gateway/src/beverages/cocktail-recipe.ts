@@ -94,8 +94,8 @@ export type ServeTax =
   | {
       rate: number;
       /**
-       * F-1615: which rate the margin used, when the owner chose it, in
-       * plain words for the margin cell. Omitted for the whole-house rate.
+       * F-1615: which rate the margin used, in plain words for the margin
+       * cell; the whole-house rate says so too (F-1669).
        */
       note?: string;
     }
@@ -268,4 +268,48 @@ export function cocktailNameKey(name: string | null | undefined): string {
     .replace(/\s+/g, " ")
     .replace(/[ıİI]/g, "i")
     .toLowerCase();
+}
+
+/**
+ * F-1668: the price each cocktail's line on a live menu carries, by the
+ * cocktail it names (the till's name rule, `cocktailNameKey`; a name two
+ * cocktails share names neither, as readMenuCocktails reads it). A cocktail's
+ * margin is worked out on its own /cocktails price, which no menu writes, so
+ * a menu read that moves a Negroni from 450 to 520 left the margin on 450
+ * with nothing said. The row now carries the menu's price beside its own.
+ * Each line gives its glass, bottle or own price, whichever it carries; the
+ * distinct prices come back sorted, and a cocktail on no line is absent.
+ */
+export function cocktailMenuPrices(
+  cocktails: Array<{ id: string; name?: unknown; display_name?: unknown }>,
+  lines: Array<Record<string, unknown>>,
+): Map<string, number[]> {
+  const byName = new Map<string, string>();
+  const shared = new Set<string>();
+  for (const c of cocktails) {
+    for (const key of new Set(
+      [c.name, c.display_name]
+        .filter((v): v is string => typeof v === "string" && v !== "")
+        .map(cocktailNameKey),
+    )) {
+      if (byName.has(key) && byName.get(key) !== c.id) shared.add(key);
+      else byName.set(key, c.id);
+    }
+  }
+  for (const key of shared) byName.delete(key);
+  const out = new Map<string, Set<number>>();
+  for (const l of lines) {
+    const id = byName.get(cocktailNameKey(l.name as string));
+    if (!id) continue;
+    for (const v of [l.by_glass_price, l.bottle_price, l.price]) {
+      const p = v == null || v === "" ? NaN : Number(v);
+      if (!Number.isFinite(p) || p <= 0) continue;
+      const set = out.get(id) ?? new Set<number>();
+      set.add(Math.round(p * 100) / 100);
+      out.set(id, set);
+    }
+  }
+  return new Map(
+    [...out].map(([id, set]) => [id, [...set].sort((a, b) => a - b)]),
+  );
 }

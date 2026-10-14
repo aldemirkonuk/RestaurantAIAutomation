@@ -43,6 +43,7 @@ import type {
 import { ilikeValue } from "../wines/wines.service";
 import { resolveUnitCost } from "../analytics/inventory-cost";
 import {
+  cocktailMenuPrices,
   cocktailNameKey,
   cocktailsSoldOut,
   lineCost,
@@ -284,6 +285,11 @@ export interface CocktailListResult extends CatalogueScope {
    * open stock-outs could not be read. Null when they were read.
    */
   soldOutUnread: string | null;
+  /**
+   * F-1668: why no row says what the live menu prices it at, when the menu
+   * could not be read. Null when it was read.
+   */
+  menuPricesUnread: string | null;
 }
 
 /** One recipe line as the cocktail list reads it for costs and 86s. */
@@ -352,7 +358,14 @@ export function cocktailTax(
       rateRowInForce(terms.rates, "pos_category", r.key, day)?.rate != null,
   );
   const house = rateRowInForce(terms.rates, "house", "", day);
-  if (!byCategory && house && house.rate !== null) return { rate: house.rate };
+  // F-1669: the whole-house rate is said too. The Price column shows the
+  // price with tax in it, so a margin worked out without it, unsaid, reads
+  // as a sum that does not add up.
+  if (!byCategory && house && house.rate !== null)
+    return {
+      rate: house.rate,
+      note: `worked out on the price without the ${toPct(house.rate)}% tax inside it`,
+    };
   return {
     refusal: byCategory
       ? "No margin: your tax rates are set by till category, and nobody has said which one prices cocktails, so the tax inside their price is not known. Choose it in Settings, under “Do its prices include tax?”."
@@ -542,10 +555,29 @@ export class BeveragesService {
         )
       : { out: new Set<string>(), error: costs.linesError };
     const soldOut = cocktailsSoldOut(costs.lines ?? [], out.out);
+    // F-1668: the margin is on the /cocktails price, which no menu writes;
+    // each row carries what its line on a live menu says, so a difference
+    // is shown beside the price the margin uses. A failed read says so.
+    let menuPrices: Map<string, number[]> | null = null;
+    let menuPricesUnread: string | null = null;
+    try {
+      const menu = await readCurrentMenuLines(
+        this.dbService.getClient(),
+        restaurantId,
+        { drinks: true },
+      );
+      menuPrices = cocktailMenuPrices(
+        listed as Array<{ id: string; name?: unknown; display_name?: unknown }>,
+        menu.rows,
+      );
+    } catch (e) {
+      menuPricesUnread = e instanceof Error ? e.message : String(e);
+    }
     const rows = listed.map((c) => ({
       ...c,
       serve: costs.serves.get(c.id) ?? null,
       soldOut: out.error ? null : (soldOut.get(c.id) ?? null),
+      menuPrices: menuPrices ? (menuPrices.get(c.id) ?? []) : null,
     }));
     return {
       restaurantId,
@@ -557,6 +589,7 @@ export class BeveragesService {
       recipesAvailable: false,
       costsUnread: costs.error,
       soldOutUnread: out.error,
+      menuPricesUnread,
       scope: "tenant",
       scopeNote:
         "Only cocktails this restaurant owns. Rows with no restaurant are unattributed reference data and are counted separately, never listed here.",
