@@ -1,3 +1,5 @@
+import { lastValueFrom, from } from "rxjs";
+import { IdempotencyInterceptor } from "../common/idempotency/idempotency.interceptor";
 import { InventoryService } from "./inventory.service";
 
 /**
@@ -257,5 +259,134 @@ describe("opening stock is an opening count, one wine per shelf (F-1514, F-1515)
       items: [{ ...line, storageLocationId: null }],
     } as any);
     expect(t.update).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * F-1727 (sim 57): the opening-stock import now sends one Idempotency-Key per
+ * file, not per press, and a Load whose answer never came back tells the owner
+ * that pressing again will not receive anything twice. That promise rests on
+ * the gateway: here the real bulk receive runs behind the real interceptor.
+ */
+describe("opening stock sent again with the file's key (F-1727)", () => {
+  function keyTable() {
+    const rows = new Map<string, Record<string, unknown>>();
+    const from = () => {
+      const eqs: Array<[string, unknown]> = [];
+      let op: "select" | "update" | "delete" = "select";
+      let patch: Record<string, unknown> = {};
+      const hits = () =>
+        [...rows.values()].filter((r) => eqs.every(([c, v]) => r[c] === v));
+      const q: any = {
+        select: () => q,
+        eq: (c: string, v: unknown) => (eqs.push([c, v]), q),
+        lt: () => q,
+        maybeSingle: async () => ({ data: hits()[0] ?? null, error: null }),
+        insert: async (row: Record<string, unknown>) => {
+          if (rows.has(row.key as string))
+            return { error: { code: "23505", message: "duplicate key" } };
+          rows.set(row.key as string, {
+            ...row,
+            created_at: new Date().toISOString(),
+          });
+          return { error: null };
+        },
+        update: (p: Record<string, unknown>) => (
+          (op = "update"),
+          (patch = p),
+          q
+        ),
+        delete: () => ((op = "delete"), q),
+        then: (res: any, rej: any) => {
+          for (const r of hits()) {
+            if (op === "update") Object.assign(r, patch);
+            if (op === "delete") rows.delete(r.key as string);
+          }
+          return Promise.resolve({ error: null }).then(res, rej);
+        },
+      };
+      return q;
+    };
+    return { supabase: { from } };
+  }
+
+  it("a second Load with the same key gets the first answer and receives nothing again", async () => {
+    // A house that does not carry the beer yet: the first run creates it.
+    let made = false;
+    const rpc = jest.fn().mockResolvedValue({ data: null, error: null });
+    const chain: any = {
+      select: () => chain,
+      eq: () => chain,
+      in: () => chain,
+      is: () => chain,
+      insert: () => ((made = true), chain),
+      update: () => chain,
+      single: () => Promise.resolve({ data: { id: ITEM }, error: null }),
+      maybeSingle: () =>
+        Promise.resolve({
+          data: made ? { id: ITEM, is_active: true } : null,
+          error: null,
+        }),
+      then: (res: any, rej: any) =>
+        Promise.resolve({ data: [], error: null }).then(res, rej),
+    };
+    const client = { rpc, from: () => chain };
+    const svc = Object.create(InventoryService.prototype) as any;
+    svc.dbService = { getClient: () => client, supabase: client };
+    svc.logger = { error: () => {}, warn: () => {}, log: () => {} };
+    svc.resolveBulkLineWine = jest.fn().mockResolvedValue({
+      masterWineId: "mw-1",
+      wineName: "Efes Pilsen",
+      matched: true,
+      libraryTier: 1,
+    });
+    svc.houseDefaultParMin = jest.fn().mockResolvedValue(3);
+    svc.priceOnAdd = jest.fn().mockResolvedValue(null);
+    svc.recordSpotCount = jest.fn().mockResolvedValue({});
+
+    const interceptor = new IdempotencyInterceptor(keyTable() as any);
+    const context = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          method: "POST",
+          url: `/inventory/${HOUSE}/items/bulk`,
+          headers: { "idempotency-key": "opening-stock:file-1" },
+          user: { userId: "owner-1" },
+        }),
+        getResponse: () => ({
+          statusCode: 201,
+          status: jest.fn(),
+          setHeader: jest.fn(),
+        }),
+      }),
+    } as any;
+    const body = {
+      source: "opening_stock",
+      items: [{ wineDraft: { name: "Efes Pilsen" }, stockLive: 24 }],
+    } as any;
+    const handle = jest.fn(() =>
+      from(svc.bulkCreateInventoryItems(HOUSE, body) as Promise<unknown>),
+    );
+    const settle = () => new Promise((r) => setImmediate(r));
+
+    // First Load: it lands, but the answer is lost on the way back.
+    const first: any = await lastValueFrom(
+      interceptor.intercept(context, { handle }),
+    );
+    await settle();
+    // Second Load, same file, same key.
+    const second: any = await lastValueFrom(
+      interceptor.intercept(context, { handle }),
+    );
+
+    expect(handle).toHaveBeenCalledTimes(1);
+    expect(second).toEqual(first);
+    expect(second.results[0]).toMatchObject({ status: "created" });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith(
+      "apply_stock_movement",
+      expect.objectContaining({ p_delta: 24 }),
+    );
+    expect(svc.recordSpotCount).not.toHaveBeenCalled();
   });
 });
