@@ -24,7 +24,14 @@ import {
   hasStatus,
 } from "../procurement/order-status";
 import { orderSpend } from "../procurement/order-spend";
-import { houseFrame } from "../common/house-frame";
+import { countryCodeOf, houseFrame } from "../common/house-frame";
+import {
+  readTaxBasisHistory,
+  taxBasisStretches,
+  taxChangeNote,
+  type TaxBasisStretch,
+} from "../common/tax-basis-history";
+import { taxWordFor } from "../settings/house-tax-basis.service";
 import { isCritical } from "../common/stock-status";
 import {
   localDateIn,
@@ -305,6 +312,13 @@ export interface CalendarMonth {
   tax_switch_day?: string | null;
   /** F-1588: the begun counted days' checks written with no tax stamp (kept as the till sent them), when `tax_switch_day` is set. */
   monthly_checks_as_sent?: number | null;
+  /**
+   * F-1624 / F-1588: when the house changed its tax answer inside this month
+   * (include, then "added on top", then include again), one sentence naming
+   * each stretch (`taxChangeNote`). Null when the month is on one answer, or
+   * sales are not read.
+   */
+  tax_change_note?: string | null;
   /** Has this house's register ever sent a check? Null when not asked. */
   pos_connected: boolean | null;
   /** True when the caller's role does not see sales; the register was not read. */
@@ -698,8 +712,15 @@ async function readMonthTakings(
   until: string | null;
   days: Map<string, HouseDaySales>;
   tax: Map<string, HouseDayTax>;
-  /** F-1624: the house day "prices include tax" took effect, when that is the answer in force. */
+  /**
+   * F-1624: the house day the house's first "prices include tax" answer took
+   * effect (net without tax from it on); null when it never gave one.
+   */
   taxSwitchDay: string | null;
+  /** F-1624: each answer's stretch of house days, oldest first. */
+  taxStretches: TaxBasisStretch[];
+  /** KDV, sales tax, or tax: the house's word. */
+  taxWord: string;
 }> {
   const from = new Date(start.getTime() - CHECK_LOOKBACK_MS);
   const [rows, stamped, first, latest, basis] = await Promise.all([
@@ -749,17 +770,28 @@ async function readMonthTakings(
       .eq("restaurant_id", restaurantId)
       .order("opened_at", { ascending: false })
       .limit(1),
-    // F-1624: the answer in force and its moment, the one Settings and the
-    // month close name as the switch.
+    // F-1624: the answer in force and its moment; with the answers kept
+    // before it, each stretch Settings and the month close name.
     client
       .from("restaurants")
-      .select("tax_basis, tax_basis_confirmed_at")
+      .select("tax_basis, tax_basis_confirmed_at, country")
       .eq("id", restaurantId)
       .limit(1),
   ]);
   if (basis.error) {
     throw new Error(`restaurants read failed: ${basis.error.message}`);
   }
+  const houseRow = basis.data?.[0] ?? {};
+  const taxStretches = taxBasisStretches(
+    await readTaxBasisHistory(client, restaurantId, {
+      basis: typeof houseRow.tax_basis === "string" ? houseRow.tax_basis : null,
+      confirmedAt:
+        typeof houseRow.tax_basis_confirmed_at === "string"
+          ? houseRow.tax_basis_confirmed_at
+          : null,
+    }),
+    zone,
+  );
   if (first.error) {
     throw new Error(`pos_checks read failed: ${first.error.message}`);
   }
@@ -785,11 +817,19 @@ async function readMonthTakings(
     until,
     days,
     tax: taxStampsByHouseDay(stamped, zone),
+    // The day net first had tax taken out: the first "prices include tax"
+    // stretch, not the first answer of any kind (an "added on top" answer
+    // before it leaves net as the till sent it). A later include answer does
+    // not move it, since the checks of the first are already stamped.
     taxSwitchDay:
-      basis.data?.[0]?.tax_basis === "prices_include_tax" &&
-      typeof basis.data[0].tax_basis_confirmed_at === "string"
-        ? houseDayOf(basis.data[0].tax_basis_confirmed_at, zone)
-        : null,
+      taxStretches.find((s) => s.basis === "prices_include_tax")?.fromDay ??
+      null,
+    taxStretches,
+    taxWord: taxWordFor(
+      countryCodeOf(
+        typeof houseRow.country === "string" ? houseRow.country : null,
+      ),
+    ),
   };
 }
 
@@ -1505,6 +1545,15 @@ export class DashboardService {
                 : null,
               monthly_net_not_recorded_by_reason: monthStated ? byReason : null,
               tax_switch_day: monthStated ? switchDay : null,
+              tax_change_note:
+                monthStated && takings
+                  ? taxChangeNote(
+                      takings.taxStretches,
+                      first,
+                      dates[dates.length - 1],
+                      takings.taxWord,
+                    )
+                  : null,
               monthly_checks_as_sent:
                 monthStated && switchDay !== null ? asSent : null,
             }

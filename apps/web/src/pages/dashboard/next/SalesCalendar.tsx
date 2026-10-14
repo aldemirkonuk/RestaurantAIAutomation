@@ -518,6 +518,12 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
           {ledger.monthlyChecksAsSent === 1 ? 'is' : 'are'} the till’s figures as sent, tax included.
         </p>
       )}
+      {/* F-1624: the house changed its answer this month; each stretch, in the gateway's words. */}
+      {salesShown && ledger?.taxChangeNote && (
+        <p className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" data-testid="dn-tax-change-note">
+          {DASH} {ledger.taxChangeNote}
+        </p>
+      )}
 
       {zoneUnset && (
         <p className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" data-testid="dn-zone-unset">

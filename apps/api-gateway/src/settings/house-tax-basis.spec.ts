@@ -842,3 +842,91 @@ describe("PUT /settings/tax-basis/cocktail-category — the owner says which rat
     expect(db.writes.length).toBe(before);
   });
 });
+
+describe("GET /settings/tax-basis — every answer, and the house's items (F-1624, S222)", () => {
+  const answered = (db: FakeDb) => {
+    Object.assign(house(db, TR), {
+      tax_basis: "prices_include_tax",
+      tax_basis_confirmed_by: "owner-tr",
+      tax_basis_confirmed_at: "2026-10-20T09:00:00Z",
+    });
+    // What the database trigger keeps, one row per change.
+    db.tables.house_tax_basis_answers = [
+      ["prices_include_tax", "2026-10-03T09:00:00Z"],
+      ["prices_exclude_tax", "2026-10-10T09:00:00Z"],
+      ["prices_include_tax", "2026-10-20T09:00:00Z"],
+    ].map(([basis, at]) => ({
+      restaurant_id: TR,
+      basis,
+      answered_at: at,
+      answered_by: "owner-tr",
+    }));
+  };
+
+  it("reads include, then tax on top, then include again as three stretches", async () => {
+    const { db, controller } = make();
+    answered(db);
+    const out = await controller.read(TR);
+    expect(out.answers).toEqual([
+      {
+        basis: "prices_include_tax",
+        answeredAt: "2026-10-03T09:00:00Z",
+        fromDay: "2026-10-03",
+      },
+      {
+        basis: "prices_exclude_tax",
+        answeredAt: "2026-10-10T09:00:00Z",
+        fromDay: "2026-10-10",
+      },
+      {
+        basis: "prices_include_tax",
+        answeredAt: "2026-10-20T09:00:00Z",
+        fromDay: "2026-10-20",
+      },
+    ]);
+    expect(out.switchDay).toBe("2026-10-20");
+    expect(db.writes).toHaveLength(0);
+  });
+
+  it("keeps the answer on the house row when no history holds it, and says a failed read", async () => {
+    const { db, controller } = make();
+    answered(db);
+    db.tables.house_tax_basis_answers = [];
+    expect((await controller.read(TR)).answers).toEqual([
+      {
+        basis: "prices_include_tax",
+        answeredAt: "2026-10-20T09:00:00Z",
+        fromDay: "2026-10-20",
+      },
+    ]);
+    db.failures.house_tax_basis_answers = "permission denied";
+    const failed = await controller.read(TR);
+    expect(failed.answers).toBeNull();
+    expect(failed.answersReason).toMatch(/permission denied/);
+  });
+
+  it("lists the house's own items for a rate, by name, only for a house whose prices include tax", async () => {
+    const { db, controller } = make();
+    db.tables.restaurant_inventory.push(
+      {
+        id: "item-gone",
+        restaurant_id: TR,
+        wine_name: "Removed",
+        deleted_at: "2026-10-01T00:00:00Z",
+      },
+      {
+        id: "item-raki",
+        restaurant_id: TR,
+        display_name: "Altınbaş Rakı",
+        wine_name: null,
+      },
+    );
+    expect((await controller.read(TR)).items).toBeNull();
+    answered(db);
+    expect((await controller.read(TR)).items).toEqual([
+      { id: "item-raki", name: "Altınbaş Rakı" },
+      { id: ITEM_TR, name: "Kavaklıdere Yakut" },
+    ]);
+    expect((await controller.read(US)).items).toBeNull();
+  });
+});

@@ -108,6 +108,12 @@ const COLUMNS: Record<string, string[]> = {
     "voided",
   ],
   analytics_day_exclusions: ["restaurant_id", "business_date", "reason"],
+  house_tax_basis_answers: [
+    "restaurant_id",
+    "basis",
+    "answered_at",
+    "answered_by",
+  ],
 };
 
 type Row = Record<string, any>;
@@ -811,6 +817,114 @@ describe("AW21 — net sales on the house's day", () => {
       answered("prices_exclude_tax", "2026-10-10T16:00:00Z"),
     ).getCalendarRevenue(HOUSE, 2026, 10, { withSales: true });
     expect(excl.tax_switch_day).toBeNull();
+  });
+
+  // F-1624 remainder: with every answer kept (include Oct 3, "added on top"
+  // Oct 10, include again Oct 20), the calendar said "net is before tax from
+  // Oct 20" though Oct 3-19 were already stamped, and named no other stretch.
+  it("names each stretch when the house changed its answer inside the month", async () => {
+    const on = (n: number, d: string, sub: number, extra: Row = {}) =>
+      check(n, `2026-10-${d}T20:00:00Z`, `2026-10-${d}T21:00:00Z`, sub, extra);
+    const answer = (basis: string, at: string) => ({
+      restaurant_id: HOUSE,
+      basis,
+      answered_at: at,
+      answered_by: "owner-1",
+    });
+    const db = fakeDb({
+      restaurants: [
+        {
+          ...house(LA, "TR")[0],
+          tax_basis: "prices_include_tax",
+          tax_basis_confirmed_at: "2026-10-20T16:00:00Z",
+        },
+      ],
+      house_tax_basis_answers: [
+        answer("prices_include_tax", "2026-10-03T16:00:00Z"),
+        answer("prices_exclude_tax", "2026-10-10T16:00:00Z"),
+        answer("prices_include_tax", "2026-10-20T16:00:00Z"),
+      ],
+      pos_checks: [
+        check(0, "2026-08-10T20:00:00Z", "2026-08-10T21:00:00Z", 30),
+        on(1, "01", 50),
+        on(2, "05", 40, {
+          tax_basis: "prices_include_tax",
+          gross_subtotal: 44,
+        }),
+        on(3, "12", 60, {
+          tax_basis: "prices_exclude_tax",
+          gross_subtotal: 60,
+        }),
+        on(4, "21", 40, {
+          tax_basis: "prices_include_tax",
+          gross_subtotal: 44,
+        }),
+      ],
+    });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
+      withSales: true,
+    });
+    // Checks are stamped from the first answer on.
+    expect(month.tax_switch_day).toBe("2026-10-03");
+    expect(month.monthly_checks_as_sent).toBe(1);
+    expect(month.tax_change_note).toBe(
+      "The house changed its answer about KDV during this period, so its net is not on one basis. " +
+        "Until 2 October 2026, nobody had said whether till prices include KDV, so net is as the till sent it. " +
+        "From 3 October 2026, till prices include KDV, and net is without it. " +
+        "From 10 October 2026, KDV is added on top of till prices, so net is as the till sent it. " +
+        "From 20 October 2026, till prices include KDV, and net is without it. " +
+        "Checks already recorded keep the answer they were recorded under.",
+    );
+
+    // A month on one answer carries no note.
+    const nov = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 11, {
+      withSales: true,
+    });
+    expect(nov.tax_change_note).toBeNull();
+  });
+
+  // F-1624 audit: "added on top" on Oct 5, include on Oct 20. The switch day
+  // was the first answer of any kind (Oct 5), so the calendar said net was
+  // before tax by taking it out from Oct 5.
+  it("marks the first include day, not an earlier 'added on top' answer's", async () => {
+    const on = (n: number, d: string, sub: number, extra: Row = {}) =>
+      check(n, `2026-10-${d}T20:00:00Z`, `2026-10-${d}T21:00:00Z`, sub, extra);
+    const answer = (basis: string, at: string) => ({
+      restaurant_id: HOUSE,
+      basis,
+      answered_at: at,
+      answered_by: "owner-1",
+    });
+    const db = fakeDb({
+      restaurants: [
+        {
+          ...house(LA, "TR")[0],
+          tax_basis: "prices_include_tax",
+          tax_basis_confirmed_at: "2026-10-20T16:00:00Z",
+        },
+      ],
+      house_tax_basis_answers: [
+        answer("prices_exclude_tax", "2026-10-05T16:00:00Z"),
+        answer("prices_include_tax", "2026-10-20T16:00:00Z"),
+      ],
+      pos_checks: [
+        check(0, "2026-08-10T20:00:00Z", "2026-08-10T21:00:00Z", 30),
+        on(1, "02", 50),
+        on(2, "12", 60, {
+          tax_basis: "prices_exclude_tax",
+          gross_subtotal: 60,
+        }),
+        on(3, "21", 40, {
+          tax_basis: "prices_include_tax",
+          gross_subtotal: 44,
+        }),
+      ],
+    });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
+      withSales: true,
+    });
+    expect(month.tax_switch_day).toBe("2026-10-20");
+    expect(month.monthly_checks_as_sent).toBe(1);
   });
 
   it("reads a month whose checks all lack a subtotal as not recorded, with its checks counted", async () => {
