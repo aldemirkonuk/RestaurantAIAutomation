@@ -31,7 +31,11 @@ const api = vi.hoisted(() => ({
   abandonCountSession: vi.fn(),
   houseHoldingCount: vi.fn(),
 }))
-vi.mock('@/services/api/countSessions', () => api)
+// The calls are mocked; the module's word helpers (periodWords) are its own.
+vi.mock('@/services/api/countSessions', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ...api,
+}))
 vi.mock('@/services/api/inventory', () => ({
   getInventory: vi.fn().mockResolvedValue([
     { id: 'gin', wineName: 'Gin', wineProducer: null, wineVintage: null },
@@ -162,6 +166,28 @@ describe('the review shows the walk', () => {
     show()
     const diff = await screen.findByText('0, −3/10 open')
     expect(diff.className).toMatch(/text-amber-300/)
+  })
+
+  it('[REVERT-FAILS] says open bottles in tenths of their bottle, never ml, on lines and held lines (S230 owed)', async () => {
+    auth.value.activeRole = 'staff'
+    const r = review(false)
+    r.shelves[0].lines = [line({ name: 'Rakı', counted: 3, openMl: 350, openTenths: 5, bottleSizeKnown: true })]
+    const held = [{ ...r.held[0], openMl: 375, openTenths: 5, bottleSizeKnown: false }]
+    api.reviewCountSession.mockResolvedValue({ ...r, held })
+    show()
+    expect(await screen.findByText(/3 bottles, 5\/10 of a bottle open/)).toBeTruthy()
+    // An item with no bottle size says the 750 ml it was read on.
+    expect(screen.getByText(/Second: 5 bottles, 5\/10 of a bottle open \(on a 750 ml bottle: this item has no bottle size\)/)).toBeTruthy()
+    expect(screen.queryByText(/ml open/)).toBeNull()
+  })
+
+  it('[REVERT-FAILS] names the month the count is filed in (S230 owed)', async () => {
+    api.reviewCountSession.mockResolvedValue(review(true, { period: '2026-10' }))
+    show()
+    const october = new Intl.DateTimeFormat(undefined, { month: 'long', timeZone: 'UTC' }).format(
+      new Date(Date.UTC(2026, 9, 1)),
+    )
+    expect(await screen.findByRole('heading', { name: `Review: Closing count · ${october}` })).toBeTruthy()
   })
 
   it('a bartender sees what was counted, never a difference or money, and no act', async () => {

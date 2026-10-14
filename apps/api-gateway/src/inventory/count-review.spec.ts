@@ -536,6 +536,40 @@ describe("the review shows the walk; the books and money only to an owner or a m
     expect(yakut.openDifferenceTenths).toBeNull();
   });
 
+  it("says each open bottle in tenths of its own bottle to everyone, and the count's month (S230 owed)", async () => {
+    const { svc, db } = walkDb();
+    db.tables.stock_count_sessions[0].attributed_period = "2026-10";
+    db.tables.stock_count_held_lines[0].counted_open_ml = 375;
+    const r = await svc.review(HOUSE, WALK, false);
+    expect(r.period).toBe("2026-10");
+    const raki = r.shelves
+      .find((s) => s.locationId === "Bar")!
+      .lines.find((l) => l.inventoryId === "item-raki")!;
+    // 350 ml of a 700 ml bottle is 5/10.
+    expect(raki).toMatchObject({
+      openMl: 350,
+      openTenths: 5,
+      bottleSizeKnown: true,
+    });
+    const yakut = r.shelves.find((s) => s.locationId === "Shelf 1")!.lines[0];
+    expect(yakut).toMatchObject({ openTenths: null });
+    // 375 ml of a 750 ml Yakut bottle is 5/10.
+    expect(r.held[0]).toMatchObject({ openTenths: 5, bottleSizeKnown: true });
+  });
+
+  it("an item with no bottle size is said on the 750 ml stand-in, and the page is told (S230 owed)", async () => {
+    const { svc, db } = walkDb();
+    db.tables.restaurant_inventory.find(
+      (r: any) => r.id === "item-raki",
+    )!.bottle_size_ml = null;
+    const r = await svc.review(HOUSE, WALK, false);
+    const raki = r.shelves
+      .find((s) => s.locationId === "Bar")!
+      .lines.find((l) => l.inventoryId === "item-raki")!;
+    // 350 ml of a 750 ml stand-in rounds to 5/10.
+    expect(raki).toMatchObject({ openTenths: 5, bottleSizeKnown: false });
+  });
+
   it("an item counted whole is not listed as 'no count sent' on a done shelf (F-1618)", async () => {
     const { svc, db } = walkDb();
     // Gin also has bottles the door booked with no shelf: the walk told staff

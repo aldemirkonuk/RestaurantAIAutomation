@@ -24,6 +24,7 @@ import {
   Power,
   Barcode,
   Upload,
+  ClipboardList,
 } from "lucide-react";
 import { useInventoryPage, type InventoryItem } from "../index";
 import {
@@ -1368,6 +1369,16 @@ export function InventoryCommandPage() {
               <LayoutGrid className="w-3.5 h-3.5" /> Cellar Map
             </button>
           </div>
+          {/* ADR 0343 (S227 owed): the shelf-by-shelf stock count, for
+              everyone in the house -- staff count shelves too. */}
+          <button
+            type="button"
+            data-ux-key="inventory:stock-count"
+            onClick={() => navigate("/count")}
+            className="flex items-center gap-1.5 h-9 px-3 border border-gray-200 bg-white rounded-lg text-xs font-semibold text-gray-600 hover:bg-gray-50"
+          >
+            <ClipboardList className="w-3.5 h-3.5" /> Stock count
+          </button>
           <ExportMenu
             variant="soft"
             size="sm"

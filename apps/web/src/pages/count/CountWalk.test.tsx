@@ -26,7 +26,11 @@ const api = vi.hoisted(() => ({
   abandonCountSession: vi.fn(),
   houseHoldingCount: vi.fn(),
 }))
-vi.mock('@/services/api/countSessions', () => api)
+// The calls are mocked; the module's word helpers (periodWords) are its own.
+vi.mock('@/services/api/countSessions', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  ...api,
+}))
 const inv = vi.hoisted(() => ({ getInventory: vi.fn() }))
 vi.mock('@/services/api/inventory', () => inv)
 const store = vi.hoisted(() => ({ getPendingMutationsByType: vi.fn() }))
@@ -310,6 +314,17 @@ describe('find (F-1620, ADR 0124)', () => {
     await waitFor(() => expect(inv.getInventory).toHaveBeenCalled())
     fireEvent.change(screen.getByLabelText('Name on the label'), { target: { value: 'yakut' } })
     expect(await screen.findByText('Ev Kırmızısı')).toBeInTheDocument()
+  })
+})
+
+describe('the month a count is for (S230 owed)', () => {
+  it('[REVERT-FAILS] the walk names the month its counts are filed in', async () => {
+    api.pullCountSession.mockResolvedValue({ ...structuredClone(SESSION), period: '2026-10' })
+    renderWalk()
+    const october = new Intl.DateTimeFormat(undefined, { month: 'long', timeZone: 'UTC' }).format(
+      new Date(Date.UTC(2026, 9, 1)),
+    )
+    expect(await screen.findByRole('heading', { name: new RegExp(` · ${october}$`) })).toBeInTheDocument()
   })
 })
 

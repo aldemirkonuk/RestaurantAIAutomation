@@ -728,6 +728,15 @@ export function MemberSheet({
           `${unjudged === 1 ? 'One shift' : `${unjudged} shifts`} of theirs may already have started, and with no time zone for this restaurant it could not be told, so ${unjudged === 1 ? 'it was' : 'they were'} kept with them, whole. An owner can check ${unjudged === 1 ? 'it' : 'them'} in the former-staff history; add cover if needed.`,
         );
       }
+      // F-1637: the shelves they had taken in an open stock count are freed
+      // by the removal; say so, so the floor knows they wait for someone.
+      const shelves =
+        (receipt as { countShelvesReleased?: number } | undefined)?.countShelvesReleased ?? 0;
+      if (shelves > 0) {
+        notes.push(
+          `${shelves === 1 ? 'One shelf' : `${shelves} shelves`} they had taken in an open stock count ${shelves === 1 ? 'is' : 'are'} free again, so someone else can count ${shelves === 1 ? 'it' : 'them'}.`,
+        );
+      }
       if (notes.length === 0) {
         onClose();
         return;

@@ -161,6 +161,36 @@ const SESSION_COLUMNS =
 const SHELF_COLUMNS =
   "location_id, sort_order, claimed_by, claimed_at, done_by, done_at, recount_round, recount_asked_at";
 
+/** How many ended counts the list shows (S227 owed item). */
+const ENDED_SHOWN = 10;
+
+/**
+ * The places a count can be narrowed to when it is opened (S227 owed item:
+ * zone choice): each live top-level place that holds at least one leaf
+ * shelf, with how many, in walk order. Its id is what `open` takes as a
+ * zone, so the shelves it covers are `leafShelvesInScope`'s, never a copy.
+ */
+export function countZonesOf(
+  houseLocations: HouseLocation[],
+): Array<{ id: string; name: string; shelves: number }> {
+  const live = houseLocations.filter(isLive);
+  const liveIds = new Set(live.map((l) => l.id));
+  return live
+    .filter((l) => !l.parent_id || !liveIds.has(l.parent_id))
+    .map((l) => ({
+      l,
+      shelves: leafShelvesInScope(houseLocations, [l.id]).length,
+    }))
+    .filter((z) => z.shelves > 0)
+    .sort(
+      (a, b) =>
+        (a.l.display_order ?? Number.MAX_SAFE_INTEGER) -
+          (b.l.display_order ?? Number.MAX_SAFE_INTEGER) ||
+        zoneLabel(a.l).localeCompare(zoneLabel(b.l)),
+    )
+    .map(({ l, shelves }) => ({ id: l.id, name: zoneLabel(l), shelves }));
+}
+
 /** A person may say "done" for a shelf, given who holds its claim. */
 export function mayCloseShelf(
   claimedBy: string | null,
@@ -347,6 +377,8 @@ export class CountSessionsService {
   async listOpen(house: string) {
     const client = this.dbService.getClient();
     const periods = await this.periodChoice(house);
+    const zones = countZonesOf(await this.houseLocations(house));
+    const ended = await this.listEnded(house);
     const { data, error } = await client
       .from("stock_count_sessions")
       .select(SESSION_COLUMNS)
@@ -355,7 +387,7 @@ export class CountSessionsService {
       .order("opened_at", { ascending: false });
     if (error) throw this.unreadable("sessions read", error);
     const sessions = (data ?? []) as SessionRow[];
-    if (sessions.length === 0) return { sessions: [], periods };
+    if (sessions.length === 0) return { sessions: [], periods, zones, ended };
     const shelves = await client
       .from("stock_count_session_shelves")
       .select("session_id, done_at")
@@ -386,7 +418,53 @@ export class CountSessionsService {
         shelvesDone: tally.get(s.id)?.done ?? 0,
       })),
       periods,
+      zones,
+      ended,
     };
+  }
+
+  /**
+   * The house's last ended counts, newest first (S227 owed item): when each
+   * ended, the month it is filed in, and who signed it off or stopped it, so
+   * a finished count can be found again after it leaves the open list.
+   */
+  private async listEnded(house: string) {
+    const { data, error } = await this.dbService
+      .getClient()
+      .from("stock_count_sessions")
+      .select(
+        "id, kind, status, opened_at, signed_off_at, signed_off_by, abandoned_at, abandoned_by, attributed_period",
+      )
+      .eq("restaurant_id", house)
+      .in("status", ["signed_off", "abandoned"])
+      .order("opened_at", { ascending: false })
+      .limit(ENDED_SHOWN);
+    if (error) throw this.unreadable("ended counts read", error);
+    const rows = (
+      (data ?? []) as Array<
+        SessionRow & {
+          signed_off_by: string | null;
+          abandoned_by: string | null;
+        }
+      >
+    ).slice(0, ENDED_SHOWN);
+    const people = await this.personNames(
+      rows.map((r) => r.signed_off_by ?? r.abandoned_by ?? ""),
+    );
+    return rows.map((r) => {
+      const by = r.status === "signed_off" ? r.signed_off_by : r.abandoned_by;
+      return {
+        id: r.id,
+        kind: r.kind,
+        status: r.status,
+        openedAt: r.opened_at,
+        endedAt:
+          (r.status === "signed_off" ? r.signed_off_at : r.abandoned_at) ??
+          null,
+        endedBy: by ? (people.get(by) ?? "Someone") : null,
+        period: r.attributed_period ?? null,
+      };
+    });
   }
 
   /**
@@ -1407,6 +1485,30 @@ export class CountSessionsService {
     let currency: string | null = null;
     const cost = new Map<string, { wac: number | null; bottleMl: number }>();
     const ml = new Map<string, number>();
+    // Each item's bottle size, for everyone: the open bottles are said in
+    // tenths of that bottle, as staff entered them (S230 owed item). A size
+    // is not money; an item with none is said on a 750 ml stand-in.
+    if (itemIds.length) {
+      const size = await client
+        .from("restaurant_inventory")
+        .select("id, bottle_size_ml")
+        .eq("restaurant_id", house)
+        .in("id", itemIds);
+      if (size.error) throw this.unreadable("bottle size read", size.error);
+      for (const r of (size.data ?? []) as Array<{
+        id: string;
+        bottle_size_ml: number | null;
+      }>) {
+        if (r.bottle_size_ml && r.bottle_size_ml > 0)
+          ml.set(r.id, Number(r.bottle_size_ml));
+      }
+    }
+    const openTenthsOf = (inventoryId: string, openMl: number | null) =>
+      openMl == null
+        ? null
+        : Math.round(
+            (openMl / (ml.get(inventoryId) ?? STAND_IN_BOTTLE_ML)) * 10,
+          );
     if (seesMoney && itemIds.length) {
       const cur = await client
         .from("restaurants")
@@ -1422,19 +1524,6 @@ export class CountSessionsService {
         .eq("restaurant_id", house)
         .in("inventory_id", itemIds);
       if (wac.error) throw this.unreadable("cost read", wac.error);
-      const size = await client
-        .from("restaurant_inventory")
-        .select("id, bottle_size_ml")
-        .eq("restaurant_id", house)
-        .in("id", itemIds);
-      if (size.error) throw this.unreadable("bottle size read", size.error);
-      for (const r of (size.data ?? []) as Array<{
-        id: string;
-        bottle_size_ml: number | null;
-      }>) {
-        if (r.bottle_size_ml && r.bottle_size_ml > 0)
-          ml.set(r.id, Number(r.bottle_size_ml));
-      }
       for (const r of (wac.data ?? []) as Array<{
         inventory_id: string;
         wac: number | null;
@@ -1474,6 +1563,8 @@ export class CountSessionsService {
       name: nameOf(c.inventory_id),
       counted: c.counted_qty,
       openMl: c.counted_open_ml,
+      openTenths: openTenthsOf(c.inventory_id, c.counted_open_ml),
+      bottleSizeKnown: ml.has(c.inventory_id),
       countedBy: person(c.counted_by),
       countedAt: c.counted_at,
       afterSignOff:
@@ -1563,6 +1654,7 @@ export class CountSessionsService {
       kind: session.kind,
       status: session.status,
       openedAt: session.opened_at,
+      period: session.attributed_period ?? null,
       signedOffAt: session.signed_off_at,
       signedOffBy: person(signedOffBy),
       seesMoney,
@@ -1586,6 +1678,8 @@ export class CountSessionsService {
           shelf: placeName(h.location_id),
           counted: h.counted_qty,
           openMl: h.counted_open_ml,
+          openTenths: openTenthsOf(h.inventory_id, h.counted_open_ml),
+          bottleSizeKnown: ml.has(h.inventory_id),
           countedBy: person(h.counted_by),
           countedAt: h.counted_at,
           against: a ? lineOf(a) : null,
@@ -1986,6 +2080,10 @@ export interface ReviewLine {
   name: string;
   counted: number;
   openMl: number | null;
+  /** The open bottles in tenths of the item's bottle; null when not counted. */
+  openTenths: number | null;
+  /** False: the item names no bottle size and the tenths stand on 750 ml. */
+  bottleSizeKnown: boolean;
   countedBy: string | null;
   countedAt: string;
   afterSignOff: boolean;
@@ -2004,6 +2102,8 @@ export interface CountReview {
   kind: CountSessionKind;
   status: string;
   openedAt: string;
+  /** The month (YYYY-MM) its counts are filed in; null when it names none. */
+  period: string | null;
   signedOffAt: string | null;
   signedOffBy: string | null;
   seesMoney: boolean;
@@ -2030,6 +2130,8 @@ export interface CountReview {
     shelf: string;
     counted: number;
     openMl: number | null;
+    openTenths: number | null;
+    bottleSizeKnown: boolean;
     countedBy: string | null;
     countedAt: string;
     against: ReviewLine | null;
