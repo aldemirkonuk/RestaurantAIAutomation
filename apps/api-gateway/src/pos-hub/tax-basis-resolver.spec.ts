@@ -1,5 +1,6 @@
 import {
   NET_NOT_RECORDED,
+  keepsStoredStamp,
   resolveCheckSubtotal,
   type CheckForTax,
   type HouseRateRow,
@@ -94,6 +95,7 @@ describe("a house that has not said is a strict no-op", () => {
         tax_basis: basis,
         tax_rate_version: null,
         unresolved: null,
+        reason: null,
       });
     },
   );
@@ -239,6 +241,7 @@ describe("F2: only from now", () => {
       tax_basis: null,
       tax_rate_version: null,
       unresolved: null,
+      reason: null,
     });
   });
 
@@ -487,5 +490,194 @@ describe("adapters: what the till states about tax", () => {
     expect(c.tax).toBeUndefined();
     expect(c.subtotalPreTax).toBeUndefined();
     expect(c.items[0].taxRate).toBeUndefined();
+  });
+});
+
+// F-1613 = F-1622: a refund that states its tax ran the same way as its
+// subtotal (-118 with -18 inside) and was refused as "tax more than its
+// subtotal", so the refund never came off net sales.
+describe("rung 1: a refund that states its tax", () => {
+  const refund = (over: Partial<CheckForTax> = {}) =>
+    check({ subtotal: -118, total: -118, tax: -18, ...over });
+
+  it("comes off at its net when the tax runs the same way: -118 with -18 inside is -100", () => {
+    expect(resolveCheckSubtotal(refund(), inclusive(TWO_RATES))).toMatchObject({
+      rung: "till_stated",
+      subtotal: -100,
+      gross_subtotal: -118,
+      unresolved: null,
+      reason: null,
+    });
+  });
+
+  it("the whole refund as tax (|tax| = |subtotal|) still resolves", () => {
+    expect(
+      resolveCheckSubtotal(
+        refund({ subtotal: -18, total: -18, tax: -18 }),
+        inclusive(TWO_RATES),
+      ),
+    ).toMatchObject({ rung: "till_stated", subtotal: 0 });
+  });
+
+  it("is refused when the tax runs the other way, for a refund or a sale", () => {
+    for (const c of [refund({ tax: 18 }), check({ subtotal: 118, tax: -18 })])
+      expect(resolveCheckSubtotal(c, inclusive(TWO_RATES))).toMatchObject({
+        subtotal: null,
+        gross_subtotal: c.subtotal,
+        unresolved: NET_NOT_RECORDED.taxOverSubtotal,
+        reason: "tax_over_subtotal",
+      });
+  });
+
+  it("is refused when the tax is larger than the refund", () => {
+    expect(
+      resolveCheckSubtotal(refund({ tax: -200 }), inclusive(TWO_RATES)),
+    ).toMatchObject({ subtotal: null, reason: "tax_over_subtotal" });
+  });
+
+  it("a refund whose till added the tax on top is not taken off twice", () => {
+    expect(
+      resolveCheckSubtotal(
+        refund({ subtotal: -100, total: -118, tax: -18 }),
+        inclusive(TWO_RATES),
+      ),
+    ).toMatchObject({ subtotal: null, reason: "tax_on_top" });
+  });
+
+  it("a US house (tax on top) keeps the till's refund subtotal as its net", () => {
+    expect(
+      resolveCheckSubtotal(refund({ subtotal: -100, total: -108, tax: -8 }), {
+        basis: "prices_exclude_tax",
+        confirmedAt: "2026-10-12T06:00:00Z",
+        zone: "America/Detroit",
+        rates: [],
+        rateVersion: null,
+      }),
+    ).toMatchObject({ rung: "not_inclusive", subtotal: -100, reason: null });
+  });
+});
+
+// F-1612 = F-1623: the reason travels as a code the check keeps, one per
+// sentence, so the pages can count and word each cause.
+describe("the reason net was not recorded, as the code the check keeps", () => {
+  it.each([
+    ["noRate", "no_rate", () => resolveCheckSubtotal(check(), inclusive([]))],
+    [
+      "mixed",
+      "mixed_rates",
+      () =>
+        resolveCheckSubtotal(
+          check(),
+          inclusive([rate(1, "pos_category", "Food", 0.1)]),
+        ),
+    ],
+    [
+      "taxUnread",
+      "tax_unread",
+      () =>
+        resolveCheckSubtotal(check({ taxUnread: true }), inclusive(TWO_RATES)),
+    ],
+    [
+      "taxOnTop",
+      "tax_on_top",
+      () =>
+        resolveCheckSubtotal(
+          check({ subtotal: 100, total: 120, tax: 20 }),
+          inclusive(TWO_RATES),
+        ),
+    ],
+    [
+      "taxOverSubtotal",
+      "tax_over_subtotal",
+      () =>
+        resolveCheckSubtotal(
+          check({ subtotal: 10, tax: 20 }),
+          inclusive(TWO_RATES),
+        ),
+    ],
+    [
+      "noZone",
+      "no_zone",
+      () => resolveCheckSubtotal(check(), inclusive(TWO_RATES, { zone: null })),
+    ],
+  ] as const)("%s is kept as %s", (key, code, run) => {
+    expect(run()).toMatchObject({
+      subtotal: null,
+      unresolved: NET_NOT_RECORDED[key],
+      reason: code,
+    });
+  });
+
+  it("a check whose net was recorded keeps no reason", () => {
+    expect(resolveCheckSubtotal(check(), inclusive(TWO_RATES))).toMatchObject({
+      reason: null,
+    });
+  });
+});
+
+// F-1624: the owner answers include, then exclude, then include again. A
+// check the till sends again is not re-stamped under the answer in force now.
+describe("F-1624: a stored check keeps the stamp it was written with", () => {
+  const exclusive: HouseTaxContext = {
+    basis: "prices_exclude_tax",
+    confirmedAt: "2026-10-15T06:00:00Z",
+    zone: "Europe/Istanbul",
+    rates: [],
+    rateVersion: null,
+  };
+  const day12 = check({ subtotal: 270 });
+  const storedInclusive = {
+    subtotal: "231.82",
+    gross_subtotal: "270.00",
+    tax_basis: "prices_include_tax",
+  };
+
+  it("a check made pre-tax under 'include' is kept when the answer is now 'exclude'", () => {
+    expect(keepsStoredStamp(day12, exclusive, storedInclusive)).toBe(true);
+  });
+
+  it("include again: a check of the first include days, before the new switch day, is kept", () => {
+    const again = inclusive(TWO_RATES, { confirmedAt: "2026-10-20T06:00:00Z" });
+    expect(keepsStoredStamp(day12, again, storedInclusive)).toBe(true);
+    // Without the rule it would read as before the switch: the till's 270.
+    expect(resolveCheckSubtotal(day12, again)).toMatchObject({
+      rung: "before_switch",
+      subtotal: 270,
+    });
+    // A check stored with no stamp before the switch day stays without one.
+    expect(
+      keepsStoredStamp(day12, exclusive, {
+        subtotal: 270,
+        gross_subtotal: null,
+        tax_basis: null,
+      }),
+    ).toBe(true);
+  });
+
+  it("the same answer on or after its switch day is written as now (rates set since resolve it)", () => {
+    expect(
+      keepsStoredStamp(day12, inclusive(TWO_RATES), {
+        subtotal: null,
+        gross_subtotal: 270,
+        tax_basis: "prices_include_tax",
+      }),
+    ).toBe(false);
+  });
+
+  it("a copy whose subtotal the till changed is a new figure, written under the answer now", () => {
+    expect(
+      keepsStoredStamp(check({ subtotal: 300 }), exclusive, storedInclusive),
+    ).toBe(false);
+  });
+
+  it("an unset house, and a check never stored, keep nothing", () => {
+    expect(
+      keepsStoredStamp(
+        day12,
+        { ...exclusive, basis: "unset", confirmedAt: null },
+        storedInclusive,
+      ),
+    ).toBe(false);
+    expect(keepsStoredStamp(day12, exclusive, null)).toBe(false);
   });
 });

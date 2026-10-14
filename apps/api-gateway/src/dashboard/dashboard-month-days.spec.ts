@@ -42,7 +42,14 @@ const HOUSE = "house-1";
 const LA = "America/Los_Angeles";
 
 const COLUMNS: Record<string, string[]> = {
-  restaurants: ["id", "timezone", "country", "currency"],
+  restaurants: [
+    "id",
+    "timezone",
+    "country",
+    "currency",
+    "tax_basis",
+    "tax_basis_confirmed_at",
+  ],
   procurement_orders: [
     "id",
     "restaurant_id",
@@ -92,6 +99,7 @@ const COLUMNS: Record<string, string[]> = {
     "subtotal",
     "gross_subtotal",
     "tax_basis",
+    "net_not_recorded_reason",
     "total",
     "tip",
     "covers",
@@ -599,7 +607,7 @@ describe("AW21 — net sales on the house's day", () => {
     // The takings pages; the two one-row probes are asserted on their own.
     // F-1588 / F-1591: the read of the checks made pre-tax is its own.
     const isTaxRead = (c: Call) =>
-      c.filters.some(([op, col]) => op === "eq" && col === "tax_basis");
+      c.filters.some(([op, col]) => op === "not_is" && col === "tax_basis");
     const reads = db.calls.filter(
       (c) =>
         c.table === "pos_checks" &&
@@ -698,7 +706,13 @@ describe("AW21 — net sales on the house's day", () => {
   it("counts the checks the house's tax settings left without net, and marks the switch day", async () => {
     const inc = { tax_basis: "prices_include_tax" };
     const db = fakeDb({
-      restaurants: house(LA),
+      restaurants: [
+        {
+          ...house(LA)[0],
+          tax_basis: "prices_include_tax",
+          tax_basis_confirmed_at: "2026-10-08T16:00:00Z",
+        },
+      ],
       pos_checks: [
         check(0, "2026-08-10T20:00:00Z", "2026-08-10T21:00:00Z", 30),
         // Oct 6: before the switch, the till's figure as sent.
@@ -734,6 +748,69 @@ describe("AW21 — net sales on the house's day", () => {
     expect(after.tax_switch_day).toBeNull();
     expect(after.monthly_checks_as_sent).toBeNull();
     expect(after.monthly_net_not_recorded_by_tax).toBe(0);
+  });
+
+  // F-1612 = F-1623: every check whose net was not recorded was said as "no
+  // tax rate of this house was in force", whatever ingest's reason was.
+  it("counts the checks left without net by the reason kept on each", async () => {
+    const left = (n: number, why: string | null) =>
+      check(n, "2026-10-08T20:00:00Z", "2026-10-08T21:00:00Z", null, {
+        tax_basis: "prices_include_tax",
+        gross_subtotal: 118,
+        net_not_recorded_reason: why,
+      });
+    const db = fakeDb({
+      restaurants: house(LA),
+      pos_checks: [
+        left(1, "tax_on_top"),
+        left(2, "tax_unread"),
+        left(3, "tax_unread"),
+        left(4, "no_rate"),
+        left(5, null),
+      ],
+    });
+    const month = await serviceOver(db).getCalendarRevenue(HOUSE, 2026, 10, {
+      withSales: true,
+    });
+    expect(month.monthly_net_not_recorded_by_tax).toBe(5);
+    expect(month.monthly_net_not_recorded_by_reason).toEqual({
+      tax_on_top: 1,
+      tax_unread: 2,
+      no_rate: 1,
+      unknown: 1,
+    });
+  });
+
+  // F-1624: include on Oct 3, exclude on Oct 10, include again on Oct 20.
+  // The calendar took the first pre-tax check (Oct 3) as the switch while
+  // Settings and the month close name Oct 20, and it counted the checks
+  // stamped "exclude" as the till's figures with tax inside.
+  it("names the switch day Settings names, and counts only unstamped checks as sent", async () => {
+    const on = (n: number, d: string, sub: number, extra: Row = {}) =>
+      check(n, `2026-10-${d}T20:00:00Z`, `2026-10-${d}T21:00:00Z`, sub, extra);
+    const checks = [
+      check(0, "2026-08-10T20:00:00Z", "2026-08-10T21:00:00Z", 30),
+      on(1, "01", 50),
+      on(2, "05", 40, { tax_basis: "prices_include_tax", gross_subtotal: 44 }),
+      on(3, "12", 60, { tax_basis: "prices_exclude_tax", gross_subtotal: 60 }),
+      on(4, "21", 40, { tax_basis: "prices_include_tax", gross_subtotal: 44 }),
+    ];
+    const answered = (tax_basis: string, tax_basis_confirmed_at: string) =>
+      fakeDb({
+        restaurants: [{ ...house(LA)[0], tax_basis, tax_basis_confirmed_at }],
+        pos_checks: checks,
+      });
+    const month = await serviceOver(
+      answered("prices_include_tax", "2026-10-20T16:00:00Z"),
+    ).getCalendarRevenue(HOUSE, 2026, 10, { withSales: true });
+    expect(month.tax_switch_day).toBe("2026-10-20");
+    expect(month.monthly_checks_as_sent).toBe(1);
+
+    // A house whose answer now is not "include" marks no switch.
+    const excl = await serviceOver(
+      answered("prices_exclude_tax", "2026-10-10T16:00:00Z"),
+    ).getCalendarRevenue(HOUSE, 2026, 10, { withSales: true });
+    expect(excl.tax_switch_day).toBeNull();
   });
 
   it("reads a month whose checks all lack a subtotal as not recorded, with its checks counted", async () => {

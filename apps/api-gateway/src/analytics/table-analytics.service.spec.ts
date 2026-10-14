@@ -361,10 +361,10 @@ describe("TableAnalyticsService — the tip rate is over net sales, and a check 
     });
     const out: any = await service.getWaiterPerformance("r1", 90);
     expect(out.tipBasis).toBeNull();
-    expect(out.tipBasisWhy).toMatch(/no tax rate of this house was in force/);
+    expect(out.tipBasisWhy).toMatch(/tax could not be taken off/);
     expect(out.tipBasisWhy).not.toMatch(/till sends/);
     expect(out.tipsNetNotRecorded).toBe(2);
-    expect(out.waiters[0].tipPctWhy).toMatch(/tax settings gave no tax rate/);
+    expect(out.waiters[0].tipPctWhy).toMatch(/tax could not be taken off/);
 
     ({ service } = makeService({
       pos_checks: [
@@ -373,7 +373,7 @@ describe("TableAnalyticsService — the tip rate is over net sales, and a check 
     }));
     const some: any = await service.getWaiterPerformance("r1", 90);
     expect(some.tipBasis).toBe("net");
-    expect(some.tipBasisWhy).toMatch(/no tax rate of this house was in force/);
+    expect(some.tipBasisWhy).toMatch(/tax could not be taken off/);
     expect(some.tipsNetNotRecorded).toBe(1);
 
     // A till that sent no subtotal at all is still the till's cause.
@@ -383,6 +383,45 @@ describe("TableAnalyticsService — the tip rate is over net sales, and a check 
     const till: any = await service.getWaiterPerformance("r1", 90);
     expect(till.tipBasisWhy).toMatch(/no amount before tax/);
     expect(till.tipsNetNotRecorded).toBe(0);
+  });
+
+  // F-1612 = F-1623: every check ingest left without net was blamed on "no
+  // tax rate in force", though the till's tax being unreadable, or tax on
+  // top, has nothing to do with the rates. Counted by the reason kept on it.
+  it("counts the checks left without net by the reason kept on each, never all as 'no rate'", async () => {
+    const left = (id: string, why: string | null, server = "Maya") =>
+      usCheck({
+        id,
+        server_name: server,
+        subtotal: null,
+        gross_subtotal: 118,
+        tax_basis: "prices_include_tax",
+        net_not_recorded_reason: why,
+      });
+    const { service, calls } = makeService({
+      pos_checks: [
+        ok([
+          left("a", "tax_on_top"),
+          left("b", "tax_unread", "Ali"),
+          left("c", "tax_unread"),
+          left("d", "no_rate"),
+          left("e", null),
+        ]),
+      ],
+    });
+    const out: any = await service.getWaiterPerformance("r1", 90);
+    expect(out.tipsNetNotRecorded).toBe(5);
+    expect(out.tipsNetNotRecordedByReason).toEqual({
+      tax_on_top: 1,
+      tax_unread: 2,
+      no_rate: 1,
+      unknown: 1,
+    });
+    expect(out.tipBasisWhy).not.toMatch(/no tax rate/);
+    const select = calls.find(
+      (c) => c.table === "pos_checks" && c.method === "select",
+    );
+    expect(String(select?.args[0])).toMatch(/net_not_recorded_reason/);
   });
 
   it("no tip at all is still said as no tip, not as a missing subtotal", async () => {

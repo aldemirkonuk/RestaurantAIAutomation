@@ -241,6 +241,13 @@ export type TaxStamp =
       tax_rate_version: number | null;
       /** Why net was not recorded; null when it was (or nothing was to do). */
       unresolved: string | null;
+      /**
+       * F-1612: the same reason as a code, stored on the check
+       * (`pos_checks.net_not_recorded_reason`) so the pages that count these
+       * checks can say which cause each one has. Null exactly when
+       * `unresolved` is.
+       */
+      reason: NetNotRecordedReason | null;
     };
 
 /** Sentences ingest groups in errors[] when a check's net is not recorded. */
@@ -250,12 +257,30 @@ export const NET_NOT_RECORDED = {
   noRate: "no tax rate of this house is in force on the check's day",
   mixed:
     "its lines are sold at different rates and not every line could be matched to one",
-  taxOverSubtotal: "the till's tax is more than its subtotal",
+  taxOverSubtotal:
+    "the till's tax is more than its subtotal, or runs the other way from it",
   taxOnTop:
     "the till adds its tax on top of the subtotal, but this house says its till prices include tax",
   taxUnread:
     "the till's tax, or a line's tax rate, could not be read — write tax as 12.50 and a rate as 20 for 20 percent",
 } as const;
+
+/**
+ * F-1612: the code each sentence above is stored as on the check. The
+ * database holds the same six (pos_checks_net_not_recorded_reason_known);
+ * the dashboard and the registers count by it and word each one.
+ */
+export const NET_NOT_RECORDED_REASON = {
+  noZone: "no_zone",
+  noRate: "no_rate",
+  mixed: "mixed_rates",
+  taxOverSubtotal: "tax_over_subtotal",
+  taxOnTop: "tax_on_top",
+  taxUnread: "tax_unread",
+} as const satisfies Record<keyof typeof NET_NOT_RECORDED, string>;
+
+export type NetNotRecordedReason =
+  (typeof NET_NOT_RECORDED_REASON)[keyof typeof NET_NOT_RECORDED_REASON];
 
 const round2 = (n: number): number =>
   (Math.sign(n) * Math.round(Math.abs(n) * 100 + 1e-9)) / 100;
@@ -314,7 +339,7 @@ export function resolveCheckSubtotal(
     rung: TaxRung,
     subtotal: number | null,
     version: number | null = null,
-    unresolved: string | null = null,
+    why: keyof typeof NET_NOT_RECORDED | null = null,
   ): TaxStamp => ({
     kind: "stamped",
     rung,
@@ -322,7 +347,8 @@ export function resolveCheckSubtotal(
     gross_subtotal: gross,
     tax_basis: ctx.basis,
     tax_rate_version: version,
-    unresolved,
+    unresolved: why === null ? null : NET_NOT_RECORDED[why],
+    reason: why === null ? null : NET_NOT_RECORDED_REASON[why],
   });
   if (ctx.basis !== "prices_include_tax")
     return stamped("not_inclusive", gross);
@@ -336,7 +362,7 @@ export function resolveCheckSubtotal(
   const switchDay =
     ctx.zone && ctx.confirmedAt ? houseDayOf(ctx.confirmedAt, ctx.zone) : null;
   if (day === null || switchDay === null)
-    return stamped("unresolved", null, null, NET_NOT_RECORDED.noZone);
+    return stamped("unresolved", null, null, "noZone");
   // F2: only from now. A check filed before the switch day keeps the till's
   // figure and carries no stamp, whenever it arrives.
   if (day < switchDay)
@@ -348,31 +374,31 @@ export function resolveCheckSubtotal(
       tax_basis: null,
       tax_rate_version: null,
       unresolved: null,
+      reason: null,
     };
   if (gross === null) return stamped("no_subtotal", null);
   // F-1599: a check that took no money (fully comped, every line at 0) has a
   // net of 0 whatever its rates; it is not a check with net not recorded.
   if (gross === 0) return stamped("till_stated", 0);
   if (check.taxUnread === true)
-    return stamped("unresolved", null, null, NET_NOT_RECORDED.taxUnread);
+    return stamped("unresolved", null, null, "taxUnread");
 
   // Rung 1: the tax the till states.
   if (check.subtotalPreTax === true) return stamped("till_stated", gross);
   if (check.tax !== undefined) {
     const tax = check.tax;
-    if (tax < 0 || tax > Math.abs(gross))
-      return stamped(
-        "unresolved",
-        null,
-        null,
-        NET_NOT_RECORDED.taxOverSubtotal,
-      );
+    // F-1613: a refund's tax runs the same way as its subtotal (subtotal
+    // -118, tax -18: net -100). A tax of the other sign, or larger than the
+    // subtotal, is not taken off.
+    const way = Math.sign(gross);
+    if (way * tax < 0 || Math.abs(tax) > Math.abs(gross))
+      return stamped("unresolved", null, null, "taxOverSubtotal");
     if (
-      tax > 0 &&
+      tax !== 0 &&
       check.total !== null &&
-      check.total - (check.tip ?? 0) >= gross + tax - 0.005
+      way * (check.total - (check.tip ?? 0)) >= way * (gross + tax) - 0.005
     )
-      return stamped("unresolved", null, null, NET_NOT_RECORDED.taxOnTop);
+      return stamped("unresolved", null, null, "taxOnTop");
     return stamped("till_stated", round2(gross - tax));
   }
 
@@ -434,8 +460,48 @@ export function resolveCheckSubtotal(
     "unresolved",
     null,
     null,
-    values.size === 0 && tillRates.length === 0
-      ? NET_NOT_RECORDED.noRate
-      : NET_NOT_RECORDED.mixed,
+    values.size === 0 && tillRates.length === 0 ? "noRate" : "mixed",
   );
+}
+
+/** What of a check's stored copy decides whether it keeps its stamp. */
+export interface StoredTaxStamp {
+  subtotal: number | string | null;
+  gross_subtotal: number | string | null;
+  tax_basis: string | null;
+}
+
+const cents = (v: number | string | null | undefined): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
+};
+
+/**
+ * F-1624: a check already stored keeps the figure and stamp it was written
+ * with once the house's answer has changed since, so the till sending it
+ * again never re-stamps it ("Checks already recorded are not changed"). It
+ * keeps them when the stored copy is under another basis, or when the check
+ * is dated before the day of the answer in force now (include, exclude, then
+ * include again: a check of the first include days stays as it was written).
+ * A copy whose subtotal the till changed is a new figure, and is written
+ * under the answer in force now. Pure; `unset` never keeps (rule 1).
+ */
+export function keepsStoredStamp(
+  check: Pick<CheckForTax, "subtotal" | "closedAt" | "openedAt">,
+  ctx: HouseTaxContext,
+  stored: StoredTaxStamp | null,
+): boolean {
+  if (ctx.basis === "unset" || stored === null) return false;
+  const storedGross =
+    stored.tax_basis === null ? stored.subtotal : stored.gross_subtotal;
+  if (cents(storedGross) !== cents(check.subtotal)) return false;
+  if (stored.tax_basis !== null && stored.tax_basis !== ctx.basis) return true;
+  if (!ctx.zone || !ctx.confirmedAt) return false;
+  const day = houseDayOf(
+    { closed_at: check.closedAt, opened_at: check.openedAt },
+    ctx.zone,
+  );
+  const switchDay = houseDayOf(ctx.confirmedAt, ctx.zone);
+  return day !== null && switchDay !== null && day < switchDay;
 }

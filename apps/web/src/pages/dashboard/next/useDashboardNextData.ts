@@ -134,6 +134,8 @@ export interface MonthLedger {
   monthlyDaysBegun: number | null;
   /** F-1591: checks whose net the house's tax settings left unrecorded; null = not said. */
   monthlyNetNotRecordedByTax: number | null;
+  /** F-1612: the same, by the reason kept on each check (`netNotRecordedReasonsSaid`); empty from an older gateway. */
+  monthlyNetNotRecordedByReason: Record<string, number>;
   /** F-1588: the first day net is before tax, when the month mixes it with checks as sent. */
   taxSwitchDay: string | null;
   monthlyChecksAsSent: number | null;
@@ -229,6 +231,72 @@ export function barScaleOf(
 
 /** Why the parts above are not one figure, in the owner's words. */
 export const SPEND_KEPT_APART = "kept apart, no exchange rate on record";
+
+/**
+ * F-1612 = F-1623: why a check of a house whose prices include tax has no
+ * net sales, one wording per reason ingest keeps on the check (the gateway's
+ * NET_NOT_RECORDED_REASON), and where the owner can fix it, if anywhere.
+ * Every check used to be said as "no tax rate was in force", sending an
+ * owner with rates set to Settings for a cause that was not true.
+ */
+export const NET_NOT_RECORDED_WORDS: Record<
+  string,
+  { why: string; fix: { to: string; label: string } | null }
+> = {
+  no_rate: {
+    why: 'no tax rate of this house was in force on the day',
+    fix: { to: '/settings?tab=tax-basis', label: 'Set the tax rates' },
+  },
+  mixed_rates: {
+    why: 'lines sold at different tax rates, and not every line matched a rate of this house',
+    fix: { to: '/settings?tab=tax-basis', label: 'Add the missing rates' },
+  },
+  tax_on_top: {
+    why: 'the till adds tax on top of its prices, but this house says its prices include tax',
+    fix: { to: '/settings?tab=tax-basis', label: 'Check the answer in Settings' },
+  },
+  tax_unread: {
+    why: 'the till sent a tax figure, or a line’s tax rate, that could not be read',
+    fix: null,
+  },
+  tax_over_subtotal: {
+    why: 'the till’s tax was more than the check, or ran the other way from it',
+    fix: null,
+  },
+  no_zone: {
+    why: 'this house’s time zone isn’t set, so the day’s rate is not known',
+    fix: { to: '/settings?tab=time-zone', label: 'Set the time zone' },
+  },
+  unknown: {
+    why: 'recorded before the reason was kept',
+    fix: null,
+  },
+};
+
+/** A `{ reason: count }` map as the gateway sends it; anything else is empty. */
+export function countsByReasonFrom(v: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return out;
+  for (const [k, n] of Object.entries(v as Record<string, unknown>)) {
+    if (typeof n === 'number' && Number.isFinite(n) && n > 0) out[k] = n;
+  }
+  return out;
+}
+
+/** Each reason with its count and wording, most checks first; a reason this build does not know is said as not kept. */
+export function netNotRecordedReasonsSaid(
+  byReason: Record<string, number>,
+): Array<{ reason: string; n: number; why: string; fix: { to: string; label: string } | null }> {
+  const merged: Record<string, number> = {};
+  for (const [k, n] of Object.entries(byReason)) {
+    const key = k in NET_NOT_RECORDED_WORDS ? k : 'unknown';
+    merged[key] = (merged[key] ?? 0) + n;
+  }
+  const order = Object.keys(NET_NOT_RECORDED_WORDS);
+  return Object.entries(merged)
+    .sort(([a, x], [b, y]) => y - x || order.indexOf(a) - order.indexOf(b))
+    .map(([reason, n]) => ({ reason, n, ...NET_NOT_RECORDED_WORDS[reason] }));
+}
 
 /** One window of the stat cards' spend, as `getStats` sends it (F-1055). */
 export interface StatsSpendParts {
@@ -546,6 +614,7 @@ export function useMonthLedger(
           monthly_procurement_spend_by_currency?: unknown;
           monthly_procurement_unpriced?: unknown;
           monthly_net_not_recorded_by_tax?: unknown;
+          monthly_net_not_recorded_by_reason?: unknown;
           tax_switch_day?: unknown;
           monthly_checks_as_sent?: unknown;
         };
@@ -572,6 +641,7 @@ export function useMonthLedger(
           monthlyDaysCounted: num(res.monthly_days_counted),
           monthlyDaysBegun: num(res.monthly_days_begun),
           monthlyNetNotRecordedByTax: num(legacyTotals.monthly_net_not_recorded_by_tax),
+          monthlyNetNotRecordedByReason: countsByReasonFrom(legacyTotals.monthly_net_not_recorded_by_reason),
           taxSwitchDay: typeof legacyTotals.tax_switch_day === 'string' ? legacyTotals.tax_switch_day : null,
           monthlyChecksAsSent: num(legacyTotals.monthly_checks_as_sent),
           timezone: res.timezone,

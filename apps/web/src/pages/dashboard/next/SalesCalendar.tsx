@@ -42,6 +42,7 @@ import {
   barScaleOf,
   fromChecks,
   fromDays,
+  netNotRecordedReasonsSaid,
   spendMoney,
   spendPartsSaid,
   unpricedOf,
@@ -480,21 +481,33 @@ export function SalesCalendar({ restaurantId, alerts, zone = null, seesAmounts: 
           F-1590: asked before the first check as well, since one recorded before the answer stays as sent. */}
       {seesAmounts && (salesShown || ledger?.sales === 'no-register') && <TaxBasisSetupLine className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" />}
 
-      {/* F-1591: checks whose net the house's own tax settings left unrecorded
-          name that cause and where to fix it, not the till. */}
+      {/* F-1591: checks whose net was not recorded say so. F-1612 = F-1623:
+          counted by the reason kept on each check, each in its own words and
+          with its own fix, never all as "no tax rate was in force". */}
       {salesShown && (ledger?.monthlyNetNotRecordedByTax ?? 0) > 0 && (
-        <p className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" data-testid="dn-net-not-recorded-by-tax">
-          {DASH} {checksSaid(ledger?.monthlyNetNotRecordedByTax ?? 0)} this month{' '}
-          {ledger?.monthlyNetNotRecordedByTax === 1 ? 'has' : 'have'} no net sales: this house’s prices include tax,
-          and no tax rate of this house was in force for{' '}
-          {ledger?.monthlyNetNotRecordedByTax === 1 ? 'it' : 'them'} on the day.{' '}
-          <Link
-            to="/settings?tab=tax-basis"
-            className="not-italic text-inkm-1 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
-          >
-            Set the tax rates
-          </Link>
-        </p>
+        <div className="px-4 pt-2 text-[12px] italic text-inkm-4 sm:px-5" data-testid="dn-net-not-recorded-by-tax">
+          <p>
+            {DASH} {checksSaid(ledger?.monthlyNetNotRecordedByTax ?? 0)} this month{' '}
+            {ledger?.monthlyNetNotRecordedByTax === 1 ? 'has' : 'have'} no net sales: this house’s prices include tax,
+            and the tax could not be taken off.
+          </p>
+          {netNotRecordedReasonsSaid(ledger?.monthlyNetNotRecordedByReason ?? {}).map((r) => (
+            <p key={r.reason} className="pl-3" data-testid={`dn-net-not-recorded-${r.reason}`}>
+              {checksSaid(r.n)}: {r.why}.
+              {r.fix && (
+                <>
+                  {' '}
+                  <Link
+                    to={r.fix.to}
+                    className="not-italic text-inkm-1 underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal"
+                  >
+                    {r.fix.label}
+                  </Link>
+                </>
+              )}
+            </p>
+          ))}
+        </div>
       )}
 
       {/* F-1588 (ADR 0341 F2): a month that spans the switch says where it is. */}
