@@ -75,6 +75,8 @@ function fakeDb(tables: Record<string, Row[]>) {
       },
       order: () => q,
       limit: () => q,
+      // One page holds every row here, so a paged read stops after it.
+      range: () => q,
       insert: (p: any) => ((op = "insert"), (payload = p), q),
       update: (p: any) => ((op = "update"), (payload = p), q),
       upsert: (p: any, o: any) => (
@@ -821,12 +823,64 @@ describe("shelf done -- the not-found items post as counts of 0, through the one
     expect(inventory.recordSpotCount).not.toHaveBeenCalled();
   });
 
-  it("an offline 'done' that lands after the count ended still lands (ADR 0241)", async () => {
+  it("an offline 'done' taken before the count was stopped still lands when it arrives after (ADR 0241)", async () => {
     const { svc, id } = await opened();
     await svc.abandon(HOUSE, id, BOSS);
     await expect(
-      svc.shelfDone(HOUSE, id, "Shelf 2", ME, { clientDoneId: "late" }, no),
+      svc.shelfDone(
+        HOUSE,
+        id,
+        "Shelf 2",
+        ME,
+        { clientDoneId: "late", countedAgoMs: 600000 },
+        no,
+      ),
     ).resolves.toMatchObject({ done: true, sessionStatus: "abandoned" });
+  });
+
+  it("[REVERT-FAILS] a 'done' taken after the count was stopped zeroes nothing and closes nothing (F-1660)", async () => {
+    const { svc, id, db, inventory } = await opened();
+    await svc.abandon(HOUSE, id, BOSS);
+    db.tables.stock_count_sessions[0].abandoned_at = new Date(
+      Date.now() - 60000,
+    ).toISOString();
+    const late = svc.shelfDone(
+      HOUSE,
+      id,
+      "Shelf 1",
+      ME,
+      { clientDoneId: "after", zeroItemIds: ["item-yakut"] },
+      no,
+    );
+    await expect(late).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+    });
+    await expect(late).rejects.toThrow("This count was stopped");
+    expect(inventory.recordSpotCount).not.toHaveBeenCalled();
+    expect(
+      db.tables.stock_count_session_shelves.find(
+        (s) => s.location_id === "Shelf 1",
+      )?.done_at,
+    ).toBeFalsy();
+  });
+
+  it("[REVERT-FAILS] a 'done' taken after sign-off is refused too (F-1660)", async () => {
+    const { svc, id, inventory, db } = await opened();
+    Object.assign(db.tables.stock_count_sessions[0], {
+      status: "signed_off",
+      signed_off_at: new Date(Date.now() - 60000).toISOString(),
+    });
+    await expect(
+      svc.shelfDone(
+        HOUSE,
+        id,
+        "Shelf 1",
+        ME,
+        { clientDoneId: "after-sign", zeroItemIds: ["item-yakut"] },
+        no,
+      ),
+    ).rejects.toThrow("This count was signed off");
+    expect(inventory.recordSpotCount).not.toHaveBeenCalled();
   });
 });
 
@@ -859,6 +913,31 @@ describe("park -- an item the house does not carry is parked once, nothing creat
       }),
     ).rejects.toMatchObject({ status: HttpStatus.NOT_FOUND });
     expect(db.tables.restaurant_inventory).toHaveLength(2);
+  });
+
+  it("[REVERT-FAILS] parks a bottle found before the count was stopped, refuses one found after (F-1660)", async () => {
+    const { svc, db } = setup();
+    const s: any = await svc.open(HOUSE, BOSS, { kind: "full" });
+    await svc.abandon(HOUSE, s.id, BOSS);
+    db.tables.stock_count_sessions[0].abandoned_at = new Date(
+      Date.now() - 60000,
+    ).toISOString();
+    const body = {
+      locationId: "Shelf 1",
+      description: "Unlabelled red",
+      countedQty: 2,
+    };
+    await expect(
+      svc.park(HOUSE, s.id, ME, {
+        ...body,
+        clientLineId: "before",
+        countedAgoMs: 600000,
+      }),
+    ).resolves.toMatchObject({ sessionId: s.id });
+    await expect(
+      svc.park(HOUSE, s.id, ME, { ...body, clientLineId: "after" }),
+    ).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
+    expect(db.tables.stock_count_parked_lines).toHaveLength(1);
   });
 });
 
@@ -1208,5 +1287,120 @@ describe("F-1638 -- the floor is told when a count opens or a shelf is sent back
     inventory.askShelfRecount.mockResolvedValue({ round: 1, replayed: true });
     await svc.askRecount(HOUSE, s.id, "Bar", BOSS, { seenRound: 0 });
     expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+});
+
+describe("wave 108 -- count-whole items, a finished shelf, a parked open bottle", () => {
+  async function opened(kind = "closing") {
+    const t = setup();
+    const s: any = await t.svc.open(HOUSE, BOSS, { kind });
+    return { ...t, id: s.id as string };
+  }
+
+  it("[REVERT-FAILS] a 'done' never zeroes an item counted whole; it is named back and the shelf closes (F-1675)", async () => {
+    const { svc, id, inventory, db } = await opened();
+    await svc.claim(HOUSE, id, "Bar", ME, { isManager: no });
+    const out: any = await svc.shelfDone(
+      HOUSE,
+      id,
+      "Bar",
+      ME,
+      { clientDoneId: "done-w", zeroItemIds: ["item-raki"] },
+      no,
+    );
+    expect(inventory.recordSpotCount).not.toHaveBeenCalled();
+    expect(out).toMatchObject({ done: true, posted: [], refused: [] });
+    expect(out.skipped).toEqual([
+      { inventoryId: "item-raki", name: "Yeni Rakı" },
+    ]);
+    expect(out.message).toMatch(
+      /count them on Inventory, all at once: Yeni Rakı/,
+    );
+    expect(
+      db.tables.stock_count_session_shelves.find((s) => s.location_id === "Bar")
+        ?.done_by,
+    ).toBe(ME);
+  });
+
+  it("[REVERT-FAILS] a shelf someone finished is refused in words that say they finished it (F-1677)", async () => {
+    const { svc, id, db } = await opened();
+    // Ayşe took the shelf and finished it: done keeps her claim.
+    const row = db.tables.stock_count_session_shelves.find(
+      (s) => s.location_id === "Shelf 1",
+    )!;
+    Object.assign(row, {
+      claimed_by: AYSE,
+      claimed_at: "2026-10-14T21:00:00Z",
+      done_by: AYSE,
+      done_at: "2026-10-14T21:30:00Z",
+    });
+    const refusal = svc.shelfDone(
+      HOUSE,
+      id,
+      "Shelf 1",
+      ME,
+      { clientDoneId: "me-done", zeroItemIds: [] },
+      no,
+    );
+    await expect(refusal).rejects.toMatchObject({
+      status: HttpStatus.CONFLICT,
+    });
+    await expect(refusal).rejects.toThrow(
+      "Ayşe finished this shelf, so it was not closed again.",
+    );
+    await expect(refusal).rejects.not.toThrow(/is counting/);
+  });
+
+  it("[REVERT-FAILS] a parked bottle keeps its open bottle as ml, review gives tenths back, a match posts them (S234 owed)", async () => {
+    const { svc, id, db, inventory } = await opened();
+    await svc.park(HOUSE, id, ME, {
+      clientLineId: "park-open",
+      locationId: "Shelf 1",
+      description: "Unlabelled white",
+      countedQty: 1,
+      openTenths: 7,
+    });
+    expect(db.tables.stock_count_parked_lines[0]).toMatchObject({
+      counted_qty: 1,
+      counted_open_ml: 525,
+    });
+    const r: any = await svc.review(HOUSE, id, true);
+    expect(r.parked[0]).toMatchObject({
+      counted: 1,
+      openMl: 525,
+      openTenths: 7,
+    });
+
+    inventory.recordSpotCount.mockResolvedValue({ count: { countId: "c-9" } });
+    await svc.carryParked(HOUSE, id, r.parked[0].id, BOSS, {
+      inventoryId: "item-yakut",
+    });
+    expect(inventory.recordSpotCount).toHaveBeenCalledWith(
+      HOUSE,
+      "item-yakut",
+      expect.objectContaining({ countedQty: 1, openTenths: 7 }),
+    );
+  });
+
+  it("a parked bottle with no open bottle stays as it was; a bad amount is refused", async () => {
+    const { svc, id, db } = await opened();
+    await svc.park(HOUSE, id, ME, {
+      clientLineId: "park-none",
+      locationId: "Shelf 1",
+      description: "Unlabelled red",
+      countedQty: 2,
+    });
+    expect(db.tables.stock_count_parked_lines[0].counted_open_ml).toBeNull();
+    for (const bad of [-1, 2.5, 101, "a lot"]) {
+      await expect(
+        svc.park(HOUSE, id, ME, {
+          clientLineId: `park-bad-${bad}`,
+          locationId: "Shelf 1",
+          description: "Unlabelled red",
+          countedQty: 1,
+          openTenths: bad,
+        }),
+      ).rejects.toMatchObject({ status: HttpStatus.BAD_REQUEST });
+    }
   });
 });

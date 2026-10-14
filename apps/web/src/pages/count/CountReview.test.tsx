@@ -43,7 +43,21 @@ vi.mock('@/services/api/inventory', () => ({
   ]),
 }))
 
+// F-1658: the house's zone, as the bell reads it.
+const zone = vi.hoisted(() => ({ value: null as string | null }))
+vi.mock('@/lib/houseZone', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useHouseZone: () => zone.value,
+}))
+
+// F-1680: the house's way of writing figures and dates, read by the page.
+// The setup file stands the hook in for every page; here it is a spy, so the
+// page is seen to read its house's way of writing itself.
+const currencyHook = vi.hoisted(() => ({ useHouseCurrency: vi.fn(() => undefined) }))
+vi.mock('@/hooks/useHouseCurrency', () => currencyHook)
+
 import CountReview from './CountReview'
+import { setHouseLocale } from '@/lib/houseCurrency'
 
 const line = (over: Record<string, unknown> = {}) => ({
   countId: 'c1',
@@ -278,6 +292,32 @@ describe('the manager settles what the walk could not', () => {
     await waitFor(() => expect(api.signOffCountSession).toHaveBeenLastCalledWith('S1', true))
   })
 
+  it('[REVERT-FAILS] says when it was signed off on the house clock, in digits (F-1658)', async () => {
+    zone.value = 'Europe/Istanbul'
+    setHouseLocale('tr-TR')
+    try {
+      api.reviewCountSession.mockResolvedValue(
+        review(true, { status: 'signed_off', signedOffAt: '2026-10-12T22:00:00.000Z', signedOffBy: 'Selin' }),
+      )
+      show()
+      const said = await screen.findByText(/Signed off by Selin/)
+      // 01:00 on 13 October in Istanbul; the device (New York) is still on the 12th.
+      expect(said.textContent).toContain(
+        new Date('2026-10-12T22:00:00.000Z').toLocaleString('tr-TR', {
+          day: 'numeric',
+          month: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          timeZone: 'Europe/Istanbul',
+        }),
+      )
+      expect(said.textContent).not.toMatch(/Eki/)
+    } finally {
+      zone.value = null
+      setHouseLocale(null)
+    }
+  })
+
   it('lists the lines that came in after sign-off, and offers no act on an ended count', async () => {
     api.reviewCountSession.mockResolvedValue(
       review(true, {
@@ -319,5 +359,37 @@ describe('stopping a count from the review (F-1617)', () => {
     show()
     await screen.findByText('Not counted', { selector: 'h2' })
     expect(screen.queryByRole('button', { name: 'Stop this count' })).toBeNull()
+  })
+})
+
+describe('wave 108: the house\'s way of writing, a parked open bottle', () => {
+  it('[REVERT-FAILS] reads this house\'s way of writing itself, so a sheet or a figure never uses the last house\'s (F-1680)', async () => {
+    currencyHook.useHouseCurrency.mockClear()
+    api.reviewCountSession.mockResolvedValue(review(true))
+    show()
+    await screen.findByText('Not counted', { selector: 'h2' })
+    expect(currencyHook.useHouseCurrency).toHaveBeenCalled()
+  })
+
+  it('[REVERT-FAILS] shows a parked bottle\'s open bottle in tenths (S234 owed)', async () => {
+    api.reviewCountSession.mockResolvedValue(
+      review(true, {
+        parked: [
+          {
+            id: 'p-open',
+            locationId: 'L1',
+            shelf: 'Back bar',
+            description: 'Unlabelled white',
+            counted: 1,
+            openMl: 525,
+            openTenths: 7,
+            countedBy: 'Deniz',
+            countedAt: '2026-10-12T21:15:00.000Z',
+          },
+        ],
+      }),
+    )
+    show()
+    expect(await screen.findByText(/1 bottle, 7\/10 of a bottle open on Back bar/)).toBeTruthy()
   })
 })

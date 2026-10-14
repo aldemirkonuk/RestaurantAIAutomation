@@ -41,7 +41,9 @@ import {
   type ReviewLine,
 } from '@/services/api/countSessions'
 import { getInventory } from '@/services/api/inventory'
-import { formatHouseMoney } from '@/lib/houseCurrency'
+import { formatHouseMoney, getHouseLocale } from '@/lib/houseCurrency'
+import { useHouseZone } from '@/lib/houseZone'
+import { useHouseCurrency } from '@/hooks/useHouseCurrency'
 import { findItems, kindWords, tenthsWords, type FindableItem } from './countWalkModel'
 import { CountSheetPanel } from './CountSheetPanel'
 import { CountHeldElsewhere, CountHouseLine, StopCount } from './CountHouse'
@@ -99,12 +101,23 @@ function moneyWords(value: number | null | undefined, currency: string | null): 
   return formatHouseMoney(value, currency)
 }
 
-function timeWords(iso: string | null): string {
+/**
+ * On the house's clock and in its way of writing a date, in digits so the
+ * words stay English: "11/10, 23:40", never "11 Eki" (F-1658, as the bell's).
+ */
+function timeWords(iso: string | null, zone: string | null): string {
   if (!iso) return ''
   const d = new Date(iso)
-  return Number.isNaN(d.getTime())
-    ? ''
-    : d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  if (Number.isNaN(d.getTime())) return ''
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }
+  if (zone) {
+    try {
+      return d.toLocaleString(getHouseLocale(), { ...opts, timeZone: zone })
+    } catch {
+      /* a zone this browser cannot read: the device's clock stands in */
+    }
+  }
+  return d.toLocaleString(getHouseLocale(), opts)
 }
 
 /**
@@ -145,6 +158,11 @@ export default function CountReview() {
   const { sessionId = '' } = useParams()
   const navigate = useNavigate()
   const { activeRole, activeRestaurantId } = useAuth()
+  const zone = useHouseZone() ?? null
+  // F-1680: /count sits outside the shell, so this page reads the house's way
+  // of writing figures and dates itself -- the money below and the paper
+  // sheet's dates (CountSheetPanel) -- or a switched-from house's would stand.
+  useHouseCurrency()
   const manager = activeRole === 'owner' || activeRole === 'manager'
   const [review, setReview] = useState<Review | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -228,7 +246,7 @@ export default function CountReview() {
       )}
       <p className="text-sm text-inkm-2">
         {review.status === 'signed_off'
-          ? `Signed off${review.signedOffBy ? ` by ${review.signedOffBy}` : ''} ${timeWords(review.signedOffAt)}`
+          ? `Signed off${review.signedOffBy ? ` by ${review.signedOffBy}` : ''} ${timeWords(review.signedOffAt, zone)}`
           : review.status === 'abandoned'
             ? 'This count was stopped. The counts it made stay.'
             : `${review.shelves.length - review.notCounted.length} of ${review.shelves.length} shelves done`}
@@ -329,7 +347,7 @@ export default function CountReview() {
               <li key={p.id} className={`${CARD} space-y-2`}>
                 <p className="font-semibold">{p.description}</p>
                 <p className="text-sm text-inkm-2">
-                  {countedWords(p.counted, { openMl: null })} on {p.shelf}
+                  {countedWords(p.counted, { openMl: p.openMl ?? null, openTenths: p.openTenths ?? null })} on {p.shelf}
                   {byWords(p.countedBy, p.paperBy)}
                 </p>
                 {canAct &&

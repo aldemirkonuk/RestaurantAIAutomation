@@ -12,7 +12,11 @@ import { NotificationsService } from "../notifications/notifications.service";
 import { InventoryService } from "./inventory.service";
 import { zoneLabel } from "../cellar/zones.service";
 import { FACT_TIME_TRUST_MS } from "../common/fact-time";
-import { STAND_IN_BOTTLE_ML } from "./stock-count-result";
+import {
+  countEndedBefore,
+  openTenthsToMl,
+  STAND_IN_BOTTLE_ML,
+} from "./stock-count-result";
 import { readHouseZone } from "../common/house-day";
 import {
   CountPeriodRefused,
@@ -189,6 +193,15 @@ export function countZonesOf(
         zoneLabel(a.l).localeCompare(zoneLabel(b.l)),
     )
     .map(({ l, shelves }) => ({ id: l.id, name: zoneLabel(l), shelves }));
+}
+
+/**
+ * A parked line's open bottle in tenths: it was stored on the 750 ml stand-in
+ * bottle (park), so this gives back what staff entered. Null: not counted.
+ */
+export function parkedTenths(openMl: number | null | undefined): number | null {
+  if (openMl == null) return null;
+  return Math.round((Number(openMl) * 10) / STAND_IN_BOTTLE_ML);
 }
 
 /** A person may say "done" for a shelf, given who holds its claim. */
@@ -882,8 +895,10 @@ export class CountSessionsService {
    * marked done only when every zero landed. A retry replays: each zero's key
    * is `count:<item>:shelf-done:<clientDoneId>`.
    *
-   * Accepted on an ended count too: an offline change is never dropped for
-   * arriving late (ADR 0241); review lists it as arriving after sign-off.
+   * Accepted on an ended count when it was done before the count was stopped
+   * or signed off: an offline change is never dropped for arriving late (ADR
+   * 0241); review lists it as arriving after sign-off. One done after the end
+   * is refused, so nobody zeroes a shelf of an ended count (F-1660).
    */
   async shelfDone(
     house: string,
@@ -923,6 +938,8 @@ export class CountSessionsService {
     const at = countedMoment(dto?.countedAgoMs);
 
     const session = await this.session(house, sessionId);
+    const ended = countEndedBefore(session, at ?? new Date());
+    if (ended) throw new HttpException(ended, HttpStatus.CONFLICT);
     const shelf = await this.shelf(house, sessionId, locationId);
     // F-1544 lane 4: a "done" from before a manager sent the shelf back is
     // the old pass. It posts no zeros and does not close the shelf again.
@@ -952,11 +969,15 @@ export class CountSessionsService {
       );
     }
     if (!mayCloseShelf(shelf.claimed_by, userId, manager)) {
-      const who = (await this.personNames([shelf.claimed_by as string])).get(
-        shelf.claimed_by as string,
-      );
+      // F-1677: a shelf already done keeps its finisher's claim, so the
+      // refusal names who finished it, not someone "counting" it now.
+      const finishedBy = shelf.done_at ? shelf.done_by : null;
+      const whoId = (finishedBy ?? shelf.claimed_by) as string;
+      const who = (await this.personNames([whoId])).get(whoId);
       throw new HttpException(
-        `${who ?? "Someone else"} is counting this shelf, so it was not closed.`,
+        finishedBy
+          ? `${who ?? "Someone else"} finished this shelf, so it was not closed again. A manager can send it back to be counted again.`
+          : `${who ?? "Someone else"} is counting this shelf, so it was not closed.`,
         HttpStatus.CONFLICT,
       );
     }
@@ -1015,21 +1036,43 @@ export class CountSessionsService {
         (id) => !expected.has(id) && !landed.has(id),
       );
     }
-    const toZero = zeroItemIds.filter((id) => !offBooks.includes(id));
+    // F-1675 (ADR 0343 §4): an item counted whole is never zeroed by a shelf
+    // done -- the count writer refuses a shelf line of it, and a refusal here
+    // would leave the shelf "count again" for good, since the phone resends
+    // its list. One the phone's list did not yet mark is named back instead.
+    const onBooks = zeroItemIds.filter((id) => !offBooks.includes(id));
+    const wholeOnly = await this.itemsCountedWhole(house, onBooks);
+    const toZero = onBooks.filter((id) => !wholeOnly.has(id));
     const skipped: Array<{ inventoryId: string; name: string }> = [];
-    if (offBooks.length) {
+    const whole: Array<{ inventoryId: string; name: string }> = [];
+    if (offBooks.length || wholeOnly.size) {
       // House-scoped: an id of another house gets no name, only the plain words.
-      const names = await this.itemNames(house, offBooks);
+      const names = await this.itemNames(house, [...offBooks, ...wholeOnly]);
       for (const id of offBooks) {
         skipped.push({
           inventoryId: id,
           name: names.get(id)?.name ?? "An item not on this shelf",
         });
       }
+      for (const id of wholeOnly) {
+        whole.push({
+          inventoryId: id,
+          name: names.get(id)?.name ?? "An item not on this shelf",
+        });
+      }
     }
-    const skippedWords = skipped.length
-      ? `Not counted, no longer on this shelf's books: ${skipped.map((x) => x.name).join(", ")}.`
-      : undefined;
+    const skippedWords =
+      [
+        skipped.length
+          ? `Not counted, no longer on this shelf's books: ${skipped.map((x) => x.name).join(", ")}.`
+          : "",
+        whole.length
+          ? `Not counted here, some bottles sit on no shelf, so count them on Inventory, all at once: ${whole.map((x) => x.name).join(", ")}.`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined;
+    skipped.push(...whole);
 
     // ADR 0286: a "done" taken more than 72 h ago is kept only on an owner's
     // or a manager's word (recordSpotCount refuses it otherwise). Asked only
@@ -1154,6 +1197,8 @@ export class CountSessionsService {
       locationId?: unknown;
       description?: unknown;
       countedQty?: unknown;
+      /** S234 owed: the open bottle, in tenths, as staff enter it (F3 a). */
+      openTenths?: unknown;
       countedAgoMs?: unknown;
     },
   ) {
@@ -1180,10 +1225,26 @@ export class CountSessionsService {
         HttpStatus.BAD_REQUEST,
       );
     }
+    // S234 owed: the open bottle is stored as ml, as a walk line's is (ADR
+    // 0343 §6), on the 750 ml stand-in -- a bottle the house does not carry
+    // has no size of its own. Matching it in review sends the tenths back
+    // through the one writer, on the matched item's own bottle.
+    const namesOpen = dto?.openTenths != null;
+    const openMl = namesOpen
+      ? openTenthsToMl(dto.openTenths, STAND_IN_BOTTLE_ML)
+      : null;
+    if (namesOpen && (openMl === null || Number(dto.openTenths) > 100)) {
+      throw new HttpException(
+        "What is left in the open bottle could not be read, so it was not saved.",
+        HttpStatus.BAD_REQUEST,
+      );
+    }
     const locationId =
       typeof dto?.locationId === "string" ? dto.locationId : "";
     const at = countedMoment(dto?.countedAgoMs) ?? new Date();
-    await this.session(house, sessionId);
+    // F-1660: as a shelf done, a bottle found after the count ended is refused.
+    const ended = countEndedBefore(await this.session(house, sessionId), at);
+    if (ended) throw new HttpException(ended, HttpStatus.CONFLICT);
     await this.shelf(house, sessionId, locationId);
 
     const client = this.dbService.getClient();
@@ -1194,6 +1255,7 @@ export class CountSessionsService {
         location_id: locationId,
         description: description.slice(0, 500),
         counted_qty: qty,
+        counted_open_ml: openMl,
         counted_by: userId,
         counted_at: at.toISOString(),
         client_line_id: clientLineId,
@@ -1461,7 +1523,7 @@ export class CountSessionsService {
     const parkedRead = await client
       .from("stock_count_parked_lines")
       .select(
-        "id, location_id, description, counted_qty, counted_by, counted_at, client_line_id",
+        "id, location_id, description, counted_qty, counted_open_ml, counted_by, counted_at, client_line_id",
       )
       .eq("restaurant_id", house)
       .eq("session_id", sessionId)
@@ -1474,6 +1536,7 @@ export class CountSessionsService {
       location_id: string;
       description: string;
       counted_qty: number;
+      counted_open_ml?: number | null;
       counted_by: string | null;
       counted_at: string;
       client_line_id?: string | null;
@@ -1834,6 +1897,9 @@ export class CountSessionsService {
         shelf: placeName(p.location_id),
         description: p.description,
         counted: p.counted_qty,
+        // On the stand-in bottle it was stored on (park), so whole tenths.
+        openMl: p.counted_open_ml ?? null,
+        openTenths: parkedTenths(p.counted_open_ml),
         countedBy: person(p.counted_by),
         ...onPaper(p.client_line_id, person(p.counted_by)),
         countedAt: p.counted_at,
@@ -1984,7 +2050,7 @@ export class CountSessionsService {
       .getClient()
       .from("stock_count_parked_lines")
       .select(
-        "id, location_id, counted_qty, counted_by, counted_at, state, resolved_count_id",
+        "id, location_id, counted_qty, counted_open_ml, counted_by, counted_at, state, resolved_count_id",
       )
       .eq("restaurant_id", house)
       .eq("session_id", sessionId)
@@ -2001,6 +2067,7 @@ export class CountSessionsService {
       id: string;
       location_id: string;
       counted_qty: number;
+      counted_open_ml?: number | null;
       counted_by: string | null;
       counted_at: string;
       state: "parked" | "carried" | "dropped";
@@ -2057,6 +2124,10 @@ export class CountSessionsService {
       opening: session.kind === "opening",
       sessionId,
       role: "manager",
+      // S234 owed: the open bottle as tenths, sized on the matched item.
+      ...(parkedTenths(p.counted_open_ml) != null
+        ? { openTenths: parkedTenths(p.counted_open_ml) as number }
+        : {}),
     });
     const countId = out?.count?.countId ?? null;
     const upd = await this.dbService
@@ -2293,6 +2364,8 @@ export interface CountReview {
     shelf: string;
     description: string;
     counted: number;
+    openMl: number | null;
+    openTenths: number | null;
     countedBy: string | null;
     paperBy?: string;
     countedAt: string;

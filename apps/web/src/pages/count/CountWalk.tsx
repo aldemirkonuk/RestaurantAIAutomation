@@ -114,6 +114,8 @@ export default function CountWalk() {
   const [notice, setNotice] = useState<string | null>(null)
   const [takeOver, setTakeOver] = useState<string | null>(null)
   const [provisional, setProvisional] = useState<Record<string, boolean>>({})
+  // F-1677: a shelf someone else finished, asked about before it is counted again.
+  const [recountAsk, setRecountAsk] = useState<string | null>(null)
 
   const setWalk = useCallback(
     (fn: (w: WalkRecord) => WalkRecord) =>
@@ -240,12 +242,31 @@ export default function CountWalk() {
   const openShelf = async (s: CountShelf, force = false) => {
     setNotice(null)
     setTakeOver(null)
-    if (ended || s.claimedByMe || s.done) {
+    setRecountAsk(null)
+    // F-1677: someone else finished this shelf. Say who, and ask first: a
+    // second count of what they counted goes to the manager to pick.
+    if (s.done && !s.claimedByMe && !walk.dones[s.locationId] && !ended && !lockedOut) {
+      setRecountAsk(s.locationId)
+      return
+    }
+    if (s.claimedByMe || s.done) {
       setShelfId(s.locationId)
       return
     }
+    // F-1660: an ended count is not counted any more. A shelf this phone
+    // already worked opens to show what it saved; no other shelf opens.
+    if (ended) {
+      const worked =
+        Object.values(walk.lines).some((l) => l.locationId === s.locationId) ||
+        !!walk.dones[s.locationId] ||
+        walk.parked.some((p) => p.locationId === s.locationId)
+      if (worked) setShelfId(s.locationId)
+      else setNotice('This count has ended, so this shelf is not counted now.')
+      return
+    }
     if (!navigator.onLine) {
-      // A claim needs the signal; taken here, the others cannot see it yet.
+      // A claim needs the signal. Taken here it is not held for anyone, and
+      // nothing sends it later (F-1676): the page says so, not that it will.
       setProvisional((p) => ({ ...p, [s.locationId]: true }))
       setShelfId(s.locationId)
       return
@@ -303,7 +324,7 @@ export default function CountWalk() {
           walk={walk}
           setWalk={setWalk}
           provisional={!!provisional[shelf.locationId]}
-          lockedOut={lockedOut}
+          lockedOut={lockedOut || ended}
           reload={() => void load()}
           onFinished={(said) => {
             const next = nextShelf(session.shelves, walk, shelf.locationId)
@@ -353,7 +374,8 @@ export default function CountWalk() {
         )}
         {ended && (
           <p className="rounded-xl bg-white/5 px-3 py-2 text-sm text-inkm-2">
-            This count has ended. Anything saved on this phone is still sent.
+            This count has ended, so nothing more is counted on it. What this phone saved before it ended is
+            still sent.
           </p>
         )}
         {lockedOut && (
@@ -366,6 +388,29 @@ export default function CountWalk() {
             {notice}
           </p>
         )}
+        {recountAsk &&
+          (() => {
+            const s = session.shelves.find((x) => x.locationId === recountAsk)
+            if (!s) return null
+            return (
+              <div role="status" className="space-y-2 rounded-xl bg-white/10 px-3 py-2 text-sm text-inkm-1">
+                <p>
+                  {s.doneBy ?? 'Someone'} finished {s.name}. Anything you count again there goes to the manager to
+                  pick.
+                </p>
+                <button
+                  type="button"
+                  className={`${QUIET} w-full`}
+                  onClick={() => {
+                    setRecountAsk(null)
+                    setShelfId(s.locationId)
+                  }}
+                >
+                  Count it again
+                </button>
+              </div>
+            )
+          })()}
         {takeOver && (
           <button
             type="button"
@@ -566,6 +611,11 @@ function ShelfWalk({
   }
 
   const untouched = untouchedOnShelf(shelf, walk)
+  // F-1675: an item this count already knows is counted whole stays so when
+  // Find adds it to a shelf; one it does not know is refused by the house.
+  const countedWhole = new Set(
+    session.shelves.flatMap((s) => s.items.filter((i) => i.countWhole).map((i) => i.inventoryId)),
+  )
 
   const sayDone = async () => {
     setError(null)
@@ -638,6 +688,7 @@ function ShelfWalk({
     return (
       <FindBottle
         house={house}
+        countedWhole={countedWhole}
         onPick={(it) => {
           setWalk((w) => ({
             ...w,
@@ -659,12 +710,18 @@ function ShelfWalk({
     return (
       <ParkBottle
         onBack={() => setMode('count')}
-        onPark={async (description, countedQty) => {
+        onPark={async (description, countedQty, openTenths) => {
           const clientLineId = newWalkId()
           const out = await submitParkedLine({
             restaurantId: house || undefined,
             sessionId: session.id,
-            body: { clientLineId, locationId: shelf.locationId, description, countedQty },
+            body: {
+              clientLineId,
+              locationId: shelf.locationId,
+              description,
+              countedQty,
+              ...(openTenths != null ? { openTenths } : {}),
+            },
           })
           setWalk((w) => ({
             ...w,
@@ -690,7 +747,13 @@ function ShelfWalk({
     <div className="space-y-3 px-4 py-4 pb-28">
       {provisional && (
         <p className="rounded-xl bg-white/5 px-3 py-2 text-sm text-inkm-2">
-          Taken on this phone only. The others see it once there is signal.
+          No signal, so this shelf is not held for you: the others are not told you are counting it. If someone
+          else counts it too, the manager picks.
+        </p>
+      )}
+      {shelf.done && !shelf.claimedByMe && !done && !lockedOut && (
+        <p className="rounded-xl bg-white/5 px-3 py-2 text-sm text-inkm-2">
+          {shelf.doneBy ?? 'Someone'} finished this shelf. Anything you count again here goes to the manager to pick.
         </p>
       )}
       {done?.state === 'refused' && (
@@ -843,11 +906,13 @@ function CountItem({
 
 function FindBottle({
   house,
+  countedWhole,
   onPick,
   onNotListed,
   onBack,
 }: {
   house: string
+  countedWhole: Set<string>
   onPick: (item: CountShelfItem) => void
   onNotListed: () => void
   onBack: () => void
@@ -889,6 +954,9 @@ function FindBottle({
         className={`${TAP} w-full rounded-xl bg-paper-1 px-4 text-base text-inkm-1`}
       />
       {failed && <p className="text-sm text-amber-300">The list could not be read. Check the signal.</p>}
+      <p className="text-sm text-inkm-2">
+        An item with some bottles on no shelf is counted on Inventory, all at once, not here.
+      </p>
       <ul className="space-y-2">
         {hits.map((h) => (
           <li key={h.id}>
@@ -901,7 +969,7 @@ function FindBottle({
                   name: h.name,
                   producer: h.producer ?? '',
                   vintage: h.vintage == null ? null : String(h.vintage),
-                  countWhole: false,
+                  countWhole: countedWhole.has(h.id),
                 })
               }
             >
@@ -925,11 +993,13 @@ function ParkBottle({
   onPark,
   onBack,
 }: {
-  onPark: (description: string, countedQty: number) => Promise<void>
+  onPark: (description: string, countedQty: number, openTenths: number | null) => Promise<void>
   onBack: () => void
 }) {
   const [label, setLabel] = useState('')
   const [qty, setQty] = useState(1)
+  // S234 owed: the open bottle too, in tenths, as on a counted item.
+  const [tenths, setTenths] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   return (
@@ -948,6 +1018,7 @@ function ParkBottle({
         value={qty === 1 ? '1 bottle' : `${qty} bottles`}
         onStep={(by) => setQty((q) => stepSealed(q, by))}
       />
+      <Stepper label="Open bottle" value={tenthsWords(tenths)} onStep={(by) => setTenths((t) => stepTenths(t, by))} />
       {error && (
         <p role="alert" className="text-sm text-amber-300">
           {error}
@@ -961,7 +1032,7 @@ function ParkBottle({
           setBusy(true)
           setError(null)
           try {
-            await onPark(label.trim(), qty)
+            await onPark(label.trim(), qty, tenths)
           } catch (err) {
             setError(saidBy(err, 'It could not be saved. Try again.'))
             setBusy(false)

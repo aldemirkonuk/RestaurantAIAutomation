@@ -49,6 +49,14 @@ vi.mock('../../lib/mudavym/useBellBook', () => ({
   }),
 }));
 
+// F-1658: the house's zone, as the bell reads it.
+const zone = vi.hoisted(() => ({ value: null as string | null }));
+vi.mock('@/lib/houseZone', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useHouseZone: () => zone.value,
+}));
+
+import { setHouseLocale } from '@/lib/houseCurrency';
 import {
   AWAITING_APPROVAL,
   ApproveFromBellPanel,
@@ -125,15 +133,35 @@ describe('the figures are the order’s, read now', () => {
     expect(figures).toHaveTextContent('Kavaklıdere');
     // The stated day, not the day before: tests run in New York, where
     // `new Date('2026-09-11')` is still 10 Sept (F-569).
-    expect(figures).toHaveTextContent(
-      new Date(Date.UTC(2026, 8, 11)).toLocaleDateString(undefined, { timeZone: 'UTC' }),
-    );
-    expect(figures).not.toHaveTextContent(
-      new Date(Date.UTC(2026, 8, 10)).toLocaleDateString(undefined, { timeZone: 'UTC' }),
-    );
+    const day = { month: 'numeric', day: 'numeric', timeZone: 'UTC' } as const;
+    expect(figures).toHaveTextContent(new Date(Date.UTC(2026, 8, 11)).toLocaleDateString('en-US', day));
+    expect(figures).not.toHaveTextContent(new Date(Date.UTC(2026, 8, 10)).toLocaleDateString('en-US', day));
     expect(screen.getByTestId('bell-approve-provenance')).toHaveTextContent(
       /Read from the order itself just now/,
     );
+  });
+
+  it('[REVERT-FAILS] dates the order on the house clock, in digits, in the house\'s way (F-1658)', async () => {
+    zone.value = 'Europe/Istanbul';
+    setHouseLocale('tr-TR');
+    try {
+      // 01:30 on 1 September in Istanbul; the device (New York) is on 31 August.
+      api.get.mockResolvedValue({ data: { ...ORDER, requestedAt: '2026-08-31T22:30:00.000Z' } });
+      draw();
+      const said = await screen.findByTestId('bell-approve-provenance');
+      const raised = new Date('2026-08-31T22:30:00.000Z').toLocaleDateString('tr-TR', {
+        month: 'numeric',
+        day: 'numeric',
+        timeZone: 'Europe/Istanbul',
+      });
+      expect(said).toHaveTextContent(`The order was raised ${raised}.`);
+      expect(await screen.findByTestId('bell-approve-figures')).toHaveTextContent(
+        new Date(Date.UTC(2026, 8, 11)).toLocaleDateString('tr-TR', { month: 'numeric', day: 'numeric', timeZone: 'UTC' }),
+      );
+    } finally {
+      zone.value = null;
+      setHouseLocale(null);
+    }
   });
 
   it('shows an absent price as a dash and says no price is recorded', async () => {

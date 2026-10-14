@@ -161,7 +161,7 @@ export interface QueuedShelfDone {
 export interface QueuedParkedLine {
   restaurantId?: string
   sessionId: string
-  body: { clientLineId: string; locationId: string; description: string; countedQty: number }
+  body: { clientLineId: string; locationId: string; description: string; countedQty: number; openTenths?: number }
   countedAt?: string
 }
 

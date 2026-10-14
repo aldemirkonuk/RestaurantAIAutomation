@@ -64,6 +64,32 @@ export interface StockCountRecord {
 export const STAND_IN_BOTTLE_ML = 750;
 
 /**
+ * F-1660: a count act (a line, a park, a shelf done) taken after a manager
+ * stopped or signed off the count is refused. One taken before it still lands
+ * whenever it arrives -- an offline act is never dropped for arriving late
+ * (ADR 0241). `at` is when the act was taken (its countedAgoMs, or now).
+ * Returns the refusal's words, or null when the act may land. An ended count
+ * with no end time on record cannot show the act came first, so it refuses.
+ */
+export function countEndedBefore(
+  session: {
+    status?: string | null;
+    signed_off_at?: string | null;
+    abandoned_at?: string | null;
+  },
+  at: Date,
+): string | null {
+  if (!session.status || session.status === "open") return null;
+  const stopped = session.status === "abandoned";
+  const endIso = stopped ? session.abandoned_at : session.signed_off_at;
+  const end = endIso ? Date.parse(endIso) : NaN;
+  if (Number.isFinite(end) && at.getTime() <= end) return null;
+  return stopped
+    ? "This count was stopped before this was counted, so nothing was saved."
+    : "This count was signed off before this was counted, so nothing was saved.";
+}
+
+/**
  * F-1544 lane 2 (F3 a): staff say what is left in the open bottles in tenths
  * of a bottle -- 7 is seven tenths of one bottle, 13 is one and three tenths
  * across the open bottles of that item on that shelf -- and the one count

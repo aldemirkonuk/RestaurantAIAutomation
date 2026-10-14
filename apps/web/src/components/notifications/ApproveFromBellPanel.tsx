@@ -55,6 +55,8 @@ import { Panel } from '@/components/mudavym';
 import { SealedApproveDie } from '@/components/orders/SealedApproveDie';
 import { apiClient, getErrorMessage } from '@/services/api/client';
 import { formatMoney } from '@/lib/currency';
+import { getHouseLocale } from '@/lib/houseCurrency';
+import { useHouseZone } from '@/lib/houseZone';
 
 const EM = '—';
 
@@ -172,6 +174,25 @@ export function approvableOrderIdOf(n: { type?: string | null; metadata?: unknow
 }
 
 /** Money in the order's own currency, or a dash; never a bare number. */
+/**
+ * A date on the house's day and in its way of writing one, in digits so the
+ * words stay English: "11/10", never "11 Eki" (F-1658, as the bell's).
+ * `zone` 'UTC' reads a date-only value as the calendar day it names.
+ */
+function dayWords(iso: string, zone: string | null): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return EM;
+  const opts: Intl.DateTimeFormatOptions = { month: 'numeric', day: 'numeric' };
+  if (zone) {
+    try {
+      return d.toLocaleDateString(getHouseLocale(), { ...opts, timeZone: zone });
+    } catch {
+      /* a zone this browser cannot read: the device's clock stands in */
+    }
+  }
+  return d.toLocaleDateString(getHouseLocale(), opts);
+}
+
 function money(v: number | null | undefined, currency: string | null | undefined): string {
   return typeof v === 'number' && Number.isFinite(v) ? formatMoney(v, currency ?? null) : EM;
 }
@@ -193,6 +214,7 @@ export function ApproveFromBellPanel({
 }: ApproveFromBellPanelProps) {
   const [register, setRegister] = useState<OrderRegister>({ state: 'reading' });
   const [done, setDone] = useState<string | null>(null);
+  const zone = useHouseZone() ?? null;
 
   const read = useCallback(async (id: string) => {
     setRegister({ state: 'reading' });
@@ -271,7 +293,7 @@ export function ApproveFromBellPanel({
             [
               'Delivery',
               order.expectedDeliveryDate
-                ? new Date(order.expectedDeliveryDate).toLocaleDateString(undefined, { timeZone: 'UTC' })
+                ? dayWords(order.expectedDeliveryDate, 'UTC')
                 : `${EM} — no date is recorded`,
             ],
             ['Vendor', order.providerName ?? EM],
@@ -291,7 +313,7 @@ export function ApproveFromBellPanel({
           Read from the order itself just now, not from the bell’s line — a notice is a sentence
           from the moment it was written.
           {order.requestedAt
-            ? ` The order was raised ${new Date(order.requestedAt).toLocaleDateString()}.`
+            ? ` The order was raised ${dayWords(order.requestedAt, zone)}.`
             : ' The order carries no raised date.'}
         </p>
       )}

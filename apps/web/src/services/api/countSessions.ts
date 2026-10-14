@@ -181,6 +181,8 @@ export async function parkCountLine(
     locationId: string;
     description: string;
     countedQty: number;
+    /** S234 owed: the open bottle in tenths; left out when not counted. */
+    openTenths?: number;
     countedAgoMs?: number;
   },
 ): Promise<{ id: string; sessionId: string; state: string }> {
@@ -262,6 +264,9 @@ export interface CountReview {
     shelf: string;
     description: string;
     counted: number;
+    /** S234 owed: the open bottle, in ml and in the tenths staff entered. */
+    openMl?: number | null;
+    openTenths?: number | null;
     countedBy: string | null;
     paperBy?: string;
     countedAt: string;

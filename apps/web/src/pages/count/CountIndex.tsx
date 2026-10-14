@@ -34,6 +34,9 @@ import {
   type CountZone,
   type EndedCountSession,
 } from '@/services/api/countSessions'
+import { getHouseLocale } from '@/lib/houseCurrency'
+import { useHouseZone } from '@/lib/houseZone'
+import { useHouseCurrency } from '@/hooks/useHouseCurrency'
 import { kindWords, newWalkId } from './countWalkModel'
 import { CountHouseLine } from './CountHouse'
 
@@ -45,13 +48,25 @@ function listWords(names: string[]): string {
   return names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
 }
 
-/** "14 Oct, 01:10", or nothing when the moment is unknown. */
-function endedWords(iso: string | null): string {
+/**
+ * On the house's clock and in its way of writing a date, in digits so the
+ * words stay English -- "14.10 01:10", never the phone's zone or "14 Eki"
+ * (F-1679, F-1682: as count review's sign-off time, F-1658). Nothing when the
+ * moment is unknown.
+ */
+function endedWords(iso: string | null, zone: string | null): string {
   if (!iso) return ''
   const d = new Date(iso)
-  return Number.isNaN(d.getTime())
-    ? ''
-    : d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  if (Number.isNaN(d.getTime())) return ''
+  const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }
+  if (zone) {
+    try {
+      return d.toLocaleString(getHouseLocale(), { ...opts, timeZone: zone })
+    } catch {
+      /* a zone this browser cannot read: the device's clock stands in */
+    }
+  }
+  return d.toLocaleString(getHouseLocale(), opts)
 }
 
 /** What a start covers, said before it starts (F-1617); `places` narrows it (S227 owed). */
@@ -75,6 +90,10 @@ export default function CountIndex() {
   const navigate = useNavigate()
   const { activeRole, availableRestaurants, activeRestaurantId } = useAuth()
   const manager = activeRole === 'owner' || activeRole === 'manager'
+  // F-1680: /count sits outside the shell, so nothing else reads this house's
+  // way of writing figures and dates; after a house switch the last one stood.
+  useHouseCurrency()
+  const zone = useHouseZone() ?? null
   const [sessions, setSessions] = useState<CountSessionSummary[] | null>(null)
   const [ended, setEnded] = useState<EndedCountSession[]>([])
   const [zones, setZones] = useState<CountZone[]>([])
@@ -305,7 +324,7 @@ export default function CountIndex() {
                     <span className="block text-sm text-inkm-2">
                       {e.status === 'signed_off' ? 'Signed off' : 'Stopped'}
                       {e.endedBy ? ` by ${e.endedBy}` : ''}
-                      {e.endedAt ? `, ${endedWords(e.endedAt)}` : ''}
+                      {e.endedAt ? `, ${endedWords(e.endedAt, zone)}` : ''}
                     </span>
                   </button>
                 </li>
