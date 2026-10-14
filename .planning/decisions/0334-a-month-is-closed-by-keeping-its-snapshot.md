@@ -30,7 +30,7 @@ The founder, 2026-10-11, verbatim: *"Then option C it is for F of 1013."*
 
 1. **The snapshot is the month-end exports** (the till month and the existing report cuttings for that `window_month`), stored once and never rewritten. Closing twice keeps the first snapshot and says the month is already closed.
 2. **Only an owner or a manager closes a month.** The close is recorded in the house's logs.
-3. **Later changes are read, not blocked.** A row dated inside the closed month and written after the close shows up on that month's "changed after close" list, next to the snapshot figure and today's figure.
+3. **Later changes are read, not blocked.** A row dated inside the closed month and written after the close shows up on that month's "changed after close" list, next to the snapshot figure and today's figure. [Amended 2026-10-12 by ADR 0343: a stock-take count is filed in the month its count session states when it was made within 6 hours after that month ended (the founder's pick F1 b, sim-ledger S224), so such a count is "inside" that month for this list and for the close's sums; its counted moment is never moved. Every other row, spot counts included, is dated as before. Nothing locks.]
 4. **No reopen is needed.** Because nothing is locked, there is nothing to reopen. A new snapshot of the same month may be taken as a re-close, and it is listed beside the first, never replacing it.
 
 ## Consequences
