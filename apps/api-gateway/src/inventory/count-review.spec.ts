@@ -525,6 +525,34 @@ describe("the review shows the walk; the books and money only to an owner or a m
     expect(raki.value).toBe(-70);
   });
 
+  it("the difference names the open bottles in tenths, as the value counts them (F-1621)", async () => {
+    const { svc } = walkDb();
+    const r = await svc.review(HOUSE, WALK, true);
+    const bar = r.shelves.find((s) => s.locationId === "Bar")!;
+    const raki = bar.lines.find((l) => l.inventoryId === "item-raki")!;
+    // Full bottles agree; 70 ml of a 700 ml bottle short is 1/10.
+    expect(raki).toMatchObject({ variance: 0, openDifferenceTenths: -1 });
+    const yakut = bar.lines.find((l) => l.inventoryId === ITEM)!;
+    expect(yakut.openDifferenceTenths).toBeNull();
+  });
+
+  it("an item counted whole is not listed as 'no count sent' on a done shelf (F-1618)", async () => {
+    const { svc, db } = walkDb();
+    // Gin also has bottles the door booked with no shelf: the walk told staff
+    // to count it on Inventory, all at once.
+    db.tables.inventory_lots.push({
+      id: "lot-gin-door",
+      restaurant_id: HOUSE,
+      inventory_id: "item-gin",
+      location_id: null,
+      stock_state: "live",
+      qty: 4,
+      open_bottle_ml: 0,
+    });
+    const r = await svc.review(HOUSE, WALK, true);
+    expect(r.shelves.find((s) => s.locationId === "Bar")!.missed).toEqual([]);
+  });
+
   it("never reads another house's lines or costs", async () => {
     const { svc } = walkDb();
     const r = await svc.review(HOUSE, WALK, true);

@@ -510,6 +510,25 @@ describe('F-1544: "shelf done" and a parked bottle queue like a count', () => {
     expect(res.parked).toBe(1)
   })
 
+  it('a parked done keeps the answer: which items to count again and which zeros posted (F-1619)', async () => {
+    byType({ [SHELF_DONE_TYPE]: [done('w', { data: { ...done('w').data, body: { clientDoneId: 'd-w', zeroItemIds: ['i1', 'i2'] } } })] })
+    sessionsApi.markCountShelfDone.mockResolvedValue({
+      done: false,
+      posted: ['i1'],
+      held: [],
+      refused: [{ inventoryId: 'i2', reason: 'moved' }],
+      message: 'Count this shelf again: some bottles moved after it was counted.',
+    })
+    await flushSpotCountOutbox()
+    const patch = store.updatePendingMutation.mock.calls[0][1]
+    expect(patch.data).toMatchObject({
+      sessionId: 'S',
+      locationId: 'L',
+      body: { clientDoneId: 'd-w', zeroItemIds: ['i1', 'i2'] },
+      answer: { posted: ['i1'], held: [], refused: [{ inventoryId: 'i2', reason: 'moved' }] },
+    })
+  })
+
   it('a done that fails on the network stays queued and is tried again', async () => {
     byType({ [SHELF_DONE_TYPE]: [done('z')] })
     sessionsApi.markCountShelfDone.mockRejectedValue(httpError(503))

@@ -26,7 +26,10 @@ const api = vi.hoisted(() => ({
 }))
 vi.mock('@/services/api/countSessions', () => api)
 vi.mock('@/services/api/inventory', () => ({
-  getInventory: vi.fn().mockResolvedValue([{ id: 'gin', wineName: 'Gin', wineProducer: null, wineVintage: null }]),
+  getInventory: vi.fn().mockResolvedValue([
+    { id: 'gin', wineName: 'Gin', wineProducer: null, wineVintage: null },
+    { id: 'ev', wineName: 'Ev Kırmızısı', libraryName: 'Kavaklıdere Yakut', wineProducer: null, wineVintage: null },
+  ]),
 }))
 
 import CountReview from './CountReview'
@@ -143,6 +146,17 @@ describe('the review shows the walk', () => {
     expect(screen.getByRole('button', { name: 'Count on paper' })).toBeTruthy()
   })
 
+  it('the difference counts the open bottles in tenths, short in amber, as its value does (F-1621)', async () => {
+    const shelves = review(true).shelves
+    shelves[0].lines = [
+      line({ name: 'Rakı', counted: 3, openMl: 140, expected: 3, variance: 0, openDifferenceTenths: -3, value: -210 }),
+    ]
+    api.reviewCountSession.mockResolvedValue(review(true, { shelves }))
+    show()
+    const diff = await screen.findByText('0, −3/10 open')
+    expect(diff.className).toMatch(/text-amber-300/)
+  })
+
   it('a bartender sees what was counted, never a difference or money, and no act', async () => {
     auth.value.activeRole = 'staff'
     api.reviewCountSession.mockResolvedValue(review(false))
@@ -192,6 +206,16 @@ describe('the manager settles what the walk could not', () => {
     })
     fireEvent.click(await screen.findByRole('button', { name: 'Gin' }))
     await waitFor(() => expect(api.carryParkedCountLine).toHaveBeenCalledWith('S1', 'p1', 'gin'))
+  })
+
+  it('finds a renamed wine by the name on its label (F-1620, ADR 0124)', async () => {
+    api.reviewCountSession.mockResolvedValue(review(true))
+    show()
+    fireEvent.click(await screen.findByText('It is one of ours'))
+    fireEvent.change(await screen.findByLabelText("Which of the house's items is it"), {
+      target: { value: 'yakut kavak' },
+    })
+    expect(await screen.findByRole('button', { name: 'Ev Kırmızısı' })).toBeTruthy()
   })
 
   it('asks before signing off with a shelf not counted, and signs on the second word', async () => {

@@ -615,29 +615,66 @@ describe("shelf done -- the not-found items post as counts of 0, through the one
     ).rejects.toMatchObject({ status: HttpStatus.SERVICE_UNAVAILABLE });
   });
 
-  it("refuses an item that is not on this shelf's books, counting nothing", async () => {
-    const { svc, id, inventory } = await opened();
-    await expect(
-      svc.shelfDone(
-        HOUSE,
-        id,
-        "Shelf 1",
-        ME,
-        { clientDoneId: "d", zeroItemIds: ["item-raki"] },
-        no,
-      ),
-    ).rejects.toMatchObject({ status: HttpStatus.BAD_REQUEST });
-    await expect(
-      svc.shelfDone(
-        HOUSE,
-        id,
-        "Shelf 1",
-        ME,
-        { clientDoneId: "d", zeroItemIds: ["their-item"] },
-        no,
-      ),
-    ).rejects.toMatchObject({ status: HttpStatus.BAD_REQUEST });
+  it("an item not on this shelf's books is not counted, named back, and the rest of the shelf closes (F-1616)", async () => {
+    const { svc, id, inventory, db } = await opened();
+    // The last Yakut on Shelf 1 sold after the phone pulled its list; Rakı
+    // was never there; "their-item" is another house's.
+    db.tables.inventory_lots.find((l) => l.inventory_id === "item-yakut")!.qty =
+      0;
+    const out: any = await svc.shelfDone(
+      HOUSE,
+      id,
+      "Shelf 1",
+      ME,
+      { clientDoneId: "d", zeroItemIds: ["item-yakut", "their-item"] },
+      no,
+    );
+    expect(out).toMatchObject({
+      done: true,
+      posted: [],
+      skipped: [
+        { inventoryId: "item-yakut", name: "Yakut 2020" },
+        { inventoryId: "their-item", name: "An item not on this shelf" },
+      ],
+    });
+    expect(out.message).toContain("Yakut 2020");
     expect(inventory.recordSpotCount).not.toHaveBeenCalled();
+    expect(
+      db.tables.stock_count_session_shelves.find(
+        (s) => s.location_id === "Shelf 1",
+      )?.done_at,
+    ).toBeTruthy();
+  });
+
+  it("a shelf with one item gone from its books still zeroes the others (F-1616)", async () => {
+    const { svc, id, inventory, db } = await opened();
+    db.tables.inventory_lots.push({
+      restaurant_id: HOUSE,
+      inventory_id: "item-raki",
+      location_id: "Shelf 1",
+      stock_state: "live",
+      qty: 0,
+      open_bottle_ml: 0,
+    });
+    const out: any = await svc.shelfDone(
+      HOUSE,
+      id,
+      "Shelf 1",
+      ME,
+      { clientDoneId: "d2", zeroItemIds: ["item-yakut", "item-raki"] },
+      no,
+    );
+    expect(out).toMatchObject({
+      done: true,
+      posted: ["item-yakut"],
+      skipped: [{ inventoryId: "item-raki", name: "Yeni Rakı" }],
+    });
+    expect(inventory.recordSpotCount).toHaveBeenCalledTimes(1);
+    expect(inventory.recordSpotCount).toHaveBeenCalledWith(
+      HOUSE,
+      "item-yakut",
+      expect.objectContaining({ countedQty: 0, locationId: "Shelf 1" }),
+    );
   });
 
   it("someone else's shelf is not closed by staff; an opening count is a manager's", async () => {

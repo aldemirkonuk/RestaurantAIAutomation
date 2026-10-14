@@ -60,6 +60,7 @@ import {
   readSealed,
   readStored,
   readWalk,
+  refusedDone,
   shelfStatus,
   stepSealed,
   stepTenths,
@@ -169,31 +170,47 @@ export default function CountWalk() {
             lines[k] = { ...l, state: 'refused', message: m.lastError ?? 'Count it again.' }
         }
         const done = { ...w.dones }
+        // F-1619: a queued "done" the house answered "count again" keeps
+        // which items to count again and the zeros that did post.
+        const answered: Array<[string, string, NonNullable<QueuedShelfDone['answer']>, string]> = []
         for (const [loc, d] of Object.entries(done)) {
           if (d.state !== 'saved') continue
           const m = byDoneId.get(d.clientDoneId)
           if (!m) {
             if (flushed) done[loc] = { ...d, state: 'sent' }
           }
-          else if (m.parked?.reason === 'refused')
-            done[loc] = { ...d, state: 'refused', message: m.lastError ?? undefined }
+          else if (m.parked?.reason === 'refused') {
+            const q = m.data as QueuedShelfDone
+            if (q.answer) answered.push([loc, d.clientDoneId, q.answer, q.countedAt ?? new Date().toISOString()])
+            else done[loc] = { ...d, state: 'refused', message: m.lastError ?? undefined }
+          }
         }
         const parked = w.parked.map((p) =>
           flushed && p.state === 'saved' && !parkIds.has(p.clientLineId) ? { ...p, state: 'sent' as const } : p,
         )
-        return { ...w, lines, dones: done, parked }
+        let next: WalkRecord = { ...w, lines, dones: done, parked }
+        const shelves = readStored<CountSession>(pKey)?.shelves ?? []
+        for (const [loc, doneId, answer, at] of answered) {
+          next = refusedDone(next, shelves.find((x) => x.locationId === loc) ?? { locationId: loc, items: [] }, doneId, answer, at)
+        }
+        return next
       })
     } catch {
       /* the queue could not be read; the walk keeps what it showed */
     }
-  }, [sessionId, setWalk])
+  }, [sessionId, setWalk, pKey])
 
   useEffect(() => {
     void load()
     void readQueue()
     const up = () => setOnline(true)
     const down = () => setOnline(false)
-    const changed = () => void readQueue()
+    // A refusal parked in the queue: read it, and pull the list again, since
+    // a refused "done" may come from a list the books have moved on from (F-1616).
+    const changed = () => {
+      void readQueue()
+      void load()
+    }
     window.addEventListener('online', up)
     window.addEventListener('offline', down)
     window.addEventListener(SPOT_COUNTS_CHANGED_EVENT, changed)
@@ -279,10 +296,11 @@ export default function CountWalk() {
           setWalk={setWalk}
           provisional={!!provisional[shelf.locationId]}
           lockedOut={lockedOut}
-          onFinished={() => {
+          reload={() => void load()}
+          onFinished={(said) => {
             const next = nextShelf(session.shelves, walk, shelf.locationId)
             setShelfId(null)
-            setNotice(next ? `Next: ${next.name}` : 'Every shelf is done or taken.')
+            setNotice([said, next ? `Next: ${next.name}` : 'Every shelf is done or taken.'].filter(Boolean).join(' '))
             void load()
           }}
         />
@@ -461,6 +479,7 @@ function ShelfWalk({
   setWalk,
   provisional,
   lockedOut,
+  reload,
   onFinished,
 }: {
   session: CountSession
@@ -470,7 +489,10 @@ function ShelfWalk({
   setWalk: (fn: (w: WalkRecord) => WalkRecord) => void
   provisional: boolean
   lockedOut: boolean
-  onFinished: () => void
+  /** Pull the count again: the list on this phone may be behind the books. */
+  reload: () => void
+  /** `said`: the house's words about the shelf, e.g. an item it did not count. */
+  onFinished: (said?: string) => void
 }) {
   const items = itemsOnShelf(shelf, walk)
   const firstOpen = items.find(
@@ -536,20 +558,11 @@ function ShelfWalk({
         body: { clientDoneId, zeroItemIds },
       })
       if (out.synced && out.result && !out.result.done) {
-        setWalk((w) => ({
-          ...w,
-          dones: {
-            ...w.dones,
-            [shelf.locationId]: {
-              clientDoneId,
-              state: 'refused',
-              recount: out.result?.refused.map((r) => r.inventoryId) ?? [],
-              message: out.result?.message,
-            },
-          },
-        }))
+        const answer = out.result
+        setWalk((w) => refusedDone(w, shelf, clientDoneId, answer, new Date().toISOString()))
         setMode('count')
         setBusy(false)
+        reload()
         return
       }
       setWalk((w) => ({
@@ -557,10 +570,12 @@ function ShelfWalk({
         dones: { ...w.dones, [shelf.locationId]: { clientDoneId, state: out.synced ? 'sent' : 'saved' } },
       }))
       setBusy(false)
-      onFinished()
+      onFinished(out.result?.message)
     } catch (err) {
       setError(saidBy(err, 'The shelf could not be closed. Try again.'))
       setBusy(false)
+      // A refusal may come from a list the books have moved on from (F-1616).
+      reload()
     }
   }
 
@@ -826,6 +841,8 @@ function FindBottle({
           rows.map((r) => ({
             id: r.id,
             name: r.wineName?.trim() || 'An item with no name',
+            // ADR 0124: the label's own name finds a wine the house renamed.
+            alsoKnownAs: (r as { libraryName?: string | null }).libraryName ?? null,
             producer: r.wineProducer ?? null,
             vintage: r.wineVintage ?? null,
           })),

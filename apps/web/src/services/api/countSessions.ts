@@ -76,6 +76,8 @@ export interface ShelfDoneResult {
   posted: string[];
   held: string[];
   refused: Array<{ inventoryId: string; reason: string }>;
+  /** F-1616: items no longer on this shelf's books; not counted, named back. */
+  skipped?: Array<{ inventoryId: string; name: string }>;
   sessionStatus: string;
   replayed?: boolean;
   message?: string;
@@ -160,6 +162,8 @@ export interface ReviewLine {
   expected?: number;
   expectedOpenMl?: number | null;
   variance?: number;
+  /** F-1621: the open bottles' difference, in tenths of a bottle; null when not counted. */
+  openDifferenceTenths?: number | null;
   value?: number | null;
 }
 

@@ -13,6 +13,7 @@ import {
   nextShelf,
   readSealed,
   readWalk,
+  refusedDone,
   shelfStatus,
   stepTenths,
   tenthsWords,
@@ -138,6 +139,33 @@ describe('find a bottle', () => {
     expect(findItems(items, 'izmir').map((i) => i.id)).toEqual(['2'])
     expect(findItems(items, 'VIETTI').map((i) => i.id)).toEqual(['3'])
     expect(findItems(items, '   ')).toEqual([])
+  })
+
+  it('finds a renamed wine by the library name too, showing the house name (F-1620, ADR 0124)', () => {
+    const renamed = [{ id: '9', name: 'Ev Kırmızısı', alsoKnownAs: 'Kavaklıdere Yakut', producer: null, vintage: null }]
+    expect(findItems(renamed, 'yakut').map((i) => i.name)).toEqual(['Ev Kırmızısı'])
+  })
+})
+
+describe('a "done" the house could not close (F-1616, F-1619)', () => {
+  it('keeps the zeros that posted as lines and the items to count again, so the next done does not resend them', () => {
+    const w = refusedDone(
+      emptyWalk(),
+      shelf('s1'),
+      'd1',
+      { posted: ['a'], held: [], refused: [{ inventoryId: 'b', reason: 'moved' }], message: 'Count again' },
+      '2026-10-12T22:00:00.000Z',
+    )
+    expect(w.dones.s1).toEqual({ clientDoneId: 'd1', state: 'refused', recount: ['b'], message: 'Count again' })
+    expect(w.lines[lineKey('s1', 'a')]).toMatchObject({ sealed: 0, tenths: 0, state: 'sent', itemLabel: 'Kavaklıdere 2021' })
+    expect(untouchedOnShelf(shelf('s1'), w).map((i) => i.inventoryId)).toEqual(['b'])
+  })
+
+  it('never overwrites a line this phone already holds', () => {
+    const before = emptyWalk()
+    before.lines[lineKey('s1', 'a')] = line({ sealed: 3 })
+    const w = refusedDone(before, shelf('s1'), 'd1', { posted: ['a'], held: [], refused: [] }, 'x')
+    expect(w.lines[lineKey('s1', 'a')].sealed).toBe(3)
   })
 })
 

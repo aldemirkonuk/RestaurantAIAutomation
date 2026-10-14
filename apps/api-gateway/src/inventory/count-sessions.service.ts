@@ -782,6 +782,7 @@ export class CountSessionsService {
         posted: [] as string[],
         held: [] as string[],
         refused: [] as Array<{ inventoryId: string; reason: string }>,
+        skipped: [] as Array<{ inventoryId: string; name: string }>,
         sessionStatus: session.status,
         round: shelf.recount_round,
         message: "A manager asked for this shelf to be counted again.",
@@ -808,6 +809,7 @@ export class CountSessionsService {
 
     // The key recordSpotCount gives each zero (count:<item>:<clientCountId>).
     const clientCountId = `shelf-done:${clientDoneId}`;
+    let offBooks: string[] = [];
     if (zeroItemIds.length) {
       // A zero that already landed under this act's key is a replay: the
       // shelf's books for it may read 0 now BECAUSE it landed, and refusing
@@ -850,13 +852,30 @@ export class CountSessionsService {
           .filter((l) => (l.qty ?? 0) > 0 || (l.open_bottle_ml ?? 0) > 0)
           .map((l) => l.inventory_id),
       );
-      if (zeroItemIds.some((id) => !expected.has(id) && !landed.has(id))) {
-        throw new HttpException(
-          "One of the items marked not found is not on this shelf's books. Nothing was counted.",
-          HttpStatus.BAD_REQUEST,
-        );
+      // F-1616: an item the books no longer hold here (its last bottle sold
+      // after the phone pulled the list, or another phone zeroed it) already
+      // reads 0, so "not found" agrees with the books. It is not counted and
+      // is named back; the rest of the shelf still closes. Refusing the whole
+      // act left the shelf refused for good, since the phone resends its list.
+      offBooks = zeroItemIds.filter(
+        (id) => !expected.has(id) && !landed.has(id),
+      );
+    }
+    const toZero = zeroItemIds.filter((id) => !offBooks.includes(id));
+    const skipped: Array<{ inventoryId: string; name: string }> = [];
+    if (offBooks.length) {
+      // House-scoped: an id of another house gets no name, only the plain words.
+      const names = await this.itemNames(house, offBooks);
+      for (const id of offBooks) {
+        skipped.push({
+          inventoryId: id,
+          name: names.get(id)?.name ?? "An item not on this shelf",
+        });
       }
     }
+    const skippedWords = skipped.length
+      ? `Not counted, no longer on this shelf's books: ${skipped.map((x) => x.name).join(", ")}.`
+      : undefined;
 
     // ADR 0286: a "done" taken more than 72 h ago is kept only on an owner's
     // or a manager's word (recordSpotCount refuses it otherwise). Asked only
@@ -870,7 +889,7 @@ export class CountSessionsService {
     const posted: string[] = [];
     const held: string[] = [];
     const refused: Array<{ inventoryId: string; reason: string }> = [];
-    for (const inventoryId of zeroItemIds) {
+    for (const inventoryId of toZero) {
       try {
         const out = await this.inventory.recordSpotCount(house, inventoryId, {
           countedQty: 0,
@@ -923,9 +942,14 @@ export class CountSessionsService {
         posted,
         held,
         refused,
+        skipped,
         sessionStatus: session.status,
-        message:
+        message: [
           "Count this shelf again: some bottles moved after it was counted.",
+          skippedWords,
+        ]
+          .filter(Boolean)
+          .join(" "),
       };
     }
 
@@ -956,8 +980,10 @@ export class CountSessionsService {
       posted,
       held,
       refused,
+      skipped,
       sessionStatus: session.status,
       replayed: !data || (data as unknown[]).length === 0,
+      ...(skippedWords ? { message: skippedWords } : {}),
     };
   }
 
@@ -1225,6 +1251,17 @@ export class CountSessionsService {
       set.add(l.inventory_id);
       missed.set(l.location_id, set);
     }
+    // F-1618: an item counted whole (F-945) is one the walk told staff not
+    // to count on a shelf ("Count it on Inventory, all at once"), and that
+    // count carries no session. Its shelf bottles are not a line the phone
+    // failed to send, so they are not listed as one.
+    const wholeOnly = await this.itemsCountedWhole(house, [
+      ...new Set([...missed.values()].flatMap((s) => [...s])),
+    ]);
+    for (const [shelfId, set] of missed) {
+      for (const id of wholeOnly) set.delete(id);
+      if (set.size === 0) missed.delete(shelfId);
+    }
 
     const heldAgainstIds = held
       .map((h) => h.held_against)
@@ -1293,6 +1330,7 @@ export class CountSessionsService {
     // only for the people who see money.
     let currency: string | null = null;
     const cost = new Map<string, { wac: number | null; bottleMl: number }>();
+    const ml = new Map<string, number>();
     if (seesMoney && itemIds.length) {
       const cur = await client
         .from("restaurants")
@@ -1314,7 +1352,6 @@ export class CountSessionsService {
         .eq("restaurant_id", house)
         .in("id", itemIds);
       if (size.error) throw this.unreadable("bottle size read", size.error);
-      const ml = new Map<string, number>();
       for (const r of (size.data ?? []) as Array<{
         id: string;
         bottle_size_ml: number | null;
@@ -1341,6 +1378,16 @@ export class CountSessionsService {
           : 0;
       return Math.round((c.variance_qty + openDiff) * k.wac * 100) / 100;
     };
+    // F-1621: the open bottles' difference in tenths of a bottle, as staff
+    // entered them, so the difference column says what the value counts.
+    const openDifferenceOf = (c: ReviewCountRow): number | null =>
+      c.counted_open_ml != null && c.expected_open_ml != null
+        ? Math.round(
+            ((c.counted_open_ml - c.expected_open_ml) /
+              (ml.get(c.inventory_id) ?? STAND_IN_BOTTLE_ML)) *
+              10,
+          )
+        : null;
 
     const signedAt = session.signed_off_at
       ? Date.parse(session.signed_off_at)
@@ -1362,6 +1409,7 @@ export class CountSessionsService {
             expected: c.expected_qty,
             expectedOpenMl: c.expected_open_ml,
             variance: c.variance_qty,
+            openDifferenceTenths: openDifferenceOf(c),
             value: valueOf(c),
           }
         : {}),
@@ -1841,6 +1889,8 @@ export interface ReviewLine {
   expected?: number;
   expectedOpenMl?: number | null;
   variance?: number;
+  /** F-1621: open bottles' difference in tenths; null when open was not counted. */
+  openDifferenceTenths?: number | null;
   /** In the house's currency; null when the item has no cost. */
   value?: number | null;
 }

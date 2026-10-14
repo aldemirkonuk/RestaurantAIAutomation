@@ -150,6 +150,12 @@ export interface QueuedShelfDone {
   shelfLabel: string
   body: { clientDoneId: string; zeroItemIds: string[] }
   countedAt?: string
+  /**
+   * F-1619: the house's answer when it could not close the shelf -- which
+   * items to count again and which zeros did post -- kept so the walk can
+   * show them once the phone reads its queue.
+   */
+  answer?: Pick<ShelfDoneResult, 'posted' | 'held' | 'refused' | 'message'>
 }
 
 export interface QueuedParkedLine {
@@ -276,6 +282,15 @@ export async function flushSpotCountOutbox(): Promise<{
           await markQuietly(m.id, {
             lastError: answer?.message ?? SHELF_RECOUNT,
             parked: { reason: 'refused', status: OVERTAKEN, at: new Date(now).toISOString() },
+            data: {
+              ...done,
+              answer: {
+                posted: answer?.posted ?? [],
+                held: answer?.held ?? [],
+                refused: answer?.refused ?? [],
+                message: answer?.message,
+              },
+            } satisfies QueuedShelfDone,
           })
           parked++
           continue
