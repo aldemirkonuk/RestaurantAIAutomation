@@ -1279,3 +1279,37 @@ describe('ReceivingWorkspace — whether tax is inside the invoice price (ADR 03
     expect(getTaxBasis).not.toHaveBeenCalled()
   })
 })
+
+/*
+ * F-1705: a 3,000-item house adding a substituted wine. The old picker held the
+ * first 200 items and no search, and never said the list was cut.
+ */
+describe('ReceivingWorkspace — adding an item not on the invoice (F-1705)', () => {
+  const many = Array.from({ length: 250 }, (_, n) => ({
+    inventoryId: `inv-x${n}`,
+    name: n === 230 ? 'Château Musar Rouge' : `House wine ${n}`,
+    producer: n === 230 ? 'Musar' : 'Some maker',
+    vintage: 2018,
+  })) as unknown as Parameters<typeof ReceivingWorkspace>[0]['items']
+
+  it('finds an item past the 200th by typing its name, and adds it', async () => {
+    const user = userEvent.setup()
+    renderWorkspace({ items: many })
+
+    await user.type(screen.getByLabelText('Add an item not on the invoice'), 'musar')
+    await user.click(screen.getByRole('button', { name: /Château Musar Rouge 2018/ }))
+
+    expect(screen.getByText('Château Musar Rouge')).toBeInTheDocument()
+    expect(screen.getByText('not on the invoice')).toBeInTheDocument()
+  })
+
+  it('says how many more match when it shows only a few', async () => {
+    const user = userEvent.setup()
+    renderWorkspace({ items: many })
+
+    await user.type(screen.getByLabelText('Add an item not on the invoice'), 'house wine')
+
+    expect(screen.getAllByRole('button', { name: /^House wine \d+ 2018$/ })).toHaveLength(8)
+    expect(screen.getByText('241 more match. Type more of the name to find yours.')).toBeInTheDocument()
+  })
+})

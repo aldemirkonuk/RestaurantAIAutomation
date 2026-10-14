@@ -824,3 +824,36 @@ export class AuctionLotRecordResponseDto {
   @ApiProperty()
   createdAt: string;
 }
+
+/**
+ * The body of `POST :restaurantId/item/:itemId/count` (ADR 0078), named once
+ * so the route and its callers read one shape. An interface, not a class, on
+ * purpose: the route has never been validated field by field, and a class here
+ * would make the global pipe refuse the fields older clients and queued counts
+ * still send (`performedBy`, which the route ignores). Who counted, and in what
+ * role, always come from the token, never from this body.
+ */
+export interface RecordSpotCountBody {
+  countedQty: number;
+  stockState?: "live" | "shadow";
+  clientCountId: string;
+  reason?: string;
+  /** A queued count's age at send time (F-249); absent for a live count. */
+  countedAgoMs?: number;
+  locationId?: string | null;
+  /** F-1514: an opening count (ADR 0335 §2), not a variance. */
+  opening?: boolean;
+  /** F-1524: an opening count's cost per bottle, used only for a wine with no cost yet. */
+  costPerBottle?: number | null;
+  /**
+   * ADR 0341 F3: whether tax is inside that cost, as an owner or a manager
+   * said it. Read through `asCostTaxBasis`, so anything else is "not said".
+   */
+  costTaxBasis?: CostTaxBasis | null;
+  /** F-1544: the stock-take this line belongs to; absent = a spot count. */
+  sessionId?: string | null;
+  /** F-1544 (F3 a): what is left in the open bottles, in ml ... */
+  openMl?: number | null;
+  /** ... or in tenths of a bottle, as staff enter it. Not both. */
+  openTenths?: number | null;
+}

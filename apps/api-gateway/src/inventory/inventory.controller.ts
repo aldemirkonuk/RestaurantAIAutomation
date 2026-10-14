@@ -35,6 +35,7 @@ import {
   CreateAuctionLotRecordDto,
   AuctionLotRecordResponseDto,
 } from "./dto/inventory.dto";
+import type { RecordSpotCountBody } from "./dto/inventory.dto";
 import { AuctionLotRecordsService } from "./auction-lot-records.service";
 import { blindCountForStaff } from "./stock-count-result";
 import { holdsHouseMoney } from "../procurement/documents/document-money-gate";
@@ -796,26 +797,7 @@ export class InventoryController {
   async recordSpotCount(
     @Param("restaurantId") restaurantId: string,
     @Param("itemId") itemId: string,
-    @Body()
-    dto: {
-      countedQty: number;
-      stockState?: "live" | "shadow";
-      clientCountId: string;
-      reason?: string;
-      /** A queued count's age at send time (F-249); absent for a live count. */
-      countedAgoMs?: number;
-      locationId?: string | null;
-      /** F-1514: an opening count (ADR 0335 §2), not a variance. */
-      opening?: boolean;
-      /** F-1524: an opening count's cost per bottle, used only for a wine with no cost yet. */
-      costPerBottle?: number | null;
-      /** F-1544: the stock-take this line belongs to; absent = a spot count. */
-      sessionId?: string | null;
-      /** F-1544 (F3 a): what is left in the open bottles, in ml ... */
-      openMl?: number | null;
-      /** ... or in tenths of a bottle, as staff enter it. Not both. */
-      openTenths?: number | null;
-    },
+    @Body() dto: RecordSpotCountBody,
     @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
     // ADR 0335 §3: only an owner or a manager loads opening stock, and an

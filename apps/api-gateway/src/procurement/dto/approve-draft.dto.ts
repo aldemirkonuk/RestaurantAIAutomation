@@ -3,6 +3,7 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -10,6 +11,7 @@ import {
   MinLength,
   Min,
 } from "class-validator";
+import { COST_TAX_BASES, type CostTaxBasis } from "../../common/tax-basis";
 
 export class ApproveDraftDto {
   @ApiPropertyOptional({
@@ -126,6 +128,18 @@ export class ConfirmDealDto {
   @IsOptional()
   @IsBoolean()
   sendConfirmation?: boolean;
+
+  /**
+   * Whether tax is inside the confirmed price (ADR 0341 F3). A changed price
+   * loses the basis it had (`a_changed_cost_loses_its_unstated_tax_basis`), so
+   * this is how the confirmer says it again. Read only where the house's till
+   * prices include tax; omitted, it stays not stated. An owner's or a
+   * manager's to say.
+   */
+  @ApiPropertyOptional({ enum: COST_TAX_BASES })
+  @IsIn(COST_TAX_BASES as unknown as string[])
+  @IsOptional()
+  priceTaxBasis?: CostTaxBasis;
 }
 
 /**

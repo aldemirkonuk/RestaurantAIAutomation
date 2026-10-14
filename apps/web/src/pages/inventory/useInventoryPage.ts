@@ -537,8 +537,9 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
     );
   }, [visibleApiInventory, inventoryLoading, winesById]);
 
-  // Computed values. Every filter but the location chip: the map, the zone
-  // manager's assign list and the receiving picker read this one, since a
+  // Computed values. Every filter but the location chip: the map and the zone
+  // manager's assign list read this one (the receiving picker searches every
+  // item itself, F-1705), since a
   // chip must not empty the other zones or hide unplaced wines (F-1270).
   const filteredInventoryAnyPlace = useMemo(() => {
     let items = [...inventory];

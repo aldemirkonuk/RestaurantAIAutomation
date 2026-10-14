@@ -2311,7 +2311,7 @@ export function InventoryCommandPage() {
       <AuctionLotStart
         open={showAuctionLot}
         onClose={() => setShowAuctionLot(false)}
-        onCarry={async ({ wine, quantity, costPerBottle }) => {
+        onCarry={async ({ wine, quantity, costPerBottle, costTaxBasis }) => {
           const created = await createInventoryItem.mutateAsync({
             wineId: wine.id,
             stockLive: quantity,
@@ -2321,6 +2321,8 @@ export function InventoryCommandPage() {
             // not an estimate and it did not come off an invoice.
             costPerBottle,
             costProvenance: "manual" as const,
+            // ADR 0341 F3: whether tax is inside it, when it was said.
+            ...(costTaxBasis && { costTaxBasis }),
           } as any);
           void refetchInventory();
           // The lot's own details (2026-09-21) link to THIS restaurant_inventory
@@ -2373,7 +2375,13 @@ export function InventoryCommandPage() {
                   // 0 here is what made the two UI-added wines carry `0.0 /
                   // 'manual'`: a price nobody typed, labelled as typed.
                   {}
-                : { costPerBottle: volumeFields.costPerBottle }),
+                : {
+                    costPerBottle: volumeFields.costPerBottle,
+                    // ADR 0341 F3: whether tax is inside it, when it was said.
+                    ...(volumeFields.costTaxBasis && {
+                      costTaxBasis: volumeFields.costTaxBasis,
+                    }),
+                  }),
           } as any);
           setShowAddWine(false);
           toast.success(
@@ -2429,7 +2437,9 @@ export function InventoryCommandPage() {
       {verifyOrder && (
         <ReceivingWorkspace
           order={verifyOrder}
-          items={filteredInventoryAnyPlace}
+          // F-1705: every item of the house, not the page's search or chips.
+          // The workspace has its own search over them.
+          items={inventory}
           onClose={closeVerify}
         />
       )}

@@ -67,6 +67,7 @@ import { CURRENCY_CODES, currencyLabel } from '@/lib/currency';
 import { lotBookedCost, readExchangeRate } from './auctionLotCost';
 import { displayGroupMark, parseDecimal, twoReadingsProblem, type GroupMark } from '@/lib/parseDecimal';
 import { useHouseGroupMark } from '@/hooks/useHouseGroupMark';
+import { CostTaxChoice, useHouseCostTax, type CostTaxBasis } from '@/components/inventory/CostTaxChoice';
 
 export interface AuctionLot {
   house: string;
@@ -241,6 +242,8 @@ export interface AuctionLotStartProps {
     wine: RegisterWine;
     quantity: number;
     costPerBottle: number;
+    /** Whether tax is inside that cost (ADR 0341 F3); absent = not said. */
+    costTaxBasis?: CostTaxBasis;
   }) => Promise<{ inventoryId: string }>;
 }
 
@@ -257,6 +260,11 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
   const [houseCurrency, setHouseCurrency] = useState<string | null | undefined>(undefined);
   /* A failed read and an unanswered question are different facts (ADR 0083). */
   const [houseCurrencyUnread, setHouseCurrencyUnread] = useState(false);
+  // ADR 0341 F3: "Is KDV inside this cost?", as the receive form asks it, only
+  // at a house whose till prices include tax. The page opens this sheet for
+  // owners and managers only. Nothing is chosen first.
+  const costTax = useHouseCostTax(open);
+  const [costTaxBasis, setCostTaxBasis] = useState<CostTaxBasis | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -356,7 +364,12 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
 
     let inventoryId: string;
     try {
-      const carried = await onCarry({ wine, quantity: cost.bottles, costPerBottle: booked.booked });
+      const carried = await onCarry({
+        wine,
+        quantity: cost.bottles,
+        costPerBottle: booked.booked,
+        ...(costTax?.inclusive && costTaxBasis ? { costTaxBasis } : {}),
+      });
       inventoryId = carried.inventoryId;
     } catch (e) {
       setBusy(false);
@@ -409,6 +422,7 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       setBusy(false);
       setWine(null);
       setLot(EMPTY_LOT);
+      setCostTaxBasis(null);
       setQuery('');
     }
   };
@@ -686,6 +700,9 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
                 : `The book is given ${booked.booked} ${houseCurrency} a bottle.`
             : booked.why}
         </p>
+      )}
+      {booked?.ok && (
+        <CostTaxChoice terms={costTax} value={costTaxBasis} onChange={setCostTaxBasis} disabled={busy} />
       )}
 
       {detailsMissing && (

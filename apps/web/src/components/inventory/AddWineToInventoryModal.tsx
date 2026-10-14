@@ -44,6 +44,7 @@ import {
   writeSessionDraft,
 } from "../../hooks/useUnsavedWorkGuard";
 import { useModalDialog } from "../../hooks/useModalDialog";
+import { CostTaxChoice, useHouseCostTax, type CostTaxBasis } from "./CostTaxChoice";
 import { formatStatedMoney } from "../../lib/currency";
 import { foldText } from "../../lib/textFold";
 import {
@@ -84,6 +85,8 @@ interface VolumeFields {
    * excludes — the bottles count as stock, never toward average cost.
    */
   isSample?: boolean;
+  /** Whether tax is inside `costPerBottle` (ADR 0341 F3); absent = not said. */
+  costTaxBasis?: CostTaxBasis;
 }
 
 interface AddWineToInventoryModalProps {
@@ -165,6 +168,10 @@ export function AddWineToInventoryModal({
   const costRead = readOptionalAmount(costText, group);
   const costPerBottle = costRead.ok ? costRead.value : null;
   const [isSample, setIsSample] = useState(false);
+  // ADR 0341 F3: "Is KDV inside this cost?", asked as the receive form asks it,
+  // only at a house whose till prices include tax. Nothing is chosen first.
+  const costTax = useHouseCostTax(canSetCost && isOpen);
+  const [costTaxBasis, setCostTaxBasis] = useState<CostTaxBasis | null>(null);
   const [showScannerFlow, setShowScannerFlow] = useState(false);
   const [selectedStorageLocationId, setSelectedStorageLocationId] = useState<
     string | undefined
@@ -281,6 +288,7 @@ export function AddWineToInventoryModal({
     setThreshold(d?.threshold ?? 10);
     setCostText(d?.costText ?? "");
     setIsSample(d?.isSample ?? false);
+    setCostTaxBasis(null);
     setSelectedStorageLocationId(d?.selectedStorageLocationId);
     setBottleSizeMl(d?.bottleSizeMl ?? 750);
     setCustomBottleSizeInput(d?.customBottleSizeInput ?? "");
@@ -383,6 +391,7 @@ export function AddWineToInventoryModal({
     // Offered below the field instead, as something to accept deliberately.
     setCostText("");
     setIsSample(false);
+    setCostTaxBasis(null);
   };
 
   // F-205: the add is awaited. The sheet used to close before the write, so a
@@ -429,7 +438,10 @@ export function AddWineToInventoryModal({
           ? { isSample: true, costPerBottle: 0 }
           : costPerBottle === null
             ? {}
-            : { costPerBottle }),
+            : {
+                costPerBottle,
+                ...(costTax?.inclusive && costTaxBasis ? { costTaxBasis } : {}),
+              }),
       };
       setAdding(true);
       setAddRefusal(null);
@@ -827,14 +839,22 @@ export function AddWineToInventoryModal({
                                 )}
                             </div>
                           ) : (
-                            costPerBottle === 0 && (
-                              <p className="text-xs text-amber-700 mt-1.5">
-                                A cost of 0 is a real cost — it will count toward your
-                                average cost. For a free bottle, tick "Free
-                                sample" instead; to say you don't know, clear
-                                the field.
-                              </p>
-                            )
+                            <>
+                              {costPerBottle === 0 && (
+                                <p className="text-xs text-amber-700 mt-1.5">
+                                  A cost of 0 is a real cost — it will count toward your
+                                  average cost. For a free bottle, tick "Free
+                                  sample" instead; to say you don't know, clear
+                                  the field.
+                                </p>
+                              )}
+                              <CostTaxChoice
+                                terms={costTax}
+                                value={costTaxBasis}
+                                onChange={setCostTaxBasis}
+                                disabled={adding}
+                              />
+                            </>
                           )}
                         </>
                       )}
