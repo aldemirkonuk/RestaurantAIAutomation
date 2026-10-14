@@ -74,6 +74,16 @@ import {
   doorEchoOf,
   holdsHouseMoney,
 } from "./document-money-gate";
+import type { DocStatus } from "./document-types";
+
+/**
+ * A credit note in one of these can no longer pay an invoice: the same pair
+ * record_invoice_payment refuses (20270117100000).
+ */
+const CREDIT_NOTE_SPENT_STATUSES: readonly DocStatus[] = [
+  "rejected",
+  "superseded",
+];
 
 /**
  * The document columns a verify seal is taken over, as ONE literal string.
@@ -2762,8 +2772,8 @@ export class DocumentsController {
     const named = new Map(notes.map((n) => [n.id, n.doc_number]));
     const usable = notes.filter(
       (n) =>
-        n.status !== "rejected" &&
-        n.status !== "superseded" &&
+        // A procurement_documents status (DOC_STATUSES), not an order's.
+        !CREDIT_NOTE_SPENT_STATUSES.includes(n.status as DocStatus) &&
         n.total !== null &&
         Number.isFinite(Number(n.total)) &&
         (n.currency?.trim().toUpperCase() || null) === code,
