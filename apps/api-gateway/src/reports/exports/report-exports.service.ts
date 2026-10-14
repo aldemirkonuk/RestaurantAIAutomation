@@ -65,6 +65,8 @@ export const MAX_EXPORTS_PER_HOUSE = 50;
 export const EXPORT_RETENTION_DAYS = 90;
 
 const REPORT_EXPORTS_TABLE = "report_exports";
+/** One row per house per sweep that removed anything from it (F-1605, migration 20270116300000). */
+const REPORT_EXPORT_SWEEPS_TABLE = "report_export_sweeps";
 
 /** Everything but the two bodies — a list never downloads the files. */
 const ROW_COLUMNS =
@@ -333,6 +335,7 @@ export class ReportExportsService {
       throw error;
     }
     const rows = (data ?? []) as unknown as ExportRow[];
+    const lastSweep = await this.readLastSweep(restaurantId);
     // The house is read only when a row has a file to name: the page polls
     // this list while anything is queued, and a queued row has no name yet.
     const house = rows.some((r) => r.status === "ready")
@@ -341,7 +344,45 @@ export class ReportExportsService {
     return {
       exports: rows.map((r) => this.toDto(r, house)),
       total: count ?? null,
+      lastSweep,
     };
+  }
+
+  /**
+   * The newest retention sweep that removed files from this house (F-1605).
+   * `null` is "no sweep has removed any since sweeps were recorded"; a read
+   * that failed is `undefined`, so the shelf never says "none removed" over it.
+   */
+  private async readLastSweep(
+    restaurantId: string,
+  ): Promise<ReportExportListResponseDto["lastSweep"]> {
+    const { data, error } = await this.db
+      .from(REPORT_EXPORT_SWEEPS_TABLE)
+      .select("swept_at, removed_count, kept_days")
+      .eq("restaurant_id", restaurantId)
+      .order("swept_at", { ascending: false })
+      .limit(1);
+    if (error) {
+      this.logger.error("Could not read this house's export sweep record", {
+        restaurantId,
+        error: error.message,
+      });
+      return undefined;
+    }
+    const row = (
+      (data ?? []) as Array<{
+        swept_at: string;
+        removed_count: number;
+        kept_days: number;
+      }>
+    )[0];
+    return row
+      ? {
+          sweptAt: row.swept_at,
+          removedCount: row.removed_count,
+          keptDays: row.kept_days,
+        }
+      : null;
   }
 
   async getExport(
@@ -554,31 +595,27 @@ export class ReportExportsService {
    * computing the same cutoff and both issuing
    * `DELETE ... WHERE requested_at < cutoff` is exactly one delete of the
    * expired rows, however many processes race to run it — a `DELETE` with no
-   * matching rows is a no-op, not an error). The count is read before the
-   * delete for logging only, so under a genuine race the logged figure can
-   * overcount what a single instance actually removed; the delete itself
-   * removes only what still matches, once.
+   * matching rows is a no-op, not an error). The count is not read before
+   * the delete any more: the delete returns the rows IT removed (F-1605), so under a genuine race each
+   * instance counts and records only its own removals, and the two never
+   * record the same file twice.
+   *
+   * Each house that lost files gets one `report_export_sweeps` row (how many,
+   * when, under which keeping time), so its shelf can say what was removed
+   * instead of a sentence true either way. A record that could not be written
+   * is logged, not thrown: the files are already gone, and throwing would only
+   * hide the count from the cron's tick too.
    */
   async sweepExpired(): Promise<{ deleted: number }> {
     const cutoff = new Date(
       Date.now() - EXPORT_RETENTION_DAYS * 24 * 60 * 60 * 1000,
     ).toISOString();
 
-    const { count, error: countError } = await this.db
-      .from(REPORT_EXPORTS_TABLE)
-      .select("id", { count: "exact", head: true })
-      .lt("requested_at", cutoff);
-    if (countError) {
-      this.logger.error("Report export retention: could not count expired exports", {
-        error: countError.message,
-      });
-      throw countError;
-    }
-
-    const { error: deleteError } = await this.db
+    const { data, error: deleteError } = await this.db
       .from(REPORT_EXPORTS_TABLE)
       .delete()
-      .lt("requested_at", cutoff);
+      .lt("requested_at", cutoff)
+      .select("restaurant_id");
     if (deleteError) {
       this.logger.error("Report export retention: could not delete expired exports", {
         error: deleteError.message,
@@ -586,7 +623,34 @@ export class ReportExportsService {
       throw deleteError;
     }
 
-    return { deleted: count ?? 0 };
+    const removed = (data ?? []) as Array<{ restaurant_id: string }>;
+    const perHouse = new Map<string, number>();
+    for (const r of removed)
+      perHouse.set(r.restaurant_id, (perHouse.get(r.restaurant_id) ?? 0) + 1);
+    if (perHouse.size > 0) {
+      const sweptAt = new Date().toISOString();
+      const { error: recordError } = await this.db
+        .from(REPORT_EXPORT_SWEEPS_TABLE)
+        .insert(
+          [...perHouse].map(([restaurantId, n]) => ({
+            restaurant_id: restaurantId,
+            swept_at: sweptAt,
+            removed_count: n,
+            kept_days: EXPORT_RETENTION_DAYS,
+          })),
+        );
+      if (recordError)
+        this.logger.error(
+          "Report export retention: files removed, but the per-house record was not written",
+          {
+            houses: perHouse.size,
+            deleted: removed.length,
+            error: recordError.message,
+          },
+        );
+    }
+
+    return { deleted: removed.length };
   }
 
   private async readRow(restaurantId: string, exportId: string): Promise<ExportRow> {

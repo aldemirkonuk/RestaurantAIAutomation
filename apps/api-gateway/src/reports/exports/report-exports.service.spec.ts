@@ -831,6 +831,96 @@ describe("ReportExportsService — a report export is written, or says why not (
     expect(remainingIds).not.toContain(oldB.id);
   });
 
+  it("sweepExpired records, per house, how many files it removed and under which keeping time (F-1605)", async () => {
+    const { mem, service } = build();
+    const old = new Date(
+      Date.now() - (EXPORT_RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const seedOld = (house: string) =>
+      mem.seed("report_exports", {
+        restaurant_id: house,
+        cutting: "ledger",
+        title: "old",
+        window_label: "w",
+        status: "ready",
+        csv: "a",
+        html: "b",
+        finished_at: old,
+        requested_at: old,
+      });
+    seedOld(HOUSE_A);
+    seedOld(HOUSE_A);
+    seedOld(HOUSE_B);
+
+    expect((await service.sweepExpired()).deleted).toBe(3);
+    const records = mem.rows("report_export_sweeps");
+    expect(records).toHaveLength(2);
+    expect(records).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          restaurant_id: HOUSE_A,
+          removed_count: 2,
+          kept_days: EXPORT_RETENTION_DAYS,
+        }),
+        expect.objectContaining({
+          restaurant_id: HOUSE_B,
+          removed_count: 1,
+          kept_days: EXPORT_RETENTION_DAYS,
+        }),
+      ]),
+    );
+
+    // A sweep that removes nothing writes nothing: no "0 removed" rows.
+    expect((await service.sweepExpired()).deleted).toBe(0);
+    expect(mem.rows("report_export_sweeps")).toHaveLength(2);
+
+    // The shelf reads the house's newest record, and only its own house's.
+    const listed = await service.listExports(HOUSE_A);
+    expect(listed.lastSweep).toEqual({
+      sweptAt: records.find((r) => r.restaurant_id === HOUSE_A)!.swept_at,
+      removedCount: 2,
+      keptDays: EXPORT_RETENTION_DAYS,
+    });
+  });
+
+  it("a house no sweep has touched lists lastSweep as null; an unread record is left out, never null (F-1605)", async () => {
+    const { mem, service } = build();
+    expect((await service.listExports(HOUSE_A)).lastSweep).toBeNull();
+    mem.failNext(
+      "report_export_sweeps",
+      "select",
+      "permission denied for table report_export_sweeps",
+    );
+    const listed = await service.listExports(HOUSE_A);
+    expect(listed.lastSweep).toBeUndefined();
+    expect(listed.exports).toEqual([]);
+  });
+
+  it("files removed are still counted when their record cannot be written (F-1605)", async () => {
+    const { mem, service } = build();
+    const old = new Date(
+      Date.now() - (EXPORT_RETENTION_DAYS + 1) * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    mem.seed("report_exports", {
+      restaurant_id: HOUSE_A,
+      cutting: "ledger",
+      title: "old",
+      window_label: "w",
+      status: "ready",
+      csv: "a",
+      html: "b",
+      finished_at: old,
+      requested_at: old,
+    });
+    mem.failNext(
+      "report_export_sweeps",
+      "insert",
+      "permission denied for table report_export_sweeps",
+    );
+    expect((await service.sweepExpired()).deleted).toBe(1);
+    expect(exportsOf(mem)).toHaveLength(0);
+  });
+
   it("sweepExpired is idempotent — a second run finds nothing left to delete, and does not error", async () => {
     const { service } = build();
     expect((await service.sweepExpired()).deleted).toBe(0);

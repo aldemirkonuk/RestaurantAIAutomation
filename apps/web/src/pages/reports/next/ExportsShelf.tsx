@@ -26,7 +26,7 @@ import type { AnalysisId } from './rp-sheet';
 import { failureLine } from './rp-format';
 import { isQuarter, monthLabel } from './rp-registers-trade';
 import type { ExportDesk } from './useReportExports';
-import { REPORT_EXPORTS_PAGE_LIMIT, type ReportExport } from '@/services/api/reports';
+import { REPORT_EXPORTS_PAGE_LIMIT, type ReportExport, type ReportExportSweep } from '@/services/api/reports';
 import { getHouseLocale } from '@/lib/houseCurrency';
 import { useState } from 'react';
 
@@ -55,9 +55,22 @@ function day(ms: number, zone: string | null): string | null {
 const KEPT_MS = KEPT_DAYS * 24 * 60 * 60 * 1000;
 
 /**
+ * What the newest retention sweep removed from this house (F-1605), from the
+ * gateway's record of it: "3 older files were removed on 12 Oct 2026 under the
+ * 90-day rule." Null when there is no record, or its day cannot be read.
+ */
+export function sweptSaid(sweep: ReportExportSweep | null | undefined, zone: string | null): string | null {
+  if (!sweep) return null;
+  const on = day(new Date(sweep.sweptAt).getTime(), zone);
+  if (!on) return null;
+  const n = sweep.removedCount;
+  return `${n} older file${n === 1 ? ' was' : 's were'} removed on ${on} under the ${sweep.keptDays}-day rule.`;
+}
+
+/**
  * An empty shelf is not "nothing was ever written" (F-1605): files past the
- * keeping time are cleared, and nothing records that they were, so the
- * sentence says what the shelf can know.
+ * keeping time are cleared. Sweeps before 2027-01-16 left no record, so with
+ * no record the sentence says only what the rule makes true.
  */
 export function emptyShelfSaid(zone: string | null, now: number = Date.now()): string {
   const since = day(now - KEPT_MS, zone);
@@ -331,7 +344,12 @@ export default function ExportsShelf({
               </button>
             </p>
           ) : (
-            <p className="rp-cap">{emptyShelfSaid(zone)}</p>
+            <p className="rp-cap">
+              {(() => {
+                const swept = sweptSaid(desk.lastSweep, zone);
+                return swept ? `Nothing is on the shelf. ${swept}` : emptyShelfSaid(zone);
+              })()}
+            </p>
           )
         ) : (
           <>
@@ -341,7 +359,13 @@ export default function ExportsShelf({
               ))}
             </ul>
             <div className="rp-row rp-exports__paging">
-              <p className="rp-cap">{pagingSummary(desk)}</p>
+              <p className="rp-cap">
+                {pagingSummary(desk)}
+                {(() => {
+                  const swept = sweptSaid(desk.lastSweep, zone);
+                  return swept ? ` ${swept}` : '';
+                })()}
+              </p>
               {(desk.canPrevPage || desk.canNextPage) && (
                 <span className="rp-row" style={{ gap: 8 }}>
                   <button
