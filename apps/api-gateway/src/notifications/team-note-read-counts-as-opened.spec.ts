@@ -31,6 +31,8 @@ function fakeDb(tables: Record<string, Row[]>) {
         filters.push((r) => vs.includes(r[k])),
         b
       ),
+      order: () => b,
+      range: () => b,
       maybeSingle: () =>
         Promise.resolve({ data: run().data[0] ?? null, error: null }),
       then: (ok: any, ko: any) => Promise.resolve(run()).then(ok, ko),
@@ -91,12 +93,71 @@ describe("reading a crew note's line records it as opened (F-1657)", () => {
     expect(ana?.opened_at).toBeNull();
   });
 
-  it("[PRE-FIX-FAILS] a folded bell line ruled off by its ids opens the note", async () => {
+  it("[PRE-FIX-FAILS] lines ruled off by their ids are not read: no open (F-1663)", async () => {
     const t = seed();
     await serviceOver(t).markBulkAsRead(["n-note", "n-other"], "u-sam");
-    expect(
-      t.team_note_recipients.find((r) => r.member_id === "m-sam")?.opened_at,
-    ).toEqual(expect.any(String));
+    expect(t.notifications[0].status).toBe("read");
+    expect(t.team_note_recipients[0].opened_at).toBeNull();
+  });
+
+  it("[PRE-FIX-FAILS] the bell's rule-off of the lines on screen records no open (F-1663)", async () => {
+    const t = seed();
+    const n = await serviceOver(t).markFoldAsRead({
+      id: "n-note",
+      userId: "u-sam",
+      restaurantId: "house-a",
+    });
+    expect(n).toBe(1);
+    expect(t.notifications[0].status).toBe("read");
+    expect(t.team_note_recipients[0].opened_at).toBeNull();
+  });
+
+  it("a tap that opens the bell line records the open, for the reader alone", async () => {
+    const t = seed();
+    await serviceOver(t).markFoldAsRead({
+      id: "n-note",
+      userId: "u-sam",
+      restaurantId: "house-a",
+      opened: true,
+    });
+    const sam = t.team_note_recipients.find((r) => r.member_id === "m-sam");
+    const ana = t.team_note_recipients.find((r) => r.member_id === "m-ana");
+    expect(sam?.opened_at).toEqual(expect.any(String));
+    expect(ana?.opened_at).toBeNull();
+  });
+
+  it("[PRE-FIX-FAILS] two notes about the same week never fold: opening one leaves the other unread and unopened (F-1663)", async () => {
+    const t = seed();
+    t.notifications.push({
+      id: "n-note-2",
+      user_id: "u-sam",
+      restaurant_id: "house-a",
+      type: "system",
+      title: "A note about the week of Mon 12 Oct",
+      metadata: { teamNoteId: "note-2" },
+      status: "unread",
+    });
+    t.team_note_recipients.push({
+      note_id: "note-2",
+      member_id: "m-sam",
+      opened_at: null,
+    });
+    const n = await serviceOver(t).markFoldAsRead({
+      id: "n-note-2",
+      userId: "u-sam",
+      restaurantId: "house-a",
+      opened: true,
+    });
+    expect(n).toBe(1);
+    expect(t.notifications.find((r) => r.id === "n-note")?.status).toBe(
+      "unread",
+    );
+    const opened = (id: string) =>
+      t.team_note_recipients.find(
+        (r) => r.note_id === id && r.member_id === "m-sam",
+      )?.opened_at;
+    expect(opened("note-2")).toEqual(expect.any(String));
+    expect(opened("note-1")).toBeNull();
   });
 
   it("keeps the first open: a second read does not move it", async () => {

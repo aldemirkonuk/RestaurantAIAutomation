@@ -32,6 +32,7 @@ import {
   iconForType,
   kindOf,
   plainText,
+  ruleOffScopeWords,
   stampOf,
   timeAgo,
 } from './nt-format';
@@ -355,5 +356,20 @@ describe('stamps are in the house\'s hand, on the house\'s clock (F-1123)', () =
   it('with no zone read, the device\'s clock stands in and nothing throws', () => {
     expect(stampOf(delivered, null)).not.toBe('—');
     expect(stampOf(delivered, 'Not/AZone')).not.toBe('—');
+  });
+});
+
+describe('ruleOffScopeWords (F-1659)', () => {
+  const none = { asleep: 0, seals: 0, drafts: 0, hidden: 0, elsewhere: 0 };
+  it('names only the parts that are there', () => {
+    expect(ruleOffScopeWords(none)).toBe('Rules off only the lines listed here.');
+    expect(ruleOffScopeWords({ ...none, asleep: 2, hidden: 1 })).toBe(
+      'Rules off only the lines listed here. These stay open: 2 put to sleep, 1 hidden by your search.',
+    );
+  });
+  it('says when the lines further back could not be counted', () => {
+    expect(ruleOffScopeWords({ ...none, elsewhere: null })).toBe(
+      'Rules off only the lines listed here. These stay open: any further back, which could not be counted.',
+    );
   });
 });

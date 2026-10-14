@@ -18,6 +18,7 @@ import { useSession } from "@/state/session";
 import { addDaysToKey, houseDateKey, mondayOfKey } from "@/lib/houseDate";
 import type { HouseSummary } from "@/auth/houseChoice";
 import { houseFrameOfPulse, type HouseMoneyFrame } from "@/lib/houseMoney";
+import { markReadSlices } from "@/lib/inboxMarkRead";
 import { readsHouseGoals } from "@/components/today/pulseStripView";
 
 export const feedKey = ["mobile", "feed"] as const;
@@ -346,7 +347,6 @@ export function useUnreadCount() {
  */
 export function useNotificationActions() {
   const qc = useQueryClient();
-  const { restaurantId, userId } = useAuthed();
   const settle = () => {
     qc.invalidateQueries({ queryKey: [...notificationsKey] });
     qc.invalidateQueries({ queryKey: [...feedKey] });
@@ -375,13 +375,17 @@ export function useNotificationActions() {
     onSettled: settle,
   });
 
+  // Marks only the lines the screen names (F-1659); it used to send
+  // `read/all`, which marked lines past the fifty loaded and approvals too.
+  // The ids come from `markReadScope` (src/lib/inboxMarkRead.ts).
   const markAllRead = useMutation({
-    mutationFn: () => {
-      const params = new URLSearchParams({ userId: String(userId) });
-      if (restaurantId) params.set("restaurantId", restaurantId);
-      return api(`/notifications/read/all?${params.toString()}`, {
-        method: "PATCH",
-      });
+    mutationFn: async (ids: string[]) => {
+      for (const part of markReadSlices(ids)) {
+        await api("/notifications/read/bulk", {
+          method: "PATCH",
+          body: { ids: part },
+        });
+      }
     },
     onSettled: settle,
   });

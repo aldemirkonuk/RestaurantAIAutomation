@@ -385,3 +385,30 @@ export function actionTargetOf(
   const to = n.actionUrl.startsWith('/') ? n.actionUrl : `/${n.actionUrl}`;
   return { to, label, external: false };
 }
+
+/**
+ * What "Rule these off" leaves open, in words the owner reads before tapping
+ * (F-1659). The act rules off only the lines in "Needs a hand" on screen; it
+ * used to rule off the restaurant's whole unread book, lines put to sleep,
+ * lines waiting for a seal and pages never read among them, and said so only
+ * in a hover title a phone never shows. Each part is named only when it is
+ * there; `elsewhere` is null when the register's count could not be read.
+ */
+export function ruleOffScopeWords(scope: {
+  asleep: number;
+  seals: number;
+  drafts: number;
+  hidden: number;
+  elsewhere: number | null;
+}): string {
+  const parts: string[] = [];
+  if (scope.seals > 0) parts.push(`${scope.seals} waiting for your approval`);
+  if (scope.asleep > 0) parts.push(`${scope.asleep} put to sleep`);
+  if (scope.drafts > 0) parts.push(`${scope.drafts} the house drafted`);
+  if (scope.hidden > 0) parts.push(`${scope.hidden} hidden by your search`);
+  if (scope.elsewhere === null) parts.push('any further back, which could not be counted');
+  else if (scope.elsewhere > 0) parts.push(`${scope.elsewhere} further back or outside your filters`);
+  const only = 'Rules off only the lines listed here.';
+  if (parts.length === 0) return only;
+  return `${only} These stay open: ${parts.join(', ')}.`;
+}

@@ -492,9 +492,15 @@ export class NotificationsController {
   /**
    * Rule off a folded bell line by its fold, not by the ids the bell's page
    * happened to hold (F-253, F-1125). Scoped to the caller and their house.
+   * `?opened=1`: a tap that opened the line, so a crew note on that one row
+   * counts as opened; a rule-off of the lines on screen sends none (F-1663).
    */
   @Patch(":id/read/fold")
-  async markFoldAsRead(@Param("id") id: string, @Req() req: ScopedRequest) {
+  async markFoldAsRead(
+    @Param("id") id: string,
+    @Req() req: ScopedRequest,
+    @Query("opened") opened?: string,
+  ) {
     const userId = scopeOwnUserId(req);
     const restaurantId = scopeRestaurantId(req);
     try {
@@ -502,6 +508,7 @@ export class NotificationsController {
         id,
         userId,
         restaurantId,
+        opened: opened === "1" || opened === "true",
       });
       return { success: true, count };
     } catch (error) {

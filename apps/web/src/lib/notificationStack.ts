@@ -57,6 +57,12 @@ function lowStockWineSetKey(n: Notification): string | null {
 }
 
 function stackKey(n: Notification): { key: string; mode: StackMode } | null {
+  // F-1663: two crew notes about the same week share a title, and folded the
+  // older note's text was never shown. A note is never a repeat; never fold it.
+  // Kept in step with the gateway's `foldKeyOf`.
+  if (typeof n.metadata?.teamNoteId === "string" && n.metadata.teamNoteId) {
+    return null;
+  }
   if (n.type === "inventory_low_stock") {
     if (/dropped below par/i.test(n.title) || n.metadata?.mode === "instant") {
       // Was the constant `'inventory_low_stock:below_par_burst'` for EVERY

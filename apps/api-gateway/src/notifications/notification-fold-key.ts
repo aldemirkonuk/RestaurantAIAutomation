@@ -59,6 +59,12 @@ export function foldKeyOf(row: FoldableRow): string | null {
       ? (row.metadata as Record<string, unknown>)
       : {};
 
+  // F-1663: a crew note is never a repeat of another, even about the same
+  // week under the same title; folded, the older note's text was never shown.
+  if (typeof metadata.teamNoteId === "string" && metadata.teamNoteId) {
+    return null;
+  }
+
   if (type === "inventory_low_stock") {
     if (/dropped below par/i.test(title) || metadata.mode === "instant") {
       const wineSet = lowStockWineSetKey(metadata);
