@@ -30,6 +30,7 @@ vi.mock('@/lib/csvImport', async (orig) => ({
 }))
 
 import { CountSheetPanel } from './CountSheetPanel'
+import { AuthContext } from '@/contexts/AuthContext'
 
 const SESSION = {
   id: 'S1',
@@ -92,6 +93,20 @@ describe('CountSheetPanel (F-1544 lane 6)', () => {
     expect(opts.format).toBe('csv')
     expect(opts.rows.map((r) => r.item)).toEqual(['Gin', '', 'Kavaklıdere', ''])
     expect(opts.rows.every((r) => r.sessionId === 'S1')).toBe(true)
+  })
+
+  it('names the sheet for its house (F-1631)', async () => {
+    const houses = { availableRestaurants: [{ id: 'h0', name: 'Detroit' }, { id: 'h1', name: 'Tuzlu Rüzgar Kadıköy' }] }
+    render(
+      <AuthContext.Provider value={houses as never}>
+        <CountSheetPanel sessionId="S1" house="h1" onSent={vi.fn()} />
+      </AuthContext.Provider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Count on paper' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Download the sheet' }))
+    await waitFor(() => expect(exported.exportTable).toHaveBeenCalled())
+    const opts = exported.exportTable.mock.calls[0][0] as { filename: string }
+    expect(opts.filename).toMatch(/^mudavym-tuzlu-ruzgar-kadikoy-count-sheet-\d{4}-\d{2}-\d{2}$/)
   })
 
   it('previews, names the refused shelf, and sends nothing until Send', async () => {

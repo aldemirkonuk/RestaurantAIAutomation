@@ -256,8 +256,9 @@ describe("VendorSpendService (F-1608)", () => {
       ],
     });
     const file = await svc.csv(HOUSE, "2026-01-01", "2026-12-31");
+    // Named for its house (F-1631).
     expect(file.filename).toBe(
-      "mudavym-spend-by-vendor-2026-01-01-to-2026-12-31.csv",
+      "mudavym-meyhouse-spend-by-vendor-2026-01-01-to-2026-12-31.csv",
     );
     const csv = file.body;
     expect(csv).toContain("Meyhouse");

@@ -9,10 +9,12 @@
  * Shown to owners and managers only (the routes refuse anyone else). Its own
  * section beside the closed months, in the export shelf's styles.
  */
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/services/api/client';
+import { AuthContext } from '@/contexts/AuthContext';
 import { houseToday } from '@/lib/houseZone';
+import { exportHouseWord } from '@/lib/tableExport';
 import { EM, countOf, failureLine, failureOf, money } from './rp-format';
 import { reasonOf, saveFile } from './useReportExports';
 
@@ -61,7 +63,10 @@ export async function getVendorSpend(p: Period): Promise<VendorSpend> {
   return data;
 }
 
-export async function downloadVendorSpend(p: Period): Promise<{ filename: string; mime: string; body: string }> {
+export async function downloadVendorSpend(
+  p: Period,
+  houseName: string | null,
+): Promise<{ filename: string; mime: string; body: string }> {
   const { data } = await apiClient.get<string>('/reports/vendor-spend/file.csv', {
     params: p,
     responseType: 'text',
@@ -70,7 +75,8 @@ export async function downloadVendorSpend(p: Period): Promise<{ filename: string
   if (typeof data !== 'string') throw new Error('the gateway answered without the file');
   // Reading the body as text drops the BOM; put it back so Excel reads UTF-8.
   return {
-    filename: `mudavym-spend-by-vendor-${p.from}-to-${p.to}.csv`,
+    // Named for its house, as the exports shelf names its files (F-1631).
+    filename: `mudavym-${exportHouseWord(houseName)}-spend-by-vendor-${p.from}-to-${p.to}.csv`,
     mime: 'text/csv;charset=utf-8',
     body: data.startsWith('\uFEFF') ? data : `\uFEFF${data}`,
   };
@@ -117,6 +123,8 @@ export interface VendorSpendShelfProps {
 
 export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShelfProps) {
   const today = dayOf(houseToday(zone));
+  const houseName =
+    useContext(AuthContext)?.availableRestaurants?.find((b) => b.id === restaurantId)?.name ?? null;
   const [period, setPeriod] = useState<Period>(() => periods(today).thisYear);
   const [error, setError] = useState<string | null>(null);
   const valid = Boolean(period.from && period.to && period.from <= period.to);
@@ -183,7 +191,7 @@ export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShel
             onClick={async () => {
               setError(null);
               try {
-                const file = await downloadVendorSpend(period);
+                const file = await downloadVendorSpend(period, houseName);
                 saveFile(file.filename, file.mime, file.body);
               } catch (err) {
                 setError(`The file did not download: ${reasonOf(err)}`);

@@ -12,6 +12,7 @@ import {
   type ExportDoc,
 } from "../exports/report-export-doc";
 import { countWithheld } from "../exports/report-export-cuttings";
+import { houseSlug } from "../exports/report-export-naming";
 
 /**
  * Spend by vendor for any period — F-1608 (sim 52, owner-year-and-accountant
@@ -403,7 +404,9 @@ export class VendorSpendService {
       withheldCount: countWithheld(doc),
     });
     return {
-      filename: `mudavym-spend-by-vendor-${spend.from}-to-${spend.to}.csv`,
+      // Named for its house, as the exports shelf names its files (F-1631):
+      // two houses' same period no longer save as "(1)".
+      filename: `mudavym-${houseSlug(spend.houseName)}-spend-by-vendor-${spend.from}-to-${spend.to}.csv`,
       body,
     };
   }

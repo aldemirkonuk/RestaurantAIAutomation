@@ -155,6 +155,27 @@ export function fileSafeName(name: string, fallback: string): string {
 }
 
 /**
+ * The house's name as the exports shelf writes it into a file name,
+ * `mudavym-<house>-…` (F-1631): plain ASCII, lower case, hyphens, at most 40
+ * letters, "house" when there is no name. The same rule as the gateway's
+ * `houseSlug` (`report-export-naming.ts`), so a file saved here and one from
+ * the shelf name the house alike.
+ */
+export function exportHouseWord(name: string | null | undefined): string {
+  const slug = (name ?? '')
+    // Turkish dotless i has no decomposition; everything else NFKD strips.
+    .replace(/ı/g, 'i')
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40)
+    .replace(/-+$/g, '')
+  return slug || 'house'
+}
+
+/**
  * jsPDF's built-in Helvetica speaks WinAnsi only: ş ğ ı İ Ş Ğ have no glyph in
  * it, and one such letter turns the whole string to garble. The PDF carries
  * Inter instead (OFL, `public/fonts/OFL-inter.txt`), fetched only when a PDF

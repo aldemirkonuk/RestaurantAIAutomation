@@ -192,6 +192,10 @@ export class NotificationsService {
       await this.expoPushService.sendToUsers([userId], {
         title: payload.title,
         body: payload.body,
+        // F-1630: the approval and counter-offer pushes name their house too,
+        // so an owner of two houses can tell them apart. A `null` house has
+        // no name to give, so it pushes as before.
+        house: restaurantId ?? undefined,
         data: { type: payload.type, ...(payload.data ?? {}) },
       });
     }
@@ -955,6 +959,10 @@ export class NotificationsService {
             title: payload.title,
             body: payload.message,
             priority: payload.priority === "critical" ? "high" : "default",
+            // F-1630: the title names the house, as team pushes do (F-1183),
+            // so an owner of two houses can tell a low-stock push of one
+            // from the other's before tapping it.
+            house: restaurantId,
             data: {
               type: payload.type,
               actionUrl: payload.actionUrl ?? null,

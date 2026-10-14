@@ -20,6 +20,7 @@ vi.mock('./useReportExports', async (orig) => ({
 
 import VendorSpendShelf, { dayOf, periods, type VendorSpend } from './VendorSpendShelf';
 import { houseToday } from '@/lib/houseZone';
+import { AuthContext } from '@/contexts/AuthContext';
 
 const ROSSI = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
@@ -110,11 +111,17 @@ describe('VendorSpendShelf (F-1608)', () => {
     api.get.mockImplementation(async (url: string) =>
       url.endsWith('file.csv') ? { data: 'Mudavym report export\r\n' } : { data: spend() },
     );
-    wrap(<VendorSpendShelf restaurantId="h1" zone="Europe/Istanbul" />);
+    // An owner of two houses (F-1631): the file is named for this one.
+    const houses = { availableRestaurants: [{ id: 'h0', name: 'Detroit' }, { id: 'h1', name: 'Tuzlu Rüzgar' }] };
+    wrap(
+      <AuthContext.Provider value={houses as never}>
+        <VendorSpendShelf restaurantId="h1" zone="Europe/Istanbul" />
+      </AuthContext.Provider>,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Download CSV' }));
     await waitFor(() => expect(saved).toHaveBeenCalled());
     const [filename, mime, body] = saved.mock.calls[0];
-    expect(filename).toMatch(/^mudavym-spend-by-vendor-\d{4}-01-01-to-\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(filename).toMatch(/^mudavym-tuzlu-ruzgar-spend-by-vendor-\d{4}-01-01-to-\d{4}-\d{2}-\d{2}\.csv$/);
     expect(mime).toBe('text/csv;charset=utf-8');
     expect(body.startsWith('\uFEFF')).toBe(true);
   });

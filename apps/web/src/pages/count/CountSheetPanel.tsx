@@ -9,7 +9,8 @@
  * counter, ADR 0078), at the moment the sheet says the shelf was counted.
  */
 
-import { useState } from 'react'
+import { useContext, useState } from 'react'
+import { AuthContext } from '@/contexts/AuthContext'
 import {
   markCountShelfDone,
   parkCountLine,
@@ -18,7 +19,7 @@ import {
 } from '@/services/api/countSessions'
 import { getInventory, recordSpotCount } from '@/services/api/inventory'
 import { parseCsvRows, readCsvFile } from '@/lib/csvImport'
-import { exportDay, exportTable } from '@/lib/tableExport'
+import { exportDay, exportHouseWord, exportTable } from '@/lib/tableExport'
 import { getHouseLocale } from '@/lib/houseCurrency'
 import { useHouseZone } from '@/lib/houseZone'
 import {
@@ -45,6 +46,7 @@ const linesWords = (n: number) => `${n} ${n === 1 ? 'line' : 'lines'}`
 
 export function CountSheetPanel({ sessionId, house, onSent }: { sessionId: string; house: string; onSent: () => void }) {
   const zone = useHouseZone()
+  const houseName = useContext(AuthContext)?.availableRestaurants?.find((b) => b.id === house)?.name ?? null
   const [open, setOpen] = useState(false)
   const [session, setSession] = useState<CountSession | null>(null)
   const [plan, setPlan] = useState<CountSheetPlan | null>(null)
@@ -66,7 +68,8 @@ export function CountSheetPanel({ sessionId, house, onSent }: { sessionId: strin
         format: 'csv',
         rows: countSheetRows(s),
         columns: countSheetColumns,
-        filename: `count-sheet-${exportDay()}`,
+        // Named for its house, as the exports shelf names its files (F-1631).
+        filename: `mudavym-${exportHouseWord(houseName)}-count-sheet-${exportDay()}`,
         title: 'Count sheet',
       })
     } catch (err) {

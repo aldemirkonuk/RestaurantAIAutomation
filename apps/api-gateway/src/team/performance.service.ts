@@ -18,12 +18,23 @@ import { IngestSalesDto } from "./dto/team.dto";
  *   someone's own services is not a benchmark for them, so none is sent.
  * - `no-covers`: no service in the window records covers with its sales.
  * - `unreadable`: the read failed. Never shown as one of the above.
+ * - `withheld`: a staff caller's own card, when fewer than
+ *   STAFF_BENCHMARK_MIN_SERVERS servers fed the median. In a small house the
+ *   median and band give a colleague's sales per cover away (F-1636).
  */
 export type BenchmarkState =
   | "computed"
   | "self-only"
   | "no-covers"
-  | "unreadable";
+  | "unreadable"
+  | "withheld";
+
+/**
+ * A staff member sees the house median and band only when at least this many
+ * servers fed them (ADR 0294, the founder's pick of 2026-10-07 18:59:42Z,
+ * "Only with 5+ servers"; F-1636). Owners and managers are not affected here.
+ */
+export const STAFF_BENCHMARK_MIN_SERVERS = 5;
 
 /**
  * A service has a per-cover figure only when it records covers AND sales.
@@ -304,7 +315,9 @@ export class PerformanceService {
         ? "no-covers"
         : servers.size === 1 && includesMember
           ? "self-only"
-          : "computed";
+          : role === "staff" && servers.size < STAFF_BENCHMARK_MIN_SERVERS
+            ? "withheld"
+            : "computed";
     const teamPerCover =
       state === "computed"
         ? contributing
