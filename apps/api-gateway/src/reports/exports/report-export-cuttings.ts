@@ -291,12 +291,18 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
   // F-1534: a check rung at 0 (a comp, a staff meal) is left out of the
   // average too. An older payload says none.
   const zeroRung = num(d.checksTakingNoMoney) ?? 0;
-  const totaled = checks != null ? checks - untotaled - zeroRung : null;
+  // F-1644: a refund (a check with a minus total) is taken off Taken; the
+  // average adds it back and leaves it out of its count. An older payload
+  // says none.
+  const refunds = num(d.checksRefunded) ?? 0;
+  const refunded = num(d.refunded) ?? 0;
+  const totaled =
+    checks != null ? checks - untotaled - zeroRung - refunds : null;
   // The page's own derivation, rp-registers-trade.tsx `till.view`: an average
   // needs both operands and a non-zero count, or it is not an average.
   const avg =
     revenue != null && totaled != null && totaled > 0
-      ? revenue / totaled
+      ? (revenue + refunded) / totaled
       : null;
   const series = arr(d.dailySeries).map((r) => ({
     date: str(r.date),
@@ -336,16 +342,15 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
           ]
         : []),
     ],
-    // F-412: no refund reaches the till. The POS check carries no refund
-    // field (pos-hub/pos-types.ts CanonicalCheck), no adapter reads one, and
-    // Toast's `payment.refunded` has no handler. "Taken" is therefore what was
-    // rung up, and the file says so rather than letting it read as net.
+    // F-1644 (was F-412): a refund the till sends as a check with a minus
+    // total (the CSV till, pos-hub/pos-adapters.ts) is taken off Taken. A
+    // refund a till keeps apart (Toast's `payment.refunded` has no handler)
+    // never reaches Mudavym, and the file says both.
     notes: [
-      ...(revenue != null
-        ? [TILL_TOTALS_NOT_NET, TILL_REFUNDS_NOT_TAKEN_OFF]
-        : []),
+      ...(revenue != null ? [TILL_TOTALS_NOT_NET, TILL_REFUNDS_TAKEN_OFF] : []),
       ...(untotaled > 0 ? [tillUntotaledSaid(untotaled)] : []),
       ...(zeroRung > 0 ? [zeroChecksSaid(zeroRung)] : []),
+      ...(refunds > 0 ? [refundChecksSaid(refunds)] : []),
       ...(taxSaid && taxChecks > 0 && netChecks != null && taxChecks < netChecks
         ? [
             `The ${taxWord} figure is from ${taxChecks} of ${netChecks} checks: the rest were rung before the house said its prices include ${taxWord}, or the till sent them without it.`,
@@ -406,9 +411,22 @@ export function zeroChecksSaid(n: number): string {
   return `${n} ${n === 1 ? "check was" : "checks were"} rung at 0, such as a comp or a staff meal: counted in Checks, left out of the average check.`;
 }
 
-/** Said on every till export that carries a figure: refunds are not taken off "Taken". */
-export const TILL_REFUNDS_NOT_TAKEN_OFF =
-  "Refunds are not taken off. Mudavym does not hear about refunds from your till yet, so Taken is what was rung up, before any money given back. Check your till's own refund report before you hand this on as net takings.";
+/**
+ * Said on every till export that carries a figure (F-1644): which refunds
+ * Taken has had taken off, and which it cannot have. Word for word
+ * rp-registers-trade.tsx.
+ */
+export const TILL_REFUNDS_TAKEN_OFF =
+  "Refunds your till sends as a check with a minus total are taken off Taken. A refund your till keeps only in its own refund report does not reach Mudavym, so check that report before you hand this on as net takings.";
+
+/**
+ * F-1644: refunds sent as checks with a minus total, said on the till, room
+ * and server exports as the screen says them (rp-registers-trade.tsx
+ * `refundChecksSaid`, word for word).
+ */
+export function refundChecksSaid(n: number): string {
+  return `${n} ${n === 1 ? "check was a refund" : "checks were refunds"}, sent by your till with a minus total: counted in Checks, taken off Taken, left out of the average check.`;
+}
 
 /**
  * F-1444: the till checks with no total, said on the till export as the
@@ -746,6 +764,8 @@ function writeQuadrants(payload: unknown): ExportDoc {
     quadrant: typeof i.quadrant === "string" ? i.quadrant : null,
     // F-1587: why a costed wine has no margin on a price that includes tax.
     refusal: typeof i.marginRefusal === "string" ? i.marginRefusal : null,
+    // F-1645: too few days of sales to place it.
+    tooFew: i.tooFewDays === true,
   }));
   const uncosted = "no recorded cost — unknown, not a dog";
   // A costed wine whose sales include a line with no bottle figure has no
@@ -760,6 +780,8 @@ function writeQuadrants(payload: unknown): ExportDoc {
   const unmeasuredCount =
     counts === null ? null : (num(counts.unmeasured) ?? 0);
   const taxRefused = counts === null ? null : (num(counts.taxRefused) ?? 0);
+  const tooFewCount = counts === null ? null : (num(counts.tooFewDays) ?? 0);
+  const tooFew = "under a week of sales on record";
   const priced = items.filter((i) => i.margin != null).length;
 
   return doc({
@@ -778,7 +800,10 @@ function writeQuadrants(payload: unknown): ExportDoc {
         "No quadrant",
         counts === null
           ? count("unclassified")
-          : (unclassified ?? 0) + (unmeasuredCount ?? 0) + (taxRefused ?? 0),
+          : (unclassified ?? 0) +
+              (unmeasuredCount ?? 0) +
+              (taxRefused ?? 0) +
+              (tooFewCount ?? 0),
         "count",
       ),
       f("Median bottles per day", figure(medians.velocityPerDay, "the register published no median"), "bottles"),
@@ -807,7 +832,11 @@ function writeQuadrants(payload: unknown): ExportDoc {
                 figure(i.marginPct, i.refusal ?? uncosted),
                 i.quadrant ??
                   withheld(
-                    i.margin == null ? (i.refusal ?? uncosted) : unmeasured,
+                    i.margin == null
+                      ? (i.refusal ?? uncosted)
+                      : i.tooFew
+                        ? tooFew
+                        : unmeasured,
                   ),
               ]),
               note:
@@ -825,6 +854,9 @@ function writeQuadrants(payload: unknown): ExportDoc {
         : "",
       unmeasuredCount && unmeasuredCount > 0
         ? `${nounCount(unmeasuredCount, "item has", "items have")} no velocity and no quadrant: some of ${unmeasuredCount === 1 ? "its" : "their"} sales carry no bottle figure.`
+        : "",
+      tooFewCount && tooFewCount > 0
+        ? `${nounCount(tooFewCount, "wine has", "wines have")} no quadrant: ${tooFewCount === 1 ? "it has" : "they have"} been on the list or on record for under a week, too few days to say how fast ${tooFewCount === 1 ? "it moves" : "they move"}.`
         : "",
       cc && cc.complete === false && num(cc.total) != null
         ? `${num(cc.priced) ?? 0} of ${num(cc.total)} wines carry a recorded cost.`
@@ -1048,6 +1080,9 @@ function writeSeats(payload: unknown): ExportDoc {
       (num(s.checksTakingNoMoney) ?? 0) > 0
         ? zeroChecksSaid(num(s.checksTakingNoMoney) ?? 0)
         : "",
+      (num(s.checksRefunded) ?? 0) > 0
+        ? refundChecksSaid(num(s.checksRefunded) ?? 0)
+        : "",
     ],
     basis,
   });
@@ -1126,6 +1161,9 @@ function writeService(payload: unknown): ExportDoc {
       "A server's raw average is partly the section they were given. The adjusted fit is the engine's attempt to remove it; where it is withheld, the raw figures are all there is.",
       (num(s.checksTakingNoMoney) ?? 0) > 0
         ? zeroChecksSaid(num(s.checksTakingNoMoney) ?? 0)
+        : "",
+      (num(s.checksRefunded) ?? 0) > 0
+        ? refundChecksSaid(num(s.checksRefunded) ?? 0)
         : "",
     ],
     basis,
@@ -1473,7 +1511,13 @@ export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
       takesWindow: false,
       write: writeAhead,
     },
-    quadrants: { title: "Margin against movement", window: () => "the list as it stands, against 90 days of movement", takesWindow: false, write: writeQuadrants },
+    quadrants: {
+      title: "Margin against movement",
+      window: () =>
+        "the list as it stands, each wine against its own days on the list, up to 90 days to yesterday",
+      takesWindow: false,
+      write: writeQuadrants,
+    },
     ledger: {
       title: "Figures of record",
       window: () =>
@@ -1483,7 +1527,13 @@ export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
     },
     seats: { title: "The room", window: () => "the last 90 days of POS checks", takesWindow: false, write: writeSeats },
     service: { title: "Who served it", window: () => "the last 90 days of POS checks", takesWindow: false, write: writeService },
-    restock: { title: "What to buy back", window: () => "demand over the last 90 days, at the service level in the params", takesWindow: false, write: writeRestock },
+    restock: {
+      title: "What to buy back",
+      window: () =>
+        "demand over the last 90 days to yesterday, not counting today until it is over, at the service level in the params",
+      takesWindow: false,
+      write: writeRestock,
+    },
   });
 
 export { countWithheld };

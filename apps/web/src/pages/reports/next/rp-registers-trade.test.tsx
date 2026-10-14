@@ -20,8 +20,9 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import {
-  TILL_REFUNDS_NOT_TAKEN_OFF,
+  TILL_REFUNDS_TAKEN_OFF,
   TILL_TOTALS_NOT_NET,
+  lastYearFigure,
   pacing,
   till,
   tillUntotaledSaid,
@@ -35,6 +36,7 @@ import {
   REGISTER_TOTALS_NOT_NET,
   ledger,
   quadrants,
+  refundChecksSaid,
   seats,
   service,
   zeroChecksSaid,
@@ -139,18 +141,33 @@ describe('the till — a sale belongs to the house day (ADR 0296)', () => {
   });
 });
 
-describe('the till says refunds are not taken off Taken (F-446)', () => {
+describe('the till says which refunds are taken off Taken (F-1644, was F-446)', () => {
   it('prints the refund note beside a Taken figure, in the export file’s words', () => {
     const view = till.view(read({ ...OLD_PAYLOAD, timezone: 'America/Los_Angeles', zoneUnset: false }), ctx);
-    expect(view.notes).toEqual([TILL_TOTALS_NOT_NET, TILL_REFUNDS_NOT_TAKEN_OFF]);
-    expect(TILL_REFUNDS_NOT_TAKEN_OFF).toBe(
-      "Refunds are not taken off. Mudavym does not hear about refunds from your till yet, so Taken is what was rung up, before any money given back. Check your till's own refund report before you hand this on as net takings.",
+    expect(view.notes).toEqual([TILL_TOTALS_NOT_NET, TILL_REFUNDS_TAKEN_OFF]);
+    expect(TILL_REFUNDS_TAKEN_OFF).toBe(
+      "Refunds your till sends as a check with a minus total are taken off Taken. A refund your till keeps only in its own refund report does not reach Mudavym, so check that report before you hand this on as net takings.",
+    );
+  });
+
+  it('keeps a refund check out of the Average check and says how many', () => {
+    // 200 sales of 1,000 and 20 refunds of 1,000: Taken 180,000 over 220
+    // checks. The average read 180,000 / 220 = 818; it is 1,000.
+    const v = till.view(
+      read({ ...OLD_PAYLOAD, revenue: 180_000, checkCount: 220, checksRefunded: 20, refunded: 20_000 }),
+      ctx,
+    );
+    const thousand = till.view(read({ ...OLD_PAYLOAD, revenue: 1000, checkCount: 1 }), ctx).figures[2].value;
+    expect(v.figures[2]).toMatchObject({ label: 'Average check', value: thousand });
+    expect(v.notes).toContain(refundChecksSaid(20));
+    expect(refundChecksSaid(1)).toBe(
+      '1 check was a refund, sent by your till with a minus total: counted in Checks, taken off Taken, left out of the average check.',
     );
   });
 
   it('says it on a window with a total and no daily rows, too', () => {
     const view = till.view(read({ ...OLD_PAYLOAD, revenue: 0, dailySeries: [] }), ctx);
-    expect(view.notes).toEqual([TILL_TOTALS_NOT_NET, TILL_REFUNDS_NOT_TAKEN_OFF]);
+    expect(view.notes).toEqual([TILL_TOTALS_NOT_NET, TILL_REFUNDS_TAKEN_OFF]);
   });
 
   it('says nothing about refunds when there is no Taken figure to qualify', () => {
@@ -494,7 +511,7 @@ describe('figures a missing price or total would make short (F-1443, F-1444)', (
 
   it('an older payload with no count reads as before', () => {
     const v = till.view(read(OLD_PAYLOAD), ctx as never);
-    expect(v.notes).toEqual([TILL_TOTALS_NOT_NET, TILL_REFUNDS_NOT_TAKEN_OFF]);
+    expect(v.notes).toEqual([TILL_TOTALS_NOT_NET, TILL_REFUNDS_TAKEN_OFF]);
   });
 
   it('draws no turns or days of inventory from a short Cost of goods, and says why', () => {
@@ -648,5 +665,34 @@ describe('the registers say what Taken holds and leave a check rung at 0 out of 
     const v = seats.view(reg, { days: 90 } as never);
     expect(v.basis).toContain(REGISTER_TOTALS_NOT_NET);
     expect(v.notes).toContain(zeroChecksSaid(1));
+  });
+});
+
+// F-1646 (wave-54 sim): "Same month last year" set a whole month against one
+// the till covered only partly (the house joined mid-month) and printed the
+// change, which read as growth that was only the missing days.
+describe('same month last year says how many days were on record (F-1646)', () => {
+  const lastMarch = (days: number, onRecord: number) => ({
+    revenue: 9000,
+    checkCount: 90,
+    posConnected: true,
+    zoneUnset: false,
+    days,
+    dailySeries: Array.from({ length: onRecord }, (_, i) => ({
+      date: `2025-03-${String(31 - onRecord + i + 1).padStart(2, '0')}`,
+      revenue: 9000 / onRecord,
+    })),
+  });
+
+  it('a month the till covered for 9 of its 31 days gives no change', () => {
+    const f = lastYearFigure('2026-03', '2025-03', 31_000, lastMarch(31, 9), 'Europe/Istanbul');
+    expect(f.value).not.toMatch(/this year/);
+    expect(f.note).toMatch(/^9 of 31 days on record in /);
+  });
+
+  it('a month with a check on every day still gives the change (control)', () => {
+    const f = lastYearFigure('2026-03', '2025-03', 18_000, lastMarch(31, 31), 'Europe/Istanbul');
+    expect(f.value).toMatch(/this year\)$/);
+    expect(f.note).toBeUndefined();
   });
 });

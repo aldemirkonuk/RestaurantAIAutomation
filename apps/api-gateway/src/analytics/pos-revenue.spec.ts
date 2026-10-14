@@ -2065,3 +2065,49 @@ describe("a check rung at 0 is counted and kept out of the average (F-1534, F-15
     expect(doc.notes).toContain(TILL_TOTALS_NOT_NET);
   });
 });
+
+// F-1644 (wave-54 sim): the CSV till sends a refund as a check with a minus
+// total. Taken nets it off, as it should, but the average check counted it as
+// a paid check and the avg_check goal averaged it in: 200 sales of 1,000 and
+// 20 refunds of 1,000 read 818, not 1,000.
+describe("a refund check is taken off Taken and kept out of the average (F-1644)", () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(NOW));
+  });
+  afterEach(() => jest.useRealTimers());
+
+  const day = `${LA_TODAY}T19:00:00Z`;
+  const at = (total: unknown) => ({
+    total,
+    opened_at: day,
+    closed_at: day,
+    items: [],
+  });
+
+  it("the till window counts the refunds and the money they gave back", async () => {
+    const { service } = makeGoals({
+      pos_checks: probeThen([at(1000), at(1000), at(1000), at(-1000)]),
+    });
+    const result: any = await service.getPosRevenueWindow("r1", 30);
+    expect(result.revenue).toBeCloseTo(2000);
+    expect(result.checkCount).toBe(4);
+    expect(result.checksRefunded).toBe(1);
+    expect(result.refunded).toBeCloseTo(1000);
+  });
+
+  it("the average check goal leaves a refund out of its sum and its count", async () => {
+    const { service } = makeGoals({
+      pos_checks: [at(1000), at(1000), at(-1000)],
+    });
+    const out = await (service as any).computeMetricWithSeries(
+      "r1",
+      "avg_check",
+      LA_TODAY,
+      undefined,
+      LA,
+    );
+    expect(out.current).toBeCloseTo(1000);
+    expect(out.rowCount).toBe(2);
+  });
+});

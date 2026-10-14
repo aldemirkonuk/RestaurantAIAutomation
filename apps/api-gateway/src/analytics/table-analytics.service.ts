@@ -391,7 +391,9 @@ export class TableAnalyticsService {
         tipsNetNotRecorded: number;
         tipsNetNotRecordedByReason: Record<string, number>;
         paidChecks: number;
+        paidRevenue: number;
         zeroChecks: number;
+        refundChecks: number;
       }
     >();
     for (const c of checks) {
@@ -415,7 +417,9 @@ export class TableAnalyticsService {
         tipsNetNotRecorded: 0,
         tipsNetNotRecordedByReason: {},
         paidChecks: 0,
+        paidRevenue: 0,
         zeroChecks: 0,
+        refundChecks: 0,
       };
       a.revenue += c.total || 0;
       a.checks += 1;
@@ -428,7 +432,10 @@ export class TableAnalyticsService {
 
     const rows = shown.map((t: any) => {
       const a = agg.get(t.id);
-      const avgCheck = a && a.paidChecks > 0 ? a.revenue / a.paidChecks : null;
+      // F-1644: over the paid checks' own totals, so a refund is in neither
+      // the sum nor the count.
+      const avgCheck =
+        a && a.paidChecks > 0 ? a.paidRevenue / a.paidChecks : null;
       return {
         tableId: t.id,
         label: t.label,
@@ -441,6 +448,7 @@ export class TableAnalyticsService {
         checks: a?.checks ?? 0,
         paidChecks: a?.paidChecks ?? 0,
         checksTakingNoMoney: a?.zeroChecks ?? 0,
+        checksRefunded: a?.refundChecks ?? 0,
         revenue: a?.revenue ?? 0,
         covers: a?.covers ?? 0,
         avgCheck,
@@ -623,6 +631,8 @@ export class TableAnalyticsService {
        * out of every average check (F-1534).
        */
       checksTakingNoMoney: rows.reduce((n, r) => n + r.checksTakingNoMoney, 0),
+      /** Refunds at a shown table: taken off Taken, out of every average (F-1644). */
+      checksRefunded: rows.reduce((n, r) => n + r.checksRefunded, 0),
       /** Tip % is over net sales, the checks' subtotal (F-1532), or why not (F-1573). */
       ...tipBasisOf(Array.from(agg.values())),
       ...(await this.feedStatus(restaurantId, sinceDays, checks)),
@@ -649,7 +659,9 @@ export class TableAnalyticsService {
         tipsNetNotRecorded: number;
         tipsNetNotRecordedByReason: Record<string, number>;
         paidChecks: number;
+        paidRevenue: number;
         zeroChecks: number;
+        refundChecks: number;
       }
     >();
     const obs = {
@@ -672,7 +684,9 @@ export class TableAnalyticsService {
         tipsNetNotRecorded: 0,
         tipsNetNotRecordedByReason: {},
         paidChecks: 0,
+        paidRevenue: 0,
         zeroChecks: 0,
+        refundChecks: 0,
       };
       a.revenue += c.total || 0;
       a.checks += 1;
@@ -693,8 +707,10 @@ export class TableAnalyticsService {
       checks: a.checks,
       paidChecks: a.paidChecks,
       checksTakingNoMoney: a.zeroChecks,
+      checksRefunded: a.refundChecks,
       revenue: a.revenue,
-      avgCheck: a.paidChecks > 0 ? a.revenue / a.paidChecks : null,
+      // F-1644: a refund is in neither the sum nor the count.
+      avgCheck: a.paidChecks > 0 ? a.paidRevenue / a.paidChecks : null,
       wineAttachRate: a.checks > 0 ? a.wineChecks / a.checks : null,
       tipPct: a.tipBase > 0 ? a.tips / a.tipBase : null,
       /** F-1573: why Tip is blank when tips were recorded; null otherwise. */
@@ -748,6 +764,8 @@ export class TableAnalyticsService {
         (n, w) => n + w.checksTakingNoMoney,
         0,
       ),
+      /** Refunds: taken off Taken, out of Avg check (F-1644). */
+      checksRefunded: waiters.reduce((n, w) => n + w.checksRefunded, 0),
       /** Tip % is over net sales, the checks' subtotal (F-1532), or why not (F-1573). */
       ...tipBasisOf(Array.from(byWaiter.values())),
       ...(await this.feedStatus(restaurantId, sinceDays, checks)),
@@ -882,6 +900,9 @@ function isoOf(v: string): string {
  *   counted in `zeroChecks` and left out of `paidChecks`, the count every
  *   average check divides by, so it does not pull the average down. A check
  *   with no total is in neither: it is not a 0 (F-1444).
+ * - F-1644: a refund the till sends as a check with a minus total is taken
+ *   off the revenue, counted in `refundChecks`, and kept out of `paidChecks`
+ *   and `paidRevenue`, the sum and count every average check is over.
  * - F-1532: the tip rate is tips over the net sales (`subtotal`) of the checks
  *   that carried both. It used to be over `total`, which on Square and most
  *   tills already holds the tip, so a 20% tip read as 15.9%.
@@ -894,7 +915,9 @@ function tallyCheck(
     tipsNetNotRecorded: number;
     tipsNetNotRecordedByReason: Record<string, number>;
     paidChecks: number;
+    paidRevenue: number;
     zeroChecks: number;
+    refundChecks: number;
   },
   c: {
     total?: unknown;
@@ -907,7 +930,11 @@ function tallyCheck(
 ): void {
   const total = recorded(c.total);
   if (total === 0) a.zeroChecks += 1;
-  else if (Number.isFinite(total)) a.paidChecks += 1;
+  else if (total < 0) a.refundChecks += 1;
+  else if (Number.isFinite(total)) {
+    a.paidChecks += 1;
+    a.paidRevenue += total;
+  }
   const net = recorded(c.subtotal);
   const tip = recorded(c.tip);
   if (Number.isFinite(tip) && Number.isFinite(net) && net > 0) {

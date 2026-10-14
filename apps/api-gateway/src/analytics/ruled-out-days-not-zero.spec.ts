@@ -135,9 +135,9 @@ describe("a day ruled out of the baselines is not fitted as zero (F-1575)", () =
   it("the reorder demand is over the days that traded, not the outage as a 0", async () => {
     const out: any = await analytics().getInventoryScience("r1");
     const sku = out.skus.find((s: any) => s.id === "inv-1");
-    // 90 days through today (today is 0 so far, as before): 88 bottles over
-    // the 89 days left once the outage is out, never over 90.
-    expect(sku.avgDailyDemand).toBeCloseTo(88 / 89, 9);
+    // 90 days through yesterday (F-1647): 89 bottles over the 89 days left
+    // once the outage is out, never over 90.
+    expect(sku.avgDailyDemand).toBeCloseTo(89 / 89, 9);
     expect(sku.demandDays).toBe(89);
     expect(out.basis.demand).toMatch(/ruled out of the figures left out/);
   });

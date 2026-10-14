@@ -494,21 +494,17 @@ export class AnalyticsService {
     /** With a zone, today is the house's, as `toDailySeries` ends on. */
     zone: string | null = null,
     recordsFrom: string | null = null,
+    /** F-1647: count to yesterday, as a series ended yesterday does. */
+    throughYesterday = false,
   ): number {
-    if (!listedAt && !recordsFrom) return sinceDays;
-    let first = listedAt
-      ? String(listedAt).slice(0, 10)
-      : (recordsFrom as string);
-    for (const r of rows) if (r.date && r.date < first) first = r.date;
-    if (recordsFrom && recordsFrom > first) first = recordsFrom;
-    const today = zone
-      ? houseToday(zone)
-      : new Date().toISOString().slice(0, 10);
-    const days =
-      Math.floor((Date.parse(today) - Date.parse(first)) / 86400000) + 1;
-    return Number.isFinite(days)
-      ? Math.min(sinceDays, Math.max(1, days))
-      : sinceDays;
+    return demandDaysOnList(
+      listedAt,
+      rows,
+      sinceDays,
+      zone,
+      recordsFrom,
+      throughYesterday,
+    );
   }
 
   /**
@@ -522,18 +518,7 @@ export class AnalyticsService {
     consumption: Array<{ date: string }>,
     sinceDays: number,
   ): string | null {
-    const openedDaysAgo = openedOn
-      ? Math.floor(
-          (Date.parse(new Date().toISOString().slice(0, 10)) -
-            Date.parse(openedOn)) /
-            86400000,
-        )
-      : null;
-    let from: string | null = null;
-    if (openedDaysAgo != null && openedDaysAgo < sinceDays)
-      for (const c of consumption)
-        if (c.date && (!from || c.date < from)) from = c.date;
-    return from;
+    return salesRecordedFromOf(openedOn, consumption, sinceDays);
   }
 
   /**
@@ -1153,14 +1138,18 @@ export class AnalyticsService {
       // order that cannot be counted adds nothing, and says so (onOrder null).
       const position = i.qty + (i.onOrder ?? 0);
       const rows = demandByWine.get(i.id) || [];
+      // F-1647: demand ends yesterday, as the forecast's does (F-1533):
+      // today's unfinished day is not a full day of sales.
       const demandDays = this.daysOnList(
         i.listedAt,
         rows,
         sinceDays,
         zone,
         salesRecordedFrom,
+        true,
       );
       const { values, left } = this.toDailySeries(rows, demandDays, zone, {
+        throughYesterday: true,
         ruledOut: exclusions.dates,
       });
       for (const d of left) ruledOutLeft.add(d);
@@ -1270,7 +1259,7 @@ export class AnalyticsService {
       // This endpoint carried no `basis` at all, which made its cost-derived
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
-        demand: `bottles/day over ${sinceDays}d, or over the days since the wine was listed when that is fewer (skus[].demandDays)${salesRecordedFrom ? `, and never from before the house's first recorded sale on ${salesRecordedFrom}` : ""} — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}${ruledOutSaid(exclusions, ruledOutLeft)}`,
+        demand: `bottles/day over ${sinceDays}d ending yesterday, so today's unfinished day is not counted, or over the days since the wine was listed when that is fewer (skus[].demandDays)${salesRecordedFrom ? `, and never from before the house's first recorded sale on ${salesRecordedFrom}` : ""} — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}${ruledOutSaid(exclusions, ruledOutLeft)}`,
         reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost; stockout risk and the reorder list count bottles already ordered and not yet arrived (skus[].onOrder; null when an open order states no bottle count or the orders could not be read, and then only the shelf is counted)`,
         inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
@@ -1703,4 +1692,57 @@ function ruledOutSaid(
   if (use === "risk")
     return `${said}, and no day-to-day change is taken across ${days.length === 1 ? "it" : "them"}`;
   return said;
+}
+
+/**
+ * The days a wine's demand is averaged over (F-687, F-1516): see
+ * `AnalyticsService.daysOnList`. Exported so menu engineering divides a
+ * wine's sales by the same days the reorder register does (F-1645).
+ */
+export function demandDaysOnList(
+  listedAt: string | null | undefined,
+  rows: Array<{ date: string }>,
+  sinceDays: number,
+  zone: string | null = null,
+  recordsFrom: string | null = null,
+  throughYesterday = false,
+): number {
+  if (!listedAt && !recordsFrom) return sinceDays;
+  let first = listedAt
+    ? String(listedAt).slice(0, 10)
+    : (recordsFrom as string);
+  for (const r of rows) if (r.date && r.date < first) first = r.date;
+  if (recordsFrom && recordsFrom > first) first = recordsFrom;
+  const today = zone ? houseToday(zone) : new Date().toISOString().slice(0, 10);
+  // F-1647: a series that ends yesterday counts its days to yesterday.
+  const last = throughYesterday
+    ? zone
+      ? shiftHouseDay(today, -1)
+      : new Date(Date.parse(today) - 86400000).toISOString().slice(0, 10)
+    : today;
+  const days =
+    Math.floor((Date.parse(last) - Date.parse(first)) / 86400000) + 1;
+  return Number.isFinite(days)
+    ? Math.min(sinceDays, Math.max(1, days))
+    : sinceDays;
+}
+
+/** The house's first recorded sale in a window that holds its whole record (F-1516). */
+export function salesRecordedFromOf(
+  openedOn: string | null,
+  consumption: Array<{ date: string }>,
+  sinceDays: number,
+): string | null {
+  const openedDaysAgo = openedOn
+    ? Math.floor(
+        (Date.parse(new Date().toISOString().slice(0, 10)) -
+          Date.parse(openedOn)) /
+          86400000,
+      )
+    : null;
+  let from: string | null = null;
+  if (openedDaysAgo != null && openedDaysAgo < sinceDays)
+    for (const c of consumption)
+      if (c.date && (!from || c.date < from)) from = c.date;
+  return from;
 }

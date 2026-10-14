@@ -103,13 +103,13 @@ afterEach(() => {
 });
 
 describe("demand is filed on the house's days (F-928)", () => {
-  it("the reorder register puts one evening's two pours on one day, ending on the house's today", async () => {
+  it("the reorder register puts one evening's two pours on one day, ending on the house's yesterday (F-1647)", async () => {
     const { service } = analytics("America/Los_Angeles");
     const series = jest.spyOn(service as any, "toDailySeries");
     await service.getInventoryScience("r1");
     expect(lastTwo(series.mock.results[0].value as any)).toEqual({
-      dates: ["2026-10-08", "2026-10-09"],
-      values: [2, 0],
+      dates: ["2026-10-07", "2026-10-08"],
+      values: [0, 2],
     });
     const { values } = series.mock.results[0].value as any;
     expect(values.filter((v: number) => v > 0)).toEqual([2]);
@@ -149,9 +149,10 @@ describe("demand is filed on the house's days (F-928)", () => {
     const { service } = analytics(null);
     const series = jest.spyOn(service as any, "toDailySeries");
     await service.getInventoryScience("r1");
+    // Ending on UTC's yesterday (F-1647), as the house's does.
     expect(lastTwo(series.mock.results[0].value as any)).toEqual({
-      dates: ["2026-10-09", "2026-10-10"],
-      values: [1, 0],
+      dates: ["2026-10-08", "2026-10-09"],
+      values: [1, 1],
     });
   });
 });

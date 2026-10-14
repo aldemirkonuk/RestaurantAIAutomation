@@ -35,6 +35,10 @@ export interface QuadrantItem {
   marginPerBottle: number | null;
   marginPct: number | null;
   quadrant: string | null;
+  /** F-1645: the days its sales are averaged over; null from an older gateway. */
+  velocityDays?: number | null;
+  /** F-1645: too few days of sales to place it; it has no quadrant. */
+  tooFewDays?: boolean;
   /** F-1587: why a costed wine has no margin, when the till's prices include tax. */
   marginRefusal?: string | null;
 }
@@ -57,7 +61,7 @@ const quadrants = analysis<QuadrantRegister>({
   title: 'Margin against movement',
   register: 'menu-engineering register',
   answers: 'Which wines earn their place: margin against how fast they move',
-  window: () => 'the list as it stands, against 90 days of movement',
+  window: () => 'the list as it stands, each wine against its own days on the list, up to 90 days to yesterday',
   path: (rid) => `/analytics/menu-engineering/${rid}`,
   graphs: ['scatter', 'bars', 'table'],
   graphNote:
@@ -82,6 +86,8 @@ const quadrants = analysis<QuadrantRegister>({
         marginPerBottle: num(i.marginPerBottle),
         marginPct: num(i.marginPct),
         quadrant: (i.quadrant ?? null) as string | null,
+        velocityDays: num(i.velocityDays),
+        tooFewDays: i.tooFewDays === true,
         marginRefusal: typeof i.marginRefusal === 'string' ? i.marginRefusal : null,
       })),
       leftOut: arr(d.leftOut).map((w) => ({
@@ -94,6 +100,8 @@ const quadrants = analysis<QuadrantRegister>({
   view: (q) => {
     const unclassified = q.counts.unclassified ?? 0;
     const unmeasured = q.counts.unmeasured ?? 0;
+    // F-1645: a new wine, or a new house, with too few days of sales to place.
+    const tooFew = q.counts.tooFewDays ?? 0;
     // F-1587: prices that include tax, with a cost or rate not known without it.
     const taxRefused = q.counts.taxRefused ?? 0;
     const taxReasons = [
@@ -101,7 +109,7 @@ const quadrants = analysis<QuadrantRegister>({
     ];
     const priced = q.items.filter((i) => i.marginPerBottle != null);
     // A wine whose movement is not measured has no place on the x axis.
-    const plotted = priced.filter((i) => i.velocityPerDay != null);
+    const plotted = priced.filter((i) => i.velocityPerDay != null && !i.tooFewDays);
     const leftOut = q.leftOut ?? [];
     const basis = [q.basis?.velocity, q.basis?.margin, q.basis?.unpriced];
     const offPlot = [
@@ -116,6 +124,9 @@ const quadrants = analysis<QuadrantRegister>({
       unmeasured > 0
         ? `${countOf(unmeasured, 'wine is', 'wines are')} off the plot because some of its sales were recorded without a bottle figure, so how fast it moves is not measured — not 0 bottles a day.`
         : null,
+      tooFew > 0
+        ? `${countOf(tooFew, 'wine is', 'wines are')} off the plot because ${tooFew === 1 ? 'it has' : 'they have'} been on the list or on record for under a week, too few days to say how fast ${tooFew === 1 ? 'it moves' : 'they move'}.`
+        : null,
       leftOut.length > 0
         ? `Not on this list at all, because the menu gives no price we can use (no bottle price, and no glass price with a confirmed pour): ${leftOut
             .slice(0, 8)
@@ -129,6 +140,9 @@ const quadrants = analysis<QuadrantRegister>({
       { label: 'Puzzles', value: figure(q.counts.puzzle ?? 0) },
       { label: 'Dogs', value: figure(q.counts.dog ?? 0) },
       { label: 'No quadrant', value: figure(unclassified + unmeasured) },
+      // F-1645: a wine too new to place has its own tile, as a tax refusal
+      // does, so its reason is not folded into cost or velocity.
+      ...(tooFew > 0 ? [{ label: 'Under a week of sales', value: figure(tooFew) }] : []),
       // A wine refused for tax has no quadrant either; it gets its own tile so
       // the reason (no pre-tax margin, F-1587) is not folded into cost/velocity.
       ...(taxRefused > 0
@@ -209,7 +223,7 @@ const quadrants = analysis<QuadrantRegister>({
             i.name,
             i.velocityPerDay == null ? 'not measured' : figure(i.velocityPerDay),
             money(i.marginPerBottle, 'table'),
-            i.quadrant ?? EM,
+            i.quadrant ?? (i.tooFewDays ? 'under a week of sales' : EM),
           ],
         })),
         more:
@@ -526,6 +540,15 @@ export function zeroChecksSaid(n: number): string {
   return `${n} ${n === 1 ? 'check was' : 'checks were'} rung at 0, such as a comp or a staff meal: counted in Checks, left out of the average check.`;
 }
 
+/**
+ * F-1644: refunds the till sent as checks with a minus total, on the till,
+ * room and server registers. Word for word the gateway's `refundChecksSaid`
+ * (`reports/exports/report-export-cuttings.ts`).
+ */
+export function refundChecksSaid(n: number): string {
+  return `${n} ${n === 1 ? 'check was a refund' : 'checks were refunds'}, sent by your till with a minus total: counted in Checks, taken off Taken, left out of the average check.`;
+}
+
 export interface SeatsRegister extends PosWindow {
   dataStatus: string;
   /** Checks in the window with no table: the till named none, or a word no table answers (ADR 0303); null from an older gateway. */
@@ -538,6 +561,8 @@ export interface SeatsRegister extends PosWindow {
   hiddenTablesInHouse: number | null;
   /** Checks at a shown table rung at 0, out of every average (F-1534); 0 from an older gateway. */
   checksTakingNoMoney: number;
+  /** Refunds, checks with a minus total (F-1644). 0 from an older gateway. */
+  checksRefunded: number;
   tables: Array<{
     tableId: string;
     label: string;
@@ -572,6 +597,7 @@ const seats = analysis<SeatsRegister>({
       hiddenTables: num(d.hiddenTables),
       hiddenTablesInHouse: num(d.hiddenTablesInHouse),
       checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
+      checksRefunded: num(d.checksRefunded) ?? 0,
       tables: arr(d.tables).map((t) => ({
         tableId: str(t.tableId),
         label: str(t.label),
@@ -623,6 +649,7 @@ const seats = analysis<SeatsRegister>({
         : null,
       hiddenNote,
       s.checksTakingNoMoney > 0 ? zeroChecksSaid(s.checksTakingNoMoney) : null,
+      s.checksRefunded > 0 ? refundChecksSaid(s.checksRefunded) : null,
     ].filter((n): n is string => n !== null);
     const served = s.tables.filter((t) => t.checks > 0);
     const figures = [
@@ -728,6 +755,8 @@ export interface ServiceRegister extends PosWindow {
   tipsNetNotRecordedByReason: Record<string, number>;
   /** Checks rung at 0, out of Avg check (F-1534); 0 from an older gateway. */
   checksTakingNoMoney: number;
+  /** Refunds, checks with a minus total (F-1644). 0 from an older gateway. */
+  checksRefunded: number;
   adjusted: { method?: string; r2?: number | null } | null;
   waiters: Array<{
     name: string;
@@ -760,6 +789,7 @@ const service = analysis<ServiceRegister>({
       tipsNetNotRecorded: num(d.tipsNetNotRecorded) ?? 0,
       tipsNetNotRecordedByReason: countsByReasonFrom(d.tipsNetNotRecordedByReason),
       checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
+      checksRefunded: num(d.checksRefunded) ?? 0,
       adjusted: adj ? { method: str(adj.method), r2: num(adj.r2) } : null,
       waiters: arr(d.waiters).map((w) => ({
         name: str(w.name),
@@ -841,6 +871,7 @@ const service = analysis<ServiceRegister>({
       notes: [
         'A server’s raw average is partly the section they were given. The adjusted fit above is the engine’s attempt to remove it; where it reads an em dash, the raw ranking is all there is.',
         ...(s.checksTakingNoMoney > 0 ? [zeroChecksSaid(s.checksTakingNoMoney)] : []),
+        ...(s.checksRefunded > 0 ? [refundChecksSaid(s.checksRefunded)] : []),
         ...(s.tipsNetNotRecorded > 0 ? [tipsNetNotRecordedSaid(s.tipsNetNotRecorded, s.tipsNetNotRecordedByReason)] : []),
       ],
       basis,
@@ -932,7 +963,7 @@ const restock = analysis<RestockRegister>({
   title: 'What to buy back',
   register: 'reorder register',
   answers: 'What is about to run out, and how likely it is to run out first',
-  window: () => 'demand over the last 90 days, at the service level in the params',
+  window: () => 'demand over the last 90 days to yesterday, not counting today until it is over, at the service level in the params',
   path: (rid) => `/analytics/inventory-science/${rid}`,
   graphs: ['table', 'bars'],
   graphNote:

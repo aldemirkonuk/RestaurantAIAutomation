@@ -30,7 +30,7 @@ import {
   weekStart,
   weekdayIndex,
 } from './rp-format';
-import { AMOUNTS_WITHHELD, zeroChecksSaid } from './rp-registers-house';
+import { AMOUNTS_WITHHELD, refundChecksSaid, zeroChecksSaid } from './rp-registers-house';
 import { analysis, arr, obj, str, type AnalysisSpec, type ViewCtx } from './rp-spec';
 import { houseToday } from '@/lib/houseZone';
 import type { Cat, Cell } from './rp-view';
@@ -115,6 +115,10 @@ export interface TillWindow {
   checksWithoutTotal: number;
   /** Of `checkCount`, the checks rung at 0, a comp or a staff meal (F-1534). 0 from an older gateway. */
   checksTakingNoMoney: number;
+  /** Of `checkCount`, the refunds sent as checks with a minus total (F-1644). 0 from an older gateway. */
+  checksRefunded: number;
+  /** The money those refunds gave back, as a positive sum; taken off `revenue`. 0 from an older gateway. */
+  refunded: number;
   from: string;
   to: string;
   days: number;
@@ -205,6 +209,8 @@ const trailingTill = analysis<TillWindow>({
       checkCount: num(d.checkCount),
       checksWithoutTotal: num(d.checksWithoutTotal) ?? 0,
       checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
+      checksRefunded: num(d.checksRefunded) ?? 0,
+      refunded: num(d.refunded) ?? 0,
       from: str(d.from),
       to: str(d.to),
       days: num(d.days) ?? 0,
@@ -252,9 +258,14 @@ const trailingTill = analysis<TillWindow>({
     // F-1444: a check with no total is left out of Taken, so the average
     // divides by the checks that carry one, never by every check. F-1534: nor
     // by a check rung at 0 (a comp, a staff meal), which took no money.
+    // F-1644: nor by a refund, which Taken has had taken off; the average
+    // is over the paid checks alone, so their refunds are added back.
     const totaled =
-      w.checkCount != null ? w.checkCount - w.checksWithoutTotal - w.checksTakingNoMoney : null;
-    const avg = w.revenue != null && totaled != null && totaled > 0 ? w.revenue / totaled : null;
+      w.checkCount != null
+        ? w.checkCount - w.checksWithoutTotal - w.checksTakingNoMoney - w.checksRefunded
+        : null;
+    const avg =
+      w.revenue != null && totaled != null && totaled > 0 ? (w.revenue + w.refunded) / totaled : null;
     const figures = [
       { label: 'Taken', value: money(w.revenue), note: 'No POS revenue recorded' },
       { label: 'Checks', value: figure(w.checkCount) },
@@ -270,15 +281,16 @@ const trailingTill = analysis<TillWindow>({
         : `Non-voided pos_checks.total between ${w.from || EM} and ${w.to || EM}.`,
       'The series is sparse on purpose: a day with no check is absent, not plotted at zero.',
     ];
-    // F-446 (the on-screen twin of F-412's export note): no refund reaches the
-    // till — the POS check carries no refund field and no adapter reads one —
-    // so "Taken" is what was rung up, and the page says so wherever it prints it.
+    // F-1644 (was F-446): a refund the till sends as a check with a minus
+    // total is taken off Taken; one the till keeps apart never reaches
+    // Mudavym. The page says both wherever it prints Taken.
     // F-1536: Taken is the checks' totals, which hold tax and tips on most
     // tills, while the dashboard draws net sales; the page says which it is.
     const notes = [
-      ...(w.revenue != null ? [TILL_TOTALS_NOT_NET, TILL_REFUNDS_NOT_TAKEN_OFF] : []),
+      ...(w.revenue != null ? [TILL_TOTALS_NOT_NET, TILL_REFUNDS_TAKEN_OFF] : []),
       ...(w.checksWithoutTotal > 0 ? [tillUntotaledSaid(w.checksWithoutTotal)] : []),
       ...(w.checksTakingNoMoney > 0 ? [zeroChecksSaid(w.checksTakingNoMoney)] : []),
+      ...(w.checksRefunded > 0 ? [refundChecksSaid(w.checksRefunded)] : []),
     ];
     if (w.dailySeries.length === 0)
       return {
@@ -379,7 +391,9 @@ const till: AnalysisSpec = {
  * the till never sent a check for is said as that, not as 0 taken: the house
  * may not have been on Mudavym then. The change is given only for a period
  * that has ended, since a month so far set against a whole one is not a
- * change.
+ * change. F-1646: nor is a month the till covered only partly, before its
+ * first check or with days that sent none: it says N of M days on record and
+ * gives no change.
  */
 export function lastYearFigure(
   period: string,
@@ -396,6 +410,16 @@ export function lastYearFigure(
       label,
       value: EM,
       note: `No check from your till reached Mudavym for ${monthLabel(before)}, so there is nothing to set beside it`,
+    };
+  // The read is the till's own window (TillWindow), so it carries the days
+  // in that period and the days its till sent a check on.
+  const { dailySeries, days } = last as Partial<Pick<TillWindow, 'dailySeries' | 'days'>>;
+  const onRecord = dailySeries?.length;
+  if (onRecord != null && days != null && onRecord < days)
+    return {
+      label,
+      value: money(last.revenue),
+      note: `${onRecord} of ${days} days on record in ${monthLabel(before)}, so no change is worked out against a whole ${isQuarter(period) ? 'quarter' : 'month'}`,
     };
   const running = period === (isQuarter(period) ? thisQuarter : thisMonth)(houseToday(zone));
   const change =
@@ -414,15 +438,16 @@ export const TILL_TOTALS_NOT_NET =
   "Taken is the check totals as your till sends them. On most tills that includes tax and tips, so it reads higher than the dashboard's net sales, which are before tax and tips.";
 
 /**
- * Said beside every till figure: refunds are not taken off "Taken".
+ * Said beside every till figure (F-1644): which refunds Taken has had taken
+ * off, and which it cannot have.
  *
- * Word for word the gateway's `TILL_REFUNDS_NOT_TAKEN_OFF`
- * (`reports/exports/report-export-cuttings.ts`, fix/sim-reports-export), so the
- * screen and the file a house hands on say the same thing. Web cannot import
- * the gateway; when both have landed, change one and the other with it.
+ * Word for word the gateway's `TILL_REFUNDS_TAKEN_OFF`
+ * (`reports/exports/report-export-cuttings.ts`), so the screen and the file a
+ * house hands on say the same thing. Web cannot import the gateway; change
+ * one and the other with it.
  */
-export const TILL_REFUNDS_NOT_TAKEN_OFF =
-  "Refunds are not taken off. Mudavym does not hear about refunds from your till yet, so Taken is what was rung up, before any money given back. Check your till's own refund report before you hand this on as net takings.";
+export const TILL_REFUNDS_TAKEN_OFF =
+  "Refunds your till sends as a check with a minus total are taken off Taken. A refund your till keeps only in its own refund report does not reach Mudavym, so check that report before you hand this on as net takings.";
 
 /**
  * F-1444: word for word the gateway's `tillUntotaledSaid`

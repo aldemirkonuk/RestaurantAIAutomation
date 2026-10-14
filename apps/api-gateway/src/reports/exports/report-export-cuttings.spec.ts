@@ -7,7 +7,8 @@ import {
   EXPORT_CUTTINGS,
   countWithheld,
   isExportableCutting,
-  TILL_REFUNDS_NOT_TAKEN_OFF,
+  refundChecksSaid,
+  TILL_REFUNDS_TAKEN_OFF,
 } from "./report-export-cuttings";
 import { PAYLOADS } from "./__fixtures__/cutting-payloads";
 
@@ -166,10 +167,12 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     expect(isWithheld(figure(doc, "Average check"))).toBe(true);
   });
 
-  it("through the till: says refunds are not taken off whenever it carries a figure (F-412)", () => {
+  it("through the till: says which refunds are taken off whenever it carries a figure (F-1644, was F-412)", () => {
     const doc = EXPORT_CUTTINGS.till.write(PAYLOADS.till, { days: 30 });
-    expect(doc.notes).toContain(TILL_REFUNDS_NOT_TAKEN_OFF);
-    expect(TILL_REFUNDS_NOT_TAKEN_OFF).toMatch(/^Refunds are not taken off\./);
+    expect(doc.notes).toContain(TILL_REFUNDS_TAKEN_OFF);
+    expect(TILL_REFUNDS_TAKEN_OFF).toMatch(
+      /^Refunds your till sends as a check with a minus total are taken off Taken\./,
+    );
     const zero = EXPORT_CUTTINGS.till.write(
       {
         posConnected: true,
@@ -182,7 +185,7 @@ describe("a figure the engine did not compute is written as withheld, never as 0
       },
       { days: 7 },
     );
-    expect(zero.notes).toContain(TILL_REFUNDS_NOT_TAKEN_OFF);
+    expect(zero.notes).toContain(TILL_REFUNDS_TAKEN_OFF);
     // No figure, nothing to qualify.
     const none = EXPORT_CUTTINGS.till.write(
       { posConnected: false, revenue: null, checkCount: null },
@@ -195,6 +198,34 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     const doc = EXPORT_CUTTINGS.till.write(PAYLOADS.till, { days: 30 });
     expect(figure(doc, "Average check")).toBeCloseTo(4210.5 / 96, 10);
     expect(doc.tables[0].note).toBe("2 of the 30 days in the window rang up a check; the rest are absent rather than zero.");
+  });
+
+  it("through the till: a refund check is taken off Taken but is no paid check in the average (F-1644)", () => {
+    // 200 sales of 1,000 and 20 refunds of 1,000: Taken 180,000 over 220
+    // checks. The average was 180,000 / 220 = 818; it is 1,000.
+    const doc = EXPORT_CUTTINGS.till.write(
+      {
+        posConnected: true,
+        revenue: 180_000,
+        checkCount: 220,
+        checksWithoutTotal: 0,
+        checksTakingNoMoney: 0,
+        checksRefunded: 20,
+        refunded: 20_000,
+        from: "2026-09-01",
+        to: "2026-09-30",
+        days: 30,
+        dailySeries: [{ date: "2026-09-01", revenue: 180_000 }],
+      },
+      { days: 30 },
+    );
+    expect(figure(doc, "Taken")).toBe(180_000);
+    expect(figure(doc, "Checks")).toBe(220);
+    expect(figure(doc, "Average check")).toBe(1000);
+    expect(doc.notes).toContain(refundChecksSaid(20));
+    expect(refundChecksSaid(1)).toBe(
+      "1 check was a refund, sent by your till with a minus total: counted in Checks, taken off Taken, left out of the average check.",
+    );
   });
 
   it("the week's shape: a tie names no busiest day, and an unseen weekday has no mean", () => {
