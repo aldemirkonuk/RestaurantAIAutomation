@@ -1214,6 +1214,66 @@ export class InventoryService {
   }
 
   /**
+   * F-1675. An item with live bottles on no shelf, or on a place that holds
+   * other places, is counted whole on Inventory, never shelf by shelf in a
+   * stock-take (F-945, ADR 0343 §4): a shelf count compares the bottles in
+   * hand with that shelf's books alone, so bottles the door booked with no
+   * place would stay on the books beside the ones just counted. The walk's
+   * list already says so; this holds for a line from Find, a stale list or a
+   * parked bottle matched in review. The same rule as the walk's list
+   * (`CountSessionsService.itemsCountedWhole`). A read that fails refuses:
+   * an unanswered question is not a yes.
+   */
+  private async refuseShelfLineOfItemCountedWhole(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+    inventoryId: string,
+  ): Promise<void> {
+    const unreadable = (what: string, message: string) => {
+      this.logger.error(`Count-whole ${what} read failed: ${message}`);
+      return new HttpException(
+        "Where this item's bottles sit could not be read just now, so nothing was counted. It will be tried again.",
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    };
+    const lots = await client
+      .from("inventory_lots")
+      .select("location_id, qty")
+      .eq("restaurant_id", restaurantId)
+      .eq("inventory_id", inventoryId)
+      .eq("stock_state", "live")
+      .gt("qty", 0);
+    if (lots.error) throw unreadable("stock", lots.error.message);
+    const placed = new Set<string>();
+    let unplaced = false;
+    for (const l of (lots.data ?? []) as Array<{
+      location_id: string | null;
+    }>) {
+      if (l.location_id) placed.add(l.location_id);
+      else unplaced = true;
+    }
+    let onZone = false;
+    if (!unplaced && placed.size > 0) {
+      const inside = await client
+        .from("storage_locations")
+        .select("id, is_active")
+        .eq("restaurant_id", restaurantId)
+        .in("parent_id", [...placed])
+        .is("deleted_at", null);
+      if (inside.error) throw unreadable("place", inside.error.message);
+      onZone = (
+        (inside.data ?? []) as Array<{ is_active?: boolean | null }>
+      ).some((l) => l.is_active !== false);
+    }
+    if (unplaced || onZone) {
+      throw new HttpException(
+        "Some bottles of this item sit on no shelf, so it is counted whole on Inventory, not shelf by shelf here. Nothing was counted.",
+        HttpStatus.CONFLICT,
+      );
+    }
+  }
+
+  /**
    * Spot count (SimPOS testbed plan, decisions E40-E43): per-item count with
    * immediate adjustment.
    *
@@ -1403,6 +1463,13 @@ export class InventoryService {
         dto.opening === true,
         countedAt == null ? new Date() : new Date(countedAt),
       );
+      if (dto.locationId) {
+        await this.refuseShelfLineOfItemCountedWhole(
+          client,
+          restaurantId,
+          inventoryId,
+        );
+      }
       // ADR 0286, which names counts: a line taken more than 72 h before it
       // reached the server is kept only on an owner's or a manager's word.
       // It is refused, never re-dated to now: a count dated at its arrival

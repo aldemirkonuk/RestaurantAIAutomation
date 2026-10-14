@@ -50,6 +50,8 @@ function service(
       select: () => chain,
       eq: () => chain,
       gt: () => chain,
+      in: () => chain,
+      is: () => chain,
       limit: () => chain,
       single: () => Promise.resolve({ data: null, error: null }),
       maybeSingle: () =>
@@ -91,6 +93,65 @@ describe("tenths of a bottle become integer ml (F3 a)", () => {
     for (const bad of [-1, 2.5, "x", null, ""]) {
       expect(openTenthsToMl(bad, 750)).toBeNull();
     }
+  });
+});
+
+describe("F-1675 -- an item counted whole is never a shelf line of a walk (ADR 0343 §4)", () => {
+  const line = (clientCountId: string) => ({
+    countedQty: 3,
+    clientCountId,
+    performedBy: ME,
+    locationId: SHELF,
+    sessionId: WALK,
+  });
+
+  it("[REVERT-FAILS] refuses a walk line for an item with bottles on no shelf, counting nothing", async () => {
+    const { svc, rpc } = service({
+      ...walk(),
+      inventory_lots: [
+        { location_id: SHELF, qty: 3 },
+        { location_id: null, qty: 2 },
+      ],
+    });
+    const out = svc.recordSpotCount(HOUSE, ITEM, line("find-1"));
+    await expect(out).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
+    await expect(out).rejects.toThrow(/counted whole on Inventory/);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("[REVERT-FAILS] refuses one for an item with bottles on a place that holds other places", async () => {
+    const { svc, rpc } = service({
+      ...walk(),
+      inventory_lots: [{ location_id: "zone-cellar", qty: 4 }],
+      storage_locations: [{ id: "rack-a", is_active: true }],
+    });
+    await expect(
+      svc.recordSpotCount(HOUSE, ITEM, line("find-2")),
+    ).rejects.toMatchObject({ status: HttpStatus.CONFLICT });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("posts a walk line for an item whose bottles are all on shelves", async () => {
+    const { svc, rpc } = service({
+      ...walk(),
+      inventory_lots: [{ location_id: SHELF, qty: 3 }],
+      storage_locations: [],
+    });
+    await svc.recordSpotCount(HOUSE, ITEM, line("find-3"));
+    expect(rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("a spot count with no walk is exactly what it was: nothing read for it", async () => {
+    const { svc, rpc, reads } = service({
+      inventory_lots: [{ location_id: null, qty: 2 }],
+    });
+    await svc.recordSpotCount(HOUSE, ITEM, {
+      countedQty: 5,
+      clientCountId: "spot-w",
+      locationId: SHELF,
+    });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(reads).not.toContain("storage_locations");
   });
 });
 

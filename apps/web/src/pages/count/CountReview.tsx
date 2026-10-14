@@ -43,6 +43,7 @@ import {
 import { getInventory } from '@/services/api/inventory'
 import { formatHouseMoney, getHouseLocale } from '@/lib/houseCurrency'
 import { useHouseZone } from '@/lib/houseZone'
+import { useHouseCurrency } from '@/hooks/useHouseCurrency'
 import { findItems, kindWords, tenthsWords, type FindableItem } from './countWalkModel'
 import { CountSheetPanel } from './CountSheetPanel'
 import { CountHeldElsewhere, CountHouseLine, StopCount } from './CountHouse'
@@ -158,6 +159,10 @@ export default function CountReview() {
   const navigate = useNavigate()
   const { activeRole, activeRestaurantId } = useAuth()
   const zone = useHouseZone() ?? null
+  // F-1680: /count sits outside the shell, so this page reads the house's way
+  // of writing figures and dates itself -- the money below and the paper
+  // sheet's dates (CountSheetPanel) -- or a switched-from house's would stand.
+  useHouseCurrency()
   const manager = activeRole === 'owner' || activeRole === 'manager'
   const [review, setReview] = useState<Review | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -342,7 +347,7 @@ export default function CountReview() {
               <li key={p.id} className={`${CARD} space-y-2`}>
                 <p className="font-semibold">{p.description}</p>
                 <p className="text-sm text-inkm-2">
-                  {countedWords(p.counted, { openMl: null })} on {p.shelf}
+                  {countedWords(p.counted, { openMl: p.openMl ?? null, openTenths: p.openTenths ?? null })} on {p.shelf}
                   {byWords(p.countedBy, p.paperBy)}
                 </p>
                 {canAct &&

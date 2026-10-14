@@ -424,3 +424,58 @@ describe('the house and stopping (F-1628, F-1629, F-1617)', () => {
     await waitFor(() => expect(api.abandonCountSession).toHaveBeenCalledWith('S1'))
   })
 })
+
+describe('wave 108: counted whole, no signal, a finished shelf, a parked open bottle', () => {
+  it('[REVERT-FAILS] Find keeps an item counted whole off this shelf: it says to count it on Inventory (F-1675)', async () => {
+    const s = structuredClone(SESSION)
+    s.shelves[1].items = [{ inventoryId: 'w', name: 'Yakut', producer: '', vintage: null, countWhole: true }]
+    api.pullCountSession.mockResolvedValue(s)
+    inv.getInventory.mockResolvedValue([{ id: 'w', wineName: 'Yakut', wineProducer: null, wineVintage: null }])
+    await openBackBar()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(screen.getByRole('button', { name: /Find/ }))
+    expect(screen.getByText(/counted on Inventory, all at once, not here/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Name on the label'), { target: { value: 'yakut' } })
+    fireEvent.click(await screen.findByRole('button', { name: /Yakut/ }))
+    expect(await screen.findByText(/Count it on Inventory, all at once/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
+  })
+
+  it('[REVERT-FAILS] a shelf taken with no signal says it is not held for anyone, never that others will see it (F-1676)', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false)
+    await openBackBar()
+    expect(api.claimCountShelf).not.toHaveBeenCalled()
+    expect(screen.getByText(/this shelf is not held for you/)).toBeInTheDocument()
+    expect(screen.queryByText(/see it once there is signal/)).toBeNull()
+  })
+
+  it('[REVERT-FAILS] a shelf someone else finished says who, and is counted again only when asked (F-1677)', async () => {
+    const s = structuredClone(SESSION)
+    Object.assign(s.shelves[0], { done: true, doneBy: 'Ayşe', doneAt: '2026-10-12T22:00:00.000Z' })
+    api.pullCountSession.mockResolvedValue(s)
+    renderWalk()
+    fireEvent.click(await screen.findByRole('button', { name: /Back bar/ }))
+    expect(screen.getByText(/Ayşe finished Back bar/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Shelf done' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Count it again' }))
+    expect(await screen.findByText(/Ayşe finished this shelf/)).toBeInTheDocument()
+    expect(api.claimCountShelf).not.toHaveBeenCalled()
+  })
+
+  it('[REVERT-FAILS] a parked bottle sends its open bottle in tenths (S234 owed)', async () => {
+    outbox.submitParkedLine.mockResolvedValue({ synced: true })
+    await openBackBar()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    fireEvent.click(screen.getByRole('button', { name: /Find/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Not on the list' }))
+    fireEvent.change(screen.getByLabelText('What the label says'), { target: { value: 'Unlabelled white' } })
+    for (let i = 0; i < 7; i++) fireEvent.click(screen.getByRole('button', { name: 'Open bottle: one more' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save for the manager' }))
+    await waitFor(() => expect(outbox.submitParkedLine).toHaveBeenCalledTimes(1))
+    expect(outbox.submitParkedLine.mock.calls[0][0].body).toMatchObject({
+      description: 'Unlabelled white',
+      countedQty: 1,
+      openTenths: 7,
+    })
+  })
+})

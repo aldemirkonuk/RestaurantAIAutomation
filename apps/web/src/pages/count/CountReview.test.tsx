@@ -50,6 +50,12 @@ vi.mock('@/lib/houseZone', async (importOriginal) => ({
   useHouseZone: () => zone.value,
 }))
 
+// F-1680: the house's way of writing figures and dates, read by the page.
+// The setup file stands the hook in for every page; here it is a spy, so the
+// page is seen to read its house's way of writing itself.
+const currencyHook = vi.hoisted(() => ({ useHouseCurrency: vi.fn(() => undefined) }))
+vi.mock('@/hooks/useHouseCurrency', () => currencyHook)
+
 import CountReview from './CountReview'
 import { setHouseLocale } from '@/lib/houseCurrency'
 
@@ -353,5 +359,37 @@ describe('stopping a count from the review (F-1617)', () => {
     show()
     await screen.findByText('Not counted', { selector: 'h2' })
     expect(screen.queryByRole('button', { name: 'Stop this count' })).toBeNull()
+  })
+})
+
+describe('wave 108: the house\'s way of writing, a parked open bottle', () => {
+  it('[REVERT-FAILS] reads this house\'s way of writing itself, so a sheet or a figure never uses the last house\'s (F-1680)', async () => {
+    currencyHook.useHouseCurrency.mockClear()
+    api.reviewCountSession.mockResolvedValue(review(true))
+    show()
+    await screen.findByText('Not counted', { selector: 'h2' })
+    expect(currencyHook.useHouseCurrency).toHaveBeenCalled()
+  })
+
+  it('[REVERT-FAILS] shows a parked bottle\'s open bottle in tenths (S234 owed)', async () => {
+    api.reviewCountSession.mockResolvedValue(
+      review(true, {
+        parked: [
+          {
+            id: 'p-open',
+            locationId: 'L1',
+            shelf: 'Back bar',
+            description: 'Unlabelled white',
+            counted: 1,
+            openMl: 525,
+            openTenths: 7,
+            countedBy: 'Deniz',
+            countedAt: '2026-10-12T21:15:00.000Z',
+          },
+        ],
+      }),
+    )
+    show()
+    expect(await screen.findByText(/1 bottle, 7\/10 of a bottle open on Back bar/)).toBeTruthy()
   })
 })

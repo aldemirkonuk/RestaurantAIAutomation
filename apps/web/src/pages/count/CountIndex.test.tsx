@@ -14,7 +14,19 @@ const HOUSES = [
 const auth = vi.hoisted(() => ({
   value: {} as Record<string, unknown>,
 }))
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => auth.value }))
+// useHouseCurrency reads the house through useContext(AuthContext) (F-1680),
+// so the mock carries the context too, reading the same house.
+vi.mock('@/contexts/AuthContext', async () => {
+  const { createContext } = await import('react')
+  return {
+    useAuth: () => auth.value,
+    AuthContext: createContext<unknown>({
+      get activeRestaurantId() {
+        return auth.value.activeRestaurantId
+      },
+    }),
+  }
+})
 
 const api = vi.hoisted(() => ({
   listOpenCountSessions: vi.fn(),
@@ -28,7 +40,19 @@ vi.mock('@/services/api/countSessions', async (importOriginal) => ({
   ...api,
 }))
 
+// F-1680/F-1682: the house's zone and its way of writing figures and dates.
+const zone = vi.hoisted(() => ({ value: null as string | null }))
+vi.mock('@/lib/houseZone', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useHouseZone: () => zone.value,
+}))
+// The setup file stands the hook in for every page; here it is a spy, so the
+// page is seen to read its house's way of writing itself.
+const currencyHook = vi.hoisted(() => ({ useHouseCurrency: vi.fn(() => undefined) }))
+vi.mock('@/hooks/useHouseCurrency', () => currencyHook)
+
 import CountIndex from './CountIndex'
+import { setHouseLocale } from '@/lib/houseCurrency'
 
 const october = new Intl.DateTimeFormat(undefined, { month: 'long', timeZone: 'UTC' }).format(
   new Date(Date.UTC(2026, 9, 1)),
@@ -54,6 +78,8 @@ beforeEach(() => {
   }
   api.listOpenCountSessions.mockReset()
   api.openCountSession.mockReset().mockResolvedValue({ id: 'S9' })
+  zone.value = null
+  currencyHook.useHouseCurrency.mockClear()
 })
 
 describe('CountIndex -- which month a count is for', () => {
@@ -200,5 +226,53 @@ describe('CountIndex -- choosing places, and the counts that ended (S227 owed)',
     expect(list.textContent).toContain(`· ${october}`)
     expect(list.textContent).toContain('Signed off by Selin')
     expect(list.textContent).toContain('Stopped by Selin')
+  })
+})
+
+describe('CountIndex -- the house\'s clock and its way of writing (F-1679, F-1680, F-1682)', () => {
+  const endedList = {
+    sessions: [],
+    periods: { current: '2026-11', ended: null },
+    zones: [],
+    ended: [
+      {
+        id: 'E1',
+        kind: 'month_end',
+        status: 'signed_off',
+        openedAt: '2026-10-31T20:00:00Z',
+        endedAt: '2026-10-31T22:30:00Z',
+        endedBy: 'Selin',
+        period: '2026-10',
+      },
+    ],
+  }
+
+  it('[REVERT-FAILS] dates an ended count on the house clock and in its way of writing, not the phone\'s', async () => {
+    zone.value = 'Europe/Istanbul'
+    setHouseLocale('tr-TR')
+    api.listOpenCountSessions.mockResolvedValue(endedList)
+    try {
+      show()
+      const list = await screen.findByRole('region', { name: 'Counts that ended' })
+      // 01:30 on 1 November in Istanbul; a phone in New York is still on 31 October.
+      const house = new Date('2026-10-31T22:30:00Z').toLocaleString('tr-TR', {
+        day: 'numeric',
+        month: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Europe/Istanbul',
+      })
+      expect(list.textContent).toContain(`Signed off by Selin, ${house}`)
+      expect(list.textContent).not.toMatch(/Signed off by Selin, [^0-9]*(Eki|Kas|Oct)/)
+    } finally {
+      setHouseLocale(null)
+    }
+  })
+
+  it('[REVERT-FAILS] reads the house\'s own way of writing itself: /count is outside the shell (F-1680)', async () => {
+    api.listOpenCountSessions.mockResolvedValue({ sessions: [], periods: { current: '2026-11', ended: null } })
+    show()
+    await screen.findAllByRole('button')
+    expect(currencyHook.useHouseCurrency).toHaveBeenCalled()
   })
 })
