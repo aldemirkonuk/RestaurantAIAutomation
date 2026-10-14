@@ -19,6 +19,9 @@ import {
 import {
   PERIOD_TAX_NOTE_UNREAD,
   readPeriodTaxNote,
+  readTillPricesTaxWord,
+  tillTotalsTaxNote,
+  TILL_TOTALS_TAX_UNREAD,
 } from "../common/period-tax-note";
 import * as E from "./engine";
 
@@ -309,6 +312,31 @@ export class TableAnalyticsService {
         `tax answer history unreadable for r=${restaurantId}: ${err?.message ?? err}`,
       );
       return PERIOD_TAX_NOTE_UNREAD;
+    }
+  }
+
+  /**
+   * w109-gross-basis (ADR 0341): Taken and the average check here are
+   * `pos_checks.total`, the till's own figure, as /reports Taken is; ingest
+   * changes only `subtotal`, so they keep one basis across a switch day. At a
+   * house whose till prices include tax, `{ totalsTaxNote }` says they hold
+   * it ("…include KDV"); an unread answer is said. Every other house gets
+   * nothing, so its register is unchanged.
+   */
+  private async totalsTaxNote(
+    restaurantId: string,
+  ): Promise<{ totalsTaxNote?: string }> {
+    try {
+      const word = await readTillPricesTaxWord(
+        this.dbService.getClient(),
+        restaurantId,
+      );
+      return word ? { totalsTaxNote: tillTotalsTaxNote(word) } : {};
+    } catch (err: any) {
+      this.logger.warn(
+        `tax answer unreadable for r=${restaurantId}: ${err?.message ?? err}`,
+      );
+      return { totalsTaxNote: TILL_TOTALS_TAX_UNREAD };
     }
   }
 
@@ -663,6 +691,7 @@ export class TableAnalyticsService {
       checksRefunded: rows.reduce((n, r) => n + r.checksRefunded, 0),
       /** Tip % is over net sales, the checks' subtotal (F-1532), or why not (F-1573). */
       ...tipBasisOf(Array.from(agg.values())),
+      ...(await this.totalsTaxNote(restaurantId)),
       ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };
@@ -808,6 +837,7 @@ export class TableAnalyticsService {
         tipBasis.tipBasis === "net"
           ? await this.windowTaxNote(restaurantId, sinceDays)
           : null,
+      ...(await this.totalsTaxNote(restaurantId)),
       ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };

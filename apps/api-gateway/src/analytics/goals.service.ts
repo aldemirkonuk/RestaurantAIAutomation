@@ -24,6 +24,12 @@ import {
 } from "../procurement/order-spend";
 import { WholeReadError, readWholeWindow } from "../common/read-whole-window";
 import {
+  TILL_TOTALS_TAX_UNREAD,
+  goalTaxNote,
+  readTillPricesTaxWord,
+  tillTotalsTaxNote,
+} from "../common/period-tax-note";
+import {
   HOUSE_ZONE_UNSET,
   HOUSE_ZONE_UNSET_PACE,
   houseDayBounds,
@@ -883,10 +889,15 @@ export class GoalsService {
 
     // Suggested actions: top stored insights from the goal's related
     // categories — the "levers" grounded in this restaurant's own data.
-    const suggestions = await this.insightGenerator.getStored(restaurantId, {
-      categories: spec?.insightCategories,
-      limit: 4,
-    });
+    const [suggestions, taxNote] = await Promise.all([
+      this.insightGenerator.getStored(restaurantId, {
+        categories: spec?.insightCategories,
+        limit: 4,
+      }),
+      GoalsService.TILL_PRICED_METRICS.has(goal.metric_key)
+        ? this.goalTaxNoteFor(restaurantId, spec?.label ?? goal.metric_key)
+        : Promise.resolve(null),
+    ]);
 
     return {
       goal: { ...goal, current_value: current },
@@ -911,6 +922,10 @@ export class GoalsService {
       // window rest on the 750 ml stand-in (ADR 0297). Null for every other
       // metric.
       units: units ?? null,
+      // w109-gross-basis: an Average check or Wine revenue goal at a house
+      // whose till prices include tax says the figure holds it. Absent
+      // everywhere else, so a US or unset house's progress is unchanged.
+      ...(taxNote ? { taxNote } : {}),
       suggestedActions: suggestions.map((s: any) => ({
         sentence: s.sentence,
         category: s.category,
@@ -918,6 +933,55 @@ export class GoalsService {
       })),
       generatedAt: new Date().toISOString(),
     };
+  }
+
+  /**
+   * w109-gross-basis (ADR 0341): the goal measures that add up what the till
+   * rang, `pos_checks.total` (Average check) or the wine lines' own prices
+   * (Wine revenue). Ingest changes only `subtotal`, so these stay on one
+   * basis across a switch day, the basis /reports Taken is on; at a house
+   * whose till prices include tax they hold it, and say so.
+   */
+  static readonly TILL_PRICED_METRICS: ReadonlySet<string> = new Set([
+    "avg_check",
+    "wine_revenue",
+  ]);
+
+  /** The goal's tax sentence, or null; an unread answer is said, never a no. */
+  private async goalTaxNoteFor(
+    restaurantId: string,
+    label: string,
+  ): Promise<string | null> {
+    try {
+      const word = await readTillPricesTaxWord(
+        this.dbService.getClient(),
+        restaurantId,
+      );
+      return word ? goalTaxNote(label, word) : null;
+    } catch (err: any) {
+      this.logger.warn(
+        `tax answer unreadable for r=${restaurantId}: ${err?.message ?? err}`,
+      );
+      return `Whether ${label} includes tax could not be read.`;
+    }
+  }
+
+  /** The till totals' tax sentence, or null (Taken; w109-gross-basis). */
+  private async tillTotalsTaxNoteFor(
+    restaurantId: string,
+  ): Promise<string | null> {
+    try {
+      const word = await readTillPricesTaxWord(
+        this.dbService.getClient(),
+        restaurantId,
+      );
+      return word ? tillTotalsTaxNote(word) : null;
+    } catch (err: any) {
+      this.logger.warn(
+        `tax answer unreadable for r=${restaurantId}: ${err?.message ?? err}`,
+      );
+      return TILL_TOTALS_TAX_UNREAD;
+    }
   }
 
   // ==========================================================================
@@ -1750,22 +1814,22 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     if (!connected) return { ...unread, posConnected: false };
     if (!zone || !from || !to) return { ...unread, posConnected: true };
 
-    const {
-      current,
-      dailySeries,
-      dailyDates,
-      rowCount,
-      untotaled,
-      zeroTotaled,
-      refundTotaled,
-      refundedSum,
-    } = await this.computeMetricWithSeries(
-        restaurantId,
-        "pos_revenue",
-        from,
-        to,
-        zone,
-      );
+    const [
+      {
+        current,
+        dailySeries,
+        dailyDates,
+        rowCount,
+        untotaled,
+        zeroTotaled,
+        refundTotaled,
+        refundedSum,
+      },
+      totalsTaxNote,
+    ] = await Promise.all([
+      this.computeMetricWithSeries(restaurantId, "pos_revenue", from, to, zone),
+      this.tillTotalsTaxNoteFor(restaurantId),
+    ]);
 
     return {
       restaurantId,
@@ -1788,6 +1852,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
         revenue: dailySeries[i] ?? 0,
       })),
       coveredFrom: houseDayOf(firstCheck, zone),
+      // w109-gross-basis: Taken at a house whose till prices include tax.
+      ...(totalsTaxNote ? { totalsTaxNote } : {}),
     };
   }
 }
@@ -1911,4 +1977,10 @@ export interface PosRevenueWindow {
    * false or `zoneUnset`.
    */
   coveredFrom: string | null;
+  /**
+   * w109-gross-basis (ADR 0341): present only when the house says its till
+   * prices include tax ("…include KDV"), or when that answer could not be
+   * read. Absent for every other house, so their window is unchanged.
+   */
+  totalsTaxNote?: string;
 }

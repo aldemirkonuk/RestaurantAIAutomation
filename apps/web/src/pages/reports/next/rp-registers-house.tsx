@@ -598,6 +598,8 @@ export interface SeatsRegister extends PosWindow {
   checksTakingNoMoney: number;
   /** Refunds, checks with a minus total (F-1644). 0 from an older gateway. */
   checksRefunded: number;
+  /** w109-gross-basis (ADR 0341): only where till prices include tax, or that answer is unread. */
+  totalsTaxNote?: string | null;
   tables: Array<{
     tableId: string;
     label: string;
@@ -633,6 +635,7 @@ const seats = analysis<SeatsRegister>({
       hiddenTablesInHouse: num(d.hiddenTablesInHouse),
       checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
       checksRefunded: num(d.checksRefunded) ?? 0,
+      totalsTaxNote: str(d.totalsTaxNote) || null,
       tables: arr(d.tables).map((t) => ({
         tableId: str(t.tableId),
         label: str(t.label),
@@ -652,6 +655,7 @@ const seats = analysis<SeatsRegister>({
     const basis = [
       `Non-voided pos_checks the till attributed to a shown table over the last ${s.sinceDays} days.`,
       REGISTER_TOTALS_NOT_NET,
+      s.totalsTaxNote ?? null,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
     ];
     // ADR 0303: tables are learned from the till, so nothing is drawn. A check
@@ -794,6 +798,8 @@ export interface ServiceRegister extends PosWindow {
   checksTakingNoMoney: number;
   /** Refunds, checks with a minus total (F-1644). 0 from an older gateway. */
   checksRefunded: number;
+  /** w109-gross-basis (ADR 0341): only where till prices include tax, or that answer is unread. */
+  totalsTaxNote?: string | null;
   adjusted: { method?: string; r2?: number | null } | null;
   waiters: Array<{
     name: string;
@@ -828,6 +834,7 @@ const service = analysis<ServiceRegister>({
       tipTaxNote: str(d.tipTaxNote) || null,
       checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
       checksRefunded: num(d.checksRefunded) ?? 0,
+      totalsTaxNote: str(d.totalsTaxNote) || null,
       adjusted: adj ? { method: str(adj.method), r2: num(adj.r2) } : null,
       waiters: arr(d.waiters).map((w) => ({
         name: str(w.name),
@@ -844,6 +851,7 @@ const service = analysis<ServiceRegister>({
     const basis = [
       `Non-voided pos_checks grouped by server name over the last ${s.sinceDays} days.`,
       REGISTER_TOTALS_NOT_NET,
+      s.totalsTaxNote ?? null,
       s.tipBasis === 'net' ? REGISTER_TIP_ON_NET : null,
       s.tipBasisWhy,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,

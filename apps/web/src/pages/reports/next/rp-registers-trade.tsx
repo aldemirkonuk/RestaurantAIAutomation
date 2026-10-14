@@ -133,6 +133,12 @@ export interface TillWindow {
    * was shut, not a day missing. null from an older gateway.
    */
   coveredFrom: string | null;
+  /**
+   * w109-gross-basis (ADR 0341): said only at a house whose till prices
+   * include tax ("Prices on your till include KDV, …"), or when that answer
+   * could not be read. Absent for every other house.
+   */
+  totalsTaxNote?: string | null;
 }
 
 /** True for a calendar quarter, YYYY-Qn, which the till reads like a month (F-1577). */
@@ -227,6 +233,7 @@ const trailingTill = analysis<TillWindow>({
         revenue: num(r.revenue) ?? 0,
       })),
       coveredFrom: str(d.coveredFrom) || null,
+      totalsTaxNote: str(d.totalsTaxNote) || null,
     };
   },
   view: (w) => {
@@ -295,6 +302,7 @@ const trailingTill = analysis<TillWindow>({
     // tills, while the dashboard draws net sales; the page says which it is.
     const notes = [
       ...(w.revenue != null ? [TILL_TOTALS_NOT_NET, TILL_REFUNDS_TAKEN_OFF] : []),
+      ...(w.revenue != null && w.totalsTaxNote ? [w.totalsTaxNote] : []),
       ...(w.checksWithoutTotal > 0 ? [tillUntotaledSaid(w.checksWithoutTotal)] : []),
       ...(w.checksTakingNoMoney > 0 ? [zeroChecksSaid(w.checksTakingNoMoney)] : []),
       ...(w.checksRefunded > 0 ? [refundChecksSaid(w.checksRefunded)] : []),

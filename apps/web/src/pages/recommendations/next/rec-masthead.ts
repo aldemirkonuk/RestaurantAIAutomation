@@ -57,6 +57,12 @@ export interface GoalProgressRow {
   daysLeft: number | null;
   /** Why this goal could not be read, or null. */
   unreadable: string | null;
+  /**
+   * w109-gross-basis (ADR 0341): an Average check or Wine revenue goal at a
+   * house whose till prices include tax says the figure holds it, in the
+   * gateway's words. null (or absent) for every other goal and house.
+   */
+  taxNote?: string | null;
 }
 
 /** undefined = not asked yet · null = the read failed · otherwise the book. */
@@ -95,6 +101,7 @@ export function toProgressRow(raw: Record<string, unknown>): GoalProgressRow {
         ? raw.reason
         : 'no reason given'
       : null,
+    taxNote: !unreadable && typeof raw.taxNote === 'string' && raw.taxNote ? raw.taxNote : null,
   };
 }
 
