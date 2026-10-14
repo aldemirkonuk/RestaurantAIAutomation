@@ -1362,3 +1362,160 @@ describe("DocumentsController.markPaid — payment is a fact on the invoice (F-1
     ).rejects.toThrow("not a way an invoice can be paid");
   });
 });
+
+/**
+ * F-1635 remainder (S230): ADR 0103 A3 names "paid while disputed" as a
+ * condition with its own notification. Marking a disputed invoice paid told
+ * nobody; every [REVERT-FAILS] case here failed on a build without the notice.
+ */
+describe("DocumentsController.markPaid — paid while disputed tells the owners and managers (F-1635)", () => {
+  const DOC = "77777777-7777-4777-8777-777777777777";
+  const ORDER = "88888888-8888-4888-8888-888888888888";
+  function disputeHarness(opts: {
+    links?: Array<{ order_id: string }>;
+    claims?: Array<{ id: string }>;
+    positions?: Array<{ id: string }>;
+    claimError?: string;
+  }) {
+    const reads: Array<{ table: string; calls: any[] }> = [];
+    const client = {
+      from: (table: string) => {
+        const calls: any[] = [];
+        reads.push({ table, calls });
+        let op = "select";
+        const result = () => {
+          if (op !== "select") return { error: null };
+          if (table === "procurement_document_links")
+            return { data: opts.links ?? [], error: null };
+          if (table === "procurement_credits")
+            return opts.claimError
+              ? { data: null, error: { message: opts.claimError } }
+              : { data: opts.claims ?? [], error: null };
+          if (table === "delivery_proposals")
+            return { data: opts.positions ?? [], error: null };
+          return { data: [], error: null };
+        };
+        const chain: any = {
+          select: () => chain,
+          update: () => {
+            op = "update";
+            return chain;
+          },
+          insert: () => Promise.resolve({ error: null }),
+          eq: (...a: any[]) => {
+            calls.push(["eq", ...a]);
+            return chain;
+          },
+          in: (...a: any[]) => {
+            calls.push(["in", ...a]);
+            return chain;
+          },
+          or: (...a: any[]) => {
+            calls.push(["or", ...a]);
+            return chain;
+          },
+          maybeSingle: () =>
+            Promise.resolve({
+              data: {
+                id: DOC,
+                doc_type: "invoice",
+                doc_number: "B-7",
+                paid_at: null,
+              },
+              error: null,
+            }),
+          then: (res: any, rej: any) =>
+            Promise.resolve(result()).then(res, rej),
+        };
+        return chain;
+      },
+    };
+    const told: any[] = [];
+    const notifications = {
+      persistForRestaurant: async (house: string, payload: any, o: any) => {
+        told.push({ house, payload, o });
+        return { inserted: 2, ids: ["n1", "n2"] };
+      },
+    };
+    const none = {} as any;
+    const controller = new DocumentsController(
+      none,
+      { getClient: () => client } as any,
+      none,
+      none,
+      none,
+      none,
+      {
+        resolveRestaurantRole: async () => "manager",
+        assertCanManageRestaurant: async () => undefined,
+      } as any,
+      none,
+      none,
+      none,
+      none,
+      {
+        ownersAndManagers: async () => ({
+          owners: ["o-1"],
+          managers: ["m-1", "o-1"],
+        }),
+      } as any,
+      notifications as any,
+    );
+    return { controller, told, reads };
+  }
+  const user = { userId: "u-1", restaurantId: "r-1" } as any;
+
+  it("[REVERT-FAILS] a claim still open on the invoice's order tells the owners and managers, only them", async () => {
+    const { controller, told, reads } = disputeHarness({
+      links: [{ order_id: ORDER }],
+      claims: [{ id: "c-1" }],
+    });
+    await controller.markPaid(DOC, { paid: true }, user);
+    expect(told).toHaveLength(1);
+    expect(told[0].house).toBe("r-1");
+    expect(told[0].payload.type).toBe("invoice_paid_while_disputed");
+    expect(told[0].payload.title).toBe(
+      "Invoice B-7 was marked paid while disputed",
+    );
+    expect(told[0].payload.actionUrl).toBe(`/receipts?doc=${DOC}`);
+    expect(told[0].o.onlyUserIds.sort()).toEqual(["m-1", "o-1"]);
+    const claims = reads.find((r) => r.table === "procurement_credits")!;
+    expect(claims.calls).toContainEqual(["eq", "restaurant_id", "r-1"]);
+    expect(claims.calls).toContainEqual([
+      "in",
+      "state",
+      ["open", "requested", "promised"],
+    ]);
+    expect(claims.calls).toContainEqual([
+      "or",
+      `document_id.eq.${DOC},order_id.in.(${ORDER})`,
+    ]);
+  });
+
+  it("[REVERT-FAILS] an open position on the invoice at the door is a dispute too", async () => {
+    const { controller, told } = disputeHarness({ positions: [{ id: "p-1" }] });
+    await controller.markPaid(DOC, { paid: true }, user);
+    expect(told).toHaveLength(1);
+    expect(told[0].payload.metadata).toEqual({
+      documentId: DOC,
+      disputed: "yes",
+    });
+  });
+
+  it("[REVERT-FAILS] a dispute that could not be read is said, never taken as settled", async () => {
+    const { controller, told } = disputeHarness({ claimError: "timeout" });
+    const out = await controller.markPaid(DOC, { paid: true }, user);
+    expect(out.paidBy).toBe("restaurant");
+    expect(told).toHaveLength(1);
+    expect(told[0].payload.message).toContain("could not be checked");
+  });
+
+  it("an invoice with nothing disputed, or one marked not paid, tells nobody", async () => {
+    const quiet = disputeHarness({});
+    await quiet.controller.markPaid(DOC, { paid: true }, user);
+    expect(quiet.told).toHaveLength(0);
+    const undo = disputeHarness({ claims: [{ id: "c-1" }] });
+    await undo.controller.markPaid(DOC, { paid: false }, user);
+    expect(undo.told).toHaveLength(0);
+  });
+});

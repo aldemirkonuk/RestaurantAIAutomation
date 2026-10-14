@@ -42,6 +42,7 @@ import { LedgerCard } from './scorecard/LedgerCard';
 import { MailTone } from './scorecard/MailTone';
 import { LearnedSection } from './LearnedSection';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useVendorOwed } from './useVendorOwed';
 
 interface Props {
   provider: Provider;
@@ -77,6 +78,18 @@ function FactRow({ label, value }: { label: string; value: string }) {
       <span style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-1, #211C16)', textAlign: 'right' }}>
         {value}
       </span>
+    </div>
+  );
+}
+
+/** What the house owes this vendor (F-1635); mounted for owners and managers only. */
+function OwedRows({ providerId }: { providerId: string }) {
+  const lines = useVendorOwed(providerId, true);
+  return (
+    <div data-testid="vendor-owed">
+      {lines.map((l) => (
+        <FactRow key={l.label} label={l.label} value={l.value} />
+      ))}
     </div>
   );
 }
@@ -180,6 +193,9 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
             the same cells as Terms below (VEN-W24, "One source") */}
         <FactRow label="Lead time" value={top.leadTime} />
         <FactRow label="Payment terms" value={top.paymentTerms} />
+        {/* what the house owes them (F-1635), owners and managers only,
+            beside the payment terms it is owed under */}
+        {readsMail && <OwedRows providerId={provider.id} />}
         <FactRow label="Minimum order" value={top.minimumOrder} />
         <FactRow label="Regions" value={regions.length ? regions.join(', ') : EM} />
         <FactRow label="Last contact" value={fmtLastContact(provider.lastContactDate)} />

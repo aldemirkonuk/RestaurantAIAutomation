@@ -201,6 +201,11 @@ vi.mock('./scorecard/MailTone', () => ({
     <div data-testid="mail-tone-stub">mail of {providerId}</div>
   ),
 }));
+// What the house owes the vendor (F-1635) is asserted in useVendorOwed.test.tsx;
+// here the role decides whether the sheet carries it at all.
+vi.mock('./useVendorOwed', () => ({
+  useVendorOwed: (providerId: string) => [{ label: 'Owed', value: `owed to ${providerId}` }],
+}));
 // The import panel's own sorting is pinned in lib/csvImport tests; here it
 // only shows which book it was handed (F-1458).
 vi.mock('./VendorCsvImport', () => ({
@@ -572,13 +577,15 @@ describe('ProvidersNext', () => {
       expect(await screen.findByTestId('ledger-stub')).toHaveTextContent('ledger of Bodega Álvaro');
     });
 
-    it('carries how their mail reads for an owner and a manager, and never for staff', async () => {
+    it('[REVERT-FAILS] carries how their mail reads, and what is owed, for an owner and a manager, and never for staff', async () => {
       for (const role of ['owner', 'manager'] as const) {
         auth.role = role;
         mockData.current = oneCard();
         const { unmount } = render(<ProvidersNext />);
         fireEvent.click(screen.getByText('Bodega Álvaro'));
         expect(await screen.findByTestId('mail-tone-stub')).toBeInTheDocument();
+        // F-1635: what is owed sits in the sheet for owners and managers.
+        expect(screen.getByTestId('vendor-owed')).toHaveTextContent('owed to p1');
         unmount();
         // The open sheet is in the address now (VEN-W36); a fresh visit starts clean.
         window.history.replaceState({}, '', '/vendors');
@@ -589,6 +596,7 @@ describe('ProvidersNext', () => {
       fireEvent.click(screen.getByText('Bodega Álvaro'));
       await screen.findByTestId('ledger-stub');
       expect(screen.queryByTestId('mail-tone-stub')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('vendor-owed')).not.toBeInTheDocument();
       auth.role = 'owner';
     });
   });

@@ -49,6 +49,10 @@ const spend = (over: Partial<VendorSpend> = {}): VendorSpend => ({
       unpaid: [],
       unpaidInvoices: 0,
       unpaidWithoutTotal: 0,
+      owed: [],
+      owedInvoices: 0,
+      owedCreditNotes: 0,
+      owedWithoutTotal: 0,
     },
   ],
   totals: {
@@ -60,7 +64,9 @@ const spend = (over: Partial<VendorSpend> = {}): VendorSpend => ({
     ],
     credited: [],
     unpaid: [],
+    owed: [],
   },
+  owedSince: null,
   unverifiedPaper: 1,
   duplicatePaper: 0,
   paperWithoutCurrency: 0,
@@ -125,6 +131,32 @@ describe('VendorSpendShelf (F-1608)', () => {
     );
     expect(row.textContent).toMatch(/Not marked paid: €1,180(\.00)? \+ (TRY|₺)\s?900(\.00)? over 2 invoices/);
     expect(screen.getByText(/Not marked paid, any date:/)).toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] says what is owed since the first marking, and the older invoices only as not marked (F-1635)', async () => {
+    const base = spend();
+    const v = {
+      ...base.vendors[0],
+      owed: [{ currency: 'EUR', total: 1000 }],
+      owedInvoices: 2,
+      owedCreditNotes: 1,
+      unpaid: [{ currency: 'EUR', total: 9000 }],
+      unpaidInvoices: 3,
+    };
+    api.get.mockResolvedValue({
+      data: spend({
+        vendors: [v],
+        owedSince: '2026-10-14',
+        totals: { ...base.totals, unpaid: v.unpaid, owed: v.owed },
+      }),
+    });
+    wrap(<VendorSpendShelf restaurantId="h1" zone="Europe/Istanbul" />);
+    const list = await screen.findByRole('list', { name: 'Spend by vendor' });
+    const row = within(list).getByText('Rossi Wines').closest('li')!;
+    expect(row.textContent).toMatch(/Owed: €1,000(\.00)? over 2 invoices, less 1 credit note/);
+    expect(row.textContent).toMatch(/Not marked paid, dated before 2026-10-14: €9,000(\.00)? over 3 invoices/);
+    expect(row.textContent).not.toMatch(/Owed: €9,000/);
+    expect(screen.getByText(/Owed now: €1,000/)).toBeInTheDocument();
   });
 
   it('switches to last year with one tap', async () => {
