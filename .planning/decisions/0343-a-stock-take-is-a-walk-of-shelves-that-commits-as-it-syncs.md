@@ -67,7 +67,7 @@ As built in lanes 1–6 (stacked, local, not pushed). Where a lane corrected the
 - **Given up.** A count cannot be approved before it moves stock (F2 a). A closing count must reach the server before the item next moves, or that shelf is counted again. That is the honest cost of refusing to re-base.
 - **Harder.** `record_stock_count` now takes open ml, a session, and a held line to post; every caller and its guard must be re-read when it changes. Open ml on another shelf's lot (ADR 0285 pours from any lot) is not reconciled per item.
 - **Revisit when** refused "count this shelf again" lines pass ~10% of a closing session's lines in a house's first month (the commit-on-sync bet is wrong for that house; the 10% is unmeasured); or a house asks for scale weighing; or ADR 0115 changes "carry this".
-- **Owed** (`tech-debt.d/2026-10-14-docs-adr-phone-stock-count.md`): a nav entry to `/count`, zone choice, Turkish words on the count pages, open-ml changes in "changed after close", lane 7, and this ADR's README row in its own PR.
+- **Owed** (`tech-debt.d/2026-10-14-docs-adr-phone-stock-count.md`): ~~a nav entry to `/count`, zone choice,~~ [BUILT 2026-10-14, owed-count-ux `6c762112c` (sim ledger S232): "Stock count" is a cellar room in the shell (`apps/web/src/lib/mudavym/rooms.ts`), and `/count` offers the house's places as `zoneIds` (`apps/web/src/pages/count/CountIndex.tsx`).] Turkish words on the count pages, open-ml changes in "changed after close", lane 7, and this ADR's README row in its own PR.
 
 ## Not verified (said plainly)
 

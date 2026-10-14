@@ -27,7 +27,11 @@ import {
 import { renderCsv, renderHtml } from "./report-export-render";
 import { exportFileStem } from "./report-export-naming";
 import { houseFrame } from "../../common/house-frame";
-import { houseToday } from "../../common/house-day";
+import { houseToday, shiftHouseDay } from "../../common/house-day";
+import {
+  PERIOD_TAX_NOTE_UNREAD,
+  readPeriodTaxNote,
+} from "../../common/period-tax-note";
 
 /** A queued attempt older than this is failed, with that reason, on the next read. */
 export const STALE_QUEUED_MS = 10 * 60_000;
@@ -750,6 +754,25 @@ export class ReportExportsService {
             : null,
       });
 
+      // F-1588: a cutting whose figures rest on the checks' net, over a
+      // period that spans the day net began leaving tax out (or the house
+      // changed its answer), says so. No stored check is restamped (ADR 0341
+      // F2). An unread answer history is said, not taken as no change.
+      const zone = houseFrame(
+        house as { timezone?: string | null; country?: string | null },
+      ).zone;
+      const period = netPeriodOf(cutting, payload, zone);
+      if (period) {
+        const taxNote = await readPeriodTaxNote(
+          this.db,
+          row.restaurant_id,
+          zone,
+          period.first,
+          period.last,
+        ).catch(() => PERIOD_TAX_NOTE_UNREAD);
+        if (taxNote) doc.notes.push(taxNote);
+      }
+
       withheldCount = countWithheld(doc);
       const header = {
         houseName: typeof house.name === "string" && house.name ? house.name : null,
@@ -912,4 +935,34 @@ export class ReportExportsService {
       fileStem: row.status === "ready" ? this.fileStem(row, house) : null,
     };
   }
+}
+
+/**
+ * F-1588: the house days a cutting's net figures cover, for the tax-switch
+ * note. The till names its window (its file sets Taken beside the
+ * dashboard's net, and a month close's carries the tax inside net); the
+ * servers' tip rate is over net for the last `sinceDays` house days
+ * (table-analytics.service.ts loadChecks). Null for a cutting with no net
+ * figure, or a house with no zone.
+ */
+export function netPeriodOf(
+  cutting: ExportableCutting,
+  payload: unknown,
+  zone: string | null,
+): { first: string; last: string } | null {
+  if (!zone || !payload || typeof payload !== "object") return null;
+  const p = payload as Record<string, unknown>;
+  const day = (v: unknown) =>
+    typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+  if (cutting === "till") {
+    const first = day(p.from);
+    const last = day(p.to);
+    return first && last ? { first, last } : null;
+  }
+  if (cutting === "service") {
+    const since = typeof p.sinceDays === "number" ? p.sinceDays : 90;
+    const last = houseToday(zone);
+    return { first: shiftHouseDay(last, -(since - 1)), last };
+  }
+  return null;
 }

@@ -19,6 +19,10 @@ import {
   houseToday,
 } from "../common/house-day";
 import { netSalesByHouseDay } from "../dashboard/dashboard.service";
+import {
+  PERIOD_TAX_NOTE_UNREAD,
+  readPeriodTaxNote,
+} from "../common/period-tax-note";
 import { readAll } from "../providers/vendor-menu-supply";
 
 export interface WeekSales {
@@ -26,6 +30,12 @@ export interface WeekSales {
   netSales: number | null;
   /** Why `netSales` is null, in the owner's words; `null` when it is known. */
   unknownWhy: string | null;
+  /**
+   * F-1588: when the week spans a day the house's net changed tax basis, the
+   * sentence naming each stretch (`taxSwitchNote`); null or absent when its
+   * net is on one basis, or no sales figure is given.
+   */
+  taxNote?: string | null;
 }
 
 const unknown = (why: string): WeekSales => ({
@@ -139,7 +149,21 @@ export async function readWeekSales(
       }
       sum += day.net_sales;
     }
-    return { netSales: Math.round(sum * 100) / 100, unknownWhy: null };
+    // F-1588: the figure stands, and says when its days are on two bases
+    // (ADR 0341 F2: no stored check is restamped). An unread answer history
+    // is said, not taken as no change, and does not withhold the figure.
+    const taxNote = await readPeriodTaxNote(
+      client,
+      restaurantId,
+      zone,
+      weekStart,
+      weekEnd,
+    ).catch(() => PERIOD_TAX_NOTE_UNREAD);
+    return {
+      netSales: Math.round(sum * 100) / 100,
+      unknownWhy: null,
+      taxNote,
+    };
   } catch {
     return unknown(
       "This week's sales could not be read just now, so the share of sales is not shown.",

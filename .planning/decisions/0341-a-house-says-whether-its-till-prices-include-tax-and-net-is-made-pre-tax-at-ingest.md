@@ -96,7 +96,7 @@ AskUserQuestion, 2026-10-12 (`sim-ledger.md` S218), his option picks verbatim:
 
 **Owed, each recorded in `tech-debt.d/2026-10-12-docs-adr-tax-inclusive-net.md`:**
 - A writer of the cost stamps (receiving, door check, procurement, invoice).
-- Reads that add checks across the switch say so, and reports mark the switch date (F2). Not built by lanes 1–4.
+- Reads that add checks across the switch say so, and reports mark the switch date (F2). Not built by lanes 1–4. [PARTLY BUILT 2026-10-14, F-1588: the dashboard month and the month close mark the switch (owed-tax-history `f9eefec48`); recorded days (the calendar window's `taxNote`), the team's week sales (`netSalesTaxNote`) and the till and servers report exports (a file note) now say when their period spans it, through `taxSwitchNote` in `apps/api-gateway/src/common/tax-basis-history.ts`. Still owed: the calendar and /team pages do not print the two new notes yet, and the other check readers (goals, seasonality, table revenue) say nothing.]
 - The web picker for item rates (`house_item`); without it a house that rates by till category gets `no_tax_rate` on a wine.
 - `recommendations.service.ts` is not taught the new advice states.
 - ADR 0295 rule 1's bracket ("as the till sends it, made pre-tax at ingest where the house states its till prices include tax") goes into PR #615 while it is open, or into a bracket after 0295 merges. 0295 PR-3 (`fix/pos-subtotal-means-net`) must set `subtotalPreTax` on any adapter it makes pre-tax from the till's own tax, or an inclusive house would have its rates divided out twice.
