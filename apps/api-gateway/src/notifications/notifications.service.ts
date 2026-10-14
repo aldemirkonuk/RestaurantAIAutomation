@@ -797,6 +797,13 @@ export class NotificationsService {
        */
       pushData?: Record<string, unknown>;
       /**
+       * The phone push's body, in place of the row's `message` (F-1709). For
+       * a writer whose message can grow without bound — an instant low-stock
+       * line names every wine of a burst — so the push stays inside Expo's
+       * 4096 bytes while the bell row keeps the whole list.
+       */
+      pushBody?: string;
+      /**
        * Set by a push the team sends one another (a shift offer, a call-out's
        * cover): the push leg reads `teamPushHolds`, so Push off holds it and
        * quiet hours do not, and each push sent inside someone's window is
@@ -987,7 +994,7 @@ export class NotificationsService {
         if (pushTo.length > 0) {
           const pushed = await this.expoPushService.sendToUsers(pushTo, {
             title: payload.title,
-            body: payload.message,
+            body: opts.pushBody ?? payload.message,
             priority: payload.priority === "critical" ? "high" : "default",
             // F-1630: the title names the house, as team pushes do (F-1183),
             // so an owner of two houses can tell a low-stock push of one

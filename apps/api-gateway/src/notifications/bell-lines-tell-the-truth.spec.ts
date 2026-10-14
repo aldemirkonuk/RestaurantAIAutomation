@@ -37,13 +37,20 @@ function funnel(db: StubDb) {
     ids: string[];
     data: Record<string, unknown>;
     house?: string;
+    body?: string;
   }> = [];
   const socket = { server: { to: () => ({ emit: () => undefined }) } };
   const expo = {
     sendToUsers: async (
       ids: string[],
-      msg: { data: Record<string, unknown>; house?: string },
-    ) => void pushes.push({ ids, data: msg.data, house: msg.house }),
+      msg: { data: Record<string, unknown>; house?: string; body?: string },
+    ) =>
+      void pushes.push({
+        ids,
+        data: msg.data,
+        house: msg.house,
+        body: msg.body,
+      }),
   };
   const database = {
     supabase: db.supabase,
@@ -282,6 +289,34 @@ describe("F-530 — a push never carries house money", () => {
     expect(Buffer.byteLength(JSON.stringify(message))).toBeLessThan(4096);
     // The row keeps the list for the bell.
     expect(db.tables.notifications[0].metadata.wines).toHaveLength(46);
+  });
+
+  it("a writer's pushBody is the push's body; the bell row keeps the whole message (F-1709)", async () => {
+    const db = seed();
+    const { svc, pushes } = funnel(db);
+    const message = `Just crossed below par: ${Array.from(
+      { length: 120 },
+      (_, i) => `Kavaklıdere Yakut Öküzgözü Boğazkere ${i} (1/6)`,
+    ).join(", ")}`;
+
+    await svc.persistForRestaurant(
+      HOUSE,
+      { ...LINE, message },
+      { pushBody: "Just crossed below par: A (1/6) and 119 more" },
+    );
+
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].body).toBe("Just crossed below par: A (1/6) and 119 more");
+    expect(
+      Buffer.byteLength(
+        JSON.stringify({
+          title: LINE.title,
+          body: pushes[0].body,
+          data: pushes[0].data,
+        }),
+      ),
+    ).toBeLessThan(4096);
+    expect(db.tables.notifications[0].message).toBe(message);
   });
 
   it("names its house, so an owner of two houses tells their pushes apart (F-1630)", async () => {
