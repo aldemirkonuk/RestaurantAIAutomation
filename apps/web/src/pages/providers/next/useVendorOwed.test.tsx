@@ -80,6 +80,8 @@ describe('useVendorOwed (F-1635)', () => {
             owedCreditNotes: 1,
             unpaid: [{ currency: 'EUR', total: 9000 }],
             unpaidInvoices: 3,
+            earlyCreditNotes: 2,
+            earlyCredit: [{ currency: 'EUR', total: 450 }],
           }),
         ],
         '2026-10-14',
@@ -89,9 +91,14 @@ describe('useVendorOwed (F-1635)', () => {
     await waitFor(() => expect(result.current[0].value).not.toBe('Reading…'));
     expect(api.get.mock.calls[0][0]).toBe('/reports/vendor-spend');
     expect(result.current[0].label).toBe('Owed');
-    expect(result.current[0].value).toMatch(/^€1,000(\.00)? over 2 invoices, less 1 credit note$/);
+    expect(result.current[0].value).toMatch(/^€1,000(\.00)? over 2 invoices, includes 1 credit note not yet used$/);
     expect(result.current[1].label).toBe('Not marked paid');
     expect(result.current[1].value).toMatch(/^€9,000(\.00)? over 3 invoices, dated before 2026-10-14$/);
+    // Wave 109: credit older than the first marking is said, never netted.
+    expect(result.current[2].label).toBe('Older credit');
+    expect(result.current[2].value).toMatch(
+      /^2 credit notes dated before 2026-10-14, €450(\.00)? — nothing then could say whether they were used$/,
+    );
   });
 
   it('[REVERT-FAILS] never calls an old unmarked invoice owed when nothing has been marked paid', async () => {

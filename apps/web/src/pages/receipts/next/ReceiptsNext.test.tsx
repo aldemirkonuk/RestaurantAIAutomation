@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { createContext, type ReactNode } from 'react';
@@ -54,6 +54,8 @@ const api = vi.hoisted(() => ({
   markPaid: vi.fn(),
   /** F-1672 / F-1674: the payments on an invoice and the credit that can pay it. */
   payments: vi.fn(),
+  /** Wave 109: a credit note already taken off an invoice's printed total. */
+  creditTaken: vi.fn(),
   /**
    * The three mints (founder, 2026-09-06, batch 64: "Decide as a module: seal
    * all three"). Each returns a token the write then has to carry back; the
@@ -105,6 +107,7 @@ vi.mock('../../../services/api/documents', async (importOriginal) => {
       restateCurrency: api.restateCurrency,
       markPaid: api.markPaid,
       payments: api.payments,
+      creditTaken: api.creditTaken,
       mintVerifySeal: api.mintVerifySeal,
       mintLineEditSeal: api.mintLineEditSeal,
       mintCurrencySeal: api.mintCurrencySeal,
@@ -1504,6 +1507,37 @@ describe('ReceiptsNext — marking an invoice paid (F-1635)', () => {
     await waitFor(() =>
       expect(api.markPaid).toHaveBeenCalledWith('d1', true, { paidBy: 'credit_applied', creditNoteId: 'cn2' }),
     );
+  });
+
+  it('[REVERT-FAILS] says the vendor already took a credit note off INV-905\'s printed total, and can undo it (wave 109)', async () => {
+    api.creditTaken.mockReset();
+    api.creditTaken.mockResolvedValue({ id: 'd1', creditNoteId: 'cn2', taken: true, amount: 1200, currency: 'TRY' });
+    api.markPaid.mockReset();
+    const owed = doc({ total: 8800, currency: 'TRY' });
+    api.queue = [owed];
+    api.detail = { document: owed, lines: [line], links: [] };
+    api.payments.mockResolvedValue({
+      currency: 'TRY',
+      paid: 0,
+      left: 8800,
+      payments: [],
+      taken: [{ creditNoteId: 'cn1', creditNoteNumber: 'CN-77', amount: 300, currency: 'TRY' }],
+      credits: [{ id: 'cn2', number: 'CN-88', currency: 'TRY', left: 1200 }],
+    });
+    render(<ReceiptsNext />, { wrapper });
+    await openFirstDoc();
+    const said = await screen.findByRole('list', { name: "Credit already taken off this invoice's total" });
+    expect(said.textContent).toMatch(/Credit note CN-77, .*300.*, was already taken off this invoice's total\./);
+    fireEvent.click(screen.getByRole('button', { name: 'It was taken off' }));
+    expect(await screen.findByText('Pick the credit note the vendor took off this invoice.')).toBeTruthy();
+    expect(api.creditTaken).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(/^Did the vendor already take a credit note off/), { target: { value: 'cn2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'It was taken off' }));
+    await waitFor(() => expect(api.creditTaken).toHaveBeenCalledWith('d1', { creditNoteId: 'cn2', taken: true }));
+    // Not a payment: nothing was marked paid.
+    expect(api.markPaid).not.toHaveBeenCalled();
+    fireEvent.click(within(said).getByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(api.creditTaken).toHaveBeenCalledWith('d1', { creditNoteId: 'cn1', taken: false }));
   });
 
   it('offers no credit note when this vendor has none with credit left', async () => {

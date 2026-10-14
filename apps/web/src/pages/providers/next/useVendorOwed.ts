@@ -75,5 +75,7 @@ export function useVendorOwed(providerId: string, enabled: boolean): OwedLine[] 
       value: s.owedSince ? `${said}, dated before ${s.owedSince}` : said,
     });
   }
+  // Older credit is said, never silently netted (wave 109).
+  if (w.earlyCredit) lines.push({ label: 'Older credit', value: w.earlyCredit.replace(/^Not taken off Owed: /, '') });
   return lines;
 }

@@ -153,10 +153,32 @@ describe('VendorSpendShelf (F-1608)', () => {
     wrap(<VendorSpendShelf restaurantId="h1" zone="Europe/Istanbul" />);
     const list = await screen.findByRole('list', { name: 'Spend by vendor' });
     const row = within(list).getByText('Rossi Wines').closest('li')!;
-    expect(row.textContent).toMatch(/Owed: €1,000(\.00)? over 2 invoices, less 1 credit note/);
+    expect(row.textContent).toMatch(/Owed: €1,000(\.00)? over 2 invoices, includes 1 credit note not yet used/);
     expect(row.textContent).toMatch(/Not marked paid, dated before 2026-10-14: €9,000(\.00)? over 3 invoices/);
     expect(row.textContent).not.toMatch(/Owed: €9,000/);
     expect(screen.getByText(/Owed now: €1,000/)).toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] says a credit note older than the first marking beside Owed, not netted into it (wave 109)', async () => {
+    const base = spend();
+    const v = {
+      ...base.vendors[0],
+      owed: [{ currency: 'EUR', total: 1000 }],
+      owedInvoices: 1,
+      earlyCreditNotes: 1,
+      earlyCredit: [{ currency: 'EUR', total: 300 }],
+    };
+    api.get.mockResolvedValue({
+      data: spend({ vendors: [v], owedSince: '2026-10-14', totals: { ...base.totals, owed: v.owed } }),
+    });
+    wrap(<VendorSpendShelf restaurantId="h1" zone="Europe/Istanbul" />);
+    const list = await screen.findByRole('list', { name: 'Spend by vendor' });
+    const row = within(list).getByText('Rossi Wines').closest('li')!;
+    expect(row.textContent).toMatch(/Owed: €1,000(\.00)? over 1 invoice/);
+    expect(row.textContent).not.toMatch(/not yet used/);
+    expect(row.textContent).toMatch(
+      /Not taken off Owed: 1 credit note dated before 2026-10-14, €300(\.00)? — nothing then could say whether it was used/,
+    );
   });
 
   it('[REVERT-FAILS] says one vendor\'s credit apart, never netted into Owed now (F-1673)', async () => {

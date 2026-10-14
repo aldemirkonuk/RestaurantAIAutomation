@@ -61,6 +61,14 @@ import { houseSlug } from "../exports/report-export-naming";
  * The copies of one bill are one bill, and the bill is paid when any copy of it
  * is.
  *
+ * CREDIT ALREADY ON THE PRINTED TOTAL, AND OLDER CREDIT (wave 109, S237).
+ * A vendor that prints an invoice with its credit already taken off has used
+ * that credit; the house says so (`procurement_credit_taken_on_invoice`) and
+ * the credit note stops coming off Owed, without paying the invoice twice.
+ * Owed says how many credit notes not yet used it includes. A credit note
+ * dated before `owedSince` is never taken off Owed — nothing then could say
+ * whether it was used — but it is said beside it (`earlyCredit`), not dropped.
+ *
  * NOT NETTED ACROSS VENDORS (F-1673). One vendor's credit pays only that
  * vendor, so a vendor whose credit is more than its bills is "in your favour"
  * on its own row and kept out of the all-vendor Owed; those credits are a
@@ -126,10 +134,16 @@ export interface VendorSpendRow {
   /** Unmarked invoices dated since `owedSince`, less credit notes since then (F-1635). */
   owed: MoneyTotal[];
   owedInvoices: number;
-  /** Credit notes dated since `owedSince` taken off `owed`. */
+  /** Credit notes dated since `owedSince`, not used up yet, taken off `owed`. */
   owedCreditNotes: number;
   /** Of `owedInvoices` and `owedCreditNotes`, those with no total or no currency, so not in `owed`. */
   owedWithoutTotal: number;
+  /**
+   * Credit notes dated before `owedSince` with credit not used up: NOT taken
+   * off `owed`, said beside it (wave 109, S237). Zero when there is no `owedSince`.
+   */
+  earlyCreditNotes: number;
+  earlyCredit: MoneyTotal[];
 }
 
 /**
@@ -149,6 +163,8 @@ export type VendorOwedRow = Pick<
   | "owedInvoices"
   | "owedCreditNotes"
   | "owedWithoutTotal"
+  | "earlyCreditNotes"
+  | "earlyCredit"
 >;
 
 export interface VendorSpendDto {
@@ -246,7 +262,7 @@ export function spendBasis(
     "Invoiced is the vendor's invoices dated in the period, at the total printed on them, so any tax on the invoice is inside it. Credit notes are their own column and are not taken off. Rejected and replaced paper is left out, and the same invoice number from one vendor counts once.",
     "Received and Invoiced are two views of the same buying and are never added together.",
     owedSince
-      ? `Owed is every invoice dated from ${owedSince}, the day this house first marked an invoice paid, that is not paid in full yet: what is left on it after the payments recorded on it, less that vendor's credit notes dated since then. A credit note comes off only by what it has not paid yet; the part of it recorded as paying an invoice is in that invoice's payments. Any copy of an invoice marked paid marks the whole invoice paid. Owed, all vendors adds only the vendors still owed something: one vendor's credit is never taken off another vendor's bills, and a vendor whose credit is more than its bills is said apart, as credit in your favour.`
+      ? `Owed is every invoice dated from ${owedSince}, the day this house first marked an invoice paid, that is not paid in full yet: what is left on it after the payments recorded on it, less that vendor's credit notes dated since then that are not used yet. A credit note comes off only by what it has not paid yet; the part of it recorded as paying an invoice is in that invoice's payments, and credit the vendor already took off an invoice's printed total is used and does not come off again. A credit note dated before ${owedSince} is not taken off Owed, since nothing then could say whether it was used; it is listed beside it. Any copy of an invoice marked paid marks the whole invoice paid. Owed, all vendors adds only the vendors still owed something: one vendor's credit is never taken off another vendor's bills, and a vendor whose credit is more than its bills is said apart, as credit in your favour.`
       : "Owed is not worked out yet: no invoice has been marked paid here, so nothing says which invoices are still to pay.",
     owedSince
       ? `Not marked paid is the invoices dated before ${owedSince} that nobody marked paid. Invoices could not be marked paid then, so this is not what is owed. Credit notes are not taken off it.`
@@ -307,7 +323,7 @@ export class VendorSpendService {
       );
 
     const bounds = houseDayBounds(from, to, zone);
-    const [orders, paper, allPaper, payments] = await Promise.all([
+    const [orders, paper, allPaper, payments, taken] = await Promise.all([
       readWholeWindow<Record<string, unknown>>(
         "The orders delivered in this period",
         () =>
@@ -364,6 +380,15 @@ export class VendorSpendService {
             })
             .eq("restaurant_id", restaurantId) as never,
       ),
+      // Credit a vendor already took off an invoice's printed total (wave 109).
+      readWholeWindow<Record<string, unknown>>(
+        "The credit notes already taken off an invoice's total",
+        () =>
+          this.db
+            .from("procurement_credit_taken_on_invoice")
+            .select("id, credit_note_id, amount", { count: "exact" })
+            .eq("restaurant_id", restaurantId) as never,
+      ),
     ]);
 
     const blank = (key: string | null): VendorSpendRow => ({
@@ -386,6 +411,8 @@ export class VendorSpendService {
       owedInvoices: 0,
       owedCreditNotes: 0,
       owedWithoutTotal: 0,
+      earlyCreditNotes: 0,
+      earlyCredit: [],
     });
     const rows = new Map<string | null, VendorSpendRow>();
     const rowOf = (id: unknown): VendorSpendRow => {
@@ -455,7 +482,7 @@ export class VendorSpendService {
     }
 
     // Owed, and not marked (F-1635): the same one-bill rule, any date.
-    const ledger = owedLedger(allPaper, zone, payments);
+    const ledger = owedLedger(allPaper, zone, payments, taken);
     for (const d of ledger.notMarked) {
       const r = owingOf(d.provider_id);
       r.unpaidInvoices += 1;
@@ -502,6 +529,13 @@ export class VendorSpendService {
           (c.spent.find((x) => x.currency === t.currency)?.total ?? 0);
         if (left > 0) add(r.owed, t.currency, -left);
       }
+    // Older credit is said, never silently netted (wave 109, S237).
+    for (const d of ledger.earlyCredits) {
+      const r = owingOf(d.provider_id);
+      r.earlyCreditNotes += 1;
+      const money = moneyOf(d);
+      if (money) add(r.earlyCredit, money.code, Math.abs(money.n));
+    }
 
     // A vendor with activity in the period carries its Owed and Not marked
     // paid on its row too; the rest are said only in `owing` (F-1643).
@@ -515,6 +549,8 @@ export class VendorSpendService {
       r.owedInvoices = o.owedInvoices;
       r.owedCreditNotes = o.owedCreditNotes;
       r.owedWithoutTotal = o.owedWithoutTotal;
+      r.earlyCreditNotes = o.earlyCreditNotes;
+      r.earlyCredit = o.earlyCredit;
     }
 
     const ids = [...new Set([...rows.keys(), ...owing.keys()])].filter(
@@ -559,6 +595,7 @@ export class VendorSpendService {
         credited: ordered(r.credited, currency),
         unpaid: ordered(r.unpaid, currency),
         owed: ordered(r.owed, currency),
+        earlyCredit: ordered(r.earlyCredit, currency),
       };
     });
     // Biggest first in the house's money; a vendor with no name last.
@@ -575,7 +612,10 @@ export class VendorSpendService {
     // Owed and Not marked paid total every vendor, not only the period's.
     const owingRows: VendorOwedRow[] = [...owing.values()]
       .filter(
-        (o) => o.unpaidInvoices > 0 || o.owedInvoices + o.owedCreditNotes > 0,
+        (o) =>
+          o.unpaidInvoices > 0 ||
+          o.owedInvoices + o.owedCreditNotes > 0 ||
+          o.earlyCreditNotes > 0,
       )
       .map((o) => {
         for (const t of o.unpaid) add(totals.unpaid, t.currency, t.total);
@@ -594,6 +634,8 @@ export class VendorSpendService {
           owedInvoices: o.owedInvoices,
           owedCreditNotes: o.owedCreditNotes,
           owedWithoutTotal: o.owedWithoutTotal,
+          earlyCreditNotes: o.earlyCreditNotes,
+          earlyCredit: ordered(o.earlyCredit, currency),
         };
       })
       // Most owed first in the house's money; a vendor with no name last.
@@ -728,16 +770,23 @@ function billKey(d: Record<string, unknown>): string | null {
  * payment was recorded (a back-dated payment does not move it), and a bill
  * without from its `paid_at`. `paidByCredit` is then only the bills marked
  * paid by credit with no payment kept, from before payments were.
+ *
+ * With `taken` (wave 109, S237): credit a vendor already took off an
+ * invoice's printed total is used, exactly as a payment by it is, but pays no
+ * invoice. `earlyCredits` are the credit notes dated BEFORE `since` with credit
+ * not used up, `total` the credit left: never taken off Owed, only said.
  */
 export function owedLedger(
   paper: Record<string, unknown>[],
   zone: string,
   payments: Record<string, unknown>[] = [],
+  taken: Record<string, unknown>[] = [],
 ): {
   since: string | null;
   owed: Record<string, unknown>[];
   notMarked: Record<string, unknown>[];
   credits: Record<string, unknown>[];
+  earlyCredits: Record<string, unknown>[];
   paidByCredit: Record<string, unknown>[];
 } {
   const live = paper.filter((d) => !NOT_THE_BILL.has(String(d.status)));
@@ -768,6 +817,12 @@ export function owedLedger(
     );
     if (day) recordedDays.push(day);
   }
+  for (const t of taken) {
+    const n = Number(t.amount);
+    const note = keyById.get(String(t.credit_note_id));
+    if (note && Number.isFinite(n))
+      usedOfNote.set(note, (usedOfNote.get(note) ?? 0) + n);
+  }
   const markedDays = marked
     .filter((d) => !paidOnBill.has(keyOf(d)))
     .map((d) => houseDayOf(String(d.paid_at), zone))
@@ -792,18 +847,21 @@ export function owedLedger(
   const owed: Record<string, unknown>[] = [];
   const notMarked: Record<string, unknown>[] = [];
   const credits: Record<string, unknown>[] = [];
+  const earlyCredits: Record<string, unknown>[] = [];
   const paidByCredit: Record<string, unknown>[] = [];
   for (const d of onePerBill(live).bills) {
     const n = Number(d.total);
     const priced =
       d.total !== null && d.total !== undefined && Number.isFinite(n);
     if (d.doc_type === "credit_memo") {
-      if (!sinceThen(d)) continue;
+      // Before `since` it is said apart, never taken off Owed (wave 109).
+      if (since === null) continue;
+      const into = sinceThen(d) ? credits : earlyCredits;
       const used = usedOfNote.get(keyOf(d)) ?? 0;
-      if (!priced || used === 0) credits.push(d);
+      if (!priced || used === 0) into.push(d);
       // A credit note comes off only by what it has not paid yet.
       else if (Math.abs(n) - used > 0.005)
-        credits.push({ ...d, total: Math.abs(n) - used });
+        into.push({ ...d, total: Math.abs(n) - used });
       continue;
     }
     const key = billKey(d);
@@ -824,7 +882,7 @@ export function owedLedger(
     const left = priced && part !== 0 ? { ...d, total: n - part } : d;
     (sinceThen(d) ? owed : notMarked).push(left);
   }
-  return { since, owed, notMarked, credits, paidByCredit };
+  return { since, owed, notMarked, credits, earlyCredits, paidByCredit };
 }
 
 /**
@@ -881,6 +939,18 @@ export function spendDoc(s: VendorSpendDto): ExportDoc {
   if (owedNoTotal > 0)
     notes.push(
       `${owedNoTotal} ${owedNoTotal === 1 ? "invoice or credit note" : "invoices or credit notes"} since ${s.owedSince} ${owedNoTotal === 1 ? "has" : "have"} no total or no currency yet, so Owed leaves ${owedNoTotal === 1 ? "it" : "them"} out.`,
+    );
+  const early = s.owing.filter((v) => v.earlyCreditNotes > 0);
+  if (early.length > 0)
+    notes.push(
+      `Not taken off Owed: ${early
+        .map(
+          (v) =>
+            `${v.providerId === null ? "no vendor named" : (v.name ?? "a vendor no longer on your list")}, ${v.earlyCreditNotes} credit ${v.earlyCreditNotes === 1 ? "note" : "notes"} dated before ${s.owedSince}${v.earlyCredit.length ? ` (${moneyWords(v.earlyCredit, s.currency)})` : ""}`,
+        )
+        .join(
+          "; ",
+        )}. Nothing then could say whether ${early.length === 1 && early[0].earlyCreditNotes === 1 ? "it was" : "they were"} used.`,
     );
   if (unpriced > 0)
     notes.push(
@@ -991,7 +1061,7 @@ export function spendDoc(s: VendorSpendDto): ExportDoc {
           { label: "Vendor", unit: "text" },
           { label: "Owed", unit: "money" },
           { label: "Invoices owed", unit: "count" },
-          { label: "Credit notes taken off", unit: "count" },
+          { label: "Credit notes not yet used, in Owed", unit: "count" },
           { label: "Not marked paid", unit: "money" },
           { label: "Invoices not marked paid", unit: "count" },
         ],

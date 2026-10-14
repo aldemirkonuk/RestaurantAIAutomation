@@ -1659,7 +1659,7 @@ describe("DocumentsController.markPaid — paid while disputed tells the owners 
  */
 describe("DocumentsController.payments — what was paid, and the credit that can pay it (F-1672)", () => {
   const INV = "12121212-1212-4121-8121-121212121212";
-  function payHarness(role: string) {
+  function payHarness(role: string, taken: any[] = []) {
     const tables: Record<string, any> = {
       procurement_documents_one: {
         id: INV,
@@ -1701,6 +1701,14 @@ describe("DocumentsController.payments — what was paid, and the credit that ca
           currency: "TRY",
           status: "rejected",
         },
+        // Nor is paper another copy replaced (wave 109 pin, F-1145 note).
+        {
+          id: "cn5",
+          doc_number: "CN-Y",
+          total: 400,
+          currency: "TRY",
+          status: "superseded",
+        },
       ],
     };
     const calls: Array<{ table: string; ops: any[] }> = [];
@@ -1713,6 +1721,8 @@ describe("DocumentsController.payments — what was paid, and the credit that ca
             return ops.some((o) => o[0] === "eq" && o[1] === "doc_type")
               ? { data: tables.procurement_documents_many, error: null }
               : { data: tables.procurement_documents_one, error: null };
+          if (table === "procurement_credit_taken_on_invoice")
+            return { data: taken, error: null };
           if (ops.some((o) => o[0] === "in"))
             return {
               data: [{ credit_note_id: "cn1", amount: 1200 }],
@@ -1792,11 +1802,186 @@ describe("DocumentsController.payments — what was paid, and the credit that ca
       expect(c.ops).toContainEqual(["eq", "restaurant_id", "r-1"]);
   });
 
+  it("[REVERT-FAILS] never offers a rejected or a replaced credit note, whatever credit it holds", async () => {
+    const { controller } = payHarness("owner");
+    const out = await controller.payments(INV, user);
+    const offered = out.credits.map((c) => c.number);
+    // Each of the pair on its own: dropping either status from the rule fails here.
+    expect(offered).not.toContain("CN-X");
+    expect(offered).not.toContain("CN-Y");
+    expect(offered).toEqual(["CN-90"]);
+  });
+
+  it("[REVERT-FAILS] lists credit already taken off this invoice's total, and it is used but pays nothing (wave 109)", async () => {
+    const { controller, calls } = payHarness("manager", [
+      { credit_note_id: "cn2", invoice_id: INV, amount: 500, currency: "TRY" },
+      // Taken off ANOTHER invoice: used, but not listed on this one.
+      {
+        credit_note_id: "cn4",
+        invoice_id: "other",
+        amount: 10,
+        currency: "TRY",
+      },
+    ]);
+    const out = await controller.payments(INV, user);
+    expect(out.taken).toEqual([
+      {
+        creditNoteId: "cn2",
+        creditNoteNumber: "CN-90",
+        amount: 500,
+        currency: "TRY",
+      },
+    ]);
+    // Not a payment: what is paid and left on the invoice are unchanged.
+    expect(out.paid).toBe(4200);
+    expect(out.left).toBe(5800);
+    // Used up, so no longer offered to pay it.
+    expect(out.credits).toEqual([]);
+    const read = calls.find(
+      (c) => c.table === "procurement_credit_taken_on_invoice",
+    )!;
+    expect(read.ops).toContainEqual(["eq", "restaurant_id", "r-1"]);
+  });
+
   it("keeps an invoice's payments from staff", async () => {
     const { controller, calls } = payHarness("staff");
     await expect(controller.payments(INV, user)).rejects.toThrow(
       "kept for the house's owners and managers",
     );
     expect(calls).toHaveLength(0);
+  });
+});
+
+/**
+ * Wave 109 (sim-ledger S236/S237): a vendor printed INV-905 at 8.800 with
+ * CN-88's 1.200 already taken off, and nothing could say so. `creditTaken`
+ * did not exist; every case here failed on a build without it.
+ */
+describe("DocumentsController.creditTaken — a credit note already on the printed total (wave 109)", () => {
+  const INV = "13131313-1313-4131-8131-131313131313";
+  const CN = "14141414-1414-4141-8141-141414141414";
+  function harness(
+    role: string | null,
+    rpcAnswer: { data: unknown; error: unknown } = {
+      data: { amount: 1200, currency: "TRY", credit_left: 0 },
+      error: null,
+    },
+  ) {
+    const writes: Array<{ table: string; op: string; row: any }> = [];
+    const client = {
+      rpc: (fn: string, args: any) => {
+        writes.push({ table: fn, op: "rpc", row: args });
+        return Promise.resolve(rpcAnswer);
+      },
+      from: (table: string) => ({
+        insert: (r: any) => {
+          writes.push({ table, op: "insert", row: r });
+          return Promise.resolve({ error: null });
+        },
+      }),
+    };
+    const none = {} as any;
+    const controller = new DocumentsController(
+      none,
+      { getClient: () => client } as any,
+      none,
+      none,
+      none,
+      none,
+      {
+        resolveRestaurantRole: async () => role,
+        assertCanManageRestaurant: async () => {
+          if (role !== "owner" && role !== "manager") throw new Error("no");
+        },
+      } as any,
+      none,
+      none,
+      none,
+      none,
+    );
+    return { controller, writes };
+  }
+  const user = { userId: "u-1", restaurantId: "r-1" } as any;
+
+  it("[REVERT-FAILS] a manager says CN-88 was taken off INV-905, through the one writer, in this house, logged", async () => {
+    const { controller, writes } = harness("manager");
+    const out = await controller.creditTaken(
+      INV,
+      { creditNoteId: CN, taken: true },
+      user,
+    );
+    expect(out).toEqual({
+      id: INV,
+      creditNoteId: CN,
+      taken: true,
+      amount: 1200,
+      currency: "TRY",
+    });
+    const call = writes.find((w) => w.op === "rpc")!;
+    expect(call.table).toBe("record_credit_taken_on_invoice");
+    expect(call.row).toEqual({
+      p_restaurant_id: "r-1",
+      p_invoice_id: INV,
+      p_credit_note_id: CN,
+      p_amount: null,
+      p_recorded_by: "u-1",
+    });
+    const audit = writes.find((w) => w.table === "system_audit_log")!;
+    expect(audit.row.action).toBe("invoice_credit_taken_off_total");
+    expect(audit.row.restaurant_id).toBe("r-1");
+  });
+
+  it("[REVERT-FAILS] undoing it goes through the one remover", async () => {
+    const { controller, writes } = harness("owner", {
+      data: { amount: 1200, currency: "TRY" },
+      error: null,
+    });
+    await controller.creditTaken(INV, { creditNoteId: CN, taken: false }, user);
+    const call = writes.find((w) => w.op === "rpc")!;
+    expect(call.table).toBe("clear_credit_taken_on_invoice");
+    expect(call.row).toEqual({
+      p_restaurant_id: "r-1",
+      p_invoice_id: INV,
+      p_credit_note_id: CN,
+    });
+  });
+
+  it("[REVERT-FAILS] another vendor's credit is refused in the writer's words", async () => {
+    const { controller } = harness("manager", {
+      data: null,
+      error: {
+        code: "23514",
+        message:
+          "A credit note can only be taken off an invoice from the same vendor.",
+      },
+    });
+    await expect(
+      controller.creditTaken(INV, { creditNoteId: CN, taken: true }, user),
+    ).rejects.toThrow(
+      "A credit note can only be taken off an invoice from the same vendor. Nothing was changed.",
+    );
+  });
+
+  it("[REVERT-FAILS] staff cannot say it, and nothing is written", async () => {
+    const { controller, writes } = harness("staff");
+    await expect(
+      controller.creditTaken(INV, { creditNoteId: CN, taken: true }, user),
+    ).rejects.toThrow("a manager's or an owner's call");
+    expect(writes).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] refuses a missing credit note or a bad amount before anything is written", async () => {
+    const { controller, writes } = harness("manager");
+    await expect(
+      controller.creditTaken(INV, { taken: true }, user),
+    ).rejects.toThrow("Say which credit note");
+    await expect(
+      controller.creditTaken(
+        INV,
+        { creditNoteId: CN, taken: true, amount: -5 },
+        user,
+      ),
+    ).rejects.toThrow("more than zero");
+    expect(writes).toHaveLength(0);
   });
 });

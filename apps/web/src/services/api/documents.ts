@@ -113,6 +113,11 @@ export interface InvoicePayments {
     paidBy: InvoicePaidBy
     creditNoteNumber: string | null
   }>
+  /**
+   * Credit notes the vendor already took off this invoice's printed total
+   * (wave 109). Used up by it, but not payments. Optional for an older gateway.
+   */
+  taken?: Array<{ creditNoteId: string; creditNoteNumber: string | null; amount: number; currency: string }>
   /** The same vendor's credit notes in this currency that still hold credit. */
   credits: Array<{ id: string; number: string | null; currency: string | null; left: number }>
 }
@@ -261,6 +266,23 @@ export const documentsApi = {
   }> {
     try {
       const { data } = await apiClient.patch(`/procurement/documents/${id}/paid`, { paid, ...(payment ?? {}) })
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * Say a credit note was already taken off this invoice's printed total, or
+   * undo it (wave 109). `amount` absent = all the credit the note has left.
+   * Owners and managers only, at the gateway.
+   */
+  async creditTaken(
+    id: string,
+    v: { creditNoteId: string; taken: boolean; amount?: number },
+  ): Promise<{ id: string; creditNoteId: string; taken: boolean; amount: number | null; currency: string | null }> {
+    try {
+      const { data } = await apiClient.patch(`/procurement/documents/${id}/credit-taken`, v)
       return data
     } catch (error) {
       return rethrowSpoken(error)

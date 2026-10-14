@@ -2691,7 +2691,7 @@ export class DocumentsController {
     summary:
       "The payments on a vendor invoice, and the credit notes that could pay it",
     description:
-      "Owners and managers only. `payments` each with `amount`, `currency`, `paidOn`, `paidBy` and the credit note's number; `paid` and `left` (null when the invoice has no total); `credits` = the same vendor's credit notes in the invoice's currency with credit `left` on them.",
+      "Owners and managers only. `payments` each with `amount`, `currency`, `paidOn`, `paidBy` and the credit note's number; `paid` and `left` (null when the invoice has no total); `taken` = credit notes the vendor already took off this invoice's printed total; `credits` = the same vendor's credit notes in the invoice's currency with credit `left` on them, not rejected or replaced.",
   })
   async payments(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
     requireUuid(id, "invoice id");
@@ -2779,6 +2779,16 @@ export class DocumentsController {
         (n.currency?.trim().toUpperCase() || null) === code,
     );
     const used = new Map<string, number>();
+    const spend = (rows: unknown) => {
+      for (const s of (rows ?? []) as Array<{
+        credit_note_id: string;
+        amount: number | string;
+      }>)
+        used.set(
+          s.credit_note_id,
+          (used.get(s.credit_note_id) ?? 0) + Number(s.amount),
+        );
+    };
     if (usable.length) {
       const { data: spent, error: spentError } = await client
         .from("procurement_invoice_payments")
@@ -2793,14 +2803,32 @@ export class DocumentsController {
           `What the credit notes have already paid could not be read: ${spentError.message}`,
           HttpStatus.INTERNAL_SERVER_ERROR,
         );
-      for (const s of (spent ?? []) as Array<{
-        credit_note_id: string;
-        amount: number | string;
-      }>)
-        used.set(
-          s.credit_note_id,
-          (used.get(s.credit_note_id) ?? 0) + Number(s.amount),
+      spend(spent);
+    }
+    // Credit the vendor already took off an invoice's printed total is used
+    // too (wave 109); this invoice's own such credit is listed as `taken`.
+    let taken: Array<{
+      credit_note_id: string;
+      invoice_id: string;
+      amount: number | string;
+      currency: string;
+    }> = [];
+    if (notes.length) {
+      const { data: takenRows, error: takenError } = await client
+        .from("procurement_credit_taken_on_invoice")
+        .select("credit_note_id, invoice_id, amount, currency")
+        .eq("restaurant_id", user.restaurantId)
+        .in(
+          "credit_note_id",
+          notes.map((n) => n.id),
         );
+      if (takenError)
+        throw new HttpException(
+          `The credit already taken off invoices could not be read: ${takenError.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      taken = (takenRows ?? []) as typeof taken;
+      spend(taken);
     }
     const cents = (n: number) => Math.round(n * 100) / 100;
     const paid = cents(rows.reduce((n, r) => n + Number(r.amount), 0));
@@ -2821,6 +2849,14 @@ export class DocumentsController {
           ? (named.get(r.credit_note_id) ?? null)
           : null,
       })),
+      taken: taken
+        .filter((t) => t.invoice_id === id)
+        .map((t) => ({
+          creditNoteId: t.credit_note_id,
+          creditNoteNumber: named.get(t.credit_note_id) ?? null,
+          amount: Number(t.amount),
+          currency: t.currency,
+        })),
       credits: usable
         .map((n) => ({
           id: n.id,
@@ -2829,6 +2865,154 @@ export class DocumentsController {
           left: cents(Math.abs(Number(n.total)) - (used.get(n.id) ?? 0)),
         }))
         .filter((n) => n.left > 0),
+    };
+  }
+
+  /**
+   * A CREDIT NOTE ALREADY TAKEN OFF THIS INVOICE'S PRINTED TOTAL (wave 109,
+   * sim-ledger S236/S237). A vendor often prints the invoice with its credit
+   * taken off already — INV-905 at 8.800, not 10.000 less CN-88's 1.200. That
+   * credit is used, but it pays nothing on the 8.800, so it is not a payment:
+   * recording it as one would take it off twice, and leaving it unsaid kept it
+   * coming off Owed. `record_credit_taken_on_invoice` keeps the same rules as
+   * a payment by credit (coordinator's call S235/S237, industry standard): the
+   * same vendor, the same currency, never more than the credit note has left.
+   * `taken: false` undoes it.
+   *
+   * Managers and owners only, in words, as marking paid is; outside every
+   * seal census for the same reason (no money moves, undone by this route).
+   */
+  @Patch(":id/credit-taken")
+  @ApiOperation({
+    summary:
+      "Say a credit note was already taken off this invoice's printed total, or undo it",
+    description:
+      "Body `{ creditNoteId: uuid, taken: boolean, amount?: number }`. `amount` absent = all the credit the note has left. The credit note must be the same vendor's, in the invoice's currency. It uses the credit up; it does not pay the invoice. Managers and owners only.",
+  })
+  async creditTaken(
+    @Param("id") id: string,
+    @Body() body: { creditNoteId?: unknown; taken?: unknown; amount?: unknown },
+    @CurrentUser() user: AuthedUser,
+  ): Promise<{
+    id: string;
+    creditNoteId: string;
+    taken: boolean;
+    amount: number | null;
+    currency: string | null;
+  }> {
+    requireUuid(id, "invoice id");
+    if (typeof body?.taken !== "boolean")
+      throw new HttpException(
+        "Say whether the credit note was taken off this invoice (taken: true) or not (taken: false). Nothing was changed.",
+        HttpStatus.BAD_REQUEST,
+      );
+    if (typeof body.creditNoteId !== "string")
+      throw new HttpException(
+        "Say which credit note. Nothing was changed.",
+        HttpStatus.BAD_REQUEST,
+      );
+    const creditNoteId = body.creditNoteId;
+    requireUuid(creditNoteId, "credit note id");
+    const amount =
+      body.amount === undefined || body.amount === null
+        ? null
+        : Number(body.amount);
+    if (
+      amount !== null &&
+      (!body.taken ||
+        typeof body.amount !== "number" ||
+        !Number.isFinite(amount) ||
+        amount <= 0)
+    )
+      throw new HttpException(
+        body.taken
+          ? "Say the credit taken off as a number more than zero, or leave it out for all the credit left. Nothing was changed."
+          : "Undoing it takes no amount. Nothing was changed.",
+        HttpStatus.BAD_REQUEST,
+      );
+    const role = await this.organizations.resolveRestaurantRole(
+      user.userId,
+      user.restaurantId,
+    );
+    try {
+      await this.organizations.assertCanManageRestaurant(
+        user.userId,
+        user.restaurantId,
+        "say a credit note was taken off an invoice",
+      );
+    } catch {
+      throw new HttpException(
+        `Which credit notes are used changes what the house owes its vendor, so it is a manager's or an owner's call. ${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was changed.`,
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    // One writer, in one transaction: it locks the invoice and the credit note.
+    const { data: wrote, error: writeError } = body.taken
+      ? await this.db.getClient().rpc("record_credit_taken_on_invoice", {
+          p_restaurant_id: user.restaurantId,
+          p_invoice_id: id,
+          p_credit_note_id: creditNoteId,
+          p_amount: amount,
+          p_recorded_by: user.userId,
+        })
+      : await this.db.getClient().rpc("clear_credit_taken_on_invoice", {
+          p_restaurant_id: user.restaurantId,
+          p_invoice_id: id,
+          p_credit_note_id: creditNoteId,
+        });
+    if (writeError) {
+      // The writer's refusals are already said in plain words.
+      const code = (writeError as { code?: string }).code;
+      if (code === "P0002")
+        throw new HttpException(
+          `${writeError.message} Nothing was changed.`,
+          HttpStatus.NOT_FOUND,
+        );
+      throw new HttpException(
+        code === "23514"
+          ? `${writeError.message} Nothing was changed.`
+          : `The credit note was not ${body.taken ? "set against" : "taken back from"} this invoice: ${writeError.message}`,
+        code === "23514"
+          ? HttpStatus.BAD_REQUEST
+          : HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+    const row = (wrote ?? {}) as {
+      amount?: number | string | null;
+      currency?: string | null;
+    };
+    const { error: auditError } = await this.db
+      .getClient()
+      .from("system_audit_log")
+      .insert({
+        actor_type: "user",
+        actor_id: user.userId,
+        action: body.taken
+          ? "invoice_credit_taken_off_total"
+          : "invoice_credit_taken_off_total_undone",
+        entity_type: "procurement_document",
+        entity_id: id,
+        changes: {
+          credit_note_id: creditNoteId,
+          amount: row.amount ?? null,
+          currency: row.currency ?? null,
+        },
+        restaurant_id: user.restaurantId,
+      });
+    if (auditError)
+      this.logger.error(
+        `invoice ${id}: credit note ${creditNoteId} ${body.taken ? "taken off" : "taken back"}, but the audit row failed: ${auditError.message}`,
+      );
+    return {
+      id,
+      creditNoteId,
+      taken: body.taken,
+      amount:
+        row.amount === undefined || row.amount === null
+          ? null
+          : Number(row.amount),
+      currency: row.currency ?? null,
     };
   }
 

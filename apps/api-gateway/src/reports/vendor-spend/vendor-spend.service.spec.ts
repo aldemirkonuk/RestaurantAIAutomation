@@ -80,6 +80,7 @@ function service(tables: Record<string, unknown[] | Record<string, unknown>>) {
     restaurants: house,
     providers: [],
     procurement_invoice_payments: [],
+    procurement_credit_taken_on_invoice: [],
     ...tables,
   });
   return { svc: new VendorSpendService({ supabase: db } as any), calls };
@@ -745,6 +746,146 @@ describe("VendorSpendService — each payment, and credit kept to its vendor (F-
       figures.find((f) => f.label === "Credit in your favour, all vendors")!
         .value,
     ).toBe(3000);
+  });
+});
+
+/**
+ * Wave 109 (sim-ledger S236/S237, owed after F-1672): a credit the vendor
+ * already took off an invoice's printed total, and a credit note older than
+ * `owedSince`. [REVERT-FAILS] on the vendor-credit lane's head (d1bdc6d21).
+ */
+describe("VendorSpendService — credit already taken, and older credit (wave 109)", () => {
+  const doc = (over: Record<string, unknown>) => ({
+    provider_id: ROSSI,
+    doc_type: "invoice",
+    status: "verified",
+    currency: "TRY",
+    paid_at: null,
+    paid_by: null,
+    ...over,
+  });
+  const marked = doc({
+    id: "p1",
+    doc_number: "A-1",
+    doc_date: "2026-03-01",
+    total: 500,
+    paid_at: "2026-03-10T09:00:00Z",
+    paid_by: "restaurant",
+  });
+
+  it("[REVERT-FAILS] a credit note the vendor already took off INV-905's printed total stops coming off Owed", async () => {
+    const tables = {
+      procurement_orders: [],
+      procurement_documents: [
+        marked,
+        // Printed at 8.800: CN-88's 1.200 already taken off 10.000.
+        doc({
+          id: "i905",
+          doc_number: "INV-905",
+          doc_date: "2026-03-12",
+          total: 8800,
+        }),
+        doc({
+          id: "cn88",
+          doc_type: "credit_memo",
+          doc_number: "CN-88",
+          doc_date: "2026-03-11",
+          total: -1200,
+        }),
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    };
+    const before = await service(tables).svc.read(
+      HOUSE,
+      "2026-03-01",
+      "2026-03-31",
+    );
+    // Not said: the credit comes off the 8.800 that already has it off.
+    expect(before.owing[0].owed).toEqual([{ currency: "TRY", total: 7600 }]);
+    const { svc, calls } = service({
+      ...tables,
+      procurement_credit_taken_on_invoice: [
+        { id: "t1", credit_note_id: "cn88", invoice_id: "i905", amount: 1200 },
+      ],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    const rossi = out.owing.find((o) => o.providerId === ROSSI)!;
+    expect(rossi.owed).toEqual([{ currency: "TRY", total: 8800 }]);
+    expect(rossi.owedCreditNotes).toBe(0);
+    const read = calls.find(
+      (c) => c.table === "procurement_credit_taken_on_invoice",
+    )!;
+    expect(read.ops).toContainEqual({ m: "eq", a: ["restaurant_id", HOUSE] });
+    expect(out.basis.join(" ")).toContain(
+      "credit the vendor already took off an invoice's printed total is used",
+    );
+  });
+
+  it("[REVERT-FAILS] a credit note dated before owedSince is said beside Owed, never netted", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        marked,
+        doc({
+          id: "a2",
+          doc_number: "A-2",
+          doc_date: "2026-03-12",
+          total: 2000,
+        }),
+        doc({
+          id: "old",
+          doc_type: "credit_memo",
+          doc_number: "C-OLD",
+          doc_date: "2026-02-20",
+          total: -300,
+        }),
+        doc({
+          id: "new",
+          doc_type: "credit_memo",
+          doc_number: "C-NEW",
+          doc_date: "2026-03-15",
+          total: -100,
+        }),
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    const rossi = out.owing.find((o) => o.providerId === ROSSI)!;
+    expect(rossi.owed).toEqual([{ currency: "TRY", total: 1900 }]);
+    expect(rossi.owedCreditNotes).toBe(1);
+    expect(rossi.earlyCreditNotes).toBe(1);
+    expect(rossi.earlyCredit).toEqual([{ currency: "TRY", total: 300 }]);
+    expect(out.basis.join(" ")).toContain(
+      "A credit note dated before 2026-03-10 is not taken off Owed",
+    );
+    expect(spendDoc(out).notes.join(" ")).toContain(
+      "Not taken off Owed: Rossi Wines, 1 credit note dated before 2026-03-10 (300 TRY)",
+    );
+  });
+
+  it("[REVERT-FAILS] a vendor with only an older unused credit note is still listed", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        marked,
+        doc({
+          id: "old",
+          provider_id: KAYA,
+          doc_type: "credit_memo",
+          doc_number: "K-OLD",
+          doc_date: "2026-02-20",
+          total: -300,
+        }),
+      ],
+      providers: [
+        { id: ROSSI, name: "Rossi Wines" },
+        { id: KAYA, name: "Kaya Gida" },
+      ],
+    });
+    const out = await svc.read(HOUSE, "2026-04-01", "2026-04-30");
+    const kaya = out.owing.find((o) => o.providerId === KAYA)!;
+    expect(kaya.earlyCreditNotes).toBe(1);
+    expect(kaya.owed).toEqual([]);
   });
 });
 

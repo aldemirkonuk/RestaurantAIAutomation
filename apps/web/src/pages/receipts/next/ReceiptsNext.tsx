@@ -175,6 +175,12 @@ function TieOutLine({ doc }: { doc: ProcurementDocument }) {
  * which one / the vendor took it), how much (empty = what is left) and on
  * which day, and lists the payments made. Only the same vendor's credit notes
  * in the invoice's money are offered: the gateway refuses any other.
+ *
+ * CREDIT ALREADY ON THE PRINTED TOTAL (wave 109, S237). A vendor that prints
+ * INV-905 at 8.800 with CN-88's 1.200 already taken off has used that credit,
+ * but it pays nothing on the 8.800. The block lets an owner or manager say so
+ * (same vendor, same money, never more than the note has left), lists what was
+ * said, and undoes it; the credit note then stops coming off Owed.
  */
 const PAID_HOW: Record<string, string> = {
   restaurant: 'paid by the house',
@@ -193,6 +199,8 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
   const [amountText, setAmountText] = useState('');
   const [paidOn, setPaidOn] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
+  const [takenId, setTakenId] = useState('');
+  const [takenText, setTakenText] = useState('');
   const rid = useActiveRestaurantId();
   const ledger = useQuery({
     queryKey: ['invoice-payments', rid, doc.id, doc.paid_at ?? null],
@@ -203,6 +211,8 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
     setAmountText('');
     setPaidOn('');
     setCreditId('');
+    setTakenId('');
+    setTakenText('');
     void ledger.refetch();
     onChanged();
   };
@@ -212,6 +222,11 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
   });
   const undo = useMutation({
     mutationFn: () => documentsApi.markPaid(doc.id, false),
+    onSuccess: after,
+  });
+  const take = useMutation({
+    mutationFn: (v: { creditNoteId: string; taken: boolean; amount?: number }) =>
+      documentsApi.creditTaken(doc.id, v),
     onSuccess: after,
   });
   const l = ledger.data;
@@ -238,13 +253,27 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
     }
     record.mutate(payment);
   };
+  const sayTaken = () => {
+    setProblem(null);
+    if (!takenId) {
+      setProblem('Pick the credit note the vendor took off this invoice.');
+      return;
+    }
+    const parsed = parseCell(takenText, group);
+    if (parsed === 'invalid' || (typeof parsed === 'number' && parsed <= 0)) {
+      setProblem('Write the credit taken off as a number more than zero, or leave it empty for all the credit left.');
+      return;
+    }
+    take.mutate({ creditNoteId: takenId, taken: true, ...(parsed !== null ? { amount: parsed } : {}) });
+  };
+  const takenHere = l?.taken ?? [];
 
   const status = paid
     ? `Paid in full on ${fmtDate(doc.paid_at)}.`
     : l && l.paid !== null && l.paid > 0
       ? `Paid ${fmtMoney(l.paid, money)} so far; ${fmtMoney(l.left, money)} left to pay.`
       : 'Not marked paid yet.';
-  const failure = record.error ?? undo.error;
+  const failure = record.error ?? undo.error ?? take.error;
   return (
     <div className="flex flex-wrap items-center gap-2" style={{ fontSize: 12.5, marginTop: 8 }}>
       <span style={{ color: 'var(--ink-2, #4F473C)' }}>{status}</span>
@@ -343,6 +372,78 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
             >
               Mark not paid
             </button>
+          )}
+          {takenHere.length > 0 && (
+            <ul
+              aria-label="Credit already taken off this invoice's total"
+              style={{ flexBasis: '100%', margin: 0, paddingLeft: 16 }}
+            >
+              {takenHere.map((t) => (
+                <li key={t.creditNoteId} style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+                  Credit note {t.creditNoteNumber ?? '(no number)'}, {fmtMoney(t.amount, t.currency)}, was already
+                  taken off this invoice&apos;s total.{' '}
+                  <button
+                    type="button"
+                    onClick={() => take.mutate({ creditNoteId: t.creditNoteId, taken: false })}
+                    disabled={take.isPending}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: '3px 9px',
+                      borderRadius: 6,
+                      border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                      background: 'transparent',
+                      color: 'var(--seal-deep, #14515C)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Undo
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {credits.length > 0 && (
+            <span className="flex flex-wrap items-center gap-2" style={{ flexBasis: '100%' }}>
+              <label style={{ fontSize: 11.5 }}>
+                Did the vendor already take a credit note off this invoice&apos;s total?{' '}
+                <select value={takenId} onChange={(e) => setTakenId(e.target.value)}>
+                  <option value="">Pick one</option>
+                  {credits.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.number ?? 'No number'}, {fmtMoney(c.left, c.currency)} left
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ fontSize: 11.5 }}>
+                Credit taken off{' '}
+                <input
+                  inputMode="decimal"
+                  value={takenText}
+                  onChange={(e) => setTakenText(e.target.value)}
+                  placeholder="all the credit left"
+                  style={{ width: 130 }}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={sayTaken}
+                disabled={take.isPending}
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  padding: '3px 9px',
+                  borderRadius: 6,
+                  border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                  background: 'transparent',
+                  color: 'var(--seal-deep, #14515C)',
+                  cursor: 'pointer',
+                }}
+              >
+                It was taken off
+              </button>
+            </span>
           )}
           {ledger.isError && (
             <span role="status" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)', flexBasis: '100%' }}>

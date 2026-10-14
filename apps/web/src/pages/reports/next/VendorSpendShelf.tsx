@@ -47,8 +47,15 @@ export interface VendorSpendRow {
   /** Unmarked invoices dated since `owedSince`, less credit notes since then (F-1635). */
   owed: SpendMoney[];
   owedInvoices: number;
+  /** Credit notes since `owedSince` not used up yet, taken off `owed`. */
   owedCreditNotes: number;
   owedWithoutTotal: number;
+  /**
+   * Credit notes dated before `owedSince` with credit not used up: never taken
+   * off `owed`, said beside it (wave 109). Optional so an older gateway's answer reads.
+   */
+  earlyCreditNotes?: number;
+  earlyCredit?: SpendMoney[];
 }
 
 export interface VendorSpend {
@@ -162,7 +169,15 @@ function owedAmounts(totals: SpendMoney[], house: string | null): string {
 
 type OwedFacts = Pick<
   VendorSpendRow,
-  'owed' | 'owedInvoices' | 'owedCreditNotes' | 'owedWithoutTotal' | 'unpaid' | 'unpaidInvoices' | 'unpaidWithoutTotal'
+  | 'owed'
+  | 'owedInvoices'
+  | 'owedCreditNotes'
+  | 'owedWithoutTotal'
+  | 'unpaid'
+  | 'unpaidInvoices'
+  | 'unpaidWithoutTotal'
+  | 'earlyCreditNotes'
+  | 'earlyCredit'
 >;
 
 /** One vendor's Owed and Not marked paid, any date (`VendorOwedRow` at the gateway). */
@@ -173,26 +188,37 @@ export type VendorOwedRow = OwedFacts & Pick<VendorSpendRow, 'providerId' | 'nam
  * vendor's sheet on /vendors say it the same way. `owed` is null until the
  * house has marked an invoice paid: before that nothing says which invoices
  * are still to pay. `notMarked` is the older unmarked invoices, never "owed".
+ * Owed says how many credit notes not yet used it includes, and `earlyCredit`
+ * says the credit notes older than `owedSince` it does not (wave 109).
  */
 export function owedWords(
   v: OwedFacts,
   owedSince: string | null,
   house: string | null,
-): { owed: string | null; notMarked: string | null } {
+): { owed: string | null; notMarked: string | null; earlyCredit: string | null } {
   const owed =
     owedSince === null
       ? null
       : v.owedInvoices + v.owedCreditNotes === 0
         ? 'Owed: nothing'
         : `Owed: ${v.owed.length ? owedAmounts(v.owed, house) : EM} over ${countOf(v.owedInvoices, 'invoice', 'invoices')}` +
-          (v.owedCreditNotes > 0 ? `, less ${countOf(v.owedCreditNotes, 'credit note', 'credit notes')}` : '') +
+          (v.owedCreditNotes > 0
+            ? `, includes ${countOf(v.owedCreditNotes, 'credit note', 'credit notes')} not yet used`
+            : '') +
           (v.owedWithoutTotal > 0 ? `; ${v.owedWithoutTotal} with no total yet` : '');
   const notMarked =
     v.unpaidInvoices === 0
       ? null
       : `Not marked paid${owedSince ? `, dated before ${owedSince}` : ''}: ${v.unpaid.length ? amounts(v.unpaid, house) : EM} over ${countOf(v.unpaidInvoices, 'invoice', 'invoices')}` +
         (v.unpaidWithoutTotal > 0 ? `, ${v.unpaidWithoutTotal} with no total yet` : '');
-  return { owed, notMarked };
+  const early = v.earlyCreditNotes ?? 0;
+  const earlyCredit =
+    owedSince === null || early === 0
+      ? null
+      : `Not taken off Owed: ${countOf(early, 'credit note', 'credit notes')} dated before ${owedSince}` +
+        (v.earlyCredit?.length ? `, ${amounts(v.earlyCredit, house)}` : '') +
+        ` — nothing then could say whether ${early === 1 ? 'it was' : 'they were'} used`;
+  return { owed, notMarked, earlyCredit };
 }
 
 export interface VendorSpendShelfProps {
@@ -363,6 +389,7 @@ export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShel
                         <>
                           {w.owed && v.owedInvoices + v.owedCreditNotes > 0 && <p className="rp-cap">{w.owed}</p>}
                           {w.notMarked && <p className="rp-cap">{w.notMarked}</p>}
+                          {w.earlyCredit && <p className="rp-cap">{w.earlyCredit}</p>}
                         </>
                       );
                     })()}
@@ -393,6 +420,7 @@ export default function VendorSpendShelf({ restaurantId, zone }: VendorSpendShel
                           </p>
                           {w.owed && o.owedInvoices + o.owedCreditNotes > 0 && <p className="rp-cap">{w.owed}</p>}
                           {w.notMarked && <p className="rp-cap">{w.notMarked}</p>}
+                          {w.earlyCredit && <p className="rp-cap">{w.earlyCredit}</p>}
                         </div>
                       </li>
                     );
