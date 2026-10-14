@@ -32,8 +32,10 @@ import {
 } from './rp-registers-trade';
 import {
   AMOUNTS_WITHHELD,
+  REGISTER_NET_SALES,
   REGISTER_TIP_ON_NET,
   REGISTER_TOTALS_NOT_NET,
+  checksWithoutNetSaid,
   ledger,
   quadrants,
   refundChecksSaid,
@@ -829,5 +831,66 @@ describe('till totals say they include KDV where the house says its till prices 
     expect(book(plain).goals[0].taxNote).toBeNull();
     expect(toProgressRow(plain).taxNote).toBeNull();
     expect(goals.view(book(plain), { days: 30, goals: desk }).notes?.join(' ')).not.toMatch(/include KDV/);
+  });
+});
+
+// w111-net-table-revenue (AW17): the room and server registers' Taken was the
+// till's check totals, tax and tips in, beside a dashboard of net sales. The
+// gateway now sends net sales and says so (revenueBasis 'net'); the page names
+// that basis, says the checks with no net, and never draws a not-recorded
+// Taken as 0.
+describe('the room and server registers read net sales, as the dashboard does (w111-net-table-revenue)', () => {
+  const SWITCH =
+    "The house said its till prices include KDV from 10 September 2026, so this period's net is not on one basis.";
+  const room = {
+    sinceDays: 90,
+    dataStatus: 'live',
+    checksInWindow: 5,
+    revenueBasis: 'net',
+    checksWithoutNet: 1,
+    netSalesTaxNote: SWITCH,
+    tables: [
+      { tableId: 't1', label: 'T1', seats: 4, checks: 4, revenue: 1000, covers: 8, avgCheck: 250 },
+      { tableId: 't2', label: 'T2', seats: 2, checks: 1, revenue: null, covers: 2, avgCheck: null },
+    ],
+  };
+
+  it('the room names net sales, the switch and the check with no net, and leaves a not-recorded table off the bars', () => {
+    const reg = seats.select(room) as SeatsRegister;
+    expect(reg.tables[1].revenue).toBeNull();
+    const v = seats.view(reg, { days: 90 } as never);
+    expect(v.basis).toContain(REGISTER_NET_SALES);
+    expect(v.basis).not.toContain(REGISTER_TOTALS_NOT_NET);
+    expect(v.basis).toContain(SWITCH);
+    expect(v.notes).toContain(checksWithoutNetSaid(1));
+    expect(v.cats?.data.map((d) => d.label)).toEqual(['T1']);
+  });
+
+  it('the server register does the same', () => {
+    const reg = service.select({
+      sinceDays: 90,
+      dataStatus: 'live',
+      checksInWindow: 4,
+      revenueBasis: 'net',
+      checksWithoutNet: 2,
+      waiters: [
+        { name: 'Ayşe', checks: 2, revenue: 2000, avgCheck: 1000 },
+        { name: 'Deniz', checks: 2, revenue: null, avgCheck: null },
+      ],
+    }) as ServiceRegister;
+    expect(reg.waiters[1].revenue).toBeNull();
+    const v = service.view(reg, { days: 90 } as never);
+    expect(v.basis).toContain(REGISTER_NET_SALES);
+    expect(v.notes).toContain(checksWithoutNetSaid(2));
+    expect(v.cats?.data.map((d) => d.label)).toEqual(['Ayşe']);
+  });
+
+  it('an older gateway (check totals) keeps its own sentence and its zeros', () => {
+    const { revenueBasis: _b, checksWithoutNet: _c, netSalesTaxNote: _n, ...old } = room;
+    const reg = seats.select(old) as SeatsRegister;
+    expect(reg.tables[1].revenue).toBe(0);
+    const v = seats.view(reg, { days: 90 } as never);
+    expect(v.basis).toContain(REGISTER_TOTALS_NOT_NET);
+    expect(v.basis).not.toContain(REGISTER_NET_SALES);
   });
 });

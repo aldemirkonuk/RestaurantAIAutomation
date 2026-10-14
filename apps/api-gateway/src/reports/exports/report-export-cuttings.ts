@@ -458,6 +458,21 @@ export const TILL_TOTALS_NOT_NET =
 export const REGISTER_TOTALS_NOT_NET =
   "Taken and the average check are check totals as your till sends them. On most tills that includes tax and tips, so they read higher than the dashboard's net sales, which are before tax and tips.";
 
+/**
+ * w111-net-table-revenue (AW17): the room and server registers' Taken and
+ * average check are net sales, the dashboard's own reader, when the gateway
+ * says so (`revenueBasis: "net"`). Word for word rp-registers-house.tsx.
+ */
+export const REGISTER_NET_SALES =
+  "Taken and the average check are net sales, before tax and tips, the same figure as the dashboard's.";
+
+/** w111: checks at a table or a server that stated no net, said on the room and server exports. */
+export function checksWithoutNetSaid(n: number): string {
+  return n === 1
+    ? "1 check carried no amount before tax: counted in Checks, left out of Taken and the average check."
+    : `${n} checks carried no amount before tax: counted in Checks, left out of Taken and the average check.`;
+}
+
 /** F-1532: the server register's tip rate is over net sales, never over a total that holds the tip. */
 export const REGISTER_TIP_ON_NET =
   "Tip is tips over net sales, before tax and tips, on the checks that recorded a tip.";
@@ -1071,8 +1086,9 @@ function writeSeats(payload: unknown): ExportDoc {
   const sinceDays = num(s.sinceDays) ?? 90;
   const basis = sentences(
     `Non-voided pos_checks the till attributed to a shown table over the last ${sinceDays} days.`,
-    REGISTER_TOTALS_NOT_NET,
+    s.revenueBasis === "net" ? REGISTER_NET_SALES : REGISTER_TOTALS_NOT_NET,
     str(s.totalsTaxNote) || null,
+    str(s.netSalesTaxNote) || null,
     str(s.dataStatus) ? `Feed: ${str(s.dataStatus)}.` : null,
   );
   const tables = arr(s.tables).map((t) => ({
@@ -1149,7 +1165,7 @@ function writeSeats(payload: unknown): ExportDoc {
           t.zone,
           figure(t.seats, "seats not recorded for this table"),
           t.checks,
-          figure(t.revenue, noCheck),
+          figure(t.revenue, t.checks > 0 ? "net sales not recorded" : noCheck),
           figure(t.avgCheck, noCheck),
           figure(t.wineAttach, noCheck),
         ]),
@@ -1166,6 +1182,9 @@ function writeSeats(payload: unknown): ExportDoc {
       (num(s.checksRefunded) ?? 0) > 0
         ? refundChecksSaid(num(s.checksRefunded) ?? 0)
         : "",
+      (num(s.checksWithoutNet) ?? 0) > 0
+        ? checksWithoutNetSaid(num(s.checksWithoutNet) ?? 0)
+        : "",
     ],
     basis,
   });
@@ -1179,8 +1198,9 @@ function writeService(payload: unknown): ExportDoc {
   const adj = s.adjusted == null ? null : obj(s.adjusted);
   const basis = sentences(
     `Non-voided pos_checks grouped by server name over the last ${sinceDays} days.`,
-    REGISTER_TOTALS_NOT_NET,
+    s.revenueBasis === "net" ? REGISTER_NET_SALES : REGISTER_TOTALS_NOT_NET,
     str(s.totalsTaxNote) || null,
+    str(s.netSalesTaxNote) || null,
     s.tipBasis === "net" ? REGISTER_TIP_ON_NET : null,
     // F-1573: the gateway's own reason when Tip is not (all) over net sales.
     str(s.tipBasisWhy) || null,
@@ -1233,7 +1253,10 @@ function writeService(payload: unknown): ExportDoc {
         rows: waiters.map((w) => [
           w.name,
           figure(w.checks, none),
-          figure(w.revenue, none),
+          figure(
+            w.revenue,
+            (w.checks ?? 0) > 0 ? "net sales not recorded" : none,
+          ),
           figure(w.avgCheck, none),
           figure(w.wineAttach, none),
           // F-1573: tips with no amount before tax are not "no tip".
@@ -1248,6 +1271,9 @@ function writeService(payload: unknown): ExportDoc {
         : "",
       (num(s.checksRefunded) ?? 0) > 0
         ? refundChecksSaid(num(s.checksRefunded) ?? 0)
+        : "",
+      (num(s.checksWithoutNet) ?? 0) > 0
+        ? checksWithoutNetSaid(num(s.checksWithoutNet) ?? 0)
         : "",
     ],
     basis,

@@ -588,6 +588,7 @@ describe("TableAnalyticsService — 'Who served it' ranks on every check", () =>
         opened_at: at(1 + (k % 50), k % 200),
         closed_at: at(1 + (k % 50), (k % 200) + 30),
         covers: 2,
+        subtotal: name === "Maya" ? 180 : 200,
         total: name === "Maya" ? 180 : 200,
         tip: null,
         items: [],

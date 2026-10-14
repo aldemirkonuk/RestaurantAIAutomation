@@ -19,10 +19,8 @@ import {
 import {
   PERIOD_TAX_NOTE_UNREAD,
   readPeriodTaxNote,
-  readTillPricesTaxWord,
-  tillTotalsTaxNote,
-  TILL_TOTALS_TAX_UNREAD,
 } from "../common/period-tax-note";
+import { netSalesOf } from "../dashboard/dashboard.service";
 import * as E from "./engine";
 import { monthBounds } from "./goals.service";
 
@@ -329,28 +327,21 @@ export class TableAnalyticsService {
   }
 
   /**
-   * w109-gross-basis (ADR 0341): Taken and the average check here are
-   * `pos_checks.total`, the till's own figure, as /reports Taken is; ingest
-   * changes only `subtotal`, so they keep one basis across a switch day. At a
-   * house whose till prices include tax, `{ totalsTaxNote }` says they hold
-   * it ("…include KDV"); an unread answer is said. Every other house gets
-   * nothing, so its register is unchanged.
+   * w111-net-table-revenue (AW17, ADR 0341): Taken and the average check here
+   * are net sales, each check's subtotal through the dashboard's own
+   * `netSalesOf`, so a table's, a server's and the dashboard's figures are on
+   * one basis at every house. It replaces w109's "include KDV" sentence: the
+   * figures no longer hold the tax. A window across the day the house's net
+   * changed basis says so (`netSalesTaxNote`), as the dashboard month does;
+   * a house with no answer in force gets no key.
    */
-  private async totalsTaxNote(
+  private async netSalesTaxNote(
     restaurantId: string,
-  ): Promise<{ totalsTaxNote?: string }> {
-    try {
-      const word = await readTillPricesTaxWord(
-        this.dbService.getClient(),
-        restaurantId,
-      );
-      return word ? { totalsTaxNote: tillTotalsTaxNote(word) } : {};
-    } catch (err: any) {
-      this.logger.warn(
-        `tax answer unreadable for r=${restaurantId}: ${err?.message ?? err}`,
-      );
-      return { totalsTaxNote: TILL_TOTALS_TAX_UNREAD };
-    }
+    sinceDays: number,
+    month: string | null = null,
+  ): Promise<{ netSalesTaxNote?: string }> {
+    const note = await this.windowTaxNote(restaurantId, sinceDays, month);
+    return note ? { netSalesTaxNote: note } : {};
   }
 
   /**
@@ -448,24 +439,7 @@ export class TableAnalyticsService {
     let checksAtHiddenTables = 0;
     const hiddenWithChecks = new Set<string>();
 
-    const agg = new Map<
-      string,
-      {
-        revenue: number;
-        checks: number;
-        covers: number;
-        wineChecks: number;
-        tips: number;
-        tipBase: number;
-        tipsWithoutNet: number;
-        tipsNetNotRecorded: number;
-        tipsNetNotRecordedByReason: Record<string, number>;
-        paidChecks: number;
-        paidRevenue: number;
-        zeroChecks: number;
-        refundChecks: number;
-      }
-    >();
+    const agg = new Map<string, SalesTally>();
     for (const c of checks) {
       if (!c.table_id) {
         checksWithoutTable++;
@@ -476,24 +450,8 @@ export class TableAnalyticsService {
         hiddenWithChecks.add(c.table_id);
         continue;
       }
-      const a = agg.get(c.table_id) || {
-        revenue: 0,
-        checks: 0,
-        covers: 0,
-        wineChecks: 0,
-        tips: 0,
-        tipBase: 0,
-        tipsWithoutNet: 0,
-        tipsNetNotRecorded: 0,
-        tipsNetNotRecordedByReason: {},
-        paidChecks: 0,
-        paidRevenue: 0,
-        zeroChecks: 0,
-        refundChecks: 0,
-      };
-      a.revenue += c.total || 0;
-      a.checks += 1;
-      tallyCheck(a, c);
+      const a = agg.get(c.table_id) || newSalesTally();
+      tallySale(a, c);
       a.covers += c.covers || 0;
       const items: any[] = Array.isArray(c.items) ? c.items : [];
       a.wineChecks += items.some((it) => it?.is_wine) ? 1 : 0;
@@ -506,6 +464,7 @@ export class TableAnalyticsService {
       // the sum nor the count.
       const avgCheck =
         a && a.paidChecks > 0 ? a.paidRevenue / a.paidChecks : null;
+      const revenue = a ? takenOf(a) : 0;
       return {
         tableId: t.id,
         label: t.label,
@@ -519,14 +478,17 @@ export class TableAnalyticsService {
         paidChecks: a?.paidChecks ?? 0,
         checksTakingNoMoney: a?.zeroChecks ?? 0,
         checksRefunded: a?.refundChecks ?? 0,
-        revenue: a?.revenue ?? 0,
+        checksWithoutNet: a ? a.checks - a.netChecks : 0,
+        revenue,
         covers: a?.covers ?? 0,
         avgCheck,
-        revenuePerSeat: a && t.seats > 0 ? a.revenue / t.seats : null,
+        revenuePerSeat:
+          revenue !== null && t.seats > 0 ? revenue / t.seats : null,
         checkinDensity: a && t.seats > 0 ? (a.covers || 0) / t.seats : null,
         checksPerSeat: a && t.seats > 0 ? a.checks / t.seats : null,
         wineRevenuePerSeat: null as number | null, // filled when wine $ available on check
-        revenuePerCover: a && a.covers > 0 ? a.revenue / a.covers : null,
+        revenuePerCover:
+          revenue !== null && a && a.covers > 0 ? revenue / a.covers : null,
         seatUtilization:
           a && t.seats > 0
             ? Math.min(1, (a.covers || 0) / (t.seats * Math.max(1, a.checks)))
@@ -703,9 +665,13 @@ export class TableAnalyticsService {
       checksTakingNoMoney: rows.reduce((n, r) => n + r.checksTakingNoMoney, 0),
       /** Refunds at a shown table: taken off Taken, out of every average (F-1644). */
       checksRefunded: rows.reduce((n, r) => n + r.checksRefunded, 0),
+      /** Taken and the average check are net sales, as on the dashboard (AW17). */
+      revenueBasis: "net" as const,
+      /** Checks at a shown table with no net stated: in Checks, out of Taken and every average. */
+      checksWithoutNet: rows.reduce((n, r) => n + r.checksWithoutNet, 0),
       /** Tip % is over net sales, the checks' subtotal (F-1532), or why not (F-1573). */
       ...tipBasisOf(Array.from(agg.values())),
-      ...(await this.totalsTaxNote(restaurantId)),
+      ...(await this.netSalesTaxNote(restaurantId, sinceDays)),
       ...(await this.feedStatus(restaurantId, sinceDays, checks)),
       generatedAt: new Date().toISOString(),
     };
@@ -728,26 +694,7 @@ export class TableAnalyticsService {
     month: string | null = null,
   ) {
     const checks = await this.loadChecks(restaurantId, sinceDays, month);
-    const byWaiter = new Map<
-      string,
-      {
-        revenue: number;
-        checks: number;
-        covers: number;
-        wineChecks: number;
-        tips: number;
-        tipBase: number;
-        tipsWithoutNet: number;
-        tipsNetNotRecorded: number;
-        tipsNetNotRecordedByReason: Record<string, number>;
-        paidChecks: number;
-        paidRevenue: number;
-        zeroChecks: number;
-        refundChecks: number;
-        tipMoney: number;
-        tipChecks: number;
-      }
-    >();
+    const byWaiter = new Map<string, SalesTally>();
     const obs = {
       y: [] as number[],
       waiter: [] as string[],
@@ -757,26 +704,8 @@ export class TableAnalyticsService {
     for (const c of checks) {
       const server = c.server_name || c.server_external_id;
       if (!server) continue;
-      const a = byWaiter.get(server) || {
-        revenue: 0,
-        checks: 0,
-        covers: 0,
-        wineChecks: 0,
-        tips: 0,
-        tipBase: 0,
-        tipsWithoutNet: 0,
-        tipsNetNotRecorded: 0,
-        tipsNetNotRecordedByReason: {},
-        paidChecks: 0,
-        paidRevenue: 0,
-        zeroChecks: 0,
-        refundChecks: 0,
-        tipMoney: 0,
-        tipChecks: 0,
-      };
-      a.revenue += c.total || 0;
-      a.checks += 1;
-      tallyCheck(a, c);
+      const a = byWaiter.get(server) || newSalesTally();
+      const net = tallySale(a, c);
       // A tip is money of its own, whether or not the check carried a net.
       const tip = recorded(c.tip);
       if (Number.isFinite(tip)) {
@@ -787,8 +716,10 @@ export class TableAnalyticsService {
       const items: any[] = Array.isArray(c.items) ? c.items : [];
       a.wineChecks += items.some((it) => it?.is_wine) ? 1 : 0;
       byWaiter.set(server, a);
-      if (c.table_id) {
-        obs.y.push(c.total || 0);
+      // A check with no stated net leaves the whole fit, not only the table
+      // control (ADR-0303-THE-WAITER-CONTROL-KEEPS-HIDDEN-TABLES, net form).
+      if (c.table_id && net !== null) {
+        obs.y.push(net);
         obs.waiter.push(server);
         obs.table.push(c.table_id);
       }
@@ -800,7 +731,8 @@ export class TableAnalyticsService {
       paidChecks: a.paidChecks,
       checksTakingNoMoney: a.zeroChecks,
       checksRefunded: a.refundChecks,
-      revenue: a.revenue,
+      checksWithoutNet: a.checks - a.netChecks,
+      revenue: takenOf(a),
       // F-1644: a refund is in neither the sum nor the count.
       avgCheck: a.paidChecks > 0 ? a.paidRevenue / a.paidChecks : null,
       wineAttachRate: a.checks > 0 ? a.wineChecks / a.checks : null,
@@ -816,7 +748,8 @@ export class TableAnalyticsService {
           : a.tipsNetNotRecorded > 0
             ? TIP_NET_NOT_RECORDED_ON_SERVER
             : TIP_NO_NET_ON_SERVER,
-      revenuePerCover: a.covers > 0 ? a.revenue / a.covers : null,
+      revenuePerCover:
+        a.covers > 0 && a.netChecks > 0 ? a.revenue / a.covers : null,
     }));
 
     const standings = E.peerComparison(
@@ -873,6 +806,10 @@ export class TableAnalyticsService {
       ),
       /** Refunds: taken off Taken, out of Avg check (F-1644). */
       checksRefunded: waiters.reduce((n, w) => n + w.checksRefunded, 0),
+      /** Taken and the average check are net sales, as on the dashboard (AW17). */
+      revenueBasis: "net" as const,
+      /** Checks with no net stated: in Checks, out of Taken and Avg check. */
+      checksWithoutNet: waiters.reduce((n, w) => n + w.checksWithoutNet, 0),
       /** Tip % is over net sales, the checks' subtotal (F-1532), or why not (F-1573). */
       ...tipBasis,
       /**
@@ -886,7 +823,7 @@ export class TableAnalyticsService {
         tipBasis.tipBasis === "net"
           ? await this.windowTaxNote(restaurantId, sinceDays, month)
           : null,
-      ...(await this.totalsTaxNote(restaurantId)),
+      ...(await this.netSalesTaxNote(restaurantId, sinceDays, month)),
       ...(await this.feedStatus(restaurantId, sinceDays, checks, month)),
       generatedAt: new Date().toISOString(),
     };
@@ -1012,6 +949,82 @@ function isoOf(v: string): string {
   return Number.isNaN(t) ? v : new Date(t).toISOString();
 }
 
+/** What a table's or a server's checks add up to. */
+interface SalesTally {
+  /** The net sales of the checks that stated one (`netChecks`). */
+  revenue: number;
+  checks: number;
+  /** Checks whose net sales were stated (a subtotal), as the dashboard counts them. */
+  netChecks: number;
+  covers: number;
+  wineChecks: number;
+  tips: number;
+  tipBase: number;
+  tipsWithoutNet: number;
+  tipsNetNotRecorded: number;
+  tipsNetNotRecordedByReason: Record<string, number>;
+  paidChecks: number;
+  paidRevenue: number;
+  zeroChecks: number;
+  refundChecks: number;
+  /** w111-tips-owed: the money tipped on the checks that carried a tip. */
+  tipMoney: number;
+  /** w111-tips-owed: the checks that carried a tip. */
+  tipChecks: number;
+}
+
+function newSalesTally(): SalesTally {
+  return {
+    revenue: 0,
+    checks: 0,
+    netChecks: 0,
+    covers: 0,
+    wineChecks: 0,
+    tips: 0,
+    tipBase: 0,
+    tipsWithoutNet: 0,
+    tipsNetNotRecorded: 0,
+    tipsNetNotRecordedByReason: {},
+    paidChecks: 0,
+    paidRevenue: 0,
+    zeroChecks: 0,
+    refundChecks: 0,
+    tipMoney: 0,
+    tipChecks: 0,
+  };
+}
+
+/**
+ * Taken, under the dashboard's count-and-say (ADR 0290, AW17): the stated net
+ * sales, or null when there were checks and not one stated any ("not
+ * recorded", never 0).
+ */
+function takenOf(a: SalesTally): number | null {
+  return a.checks > 0 && a.netChecks === 0 ? null : a.revenue;
+}
+
+/**
+ * One check into a table's or a server's tally; returns its net sales, or
+ * null when it stated none.
+ *
+ * w111-net-table-revenue (AW17, ADR 0341): Taken was `pos_checks.total`, the
+ * till's own figure with tax and tips in it, while the dashboard's net sales
+ * are the subtotal; at a house whose till prices include KDV the room said
+ * KDV-in figures beside a KDV-out dashboard. It is now the dashboard's own
+ * `netSalesOf`, so the two agree. A check with no stated net is counted in
+ * Checks and left out of Taken and every average, never read as its total.
+ */
+function tallySale(a: SalesTally, c: Record<string, unknown>): number | null {
+  const net = netSalesOf(c);
+  a.checks += 1;
+  if (net !== null) {
+    a.revenue += net;
+    a.netChecks += 1;
+  }
+  tallyCheck(a, c, net);
+  return net;
+}
+
 /**
  * The parts of one check a table's or a server's average and tip rate rest on.
  *
@@ -1022,22 +1035,14 @@ function isoOf(v: string): string {
  * - F-1644: a refund the till sends as a check with a minus total is taken
  *   off the revenue, counted in `refundChecks`, and kept out of `paidChecks`
  *   and `paidRevenue`, the sum and count every average check is over.
+ * - w111: the average is over net sales, so a paid check enters it only
+ *   when it stated its net; its total decides only whether it was a sale.
  * - F-1532: the tip rate is tips over the net sales (`subtotal`) of the checks
  *   that carried both. It used to be over `total`, which on Square and most
  *   tills already holds the tip, so a 20% tip read as 15.9%.
  */
 function tallyCheck(
-  a: {
-    tips: number;
-    tipBase: number;
-    tipsWithoutNet: number;
-    tipsNetNotRecorded: number;
-    tipsNetNotRecordedByReason: Record<string, number>;
-    paidChecks: number;
-    paidRevenue: number;
-    zeroChecks: number;
-    refundChecks: number;
-  },
+  a: SalesTally,
   c: {
     total?: unknown;
     subtotal?: unknown;
@@ -1046,13 +1051,14 @@ function tallyCheck(
     net_not_recorded_reason?: unknown;
     tip?: unknown;
   },
+  stated: number | null,
 ): void {
   const total = recorded(c.total);
   if (total === 0) a.zeroChecks += 1;
   else if (total < 0) a.refundChecks += 1;
-  else if (Number.isFinite(total)) {
+  else if (Number.isFinite(total) && stated !== null && stated > 0) {
     a.paidChecks += 1;
-    a.paidRevenue += total;
+    a.paidRevenue += stated;
   }
   const net = recorded(c.subtotal);
   const tip = recorded(c.tip);

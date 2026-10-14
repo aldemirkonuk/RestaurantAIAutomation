@@ -571,6 +571,20 @@ export function emptyWindowLine(w: PosWindow): string | null {
 export const REGISTER_TOTALS_NOT_NET =
   "Taken and the average check are check totals as your till sends them. On most tills that includes tax and tips, so they read higher than the dashboard's net sales, which are before tax and tips.";
 
+/**
+ * w111-net-table-revenue (AW17): the room and server registers' Taken and
+ * average check are net sales, the dashboard's own reader, when the gateway
+ * says so (`revenueBasis: 'net'`); an older gateway keeps the sentence above.
+ * Word for word the gateway's `REGISTER_NET_SALES`.
+ */
+export const REGISTER_NET_SALES =
+  "Taken and the average check are net sales, before tax and tips, the same figure as the dashboard's.";
+
+/** w111: word for word the gateway's `checksWithoutNetSaid`. */
+export function checksWithoutNetSaid(n: number): string {
+  return `${n === 1 ? '1 check' : `${n} checks`} carried no amount before tax: counted in Checks, left out of Taken and the average check.`;
+}
+
 /** F-1532: word for word the gateway's `REGISTER_TIP_ON_NET`. */
 export const REGISTER_TIP_ON_NET =
   'Tip is tips over net sales, before tax and tips, on the checks that recorded a tip.';
@@ -609,13 +623,20 @@ export interface SeatsRegister extends PosWindow {
   checksRefunded: number;
   /** w109-gross-basis (ADR 0341): only where till prices include tax, or that answer is unread. */
   totalsTaxNote?: string | null;
+  /** w111: 'net' when Taken is net sales, as the dashboard's; null from an older gateway (check totals). */
+  revenueBasis: 'net' | null;
+  /** w111: checks that stated no net, out of Taken; 0 from an older gateway. */
+  checksWithoutNet: number;
+  /** w111 (ADR 0341 F2): the window's net is not on one tax basis, and why; null when it is. */
+  netSalesTaxNote: string | null;
   tables: Array<{
     tableId: string;
     label: string;
     zone: string | null;
     seats: number | null;
     checks: number;
-    revenue: number;
+    /** Null: the table had checks and not one stated its net ("not recorded"). */
+    revenue: number | null;
     covers: number;
     avgCheck: number | null;
     revenuePerSeat: number | null;
@@ -645,13 +666,16 @@ const seats = analysis<SeatsRegister>({
       checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
       checksRefunded: num(d.checksRefunded) ?? 0,
       totalsTaxNote: str(d.totalsTaxNote) || null,
+      revenueBasis: d.revenueBasis === 'net' ? 'net' : null,
+      checksWithoutNet: num(d.checksWithoutNet) ?? 0,
+      netSalesTaxNote: str(d.netSalesTaxNote) || null,
       tables: arr(d.tables).map((t) => ({
         tableId: str(t.tableId),
         label: str(t.label),
         zone: (t.zone ?? null) as string | null,
         seats: num(t.seats),
         checks: num(t.checks) ?? 0,
-        revenue: num(t.revenue) ?? 0,
+        revenue: d.revenueBasis === 'net' ? num(t.revenue) : (num(t.revenue) ?? 0),
         covers: num(t.covers) ?? 0,
         avgCheck: num(t.avgCheck),
         revenuePerSeat: num(t.revenuePerSeat),
@@ -663,8 +687,9 @@ const seats = analysis<SeatsRegister>({
   view: (s) => {
     const basis = [
       `Non-voided pos_checks the till attributed to a shown table over the last ${s.sinceDays} days.`,
-      REGISTER_TOTALS_NOT_NET,
+      s.revenueBasis === 'net' ? REGISTER_NET_SALES : REGISTER_TOTALS_NOT_NET,
       s.totalsTaxNote ?? null,
+      s.netSalesTaxNote,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
     ];
     // ADR 0303: tables are learned from the till, so nothing is drawn. A check
@@ -698,6 +723,7 @@ const seats = analysis<SeatsRegister>({
       hiddenNote,
       s.checksTakingNoMoney > 0 ? zeroChecksSaid(s.checksTakingNoMoney) : null,
       s.checksRefunded > 0 ? refundChecksSaid(s.checksRefunded) : null,
+      s.checksWithoutNet > 0 ? checksWithoutNetSaid(s.checksWithoutNet) : null,
     ].filter((n): n is string => n !== null);
     const served = s.tables.filter((t) => t.checks > 0);
     const figures = [
@@ -733,11 +759,15 @@ const seats = analysis<SeatsRegister>({
     const withCheck = served.filter((t) => t.avgCheck != null && t.seats != null);
     return {
       cats: {
-        data: served.slice(0, 14).map((t) => ({
-          label: t.label,
-          value: t.revenue,
-          full: `${t.label}${t.zone ? ` · ${t.zone}` : ''}`,
-        })),
+        // w111: a table whose net was not recorded has no bar, never one at 0.
+        data: served
+          .filter((t): t is typeof t & { revenue: number } => t.revenue !== null)
+          .slice(0, 14)
+          .map((t) => ({
+            label: t.label,
+            value: t.revenue,
+            full: `${t.label}${t.zone ? ` · ${t.zone}` : ''}`,
+          })),
         xLabel: 'table',
         yLabel: 'taken',
         unit: 'taken',
@@ -809,13 +839,20 @@ export interface ServiceRegister extends PosWindow {
   checksRefunded: number;
   /** w109-gross-basis (ADR 0341): only where till prices include tax, or that answer is unread. */
   totalsTaxNote?: string | null;
+  /** w111: 'net' when Taken is net sales, as the dashboard's; null from an older gateway (check totals). */
+  revenueBasis: 'net' | null;
+  /** w111: checks that stated no net, out of Taken; 0 from an older gateway. */
+  checksWithoutNet: number;
+  /** w111 (ADR 0341 F2): the window's net is not on one tax basis, and why; null when it is. */
+  netSalesTaxNote: string | null;
   adjusted: { method?: string; r2?: number | null } | null;
   /** Every server's tips as money; null when no check carried one, or from an older gateway. */
   tips: number | null;
   waiters: Array<{
     name: string;
     checks: number;
-    revenue: number;
+    /** Null: the server had checks and not one stated its net ("not recorded"). */
+    revenue: number | null;
     avgCheck: number | null;
     wineAttachRate: number | null;
     tipPct: number | null;
@@ -848,12 +885,15 @@ const trailingService = analysis<ServiceRegister>({
       checksTakingNoMoney: num(d.checksTakingNoMoney) ?? 0,
       checksRefunded: num(d.checksRefunded) ?? 0,
       totalsTaxNote: str(d.totalsTaxNote) || null,
+      revenueBasis: d.revenueBasis === 'net' ? 'net' : null,
+      checksWithoutNet: num(d.checksWithoutNet) ?? 0,
+      netSalesTaxNote: str(d.netSalesTaxNote) || null,
       adjusted: adj ? { method: str(adj.method), r2: num(adj.r2) } : null,
       tips: num(d.tips),
       waiters: arr(d.waiters).map((w) => ({
         name: str(w.name),
         checks: num(w.checks) ?? 0,
-        revenue: num(w.revenue) ?? 0,
+        revenue: d.revenueBasis === 'net' ? num(w.revenue) : (num(w.revenue) ?? 0),
         avgCheck: num(w.avgCheck),
         wineAttachRate: num(w.wineAttachRate),
         tipPct: num(w.tipPct),
@@ -865,8 +905,9 @@ const trailingService = analysis<ServiceRegister>({
   view: (s) => {
     const basis = [
       `Non-voided pos_checks grouped by server name ${s.month ? `in ${monthLabel(s.month)}, by the house’s days` : `over the last ${s.sinceDays} days`}.`,
-      REGISTER_TOTALS_NOT_NET,
+      s.revenueBasis === 'net' ? REGISTER_NET_SALES : REGISTER_TOTALS_NOT_NET,
       s.totalsTaxNote ?? null,
+      s.netSalesTaxNote,
       s.tipBasis === 'net' ? REGISTER_TIP_ON_NET : null,
       s.tipBasisWhy,
       s.dataStatus ? `Feed: ${s.dataStatus}.` : null,
@@ -904,11 +945,15 @@ const trailingService = analysis<ServiceRegister>({
     }
     return {
       cats: {
-        data: s.waiters.slice(0, 14).map((w) => ({
-          label: w.name.length > 12 ? `${w.name.slice(0, 11)}…` : w.name,
-          value: w.revenue,
-          full: `${w.name} · ${countOf(w.checks, 'check', 'checks')}`,
-        })),
+        // w111: a server whose net was not recorded has no bar, never one at 0.
+        data: s.waiters
+          .filter((w): w is typeof w & { revenue: number } => w.revenue !== null)
+          .slice(0, 14)
+          .map((w) => ({
+            label: w.name.length > 12 ? `${w.name.slice(0, 11)}…` : w.name,
+            value: w.revenue,
+            full: `${w.name} · ${countOf(w.checks, 'check', 'checks')}`,
+          })),
         xLabel: 'server',
         yLabel: 'taken',
         unit: 'taken',
@@ -940,6 +985,7 @@ const trailingService = analysis<ServiceRegister>({
         'A server’s raw average is partly the section they were given. The adjusted fit above is the engine’s attempt to remove it; where it reads an em dash, the raw ranking is all there is.',
         ...(s.checksTakingNoMoney > 0 ? [zeroChecksSaid(s.checksTakingNoMoney)] : []),
         ...(s.checksRefunded > 0 ? [refundChecksSaid(s.checksRefunded)] : []),
+        ...(s.checksWithoutNet > 0 ? [checksWithoutNetSaid(s.checksWithoutNet)] : []),
         ...(s.tipsNetNotRecorded > 0 ? [tipsNetNotRecordedSaid(s.tipsNetNotRecorded, s.tipsNetNotRecordedByReason)] : []),
         // F-1588: Tip is over net sales; the gateway's sentence when this
         // window's net changes tax basis (ADR 0341 F2), as the export says it.

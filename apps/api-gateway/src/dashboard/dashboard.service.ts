@@ -443,9 +443,10 @@ export function mixedSpendNote(byCurrency: SpendInCurrency[]): string | null {
  *
  * The same rule as lane netsales' `netSalesOf` (`analytics/net-sales.ts`,
  * ADR 0295, PR #615, unmerged). Whichever of #615 and this branch lands
- * second deletes this copy and imports that one.
+ * second deletes this copy and imports that one. The room and server
+ * registers read it too (`analytics/table-analytics.service.ts`, w111).
  */
-function netSalesOf(
+export function netSalesOf(
   check: { subtotal?: unknown } | null | undefined,
 ): number | null {
   const v = check?.subtotal;

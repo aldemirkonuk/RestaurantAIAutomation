@@ -276,7 +276,8 @@ describe("TableAnalyticsService — the tip rate is over net sales, and a check 
     const maya = out.waiters.find((w: any) => w.name === "Maya");
     expect(maya.tipPct).toBeCloseTo(0.2, 6);
     expect(maya.checks).toBe(3);
-    expect(maya.avgCheck).toBeCloseTo(126, 6);
+    // w111: the average check is net sales, as the dashboard's (AW17).
+    expect(maya.avgCheck).toBeCloseTo(100, 6);
     expect(maya.checksTakingNoMoney).toBe(1);
     expect(out.checksTakingNoMoney).toBe(1);
     expect(out.tipBasis).toBe("net");
@@ -290,7 +291,7 @@ describe("TableAnalyticsService — the tip rate is over net sales, and a check 
     const out: any = await service.getTablePerformance("r1", 90);
     const t1 = out.tables.find((t: any) => t.tableId === "t1");
     expect(t1.tipPct).toBeCloseTo(0.2, 6);
-    expect(t1.avgCheck).toBeCloseTo(126, 6);
+    expect(t1.avgCheck).toBeCloseTo(100, 6);
     expect(t1.checks).toBe(2);
     expect(out.checksTakingNoMoney).toBe(1);
   });
