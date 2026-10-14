@@ -77,6 +77,13 @@ const LOCATION_COLUMNS =
 /** A live location: not soft-deleted (the read filters) and not switched off. */
 const isLive = (l: HouseLocation) => l.is_active !== false;
 
+/** F-1683: how many items in a count's scope nobody counted (each item once a shelf). */
+const uncountedTotal = (
+  missed: Map<string, Set<string>>,
+  offShelf: Set<string>,
+): number =>
+  [...missed.values()].reduce((n, set) => n + set.size, 0) + offShelf.size;
+
 /**
  * The leaf shelves of a house -- live places no live place sits inside -- in
  * walk order, optionally only those under the chosen zones. The same leaf
@@ -1459,6 +1466,119 @@ export class CountSessionsService {
    * value; anyone else sees what was counted, never the books (a blind
    * count, DASH-G6).
    */
+  /**
+   * F-1683: what the books hold in a count's scope that this walk never
+   * counted. Absence is never read as zero (ADR 0343 §4), so it is said.
+   *  - `missed`, per shelf of the walk, done or not: an item with bottles on
+   *    the books there and no line from this walk. On a done shelf it is a
+   *    line the phone could not send; on a shelf not done, one nobody
+   *    counted. An item counted whole (F-945, F-1618) is left out: the walk
+   *    told staff not to count it on a shelf.
+   *  - `offShelf`, on a Full count only (the whole house is its scope): an
+   *    item with bottles on no shelf, or on a zone that holds shelves, that
+   *    no whole count has named since the count opened.
+   */
+  private async uncounted(
+    house: string,
+    session: SessionRow,
+    shelves: ShelfRow[],
+    counts: Array<{ inventory_id: string; location_id: string | null }>,
+  ): Promise<{ missed: Map<string, Set<string>>; offShelf: Set<string> }> {
+    const client = this.dbService.getClient();
+    const shelfIds = shelves.map((s) => s.location_id);
+    type Lot = {
+      inventory_id: string;
+      location_id: string | null;
+      qty: number | null;
+      open_bottle_ml: number | null;
+    };
+    const holds = (l: Lot) => (l.qty ?? 0) > 0 || (l.open_bottle_ml ?? 0) > 0;
+    const lots = shelfIds.length
+      ? await this.everyRow<Lot>("shelf stock read", (f, t) =>
+          client
+            .from("inventory_lots")
+            .select("id, inventory_id, location_id, qty, open_bottle_ml")
+            .eq("restaurant_id", house)
+            .eq("stock_state", "live")
+            .in("location_id", shelfIds)
+            .order("id", { ascending: true })
+            .range(f, t),
+        )
+      : [];
+    const countedHere = new Set(
+      counts.map((c) => `${c.inventory_id}|${c.location_id ?? ""}`),
+    );
+    const missed = new Map<string, Set<string>>();
+    for (const l of lots) {
+      if (!l.location_id || !holds(l)) continue;
+      if (countedHere.has(`${l.inventory_id}|${l.location_id}`)) continue;
+      const set = missed.get(l.location_id) ?? new Set<string>();
+      set.add(l.inventory_id);
+      missed.set(l.location_id, set);
+    }
+    const wholeOnly = await this.itemsCountedWhole(house, [
+      ...new Set([...missed.values()].flatMap((s) => [...s])),
+    ]);
+    for (const [shelfId, set] of missed) {
+      for (const id of wholeOnly) set.delete(id);
+      if (set.size === 0) missed.delete(shelfId);
+    }
+
+    const offShelf = new Set<string>();
+    if (session.kind !== "full") return { missed, offShelf };
+    const zones = [
+      ...new Set(
+        (await this.houseLocations(house))
+          .filter(isLive)
+          .map((l) => l.parent_id)
+          .filter((p): p is string => !!p),
+      ),
+    ];
+    const off = [
+      ...(await this.everyRow<Lot>("off-shelf stock read", (f, t) =>
+        client
+          .from("inventory_lots")
+          .select("id, inventory_id, location_id, qty, open_bottle_ml")
+          .eq("restaurant_id", house)
+          .eq("stock_state", "live")
+          .is("location_id", null)
+          .order("id", { ascending: true })
+          .range(f, t),
+      )),
+      ...(zones.length
+        ? await this.everyRow<Lot>("zone stock read", (f, t) =>
+            client
+              .from("inventory_lots")
+              .select("id, inventory_id, location_id, qty, open_bottle_ml")
+              .eq("restaurant_id", house)
+              .eq("stock_state", "live")
+              .in("location_id", zones)
+              .order("id", { ascending: true })
+              .range(f, t),
+          )
+        : []),
+    ];
+    for (const l of off) if (holds(l)) offShelf.add(l.inventory_id);
+    for (const c of counts) if (!c.location_id) offShelf.delete(c.inventory_id);
+    if (offShelf.size === 0) return { missed, offShelf };
+    // A whole count (on Inventory, all at once) names no shelf and no walk.
+    const whole = await this.everyRow<{ inventory_id: string }>(
+      "whole counts read",
+      (f, t) =>
+        client
+          .from("stock_counts")
+          .select("id, inventory_id")
+          .eq("restaurant_id", house)
+          .is("location_id", null)
+          .in("inventory_id", [...offShelf])
+          .gte("counted_at", session.opened_at)
+          .order("id", { ascending: true })
+          .range(f, t),
+    );
+    for (const c of whole) offShelf.delete(c.inventory_id);
+    return { missed, offShelf };
+  }
+
   async review(
     house: string,
     sessionId: string,
@@ -1542,51 +1662,15 @@ export class CountSessionsService {
       client_line_id?: string | null;
     }>;
 
-    // What is on the books on a done shelf with no line from this walk: a
-    // line the phone could not send (refused, or never sent). Refusals are
-    // not kept on the server, so this is how the review sees them.
-    const done = new Set(
-      shelves.filter((s) => s.done_at).map((s) => s.location_id),
+    // F-1683: what the books hold in the count's scope with no line from
+    // this walk, shelf by shelf (done or not), and on a Full count what sits
+    // off the shelves and was not counted whole since the count opened.
+    const { missed, offShelf } = await this.uncounted(
+      house,
+      session,
+      shelves,
+      counts,
     );
-    const lots = done.size
-      ? await this.everyRow<{
-          inventory_id: string;
-          location_id: string;
-          qty: number | null;
-          open_bottle_ml: number | null;
-        }>("shelf stock read", (f, t) =>
-          client
-            .from("inventory_lots")
-            .select("id, inventory_id, location_id, qty, open_bottle_ml")
-            .eq("restaurant_id", house)
-            .eq("stock_state", "live")
-            .in("location_id", [...done])
-            .order("id", { ascending: true })
-            .range(f, t),
-        )
-      : [];
-    const countedHere = new Set(
-      counts.map((c) => `${c.inventory_id}|${c.location_id ?? ""}`),
-    );
-    const missed = new Map<string, Set<string>>();
-    for (const l of lots) {
-      if (!((l.qty ?? 0) > 0 || (l.open_bottle_ml ?? 0) > 0)) continue;
-      if (countedHere.has(`${l.inventory_id}|${l.location_id}`)) continue;
-      const set = missed.get(l.location_id) ?? new Set<string>();
-      set.add(l.inventory_id);
-      missed.set(l.location_id, set);
-    }
-    // F-1618: an item counted whole (F-945) is one the walk told staff not
-    // to count on a shelf ("Count it on Inventory, all at once"), and that
-    // count carries no session. Its shelf bottles are not a line the phone
-    // failed to send, so they are not listed as one.
-    const wholeOnly = await this.itemsCountedWhole(house, [
-      ...new Set([...missed.values()].flatMap((s) => [...s])),
-    ]);
-    for (const [shelfId, set] of missed) {
-      for (const id of wholeOnly) set.delete(id);
-      if (set.size === 0) missed.delete(shelfId);
-    }
 
     const heldAgainstIds = held
       .map((h) => h.held_against)
@@ -1612,6 +1696,7 @@ export class CountSessionsService {
         ...counts.map((c) => c.inventory_id),
         ...held.map((h) => h.inventory_id),
         ...[...missed.values()].flatMap((s) => [...s]),
+        ...offShelf,
       ]),
     ];
     const names = await this.itemNames(house, itemIds);
@@ -1872,6 +1957,10 @@ export class CountSessionsService {
           name: s.name,
           round: s.round,
         })),
+      offShelf: [...offShelf]
+        .map((id) => ({ inventoryId: id, name: nameOf(id) }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      itemsNotCounted: uncountedTotal(missed, offShelf),
       elsewhere: elsewhere.map(lineOf).sort(sortLines),
       held: held.map((h) => {
         const a = h.held_against ? against.get(h.held_against) : undefined;
@@ -2257,11 +2346,61 @@ export class CountSessionsService {
     userId: string,
     dto: { evenIfUnfinished?: unknown },
   ) {
+    const evenIfUnfinished = dto?.evenIfUnfinished === true;
+    // F-1683: a walk that left stock on the books uncounted -- a shelf not
+    // done, a line the phone could not send, bottles off the shelves on a
+    // Full count -- is not signed off as if it found every bottle. It asks
+    // first, saying how many shelves and items, unless the manager goes on.
+    if (!evenIfUnfinished) {
+      const session = await this.session(house, sessionId);
+      if (session.status === "open") {
+        const client = this.dbService.getClient();
+        const shelvesRead = await client
+          .from("stock_count_session_shelves")
+          .select(SHELF_COLUMNS)
+          .eq("restaurant_id", house)
+          .eq("session_id", sessionId);
+        if (shelvesRead.error)
+          throw this.unreadable("shelves read", shelvesRead.error);
+        const shelves = (shelvesRead.data ?? []) as ShelfRow[];
+        const counts = await this.everyRow<{
+          inventory_id: string;
+          location_id: string | null;
+        }>("lines read", (f, t) =>
+          client
+            .from("stock_counts")
+            .select("id, inventory_id, location_id")
+            .eq("restaurant_id", house)
+            .eq("session_id", sessionId)
+            .order("id", { ascending: true })
+            .range(f, t),
+        );
+        const { missed, offShelf } = await this.uncounted(
+          house,
+          session,
+          shelves,
+          counts,
+        );
+        const itemsNotCounted = uncountedTotal(missed, offShelf);
+        if (itemsNotCounted > 0) {
+          return {
+            id: sessionId,
+            status: session.status,
+            signedOff: false,
+            signedOffAt: null,
+            notCounted: shelves.filter((s) => !s.done_at).length,
+            itemsNotCounted,
+            stamped: null,
+            replayed: false,
+          };
+        }
+      }
+    }
     const r = await this.inventory.signOffCountSession(
       house,
       sessionId,
       userId,
-      dto?.evenIfUnfinished === true,
+      evenIfUnfinished,
     );
     return {
       id: sessionId,
@@ -2342,6 +2481,13 @@ export interface CountReview {
     value?: number | null;
   }>;
   notCounted: Array<{ locationId: string; name: string; round: number }>;
+  /**
+   * F-1683: on a Full count, items with bottles off the shelves (no shelf,
+   * or a zone that holds shelves) not counted whole since the count opened.
+   */
+  offShelf: Array<{ inventoryId: string; name: string }>;
+  /** F-1683: every shelf's `missed` plus `offShelf`: items nobody counted. */
+  itemsNotCounted: number;
   elsewhere: ReviewLine[];
   held: Array<{
     id: string;

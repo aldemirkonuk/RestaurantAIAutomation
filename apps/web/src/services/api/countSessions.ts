@@ -242,6 +242,10 @@ export interface CountReview {
     value?: number | null;
   }>;
   notCounted: Array<{ locationId: string; name: string; round: number }>;
+  /** F-1683: on a Full count, items off the shelves not counted whole since it opened. */
+  offShelf?: Array<{ inventoryId: string; name: string }>;
+  /** F-1683: every shelf's missed items plus offShelf: items nobody counted. */
+  itemsNotCounted?: number;
   elsewhere: ReviewLine[];
   held: Array<{
     id: string;
@@ -281,6 +285,8 @@ export interface SignOffResult {
   signedOff: boolean;
   signedOffAt: string | null;
   notCounted: number;
+  /** F-1683: present when sign-off asked because items on the books were never counted. */
+  itemsNotCounted?: number;
   stamped: number | null;
   replayed: boolean;
 }

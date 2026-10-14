@@ -51,7 +51,18 @@ export interface WalkPark {
   locationId: string
   description: string
   countedQty: number
+  /** Tenths of a bottle left open, as entered; null or absent = not counted. */
+  openTenths?: number | null
   state: 'sent' | 'saved'
+}
+
+/**
+ * A parked line as the walk shows it after parking: "Raki, 3, 5/10 of a
+ * bottle open, for the manager" -- the open amount in tenths, as entered.
+ */
+export function parkedWords(p: WalkPark): string {
+  const open = p.openTenths != null && p.openTenths > 0 ? `, ${tenthsWords(p.openTenths)}` : ''
+  return `${p.description}: ${p.countedQty}${open}, for the manager${p.state === 'saved' ? ' (saved on this phone)' : ''}`
 }
 
 /** What this phone remembers of one person's walk of one count. */

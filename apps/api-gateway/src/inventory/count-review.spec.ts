@@ -1,4 +1,5 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
+import { CountSessionsController } from "./count-sessions.controller";
 import { CountSessionsService } from "./count-sessions.service";
 import { InventoryService } from "./inventory.service";
 
@@ -51,6 +52,7 @@ function fakeDb(tables: Record<string, Row[]>, rpcAnswer?: any) {
       eq: (c: string, v: any) => (filters.push((r) => r[c] === v), q),
       neq: (c: string, v: any) => (filters.push((r) => r[c] !== v), q),
       gt: (c: string, v: any) => (filters.push((r) => r[c] > v), q),
+      gte: (c: string, v: any) => (filters.push((r) => r[c] >= v), q),
       is: (c: string, v: any) => (filters.push((r) => (r[c] ?? null) === v), q),
       in: (c: string, vs: any[]) => (filters.push((r) => vs.includes(r[c])), q),
       or: (expr: string) => {
@@ -871,8 +873,9 @@ describe("a shelf sent back, and sign-off", () => {
   });
 
   it("sign-off asks while a shelf is not counted, and signs on the manager's word", async () => {
+    // No stock on the books anywhere: only the shelf not done is asked about.
     const asks = walkDb(
-      {},
+      { inventory_lots: [] },
       {
         data: {
           session_id: WALK,
@@ -912,6 +915,171 @@ describe("a shelf sent back, and sign-off", () => {
       signs.svc.signOff(HOUSE, WALK, BOSS, { evenIfUnfinished: true }),
     ).resolves.toMatchObject({ signedOff: true, stamped: 2 });
     expect(signs.db.rpc.mock.calls[0][1].p_even_if_unfinished).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F-1683 rest (w109): what the books hold in a count's scope that nobody
+// counted is said in review and before sign-off. Absence is never read as
+// zero (ADR 0343 §4). Each case fails on the base, which listed missed lines
+// from done shelves only and signed an empty Full count off as clean.
+// ---------------------------------------------------------------------------
+
+describe("stock nobody counted is said, in review and before sign-off (F-1683)", () => {
+  const offShelfLot = {
+    id: "lot-door",
+    restaurant_id: HOUSE,
+    inventory_id: "item-raki",
+    location_id: null,
+    stock_state: "live",
+    qty: 12,
+    open_bottle_ml: 0,
+  };
+
+  it("lists what the books hold on a shelf not done, as not counted", async () => {
+    const { svc, db } = walkDb();
+    db.tables.inventory_lots.push({
+      id: "lot-back",
+      restaurant_id: HOUSE,
+      inventory_id: ITEM,
+      location_id: "Back room",
+      stock_state: "live",
+      qty: 3,
+      open_bottle_ml: 0,
+    });
+    const r = await svc.review(HOUSE, WALK, false);
+    const back = r.shelves.find((s) => s.locationId === "Back room")!;
+    expect(back.done).toBe(false);
+    expect(back.missed).toEqual([{ inventoryId: ITEM, name: "Yakut 2020" }]);
+    // Gin on the done Bar shelf, Yakut on the Back room shelf.
+    expect(r.itemsNotCounted).toBe(2);
+  });
+
+  it("on a Full count, names bottles off the shelves not counted whole since it opened", async () => {
+    const { svc, db } = walkDb();
+    db.tables.inventory_lots = [offShelfLot];
+    const r = await svc.review(HOUSE, WALK, true);
+    expect(r.offShelf).toEqual([
+      { inventoryId: "item-raki", name: "Yeni Rakı" },
+    ]);
+    expect(r.itemsNotCounted).toBe(1);
+
+    // Counted whole on Inventory after the count opened: nothing is left.
+    db.tables.stock_counts.push({
+      id: "c-whole",
+      restaurant_id: HOUSE,
+      session_id: null,
+      inventory_id: "item-raki",
+      location_id: null,
+      counted_qty: 12,
+      counted_at: ago(HOUR),
+    });
+    const again = await svc.review(HOUSE, WALK, true);
+    expect(again.offShelf).toEqual([]);
+    expect(again.itemsNotCounted).toBe(0);
+  });
+
+  it("a whole count from before the count opened does not count for it", async () => {
+    const { svc, db } = walkDb();
+    db.tables.inventory_lots = [offShelfLot];
+    db.tables.stock_counts.push({
+      id: "c-old-whole",
+      restaurant_id: HOUSE,
+      session_id: null,
+      inventory_id: "item-raki",
+      location_id: null,
+      counted_qty: 12,
+      counted_at: ago(5 * HOUR),
+    });
+    const r = await svc.review(HOUSE, WALK, true);
+    expect(r.offShelf.map((o) => o.inventoryId)).toEqual(["item-raki"]);
+  });
+
+  it("a closing count's scope is its shelves: bottles off the shelves are not its to count", async () => {
+    const { svc, db } = walkDb();
+    db.tables.stock_count_sessions[0].kind = "closing";
+    db.tables.inventory_lots = [offShelfLot];
+    const r = await svc.review(HOUSE, WALK, true);
+    expect(r.offShelf).toEqual([]);
+  });
+
+  it("an empty Full count over stock on the books asks before sign-off, saying how many items", async () => {
+    const answer = {
+      data: {
+        session_id: WALK,
+        status: "signed_off",
+        signed_off_at: ago(0),
+        stamped: 0,
+        not_counted: 0,
+        replayed: false,
+      },
+      error: null,
+    };
+    const { svc, db } = walkDb({ inventory_lots: [offShelfLot] }, answer);
+    // Every shelf is done; the walk found nothing on them.
+    for (const sh of db.tables.stock_count_session_shelves)
+      sh.done_at = ago(HOUR);
+    db.tables.stock_counts = [];
+    await expect(svc.signOff(HOUSE, WALK, BOSS, {})).resolves.toMatchObject({
+      signedOff: false,
+      notCounted: 0,
+      itemsNotCounted: 1,
+    });
+    expect(db.rpc).not.toHaveBeenCalled();
+    // On the manager's word it signs off.
+    await expect(
+      svc.signOff(HOUSE, WALK, BOSS, { evenIfUnfinished: true }),
+    ).resolves.toMatchObject({ signedOff: true });
+    expect(db.rpc).toHaveBeenCalledTimes(1);
+  });
+
+  it("a shelf not done with stock on it asks with both counts", async () => {
+    const { svc, db } = walkDb();
+    db.tables.inventory_lots.push({
+      id: "lot-back",
+      restaurant_id: HOUSE,
+      inventory_id: ITEM,
+      location_id: "Back room",
+      stock_state: "live",
+      qty: 3,
+      open_bottle_ml: 0,
+    });
+    await expect(svc.signOff(HOUSE, WALK, BOSS, {})).resolves.toMatchObject({
+      signedOff: false,
+      notCounted: 1,
+      itemsNotCounted: 2,
+    });
+    expect(db.rpc).not.toHaveBeenCalled();
+  });
+});
+
+describe("the park door's body names the open bottle (w109)", () => {
+  // The phone sends openTenths (S234 owed); the body type said nothing of it,
+  // so a typed caller could not send it. tsc -p tsconfig.spec.json fails on
+  // the base here; at run time the value always passed through.
+  it("passes openTenths through to the service", async () => {
+    const park = jest.fn().mockResolvedValue({ id: "park-1" });
+    const ctl = new CountSessionsController(
+      { park } as unknown as CountSessionsService,
+      {} as never,
+    );
+    await ctl.park(
+      WALK,
+      {
+        clientLineId: "p1",
+        locationId: "Bar",
+        description: "Unlabelled white",
+        countedQty: 1,
+        openTenths: 7,
+      },
+      { userId: ME, restaurantId: HOUSE } as never,
+    );
+    expect(park).toHaveBeenCalledWith(
+      HOUSE,
+      WALK,
+      ME,
+      expect.objectContaining({ openTenths: 7 }),
+    );
   });
 });
 

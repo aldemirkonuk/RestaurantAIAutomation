@@ -292,6 +292,49 @@ describe('the manager settles what the walk could not', () => {
     await waitFor(() => expect(api.signOffCountSession).toHaveBeenLastCalledWith('S1', true))
   })
 
+  // F-1683 (w109): stock nobody counted is said. Each fails on the base,
+  // which listed missed items on done shelves only and signed an empty Full
+  // count off when every shelf was done.
+  it('[REVERT-FAILS] asks before signing off when items on the books were never counted (F-1683)', async () => {
+    api.reviewCountSession.mockResolvedValue(review(true, { notCounted: [] }))
+    api.signOffCountSession
+      .mockResolvedValueOnce({ signedOff: false, notCounted: 0, itemsNotCounted: 12 })
+      .mockResolvedValueOnce({ signedOff: true, notCounted: 0 })
+    show()
+    fireEvent.click(await screen.findByText('Sign off this count'))
+    expect(await screen.findByText('12 items on the books were never counted. Sign off anyway?')).toBeTruthy()
+    expect(screen.queryByText('Signed off.')).toBeNull()
+    fireEvent.click(screen.getByText('Sign off anyway'))
+    await waitFor(() => expect(api.signOffCountSession).toHaveBeenLastCalledWith('S1', true))
+  })
+
+  it('[REVERT-FAILS] says shelves and items together when both were not counted (F-1683)', async () => {
+    api.reviewCountSession.mockResolvedValue(review(true))
+    api.signOffCountSession.mockResolvedValueOnce({ signedOff: false, notCounted: 2, itemsNotCounted: 1 })
+    show()
+    fireEvent.click(await screen.findByText('Sign off this count'))
+    expect(
+      await screen.findByText('2 shelves are not counted, and 1 item on the books was never counted. Sign off anyway?'),
+    ).toBeTruthy()
+  })
+
+  it('[REVERT-FAILS] lists what a shelf not done holds, and bottles off the shelves (F-1683)', async () => {
+    const base = review(true)
+    api.reviewCountSession.mockResolvedValue({
+      ...base,
+      shelves: base.shelves.map((sh) =>
+        sh.locationId === 'L2' ? { ...sh, missed: [{ inventoryId: 'kav', name: 'Kavaklıdere' }] } : sh,
+      ),
+      offShelf: [{ inventoryId: 'efes', name: 'Efes' }],
+      itemsNotCounted: 3,
+    })
+    show()
+    expect(await screen.findByText(/On the books here, not counted:\s*Kavaklıdere/)).toBeTruthy()
+    expect(screen.getByText(/On the books here, no count sent:\s*Gin/)).toBeTruthy()
+    expect(screen.getByText('Not on a shelf, not counted')).toBeTruthy()
+    expect(screen.getByText('Efes')).toBeTruthy()
+  })
+
   it('[REVERT-FAILS] says when it was signed off on the house clock, in digits (F-1658)', async () => {
     zone.value = 'Europe/Istanbul'
     setHouseLocale('tr-TR')

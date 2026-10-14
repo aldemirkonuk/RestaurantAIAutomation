@@ -11,6 +11,7 @@ import {
   lineBody,
   lineKey,
   nextShelf,
+  parkedWords,
   readSealed,
   readWalk,
   refusedDone,
@@ -228,5 +229,17 @@ describe('a shelf a manager sent back (F-1544 lane 4)', () => {
     localStorage.setItem('walk-test', JSON.stringify(w))
     expect(readWalk('walk-test').rounds).toEqual({ L1: 2 })
     localStorage.removeItem('walk-test')
+  })
+})
+
+describe('a parked line on the walk (w109)', () => {
+  it('says its open bottle in tenths, as entered', () => {
+    const p = { clientLineId: 'p1', locationId: 'L1', description: 'Raki', countedQty: 3, state: 'sent' as const }
+    expect(parkedWords({ ...p, openTenths: 5 })).toBe('Raki: 3, 5/10 of a bottle open, for the manager')
+    expect(parkedWords({ ...p, openTenths: 12, state: 'saved' })).toBe(
+      'Raki: 3, 1 bottle and 2/10 open, for the manager (saved on this phone)',
+    )
+    expect(parkedWords({ ...p, openTenths: null })).toBe('Raki: 3, for the manager')
+    expect(parkedWords(p)).toBe('Raki: 3, for the manager')
   })
 })

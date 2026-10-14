@@ -499,5 +499,7 @@ describe('wave 108: counted whole, no signal, a finished shelf, a parked open bo
       countedQty: 1,
       openTenths: 7,
     })
+    // w109: the walk shows what was parked, open bottle included.
+    expect(await screen.findByText('Unlabelled white: 1, 7/10 of a bottle open, for the manager')).toBeInTheDocument()
   })
 })

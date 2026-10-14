@@ -19,8 +19,12 @@ const inventory = vi.hoisted(() => ({
 const exported = vi.hoisted(() => ({ exportTable: vi.fn(async (..._a: unknown[]) => {}) }))
 vi.mock('@/services/api/countSessions', () => sessions)
 vi.mock('@/services/api/inventory', () => inventory)
-vi.mock('@/lib/houseZone', () => ({ useHouseZone: () => 'Europe/Istanbul' }))
-vi.mock('@/lib/houseCurrency', () => ({ getHouseLocale: () => 'tr-TR' }))
+const house = vi.hoisted(() => ({
+  readHouseZone: vi.fn(async (_id: string): Promise<string | null> => 'Europe/Istanbul'),
+  houseCurrency: vi.fn(async () => ({ readable: true, code: 'TRY', country: 'Turkey' }) as Record<string, unknown>),
+}))
+vi.mock('@/lib/houseZone', () => ({ useHouseZone: () => 'Europe/Istanbul', readHouseZone: house.readHouseZone }))
+vi.mock('@/services/api/settings', () => ({ settingsApi: { houseCurrency: house.houseCurrency } }))
 vi.mock('@/lib/tableExport', async (orig) => ({
   ...(await orig<typeof import('@/lib/tableExport')>()),
   exportTable: exported.exportTable,
@@ -32,6 +36,7 @@ vi.mock('@/lib/csvImport', async (orig) => ({
 
 import { CountSheetPanel } from './CountSheetPanel'
 import { AuthContext } from '@/contexts/AuthContext'
+import { setHouseLocale } from '@/lib/houseCurrency'
 
 const SESSION = {
   id: 'S1',
@@ -81,6 +86,9 @@ function load() {
 beforeEach(() => {
   vi.clearAllMocks()
   sessions.pullCountSession.mockResolvedValue(SESSION)
+  house.readHouseZone.mockResolvedValue('Europe/Istanbul')
+  setHouseLocale(null)
+  house.houseCurrency.mockResolvedValue({ readable: true, code: 'TRY', country: 'Turkey' })
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-10-13T06:00:00.000Z'))
 })
@@ -198,5 +206,41 @@ describe('CountSheetPanel (F-1544 lane 6)', () => {
     load()
     expect(await screen.findByText(/This sheet is from another count/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: /^Send/ })).toBeNull()
+  })
+  // F-1680: the panel stood on the module's last locale and zone, so in the
+  // moment after a switch from Istanbul a Detroit sheet was read day first
+  // on Istanbul's clock. It now asks the house it is loading for.
+  it("reads a sheet in the house's own way after a switch (F-1680)", async () => {
+    // What the last house (Istanbul) left behind, before Detroit's answer lands.
+    setHouseLocale('tr-TR')
+    house.houseCurrency.mockResolvedValue({ readable: true, code: 'USD', country: 'United States' })
+    house.readHouseZone.mockResolvedValue('America/Detroit')
+    csv.text = [
+      'Count,Shelf,Shelf code,Item,Item code,Full bottles,Open (tenths),Counted at',
+      'S1,Back bar,L1,Gin,gin,3,,10/12/2026 9:30 PM',
+    ].join('\n')
+    open()
+    load()
+    fireEvent.click(await screen.findByRole('button', { name: 'Send 1 line' }))
+    await waitFor(() => expect(inventory.recordSpotCount).toHaveBeenCalled())
+    expect(house.readHouseZone).toHaveBeenCalledWith('h1')
+    expect(inventory.recordSpotCount).toHaveBeenCalledWith(
+      'gin',
+      expect.objectContaining({
+        countedQty: 3,
+        // 12 October, 21:30 in Detroit, not 10 December in Istanbul.
+        countedAgoMs: Date.parse('2026-10-13T06:00:00.000Z') - Date.parse('2026-10-13T01:30:00.000Z'),
+      }),
+      'h1',
+    )
+  })
+
+  it("reads nothing when the house's way of writing cannot be read (F-1680)", async () => {
+    house.houseCurrency.mockResolvedValue({ readable: false, code: null, country: null })
+    csv.text = 'Count,Shelf,Shelf code,Item,Item code,Full bottles,Open (tenths),Counted at\n'
+    open()
+    load()
+    expect(await screen.findByText(/way of writing dates could not be read/)).toBeTruthy()
+    expect(inventory.recordSpotCount).not.toHaveBeenCalled()
   })
 })
