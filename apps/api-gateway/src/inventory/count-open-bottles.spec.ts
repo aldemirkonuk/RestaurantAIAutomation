@@ -45,12 +45,18 @@ function service(
   const reads: string[] = [];
   const from = (table: string) => {
     reads.push(table);
-    const rows = tables[table] ?? [];
+    let rows = tables[table] ?? [];
     const chain: any = {
       select: () => chain,
       eq: () => chain,
       gt: () => chain,
-      in: () => chain,
+      // A row that states the column answers `.in` as the database would.
+      in: (column: string, values: unknown[]) => {
+        rows = rows.filter(
+          (r) => !(column in r) || values.includes(r[column]),
+        );
+        return chain;
+      },
       is: () => chain,
       limit: () => chain,
       single: () => Promise.resolve({ data: null, error: null }),

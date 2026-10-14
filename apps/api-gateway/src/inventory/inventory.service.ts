@@ -1217,7 +1217,8 @@ export class InventoryService {
   }
 
   /**
-   * F-1675. An item with live bottles on no shelf, or on a place that holds
+   * F-1675 / F-1683. An item with live bottles on no shelf (F-1683: an
+   * opening file with no Shelf column puts them there), or on a place that holds
    * other places, is counted whole on Inventory, never shelf by shelf in a
    * stock-take (F-945, ADR 0343 §4): a shelf count compares the bottles in
    * hand with that shelf's books alone, so bottles the door booked with no
@@ -1270,70 +1271,7 @@ export class InventoryService {
     }
     if (unplaced || onZone) {
       throw new HttpException(
-        "Some bottles of this item sit on no shelf, so it is counted whole on Inventory, not shelf by shelf here. Nothing was counted.",
-        HttpStatus.CONFLICT,
-      );
-    }
-  }
-
-  /**
-   * F-1683, the F-945 rule the walk's list follows (count-sessions.service.ts
-   * `itemsCountedWhole`): an item with live bottles on no shelf, or on a place
-   * that holds other places, is counted as a whole on Inventory, never on one
-   * shelf of a stock-take. A read that fails refuses: an unanswered question
-   * is not a yes.
-   */
-  private async refuseShelfLineForItemCountedWhole(
-    client: any,
-    restaurantId: string,
-    inventoryId: string,
-  ): Promise<void> {
-    const unreadable = (what: string, message: string) => {
-      this.logger.error(`Count line ${what} read failed: ${message}`);
-      return new HttpException(
-        "Where this item's bottles sit could not be read, so nothing was counted. It will be tried again.",
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
-    };
-    const lots = await client
-      .from("inventory_lots")
-      .select("location_id, qty")
-      .eq("restaurant_id", restaurantId)
-      .eq("inventory_id", inventoryId)
-      .eq("stock_state", "live")
-      .gt("qty", 0);
-    if (lots.error) throw unreadable("stock", lots.error.message);
-    const placed = new Set<string>();
-    let offShelf = false;
-    for (const l of (lots.data ?? []) as Array<{
-      location_id: string | null;
-    }>) {
-      if (l.location_id) placed.add(l.location_id);
-      else offShelf = true;
-    }
-    if (!offShelf && placed.size > 0) {
-      const places = await client
-        .from("storage_locations")
-        .select("parent_id, is_active, deleted_at")
-        .eq("restaurant_id", restaurantId);
-      if (places.error) throw unreadable("shelves", places.error.message);
-      offShelf = (
-        (places.data ?? []) as Array<{
-          parent_id: string | null;
-          is_active: boolean | null;
-          deleted_at: string | null;
-        }>
-      ).some(
-        (p) =>
-          !p.deleted_at &&
-          p.is_active !== false &&
-          !!p.parent_id &&
-          placed.has(p.parent_id),
-      );
-    }
-    if (offShelf) {
-      throw new HttpException(
-        "Some of this sits off the shelves. Count it on Inventory, all at once. Nothing was counted here.",
+        "Some of this sits off the shelves, so it is counted whole on Inventory, not shelf by shelf. Count it on Inventory, all at once. Nothing was counted here.",
         HttpStatus.CONFLICT,
       );
     }
@@ -1529,6 +1467,9 @@ export class InventoryService {
         dto.opening === true,
         countedAt == null ? new Date() : new Date(countedAt),
       );
+      // F-1675 / F-1683: a walk's shelf line for an item with bottles off
+      // the shelves would book them twice (F-945): record_stock_count reads
+      // only that shelf as expected, and the bottles elsewhere stay.
       if (dto.locationId) {
         await this.refuseShelfLineOfItemCountedWhole(
           client,
@@ -1541,16 +1482,6 @@ export class InventoryService {
       // It is refused, never re-dated to now: a count dated at its arrival
       // is a count of a moment nobody counted at (F-777). Lines of a walk
       // only, so a spot count is exactly what it was.
-      // F-1683: a walk's shelf line for an item with bottles off the
-      // shelves would book them twice (F-945): record_stock_count reads only
-      // that shelf as expected, and the bottles elsewhere stay.
-      if (dto.locationId) {
-        await this.refuseShelfLineForItemCountedWhole(
-          client,
-          restaurantId,
-          inventoryId,
-        );
-      }
       if (countedAt != null) {
         const fact = resolveFactTime({
           sentAt: countedAt,
