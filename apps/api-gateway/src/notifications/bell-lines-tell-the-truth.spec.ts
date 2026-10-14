@@ -227,8 +227,8 @@ describe("F-530 — a push never carries house money", () => {
       type: "inventory_low_stock",
       actionUrl: null,
       orderId: "o1",
-      matchStatus: "qty_short",
       // F-523: the house it belongs to rides last, and carries no money.
+      // F-1696: nothing but route ids rides from metadata (`matchStatus` too).
       restaurantId: HOUSE,
     });
     // The row itself keeps them, for the people the writer addressed.
@@ -247,7 +247,41 @@ describe("F-530 — a push never carries house money", () => {
     expect(pushes).toHaveLength(1);
     expect(pushes[0].data).not.toHaveProperty("revenue");
     expect(pushes[0].data).not.toHaveProperty("tieOutDelta");
-    expect(pushes[0].data.documentId).toBe("d1");
+  });
+
+  it("a digest naming every low wine pushes its route only, inside Expo's 4096 bytes (F-1696)", async () => {
+    const db = seed();
+    const { svc, pushes } = funnel(db);
+    const wines = Array.from({ length: 46 }, (_, i) => ({
+      inventoryId: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+      wineId: `00000000-0000-4000-9000-${String(i).padStart(12, "0")}`,
+      name: `Kavaklıdere Yakut Öküzgözü Boğazkere ${i}`,
+      stock: 1,
+      par: 6,
+      severity: "critical",
+    }));
+
+    await svc.persistForRestaurant(HOUSE, {
+      ...LINE,
+      actionUrl: "/inventory?filter=low",
+      metadata: { digest: true, wines, inventoryId: "inv-1" },
+    });
+
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].data).toEqual({
+      type: "inventory_low_stock",
+      actionUrl: "/inventory?filter=low",
+      inventoryId: "inv-1",
+      restaurantId: HOUSE,
+    });
+    const message = {
+      title: LINE.title,
+      body: LINE.message,
+      data: pushes[0].data,
+    };
+    expect(Buffer.byteLength(JSON.stringify(message))).toBeLessThan(4096);
+    // The row keeps the list for the bell.
+    expect(db.tables.notifications[0].metadata.wines).toHaveLength(46);
   });
 
   it("names its house, so an owner of two houses tells their pushes apart (F-1630)", async () => {

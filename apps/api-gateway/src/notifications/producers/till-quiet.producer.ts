@@ -49,6 +49,7 @@ import {
   type ProducerTally,
 } from "./producer-ledger.service";
 import { clockIn, dayIn } from "./producer-copy";
+import { resolveBellLines } from "../resolve-bell-lines";
 
 const PRODUCER = "till_quiet";
 
@@ -59,6 +60,16 @@ const PRODUCER = "till_quiet";
  * holds the same gap; till-quiet.producer.spec.ts fails when the two differ.
  */
 export const TILL_QUIET_AFTER_MS = 48 * 3_600_000;
+
+/**
+ * The group key every "No sale has come from your till" line of a house
+ * carries, whichever quiet stretch wrote it, so a check arriving clears it
+ * (F-1699). Lines written before this key carry the ledger's default
+ * `till_quiet:<dedupe key>` and do not clear by it.
+ */
+export function tillQuietGroupKey(restaurantId: string): string {
+  return `till-quiet:${restaurantId}`;
+}
 
 /** A file import is not a till sending. */
 const FILE_IMPORT_SOURCE = "csv_import";
@@ -104,6 +115,18 @@ export class TillQuietProducer {
     if (now.getTime() - reading.at.getTime() <= TILL_QUIET_AFTER_MS) {
       tally.withheldReason =
         "a till of this house sent a check within the last 48 hours.";
+      // F-1699: the till is sending again, so a "No sale has come" line from
+      // the quiet stretch is no longer true and clears (F-526).
+      const cleared = await resolveBellLines(
+        this.databaseService.getClient(),
+        restaurantId,
+        { groupKey: tillQuietGroupKey(restaurantId) },
+      );
+      if (!cleared.ok) {
+        this.logger.warn(
+          `TILL_QUIET_CLEAR_FAILED restaurant=${restaurantId} — ${cleared.error}`,
+        );
+      }
       return tally;
     }
 
@@ -133,6 +156,7 @@ export class TillQuietProducer {
           priority: "high",
           actionUrl: "/connections",
           actionLabel: "Open Connections",
+          groupKey: tillQuietGroupKey(restaurantId),
           metadata: {
             restaurantId,
             source: reading.source,

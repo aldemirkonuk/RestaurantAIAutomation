@@ -1,6 +1,7 @@
 import { HttpException, HttpStatus } from "@nestjs/common";
 import {
   CountSessionsService,
+  countGroupKey,
   leafShelvesInScope,
   type HouseLocation,
 } from "./count-sessions.service";
@@ -1287,6 +1288,71 @@ describe("F-1638 -- the floor is told when a count opens or a shelf is sent back
     inventory.askShelfRecount.mockResolvedValue({ round: 1, replayed: true });
     await svc.askRecount(HOUSE, s.id, "Bar", BOSS, { seenRound: 0 });
     expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+});
+
+describe("F-1699 -- a count's lines clear when it is signed off or stopped", () => {
+  const line = (id: string, sessionId: string, house = HOUSE) => ({
+    id,
+    restaurant_id: house,
+    user_id: ME,
+    type: "system",
+    status: "unread",
+    group_key: countGroupKey(sessionId),
+  });
+  const statusOf = (rows: Row[]) =>
+    Object.fromEntries(rows.map((r) => [r.id, r.status]));
+
+  it("[REVERT-FAILS] the open notice carries the count's group key", async () => {
+    const notifications = {
+      persistForRestaurant: jest
+        .fn()
+        .mockResolvedValue({ inserted: 1, ids: ["n-1"] }),
+    };
+    const base = setup();
+    const svc = new CountSessionsService(
+      {
+        getClient: () => base.db.client,
+        getRestaurantMemberIds: async () => [ME, AYSE, BOSS],
+      } as any,
+      base.inventory as unknown as InventoryService,
+      notifications as any,
+    );
+    const s: any = await svc.open(HOUSE, BOSS, { kind: "closing" });
+    expect(notifications.persistForRestaurant.mock.calls[0][1].groupKey).toBe(
+      countGroupKey(s.id),
+    );
+  });
+
+  it("[REVERT-FAILS] stopping a count rules its lines off, and no other count's", async () => {
+    const t = setup();
+    const s: any = await t.svc.open(HOUSE, BOSS, { kind: "closing" });
+    t.db.tables.notifications = [
+      line("mine", s.id),
+      line("another-count", "other-session"),
+      line("other-house", s.id, OTHER),
+    ];
+    await t.svc.abandon(HOUSE, s.id, BOSS);
+    expect(statusOf(t.db.tables.notifications)).toEqual({
+      mine: "read",
+      "another-count": "unread",
+      "other-house": "unread",
+    });
+  });
+
+  it("[REVERT-FAILS] signing a count off rules its lines off; a sign-off that asks first does not", async () => {
+    const t = setup();
+    const s: any = await t.svc.open(HOUSE, BOSS, { kind: "closing" });
+    t.db.tables.notifications = [line("mine", s.id)];
+    (t.inventory as any).signOffCountSession = jest
+      .fn()
+      .mockResolvedValueOnce({ status: "open", not_counted: 2 })
+      .mockResolvedValueOnce({ status: "signed_off", signed_off_at: "t" });
+
+    await t.svc.signOff(HOUSE, s.id, BOSS, {});
+    expect(statusOf(t.db.tables.notifications)).toEqual({ mine: "unread" });
+    await t.svc.signOff(HOUSE, s.id, BOSS, { evenIfUnfinished: true });
+    expect(statusOf(t.db.tables.notifications)).toEqual({ mine: "read" });
   });
 });
 

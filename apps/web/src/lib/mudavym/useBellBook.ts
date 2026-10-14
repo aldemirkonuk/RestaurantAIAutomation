@@ -211,14 +211,19 @@ function slices(ids: string[]): string[][] {
 }
 
 /**
- * Rule off every row a line stands for (F-253). One id goes through the
- * single-row route as before; a fold goes through `PATCH /notifications/read/bulk`.
+ * Rule off every row a line stands for (F-253), through
+ * `PATCH /notifications/read/bulk` even for one id. The single-row route
+ * `PATCH /notifications/:id/read` counts a crew note on the row as opened
+ * (`recordTeamNoteOpens`), so only `openedId` — the row the reader has open,
+ * ruled off by its own "Rule it off" — goes that way. Ruling off lines on
+ * screen never counts a note as seen (F-1663, F-1687, F-1698).
  */
-export async function ruleOffRows(ids: string[]): Promise<void> {
-  if (ids.length === 1) {
-    await apiClient.patch(`/notifications/${ids[0]}/read`);
-    return;
+export async function ruleOffRows(ids: string[], openedId?: string): Promise<void> {
+  if (openedId && ids.includes(openedId)) {
+    await apiClient.patch(`/notifications/${openedId}/read`);
+    ids = ids.filter((id) => id !== openedId);
   }
+  if (ids.length === 0) return;
   for (const part of slices(ids)) {
     await apiClient.patch('/notifications/read/bulk', { ids: part });
   }

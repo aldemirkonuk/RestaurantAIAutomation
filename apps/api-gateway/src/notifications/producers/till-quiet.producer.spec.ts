@@ -8,7 +8,11 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { TillQuietProducer, TILL_QUIET_AFTER_MS } from "./till-quiet.producer";
+import {
+  TillQuietProducer,
+  TILL_QUIET_AFTER_MS,
+  tillQuietGroupKey,
+} from "./till-quiet.producer";
 import { ProducerLedgerService } from "./producer-ledger.service";
 import { FakeDb, fakeDatabase, fakeNotifications } from "./testing/fake-db";
 
@@ -179,5 +183,51 @@ describe("F-1651: TillQuietProducer", () => {
     const m = /const TILL_QUIET_AFTER_MS = (\d+) \* 3_600_000;/.exec(web);
     expect(m).not.toBeNull();
     expect(Number(m![1]) * HOUR).toBe(TILL_QUIET_AFTER_MS);
+  });
+});
+
+describe("F-1699: the till-quiet line clears when a check arrives", () => {
+  it("stamps one group key per house, and a sweep that sees a fresh check rules the line off", async () => {
+    const { db, notifications, producer } = build();
+    check(db, "generic_webhook", "2026-10-12T05:30:00Z");
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const [, payload] = notifications.persistForRestaurant.calls[0];
+    expect(payload.groupKey).toBe(tillQuietGroupKey(TENANT));
+
+    // The line as the funnel wrote it, for the owner; another house's stays.
+    db.tables.notifications.push(
+      {
+        id: "line",
+        restaurant_id: TENANT,
+        user_id: OWNER,
+        type: "pos_till_quiet",
+        status: "unread",
+        group_key: tillQuietGroupKey(TENANT),
+      },
+      {
+        id: "other",
+        restaurant_id: OTHER,
+        user_id: OWNER,
+        type: "pos_till_quiet",
+        status: "unread",
+        group_key: tillQuietGroupKey(OTHER),
+      },
+    );
+    check(
+      db,
+      "generic_webhook",
+      new Date(NOW.getTime() + 1 * HOUR).toISOString(),
+    );
+    await producer.sweepTenant(
+      TENANT,
+      ZONE,
+      AUDIENCE,
+      new Date(NOW.getTime() + 2 * HOUR),
+    );
+
+    const status = Object.fromEntries(
+      db.tables.notifications.map((r) => [r.id, r.status]),
+    );
+    expect(status).toEqual({ line: "read", other: "unread" });
   });
 });

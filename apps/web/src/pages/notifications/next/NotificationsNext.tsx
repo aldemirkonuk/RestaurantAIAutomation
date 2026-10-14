@@ -392,7 +392,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
         case 'e':
           if (!row) return;
           e.preventDefault();
-          if (String(row.status) === 'unread') data.markRead(row.id);
+          if (String(row.status) === 'unread') data.markRead(row.id, openId === row.id);
           else data.markUnread(row.id);
           break;
         case 's':
@@ -415,7 +415,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [walk, cursor, move, data, zone]);
+  }, [walk, cursor, move, data, zone, openId]);
 
   // A cursor pointing at a line that has left the page is no cursor at all.
   useEffect(() => {
@@ -674,7 +674,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                     selected={cursor === n.id}
                     rowRef={(el) => rowRefs.current.set(n.id, el)}
                     onToggle={() => setOpenId(openId === n.id ? null : n.id)}
-                    onRuleOff={() => data.markRead(n.id)}
+                    onRuleOff={() => data.markRead(n.id, true)}
                     onSnooze={(key) => data.snooze(n.id, snoozeUntil(key, zone))}
                     onArchive={() => data.archive(n.id)}
                     onDelete={() => data.remove(n.id)}
@@ -796,7 +796,7 @@ export default function NotificationsNext({ ground }: NotificationsNextProps) {
                       zone={zone}
                       onToggle={() => setOpenId(openId === n.id ? null : n.id)}
                       onWake={() => data.wake(n.id)}
-                      onRuleOff={() => data.markRead(n.id)}
+                      onRuleOff={() => data.markRead(n.id, true)}
                     />
                   ))}
                 </ul>

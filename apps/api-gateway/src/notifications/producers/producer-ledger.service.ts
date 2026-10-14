@@ -121,6 +121,13 @@ export interface ProducerEvent {
     actionUrl?: string;
     actionLabel?: string;
     metadata?: Record<string, any>;
+    /**
+     * The line's `group_key` when its cause can end and the line must clear
+     * by it (`resolveBellLines`, F-526) — stable across the events that
+     * share a cause, unlike the dedupe key. Defaults to
+     * `<producer>:<dedupeKey>`.
+     */
+    groupKey?: string;
   };
 }
 
@@ -154,11 +161,24 @@ interface MemberPreference {
 
 const QUIET_OFF: QuietHours = { enabled: false, start: "22:00", end: "08:00" };
 
+/** Higher reads more of the house; a role change upward is a promotion. */
+const ROLE_RANK: Record<string, number> = { owner: 3, manager: 2 };
+const rankOf = (role: unknown) => ROLE_RANK[String(role ?? "")] ?? 1;
+
 @Injectable()
 export class ProducerLedgerService {
   private readonly logger = new Logger(ProducerLedgerService.name);
 
   private readonly clock: ProducerClock;
+
+  /**
+   * When each member of an audience came to read it (F-1697), read once per
+   * audience object: a sweep hands the same object to every event it emits.
+   */
+  private readonly sinceByAudience = new WeakMap<
+    ProducerAudience,
+    Promise<Map<string, number>>
+  >();
 
   constructor(
     private readonly databaseService: DatabaseService,
@@ -301,11 +321,22 @@ export class ProducerLedgerService {
       return "no_audience";
     }
 
+    // F-1697: a member who joined, or was promoted, after the event did not
+    // miss it — it happened before they read this house. Without this the
+    // claim index hands a newcomer every event still in a producer's window
+    // (48 h of deliveries, 14 days of ceilings) as fresh lines and pushes.
+    const since = await this.memberSince(restaurantId, audience);
+    const at = event.occurredAt.getTime();
+    const ready = audience.ready.filter(
+      (u) => !((since.get(u) ?? -Infinity) > at),
+    );
+    if (ready.length === 0) return "no_audience";
+
     const claimed = await this.claim(
       restaurantId,
       producer,
       event.dedupeKey,
-      audience.ready,
+      ready,
       event.occurredAt,
       ctx.now,
     );
@@ -333,7 +364,7 @@ export class ProducerLedgerService {
         actionLabel: event.payload.actionLabel,
         // The funnel's own group_key stays useful for grouping in the inbox.
         // It is NOT the dedupe here — the claim index is.
-        groupKey: `${producer}:${event.dedupeKey}`,
+        groupKey: event.payload.groupKey ?? `${producer}:${event.dedupeKey}`,
         metadata: {
           ...(event.payload.metadata ?? {}),
           producer,
@@ -363,6 +394,74 @@ export class ProducerLedgerService {
     await this.confirm(claimed, "written");
     tally.emitted += claimed.length;
     return "written";
+  }
+
+  /**
+   * The instant each member of `audience` came to read this house as they do
+   * now: the later of their access row's `created_at` and `valid_from`, or a later
+   * promotion recorded as `member_role_changed` (`restaurants/members.service.ts`
+   * `updateMemberRole` → `system_audit_log`). A member with neither is absent,
+   * and is never held back.
+   *
+   * A failed read FAILS OPEN — nobody is held back on this tick — and says so
+   * at error level, as `readAway` does: an old line to a newcomer is the
+   * smaller fault than a producer gone silent.
+   */
+  private memberSince(
+    restaurantId: string,
+    audience: ProducerAudience,
+  ): Promise<Map<string, number>> {
+    let found = this.sinceByAudience.get(audience);
+    if (!found) {
+      found = this.readMemberSince(restaurantId, audience.ready);
+      this.sinceByAudience.set(audience, found);
+    }
+    return found;
+  }
+
+  private async readMemberSince(
+    restaurantId: string,
+    userIds: string[],
+  ): Promise<Map<string, number>> {
+    const since = new Map<string, number>();
+    const later = (userId: unknown, iso: unknown) => {
+      const t = typeof iso === "string" ? Date.parse(iso) : NaN;
+      if (typeof userId !== "string" || !Number.isFinite(t)) return;
+      if (t > (since.get(userId) ?? -Infinity)) since.set(userId, t);
+    };
+    try {
+      const client = this.databaseService.getClient();
+      const access = await client
+        .from("user_restaurant_access")
+        .select("user_id, created_at, valid_from")
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
+        .in("user_id", userIds);
+      if (access.error) throw new Error(access.error.message);
+      for (const r of (access.data ?? []) as any[]) {
+        later(r.user_id, r.created_at);
+        later(r.user_id, r.valid_from);
+      }
+      const roles = await client
+        .from("system_audit_log")
+        .select("entity_id, changes, created_at")
+        .eq("restaurant_id", restaurantId)
+        .eq("action", "member_role_changed")
+        .in("entity_id", userIds);
+      if (roles.error) throw new Error(roles.error.message);
+      for (const r of (roles.data ?? []) as any[]) {
+        const role = r.changes?.role;
+        if (rankOf(role?.to) > rankOf(role?.from))
+          later(r.entity_id, r.created_at);
+      }
+      return since;
+    } catch (e: any) {
+      this.logger.error(
+        `NOTIFICATION_PRODUCER_MEMBER_SINCE_UNREADABLE restaurant=${restaurantId} — ${e?.message}. ` +
+          "No member is held back from older events on this tick.",
+      );
+      return new Map();
+    }
   }
 
   /**

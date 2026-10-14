@@ -60,10 +60,10 @@ interface PushSubscription {
 }
 
 /**
- * Metadata keys that hold house money (money policy 2026-10-07, F-530). A
- * phone push copies the row's metadata into its `data` when the writer gives
- * no `pushData`, and a push reaches a locked screen and every addressed
- * member, so these never ride along. The row itself keeps them; who may read
+ * Keys that hold house money (money policy 2026-10-07, F-530). A phone push
+ * reaches a locked screen and every addressed member, so these never ride
+ * along in a writer's `pushData` (row metadata gives only its route ids,
+ * `PUSH_ROUTE_KEYS`, F-1696). The row itself keeps them; who may read
  * the row is the writer's `onlyUserIds`.
  */
 export const PUSH_MONEY_KEYS: ReadonlySet<string> = new Set([
@@ -87,6 +87,36 @@ function withoutMoney(data: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(data)) {
     if (!PUSH_MONEY_KEYS.has(k)) out[k] = v;
+  }
+  return out;
+}
+
+/**
+ * The row-metadata keys a phone push carries when the writer gives no
+ * `pushData` (F-1696): the ids the phone opens a tap with
+ * (`apps/mobile/src/lib/notificationRoute.ts` `routeForNotificationData`,
+ * `deliveryToResolve`), and nothing else. The whole metadata used to ride, so
+ * a low-stock digest listing every wine below par passed Expo's 4096-byte
+ * limit at about 17 wines and never reached a phone. `type`, `actionUrl` and
+ * `restaurantId` are stamped by the funnel itself.
+ */
+export const PUSH_ROUTE_KEYS: ReadonlySet<string> = new Set([
+  "orderId",
+  "order_id",
+  "inventoryId",
+  "inventory_id",
+  "deliveryId",
+  "delivery_id",
+]);
+
+function routeKeysOnly(data: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (
+      PUSH_ROUTE_KEYS.has(k) &&
+      (typeof v === "string" || typeof v === "number")
+    )
+      out[k] = v;
   }
   return out;
 }
@@ -966,7 +996,11 @@ export class NotificationsService {
             data: {
               type: payload.type,
               actionUrl: payload.actionUrl ?? null,
-              ...withoutMoney(opts.pushData ?? payload.metadata ?? {}),
+              // F-1696: a writer's own `pushData` (small, chosen) rides as
+              // given less money; the row's metadata gives its route ids only.
+              ...(opts.pushData
+                ? withoutMoney(opts.pushData)
+                : routeKeysOnly(payload.metadata ?? {})),
               // Last, so no caller's data can name another house (F-523): the
               // phone switches to this house before it opens what was tapped.
               restaurantId,
