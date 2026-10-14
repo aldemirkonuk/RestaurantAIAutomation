@@ -662,6 +662,11 @@ export function useDealProposal(orderId: string | null, enabled = true) {
  * Confirm a deal — behind a redeemed seal since 2026-09-21 (ADR 0175 D9): the
  * challenge comes from `issueConfirmDealChallenge`, minted over the same terms
  * when the hold began.
+ *
+ * `priceTaxBasis` is the owner's or the manager's answer to "is tax inside
+ * this price?", sent as the receive form sends it (ADR 0341 F3): a changed
+ * price loses the basis it had, so confirming is where it is said again.
+ * Left out when nobody said, and the price stays "not said".
  */
 export function useConfirmDeal() {
   const queryClient = useQueryClient();
@@ -671,18 +676,25 @@ export function useConfirmDeal() {
       finalPrice,
       quantity,
       sendConfirmation,
+      priceTaxBasis,
       challenge,
     }: {
       orderId: string;
       finalPrice?: number;
       quantity?: number;
       sendConfirmation?: boolean;
+      priceTaxBasis?: "includes_tax" | "excludes_tax" | null;
       challenge: string;
     }) =>
       apiClient
         .post(
           `/procurement/orders/${orderId}/confirm-deal`,
-          { finalPrice, quantity, sendConfirmation },
+          {
+            finalPrice,
+            quantity,
+            sendConfirmation,
+            ...(priceTaxBasis ? { priceTaxBasis } : {}),
+          },
           { headers: { "X-Seal-Challenge": challenge } },
         )
         .then(

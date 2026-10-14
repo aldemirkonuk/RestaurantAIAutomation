@@ -166,8 +166,30 @@ export async function costedLiveLotIds(
 }
 
 /**
+ * A cost in whole cents, rounded as `inventory_lots.unit_cost` (numeric(10,2))
+ * rounds what it is given: on the decimal the number is sent as, half away
+ * from zero (F-1707). A typed 12.345 is stored as 12.35, so comparing the
+ * typed figure to the stored one as they stand never matched, and the
+ * owner's answer was silently not stamped. Exported for its test.
+ */
+export function costCents(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  // The decimal JSON sends for this number, which is what the column rounds.
+  const text = String(Math.abs(n));
+  if (text.includes("e")) return Math.sign(n) * Math.round(Math.abs(n) * 100);
+  const [whole, frac = ""] = text.split(".");
+  const cents =
+    Number(whole) * 100 +
+    Number(frac.slice(0, 2).padEnd(2, "0")) +
+    (Number(frac[2] ?? "0") >= 5 ? 1 : 0);
+  return n < 0 ? -cents : cents;
+}
+
+/**
  * Stamp the lots one write just costed: the item's live lots that carry
- * `unitCost` now, state no basis, and were not costed before the write
+ * `unitCost` now (to the cent the column keeps, `costCents`), state no basis, and were not costed before the write
  * (`before`, from `costedLiveLotIds`). A lot costed earlier, or at another
  * figure, is left as it was. Logged, never thrown: the cost stands either way.
  */
@@ -202,7 +224,7 @@ export async function stampLotsCostedByWrite(
         (l: { id: string; unit_cost: unknown; unit_cost_tax_basis: unknown }) =>
           !args.before.has(l.id) &&
           l.unit_cost != null &&
-          Number(l.unit_cost) === args.unitCost &&
+          costCents(l.unit_cost) === costCents(args.unitCost) &&
           l.unit_cost_tax_basis == null,
       )
       .map((l: { id: string }) => l.id);

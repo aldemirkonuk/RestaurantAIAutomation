@@ -1,3 +1,4 @@
+import { costCents } from "../common/cost-tax-stamp";
 import { InventoryService } from "./inventory.service";
 
 /**
@@ -13,6 +14,10 @@ import { InventoryService } from "./inventory.service";
  */
 const HOUSE = "house-a";
 const ITEM = "item-1";
+
+/** What `inventory_lots.unit_cost` (numeric(10,2)) keeps of a cost. */
+const column = (cost: number | null | undefined) =>
+  cost == null ? null : Math.round(cost * 100) / 100;
 
 type Lot = {
   id: string;
@@ -32,7 +37,7 @@ function fake(
     if (fn === "apply_stock_movement" && args.p_delta > 0) {
       lots.push({
         id: `new-${nextLot++}`,
-        unit_cost: args.p_unit_cost ?? null,
+        unit_cost: column(args.p_unit_cost),
         unit_cost_tax_basis: null,
       });
       return { data: "txn-1", error: null };
@@ -41,7 +46,7 @@ function fake(
       if (opts.costApplied)
         lots.push({
           id: `new-${nextLot++}`,
-          unit_cost: args.p_unit_cost,
+          unit_cost: column(args.p_unit_cost),
           unit_cost_tax_basis: null,
         });
       return {
@@ -159,6 +164,34 @@ describe("a manual receipt stamps whether tax is inside its cost (ADR 0341 F3)",
         ids: ["new-1"],
       },
     ]);
+  });
+
+  it("[REVERT-FAILS] stamps a cost typed past the cent the column keeps (F-1707)", async () => {
+    // 420.125 is stored as 420.13; the typed figure never equals the stored.
+    const t = fake("prices_include_tax", []);
+    await t.svc.bulkCreateInventoryItems(
+      HOUSE,
+      receipt({ costPerBottle: 420.125, costTaxBasis: "excludes_tax" }) as any,
+    );
+    expect(t.stamps()).toEqual([
+      {
+        table: "inventory_lots",
+        patch: { unit_cost_tax_basis: "excludes_tax" },
+        ids: ["new-1"],
+      },
+    ]);
+  });
+
+  it("rounds a cost to the cent as the column does (F-1707)", () => {
+    // Postgres rounds the decimal JSON sends, half away from zero; 12.345 is
+    // 12.3449… as a float, so float rounding would say 12.34.
+    expect(costCents(12.345)).toBe(1235);
+    expect(costCents(12.995)).toBe(1300);
+    expect(costCents("420.13")).toBe(42013);
+    expect(costCents(420)).toBe(42000);
+    expect(costCents(0.004)).toBe(0);
+    expect(costCents(null)).toBeNull();
+    expect(costCents("abc")).toBeNull();
   });
 
   it("stamps nothing when nobody said, and reads no lot for it", async () => {

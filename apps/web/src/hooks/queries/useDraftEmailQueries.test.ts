@@ -8,9 +8,10 @@ import React from 'react'
 // references must be created with vi.hoisted() so it's also available before
 // the rest of the module is initialised.
 const mockGet = vi.hoisted(() => vi.fn())
+const mockPost = vi.hoisted(() => vi.fn())
 
 vi.mock('../../services/api/client', () => ({
-  apiClient: { get: mockGet },
+  apiClient: { get: mockGet, post: mockPost },
 }))
 
 vi.mock('../../contexts/AuthContext', () => ({
@@ -18,7 +19,7 @@ vi.mock('../../contexts/AuthContext', () => ({
 }))
 
 import { useAuth } from '../../contexts/AuthContext'
-import { useActiveConversations, activeConversationKeys } from './useDraftEmailQueries'
+import { useActiveConversations, activeConversationKeys, useConfirmDeal } from './useDraftEmailQueries'
 
 // Helper: wrap in a fresh QueryClientProvider per test
 function wrapper(queryClient: QueryClient) {
@@ -123,5 +124,40 @@ describe('useActiveConversations — query key uses activeRestaurantId (regressi
 
     // No API call should fire when there is no restaurant ID
     expect(mockGet).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * Owed from w111-receiving-basis (ADR 0341 F3): confirming a deal sends the
+ * answer to "is tax inside this price?" as the receive form does, and sends
+ * nothing for it when nobody said.
+ */
+describe('useConfirmDeal: whether tax is inside the confirmed price (ADR 0341 F3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPost.mockResolvedValue({ data: { confirmed: true, sentConfirmation: false } })
+  })
+
+  it('[REVERT-FAILS] sends the stated answer with the price', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result } = renderHook(() => useConfirmDeal(), { wrapper: wrapper(qc) })
+    await result.current.mutateAsync({
+      orderId: 'o1',
+      finalPrice: 410,
+      priceTaxBasis: 'excludes_tax',
+      challenge: 'seal-1',
+    })
+    expect(mockPost).toHaveBeenCalledWith(
+      '/procurement/orders/o1/confirm-deal',
+      expect.objectContaining({ finalPrice: 410, priceTaxBasis: 'excludes_tax' }),
+      { headers: { 'X-Seal-Challenge': 'seal-1' } },
+    )
+  })
+
+  it('sends nothing for it when nobody said', async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result } = renderHook(() => useConfirmDeal(), { wrapper: wrapper(qc) })
+    await result.current.mutateAsync({ orderId: 'o1', finalPrice: 410, priceTaxBasis: null, challenge: 'seal-1' })
+    expect(mockPost.mock.calls[0][1]).not.toHaveProperty('priceTaxBasis')
   })
 })

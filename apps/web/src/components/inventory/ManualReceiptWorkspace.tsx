@@ -103,11 +103,12 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
   const { locations } = useStorageLocations()
   // F-780: staff do not see the cost cells (F-312), so the copy does not ask them for a cost.
   const canSetCost = useMayActForTheHouse()
+  const restaurantId = activeRestaurantId || user?.restaurantId || ''
   // ADR 0341 F3: whether tax is inside this receipt's costs, one answer for
   // the receipt (one vendor's paper); null = not said, and nothing is sent.
-  const costTax = useHouseCostTax(canSetCost)
+  // Read again for each house: this screen stays mounted across a switch (F-1708).
+  const costTax = useHouseCostTax(canSetCost, restaurantId)
   const [costTaxBasis, setCostTaxBasis] = useState<CostTaxBasis | null>(null)
-  const restaurantId = activeRestaurantId || user?.restaurantId || ''
   const { data: providers = [] } = useProviders(restaurantId)
   const scope = user?.userId && restaurantId ? `${user.userId}:${restaurantId}` : null
 
@@ -133,6 +134,8 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
     setReference(kept?.reference ?? '')
     setDefaultLocationId(kept?.defaultLocationId ?? '')
     setRows(kept?.rows ?? [])
+    // One house's answer about tax is never sent with another's costs (F-1708).
+    setCostTaxBasis(null)
     setError(
       kept?.saving
         ? 'This receipt was being saved when the page closed. Some lines may already be in stock: check the list before saving again.'

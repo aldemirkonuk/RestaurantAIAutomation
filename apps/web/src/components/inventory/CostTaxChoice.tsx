@@ -27,17 +27,20 @@ export interface HouseCostTax {
 }
 
 /**
- * Whether this house's till prices include tax, read once. Null while it is
- * read, when it could not be read, and when `enabled` is false: then the
- * choice is not shown, and the cost is recorded as before.
+ * Whether this house's till prices include tax, read once per house. Null
+ * while it is read, when it could not be read, and when `enabled` is false:
+ * then the choice is not shown, and the cost is recorded as before.
+ *
+ * `houseId` is the active house: a switch of house does not remount a screen
+ * that stays mounted (the manual receipt on /inventory), so without it the
+ * question followed the house just left (F-1708). A new house reads again,
+ * and shows nothing until its own answer is in.
  */
-export function useHouseCostTax(enabled: boolean): HouseCostTax | null {
+export function useHouseCostTax(enabled: boolean, houseId?: string | null): HouseCostTax | null {
   const [terms, setTerms] = useState<HouseCostTax | null>(null)
   useEffect(() => {
-    if (!enabled) {
-      setTerms(null)
-      return
-    }
+    setTerms(null)
+    if (!enabled) return
     let live = true
     getTaxBasis()
       .then((r) => {
@@ -50,7 +53,7 @@ export function useHouseCostTax(enabled: boolean): HouseCostTax | null {
     return () => {
       live = false
     }
-  }, [enabled])
+  }, [enabled, houseId])
   return terms
 }
 
