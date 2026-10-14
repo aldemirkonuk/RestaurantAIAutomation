@@ -25,6 +25,7 @@ import { GrantSuspendedProducer } from "./grant-suspended.producer";
 import { AddedToolProducer } from "./added-tool.producer";
 import { ExperimentEndedProducer } from "./experiment-ended.producer";
 import { MailGrantAbsentProducer } from "./mail-grant-absent.producer";
+import { TillQuietProducer } from "./till-quiet.producer";
 
 /**
  * The ten notification producers, and the two crons that run them.
@@ -173,6 +174,9 @@ export class NotificationProducersService {
     // The tenth (0160 §111) — the house's own mail-reading declaration with
     // no live grant behind it. Narrows itself to owners/managers; see its header.
     private readonly mailGrantAbsent: MailGrantAbsentProducer,
+    // F-1651: every live till of a house that has sent checks has been silent
+    // past the Connections row's gap. Owners/managers; see its header.
+    private readonly tillQuiet: TillQuietProducer,
     // Optional for the same reason the ledger's is: the spec constructs this
     // service positionally, and production keeps the wall clock.
     @Optional() @Inject(PRODUCER_CLOCK) clock?: ProducerClock,
@@ -337,6 +341,15 @@ export class NotificationProducersService {
           now,
           pos.posConnected,
         ),
+    );
+
+    // F-1651: hourly, so a member deferred by quiet hours hears it within the
+    // hour after they end. Once per quiet stretch (its dedupe key).
+    out[TillQuietProducer.PRODUCER] = await this.runOne(
+      tenant.id,
+      TillQuietProducer.PRODUCER,
+      now,
+      () => this.tillQuiet.sweepTenant(tenant.id, timeZone, audience, now),
     );
 
     // The market signal is a once-a-day evaluation on the tenant's own clock.
@@ -513,6 +526,7 @@ export class NotificationProducersService {
       [ExperimentEndedProducer.PRODUCER, FAST_CRON, FAST_INTERVAL_MINUTES],
       [SaleRecordProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
       [MarketPriceProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
+      [TillQuietProducer.PRODUCER, DAILY_CRON, DAILY_INTERVAL_MINUTES],
     ];
 
     const armed = this.armed();
@@ -549,6 +563,12 @@ export class NotificationProducersService {
     let mailGrantWouldFire: boolean | null = null;
     if (armed && served !== false) {
       mailGrantWouldFire = await this.mailGrantAbsent.wouldFire(restaurantId);
+    }
+
+    // F-1651: whether this house's tills are quiet now, by the sweep's own read.
+    let tillQuietWouldFire: boolean | null = null;
+    if (armed && served !== false) {
+      tillQuietWouldFire = await this.tillQuiet.wouldFire(restaurantId, now);
     }
 
     // The ninth producer is not decided by the two questions above. It does not
@@ -641,6 +661,17 @@ export class NotificationProducersService {
             "Either this house has not turned on vendor-mail reading, or the grant behind " +
             "it is live, so this producer will stay silent even though it is armed. It " +
             "speaks once mail reading is on and no live grant backs it.";
+        }
+      } else if (producer === TillQuietProducer.PRODUCER) {
+        if (tillQuietWouldFire === null) {
+          willWrite = null;
+          silentReason =
+            "This house's till checks could not be read, so whether its tills have gone quiet is unknown.";
+        } else if (tillQuietWouldFire === false) {
+          willWrite = false;
+          silentReason =
+            "A till of this house sent a check in the last 48 hours, or none has ever sent one, so this " +
+            "producer will stay silent even though it is armed. It speaks once every till has been quiet for 48 hours.";
         }
       } else if (producer === AddedToolProducer.PRODUCER) {
         if (declaredServers === null) {

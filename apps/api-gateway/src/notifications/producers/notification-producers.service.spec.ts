@@ -72,6 +72,9 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
   const mailGrantAbsent = overrides.mailGrantAbsent ?? stub("mail_grant_absent");
   (mailGrantAbsent as any).wouldFire =
     overrides.mailGrantWouldFire ?? recorder(async () => false);
+  const tillQuiet = overrides.tillQuiet ?? stub("till_quiet");
+  (tillQuiet as any).wouldFire =
+    overrides.tillQuietWouldFire ?? recorder(async () => false);
   // The ninth producer is not a tenant sweep, so it gets a stub with the three
   // methods the service actually calls on it. `founderHouseId` answers the
   // TENANT by default, which makes "this is the founder's house" the ordinary
@@ -104,6 +107,7 @@ function build(env: Record<string, any> = {}, overrides: any = {}) {
     addedTool as any,
     experimentEnded as any,
     mailGrantAbsent as any,
+    tillQuiet as any,
   );
   return {
     service,
@@ -277,14 +281,14 @@ describe("the two cadences", () => {
     // 14:00 UTC = 10:00 New York, the market hour.
     await service.runDailyForTenant(TENANT, new Date("2026-09-03T14:00:00Z"));
     expect(goals.getPosRevenueWindow.calls[0]).toEqual(["rest-1", 1]);
-    expect(sweeps).toEqual(["sale_record", "market_price"]);
+    expect(sweeps).toEqual(["sale_record", "till_quiet", "market_price"]);
   });
 
   it("[REVERT-FAILS] the market signal is evaluated once a day, on the tenant's clock", async () => {
     const { service, sweeps } = build();
     // 18:00 UTC = 14:00 New York — not the market hour.
     await service.runDailyForTenant(TENANT, new Date("2026-09-03T18:00:00Z"));
-    expect(sweeps).toEqual(["sale_record"]);
+    expect(sweeps).toEqual(["sale_record", "till_quiet"]);
   });
 
   it("an unknown timezone falls back to UTC loudly rather than throwing the tenant away", async () => {
@@ -307,7 +311,7 @@ describe("the two cadences", () => {
 });
 
 describe("statusFor — what the page is allowed to say", () => {
-  it("names all ten producers, their schedule and their next tick", async () => {
+  it("names all eleven producers, their schedule and their next tick", async () => {
     const { service } = build();
     const status = await service.statusFor(
       "rest-1",
@@ -324,24 +328,26 @@ describe("statusFor — what the page is allowed to say", () => {
       "experiment_ended_unnamed",
       "sale_record",
       "market_price",
+      "till_quiet",
     ]);
     expect(status.producers[0].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
     expect(status.producers[5].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
     expect(status.producers[6].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
     expect(status.producers[7].nextTickAt).toBe("2026-09-03T12:15:00.000Z");
     expect(status.producers[9].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
+    expect(status.producers[10].nextTickAt).toBe("2026-09-03T13:00:00.000Z");
   });
 
-  it("[REVERT-FAILS] one switch arms all ten, and every producer says so while it is off", async () => {
+  it("[REVERT-FAILS] one switch arms all eleven, and every producer says so while it is off", async () => {
     const { service } = build();
     const status = await service.statusFor("rest-1");
     expect(status.armed).toBe(false);
-    expect(status.armingNote).toMatch(/arms all 10 producers/);
-    expect(status.producers).toHaveLength(10);
+    expect(status.armingNote).toMatch(/arms all 11 producers/);
+    expect(status.producers).toHaveLength(11);
     for (const p of status.producers) {
       expect(p.willWrite).toBe(false);
       expect(p.silentReason).toMatch(
-        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 10 producers at once/s,
+        /NOTIFICATION_PRODUCERS_ENABLED is not set.*arms all 11 producers at once/s,
       );
     }
   });
@@ -364,6 +370,7 @@ describe("statusFor — what the page is allowed to say", () => {
         x.producer !== "market_price" &&
         x.producer !== "grant_suspended" &&
         x.producer !== "mail_grant_absent" &&
+        x.producer !== "till_quiet" &&
         x.producer !== "experiment_ended_unnamed",
     )) {
       expect(p.willWrite).toBe(true);
@@ -405,6 +412,24 @@ describe("statusFor — what the page is allowed to say", () => {
     )!;
     expect(grant.willWrite).toBeNull();
     expect(grant.silentReason).toMatch(/could not be read/);
+  });
+
+  it("F-1651: armed and served, the quiet-till producer says whether the tills are quiet", async () => {
+    for (const [fires, willWrite, reason] of [
+      [false, false, /sent a check in the last 48 hours/],
+      [true, true, null],
+      [null, null, /could not be read/],
+    ] as const) {
+      const { service } = build(
+        { NOTIFICATION_PRODUCERS_ENABLED: "true" },
+        { tillQuietWouldFire: recorder(async () => fires) },
+      );
+      const status = await service.statusFor("rest-1");
+      const till = status.producers.find((p) => p.producer === "till_quiet")!;
+      expect(till.willWrite).toBe(willWrite);
+      if (reason) expect(till.silentReason).toMatch(reason);
+      else expect(till.silentReason).toBeNull();
+    }
   });
 
   it("[REVERT-FAILS] armed and served, the mail-grant producer says it is mute when the grant is fine", async () => {

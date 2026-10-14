@@ -22,6 +22,7 @@ import { GrantSuspendedProducer } from "./producers/grant-suspended.producer";
 import { AddedToolProducer } from "./producers/added-tool.producer";
 import { ExperimentEndedProducer } from "./producers/experiment-ended.producer";
 import { MailGrantAbsentProducer } from "./producers/mail-grant-absent.producer";
+import { TillQuietProducer } from "./producers/till-quiet.producer";
 import { NotificationProducersService } from "./producers/notification-producers.service";
 import { AreaRoutingModule } from "../areas/area-routing.module";
 
@@ -75,6 +76,7 @@ import { AreaRoutingModule } from "../areas/area-routing.module";
     AddedToolProducer,
     ExperimentEndedProducer,
     MailGrantAbsentProducer,
+    TillQuietProducer,
     NotificationProducersService,
   ],
   exports: [

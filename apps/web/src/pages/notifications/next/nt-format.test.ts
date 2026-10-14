@@ -232,6 +232,11 @@ describe('a till’s refused checks have a register of their own (ADR 0281, foun
   it('is counted on the rail', () => {
     expect(KIND_ORDER as readonly string[]).toContain('Point of sale');
   });
+
+  it('F-1651: a till gone quiet is filed beside it, not under Other', () => {
+    expect(kindOf('pos_till_quiet')).toBe('Point of sale');
+    expect(iconForType('pos_till_quiet')).toBe(iconForKind('Point of sale'));
+  });
 });
 
 describe('two mail notes that open Connections are filed there (founder, 2026-10-05)', () => {

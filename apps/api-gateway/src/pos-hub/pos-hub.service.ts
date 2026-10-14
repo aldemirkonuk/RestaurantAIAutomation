@@ -1550,7 +1550,14 @@ export class PosHubService {
         }
         // sim F-397: a voided flag that reads as neither yes nor no is not
         // guessed at — either guess moves stock the wrong way.
+        // F-1650: each of these refusals reaches the till's bell note too;
+        // errors[] alone is read by nobody on a webhook till.
         if (check.voidedUnread !== undefined) {
+          refusedChecks.push({
+            externalCheckId: check.externalCheckId,
+            reason: "voided",
+            sent: check.voidedUnread,
+          });
           errors.push(
             `${check.externalCheckId}: not imported, voided not readable — write true or false (voided was ${quoteClosedAt(check.voidedUnread)})`,
           );
@@ -1559,6 +1566,11 @@ export class PosHubService {
         // sim F-396: "1.250,00" or "1.350" from a Turkish till is not read as
         // nothing or as a thousandth of itself; the check is refused instead.
         if (check.moneyUnread !== undefined) {
+          refusedChecks.push({
+            externalCheckId: check.externalCheckId,
+            reason: "amount",
+            sent: check.moneyUnread.value,
+          });
           errors.push(
             `${check.externalCheckId}: not imported, ${check.moneyUnread.field} not readable as an amount — write it as 1250.00 (it was ${quoteClosedAt(check.moneyUnread.value)})`,
           );
@@ -1566,6 +1578,11 @@ export class PosHubService {
         }
         // F-1193: "0,5" or "2,000" bottles is not read as one bottle.
         if (check.qtyUnread !== undefined) {
+          refusedChecks.push({
+            externalCheckId: check.externalCheckId,
+            reason: "quantity",
+            sent: check.qtyUnread.value,
+          });
           errors.push(
             `${check.externalCheckId}: not imported, ${check.qtyUnread.field} not readable as a quantity — write it as 2 or 0.5 (it was ${quoteClosedAt(check.qtyUnread.value)})`,
           );
@@ -1652,7 +1669,7 @@ export class PosHubService {
           // daily fis reset, or a second till on the same feed), so a closed
           // copy is the stored check only when it closes on the same house
           // day (F-1324's test). Another day is another sale: it is refused
-          // and said in errors[], rather than overwriting the stored one and taking no
+          // and said, rather than overwriting the stored one and taking no
           // stock. The total is not compared: a correction on the day (a line
           // removed) changes it, and the stock ledger reads it as one. A
           // house with no time zone has no day to compare, so its copy is
@@ -1674,6 +1691,10 @@ export class PosHubService {
           const keptDay = zone ? houseDayOf(stored.row?.closed_at, zone) : null;
           const thisDay = zone ? houseDayOf(when.closedAt, zone) : null;
           if (keptDay !== null && thisDay !== null && keptDay !== thisDay) {
+            refusedChecks.push({
+              externalCheckId: check.externalCheckId,
+              reason: "number_reused",
+            });
             errors.push(
               `${check.externalCheckId}: not imported, this check number is already kept for a sale on ${keptDay} and this one closed on ${thisDay}; a till that starts its check numbers again, or a second till on the same feed, must send its till number with each check`,
             );

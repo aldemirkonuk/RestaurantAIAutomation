@@ -157,6 +157,10 @@ export const KIND_BY_TYPE: Readonly<Record<string, string>> = {
   // note's link opens on the Connections page (`ConnectionsNext.tsx`), and the
   // founder's own word for it elsewhere is "POS".
   pos_import_refused: 'Point of sale',
+  // F-1651: every till of the house has been quiet for 48 hours:
+  // api-gateway notifications/producers/till-quiet.producer.ts. Same till,
+  // same Connections row, so the same register.
+  pos_till_quiet: 'Point of sale',
   draft_ready: 'Vendor mail',
   unknown_sender: 'Vendor mail',
   vendor_reply: 'Vendor mail',

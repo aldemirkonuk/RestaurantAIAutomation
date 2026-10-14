@@ -2365,6 +2365,53 @@ describe("the phone push carries the note's id and count, never the till's text"
   });
 });
 
+describe("F-1650: a check refused for an amount, a quantity or a void mark reaches the bell", () => {
+  it("files the note for a Turkish till's 1.250 TL, naming the check and why", async () => {
+    const { service, calls } = makeService();
+    const res = await ingest(
+      service,
+      [
+        { ...check("c-amt", "2026-10-03 21:00:00Z"), total: "1.250" },
+        {
+          ...check("c-qty", "2026-10-03 21:00:00Z"),
+          items: [{ ...line(), qty: "2,000" }],
+        },
+        { ...check("c-void", "2026-10-03 21:00:00Z"), voided: "maybe" },
+      ],
+      "generic_webhook",
+    );
+    expect(res.upserted).toBe(0);
+    expect(res.errors.join("\n")).toMatch(/c-amt: not imported, total/);
+    expect(calls.persist).toHaveLength(1); // one note, owner and manager
+    const { payload } = calls.persist[0];
+    expect(payload.title).toBe(
+      "3 checks not imported: amount not readable, quantity not readable, void mark not readable",
+    );
+    expect(payload.message).toContain("Checks: c-amt, c-qty, c-void.");
+    expect(payload.message).toContain(
+      "Send them again with the amount written as 1250.00, the quantity written as 2 or 0.5 and voided written as true or false.",
+    );
+    expect(payload.metadata.reasons).toEqual(["amount", "quantity", "voided"]);
+    expect(res.bellNote).toEqual(filedNew());
+  });
+
+  it("an open date note counts a refused amount into it and names both reasons", async () => {
+    const { service, table } = makeService({
+      notes: seededNote({
+        refused: 1,
+        checkIds: ["c-1"],
+        createdAt: minutesAgo(10),
+      }),
+    });
+    await ingest(service, [
+      { ...check("c-amt", "2026-10-03 21:00:00Z"), total: "1.250" },
+    ]);
+    expect(table[0].title).toBe(
+      "2 checks not imported: date not readable, amount not readable",
+    );
+  });
+});
+
 describe("F-1648: a check number a till used again on another day is another sale", () => {
   const kept = {
     voided: false,
@@ -2373,7 +2420,7 @@ describe("F-1648: a check number a till used again on another day is another sal
     source_modified_at: null,
   };
 
-  it("refuses a version-less copy that closes on another house day, and says why", async () => {
+  it("refuses a version-less copy that closes on another house day, says why, and rings the bell", async () => {
     const { service, calls } = makeService({ stored: { "17": kept } });
     const res = await ingest(
       service,
@@ -2385,6 +2432,10 @@ describe("F-1648: a check number a till used again on another day is another sal
     expect(res.errors.join("\n")).toContain(
       "17: not imported, this check number is already kept for a sale on 2026-10-02 and this one closed on 2026-10-03",
     );
+    expect(calls.persist[0].payload.title).toBe(
+      "1 check not imported: check number already used",
+    );
+    expect(res.bellNote).toEqual(filedNew());
   });
 
   it("still takes a copy of the same check on the same house day (a correction)", async () => {

@@ -1899,7 +1899,8 @@ function Tally({ n, k, seal }: { n: number | null; k: string; seal?: boolean }) 
 /**
  * F-1651: how long the tills may all be silent before the row stops saying
  * "Sending". Two days, so a house shut one day a week does not read as an
- * outage on its day off.
+ * outage on its day off. The gateway's quiet-till bell (notifications/producers/
+ * till-quiet.producer.ts) rings on the same gap; its spec fails if they differ.
  */
 const TILL_QUIET_AFTER_MS = 48 * 3_600_000;
 

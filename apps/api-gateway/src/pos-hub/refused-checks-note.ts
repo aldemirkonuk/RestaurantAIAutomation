@@ -262,10 +262,75 @@ export function bellNoteForTill(
   return note ? { filed: note.filed === true } : null;
 }
 
+/**
+ * F-1650 / F-1648: why a check was refused. A check with no reason was
+ * refused for its date, the first reason this note carried.
+ */
+export type RefusalReason =
+  | "date"
+  | "amount"
+  | "quantity"
+  | "voided"
+  | "number_reused";
+
+/**
+ * The note's words for each reason: its title part, its clause, and how to
+ * write the value again (null: nothing was unreadable, so nothing to rewrite).
+ */
+const REASON_WORDS: Record<
+  RefusalReason,
+  { title: string; why: (its: string) => string; writeAs: string | null }
+> = {
+  date: {
+    title: "date not readable",
+    why: (its) => `${its} closing time could not be read`,
+    writeAs: "the closing time written as 2026-10-03 21:00",
+  },
+  amount: {
+    title: "amount not readable",
+    why: (its) => `${its} amount could not be read`,
+    writeAs: "the amount written as 1250.00",
+  },
+  quantity: {
+    title: "quantity not readable",
+    why: (its) => `${its} quantity could not be read`,
+    writeAs: "the quantity written as 2 or 0.5",
+  },
+  voided: {
+    title: "void mark not readable",
+    why: (its) => `${its} void mark could not be read`,
+    writeAs: "voided written as true or false",
+  },
+  number_reused: {
+    title: "check number already used",
+    why: (its) =>
+      `${its} check number is already kept for a sale on another day`,
+    writeAs: null,
+  },
+};
+
+/** "a", "a and b", "a, b and c". */
+function listed(parts: string[]): string {
+  return parts.length <= 1
+    ? (parts[0] ?? "")
+    : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+const REASONS = Object.keys(REASON_WORDS) as RefusalReason[];
+
 /** The part of a refused check the note reads. */
 export interface RefusedCheck {
   externalCheckId: unknown;
   closedAt?: unknown;
+  /** Why it was refused; absent is "date" (ADR 0281's first reason). */
+  reason?: RefusalReason;
+  /** The value the till sent that was not read; absent is `closedAt`. */
+  sent?: unknown;
+}
+
+/** A refused check's reason, "date" when it names none. */
+function reasonOfCheck(c: RefusedCheck): RefusalReason {
+  return c.reason ?? "date";
 }
 
 /** What a note says, as every one of its rows' metadata carries it. */
@@ -298,6 +363,11 @@ export interface NoteState {
   firstSent: string;
   /** How many imports changed this note: its first, and each that added to it. */
   imports: number;
+  /**
+   * F-1650: why its checks were refused, each reason once, in the order first
+   * seen. A note written before reasons were kept read as ["date"].
+   */
+  reasons: RefusalReason[];
 }
 
 function cut(text: string, max: number): string {
@@ -319,6 +389,15 @@ export function sayCheckId(id: unknown): string {
     .replace(/\s+/g, " ")
     .trim();
   return text ? cut(text, MAX_NOTE_ID_CHARS) : "(no id)";
+}
+
+/**
+ * What the note quotes for a refused check: the value the till sent that was
+ * not read. A reused check number quotes nothing; its value was read.
+ */
+function saySent(c: RefusedCheck): string {
+  if (reasonOfCheck(c) === "number_reused") return "";
+  return sayValue("sent" in c ? c.sent : c.closedAt);
 }
 
 /** The value the till sent, as JSON, on one line, cut. */
@@ -356,6 +435,7 @@ const EMPTY_STATE: NoteState = {
   withoutId: 0,
   firstSent: "",
   imports: 0,
+  reasons: [],
 };
 
 /** One import's refusals, as a new note holds them. */
@@ -389,7 +469,10 @@ export function addToState(
   const seen = new Set<string>();
   const fresh: Array<{ key: string; shown: string }> = [];
   let withoutId = 0;
+  const reasons = [...prev.reasons];
   for (const c of refused) {
+    const why = reasonOfCheck(c);
+    if (!reasons.includes(why)) reasons.push(why);
     const key = checkKey(c.externalCheckId);
     if (key === null) {
       withoutId++;
@@ -426,10 +509,11 @@ export function addToState(
     firstSent:
       prev.imports === 0
         ? refused.length > 0
-          ? sayValue(refused[0].closedAt)
+          ? saySent(refused[0])
           : ""
         : prev.firstSent,
     imports: prev.imports + 1,
+    reasons,
   };
 }
 
@@ -480,6 +564,11 @@ function readState(metadata: unknown): NoteState | null {
     checkKeys.length + withoutId > refused
   )
     return null;
+  const reasons = Array.isArray(m.reasons)
+    ? (m.reasons as unknown[]).filter((r): r is RefusalReason =>
+        REASONS.includes(r as RefusalReason),
+      )
+    : [];
   return {
     refused,
     atLeast,
@@ -488,6 +577,7 @@ function readState(metadata: unknown): NoteState | null {
     withoutId,
     firstSent: typeof m.firstSent === "string" ? m.firstSent : "",
     imports,
+    reasons: reasons.length > 0 ? reasons : ["date"],
   };
 }
 
@@ -507,6 +597,10 @@ function stateMetadata(s: NoteState): Record<string, unknown> {
     withoutId: s.withoutId,
     firstSent: s.firstSent,
     imports: s.imports,
+    // A note refused only for its date reads as before (`readState`).
+    ...(s.reasons.length === 1 && s.reasons[0] === "date"
+      ? {}
+      : { reasons: s.reasons }),
   };
 }
 
@@ -525,7 +619,12 @@ export function noteWords(
   const count = `${s.atLeast ? "At least " : ""}${n}`;
   const notNamed = idsNotNamed(s);
   const w = s.withoutId;
-  const title = `${count} check${one ? "" : "s"} not imported: date not readable`;
+  const reasons: RefusalReason[] = s.reasons.length > 0 ? s.reasons : ["date"];
+  const words = reasons.map((r) => REASON_WORDS[r]);
+  const writeAs = words
+    .map((w2) => w2.writeAs)
+    .filter((x): x is string => x !== null);
+  const title = `${count} check${one ? "" : "s"} not imported: ${words.map((w2) => w2.title).join(", ")}`;
   const sent = s.firstSent
     ? ` (${one ? "it was" : "the first was"} written as ${s.firstSent})`
     : "";
@@ -544,13 +643,22 @@ export function noteWords(
     : "";
   const message =
     `${count} check${one ? "" : "s"} from ${tillName(providerKey)} ` +
-    `${one ? "was" : "were"} not imported because ${one ? "its" : "their"} closing time could not be read` +
+    `${one ? "was" : "were"} not imported because ${words.map((w2) => w2.why(one ? "its" : "their")).join(", or ")}` +
     `${sent}. ` +
     `${one ? "Its sale and its stock are" : "Their sales and stock are"} not recorded. ` +
     named +
     noId +
     floor +
-    `Send ${one ? "it" : "them"} again with the closing time written as 2026-10-03 21:00.`;
+    [
+      ...(writeAs.length > 0
+        ? [`Send ${one ? "it" : "them"} again with ${listed(writeAs)}.`]
+        : []),
+      ...(reasons.includes("number_reused")
+        ? [
+            "A till that starts its check numbers again, or a second till on the same feed, must send its till number with each check.",
+          ]
+        : []),
+    ].join(" ");
   return { title, message, notNamed };
 }
 
@@ -844,7 +952,12 @@ async function fileOnce(deps: Deps, input: Input): Promise<RefusedChecksNote> {
             till: tillName(providerKey),
             noteId,
             ...stateMetadata(state),
-            reason: "date_not_readable",
+            // F-1650: the first reason, named as before for a date; every
+            // reason the note carries is in `reasons`.
+            reason:
+              state.reasons[0] === "date"
+                ? "date_not_readable"
+                : state.reasons[0],
             awayStep: route?.step ?? null,
             heldAway,
           },
