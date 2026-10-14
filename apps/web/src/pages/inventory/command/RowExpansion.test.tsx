@@ -16,7 +16,7 @@ const transferStock = vi.hoisted(() => vi.fn())
 const fetchAuctionLotRecords = vi.hoisted(() => vi.fn())
 const adjustStock = vi.hoisted(() => vi.fn())
 const reconcileItem = vi.hoisted(() => vi.fn())
-const reconcileShadowItem = vi.hoisted(() => vi.fn())
+const confirmShadowByCount = vi.hoisted(() => vi.fn())
 const recordSpotCount = vi.hoisted(() => vi.fn())
 const updateInventoryItem = vi.hoisted(() => vi.fn())
 const recordPour = vi.hoisted(() => vi.fn())
@@ -28,7 +28,7 @@ vi.mock('../../../services/api/inventory', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/inventory')>(
     '../../../services/api/inventory',
   )
-  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords, adjustStock, reconcileItem, reconcileShadowItem, recordSpotCount, updateInventoryItem, recordPour }
+  return { ...actual, getItemActivity, transferStock, fetchAuctionLotRecords, adjustStock, reconcileItem, confirmShadowByCount, recordSpotCount, updateInventoryItem, recordPour }
 })
 vi.mock('../../../services/api/orders', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/orders')>(
@@ -872,36 +872,76 @@ describe("RowExpansion — the open bottle in the house's unit (F-1543)", () => 
   })
 })
 
-describe('RowExpansion — Reconcile N into live (F-1166)', () => {
+/**
+ * F-143 orphan shadow (after F-1166 and F-1695): shadow no order holds has no
+ * delivery behind it. It is a count to confirm, posted only by a count of the
+ * shelf, never moved into live by a press.
+ */
+describe('RowExpansion — bottles to confirm by count (F-143 orphan shadow)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
     getOrderBook.mockResolvedValue([])
     fetchAuctionLotRecords.mockResolvedValue([])
-    reconcileShadowItem.mockResolvedValue({ moved: 10 })
+    confirmShadowByCount.mockResolvedValue({ cleared: 10 })
   })
 
-  it('asks the server to move the shadow, never sends a count of live + shadow', async () => {
+  it('[REVERT-FAILS] says the bottles no order holds are to confirm, and offers no move onto the shelf', async () => {
     renderRow({ liveStock: 3, shadowStock: 10 })
 
-    await userEvent.click(screen.getByRole('button', { name: 'Put bottles no order is waiting on onto the shelf' }))
+    expect(
+      await screen.findByText('10 bottles to confirm by count. No order is waiting on them, so they are not counted as on the shelf until someone counts it.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /onto the shelf|into live/ })).toBeNull()
+  })
 
-    // A count of 13 set live to 13 and left shadow at 10: on hand grew by 10.
+  it('[REVERT-FAILS] sends the count of the shelf, never a count of live + shadow', async () => {
+    renderRow({ liveStock: 3, shadowStock: 10 })
+
+    const box = await screen.findByLabelText('Bottles on the shelf now')
+    const save = screen.getByRole('button', { name: 'Save the count' })
+    // Nothing counted yet: nothing to send.
+    expect(save).toBeDisabled()
+    await userEvent.type(box, '5')
+    await userEvent.click(save)
+
     expect(reconcileItem).not.toHaveBeenCalled()
-    expect(reconcileShadowItem).toHaveBeenCalledTimes(1)
-    expect(reconcileShadowItem).toHaveBeenCalledWith('inv-1')
+    expect(confirmShadowByCount).toHaveBeenCalledTimes(1)
+    expect(confirmShadowByCount).toHaveBeenCalledWith('inv-1', 5)
+  })
+
+  it('splits bottles on an open order from those to confirm', async () => {
+    getOrderBook.mockResolvedValue([
+      { id: 'o1', inventoryId: 'inv-1', status: 'CONFIRMED', quantity: 1, bottlesTotal: 6 },
+    ])
+    renderRow({ liveStock: 3, shadowStock: 10 })
+
+    expect(await screen.findByText('6 bottles are on order. They come onto the shelf when the delivery is received.')).toBeInTheDocument()
+    expect(screen.getByText(/^4 bottles to confirm by count\./)).toBeInTheDocument()
+  })
+
+  it('offers no count when an open order holds every bottle', async () => {
+    getOrderBook.mockResolvedValue([
+      { id: 'o1', inventoryId: 'inv-1', status: 'CONFIRMED', quantity: 1, bottlesTotal: 10 },
+    ])
+    renderRow({ liveStock: 3, shadowStock: 10 })
+
+    expect(await screen.findByText('10 bottles are on order. They come onto the shelf when the delivery is received.')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Bottles on the shelf now')).toBeNull()
+    expect(screen.queryByText(/to confirm by count/)).toBeNull()
   })
 
   // F-1695 (re-hit of F-143): any role could put bottles on order onto the shelf.
-  it('[REVERT-FAILS] offers staff no way to put bottles on order onto the shelf', () => {
+  it('[REVERT-FAILS] offers staff no count to confirm, and says what the bottles are', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
       <QueryClientProvider client={client}>
         <RowExpansion item={{ ...item, liveStock: 3, shadowStock: 10 } as InventoryItem} locations={[]} seesCost={false} />
       </QueryClientProvider>,
     )
-    expect(screen.queryByRole('button', { name: /onto the shelf|into live/ })).toBeNull()
-    expect(screen.getByText('10 bottles are on order. They come onto the shelf when the delivery is received.')).toBeInTheDocument()
+    expect(await screen.findByText(/^10 bottles to confirm by count\./)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /onto the shelf|into live|Save the count/ })).toBeNull()
+    expect(screen.queryByLabelText('Bottles on the shelf now')).toBeNull()
   })
 })
 

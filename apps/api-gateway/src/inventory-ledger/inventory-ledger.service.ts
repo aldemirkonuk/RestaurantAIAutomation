@@ -792,34 +792,42 @@ export class InventoryLedgerService {
   }
 
   /**
-   * Move an item's shadow (ordered, not yet shelved) bottles into live
-   * (F-1166, re-hit of F-143).
+   * Confirm, by a count, the shadow bottles no order holds (F-143 orphan
+   * shadow, after F-1166 and F-1695).
    *
-   * The row's "Reconcile N into live" used to send `reconcileInventory` a count
-   * of live + shadow. That raised live by N and left shadow at N, so on hand
-   * (live + shadow) grew by N on every press. Here the server reads the shadow
-   * itself and makes two movements: live +N, then shadow -N.
+   * Shadow is bottles on order. Bottles an open order still holds come onto the
+   * shelf when the delivery is received. What is left over -- shadow no order
+   * holds (`procurement_orders.reserved_bottles`, F-491) -- has no source
+   * document behind it, so it is a count to confirm, not stock: it is never
+   * booked live, valued or sold from on its own say-so (coordinator's call
+   * 2026-10-14, recorded in ADR 0078). It posts only when a person counts the
+   * shelf, and the count goes through record_stock_count, the single count
+   * writer (ADR 0078/0343), via `reconcileInventory`. Whatever the count finds
+   * is the shelf; the leftover shadow is then taken off the order book, so it
+   * is never counted twice. No row is deleted.
    *
-   * Two RPCs, so not one transaction (no primitive moves stock between states).
-   * Both keys are named after the item's latest shadow movement, so they stay
-   * the same until shadow -N lands: a retry, a second press or a second tab
-   * replays live +N instead of adding it again, and finishes the shadow -N.
-   * Once that lands, shadow is 0 and a further press moves nothing. Live goes
-   * first so a failure in between over-states the shelf and still shows the act,
-   * rather than losing the bottles from both counts. Not covered: a NEW shadow
-   * movement landing between a failed shadow -N and its retry changes the keys,
-   * and the retry then adds the bottles to live again.
+   * The count's key and the shadow's key are named after the item's latest
+   * shadow movement, so a retry, a second press or a second tab with the same
+   * number replays the count and finishes the shadow release once. The count
+   * goes first: a failure in between leaves the shelf right and the bottles
+   * still showing as to confirm, so the act is offered again.
    */
-  async reconcileShadowIntoLive(
+  async confirmShadowByCount(
     restaurantId: string,
     userId: string,
     inventoryId: string,
-  ): Promise<{ moved: number }> {
+    counted: number,
+  ): Promise<{ cleared: number; count: ReconcileResultDto["count"] }> {
+    if (!Number.isSafeInteger(counted) || counted < 0) {
+      throw new BadRequestException(
+        "Say how many bottles of this wine are on the shelf now, as a whole number. Nothing was saved.",
+      );
+    }
     await assertInventoryBelongsToRestaurant(
       this.databaseService.supabase,
       restaurantId,
       inventoryId,
-      "reconcileShadowIntoLive",
+      "confirmShadowByCount",
       this.logger,
     );
 
@@ -837,13 +845,15 @@ export class InventoryLedgerService {
       (s: number, l: { qty: number | null }) => s + (l.qty ?? 0),
       0,
     );
-    if (onOrder <= 0) return { moved: 0 };
+    if (onOrder <= 0) {
+      throw new ConflictException(
+        "No bottles of this wine are waiting to be confirmed. Nothing was saved.",
+      );
+    }
 
     // F-1695 (re-hit of F-143): bottles an open order still holds have not
-    // arrived. Booking them live put them on the shelf before the truck came,
-    // and the delivery then booked them again while releasing nothing. Only
-    // the shadow no order holds (`reserved_bottles`, F-491) may move; the rest
-    // comes onto the shelf when its delivery is received.
+    // arrived. They come onto the shelf when the delivery is received, never
+    // through a count here.
     const { data: orders, error: ordersError } =
       await this.databaseService.supabase
         .from("procurement_orders")
@@ -853,7 +863,7 @@ export class InventoryLedgerService {
         .gt("reserved_bottles", 0);
     if (ordersError) {
       throw new BadRequestException(
-        `Could not read the orders for this wine, so nothing was moved: ${ordersError.message}`,
+        `Could not read the orders for this wine, so nothing was saved: ${ordersError.message}`,
       );
     }
     const held = (orders ?? []).reduce(
@@ -861,10 +871,10 @@ export class InventoryLedgerService {
         s + Math.max(0, Number(o.reserved_bottles) || 0),
       0,
     );
-    const shadow = onOrder - held;
-    if (shadow <= 0) {
+    const toConfirm = onOrder - held;
+    if (toConfirm <= 0) {
       throw new ConflictException(
-        `${onOrder === 1 ? "This bottle is" : `These ${onOrder} bottles are`} still on an order that has not arrived. ${onOrder === 1 ? "It goes" : "They go"} onto the shelf when the delivery is received, or off the order if it is cancelled. Nothing was moved.`,
+        `${onOrder === 1 ? "This bottle is" : `These ${onOrder} bottles are`} still on an order that has not arrived. ${onOrder === 1 ? "It goes" : "They go"} onto the shelf when the delivery is received, or off the order if it is cancelled. Nothing was saved.`,
       );
     }
 
@@ -884,58 +894,50 @@ export class InventoryLedgerService {
     }
     const mark = last?.id ?? "none";
 
-    const live = await this.databaseService.supabase.rpc(
-      "apply_stock_movement",
-      {
-        p_inventory_id: inventoryId,
-        p_stock_state: "live",
-        p_delta: shadow,
-        // A move of a known N, not a count: a count goes through
-        // record_stock_count (ADR 0078), and this is not one.
-        p_transaction_type: "adjustment",
-        p_source: "reconciliation",
-        p_performed_by: userId,
-        p_reason: "Bottles on order counted onto the shelf",
-        p_idempotency_key: `reconcile-shadow-in:${inventoryId}:${mark}`,
-        p_restaurant_id: restaurantId,
-      },
+    // The count is the record: whatever is on the shelf is what live becomes.
+    const { count } = await this.reconcileInventory(
+      restaurantId,
+      userId,
+      inventoryId,
+      "",
+      counted,
+      `counted to confirm ${toConfirm} bottle${toConfirm === 1 ? "" : "s"} no order holds`,
+      `confirm-shadow:${mark}:${counted}`,
     );
-    if (live.error) {
-      throw new BadRequestException(
-        live.error.message || "The bottles could not be moved onto the shelf",
-      );
+    if ((count.varianceQty ?? 0) > 0) {
+      await this.endStockOutOnShelving(restaurantId, userId, inventoryId);
     }
-    await this.endStockOutOnShelving(restaurantId, userId, inventoryId);
+
     const out = await this.databaseService.supabase.rpc(
       "apply_stock_movement",
       {
         p_inventory_id: inventoryId,
         p_stock_state: "shadow",
-        p_delta: -shadow,
+        p_delta: -toConfirm,
         p_transaction_type: "adjustment",
         p_source: "reconciliation",
         p_performed_by: userId,
-        p_reason: "Bottles on order counted onto the shelf",
-        p_idempotency_key: `reconcile-shadow-out:${inventoryId}:${mark}`,
+        p_reason: "Bottles no order holds, settled by a count of the shelf",
+        p_idempotency_key: `confirm-shadow-out:${inventoryId}:${mark}`,
         p_restaurant_id: restaurantId,
       },
     );
     if (out.error) {
       this.logger.error({
-        message: "Shadow release after live booking failed",
+        message: "Shadow release after the confirming count failed",
         inventoryId,
         error: out.error.message,
       });
       throw new BadRequestException(
-        "The bottles are on the shelf but still show as on order. Press it again to finish.",
+        "The count is saved, but these bottles still show as to confirm. Press it again with the same number to finish.",
       );
     }
-    return { moved: shadow };
+    return { cleared: toConfirm, count };
   }
 
   /**
-   * F-1523: bottles on order counted onto the shelf bring an 86'd drink back,
-   * as a delivery booked in does (S195, end_stock_out_on_receipt) -- except a
+   * F-1523: bottles a count finds on the shelf (F-143 orphan shadow, confirmed
+   * by a count) bring an 86'd drink back, as a delivery booked in does (S195, end_stock_out_on_receipt) -- except a
    * pulled one, which stays until a person brings it back (20270106300000).
    * The person who shelved them ended it, so it is theirs on the record.
    * Never refuses the move: the bottles are on the shelf either way.
@@ -978,7 +980,7 @@ export class InventoryLedgerService {
           entity_type: "inventory_item",
           entity_id: inventoryId,
           restaurant_id: restaurantId,
-          reason: "bottles on order counted onto the shelf",
+          reason: "bottles found by a count of the shelf",
           changes: {
             ...(subject ? { subject } : {}),
             fields: { sold_out: { from: true, to: false } },

@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getItemActivity, reconcileShadowItem, transferStock, fetchAuctionLotRecords, updateInventoryItem } from '../../../services/api/inventory'
+import { getItemActivity, confirmShadowByCount, transferStock, fetchAuctionLotRecords, updateInventoryItem } from '../../../services/api/inventory'
 import { getOrderBook } from '../../../services/api/orders'
 import { invalidateZoneCounts, type StorageLocation } from '../../../hooks/useStorageLocations'
 import { useNotificationStore } from '../../../stores'
@@ -255,17 +255,21 @@ export function RowExpansion({
     invalidateZoneCounts(queryClient)
   }
 
-  // F-1166: the server reads the shadow and moves exactly that many (live +N,
-  // shadow -N). Sending a count of live + shadow raised live and left shadow,
-  // so on hand grew by N on every press.
-  const reconcile = useMutation({
-    mutationFn: () => reconcileShadowItem(inventoryId),
-    onSuccess: (r) => {
+  // F-143 orphan shadow: bottles on order that no order holds have no
+  // delivery behind them, so they are a count to confirm. The person counts
+  // the shelf; the server records that count (the one count writer) and takes
+  // the leftover off the order book. Never a move of N into live (F-1166).
+  const [confirmDraft, setConfirmDraft] = useState('')
+  const confirmValue = confirmDraft.trim() === '' ? NaN : Number(confirmDraft)
+  const confirmValid = Number.isSafeInteger(confirmValue) && confirmValue >= 0
+  const confirm = useMutation({
+    mutationFn: (counted: number) => confirmShadowByCount(inventoryId, counted),
+    onSuccess: () => {
       invalidate()
-      toast.success(r.moved > 0 ? `${r.moved} bottle${r.moved === 1 ? '' : 's'} moved onto the shelf` : 'Nothing left to move')
-      setDelta(0)
+      toast.success('Count saved')
+      setConfirmDraft('')
     },
-    onError: (e: any) => toast.error('Not moved', e?.response?.data?.message || e?.message),
+    onError: (e: any) => toast.error('Count not saved', e?.response?.data?.message || e?.message),
   })
 
   const setPar = useMutation({
@@ -364,6 +368,9 @@ export function RowExpansion({
   const addsOnTakeOff = delta > 0 && reason in TAKE_OFF_ONLY
   const live = item.liveStock ?? 0
   const shadow = item.shadowStock ?? 0
+  // F-143 orphan shadow: shadow no open order owes, or null when the orders
+  // could not be read. The server decides from the orders' own reservations.
+  const toConfirm: number | null = onOrder == null ? null : Math.max(0, shadow - onOrder)
   // What the house paid, never the library's price (F-1311).
   const paid = recordedCost(item)
   const menuBottle = item.menuPriceBottle
@@ -438,27 +445,52 @@ export function RowExpansion({
               <div className="text-[10.5px] font-semibold text-violet-600 mt-0.5">Shadow count</div>
             </div>
           </div>
-          {/* F-1695 (re-hit of F-143): shelving by hand is an owner/manager act,
-              and the server moves only bottles no open order holds. */}
+          {/* F-1695 (re-hit of F-143): bottles an open order holds come onto the
+              shelf with the delivery. F-143 orphan shadow: the rest has no order
+              behind it, so it is a count to confirm, for an owner or manager. */}
           {shadow > 0 ? (
-            canSetPar ? (
-              <>
-                <button
-                  onClick={() => reconcile.mutate()}
-                  disabled={reconcile.isPending}
-                  className="w-full mt-3 h-9 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg disabled:opacity-60"
-                >
-                  Put bottles no order is waiting on onto the shelf
-                </button>
-                <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
-                  Bottles on an order that has not arrived stay on order until the delivery is received.
+            <>
+              {onOrder != null && Math.min(onOrder, shadow) > 0 && (
+                <p className="text-[11px] text-gray-400 mt-3 leading-relaxed">
+                  {Math.min(onOrder, shadow)} bottle{Math.min(onOrder, shadow) === 1 ? ' is' : 's are'} on order. {Math.min(onOrder, shadow) === 1 ? 'It comes' : 'They come'} onto the shelf when the delivery is received.
                 </p>
-              </>
-            ) : (
-              <p className="text-[11px] text-gray-400 mt-3 leading-relaxed">
-                {shadow} bottle{shadow === 1 ? ' is' : 's are'} on order. {shadow === 1 ? 'It comes' : 'They come'} onto the shelf when the delivery is received.
-              </p>
-            )
+              )}
+              {toConfirm !== 0 && (toConfirm != null || !ordersQ.isPending) && (
+                <p className="text-[11px] text-gray-500 mt-3 leading-relaxed">
+                  {toConfirm == null
+                    ? 'Some of these bottles may have no order waiting on them. They are not counted as on the shelf until someone counts it.'
+                    : `${toConfirm} bottle${toConfirm === 1 ? '' : 's'} to confirm by count. No order is waiting on ${toConfirm === 1 ? 'it' : 'them'}, so ${toConfirm === 1 ? 'it is' : 'they are'} not counted as on the shelf until someone counts it.`}
+                </p>
+              )}
+              {toConfirm !== 0 && canSetPar && (
+                <form
+                  className="flex items-center gap-2 mt-2"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    if (confirmValid) confirm.mutate(confirmValue)
+                  }}
+                >
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    inputMode="numeric"
+                    aria-label="Bottles on the shelf now"
+                    placeholder="On the shelf now"
+                    value={confirmDraft}
+                    onChange={(e) => setConfirmDraft(e.target.value)}
+                    className="flex-1 min-w-0 h-9 px-2.5 border border-gray-200 rounded-lg text-xs font-mono"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!confirmValid || confirm.isPending}
+                    className="h-9 px-3 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-lg disabled:opacity-60"
+                  >
+                    Save the count
+                  </button>
+                </form>
+              )}
+            </>
           ) : (
             <p className="text-[11px] text-gray-400 mt-3 leading-relaxed">Live and shadow are in sync. No reconciliation needed.</p>
           )}

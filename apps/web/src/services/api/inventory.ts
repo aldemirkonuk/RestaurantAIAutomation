@@ -166,13 +166,18 @@ export async function reconcileItem(
 }
 
 /**
- * Move an item's shadow bottles into live (F-1166). The server reads the
- * shadow and moves exactly that many, so a second press moves nothing.
+ * Confirm, by a count of the shelf, the bottles on order that no order holds
+ * (F-143 orphan shadow). They have no delivery behind them, so they post only
+ * through the count; the server records it with the one count writer and takes
+ * the leftover off the order book. `counted` is the bottles on the shelf now.
  */
-export async function reconcileShadowItem(inventoryId: string): Promise<{ moved: number }> {
-  const response = await apiClient.post<{ moved: number }>(
+export async function confirmShadowByCount(
+  inventoryId: string,
+  counted: number
+): Promise<{ cleared: number }> {
+  const response = await apiClient.post<{ cleared: number }>(
     `/inventory-ledger/inventory/${inventoryId}/reconcile-shadow`,
-    {}
+    { counted }
   );
   return response.data;
 }
