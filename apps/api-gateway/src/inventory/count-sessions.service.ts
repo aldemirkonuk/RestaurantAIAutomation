@@ -936,7 +936,12 @@ export class CountSessionsService {
       .update({
         done_by: userId,
         done_at: doneAt,
-        ...(shelf.claimed_by ? {} : { claimed_by: userId, claimed_at: doneAt }),
+        // An unclaimed shelf is claimed by whoever finished it. A claimed one
+        // keeps its claim: an undefined key is left out of the request body,
+        // so the columns are not written. Named keys rather than a spread, so
+        // the capture-contract guard can read every column this writes.
+        claimed_by: shelf.claimed_by ? undefined : userId,
+        claimed_at: shelf.claimed_by ? undefined : doneAt,
       })
       .eq("restaurant_id", house)
       .eq("session_id", sessionId)
