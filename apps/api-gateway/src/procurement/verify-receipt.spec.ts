@@ -202,6 +202,8 @@ function makeDb(opts: {
   doorEvents?: Row[];
   /** F-875. The read of the door's counts fails with this. */
   doorReadError?: { message: string } | null;
+  /** F-1640. The house's own currency on `restaurants`; absent = none on record. */
+  houseCurrency?: string | null;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -260,6 +262,9 @@ function makeDb(opts: {
 
         if (table === "procurement_order_items")
           return { data: opts.orderLineRow ?? null, error: null };
+
+        if (table === "restaurants" && opts.houseCurrency !== undefined)
+          return { data: { currency: opts.houseCurrency }, error: null };
 
         if (table === "procurement_receipt_events" && op === "insert" && opts.receiptEventError)
           return { data: null, error: opts.receiptEventError };
@@ -2081,6 +2086,48 @@ describe("verifyReceipt — purchases and the lot are booked at one price (F-700
     expect(calls.orderUpdates[0]).not.toHaveProperty("total_cost");
     expect(calls.orderUpdates[0]).not.toHaveProperty("total_estimated_cost");
     expect(calls.orderUpdates[0]).not.toHaveProperty("currency");
+  });
+
+  it("[REVERT-FAILS] keeps a no-money order's total in a lira house when the invoice is in euros (F-1640)", async () => {
+    // The order names no money, so every purchases reader sums it as lira.
+    const noCode = { ...agreed, final_price: 2400, total_cost: 28800 };
+    delete (noCode as any).currency;
+    const { db, calls } = makeDb({
+      orderRow: noCode,
+      bookedBottles: 12,
+      houseCurrency: "TRY",
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 12,
+      invoiceUnitPrice: 62,
+      invoiceCurrency: "EUR",
+      acceptedQuantity: 12,
+      priceOverrideReason: "billed in euros",
+    } as any);
+
+    expect(calls.orderUpdates[0]).not.toHaveProperty("total_cost");
+    expect(calls.orderUpdates[0]).not.toHaveProperty("total_estimated_cost");
+  });
+
+  it("still writes a no-money order's invoiced total when the invoice is in the house's money", async () => {
+    const noCode = { ...agreed, final_price: 2400, total_cost: 28800 };
+    delete (noCode as any).currency;
+    const { db, calls } = makeDb({
+      orderRow: noCode,
+      bookedBottles: 12,
+      houseCurrency: "TRY",
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 12,
+      invoiceUnitPrice: 2500,
+      invoiceCurrency: "TRY",
+      acceptedQuantity: 12,
+      priceOverrideReason: "price went up",
+    } as any);
+
+    expect(calls.orderUpdates[0].total_cost).toBe(30000);
   });
 
   it("still writes the invoiced total when the invoice is in the order's own money", async () => {

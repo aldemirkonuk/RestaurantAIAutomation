@@ -8611,10 +8611,19 @@ export class ProcurementService {
       // order keeps its own total in its own money and the invoice keeps its
       // total, in its money, on the invoice — the same guard the lot cost
       // below takes. A money not stated on either side reads as before.
+      //
+      // AN ORDER THAT NAMES NO MONEY IS IN THE HOUSE'S (F-1640). Every
+      // purchases reader sums a no-code order under the house's currency
+      // (month close, vendor spend), so a euro invoice on a lira house's
+      // no-code order would book euros as lira. The house's money stands in
+      // for the order's here only; a house with none on record reads as before.
+      const invoiceMoney = currencyCode(body.invoiceCurrency);
       const orderTotalMoney =
         currencyCode((orderRow as any).currency) ??
-        currencyCode(agreedLine.currency);
-      const invoiceMoney = currencyCode(body.invoiceCurrency);
+        currencyCode(agreedLine.currency) ??
+        (invoicedTotal != null && invoiceMoney != null
+          ? await this.readHouseCurrency(restaurantId)
+          : null);
       const otherMoney =
         orderTotalMoney != null &&
         invoiceMoney != null &&

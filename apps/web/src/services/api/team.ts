@@ -268,7 +268,8 @@ export interface TeamSettings {
 }
 
 /** Why the house benchmark has a median, or none (ADR 0294; `performance.service.ts`). */
-export type PerformanceBenchmarkState = 'computed' | 'self-only' | 'no-covers' | 'unreadable'
+/** `withheld`: a staff member's own card while fewer than 5 servers feed the median (F-1636). */
+export type PerformanceBenchmarkState = 'computed' | 'self-only' | 'no-covers' | 'unreadable' | 'withheld'
 
 export interface MemberPerformance {
   hasData: boolean

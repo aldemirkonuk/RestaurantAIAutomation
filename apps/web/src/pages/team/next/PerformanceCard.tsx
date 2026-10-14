@@ -96,6 +96,9 @@ function benchmarkLine(
       return `The house benchmark is ${EM}: none of the restaurant's ${ceiling} most recent services records covers with its sales, so there is no per-cover figure to compare against.`;
     case 'unreadable':
       return `The house benchmark is ${EM}: the restaurant's recent services could not be read, so these figures stand alone rather than above or below anything.`;
+    case 'withheld':
+      // STAFF_BENCHMARK_MIN_SERVERS in performance.service.ts (F-1636, F-1642).
+      return `The house benchmark is ${EM}: staff see it only once 5 or more servers' recent services feed it, so no colleague's sales per cover can be worked out from it.`;
     default:
       return alone;
   }
