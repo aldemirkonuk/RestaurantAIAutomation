@@ -42,6 +42,7 @@ export type TimelineSource =
   | 'pos_checks'
   | 'decision_log'
   | 'inventory_transactions'
+  | 'pour_events'
   | 'procurement_documents'
   | 'system_audit_log'
   | 'event_store';
@@ -74,6 +75,7 @@ export const SOURCE_ORDER: TimelineSource[] = [
   'pos_checks',
   'decision_log',
   'inventory_transactions',
+  'pour_events',
   'procurement_documents',
   'system_audit_log',
   'event_store',
@@ -83,6 +85,7 @@ const SOURCE_LABEL: Record<TimelineSource, string> = {
   pos_checks: 'Till',
   decision_log: 'Agent',
   inventory_transactions: 'Stock',
+  pour_events: 'Pour',
   procurement_documents: 'Paper',
   system_audit_log: 'Audit',
   event_store: 'Event',
@@ -93,6 +96,7 @@ const SOURCE_NAME: Record<TimelineSource, string> = {
   pos_checks: 'the till',
   decision_log: 'the agents',
   inventory_transactions: 'stock movements',
+  pour_events: 'glasses poured by hand',
   procurement_documents: 'the paper',
   system_audit_log: 'the audit trail',
   event_store: 'the event store',
@@ -103,6 +107,8 @@ const SOURCE_DESCRIPTION: Record<TimelineSource, string> = {
   pos_checks: 'Checks the till opened and closed',
   decision_log: 'What an agent decided, and how sure it was',
   inventory_transactions: 'Every movement the stock ledger booked',
+  // F-1597: a hand pour opens no ledger row unless it opens a bottle.
+  pour_events: 'Every glass a person poured by hand, and who',
   procurement_documents: 'Invoices, receipts and credits that arrived',
   system_audit_log: 'Who changed what, and why they said they did',
   event_store: 'The platform event stream, read only along a thread',
@@ -412,6 +418,8 @@ export function linkOutFor(e: TimelineEvent, ctx: LinkContext): LinkOut | null {
         : { to: `/receipts?doc=${e.id}`, label: 'Open in receipts' };
     case 'inventory_transactions':
       return { to: '/inventory', label: 'Open the stock ledger' };
+    case 'pour_events':
+      return { to: '/inventory', label: 'Open the stock' };
     case 'pos_checks':
       if (!ctx.posLogAvailable || !ctx.restaurantId) return null;
       return { to: `/simpos/${ctx.restaurantId}/orders`, label: 'Open the till log' };

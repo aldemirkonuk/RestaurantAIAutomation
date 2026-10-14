@@ -20,10 +20,11 @@ import { recordedCost, type InventoryItem } from '../useInventoryPage'
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
 import { fmtMoneyExact, fmtOneDecimal, marketDeltaPct, daysSinceCounted, shelfCountLine, HoursHeatmap, runwayDays, reorderAdvice, velocityLabel, ASSUMED_LEAD_DAYS } from './bits'
 import { getHouseLocale } from '../../../lib/houseCurrency'
+import { useHouseZone } from '../../../lib/houseZone'
 import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel, shelvesFor } from './SpotCountPanel'
 import { NameThisWine } from './NameThisWine'
-import { newClientCountId } from '../../../lib/spotCountOutbox'
+import { useDraftWriteKey, writeOutcomeUnknown } from '../../../lib/draftWriteKey'
 import { getActiveRestaurantId } from '../../../services/api/client'
 import SoldOutControl from '../../cellar/next/SoldOutControl'
 
@@ -74,6 +75,16 @@ function KV({ k, v, tone }: { k: string; v: React.ReactNode; tone?: 'green' | 'a
   )
 }
 
+/** When a hand pour was recorded, on the house's clock (F-1597). */
+function pouredAt(iso: string, zone: string | null | undefined): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 16)
+  const tz = zone ? { timeZone: zone } : {}
+  const day = d.toLocaleDateString(getHouseLocale(), { day: 'numeric', month: 'numeric', ...tz })
+  const time = d.toLocaleTimeString(getHouseLocale(), { hour: '2-digit', minute: '2-digit', ...tz })
+  return `${day} ${time}`
+}
+
 /** A read that did not answer, worded the way ReceiptDepth says it (F-705). */
 function ReadFailed({ what, retry }: { what: string; retry: () => void }) {
   return (
@@ -103,6 +114,28 @@ const TAKE_OFF_ONLY: Record<string, string> = {
   'Comp / gift': 'A comp',
   'Staff pour': 'A staff pour',
 }
+
+/**
+ * How each reason goes on the ledger, as the Remove modal files it (F-1596,
+ * after F-1539): a broken bottle is written off and a comp is given on the
+ * house, never "Stock adjusted". A staff pour is a bottle given to the team
+ * (the modal's "comp / staff gift"). A bottle back to the vendor stays an
+ * adjustment: 'return' on this ledger is a bottle coming back IN.
+ */
+const ADJUST_MOVEMENT: Record<string, 'adjustment' | 'waste' | 'comp' | 'correction'> = {
+  'Count correction': 'correction',
+  Breakage: 'waste',
+  'Comp / gift': 'comp',
+  'Staff pour': 'comp',
+  'Return to vendor': 'adjustment',
+}
+
+/**
+ * A move whose answer never came back may have landed (F-1594). The key is
+ * held, so pressing again with nothing changed cannot book it twice.
+ */
+const NOT_CONFIRMED =
+  'The answer did not come back, so it may have been saved. Check the stock before changing anything; pressing again as it is will not book it twice.'
 
 export function RowExpansion({
   item,
@@ -138,6 +171,13 @@ export function RowExpansion({
   const [reason, setReason] = useState('Count correction')
   const [showSpotCount, setShowSpotCount] = useState(startCounting)
   const [pouring, setPouring] = useState(false)
+  // F-1594: one key per intended act, held until it lands. A reply lost to a
+  // timeout left the bottles moved and the page saying "failed"; the next tap
+  // minted a new key and booked them again. The same act re-sent now carries
+  // the same key, which the gateway answers with the first result.
+  const adjustKey = useDraftWriteKey(`adjust:${inventoryId}`)
+  const pourKey = useDraftWriteKey(`pour:${inventoryId}`)
+  const transferKey = useDraftWriteKey(`transfer:${inventoryId}`)
   // F-1163: the place a manual adjust or a pour comes off, picked the way the
   // spot count picks its shelf. Unpicked, the bottle came off the oldest lot
   // anywhere -- a bottle broken at the bar was taken out of the cellar.
@@ -165,6 +205,8 @@ export function RowExpansion({
     staleTime: 5 * 60_000,
   })
   const activity = activityQ.data
+  const zone = useHouseZone()
+  const handPours = activity?.handPours
 
   // This wine's orders, every page (F-1538): the house's newest 50 left an
   // older wine's On order, history and suggestion short.
@@ -233,21 +275,30 @@ export function RowExpansion({
   // the list's cached stock (refreshed once a minute) lost a second manager's
   // "-1 Breakage" and put back bottles the till had sold since the page loaded.
   const adjust = useMutation({
-    mutationFn: (p: { quantityChange: number; reason: string }) =>
-      adjustStock(inventoryId, {
-        wineId: item.id || undefined,
+    mutationFn: (p: { quantityChange: number; reason: string }) => {
+      const act = {
         quantityChange: p.quantityChange,
         reason: p.reason,
         // A take-off leaves FROM the shelf; bottles found go TO it.
         ...(shelfPicked ? { [p.quantityChange < 0 ? 'fromLocationId' : 'toLocationId']: shelfPicked } : {}),
-        idempotencyKey: `adjust:${inventoryId}:${newClientCountId()}`,
-      }),
+      }
+      return adjustStock(inventoryId, {
+        wineId: item.id || undefined,
+        ...act,
+        transactionType: ADJUST_MOVEMENT[p.reason] ?? 'adjustment',
+        idempotencyKey: adjustKey.keyFor(act),
+      })
+    },
     onSuccess: () => {
+      adjustKey.renew()
       invalidate()
       toast.success('Ledger updated')
       setDelta(0)
     },
-    onError: (e: any) => toast.error('Adjustment failed', e?.response?.data?.message || e?.message),
+    onError: (e: any) =>
+      writeOutcomeUnknown(e)
+        ? toast.error('Adjustment not confirmed', NOT_CONFIRMED)
+        : toast.error('Adjustment failed', e?.response?.data?.message || e?.message),
   })
 
   /**
@@ -257,29 +308,35 @@ export function RowExpansion({
    * no matter which shelf the manager meant.
    */
   const doTransfer = async (fromLocationId: string | null, toLocationId: string, qty: number) => {
+    const act = { fromLocationId, toLocationId, qty, reason: 'manual transfer' }
     try {
-      await transferStock(inventoryId, { fromLocationId, toLocationId, qty, reason: 'manual transfer' })
+      await transferStock(inventoryId, { ...act, idempotencyKey: transferKey.keyFor(act) })
+      transferKey.renew()
       invalidate()
       toast.success(`Moved ${qty} bottle${qty === 1 ? '' : 's'}`)
     } catch (e: any) {
-      toast.error('Transfer failed', e?.response?.data?.message || e?.message)
+      if (writeOutcomeUnknown(e)) toast.error('Move not confirmed', NOT_CONFIRMED)
+      else toast.error('Transfer failed', e?.response?.data?.message || e?.message)
       throw e
     }
   }
 
   const pour = async () => {
     setPouring(true)
+    const act = {
+      pours: 1,
+      source: 'manual',
+      reason: 'manual pour',
+      ...(shelfPicked ? { locationId: shelfPicked } : {}),
+    }
     try {
-      await recordPour(inventoryId, {
-        pours: 1,
-        source: 'manual',
-        reason: 'manual pour',
-        ...(shelfPicked ? { locationId: shelfPicked } : {}),
-      })
+      await recordPour(inventoryId, { ...act, idempotencyKey: pourKey.keyFor(act) })
+      pourKey.renew()
       invalidate()
       toast.success('Pour recorded')
     } catch (e: any) {
-      toast.error('Pour failed', e?.response?.data?.message || e?.message)
+      if (writeOutcomeUnknown(e)) toast.error('Pour not confirmed', NOT_CONFIRMED)
+      else toast.error('Pour failed', e?.response?.data?.message || e?.message)
     } finally {
       setPouring(false)
     }
@@ -308,7 +365,18 @@ export function RowExpansion({
       {/* A wine whose name cannot say which wine it is (founder, 2026-09-21). */}
       <NameThisWine inventoryId={item.inventoryId} currentName={item.name} />
       {/* F-145 (S195): a drink is 86'd here as on the cellar's bottle leaf. */}
-      {inventoryId && <SoldOutControl restaurantId={getActiveRestaurantId() || null} inventoryId={inventoryId} />}
+      {inventoryId && (
+        <SoldOutControl
+          restaurantId={getActiveRestaurantId() || null}
+          inventoryId={inventoryId}
+          // F-1598: "it broke" fills in Manual adjust below as breakage; the
+          // person picks the shelf if asked and presses Apply.
+          onTakeOffBroken={() => {
+            setReason('Breakage')
+            setDelta((d) => (d < 0 ? d : -1))
+          }}
+        />
+      )}
       {/* info strip */}
       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pb-3.5 mb-3.5 border-b border-gray-100">
         {[
@@ -527,6 +595,30 @@ export function RowExpansion({
             <p className="text-[11px] text-gray-400">Heatmap builds as POS sales come in.</p>
           )}
         </Card>
+
+        {/* F-1597: who poured a glass by hand, and when. Absent from an older gateway. */}
+        {activityQ.isSuccess && handPours !== undefined && (handPours === null || handPours.length > 0) && (
+          <Card title="Poured by hand, last 28 days">
+            {handPours === null ? (
+              <p className="text-[11px] text-gray-500" data-testid="hand-pours-unread">
+                The pours recorded by hand could not be read just now. This is not a night with none.
+              </p>
+            ) : (
+              <div data-testid="hand-pours">
+                {handPours.map((p, i) => (
+                  <div key={`${p.at}-${i}`} className="flex items-center gap-2.5 py-1.5 border-t border-gray-50 first:border-t-0 text-xs">
+                    <span className="font-mono text-[11px] text-gray-500 w-24 shrink-0">{pouredAt(p.at, zone)}</span>
+                    <span className="flex-1 text-gray-700 truncate">{p.byName ?? 'Not recorded who'}</span>
+                    <span className="font-mono text-gray-700">
+                      {p.glasses} glass{p.glasses === 1 ? '' : 'es'}
+                      {p.bottlesOpened > 0 ? `, opened ${p.bottlesOpened}` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        )}
 
         {/* order history */}
         <Card title="Order history">

@@ -11,11 +11,16 @@
  * such -- never shown as "not sold out" (the same rule as PriceLockNote).
  */
 import { useState } from 'react';
+import { Link, useInRouterContext } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, getErrorMessage } from '../../../services/api/client';
 import { getHouseLocale } from '../../../lib/houseCurrency';
 import { useHouseZone } from '../../../lib/houseZone';
 import { queryKeys } from '../../../lib/query-keys';
+// F-1600: the control sits on /inventory too, which loads before any cellar or
+// menu chunk; without its own sheet `.cl-note`/`.cl-btn` drew as bare buttons.
+// Every rule in the sheet is scoped to a `.cl-` class.
+import './cellar-next.css';
 
 export type StockOutCause = 'ran_out' | 'broken' | 'pulled' | 'other';
 
@@ -111,12 +116,41 @@ export function pastWords(s: StockOut, zone?: string | null): string {
   return `${when(s.startedAt, zone)} (${CAUSE_WORDS[s.cause] ?? s.cause})`;
 }
 
+/**
+ * Where a broken bottle comes off stock from the cellar's leaf, which has no
+ * take-off of its own (F-1598): Inventory's Manual adjust. A link only inside
+ * a router; the words stand on their own without one.
+ */
+function TakeOffOnInventory({ wineName }: { wineName?: string }) {
+  const inRouter = useInRouterContext();
+  const words = 'take it off on Inventory: open this wine, Manual adjust, reason Breakage';
+  if (!inRouter) return <>{words.charAt(0).toUpperCase() + words.slice(1)}.</>;
+  const to = wineName ? `/inventory?wine=${encodeURIComponent(wineName)}` : '/inventory';
+  return (
+    <>
+      <Link to={to} data-testid="sold-out-broken-link">
+        Take it off on Inventory
+      </Link>
+      : open this wine, Manual adjust, reason Breakage.
+    </>
+  );
+}
+
 export default function SoldOutControl({
   restaurantId: house,
   inventoryId,
+  onTakeOffBroken,
+  wineName,
 }: {
   restaurantId: string | null;
   inventoryId: string;
+  /**
+   * The page has a take-off of its own (the /inventory row's Manual adjust):
+   * "it broke" offers to fill it in as breakage (F-1598).
+   */
+  onTakeOffBroken?: () => void;
+  /** For the link to this wine on Inventory, where the page has no take-off. */
+  wineName?: string;
 }) {
   const qc = useQueryClient();
   const zone = useHouseZone();
@@ -214,8 +248,17 @@ export default function SoldOutControl({
       )}
       {!open && cause === 'broken' ? (
         <p className="cl-note" data-testid="sold-out-broken-stock">
-          This does not take the broken bottle off stock. Record it as breakage
-          in the count too, or the books still hold it.
+          {/* F-1598: a count has no breakage reason, so a bottle counted
+              short reads as missing, not broken. Breakage is a take-off. */}
+          This does not take the broken bottle off stock, and a count would
+          take it as missing, not broken.{' '}
+          {onTakeOffBroken ? (
+            <button type="button" className="cl-btn" onClick={onTakeOffBroken} data-testid="sold-out-broken-take-off">
+              Take it off as breakage
+            </button>
+          ) : (
+            <TakeOffOnInventory wineName={wineName} />
+          )}
         </p>
       ) : null}
       {failed ? (

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AxiosError } from 'axios'
 import { RowExpansion } from './RowExpansion'
 import type { InventoryItem } from '../useInventoryPage'
 import { setHouseLocale } from '../../../lib/houseCurrency'
@@ -19,6 +20,7 @@ const recordSpotCount = vi.hoisted(() => vi.fn())
 const updateInventoryItem = vi.hoisted(() => vi.fn())
 const recordPour = vi.hoisted(() => vi.fn())
 const activeHouse = vi.hoisted(() => ({ id: '' }))
+const toastApi = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }))
 vi.mock('../../../services/api/inventory', async () => {
@@ -40,7 +42,7 @@ vi.mock('../../../services/api/client', async () => {
   return { ...actual, getActiveRestaurantId: () => activeHouse.id }
 })
 vi.mock('../../../stores', () => ({
-  useNotificationStore: () => ({ success: vi.fn(), error: vi.fn() }),
+  useNotificationStore: () => toastApi,
 }))
 // The real select renders a portal/popover; a native one stands in so the
 // reason can be picked (F-1163).
@@ -196,6 +198,7 @@ describe('RowExpansion — moving bottles between locations', () => {
       toLocationId: 'loc-b',
       qty: 1,
       reason: 'manual transfer',
+      idempotencyKey: expect.stringMatching(/^transfer:inv-1:/),
     })
   })
 
@@ -916,5 +919,200 @@ describe('RowExpansion — velocity is sales', () => {
     expect(await screen.findByTitle('2026-10-08: 2 sold')).toBeInTheDocument()
     expect(screen.getByTitle('2026-10-09: 0 sold')).toBeInTheDocument()
     expect(screen.queryByTitle(/: 12/)).not.toBeInTheDocument()
+  })
+})
+
+/** A request that went out and got nothing back: a timeout or a dropped reply. */
+const lostReply = () => new AxiosError('timeout of 30000ms exceeded', 'ECONNABORTED', undefined, {})
+
+/**
+ * F-1594: a pour, an adjust or a move whose reply was lost said "failed", and
+ * the next tap minted a new key, so a second movement landed. The same act
+ * re-sent now carries the same key (the gateway answers it with the first
+ * result), and a lost reply is said as not confirmed, not failed.
+ */
+describe('RowExpansion — a re-tap after a lost reply books once (F-1594)', () => {
+  const shelves = [
+    { id: 'loc-cellar', name: 'Cellar', capacity: null, currentCount: 0, color: '' },
+    { id: 'loc-bar', name: 'Bar', capacity: null, currentCount: 0, color: '' },
+  ]
+  const split = {
+    liveStock: 8,
+    saleType: 'glass',
+    locations: [
+      { locationId: 'loc-cellar', qty: 5, wac: null },
+      { locationId: 'loc-bar', qty: 3, wac: null },
+    ],
+  } as Partial<InventoryItem>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrderBook.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('[REVERT-FAILS] a manual adjust re-sent after a lost reply carries the same key; the next act a new one', async () => {
+    adjustStock.mockRejectedValueOnce(lostReply()).mockResolvedValue({})
+    renderRow({ liveStock: 10 })
+    await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(toastApi.error).toHaveBeenCalledWith('Adjustment not confirmed', expect.stringMatching(/may have been saved/)))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(adjustStock).toHaveBeenCalledTimes(2))
+    expect(adjustStock.mock.calls[1][1].idempotencyKey).toBe(adjustStock.mock.calls[0][1].idempotencyKey)
+
+    // Landed: the same words again on purpose are a second act.
+    await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(adjustStock).toHaveBeenCalledTimes(3))
+    expect(adjustStock.mock.calls[2][1].idempotencyKey).not.toBe(adjustStock.mock.calls[0][1].idempotencyKey)
+  })
+
+  it('[REVERT-FAILS] a changed adjust after a lost reply is a different act, with a different key', async () => {
+    adjustStock.mockRejectedValueOnce(lostReply()).mockResolvedValue({})
+    renderRow({ liveStock: 10 })
+    await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(toastApi.error).toHaveBeenCalled())
+    await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(adjustStock).toHaveBeenCalledTimes(2))
+    expect(adjustStock.mock.calls[1][1].idempotencyKey).not.toBe(adjustStock.mock.calls[0][1].idempotencyKey)
+  })
+
+  it('[REVERT-FAILS] a pour re-tapped after a lost reply carries the same key', async () => {
+    recordPour.mockRejectedValueOnce(lostReply()).mockResolvedValue({ pour: {}, item: null })
+    renderRow(split, shelves)
+    await userEvent.selectOptions(screen.getByLabelText('Which shelf'), 'loc-bar')
+    await userEvent.click(screen.getByRole('button', { name: 'Record pour' }))
+    await waitFor(() => expect(toastApi.error).toHaveBeenCalledWith('Pour not confirmed', expect.any(String)))
+    await userEvent.click(screen.getByRole('button', { name: 'Record pour' }))
+    await waitFor(() => expect(recordPour).toHaveBeenCalledTimes(2))
+    const first = recordPour.mock.calls[0][1].idempotencyKey
+    expect(first).toMatch(/^pour:inv-1:/)
+    expect(recordPour.mock.calls[1][1].idempotencyKey).toBe(first)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Record pour' }))
+    await waitFor(() => expect(recordPour).toHaveBeenCalledTimes(3))
+    expect(recordPour.mock.calls[2][1].idempotencyKey).not.toBe(first)
+  })
+
+  it('[REVERT-FAILS] a move re-sent after a lost reply carries the same key', async () => {
+    transferStock.mockRejectedValueOnce(lostReply()).mockResolvedValue({})
+    renderRow(split, shelves)
+    const move = async () => {
+      await userEvent.click(screen.getByTitle('Click to move bottles between locations'))
+      const [from, to] = screen.getAllByRole('combobox').slice(-2)
+      await userEvent.selectOptions(from, 'loc-cellar')
+      await userEvent.selectOptions(to, 'loc-bar')
+      await userEvent.click(screen.getByRole('button', { name: /^move$/i }))
+    }
+    await move()
+    await waitFor(() => expect(toastApi.error).toHaveBeenCalledWith('Move not confirmed', expect.any(String)))
+    if (!screen.queryByRole('button', { name: /^move$/i })) await move()
+    else await userEvent.click(screen.getByRole('button', { name: /^move$/i }))
+    await waitFor(() => expect(transferStock).toHaveBeenCalledTimes(2))
+    expect(transferStock.mock.calls[1][1].idempotencyKey).toBe(transferStock.mock.calls[0][1].idempotencyKey)
+  })
+
+  it('a refusal is still said as a failure, with the reason', async () => {
+    adjustStock.mockRejectedValueOnce({ response: { status: 400, data: { message: 'Not enough on that shelf' } } })
+    renderRow({ liveStock: 10 })
+    await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(toastApi.error).toHaveBeenCalledWith('Adjustment failed', 'Not enough on that shelf'))
+  })
+})
+
+/**
+ * F-1596 (rehit of F-144): the row's Manual adjust sent no type, so a broken
+ * bottle was "Stock adjusted" from the row and "Written off" from the Remove
+ * modal, and a comp was never "Given on the house".
+ */
+describe('RowExpansion — breakage and a comp go in typed (F-1596)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrderBook.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+    adjustStock.mockResolvedValue({})
+  })
+
+  it('[REVERT-FAILS] files each reason the way the Remove modal does', async () => {
+    renderRow({ liveStock: 10 })
+    const sent: Record<string, string> = {}
+    for (const why of ['Breakage', 'Comp / gift', 'Staff pour', 'Count correction', 'Return to vendor']) {
+      await userEvent.click(screen.getByRole('button', { name: 'Decrease manual adjustment' }))
+      await userEvent.selectOptions(screen.getByLabelText('Reason'), why)
+      await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+      await waitFor(() => expect(adjustStock).toHaveBeenCalledTimes(Object.keys(sent).length + 1))
+      sent[why] = adjustStock.mock.calls.at(-1)![1].transactionType
+    }
+    expect(sent).toEqual({
+      Breakage: 'waste',
+      'Comp / gift': 'comp',
+      'Staff pour': 'comp',
+      'Count correction': 'correction',
+      'Return to vendor': 'adjustment',
+    })
+  })
+})
+
+/**
+ * F-1597: a glass poured by hand reached the ledger only when it opened a
+ * bottle, so the row showed nobody's pours. They are listed with who and when.
+ */
+describe('RowExpansion — glasses poured by hand are listed (F-1597)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getOrderBook.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+  const base = { daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } }
+
+  it('[REVERT-FAILS] names who poured, and how many glasses', async () => {
+    getItemActivity.mockResolvedValue({
+      ...base,
+      handPours: [{ at: '2026-10-09T21:40:00Z', glasses: 1, pourMl: 150, bottlesOpened: 0, byName: 'Ayşe Demir' }],
+    })
+    renderRow()
+    const list = await screen.findByTestId('hand-pours')
+    expect(list).toHaveTextContent('Ayşe Demir')
+    expect(list).toHaveTextContent('1 glass')
+  })
+
+  it('says the pours could not be read, never that there were none', async () => {
+    getItemActivity.mockResolvedValue({ ...base, handPours: null })
+    renderRow()
+    expect(await screen.findByTestId('hand-pours-unread')).toHaveTextContent(/could not be read/)
+  })
+})
+
+/** F-1598: "it broke" on the row fills in Manual adjust as breakage. */
+describe('RowExpansion — a broken bottle is taken off as breakage (F-1598)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrderBook.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  it('[REVERT-FAILS] sets -1 Breakage below for the person to apply', async () => {
+    const { apiClient } = await import('../../../services/api/client')
+    activeHouse.id = 'house-1'
+    const get = vi.spyOn(apiClient, 'get').mockResolvedValue({ data: { open: null, recent: [] } } as any)
+    try {
+      renderRow({ liveStock: 4 })
+      fireEvent.change(await screen.findByTestId('sold-out-cause'), { target: { value: 'broken' } })
+      expect(screen.getByTestId('sold-out-broken-stock')).not.toHaveTextContent(/in the count/)
+      await userEvent.click(screen.getByTestId('sold-out-broken-take-off'))
+      expect(screen.getByLabelText('Manual adjustment -1')).toBeInTheDocument()
+      expect((screen.getByLabelText('Reason') as HTMLSelectElement).value).toBe('Breakage')
+    } finally {
+      get.mockRestore()
+      activeHouse.id = ''
+    }
   })
 })

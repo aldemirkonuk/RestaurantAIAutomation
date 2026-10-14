@@ -93,6 +93,9 @@ export function MultiLocationCell({
       await onTransfer(fromId, toId, qty)
       setOpen(false)
       setQtyText('1')
+    } catch {
+      // The caller has said why. The picker stays open on the same move, so
+      // pressing Move again re-sends it, under the same key (F-1594).
     } finally {
       setBusy(false)
     }

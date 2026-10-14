@@ -100,9 +100,9 @@ describe('lg-format — registers', () => {
   });
 
   it('drives the strip and the tally from ONE list, gateway extras appended', () => {
-    expect(displaySources(null)).toHaveLength(6);
-    expect(displaySources(['pos_checks', 'webhook_log'])).toHaveLength(7);
-    expect(displaySources(['pos_checks', 'webhook_log'])[6]).toBe('webhook_log');
+    expect(displaySources(null)).toHaveLength(7);
+    expect(displaySources(['pos_checks', 'webhook_log'])).toHaveLength(8);
+    expect(displaySources(['pos_checks', 'webhook_log'])[7]).toBe('webhook_log');
   });
 
   it('counts rows per register and lists names as a sentence', () => {
@@ -121,6 +121,11 @@ describe('lg-format — registers', () => {
 });
 
 describe('lg-format — the way out of the timeline', () => {
+  it('names a glass poured by hand, and sends it to the stock (F-1597)', () => {
+    expect(labelOf('pour_events')).toBe('Pour');
+    expect(linkOutFor(ev({ source: 'pour_events' }), CTX)).toEqual({ to: '/inventory', label: 'Open the stock' });
+  });
+
   it('sends a document to the canonical page when it is on, and to receipts with its id otherwise', () => {
     const doc = ev({ id: 'doc-1', source: 'procurement_documents' });
     expect(linkOutFor(doc, { ...CTX, documentPageOn: true })).toEqual({ to: '/documents/doc-1', label: 'Open the document' });
