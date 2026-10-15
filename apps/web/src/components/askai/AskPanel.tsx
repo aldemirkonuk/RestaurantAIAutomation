@@ -32,6 +32,16 @@
  * holds, so the ordinary case (nobody has ever switched away from Ask) never
  * spends a write. See the `hydratedMode` / `baselineModeRef` block below.
  *
+ * WHAT A CLOSE KEEPS. Closing unmounts this body, so the question in flight,
+ * its request id, the answers and the proposals live in `useAskSession`,
+ * owned by `useAskPanel` (ADR 0145, founder, 2026-10-01: "Keep answering
+ * (Recommended)"; the session's own note lists exactly what a close keeps).
+ * While a question is in flight the panel says so and stays busy, so asking
+ * again cannot buy a second answer, reopened or not. "Check again" re-sends
+ * the same id, which the gateway never charges twice for one person in one
+ * house. The session is one person's in one house: a branch switch in this
+ * tab starts it again, and this body with it (keyed by the session's scope).
+ *
  * WHERE IT SITS (ADR 0145, 2026-09-21 layout and 2026-09-25 fork 3):
  *   docked   at ≥ ~1280 px, in the counter's slot beside a live page; the
  *            counter folds to its counted strip. Not modal: no scrim, no
@@ -51,27 +61,15 @@ import { Link, useLocation } from 'react-router-dom'
 import { AlertCircle, CornerDownLeft, Loader2, MapPin, Sparkles } from 'lucide-react'
 import { AuthContext } from '../../contexts/AuthContext'
 import { useUserPreferences } from '../../hooks/useUserPreferences'
-import {
-  type AskAiCandidates,
-  type AskAiProposal,
-  listCandidates,
-  listOpenProposals,
-  proposeAction,
-} from '../../services/api/askAi'
-import { askApi, type AskFolio, type AskSubmit } from '../../services/api/ask'
+import { type AskAiCandidates, listCandidates, listOpenProposals } from '../../services/api/askAi'
+import type { AskFolio, AskSubmit } from '../../services/api/ask'
 import { getErrorMessage } from '../../services/api/client'
-import {
-  STAFF_LINE,
-  askFailure,
-  fmtValue,
-  folioView,
-  newRequestId,
-  type AskFailure,
-} from '../../pages/ask/next/ask-format'
+import { STAFF_LINE, fmtValue, folioView, newRequestId } from '../../pages/ask/next/ask-format'
 import { ProposalCard } from './ProposalCard'
 import { composeUtterance, derivePageContext } from './page-context'
 import { MODE_CONTRACT, MODE_WORD, suggestAskMode, type AskMode } from './ask-mode'
 import type { AskOpenDetail } from './events'
+import type { AskSession } from './useAskSession'
 import { Panel } from '../mudavym/Sheet'
 import './ask-panel.css'
 
@@ -83,15 +81,14 @@ const EXAMPLES: Record<AskMode, string[]> = {
 /** Said to staff in propose mode: they may draft; the seal is an owner's or a manager's. */
 export const STAFF_PROPOSE_LINE = 'You can propose an action. An owner or a manager seals it before anything runs.'
 
-/** How many of this sitting's answers the panel keeps in view; the rest are in the book at /ask. */
-const PANEL_FOLIOS = 5
-
 export interface AskPanelProps {
   placement: 'docked' | 'overlay'
   open: boolean
   onClose: () => void
   followUp?: AskOpenDetail['followUp'] | null
   onDropFollowUp?: () => void
+  /** Owned by the panel's owner (`useAskPanel`), so a close never drops a question in flight. */
+  session: AskSession
 }
 
 function ModeSwitch({ mode, onMode }: { mode: AskMode; onMode: (m: AskMode) => void }) {
@@ -174,10 +171,12 @@ function AskPanelBody({
   open,
   followUp,
   onDropFollowUp,
+  session,
 }: {
   open: boolean
   followUp: AskOpenDetail['followUp'] | null
   onDropFollowUp?: () => void
+  session: AskSession
 }) {
   const location = useLocation()
   const auth = useContext(AuthContext)
@@ -186,7 +185,23 @@ function AskPanelBody({
 
   const [mode, setMode] = useState<AskMode>('ask')
   const [text, setText] = useState('')
-  const [busy, setBusy] = useState(false)
+  // What was asked, what came back and what is still being answered live in
+  // the session, which outlives this body; a close unmounts the body.
+  const { folios, failure, lastRequest, refusal, error, proposals, pending, setProposals, clearRefusal } = session
+  const busy = pending !== null
+  /**
+   * An answer that lands after a close must not drop the follow-up a later
+   * open carried in: that is the owner's state, not this body's. Clearing
+   * `text` needs no such guard, since it is this body's own state and a close
+   * discards it.
+   */
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   // Which mode this open starts on: the person's LAST USED mode, never a
   // per-device guess (ADR 0145, founder round 7). `askLastMode` lives on the
@@ -230,18 +245,6 @@ function AskPanelBody({
     updatePreferences({ askLastMode: mode })
   }, [hydratedMode, mode, updatePreferences])
 
-  // Ask the books.
-  const [folios, setFolios] = useState<AskFolio[]>([])
-  const [failure, setFailure] = useState<AskFailure | null>(null)
-  /** Kept so "Check again" re-sends the SAME request id (the gateway returns the saved folio, never pays twice). */
-  const [lastRequest, setLastRequest] = useState<AskSubmit | null>(null)
-
-  // Propose an action — AskAiBar's flow, moved here whole.
-  /** The gateway's reason for declining, with the words it declined. Always rendered when present. */
-  const [refusal, setRefusal] = useState<{ reason: string; utterance: string } | null>(null)
-  /** A transport/5xx failure — different from a refusal, and said differently. */
-  const [error, setError] = useState<string | null>(null)
-  const [proposals, setProposals] = useState<AskAiProposal[]>([])
   /**
    * The waiting proposals could not be read. Said in words (ADR 0145 build
    * task 14: AskAiBar's `.catch(() => {})` let "none waiting" and "could not
@@ -275,7 +278,7 @@ function AskPanelBody({
     return () => {
       cancelled = true
     }
-  }, [open])
+  }, [open, setProposals])
 
   // The cards' id pickers, once per open (not per card). A failure leaves
   // `null`, the read-only fallback; the sealed apply still works.
@@ -292,48 +295,23 @@ function AskPanelBody({
     }
   }, [open])
 
+  const { sendAsk: sessionAsk, sendPropose: sessionPropose, checkFolio: sessionCheck } = session
   const sendAsk = useCallback(
     async (req: AskSubmit) => {
-      setBusy(true)
-      setFailure(null)
-      setLastRequest(req)
-      try {
-        const saved = await askApi.submit(req, 'panel')
-        setFolios((prev) => [saved, ...prev.filter((f) => f.id !== saved.id)].slice(0, PANEL_FOLIOS))
-        setLastRequest(null)
-        setText('')
-        onDropFollowUp?.()
-      } catch (e) {
-        setFailure(askFailure(e))
-      } finally {
-        setBusy(false)
-      }
+      const answered = await sessionAsk(req)
+      if (!answered) return
+      setText('')
+      if (mountedRef.current) onDropFollowUp?.()
     },
-    [onDropFollowUp],
+    [onDropFollowUp, sessionAsk],
   )
 
   const sendPropose = useCallback(
     async (words: string) => {
-      setBusy(true)
-      setRefusal(null)
-      setError(null)
-      try {
-        const result = await proposeAction(composeUtterance(words, sendContext ? pageContext : null))
-        if (!result.proposed || !result.proposal) {
-          // The honest answer, shown in full. The text is kept so the
-          // operator can adjust two words instead of retyping the sentence.
-          setRefusal({ reason: result.reason ?? 'Mudavym declined, without a reason.', utterance: words })
-          return
-        }
-        setProposals((prev) => [result.proposal!, ...prev])
-        setText('')
-      } catch (err) {
-        setError(getErrorMessage(err))
-      } finally {
-        setBusy(false)
-      }
+      const proposed = await sessionPropose(words, composeUtterance(words, sendContext ? pageContext : null))
+      if (proposed) setText('')
     },
-    [pageContext, sendContext],
+    [pageContext, sendContext, sessionPropose],
   )
 
   const askTheBooks = useCallback(
@@ -353,17 +331,7 @@ function AskPanelBody({
     else void sendPropose(words)
   }, [askTheBooks, busy, mode, sendPropose, text])
 
-  const checkFolio = useCallback(async (f: AskFolio) => {
-    setBusy(true)
-    try {
-      const fresh = await askApi.folio(f.id)
-      setFolios((prev) => prev.map((x) => (x.id === fresh.id ? fresh : x)))
-    } catch (e) {
-      setFailure(askFailure(e))
-    } finally {
-      setBusy(false)
-    }
-  }, [])
+  const checkFolio = sessionCheck
 
   // The backends' own verdicts, offered as the other mode — a click each.
   const proposeInstead = useCallback(
@@ -377,11 +345,11 @@ function AskPanelBody({
   const askInstead = useCallback(
     (words: string) => {
       chooseMode('ask')
-      setRefusal(null)
+      clearRefusal()
       setText(words)
       void askTheBooks(words)
     },
-    [askTheBooks, chooseMode],
+    [askTheBooks, chooseMode, clearRefusal],
   )
 
   const suggestion = suggestAskMode(text)
@@ -467,6 +435,12 @@ function AskPanelBody({
       )}
 
       <div className="mdv-askp__results">
+        {pending && pending.kind !== 'check' && (
+          <p className="mdv-askp__note" role="status" data-testid="askpanel-pending" data-kind={pending.kind}>
+            {pending.kind === 'ask' ? 'Still answering' : 'Still drafting'} “{pending.words}”. Closing the panel keeps it.
+          </p>
+        )}
+
         {mode === 'ask' && failure && (
           <div role="alert" className="mdv-alert" data-testid="askpanel-failure" data-kind={failure.kind}>
             <p>{failure.message}</p>
@@ -521,7 +495,7 @@ function AskPanelBody({
           <section aria-label="Proposals waiting for a seal" className="mdv-askp__proposals">
             <p className="mdv-askp__eyebrow">Mudavym proposes · waiting for a seal</p>
             {proposals.map((p) => (
-              <ProposalCard key={p.actionId} proposal={p} candidates={candidates} />
+              <ProposalCard key={p.actionId} proposal={p} candidates={candidates} onSettled={session.settleProposal} />
             ))}
           </section>
         )}
@@ -575,9 +549,13 @@ function Foot() {
 const LABEL =
   'Ask Mudavym. Ask the books reads and answers; Propose an action drafts one action. Nothing is written without a seal; closing changes nothing.'
 
-export function AskPanel({ placement, open, onClose, followUp = null, onDropFollowUp }: AskPanelProps) {
+export function AskPanel({ placement, open, onClose, followUp = null, onDropFollowUp, session }: AskPanelProps) {
   if (!open) return null
-  const body = <AskPanelBody open={open} followUp={followUp} onDropFollowUp={onDropFollowUp} />
+  // Keyed by whose sitting it is: a branch switch in this tab with the panel
+  // open starts a fresh body, which re-reads that house's proposals and pickers.
+  const body = (
+    <AskPanelBody key={session.scope ?? ''} open={open} followUp={followUp} onDropFollowUp={onDropFollowUp} session={session} />
+  )
 
   if (placement === 'overlay') {
     return (

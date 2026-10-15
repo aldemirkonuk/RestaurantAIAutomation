@@ -298,7 +298,9 @@ panel are the two doors."*
 - **Build task 6, the folio table.** `ask_reading_folios`
   (migration `20260922220000`): a personal (`user_id ON DELETE CASCADE`),
   house-scoped (`restaurant_id`) record, written BEFORE the model call so a
-  resubmitted request id replays rather than paying twice; RLS,
+  resubmitted request id replays rather than paying twice [gate round 2 of
+  `fix/ask-close-no-second-spend`: for one person in one house; the key is
+  unique on house, person and id, line 26 of that migration]; RLS,
   `service_role` only. `ai_proposed_actions` gained `reading_folio_id` with an
   explicit `ON DELETE SET NULL` on the pointer column only, so deleting a
   person never fails 23503 on a proposal their Reading backed.
@@ -1971,6 +1973,593 @@ his):
   and its answer. The snapshot noticed this and did not decide it; neither
   does this record.
 
+## Amendment, 2026-10-01 -- closing the panel keeps the question in flight
+
+### The founder's answer
+
+Asked with `AskUserQuestion` on 2026-10-01: "If someone closes the Ask panel
+while it is still answering, what should happen to that question?" His pick,
+verbatim: "Keep answering (Recommended)". The option as offered: closing
+never drops the question; reopened, the panel shows "still answering" or the
+answer; "Check again" reuses the same id, so nothing is paid twice; an action
+being drafted is kept the same way. [Gate round 2: the option's words. The
+gateway's key makes "nothing is paid twice" hold for one id, for one person
+in one house; see "The defect it closes".] Rejected: "Keep, plus recent answers"
+(also list the person's latest panel answers from the server on every open),
+"Cancel on close" (the server has already started, so the first answer is
+still paid, and asking again still pays a second time) and "Ask before
+closing" (a step on every close, and a confirmed close keeps the second
+charge).
+
+### The defect it closes
+
+Found by the audit of PR #575 at a83e5cb78 (PR #575 comment 5942484816).
+`AskPanel` returns null when closed, in both placements, so its body
+unmounts. The body held the question in flight, its request id and the
+answers. Closing mid-answer (the panel's Close, Escape, ⌘⇧K, the counter strip's
+control, or since #575 the header's Counter button) dropped them. The
+gateway still answered and saved the folio, which was paid for. The panel
+reopened blank, and asking again minted a new request id, so the house paid a
+second time. The gateway already charges once per request id: a repeated id
+returns the saved folio, pending or finished (`bound-ask.service.ts`, "never
+duplicate paid work for one request id"). [Gate round 2: once per request id
+for one person in one house. The key is unique on house, person and id
+(`supabase/migrations/20260922220000_mudavym_bound_reading_folios.sql:26`),
+so the same id sent with another house's or person's token is a new call;
+see "Gate
+round 2".] So the fix is client-side only.
+
+### Built (branch `fix/ask-close-no-second-spend`, against `main` 5a330a88e)
+
+- `useAskSession` holds the answers, the failure, the request kept for "Check
+  again", the proposer's refusal or error, the waiting proposals and what is
+  in flight. `useAskPanel` owns it, so it lives as long as the shell, or the
+  legacy layout's `AskAiSurface`, not the panel's body. `AskPanel` takes it
+  as a required `session` prop, so a new owner cannot forget it.
+- From the moment a question or a draft is sent until it comes back, the
+  panel says "Still answering “…”. Closing the panel keeps it." (or "Still
+  drafting “…”") and stays busy. The line shows on every send, not only after
+  a reopen; reopened mid-answer, it is still there and the box is still
+  disabled, so the box cannot send a second question. The session also
+  refuses a second send while one is in flight. [Corrected in round 1: this
+  bullet said the line showed on reopening; it shows on every send. A folio
+  re-read ("Check again" on a pending folio) keeps the panel busy and shows
+  no line.]
+- An answer that lands after a close does not drop the follow-up a later
+  open carried in. [Corrected in round 1: this said it also did not clear a
+  later open's typing. That half was never at risk: the old body's `setText`
+  acts on its own unmounted state, and the box is disabled while busy.]
+- A reload still starts blank. The second option, which would have listed
+  recent answers from the server on every open, was not chosen.
+- The same rule now covers the header's Counter button too (PR #575, merged
+  `5a330a88e`): while Ask holds the counter's slot, that button closes Ask and
+  gives the slot back without rewriting the remembered counter width, the
+  same as the strip's control above.
+
+### Not built, not verified
+
+- The proposer takes no request id. Keeping the panel busy across a close
+  stops the second call from this panel, but a reload mid-draft, or a second
+  tab, can still pay twice. Giving `POST /ask-ai/propose` a request id is
+  gateway work this lane did not do.
+- Pre-existing and unchanged: when the panel opens, the waiting proposals
+  are re-read and replace the list. A proposal that lands while that read is
+  still in flight can be dropped from view until the next open. The server
+  still holds it. [Round 1: this note left out that holding the proposals in
+  the session made a sealed or discarded card come back on reopening as a
+  live card to seal, until the re-read replaced the list, and for good when
+  the re-read failed. That was new with this branch, not pre-existing, and
+  round 1 fixed it (below).]
+- No browser render; vitest only.
+
+### Round 1, 2026-10-01 -- the session is one person's in one house
+
+A Sonnet verify of the first build returned FIX.
+
+**The house-switch defect (blocker, found and fixed).** The session took no
+person or house. The shell is mounted once by the layout route and a branch
+switch happens in place, so house A's answers, failure and kept request
+showed in house B. "Check again" then re-sent house A's request id in house
+B, and since the once-per-id key includes the house, that was a new paid
+call. A house-A answer in flight landed in house B's list. Before this
+branch a close had cleared all of it. Now `useAskPanel` keys the session by
+`<person>@<house>`, the key "the house said" uses (`houseSaid.ts`), and a
+change starts the session again. As there, the first naming (no one yet,
+then someone) keeps what is there, since it is the same sitting. An epoch
+guards every answer, refusal, proposal and failure: one begun under the old
+key lands nowhere, and its end does not let go of a newer request's gate.
+The answer itself is still in that house's book at /ask. With the panel
+open, a switch also starts a fresh panel body, which re-reads the new
+house's waiting proposals and pickers. The follow-up "Keep asking" carried
+in is dropped, since it names a folio in the other house. [Gate round 2:
+fixed for a switch made in place in the same tab. Two routes still let a
+request carry another house's or person's token while the session holds the
+old scope, and are filed OPEN in the tech-debt fragment. One is a house or
+person switch made in another tab: the tabs share `localStorage`, the
+request interceptor reads the token from it on every call
+(`services/api/client.ts:74-84`), and nothing in the web app moves a tab's
+house or person on a `storage` event. "Check again" in the first tab can
+then be a new paid call in the other house or under the other person, and
+its answer lands under the first tab's scope. That route was already on `main`. The other is
+the interval in the same tab between `storeSession` and the render that
+moves the scope (`AuthContext.tsx:625-633`). See "Gate round 2".]
+
+**What a close keeps, exactly.** The ruling keeps the question in flight and
+its answer. The session keeps:
+
+- the question in flight, its request id and the answers (the last five);
+- a failure that offers "Check again" (a timeout, no reply, or a 503 other
+  than "not open yet"), with the request it re-sends; [Round 2: the code kept
+  one by its kind alone, so a folio re-read that timed out, with no request
+  behind it, came back after a reopen as an alert with no button. Fixed; see
+  "Round 2".]
+- the proposer's refusal of a drafted action, with the words it declined,
+  until the next draft or "Ask the books this instead" ("an action being
+  drafted is kept the same way");
+- the proposals still waiting for a seal.
+
+A close drops a failure with nothing to retry (429 "10 a minute", "not open
+yet", refused, rejected, any other failed request) and the proposer's
+transport error, so they no longer come back hours later or hide the
+examples. One that lands while the panel is closed is the outcome of the
+question in flight, so it is shown on the next open and dropped at that
+close. A proposal that was applied, discarded, already handled or failed
+leaves the list at the close, or at once if it settled while the panel was
+closed (the card reports it from its handler, so a reply that arrives after
+the close still counts). A reopen never shows it as a card to seal, even
+when the re-read fails. While the panel stays open, a done card keeps
+showing its outcome, as before.
+
+**Guards pinned.** The verify's mutations M1-M6 had all stayed green: no
+in-flight gate in `sendPropose` (M1) or `checkFolio` (M4), the pending line
+also shown for a re-read (M3), the refusal not cleared when a draft starts
+(M5), the failure not cleared on "Check again" (M6). Each now has a test
+that turns red. M2, the mounted guard on clearing the box after a draft, is
+removed rather than pinned: it guarded the body's own state, which a close
+discards. Every guard this round added is mutated too (listed in the review
+trail). [Corrected in round 2: not every one. Each of the 32 mutations round
+1 ran turned a test red, but four lines of the scope reset (clearing the
+proposals, the refusal and the error, and moving the bound scope on) were not
+among them, and the verify's mutations of those four stayed green; see
+"Round 2".] One,
+an epoch check on a folio re-read's answer, survived as an equivalent mutant
+and is removed: a scope change empties the answers, and a re-read only
+replaces an answer already in the list.
+
+**Corrected claims.** The first commit and the tech-debt fragment said six
+tests render the real owner; five did, and the sixth calls `useAskSession`
+through `renderHook`. They said each guard was mutation-tested; M1-M6
+survived. Both are corrected here and in the fragment; the first commit is
+not rewritten.
+
+### Round 2, 2026-10-01 -- what a close keeps, held to the panel's own test
+
+A Sonnet verify of round 1 returned FIX, with no blocker. Four defects
+remained: one in the code, which kept a failure that round 1's text said a
+close drops (below), and three tests the prose promised and did not have.
+
+**A failure with nothing to retry came back (fixed).** The close kept a
+failure by its kind (`checkAgain`). A folio re-read ("Check again" on a
+pending answer) that timed out has that kind. With no earlier question's
+request held, its alert showed no button, and it came back after every
+reopen. The close
+now keeps a failure only when its alert offers "Check again", the panel's
+own test for the button: a retryable kind AND the request it re-sends. The
+other way, tagging a re-read's failure as not retryable, was not taken: when
+an earlier question's request is still held, that alert does show the
+button, and it should then be kept. Dropped at the close, the timed-out
+re-read leaves its answer in the list with that answer's own "Check again".
+
+**An apply in flight across a close and a reopen (checked; refused, not
+paid twice).** Held to apply, closed before the gateway answered, and
+reopened: the card is offered again, because the session holds the proposal
+and the first card's state went with the body. A second hold sends a second
+mint and possibly a second apply for the same action id. The gateway applies
+one action id at most once (`apps/api-gateway/src/ask-ai/ask-ai.service.ts`,
+at 5a330a88e, this branch's base; none of the cited gateway files changed
+on `main` through 255151bc2): the apply's claim is a compare-and-swap that
+moves the row from `proposed` to `confirmed` only while it is still
+`proposed` (`:633-645`), and the loser gets a 404, "That action is no longer
+waiting for confirmation." (`:651-657`). A seal is minted, and a seal's
+redemption read, only for a row still `proposed` (`readProposalSealArgs`,
+`:849-852`, from `issueProposalSeal` `:892` and `confirmSealed` `:957`). A
+second seal is a new seal, so it is the claim, not the seal, that stops the
+second apply. A second apply runs only if the first gave its claim back
+(`releaseClaim`, `:1032`: a refused edit, a stale id or a failed check), and
+then the first ran nothing. The card reads a 404 as "gone" (`askAi.ts:150`)
+and says "It was already handled — nothing ran twice." So the card is not
+kept busy across the close: the second hold is harmless, and an open re-read
+made after the first claim landed does not return the card (it lists only
+`proposed` rows, `:577`). Pinned: a test each for the refusal at the seal and at the
+apply. Not pinned on the gateway: its specs check the 404 for a row already
+`executed` (`ask-ai-sealed-apply.spec.ts:228`, `:356`), and the same
+`status !== "proposed"` line answers for a row mid-apply, but the spec's
+client double ignores the claim's status filter, so the lost race between
+two seals minted before either claim is a code reading. Recorded, not
+changed: the second hold also says "already handled" in two cases where
+nothing was applied. One, the first apply failed (the row is `failed`). Two,
+the first apply gave its claim back after the second lost the compare-and-swap
+(`releaseClaim`, `:1032`), so the row is `proposed` again; the close drops the
+card and the next open's re-read lists it again. The card cannot tell either
+apart from applied, and the comment above its "gone" notice ("exactly one
+execution happened", `ProposalCard.tsx`, already on `main`) is wrong in both.
+
+**Pinned.** `AskPanel.test.tsx` went from 68 to 85 tests:
+
+- the four scope-reset lines the verify's mutations left green (S6, S9, S10,
+  S12): a switch made while the panel is closed leaves none of the old
+  house's proposals, even when the re-read fails; the proposer's refusal and
+  its transport error from the old house are not shown in the new one;
+  switching back to the first house starts again; and a sitting first named
+  after it began still starts again on the next switch. Lifted from the
+  verify's probes;
+- the failure rule above, both halves (a timed-out re-read, and a re-read's
+  failure while an earlier request is still held);
+- the three settle paths that had no test (D3, D5, D6): failed at the apply,
+  already handled at the seal, already handled at the discard, each gone at
+  the close;
+- the apply in flight, above;
+- five lines from the verify's nit list: a failed ask keeps the words typed
+  and the follow-up (W1), a new draft clears the last transport error when it
+  starts (G5), the request is let go once its answer is in (G7), only the
+  last five answers are kept, newest first (X5), and the newest proposal
+  comes first (X6).
+
+**Mutations.** 64, on `AskPanel.test.tsx`, each started from a snapshot,
+each file restored with `cp -p` and checked byte-identical with `cmp`: the
+verify's own 60 (its C1-C3 re-pointed at the round-2 close line) and four of
+round 2's (R1, the close keeping a failure by its kind alone, as round 1 did;
+R2, by its request alone; R3, the close never seeing the request; X7, answers
+appended oldest first). 61 turned at least one test red, among them all
+twelve the verify found green (S6, S9, S10, S12, D3, D5, D6, W1, G5, G7, X5,
+X6: one test each, S12 two). Three stayed green, each equivalent: E7 (an
+epoch check on a re-read's answer, removed in round 1); S4 (the reset
+keeping the held request: every later failure that could show it sets it
+first, and a re-read needs an answer in the new house, whose arrival lets
+the request go, which G7 now pins); S7 (the reset keeping the settled set:
+action ids are unique per house).
+
+**Corrected claims.** The tech-debt fragment said "each guard turned a test
+red under mutation", and the "Guards pinned" paragraph above said every
+guard round 1 added was mutated. Both were true only of the 32 mutations
+round 1 ran. Both are corrected in place.
+
+### Gate round 1, 2026-10-02 -- the render in which the scope changes
+
+The ADR 0090 gate at 5ab269ccc returned BLOCK on one sentence, with no code
+defect (PR #584 comment 5961672868).
+
+**Narrowed (the block).** The PR body and the hook's own note said an epoch
+drops anything begun under the old key. A folio re-read's answer has no
+epoch check, by design (E7 above). The note now says that every answer,
+refusal, proposal and failure begun under the old scope lands nowhere, and
+that a re-read's answer is dropped because the switch emptied the list
+(`useAskSession.ts:40-49`). The `epoch` ref's own one-line note said the
+same broad thing and is narrowed with it.
+
+**Fixed (finding 2).** The reset runs in an effect, after the render in
+which the scope changed, so that one render still carried the old scope's
+sitting: a reviewer recorded the passes `A@h2:1`, then `A@h2:0`. The gate
+found it could not cross persons, since a person change unmounts the shell.
+The hook now records the scope its state belongs to (`owner`, set by the
+reset at `:152`), and until the reset has run it gives none of the old
+answers, failure, request, refusal, error, proposals or pending (`:259-272`).
+A first naming is not masked, since it keeps what is there. The follow-up
+"Keep asking" carried in had the same one-render pass under the new house
+(`useAskPanel.ts`, its scope effect); it is masked the same way. [Gate
+round 2: at a switch. At a first naming the follow-up is dropped instead
+(`useAskPanel.ts:59-62`), while the session keeps its state.] Pinned by
+four tests in `AskPanel.test.tsx` (85 to 89): the switch render is empty,
+with a refusal and with a transport error; the first-naming render keeps
+the answer; the switch render carries no follow-up, and one carried in
+after the switch shows. 12 mutations, each from a `cp -p` snapshot and
+restored byte-identical (`cmp`), all red: the mask off, the first-naming
+clause dropped, `setOwner` dropped, each of the seven fields unmasked, the
+follow-up mask off and its scope never moved on. [Gate round 2: a
+thirteenth, `setOwner` moved below the first-naming return, stayed green at
+89/89. A fifth test now pins it (89 to 90); see "Gate round 2".] Not
+checked: a browser paint of either pass.
+
+**Narrowed (finding 3).** The PR body said a close keeps the waiting
+proposals. That holds for the gateway's rows. On screen, the next open's
+re-read replaces the list (`AskPanel.tsx:273`), so a proposal that lands
+during that read can be dropped from view until the next open, as recorded
+under "Not built, not verified" above.
+
+### Gate round 2, 2026-10-02 -- the switch after a first naming, and two routes still open
+
+The ADR 0090 gate at 55a52ad05 returned BLOCK, with no code defect
+(PR #584 comment 5963268424; the gate's escalation before it is comment
+5962056098). Both reviewers
+approved; the planner overturned. Merged with `main` e25ebf537 first, with no
+conflict.
+
+**Pinned (finding 1, a surviving mutant).** With `setOwner` moved below the
+first-naming return (`useAskSession.ts:152-153`), all 89 tests stayed green.
+Under that mutation a sitting first named after it began never records its
+owner, so the next switch's render carries the old house's state. The house starts null
+(`AuthContext.tsx:323-325`) and `ProtectedRoute` checks `user.restaurantId`
+(`ProtectedRoute.tsx:59`), so the shell can mount before the house is named,
+and a first naming followed by a switch is the usual path. That reading is
+the planner's, from the code; it was not run in a browser. A new test pins
+it: scope null, then `u-1@r-1`, an answer lands, then `u-1@r-2`, and every
+render pass under `u-1@r-2` is empty. `AskPanel.test.tsx` 89 to 90. The
+mutation, applied to a file snapshotted with `cp -p`: 1 test red, 89 passed.
+Restored with `cp -p`, `cmp` identical, then 90/90.
+
+**Narrowed and filed (finding 2, CLOSED claimed more than the code).** The
+tech-debt entry for the house-switch defect stays CLOSED, now for a switch
+made in place in the same tab. Two routes let a request carry another
+house's or person's token while the session holds the old scope. They are
+filed as a new OPEN entry in the same fragment, with two possible fixes,
+neither built:
+
+- a house or person switch in another tab (the person added in this round's
+  second push, below). The tabs share `localStorage`, the request
+  interceptor reads the token on every call (`client.ts:74-84`), and nothing
+  in the web app moves a tab's house or person on a `storage` event. The only
+  `storage` listeners are `lib/sessionRenewed.ts:57` and
+  `lib/mudavym/groundChoice.ts:559` (at `main` 661068ab3; `:433` at
+  e25ebf537). This route was already on `main`.
+- the interval in the same tab between `storeSession` and the render that
+  moves the scope (`AuthContext.tsx:625-633`).
+
+The fixes named are: store the token only once the scope has moved; or check,
+before a send, that the token's person and house match the scope. The entry
+says what each one leaves.
+
+**Narrowed (finding 3).** "The gateway never charges twice" for a re-sent id
+(in the hook's `lastRequest` note, "never pays twice") now says "never
+charges twice ... for one person in one house" (`AskPanel.tsx:41-42`,
+`useAskSession.ts:88`, the fragment's first Fix line). The key is unique on
+house, person and id (`...bound_reading_folios.sql:26`). The audit asked for
+"in one house"; the person is named too because the key includes it. The
+same narrowing is applied to "charges once per request id" in three places:
+the hook's opening note (`useAskSession.ts:9-10`), "The defect it closes"
+above (bracketed), and the PR body.
+
+**Disclosed (finding 4).** The two routes are named in three places where the
+switch fix is described:
+- the PR body's "One person in one house";
+- "The house-switch defect" above (bracketed);
+- the hook's note (`useAskSession.ts:51-62`).
+
+Three comments that said "a branch switch" now say "a branch switch in this
+tab": `AskPanel.tsx:42-43`, the body's key note (`AskPanel.tsx:554-555`) and
+`useAskPanel.ts:29-30`.
+
+**Narrowed (same push).** "Gate round 1" said the follow-up "is masked the
+same way". That holds at a switch. At a first naming the follow-up is dropped
+(`useAskPanel.ts:59-62`), while the session keeps its state. This is
+bracketed above.
+
+**Re-pointed.** Gate round 1's line cites into `useAskSession.ts` moved with
+the note above them, and now point at this round's head, d0e4d6185.
+
+**Not verified.** Neither route was run in a browser. Whether a click can land
+in the same-tab interval is inferred from how React 18 schedules updates; it
+was not measured. Gate round 1's other twelve mutations were not re-run at
+this head, d0e4d6185. This round's own edits to the PR's source files are
+comments
+only, and it adds one test, so a mutant that was red stays red. The merge
+with `main` changed no file under `src/components/askai`. Reviewer A re-ran
+all twelve at 55a52ad05.
+
+**Second push, 2026-10-03 -- `main` 661068ab3, and a person switch in
+another tab.** Merged `main` 661068ab3 (#580) in 6e22589da, with no
+conflict. It changed no file under `src/components/askai`. It moved the
+`groundChoice.ts` listener cited above from `:433` to `:559`.
+
+- **Route (a) widened to a house or person switch in another tab.** Traced
+  in the code, not run in a browser. Another tab signs out (the pair is
+  removed, `AuthContext.tsx:964-965`) and signs in as another person
+  (`storeSession`, for example `:671`). No `storage` listener in this tab
+  acts on it: they act only on the session-renewed key
+  (`sessionRenewed.ts:54`), written only by a password change, and on the
+  ground setting (`groundChoice.ts:548-557`). Its person is set only by its
+  own `AuthContext`'s `setUser` calls. What reaches this tab first depends
+  on B, the person signed in. [Gate round 3: this said, for every B, that no 401, refresh or
+  redirect follows; see "Gate round 3" below.] If B is not verified, or B's
+  pair names no house, a request this tab then makes through `apiClient` to
+  a route that needs either is refused 403, and the tab is sent to
+  `/verify-email` (`client.ts:147-155`) or to the chooser
+  (`client.ts:158-164`). A refresh answered
+  `houseAccessEnded` also sends it to the chooser (`client.ts:48-49`), and a
+  stale chunk or a service-worker update can reload it (`App.tsx:36`,
+  `ErrorBoundary.tsx:89`, `register-sw.ts:20`). None of these is a paid
+  call, and each that runs
+  empties the session. [Gate at 4867c4a37: this said a stale chunk or a
+  service-worker update reloads it, and that each empties the session.
+  Each reload runs only under a condition, and each redirect is skipped on
+  some routes; see "Gate round 3 at 4867c4a37" below.] When B is verified
+  and B's pair names a house, neither 403
+  applies. Between the sign-out and the sign-in, a 401 with no refresh
+  token is rejected without navigating (`client.ts:107-108`). After the
+  sign-in B's token is valid, so no 401 comes back until it expires. In the
+  two response interceptors, the only redirect to `/login` follows a refused
+  refresh (`:120-123`). Then, until the tab loads again or its own
+  `AuthContext` moves its scope, it keeps person A's scope while its
+  requests carry person B's token, and "Check again" re-sends A's request id
+  under B. The key is unique on house, person and
+  id, so this can be a new paid call. It is still two routes. The widening
+  is in the hook's note (`useAskSession.ts:51-62`), the OPEN entry (which
+  carries the trace), the bracket in "The house-switch defect", "Gate round
+  2" above and the PR body.
+- **The token check names the person too.** The second fix now checks the
+  token's person (`sub`) as well as its house. A house check alone would
+  miss a person switch within one house.
+- **The first fix's two sentences corrected.** "This closes (b) only" said
+  more than the fix does. It addresses only (b)'s interval, and (b)'s `:627`
+  case only if a token naming another house is not stored at all. "It also
+  moves the window" now says it reverses it: between the commit that moves
+  the scope and the store, a send would carry house A's token under house
+  B's scope. Whether a send can be made then depends on where the store is
+  done; that was not measured.
+- **One phrasing.** Where the gateway's once-per-id guarantee is stated, it
+  says "for one person in one house": the PR title, the hook's notes
+  (`useAskSession.ts:9-10`, `:88`), `AskPanel.tsx:41-42`, the fragment's
+  first Fix line, the PR body, and two brackets added here, in "Build task
+  6" and "The founder's answer". The title said "asking again never pays
+  twice in one house". Each ask mints a new id (`AskPanel.tsx:320`), so a
+  question asked again is paid again. The title now names the id: "closing
+  the Ask panel keeps the question and its request id, which is never
+  charged twice for one person in one house".
+- **Re-measured.** `src/components/askai` + `src/components/mudavym`: 33
+  files / 515 passed, against 32 / 493 at d0e4d6185. The difference is
+  `GroundFirstChoice.test.tsx` (22 tests), which the merge brought.
+  `AskPanel.test.tsx` 90/90. The `setOwner` mutation (finding 1) re-run at
+  1879ed9d8: 1 failed, 89 passed, the new test; restored from a
+  `cp -p` snapshot, `cmp` identical. The other checks are in the review
+  trail.
+
+### Gate round 3, 2026-10-03 -- the person-switch trace, made conditional
+
+[Gate at 4867c4a37: this is the round after the audit at 3d847e44f. The
+gate's comment 5973720893 gives the number 3 to the audit at 4867c4a37,
+recorded below as "Gate round 3 at 4867c4a37".]
+
+The ADR 0090 gate at 3d847e44f returned BLOCK on measured sentences, with no
+code defect (PR #584 comment 5973211787). 3d847e44f merges `main` ba9704b59
+(#588), which adds ADR 0262 and its README row and changes no file this PR
+cites. This round changes no source file.
+
+- **The trace (the block).** "No 401, refresh, redirect or reload reaches
+  this tab first" held only when the person signed in (B) is verified and
+  B's pair names a house. A sign-in names no house when B is a member of
+  none, or of several with no recent hint for one of them on that device
+  (`house-choice.ts:104-115`). Then a request to a house-bound route is
+  refused 403 `HOUSE_REQUIRED` and the tab is sent to the chooser. With an
+  unverified B, a request through `apiClient` to a route that does not opt
+  out sends the tab to `/verify-email`. A refresh answered
+  `houseAccessEnded` sends the tab to the chooser, and a stale chunk or a
+  service-worker update can reload it, independently of the switch, each
+  under a condition. [Gate at 4867c4a37: this said they reload it, without
+  the conditions; see "Gate round 3 at 4867c4a37" below.] None of
+  these is a paid call. On a route that does not opt out, both 403s are
+  raised in `JwtAuthGuard` before the handler runs (`jwt-auth.guard.ts:84`,
+  `:94`), and neither Ask controller opts out of either check. After a
+  refresh answered `houseAccessEnded`, the request that drew the 401 is not
+  retried (`client.ts:138-140`, `AuthContext.tsx:270-279`), and a reload
+  re-sends nothing from the session it empties. [Gate at 4867c4a37: this
+  said a reload sends no request; the page it loads sends its own.] The
+  sentence is now conditional in the OPEN entry, which
+  carries the trace and its cites, in "Second push" above, in the review
+  trail (bracketed) and in the PR body. "The only redirect to `/login`
+  follows a refused refresh" is scoped to the two response interceptors;
+  `authStore.ts:296`, in `loadUser`, which runs once when that module
+  loads, is another.
+- **Audit records cited by their posted comments.** The audit files this ADR
+  and the fragment cited are in no commit (`git log --all` finds none). The
+  cites now name the
+  comments: #575 5942484816 (a83e5cb78); #584 5961672868 (5ab269ccc); #584
+  5963268424, and the escalation 5962056098 (55a52ad05).
+- **Smaller fixes.** The fragment's first Fix line quotes the OPEN entry's
+  heading as it now reads ("another house's or person's token"). The
+  review trail's second-push row and the "Re-measured" bullet above name
+  1879ed9d8 where they said "this push".
+- **Not verified.** Nothing was run in a browser, and the gateway was not
+  run; the trace is read from the code. Gate round 1's twelve mutations were
+  not re-run: the PR's own source changes since d0e4d6185 are one comment
+  hunk. The figures are in the review trail.
+
+### Gate round 3 at 4867c4a37, 2026-10-03 -- the reload conditions
+
+The gate's comment numbers this audit gate round 3 (PR #584 comment
+5973720893); "Gate round 3" above is the round after the audit at
+3d847e44f. 4867c4a37 is a GitHub update-branch merge of `main` 8c673db4b
+(#593) onto a79664ea7, made by the gate session; it changes no file under
+`apps/` or `services/` relative to a79664ea7. Before the reviewers ran, the
+planner held the gate
+on one PR-body sentence, which said #593 was not merged here. It was
+bracket-corrected in the body alone, before any audit marker existed at
+4867c4a37. Reviewer A approved, with no wrong measured sentence. Reviewer B
+blocked on two sentences broader than the code, with no code or security
+defect, so the verdict is BLOCK. This round changes no source file.
+
+- **Each reload has a condition.** A stale-chunk error reloads the tab only
+  when a route page wrapped by `lazyWithRefresh` fails to load with an
+  error `isStaleChunkError` matches (`App.tsx:10-21`, `:33-36`), or an
+  error the boundary's own test matches (`ErrorBoundary.tsx:80-86`, which
+  leaves out `text/html`) reaches an error boundary (`:87-89`), and only
+  while its `sessionStorage` holds no
+  `chunk_reload` flag; the reload sets the flag. Only a later successful
+  load of a page wrapped by `lazyWithRefresh` clears it (`App.tsx:28-30`).
+  With the flag set, a route page's error is shown by the nearest error
+  boundary instead. A service-worker update reloads the tab only if a
+  service worker controlled the page when `registerServiceWorker` ran, as
+  the page loaded (`register-sw.ts:15`, called from `main.tsx:26`), and at
+  most once per page load (`register-sw.ts:16-20`).
+- **Not every redirect or reload runs.** The redirect to the chooser is
+  skipped when the pathname is exactly `/choose-house`, `/no-access` or
+  `/login` (`houseMemory.ts:335-337`), and the one to `/verify-email` when
+  it is exactly `/verify-email` (`client.ts:152`). Those routes render outside
+  `DashboardLayout` (`App.tsx:192-199`), the only place the Ask session is
+  mounted (`HouseShell.tsx:138`, `AskAiSurface.tsx:32`), so there is no
+  session to send from. A reload that does not run leaves the tab in
+  whichever case B puts it; for a verified B whose pair names a house, that
+  is the case already disclosed. Under the shell, a stale-chunk error thrown
+  while a routed page renders, which does not reload, is shown by the
+  boundary around the routed page
+  (`HouseShell.tsx:290`), which keeps the session; in the legacy layout the
+  root boundary (`App.tsx:167`) shows it, which unmounts the session.
+- **Where.** The OPEN entry carries the conditions and their cites. "Second
+  push" and "Gate round 3" above are bracketed, and the PR body says the
+  same.
+- **Swept.** "A reload sends no request", in the OPEN entry, "Gate round 3"
+  above and the body, now says a reload re-sends nothing from the session
+  it empties: the page it loads sends its own requests. In "Gate round 2",
+  "this round's head" and "at this head" (Reviewer A's notes) now name
+  d0e4d6185, which wrote them; the cites the first describes hold at
+  d0e4d6185 and at 4867c4a37. The OPEN entry's note on line numbers named only
+  `useAskPanel.ts`, "at this branch's head"; it now names 4867c4a37, and the
+  two other files this branch changes that the entry now cites.
+- **Sonnet check.** An independent Sonnet check of the first commit,
+  13760f023, returned FIX. Narrowed before the push:
+  only a load of a page wrapped by `lazyWithRefresh` clears the flag (plain
+  `lazy()` loads, such as `ReceiptsNext.tsx:85`, do not); the no-reload
+  boundary case is an error thrown while a routed page renders; the OPEN
+  entry's boundary cite names both the fallback (`ErrorBoundary.tsx:199-212`)
+  and the boundary's own screen (`:213`); the skips match the pathname
+  exactly; the service-worker condition is read when `registerServiceWorker`
+  runs; "no file under `apps/` or `services/`" says "relative to
+  a79664ea7"; the trigger names both chunk-error tests;
+  Reviewer B's two sentences are named; and the trail row says the fixer,
+  not the gate, left the `setOwner` mutation un-run. A second Sonnet check,
+  of these narrowings, returned HOLD; its nits are folded in. Neither
+  check's report is in the tree.
+- **Not verified.** Nothing was run in a browser, and the gateway was not
+  run; the conditions are read from the code. The figures are in the
+  review trail.
+
+### Gate round 4 at 795803f42, 2026-10-03 -- two undated phrases in the PR body
+
+The ADR 0090 gate at 795803f42 returned BLOCK (PR #584 comment 5975574964).
+Reviewer A blocked on two phrases in the PR body that named no commit:
+"figures at the head are in gate round 3, below" and "Bracketed, with the
+figures at the head below". The gate's report adds that at 795803f42 the
+sentences were also wrong: the "Gate round 3" table holds 835/835 at
+a41149395, and 836/836 at 795803f42 is in the 4867c4a37 section. A lesser
+phrase, "Fixed in a79664ea7 or this edit", named no edit. Reviewer B
+approved, and the final was skipped. Reviewer A re-measured vitest 33 files
+/ 515, `AskPanel.test.tsx` 90/90 and claims 836/836, and re-ran the
+`setOwner` mutation (1 failed, 89 passed, restored from a `cp -p`
+snapshot). No code defect was found, and no source file changes.
+
+- **Fixed in the PR body,** bracketed in place. Each "the head" now names
+  the commits its figures belong to, and "this edit" names the body edit
+  posted after a79664ea7 was pushed and before 4867c4a37 existed. The
+  body's "One exception" sentence regains "which does not reload", as in
+  the OPEN entry and "Gate round 3 at 4867c4a37" above.
+- **Swept** the PR body, and the lines this PR adds here and in the OPEN
+  entry, for "the head", "this head", "this edit", "now" and "currently".
+  The other hits sit in sections dated by their round or commit, or quote
+  old wording. Every "now" left in the body sits in a section headed by its
+  round or commit, except "the person now signed in", which is a step in a
+  trace and names no state of the branch.
+- **Recorded** here, in the OPEN entry's header, in the review trail and in
+  the PR body. This round's commit changes only this ADR and the OPEN
+  entry's fragment.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
@@ -1994,3 +2583,13 @@ his):
 | 2026-09-26 | W4-ask lane (build, PR #475) | Built one Ask panel with an explicit mode switch and a suggestion that never acts; docked in the counter slot at ≥ ~1280 px, lying over below; `AskAiBar` retired; build task 14 closed. Measured in the section above and in the PR. |
 | 2026-09-22 | Aldemir (founder), round 6z, relayed by the orchestrating session (recorded 2026-09-28 from preserved snapshot `2f9a1e0d3`) | His picks, verbatim: "/ask waits for new Settings (Recommended)" (Settings reach); "Leave it out (Recommended)" (labels given while opted out); "Add a plain line now (Recommended)" (the AI model provider, over the lawyer-review default). See the round-6z amendment. |
 | 2026-09-28 | `fix/ask-round-6z` lane (build, against `main` 0d7af2975) | Answer 1 met by #419, nothing built for it; the snapshot's 503 gate is not carried. Answer 2 built as `20261203100000`, with the backfill changed so it cannot export an opted-out label now that production may hold labels (PGlite 17/17 on the five ask migrations over stubs; mutations listed in the amendment). Answer 3 built in both copies (vitest 7/7). The label-disclosure gap filed as OD-182, open. |
+| 2026-10-01 | Aldemir (founder), `AskUserQuestion` "If someone closes the Ask panel while it is still answering, what should happen to that question?" | His pick, verbatim: "Keep answering (Recommended)" (rejected: "Keep, plus recent answers", "Cancel on close", "Ask before closing"). See "Amendment, 2026-10-01". |
+| 2026-10-01 | `fix/ask-close-no-second-spend` lane (build, against `main` 5a330a88e) | Built `useAskSession`, owned by `useAskPanel`. `AskPanel.test.tsx` gained 6 tests rendering the real owner [corrected in round 1: five render the real owner, the sixth calls `useAskSession` through `renderHook`]; the affected suites ran 8 files / 126 tests green. Six mutations each turned at least one new test red: the body owning a fresh session (5 red), no in-flight gate (1), "Check again" minting a new id (1), no mounted guard (1), no pending line (5), and the body not busy from the session (2). Files restored byte-identically. Web eslint clean on the 7 changed files. Web `tsc` is clean apart from `passkeys.ts`'s missing `@simplewebauthn/browser`, which this worktree's symlinked `node_modules` lacks; this diff does not touch that file. |
+| 2026-10-01 | `fix/ask-close-no-second-spend` round 1 (fix, after a Sonnet verify returned FIX) | The house-switch defect found and fixed: the session is keyed `<person>@<house>`, with an epoch guard, the open body keyed by the same scope, and the follow-up dropped on a switch. What a close keeps narrowed, and settled proposals leave at the close through `ProposalCard`'s `onSettled` (see "Round 1"). `AskPanel.test.tsx` went from 42 to 68 tests; round 0's 8 files ran 152 tests green, and 12 files with every other suite that mounts the shell or `ProposalCard` ran 210 green. 32 mutations, each red, each file restored byte-identically: round 0's six re-run (12, 1, 1, 1, 14 and 5 red); the verify's M1 and M3-M6 (1 each); eleven on the scope and epoch (B1-B11: 9, 2, 1, 1, 2, 1, 1, 1, 2, 1, 1); ten on what a close keeps (C1-C10: 2, 1, 1, 1, 3, 3, 1, 4, 4, 1). M2's guard removed; an epoch check on a re-read's answer survived a first pass as an equivalent mutant and was removed. Web eslint 0 errors on the 8 touched source and test files (one `ProposalCard` warning, also on `main`). Web `tsc`: only the pre-existing `passkeys.ts` error. Decision claims 813/813. No browser render. |
+| 2026-10-01 | `fix/ask-close-no-second-spend` round 2 (fix, after a Sonnet verify of round 1 returned FIX, no blocker) | The failure with nothing to retry fixed: a close keeps a failure only when its alert offers "Check again" (a retryable kind and the request it re-sends). The apply in flight across a close checked on the gateway (`ask-ai.service.ts` at 5a330a88e, this branch's base): a second apply for one action id is refused, at the seal or at the claim's compare-and-swap, so the card is not held busy; the panel's honest answer is pinned. `AskPanel.test.tsx` went from 68 to 85 tests (see "Round 2"). 12 files with every suite that mounts the shell or `ProposalCard` ran 227 green; `src/components/askai` and `src/components/mudavym` ran 32 files / 486 green. 64 mutations on `AskPanel.test.tsx`: 61 red, 3 equivalent (E7, S4, S7), each file restored byte-identically. Web eslint 0 errors on the 8 touched source and test files (the one `ProposalCard` warning, also on `main`). Web `tsc`: only the pre-existing `passkeys.ts` error. Decision claims 813/813. No browser render; no gateway test run (the gateway is unchanged, and its behaviour is cited from the code). |
+| 2026-10-02 | `fix/ask-close-no-second-spend` gate round 1 (fix, after the ADR 0090 gate at 5ab269ccc returned BLOCK) | The epoch sentence narrowed in the hook's note, the `epoch` ref's note and the PR body: a folio re-read's answer is dropped because the switch emptied the list, not by the epoch. The switch render fixed rather than filed: `useAskSession` gives none of the old scope's state until the reset has run, and `useAskPanel` gives no old follow-up; a first naming is not masked. "A close keeps the waiting proposals" narrowed in the PR body to the gateway's rows. `AskPanel.test.tsx` 85 to 89; 12 mutations, all red, each restored byte-identical (see "Gate round 1") [gate round 2: a thirteenth, `setOwner` moved below the first-naming return, stayed green; see "Gate round 2"]. On the tree merged with `main` a823ef32d: `src/components/askai` + `src/components/mudavym` 32 files / 492 passed; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 830/830; citation-pairing and conflict-marker guards pass. No browser render. |
+| 2026-10-02 | `fix/ask-close-no-second-spend` gate round 2 (fix, after the ADR 0090 gate at 55a52ad05 returned BLOCK) | Merged `main` e25ebf537, no conflict. The switch after a first naming pinned by a new test; the surviving mutant (`setOwner` below the first-naming return) now turns it red, 1 test, restored from a `cp -p` snapshot and checked with `cmp`. `AskPanel.test.tsx` 89 to 90. The house-switch entry kept CLOSED for a switch in the same tab; a switch in another tab and the same-tab interval before the render filed as a new OPEN entry, with two possible fixes, neither built. "Never charges twice" narrowed to one person in one house; the two routes disclosed in the PR body, this ADR and the hook's note; "masked the same way" narrowed for a first naming (see "Gate round 2"). At d0e4d6185, this round's first push: `src/components/askai` + `src/components/mudavym` 32 files / 493 passed; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render. |
+| 2026-10-03 | `fix/ask-close-no-second-spend` gate round 2, second push (fix, after the gate's plan at d0e4d6185 named a person switch in another tab) | Merged `main` 661068ab3 in 6e22589da, no conflict. Route (a) widened to a house or person switch in another tab, traced in the code: a sign-out and a sign-in as another person in another tab reach this tab with no 401, refresh, redirect or reload. [Gate round 3: that holds only when the person signed in is verified and their pair names a house, and a stale chunk or a service-worker update can still reload the tab; see "Gate round 3".] Still two routes. The token check now names the person; the first fix's "closes (b) only" and "moves the window" corrected; one phrasing, "for one person in one house", and the PR title now names the request id (see "Gate round 2", "Second push"). At 1879ed9d8: `src/components/askai` + `src/components/mudavym` 33 files / 515 passed; `AskPanel.test.tsx` 90/90; the `setOwner` mutation 1 failed / 89 passed, restored from a `cp -p` snapshot, `cmp` identical; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`, also on `main` at `:260`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render. |
+| 2026-10-03 | `fix/ask-close-no-second-spend` gate round 3 (fix, after the ADR 0090 gate at 3d847e44f returned BLOCK) | 3d847e44f merged `main` ba9704b59 (#588), which changes no file this PR cites. The person-switch trace made conditional: it holds only when the person signed in is verified and their pair names a house; otherwise the tab is sent to `/verify-email` or the chooser, with no paid call, and a stale chunk or a service-worker update can reload it at any point. The `/login` sentence scoped to the two response interceptors. Audit cites now name the posted PR comments; the fragment's quoted title aligned; the second-push row names 1879ed9d8 (see "Gate round 3"). At a41149395, which changes no source file: `src/components/askai` + `src/components/mudavym` 33 files / 515 passed; `AskPanel.test.tsx` 90/90; the `setOwner` mutation 1 failed / 89 passed, restored from a `cp -p` snapshot, `cmp` identical, then 90/90; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`; the same hook is at `:260` on `main`); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 835/835; citation-pairing and conflict-marker guards pass. No browser render, no gateway run. |
+| 2026-10-03 | `fix/ask-close-no-second-spend` gate round 3 at 4867c4a37 (fix, after the ADR 0090 gate there returned BLOCK, PR #584 comment 5973720893) | The planner's hold on one PR-body sentence (#593 "is not merged here") was fixed in the body alone, before any marker. Reviewer A approved; Reviewer B blocked on two sentences in route (a), the reloads without their conditions and "Each redirect or reload above loads the page again", with no code or security defect. The stale-chunk and service-worker reloads now carry their conditions, and the sentence that each redirect or reload loads the page again now says which do not run, and that one that does not run leaves no session to send from or the tab in B's case (see "Gate round 3 at 4867c4a37"). Swept: "a reload sends no request" narrowed; "this round's head" and "at this head" in "Gate round 2" name d0e4d6185; the OPEN entry's line-number note names 4867c4a37. The fix changes only this ADR and the OPEN entry's fragment. At 4867c4a37: `src/components/askai` + `src/components/mudavym` 33 files / 515 passed; `AskPanel.test.tsx` 90/90; web eslint on the 8 touched source and test files 0 errors, 1 warning (`ProposalCard.tsx:268`; the same hook is at `:260` on `main` 8c673db4b); web `tsc` only the pre-existing `passkeys.ts` error; decision claims 836/836; citation-pairing and conflict-marker guards pass. The fixer did not re-run the `setOwner` mutation; the gate's comment records a run, 1 red, then 90/90. An independent Sonnet check of 13760f023 returned FIX; its narrowings were made before the push, and a second check of them returned HOLD (see "Gate round 3 at 4867c4a37"). No browser render, no gateway run. |
+| 2026-10-03 | `fix/ask-close-no-second-spend` gate round 4 at 795803f42 (fix, after the ADR 0090 gate there returned BLOCK, PR #584 comment 5975574964) | Reviewer A blocked on two PR-body phrases that named no commit ("figures at the head") and flagged a lesser "this edit"; Reviewer B approved; the final was skipped. Bracketed in the body with the commits their figures belong to; "this edit" named; "which does not reload" restored in the body's "One exception" sentence (see "Gate round 4 at 795803f42"). The commit that adds this row changes only this ADR and the OPEN entry's fragment, and no source file. Its figures are in the PR body's gate round 4 section. No browser render, no gateway run. |
