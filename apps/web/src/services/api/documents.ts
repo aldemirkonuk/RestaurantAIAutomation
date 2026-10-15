@@ -98,15 +98,27 @@ export interface InvoicePaymentInput {
   paidOn?: string
   /** Required with, and only with, `credit_applied`. */
   creditNoteId?: string
+  /**
+   * The screen's key for this one payment (F-1725): sent again after a lost
+   * reply, it records nothing more. 8-120 letters, digits, :, - or _.
+   */
+  paymentKey?: string
 }
 
 /** `GET /procurement/documents/:id/payments` (F-1672, F-1674). */
 export interface InvoicePayments {
   currency: string | null
+  /**
+   * When any copy of this invoice reads paid (F-1720): copies of one invoice
+   * are one bill. Optional for an older gateway.
+   */
+  paidAt?: string | null
   /** Null when the invoice has no total yet. */
   paid: number | null
   left: number | null
+  /** On every copy of the bill. `id` lets one be taken back (F-1721); absent from an older gateway. */
   payments: Array<{
+    id?: string
     amount: number
     currency: string
     paidOn: string
@@ -263,9 +275,27 @@ export const documentsApi = {
     paid?: number | null
     left?: number | null
     currency?: string | null
+    /** The same `paymentKey` was already recorded; nothing more was (F-1725). */
+    replayed?: boolean
   }> {
     try {
       const { data } = await apiClient.patch(`/procurement/documents/${id}/paid`, { paid, ...(payment ?? {}) })
+      return data
+    } catch (error) {
+      return rethrowSpoken(error)
+    }
+  },
+
+  /**
+   * Take one payment on an invoice back (F-1721). The bill reads paid only
+   * while what is left still covers it. Owners and managers only, at the gateway.
+   */
+  async removePayment(
+    id: string,
+    paymentId: string,
+  ): Promise<{ id: string; paidAt: string | null; paid: number | null; left: number | null; currency: string | null }> {
+    try {
+      const { data } = await apiClient.delete(`/procurement/documents/${id}/payments/${paymentId}`)
       return data
     } catch (error) {
       return rethrowSpoken(error)

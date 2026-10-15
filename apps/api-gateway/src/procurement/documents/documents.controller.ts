@@ -2,6 +2,7 @@ import { learnUsualCurrencyFromInvoices } from "../../providers/usual-currency-f
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpException,
@@ -2471,6 +2472,13 @@ export class DocumentsController {
    * house", so a used credit note still came off what the vendor was owed.
    * "Not paid" removes the invoice's payments; the audit row keeps them.
    *
+   * ONE BILL, ONE KEY (F-1720, F-1725, wave 113). Copies of one invoice (same
+   * vendor, kind and number) are one bill, as Owed reads them: the writer pays
+   * the bill, says "paid" on every copy, and "not paid" clears every copy. A
+   * payment carries the screen's `paymentKey`; the same key again records
+   * nothing and answers what was recorded, so a retry after a lost reply never
+   * pays twice. A replay writes no second audit row and rings no bell.
+   *
    * Managers and owners only, in words. It moves no money and is undone by
    * the same route, so it takes no seal (no decision names it; the seal guard
    * lists it as outside every census); who did it goes to the audit log,
@@ -2482,7 +2490,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Record a payment on a vendor invoice, or mark it not paid",
     description:
-      "Body `{ paid: boolean, paidBy?: 'restaurant' | 'eft_wholesaler_initiated' | 'credit_applied' | 'other', amount?: number, paidOn?: 'YYYY-MM-DD', creditNoteId?: uuid }`. `amount` absent pays what is left; `paidOn` absent is today; `creditNoteId` is required with, and only with, `credit_applied`, and must be the same vendor's credit note in the same currency. Managers and owners only. Invoices only; a credit note or a delivery note is refused in words. Returns the invoice's `paidAt` and `paidBy` (set once its payments cover it), what is `paid` so far and what is `left`, in its `currency`.",
+      "Body `{ paid: boolean, paidBy?: 'restaurant' | 'eft_wholesaler_initiated' | 'credit_applied' | 'other', amount?: number, paidOn?: 'YYYY-MM-DD', creditNoteId?: uuid, paymentKey?: string }`. `paymentKey` (8-120 letters, digits, :, - or _) makes the payment safe to send again: the same key records nothing more and returns `replayed: true`. Copies of one invoice are paid as one bill. `amount` absent pays what is left; `paidOn` absent is today; `creditNoteId` is required with, and only with, `credit_applied`, and must be the same vendor's credit note in the same currency. Managers and owners only. Invoices only; a credit note or a delivery note is refused in words. Returns the invoice's `paidAt` and `paidBy` (set once its payments cover it), what is `paid` so far and what is `left`, in its `currency`.",
   })
   async markPaid(
     @Param("id") id: string,
@@ -2493,6 +2501,7 @@ export class DocumentsController {
       amount?: unknown;
       paidOn?: unknown;
       creditNoteId?: unknown;
+      paymentKey?: unknown;
     },
     @CurrentUser() user: AuthedUser,
   ): Promise<{
@@ -2502,6 +2511,7 @@ export class DocumentsController {
     paid?: number | null;
     left?: number | null;
     currency?: string | null;
+    replayed?: boolean;
   }> {
     requireUuid(id, "invoice id");
     if (typeof body?.paid !== "boolean")
@@ -2559,6 +2569,19 @@ export class DocumentsController {
         "Marking an invoice not paid takes no amount or date. Nothing was changed.",
         HttpStatus.BAD_REQUEST,
       );
+    const paymentKey =
+      body.paymentKey === undefined || body.paymentKey === null
+        ? null
+        : body.paymentKey;
+    if (
+      paymentKey !== null &&
+      (typeof paymentKey !== "string" ||
+        !/^[A-Za-z0-9:_-]{8,120}$/.test(paymentKey))
+    )
+      throw new HttpException(
+        "That payment came with a key this page does not make. Reload the page and record it again. Nothing was changed.",
+        HttpStatus.BAD_REQUEST,
+      );
     const role = await this.organizations.resolveRestaurantRole(
       user.userId,
       user.restaurantId,
@@ -2605,6 +2628,7 @@ export class DocumentsController {
           p_paid_by: how,
           p_credit_note_id: creditNoteId,
           p_recorded_by: user.userId,
+          p_client_key: paymentKey,
         })
       : await this.db.getClient().rpc("clear_invoice_payments", {
           p_restaurant_id: user.restaurantId,
@@ -2626,9 +2650,21 @@ export class DocumentsController {
       paid?: number | null;
       left?: number | null;
       currency?: string | null;
+      replayed?: boolean;
     } | null;
     const paidAt = state?.paid_at ?? null;
     const paidBy = state?.paid_by ?? null;
+    // The same key again (F-1725): recorded the first time, logged then.
+    if (state?.replayed)
+      return {
+        id,
+        paidAt,
+        paidBy,
+        paid: state.paid ?? null,
+        left: state.left ?? null,
+        currency: state.currency ?? null,
+        replayed: true,
+      };
 
     const number = (doc as { doc_number?: string | null }).doc_number;
     const { error: auditError } = await this.db
@@ -2690,13 +2726,18 @@ export class DocumentsController {
    * note; what is left; and the same vendor's credit notes in the same
    * currency that still hold credit — the only ones that can pay it (S235).
    * Owners and managers only: it is the invoice's money.
+   *
+   * Per bill, not per copy (F-1720): the payments on every copy of this
+   * invoice, what is left against the copy Owed keeps (the verified one, else
+   * the newest), and `paidAt` when any copy reads paid. Each payment carries
+   * its `id`, so one can be taken back on its own (F-1721).
    */
   @Get(":id/payments")
   @ApiOperation({
     summary:
       "The payments on a vendor invoice, and the credit notes that could pay it",
     description:
-      "Owners and managers only. `payments` each with `amount`, `currency`, `paidOn`, `paidBy` and the credit note's number; `paid` and `left` (null when the invoice has no total); `taken` = credit notes the vendor already took off this invoice's printed total; `credits` = the same vendor's credit notes in the invoice's currency with credit `left` on them, not rejected or replaced.",
+      "Owners and managers only. Copies of one invoice are one bill: `payments` (on every copy) each with `id`, `amount`, `currency`, `paidOn`, `paidBy` and the credit note's number; `paidAt` when any copy reads paid; `paid` and `left` (null when the invoice has no total); `taken` = credit notes the vendor already took off this invoice's printed total; `credits` = the same vendor's credit notes in the invoice's currency with credit `left` on them, not rejected or replaced.",
   })
   async payments(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
     requireUuid(id, "invoice id");
@@ -2717,7 +2758,7 @@ export class DocumentsController {
       .from("procurement_documents")
       // As corrected (F-1690): what is left is against the corrected total.
       .select(
-        "id, doc_type, provider_id, currency:effective_currency, total:effective_total",
+        "id, doc_type, provider_id, currency:effective_currency, total:effective_total, paid_at",
       )
       .eq("id", id)
       .eq("restaurant_id", user.restaurantId)
@@ -2729,17 +2770,62 @@ export class DocumentsController {
       );
     if (!inv || (inv as { doc_type?: string }).doc_type !== "invoice")
       throw new HttpException("Not found", HttpStatus.NOT_FOUND);
-    const invoice = inv as {
+    const invoice = { ...inv } as {
       provider_id: string | null;
       currency: string | null;
       total: number | string | null;
+      paid_at?: string | null;
     };
+
+    // Every copy of this invoice is one bill (F-1720), as Owed and the writer read it.
+    const copies = await this.billCopies(user.restaurantId, id);
+    let paidAt = invoice.paid_at ?? null;
+    if (copies.length > 1) {
+      const { data: copyRows, error: copyError } = await client
+        .from("procurement_documents")
+        .select(
+          "id, status, created_at, paid_at, currency:effective_currency, total:effective_total",
+        )
+        .eq("restaurant_id", user.restaurantId)
+        .in("id", copies);
+      if (copyError)
+        throw new HttpException(
+          `The other copies of this invoice could not be read: ${copyError.message}`,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
+      const all = (copyRows ?? []) as Array<{
+        status: string | null;
+        created_at: string | null;
+        paid_at: string | null;
+        currency: string | null;
+        total: number | string | null;
+      }>;
+      const gone = (c: { status: string | null }) =>
+        c.status === "rejected" || c.status === "superseded";
+      const kept = [...all].sort(
+        (a, b) =>
+          Number(gone(a)) - Number(gone(b)) ||
+          Number(b.status === "verified") - Number(a.status === "verified") ||
+          String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
+      )[0];
+      if (kept) {
+        invoice.total = kept.total;
+        invoice.currency = kept.currency;
+      }
+      paidAt =
+        all
+          .map((c) => c.paid_at)
+          .filter((d): d is string => typeof d === "string" && d !== "")
+          .sort()[0] ?? null;
+    }
     const code = invoice.currency?.trim().toUpperCase() || null;
 
     const { data: paidRows, error: payError } = await client
       .from("procurement_invoice_payments")
-      .select("amount, currency, paid_on, paid_by, credit_note_id, recorded_at")
-      .eq("invoice_id", id)
+      .select(
+        "id, invoice_id, amount, currency, paid_on, paid_by, credit_note_id, recorded_at",
+      )
+      .in("invoice_id", copies)
       .eq("restaurant_id", user.restaurantId)
       .order("paid_on", { ascending: true });
     if (payError)
@@ -2748,6 +2834,7 @@ export class DocumentsController {
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     const rows = (paidRows ?? []) as Array<{
+      id?: string;
       amount: number | string;
       currency: string;
       paid_on: string;
@@ -2848,9 +2935,11 @@ export class DocumentsController {
         : Math.abs(Number(invoice.total));
     return {
       currency: code,
+      paidAt,
       paid: total === null ? null : paid,
       left: total === null ? null : cents(Math.max(total - paid, 0)),
       payments: rows.map((r) => ({
+        ...(r.id ? { id: r.id } : {}),
         amount: Number(r.amount),
         currency: r.currency,
         paidOn: r.paid_on,
@@ -2875,6 +2964,123 @@ export class DocumentsController {
           left: cents(Math.abs(Number(n.total)) - (used.get(n.id) ?? 0)),
         }))
         .filter((n) => n.left > 0),
+    };
+  }
+
+  /** The copies of one invoice that are one bill (F-1720); just it, when it stands alone. */
+  private async billCopies(
+    restaurantId: string,
+    invoiceId: string,
+  ): Promise<string[]> {
+    const { data, error } = await this.db
+      .getClient()
+      .rpc("invoice_bill_copies", {
+        p_restaurant_id: restaurantId,
+        p_invoice_id: invoiceId,
+      });
+    if (error)
+      throw new HttpException(
+        `The copies of this invoice could not be read: ${error.message}`,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    const ids = Array.isArray(data) ? data.map(String) : [];
+    return ids.includes(invoiceId) ? ids : [invoiceId];
+  }
+
+  /**
+   * TAKE ONE PAYMENT BACK (F-1721, wave 113). "Mark not paid" was the only
+   * undo, and it took every instalment at once. `remove_invoice_payment`
+   * takes back one payment on this invoice's bill; the bill reads paid only
+   * while what is left still covers it. Managers and owners only, as
+   * recording one is; the removed payment is kept in the audit log, with who
+   * took it back. Outside every seal census for the same reason as `markPaid`.
+   */
+  @Delete(":id/payments/:paymentId")
+  @ApiOperation({
+    summary: "Take back one payment recorded on a vendor invoice",
+    description:
+      "Managers and owners only. Takes back the one payment (on any copy of this invoice) and returns it as `removed`, with the bill's `paidAt`, `paid` and `left` after it. The removal is kept in the audit log.",
+  })
+  async removePayment(
+    @Param("id") id: string,
+    @Param("paymentId") paymentId: string,
+    @CurrentUser() user: AuthedUser,
+  ): Promise<{
+    id: string;
+    removed: Record<string, unknown> | null;
+    paidAt: string | null;
+    paid: number | null;
+    left: number | null;
+    currency: string | null;
+  }> {
+    requireUuid(id, "invoice id");
+    requireUuid(paymentId, "payment id");
+    const role = await this.organizations.resolveRestaurantRole(
+      user.userId,
+      user.restaurantId,
+    );
+    try {
+      await this.organizations.assertCanManageRestaurant(
+        user.userId,
+        user.restaurantId,
+        "take back a payment on an invoice",
+      );
+    } catch {
+      throw new HttpException(
+        `Taking back a payment changes what the house owes its vendor, so it is a manager's or an owner's call. ${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so nothing was changed.`,
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    const { data, error } = await this.db
+      .getClient()
+      .rpc("remove_invoice_payment", {
+        p_restaurant_id: user.restaurantId,
+        p_invoice_id: id,
+        p_payment_id: paymentId,
+      });
+    if (error) {
+      const missing = (error as { code?: string }).code === "P0002";
+      throw new HttpException(
+        missing
+          ? `${error.message} Nothing was changed.`
+          : `The payment was not taken back: ${error.message}`,
+        missing ? HttpStatus.NOT_FOUND : HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+    const state = (data ?? {}) as {
+      removed?: Record<string, unknown> | null;
+      paid_at?: string | null;
+      paid?: number | null;
+      left?: number | null;
+      currency?: string | null;
+    };
+    const { error: auditError } = await this.db
+      .getClient()
+      .from("system_audit_log")
+      .insert({
+        actor_type: "user",
+        actor_id: user.userId,
+        action: "invoice_payment_removed",
+        entity_type: "procurement_document",
+        entity_id: id,
+        changes: {
+          subject: "A payment on an invoice",
+          payment_removed: state.removed ?? null,
+          paid_at: { to: state.paid_at ?? null },
+        },
+        restaurant_id: user.restaurantId,
+      });
+    if (auditError)
+      this.logger.error(
+        `payment ${paymentId} on invoice ${id} taken back, but the audit row failed: ${auditError.message}`,
+      );
+    return {
+      id,
+      removed: state.removed ?? null,
+      paidAt: state.paid_at ?? null,
+      paid: state.paid ?? null,
+      left: state.left ?? null,
+      currency: state.currency ?? null,
     };
   }
 

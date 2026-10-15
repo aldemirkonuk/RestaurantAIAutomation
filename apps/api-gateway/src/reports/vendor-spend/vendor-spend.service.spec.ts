@@ -843,6 +843,76 @@ describe("VendorSpendService — each payment, and credit kept to its vendor (F-
         .value,
     ).toBe(3000);
   });
+
+  it("[REVERT-FAILS] a no-total invoice marked paid on a back-dated day dates Owed from when it was recorded (F-1706)", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        // No total; marked paid on 10 March, back-dated to 1 December.
+        inv({
+          id: "nt",
+          doc_number: "N-1",
+          doc_date: "2025-11-20",
+          total: null,
+          paid_at: "2025-12-01T09:00:00Z",
+          paid_marked_at: "2026-03-10T09:00:00Z",
+          paid_by: "restaurant",
+        }),
+        // January paper nobody marked: from before any marking was recorded.
+        inv({
+          id: "jan",
+          doc_number: "N-2",
+          doc_date: "2026-01-15",
+          total: 700,
+        }),
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    expect(out.owedSince).toBe("2026-03-10");
+    const rossi = out.owing.find((o) => o.providerId === ROSSI)!;
+    expect(rossi.owed).toEqual([]);
+    expect(rossi.unpaid).toEqual([{ currency: "TRY", total: 700 }]);
+  });
+
+  it("[REVERT-FAILS] payments on two copies of one invoice cover the one bill, never past it (F-1720)", async () => {
+    const { svc } = service({
+      procurement_orders: [],
+      procurement_documents: [
+        inv({
+          id: "c1",
+          doc_number: "B-7",
+          doc_date: "2026-03-12",
+          total: 1000,
+          created_at: "2026-03-12T09:00:00Z",
+        }),
+        inv({
+          id: "c2",
+          doc_number: "b-7 ",
+          doc_date: "2026-03-12",
+          status: "received",
+          total: 1000,
+          created_at: "2026-03-13T09:00:00Z",
+        }),
+        inv({
+          id: "d1",
+          doc_number: "B-8",
+          doc_date: "2026-03-14",
+          total: 400,
+        }),
+      ],
+      // Paid per copy before the bill was one bill: 1.200 on a 1.000 bill.
+      procurement_invoice_payments: [
+        pay({ invoice_id: "c1", amount: 600 }),
+        pay({ invoice_id: "c2", amount: 600 }),
+      ],
+      providers: [{ id: ROSSI, name: "Rossi Wines" }],
+    });
+    const out = await svc.read(HOUSE, "2026-03-01", "2026-03-31");
+    const rossi = out.owing.find((o) => o.providerId === ROSSI)!;
+    expect(rossi.owed).toEqual([{ currency: "TRY", total: 400 }]);
+    expect(rossi.owedInvoices).toBe(1);
+  });
 });
 
 /**

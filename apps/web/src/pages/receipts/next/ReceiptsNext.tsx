@@ -79,6 +79,7 @@ import {
 } from './rc2-format';
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
+import { useDraftWriteKey, writeOutcomeUnknown } from '@/lib/draftWriteKey';
 import {
   RECEIPTS_SERVER_WINDOWS,
   useActiveRestaurantId,
@@ -181,6 +182,14 @@ function TieOutLine({ doc }: { doc: ProcurementDocument }) {
  * but it pays nothing on the 8.800. The block lets an owner or manager say so
  * (same vendor, same money, never more than the note has left), lists what was
  * said, and undoes it; the credit note then stops coming off Owed.
+ *
+ * ONE BILL, EACH PAYMENT ITS OWN (wave 113). Copies of one invoice are one
+ * bill (F-1720): the block reads paid when any copy is, and the payments
+ * listed are the bill's. Each payment can be taken back on its own, and
+ * "Mark not paid" first says which payments it takes back (F-1721). A payment
+ * carries a key held until it is recorded, so sending it again after a lost
+ * answer records it once; a lost answer says the payment may have gone
+ * through, never that nothing changed (F-1725).
  */
 const PAID_HOW: Record<string, string> = {
   restaurant: 'paid by the house',
@@ -193,7 +202,6 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
   const { activeRole, user } = useAuth();
   const canMark = canSeeCreditLedger(activeRole, user?.role);
   const group = useHouseGroupMark();
-  const paid = Boolean(doc.paid_at);
   const [how, setHow] = useState<InvoicePaidBy>('restaurant');
   const [creditId, setCreditId] = useState('');
   const [amountText, setAmountText] = useState('');
@@ -201,6 +209,9 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
   const [problem, setProblem] = useState<string | null>(null);
   const [takenId, setTakenId] = useState('');
   const [takenText, setTakenText] = useState('');
+  const [confirmUndo, setConfirmUndo] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const payKey = useDraftWriteKey(`invoice-pay:${doc.id}`);
   // The latest "Paid on" is the house's today, the day the gateway checks
   // against (F-1689); the UTC day let a Detroit evening pick tomorrow.
   const today = houseToday(useHouseZone());
@@ -217,15 +228,27 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
     setCreditId('');
     setTakenId('');
     setTakenText('');
+    setConfirmUndo(false);
+    setRemovingId(null);
     void ledger.refetch();
     onChanged();
   };
   const record = useMutation({
     mutationFn: (payment: InvoicePaymentInput) => documentsApi.markPaid(doc.id, true, payment),
-    onSuccess: after,
+    onSuccess: () => {
+      // Recorded: the next payment is a new one, with a new key.
+      payKey.renew();
+      after();
+    },
+    // An answer that never came back may still have recorded it: show the list.
+    onError: () => void ledger.refetch(),
   });
   const undo = useMutation({
     mutationFn: () => documentsApi.markPaid(doc.id, false),
+    onSuccess: after,
+  });
+  const removeOne = useMutation({
+    mutationFn: (paymentId: string) => documentsApi.removePayment(doc.id, paymentId),
     onSuccess: after,
   });
   const take = useMutation({
@@ -234,6 +257,8 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
     onSuccess: after,
   });
   const l = ledger.data;
+  const paidAt = doc.paid_at || l?.paidAt || null;
+  const paid = Boolean(paidAt);
   const money = l?.currency ?? doc.currency ?? null;
   const credits = l?.credits ?? [];
   const someMade = (l?.payments.length ?? 0) > 0;
@@ -255,6 +280,8 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
       }
       payment.creditNoteId = creditId;
     }
+    // The same words again (a retry) carry the same key; changed words, a new one.
+    payment.paymentKey = payKey.keyFor(payment);
     record.mutate(payment);
   };
   const sayTaken = () => {
@@ -273,20 +300,57 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
   const takenHere = l?.taken ?? [];
 
   const status = paid
-    ? `Paid in full on ${fmtDate(doc.paid_at)}.`
+    ? `Paid in full on ${fmtDate(paidAt)}.`
     : l && l.paid !== null && l.paid > 0
       ? `Paid ${fmtMoney(l.paid, money)} so far; ${fmtMoney(l.left, money)} left to pay.`
       : 'Not marked paid yet.';
-  const failure = record.error ?? undo.error ?? take.error;
+  const failure = record.error ?? undo.error ?? take.error ?? removeOne.error;
+  // Only an answer that never arrived: a refusal said what happened.
+  const lostPayment =
+    record.error != null &&
+    (record.error as { response?: unknown }).response == null &&
+    writeOutcomeUnknown(record.error);
+  const payments = l?.payments ?? [];
+  const smallBtn: CSSProperties = {
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '3px 9px',
+    borderRadius: 6,
+    border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+    background: 'transparent',
+    color: 'var(--seal-deep, #14515C)',
+    cursor: 'pointer',
+  };
   return (
     <div className="flex flex-wrap items-center gap-2" style={{ fontSize: 12.5, marginTop: 8 }}>
       <span style={{ color: 'var(--ink-2, #4F473C)' }}>{status}</span>
       {canMark && someMade && (
         <ul aria-label="Payments on this invoice" style={{ flexBasis: '100%', margin: 0, paddingLeft: 16 }}>
-          {(l?.payments ?? []).map((p, i) => (
-            <li key={i} style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
+          {payments.map((p, i) => (
+            <li key={p.id ?? i} style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
               {fmtMoney(p.amount, p.currency)} on {fmtDate(p.paidOn)}, {PAID_HOW[p.paidBy] ?? PAID_HOW.other}
-              {p.paidBy === 'credit_applied' ? ` ${p.creditNoteNumber ?? '(no number)'}` : ''}.
+              {p.paidBy === 'credit_applied' ? ` ${p.creditNoteNumber ?? '(no number)'}` : ''}.{' '}
+              {p.id &&
+                (removingId === p.id ? (
+                  <>
+                    Take this payment back?{' '}
+                    <button
+                      type="button"
+                      onClick={() => removeOne.mutate(p.id as string)}
+                      disabled={removeOne.isPending}
+                      style={smallBtn}
+                    >
+                      Yes, take it back
+                    </button>{' '}
+                    <button type="button" onClick={() => setRemovingId(null)} style={smallBtn}>
+                      Keep it
+                    </button>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => setRemovingId(p.id as string)} style={smallBtn}>
+                    Take back
+                  </button>
+                ))}
             </li>
           ))}
         </ul>
@@ -358,25 +422,26 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
               </button>
             </span>
           )}
-          {(paid || someMade) && (
-            <button
-              type="button"
-              onClick={() => undo.mutate()}
-              disabled={undo.isPending}
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                padding: '3px 9px',
-                borderRadius: 6,
-                border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                background: 'transparent',
-                color: 'var(--seal-deep, #14515C)',
-                cursor: 'pointer',
-              }}
-            >
-              Mark not paid
-            </button>
-          )}
+          {(paid || someMade) &&
+            (confirmUndo ? (
+              <span role="group" aria-label="Mark not paid?" style={{ flexBasis: '100%', fontSize: 11.5 }}>
+                {payments.length > 0
+                  ? `This takes back all ${payments.length === 1 ? 'the payment' : `${payments.length} payments`} on this invoice: ${payments
+                      .map((p) => `${fmtMoney(p.amount, p.currency)} on ${fmtDate(p.paidOn)}`)
+                      .join('; ')}. To take back just one, use Take back beside it.`
+                  : 'This says the invoice is not paid.'}{' '}
+                <button type="button" onClick={() => undo.mutate()} disabled={undo.isPending} style={smallBtn}>
+                  Yes, mark not paid
+                </button>{' '}
+                <button type="button" onClick={() => setConfirmUndo(false)} style={smallBtn}>
+                  Keep as it is
+                </button>
+              </span>
+            ) : (
+              <button type="button" onClick={() => setConfirmUndo(true)} style={smallBtn}>
+                Mark not paid
+              </button>
+            ))}
           {takenHere.length > 0 && (
             <ul
               aria-label="Credit already taken off this invoice's total"
@@ -458,7 +523,10 @@ function PaidBlock({ doc, onChanged }: { doc: ProcurementDocument; onChanged: ()
       )}
       {(problem || failure) && (
         <span role="alert" style={{ fontSize: 11.5, color: 'var(--ink-1, #211C16)', flexBasis: '100%' }}>
-          {problem ?? serverMessage(failure, 'Nothing was changed.')}
+          {problem ??
+            (lostPayment
+              ? 'No answer came back, so this payment may have been recorded. Check the payments listed here before you record it again; sending the same payment again will not record it twice.'
+              : serverMessage(failure, 'Nothing was changed.'))}
         </span>
       )}
     </div>

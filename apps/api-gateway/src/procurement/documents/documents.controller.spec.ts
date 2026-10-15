@@ -1351,6 +1351,7 @@ describe("DocumentsController.markPaid — payment is a fact on the invoice (F-1
       p_paid_by: "restaurant",
       p_credit_note_id: null,
       p_recorded_by: "u-1",
+      p_client_key: null,
     });
     const audit = writes.find((w) => w.table === "system_audit_log")!;
     expect(audit.row.action).toBe("invoice_marked_paid");
@@ -1370,6 +1371,83 @@ describe("DocumentsController.markPaid — payment is a fact on the invoice (F-1
       p_restaurant_id: "r-1",
       p_invoice_id: PAID_DOC,
     });
+  });
+
+  it("[REVERT-FAILS] a payment carries its key, and the same key again records and logs nothing more (F-1725)", async () => {
+    const { controller, writes } = paidHarness("manager", invoice, {
+      data: {
+        paid_at: null,
+        paid_by: null,
+        paid: 300,
+        left: 600,
+        currency: "TRY",
+        replayed: true,
+      },
+      error: null,
+    });
+    const out = await controller.markPaid(
+      PAID_DOC,
+      { paid: true, amount: 300, paymentKey: "pay-key-0001" },
+      user,
+    );
+    const call = writes.find((w) => w.op === "rpc")!;
+    expect(call.row.p_client_key).toBe("pay-key-0001");
+    expect(out).toEqual({
+      id: PAID_DOC,
+      paidAt: null,
+      paidBy: null,
+      paid: 300,
+      left: 600,
+      currency: "TRY",
+      replayed: true,
+    });
+    expect(writes.some((w) => w.table === "system_audit_log")).toBe(false);
+    const odd = paidHarness("manager", invoice);
+    await expect(
+      odd.controller.markPaid(
+        PAID_DOC,
+        { paid: true, paymentKey: "x; drop" },
+        user,
+      ),
+    ).rejects.toThrow("Nothing was changed");
+    expect(odd.writes).toHaveLength(0);
+  });
+
+  it("[REVERT-FAILS] one payment is taken back on its own, by a manager, and the removal is logged (F-1721)", async () => {
+    const PAY = "77777777-7777-4777-8777-777777777777";
+    const { controller, writes } = paidHarness("manager", invoice, {
+      data: {
+        removed: {
+          id: PAY,
+          amount: 500,
+          currency: "TRY",
+          paid_on: "2026-10-10",
+        },
+        paid_at: null,
+        paid: 300,
+        left: 500,
+        currency: "TRY",
+      },
+      error: null,
+    });
+    const out = await controller.removePayment(PAID_DOC, PAY, user);
+    const call = writes.find((w) => w.op === "rpc")!;
+    expect(call.table).toBe("remove_invoice_payment");
+    expect(call.row).toEqual({
+      p_restaurant_id: "r-1",
+      p_invoice_id: PAID_DOC,
+      p_payment_id: PAY,
+    });
+    expect(out.left).toBe(500);
+    expect(out.removed).toMatchObject({ amount: 500 });
+    const audit = writes.find((w) => w.table === "system_audit_log")!;
+    expect(audit.row.action).toBe("invoice_payment_removed");
+    expect(audit.row.changes.payment_removed).toMatchObject({ amount: 500 });
+    const staff = paidHarness("staff", invoice);
+    await expect(
+      staff.controller.removePayment(PAID_DOC, PAY, user),
+    ).rejects.toThrow("manager's or an owner's call");
+    expect(staff.writes).toHaveLength(0);
   });
 
   it("[REVERT-FAILS] records a part payment on its own day; the invoice stays unpaid with the rest left (F-1674)", async () => {
@@ -1697,6 +1775,7 @@ describe("DocumentsController.payments — what was paid, and the credit that ca
     role: string,
     taken: any[] = [],
     corrected: Record<string, Record<string, unknown>> = {},
+    copies: any[] = [],
   ) {
     const tables: Record<string, any> = {
       procurement_documents_one: {
@@ -1751,6 +1830,12 @@ describe("DocumentsController.payments — what was paid, and the credit that ca
     };
     const calls: Array<{ table: string; ops: any[] }> = [];
     const client = {
+      // The copies of the invoice that are one bill (F-1720).
+      rpc: () =>
+        Promise.resolve({
+          data: [INV, ...copies.map((c) => c.id)],
+          error: null,
+        }),
       from: (table: string) => {
         const ops: any[] = [];
         calls.push({ table, ops });
@@ -1774,6 +1859,17 @@ describe("DocumentsController.payments — what was paid, and the credit that ca
           return out;
         };
         const answer = () => {
+          if (
+            table === "procurement_documents" &&
+            ops.some((o) => o[0] === "in" && o[1] === "id")
+          )
+            return {
+              data: [
+                { ...tables.procurement_documents_one, status: "received" },
+                ...copies,
+              ].map(shown),
+              error: null,
+            };
           if (table === "procurement_documents")
             return ops.some((o) => o[0] === "eq" && o[1] === "doc_type")
               ? {
@@ -1783,7 +1879,7 @@ describe("DocumentsController.payments — what was paid, and the credit that ca
               : { data: shown(tables.procurement_documents_one), error: null };
           if (table === "procurement_credit_taken_on_invoice")
             return { data: taken, error: null };
-          if (ops.some((o) => o[0] === "in"))
+          if (ops.some((o) => o[0] === "in" && o[1] === "credit_note_id"))
             return {
               data: [{ credit_note_id: "cn1", amount: 1200 }],
               error: null,
@@ -1915,6 +2011,27 @@ describe("DocumentsController.payments — what was paid, and the credit that ca
     expect(out.credits).toEqual([
       { id: "cn2", number: "CN-90A", currency: "TRY", left: 700 },
     ]);
+  });
+
+  it("[REVERT-FAILS] reads every copy of the invoice as one bill: its payments, its total and whether it is paid (F-1720)", async () => {
+    const { controller, calls } = payHarness("manager", [], {}, [
+      {
+        id: "copy2",
+        status: "verified",
+        created_at: "2026-10-02T09:00:00Z",
+        currency: "TRY",
+        total: 4200,
+        paid_at: "2026-10-03T09:00:00Z",
+      },
+    ]);
+    const out = await controller.payments(INV, user);
+    const payRead = calls.find(
+      (c) => c.table === "procurement_invoice_payments",
+    )!;
+    expect(payRead.ops).toContainEqual(["in", "invoice_id", [INV, "copy2"]]);
+    // The verified copy's total is the bill's: 4.200 paid of 4.200.
+    expect(out.left).toBe(0);
+    expect(out.paidAt).toBe("2026-10-03T09:00:00Z");
   });
 
   it("keeps an invoice's payments from staff", async () => {

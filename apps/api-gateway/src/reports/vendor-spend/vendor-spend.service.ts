@@ -369,7 +369,7 @@ export class VendorSpendService {
             .from("procurement_documents")
             // As corrected (F-1690), same as the read above.
             .select(
-              "id, provider_id, doc_type, doc_number:effective_doc_number, doc_date:effective_doc_date, status, total:effective_total, currency:effective_currency, created_at, paid_at, paid_by",
+              "id, provider_id, doc_type, doc_number:effective_doc_number, doc_date:effective_doc_date, status, total:effective_total, currency:effective_currency, created_at, paid_at, paid_by, paid_marked_at",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
@@ -774,7 +774,8 @@ function billKey(d: Record<string, unknown>): string | null {
  * note's `total` is the credit it has NOT paid yet, and one used up is not in
  * `credits`. `since` counts a bill with payments from the day its first
  * payment was recorded (a back-dated payment does not move it), and a bill
- * without from its `paid_at`. `paidByCredit` is then only the bills marked
+ * without from when its marking was recorded (`paid_marked_at`, F-1706), else
+ * its `paid_at`. `paidByCredit` is then only the bills marked
  * paid by credit with no payment kept, from before payments were.
  *
  * With `taken` (wave 109, S237): credit a vendor already took off an
@@ -829,9 +830,19 @@ export function owedLedger(
     if (note && Number.isFinite(n))
       usedOfNote.set(note, (usedOfNote.get(note) ?? 0) + n);
   }
+  // A marking with no payment kept dates from when it was RECORDED, as a
+  // payment does (F-1706): `paid_at` may be back-dated by months. A marking
+  // from before `paid_marked_at` was kept was always recorded on `paid_at`.
   const markedDays = marked
     .filter((d) => !paidOnBill.has(keyOf(d)))
-    .map((d) => houseDayOf(String(d.paid_at), zone))
+    .map((d) =>
+      houseDayOf(
+        typeof d.paid_marked_at === "string" && d.paid_marked_at
+          ? d.paid_marked_at
+          : String(d.paid_at),
+        zone,
+      ),
+    )
     .filter((day): day is string => day !== null)
     .concat(recordedDays)
     .sort();
@@ -885,6 +896,8 @@ export function owedLedger(
     }
     // Part paid: what is left on it is what is owed (F-1674).
     const part = paidOnBill.get(keyOf(d)) ?? 0;
+    // Payments on every copy cover the one bill (F-1720); covered, it owes nothing.
+    if (priced && part !== 0 && Math.abs(n) - part <= 0.005) continue;
     const left = priced && part !== 0 ? { ...d, total: n - part } : d;
     (sinceThen(d) ? owed : notMarked).push(left);
   }
