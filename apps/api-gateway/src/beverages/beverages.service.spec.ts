@@ -1166,6 +1166,44 @@ describe("BeveragesService.readRowRecord — the invoice book names its vendor l
   });
 });
 
+describe("BeveragesService.readRowRecord — the invoice book reads the paper as corrected (F-1690)", () => {
+  /** Read as 3 Oct and "1NV-7"; a manager corrected both. Aliases as PostgREST would. */
+  const corrected = (select: string): FakeRow[] => [
+    {
+      id: "pdl-1",
+      restaurant_id: RID,
+      description: "Yeni Raki 70cl",
+      unit_price: 610,
+      line_total: 7320,
+      qty_bottles: 12,
+      created_at: "2026-10-03T08:00:00.000Z",
+      procurement_documents: {
+        id: "doc-1",
+        doc_type: "invoice",
+        restaurant_id: RID,
+        doc_date: select.includes("doc_date:effective_doc_date")
+          ? "2026-09-29"
+          : "2026-10-03",
+        doc_number: select.includes("doc_number:effective_doc_number")
+          ? "INV-7"
+          : "1NV-7",
+        providers: { name: "Anise Trading" },
+      },
+    },
+  ];
+
+  it("dates and names the line by the corrected issue date and number", async () => {
+    const { service } = await filteringService({
+      procurement_document_lines: { rows: corrected },
+    });
+    const out = await service.readRowRecord(RID, "Yeni Raki 70cl");
+    const invoice = out.books.find((b) => b.book === "invoice");
+    expect(invoice?.ledger).toEqual([
+      expect.objectContaining({ at: "2026-09-29", note: "INV-7" }),
+    ]);
+  });
+});
+
 describe("BeveragesService.readRowRecord — the menu book reads the CURRENT menu only (A-028)", () => {
   const menus: FakeRow[] = [
     { id: "live", restaurant_id: RID, status: "active" },

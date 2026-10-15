@@ -2213,8 +2213,10 @@ export class DocumentsController {
     const { data: doc, error: readError } = await this.db
       .getClient()
       .from("procurement_documents")
+      // As corrected (F-1690): where a person corrected the currency on the
+      // paper, that is the one being confirmed or restated, and "previous".
       .select(
-        "id, restaurant_id, provider_id, doc_type, currency, status, extracted, total",
+        "id, restaurant_id, provider_id, doc_type, currency:effective_currency, status, extracted, total:effective_total",
       )
       .eq("id", id)
       .eq("restaurant_id", user.restaurantId)

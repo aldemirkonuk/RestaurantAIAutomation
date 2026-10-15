@@ -332,6 +332,27 @@ describe("readInvoiceCurrencyEvidence — house-scoped, invoices only", () => {
     });
     expect(await readInvoiceCurrencyEvidence(client, "h", "v")).toHaveLength(1);
   });
+  it("a currency a person corrected on the paper is no vote, and order and number are as corrected (F-1690)", async () => {
+    // d0 printed EUR and a manager corrected its currency: evidence of neither.
+    // d1 and d2 read as the same number until d2's number was corrected, so
+    // the read returns them already aliased: two invoices, not one.
+    const rows: Array<Record<string, unknown>> = docs(["EUR", "USD", "USD"]);
+    rows[0].corrected_fields = ["currency"];
+    rows[2].doc_number = "N2";
+    const { client, calls } = stub({
+      procurement_documents: [{ data: rows, error: null }],
+      procurement_document_currency_changes: [{ data: [], error: null }],
+    });
+    const ev = await readInvoiceCurrencyEvidence(client, "h", "v");
+    expect(ev).toEqual([
+      { code: "EUR", restated: true },
+      { code: "USD", restated: false },
+      { code: "USD", restated: false },
+    ]);
+    const select = String(calls[0].ops.find(([o]) => o === "select")![1][0]);
+    expect(select).toContain("doc_number:effective_doc_number");
+    expect(select).toContain("doc_date:effective_doc_date");
+  });
   it("a failed read throws — it is never 'no invoices'", async () => {
     const { client } = stub({
       procurement_documents: [{ data: null, error: { message: "down" } }],

@@ -147,10 +147,12 @@ const CATALOGUE_COLUMNS =
  * hint picks the vendor who billed us; the JSON key stays `providers`.
  *
  * `doc_number` is read because the ledger prints it as the line's note — the
- * invoice the line came from (A-044). Without it every note was null.
+ * invoice the line came from (A-044). Without it every note was null. The
+ * date and the number are read as corrected (F-1690): a misread issue date a
+ * person corrected is the day the line was charged.
  */
 const INVOICE_LINE_COLUMNS =
-  "id, description, unit_price, line_total, qty_bottles, created_at, procurement_documents!inner(id, doc_type, doc_date, doc_number, restaurant_id, providers!procurement_documents_provider_id_fkey(name))";
+  "id, description, unit_price, line_total, qty_bottles, created_at, procurement_documents!inner(id, doc_type, doc_date:effective_doc_date, doc_number:effective_doc_number, restaurant_id, providers!procurement_documents_provider_id_fkey(name))";
 const ORDER_LINE_COLUMNS =
   "id, wine_name, producer, quantity, quoted_unit_price, negotiated_unit_price, final_unit_price, procurement_orders!inner(id, requested_at, restaurant_id, providers(name))";
 /**

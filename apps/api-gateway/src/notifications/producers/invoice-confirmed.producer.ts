@@ -85,8 +85,10 @@ export class InvoiceConfirmedProducer {
 
     const { data, error } = await client
       .from("procurement_documents")
+      // As corrected (F-1690): a total, date, number or currency a person
+      // corrected on the paper is the one the sentence says.
       .select(
-        "id, doc_type, doc_number, doc_date, provider_id, total, currency, ties_out, tie_out_delta, verified_at, verified_by",
+        "id, doc_type, effective_doc_number, effective_doc_date, provider_id, effective_total, effective_currency, ties_out, tie_out_delta, verified_at, verified_by",
       )
       .eq("restaurant_id", restaurantId)
       .eq("status", "verified")
@@ -136,13 +138,17 @@ export class InvoiceConfirmedProducer {
         ? (vendors.get(doc.provider_id) ?? null)
         : null;
       const label = docTypeLabel(doc.doc_type);
-      const number = doc.doc_number ? String(doc.doc_number) : null;
+      const number = doc.effective_doc_number
+        ? String(doc.effective_doc_number)
+        : null;
       const total =
-        doc.total === null || doc.total === undefined ? null : Number(doc.total);
+        doc.effective_total === null || doc.effective_total === undefined
+          ? null
+          : Number(doc.effective_total);
       // The document's own money, or null when it states none — never a
       // defaulted USD (F-341, ADR 0117 Q25): the sentence then prints the
       // figure with no symbol.
-      const currency = currencyCode(doc.currency);
+      const currency = currencyCode(doc.effective_currency);
 
       await this.ledger.emit(
         { restaurantId, producer: PRODUCER, audience: readers, tally, now },
@@ -184,7 +190,7 @@ export class InvoiceConfirmedProducer {
               documentId: doc.id,
               docType: doc.doc_type ?? null,
               docNumber: number,
-              docDate: doc.doc_date ?? null,
+              docDate: doc.effective_doc_date ?? null,
               providerId: doc.provider_id ?? null,
               vendorName: vendor,
               // `null` means the extraction never produced a total. It is not a

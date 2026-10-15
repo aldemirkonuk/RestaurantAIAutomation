@@ -65,8 +65,13 @@ export class ReadingSources {
     r => ownedOrderIds.includes(String(r.order_id)) && (r.restaurant_id === null || this.houseScope(r)));
   }
   documents(): Promise<Evidence> {
+    // As corrected (F-1690): a person's correction of the number, the issue
+    // date or the currency is the one a reading quotes.
     return this.session.read(c => c.from("procurement_documents")
-      .select("id,restaurant_id,doc_type,doc_number,doc_date,status,currency,extracted,verified_at,verified_by", selected)
+          .select(
+            "id,restaurant_id,doc_type,doc_number:effective_doc_number,doc_date:effective_doc_date,status,currency:effective_currency,extracted,verified_at,verified_by",
+            selected,
+          )
       .eq("restaurant_id", this.restaurantId), this.houseScope);
   }
   documentLines(ownedDocumentIds: string[]): Promise<Evidence> {

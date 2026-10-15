@@ -50,7 +50,7 @@ function build() {
 }
 
 function doc(over: Record<string, any> = {}) {
-  return {
+  const d = {
     id: "doc-1",
     restaurant_id: TENANT,
     doc_type: "invoice",
@@ -65,6 +65,15 @@ function doc(over: Record<string, any> = {}) {
     verified_at: "2026-09-03T14:20:00Z",
     verified_by: "user-1",
     ...over,
+  };
+  // Never corrected unless the test says so: the effective header is the one
+  // as read (F-1690).
+  return {
+    effective_doc_number: d.doc_number,
+    effective_doc_date: d.doc_date,
+    effective_total: d.total,
+    effective_currency: d.currency,
+    ...d,
   };
 }
 
@@ -92,6 +101,33 @@ describe("InvoiceConfirmedProducer", () => {
     expect(call.metadata.total).toBe(1240.5);
     expect(call.metadata.vendorName).toBe("Terroir Selections");
     expect(call.type).toBe("invoice_received");
+  });
+
+  it("says the total, number, date and currency a person corrected (F-1690)", async () => {
+    const { db, notifications, producer } = build();
+    // Read as 123.456 "USD" on "1NV-88213" dated 3 Jan; all four corrected.
+    db.tables.procurement_documents.push(
+      doc({
+        doc_number: "1NV-88213",
+        doc_date: "2027-01-03",
+        total: 123.456,
+        currency: "USD",
+        effective_doc_number: "INV-88213",
+        effective_doc_date: "2026-12-31",
+        effective_total: 1234.56,
+        effective_currency: "EUR",
+      }),
+    );
+    vendor(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.title).toBe("Invoice INV-88213 certified — Terroir Selections");
+    expect(call.metadata).toMatchObject({
+      docNumber: "INV-88213",
+      docDate: "2026-12-31",
+      total: 1234.56,
+      currency: "EUR",
+    });
   });
 
   it("[REVERT-FAILS] never says approved, accepted or paid", async () => {

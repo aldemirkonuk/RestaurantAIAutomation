@@ -14,9 +14,19 @@ class Books {
   from(table: string) {
     const filters: Array<(row: Row) => boolean> = [];
     const filterNames: string[] = [];
-    let offset = 0, end = 999, sorted = false;
+    let offset = 0,
+      end = 999,
+      sorted = false,
+      aliases: Array<[string, string]> = [];
     const q: any = {
-      select: () => q,
+      // `alias:column` reads the column under the alias, as PostgREST does.
+      select: (cols = "") => {
+        aliases = cols
+          .split(",")
+          .filter((c) => c.includes(":"))
+          .map((c) => c.split(":").map((x) => x.trim()) as [string, string]);
+        return q;
+      },
       eq: (k: string, v: any) => { filters.push(r => r[k] === v); filterNames.push(`${k}=${v}`); return q; },
       // An absent column reads as null, as PostgREST answers `is.null` (F-1240).
       is: (k: string, v: any) => {
@@ -31,7 +41,16 @@ class Books {
       then: (resolve: any, reject: any) => {
         this.calls.push({ table, filters: filterNames, offset });
         if (this.fail.has(table)) return Promise.resolve({ data: null, count: null, error: { code: "XX001", message: "not absence" } }).then(resolve, reject);
-        let data = (this.tables[table] || []).filter(r => filters.every(f => f(r)));
+        let data = (this.tables[table] || [])
+          .filter((r) => filters.every((f) => f(r)))
+          .map((r) =>
+            aliases.length
+              ? {
+                  ...r,
+                  ...Object.fromEntries(aliases.map(([a, c]) => [a, r[c]])),
+                }
+              : r,
+          );
         if (sorted) data = [...data].sort((a, b) => String(a.id).localeCompare(String(b.id)));
         const count = this.unknownCount ? null : data.length + (this.countChange && offset ? 1 : 0);
         return Promise.resolve({ data: data.slice(offset, end + 1), count, error: null }).then(resolve, reject);
@@ -46,7 +65,15 @@ const item = (id: string, rest: Row = {}): Row => house(id, { display_name: id, 
   shadow_stock: 4, in_transit_quantity: 12, threshold_min: 3, is_active: true, deleted_at: null, ...rest });
 const order = (id: string, rest: Row = {}): Row => house(id, { order_number: id, status: "CONFIRMED", inventory_id: "item-a", quantity: 2, unit_type: "CASE", expected_delivery_date: "2026-09-12", ...rest });
 const doc = (id: string, rest: Row = {}): Row => house(id, { doc_type: "invoice", doc_number: id, status: "verified", currency: "TRY",
-  extracted: { currencyFiledFrom: "stated on document" }, verified_at: "2026-09-12T12:00:00Z", verified_by: "manager", ...rest });
+    extracted: { currencyFiledFrom: "stated on document" },
+    verified_at: "2026-09-12T12:00:00Z",
+    verified_by: "manager",
+    // Never corrected: the effective header is the one as read (F-1690).
+    effective_doc_number: rest.doc_number ?? id,
+    effective_doc_date: rest.doc_date ?? null,
+    effective_currency: rest.currency === undefined ? "TRY" : rest.currency,
+    ...rest,
+  });
 const fixture = () => new Books({
   restaurants: [{ id: rid, threshold_configured: false }],
   restaurant_inventory: [item("item-a"), item("item-b", { stock_live: 9, in_transit_quantity: 0 }), item("item-c", { stock_live: 3, in_transit_quantity: null }),
@@ -374,6 +401,20 @@ describe("proof, scope, absence and provenance regressions", () => {
     books.tables.procurement_documents[0].extracted = { currencyFiledFrom: "stated on document" };
     books.tables.procurement_document_lines[0].restaurant_id = "house-b";
     expect((await run(books, "receipts.verified_line")).reason).toBe("scope_mismatch");
+  });
+  test("a receipt line is quoted in its paper's CORRECTED currency and number (F-1690)", async () => {
+    // Read as USD and "1NV-7", corrected by a manager to TRY and "INV-7".
+    const books = fixture();
+    Object.assign(books.tables.procurement_documents[0], {
+      currency: "USD",
+      doc_number: "1NV-7",
+      effective_currency: "TRY",
+      effective_doc_number: "INV-7",
+    });
+    const finding = await run(books, "receipts.verified_line");
+    expect(finding.outcome).toBe("read");
+    expect(value(finding, "receipt-a:currency")).toBe("TRY");
+    expect(value(finding, "receipt-a:doc_number")).toBe("INV-7");
   });
   test("a Reading that never executes a query cannot mint a hollow figure", () => {
     const session = new RecordingSession(fixture());

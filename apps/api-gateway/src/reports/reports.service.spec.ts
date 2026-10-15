@@ -202,6 +202,8 @@ describe("refileReport / getReportCrossFile (Sorting Office)", () => {
   function makeMultiStub(opts: {
     reportRow?: Record<string, unknown>;
     paper?: { data: unknown[]; count: number | null };
+    /** Rows the paper leg FILTERS and projects as PostgREST would. */
+    paperRows?: Array<Record<string, unknown>>;
     threads?: unknown[];
   }) {
     const reportRow = opts.reportRow ?? ROW;
@@ -217,8 +219,24 @@ describe("refileReport / getReportCrossFile (Sorting Office)", () => {
     function makeBuilder(table: string) {
       let op = "select";
       let updatePayload: Record<string, unknown> | null = null;
+      let columns = "";
+      const bounds: Array<(r: Record<string, unknown>) => boolean> = [];
       const builder: Record<string, unknown> = {};
       const resolve = () => {
+        if (table === "procurement_documents" && opts.paperRows) {
+          captured.paperTouched = true;
+          const kept = opts.paperRows.filter((r) => bounds.every((b) => b(r)));
+          // `alias:column` reads the column under the alias.
+          const data = kept.map((r) =>
+            Object.fromEntries(
+              columns.split(",").map((c) => {
+                const [alias, col] = c.includes(":") ? c.split(":") : [c, c];
+                return [alias.trim(), r[col.trim()]];
+              }),
+            ),
+          );
+          return { data: data.slice(0, 1), count: kept.length, error: null };
+        }
         if (table === "procurement_documents") {
           captured.paperTouched = true;
           return {
@@ -233,7 +251,10 @@ describe("refileReport / getReportCrossFile (Sorting Office)", () => {
         return { data: reportRow, error: null };
       };
       Object.assign(builder, {
-        select: jest.fn(() => builder),
+        select: jest.fn((cols?: string) => {
+          if (table === "procurement_documents") columns = cols ?? "";
+          return builder;
+        }),
         update: jest.fn((payload: Record<string, unknown>) => {
           op = "update";
           updatePayload = payload;
@@ -253,8 +274,14 @@ describe("refileReport / getReportCrossFile (Sorting Office)", () => {
             captured.paperFilters.push({ column, value });
           return builder;
         }),
-        gte: jest.fn(() => builder),
-        lte: jest.fn(() => builder),
+        gte: jest.fn((column: string, value: string) => {
+          bounds.push((r) => r[column] != null && String(r[column]) >= value);
+          return builder;
+        }),
+        lte: jest.fn((column: string, value: string) => {
+          bounds.push((r) => r[column] != null && String(r[column]) <= value);
+          return builder;
+        }),
         order: jest.fn(() => builder),
         limit: jest.fn(() => builder),
         or: jest.fn(() => builder),
@@ -341,6 +368,33 @@ describe("refileReport / getReportCrossFile (Sorting Office)", () => {
       column: "restaurant_id",
       value: "restaurant-1",
     });
+  });
+
+  it("counts an invoice in the month its CORRECTED issue date falls in (F-1690)", async () => {
+    // Read as 3 April, corrected to 31 March: the March report counts it, by
+    // its corrected number. A paper read as 31 March and corrected to
+    // 2 April leaves March.
+    const { databaseService } = makeMultiStub({
+      paperRows: [
+        {
+          doc_number: "1N-0331",
+          doc_date: "2026-04-03",
+          effective_doc_number: "IN-0331",
+          effective_doc_date: "2026-03-31",
+        },
+        {
+          doc_number: "IN-0402",
+          doc_date: "2026-03-31",
+          effective_doc_number: "IN-0402",
+          effective_doc_date: "2026-04-02",
+        },
+      ],
+    });
+    const service = new ReportsService(databaseService);
+
+    const result = await service.getReportCrossFile("restaurant-1", "report-1");
+
+    expect(result.paper).toEqual({ count: 1, sample: "IN-0331" });
   });
 
   it("a report with no period cross-files to nothing — and asks no register", async () => {

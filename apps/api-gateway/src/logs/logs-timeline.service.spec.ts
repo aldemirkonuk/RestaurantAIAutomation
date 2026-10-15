@@ -38,8 +38,14 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
       const nullFilters: Array<[string, boolean]> = [];
       const rec: Asked = { table, order: [], limit: null, or: [] };
       asked.push(rec);
+      let aliases: Array<[string, string]> = [];
       const api: any = {
-        select() {
+        // `alias:column` reads the column under the alias, as PostgREST does.
+        select(cols = "") {
+          aliases = String(cols)
+            .split(",")
+            .filter((c) => c.includes(":"))
+            .map((c) => c.split(":").map((x) => x.trim()) as [string, string]);
           return api;
         },
         eq(col: string, val: any) {
@@ -98,6 +104,11 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
         },
         then(resolve: any) {
           let rows = tables[table] || [];
+          if (aliases.length)
+            rows = rows.map((r) => ({
+              ...r,
+              ...Object.fromEntries(aliases.map(([a, c]) => [a, r[c]])),
+            }));
           rows = rows.filter((r) => filters.every(([c, v]) => r[c] === v));
           rows = rows.filter((r) => neqFilters.every(([c, v]) => r[c] !== v));
           for (const [col, obj] of containsFilters) {
@@ -177,6 +188,9 @@ function document(
     doc_number: id.toUpperCase(),
     status: "received",
     total: 10,
+    // Never corrected: the effective header is the one as read (F-1690).
+    effective_doc_number: id.toUpperCase(),
+    effective_total: 10,
     correlation_id: null,
     created_at: createdAt,
   };
@@ -509,6 +523,32 @@ describe("LogsTimelineService.getTimeline", () => {
         "system_audit_log",
       ]);
       expect(res.sourcesQueried).not.toContain("event_store");
+    });
+  });
+
+  it("shows a corrected invoice by its corrected number and total (F-1690)", async () => {
+    // Read as 123.456 and "1NV-9"; a manager corrected both on the paper.
+    const tables = {
+      ...EMPTY,
+      procurement_documents: [
+        {
+          ...document("doc-c", "2026-09-01T09:00:00.000Z"),
+          doc_number: "1NV-9",
+          total: 123.456,
+          effective_doc_number: "INV-9",
+          effective_total: 1234.56,
+        },
+      ],
+    };
+    const client = makeFakeClient(tables);
+    const { events } = await new LogsTimelineService({
+      getClient: () => client,
+    } as unknown as DatabaseService).getTimeline("r1", { role: "owner" });
+
+    expect(events[0].summary).toBe("invoice #INV-9 → received");
+    expect(events[0].detail).toMatchObject({
+      docNumber: "INV-9",
+      total: 1234.56,
     });
   });
 

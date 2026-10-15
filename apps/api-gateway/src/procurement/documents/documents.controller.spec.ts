@@ -197,14 +197,34 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
 
     const client = {
       from(table: string) {
+        let aliases: string[][] = [];
         const q: any = {
           _table: table,
-          select: () => q,
+          // `alias:column` reads the column under the alias, as PostgREST
+          // does, where the row carries that column.
+          select: (cols = "") => {
+            aliases = String(cols)
+              .split(",")
+              .filter((c) => c.includes(":"))
+              .map((c) => c.split(":").map((x) => x.trim()));
+            return q;
+          },
           eq: () => q,
-          maybeSingle: async () => ({
-            data: opts.doc === undefined ? DOC : opts.doc,
-            error: opts.docError ?? null,
-          }),
+          maybeSingle: async () => {
+            const row = opts.doc === undefined ? DOC : opts.doc;
+            const data =
+              row && aliases.some(([, c]) => c in row)
+                ? {
+                    ...row,
+                    ...Object.fromEntries(
+                      aliases
+                        .filter(([, c]) => c in row)
+                        .map(([a, c]) => [a, row[c]]),
+                    ),
+                  }
+                : row;
+            return { data, error: opts.docError ?? null };
+          },
           insert: async (row: any) => {
             inserts.push({ table, row });
             return { error: opts.logError ?? null };
@@ -575,6 +595,26 @@ describe("DocumentsController.restateCurrency — the deliberate change", () => 
     // change is how a manager comes to believe they corrected something.
     expect(res.sentence).toContain("CONFIRMED");
     expect(res.sentence).toContain("did not change");
+  });
+
+  it("reads 'previous' as the currency a person CORRECTED on the paper (F-1690)", async () => {
+    // Read as USD, corrected to TRY on /documents/:id: naming TRY confirms
+    // the corrected currency, and the log says it was TRY before.
+    const { controller, inserts } = harness({
+      doc: { ...DOC, currency: "USD", effective_currency: "TRY" },
+    });
+    const res = await controller.restateCurrency(
+      "doc-9",
+      { currency: "TRY" },
+      user,
+    );
+    expect(res.kind).toBe("confirmed");
+    expect(res.previousCurrency).toBe("TRY");
+    expect(inserts[0].row).toMatchObject({
+      change_kind: "confirmed",
+      previous_currency: "TRY",
+      new_currency: "TRY",
+    });
   });
 
   it("calls a change from NOT RECORDED a restatement, never a confirmation", async () => {

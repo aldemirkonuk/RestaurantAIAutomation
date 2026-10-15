@@ -34,7 +34,11 @@ import { isIso4217 } from "../common/iso-4217";
  *     row with `change_kind = 'restated'`, or with no kind recorded, which this
  *     treats the same way rather than guessing it was a confirmation) is left
  *     out entirely: the paper said one thing and a person decided another, so
- *     it is evidence of neither.
+ *     it is evidence of neither. A currency a person CORRECTED on the paper
+ *     (`corrected_fields` names `currency`, F-1690) is left out the same way.
+ *   * "Newest" and "the same number" are read as corrected (F-1690): an
+ *     invoice whose issue date or number a person corrected sorts and counts
+ *     by the corrected one.
  *   * The same invoice number counted once — an invoice photographed and also
  *     emailed is one invoice.
  *
@@ -223,7 +227,7 @@ export async function readInvoiceCurrencyEvidence(
   const { data, error } = await client
     .from("procurement_documents")
     .select(
-      "id, doc_number, doc_date, created_at, status, seen_code:extracted->currencySeen->>code, filed_kind:extracted->>currencyFiledKind, filed_code:extracted->>currencyFiledCode",
+      "id, doc_number:effective_doc_number, doc_date:effective_doc_date, corrected_fields, created_at, status, seen_code:extracted->currencySeen->>code, filed_kind:extracted->>currencyFiledKind, filed_code:extracted->>currencyFiledCode",
     )
     .eq("restaurant_id", restaurantId)
     .eq("provider_id", providerId)
@@ -239,6 +243,7 @@ export async function readInvoiceCurrencyEvidence(
     doc_date?: string | null;
     created_at?: string | null;
     status?: string | null;
+    corrected_fields?: string[] | null;
     seen_code?: string | null;
     filed_kind?: string | null;
     filed_code?: string | null;
@@ -248,7 +253,11 @@ export async function readInvoiceCurrencyEvidence(
   );
   if (rows.length === 0) return [];
 
-  const restated = new Set<string>();
+  const restated = new Set<string>(
+    rows
+      .filter((r) => (r.corrected_fields ?? []).includes("currency"))
+      .map((r) => r.id),
+  );
   const { data: changes, error: changesError } = await client
     .from("procurement_document_currency_changes")
     .select("document_id, change_kind")

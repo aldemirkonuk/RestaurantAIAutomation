@@ -598,8 +598,11 @@ export class LogsTimelineService {
     return this.guard("procurement_documents", async () => {
       let q = db
         .from("procurement_documents")
+        // As corrected (F-1690): the row says the document as it stands, so
+        // its number and total are the ones a person corrected, beside its
+        // current status. The paper as read stays on /documents/:id.
         .select(
-          "id, doc_type, doc_number, status, total, correlation_id, created_at",
+          "id, doc_type, doc_number:effective_doc_number, status, total:effective_total, correlation_id, created_at",
         )
         .eq("restaurant_id", restaurantId);
       q = windowed(q, "created_at", cursor);

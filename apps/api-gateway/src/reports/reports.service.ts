@@ -256,7 +256,7 @@ export class ReportsService {
   /**
    * "Cross-filed under" (Sorting Office). The other registers holding entries
    * from this report's period: vendor paper (procurement_documents by
-   * doc_date) and conversation threads (the production
+   * effective_doc_date, the issue date as corrected) and conversation threads (the production
    * `list_conversation_threads` RPC's window total, date-bounded). A report
    * with no period cross-files to nothing, and says so with nulls — the
    * counts are computed or absent, never invented.
@@ -273,11 +273,13 @@ export class ReportsService {
     const [paperRes, threadsRes] = await Promise.all([
       this.databaseService.supabase
         .from("procurement_documents")
-        .select("doc_number", { count: "exact" })
+        // As corrected (F-1690): an invoice dated 31 Dec that the reader took
+        // as 3 Jan belongs to December once a person corrects it.
+        .select("doc_number:effective_doc_number", { count: "exact" })
         .eq("restaurant_id", restaurantId)
-        .gte("doc_date", report.periodStart)
-        .lte("doc_date", report.periodEnd)
-        .order("doc_date", { ascending: false })
+        .gte("effective_doc_date", report.periodStart)
+        .lte("effective_doc_date", report.periodEnd)
+        .order("effective_doc_date", { ascending: false })
         .limit(1),
       this.databaseService.supabase.rpc("list_conversation_threads", {
         p_restaurant_id: restaurantId,
