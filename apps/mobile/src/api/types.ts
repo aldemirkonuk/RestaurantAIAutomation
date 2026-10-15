@@ -15,7 +15,8 @@ export interface FeedItem {
   subtitle: string;
   wineName: string | null;
   providerName: string | null;
-  amount: number | null;
+  /** Absent when the signed-in role does not see money (ADR 0253 round 2). */
+  amount?: number | null;
   quantity: number | null;
   priority: FeedPriority;
   score: number;
@@ -32,7 +33,8 @@ export interface FeedResponse {
   items: FeedItem[];
   counts: {
     total: number;
-    orderApprovals: number;
+    /** Absent when the signed-in role does not see money (no approve cards). */
+    orderApprovals?: number;
     draftApprovals: number;
     receiptVerifications: number;
     alerts: number;
@@ -40,11 +42,16 @@ export interface FeedResponse {
   generatedAt: string;
 }
 
+/**
+ * The four sales figures are ABSENT when the signed-in role does not see money
+ * (owners and managers only, ADR 0253 round 2). Absent is not `null`: `null`
+ * means the sales could not be read; absent means they are not this person's.
+ */
 export interface TodayPulse {
-  revenueToday: number | null;
-  checksToday: number | null;
-  revenueLastWeek: number | null;
-  deltaPct: number | null;
+  revenueToday?: number | null;
+  checksToday?: number | null;
+  revenueLastWeek?: number | null;
+  deltaPct?: number | null;
   pendingDecisions: number;
   criticalCount: number;
   windowStart: string;
