@@ -535,6 +535,63 @@ describe('MonthCloseShelf (F-1013)', () => {
     ]);
   });
 
+  it('[REVERT-FAILS] says the days the till covered and names a ruled-out day (F-1718)', async () => {
+    const f = close().figures;
+    const till = { ...f.till, daysCounted: 28, daysInMonth: 31, ruledOutDays: ['2026-07-04', '2026-07-10'] };
+    api.get.mockResolvedValueOnce({
+      data: {
+        closes: [
+          close({ figures: { ...f, till } }),
+          // The till covered every day, or the close was kept before days were.
+          close({ id: 'c0', month: '2026-06', figures: { ...f, till: { ...f.till, daysCounted: 30, daysInMonth: 30, ruledOutDays: [] } } }),
+        ],
+      },
+    });
+    wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    const kept = await screen.findAllByLabelText(/Figures kept for/);
+    expect(kept[0].textContent).toContain(
+      "Net sales through the till: €1,000 over 10 checks. The till covered 28 of the month's 31 days",
+    );
+    expect(within(kept[0]).getByTestId('close-ruled-out-days').textContent).toBe(
+      'Ruled out of the figures (a till outage or a closure): July 4, July 10. A ruled-out day with no check is not counted as a day of sales; a check that came in on one still counts.',
+    );
+    expect(kept[1].textContent).not.toContain('The till covered');
+    expect(within(kept[1]).queryByTestId('close-ruled-out-days')).toBeNull();
+  });
+
+  it('lists a tip changed after the close, and Tips kept against now (w111-tips-owed)', async () => {
+    const d: MonthCloseDetail = {
+      ...detail(),
+      changes: [
+        {
+          kind: 'tips',
+          at: '2026-08-03T10:00:00Z',
+          day: '2026-07-20',
+          who: 'The till',
+          what: 'Check T-17: tip changed at the till',
+          delta: 5,
+          unit: 'money',
+          currency: null,
+        },
+      ],
+      againstNow: [
+        { figure: 'till_tips', label: 'Tips through the till', atClose: 100, now: 105, delta: 5, currency: 'EUR' },
+      ],
+    };
+    api.get.mockImplementation(async (url: string) =>
+      url === '/reports/month-close' ? { data: { closes: [close()] } } : { data: d },
+    );
+    wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'What changed since' }));
+    const changed = await screen.findByLabelText('Changed after close');
+    expect(within(changed).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      '2026-07-20 · The till · Check T-17: tip changed at the till +€5',
+    ]);
+    expect(screen.getByLabelText('Kept against now').textContent).toContain(
+      'Tips through the till: €100 kept, €105 now (+€5)',
+    );
+  });
+
   it('says a close kept before tips were kept, never as none (F-1691)', async () => {
     api.get.mockResolvedValueOnce({ data: { closes: [close()] } });
     wrap(<MonthCloseShelf restaurantId="r1" zone="Europe/Istanbul" />);

@@ -294,6 +294,24 @@ describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
     expect(d.request).toHaveBeenLastCalledWith('ledger', null);
   });
 
+  it('[REVERT-FAILS] writes up Who served it over the month the sheet is set to, and its own 90 days otherwise (w111-tips-owed)', () => {
+    const d = desk();
+    const { rerender } = render(
+      <ExportsShelf desk={d} onSheet={['service'] as never[]} tillDays={30} tillMonth="2026-07" />,
+    );
+    expect(screen.getByText(/^over .*2026, as the sheet is set$/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Write it up' }));
+    expect(d.request).toHaveBeenLastCalledWith('service', null, '2026-07');
+    // No month picked, or a quarter: its fixed window, no days sent with it.
+    rerender(<ExportsShelf desk={d} onSheet={['service'] as never[]} tillDays={30} tillMonth={null} />);
+    expect(screen.queryByText(/is set$/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Write it up' }));
+    expect(d.request).toHaveBeenLastCalledWith('service', null);
+    rerender(<ExportsShelf desk={d} onSheet={['service'] as never[]} tillDays={30} tillMonth="2026-Q3" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Write it up' }));
+    expect(d.request).toHaveBeenLastCalledWith('service', null);
+  });
+
   it('does not call a file of the last 7 days the till\'s setting while the till shows last week (F-1236)', () => {
     render(<ExportsShelf desk={desk()} onSheet={['till'] as never[]} tillDays={7} tillWeek />);
     expect(screen.queryByText(/as the till is set/)).toBeNull();

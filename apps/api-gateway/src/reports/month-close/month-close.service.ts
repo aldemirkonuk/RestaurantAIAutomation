@@ -14,6 +14,8 @@ import {
   houseDayOf,
   houseToday,
   readHouseZone,
+  shiftHouseDay,
+  type CheckTimes,
 } from "../../common/house-day";
 import { houseFrame } from "../../common/house-frame";
 import { readWholeWindow } from "../../common/read-whole-window";
@@ -123,6 +125,17 @@ export interface TillFigures {
   /** Only days with a net figure. */
   days: Array<{ date: string; netSales: number }>;
   /**
+   * F-1718: the days of the month the till covered, counted as the
+   * dashboard counts them (F-1535): from the register's first check to its
+   * latest, less a day an owner or manager ruled out that no check landed
+   * on. Absent on a close kept before: unknown, never the whole month.
+   */
+  daysCounted?: number | null;
+  /** The month's own days, beside `daysCounted`. */
+  daysInMonth?: number;
+  /** F-1718: the month's days ruled out of the figures (ADR 0317), oldest first. */
+  ruledOutDays?: string[];
+  /**
    * F-1606: the tax inside the till's prices, gross less net (`gross_subtotal`
    * − `subtotal`), over the checks ingest made pre-tax for a house whose
    * prices include tax (ADR 0341): stamped `prices_include_tax`, carrying
@@ -166,7 +179,7 @@ export interface TipsByServer {
   /** As the till names them (`server_name`, else its own id); null when it named no one. */
   server: string | null;
   tips: number;
-  /** Their checks that carried a tip. */
+  /** Their checks that recorded a tip amount, a 0 included (F-1719). */
   checks: number;
 }
 
@@ -672,12 +685,18 @@ export class MonthCloseService {
       );
 
     const house = await this.readHouse(restaurantId);
-    const { figures: read, tillWindow } = await this.readFigures(
-      restaurantId,
-      month,
-      zone,
-      house.currency,
-    );
+    const {
+      figures: read,
+      tillWindow,
+      checks,
+    } = await this.readFigures(restaurantId, month, zone, house.currency);
+    // F-1718: the days the till covered, kept beside the net figure, so a
+    // month with a ruled-out outage is never kept as a whole month's net.
+    if (read.till.posConnected)
+      Object.assign(
+        read.till,
+        await this.tillDaysCovered(restaurantId, month, zone, checks),
+      );
     // F-1606: the basis the month's net was on, and the day it was stated,
     // so a year of closes shows where the net stopped holding the tax.
     // F-1624: every answer the house gave, not only the last; a change inside
@@ -1327,6 +1346,89 @@ export class MonthCloseService {
       writeOffs: writeOffFigures(takeOffs, currency),
     };
     return { figures, tillWindow, checks, counts };
+  }
+
+  /**
+   * F-1718: the month's days the till covered, as the dashboard's month
+   * counts them (dashboard.service.ts `readMonthTakings`, F-1535): a day from
+   * the register's first check to its latest is counted, a quiet one as a
+   * measured zero; a day an owner or manager ruled out (a till outage, a
+   * closure) is not, unless a check landed on it. A read that fails refuses
+   * the close, as every figure read does: an unread list would keep an outage
+   * as a day of no sales.
+   */
+  private async tillDaysCovered(
+    restaurantId: string,
+    month: string,
+    zone: string,
+    checks: TillCheck[],
+  ): Promise<
+    Required<Pick<TillFigures, "daysCounted" | "daysInMonth" | "ruledOutDays">>
+  > {
+    const { first, last } = monthDays(month);
+    const [earliest, latest, ruled] = await Promise.all([
+      this.db
+        .from("pos_checks")
+        .select("opened_at")
+        .eq("restaurant_id", restaurantId)
+        .order("opened_at", { ascending: true })
+        .limit(1),
+      this.db
+        .from("pos_checks")
+        .select("opened_at, closed_at")
+        .eq("restaurant_id", restaurantId)
+        .order("opened_at", { ascending: false })
+        .limit(1),
+      this.db
+        .from("analytics_day_exclusions")
+        .select("business_date")
+        .eq("restaurant_id", restaurantId)
+        .gte("business_date", first)
+        .lte("business_date", last),
+    ]);
+    for (const r of [earliest, latest, ruled])
+      if (r.error)
+        throw new InternalServerErrorException(
+          "The days the till covered in this month could not be read, so the month was not closed. Try again.",
+        );
+    const firstAt = (earliest.data ?? [])[0]?.opened_at;
+    const since = houseDayOf(
+      typeof firstAt === "string" ? firstAt : null,
+      zone,
+    );
+    const withCheck = new Set(
+      checks.filter((c) => !c.voided).map((c) => c.day),
+    );
+    let until =
+      since === null
+        ? null
+        : houseDayOf(
+            ((latest.data ?? [])[0] ?? null) as CheckTimes | null,
+            zone,
+          );
+    // A check opened before the latest one can close after it; a day one of
+    // the month's checks is filed on is counted.
+    if (since !== null)
+      for (const day of withCheck)
+        if (until === null || day > until) until = day;
+    const ruledOut = new Set<string>();
+    for (const r of ruled.data ?? []) {
+      const d = String(r.business_date ?? "").slice(0, 10);
+      if (d >= first && d <= last) ruledOut.add(d);
+    }
+    let daysInMonth = 0;
+    let daysCounted = 0;
+    for (let d = first; d <= last; d = shiftHouseDay(d, 1)) {
+      daysInMonth += 1;
+      const counted =
+        since !== null && until !== null && d >= since && d <= until;
+      if (counted && !(ruledOut.has(d) && !withCheck.has(d))) daysCounted += 1;
+    }
+    return {
+      daysCounted,
+      daysInMonth,
+      ruledOutDays: [...ruledOut].sort(),
+    };
   }
 
   /**

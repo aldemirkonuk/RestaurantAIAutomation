@@ -83,6 +83,8 @@ export interface CuttingSpec {
   window: (days: number | null) => string;
   /** True for the one cutting whose endpoint takes a day window. */
   takesWindow: boolean;
+  /** True for a cutting that takes a calendar month but no day window (w111-tips-owed). */
+  takesMonth?: boolean;
   write: (payload: unknown, ctx: WriteCtx) => ExportDoc;
 }
 
@@ -173,12 +175,26 @@ const utcDay = (v: string): string => {
  * the gateway did not say). Only a `checksInWindow > 0` branch may blame a
  * missing field — there are checks, and none of them carries it.
  */
-function emptyWindowLine(s: Record<string, unknown>, sinceDays: number): string | null {
+function emptyWindowLine(
+  s: Record<string, unknown>,
+  sinceDays: number,
+  window = `the last ${sinceDays} days`,
+): string | null {
   if (num(s.checksInWindow) !== 0) return null;
   const latest = typeof s.latestCheckAt === "string" && s.latestCheckAt ? s.latestCheckAt : null;
   return latest
-    ? `No POS check was opened in the last ${sinceDays} days — the latest this house has was opened ${utcDay(latest)}. The window is empty; no field is missing.`
+    ? `No POS check was opened in ${window} — the latest this house has was opened ${utcDay(latest)}. The window is empty; no field is missing.`
     : "No POS check has reached Mudavym for this house yet (voided checks are not counted), so there is nothing to attribute.";
+}
+
+/** "July 2026" for 2026-07, as the export's month window line names it. */
+function monthWords(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
 }
 
 /* ───────────────────────────────────────────────────── 1. the reading ──── */
@@ -333,7 +349,7 @@ function writeTill(payload: unknown, ctx: WriteCtx): ExportDoc {
             title: "Tips by server",
             columns: [
               { label: "Server", unit: "text" },
-              { label: "Checks with a tip", unit: "count" },
+              { label: "Checks that recorded a tip amount", unit: "count" },
               { label: "Tips", unit: "money" },
             ],
             rows: tipServers.map((s) => [
@@ -1195,9 +1211,15 @@ function writeSeats(payload: unknown): ExportDoc {
 function writeService(payload: unknown): ExportDoc {
   const s = obj(payload);
   const sinceDays = num(s.sinceDays) ?? 90;
+  // w111-tips-owed: a calendar month when the sheet was set to one, as the
+  // till's export reads it; otherwise the trailing window.
+  const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(str(s.month))
+    ? str(s.month)
+    : null;
+  const window = month ? monthWords(month) : `the last ${sinceDays} days`;
   const adj = s.adjusted == null ? null : obj(s.adjusted);
   const basis = sentences(
-    `Non-voided pos_checks grouped by server name over the last ${sinceDays} days.`,
+    `Non-voided pos_checks grouped by server name over ${window}.`,
     s.revenueBasis === "net" ? REGISTER_NET_SALES : REGISTER_TOTALS_NOT_NET,
     str(s.totalsTaxNote) || null,
     str(s.netSalesTaxNote) || null,
@@ -1215,6 +1237,8 @@ function writeService(payload: unknown): ExportDoc {
     wineAttach: num(w.wineAttachRate),
     tip: num(w.tipPct),
     tipWhy: str(w.tipPctWhy),
+    tips: num(w.tips),
+    tipChecks: num(w.tipsCheckCount),
   }));
   const figures = [
     f("Servers with a check", waiters.length, "count"),
@@ -1224,14 +1248,14 @@ function writeService(payload: unknown): ExportDoc {
     const n = num(s.checksInWindow);
     const none =
       n === 1
-        ? `The one check in the last ${sinceDays} days carries no`
-        : `None of the ${nounCount(n ?? 0, "check", "checks")} in the last ${sinceDays} days carries a`;
+        ? `The one check in ${window} carries no`
+        : `None of the ${nounCount(n ?? 0, "check", "checks")} in ${window} carries a`;
     return doc({
       say:
-        emptyWindowLine(s, sinceDays) ??
+        emptyWindowLine(s, sinceDays, window) ??
         (n !== null && n > 0
           ? `${none} server name, so nothing can be attributed to anyone. That is an absent field on the POS feed, not a shift nobody worked.`
-          : `No check in the last ${sinceDays} days names a server. This register does not say whether the window held any check, so an empty window and checks that carry no server name cannot be told apart here.`),
+          : `No check in ${window} names a server. This register does not say whether the window held any check, so an empty window and checks that carry no server name cannot be told apart here.`),
       figures,
       basis,
     });
@@ -1249,6 +1273,10 @@ function writeService(payload: unknown): ExportDoc {
           { label: "Average check", unit: "money" },
           { label: "Wine attach", unit: "ratio" },
           { label: "Tip", unit: "ratio" },
+          // w111-tips-owed: the tips as money beside Tip %; this export is
+          // owner and manager only, as the waiters' register is.
+          { label: "Tips", unit: "money" },
+          { label: "Checks that recorded a tip amount", unit: "count" },
         ],
         rows: waiters.map((w) => [
           w.name,
@@ -1261,6 +1289,8 @@ function writeService(payload: unknown): ExportDoc {
           figure(w.wineAttach, none),
           // F-1573: tips with no amount before tax are not "no tip".
           figure(w.tip, w.tipWhy || "no tip recorded on this server's checks"),
+          figure(w.tips, "no tip amount recorded on this server's checks"),
+          figure(w.tipChecks, none),
         ]),
       },
     ],
@@ -1642,7 +1672,14 @@ export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
       write: writeLedger,
     },
     seats: { title: "The room", window: () => "the last 90 days of POS checks", takesWindow: false, write: writeSeats },
-    service: { title: "Who served it", window: () => "the last 90 days of POS checks", takesWindow: false, write: writeService },
+    service: {
+      title: "Who served it",
+      window: () => "the last 90 days of POS checks",
+      takesWindow: false,
+      // w111-tips-owed: a month the sheet is set to, never a number of days.
+      takesMonth: true,
+      write: writeService,
+    },
     restock: {
       title: "What to buy back",
       window: () =>

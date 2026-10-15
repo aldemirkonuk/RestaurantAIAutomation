@@ -570,11 +570,55 @@ describe("ReportExportsService — a report export is written, or says why not (
       });
     });
 
+    it("[REVERT-FAILS] writes up Who served it over the month the sheet is set to, with each server's tips as money (w111-tips-owed)", async () => {
+      const { mem, service, tables } = zoned();
+      tables.getWaiterPerformance.mockResolvedValueOnce({
+        ...(PAYLOADS.service as Record<string, unknown>),
+        month: "2026-07",
+        waiters: [
+          {
+            name: "Deniz",
+            checks: 4,
+            revenue: 1000,
+            avgCheck: 250,
+            wineAttachRate: 0.5,
+            tipPct: 0.1,
+            tips: 100,
+            tipsCheckCount: 4,
+          },
+        ],
+      });
+      const july = await service.requestExport(HOUSE_A, MANAGER_A, {
+        cutting: "service",
+        month: "2026-07",
+      });
+      expect(july.export).toMatchObject({
+        windowDays: null,
+        windowMonth: "2026-07",
+        windowLabel: "July 2026 of POS checks, by the house’s days",
+      });
+      await july.settled;
+      expect(tables.getWaiterPerformance).toHaveBeenLastCalledWith(
+        HOUSE_A,
+        90,
+        "2026-07",
+      );
+      const row = exportsOf(mem)[0];
+      expect(row.status).toBe("ready");
+      const csv = String(row.csv);
+      expect(csv).toContain("over July 2026");
+      expect(csv).toContain("Checks that recorded a tip amount");
+      expect(csv).toMatch(/Deniz[^\n]*100[^\n]*4/);
+    });
+
     it("refuses a month with days, a month on a cutting whose window is fixed, and a month that is not one", async () => {
       const { mem, service } = zoned();
       for (const input of [
         { cutting: "till", days: 30, month: "2026-07" },
         { cutting: "ledger", month: "2026-07" },
+        { cutting: "service", days: 30, month: "2026-07" },
+        { cutting: "service", days: 30 },
+        { cutting: "service", month: "2026-13" },
         { cutting: "till", month: "2026-13" },
         { cutting: "till", month: "July" },
         { cutting: "till", month: 202607 },

@@ -63,6 +63,11 @@ export interface MonthCloseFigures {
     netSalesCheckCount: number | null;
     checkCount: number | null;
     days: Array<{ date: string; netSales: number }>;
+    /** F-1718: the month's days the till covered, as the dashboard counts them; absent on older closes. */
+    daysCounted?: number | null;
+    daysInMonth?: number;
+    /** F-1718: the month's days an owner or manager ruled out of the figures. */
+    ruledOutDays?: string[];
     /** F-1606: gross less net where ingest took tax out; absent on older closes. */
     taxInside?: number | null;
     taxInsideCheckCount?: number | null;
@@ -122,7 +127,8 @@ export interface MonthClose {
 }
 
 export interface MonthCloseChange {
-  kind: 'till' | 'stock' | 'purchase';
+  /** 'tips': a check's tip that moved after the close, on a line of its own (w111-tips-owed). */
+  kind: 'till' | 'tips' | 'stock' | 'purchase';
   at: string;
   day: string;
   who: string;
@@ -134,7 +140,7 @@ export interface MonthCloseChange {
 }
 
 export interface MonthCloseAgainstNow {
-  figure: 'till_net_sales' | 'till_checks' | 'purchases' | 'variance_net' | 'variance_open_ml' | 'writeoffs_bottles' | 'writeoffs_cost';
+  figure: 'till_net_sales' | 'till_checks' | 'till_tips' | 'purchases' | 'variance_net' | 'variance_open_ml' | 'writeoffs_bottles' | 'writeoffs_cost';
   label: string;
   atClose: number | null;
   now: number | null;
@@ -413,6 +419,30 @@ function WriteOffs({ f }: { f: MonthCloseFigures }) {
   );
 }
 
+/**
+ * F-1718: the days the till covered against the month's, as the dashboard
+ * says its month (N of M days), so a month with a till outage is not
+ * read as a whole month's sales. Said only when the till covered fewer.
+ */
+function daysCoveredWords(f: MonthCloseFigures): string {
+  const { daysCounted, daysInMonth } = f.till;
+  if (daysCounted == null || daysInMonth == null || daysCounted >= daysInMonth) return '';
+  return `. The till covered ${daysCounted} of the month's ${countOf(daysInMonth, 'day', 'days')}`;
+}
+
+/** F-1718: the month's ruled-out days, by name, and what that does to the figure. */
+function ruledOutWords(days: string[]): string {
+  const named = days
+    .map((d) => {
+      const t = new Date(`${d}T00:00:00Z`);
+      return Number.isNaN(t.getTime())
+        ? d
+        : t.toLocaleDateString(getHouseLocale(), { day: 'numeric', month: 'long', timeZone: 'UTC' });
+    })
+    .join(', ');
+  return `Ruled out of the figures (a till outage or a closure): ${named}. A ruled-out day with no check is not counted as a day of sales; a check that came in on one still counts.`;
+}
+
 function Kept({ close }: { close: MonthClose }) {
   const f = close.figures;
   const bought = f.purchases.totals.length
@@ -434,7 +464,11 @@ function Kept({ close }: { close: MonthClose }) {
               f.till.netSalesCheckCount < f.till.checkCount
             ? ` from ${f.till.netSalesCheckCount} of ${countOf(f.till.checkCount, 'check', 'checks')}; the rest carried no net figure`
             : ` over ${countOf(f.till.checkCount, 'check', 'checks')}`}
+        {f.till.posConnected && f.till.netSales !== null ? daysCoveredWords(f) : ''}
       </li>
+      {f.till.posConnected && (f.till.ruledOutDays?.length ?? 0) > 0 && (
+        <li data-testid="close-ruled-out-days">{ruledOutWords(f.till.ruledOutDays!)}</li>
+      )}
       {taxInsideWords(close) !== null && <li>{taxInsideWords(close)}</li>}
       {f.till.posConnected && (
         <li>

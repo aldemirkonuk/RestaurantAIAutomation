@@ -999,8 +999,8 @@ const trailingService = analysis<ServiceRegister>({
 /**
  * Who served it over one calendar month when the reader picked one, on the
  * house's days as the till's month is read (w111-tips-owed), otherwise the
- * trailing 90 days above, unchanged: the export desk pins that one against
- * its own catalogue, and it still writes only the trailing window.
+ * trailing 90 days above, unchanged. The export desk writes up the same
+ * month when one is picked, and the trailing window otherwise.
  */
 const service: AnalysisSpec = {
   ...trailingService,

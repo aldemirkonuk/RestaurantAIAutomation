@@ -273,6 +273,9 @@ function houseHandler(
       // F-1624: no answer kept; the house row's answer stands alone.
       case "house_tax_basis_answers":
         return { data: [], error: null };
+      // F-1718: no day ruled out of the figures.
+      case "analytics_day_exclusions":
+        return { data: [], error: null };
       default:
         throw new Error(`unexpected table ${table}`);
     }
@@ -368,6 +371,10 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
       netSalesCheckCount: 1,
       checkCount: 2,
       days: [{ date: "2026-07-03", netSales: 900 }],
+      // F-1718: this register's first and latest checks are 3 and 4 July.
+      daysCounted: 2,
+      daysInMonth: 31,
+      ruledOutDays: [],
       // F-1606: no check here was made pre-tax, so no tax figure.
       taxInside: null,
       taxInsideCheckCount: 0,
@@ -585,6 +592,71 @@ describe("MonthCloseService.closeMonth (F-1013, snapshot close)", () => {
     expect(csv).toContain("Deniz;1;90");
     expect(csv).toContain("emp-7;1;15,5");
     expect(csv).toContain("voided checks left out");
+  });
+
+  it("[REVERT-FAILS] keeps the days the till covered and names a ruled-out day, as the dashboard counts them (F-1718)", async () => {
+    // The register's first check is 3 July and its latest 5 August; 4 July
+    // (a check) and 10 July (none) were ruled out as a till outage.
+    const firstLast = (ops: Op[]) =>
+      arg(ops, "order")?.[1] &&
+      (arg(ops, "order")![1] as { ascending: boolean }).ascending
+        ? [{ opened_at: "2026-07-03T18:00:00Z" }]
+        : [
+            {
+              opened_at: "2026-08-05T18:00:00Z",
+              closed_at: "2026-08-05T20:00:00Z",
+            },
+          ];
+    const base = houseHandler();
+    const { svc, calls } = service(
+      houseHandler({
+        pos_checks: (ops) =>
+          !String(arg(ops, "select")?.[0]).includes("subtotal")
+            ? { data: firstLast(ops), error: null }
+            : base("pos_checks", ops),
+        analytics_day_exclusions: () => ({
+          data: [
+            { business_date: "2026-07-10" },
+            { business_date: "2026-07-04" },
+          ],
+          error: null,
+        }),
+      }),
+    );
+    const dto = await svc.closeMonth(HOUSE, ACTOR, "2026-07");
+    const ruled = calls.find(
+      (c) => c.table === "analytics_day_exclusions",
+    )!.ops;
+    expect(ruled).toContainEqual({
+      m: "gte",
+      a: ["business_date", "2026-07-01"],
+    });
+    expect(ruled).toContainEqual({
+      m: "lte",
+      a: ["business_date", "2026-07-31"],
+    });
+    // 3 to 31 July is 29 days; 10 July had no check and is left out, 4 July's
+    // check still stands.
+    expect(dto.figures.till.daysCounted).toBe(28);
+    expect(dto.figures.till.daysInMonth).toBe(31);
+    expect(dto.figures.till.ruledOutDays).toEqual(["2026-07-04", "2026-07-10"]);
+  });
+
+  it("refuses the close when the ruled-out days cannot be read (F-1718)", async () => {
+    const { svc, calls } = service(
+      houseHandler({
+        analytics_day_exclusions: () => ({
+          data: null,
+          error: { code: "57014", message: "timeout" },
+        }),
+      }),
+    );
+    await expect(svc.closeMonth(HOUSE, ACTOR, "2026-07")).rejects.toThrow(
+      /days the till covered/,
+    );
+    expect(
+      calls.some((c) => c.table === "month_closes" && has(c.ops, "insert")),
+    ).toBe(false);
   });
 
   it("says a month's tips are not recorded, never 0, when no check carried one (F-1691)", async () => {

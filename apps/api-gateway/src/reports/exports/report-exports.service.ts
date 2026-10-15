@@ -130,6 +130,15 @@ function monthName(month: string): string {
   }).format(new Date(Date.UTC(y, m - 1, 1)));
 }
 
+/** A month asked for (YYYY-MM), or a refusal that says how one is written. */
+function monthOf(raw: unknown): string {
+  if (typeof raw !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(raw))
+    throw new BadRequestException(
+      "A month is written as year and month, like 2026-07.",
+    );
+  return raw;
+}
+
 function messageOf(err: unknown): string {
   if (err instanceof Error && err.message) return err.message;
   if (err && typeof err === "object" && typeof (err as { message?: unknown }).message === "string")
@@ -470,6 +479,10 @@ export class ReportExportsService {
     const spec = EXPORT_CUTTINGS[cutting];
     const hasMonth = rawMonth !== undefined && rawMonth !== null;
     if (!spec.takesWindow) {
+      // w111-tips-owed: Who served it takes the month the sheet is set to,
+      // never a number of days.
+      if (spec.takesMonth && hasMonth && (raw === undefined || raw === null))
+        return { days: null, month: monthOf(rawMonth) };
       if ((raw !== undefined && raw !== null) || hasMonth)
         throw new BadRequestException(
           `${spec.title} takes no window: the server fixes it (${spec.window(null)}).`,
@@ -481,14 +494,7 @@ export class ReportExportsService {
         throw new BadRequestException(
           "Ask for a number of days or a month of the till, not both.",
         );
-      if (
-        typeof rawMonth !== "string" ||
-        !/^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth)
-      )
-        throw new BadRequestException(
-          "A month is written as year and month, like 2026-07.",
-        );
-      return { days: null, month: rawMonth };
+      return { days: null, month: monthOf(rawMonth) };
     }
     if (raw === undefined || raw === null) return { days: 30, month: null };
     if (
@@ -960,6 +966,20 @@ export function netPeriodOf(
     return first && last ? { first, last } : null;
   }
   if (cutting === "service") {
+    // w111-tips-owed: a month written up is that month's days.
+    const m =
+      typeof p.month === "string"
+        ? /^(\d{4})-(0[1-9]|1[0-2])$/.exec(p.month)
+        : null;
+    if (m) {
+      const end = new Date(
+        Date.UTC(Number(m[1]), Number(m[2]), 0),
+      ).getUTCDate();
+      return {
+        first: `${p.month}-01`,
+        last: `${p.month}-${String(end).padStart(2, "0")}`,
+      };
+    }
     const since = typeof p.sinceDays === "number" ? p.sinceDays : 90;
     const last = houseToday(zone);
     return { first: shiftHouseDay(last, -(since - 1)), last };

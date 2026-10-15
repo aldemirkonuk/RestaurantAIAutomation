@@ -228,6 +228,33 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     );
   });
 
+  it("[REVERT-FAILS] a month close's tips by server count the checks that recorded a tip amount, a 0 included, and say so (F-1719)", () => {
+    // Deniz's two checks: one tipped 90, one recorded a tip of 0.
+    const doc = EXPORT_CUTTINGS.till.write(
+      {
+        posConnected: true,
+        revenue: 1000,
+        checkCount: 2,
+        from: "2026-07-01",
+        to: "2026-07-31",
+        days: 31,
+        dailySeries: [{ date: "2026-07-03", revenue: 1000 }],
+        tips: 90,
+        tipsCheckCount: 2,
+        tipsOfChecks: 2,
+        tipsByServer: [{ server: "Deniz", tips: 90, checks: 2 }],
+      },
+      { days: null },
+    );
+    const table = doc.tables.find((t) => t.title === "Tips by server")!;
+    expect(table.columns.map((c) => c.label)).toEqual([
+      "Server",
+      "Checks that recorded a tip amount",
+      "Tips",
+    ]);
+    expect(table.rows).toEqual([["Deniz", 2, 90]]);
+  });
+
   it("the week's shape: a tie names no busiest day, and an unseen weekday has no mean", () => {
     const doc = EXPORT_CUTTINGS.week.write(PAYLOADS.week, { days: null });
     expect(isWithheld(figure(doc, "Busiest day"))).toBe(true);

@@ -241,7 +241,15 @@ export default function ExportsShelf({
   // A quarter (F-1577) is read on screen only: the export row keeps a month
   // or a number of days, so it writes the trailing window and says so.
   const quarterShown = takesWindow && tillMonth !== null && isQuarter(tillMonth);
-  const monthHeld = takesWindow && !quarterShown ? tillMonth : null;
+  // w111-tips-owed: Who served it follows the sheet's month too, and keeps
+  // its own fixed window otherwise; a quarter is not a month, so it keeps it.
+  const takesMonth = chosen !== null && CATALOGUE[chosen].takesMonth === true;
+  const monthHeld =
+    takesWindow && !quarterShown
+      ? tillMonth
+      : takesMonth && tillMonth !== null && !isQuarter(tillMonth)
+        ? tillMonth
+        : null;
 
   return (
     <section id="rp-exports" className="rp-exports" aria-labelledby="rp-exports-title">
@@ -287,7 +295,9 @@ export default function ExportsShelf({
                 </span>
               )}
               {monthHeld !== null && (
-                <span className="rp-cap">over {monthLabel(monthHeld)}, as the till is set</span>
+                <span className="rp-cap">
+                  over {monthLabel(monthHeld)}, as the {takesWindow ? 'till' : 'sheet'} is set
+                </span>
               )}
               <button
                 type="button"
