@@ -983,3 +983,79 @@ back; the address written into the row; an unreadable claim ledger read as
 ## Founder answer, 2026-09-05 (batch 57) — the claim-cascade residual
 
 **"Accept one possible duplicate."** The emailed end notice is exactly-once per ending under the claim index; the one case it cannot cover — a claim row deleted by a user cascade before a later sweep — would let one duplicate go to the founder's own address, with no wrong figure and no leak. Not worth a table today; rejected: an announcements table that survives user deletion. Revisit if producers ever mail a house.
+
+---
+
+## Amendment — 2026-10-01 (page walk-through, DASH-W5): the count moves to /logs
+
+### The decision
+
+The note-control experiment's standing count — the sentence
+`noteCloseReportLine` builds — leaves the dashboard's signature footer and
+stands at the foot of `/logs`. This supersedes **option 8** under *On where the
+counts are read* (:120-121) and the place D15 names (:426, "the dashboard footer
+says …"); the sentence D15 quotes is unchanged and now prints on `/logs`.
+Nothing else here moves: D1–D30 stand, and `noteCloseReportLine` and
+`useNoteCloseReport` are not changed — counts, never a verdict.
+
+Put to the founder in the dashboard walk-through (session R1, row DASH-W5 of
+`dashboard.md` §14 on `fix/review-dashboard`) as three options: keep it, move
+it to `/logs` (recommended), or show it to owners only. His answer, verbatim:
+*"Approve"*. He gave no reason beyond it, so none is put in his mouth; the two
+options not chosen are named because they are part of what the chosen one
+means.
+
+### Why
+
+It is a count for the founder, not a line a manager needs before service. `/`
+is the page an owner or manager reads first thing in the day, and the
+walk-through's purpose pass (DASH-W1) named this line as one of two on it
+written for us rather than for them. `/logs` is the operator page: the house's
+ledger of what happened, opened to check the working. The line stands at its
+foot, under the signature — out of the feed's way, and further from the card it
+counts than the dashboard footer was, so option 7's concern (:117-119) is met
+more fully, not less. Option 6's reason for keeping it off `/notifications`
+still holds.
+
+**Who can read it is unchanged.** `/logs`, like `/`, carries no role gate
+(`apps/web/src/App.tsx:523`), and `GET /ux/experiments/:key/report` is still
+house-scoped and still one arm. **Reading it still writes nothing**: the report
+route does not assign (D5; "Reading does not assign", `ux-optimizer.controller.ts:288`),
+so `/logs`' "it writes nothing" header stays true.
+
+### What was built (branch `fix/review-shared-batch-1`)
+
+- `apps/web/src/pages/logs/next/LogsNext.tsx` — `useNoteCloseReport(activeRestaurantId)`
+  feeds `noteCloseReportLine`, printed as `<p className="lg-standing" data-note-report>`,
+  the last line of the page footer, on its own row under a dotted rule in the
+  footer's own type (11px, `--ink-4`). Nothing is drawn while the report is
+  being read; an unreadable report prints the sentence that names it ("… could
+  not be read (…), so none are shown — this is not a zero"), the page's ADR 0086
+  rule. The dashboard footer's WHY comment is carried over, adapted.
+- `LogsNext.test.tsx` — four cases: the count under the signature, asked for the
+  active house; nothing while reading; an unreadable report named, never a
+  count; the line stands when the timeline itself failed. The full revert and
+  five one-change mutations (always render, ask for no house, gate on the
+  timeline, drop the unreadable sentence, move it out of the footer) were each
+  caught.
+- **The dashboard half ships in the Dashboard page PR (`fix/review-dashboard`),
+  not here.** Until both have merged the line prints in two places or, if the
+  dashboard PR lands first, in none.
+
+### A citation corrected
+
+The shared queue (`p4-scratch/review-shared-queue.md:4`) and the walk-through
+row call this "amends ADR 0127 D8". **D8 (:176-179) is "When the arm cannot be
+read, NOTHING is recorded" and is untouched.** Where the count is read was
+decided by option 8 (:120-121), which the queue's line range (:110-121) does
+cite correctly — the label is wrong, the range is right. The same "D8" label is
+in the new footer comment and the DASH-W5 row on `fix/review-dashboard`; they
+should read "option 8".
+
+### Not done here
+
+- `dashboard.md` §1a (:149-155, "The report line sits in the page's own
+  signature footer") goes stale when the dashboard PR lands; that PR owns it.
+- `.planning/06-pages/logs.md` does not yet mention the line.
+- Not checked in a browser by the builder; the walk-through coordinator holds
+  the before/after captures.

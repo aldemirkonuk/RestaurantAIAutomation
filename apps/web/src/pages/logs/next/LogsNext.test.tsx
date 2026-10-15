@@ -15,6 +15,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { LogsNextData } from './useLogsNextData';
 import { parseDay, type TimelineEvent } from './lg-format';
+import type { ReportRegister } from '@/pages/dashboard/next/note-close-experiment';
 
 /** `calls` records what the page asked the hook for, render by render. */
 const mockData = vi.hoisted(() => ({ current: {} as Partial<LogsNextData>, calls: [] as unknown[][] }));
@@ -51,6 +52,29 @@ vi.mock('@/lib/mudavym/useMudavymDesign', async () => {
     '@/lib/mudavym/useMudavymDesign',
   );
   return { ...real, useMudavymDesign: () => flags.on };
+});
+
+/**
+ * The note-control report is mocked at its HOOK, the same way the timeline is:
+ * the hook's fetch, tenancy and failure handling are pinned in
+ * `note-close-experiment.test.tsx`. `noteCloseReportLine` stays real, so what
+ * this page prints is the sentence that file builds, not a copy of it.
+ */
+const noteReport = vi.hoisted(() => ({
+  current: { state: 'reading' } as ReportRegister,
+  askedFor: [] as Array<string | null>,
+}));
+vi.mock('@/pages/dashboard/next/note-close-experiment', async () => {
+  const real = await vi.importActual<typeof import('@/pages/dashboard/next/note-close-experiment')>(
+    '@/pages/dashboard/next/note-close-experiment',
+  );
+  return {
+    ...real,
+    useNoteCloseReport: (restaurantId: string | null) => {
+      noteReport.askedFor.push(restaurantId);
+      return noteReport.current;
+    },
+  };
 });
 
 import LogsNext from './LogsNext';
@@ -122,6 +146,8 @@ beforeEach(() => {
   flags.on = false;
   motion.animate.mockClear();
   mockData.current = ready();
+  noteReport.current = { state: 'reading' };
+  noteReport.askedFor = [];
   mockData.calls = [];
 });
 
@@ -790,6 +816,74 @@ describe('LogsNext — the page turns on what arrived', () => {
     // the new correlationId land together.
     fireEvent.click(screen.getByRole('button', { name: 'Follow thread corr-9' }));
     expect(turns()).toBe(1);
+  });
+});
+
+describe('LogsNext — the note-control count stands at the foot (ADR 0127, DASH-W5)', () => {
+  const counted: ReportRegister = {
+    state: 'ready',
+    counts: {
+      arm: 'plain',
+      exposures: 7,
+      completed: 5,
+      abandoned: 2,
+      since: '2026-09-06T12:00:00Z',
+      running: true,
+      winnerArm: null,
+    },
+  };
+
+  function standing(): HTMLElement | null {
+    return document.querySelector('[data-note-report]');
+  }
+
+  it('prints this house’s count under the signature, asked for the active house', () => {
+    noteReport.current = counted;
+    renderPage();
+    const line = standing();
+    expect(line).not.toBeNull();
+    expect(line!.closest('footer')).not.toBeNull();
+    // Under the signature: the footer's last child, after the Wordmark.
+    expect(line!.closest('footer')!.lastElementChild).toBe(line);
+    expect(line!.textContent).toContain('Note control — plain 80% / die 20%');
+    expect(line!.textContent).toContain('This house is on the plain button: 7 shown, 5 closed, 2 left standing');
+    expect(line!.textContent).toContain('Counts, not a verdict');
+    expect(noteReport.askedFor.length).toBeGreaterThan(0);
+    expect(noteReport.askedFor.every((id) => id === 'r1')).toBe(true);
+  });
+
+  it('draws nothing while the report is still being read — the sentence function says null', () => {
+    noteReport.current = { state: 'reading' };
+    renderPage();
+    expect(standing()).toBeNull();
+    expect(screen.queryByText(/Note control/)).toBeNull();
+  });
+
+  it('names an unreadable report in words and never prints it as a count', () => {
+    noteReport.current = { state: 'unreadable', message: 'Request failed with status code 503' };
+    renderPage();
+    const line = standing();
+    expect(line).not.toBeNull();
+    expect(line!.textContent).toContain('The counts could not be read (Request failed with status code 503)');
+    expect(line!.textContent).toContain('this is not a zero');
+    expect(line!.textContent).not.toMatch(/\d+ shown/);
+  });
+
+  it('stands even when the timeline itself could not be read — the two are separate reads', () => {
+    mockData.current = {
+      ...ready(),
+      state: 'unreadable',
+      failure: { status: 500, message: 'Timeline failed', forbidden: false },
+      events: null,
+      counts: null,
+      sourcesQueried: null,
+      failedSources: null,
+      hasMore: null,
+    };
+    noteReport.current = counted;
+    renderPage();
+    expect(screen.getByText('The timeline could not be read.')).toBeTruthy();
+    expect(standing()).not.toBeNull();
   });
 });
 

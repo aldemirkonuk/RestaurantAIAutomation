@@ -70,6 +70,8 @@ Found by the PR #579 audit. **[changed 2026-10-01: the second audit (on 3a72c2f)
 
 **Fix.** All three move together: the shared client stops catching, the hook keeps a failed read as `null`, and Lately and the alerts get the "couldn't be reached" line and "Try again" that the other panels have (W19). The client half is shared code; the hook and panel halves need a sketch first.
 
+**[2026-10-08, PR #565: most of this is done.** `getRecentActivity` and `getAlerts` reject instead of returning `[]` (`services/api/dashboard.ts`). `useDashboardNextData` keeps a failed read as `null`, apart from `undefined` while loading and `[]` for a real empty list. Lately and the day panel's Alerts and Activity sections now say "— … couldn’t be reached just now." **Still open:** these lines have no "Try again" (W19), and the `/stats` fallback above is unchanged.]
+
 ## Three dashboard reads no page uses still answer empty when a read fails — OPEN — 2026-10-01
 
 Found by the second PR #579 audit (on 3a72c2f).
