@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>125 · People · jobs and rights</title>
+<style>
+.mudavym{
+  --seal:#1a5e6b;--seal-deep:#14515c;--seal-tint:rgba(26,94,107,.1);--seal-ring:rgba(26,94,107,.32);
+  --paper-0:#fffdf8;--paper-1:#f3efe6;--paper-2:#eae4d8;
+  --ink-1:#211c16;--ink-2:#4f473c;--ink-3:#7c7365;
+  --warn:#96601A;--warn-tint:rgba(150,96,26,.12);--loss:#A8402C;--loss-tint:rgba(168,64,44,.1);
+  color-scheme:light;background:var(--paper-0);color:var(--ink-1)}
+*{box-sizing:border-box} html,body{margin:0;padding:0}
+body{background:#f7f3ea;font-family:"DM Sans","Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+a{color:var(--seal-deep)}
+.serif{font-family:Fraunces,"Iowan Old Style",Georgia,serif;letter-spacing:-.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.banner{background:var(--seal);color:#fffdf8;font:500 11px/1.3 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;padding:8px 16px;display:flex;gap:14px;flex-wrap:wrap}
+.banner a{color:#fffdf8}
+.note{max-width:1200px;margin:18px auto 0;padding:0 16px;color:var(--ink-2);font-size:13.5px}
+.note b{color:var(--ink-1);font-weight:600}
+.cap{max-width:1200px;margin:26px auto 0;padding:0 16px;font:500 11px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.frame{max-width:1200px;margin:10px auto 30px;border:1px solid var(--paper-2);border-radius:10px;overflow:hidden;background:var(--paper-0)}
+.page{padding:24px 24px 32px}
+.eyebrow{font:500 11px/1.3 "JetBrains Mono",ui-monospace,monospace;text-transform:uppercase;letter-spacing:.14em;color:var(--ink-3);margin:0}
+h1{font-family:Fraunces,Georgia,serif;font-weight:420;font-size:34px;line-height:1.08;margin:6px 0 0}
+h2{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:19px;margin:0 0 8px}
+h3{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:15.5px;margin:0 0 6px}
+.standing{font-family:Fraunces,Georgia,serif;font-style:italic;font-size:16px;color:var(--ink-2);margin:10px 0 0;max-width:860px}
+.standing b{font-style:normal;font-weight:500;color:var(--ink-1)}
+.readat{font:10.5px/1.5 "JetBrains Mono",ui-monospace,monospace;color:var(--ink-3);margin-top:6px}
+.muted{color:var(--ink-3)} .small{font-size:12px}
+.chip{display:inline-flex;align-items:center;gap:4px;font:500 10px/1.4 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--paper-2);border-radius:4px;padding:2px 6px;color:var(--ink-2);white-space:nowrap}
+.chip.on{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.chip.warn{border-color:rgba(150,96,26,.45);color:var(--warn)}
+.chip.loss{border-color:rgba(168,64,44,.45);color:var(--loss)}
+.chip.off{color:var(--ink-3);border-style:dashed}
+.btn{border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-1);border-radius:8px;padding:6px 12px;font:13px inherit;font-family:inherit;display:inline-flex;gap:6px;align-items:center;cursor:default;white-space:nowrap}
+.btn.primary{border-color:var(--seal);background:var(--seal);color:#fffdf8}
+.btn.soft{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--ink-3);padding-left:4px;padding-right:4px}
+.btn.big{padding:12px 18px;font-size:15px;border-radius:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.spread{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.card{border:1px solid var(--paper-2);border-radius:12px;background:var(--paper-1);padding:14px 16px;min-width:0}
+.card.white{background:var(--paper-0)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.fig{font-family:Fraunces,Georgia,serif;font-weight:500;letter-spacing:-.03em;line-height:.95;font-variant-numeric:tabular-nums}
+.up{color:var(--seal-deep)} .down{color:var(--loss)} .amber{color:var(--warn)}
+.bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--paper-2)}
+.bar span{display:block;height:100%}
+.h1c{background:#1a5e6b}.h2c{background:#4f8a93}.h3c{background:#8fb5b9}.h4c{background:#c9a46a}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:middle}
+.track{position:relative;height:8px;border-radius:4px;background:var(--paper-2)}
+.track i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--seal)}
+.track b{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink-1)}
+.list{display:grid;gap:0}
+.list > div{display:grid;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--paper-2)}
+.list > div:first-child{border-top:0}
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{font:500 10px/1.3 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);text-align:right;padding:8px 8px;border-bottom:1px solid var(--paper-2);font-weight:500}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t td{padding:9px 8px;border-bottom:1px solid var(--paper-2);text-align:right;font-variant-numeric:tabular-nums}
+table.t tr.total td{font-weight:600;background:var(--paper-1);border-bottom:2px solid var(--ink-3)}
+table.t tr.out td{color:var(--ink-3);font-style:italic}
+/* app chrome */
+.topbar{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--paper-2);background:var(--paper-0);flex-wrap:wrap}
+.mark{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:17px;color:var(--seal-deep)}
+.switch{border:1px solid var(--paper-2);border-radius:8px;padding:4px 10px;font-size:12.5px;display:inline-flex;gap:6px;align-items:center;background:var(--paper-1)}
+.switch b{font-weight:600}
+.grow{flex:1}
+.shell{display:grid;grid-template-columns:190px 1fr;min-height:420px}
+.shell.counter{grid-template-columns:190px 1fr 250px}
+.rail{border-right:1px solid var(--paper-2);padding:14px 12px;background:var(--paper-1);font-size:12.5px}
+.rail p{margin:12px 0 4px;font:500 9.5px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.rail p:first-child{margin-top:0}
+.rail div{padding:3px 8px;border-radius:6px;color:var(--ink-2)}
+.rail div.here{background:var(--seal-tint);color:var(--seal-deep);font-weight:600}
+.rail div.new{color:var(--seal-deep);font-weight:600}
+.rail div.new::after{content:" new";font:500 9px "JetBrains Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--warn)}
+.ctr{border-left:1px solid var(--paper-2);padding:14px;background:var(--paper-1);font-size:12.5px}
+.sheet{max-width:620px;margin:0 auto;border:1px solid var(--paper-2);border-radius:14px;background:var(--paper-0);box-shadow:0 18px 40px rgba(33,28,22,.12);padding:20px 22px}
+.veil{background:rgba(33,28,22,.06);padding:28px 16px}
+.field{display:grid;gap:4px;margin-top:14px}
+.field label{font:500 10.5px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.input{border:1px solid var(--paper-2);border-radius:8px;padding:8px 10px;background:var(--paper-1);font-size:14px}
+.radio{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1px solid var(--paper-2);border-radius:8px;margin-top:6px;background:var(--paper-0)}
+.radio .o{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--ink-3);flex:none;margin-top:2px}
+.radio.sel{border-color:var(--seal);background:var(--seal-tint)} .radio.sel .o{border:4px solid var(--seal)}
+.callout{border-left:3px solid var(--warn);background:var(--warn-tint);padding:10px 12px;border-radius:0 8px 8px 0;margin-top:14px;font-size:13px}
+.callout.seal{border-left-color:var(--seal);background:var(--seal-tint)}
+.callout.loss{border-left-color:var(--loss);background:var(--loss-tint)}
+.tog{display:inline-block;width:30px;height:17px;border-radius:9px;background:var(--paper-2);position:relative;vertical-align:middle;flex:none}
+.tog::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.tog.on{background:var(--seal)} .tog.on::after{left:15px}
+.lock{font-size:11px;color:var(--ink-3)}
+.rules{max-width:1200px;margin:0 auto 18px;padding:0 16px}
+.rules .card{background:var(--paper-0)}
+.rules li,.forks li{margin:5px 0}
+.forks{max-width:1200px;margin:0 auto 60px;padding:0 16px;color:var(--ink-2);font-size:13.5px}
+.before{border:1px dashed var(--ink-3);border-radius:10px;padding:12px;background:#fff;opacity:.92}
+.ring{outline:2px solid var(--seal);outline-offset:4px;box-shadow:0 0 0 9px var(--seal-tint);border-radius:8px}
+.phone{width:340px;max-width:100%;border:1px solid var(--paper-2);border-radius:26px;background:var(--paper-0);padding:16px 14px 18px;box-shadow:0 10px 30px rgba(33,28,22,.08);margin:0 auto}
+@media (max-width:1000px){.g4{grid-template-columns:1fr 1fr}.shell.counter{grid-template-columns:170px 1fr}.shell.counter .ctr{grid-column:1/-1;border-left:0;border-top:1px solid var(--paper-2)}}
+@media (max-width:780px){
+  h1{font-size:27px}.page{padding:18px 16px 26px}
+  .g2,.g3,.g4{grid-template-columns:1fr}
+  .shell,.shell.counter{grid-template-columns:1fr}
+  .rail{border-right:0;border-bottom:1px solid var(--paper-2);display:flex;flex-wrap:wrap;gap:4px}
+  .rail p{width:100%;margin:6px 0 2px}
+  table.t thead{display:none}
+  table.t tr{display:grid;grid-template-columns:1fr 1fr;padding:8px 0;border-bottom:1px solid var(--paper-2)}
+  table.t td{border:0;padding:3px 4px;text-align:left}
+  table.t td:first-child{grid-column:1/-1;font-weight:600}
+  table.t td[data-l]::before{content:attr(data-l) " ";font:500 9.5px "JetBrains Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+  .veil{padding:12px 8px}.sheet{padding:16px}
+  .list>div{grid-template-columns:1fr !important;gap:4px}.phone{width:auto}
+}
+</style></head>
+<body class="mudavym">
+<div class="banner"><b>Sketch 125 · People · jobs and rights</b><span>give a job · grant a right · in one step</span><span>example data</span><a href="index.html">all frames</a></div>
+<p class="note"><b>The idea.</b> You answered <b>"both"</b>: an owner or manager can <b>hand someone a job</b>, and if that person isn't allowed to do it yet, <b>grant the right in the same step</b> — just for this job, or from now on. Rights live in one place per house, instead of a separate switch per page. The seven rights drawn are a proposal; the list is still yours to set (OD-208).</p>
+<div class="rules"><div class="card"><h3>Already decided, drawn as decided</h3><ul><li>A job and the right to do it are given in one step — your answer, <b>"Both"</b>. The giver picks <b>for this job</b> or <b>from now on</b> (ADR 0253, round 2).</li><li>What staff do today — receive, count, create orders — is <b>closed until given</b> (round 2). Place orders too, from day one: the two order holes are fixed before rights ship — <b>"Fix holes first, then close (Recommended)"</b> (ADR 0253 round 13, on PR #566).</li><li>A right given <b>for this job</b> ends when the job is done, cancelled or moved to someone else, when what it was about is gone, or when the person leaves. Never because it runs late; late is a notice — <b>"When the job closes (Recommended)"</b> (round 13).</li><li>Zone setup: owners, managers <b>"+ the people they assign"</b> (your words, ADR 0238) — already built as one switch on the team sheet.</li><li>Pay: an owner's. An owner switches it on for a manager (ADR 0215), and only for someone who sees the house's money (ADR 0253 F14).</li><li>Sending to vendors: owners and managers send, and each send is sealed (ADR 0175). Letting someone else send, or giving someone an order amount, is an owner's — or a manager's where an owner allowed that action, up to a cap the owner sets (your round-6 words, confirmed per action in round 12 — ADR 0253, on PR #566).</li><li>Managers get one of three packages: Full, Standard or Light (round 8). <b>Full comes with "may give" ticked</b> for each money and send action, with your cap; you can untick any one — <b>"Full pre-ticks, you adjust (Recommended)"</b> (round 13).</li><li>There is <b>one Place orders right</b>. Each person's amount lives in the house's approval rule: orders under it go through, orders over it wait. Until approvals are built, every order waits for an owner or a manager — <b>"One right, amount in approvals (Recommended)"</b> (round 13).</li><li>Managers grant manager or staff (ADR 0162). Area leads act on cards only (ADR 0218).</li><li>ADR 0238 said: when a second per-person right appears, one register of rights starts paying for itself. There are two today (zones, pay). This sketch is that register.</li><li>The server refuses what a person may not do; the page only hides what would be refused.</li></ul></div></div>
+<p class="cap">1 · Give a job — and the right to do it, in the same step</p>
+<div class="frame "><div class="veil"><div class="sheet">
+<h2>Give a job</h2>
+<div class="field"><label>What needs doing</label><div class="input">Receive the Friday delivery from Empire Merchants</div>
+<div class="row small"><span class="muted">Often:</span><span class="chip on">Receive a delivery</span><span class="chip">Count a zone</span><span class="chip">Place the weekly order</span><span class="chip">Check an invoice</span><span class="chip">Set up a zone</span><span class="chip">Something else</span></div></div>
+<div class="g2" style="gap:10px"><div class="field"><label>Who</label><div class="input">Deniz Aksoy <span class="muted small">· staff</span></div></div>
+<div class="field"><label>By</label><div class="input">Fri Oct 3, 11:00</div></div></div>
+<div class="field"><label>Where</label><div class="input">Sim Bistro</div></div>
+<div class="callout"><b>Deniz can't receive deliveries at Sim Bistro yet.</b> Let them, so they can do this job:
+<div class="radio sel"><span class="o"></span><div><b>Just for this job</b><div class="small muted">Ends when the job is done, cancelled or moved to someone else, when what it was about is gone, or when Deniz leaves. Never just because it runs late.</div></div></div>
+<div class="radio"><span class="o"></span><div><b>From now on</b><div class="small muted">Deniz is listed under Receive deliveries in Team → Jobs. Being listed is the right.</div></div></div></div>
+<p class="small muted" style="margin:12px 0 0">Deniz is told on their phone. You'll see it done, with the receipt attached. Who gave which right, and when, goes in the house's log.</p>
+<div class="row" style="margin-top:16px;justify-content:flex-end"><span class="btn quiet">Cancel</span><span class="btn primary">Give Deniz the job</span></div>
+</div></div></div>
+<p class="cap">2 · Who may do what, per house</p>
+<div class="frame "><div class="page">
+<div class="spread"><div><p class="eyebrow">Sim Bistro · Team</p><h1 style="font-size:28px">Who may do what.</h1></div><span class="btn soft">Give a job</span></div>
+<p class="standing">Owners do everything here; managers work by their package. <b>Staff do only what they are given</b> — nothing until then. <i>Listed</i> means given from now on (Team → Jobs); <i>this job</i> means given with one job. A manager gives what their package allows. A manager sets someone's approval-rule amount only where you allowed it, up to the cap you set, and gives Send to vendors only where you allowed it; Full comes with both ticked, and you can untick either. (That setting an amount is the money action a manager may be allowed is the sketch's reading.)</p>
+<div class="card white" style="margin-top:14px;padding:6px 12px"><table class="t"><thead><tr><th>Person</th><th>Receive deliveries<div style="text-transform:none;letter-spacing:0;font-family:DM Sans,system-ui;font-size:10.5px">count in, sign at the door</div></th><th>Count stock<div style="text-transform:none;letter-spacing:0;font-family:DM Sans,system-ui;font-size:10.5px">zones, shelves, the walk-in</div></th><th>Place orders<div style="text-transform:none;letter-spacing:0;font-family:DM Sans,system-ui;font-size:10.5px">one right · each person's amount is their approval-rule amount</div></th><th>Set up storage zones<div style="text-transform:none;letter-spacing:0;font-family:DM Sans,system-ui;font-size:10.5px">built · ADR 0238</div></th><th>Check invoices<div style="text-transform:none;letter-spacing:0;font-family:DM Sans,system-ui;font-size:10.5px">match to what came in</div></th><th>See and set pay<div style="text-transform:none;letter-spacing:0;font-family:DM Sans,system-ui;font-size:10.5px">managers only · an owner switches it on</div></th><th>Send to vendors<div style="text-transform:none;letter-spacing:0;font-family:DM Sans,system-ui;font-size:10.5px">owners, managers, or someone let · sealed</div></th></tr></thead><tbody><tr><td><b>You</b><div class="small muted">owner</div></td><td data-l="Receive deliveries"><span class="small muted">by role</span></td><td data-l="Count stock"><span class="small muted">by role</span></td><td data-l="Place orders"><span class="small muted">by role</span></td><td data-l="Set up storage zones"><span class="small muted">by role</span></td><td data-l="Check invoices"><span class="small muted">by role</span></td><td data-l="See and set pay"><span class="small muted">by role</span></td><td data-l="Send to vendors"><span class="small muted">by role</span></td></tr><tr><td><b>Ayla Demir</b><div class="small muted">manager · Full, adjusted</div></td><td data-l="Receive deliveries"><span class="small muted">Full</span></td><td data-l="Count stock"><span class="small muted">Full</span></td><td data-l="Place orders"><span class="small muted">Full</span><div class="small muted">approval-rule amount $2,000</div></td><td data-l="Set up storage zones"><span class="small muted">Full</span></td><td data-l="Check invoices"><span class="small muted">Full</span></td><td data-l="See and set pay"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog on"></span><span class="small muted">Full</span></span></td><td data-l="Send to vendors"><span class="small muted">by role · sealed</span></td></tr><tr><td><b>Deniz Aksoy</b><div class="small muted">staff</div></td><td data-l="Receive deliveries"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog on"></span><span class="chip warn">this job</span></span></td><td data-l="Count stock"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog on"></span><span class="small muted">listed</span></span></td><td data-l="Place orders"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog on"></span><span class="mono small">approval-rule amount $500</span></span><div class="small muted">from Ayla</div></td><td data-l="Set up storage zones"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog"></span></span></td><td data-l="Check invoices"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog"></span></span></td><td data-l="See and set pay"><span class="lock">🔒 managers only</span></td><td data-l="Send to vendors"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog"></span></span></td></tr><tr><td><b>Mert Kaya</b><div class="small muted">staff</div></td><td data-l="Receive deliveries"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog on"></span><span class="small muted">listed</span></span></td><td data-l="Count stock"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog on"></span><span class="small muted">listed</span></span></td><td data-l="Place orders"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog"></span></span></td><td data-l="Set up storage zones"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog on"></span><span class="small muted">listed</span></span></td><td data-l="Check invoices"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog"></span></span></td><td data-l="See and set pay"><span class="lock">🔒 managers only</span></td><td data-l="Send to vendors"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog"></span></span></td></tr><tr><td><b>Jonah Price</b><div class="small muted">staff · joined Sep 29</div></td><td data-l="Receive deliveries"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog"></span></span></td><td data-l="Count stock"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog"></span></span></td><td data-l="Place orders"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog"></span></span></td><td data-l="Set up storage zones"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog"></span></span></td><td data-l="Check invoices"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog on"></span><span class="chip warn">this job</span></span></td><td data-l="See and set pay"><span class="lock">🔒 managers only</span></td><td data-l="Send to vendors"><span class="row" style="justify-content:flex-end;gap:6px"><span class="tog"></span></span></td></tr></tbody></table></div>
+<div class="callout seal"><b>Ayla gave Deniz Place orders and set Deniz's approval-rule amount at $500, under your allowance.</b> Ayla is <b>Full, adjusted</b>: Full ticked "may give" for each money and send action, with your cap: setting an approval-rule amount, up to <b>$750</b> — a cap you set, which may sit above her own amount if you want — and <b>Send to vendors</b>. You unticked Send to vendors; that is the adjustment. (That setting an amount is the money action is the sketch's reading.) Without your allowance, only owners give these. Until approvals are built, Deniz's orders wait for an owner or a manager. <span class="row" style="margin-top:6px"><span class="btn soft">Change what Ayla may give</span></span></div>
+<div class="g2" style="margin-top:14px">
+<div class="card"><h3>Deniz across your houses</h3><div class="list">
+<div style="grid-template-columns:130px 1fr"><b class="small">Sim Bistro</b><span class="small">Receive (this job) · Count · Place orders (approval-rule amount $500)</span></div>
+<div style="grid-template-columns:130px 1fr"><b class="small">Sim Meyhouse</b><span class="small">Count</span></div>
+<div style="grid-template-columns:130px 1fr"><b class="small">Palo Alto</b><span class="small muted">not on the team</span></div></div>
+<div class="row" style="margin-top:8px"><span class="btn soft">Give Deniz the same at…</span></div>
+<p class="small muted" style="margin:6px 0 0">Shown in "All houses" only. Each house keeps its own list — the same person can be trusted with more in one house than another.</p></div>
+<div class="card"><h3>What Deniz is told</h3><div class="small"><b>Ayla let you place orders at Sim Bistro. Your approval-rule amount: $500.</b><br>You'll see "Order something" on your Today. Until approvals are built, each order waits for an owner or a manager. Ask Ayla if anything's unclear.</div>
+<p class="small muted" style="margin:8px 0 0">The same note when a right is taken back — never a silent change. You and every other owner are told too (ADR 0175).</p></div>
+</div></div></div>
+<p class="cap">3 · Jobs you gave, and what the person sees</p>
+<div class="frame "><div class="page"><div class="g2" style="grid-template-columns:1.4fr 1fr;align-items:start">
+<div class="card white"><div class="spread"><h2>Jobs you gave</h2><span class="row"><span class="chip on">Open</span><span class="chip">Done</span><span class="chip">All houses</span></span></div><div class="list"><div style="grid-template-columns:1fr 130px auto"><div><b>Count the cellar, zone B</b><div class="small muted">done Tue 16:40 · 3 bottles differ</div></div><span class="small">Mert Kaya</span><span class="chip on">Done</span></div><div style="grid-template-columns:1fr 130px auto"><div><b>Receive Empire Merchants</b><div class="small muted">due today 11:00</div></div><span class="small">Deniz Aksoy</span><span class="chip ">Due today</span></div><div style="grid-template-columns:1fr 130px auto"><div><b>Check the Sysco invoice</b><div class="small muted">was due Mon · not opened</div></div><span class="small">Jonah Price</span><span class="chip loss">Late</span></div><div style="grid-template-columns:1fr 130px auto"><div><b>Set up the new cooler as a zone</b><div class="small muted">due Sat</div></div><span class="small">Mert Kaya</span><span class="chip ">Not started</span></div></div>
+<p class="small muted" style="margin:8px 0 0">A late job says so once, in your counter — not on every page.</p></div>
+<div class="phone"><p class="eyebrow">Deniz's phone</p>
+<div class="card white" style="margin-top:10px"><div class="small muted">New job from Ayla</div><b class="serif" style="font-size:17px">Receive the Friday delivery</b>
+<div class="small">Empire Merchants · Fri 11:00 · Sim Bistro</div>
+<div class="small muted" style="margin-top:6px">You can receive deliveries for this job.</div>
+<div class="row" style="margin-top:10px"><span class="btn primary big">Start receiving</span></div></div></div>
+</div></div></div>
+<div class="forks"><h2>Still open — yours to decide</h2><ol><li><b>Which rights are on the list</b> (OD-208) — the seven drawn (receive, count, place orders, zones, invoices, pay, send to vendors), more, or fewer. Round 10 added "Sees the house's money". Place orders is settled as one right (round 13); the rest of the list is yours.</li><li><b>The research's other proposals</b> — Receive is the door count only (OD-212); a receive job covers one vendor's delivery on one day (OD-214); a job may name a backup (OD-215); only the giver, an owner or a manager moves or cancels a job (OD-216).</li></ol><h2>Answered</h2><ol><li><b>When a "for this job" right ends</b> (OD-211) — <i>"When the job closes (Recommended)"</i>: done, cancelled or moved to someone else, its object gone, or the person leaves; never at the due time (round 13).</li><li><b>Place orders before the order holes are fixed</b> (OD-213) — <i>"Fix holes first, then close (Recommended)"</i>. Closed until given from day one; rights ship after both holes close. Rejected: "Stay open until fixed" (round 13).</li><li><b>What Full gives</b> — <i>"Full pre-ticks, you adjust (Recommended)"</i>: "may give" ticked for each money and send action, with your cap; you untick any one (round 13).</li><li><b>One order right or two</b> — <i>"One right, amount in approvals (Recommended)"</i>. Rejected: "Two rights" (round 13).</li><li><b>Money limits</b> — who gives: <i>"Yes, per action (Recommended)"</i>; how much: <i>"Owner sets the cap (Recommended)"</i>, which may be higher than the manager's own limit (round 12, after round 5's <i>"Yes, any amount"</i> and round 6).</li><li><b>Standard's order right</b> — <i>"No amount of its own (Recommended)"</i> (round 12): a Standard manager gives Place orders but no amount.</li><li><b>What someone allowed to order sees</b> — <i>"As F3 said (Recommended)"</i>: amounts on the orders they may place or approve, plus their own limit.</li><li><b>A late job</b> — <i>"Person, then giver (Recommended)"</i>: a reminder before due, the giver told once when late, the area lead only if the giver is away; never locked.</li><li><b>Being listed</b> — <i>"Listed means allowed (Recommended)"</i>.</li></ol></div>
+<script>addEventListener('load',()=>{new Image().src='/__seen?b='+(/Chrome\//.test(navigator.userAgent)?'chrome':'safari')+'&p='+location.pathname.split('/').pop()+'&w='+[...document.images].map(i=>i.naturalWidth).join('-')})</script>
+</body></html>

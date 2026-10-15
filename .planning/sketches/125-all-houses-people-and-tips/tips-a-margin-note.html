@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>125 · Tips · A · Margin note</title>
+<style>
+.mudavym{
+  --seal:#1a5e6b;--seal-deep:#14515c;--seal-tint:rgba(26,94,107,.1);--seal-ring:rgba(26,94,107,.32);
+  --paper-0:#fffdf8;--paper-1:#f3efe6;--paper-2:#eae4d8;
+  --ink-1:#211c16;--ink-2:#4f473c;--ink-3:#7c7365;
+  --warn:#96601A;--warn-tint:rgba(150,96,26,.12);--loss:#A8402C;--loss-tint:rgba(168,64,44,.1);
+  color-scheme:light;background:var(--paper-0);color:var(--ink-1)}
+*{box-sizing:border-box} html,body{margin:0;padding:0}
+body{background:#f7f3ea;font-family:"DM Sans","Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+a{color:var(--seal-deep)}
+.serif{font-family:Fraunces,"Iowan Old Style",Georgia,serif;letter-spacing:-.015em}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
+.banner{background:var(--seal);color:#fffdf8;font:500 11px/1.3 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;padding:8px 16px;display:flex;gap:14px;flex-wrap:wrap}
+.banner a{color:#fffdf8}
+.note{max-width:1200px;margin:18px auto 0;padding:0 16px;color:var(--ink-2);font-size:13.5px}
+.note b{color:var(--ink-1);font-weight:600}
+.cap{max-width:1200px;margin:26px auto 0;padding:0 16px;font:500 11px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3)}
+.frame{max-width:1200px;margin:10px auto 30px;border:1px solid var(--paper-2);border-radius:10px;overflow:hidden;background:var(--paper-0)}
+.page{padding:24px 24px 32px}
+.eyebrow{font:500 11px/1.3 "JetBrains Mono",ui-monospace,monospace;text-transform:uppercase;letter-spacing:.14em;color:var(--ink-3);margin:0}
+h1{font-family:Fraunces,Georgia,serif;font-weight:420;font-size:34px;line-height:1.08;margin:6px 0 0}
+h2{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:19px;margin:0 0 8px}
+h3{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:15.5px;margin:0 0 6px}
+.standing{font-family:Fraunces,Georgia,serif;font-style:italic;font-size:16px;color:var(--ink-2);margin:10px 0 0;max-width:860px}
+.standing b{font-style:normal;font-weight:500;color:var(--ink-1)}
+.readat{font:10.5px/1.5 "JetBrains Mono",ui-monospace,monospace;color:var(--ink-3);margin-top:6px}
+.muted{color:var(--ink-3)} .small{font-size:12px}
+.chip{display:inline-flex;align-items:center;gap:4px;font:500 10px/1.4 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.05em;text-transform:uppercase;border:1px solid var(--paper-2);border-radius:4px;padding:2px 6px;color:var(--ink-2);white-space:nowrap}
+.chip.on{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.chip.warn{border-color:rgba(150,96,26,.45);color:var(--warn)}
+.chip.loss{border-color:rgba(168,64,44,.45);color:var(--loss)}
+.chip.off{color:var(--ink-3);border-style:dashed}
+.btn{border:1px solid var(--paper-2);background:var(--paper-0);color:var(--ink-1);border-radius:8px;padding:6px 12px;font:13px inherit;font-family:inherit;display:inline-flex;gap:6px;align-items:center;cursor:default;white-space:nowrap}
+.btn.primary{border-color:var(--seal);background:var(--seal);color:#fffdf8}
+.btn.soft{border-color:var(--seal);background:var(--seal-tint);color:var(--seal-deep)}
+.btn.quiet{border-color:transparent;background:transparent;color:var(--ink-3);padding-left:4px;padding-right:4px}
+.btn.big{padding:12px 18px;font-size:15px;border-radius:10px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.spread{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.card{border:1px solid var(--paper-2);border-radius:12px;background:var(--paper-1);padding:14px 16px;min-width:0}
+.card.white{background:var(--paper-0)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.fig{font-family:Fraunces,Georgia,serif;font-weight:500;letter-spacing:-.03em;line-height:.95;font-variant-numeric:tabular-nums}
+.up{color:var(--seal-deep)} .down{color:var(--loss)} .amber{color:var(--warn)}
+.bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--paper-2)}
+.bar span{display:block;height:100%}
+.h1c{background:#1a5e6b}.h2c{background:#4f8a93}.h3c{background:#8fb5b9}.h4c{background:#c9a46a}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;vertical-align:middle}
+.track{position:relative;height:8px;border-radius:4px;background:var(--paper-2)}
+.track i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--seal)}
+.track b{position:absolute;top:-4px;bottom:-4px;width:2px;background:var(--ink-1)}
+.list{display:grid;gap:0}
+.list > div{display:grid;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--paper-2)}
+.list > div:first-child{border-top:0}
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{font:500 10px/1.3 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);text-align:right;padding:8px 8px;border-bottom:1px solid var(--paper-2);font-weight:500}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t td{padding:9px 8px;border-bottom:1px solid var(--paper-2);text-align:right;font-variant-numeric:tabular-nums}
+table.t tr.total td{font-weight:600;background:var(--paper-1);border-bottom:2px solid var(--ink-3)}
+table.t tr.out td{color:var(--ink-3);font-style:italic}
+/* app chrome */
+.topbar{display:flex;align-items:center;gap:12px;padding:10px 18px;border-bottom:1px solid var(--paper-2);background:var(--paper-0);flex-wrap:wrap}
+.mark{font-family:Fraunces,Georgia,serif;font-weight:500;font-size:17px;color:var(--seal-deep)}
+.switch{border:1px solid var(--paper-2);border-radius:8px;padding:4px 10px;font-size:12.5px;display:inline-flex;gap:6px;align-items:center;background:var(--paper-1)}
+.switch b{font-weight:600}
+.grow{flex:1}
+.shell{display:grid;grid-template-columns:190px 1fr;min-height:420px}
+.shell.counter{grid-template-columns:190px 1fr 250px}
+.rail{border-right:1px solid var(--paper-2);padding:14px 12px;background:var(--paper-1);font-size:12.5px}
+.rail p{margin:12px 0 4px;font:500 9.5px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3)}
+.rail p:first-child{margin-top:0}
+.rail div{padding:3px 8px;border-radius:6px;color:var(--ink-2)}
+.rail div.here{background:var(--seal-tint);color:var(--seal-deep);font-weight:600}
+.rail div.new{color:var(--seal-deep);font-weight:600}
+.rail div.new::after{content:" new";font:500 9px "JetBrains Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--warn)}
+.ctr{border-left:1px solid var(--paper-2);padding:14px;background:var(--paper-1);font-size:12.5px}
+.sheet{max-width:620px;margin:0 auto;border:1px solid var(--paper-2);border-radius:14px;background:var(--paper-0);box-shadow:0 18px 40px rgba(33,28,22,.12);padding:20px 22px}
+.veil{background:rgba(33,28,22,.06);padding:28px 16px}
+.field{display:grid;gap:4px;margin-top:14px}
+.field label{font:500 10.5px/1 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.input{border:1px solid var(--paper-2);border-radius:8px;padding:8px 10px;background:var(--paper-1);font-size:14px}
+.radio{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border:1px solid var(--paper-2);border-radius:8px;margin-top:6px;background:var(--paper-0)}
+.radio .o{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--ink-3);flex:none;margin-top:2px}
+.radio.sel{border-color:var(--seal);background:var(--seal-tint)} .radio.sel .o{border:4px solid var(--seal)}
+.callout{border-left:3px solid var(--warn);background:var(--warn-tint);padding:10px 12px;border-radius:0 8px 8px 0;margin-top:14px;font-size:13px}
+.callout.seal{border-left-color:var(--seal);background:var(--seal-tint)}
+.callout.loss{border-left-color:var(--loss);background:var(--loss-tint)}
+.tog{display:inline-block;width:30px;height:17px;border-radius:9px;background:var(--paper-2);position:relative;vertical-align:middle;flex:none}
+.tog::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.tog.on{background:var(--seal)} .tog.on::after{left:15px}
+.lock{font-size:11px;color:var(--ink-3)}
+.rules{max-width:1200px;margin:0 auto 18px;padding:0 16px}
+.rules .card{background:var(--paper-0)}
+.rules li,.forks li{margin:5px 0}
+.forks{max-width:1200px;margin:0 auto 60px;padding:0 16px;color:var(--ink-2);font-size:13.5px}
+.before{border:1px dashed var(--ink-3);border-radius:10px;padding:12px;background:#fff;opacity:.92}
+.ring{outline:2px solid var(--seal);outline-offset:4px;box-shadow:0 0 0 9px var(--seal-tint);border-radius:8px}
+.phone{width:340px;max-width:100%;border:1px solid var(--paper-2);border-radius:26px;background:var(--paper-0);padding:16px 14px 18px;box-shadow:0 10px 30px rgba(33,28,22,.08);margin:0 auto}
+@media (max-width:1000px){.g4{grid-template-columns:1fr 1fr}.shell.counter{grid-template-columns:170px 1fr}.shell.counter .ctr{grid-column:1/-1;border-left:0;border-top:1px solid var(--paper-2)}}
+@media (max-width:780px){
+  h1{font-size:27px}.page{padding:18px 16px 26px}
+  .g2,.g3,.g4{grid-template-columns:1fr}
+  .shell,.shell.counter{grid-template-columns:1fr}
+  .rail{border-right:0;border-bottom:1px solid var(--paper-2);display:flex;flex-wrap:wrap;gap:4px}
+  .rail p{width:100%;margin:6px 0 2px}
+  table.t thead{display:none}
+  table.t tr{display:grid;grid-template-columns:1fr 1fr;padding:8px 0;border-bottom:1px solid var(--paper-2)}
+  table.t td{border:0;padding:3px 4px;text-align:left}
+  table.t td:first-child{grid-column:1/-1;font-weight:600}
+  table.t td[data-l]::before{content:attr(data-l) " ";font:500 9.5px "JetBrains Mono",monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+  .veil{padding:12px 8px}.sheet{padding:16px}
+  .list>div{grid-template-columns:1fr !important;gap:4px}.phone{width:auto}
+}
+</style></head>
+<body class="mudavym">
+<div class="banner"><b>Sketch 125 · Tips · A · Margin note</b><span>a line at the top of the page, a ring on the real thing · your pick</span><span>example data</span><a href="index.html">all frames</a></div>
+<p class="note"><b>The idea.</b> The tip becomes <b>one quiet line at the top of the page</b>, written like a note in a ledger margin. This sketch draws it under the title; it is built at the top of the page column, because the shell mounts it (ADR 0251 D1). "Show me" puts <b>a ring around the real button</b> with a small card beside it — no dark veil, nothing covering the page, and every step is something to <i>do</i>.</p>
+<div class="rules"><div class="card"><h3>Already decided, drawn as decided</h3><ul><li>The design is A, the margin note — your pick, <b>"margin role lock it"</b> (ADR 0251). One tip per page, no getting-started path across pages — <b>"One per page (Recommended)"</b>.</li><li><b>Not now</b> hides the tip at once; it may come back on a later visit. A snoozed tip comes back after four hours, even in the same session; two tips turned away in one session stop tips for the rest of it (ADR 0251 D2, as corrected).</li><li><b>Don't show tips again</b> — every tip, every page, until you turn them back on in Help → Ways back in → Page tips — <b>"All tips (Recommended)"</b>. Built on PR #570, still open; on main today it turns off only that page's tip.</li><li>A tour starts only from the tip's <b>Show me</b>; in the Mudavym shell, Help has no tour starter (ADR 0251 D2). A tour you start always plays.</li><li>Steps follow the job, not the screen. The Orders tour is built (PR #572, merged): <i>Write an order → Approve it → Follow it → Check what arrived</i>.</li></ul></div></div>
+<p class="cap">1 · Before, and the first visit after</p>
+<div class="frame "><div class="page"><div class="g2" style="align-items:start"><div class="before"><p class="eyebrow">Today · before</p>
+<div style="border:1px solid #ddd;border-radius:12px;padding:10px 12px;margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-family:system-ui;font-size:13px;background:#fff">
+<span class="dot" style="background:#7a1f3d"></span><b>Orders</b><span style="color:#666">Pipeline, views, the order table and how to start one.</span><span class="grow"></span>
+<span style="border:1px solid #ccc;border-radius:6px;padding:3px 8px">Take tour</span><span>Later</span><span>Don't show again</span></div>
+<div style="margin-top:10px;border:1px solid #ccc;border-radius:8px;background:#fff;padding:10px 12px;max-width:300px;font-family:system-ui;font-size:12.5px;box-shadow:0 6px 20px rgba(0,0,0,.25)">
+<b>1/4 Pipeline at a glance</b><div style="color:#555">Status counts across your orders.</div><div style="margin-top:6px;text-align:right">Next →</div></div>
+<p class="small muted" style="margin:10px 0 0">The steps name parts of the screen ("Pipeline at a glance", "Find and switch views", "Work the order table") instead of the job. A dark veil covers the page. "Don't show again" turned off <i>this page's</i> tip only.</p></div><div class="card white" style="padding:0"><div class="page" style="position:relative"><div class="spread"><div><p class="eyebrow">Sim Bistro · The door</p><h1 style="font-size:28px">Orders.</h1></div><span class="btn primary">Write a new order</span></div><p class="serif" style="font-style:italic;color:var(--ink-2);margin:8px 0 0;font-size:15.5px;border-left:2px solid var(--seal);padding-left:10px">Write an order, approve it, follow it, and mark it delivered when it arrives. <span style="font-style:normal" class="row" ><span class="btn soft">Show me — 4 steps</span><span class="btn quiet">Not now</span><span class="btn quiet">Don't show tips again</span></span></p>
+<div class="row" style="margin-top:14px"><span class="chip">3 drafts</span><span class="chip">5 sent</span><span class="chip on">2 arriving today</span><span class="chip loss">1 late</span></div>
+<div class="list" style="margin-top:10px">
+<div style="grid-template-columns:1fr auto auto"><b>Empire Merchants</b><span class="small muted">arriving 11:00</span><span class="mono small">$1,240</span></div>
+<div style="grid-template-columns:1fr auto auto"><b>Sysco</b><span class="small muted">late · was due Mon</span><span class="mono small">$412</span></div>
+<div style="grid-template-columns:1fr auto auto"><b>Southern Glazer's</b><span class="small muted">draft</span><span class="mono small">$860</span></div></div></div></div></div></div></div>
+<p class="cap">2 · "Show me" — a ring on the real button, no dark veil, the page still usable</p>
+<div class="frame "><div class="page" style="position:relative"><div class="spread"><div><p class="eyebrow">Sim Bistro · The door</p><h1 style="font-size:28px">Orders.</h1></div><span class="btn primary ring">Write a new order</span></div>
+<div class="row" style="margin-top:14px"><span class="chip">3 drafts</span><span class="chip">5 sent</span><span class="chip on">2 arriving today</span><span class="chip loss">1 late</span></div>
+<div class="list" style="margin-top:10px">
+<div style="grid-template-columns:1fr auto auto"><b>Empire Merchants</b><span class="small muted">arriving 11:00</span><span class="mono small">$1,240</span></div>
+<div style="grid-template-columns:1fr auto auto"><b>Sysco</b><span class="small muted">late · was due Mon</span><span class="mono small">$412</span></div>
+<div style="grid-template-columns:1fr auto auto"><b>Southern Glazer's</b><span class="small muted">draft</span><span class="mono small">$860</span></div></div><div class="card white" style="position:absolute;right:24px;top:84px;max-width:300px;box-shadow:0 12px 30px rgba(33,28,22,.14);z-index:2"><p class="eyebrow">Step 1 of 4</p><h3 style="margin-top:6px">Write an order</h3><p class="small" style="margin:0">Add what you need from the shelf and name a vendor for each line. Each line becomes a pending order waiting for approval; nothing is sent to a vendor yet.</p><div class="row" style="margin-top:10px"><span class="btn primary">Try it</span><span class="btn">Next</span><span class="btn quiet">Stop</span></div><div class="row small muted" style="margin-top:8px"><b>Write an order</b> · Approve it · Follow it · Check what arrived</div></div></div></div>
+<p class="cap">3 · Turning tips off</p>
+<div class="frame "><div class="page"><div class="g2" style="align-items:start">
+<div class="card white"><p class="eyebrow">After "Don't show tips again"</p><p class="small" style="margin:8px 0 0">The tip leaves at once, and <b>no page shows a tip again</b> — not Orders, not Calendar, not Inventory — until you turn tips back on in Help.</p></div>
+<div class="card white"><p class="eyebrow">Help · Ways back in · on PR #570</p><h3 style="margin-top:6px">Page tips are off</h3><p class="small" style="margin:0">You turned them off. They stay off until you turn them back on here.</p><div style="margin-top:8px"><span class="btn soft">Turn tips back on</span></div></div>
+</div></div></div>
+<div class="forks"><h2>Answered — your picks (ADR 0251)</h2><ol><li><b>Which design</b> — A, the margin note: <i>"margin role lock it"</i>. B and C are not taken.</li><li><b>One path or many</b> — <i>"One per page (Recommended)"</i>. No getting-started path across pages.</li><li><b>A step is ticked when</b> — moot: nothing ticks without a path, and a tour step is read, not done.</li><li><b>"Don't show tips again"</b> — <i>"All tips (Recommended)"</i>. Built on PR #570 (open).</li></ol></div>
+<script>addEventListener('load',()=>{new Image().src='/__seen?b='+(/Chrome\//.test(navigator.userAgent)?'chrome':'safari')+'&p='+location.pathname.split('/').pop()+'&w='+[...document.images].map(i=>i.naturalWidth).join('-')})</script>
+</body></html>
