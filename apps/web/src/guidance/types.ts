@@ -16,7 +16,8 @@ export type TourStatus = 'unseen' | 'in_progress' | 'completed' | 'skipped'
 export interface PageGuidanceState {
   tip: TipStatus
   tour: TourStatus
-  snooze_until?: string
+  /** `null` once "Turn tips back on" has taken a snooze away. */
+  snooze_until?: string | null
 }
 
 /**
@@ -40,13 +41,23 @@ export const DEFAULT_SETUP_NUDGE: SetupNudgeState = {
 export interface GuidanceState {
   global: {
     hide_all_tips: boolean
-    tips_snoozed_until?: string
+    tips_snoozed_until?: string | null
   }
   pages: Partial<Record<PageTourId, PageGuidanceState>>
   guide: {
     use_cards_seen: string[]
   }
   setup_nudge: SetupNudgeState
+  /**
+   * When the web app last saved this copy (ISO time, from the saving device's
+   * clock). The browser's own copy and the account's copy both carry it, and
+   * the newer one wins (`mergeGuidance` in GuidanceProvider). A web save
+   * sends only the keys its action changed, with this time, and the gateway
+   * merges it in, so the account's copy carries the time of the latest web
+   * save from any browser. Copies saved before it existed have none, and the
+   * phone app does not set it.
+   */
+  saved_at?: string
 }
 
 export const DEFAULT_GUIDANCE_STATE: GuidanceState = {

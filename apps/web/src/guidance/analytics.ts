@@ -10,6 +10,7 @@ export type GuidanceEventName =
   | 'tour_started'
   | 'tour_step'
   | 'tour_completed'
+  | 'tour_tried'
   | 'tour_skipped'
   | 'guide_card_clicked'
   | 'services_visited'
