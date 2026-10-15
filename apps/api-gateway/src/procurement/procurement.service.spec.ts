@@ -30,6 +30,9 @@ describe("ProcurementService — draft trigger fallback (regression: Bug 2)", ()
     eq: jest.fn().mockReturnThis(),
     neq: jest.fn().mockReturnThis(),
     not: jest.fn().mockReturnThis(),
+    // The dedup lookup names the states it may merge into (`.in("status", …)`)
+    // rather than the ones it may not (fix/order-patch-cannot-approve).
+    in: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),

@@ -199,6 +199,78 @@ export const ORDER_GOODS_ARRIVED_STATUSES: readonly ProcurementOrderStatus[] = [
   ProcurementOrderStatus.COMPLETED,
 ];
 
+/**
+ * The states in which an order's price is still a proposal: nobody has sealed
+ * it yet, so `PATCH orders/:id` may still change it (fix
+ * `fix/order-patch-cannot-approve`, 2026-10-01).
+ *
+ * An ALLOWLIST, not a list of the states past approval, for two reasons:
+ *
+ *   * A closed state cannot say whether the order was approved first.
+ *     CANCELLED, REJECTED and FAILED are each reachable from APPROVED and from
+ *     CONFIRMED as well as from PENDING, so "at or past APPROVED" has to
+ *     include every closed state or it misses the ones that were. It also
+ *     matches `refuseTransition`'s rule that a closed order is not reopened.
+ *   * A thirteenth status added to the enum is refused until someone decides
+ *     its price is still open, rather than admitted until someone notices.
+ *
+ * NEGOTIATING is here although APPROVED and CONFIRMED can return to it: an
+ * order back in negotiation is no longer approved, and leaving it again for
+ * APPROVED takes the sealed act (`POST orders/:id/approve`), whose seal is
+ * taken over the order's total as it then stands.
+ */
+export const ORDER_PRICE_OPEN_STATUSES: readonly ProcurementOrderStatus[] = [
+  ProcurementOrderStatus.PENDING,
+  ProcurementOrderStatus.APPROVAL_NEEDED,
+  ProcurementOrderStatus.NEGOTIATING,
+];
+
+/**
+ * The states a new request for the same wine from the same vendor may be
+ * folded into by `createOrder`'s dedup merge, rather than starting a new
+ * order (fix `fix/order-patch-cannot-approve`, 2026-10-01).
+ *
+ * The merge overwrites quantity, prices and total. It used to exclude seven
+ * "finished" states and so also wrote over APPROVED (sealed figures),
+ * APPROVAL_NEEDED (figures a manager is being asked to seal) and
+ * PARTIALLY_RECEIVED (an order with stock already booked against it). An
+ * allowlist of the two states whose figures are still nobody's decision.
+ */
+export const ORDER_MERGEABLE_STATUSES: readonly ProcurementOrderStatus[] = [
+  ProcurementOrderStatus.PENDING,
+  ProcurementOrderStatus.NEGOTIATING,
+];
+
+/**
+ * The whole sentence a price change on a settled order is refused with.
+ * `status` is `null` when the stored value is not one this house knows, and
+ * that is refused too: an unknown state is not an open one.
+ */
+export function refusePriceChange(
+  status: ProcurementOrderStatus | null,
+): string {
+  if (status === null) {
+    return (
+      `This order's state could not be read as one this house knows, so ` +
+      `whether its price may change was not decided. Nothing was changed.`
+    );
+  }
+  const now = statusInWords(status);
+  if (ORDER_TERMINAL_STATUSES.includes(status)) {
+    return (
+      `This order is already ${now}, and its price is the record of what ` +
+      `happened to it, so it is not changed by editing the order. Nothing was ` +
+      `changed.`
+    );
+  }
+  return (
+    `This order is ${now}, so its price is the one that was approved, and it ` +
+    `is not changed by editing the order. A different price on the vendor's ` +
+    `invoice is recorded when the delivery is checked against it. Nothing was ` +
+    `changed.`
+  );
+}
+
 /** Parse a stored value into a member, or `null`. Never guesses. */
 export function readOrderStatus(
   value: unknown,
