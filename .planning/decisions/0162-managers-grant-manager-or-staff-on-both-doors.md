@@ -1,6 +1,6 @@
 # 0162 — Managers grant manager or staff, on both doors
 
-- **Status:** Locked 2026-09-18. The founder chose this in chat from the options below, in his words: *"Managers grant manager or staff"*. Re-confirmed the same day after the question was found to carry a wrong premise, with an owner rule added (see the dated addendum). Four forks that addendum left open were answered the same day (second addendum). **[Sixth round, 2026-09-18: the ADR 0090 merge audit of `dcf91322` blocked on two consequences of answer A. Both are built here, as answer A requires (third addendum).]**
+- **Status:** Locked 2026-09-18. The founder chose this in chat from the options below, in his words: *"Managers grant manager or staff"*. Re-confirmed the same day after the question was found to carry a wrong premise, with an owner rule added (see the dated addendum). Four forks that addendum left open were answered the same day (second addendum). **[Sixth round, 2026-09-18: the ADR 0090 merge audit of `dcf91322` blocked on two consequences of answer A. Both are built here, as answer A requires (third addendum).]** [Amended 2026-10-03 by ADR 0253 round 16 follow-up 7: only an owner removes a manager, so a manager removes staff only (the removal rule, below). Not built.]
 - **Date:** 2026-09-18
 - **Decider:** Aldemir (founder)
 - **Keywords:** roles, invite, invitation, add member, remove member, role ceiling, manager, owner, staff, owners manage owners, last owner, co-owner, role change scope, setup-era member, users-row fallback, generateInvite, addMember, removeMember, updateMemberRole, grantRefusal, role-grant, migration 20260918153000, RolesGuard, JwtStrategy, validateJwtPayload, house-role, roleInHouse, leaveRestaurant, deleteMember, per-house role
@@ -53,7 +53,7 @@ settle (CLAUDE.md §0.1).
 
 **Option 3.** An owner grants owner, manager or staff. A manager grants manager or
 staff, never owner. Staff grant nothing. A missing role, or any value that is not one
-of those three, grants nothing and cannot be granted. This holds on both doors.
+of those three, grants nothing and cannot be granted. This holds on both doors. [Amended 2026-10-02 by ADR 0253 round 11 (F10), bracketed by PR #566's gate round (audit at `dde13f0de`). The founder picked *"Close both (Recommended)"*, whose option read: "A manager cannot remove someone whose money an owner took. Someone without the right may invite or add staff only. Changes ADR 0162 for those cases; an owner is needed for those removals." "The right" is ADR 0253's "Sees the house's money". So a manager without it grants staff only, and only an owner removes someone whose money right an owner took. Not built.]
 
 One implementation serves both doors: `grantRefusal` in
 `apps/api-gateway/src/auth/role-grant.ts`, called by `generateInvite` and by
@@ -111,7 +111,8 @@ relied on the fallback and its only effect was the stale chain. Both halves were
   record is what gets superseded.
 - A manager can no longer remove an owner through `MembersService.removeMember`
   (the dated addendum below). **[Sixth round: nor through `TeamService.deleteMember`,
-  the Team page's remove (third addendum).]**
+  the Team page's remove (third addendum).]** [2026-10-03, ADR 0253 round 16 follow-up 7:
+  once built, a manager removes neither an owner nor a manager, only staff. Not built.]
 - Still open, filed rather than fixed here (`v3.0-TECH-DEBT.md`):
   - 44.1i. Every check that reads the `users` row would admit a stale one as well as
     the legacy one. That covers `assertMembership`, `resolveRestaurantRole` with
@@ -209,6 +210,19 @@ guard `:220-233`, the removal guard `:341-345`, the last-owner guards `:348-360`
   any write. Before this, any owner-or-manager could remove an owner while another
   owner remained. The last-owner guards are unchanged (`:293-305`, `:315-328`). An
   owner leaving is still allowed while another owner remains.
+  [Amended 2026-10-03 by ADR 0253 round 16 follow-up 7: only an owner removes a manager,
+  so a manager removes staff only, and never an owner, as before. He was asked:
+  "ADR 0162 (locked, your addendum) lets a manager remove a fellow manager or staff, but never an owner. Removing a manager and adding them back with fewer rights gets round "only an owner changes a manager's rights". Should removing a manager become owner-only?" He picked *"Yes, owner-only (Recommended)"*, whose option read: "Amends 0162: a manager removes staff only. Matches 7shifts, where managers cannot add or edit other managers. Cost: a manager who needs a fellow manager gone asks an owner."
+  The sentence on 7shifts is the option's wording, checked before asking (kb.7shifts.com,
+  "User Types in 7shifts"); it is not this record's finding. This amends the founder
+  addendum's removal rule, which this record wrote as "a manager may not remove an
+  owner" and the code's comment as "a manager removes a manager or staff, never an
+  owner" (`members.service.ts:380-381` at `8c673db4b`). Who
+  may make someone a manager is not changed (Option 3); this record's reading, as follow-up 7
+  asked only about removal and the 7shifts sentence in his option also names adding. Not built: `removeMember`
+  (`:380-388` at `8c673db4b`) and `TeamService.removeFromHouse` (`team.service.ts:1220-1231`)
+  still let a manager remove a manager. The open claim `ADR-0162-MANAGER-REMOVES-STAFF-ONLY`
+  pins that, and ADR 0253's Consequences lists the build.]
 
 *What is missing, filed OPEN, not built here* (`v3.0-TECH-DEBT.md` 44.1n):
 
@@ -468,3 +482,5 @@ and the `users`-row fallback still admitted them there at `users.role`, so the h
 | 2026-09-18 | PR #393 round-6 build | Made `req.user.role` the role in the token's house, cleared `users.restaurant_id` for the house left on all three exits, put the owner rule on the Team page's remove, stopped both removals on a failed read, filtered the role change's UPDATE to the active row; re-measured production read-only; 49 claim mutants and 3 controls, 41 jest mutants (1 equivalent survivor) |
 | 2026-09-18 | Aldemir (AskUserQuestion) | On the round-6 verifier's findings: "Membership only" for sessions (44.1r), "Keep managers in" for owner-only routes (44.1s); fourth addendum |
 | 2026-09-18 | ADR 0164 build (`fix/sessions-follow-membership`) | Bracket-corrected the fourth addendum (44.1t came from #393's own fix; its remedy is ADR 0164's, not a reset) and the decorator counts (10 owner-only, 37 in all); built 44.1r, 44.1s and 44.1t in ADR 0164 |
+| 2026-10-02 | Claude (Opus 5.5; PR #566 gate round, audit at `dde13f0de`) | Bracketed the Decision for ADR 0253 F10: a manager without the money right grants staff only, and only an owner removes someone whose money an owner took. Not built |
+| 2026-10-03 | Aldemir (founder, `AskUserQuestion`, ADR 0253 round 16 follow-up 7) + Claude (Opus 5.5; PR #566, after `bd43d1487`) | Amended the founder addendum's removal rule: *"Yes, owner-only (Recommended)"*, so only an owner removes a manager and a manager removes staff only. Bracketed at the Status line, the removal rule and Consequences; the 7shifts sentence kept as the option's wording. New open claim `ADR-0162-MANAGER-REMOVES-STAFF-ONLY`. Not built |
