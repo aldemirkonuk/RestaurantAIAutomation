@@ -65,7 +65,7 @@ opencv-python==4.9.0.80  # Image processing
 # disabled itself. requirements only said torch>=2.4.1, so a fresh venv resolved
 # torch 2.13 and broke label detection with nothing but a warning in the log.
 ultralytics==8.3.253
-pillow==10.2.0  # Image manipulation
+pillow==13.0.0  # Image manipulation
 # ^ pillow stays on 10.2.0 HERE ONLY, and the line above is kept byte-identical
 # on purpose. Dependabot #89 asked for 12.3.0 in both requirements files;
 # measured, this file cannot take it — surya-ocr declares
