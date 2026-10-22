@@ -17,7 +17,14 @@ import { feedKey, pulseKey, useOrder } from "@/api/queries";
 import { useOutbox } from "@/state/outbox";
 import { useFeedLocal } from "@/state/feedLocal";
 import { receivingCountBasis } from "@/lib/receivingCountBasis";
-import { computeMatch, money, verdictTone } from "@/lib/invoiceMatch";
+import {
+  computeMatch,
+  invoicePriceUnitLabel,
+  invoicePriceUnits,
+  money,
+  verdictTone,
+  type InvoicePriceUnit,
+} from "@/lib/invoiceMatch";
 
 /**
  * Receiving — the canonical WineOps invoice, phone edition.
@@ -66,10 +73,20 @@ export default function ReceivingScreen() {
   const [invoiceQtyRaw, setInvoiceQtyRaw] = useState<number | null>(null);
   const invoiceQty = invoiceQtyRaw;
   const [priceText, setPriceText] = useState<string | null>(null);
+  // The number PRINTED on the paper, in `priceUnit` — never divided here.
   const invoiceUnitPrice =
     priceText == null || priceText.trim() === ""
       ? null
       : Number(priceText.replace(",", "."));
+  // PRICE AS PRINTED (founder, 2026-10-02, RECEIPTS-W56): what that number is
+  // per, starting at the order line's own price unit (ADR 0119); the gateway
+  // converts it once. No pick on a keg/litre line (ADR 0115 waits).
+  const priceUnits = useMemo(() => invoicePriceUnits(order), [order]);
+  const [pickedUnit, setPickedUnit] = useState<InvoicePriceUnit | null>(null);
+  const priceUnit: InvoicePriceUnit = pickedUnit ??
+    priceUnits?.initial ?? { uom: "bottle", packSize: 1 };
+  const pickPack = priceUnits ? priceUnit.packSize : 1;
+  const agreedInPick = poUnitPrice != null ? poUnitPrice * pickPack : null;
   const [invoiceCurrency, setInvoiceCurrency] = useState("");
   const priceIsValid =
     invoiceUnitPrice == null ||
@@ -92,6 +109,8 @@ export default function ReceivingScreen() {
         poUnitPrice,
         invoiceQty,
         invoiceUnitPrice,
+        invoicePriceUom: priceUnits ? priceUnit.uom : null,
+        invoicePricePackSize: priceUnits ? priceUnit.packSize : null,
         acceptedQty,
         rejectedQty,
         priceOverrideReason,
@@ -101,16 +120,27 @@ export default function ReceivingScreen() {
       poUnitPrice,
       invoiceQty,
       invoiceUnitPrice,
+      priceUnits,
+      priceUnit,
       acceptedQty,
       rejectedQty,
       priceOverrideReason,
     ],
   );
   const tone = verdictTone(match.verdict);
+  // Compared in the picked unit, to the cent, as the gateway compares it.
   const priceDiffers =
-    poUnitPrice != null &&
+    agreedInPick != null &&
     invoiceUnitPrice != null &&
-    Math.round(poUnitPrice * 100) !== Math.round(invoiceUnitPrice * 100);
+    Math.round(agreedInPick * 100) !== Math.round(invoiceUnitPrice * 100);
+  /** Sent only for a pack price; absent means per bottle to the gateway. */
+  const priceUnitFields =
+    priceUnits && invoiceUnitPrice != null && priceUnit.uom !== "bottle"
+      ? {
+          invoicePriceUom: priceUnit.uom,
+          invoicePricePackSize: priceUnit.packSize,
+        }
+      : {};
   const receivedQty = acceptedQty + rejectedQty;
 
   const onScan = useCallback(() => {
@@ -143,6 +173,8 @@ export default function ReceivingScreen() {
         invoiceCurrency: invoiceUnitPrice != null ? invoiceCurrency : undefined,
         invoiceQuantityInInvoiceUom: invoiceQty ?? undefined,
         invoiceUnitPrice: invoiceUnitPrice ?? undefined,
+        // The unit that figure is printed in (ADR 0119 words).
+        ...priceUnitFields,
         acceptedQuantityInCountedUom: acceptedQty,
         rejectedQuantityInCountedUom: rejectedQty,
         rejectedReason:
@@ -183,6 +215,7 @@ export default function ReceivingScreen() {
     orderId,
     invoiceQty,
     invoiceUnitPrice,
+    priceUnitFields,
     invoiceCurrency,
     canCommit,
     acceptedQty,
@@ -513,7 +546,7 @@ export default function ReceivingScreen() {
                       ? "Record what the vendor actually billed"
                       : invoiceQty == null
                         ? "No invoice quantities recorded"
-                        : `${invoiceQty} bottles billed${invoiceUnitPrice != null ? ` at ${invoiceCurrency || "currency not stated"} ${invoiceUnitPrice.toFixed(2)}` : ""}`}
+                        : `${invoiceQty} bottles billed${invoiceUnitPrice != null ? ` at ${invoiceCurrency || "currency not stated"} ${invoiceUnitPrice.toFixed(2)}${pickPack > 1 ? ` ${invoicePriceUnitLabel(priceUnit)}` : ""}` : ""}`}
                   </AppText>
                 </View>
                 <Ionicons
@@ -580,28 +613,32 @@ export default function ReceivingScreen() {
                   >
                     <View>
                       <AppText variant="body" tone="secondary">
-                        Billed unit price
+                        Billed price, {invoicePriceUnitLabel(priceUnit)}
                       </AppText>
-                      {poUnitPrice == null ? (
+                      {agreedInPick == null || poUnitPrice == null ? (
                         <AppText variant="caption" tone="tertiary">
                           Agreed bottle price not available here
                         </AppText>
                       ) : priceDiffers ? (
                         <AppText variant="caption" tone="danger">
                           {money(
-                            Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice),
+                            Math.abs((invoiceUnitPrice ?? 0) - agreedInPick),
                           )}
-                          /btl{" "}
-                          {(invoiceUnitPrice ?? 0) > poUnitPrice
+                          {pickPack > 1 ? ` ${invoicePriceUnitLabel(priceUnit)}` : "/btl"}{" "}
+                          {(invoiceUnitPrice ?? 0) > agreedInPick
                             ? "over"
                             : "under"}{" "}
-                          agreed
+                          agreed {money(agreedInPick)}
                         </AppText>
                       ) : (
                         <AppText variant="caption" tone="success">
                           {invoiceUnitPrice == null
-                            ? "No invoice price recorded"
-                            : "Matches stated bottle price"}
+                            ? pickPack > 1
+                              ? `Agreed ${money(agreedInPick)} ${invoicePriceUnitLabel(priceUnit)}`
+                              : "No invoice price recorded"
+                            : pickPack > 1
+                              ? `Matches agreed price · ${money(poUnitPrice)} a bottle`
+                              : "Matches stated bottle price"}
                         </AppText>
                       )}
                     </View>
@@ -626,6 +663,49 @@ export default function ReceivingScreen() {
                       }}
                     />
                   </View>
+
+                  {/* What the printed price is per — a unit pick beside the
+                      price, starting at the order line's unit (RECEIPTS-W56). */}
+                  {priceUnits && priceUnits.options.length > 1 ? (
+                    <View
+                      style={{ flexDirection: "row", gap: space.sm }}
+                      accessibilityRole="radiogroup"
+                      accessibilityLabel="Invoice price unit"
+                    >
+                      {priceUnits.options.map((o) => {
+                        const on =
+                          o.uom === priceUnit.uom &&
+                          o.packSize === priceUnit.packSize;
+                        return (
+                          <PressableScale
+                            key={`${o.uom}:${o.packSize}`}
+                            onPress={() => {
+                              if (sealed) return;
+                              haptic.tick();
+                              setPickedUnit(o);
+                            }}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected: on, disabled: sealed }}
+                            style={{
+                              paddingVertical: space.xs,
+                              paddingHorizontal: space.md,
+                              borderRadius: radius.control,
+                              borderWidth: 1,
+                              borderColor: on ? color.ink : color.hairline,
+                              backgroundColor: on ? color.fill : color.surface,
+                            }}
+                          >
+                            <AppText
+                              variant="caption"
+                              tone={on ? undefined : "secondary"}
+                            >
+                              {invoicePriceUnitLabel(o)}
+                            </AppText>
+                          </PressableScale>
+                        );
+                      })}
+                    </View>
+                  ) : null}
 
                   <View style={{ gap: space.xs }}>
                     <AppText variant="caption" tone="secondary">

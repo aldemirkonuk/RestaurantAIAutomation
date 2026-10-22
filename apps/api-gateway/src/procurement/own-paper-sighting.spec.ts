@@ -1202,6 +1202,73 @@ describe("provenance on decideOwnPaperSighting", () => {
 });
 
 // ---------------------------------------------------------------------------
+// PRICE AS PRINTED — founder, 2026-10-02, RECEIPTS-W56 (F-103). The sighting is
+// labelled with the unit the invoice PRINTS ITS PRICE IN, converted once by
+// the register — never with the unit the invoice COUNTS in.
+// ---------------------------------------------------------------------------
+describe("own paper: the sighting records the invoice price in its own unit, once", () => {
+  it("a case price that names its unit is recorded as printed — $44.00 a case of 24", async () => {
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, quantity: 1, bottles_total: 24, unit_type: "case", final_price: 44 },
+      orderLineRow: {
+        id: "line-56",
+        unit_type: "case",
+        bottles_per_unit: 24,
+        price_uom: "case",
+        price_pack_size: 24,
+        final_unit_price: 44,
+      },
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 24,
+      invoiceUom: "bottle",
+      invoiceUnitPrice: 44,
+      invoicePriceUom: "case",
+      invoicePricePackSize: 24,
+      acceptedQuantity: 24,
+      countedUom: "bottle",
+      invoiceCurrency: "TRY",
+    } as any);
+
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    expect(row.raw_price).toBe(44);
+    expect(row.pack_size).toBe(24);
+    // ONE division, at the register: $1.83 a bottle, not $44 and not $0.08.
+    expect(row.normalized_unit_price).toBeCloseTo(44 / 24, 2);
+    // The price series beside it is per bottle (stored to the cent).
+    expect(calls.priceHistoryInserts[0].price).toBe(1.83);
+  });
+
+  it("a per-bottle price on an invoice that counts in cases is not divided by the case again", async () => {
+    // THE DOUBLE DIVISION. The invoice bills 2 cases of 12 and the desk keyed
+    // the per-bottle $40 with no price unit. The sighting used to borrow the
+    // QUANTITY's unit — "$40.00 a case of 12" — and the register divided it to
+    // $3.33 a bottle.
+    const { db, calls } = makeDb({
+      orderRow: { ...deliveredOrder, quantity: 24, bottles_total: 24 },
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 2,
+      invoiceUom: "case",
+      invoiceBottlesPerUnit: 12,
+      invoiceUnitPrice: 40,
+      acceptedQuantity: 24,
+      countedUom: "bottle",
+      invoiceCurrency: "TRY",
+    } as any);
+
+    expect(calls.sightingInserts).toHaveLength(1);
+    const row = calls.sightingInserts[0];
+    expect(row.raw_price).toBe(40);
+    expect(row.pack_size).toBe(1);
+    expect(row.normalized_unit_price).toBeCloseTo(40, 2);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // ADR 0273: a verified receipt's price is dated by the invoice it was read
 // from, and says which date it carries. Every case below runs through
 // `verifyReceipt`, so the date is the one the real writer puts on the row.

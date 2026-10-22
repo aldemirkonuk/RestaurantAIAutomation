@@ -668,3 +668,135 @@ describe("computeMatch — units", () => {
     });
   });
 });
+
+/**
+ * PRICE AS PRINTED (founder, 2026-10-02, RECEIPTS-W56; ADR 0119 vocabulary).
+ *
+ * The invoice price arrives in the unit the paper prints it in, or — when no
+ * unit is sent — per bottle, the meaning the field always had. It is converted
+ * to per bottle ONCE, compared in the printed unit to the cent, and every money
+ * figure downstream is per bottle.
+ */
+describe("computeMatch — the invoice price in its printed unit", () => {
+  // 24 bottles agreed at $44.00 the case of 24 = $1.8333 a bottle (the door
+  // rounds the agreed per-bottle figure to 4dp, `perBottleFromAgreedPrice`).
+  const caseOf24: MatchInput = {
+    orderedQtyInOrderedUom: 24,
+    orderedUom: "bottle",
+    poUnitPrice: 1.8333,
+    invoiceQtyInInvoiceUom: 24,
+    invoiceUom: "bottle",
+    acceptedQtyInCountedUom: 24,
+    countedUom: "bottle",
+    rejectedQtyInCountedUom: 0,
+  };
+
+  it("matches a case price that states its unit, and books it per bottle once", () => {
+    const r = computeMatch({
+      ...caseOf24,
+      invoiceUnitPrice: 44,
+      invoicePriceUom: "case",
+      invoicePricePackSize: 24,
+    });
+    expect(r.verdict).toBe("matched");
+    expect(r.priceVerified).toBe(true);
+    expect(r.invoicePrice).toEqual({
+      asPrinted: 44,
+      uom: "case",
+      packSize: 24,
+      stated: true,
+      perBottle: 44 / 24,
+    });
+    // Landed cost is per bottle: 24 bottles at $44/24 is $44 for 24 bottles.
+    expect(r.effectiveUnitCost).toBeCloseTo(44 / 24, 10);
+    expect(check(r, "price").detail).toBe("Both $44.00 a case of 24");
+  });
+
+  it("reads the same 44 with no unit as per bottle, and refuses it against $1.83 in words that name both units", () => {
+    const r = computeMatch({ ...caseOf24, invoiceUnitPrice: 44 });
+    expect(r.verdict).toBe("price_variance");
+    expect(r.requiresOverride).toBe(true);
+    expect(r.invoicePrice?.stated).toBe(false);
+    expect(r.invoicePrice?.perBottle).toBe(44);
+    expect(r.summary).toBe(
+      "Billed $44.00 a bottle against an agreed $1.83 a bottle.",
+    );
+    expect(check(r, "price").detail).toBe(
+      "Agreed $1.83 a bottle vs billed $44.00 a bottle",
+    );
+  });
+
+  it("names the unit on both sides of a stated-unit variance, with the per-bottle figure", () => {
+    const r = computeMatch({
+      ...caseOf24,
+      invoiceUnitPrice: 46,
+      invoicePriceUom: "case",
+      invoicePricePackSize: 24,
+    });
+    expect(r.verdict).toBe("price_variance");
+    expect(r.summary).toBe(
+      "Billed $46.00 a case of 24 against an agreed $44.00 a case of 24 ($1.83 a bottle).",
+    );
+    expect(check(r, "price").detail).toBe(
+      "Agreed $44.00 a case of 24 vs billed $46.00 a case of 24",
+    );
+  });
+
+  it("compares to the cent in the printed unit — a ten-cent case variance is not a per-bottle rounding match", () => {
+    // $43.90 and $44.00 a case of 24 are both $1.83 a bottle to the cent.
+    const r = computeMatch({
+      ...caseOf24,
+      invoiceUnitPrice: 43.9,
+      invoicePriceUom: "case",
+      invoicePricePackSize: 24,
+    });
+    expect(r.priceVerified).toBe(false);
+    expect(r.verdict).toBe("price_variance");
+  });
+
+  it("an override on a case price books the per-bottle cost and credits per bottle", () => {
+    const r = computeMatch({
+      ...caseOf24,
+      invoiceQtyInInvoiceUom: 24,
+      acceptedQtyInCountedUom: 22,
+      rejectedQtyInCountedUom: 2,
+      invoiceUnitPrice: 48,
+      invoicePriceUom: "case",
+      invoicePricePackSize: 24,
+      priceOverrideReason: "Vendor raised list price, accepted",
+    });
+    expect(r.requiresOverride).toBe(false);
+    // 24 billed at $2.00 a bottle over 22 accepted.
+    expect(r.effectiveUnitCost).toBeCloseTo((24 * 2) / 22, 10);
+    expect(r.creditAmount).toBe(4);
+  });
+
+  it("refuses half a price unit, an unknown word, and a keg or litre price — never a guess", () => {
+    expect(() =>
+      computeMatch({ ...caseOf24, invoiceUnitPrice: 44, invoicePriceUom: "case" }),
+    ).toThrow(MatchUnitError);
+    expect(() =>
+      computeMatch({ ...caseOf24, invoiceUnitPrice: 44, invoicePriceUom: "crate", invoicePricePackSize: 24 }),
+    ).toThrow(/The invoice price: "crate" is not a unit/);
+    expect(() =>
+      computeMatch({ ...caseOf24, invoiceUnitPrice: 44, invoicePriceUom: "keg", invoicePricePackSize: 1 }),
+    ).toThrow(/stated per keg/);
+    expect(() =>
+      computeMatch({ ...caseOf24, invoiceUnitPrice: 44, invoicePriceUom: "bottle", invoicePricePackSize: 6 }),
+    ).toThrow(MatchUnitError);
+  });
+
+  it("keeps the price's unit independent of the invoice's quantity unit", () => {
+    // 2 cases of 12 billed, priced per bottle with no unit stated.
+    const r = computeMatch({
+      ...caseOf24,
+      poUnitPrice: 22,
+      invoiceQtyInInvoiceUom: 2,
+      invoiceUom: "case",
+      invoiceBottlesPerUnit: 12,
+      invoiceUnitPrice: 22,
+    });
+    expect(r.verdict).toBe("matched");
+    expect(r.invoicePrice).toMatchObject({ uom: "bottle", packSize: 1, perBottle: 22 });
+  });
+});

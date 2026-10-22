@@ -68,6 +68,7 @@
  */
 
 import { normalizeUom, Uom } from "./documents/document-types";
+import { resolveStatedPriceUnit } from "./agreed-price";
 
 export type MatchVerdict =
   | "matched"
@@ -164,12 +165,37 @@ export interface MatchInput {
   /** Bottles in one billed unit. Required when `invoiceUom` multiplies. */
   invoiceBottlesPerUnit?: number | null;
   /**
-   * Unit price the vendor invoice bills. PER BOTTLE — it is compared directly
-   * against `poUnitPrice`, which `upsertOrderLine` derives per bottle
-   * (`line_total = final_unit_price * total_bottles`). Null = invoice not in
-   * hand yet.
+   * Unit price the vendor invoice bills, AS PRINTED, in `invoicePriceUom`.
+   * With no `invoicePriceUom` it is PER BOTTLE — the historical contract, so a
+   * caller that never sends the unit keeps meaning exactly what it always
+   * meant. Null = invoice not in hand yet.
+   *
+   * Price as printed (founder, 2026-10-02, RECEIPTS-W56): a desk holding an
+   * invoice that says "$44.00 the case of 24" keys 44.00 and names the unit,
+   * and this module converts it to per bottle ONCE (`readInvoicePrice`). It
+   * used to be decreed per bottle, so the same paper had to be divided by hand
+   * at the desk — the very re-keying ADR 0119 rejected (O5) for the agreed
+   * price.
    */
   invoiceUnitPrice?: number | null;
+  /**
+   * The unit `invoiceUnitPrice` is printed in — the agreed price's own
+   * vocabulary (ADR 0119 `price_uom`): bottle, case, pack, split_case, each.
+   * A keg or litre price is refused: it has no per-bottle reading, and that
+   * door waits for ADR 0115. Absent = per bottle.
+   *
+   * Independent of `invoiceUom`, which is the unit the invoice COUNTS in. An
+   * invoice that bills 60 bottles at $44.00 a case is ordinary paper; reading
+   * the price's unit off the quantity's unit is how a per-bottle price was
+   * once divided by twelve on its way into the price register.
+   */
+  invoicePriceUom?: string | null;
+  /**
+   * Bottles in one `invoicePriceUom` (ADR 0119 `price_pack_size`). Both or
+   * neither: a unit with no pack, or a pack with no unit, is refused rather
+   * than completed with a guess.
+   */
+  invoicePricePackSize?: number | null;
 
   // -------------------------------------------------------------------------
   // RECEIVED (physical count at the door)
@@ -291,6 +317,31 @@ export interface MatchResult {
    * to the stock lot — the whole match is theatre if the books keep the PO price.
    */
   effectiveUnitCost: number | null;
+  /**
+   * The invoice's price as printed, the unit it was printed in, and its ONE
+   * conversion to per bottle. Null when no invoice price was given.
+   *
+   * Returned so the caller reads the same reading the verdict was computed
+   * from: the per-bottle figure for the books (`invoice_unit_price`, the price
+   * series), the printed figure and its own unit for the price register, which
+   * converts once more at read time from the operands it keeps (ADR 0119
+   * invariant 2) — never from a figure this module already divided.
+   */
+  invoicePrice: InvoicePriceReading | null;
+}
+
+/** An invoice price, read once. See `readInvoicePrice`. */
+export interface InvoicePriceReading {
+  /** The number printed on the invoice, in `uom`. */
+  asPrinted: number;
+  /** `bottle` when the caller stated no unit. */
+  uom: Uom;
+  /** Bottles in one `uom`; 1 when the caller stated no unit. */
+  packSize: number;
+  /** False = no unit was sent, so the figure is per bottle by the old contract. */
+  stated: boolean;
+  /** `asPrinted / packSize`, unrounded — the one conversion. */
+  perBottle: number;
 }
 
 const money = (n: number) => `$${n.toFixed(2)}`;
@@ -580,10 +631,99 @@ export function toBottleOperands(input: MatchInput): {
   };
 }
 
+/**
+ * "a case of 24", "a bottle", "each" — the words a price's unit is said in.
+ * The pack is named for every unit that multiplies, because a case price
+ * without its pack is the exact number ADR 0119 is about.
+ */
+export function pricePer(uom: Uom, packSize: number): string {
+  switch (uom) {
+    case "bottle":
+      return "a bottle";
+    case "each":
+      return "each";
+    case "case":
+      return `a case of ${packSize}`;
+    case "pack":
+      return `a pack of ${packSize}`;
+    case "split_case":
+      return `a split case of ${packSize}`;
+    default:
+      return `a ${uom}`;
+  }
+}
+
+/**
+ * Read the invoice's price in the unit it is printed in, and convert it to
+ * per bottle — ONCE, here, with the operands kept (ADR 0119 invariant 2).
+ *
+ * The unit vocabulary and its refusals are the agreed price's own
+ * (`resolveStatedPriceUnit`, ADR 0119): both halves or neither, a known word,
+ * a whole pack of at least one, and a pack of exactly one for a unit that
+ * does not multiply. Reusing it is the point — two validators for one
+ * vocabulary is how two screens come to disagree about what "a case" means.
+ *
+ * Nothing stated -> per bottle, exactly the meaning the field always had, so
+ * an app that does not send the unit is unchanged (founder, 2026-10-02).
+ *
+ * A keg or litre price is REFUSED: it has no per-bottle reading, and inventing
+ * one is the confident-wrong-cost failure this module refuses everywhere else.
+ * The keg door waits for ADR 0115; this does not open it.
+ */
+export function readInvoicePrice(
+  input: Pick<
+    MatchInput,
+    "invoiceUnitPrice" | "invoicePriceUom" | "invoicePricePackSize"
+  >,
+): InvoicePriceReading | null {
+  if (input.invoiceUnitPrice == null) return null;
+  const asPrinted = Number(input.invoiceUnitPrice);
+  const resolved = resolveStatedPriceUnit({
+    priceUom: input.invoicePriceUom ?? null,
+    pricePackSize: input.invoicePricePackSize ?? null,
+  });
+  if (!resolved.ok) {
+    throw new MatchUnitError(
+      resolved.reason === "unknown_price_unit"
+        ? "unknown_unit"
+        : "pack_size_required",
+      `The invoice price: ${resolved.message}`,
+    );
+  }
+  if (!resolved.stated) {
+    return {
+      asPrinted,
+      uom: "bottle",
+      packSize: 1,
+      stated: false,
+      perBottle: asPrinted,
+    };
+  }
+  const { priceUom, pricePackSize } = resolved.stated;
+  if (OPAQUE.has(priceUom)) {
+    throw new MatchUnitError(
+      "not_comparable",
+      `The invoice price is stated per ${priceUom}, and a ${priceUom} is not a number of bottles, ` +
+        `so it cannot be compared with the agreed price or booked as a bottle cost. ` +
+        `Record this receipt without the price; the count records on its own.`,
+    );
+  }
+  return {
+    asPrinted,
+    uom: priceUom,
+    packSize: pricePackSize,
+    stated: true,
+    perBottle: pricePackSize === 1 ? asPrinted : asPrinted / pricePackSize,
+  };
+}
+
 export function computeMatch(input: MatchInput): MatchResult {
   // EVERY operand is in bottles from here down. Nothing below this line may read
   // `input.<something>Qty` again — that is what made the units invisible before.
   const operands = toBottleOperands(input);
+  // The price too: read once in the unit it is printed in, converted once.
+  // Nothing below reads `input.invoiceUnitPrice` again.
+  const invoicePrice = readInvoicePrice(input);
 
   const orderedQty = operands.orderedQty;
   const acceptedQty = operands.acceptedQty;
@@ -603,7 +743,9 @@ export function computeMatch(input: MatchInput): MatchResult {
   const hasInvoice = invoiceQty != null;
 
   const poUnitPrice = input.poUnitPrice ?? null;
-  const invoiceUnitPrice = input.invoiceUnitPrice ?? null;
+  // PER BOTTLE from here down: the money arithmetic (credit, landed cost) is in
+  // bottles because every quantity is.
+  const invoiceUnitPrice = invoicePrice?.perBottle ?? null;
   const overrideReason = (input.priceOverrideReason ?? "").trim();
 
   const stockedQty = operands.stockedQty ?? invoiceQty ?? orderedQty;
@@ -611,11 +753,28 @@ export function computeMatch(input: MatchInput): MatchResult {
   const checks: MatchCheck[] = [];
 
   // --- price: exact match, no tolerance band (D-B) --------------------------------------
-  const bothPriced = poUnitPrice != null && invoiceUnitPrice != null;
+  // Compared to the cent IN THE UNIT THE INVOICE PRINTS ITS PRICE IN. Comparing
+  // the two per-bottle figures to the cent would be a tolerance band by the back
+  // door: $43.90 and $44.00 a case of 24 are both $1.83 a bottle, so a ten-cent
+  // case variance would read as a match. The agreed per-bottle figure is scaled
+  // up to the invoice's pack instead, and for an unstated unit (pack 1) this is
+  // exactly the comparison it always was.
+  const bothPriced = poUnitPrice != null && invoicePrice != null;
+  const agreedInInvoiceUnit =
+    poUnitPrice != null && invoicePrice != null
+      ? poUnitPrice * invoicePrice.packSize
+      : null;
   const priceVerified =
-    bothPriced && priceEquals(poUnitPrice, invoiceUnitPrice);
+    bothPriced &&
+    priceEquals(agreedInInvoiceUnit as number, invoicePrice.asPrinted);
   const priceMismatch = bothPriced && !priceVerified;
   const requiresOverride = priceMismatch && overrideReason.length === 0;
+  // The unit both sides were compared in — always named. "a bottle" when the
+  // desk stated none: that is what the figure means, and a case price keyed
+  // from an app that cannot say "case" is caught by exactly this word.
+  const per = invoicePrice
+    ? ` ${pricePer(invoicePrice.uom, invoicePrice.packSize)}`
+    : "";
 
   checks.push({
     id: "price",
@@ -624,9 +783,9 @@ export function computeMatch(input: MatchInput): MatchResult {
     detail: !bothPriced
       ? "No price to compare"
       : priceMismatch
-        ? `Agreed ${money(poUnitPrice)} vs billed ${money(invoiceUnitPrice)}` +
+        ? `Agreed ${money(agreedInInvoiceUnit as number)}${per} vs billed ${money(invoicePrice.asPrinted)}${per}` +
           (overrideReason ? " — accepted by override" : "")
-        : `Both ${money(poUnitPrice as number)}`,
+        : `Both ${money(agreedInInvoiceUnit as number)}${per}`,
   });
 
   // --- bill vs PO: did they bill for what we ordered? ------------------------------------
@@ -767,7 +926,7 @@ export function computeMatch(input: MatchInput): MatchResult {
       freeGoodsQty,
       backorderQty,
       poUnitPrice,
-      invoiceUnitPrice,
+      invoicePrice,
     }),
     backorderQty,
     ledgerDelta: acceptedQty - stockedQty,
@@ -777,6 +936,7 @@ export function computeMatch(input: MatchInput): MatchResult {
     creditAmount,
     selfEvidenced: overbilledVsShip,
     effectiveUnitCost,
+    invoicePrice,
   };
 }
 
@@ -795,7 +955,7 @@ function summarize(
     freeGoodsQty: number;
     backorderQty: number;
     poUnitPrice: number | null;
-    invoiceUnitPrice: number | null;
+    invoicePrice: InvoicePriceReading | null;
   },
 ): string {
   switch (verdict) {
@@ -806,10 +966,24 @@ function summarize(
       );
     case "overbilled_vs_ship":
       return `Their packing slip says ${f.shippedQty} but their invoice bills ${f.invoiceQty} — proven by their own paperwork.`;
-    case "price_variance":
-      return `Billed ${money(f.invoiceUnitPrice as number)} against an agreed ${money(
-        f.poUnitPrice as number,
-      )}.`;
+    case "price_variance": {
+      // Both sides in the unit the invoice prints, so the manager reads the
+      // number on the paper beside the number agreed for the same thing — and
+      // the per-bottle figure the books will carry, when a pack is involved.
+      // With no unit stated that unit is "a bottle", said out loud: "Billed
+      // $44.00 a bottle against an agreed $1.83 a bottle" is how a case price
+      // keyed into a per-bottle field gets noticed (F-103).
+      const printed = f.invoicePrice as InvoicePriceReading;
+      const per = pricePer(printed.uom, printed.packSize);
+      const agreed = (f.poUnitPrice as number) * printed.packSize;
+      return (
+        `Billed ${money(printed.asPrinted)} ${per} against an agreed ${money(agreed)} ${per}` +
+        (printed.packSize > 1
+          ? ` (${money(f.poUnitPrice as number)} a bottle)`
+          : "") +
+        "."
+      );
+    }
     case "qty_over":
       return `${f.billableReceived} arrived but only ${f.invoiceQty} were billed.`;
     case "qty_short":

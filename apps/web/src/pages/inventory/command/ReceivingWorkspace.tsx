@@ -179,6 +179,64 @@ function perBottlePrice(order: any, price: number | null): number | null {
   return null
 }
 
+/** One choice in the invoice price's unit pick — ADR 0119's vocabulary, nothing invented. */
+export interface InvoicePriceUnit {
+  /** `bottle`, `case`, `pack` or `split_case` — the agreed price's own words (ADR 0119). */
+  uom: string
+  /** Bottles in one `uom`; 1 for a bottle. */
+  packSize: number
+}
+
+const PRICE_UNIT_WORD: Record<string, string> = {
+  case: 'case',
+  cases: 'case',
+  pack: 'pack',
+  packs: 'pack',
+  split_case: 'split_case',
+}
+
+/** "per case of 24", "per bottle" — what the pick says. */
+export function invoicePriceUnitLabel(u: InvoicePriceUnit): string {
+  return u.uom === 'bottle' ? 'per bottle' : `per ${unitWord(u.uom, 1)} of ${u.packSize}`
+}
+
+/**
+ * The units the invoice's price can be keyed in, and the one the pick starts at — PRICE AS
+ * PRINTED (founder, 2026-10-02, RECEIPTS-W56).
+ *
+ * The desk keys the number ON THE PAPER and says what it is per; the gateway converts it once.
+ * It starts at the ORDER LINE's own price unit (ADR 0119), because the invoice for a case-priced
+ * agreement nearly always prints a case price — a screen that started at "per bottle" would ask
+ * the desk to divide by hand, the re-keying ADR 0119 already rejected for the agreed price.
+ *
+ * Only bottles and packs of N. A line priced per keg or litre gets NO pick (`null`): that price
+ * has no per-bottle reading, and that door waits for ADR 0115. The screen then behaves exactly
+ * as it did before.
+ */
+export function invoicePriceUnits(order: {
+  priceUom?: string | null
+  pricePackSize?: number | null
+  received?: ShelfReceived | null
+}): { options: InvoicePriceUnit[]; initial: InvoicePriceUnit } | null {
+  const lineUom = typeof order.priceUom === 'string' ? order.priceUom.trim().toLowerCase() : null
+  if (lineUom === 'keg' || lineUom === 'liter' || lineUom === 'litre') return null
+  const bottle: InvoicePriceUnit = { uom: 'bottle', packSize: 1 }
+  const options: InvoicePriceUnit[] = [bottle]
+  const add = (uom: string | null | undefined, pack: number | null | undefined) => {
+    const word = uom ? PRICE_UNIT_WORD[uom.trim().toLowerCase()] : undefined
+    if (!word || typeof pack !== 'number' || !Number.isInteger(pack) || pack < 1) return null
+    const found = options.find((o) => o.uom === word && o.packSize === pack)
+    if (found) return found
+    const u = { uom: word, packSize: pack }
+    options.push(u)
+    return u
+  }
+  const lineUnit = add(lineUom, order.pricePackSize)
+  // The shelf's own pack (what the ledger booked this order in), when it differs from the line's.
+  add(order.received?.packUnit, order.received?.packSize)
+  return { options, initial: lineUnit ?? bottle }
+}
+
 interface ExtraLine {
   inventoryId: string
   label: string
@@ -304,7 +362,22 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   const orderedQty: number = inBottles
     ? (order.quantity ?? 0) * (count.packSize as number)
     : (order.quantity ?? 0)
-  const poUnitPrice: number | null = inBottles ? perBottlePrice(order, headerPrice) : headerPrice
+  /*
+   * THE AGREED PRICE, PER BOTTLE — the number the gateway compares (`verifyReceipt`,
+   * `agreedPricePerBottleForDoor`). In bottles it is the line's per-bottle reading or nothing,
+   * as before. Counting whole packs it used to be the raw header, compared against whatever was
+   * typed with no conversion, while the gateway compared that same typed figure as PER BOTTLE
+   * against the per-bottle reading: a case price matched here and 422'd there (F-103). Now both
+   * read the line the same way, and only an order whose line was READ and states no unit
+   * (`priceUom === null`) keeps the header, on the gateway's own historical convention.
+   */
+  const priceUnits = useMemo(() => invoicePriceUnits(order), [order])
+  const agreedPerBottle: number | null = inBottles
+    ? perBottlePrice(order, headerPrice)
+    : priceUnits === null
+      ? headerPrice // keg/litre line: unchanged, no pick (ADR 0115 waits).
+      : (perBottlePrice(order, headerPrice) ?? (order.priceUom == null ? headerPrice : null))
+  const poUnitPrice = agreedPerBottle
   const stockedQty: number = count.prefill
   const countUnitLabel = inBottles
     ? 'Bottles'
@@ -318,7 +391,12 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   // order made physical_vs_bill compare a number to itself and wrote price_verified for a delivery
   // nobody had checked.
   const [invoiceQty, setInvoiceQty] = useState<number | null>(null)
+  /** The number PRINTED on the invoice, in `priceUnit` — never divided here. */
   const [invoiceUnitPrice, setInvoiceUnitPrice] = useState<number | null>(null)
+  /** What that number is per. Starts at the order line's own price unit (ADR 0119). */
+  const [priceUnit, setPriceUnit] = useState<InvoicePriceUnit>(
+    () => priceUnits?.initial ?? { uom: 'bottle', packSize: 1 },
+  )
   /*
    * WHAT THE PRICE IS IN — required beside it since 2026-09-06 (founder batch
    * 67: "a price without money is not a price").
@@ -462,6 +540,8 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         shippedQty,
         invoiceQty,
         invoiceUnitPrice,
+        invoicePriceUom: priceUnits ? priceUnit.uom : null,
+        invoicePricePackSize: priceUnits ? priceUnit.packSize : null,
         acceptedQty,
         rejectedQty,
         freeGoodsQty,
@@ -474,6 +554,8 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
       shippedQty,
       invoiceQty,
       invoiceUnitPrice,
+      priceUnits,
+      priceUnit,
       acceptedQty,
       rejectedQty,
       freeGoodsQty,
@@ -581,10 +663,19 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   const priceNeedsCurrency = invoiceUnitPrice != null && invoiceCurrency === ''
 
   const style = verdictStyle(match.verdict)
+  // The agreed price IN THE PICKED UNIT — what the paper should say — and the comparison made
+  // there, to the cent, exactly as the gateway makes it (`invoice-match.ts` `computeMatch`).
+  const pickPack = priceUnits ? priceUnit.packSize : 1
+  const agreedInPick = poUnitPrice != null ? poUnitPrice * pickPack : null
   const priceDiffers =
-    poUnitPrice != null &&
+    agreedInPick != null &&
     invoiceUnitPrice != null &&
-    Math.round(poUnitPrice * 100) !== Math.round(invoiceUnitPrice * 100)
+    Math.round(agreedInPick * 100) !== Math.round(invoiceUnitPrice * 100)
+  /** Sent only when the price is per a pack; absent means per bottle to the gateway. */
+  const priceUnitFields: { invoicePriceUom?: string; invoicePricePackSize?: number } =
+    priceUnits && invoiceUnitPrice != null && priceUnit.uom !== 'bottle'
+      ? { invoicePriceUom: priceUnit.uom, invoicePricePackSize: priceUnit.packSize }
+      : {}
   const receivedQty = acceptedQty + rejectedQty
 
   const addable = useMemo(
@@ -614,6 +705,10 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         shippedUom: inBottles && shippedQty != null ? 'bottle' : undefined,
         invoiceQuantityInInvoiceUom: invoiceQty ?? undefined,
         invoiceUnitPrice: invoiceUnitPrice ?? undefined,
+        // PRICE AS PRINTED: the unit that figure is per (ADR 0119 vocabulary), converted once by
+        // the gateway. Spread, not listed, because the shared client type does not name the two
+        // fields yet; the gateway's DTO does.
+        ...priceUnitFields,
         // Sent whenever it is set, price or no price. The gateway refuses the
         // PAIR (a price with no code) and accepts a code with no price, so a
         // desk that picks the currency before typing the figure is not fought.
@@ -846,9 +941,40 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                   </option>
                 ))}
               </select>
+              {/* PRICE AS PRINTED (RECEIPTS-W56): what the figure is per, beside it, so the
+                  desk keys the number on the paper instead of dividing it by hand. */}
+              {priceUnits && (
+                <select
+                  aria-label="Invoice price unit"
+                  data-testid="receiving-invoice-price-unit"
+                  disabled={readOnly || !!moneyHold}
+                  value={`${priceUnit.uom}:${priceUnit.packSize}`}
+                  onChange={(e) => {
+                    const next = priceUnits.options.find(
+                      (o) => `${o.uom}:${o.packSize}` === e.target.value,
+                    )
+                    if (next) setPriceUnit(next)
+                  }}
+                  className="ml-2 h-6 px-1 text-[11px] border border-gray-200 rounded-md bg-white outline-none focus:ring-2 focus:ring-wine-500 disabled:bg-gray-50"
+                >
+                  {priceUnits.options.map((o) => (
+                    <option key={`${o.uom}:${o.packSize}`} value={`${o.uom}:${o.packSize}`}>
+                      {invoicePriceUnitLabel(o)}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
-            <div className="text-center font-mono text-sm text-gray-500">
-              {poUnitPrice != null ? money(poUnitPrice) : '—'}
+            <div
+              className="text-center font-mono text-sm text-gray-500"
+              data-testid="receiving-agreed-price"
+            >
+              {agreedInPick != null ? money(agreedInPick) : '—'}
+              {agreedInPick != null && priceUnits && pickPack > 1 && (
+                <span className="block text-[10px] font-sans text-gray-400">
+                  / {unitWord(priceUnit.uom, 1)}
+                </span>
+              )}
             </div>
             <div className="flex justify-center">
               <input
@@ -876,17 +1002,31 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700">
                   <AlertTriangle className="w-3 h-3" /> Price held — currency not filed
                 </span>
-              ) : poUnitPrice == null ? (
+              ) : agreedInPick == null || poUnitPrice == null ? (
                 <span className="text-[11px] text-gray-400">No agreed price on this order</span>
               ) : priceDiffers ? (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
+                <span
+                  data-testid="receiving-price-status"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600"
+                >
                   <AlertTriangle className="w-3 h-3" />
-                  {money(Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice))}/btl{' '}
-                  {(invoiceUnitPrice ?? 0) > poUnitPrice ? 'over' : 'under'} agreed
+                  {money(Math.abs((invoiceUnitPrice ?? 0) - agreedInPick))}
+                  {pickPack > 1 ? ` a ${unitWord(priceUnit.uom, 1)}` : '/btl'}{' '}
+                  {(invoiceUnitPrice ?? 0) > agreedInPick ? 'over' : 'under'} agreed
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                <span
+                  data-testid="receiving-price-status"
+                  className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600"
+                >
                   <Check className="w-3 h-3" /> Matches agreed price
+                  {/* The per-bottle reading the books will carry, when a pack is involved. */}
+                  {pickPack > 1 && (
+                    <span className="font-normal text-gray-500">
+                      {' '}
+                      · {money(poUnitPrice)} a bottle
+                    </span>
+                  )}
                 </span>
               )}
             </div>
