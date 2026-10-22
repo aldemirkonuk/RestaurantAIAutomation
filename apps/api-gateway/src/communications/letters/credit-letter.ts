@@ -20,6 +20,11 @@
  *     like any other letter, and a test pins that it trips nothing.
  */
 
+import {
+  CREDIT_REASON_WORDING,
+  type CreditReason,
+} from "../../procurement/documents/credit-ledger";
+
 export interface CreditLetterFacts {
   reason: string | null;
   summary: string | null;
@@ -32,22 +37,32 @@ export interface CreditLetterFacts {
   invoiceNumber: string | null;
 }
 
-/** What the vendor is told happened, in words a rep will recognise. */
-export const CREDIT_REASON_SENTENCE: Record<string, string> = {
-  overbilled_vs_ship:
-    "we were invoiced for more than was delivered",
-  qty_short: "the quantity delivered was short of the quantity invoiced",
-  short_shipped: "part of the order was not delivered",
-  damaged: "part of the delivery arrived damaged",
-  price_variance:
-    "the price invoiced differs from the price agreed",
-  never_ordered: "we were invoiced for goods we did not order",
-  other: "there is a discrepancy on this delivery",
-};
+/**
+ * What the vendor is told happened, in words a rep will recognise.
+ *
+ * Read from the claim's ONE wording (`CREDIT_REASON_WORDING`, W54 / ADR 0267
+ * option 8), never restated here: the letter and every page say the same
+ * thing about the same claim.
+ */
+export const CREDIT_REASON_SENTENCE: Record<string, string> = Object.fromEntries(
+  Object.entries(CREDIT_REASON_WORDING).map(([code, w]) => [code, w.sentence]),
+);
+
+/**
+ * Reasons that are about what physically came through the door, as opposed to
+ * what the paper says. Their letters file as delivery disputes.
+ */
+const DELIVERY_DISPUTE_REASONS: ReadonlySet<string> = new Set<CreditReason>([
+  "damaged",
+  "short_shipped",
+  "wrong_item",
+  "broken",
+  "temperature",
+]);
 
 /** The house letter category a claim files under (LETTER_CATEGORIES). */
 export function creditLetterCategory(reason: string | null): string {
-  return reason === "damaged" || reason === "short_shipped"
+  return reason != null && DELIVERY_DISPUTE_REASONS.has(reason)
     ? "delivery_dispute"
     : "invoice_mismatch";
 }

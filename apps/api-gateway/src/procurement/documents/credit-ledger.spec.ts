@@ -2,6 +2,8 @@ import { computeMatch } from "../invoice-match";
 import {
   canTransition,
   Credit,
+  CREDIT_REASON_WORDING,
+  doorReason,
   draftClaimFromMatch,
   reasonForVerdict,
   CURRENCY_UNRECORDED,
@@ -114,6 +116,92 @@ describe("draftClaimFromMatch", () => {
       acceptedQty: 22,
     });
     expect(draftClaimFromMatch(unpriced)).toBeNull();
+  });
+
+  describe("keeps the door's reason (W54 / F-158, ADR 0267 option 8)", () => {
+    // 2 of 24 turned away at the door, invoiced for all 24.
+    const refusal = computeMatch({
+      orderedQty: 24,
+      poUnitPrice: 22,
+      invoiceQty: 24,
+      invoiceUnitPrice: 22,
+      acceptedQty: 22,
+      rejectedQty: 2,
+    });
+
+    it.each([
+      ["wrong_wine", "wrong_item"],
+      ["broken_case", "broken"],
+      ["temperature", "temperature"],
+      ["other", "other"],
+    ])("a door refusal for %s is claimed as %s", (door, claimed) => {
+      expect(refusal.verdict).toBe("rejected");
+      const r = doorReason([
+        { outcome: "refused", refusal_reason: door, rejected_qty_bottles: 2 },
+      ]);
+      expect(draftClaimFromMatch(refusal, r)!.reason).toBe(claimed);
+    });
+
+    it("a broken count on a kept delivery is broken, not a refusal", () => {
+      for (const outcome of ["accepted", "short"]) {
+        expect(
+          doorReason([
+            { outcome, refusal_reason: null, rejected_qty_bottles: 1 },
+          ]),
+        ).toBe("broken");
+      }
+    });
+
+    it("falls back to damaged when the door gave no reason, or two", () => {
+      // No door event at all — a rejection typed at the desk.
+      expect(draftClaimFromMatch(refusal, doorReason([]))!.reason).toBe("damaged");
+      // A refusal with no reason.
+      expect(
+        doorReason([{ outcome: "refused", refusal_reason: null, rejected_qty: 2 }]),
+      ).toBeNull();
+      // A legacy event with no outcome: refused or broken, nobody said which.
+      expect(
+        doorReason([{ outcome: null, refusal_reason: null, rejected_qty_bottles: 2 }]),
+      ).toBeNull();
+      // Two trucks, two reasons: not filed under whichever came first.
+      expect(
+        doorReason([
+          { outcome: "refused", refusal_reason: "wrong_wine", rejected_qty_bottles: 12 },
+          { outcome: "accepted", refusal_reason: null, rejected_qty_bottles: 1 },
+        ]),
+      ).toBeNull();
+      // A clean truck beside a refusal does not blur the refusal's reason.
+      expect(
+        doorReason([
+          { outcome: "accepted", refusal_reason: null, rejected_qty_bottles: 0 },
+          { outcome: "refused", refusal_reason: "temperature", rejected_qty_bottles: 6 },
+        ]),
+      ).toBe("temperature");
+    });
+
+    it("never lends the door's reason to a verdict that is not a rejection", () => {
+      const overbill = computeMatch({
+        orderedQty: 24,
+        poUnitPrice: 22,
+        shippedQty: 22,
+        invoiceQty: 24,
+        invoiceUnitPrice: 22,
+        acceptedQty: 22,
+      });
+      expect(draftClaimFromMatch(overbill, "wrong_item")!.reason).toBe(
+        "overbilled_vs_ship",
+      );
+    });
+
+    it("gives every reason a page label and a letter sentence", () => {
+      for (const [code, w] of Object.entries(CREDIT_REASON_WORDING)) {
+        expect(`${code}:${w.label}`).toMatch(/:\S/);
+        expect(`${code}:${w.sentence}`).toMatch(/:\S/);
+      }
+      expect(CREDIT_REASON_WORDING.damaged.label).toBe(
+        "Refused or broken at the door",
+      );
+    });
   });
 
   it("raises nothing on a clean delivery", () => {
