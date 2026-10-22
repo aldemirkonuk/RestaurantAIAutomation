@@ -1,10 +1,23 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import {
   CreateTemplateDto,
   TemplateResponseDto,
   UpdateTemplateDto,
 } from "./dto/restaurant-templates.dto";
+
+/**
+ * The order letter's purpose key (ADR 0313; `ORDER_REQUEST_TEMPLATE_KEY` in
+ * communications/letters/order-request-letter.ts). Kept as a literal so this
+ * legacy module does not import the letters module.
+ */
+export const ORDER_LETTER_CATEGORY = "order_request";
 
 @Injectable()
 export class RestaurantTemplatesService {
@@ -63,6 +76,7 @@ export class RestaurantTemplatesService {
     templateId: string,
     dto: UpdateTemplateDto,
   ): Promise<TemplateResponseDto> {
+    await this.refuseTheOrderLetter(restaurantId, templateId, "changed");
     const updatePayload: Record<string, any> = {};
     if (dto.name !== undefined) updatePayload.name = dto.name;
     if (dto.subject !== undefined) updatePayload.subject = dto.subject;
@@ -92,6 +106,7 @@ export class RestaurantTemplatesService {
     restaurantId: string,
     templateId: string,
   ): Promise<void> {
+    await this.refuseTheOrderLetter(restaurantId, templateId, "removed");
     const { error } = await this.databaseService.supabase
       .from("communication_templates")
       .update({ is_active: false })
@@ -104,6 +119,42 @@ export class RestaurantTemplatesService {
         error: error.message,
       });
       throw error;
+    }
+  }
+
+  /**
+   * The house's order letter is never written here (ADR 0313, 4a-ii). This
+   * route is open to every member and carries no prose rules, versions or
+   * publish: an edit here would overwrite the owner's draft, and a `type`
+   * change would hide the letter from the renderer, so vendors would quietly
+   * get Mudavym's default. Its own panel (communications/letters
+   * templates/order-request, owner or manager) is the one way in. The row is
+   * read first and its STORED purpose decides; the request body is not
+   * trusted. A failed read refuses rather than guessing.
+   */
+  private async refuseTheOrderLetter(
+    restaurantId: string,
+    templateId: string,
+    verb: "changed" | "removed",
+  ): Promise<void> {
+    const { data, error } = await this.databaseService.supabase
+      .from("communication_templates")
+      .select("id, category")
+      .eq("id", templateId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) {
+      throw new ServiceUnavailableException(
+        `The template could not be read (${error.message}), so it was not ${verb}. Nothing was saved.`,
+      );
+    }
+    if (!data) {
+      throw new NotFoundException("This house has no such template. Nothing was saved.");
+    }
+    if ((data as Record<string, unknown>).category === ORDER_LETTER_CATEGORY) {
+      throw new ForbiddenException(
+        `The house's order letter is not ${verb} here. An owner or a manager changes it in Communications, Templates, The order letter. Nothing was saved.`,
+      );
     }
   }
 

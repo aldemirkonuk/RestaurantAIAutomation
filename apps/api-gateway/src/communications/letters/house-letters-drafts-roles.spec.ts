@@ -12,6 +12,13 @@
  * manager's own draft. Both now carry `@Roles("owner", "manager")`, the exact
  * decision ADR 0167 already made for the same figures.
  *
+ * The order letter (ADR 0313, 4a-ii) adds four routes to the same gate:
+ * preview, publish, reset and restore are owner or manager. Its save stays on
+ * `POST /templates`, which is still open to every member for the five
+ * composer purposes; the order letter's own rule there is checked in the
+ * service against the STORED purpose (house-letters-templates.spec.ts), so it
+ * is pinned below as ungated on the route, on purpose.
+ *
  * TWO HALVES, same reason as `receiving-credits-roles.spec.ts`: a real HTTP
  * request through the real `RolesGuard` (only `JwtAuthGuard` stubbed), AND a
  * check that every OTHER route on this controller is untouched — writing and
@@ -36,7 +43,8 @@ const HOUSE = "12823c23-277c-5ae9-b49b-e17d33704e04";
 describe("HouseLettersController.drafts / .discard: owner or manager only (ADR 0167)", () => {
   let app: INestApplication;
   let base: string;
-  const calls = { drafts: 0, discardDraft: 0, queued: 0 };
+  const calls = { drafts: 0, discardDraft: 0, queued: 0, orderLetter: 0 };
+  const upsertRoles: unknown[] = [];
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -56,6 +64,30 @@ describe("HouseLettersController.drafts / .discard: owner or manager only (ADR 0
             queued: async () => {
               calls.queued += 1;
               return [];
+            },
+            previewOrderLetter: async () => {
+              calls.orderLetter += 1;
+              return { previewHash: null, refusals: [], samples: [] };
+            },
+            publishOrderLetter: async () => {
+              calls.orderLetter += 1;
+              return { published: true };
+            },
+            resetOrderLetter: async () => {
+              calls.orderLetter += 1;
+              return { published: true };
+            },
+            restoreOrderLetter: async () => {
+              calls.orderLetter += 1;
+              return { restored: true };
+            },
+            orderLetter: async () => {
+              calls.orderLetter += 1;
+              return { mayEdit: false };
+            },
+            upsertTemplate: async (params: { role?: unknown }) => {
+              upsertRoles.push(params.role);
+              return { id: "t", saved: true };
             },
           },
         },
@@ -96,53 +128,90 @@ describe("HouseLettersController.drafts / .discard: owner or manager only (ADR 0
     calls.drafts = 0;
     calls.discardDraft = 0;
     calls.queued = 0;
+    calls.orderLetter = 0;
+    upsertRoles.length = 0;
   });
 
-  const call = (method: string, path: string, role?: string) =>
+  const call = (method: string, path: string, role?: string, body?: unknown) =>
     fetch(`${base}${path}`, {
       method,
       headers: {
         "content-type": "application/json",
         ...(role ? { "x-test-role": role } : {}),
       },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
 
-  const GATED_ROUTES: Array<[string, string, string]> = [
-    ["the drafts list", "GET", "/communications/letters/drafts"],
+  const GATED_ROUTES: Array<[string, string, string, unknown, number]> = [
+    ["the drafts list", "GET", "/communications/letters/drafts", undefined, 200],
     [
       "discard",
       "POST",
       "/communications/letters/00000000-0000-0000-0000-000000000001/discard",
+      undefined,
+      201,
+    ],
+    // The order letter (ADR 0313): each body is valid, so a 403 is the gate's.
+    ["order letter preview", "POST", "/communications/letters/templates/order-request/preview", {}, 200],
+    [
+      "order letter publish",
+      "POST",
+      "/communications/letters/templates/order-request/publish",
+      { previewHash: "a".repeat(64) },
+      201,
+    ],
+    ["order letter reset", "POST", "/communications/letters/templates/order-request/reset", {}, 201],
+    [
+      "order letter restore",
+      "POST",
+      "/communications/letters/templates/order-request/restore",
+      { versionId: "00000000-0000-4000-8000-000000000001" },
+      201,
     ],
   ];
 
-  describe.each(GATED_ROUTES)("%s (%s %s)", (_what, method, path) => {
+  describe.each(GATED_ROUTES)("%s (%s %s)", (_what, method, path, body, ok) => {
     it("refuses a staff caller with 403, and reads nothing", async () => {
-      const res = await call(method, path, "staff");
+      const res = await call(method, path, "staff", body);
       expect(res.status).toBe(403);
       expect(calls.drafts).toBe(0);
       expect(calls.discardDraft).toBe(0);
+      expect(calls.orderLetter).toBe(0);
     });
 
     it("refuses a session that has no role in the house with 403", async () => {
-      const res = await call(method, path, "none");
+      const res = await call(method, path, "none", body);
       expect(res.status).toBe(403);
     });
 
     it("refuses admin with 403 (ADR 0164: exact-match, not implicitly admitted)", async () => {
-      const res = await call(method, path, "admin");
+      const res = await call(method, path, "admin", body);
       expect(res.status).toBe(403);
     });
 
     it.each(["owner", "manager"])(
       "lets a %s through to the handler",
       async (role) => {
-        const res = await call(method, path, role);
-        // GET answers 200; POST's default Nest status for a handler with no
-        // @HttpCode is 201 — either way, past the guard.
-        expect(res.status).toBe(method === "GET" ? 200 : 201);
+        const res = await call(method, path, role, body);
+        // Past the guard: the handler's own status (GET 200; POST 201 unless
+        // the route sets @HttpCode, as preview does with 200).
+        expect(res.status).toBe(ok);
       },
     );
+  });
+
+  it("the template save hands the service the caller's role, which decides the order letter (ADR 0313 R2)", async () => {
+    const body = { name: "Ours", category: "order_request", body: "{{greeting}}" };
+    const asStaff = await call("POST", "/communications/letters/templates", "staff", body);
+    const noRole = await call("POST", "/communications/letters/templates", "none", body);
+    expect([asStaff.status, noRole.status]).toEqual([201, 201]);
+    expect(upsertRoles).toEqual(["staff", null]);
+  });
+
+  it("the order letter's READ answers a staff caller (staff see it read-only)", async () => {
+    const res = await call("GET", "/communications/letters/templates/order-request", "staff");
+    expect(res.status).toBe(200);
+    expect(calls.orderLetter).toBe(1);
   });
 
   it("leaves the routes a human letter-writer uses open: queued answers a staff caller", async () => {
@@ -152,7 +221,7 @@ describe("HouseLettersController.drafts / .discard: owner or manager only (ADR 0
   });
 });
 
-describe("the gate is on drafts/discard and only those (metadata)", () => {
+describe("the gate is on drafts/discard and the order letter's writes, and only those (metadata)", () => {
   const rolesOn = (proto: object, name: string) =>
     Reflect.getMetadata(
       ROLES_KEY,
@@ -171,8 +240,15 @@ describe("the gate is on drafts/discard and only those (metadata)", () => {
     expect(Reflect.getMetadata(ROLES_KEY, HouseLettersController)).toBeUndefined();
   });
 
-  it("gates drafts and discard, owner or manager, RolesGuard added on the method", () => {
-    for (const name of ["drafts", "discard"]) {
+  it("gates drafts, discard and the order letter's preview/publish/reset/restore, owner or manager, RolesGuard added on the method", () => {
+    for (const name of [
+      "drafts",
+      "discard",
+      "previewOrderLetter",
+      "publishOrderLetter",
+      "resetOrderLetter",
+      "restoreOrderLetter",
+    ]) {
       expect(rolesOn(HouseLettersController.prototype, name)).toEqual([
         "owner",
         "manager",
@@ -184,12 +260,17 @@ describe("the gate is on drafts/discard and only those (metadata)", () => {
   });
 
   it("leaves every other handler ungated (writing and sending a letter by hand is not part of ADR 0167)", () => {
+    // upsertTemplate stays ungated ON THE ROUTE: the five composer purposes
+    // keep their roles (ADR 0313 R2), and the order letter's owner-or-manager
+    // rule is the service's, against the stored purpose. orderLetter is the
+    // read staff see read-only.
     for (const name of [
       "senderIdentity",
       "book",
       "queued",
       "templates",
       "upsertTemplate",
+      "orderLetter",
       "queue",
       "cancel",
     ]) {

@@ -88,6 +88,19 @@ import type {
   QueueLetterDto,
   UpsertLetterTemplateDto,
 } from "./house-letters.dto";
+import { createHash } from "node:crypto";
+import {
+  DEFAULT_ORDER_REQUEST_TEMPLATES,
+  ORDER_REQUEST_TEMPLATE_KEY,
+  ORDER_REQUEST_TOKENS,
+  RENDERER_VERSION,
+  houseLocale,
+  orderRequestProseRefusals,
+  renderOrderRequest,
+  type OrderRequestFacts,
+  type OrderRequestLocale,
+  type ProseRefusal,
+} from "./order-request-letter";
 
 /**
  * The act a composer letter is sealed as (ADR 0175 D9; 2026-09-21). Its own
@@ -153,14 +166,103 @@ function isOwnerOrManager(role: string | null | undefined): boolean {
  */
 export const AI_ONLY_STATUS = "AUTO_SEND_SCHEDULED";
 
-/** The five vendor purposes. A staff broadcast is deliberately not one. */
+/**
+ * The vendor purposes. A staff broadcast is deliberately not one.
+ *
+ * `order_request` is the sixth (ADR 0266 F5, ADR 0313): the house's one order
+ * letter, rendered around fact blocks by order-request-letter.ts. Unlike the
+ * five composer purposes it is owner or manager only, checked against the
+ * STORED purpose of an edited row, and its words reach a vendor only once
+ * previewed and published as a version (letter_template_versions). The five
+ * keep their roles (ADR 0313, guard scope R2).
+ */
 export const LETTER_CATEGORIES = [
   "order_confirmation",
   "price_query",
   "delivery_dispute",
   "invoice_mismatch",
   "promotion_reply",
+  "order_request",
 ] as const;
+
+/**
+ * The purposes the composer and the template library offer: the five, never
+ * the order letter. The order letter is written by Mudavym around the house's
+ * published prose (ADR 0313), so a person never picks it for a hand-written
+ * letter, and its row is edited only through its own panel
+ * (GET templates/order-request), where the draft, versions and publish live.
+ */
+export const COMPOSER_LETTER_CATEGORIES = LETTER_CATEGORIES.filter(
+  (c) => c !== "order_request",
+);
+
+/** Who may change the order letter (ADR 0313 R2; 0173 D4's editors). */
+export const ORDER_LETTER_EDITORS = ["owner", "manager"] as const;
+
+/**
+ * Refuses anyone but an owner or a manager. `role` is the role in the house
+ * the token names (ADR 0162); null, absent and anything else are refused.
+ */
+export function assertOrderLetterEditor(role: string | null | undefined): void {
+  if (!(ORDER_LETTER_EDITORS as readonly string[]).includes(String(role ?? ""))) {
+    throw new ForbiddenException(
+      "Only an owner or a manager may change the house's order letter (ADR 0313). Nothing was saved.",
+    );
+  }
+}
+
+/** sha256 hex of a letter body, as letter_template_versions.body_hash holds it. */
+export function letterBodyHash(body: string): string {
+  return createHash("sha256").update(body, "utf8").digest("hex");
+}
+
+/**
+ * The hash a preview answers and a publish must bring back: the renderer, the
+ * language and the words. A draft saved after the preview, a preview in the
+ * other language, or a renderer bumped in between all fail to match.
+ */
+export function orderLetterPreviewHash(body: string, locale: OrderRequestLocale): string {
+  return createHash("sha256")
+    .update(JSON.stringify([RENDERER_VERSION, locale, body]), "utf8")
+    .digest("hex");
+}
+
+/** The example order a preview renders: a priced owner order and an unpriced one. */
+function previewFacts(
+  houseName: string,
+  locale: OrderRequestLocale,
+  priced: boolean,
+): OrderRequestFacts {
+  return {
+    orderId: "preview",
+    orderNumber: "PO-1042",
+    houseName,
+    vendorFirstName: locale === "tr" ? "Ayşe" : "Sam",
+    lines: [
+      {
+        name: locale === "tr" ? "Örnek şarap" : "Example wine",
+        vendorSku: "EX-75",
+        quantity: 3,
+        unit: "case",
+        bottlesPerUnit: 6,
+        price: priced
+          ? { amount: 25, currency: locale === "tr" ? "TRY" : "USD", uom: "bottle", packSize: null }
+          : null,
+      },
+    ],
+    placer: priced
+      ? { userId: "preview", name: locale === "tr" ? "Deniz" : "Alex", role: "owner" }
+      : { userId: null, name: null, role: null },
+    deliverTo: null,
+    neededBy: null,
+    paymentTerms: null,
+    locale,
+  };
+}
+
+function refusalSentence(refusals: ProseRefusal[]): string {
+  return refusals.map((r) => r.says).join(" ");
+}
 
 export type LetterCategory = (typeof LETTER_CATEGORIES)[number];
 
@@ -1466,7 +1568,12 @@ export class HouseLettersService {
       );
     }
 
-    const rows = (data ?? []) as unknown as Record<string, unknown>[];
+    // The order letter has its own panel and is never a composer template
+    // (ADR 0313): leaving it here would offer it in the composer's picker and
+    // open it in the five purposes' editor, which publishes nothing.
+    const rows = ((data ?? []) as unknown as Record<string, unknown>[]).filter(
+      (r) => r.category !== ORDER_REQUEST_TEMPLATE_KEY,
+    );
     const editorIds = Array.from(
       new Set(
         rows
@@ -1518,6 +1625,8 @@ export class HouseLettersService {
     restaurantId: string;
     userId: string;
     dto: UpsertLetterTemplateDto;
+    /** The caller's role in this house (ADR 0162); read only for the order letter. */
+    role?: string | null;
   }) {
     const { restaurantId, dto } = params;
     // An absent key is not written at all, so an edit naming no editor would
@@ -1529,14 +1638,89 @@ export class HouseLettersService {
       );
     }
 
+    // The order letter's guard reads the STORED purpose of an edited row, not
+    // the one the request names (ADR 0313): otherwise a staff member could
+    // send `price_query` for the order letter's id and write over it.
+    let storedCategory: string | null = null;
+    if (dto.id) {
+      const { data: stored, error: storedError } = await this.db.client
+        .from("communication_templates")
+        .select("id, category")
+        .eq("id", dto.id)
+        .eq("restaurant_id", restaurantId)
+        .eq("type", LETTER_TEMPLATE_TYPE)
+        .maybeSingle();
+      if (storedError) {
+        throw new BadRequestException(
+          `The template was NOT saved: the one being edited could not be read (${storedError.message}). Nothing was stored.`,
+        );
+      }
+      if (!stored) {
+        throw new NotFoundException(
+          "This house has no such letter template. Nothing was saved.",
+        );
+      }
+      storedCategory = ((stored as Record<string, unknown>).category as string | null) ?? null;
+    }
+
+    const isOrderLetter =
+      dto.category === ORDER_REQUEST_TEMPLATE_KEY ||
+      storedCategory === ORDER_REQUEST_TEMPLATE_KEY;
+    if (isOrderLetter) {
+      assertOrderLetterEditor(params.role);
+      if (dto.id && storedCategory !== dto.category) {
+        throw new UnprocessableEntityException(
+          storedCategory === ORDER_REQUEST_TEMPLATE_KEY
+            ? "The order letter keeps its purpose. Write a new template for another purpose. Nothing was saved."
+            : "Another template cannot become the order letter. Open the order letter and edit it. Nothing was saved.",
+        );
+      }
+      if (dto.subject && dto.subject.trim()) {
+        throw new UnprocessableEntityException(
+          "Mudavym writes an order letter's subject (the order number and the house), so the vendor's reply finds the order. Leave the subject empty. Nothing was saved.",
+        );
+      }
+      const refusals = orderRequestProseRefusals(dto.body);
+      if (refusals.length > 0) {
+        throw new UnprocessableEntityException({
+          statusCode: 422,
+          message: `${refusalSentence(refusals)} Nothing was saved.`,
+          refusals,
+        });
+      }
+      if (!dto.id) {
+        const { data: existing, error: existingError } = await this.db.client
+          .from("communication_templates")
+          .select("id, name")
+          .eq("restaurant_id", restaurantId)
+          .eq("type", LETTER_TEMPLATE_TYPE)
+          .eq("category", ORDER_REQUEST_TEMPLATE_KEY)
+          .maybeSingle();
+        if (existingError) {
+          throw new BadRequestException(
+            `The order letter was NOT saved: whether the house already has one could not be read (${existingError.message}). Nothing was stored.`,
+          );
+        }
+        if (existing) {
+          throw new ConflictException(
+            `This house already has its order letter, "${String((existing as Record<string, unknown>).name ?? "")}". Open that one and edit it: a house has one order letter. Nothing was saved.`,
+          );
+        }
+      }
+    }
+
+    // The order letter's `body` is its DRAFT. A save never publishes it, and
+    // `published_version_id` is not in this payload: a vendor keeps getting
+    // the published words (or Mudavym's default) until a preview and a
+    // publish (ADR 0313).
     const payload = {
       restaurant_id: restaurantId,
       name: dto.name,
-      subject: dto.subject ?? null,
+      subject: isOrderLetter ? null : (dto.subject ?? null),
       body: dto.body,
       type: LETTER_TEMPLATE_TYPE,
       category: dto.category,
-      merge_fields: mergeFieldsIn(dto.body, dto.subject ?? ""),
+      merge_fields: mergeFieldsIn(dto.body, isOrderLetter ? "" : (dto.subject ?? "")),
       updated_by: userId,
       updated_at: new Date().toISOString(),
     };
@@ -1557,11 +1741,451 @@ export class HouseLettersService {
 
     const { data, error } = await query;
     if (error || !data) {
+      // The one-order-letter index answers a race between two first saves.
+      if ((error as { code?: string } | null)?.code === "23505" && isOrderLetter) {
+        throw new ConflictException(
+          "This house already has its order letter: someone saved one at the same moment. Open that one and edit it. Nothing was saved.",
+        );
+      }
       throw new BadRequestException(
         `The template was NOT saved (${error?.message ?? "no row returned"}). Nothing was stored.`,
       );
     }
-    return { id: String((data as Record<string, unknown>).id), saved: true };
+    return {
+      id: String((data as Record<string, unknown>).id),
+      saved: true,
+      ...(isOrderLetter ? { published: false as const } : {}),
+    };
+  }
+
+  // ==========================================================================
+  // The order letter: draft, preview, publish, reset, restore (ADR 0313;
+  // ADR 0173 D2). The template row's `body` is the draft; a vendor letter is
+  // rendered only from a version (letter_template_versions) the row's
+  // `published_version_id` names, or from Mudavym's default when it names none.
+  // ==========================================================================
+
+  /** The house's name and its letters' language (restaurants.country, ADR 0313). */
+  private async orderLetterHouse(
+    restaurantId: string,
+  ): Promise<{ name: string; locale: OrderRequestLocale }> {
+    const { data, error } = await this.db.client
+      .from("restaurants")
+      .select("name, country")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    if (error || !data) {
+      throw new InternalServerErrorException(
+        `The house could not be read (${error?.message ?? "no row"}); its order letter is not shown as if it had none.`,
+      );
+    }
+    const h = data as Record<string, unknown>;
+    return {
+      name: String(h.name ?? ""),
+      locale: houseLocale(typeof h.country === "string" ? h.country : null),
+    };
+  }
+
+  /** The house's order letter row, or null when it has never saved one. */
+  private async orderLetterRow(restaurantId: string): Promise<{
+    id: string;
+    name: string;
+    body: string;
+    publishedVersionId: string | null;
+    updatedBy: string | null;
+    updatedAt: string | null;
+  } | null> {
+    const { data, error } = await this.db.client
+      .from("communication_templates")
+      .select("id, name, body, published_version_id, updated_by, updated_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("type", LETTER_TEMPLATE_TYPE)
+      .eq("category", ORDER_REQUEST_TEMPLATE_KEY)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `The house's order letter could not be read (${error.message}). That does not mean it has none.`,
+      );
+    }
+    if (!data) return null;
+    const r = data as Record<string, unknown>;
+    return {
+      id: String(r.id),
+      name: String(r.name ?? ""),
+      body: String(r.body ?? ""),
+      publishedVersionId: (r.published_version_id as string | null) ?? null,
+      updatedBy: (r.updated_by as string | null) ?? null,
+      updatedAt: (r.updated_at as string | null) ?? null,
+    };
+  }
+
+  /**
+   * Everything the order letter's sheet shows: the draft, what is published,
+   * every version, the defaults, the blocks, and whether THIS caller may
+   * change any of it. Any member of the house may read it (staff see it
+   * read-only); only the writes are owner or manager.
+   */
+  async orderLetter(restaurantId: string, role: string | null | undefined) {
+    const [house, row] = await Promise.all([
+      this.orderLetterHouse(restaurantId),
+      this.orderLetterRow(restaurantId),
+    ]);
+    let versions: Record<string, unknown>[] = [];
+    if (row) {
+      const { data, error } = await this.db.client
+        .from("letter_template_versions")
+        .select("id, version, locale, kind, body, body_hash, author, created_at")
+        .eq("restaurant_id", restaurantId)
+        .eq("template_id", row.id)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) {
+        throw new InternalServerErrorException(
+          `The order letter's history could not be read (${error.message}). That does not mean it has none.`,
+        );
+      }
+      versions = (data ?? []) as Record<string, unknown>[];
+    }
+    // The history shows the newest 50; the LIVE version is read by its own id,
+    // so a house with a longer history is never told nothing is published
+    // while vendors receive its words.
+    let publishedRow: Record<string, unknown> | null = null;
+    if (row?.publishedVersionId) {
+      publishedRow = versions.find((v) => String(v.id) === row.publishedVersionId) ?? null;
+      if (!publishedRow) {
+        const { data, error } = await this.db.client
+          .from("letter_template_versions")
+          .select("id, version, locale, kind, body, body_hash, author, created_at")
+          .eq("id", row.publishedVersionId)
+          .eq("restaurant_id", restaurantId)
+          .eq("template_id", row.id)
+          .maybeSingle();
+        if (error || !data) {
+          throw new InternalServerErrorException(
+            `The order letter's published version could not be read (${error ? error.message : "it was not found"}). Vendors may still receive it; this page cannot say which words.`,
+          );
+        }
+        publishedRow = data as Record<string, unknown>;
+      }
+    }
+    const people = new Map<string, string>();
+    const ids = Array.from(
+      new Set(
+        [row?.updatedBy, ...versions.map((v) => v.author), publishedRow?.author]
+          .filter(Boolean)
+          .map(String),
+      ),
+    );
+    if (ids.length > 0) {
+      const { data: users, error: usersError } = await this.db.client
+        .from("users")
+        .select("user_id, name")
+        .in("user_id", ids);
+      if (usersError) {
+        this.logger.error(
+          `order letter: who wrote it could not be read (${usersError.message}); every author renders as unknown.`,
+        );
+      }
+      for (const u of (users ?? []) as Record<string, unknown>[]) {
+        if (u.name) people.set(String(u.user_id), String(u.name));
+      }
+    }
+    const asView = (v: Record<string, unknown>) => ({
+      id: String(v.id),
+      version: Number(v.version),
+      locale: String(v.locale),
+      kind: String(v.kind) as "publish" | "reset",
+      body: String(v.body ?? ""),
+      bodyHash: String(v.body_hash ?? ""),
+      by: v.author ? (people.get(String(v.author)) ?? null) : null,
+      at: (v.created_at as string | null) ?? null,
+    });
+    const view = versions.map(asView);
+    const published = publishedRow ? asView(publishedRow) : null;
+    return {
+      key: ORDER_REQUEST_TEMPLATE_KEY,
+      locale: house.locale,
+      mayEdit: (ORDER_LETTER_EDITORS as readonly string[]).includes(String(role ?? "")),
+      template: row
+        ? {
+            id: row.id,
+            name: row.name,
+            draft: row.body,
+            lastEditedBy: row.updatedBy ? (people.get(row.updatedBy) ?? null) : null,
+            lastEditedAt: row.updatedAt,
+          }
+        : null,
+      // A published version in the other language is not what this house's
+      // letters render from; the sheet says so rather than showing it as live.
+      published,
+      rendersFrom:
+        published && published.locale === house.locale ? ("house" as const) : ("default" as const),
+      draftRefusals: row ? orderRequestProseRefusals(row.body) : [],
+      versions: view,
+      defaults: DEFAULT_ORDER_REQUEST_TEMPLATES,
+      tokens: (Object.keys(ORDER_REQUEST_TOKENS) as (keyof typeof ORDER_REQUEST_TOKENS)[]).map(
+        (k) => ({ key: k, required: ORDER_REQUEST_TOKENS[k].required, says: ORDER_REQUEST_TOKENS[k].says }),
+      ),
+    };
+  }
+
+  /**
+   * Render the words over an example order, once priced (an owner placed it)
+   * and once without a price, so the house sees both asks. Returns the
+   * refusals instead of a render when the words may not be used.
+   */
+  async previewOrderLetter(params: {
+    restaurantId: string;
+    body?: string;
+    locale?: OrderRequestLocale;
+  }) {
+    const house = await this.orderLetterHouse(params.restaurantId);
+    const locale = params.locale ?? house.locale;
+    let body = params.body;
+    if (body === undefined) {
+      const row = await this.orderLetterRow(params.restaurantId);
+      body = row?.body ?? DEFAULT_ORDER_REQUEST_TEMPLATES[locale];
+    }
+    const refusals = orderRequestProseRefusals(body);
+    if (refusals.length > 0) {
+      return { locale, previewHash: null, refusals, samples: [] };
+    }
+    const samples = ([true, false] as const).map((priced) => {
+      const r = renderOrderRequest(previewFacts(house.name, locale, priced), { template: body });
+      return {
+        label: priced ? ("an owner's order with a price" as const) : ("an order with no price on file" as const),
+        subject: r.subject,
+        body: r.body,
+      };
+    });
+    return { locale, previewHash: orderLetterPreviewHash(body, locale), refusals, samples };
+  }
+
+  /** The next version number of this template in this language. */
+  private async nextOrderLetterVersion(
+    restaurantId: string,
+    templateId: string,
+    locale: OrderRequestLocale,
+  ): Promise<number> {
+    const { data, error } = await this.db.client
+      .from("letter_template_versions")
+      .select("version")
+      .eq("restaurant_id", restaurantId)
+      .eq("template_id", templateId)
+      .eq("locale", locale)
+      .order("version", { ascending: false })
+      .limit(1);
+    if (error) {
+      throw new InternalServerErrorException(
+        `The order letter's versions could not be read (${error.message}); nothing was published.`,
+      );
+    }
+    const top = ((data ?? []) as Record<string, unknown>[])[0];
+    return top ? Number(top.version) + 1 : 1;
+  }
+
+  /** Write one version and point the template at it. Two writes, said as two. */
+  private async writeOrderLetterVersion(params: {
+    restaurantId: string;
+    templateId: string;
+    userId: string;
+    locale: OrderRequestLocale;
+    kind: "publish" | "reset";
+    body: string;
+  }) {
+    const version = await this.nextOrderLetterVersion(
+      params.restaurantId,
+      params.templateId,
+      params.locale,
+    );
+    const { data: inserted, error: insertError } = await this.db.client
+      .from("letter_template_versions")
+      .insert({
+        template_id: params.templateId,
+        restaurant_id: params.restaurantId,
+        locale: params.locale,
+        version,
+        kind: params.kind,
+        body: params.body,
+        body_hash: letterBodyHash(params.body),
+        author: params.userId,
+      })
+      .select("id, version, locale, kind, created_at")
+      .single();
+    if (insertError || !inserted) {
+      if ((insertError as { code?: string } | null)?.code === "23505") {
+        throw new ConflictException(
+          "Someone published the order letter at the same moment. Read it again, then publish. Nothing was published.",
+        );
+      }
+      throw new BadRequestException(
+        `The order letter was NOT published (${insertError?.message ?? "no row returned"}). Nothing was recorded.`,
+      );
+    }
+    const v = inserted as Record<string, unknown>;
+    const update: Record<string, unknown> = {
+      published_version_id: String(v.id),
+      updated_by: params.userId,
+      updated_at: new Date().toISOString(),
+    };
+    if (params.kind === "reset") {
+      // A reset puts the default in the draft too, so the sheet shows the
+      // words that are now live.
+      update.body = params.body;
+      update.merge_fields = mergeFieldsIn(params.body, "");
+    }
+    const { data: pointed, error: pointError } = await this.db.client
+      .from("communication_templates")
+      .update(update)
+      .eq("id", params.templateId)
+      .eq("restaurant_id", params.restaurantId)
+      .select("id")
+      .maybeSingle();
+    if (pointError || !pointed) {
+      throw new InternalServerErrorException(
+        `Version ${String(v.version)} was recorded but is NOT published (${pointError?.message ?? "no row returned"}): vendor letters still use the words they used before.`,
+      );
+    }
+    return {
+      published: true as const,
+      versionId: String(v.id),
+      version: Number(v.version),
+      locale: String(v.locale),
+      kind: params.kind,
+    };
+  }
+
+  /**
+   * Publish the saved draft. Refused unless `previewHash` is the hash the
+   * saved draft previews to in that language (0173 D2: no publish without a
+   * preview of exactly these words), and unless the draft passes the prose
+   * rules today.
+   */
+  async publishOrderLetter(params: {
+    restaurantId: string;
+    userId: string;
+    role: string | null | undefined;
+    previewHash: string;
+    locale?: OrderRequestLocale;
+  }) {
+    const userId = assertNamedActor(params.userId, "published");
+    assertOrderLetterEditor(params.role);
+    const [house, row] = await Promise.all([
+      this.orderLetterHouse(params.restaurantId),
+      this.orderLetterRow(params.restaurantId),
+    ]);
+    if (!row) {
+      throw new NotFoundException(
+        "The house has no order letter saved, so there is nothing to publish. Save the words first. Vendor letters use Mudavym's default until then.",
+      );
+    }
+    const locale = params.locale ?? house.locale;
+    const refusals = orderRequestProseRefusals(row.body);
+    if (refusals.length > 0) {
+      throw new UnprocessableEntityException({
+        statusCode: 422,
+        message: `${refusalSentence(refusals)} Nothing was published.`,
+        refusals,
+      });
+    }
+    if (params.previewHash !== orderLetterPreviewHash(row.body, locale)) {
+      throw new ConflictException(
+        "The preview you saw is not of the words saved now (or not in this language). Preview the saved letter again, then publish. Nothing was published.",
+      );
+    }
+    return this.writeOrderLetterVersion({
+      restaurantId: params.restaurantId,
+      templateId: row.id,
+      userId,
+      locale,
+      kind: "publish",
+      body: row.body,
+    });
+  }
+
+  /** Publish Mudavym's default words as a new version (0173 D2: a reset is a version). */
+  async resetOrderLetter(params: {
+    restaurantId: string;
+    userId: string;
+    role: string | null | undefined;
+    locale?: OrderRequestLocale;
+  }) {
+    const userId = assertNamedActor(params.userId, "reset");
+    assertOrderLetterEditor(params.role);
+    const [house, row] = await Promise.all([
+      this.orderLetterHouse(params.restaurantId),
+      this.orderLetterRow(params.restaurantId),
+    ]);
+    if (!row) {
+      throw new ConflictException(
+        "The house has never saved its own order letter: vendor letters already use Mudavym's default. Nothing was changed.",
+      );
+    }
+    const locale = params.locale ?? house.locale;
+    return this.writeOrderLetterVersion({
+      restaurantId: params.restaurantId,
+      templateId: row.id,
+      userId,
+      locale,
+      kind: "reset",
+      body: DEFAULT_ORDER_REQUEST_TEMPLATES[locale],
+    });
+  }
+
+  /** Copy an earlier version's words into the draft. Nothing is published. */
+  async restoreOrderLetter(params: {
+    restaurantId: string;
+    userId: string;
+    role: string | null | undefined;
+    versionId: string;
+  }) {
+    const userId = assertNamedActor(params.userId, "restored");
+    assertOrderLetterEditor(params.role);
+    const row = await this.orderLetterRow(params.restaurantId);
+    if (!row) {
+      throw new NotFoundException("The house has no order letter, so it has no earlier version.");
+    }
+    const { data: v, error } = await this.db.client
+      .from("letter_template_versions")
+      .select("id, version, locale, body")
+      .eq("id", params.versionId)
+      .eq("restaurant_id", params.restaurantId)
+      .eq("template_id", row.id)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `That version could not be read (${error.message}); the draft is unchanged.`,
+      );
+    }
+    if (!v) {
+      throw new NotFoundException("The house's order letter has no such version. The draft is unchanged.");
+    }
+    const version = v as Record<string, unknown>;
+    const body = String(version.body ?? "");
+    const { data: saved, error: saveError } = await this.db.client
+      .from("communication_templates")
+      .update({
+        body,
+        merge_fields: mergeFieldsIn(body, ""),
+        updated_by: userId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", row.id)
+      .eq("restaurant_id", params.restaurantId)
+      .select("id")
+      .maybeSingle();
+    if (saveError || !saved) {
+      throw new BadRequestException(
+        `The draft was NOT restored (${saveError?.message ?? "no row returned"}). Nothing was changed.`,
+      );
+    }
+    return {
+      restored: true as const,
+      published: false as const,
+      fromVersion: Number(version.version),
+      locale: String(version.locale),
+      draft: body,
+    };
   }
 
   private async stampTemplateUse(restaurantId: string, templateId: string) {

@@ -7,6 +7,7 @@ import {
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from "@nestjs/common";
+import { createHash } from "node:crypto";
 import { DatabaseService } from "../../database/database.service";
 import { lookupRestaurantRole } from "../../organizations/organizations.service";
 import { currencyCode } from "../../common/iso-4217";
@@ -18,16 +19,26 @@ import {
   renderOrderRequest,
   type OrderRequestFacts,
   type OrderRequestLine,
+  type OrderRequestLocale,
   type OrderRequestRender,
 } from "./order-request-letter";
+
+/** `communication_templates.type` of a letter template (house-letters.service.ts LETTER_TEMPLATE_TYPE). */
+const LETTER_TEMPLATE_TYPE = "letter";
 
 /**
  * The one gateway door for an order's request letter (W25; ADR 0313, 4a-i).
  *
  * Reads the order, its lines, the house, the vendor, the vendor's stated
- * terms and the placer with the placer's role here; renders the DEFAULT
- * template (no house version exists until 4a-ii); and, with `stage`, stages
- * the letter through `stage_order_letter` (ADR 0266) as an `ORDER_REQUEST`.
+ * terms and the placer with the placer's role here; renders the house's
+ * PUBLISHED order letter (4a-ii: the version its `published_version_id`
+ * names, when that version is in the letter's language) or else Mudavym's
+ * default; and, with `stage`, stages the letter through `stage_order_letter`
+ * (ADR 0266) as an `ORDER_REQUEST`.
+ *
+ * THE DRAFT IS NEVER READ. A house's saved-but-unpublished words
+ * (`communication_templates.body`) never reach a vendor; only a version a
+ * preview and a publish made does (ADR 0313, 0173 D2).
  *
  * TENANCY. The caller is a service (the orchestrator, behind ServiceKeyGuard)
  * and carries no house. Every read after the order's is scoped by the ORDER
@@ -51,9 +62,16 @@ import {
 export interface OrderRequestResult extends OrderRequestRender {
   orderId: string;
   restaurantId: string;
-  template: { key: string; source: "default" };
+  /** "house": the published version; "default": Mudavym's words. */
+  template: { key: string; source: "house" | "default" };
+  /** Which words exactly (ADR 0313, I6): the version (null for the default) and their sha256. */
+  templateVersion: { id: string | null; version: number | null; hash: string };
   staged: boolean | null;
   conversationId: string | null;
+}
+
+function sha256(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
 function positive(v: unknown): number | null {
@@ -83,21 +101,27 @@ export class OrderRequestService {
     stage: boolean;
   }): Promise<OrderRequestResult> {
     const facts = await this.readFacts(params.orderId, params.restaurantId ?? null);
+    const template = await this.publishedTemplate(facts.restaurantId, facts.facts.locale ?? "en");
     let rendered: OrderRequestRender;
     try {
       rendered = renderOrderRequest(facts.facts, {
-        template: DEFAULT_ORDER_REQUEST_TEMPLATES[facts.facts.locale ?? "en"],
+        template: template.body,
         courtesySentence: params.courtesySentence ?? null,
       });
     } catch (e: any) {
-      throw new UnprocessableEntityException(e?.message ?? "The letter could not be rendered.");
+      throw new UnprocessableEntityException(
+        template.source === "house"
+          ? `The house's published order letter (version ${template.version}) can no longer be used: ${e?.message ?? "it could not be rendered"} Publish it again from the order letter sheet, or reset it to Mudavym's words.`
+          : (e?.message ?? "The letter could not be rendered."),
+      );
     }
 
     const result: OrderRequestResult = {
       ...rendered,
       orderId: facts.facts.orderId,
       restaurantId: facts.restaurantId,
-      template: { key: ORDER_REQUEST_TEMPLATE_KEY, source: "default" },
+      template: { key: ORDER_REQUEST_TEMPLATE_KEY, source: template.source },
+      templateVersion: { id: template.versionId, version: template.version, hash: template.hash },
       staged: null,
       conversationId: null,
     };
@@ -124,6 +148,11 @@ export class OrderRequestService {
         template_key: ORDER_REQUEST_TEMPLATE_KEY,
         renderer_version: rendered.rendererVersion,
         facts_hash: rendered.factsHash,
+        // Which words (ADR 0313, I6): the published version, or null for
+        // Mudavym's default; the hash of the words either way.
+        template_source: template.source,
+        template_version_id: template.versionId,
+        template_hash: template.hash,
       },
     };
     const { data, error } = await this.db.rpc("stage_order_letter", {
@@ -154,6 +183,71 @@ export class OrderRequestService {
     result.staged = answer.staged === true;
     result.conversationId = answer.id;
     return result;
+  }
+
+  /**
+   * The words this house's letter is rendered from: the version its order
+   * letter's `published_version_id` names, read under the house, when it is in
+   * the letter's language; else Mudavym's default for that language. A failed
+   * read throws: rendering the default over a house that published its own
+   * words would send words the house replaced.
+   */
+  async publishedTemplate(
+    restaurantId: string,
+    locale: OrderRequestLocale,
+  ): Promise<{
+    body: string;
+    source: "house" | "default";
+    versionId: string | null;
+    version: number | null;
+    hash: string;
+  }> {
+    const fallback = () => {
+      const body = DEFAULT_ORDER_REQUEST_TEMPLATES[locale];
+      return { body, source: "default" as const, versionId: null, version: null, hash: sha256(body) };
+    };
+    const { data: row, error } = await this.db
+      .from("communication_templates")
+      .select("id, published_version_id")
+      .eq("restaurant_id", restaurantId)
+      .eq("type", LETTER_TEMPLATE_TYPE)
+      .eq("category", ORDER_REQUEST_TEMPLATE_KEY)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `The house's order letter could not be read (${error.message}); no letter is written over words it may have replaced.`,
+      );
+    }
+    const r = row as { id?: string; published_version_id?: string | null } | null;
+    if (!r?.id || !r.published_version_id) return fallback();
+    const { data: v, error: vError } = await this.db
+      .from("letter_template_versions")
+      .select("id, version, locale, body, body_hash")
+      .eq("id", r.published_version_id)
+      .eq("restaurant_id", restaurantId)
+      .eq("template_id", r.id)
+      .maybeSingle();
+    if (vError) {
+      throw new InternalServerErrorException(
+        `The house's published order letter could not be read (${vError.message}); no letter is written over words it may have replaced.`,
+      );
+    }
+    const version = v as { id: string; version: number; locale: string; body: string } | null;
+    if (!version) {
+      throw new InternalServerErrorException(
+        "The house's order letter names a published version that cannot be found under the house; no letter is written.",
+      );
+    }
+    // Published in the other language: this letter is written in the house's
+    // language, so Mudavym's words for it (ADR 0313 R4).
+    if (version.locale !== locale) return fallback();
+    return {
+      body: version.body,
+      source: "house",
+      versionId: version.id,
+      version: Number(version.version),
+      hash: sha256(version.body),
+    };
   }
 
   /** Every fact the letter can show, read under the order row's house. */
