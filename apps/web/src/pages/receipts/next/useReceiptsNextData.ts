@@ -2,11 +2,14 @@
  * ReceiptsNext data — the founder's four receipts requirements, sourced:
  *
  * 1. "Compress everything from all of the orders into this surface" — the
- *    review queue (documents awaiting review) AND the deliveries that have
- *    no paperwork yet (receiving's unverified list) share the surface, so
- *    nothing about an order's paper trail lives anywhere else.
- * 2. Backend integration without overcrowding — three queries, one selected
- *    document fetched on demand.
+ *    review queue (documents awaiting review), the deliveries counted by the
+ *    case at the door and not yet by bottle (receiving's unverified list;
+ *    walk-through RECEIPTS-W53 corrected "no paperwork yet", which they may
+ *    well have) AND, for the owner and managers, the checked deliveries with
+ *    no invoice filed (RECEIPTS-W53) share the surface, so nothing about an
+ *    order's paper trail lives anywhere else.
+ * 2. Backend integration without overcrowding — a handful of list queries,
+ *    one selected document fetched on demand.
  * 3. "Make sure it is the right invoice" — the selected document view loads
  *    its linked order for side-by-side context AND the stored scan itself,
  *    and the line matcher's suggestions are surfaced for one-tap confirmation.
@@ -30,6 +33,7 @@ import {
   type CreditStats,
   type ProcurementCredit,
 } from '../../../services/api/credits';
+import { apiClient } from '../../../services/api/client';
 import { failureReason } from './rc2-format';
 
 // Failures in the house's words, never the client library's (walk-through W26).
@@ -72,6 +76,32 @@ export const RECEIPTS_SERVER_WINDOWS = {
   CREDIT_LETTERS: 500,
 } as const;
 
+/**
+ * The checked deliveries with no invoice filed — `GET
+ * /procurement/receiving/paper-owed` (`paper-owed.ts`; F-160, the founder's
+ * ruling RECEIPTS-W53, "Count paper owed (Recommended)"). Typed here rather
+ * than in the shared client: this page is its only reader.
+ */
+export interface PaperOwedItem {
+  orderId: string;
+  orderNumber: string | null;
+  vendorName: string | null;
+  deliveredAt: string | null;
+  checkedAt: string;
+}
+export interface PaperOwed {
+  /** A floor when `complete` is false. */
+  count: number;
+  /** False when the gateway stopped at its ceiling of checked orders. */
+  complete: boolean;
+  checkedRead: number;
+  oldestAt: string | null;
+  /** At most `listMax`, oldest first; shorter than `count` when cut. */
+  items: PaperOwedItem[];
+  listMax: number;
+  vendorNamesUnavailable: boolean;
+}
+
 export interface ReceiptsNextData {
   queue: ProcurementDocument[];
   /** False until the queue actually arrived — an empty array then means UNKNOWN. */
@@ -97,6 +127,20 @@ export interface ReceiptsNextData {
   /** null until the uncounted list answers — `[]` would read as "all clear". */
   deliveriesWithoutPaper: UnverifiedDelivery[] | null;
   deliveriesKnown: boolean;
+  /**
+   * The checked deliveries with no invoice filed (RECEIPTS-W53). null until it
+   * answers, and null when it was never asked: `paperOwedAsked` says which.
+   */
+  paperOwed: PaperOwed | null;
+  /**
+   * False when the read is not this person's to ask (staff: the gateway keeps
+   * it for the owner and managers, ADR 0167) or the gateway refused it (403).
+   */
+  paperOwedAsked: boolean;
+  /** The read was asked and failed: the count is unknown, never zero. */
+  paperOwedFailed: boolean;
+  /** Every failure except the paper-owed one: the review lanes' own health. */
+  lanesFailed: boolean;
   isError: boolean;
   /** One sentence per query that failed, so a dead endpoint is never silent. */
   failures: string[];
@@ -140,7 +184,12 @@ export function useActiveRestaurantId(): string | null {
   return activeRestaurantId || user?.restaurantId || null;
 }
 
-export function useReceiptsNextData(): ReceiptsNextData {
+/**
+ * `desk` is true for the owner and managers of this house: the paper-owed
+ * count is a desk read the gateway refuses to staff (ADR 0167), so a staff
+ * session never spends a request that can only be refused.
+ */
+export function useReceiptsNextData(desk = false): ReceiptsNextData {
   const rid = useActiveRestaurantId();
   const enabled = rid !== null;
 
@@ -171,7 +220,17 @@ export function useReceiptsNextData(): ReceiptsNextData {
     enabled,
     staleTime: 30_000,
   });
-
+  const paperOwedQ = useQuery<PaperOwed>({
+    queryKey: ['receipts-next', 'paper-owed', rid],
+    queryFn: async () => {
+      const { data } = await apiClient.get<PaperOwed>('/procurement/receiving/paper-owed');
+      return data;
+    },
+    enabled: enabled && desk,
+    staleTime: 60_000,
+  });
+  const paperOwedRefused = httpStatus(paperOwedQ.error) === 403;
+  const paperOwedFailed = paperOwedQ.isError && !paperOwedRefused;
 
   /**
    * All three failures are surfaced. Before, `isError` was `queueQ.isError`
@@ -192,6 +251,12 @@ export function useReceiptsNextData(): ReceiptsNextData {
         read: unverifiedQ.data !== undefined,
         plural: true,
       });
+    if (paperOwedFailed)
+      out.push({
+        sentence: `the checked deliveries with no invoice filed (${msg(paperOwedQ.error)})`,
+        read: paperOwedQ.data !== undefined,
+        plural: true,
+      });
     return out;
   }, [
     queueQ.isError,
@@ -206,6 +271,9 @@ export function useReceiptsNextData(): ReceiptsNextData {
     unverifiedQ.isError,
     unverifiedQ.error,
     unverifiedQ.data,
+    paperOwedFailed,
+    paperOwedQ.error,
+    paperOwedQ.data,
   ]);
   const failures = failed.map((f) => f.sentence);
   const unread = failed.filter((f) => !f.read);
@@ -233,6 +301,10 @@ export function useReceiptsNextData(): ReceiptsNextData {
     verifiedCapped: verified.length >= RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS,
     deliveriesWithoutPaper: unverifiedQ.data === undefined ? null : unverifiedQ.data.items ?? [],
     deliveriesKnown: unverifiedQ.data !== undefined,
+    paperOwed: paperOwedQ.data === undefined ? null : paperOwedQ.data,
+    paperOwedAsked: enabled && desk && !paperOwedRefused,
+    paperOwedFailed,
+    lanesFailed: failures.length > (paperOwedFailed ? 1 : 0),
     isError: failures.length > 0,
     failures,
     errorMessage: failures.join('; ') || 'unknown error',
@@ -246,6 +318,7 @@ export function useReceiptsNextData(): ReceiptsNextData {
       void verifiedQ.refetch();
       void cleanQ.refetch();
       void unverifiedQ.refetch();
+      if (enabled && desk) void paperOwedQ.refetch();
     },
   };
 }

@@ -74,6 +74,7 @@ import {
   RECEIPTS_SERVER_WINDOWS,
   useActiveRestaurantId,
   useReceiptsNextData,
+  type ReceiptsNextData,
 } from './useReceiptsNextData';
 
 // The credit ledger is this page's second lane (ADR 0149 row 22). `/credits`
@@ -204,6 +205,15 @@ function CurrencyBlock({
     else changeRef.current?.focus();
   }, [open]);
 
+  /*
+   * A FRESH CONTROL AFTER EACH FAILURE, AND ONLY THEN (#586 follow-up 1). The
+   * hold below was keyed by `restate.failureCount`, which React Query sets
+   * back to 0 the moment the next attempt goes pending: the control remounted
+   * mid-gesture, under a write still on its way, and when the pending and the
+   * refusal land in one batched render the key never moves and the control
+   * stays sealed. This counter only ever goes up, once per failure.
+   */
+  const [restateAttempt, setRestateAttempt] = useState(0);
   const restate = useMutation({
     /**
      * The restatement carries the seal minted when the hold began (founder,
@@ -228,6 +238,7 @@ function CurrencyBlock({
     onError: (e) => {
       setMoved(null);
       setError(serverMessage(e, 'The currency was not changed.'));
+      setRestateAttempt((n) => n + 1);
     },
   });
 
@@ -375,7 +386,7 @@ function CurrencyBlock({
       */}
       <div style={{ maxWidth: 300, marginTop: 8 }}>
         <HoldToApprove
-          key={`restate-${choice}-${restate.failureCount}`}
+          key={`restate-${choice}-${restateAttempt}`}
           label={
             choice
               ? `Hold to file this invoice in ${choice}`
@@ -912,6 +923,8 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
   // can never disagree about who may see it.
   const canonicalOn = useMudavymDesign('document');
 
+  // One fresh hold per failed correction; see `restateAttempt` (#586 follow-up 1).
+  const [editAttempt, setEditAttempt] = useState(0);
   const edit = useMutation({
     /**
      * The correction carries the seal minted when the hold began (founder,
@@ -961,7 +974,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       );
       refreshSheet();
     },
-    onError: (e) => setEditError(serverMessage(e, 'The correction did not save.')),
+    onError: (e) => {
+      setEditError(serverMessage(e, 'The correction did not save.'));
+      setEditAttempt((n) => n + 1);
+    },
   });
 
   /**
@@ -1020,6 +1036,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     onError: (e) => setEditError(serverMessage(e, 'The pairing change did not save.')),
   });
 
+  // One fresh swipe per failed confirmation; see `restateAttempt` (#586
+  // follow-up 1). Keyed by `failureCount`, the swipe remounted to its resting
+  // label while the second attempt was still in flight.
+  const [verifyAttempt, setVerifyAttempt] = useState(0);
   const verify = useMutation({
     /**
      * The seal is REDEEMED, not asserted (founder, 2026-09-06, batch 64).
@@ -1034,6 +1054,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
       void qc.invalidateQueries({ queryKey: ['receipts-next'] });
       onVerified();
     },
+    onError: () => setVerifyAttempt((n) => n + 1),
   });
 
   /**
@@ -1484,7 +1505,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
               <div className="flex flex-wrap items-center gap-3">
                 <div style={{ minWidth: 220, flex: '1 1 220px' }}>
                   <HoldToApprove
-                    key={`edit-${pending.lineId}-${pending.field}-${edit.failureCount}`}
+                    key={`edit-${pending.lineId}-${pending.field}-${editAttempt}`}
                     label="Hold to seal this correction"
                     approvedLabel="Correction sealed"
                     disabled={edit.isPending}
@@ -1558,7 +1579,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
               </p>
             )}
             <SwipeToConfirm
-              key={`swipe-${verify.failureCount}`}
+              key={`swipe-${verifyAttempt}`}
               label="Swipe up to confirm"
               assertion="Confirms this transcription matches the paper. It does not accept charges or touch stock. A one-time seal is taken when the gesture starts."
               disabled={verify.isPending || lines === undefined}
@@ -1578,11 +1599,107 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
   );
 }
 
+/**
+ * THE PAPER OWED, WHERE "CAUGHT UP" USED TO STAND (F-160; the founder's ruling
+ * RECEIPTS-W53, "Count paper owed (Recommended)", 2026-10-02, recorded in the
+ * R3 sim-rulings ADR). The queue sentence said "the paper trail is caught up"
+ * whenever nothing awaited review, while hundreds of deliveries the desk had
+ * already checked had no invoice linked to their order. It now says that
+ * count, from the gateway's rule (`paper-owed.ts`: a live invoice LINKED to
+ * the order), and keeps "caught up" for a count that is truly zero.
+ *
+ * Never zero by absence (ADR 0051 clause 2, ADR 0067): a read that has not
+ * answered says "Reading…", a failed one says it was not read, a count the
+ * gateway stopped at its ceiling wears the floor mark, and a person the
+ * gateway keeps the count from (staff, ADR 0167) is told so rather than told
+ * the trail is caught up.
+ */
+function PaperOwedLine({ data }: { data: ReceiptsNextData }) {
+  const [open, setOpen] = useState(false);
+  const owed = data.paperOwed;
+  if (!data.paperOwedAsked)
+    return (
+      <>
+        Nothing awaits review. Whether every checked delivery has its invoice filed is kept for the
+        owner and managers of this house.
+      </>
+    );
+  if (owed === null)
+    return data.paperOwedFailed ? (
+      <>
+        Nothing awaits review. The checked deliveries&rsquo; invoices were not read, so this page is
+        not claiming the paper trail is caught up.
+      </>
+    ) : (
+      <>Reading…</>
+    );
+  const floor = owed.complete ? '' : GE;
+  if (owed.count === 0)
+    return owed.complete ? (
+      <>Nothing awaits review — the paper trail is caught up.</>
+    ) : (
+      <>
+        Nothing awaits review. The first {owed.checkedRead} checked deliveries all have an invoice
+        filed; the rest were not read, so this page is not claiming the paper trail is caught up.
+      </>
+    );
+  const cut = owed.items.length < owed.count;
+  return (
+    <>
+      <span data-testid="paper-owed">
+        <strong style={{ fontWeight: 600, color: 'var(--ink-1, #2A2520)' }}>
+          {floor}
+          {owed.count} checked {owed.count === 1 ? 'delivery has' : 'deliveries have'} no invoice filed
+        </strong>
+        {owed.oldestAt ? ` · oldest ${fmtDate(owed.oldestAt)}` : ''}
+      </span>
+      <span style={{ display: 'block', marginTop: 4, fontSize: 12, color: 'var(--ink-4, #665D50)' }}>
+        Checked against a typed price, but no paper is linked to the order. A vendor who bills weekly
+        still owes it.
+      </span>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="paper-owed-list"
+        onClick={() => setOpen((v) => !v)}
+        style={{ marginTop: 6, fontSize: 12, fontWeight: 600, padding: '3px 10px', borderRadius: 8, border: '1px solid var(--seal-ring, rgba(26,94,107,.32))', background: 'transparent', color: 'var(--seal-deep, #14515C)', cursor: 'pointer' }}
+      >
+        {open ? 'Hide them' : 'See them'}
+      </button>
+      {open && (
+        <div id="paper-owed-list" style={{ marginTop: 6 }}>
+          <ul aria-label="Checked deliveries with no invoice filed" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {owed.items.map((i) => (
+              <li key={i.orderId} style={{ fontSize: 12, padding: '3px 0', borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
+                {i.vendorName ?? 'a vendor not named'} · {i.orderNumber ?? 'an order with no number'} ·{' '}
+                {fmtDate(i.deliveredAt ?? i.checkedAt)}
+              </li>
+            ))}
+          </ul>
+          {cut && (
+            <p style={{ marginTop: 4, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
+              First {owed.items.length} of {floor}
+              {owed.count}, oldest first.
+            </p>
+          )}
+          {owed.vendorNamesUnavailable && (
+            <p style={{ marginTop: 4, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
+              The vendors&rsquo; names could not be read, so none is shown.
+            </p>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function ReceiptsNext() {
-  const data = useReceiptsNextData();
-  const [searchParams, setSearchParams] = useSearchParams();
   const { activeRole, user } = useAuth();
   const creditsOffered = canSeeCreditLedger(activeRole, user?.role);
+  // The paper-owed count is a desk read (ADR 0167): asked for the same people
+  // the credit ledger is offered to, so staff never spend a refused request.
+  const data = useReceiptsNextData(creditsOffered);
+  const [searchParams, setSearchParams] = useSearchParams();
   const askedForCredits = searchParams.get('tab') === 'credits';
   // A staff member who follows `/credits` lands on Receipts, as ADR 0167 has
   // it, and is told why rather than shown a ledger that can only refuse.
@@ -1784,8 +1901,10 @@ export default function ReceiptsNext() {
               ? ` · ${data.cleanCapped ? GE : ''}${data.clean.length} read cleanly`
               : ''}
             {' · '}
+            {/* "papers verified" (RECEIPTS-W53): it counts verified PAPERS,
+                not deliveries, beside a line that counts deliveries. */}
             {data.verifiedCount !== null
-              ? `${data.verifiedCapped ? GE : ''}${data.verifiedCount} verified`
+              ? `${data.verifiedCapped ? GE : ''}${data.verifiedCount} ${data.verifiedCount === 1 ? 'paper' : 'papers'} verified`
               : data.noRestaurant || data.failures.some((f) => f.startsWith('the verified book'))
                 ? 'verified not read'
                 : EM}
@@ -1859,8 +1978,10 @@ export default function ReceiptsNext() {
           </div>
         )}
 
-        {/* deliveries the door counted that still have no paperwork — the
-            orders side of the surface, so nothing waits invisibly elsewhere */}
+        {/* deliveries the door counted by the case and nobody has counted by
+            the bottle yet — the orders side of the surface, so nothing waits
+            invisibly elsewhere. Their paper is a separate question, answered
+            by the paper-owed line (RECEIPTS-W53). */}
         {/*
             An unanswered uncounted-deliveries query used to render exactly like
             a caught-up door: `[]`. It is now `null` until it answers, and the
@@ -1881,7 +2002,9 @@ export default function ReceiptsNext() {
             style={{ fontFamily: SANS, border: '1px dashed var(--ink-3, #7C7365)', background: 'var(--paper-1, #F3EFE6)' }}
           >
             <span style={{ fontFamily: MONO, fontSize: 9.5, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--ink-4, #665D50)' }}>
-              Counted at the door, no paperwork yet
+              {/* Was "no paperwork yet" (RECEIPTS-W53): these are counted by
+                  the case and not yet by bottle, and may well have paper. */}
+              Counted by the case, not yet by bottle
             </span>
             <div style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', marginTop: 4 }}>
               {(data.deliveriesWithoutPaper ?? []).map((d) => (
@@ -1919,21 +2042,25 @@ export default function ReceiptsNext() {
         >
           {/* the queue */}
           <section aria-label="Awaiting review" className={selected ? 'hidden 2xl:block' : undefined}>
-            {data.queueKnown && data.queue.length === 0 && !data.isError && !data.noRestaurant ? (
-              <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
+            {/* `lanesFailed`, not `isError`: a failed paper-owed read alone
+                still shows the empty queue, and says the count was not read
+                (RECEIPTS-W53). */}
+            {data.queueKnown && data.queue.length === 0 && !data.lanesFailed && !data.noRestaurant ? (
+              <div style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
                 {/* Not "caught up" while clean papers still wait for a swipe (W44),
                     nor before their read has landed: an unread lane is not an
                     empty one (audit of #586, walk-through RECEIPTS-W48). Nor
                     while the door's count is still being read, which its own
-                    line calls unknown (RECEIPTS-W50b). */}
+                    line calls unknown (RECEIPTS-W50b). Nor while checked
+                    deliveries have no invoice filed (RECEIPTS-W53). */}
                 {!data.cleanKnown
                   ? 'Reading…'
                   : data.clean.length > 0
                     ? 'Nothing needs a look.'
                     : !data.deliveriesKnown
                       ? 'Reading…'
-                      : 'Nothing awaits review — the paper trail is caught up.'}
-              </p>
+                      : <PaperOwedLine data={data} />}
+              </div>
             ) : (
               <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
                 {data.queue.map(queueRow)}
@@ -2109,12 +2236,16 @@ export default function ReceiptsNext() {
                 {/* A list it searches never answered, or with no house none was
                     asked: the link can be neither opened nor ruled out, so
                     "Opening…" would never finish (audit of #586, walk-through
-                    RECEIPTS-W50c; the no-house case RECEIPTS-W51). */}
+                    RECEIPTS-W50c; the no-house case RECEIPTS-W51). With no house
+                    and no link, there is no queue to choose from, so it does
+                    not invite a choice (#586 follow-up 2). */}
                 {selectedId
                   ? data.documentsUnread || data.noRestaurant
                     ? 'Could not open the linked document: see the note above.'
                     : 'Opening the linked document…'
-                  : 'Choose a document from the queue to see its lines and its order, and to confirm it.'}
+                  : data.noRestaurant
+                    ? 'No house is selected, so there is no document to show.'
+                    : 'Choose a document from the queue to see its lines and its order, and to confirm it.'}
               </p>
             )}
           </section>

@@ -77,6 +77,21 @@ vi.mock('@/hooks/queries/useProviderQueries', () => ({
   useProviders: () => ({ data: [{ id: 'prov-1', name: 'Bodega Álvaro' }] }),
 }));
 
+// The page's hook asks the shared client for the checked deliveries with no
+// invoice filed (RECEIPTS-W53). Answered here, never sent: every other read
+// keeps the real client, as before this mock.
+vi.mock('../../../services/api/client', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../../../services/api/client')>();
+  const get = ((url: string, ...rest: unknown[]) =>
+    url === '/procurement/receiving/paper-owed'
+      ? Promise.resolve({
+          data: { count: 0, complete: true, checkedRead: 0, oldestAt: null, items: [], listMax: 20, vendorNamesUnavailable: false },
+        })
+      : (mod.apiClient.get as (...a: unknown[]) => unknown)(url, ...rest)) as typeof mod.apiClient.get;
+  const apiClient = Object.assign(Object.create(mod.apiClient), mod.apiClient, { get });
+  return { ...mod, apiClient, default: apiClient };
+});
+
 import ReceiptsNext, { canSeeCreditLedger } from './ReceiptsNext';
 import { CREDIT_MOVES } from './useReceiptsNextData';
 

@@ -438,4 +438,27 @@ export class ReceivingController {
     }
   }
 
+  // Owner or manager only: a desk read (ADR 0167's rule, founder 2026-09-19,
+  // as on `queue` and `lineHistory` above). Method-level, so the door routes
+  // stay open to staff. F-160, the founder's ruling RECEIPTS-W53 ("Count paper
+  // owed (Recommended)", 2026-10-02).
+  @Get("paper-owed")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary: "Checked deliveries with no invoice filed, oldest first",
+    description:
+      "A checked delivery is an order the desk verified (match_verified_at set, left COMPLETED or PARTIALLY_RECEIVED). It has its invoice when a live invoice (not rejected, not superseded) is linked to the order through procurement_document_links — the rule the price provenance already uses (own-paper-sighting.ts, isLiveInvoice). Returns count, complete (false when the checked orders were read only up to the ceiling, so count is a floor), checkedRead, oldestAt, and at most listMax items oldest first, each with orderId, orderNumber, vendorName, deliveredAt and checkedAt. A failed read is a 500, never a zero.",
+  })
+  async paperOwed(@CurrentUser() user: AuthedUser) {
+    try {
+      return await this.receiving.paperOwed(user.restaurantId);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error.message || "The checked deliveries' paper could not be read",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
 }

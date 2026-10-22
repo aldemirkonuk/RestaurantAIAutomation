@@ -876,6 +876,25 @@ export interface PaperLineCandidate {
 }
 
 /**
+ * Whether a document is a LIVE INVOICE: the paper a delivery's price can be
+ * checked against. An invoice (a packing slip states no price, and a credit
+ * memo is not what was charged) that has not been rejected or superseded.
+ *
+ * The one statement of the rule. `pickReceiptPaper` below names a price's
+ * paper with it, and the receiving desk's count of checked deliveries with no
+ * invoice filed (`paper-owed.ts`, F-160 / RECEIPTS-W53) asks the same
+ * question of every checked order, so the two can never disagree about what
+ * "has its invoice" means.
+ */
+export function isLiveInvoice(d: Pick<PaperCandidate, "doc_type" | "status">): boolean {
+  return (
+    d.doc_type === "invoice" &&
+    d.status !== "rejected" &&
+    d.status !== "superseded"
+  );
+}
+
+/**
  * Which paper a VERIFIED RECEIPT's price was read from — fork 6(a)'s first
  * writer change (sketch 112 README: "receipt verification ... carries only
  * `raw.orderId`").
@@ -903,12 +922,7 @@ export function pickReceiptPaper(args: {
   documents: readonly PaperCandidate[];
   lines: readonly PaperLineCandidate[];
 }): ReceiptPaper {
-  const invoices = args.documents.filter(
-    (d) =>
-      d.doc_type === "invoice" &&
-      d.status !== "rejected" &&
-      d.status !== "superseded",
-  );
+  const invoices = args.documents.filter(isLiveInvoice);
   if (invoices.length === 0) {
     return {
       documentId: null,
