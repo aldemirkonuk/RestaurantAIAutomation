@@ -168,7 +168,7 @@ export const GoogleSignInButton = forwardRef<GoogleSignInHandle, GoogleSignInBut
   }
 
   return (
-    <div>
+    <div className="relative">
       <div
         ref={gsiHostRef}
         aria-hidden
@@ -196,7 +196,12 @@ export const GoogleSignInButton = forwardRef<GoogleSignInHandle, GoogleSignInBut
       </button>
 
       {!ready && !signingIn && (
-        <p className="mt-2 text-center text-xs text-gray-400">Loading Google sign-in…</p>
+        // Drawn in the gap under the button, out of the flow: when the script
+        // lands and this line goes, nothing under it moves (it shifted the
+        // sign-in line and the colophon 24px on every /login load).
+        <p className="pointer-events-none absolute inset-x-0 top-full mt-1 text-center text-xs text-gray-400">
+          Loading Google sign-in…
+        </p>
       )}
     </div>
   )

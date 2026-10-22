@@ -204,7 +204,7 @@ describe('EndpaperShell', () => {
   describe('the front matter', () => {
     const TURN = 'Turn back to the front of the book'
 
-    it('is not there unless asked for — /register and every other caller get a plain endpaper', () => {
+    it('is not there unless asked for — a caller that does not ask gets a plain endpaper', () => {
       const { container } = render(
         <EndpaperShell kicker="k" houseLine="h">
           <p>x</p>
@@ -222,6 +222,27 @@ describe('EndpaperShell', () => {
         </EndpaperShell>,
       )
       expect(screen.getByRole('button', { name: TURN })).toHaveAccessibleDescription(/Kept, page by page\.\s+Every house's book\./)
+    })
+
+    it('names the way back in the door\'s own words — sign in by default, register when asked', () => {
+      const { unmount } = render(
+        <EndpaperShell kicker="k" houseLine="h" frontMatter>
+          <p>x</p>
+        </EndpaperShell>,
+      )
+      fireEvent.click(screen.getByRole('button', { name: TURN }))
+      expect(screen.getByRole('button', { name: 'Turn back to sign in →' })).toBeInTheDocument()
+      unmount()
+      render(
+        <EndpaperShell kicker="k" houseLine="h" frontMatter backLabel="Turn back to register">
+          <p>x</p>
+        </EndpaperShell>,
+      )
+      fireEvent.click(screen.getByRole('button', { name: TURN }))
+      expect(screen.getByRole('button', { name: 'Turn back to register →' })).toBeInTheDocument()
+      // the hidden endpaper button carries the same words while the poem is open
+      expect(screen.getByRole('button', { name: 'Turn back to register' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Turn back to sign in →' })).toBeNull()
     })
 
     describe('with Web Animations', () => {
@@ -280,6 +301,132 @@ describe('EndpaperShell', () => {
           </EndpaperShell>,
         )
         expect(calls.filter((c) => c.el === container.querySelector('.mdv-ep-leaf-inner'))).toHaveLength(0)
+      })
+
+      describe('the leaf eases its length through the turn (the render fix, 2026-10-09)', () => {
+        // jsdom lays nothing out, so give the two pages a length: the sign-in
+        // leaf 400px, the poem 620px, the leaf box the longer plus its padding.
+        let heights: Record<string, number>
+        let padded: (el: Element) => number
+        let styleSpy: { mockRestore: () => void }
+        beforeEach(() => {
+          heights = { 'mdv-ep-leaf-inner': 400, 'mdv-ep-poem-page': 620 }
+          padded = (el) => {
+            const inner = el.querySelector('.mdv-ep-leaf-inner')
+            const poem = el.querySelector('.mdv-ep-poem-page')
+            return Math.max(inner ? heights['mdv-ep-leaf-inner'] : 0, poem ? heights['mdv-ep-poem-page'] : 0) + 52 + 44
+          }
+          Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+            configurable: true,
+            get(this: HTMLElement) {
+              for (const [cls, h] of Object.entries(heights)) if (this.classList.contains(cls)) return h
+              if (this.classList.contains('mdv-ep-leaf')) return padded(this)
+              return 0
+            },
+          })
+          // the leaf's padding and (mid-run) height; everything else stays jsdom's own
+          const real = window.getComputedStyle.bind(window)
+          const leafStyle: Record<string, string> = { paddingTop: '52px', paddingBottom: '44px', height: '700px' }
+          styleSpy = vi.spyOn(window, 'getComputedStyle').mockImplementation((el, pseudo) => {
+            const style = real(el, pseudo)
+            if (!(el instanceof HTMLElement) || !el.classList.contains('mdv-ep-leaf')) return style
+            return new Proxy(style, {
+              get(target, key) {
+                if (typeof key === 'string' && key in leafStyle) return leafStyle[key]
+                const value = Reflect.get(target, key)
+                return typeof value === 'function' ? value.bind(target) : value
+              },
+            })
+          })
+        })
+        afterEach(() => {
+          // @ts-expect-error — back to jsdom's own (undefined) offsetHeight
+          delete HTMLElement.prototype.offsetHeight
+          styleSpy.mockRestore() // only ours: the setup's matchMedia double must stay
+        })
+
+        const leafRuns = (container: HTMLElement) =>
+          calls.filter((c) => c.el === container.querySelector('.mdv-ep-leaf') && c.options.duration === 760)
+
+        it('opening: from the page\'s length to the poem\'s, on the turn\'s own curve, let go at the landing', () => {
+          const { container } = render(
+            <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
+              <p>x</p>
+            </EndpaperShell>,
+          )
+          calls = []
+          fireEvent.click(screen.getByRole('button', { name: TURN }))
+          const runs = leafRuns(container)
+          expect(runs).toHaveLength(1)
+          const keyframes = (Element.prototype.animate as unknown as ReturnType<typeof vi.fn>).mock.calls
+            .filter((call) => call[1]?.duration === 760)
+            .map((call) => call[0] as Keyframe[])
+            .find((k) => k.length === 2 && 'height' in k[0])!
+          expect(keyframes).toEqual([{ height: '496px' }, { height: '716px' }])
+          expect(runs[0].cancelledWith).toBeNull()
+          act(() => {
+            vi.advanceTimersByTime(760)
+          })
+          // let go only once the poem is the page (data-front set), like the turn runs
+          expect(runs[0].cancelledWith).toBe(true)
+        })
+
+        it('closing: holds the poem\'s length until the leaf is edge-on, then eases to the page\'s', () => {
+          const { container } = render(
+            <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
+              <p>x</p>
+            </EndpaperShell>,
+          )
+          fireEvent.click(screen.getByRole('button', { name: TURN }))
+          act(() => {
+            vi.advanceTimersByTime(760)
+          })
+          calls = []
+          ;(Element.prototype.animate as unknown as ReturnType<typeof vi.fn>).mockClear()
+          fireEvent.click(screen.getByRole('button', { name: 'Turn back to sign in →' }))
+          expect(leafRuns(container)).toHaveLength(1)
+          const keyframes = (Element.prototype.animate as unknown as ReturnType<typeof vi.fn>).mock.calls
+            .map((call) => call[0] as Keyframe[])
+            .find((k) => k.length === 3 && 'height' in k[0])!
+          expect(keyframes).toEqual([{ height: '716px' }, { height: '716px', offset: 0.53 }, { height: '496px' }])
+        })
+
+        it('a sign-in step that lands eases the leaf to its new length, under the poem too', () => {
+          const { rerender, container } = render(
+            <EndpaperShell kicker="k" houseLine="h" folio="Sign in" pageKey="address" frontMatter>
+              <p>x</p>
+            </EndpaperShell>,
+          )
+          calls = []
+          heights['mdv-ep-leaf-inner'] = 512
+          rerender(
+            <EndpaperShell kicker="k" houseLine="h" folio="Sign in" pageKey="methods" frontMatter>
+              <p>y</p>
+            </EndpaperShell>,
+          )
+          const run = calls.filter((c) => c.el === container.querySelector('.mdv-ep-leaf'))
+          expect(run).toHaveLength(1)
+          expect(run[0].options.duration).toBe(420)
+          const keyframes = (Element.prototype.animate as unknown as ReturnType<typeof vi.fn>).mock.calls
+            .map((call) => call[0] as Keyframe[])
+            .find((k) => k.length === 2 && 'height' in k[0])!
+          expect(keyframes).toEqual([{ height: '496px' }, { height: '608px' }])
+        })
+
+        it('a page the same length as the last needs no run', () => {
+          const { rerender, container } = render(
+            <EndpaperShell kicker="k" houseLine="h" folio="Sign in" pageKey="address" frontMatter>
+              <p>x</p>
+            </EndpaperShell>,
+          )
+          calls = []
+          rerender(
+            <EndpaperShell kicker="k" houseLine="h" folio="Sign in" pageKey="methods" frontMatter>
+              <p>y</p>
+            </EndpaperShell>,
+          )
+          expect(calls.filter((c) => c.el === container.querySelector('.mdv-ep-leaf'))).toHaveLength(0)
+        })
       })
     })
 

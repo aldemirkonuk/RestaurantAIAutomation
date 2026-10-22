@@ -395,6 +395,7 @@ which was already computed but never surfaced to the reader before this pass.
 | 2026-09-12 | Aldemir | Three more: on-device speech keeping only the rows (closes 0113 Q6/Q7); only what Mudavym proposed waits for the seal; the auth emails renamed, OD-27 partly lifted |
 | 2026-09-17 | Aldemir | Via ADR 0149 rows 32 and 35: Studio kept as an internal tool; `/login` and `/register` take the flyleaf look (sketch 118 first) |
 | 2026-09-19 | Aldemir | Via ADR 0149 row 35: sketch 118 is **B, the endpaper**, and Google sign-in also goes on `/login`'s first page |
+| 2026-10-09 | Aldemir | Via ADR 0149 row 35: the front matter (the endpaper's turn) is on `/register` as well as `/login`, each door naming its way back; the same PR fixes the book's render at the turns (PR #691) |
 | 2026-09-16 | Aldemir | Five more, via ADR 0149 (rows 4, 7, 8, 10, 11): SimPOS kept as-is and Studio waiting on the Codex-conversation check; the public doors' treatment ratified; `support@mudavym.com` everywhere; the desk's defaults kept; the threshold on folio 2, `/onboarding` redirecting permanently to `/get-started`, and the tutorial action boxes redrawn for review |
 | 2026-09-18 | Aldemir | ADR 0149 rows 41-42: the OD-03 core-line diet does not bind this product lane, growth accepted as-is; read-repair kept, on condition a gone record reads plainly |
 | 2026-09-19 | Aldemir | A batch a crash stranded at `'applying'` or `'undoing'` is resumed only by the manager who sealed it — ratifies the C2 lane's existing per-user batch scoping, no code change |

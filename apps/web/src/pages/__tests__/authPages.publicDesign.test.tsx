@@ -513,18 +513,22 @@ describe('the switch changes the chrome, never the fields', () => {
    * two plain acts in place of the four responsive cards — two per layout,
    * both always in the DOM). Its buttons differ by design, so what must hold
    * is the flow: every button on it leads to one of the same two paths, and
-   * both paths are offered, in both switch positions.
+   * both paths are offered, in both switch positions. The endpaper's own
+   * turn (the front matter, on /register since 2026-10-09) is not a path
+   * through the door and is counted apart (§3c).
    */
   it('register-selector: the door leads to the same two paths, both switch positions', async () => {
+    const doorButtons = (door: HTMLElement) =>
+      Array.from(door.querySelectorAll('button')).filter((b) => b.getAttribute('aria-label') !== 'Turn back to the front of the book')
     const destinations = async (on: boolean) => {
       setSwitch(on)
-      const count = (await STATES.find((st) => st.name === 'register-selector')!.reach()).querySelectorAll('button').length
+      const count = doorButtons(await STATES.find((st) => st.name === 'register-selector')!.reach()).length
       cleanup()
       const reached = new Set<string>()
       for (let i = 0; i < count; i++) {
         setSwitch(on)
         const door = await STATES.find((st) => st.name === 'register-selector')!.reach()
-        fireEvent.click(door.querySelectorAll('button')[i])
+        fireEvent.click(doorButtons(door)[i])
         if (await screen.findByLabelText('Invite Code', undefined, { timeout: 500 }).catch(() => null)) reached.add('join')
         else if (screen.queryByLabelText('Full Name *')) reached.add('create')
         else reached.add(`button ${i}: nowhere`)
@@ -571,14 +575,16 @@ describe('Google on the first page — the house path only', () => {
   })
 })
 
-/* ── 3c. The front matter — /login's endpaper only ───────────────────────── */
+/* ── 3c. The front matter — the two doors' endpapers, on the house path ──── */
 
 /*
  * The founder's Easter egg (2026-09-19): the endpaper on /login turns back to
- * the front matter. It belongs to /login's house path alone — not /register,
- * and not today's page.
+ * the front matter. On 2026-10-09 he asked for it on /register as well ("add
+ * the /login first page action to the /register as well"). It belongs to the
+ * house path alone — not today's page — and each door names the way back in
+ * its own words.
  */
-describe('the front matter — /login on the house path only', () => {
+describe('the front matter — /login and /register on the house path', () => {
   const TURN = 'Turn back to the front of the book'
   const reachOf = (name: string) => STATES.find((st) => st.name === name)!.reach
 
@@ -588,10 +594,19 @@ describe('the front matter — /login on the house path only', () => {
     expect(screen.getByRole('button', { name: TURN })).toBeInTheDocument()
   })
 
-  it('ON /register does not', async () => {
+  it('ON /register offers the turn too, and its way back says register', async () => {
     setSwitch(true)
     await reachOf('register-selector')()
-    expect(screen.queryByRole('button', { name: TURN })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: TURN }))
+    expect(await screen.findByRole('button', { name: 'Turn back to register →' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Turn back to sign in →' })).toBeNull()
+  })
+
+  it('ON /login the way back says sign in', async () => {
+    setSwitch(true)
+    await reachOf('login-email')()
+    fireEvent.click(screen.getByRole('button', { name: TURN }))
+    expect(await screen.findByRole('button', { name: 'Turn back to sign in →' })).toBeInTheDocument()
   })
 
   it('OFF /login does not', async () => {

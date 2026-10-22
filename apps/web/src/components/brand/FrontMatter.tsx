@@ -1,11 +1,12 @@
 import { forwardRef } from 'react'
 
 /**
- * The front matter behind /login's endpaper — the Easter egg the founder
- * approved on 2026-09-19 (sketch 118 `front-matter.html`, Direction 1: "Book
- * is great"). Turning the endpaper back shows what a book shows before its
- * first page: the inside cover's epigraph, and a short poem about the book
- * the house keeps.
+ * The front matter behind the endpaper on /login and /register — the Easter
+ * egg the founder approved on 2026-09-19 (sketch 118 `front-matter.html`,
+ * Direction 1: "Book is great"; on /login only until 2026-10-09, when he
+ * asked for it on /register as well). Turning the endpaper back shows what a
+ * book shows before its first page: the inside cover's epigraph, and a short
+ * poem about the book the house keeps.
  *
  * Every line claims only what the product does today: it reads supplier
  * invoices, keeps the count, notices price creep and low stock, drafts
@@ -54,7 +55,9 @@ const STANZAS: { lines: { text: string; indent?: boolean }[]; closing?: boolean 
 
 export interface FrontMatterPoemProps {
   id: string
-  /** Turns the book back to the sign-in leaf. */
+  /** The way back, in the door's words ("Turn back to sign in", "Turn back to register"). */
+  backLabel: string
+  /** Turns the book back to the door's own leaf. */
   onBack: () => void
 }
 
@@ -64,7 +67,7 @@ export interface FrontMatterPoemProps {
  * reading where the eye does.
  */
 export const FrontMatterPoem = forwardRef<HTMLHeadingElement, FrontMatterPoemProps>(function FrontMatterPoem(
-  { id, onBack },
+  { id, backLabel, onBack },
   titleRef,
 ) {
   return (
@@ -84,7 +87,7 @@ export const FrontMatterPoem = forwardRef<HTMLHeadingElement, FrontMatterPoemPro
       ))}
       <p className="mdv-ep-poem-back">
         <button type="button" onClick={onBack}>
-          Turn back to sign in →
+          {backLabel} →
         </button>
       </p>
     </section>
