@@ -11,6 +11,7 @@ import { queueResearchIfLibraryLacks } from "../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "./delivery-item-to-name";
 import { normalizeUom, toBottles, Uom } from "./documents/document-types";
 import { readBookedOrderBottles } from "./booked-order-quantity";
+import { releaseAcceptedShare, type ReservationRelease } from "./order-reservation";
 import { packsAndLoose, readOneShelfReceived, readShelfReceived } from "./shelf-received";
 import { ORDER_UNIT_TYPES } from "./order-units";
 import {
@@ -196,6 +197,10 @@ export interface DoorReceiptResult {
    * a library wine or when nothing was booked here.
    */
   research?: "queued" | "not_findable" | "matched";
+  /** Reserved (shadow) units this receipt let go — its accepted share (F-143). */
+  reservationReleased?: number;
+  /** Why the reservation was not (fully) let go. Absent when it was. */
+  reservationIssue?: string;
   /** A sentence when the item could not be queued for research. The stock stands. */
   researchIssue?: string;
   /** Whose clock dated this delivery, and why (ADR 0286). */
@@ -703,6 +708,32 @@ export class ReceivingService {
       }
     }
 
+    // THE RESERVATION IS LET GO AT THE DOOR (F-143; founder, 2026-10-02,
+    // verbatim pick "At the door (Recommended)"): the accepted share of what
+    // approval reserved stops counting as on hand; a short stays reserved as a
+    // backorder. After the status write and only if it landed — an order the
+    // write left as it was can still be cancelled, and the cancel lets go of
+    // the whole reservation again. A status write that failed retryably threw
+    // above, so the retry reaches here. Never a throw: the live booking above
+    // stands either way, and a failure here is said in the response, not hidden.
+    let reservation: ReservationRelease | undefined;
+    if (order.inventory_id) {
+      if (!statusWritten) {
+        reservation = {
+          released: 0,
+          target: null,
+          issue: `the order refused the received status, so its reservation was not let go`,
+        };
+        this.logger.warn(`door receipt for order ${input.orderId}: ${reservation.issue}`);
+      } else {
+        reservation = await releaseAcceptedShare(this.db.getClient(), {
+          restaurantId: input.restaurantId,
+          orderId: input.orderId,
+          via: "door receipt",
+        });
+      }
+    }
+
     // THE SAME RULE AT THE DOOR (founder, 2026-09-22, verbatim pick: "Yes, same
     // rule (Recommended)"): stock this receipt booked for a wine the library
     // lacks queues research, by the item's id, once per item. After the
@@ -757,6 +788,8 @@ export class ReceivingService {
       ...(stockIssue ? { stockIssue } : {}),
       ...(research ? { research } : {}),
       ...(researchIssue ? { researchIssue } : {}),
+      ...(reservation ? { reservationReleased: reservation.released } : {}),
+      ...(reservation?.issue ? { reservationIssue: reservation.issue } : {}),
     };
   }
 
