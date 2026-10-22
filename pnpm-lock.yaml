@@ -509,8 +509,8 @@ importers:
         specifier: ^8.6.14
         version: 8.6.14(storybook@8.6.14(prettier@3.7.4))
       '@storybook/addon-controls':
-        specifier: ^8.6.14
-        version: 8.6.14(storybook@8.6.14(prettier@3.7.4))
+        specifier: ^9.0.8
+        version: 9.0.8
       '@storybook/addon-essentials':
         specifier: ^8.6.14
         version: 8.6.14(@types/react@18.2.47)(storybook@8.6.14(prettier@3.7.4))
@@ -3905,6 +3905,9 @@ packages:
     resolution: {integrity: sha512-IiQpkNJdiRyA4Mq9mzjZlvQugL/aE7hNgVxBBGPiIZG6wb6Ht9hNnBYpap5ZXXFKV9p2qVI0FZK445ONmAa+Cw==}
     peerDependencies:
       storybook: ^8.6.14
+
+  '@storybook/addon-controls@9.0.8':
+    resolution: {integrity: sha512-6MY9QeBv2vNmBXH+ONmbpp/Gu/odSxriN1+BAY+il9OyXZBMq3OiDsjoH7xY5V7PGr+0XhZfOLkamvx3q+lQTg==}
 
   '@storybook/addon-docs@8.6.14':
     resolution: {integrity: sha512-Obpd0OhAF99JyU5pp5ci17YmpcQtMNgqW2pTXV8jAiiipWpwO++hNDeQmLmlSXB399XjtRDOcDVkoc7rc6JzdQ==}
@@ -14626,6 +14629,8 @@ snapshots:
       dequal: 2.0.3
       storybook: 8.6.14(prettier@3.7.4)
       ts-dedent: 2.2.0
+
+  '@storybook/addon-controls@9.0.8': {}
 
   '@storybook/addon-docs@8.6.14(@types/react@18.2.47)(storybook@8.6.14(prettier@3.7.4))':
     dependencies:
