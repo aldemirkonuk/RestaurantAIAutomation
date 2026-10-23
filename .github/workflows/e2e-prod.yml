@@ -474,7 +474,7 @@ jobs:
           steps.scrub.outcome == 'success' &&
           inputs.triggered_by_deploy == true &&
           inputs.pr_number != ''
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
           DEPLOY_URL: ${{ inputs.deploy_url }}
