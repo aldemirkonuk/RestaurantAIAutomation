@@ -102,7 +102,7 @@ jobs:
     if: github.event.pull_request.author_association == 'OWNER'
     steps:
       - name: Checkout the TRUSTED base commit (never the PR's own tree)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
