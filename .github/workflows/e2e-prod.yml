@@ -429,7 +429,7 @@ jobs:
         run: python3 scripts/e2e/scrub_artifacts.py --dir test-results
 
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always() && steps.scrub.outcome == 'success'
         with:
           name: e2e-prod-results-${{ github.run_id }}
