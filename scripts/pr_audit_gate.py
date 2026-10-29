@@ -105,7 +105,14 @@ EFFORT = "high"
 # not on anything about the PR. Anthropic's own non-streaming guidance is
 # ~16000; confirmed Opus 5's real context window is 1M tokens, not the 200K
 # this was originally calibrated against, so there's ample room.
-MAX_TOKENS = 16000
+# 16000 -> 64000, streamed (founder's answer, 2026-10-10): 16000 still ran
+# out. The correctness angle came back UNPARSEABLE with an EMPTY body on 9
+# of the 11 CI audits posted 2026-10-08..10 -- every run on #674 and #680,
+# plus #617, #661 and #691 (e.g. comment 6094034705) -- while compliance
+# and security on the same runs returned full reports. A request this large
+# must be streamed (the SDK refuses long non-streaming requests), so
+# _call_claude now streams, and names stop_reason when no verdict arrives.
+MAX_TOKENS = 64000
 
 ANGLES = {
     "correctness": (
@@ -413,17 +420,26 @@ def wait_upstream(pr_number: str) -> int:
 # --------------------------------------------------------------------------- #
 
 def _call_claude(client, system: str, user: str) -> str:
-    resp = client.messages.create(
+    with client.messages.stream(
         model=MODEL,
         max_tokens=MAX_TOKENS,
         thinking={"type": "adaptive"},
         output_config={"effort": EFFORT},
         system=system,
         messages=[{"role": "user", "content": user}],
-    )
+    ) as stream:
+        resp = stream.get_final_message()
     # With extended thinking, content includes a thinking block before the text
     # block(s) — take the text blocks only.
-    return "\n".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+    text = "\n".join(b.text for b in resp.content if getattr(b, "type", None) == "text")
+    stop = getattr(resp, "stop_reason", None)
+    if not text.strip() or stop not in ("end_turn", "stop_sequence"):
+        # A run that ends without finishing (out of tokens, refused) used to
+        # post an empty angle body. Say why. The appended line is never a
+        # VERDICT line, so _verdict_of() still reads UNPARSEABLE -> BLOCK.
+        out = getattr(getattr(resp, "usage", None), "output_tokens", None)
+        text = f"{text}\n\n(no verdict: stop_reason={stop}, output_tokens={out})".lstrip()
+    return text
 
 
 def _verdict_of(report_text: str) -> str:
