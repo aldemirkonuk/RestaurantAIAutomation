@@ -496,7 +496,7 @@ export function Story() {
   const wait = 'Waiting for your yes';
 
   return (
-    <div className="mudavym mdv-landing mdv-story" ref={rootRef} onFocus={(e) => shown(e.target)}>
+    <div className="mdv-landing mudavym mdv-story" ref={rootRef} onFocus={(e) => shown(e.target)}>
       <div className="st-probe" ref={probeRef} aria-hidden="true" />
       <header className="ld-bar">
         <div className="ld-wrap">

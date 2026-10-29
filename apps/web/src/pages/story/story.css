@@ -53,8 +53,8 @@
 .st-hero::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(42% 60% at 80% 40%, color-mix(in srgb, var(--seal) 13%, transparent), transparent 72%), radial-gradient(circle at 1px 1px, var(--ld-hair-2) 1px, transparent 1.6px) 0 0 / 24px 24px; -webkit-mask-image: linear-gradient(to bottom, #000 30%, transparent 96%); mask-image: linear-gradient(to bottom, #000 30%, transparent 96%); }
 .st-hero h1 { font-size: clamp(2.6rem, 6.8vw, 5.2rem); line-height: 1.03; letter-spacing: -0.028em; max-width: 13ch; }
 .st-hero-sub { margin-top: 24px; max-width: 46ch; font-size: clamp(1.05rem, 1.6vw, 1.28rem); line-height: 1.55; color: var(--ink-2); }
-.st-hero-note { margin-top: 18px; font: 500 13px/1.45 var(--ld-sans); color: var(--ink-3); max-width: 52ch; }
-.st-cue { margin-top: 48px; display: inline-flex; align-items: center; gap: 12px; font: 500 12.5px/1 var(--ld-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+.st-hero-note { margin-top: 18px; font: 500 13px/1.45 var(--ld-sans); color: var(--ink-4); max-width: 52ch; }
+.st-cue { margin-top: 48px; display: inline-flex; align-items: center; gap: 12px; font: 500 12.5px/1 var(--ld-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4); }
 .st-cue i { display: block; width: 1.5px; height: 40px; background: linear-gradient(var(--ink-3), transparent); transform-origin: top; }
 
 /* ---------- chapters ---------- */
@@ -67,7 +67,7 @@
 .st-copy h2 { font-size: clamp(2rem, 4.3vw, 3.4rem); max-width: 14ch; }
 .st-copy p:not(.st-time) { margin-top: 16px; max-width: 40ch; font-size: 1.08rem; line-height: 1.6; color: var(--ink-2); }
 .st-pic { position: relative; display: grid; justify-items: center; gap: 14px; min-width: 0; }
-.st-sample { margin: 0; font: 500 12px/1.45 var(--ld-sans); color: var(--ink-3); text-align: center; max-width: 44ch; }
+.st-sample { margin: 0; font: 500 12px/1.45 var(--ld-sans); color: var(--ink-4); text-align: center; max-width: 44ch; }
 .st-caption { margin: 0; font: 500 14px/1.4 var(--ld-mono); color: var(--ink-2); text-align: center; }
 
 /* The paper the vendor sends, the same light sheet on either ground. */
@@ -80,7 +80,7 @@
 .st-scrap svg { grid-row: span 2; width: 18px; height: 18px; color: var(--ink-2); }
 .st-scrap.st-docbg svg { color: var(--ld-doc-ink-2); }
 .st-scrap b { font: 600 14px/1.25 var(--ld-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.st-scrap small { font: 400 12.5px/1.3 var(--ld-sans); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-scrap small { font: 400 12.5px/1.3 var(--ld-sans); color: var(--ink-4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-scrap.st-docbg small { color: var(--ld-doc-ink-2); }
 
 /* Tonight: the same scraps, gathered into one place */
@@ -134,7 +134,7 @@
 /* 4:15 pm: onto the shelf */
 .st-shelfpic { display: grid; justify-items: center; gap: 18px; width: min(100%, 470px); }
 .st-count { display: flex; align-items: baseline; justify-content: center; gap: 14px; }
-.st-count > span { font: 500 13px/1.3 var(--ld-sans); color: var(--ink-3); letter-spacing: 0.04em; text-transform: uppercase; }
+.st-count > span { font: 500 13px/1.3 var(--ld-sans); color: var(--ink-4); letter-spacing: 0.04em; text-transform: uppercase; }
 .st-count b { font: 500 clamp(2.6rem, 6vw, 3.6rem)/1 var(--ld-serif); color: var(--ink-1); }
 .st-shelf { position: relative; display: flex; align-items: flex-end; justify-content: center; gap: clamp(3px, 0.8vw, 7px); width: 100%; padding: 40px 10px 12px; }
 .st-bottle { position: relative; width: clamp(12px, 3.3vw, 20px); height: clamp(50px, 11vw, 74px); border-radius: 7px 7px 3px 3px; background: color-mix(in srgb, var(--seal) 72%, var(--paper-2)); }
@@ -168,7 +168,7 @@
 .st-glass { position: relative; width: 30px; height: 42px; border: 2px solid var(--ink-3); border-top: 0; border-radius: 0 0 14px 14px; overflow: hidden; }
 .st-glass::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 58%; background: color-mix(in srgb, var(--seal) 45%, var(--ld-doc-bg)); }
 .st-tally { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 18px; align-items: baseline; margin-top: 22px; }
-.st-tally > span { font: 500 13px/1.3 var(--ld-sans); color: var(--ink-3); }
+.st-tally > span { font: 500 13px/1.3 var(--ld-sans); color: var(--ink-4); }
 .st-tally b { font: 500 2rem/1 var(--ld-serif); color: var(--ink-1); text-align: right; }
 
 /* 11:20 pm: the asks, which the reader can answer */
@@ -176,7 +176,7 @@
 .st-notice { display: flex; align-items: center; gap: 12px; margin: 0; padding: 14px 16px; border-radius: 12px; background: var(--paper-1); border: 1px solid var(--ld-hair); font-size: 15px; line-height: 1.45; color: var(--ink-1); }
 .st-notice svg { flex: none; width: 18px; height: 18px; color: var(--seal); }
 .st-ask { display: grid; gap: 10px; padding: 16px 18px; border-radius: 14px; background: var(--paper-1); border: 1px solid var(--ld-hair-2); box-shadow: var(--ld-shadow); }
-.st-ask header { display: flex; justify-content: space-between; align-items: center; gap: 12px; font: 500 12px/1 var(--ld-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.st-ask header { display: flex; justify-content: space-between; align-items: center; gap: 12px; font: 500 12px/1 var(--ld-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4); }
 .st-ask header span:first-child { display: inline-flex; align-items: center; gap: 8px; color: var(--seal); }
 .st-ask header svg { width: 15px; height: 15px; }
 .st-ask p { margin: 0; font-size: 15.5px; line-height: 1.45; color: var(--ink-1); }
@@ -184,7 +184,7 @@
 .st-sent { display: inline-flex; align-items: center; gap: 8px; font: 600 14px/1 var(--ld-sans); color: var(--seal); }
 .st-sent svg { width: 16px; height: 16px; }
 .st-undo { padding: 8px 2px; border: 0; background: none; font: 500 14px/1 var(--ld-sans); color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.st-try { margin: 2px 0 0; font: 500 12.5px/1.4 var(--ld-sans); color: var(--ink-3); text-align: center; }
+.st-try { margin: 2px 0 0; font: 500 12.5px/1.4 var(--ld-sans); color: var(--ink-4); text-align: center; }
 
 /* 12:05 am: the night on one receipt */
 .st-receipt { position: relative; overflow: hidden; width: min(100%, 410px); padding: 20px 20px 18px; border-radius: 8px; font: 13px/1.35 var(--ld-mono); }
@@ -202,7 +202,7 @@
 .st-call { margin: 0; padding: 16px 18px; border-radius: 16px; background: var(--paper-1); border: 1px solid var(--ld-hair-2); box-shadow: var(--ld-shadow); }
 .st-call-head { display: flex; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--ld-hair); }
 .st-call-head b { display: block; font: 600 15px/1.25 var(--ld-sans); color: var(--ink-1); }
-.st-call-head small { display: block; margin-top: 2px; font: 400 13px/1.3 var(--ld-sans); color: var(--ink-3); }
+.st-call-head small { display: block; margin-top: 2px; font: 400 13px/1.3 var(--ld-sans); color: var(--ink-4); }
 .st-call-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--seal-tint); color: var(--seal); }
 .st-call-icon svg { width: 16px; height: 16px; }
 .st-call-wave { margin-left: auto; display: flex; align-items: center; gap: 3px; height: 22px; }
@@ -210,7 +210,7 @@
 .st-call-lines { display: grid; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }
 .st-call-lines li { display: grid; gap: 4px; max-width: 88%; }
 .st-call-lines li.is-them { justify-self: end; justify-items: end; }
-.st-call-lines li > span { font: 500 11px/1 var(--ld-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.st-call-lines li > span { font: 500 11px/1 var(--ld-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4); }
 .st-call-lines li > p { margin: 0; padding: 9px 13px; border-radius: 14px; font-size: 14.5px; line-height: 1.4; color: var(--ink-1); }
 .st-call-lines li.is-us > p { background: var(--seal-tint); border-top-left-radius: 4px; }
 .st-call-lines li.is-them > p { background: var(--paper-0); border: 1px solid var(--ld-hair); border-top-right-radius: 4px; }

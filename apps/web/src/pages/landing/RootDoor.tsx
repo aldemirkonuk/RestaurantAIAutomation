@@ -6,7 +6,7 @@
  *   not a flash of the landing page before their dashboard;
  * - a signed-in person sees the dashboard, behind the same `ProtectedRoute`
  *   and `DashboardLayout` as before, with the dashboard page as this route's
- *   index child rendered through the layout's `<Outlet />`.
+ *   `/` child (under this pathless layout) rendered through the layout's `<Outlet />`.
  *
  * The landing page is not behind `ProtectedRoute` because that component
  * sends a stranger to `/login` (ADR 0143's old root), which is exactly what the

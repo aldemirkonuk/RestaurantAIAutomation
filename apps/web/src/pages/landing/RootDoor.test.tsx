@@ -28,8 +28,8 @@ function mount() {
   return render(
     <MemoryRouter initialEntries={['/']}>
       <Routes>
-        <Route path="/" element={<RootDoor landing={<div data-testid="landing" />} />}>
-          <Route index element={<div data-testid="dashboard" />} />
+        <Route element={<RootDoor landing={<div data-testid="landing" />} />}>
+          <Route path="/" element={<div data-testid="dashboard" />} />
         </Route>
         <Route path="/login" element={<div data-testid="login" />} />
         <Route path="/choose-house" element={<div data-testid="choose-house" />} />

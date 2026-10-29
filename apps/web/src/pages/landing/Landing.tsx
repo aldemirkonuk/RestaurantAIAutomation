@@ -1204,7 +1204,7 @@ export function Landing() {
   const headline = ['Your', 'back', 'of', 'house,'];
 
   return (
-    <div className="mudavym mdv-landing" ref={rootRef}>
+    <div className="mdv-landing mudavym" ref={rootRef}>
       <header className="ld-bar">
         <div className="ld-wrap">
           <Link className="ld-lockup" to="/" aria-label="Mudavym">
