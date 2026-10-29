@@ -1,0 +1,400 @@
+/*
+ * /story: one sample night, told by scroll (founder, 2026-10-28).
+ *
+ * Built on landing.css (tokens, bar, buttons, reveal) and held to ADR 0320's
+ * motion rules: every motion below says what it is for, only transform and
+ * opacity move, and nothing listens to scroll. Each chapter is a tall section
+ * whose picture stays pinned while the reader scrolls through it; the parts of
+ * the picture run on that section's own view timeline, so the reader's scroll
+ * is the clock and scrolling back plays the night backwards.
+ *
+ * Three readers get three versions, chosen chapter by chapter:
+ *   - motion allowed, scroll timelines supported, and the chapter's picture
+ *     fits the shortest screen this browser shows (Story measures it and marks
+ *     the chapter is-fit): pinned, scrubbed;
+ *   - motion allowed, but no scroll timelines (Firefox today) or a picture
+ *     taller than the screen: natural height, the picture plays once, by
+ *     time, when most of it is on screen;
+ *   - less motion asked for: natural height, every picture at its last frame.
+ * The base styles ARE the last frames. The keyframes only say where each part
+ * comes from, so a reader who gets no animation reads the finished night.
+ *
+ * A part opts in with data-k="<motion>" and says when it runs inside its
+ * chapter with --a0 / --a1, unitless percents of the chapter's pinned scroll.
+ */
+
+.mdv-story {
+  /* the night ground, the landing's charcoal paper-0, for the dusk hand-off */
+  --st-night: #131615;
+  --st-lh: 1.15em;
+  /* where a pinned picture starts: under the bar, which itself sits under a
+     notch (viewport-fit=cover) */
+  --st-top: calc(env(safe-area-inset-top, 0px) + var(--ld-bar-h));
+}
+
+.st-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* the shortest pinned height this screen allows (toolbars out, under the bar);
+   Story measures pictures against it, reads the bar from where it starts, and
+   draws nothing with it */
+.st-probe { position: fixed; top: var(--st-top); left: 0; width: 1px; height: calc(100svh - var(--st-top)); visibility: hidden; pointer-events: none; }
+
+/* Story keeps the reader's place through a resize itself (fit()), so the
+   browser's own anchoring stands down rather than move them twice */
+.mdv-story.is-placed { overflow-anchor: none; }
+
+/* a focused link or button stops clear of the bar; an html scroll-padding
+   would do the same but also shift every chapter's view-timeline range */
+.mdv-story main :is(a, button) { scroll-margin-top: calc(var(--st-top) + 8px); }
+
+/* ---------- hero ---------- */
+
+.st-hero { position: relative; isolation: isolate; padding: clamp(72px, 15vh, 150px) 0 clamp(72px, 13vh, 130px); }
+.st-hero::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(42% 60% at 80% 40%, color-mix(in srgb, var(--seal) 13%, transparent), transparent 72%), radial-gradient(circle at 1px 1px, var(--ld-hair-2) 1px, transparent 1.6px) 0 0 / 24px 24px; -webkit-mask-image: linear-gradient(to bottom, #000 30%, transparent 96%); mask-image: linear-gradient(to bottom, #000 30%, transparent 96%); }
+.st-hero h1 { font-size: clamp(2.6rem, 6.8vw, 5.2rem); line-height: 1.03; letter-spacing: -0.028em; max-width: 13ch; }
+.st-hero-sub { margin-top: 24px; max-width: 46ch; font-size: clamp(1.05rem, 1.6vw, 1.28rem); line-height: 1.55; color: var(--ink-2); }
+.st-hero-note { margin-top: 18px; font: 500 13px/1.45 var(--ld-sans); color: var(--ink-3); max-width: 52ch; }
+.st-cue { margin-top: 48px; display: inline-flex; align-items: center; gap: 12px; font: 500 12.5px/1 var(--ld-sans); letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-3); }
+.st-cue i { display: block; width: 1.5px; height: 40px; background: linear-gradient(var(--ink-3), transparent); transform-origin: top; }
+
+/* ---------- chapters ---------- */
+
+.st-ch { position: relative; padding: clamp(72px, 12vh, 128px) 0; background: var(--paper-0); color: var(--ink-1); }
+.st-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(28px, 5vw, 80px); align-items: center; width: 100%; }
+.st-time { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; font: 500 12.5px/1 var(--ld-sans); letter-spacing: 0.14em; text-transform: uppercase; color: var(--seal); }
+.st-time .ld-mono { letter-spacing: 0.04em; display: inline-flex; align-items: center; gap: 12px; }
+.st-time .ld-mono::after { content: ""; width: 28px; height: 1.5px; background: currentColor; }
+.st-copy h2 { font-size: clamp(2rem, 4.3vw, 3.4rem); max-width: 14ch; }
+.st-copy p:not(.st-time) { margin-top: 16px; max-width: 40ch; font-size: 1.08rem; line-height: 1.6; color: var(--ink-2); }
+.st-pic { position: relative; display: grid; justify-items: center; gap: 14px; min-width: 0; }
+.st-sample { margin: 0; font: 500 12px/1.45 var(--ld-sans); color: var(--ink-3); text-align: center; max-width: 44ch; }
+.st-caption { margin: 0; font: 500 14px/1.4 var(--ld-mono); color: var(--ink-2); text-align: center; }
+
+/* The paper the vendor sends, the same light sheet on either ground. */
+.st-docbg { background: var(--ld-doc-bg); color: var(--ld-doc-ink); color-scheme: light; box-shadow: var(--ld-shadow); }
+
+/* 1:12 am: the scraps of a night's paperwork */
+.st-pile { position: relative; display: grid; place-items: center; width: min(100%, 560px); height: 420px; container-type: size; }
+.st-scrap { position: absolute; left: 50%; top: 50%; width: min(228px, 46cqw); display: grid; grid-template-columns: 22px minmax(0, 1fr); column-gap: 10px; row-gap: 2px; align-items: center; padding: 12px 14px; background: var(--paper-1); border: 1px solid var(--ld-hair-2); border-radius: 12px; box-shadow: var(--ld-shadow); transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) rotate(var(--r)); }
+.st-scrap.st-docbg { background: var(--ld-doc-bg); border-color: var(--ld-doc-hair); }
+.st-scrap svg { grid-row: span 2; width: 18px; height: 18px; color: var(--ink-2); }
+.st-scrap.st-docbg svg { color: var(--ld-doc-ink-2); }
+.st-scrap b { font: 600 14px/1.25 var(--ld-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-scrap small { font: 400 12.5px/1.3 var(--ld-sans); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-scrap.st-docbg small { color: var(--ld-doc-ink-2); }
+
+/* Tonight: the same scraps, gathered into one place */
+.st-gather .st-scrap { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+.st-unit { display: grid; justify-items: center; gap: 16px; padding: 26px 30px; background: var(--paper-1); border: 1px solid var(--ld-hair-2); border-radius: 18px; box-shadow: var(--ld-shadow); }
+.st-unit-lock { display: inline-flex; align-items: center; gap: 10px; color: var(--ink-1); }
+.st-unit ul { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.st-unit li { padding: 6px 12px; border-radius: 999px; font: 500 13px/1 var(--ld-sans); color: var(--seal); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--seal) 40%, transparent); }
+
+/* 4:10 pm: the photo at the door */
+.st-door { position: relative; padding: 26px; }
+.st-paper { position: relative; width: min(330px, 76vw); border-radius: 6px; padding: 20px 20px 16px; font: 12.5px/1.3 var(--ld-mono); transform: rotate(-2deg); }
+.st-paper header, .st-doc header { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--ld-doc-rule); }
+.st-paper header b, .st-doc header b { font: 600 13.5px/1.2 var(--ld-sans); }
+.st-paper-lines { display: grid; gap: 9px; padding: 14px 0; }
+.st-paper-lines i { display: block; height: 8px; width: var(--w); border-radius: 3px; background: var(--ld-doc-hair); }
+.st-paper footer { display: flex; justify-content: space-between; padding-top: 10px; border-top: 1px solid var(--ld-doc-rule); color: var(--ld-doc-ink-2); }
+.st-corner { position: absolute; width: 30px; height: 30px; border: 0 solid var(--seal); }
+.st-corner.is-tl { top: 0; left: 0; border-top-width: 3px; border-left-width: 3px; border-top-left-radius: 8px; }
+.st-corner.is-tr { top: 0; right: 0; border-top-width: 3px; border-right-width: 3px; border-top-right-radius: 8px; }
+.st-corner.is-bl { bottom: 0; left: 0; border-bottom-width: 3px; border-left-width: 3px; border-bottom-left-radius: 8px; }
+.st-corner.is-br { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; border-bottom-right-radius: 8px; }
+.st-flash { position: absolute; inset: 0; border-radius: 12px; background: var(--ld-doc-bg); opacity: 0; pointer-events: none; }
+
+/* 4:11 pm and 4:12 pm: the lines off the page */
+.st-doc { position: relative; overflow: hidden; isolation: isolate; width: min(100%, 470px); border-radius: 10px; padding: 18px 18px 14px; font: 13px/1.3 var(--ld-mono); }
+.st-lines { position: relative; margin: 0; padding: 4px 0 0; list-style: none; }
+.st-line { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto 26px; align-items: center; gap: 14px; padding: 11px 4px; border-bottom: 1px solid var(--ld-doc-hair); }
+.st-line > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--ld-sans); font-weight: 500; }
+.st-line > span:nth-child(2) { color: var(--ld-doc-ink-2); }
+.st-line > em { font-style: normal; text-align: right; }
+.st-line > span:nth-child(4) { display: grid; justify-items: end; }
+.st-line svg { width: 16px; height: 16px; color: var(--ld-doc-seal); }
+.st-line-bad { position: absolute; inset: 0; z-index: -1; background: var(--ld-doc-alarm-tint); border-radius: 4px; }
+.st-line.is-bad em { color: var(--ld-doc-alarm); font-weight: 600; }
+.st-line.is-bad svg { color: var(--ld-doc-alarm); }
+.st-scan { position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0; background: linear-gradient(to bottom, transparent 70%, color-mix(in srgb, var(--ld-doc-seal) 16%, transparent) 97%, var(--ld-doc-seal) 97%, var(--ld-doc-seal)); }
+.st-chip { display: inline-flex; align-items: center; gap: 8px; margin-top: 14px; padding: 7px 12px; border-radius: 999px; font: 500 12.5px/1 var(--ld-sans); color: var(--ld-doc-seal); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ld-doc-seal) 45%, transparent); }
+.st-chip svg { width: 14px; height: 14px; }
+.st-stamp { position: absolute; right: 18px; top: 45%; z-index: 3; padding: 8px 16px; border: 3px solid var(--ld-doc-alarm); border-radius: 8px; font: 700 22px/1 var(--ld-sans); letter-spacing: 0.16em; text-transform: uppercase; color: var(--ld-doc-alarm); background: color-mix(in srgb, var(--ld-doc-bg) 70%, transparent); transform: rotate(-8deg); pointer-events: none; }
+.st-held { display: flex; justify-content: space-between; gap: 16px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--ld-doc-rule); }
+.st-held span { color: var(--ld-doc-ink-2); }
+.st-held b { color: var(--ld-doc-alarm); }
+
+/* the counters that tick as the scroll moves: a strip of numbers behind a
+   one-line window, stepped one number at a time */
+.st-reel { display: inline-block; height: var(--st-lh); line-height: var(--st-lh); overflow: hidden; vertical-align: bottom; }
+.st-reel-strip { display: flex; flex-direction: column; transform: translateY(calc(var(--n) * var(--st-lh) * -1)); }
+.st-reel-strip > span { display: block; height: var(--st-lh); }
+
+/* 4:15 pm: onto the shelf */
+.st-shelfpic { display: grid; justify-items: center; gap: 18px; width: min(100%, 470px); }
+.st-count { display: flex; align-items: baseline; justify-content: center; gap: 14px; }
+.st-count > span { font: 500 13px/1.3 var(--ld-sans); color: var(--ink-3); letter-spacing: 0.04em; text-transform: uppercase; }
+.st-count b { font: 500 clamp(2.6rem, 6vw, 3.6rem)/1 var(--ld-serif); color: var(--ink-1); }
+.st-shelf { position: relative; display: flex; align-items: flex-end; justify-content: center; gap: clamp(3px, 0.8vw, 7px); width: 100%; padding: 40px 10px 12px; }
+.st-bottle { position: relative; width: clamp(12px, 3.3vw, 20px); height: clamp(50px, 11vw, 74px); border-radius: 7px 7px 3px 3px; background: color-mix(in srgb, var(--seal) 72%, var(--paper-2)); }
+.st-bottle::before { content: ""; position: absolute; left: 32%; right: 32%; bottom: 100%; height: 36%; border-radius: 2px 2px 0 0; background: inherit; }
+.st-bottle::after { content: ""; position: absolute; left: 0; right: 0; top: 40%; height: 22%; background: var(--ld-doc-bg); opacity: 0.85; }
+.st-bottle.is-old { background: color-mix(in srgb, var(--ink-3) 50%, var(--paper-2)); }
+.st-plank { position: absolute; left: 0; right: 0; bottom: 0; height: 12px; border-radius: 3px; background: var(--paper-2); box-shadow: inset 0 -2px 0 var(--ld-hair-2); }
+
+/* 6:00 pm: the sky over the house. An illustration, so it keeps its own
+   colours on either ground: a seal-tinted day, a graphite night, cream lights. */
+.st-sky { --sky-day: #d7e7e8; --sky-night: #0e1312; --sky-glow: #2c3b37; --sky-house: #0a0e0d; --sky-light: #f2ede3; position: relative; overflow: hidden; isolation: isolate; width: min(100%, 520px); aspect-ratio: 4 / 3; border-radius: 18px; background: linear-gradient(to bottom, var(--sky-day), #eef3f1); box-shadow: var(--ld-shadow); }
+/* the night keeps a faint glow at the horizon, so the dark house still shows against it */
+.st-sky-night { position: absolute; inset: 0; background: linear-gradient(to bottom, var(--sky-night) 30%, var(--sky-glow)); }
+.st-star { position: absolute; left: var(--x); top: var(--y); width: 3px; height: 3px; border-radius: 50%; background: var(--sky-light); }
+.st-sun { position: absolute; left: 56%; top: 30%; width: 21%; aspect-ratio: 1; border-radius: 50%; background: var(--ld-doc-bg); box-shadow: 0 0 0 12px color-mix(in srgb, var(--ld-doc-bg) 22%, transparent); transform: translateY(260%); }
+.st-house { position: absolute; left: 0; right: 0; bottom: 0; height: 34%; background: var(--sky-house); }
+.st-house::before { content: ""; position: absolute; left: 14%; bottom: 100%; width: 40%; height: 46%; background: var(--sky-house); clip-path: polygon(0 100%, 0 30%, 50% 0, 100% 30%, 100% 100%); }
+/* the lit windows sit in the house's front, under its roofline */
+.st-win { position: absolute; bottom: 9%; width: 6%; height: 14%; border-radius: 2px; background: var(--sky-light); box-shadow: 0 0 18px color-mix(in srgb, var(--sky-light) 45%, transparent); left: var(--x); }
+
+/* the dusk: paper hands over to the night chapters */
+.st-fall { height: 34vh; background: linear-gradient(to bottom, var(--paper-0), var(--st-night)); }
+
+/* 9:40 pm: by the glass */
+.st-bar { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: end; gap: clamp(22px, 5vw, 48px); width: min(100%, 480px); }
+.st-big { position: relative; width: 74px; height: 220px; border: 2px solid color-mix(in srgb, var(--seal) 65%, transparent); border-radius: 26px 26px 12px 12px; margin-top: 64px; }
+.st-big::before { content: ""; position: absolute; left: 50%; bottom: 100%; width: 26px; height: 62px; margin-left: -13px; border: 2px solid color-mix(in srgb, var(--seal) 65%, transparent); border-bottom: 0; border-radius: 6px 6px 0 0; }
+.st-big::after { content: ""; position: absolute; left: 6px; right: 6px; top: 34%; height: 22%; border-radius: 3px; background: var(--ld-doc-bg); opacity: 0.9; }
+.st-wine { position: absolute; left: 6px; right: 6px; bottom: 6px; height: 78%; border-radius: 18px 18px 8px 8px; background: color-mix(in srgb, var(--seal) 45%, var(--ld-doc-bg)); transform-origin: bottom; transform: scaleY(0); }
+.st-glasses { display: flex; flex-wrap: wrap; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.st-glass { position: relative; width: 30px; height: 42px; border: 2px solid var(--ink-3); border-top: 0; border-radius: 0 0 14px 14px; overflow: hidden; }
+.st-glass::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 58%; background: color-mix(in srgb, var(--seal) 45%, var(--ld-doc-bg)); }
+.st-tally { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 18px; align-items: baseline; margin-top: 22px; }
+.st-tally > span { font: 500 13px/1.3 var(--ld-sans); color: var(--ink-3); }
+.st-tally b { font: 500 2rem/1 var(--ld-serif); color: var(--ink-1); text-align: right; }
+
+/* 11:20 pm: the asks, which the reader can answer */
+.st-asks { display: grid; gap: 14px; width: min(100%, 470px); }
+.st-notice { display: flex; align-items: center; gap: 12px; margin: 0; padding: 14px 16px; border-radius: 12px; background: var(--paper-1); border: 1px solid var(--ld-hair); font-size: 15px; line-height: 1.45; color: var(--ink-1); }
+.st-notice svg { flex: none; width: 18px; height: 18px; color: var(--seal); }
+.st-ask { display: grid; gap: 10px; padding: 16px 18px; border-radius: 14px; background: var(--paper-1); border: 1px solid var(--ld-hair-2); box-shadow: var(--ld-shadow); }
+.st-ask header { display: flex; justify-content: space-between; align-items: center; gap: 12px; font: 500 12px/1 var(--ld-sans); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.st-ask header span:first-child { display: inline-flex; align-items: center; gap: 8px; color: var(--seal); }
+.st-ask header svg { width: 15px; height: 15px; }
+.st-ask p { margin: 0; font-size: 15.5px; line-height: 1.45; color: var(--ink-1); }
+.st-ask-act { display: flex; align-items: center; gap: 14px; min-height: 40px; }
+.st-sent { display: inline-flex; align-items: center; gap: 8px; font: 600 14px/1 var(--ld-sans); color: var(--seal); }
+.st-sent svg { width: 16px; height: 16px; }
+.st-undo { padding: 8px 2px; border: 0; background: none; font: 500 14px/1 var(--ld-sans); color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.st-try { margin: 2px 0 0; font: 500 12.5px/1.4 var(--ld-sans); color: var(--ink-3); text-align: center; }
+
+/* 12:05 am: the night on one receipt */
+.st-receipt { position: relative; overflow: hidden; width: min(100%, 410px); padding: 20px 20px 18px; border-radius: 8px; font: 13px/1.35 var(--ld-mono); }
+.st-receipt header { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px dashed var(--ld-doc-rule); font: 600 13.5px/1.2 var(--ld-sans); }
+.st-receipt dl { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 16px; margin: 14px 0 0; }
+.st-receipt dt { color: var(--ld-doc-ink-2); }
+.st-receipt dd { margin: 0; text-align: right; font-weight: 600; }
+.st-receipt dd.is-wait { color: var(--ld-doc-ink-2); font-weight: 500; }
+.st-receipt footer { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--ld-doc-rule); color: var(--ld-doc-ink-2); text-align: center; }
+.st-unroll { position: absolute; inset: 0; z-index: 2; background: var(--ld-doc-bg); transform: translateY(101%); pointer-events: none; }
+
+/* Tomorrow: further out, and not built yet. The landing's sample call in the
+   landing's shape, then the food, drawn dashed because it does not exist yet. */
+.st-next { display: grid; gap: 14px; width: min(100%, 470px); }
+.st-call { margin: 0; padding: 16px 18px; border-radius: 16px; background: var(--paper-1); border: 1px solid var(--ld-hair-2); box-shadow: var(--ld-shadow); }
+.st-call-head { display: flex; align-items: center; gap: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--ld-hair); }
+.st-call-head b { display: block; font: 600 15px/1.25 var(--ld-sans); color: var(--ink-1); }
+.st-call-head small { display: block; margin-top: 2px; font: 400 13px/1.3 var(--ld-sans); color: var(--ink-3); }
+.st-call-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; background: var(--seal-tint); color: var(--seal); }
+.st-call-icon svg { width: 16px; height: 16px; }
+.st-call-wave { margin-left: auto; display: flex; align-items: center; gap: 3px; height: 22px; }
+.st-call-wave i { width: 3px; height: 100%; border-radius: 2px; background: var(--seal); transform: scaleY(0.25); }
+.st-call-lines { display: grid; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; }
+.st-call-lines li { display: grid; gap: 4px; max-width: 88%; }
+.st-call-lines li.is-them { justify-self: end; justify-items: end; }
+.st-call-lines li > span { font: 500 11px/1 var(--ld-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.st-call-lines li > p { margin: 0; padding: 9px 13px; border-radius: 14px; font-size: 14.5px; line-height: 1.4; color: var(--ink-1); }
+.st-call-lines li.is-us > p { background: var(--seal-tint); border-top-left-radius: 4px; }
+.st-call-lines li.is-them > p { background: var(--paper-0); border: 1px solid var(--ld-hair); border-top-right-radius: 4px; }
+.st-call-end { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 14px 0 0; padding-top: 12px; border-top: 1px dashed var(--ld-hair-2); font-size: 14.5px; color: var(--ink-2); }
+.st-call-end svg { width: 16px; height: 16px; color: var(--seal); }
+.st-call-end b { color: var(--seal); font-weight: 600; }
+.st-soon { padding: 14px 18px 16px; border-radius: 16px; border: 1.5px dashed var(--ld-hair-2); }
+.st-soon header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.st-soon header b { font: 500 1.3rem/1.15 var(--ld-serif); color: var(--ink-1); }
+.st-soon header em { flex: none; padding: 6px 10px; border-radius: 999px; font: 600 11px/1 var(--ld-sans); font-style: normal; letter-spacing: 0.08em; text-transform: uppercase; color: var(--seal); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--seal) 40%, transparent); }
+.st-soon ul { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 0; padding: 0; list-style: none; }
+.st-soon li { display: inline-flex; align-items: center; gap: 7px; padding: 7px 11px; border-radius: 999px; background: var(--paper-1); font: 500 13px/1 var(--ld-sans); color: var(--ink-2); }
+.st-soon li svg { width: 14px; height: 14px; color: var(--seal); }
+
+/* the end */
+.st-end { padding: clamp(96px, 16vh, 160px) 0; background: var(--paper-0); color: var(--ink-1); }
+.st-end h2 { font-size: clamp(2.4rem, 5.6vw, 4.2rem); max-width: 14ch; }
+.st-end p { margin-top: 18px; max-width: 44ch; font-size: 1.1rem; color: var(--ink-2); }
+.st-end .ld-cta { margin-top: 30px; }
+.st-end p.st-end-more { margin-top: 26px; font-size: 0.98rem; }
+.st-end-more a { color: var(--seal); text-underline-offset: 3px; }
+
+/* the chapter rail, on screens wide enough to hold it beside the page */
+.st-rail { display: none; }
+@media (min-width: 1360px) {
+  .st-rail { display: block; position: fixed; right: 20px; top: 50%; z-index: 15; transform: translateY(-50%); padding: 10px 8px; border-radius: 14px; background: color-mix(in srgb, var(--paper-0) 88%, transparent); border: 1px solid var(--ld-hair); backdrop-filter: blur(10px); }
+  .st-rail ol { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+  .st-rail a { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 8px; font: 500 11.5px/1 var(--ld-mono); color: var(--ink-2); text-decoration: none; }
+  .st-rail a::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: 0.45; }
+  .st-rail a[aria-current] { color: var(--seal); }
+  .st-rail a[aria-current]::before { opacity: 1; }
+  .st-rail a:hover { color: var(--ink-1); }
+}
+
+@media (max-width: 860px) {
+  .st-grid { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .st-copy h2 { font-size: clamp(1.75rem, 7.4vw, 2.4rem); }
+  .st-copy p:not(.st-time) { margin-top: 10px; font-size: 1rem; line-height: 1.5; }
+  .st-time { margin-bottom: 12px; }
+  .st-pile { height: 300px; }
+  .st-scrap { padding: 9px 11px; column-gap: 8px; }
+  .st-scrap b { font-size: 13px; }
+  .st-scrap small { font-size: 11.5px; }
+  .st-door { padding: 18px; }
+  .st-paper-lines { gap: 7px; padding: 10px 0; }
+  .st-line { padding: 8px 2px; gap: 10px; }
+  .st-sky { width: min(100%, 420px); }
+  .st-big { height: 170px; width: 62px; margin-top: 54px; }
+  .st-big::before { height: 50px; }
+  .st-tally { margin-top: 14px; }
+  .st-tally b { font-size: 1.6rem; }
+  .st-asks { gap: 10px; }
+  .st-notice { padding: 10px 12px; font-size: 14px; }
+  .st-ask { padding: 12px 14px; gap: 8px; }
+  .st-ask p { font-size: 14.5px; }
+  .st-next { gap: 8px; }
+  .st-call { padding: 12px 14px; }
+  .st-call-head { padding-bottom: 10px; }
+  .st-call-lines { gap: 6px; margin-top: 10px; }
+  .st-call-lines li { gap: 3px; }
+  .st-call-lines li > span { font-size: 10px; }
+  .st-call-lines li > p { padding: 7px 11px; font-size: 13.5px; }
+  .st-call-end { margin-top: 10px; padding-top: 10px; font-size: 13.5px; }
+  .st-soon { padding: 12px 14px; }
+  .st-soon header b { font-size: 1.1rem; }
+  .st-soon ul { margin-top: 10px; gap: 6px; }
+  .st-soon li { padding: 6px 10px; font-size: 12.5px; }
+}
+
+/* ---------- motion ---------- */
+
+/* Which motion each part makes. Set only when motion is allowed, so a reader
+   who asked for less keeps the base styles: the finished night. */
+@media (prefers-reduced-motion: no-preference) {
+  .st-ch [data-k="rise"] { animation-name: st-rise; }
+  .st-ch [data-k="fade"] { animation-name: st-fade; }
+  .st-ch [data-k="pop"] { animation-name: st-pop; }
+  .st-ch [data-k="scrap"] { animation-name: st-scrap; }
+  .st-ch [data-k="gather"] { animation-name: st-gather; }
+  .st-ch [data-k="paper"] { animation-name: st-paper; }
+  .st-ch [data-k="frame"] { animation-name: st-frame; }
+  .st-ch [data-k="flash"] { animation-name: st-flash; }
+  .st-ch [data-k="scan"] { animation-name: st-scan; }
+  .st-ch [data-k="raw"] { animation-name: st-raw; }
+  .st-ch [data-k="stamp"] { animation-name: st-stamp; }
+  .st-ch [data-k="drop"] { animation-name: st-drop; }
+  .st-ch [data-k="reel"] { animation-name: st-reel; }
+  .st-ch [data-k="sink"] { animation-name: st-sink; }
+  .st-ch [data-k="drain"] { animation-name: st-drain; }
+  .st-ch [data-k="unroll"] { animation-name: st-unroll; }
+  .st-ch [data-k="ring"] { animation-name: st-ring; }
+  .st-ch [data-k="talk"] { animation-name: st-talk; }
+  .st-cue i { animation: st-cue 1800ms var(--ld-house) 1200ms infinite; }
+}
+
+/* Scrubbed: the chapter pins and the reader's scroll drives every part. Only
+   a chapter Story has marked is-fit: its picture fits the screen whole. */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .st-ch.is-fit { height: var(--st-len, 240vh); padding: 0; view-timeline: --st-ch block; }
+    /* sized like the probe that chose it (svh), so what was measured to fit is
+       what is drawn, whichever way the toolbars are */
+    .st-ch.is-fit .st-pin { position: sticky; top: var(--st-top); height: calc(100svh - var(--st-top)); display: grid; align-items: center; overflow: clip; }
+    .st-ch.is-fit [data-k] {
+      animation-duration: auto;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: --st-ch;
+      animation-range-start: contain calc(var(--a0, 0) * 1%);
+      animation-range-end: contain calc(var(--a1, 100) * 1%);
+    }
+    /* counters and the draining bottle move a whole number at a time */
+    .st-ch.is-fit [data-k="reel"], .st-ch.is-fit [data-k="drain"] { animation-timing-function: steps(var(--n, 1), end); }
+    /* the title steps back as the night begins */
+    .st-hero-in { animation: st-exit linear both; animation-timeline: view(); animation-range: exit 5% exit 85%; }
+  }
+}
+
+/* Played: a chapter that is not pinned (no scroll timelines, or a picture
+   taller than the screen) keeps its natural height, and its picture plays
+   once when most of it is on screen. Story marks each stage (a picture, or a
+   part of one, data-stage) is-in then; the chapter coming into view is not
+   enough, since on a phone the words come first and the picture can still be
+   below the fold. Each part keeps the window it has when scrubbed, at 30ms a
+   unit counted from its stage's start (--s0), so the order and the overlaps
+   are the same in both versions: the line goes quiet as the call's last
+   words land, and the offer pops after both. */
+@media (prefers-reduced-motion: no-preference) {
+  .st-ch:not(.is-fit) [data-k] {
+    animation-duration: max(280ms, calc((var(--a1, 100) - var(--a0, 0)) * 30ms));
+    animation-timing-function: var(--ld-house);
+    animation-fill-mode: both;
+    animation-delay: calc((var(--a0, 0) - var(--s0, 0)) * 30ms);
+    animation-play-state: paused;
+  }
+  .st-ch:not(.is-fit) [data-k="reel"], .st-ch:not(.is-fit) [data-k="drain"] { animation-timing-function: steps(var(--n, 1), end); }
+  .st-ch:not(.is-fit) [data-stage].is-in [data-k],
+  .st-ch:not(.is-fit) [data-stage].is-in[data-k] { animation-play-state: running; }
+}
+
+/* With no animation a part shows its base style, the finished frame. A chapter
+   gets none for one style pass when it flips between pinned and played
+   (is-flip, so its parts start again on their new clock), and for good once a
+   keyboard reader tabs into it (is-done). */
+.mdv-story .st-ch.is-flip [data-k],
+.mdv-story .st-ch.is-done [data-k] { animation-name: none; }
+
+/* a part arrives from below */
+@keyframes st-rise { from { opacity: 0; transform: translateY(26px); } }
+/* a layer comes up: the night sky, a star, a warning tint */
+@keyframes st-fade { from { opacity: 0; } }
+/* a mark lands: a tick, a glass, a card */
+@keyframes st-pop { from { opacity: 0; transform: scale(0.6); } 70% { opacity: 1; transform: scale(1.06); } }
+/* the night's paperwork lands on the pile, each scrap where it falls */
+@keyframes st-scrap { from { opacity: 0; transform: translate(-50%, -50%) translate(var(--dx), calc(var(--dy) - 70px)) rotate(calc(var(--r) * 3)); } }
+/* the same scraps are pulled into one place and go */
+@keyframes st-gather { from { opacity: 1; transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) rotate(var(--r)); } 80% { opacity: 1; } }
+/* the invoice comes up into the camera */
+@keyframes st-paper { from { opacity: 0; transform: translateY(70px) rotate(-8deg); } }
+/* the frame closes on it */
+@keyframes st-frame { from { opacity: 0; transform: scale(1.35); } }
+/* the photo is taken */
+@keyframes st-flash { 0%, 100% { opacity: 0; } 45% { opacity: 0.85; } }
+/* the page is read, top to bottom */
+@keyframes st-scan { 0% { opacity: 0; transform: translateY(-100%); } 12%, 88% { opacity: 1; } 100% { opacity: 0; transform: translateY(0); } }
+/* a line goes from ink on a photo to a line in the books */
+@keyframes st-raw { from { opacity: 0.16; transform: translateX(-10px); } }
+/* the wrong price is held */
+@keyframes st-stamp { from { opacity: 0; transform: scale(2) rotate(-22deg); } 60% { opacity: 1; transform: scale(0.94) rotate(-6deg); } }
+/* a bottle goes onto the shelf */
+@keyframes st-drop { from { opacity: 0; transform: translateY(-150px); } 72% { opacity: 1; transform: translateY(5px); } }
+/* a count ticks to where it ends */
+@keyframes st-reel { from { transform: translateY(0); } }
+/* the sun goes down behind the house */
+@keyframes st-sink { from { transform: translateY(0); } }
+/* the open bottle empties a glass at a time */
+@keyframes st-drain { from { transform: scaleY(1); } }
+/* the receipt prints, top line first */
+@keyframes st-unroll { from { transform: translateY(0); } }
+/* the phone rings: a call is starting */
+@keyframes st-ring { 15%, 45%, 75% { transform: rotate(-14deg); } 30%, 60%, 90% { transform: rotate(14deg); } }
+/* the line is live while the call is read, and goes quiet when it ends */
+@keyframes st-talk { 10%, 30%, 50%, 70%, 90% { transform: scaleY(var(--h, 1)); } 20%, 40%, 60%, 80% { transform: scaleY(0.35); } }
+/* the title steps back */
+@keyframes st-exit { to { opacity: 0; transform: translateY(-48px) scale(0.98); } }
+/* the cue line points the way down */
+@keyframes st-cue { 0% { transform: scaleY(0); opacity: 1; } 60% { transform: scaleY(1); opacity: 1; } 100% { transform: scaleY(1); opacity: 0; } }

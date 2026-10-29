@@ -55,6 +55,7 @@ import { ThemeProvider } from './contexts/ThemeContext'
 import { HousePageLoader } from './components/mudavym/HousePageLoader'
 import { RouteHead } from './lib/seo/RouteHead'
 import { RootDoor } from './pages/landing/RootDoor'
+import { RegisterDoor } from './pages/landing/RegisterDoor'
 import { RenamedRoute } from './lib/renamedRoute'
 // SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
 import { AppOfflineBanner } from './components/mudavym/AppOfflineBanner'
@@ -81,6 +82,8 @@ import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
 const DashboardNext = lazyWithRefresh(() => import('./pages/dashboard/next/DashboardNext'))
 // The landing page a stranger sees at `/` (ADR 0320); RootDoor picks it or the dashboard.
 const Landing = lazyWithRefresh(() => import('./pages/landing/Landing'))
+// The platform told as one sample night, chapter by chapter on scroll (founder, 2026-10-28).
+const Story = lazyWithRefresh(() => import('./pages/story/Story'))
 const OrdersNext = lazyWithRefresh(() => import('./pages/orders/next/OrdersNext'))
 const ReceivingNext = lazyWithRefresh(() => import('./pages/receiving/next/ReceivingNext'))
 const DoorNext = lazyWithRefresh(() => import('./pages/receiving/next/DoorNext'))
@@ -199,7 +202,8 @@ function App() {
                 </Route>
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
+                <Route path="/register" element={<RegisterDoor landing={<Landing />} form={<Register />} />} />
+                <Route path="/story" element={<Story />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />

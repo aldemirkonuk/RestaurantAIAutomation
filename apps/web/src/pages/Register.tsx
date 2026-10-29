@@ -77,7 +77,14 @@ export function Register() {
   const { registerAccount, registerRestaurant, joinViaInvite, error: authError } = useAuth()
   const on = usePublicDesign()
 
-  const [path, setPath] = useState<Path>('selector')
+  // Read the address before the first paint, so `?type=new` or an invite link
+  // never shows the chooser for a frame before the effect below moves on.
+  const [path, setPath] = useState<Path>(() => {
+    const type = searchParams.get('type')
+    if (searchParams.get('invite') || type === 'join') return 'join'
+    if (type === 'new') return 'create'
+    return 'selector'
+  })
   const [pathAStep, setPathAStep] = useState<PathAStep>(1)
   const [pathBStep, setPathBStep] = useState<PathBStep>(1)
   const [loading, setLoading] = useState(false)
@@ -406,7 +413,7 @@ export function Register() {
       {/* Back */}
       <button
         type="button"
-        onClick={() => setPath('selector')}
+        onClick={() => navigate('/register')}
         className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-6' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-6'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
@@ -812,7 +819,7 @@ export function Register() {
     >
       <button
         type="button"
-        onClick={() => setPath('selector')}
+        onClick={() => navigate('/register')}
         className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-4' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
