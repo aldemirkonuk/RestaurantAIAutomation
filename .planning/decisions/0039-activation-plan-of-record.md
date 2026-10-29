@@ -51,7 +51,7 @@ Contract in `GENERATION_BRIEF.md` §8 (amended alongside this ADR). Shape:
   cites evidence per the §3.3 discipline (no speculative programs), feeds the
   unit's cards/loops (a task no card or loop can carry is a finding, not a task),
   and respects every lock: **the pricing model stays deferred and brand/landing
-  visuals stay held** (founder re-confirmed 2026-08-28) — agendas may research
+  visuals stay held** (founder re-confirmed 2026-08-28) [2026-10-09: the landing page itself shipped as [ADR 0320](0320-the-root-is-a-landing-page-for-a-stranger.md) on the founder's 2026-10-08 word "landing page first"; pricing stays deferred and OD-23 open; the Blender/visual-asset hold stands] — agendas may research
   payment rails and do brand-voice groundwork, and may *prepare the unlock case*,
   never act past a lock.
 - **The agendas are the departments thinking** — design thinks brand voice and a
