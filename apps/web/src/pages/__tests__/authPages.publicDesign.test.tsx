@@ -189,11 +189,9 @@ const WAIT = { timeout: 3000 }
  * words a state differently from today's page, a reach waits for either
  * wording: the state reached is the same one. Account-only create (ADR 0213)
  * titles the leaf "Your Account" off the house path and "Who keeps this
- * book?" on it. Today's door shows its cards; the endpaper's door is the
- * sketch's two plain acts.
+ * book?" on it.
  */
 const CREATE_ACCOUNT = /^(Your Account|Who keeps this book\?)$/
-const DOOR = /^(Join Your Team|I have an invite code)$/
 
 async function loginResolved(result: {
   methods: ReturnType<typeof method>[]
@@ -294,15 +292,6 @@ const STATES: { name: string; page: 'login' | 'register'; reach: () => Promise<H
     name: 'login-nothing-works',
     page: 'login',
     reach: () => loginResolved({ methods: [] }),
-  },
-  {
-    name: 'register-selector',
-    page: 'register',
-    reach: async () => {
-      const r = renderAt(createElement(Register), '/register')
-      await screen.findByText(DOOR, undefined, WAIT)
-      return r.container
-    },
   },
   {
     name: 'register-join-code-valid',
@@ -477,9 +466,10 @@ describe('public switch ON — the house, from tokens', () => {
   it('absence is on: with no override and no env, the page wears the house', async () => {
     // No setSwitch() call at all — publicDesign.ts now resolves true unless
     // an explicit "off" override says otherwise (decision 0149 row 37).
-    // DOOR, not 'Join Your Team': the ON door is the endpaper's (sketch 118 B).
-    const r = renderAt(createElement(Register), '/register')
-    await screen.findByText(DOOR, undefined, WAIT)
+    // The chooser that used to open here is retired (ADR 0344); the
+    // landing's "Start free" asks for the new-house form.
+    const r = renderAt(createElement(Register), '/register?type=new')
+    await screen.findByText(CREATE_ACCOUNT, undefined, WAIT)
     const scopes = r.container.querySelectorAll('.mudavym')
     expect(scopes).toHaveLength(1)
     expect(scopes[0]).toBe(r.container.firstElementChild)
@@ -499,7 +489,7 @@ describe('public switch ON — the house, from tokens', () => {
 /* ── 3. Nothing moves ───────────────────────────────────────────────────── */
 
 describe('the switch changes the chrome, never the fields', () => {
-  it.each(STATES.filter((st) => st.name !== 'register-selector'))('$name: the same controls, in the same order, both switch positions', async ({ reach }) => {
+  it.each(STATES)('$name: the same controls, in the same order, both switch positions', async ({ reach }) => {
     setSwitch(false)
     const off = fieldSignature(await reach())
     cleanup()
@@ -509,31 +499,19 @@ describe('the switch changes the chrome, never the fields', () => {
   })
 
   /*
-   * The door is the one screen whose controls the founder redrew (sketch 118:
-   * two plain acts in place of the four responsive cards — two per layout,
-   * both always in the DOM). Its buttons differ by design, so what must hold
-   * is the flow: every button on it leads to one of the same two paths, and
-   * both paths are offered, in both switch positions.
+   * The two-card chooser is retired (ADR 0344): RegisterDoor shows a bare
+   * /register the landing page, so Register is only reached with a query, and
+   * a query it does not know opens the new-house form, never a chooser, in
+   * both switch positions.
    */
-  it('register-selector: the door leads to the same two paths, both switch positions', async () => {
-    const destinations = async (on: boolean) => {
+  it('register: no query opens the new-house form, both switch positions', async () => {
+    for (const on of [false, true]) {
       setSwitch(on)
-      const count = (await STATES.find((st) => st.name === 'register-selector')!.reach()).querySelectorAll('button').length
+      renderAt(createElement(Register), '/register')
+      await screen.findByText(CREATE_ACCOUNT, undefined, WAIT)
+      expect(screen.queryByLabelText('Invite Code')).toBeNull()
       cleanup()
-      const reached = new Set<string>()
-      for (let i = 0; i < count; i++) {
-        setSwitch(on)
-        const door = await STATES.find((st) => st.name === 'register-selector')!.reach()
-        fireEvent.click(door.querySelectorAll('button')[i])
-        if (await screen.findByLabelText('Invite Code', undefined, { timeout: 500 }).catch(() => null)) reached.add('join')
-        else if (screen.queryByLabelText('Full Name *')) reached.add('create')
-        else reached.add(`button ${i}: nowhere`)
-        cleanup()
-      }
-      return [...reached].sort()
     }
-    expect(await destinations(false)).toEqual(['create', 'join'])
-    expect(await destinations(true)).toEqual(['create', 'join'])
   })
 
   it('the classifier keeps layout classes out of the paint set', () => {
@@ -590,7 +568,7 @@ describe('the front matter — /login on the house path only', () => {
 
   it('ON /register does not', async () => {
     setSwitch(true)
-    await reachOf('register-selector')()
+    await reachOf('register-create-account-taken')()
     expect(screen.queryByRole('button', { name: TURN })).toBeNull()
   })
 
