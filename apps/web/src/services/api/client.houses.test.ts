@@ -54,6 +54,7 @@ function jwt(claims: Record<string, unknown>): string {
 }
 
 const assign = vi.fn();
+const reload = vi.fn();
 const realLocation = window.location;
 let href = "/inventory";
 let pathname = "/inventory";
@@ -73,6 +74,7 @@ beforeEach(() => {
         return pathname;
       },
       assign,
+      reload,
       get href() {
         return href;
       },
@@ -168,7 +170,8 @@ describe("apiClient and the session house", () => {
       expect(localStorage.getItem("refreshToken")).toBeNull();
       // A reload, not a stay: the app boots with no session, so `/` draws the
       // landing rather than a dashboard still holding the old person.
-      expect(sets).toEqual([page]);
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(sets).toEqual([]);
     },
   );
 
@@ -180,6 +183,7 @@ describe("apiClient and the session house", () => {
     await expect(h.handlers.onError!(sentFrom("/inventory"))).rejects.toBeDefined();
 
     expect(sets).toEqual(["/login"]);
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it("a request sent from / goes to /login if the person has since moved to a private page", async () => {
@@ -190,6 +194,61 @@ describe("apiClient and the session house", () => {
     await expect(h.handlers.onError!(sentFrom("/"))).rejects.toBeDefined();
 
     expect(sets).toEqual(["/login"]);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("any request sharing the refresh that was sent from a private page sends the person to /login", async () => {
+    pathname = "/";
+    href = "/";
+    deadSession();
+
+    // Two 401s in one tick share one refresh: the first from /, the second a
+    // late poll from /inventory. The second must still count.
+    const first = h.handlers.onError!(sentFrom("/"));
+    const second = h.handlers.onError!(sentFrom("/inventory"));
+    await expect(first).rejects.toBeDefined();
+    await expect(second).rejects.toBeDefined();
+
+    expect(sets).toEqual(["/login"]);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("after the reload, a page that dies again goes to /login instead of reloading again", async () => {
+    pathname = "/";
+    href = "/";
+    deadSession();
+    await expect(h.handlers.onError!(sentFrom("/"))).rejects.toBeDefined();
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    deadSession();
+    await expect(h.handlers.onError!(sentFrom("/"))).rejects.toBeDefined();
+
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(sets).toEqual(["/login"]);
+  });
+
+  it("after the reload, a tokenless 401 neither refreshes nor navigates", async () => {
+    pathname = "/";
+    href = "/";
+
+    await expect(h.handlers.onError!(sentFrom("/"))).rejects.toBeDefined();
+
+    expect(h.globalPost).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+    expect(sets).toEqual([]);
+  });
+
+  it("a refresh that succeeds clears the once-per-tab reload mark", async () => {
+    sessionStorage.setItem("deadSessionReloaded", "1");
+    localStorage.setItem("refreshToken", "r");
+    h.globalPost.mockResolvedValue({
+      data: { accessToken: jwt({ sub: U, restaurantId: A }), refreshToken: "r2" },
+    });
+    h.instance.mockResolvedValue({ data: "ok" });
+
+    await h.handlers.onError!(sentFrom("/"));
+
+    expect(sessionStorage.getItem("deadSessionReloaded")).toBeNull();
   });
 
   it("stamps each request with the page it was sent from", () => {

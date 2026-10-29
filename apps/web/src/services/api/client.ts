@@ -24,6 +24,27 @@ const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhos
 /** Single in-flight refresh promise — shared across all concurrent 401s */
 let refreshPromise: Promise<string> | null = null;
 
+/** The pages every request sharing that refresh was sent from. */
+let refreshAskers: string[] = [];
+
+/**
+ * Set for this tab when a dead session reloads a public page, so the reload
+ * happens once: if the page dies again, the person goes to /login instead of
+ * reloading forever. A refresh that succeeds clears it.
+ */
+const DEAD_SESSION_RELOADED = 'deadSessionReloaded';
+
+/** True once, then false until a refresh succeeds; false if storage throws. */
+function firstDeadSessionReload(): boolean {
+  try {
+    if (sessionStorage.getItem(DEAD_SESSION_RELOADED)) return false;
+    sessionStorage.setItem(DEAD_SESSION_RELOADED, '1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Exchange the refresh token for a new access token.
  * Throws (does NOT navigate) when there is no refresh token — the caller is
@@ -44,6 +65,11 @@ async function doTokenRefresh(): Promise<string> {
   );
   const { accessToken, refreshToken: newRefresh, houseAccessEnded } = response.data;
   storeSession(accessToken, newRefresh);
+  try {
+    sessionStorage.removeItem(DEAD_SESSION_RELOADED);
+  } catch {
+    // Storage blocked: the next dead session goes to /login, the old floor.
+  }
   // The session's house ended (ADR 0164, R5): the new pair names no house.
   // The person chooses; retrying this request would only be refused again.
   if (noteHouseEnded(accessToken, houseAccessEnded?.restaurantId)) {
@@ -100,9 +126,9 @@ function createApiClient(): AxiosInstance {
   // When the server rejects a token (expired or revoked), we:
   //   1. Start a single refresh call (or join the in-flight one)
   //   2. Retry the original request with the new token
-  //   3. If refresh fails, clear auth and redirect to /login, or, when both
-  //      the asking page and the current one are public, reload the current
-  //      page so it draws as it does for a stranger
+  //   3. If refresh fails, clear auth and redirect to /login, or, when every
+  //      asking page and the current one are public, reload the current page
+  //      once so it draws as it does for a stranger
   client.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {
@@ -118,9 +144,12 @@ function createApiClient(): AxiosInstance {
           return Promise.reject(error);
         }
 
+        // Every request sharing the refresh counts where it was sent from, not
+        // only the one that started it.
+        refreshAskers.push(originalRequest._sentFrom ?? window.location.pathname);
+
         // Deduplicate: all concurrent 401s share the same refresh call
         if (!refreshPromise) {
-          const sentFrom = originalRequest._sentFrom ?? window.location.pathname;
           refreshPromise = doTokenRefresh()
             .catch((err) => {
               // Only a refused refresh token ends the session (a 401 from the
@@ -134,11 +163,17 @@ function createApiClient(): AxiosInstance {
                 // A public page (/, /story, /register) stays where it is for a
                 // dead session (founder, 2026-10-29, ADR 0344): it reloads, so
                 // the app boots with no session and draws the page as it does
-                // for a stranger (at `/`, the landing, not the dashboard). A
+                // for a stranger (at `/`, the landing, not the dashboard). With
+                // no refresh token left, the reloaded page's 401s reject above
+                // without navigating; the once-per-tab mark is the backstop. A
                 // request sent from a private page still goes to sign in.
-                const here = window.location.pathname;
-                if (publicRouteFor(sentFrom) && publicRouteFor(here)) {
-                  window.location.href = here + (window.location.search ?? '');
+                const askers = refreshAskers;
+                if (
+                  askers.every((path) => publicRouteFor(path)) &&
+                  publicRouteFor(window.location.pathname) &&
+                  firstDeadSessionReload()
+                ) {
+                  window.location.reload();
                 } else {
                   window.location.href = '/login';
                 }
@@ -147,6 +182,7 @@ function createApiClient(): AxiosInstance {
             })
             .finally(() => {
               refreshPromise = null;
+              refreshAskers = [];
             });
         }
 
