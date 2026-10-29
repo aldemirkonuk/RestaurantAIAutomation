@@ -32,6 +32,7 @@ const refresh = vi.hoisted(() => ({ doRefresh: vi.fn() }));
 vi.mock("../lib/sessionRefresh", () => ({ doRefresh: refresh.doRefresh }));
 
 import { useAuthStore } from "./authStore";
+import { AUTH_STORAGE_KEY } from "../lib/deadSession";
 
 const USER = { userId: "u1", email: "a@b.com", name: "A", role: "owner", restaurantId: "house-A" };
 
@@ -143,10 +144,11 @@ describe("authStore.loadUser — 401 goes through the one shared doRefresh", () 
   });
 });
 
-describe("authStore.loadUser — a dead session on a public page stays put", () => {
+describe("authStore.loadUser — a dead session takes the API client's one reaction", () => {
   const realLocation = window.location;
   let href = "";
   let pathname = "";
+  const reload = vi.fn();
   const at = (page: string) => {
     href = page;
     pathname = page;
@@ -162,6 +164,7 @@ describe("authStore.loadUser — a dead session on a public page stays put", () 
         set href(v: string) {
           href = v;
         },
+        reload,
       },
     });
   };
@@ -179,19 +182,37 @@ describe("authStore.loadUser — a dead session on a public page stays put", () 
     Object.defineProperty(window, "location", { configurable: true, value: realLocation });
   });
 
-  it.each(["/", "/story", "/register"])("clears the session and stays on %s", async (page) => {
-    at(page);
-    deadSession();
-    await useAuthStore.getState().loadUser();
-    expect(localStorage.getItem("accessToken")).toBeNull();
-    expect(useAuthStore.getState().user).toBeNull();
-    expect(href).toBe(page);
-  });
+  it.each(["/", "/story", "/register"])(
+    "clears the session and the persisted person, and reloads %s",
+    async (page) => {
+      at(page);
+      deadSession();
+      await useAuthStore.getState().loadUser();
+      expect(localStorage.getItem("accessToken")).toBeNull();
+      expect(localStorage.getItem(AUTH_STORAGE_KEY)).toBeNull();
+      expect(useAuthStore.getState().user).toBeNull();
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(href).toBe(page);
+    },
+  );
 
   it("still sends a private page to /login", async () => {
     at("/inventory");
     deadSession();
     await useAuthStore.getState().loadUser();
     expect(href).toBe("/login");
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("after the reload, a boot with no token asks nothing, so the reload cannot repeat", async () => {
+    at("/");
+    await useAuthStore.getState().loadUser();
+    expect(h.get).not.toHaveBeenCalled();
+    expect(refresh.doRefresh).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("persists under the key the dead-session reaction clears", () => {
+    expect(useAuthStore.persist.getOptions().name).toBe(AUTH_STORAGE_KEY);
   });
 });

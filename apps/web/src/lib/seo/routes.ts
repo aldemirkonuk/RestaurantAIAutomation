@@ -197,8 +197,8 @@ export const TOKEN_PREFIXES: readonly string[] = [
  * Registry entry for an exact pathname, if it is a public page.
  *
  * Load-bearing for auth too (ADR 0344, 2026-10-29): a dead session on a page
- * this finds stays on it instead of going to /login (`client.ts`,
- * `authStore.ts`). Adding a page here is also a session decision; claims row
+ * this finds stays on it instead of going to /login (`lib/deadSession.ts`).
+ * Adding a page here is also a session decision; claims row
  * `ADR-0344-PUBLIC-REGISTRY-MEMBERS` pins the list.
  */
 export function publicRouteFor(pathname: string): PublicRoute | undefined {

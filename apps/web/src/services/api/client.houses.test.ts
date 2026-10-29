@@ -155,120 +155,64 @@ describe("apiClient and the session house", () => {
     localStorage.setItem("refreshToken", "r");
     h.globalPost.mockRejectedValue({ response: { status: 401 } });
   };
-  const sentFrom = (path: string) => ({ ...fail(401), config: { headers: {}, _sentFrom: path } });
 
   it.each(["/", "/story", "/register", "/register/"])(
     "a refused refresh token on the public page %s ends the session and reloads that page",
     async (page) => {
       pathname = page;
       href = page;
+      localStorage.setItem("auth-storage", JSON.stringify({ state: { user: { id: U } } }));
       deadSession();
 
-      await expect(h.handlers.onError!(sentFrom(page))).rejects.toBeDefined();
+      await expect(h.handlers.onError!(fail(401))).rejects.toBeDefined();
 
       expect(localStorage.getItem("accessToken")).toBeNull();
       expect(localStorage.getItem("refreshToken")).toBeNull();
-      // A reload, not a stay: the app boots with no session, so `/` draws the
-      // landing rather than a dashboard still holding the old person.
+      // The store's persisted copy of the person goes too, so the reloaded
+      // page boots with no one to draw: `/` draws the landing.
+      expect(localStorage.getItem("auth-storage")).toBeNull();
       expect(reload).toHaveBeenCalledTimes(1);
       expect(sets).toEqual([]);
     },
   );
 
-  it.each(["/", "/story"])(
-    "the reload on %s also clears the auth store's persisted copy of the person",
-    async (page) => {
-      pathname = page;
-      href = page;
-      localStorage.setItem("auth-storage", JSON.stringify({ state: { user: { id: U } } }));
-      deadSession();
-
-      await expect(h.handlers.onError!(sentFrom(page))).rejects.toBeDefined();
-
-      expect(localStorage.getItem("auth-storage")).toBeNull();
-      expect(reload).toHaveBeenCalledTimes(1);
-    },
-  );
-
-  it("a request sent from a private page goes to /login even if the person has since moved to /", async () => {
-    pathname = "/";
-    href = "/";
+  it("a private page clears the persisted person too on its way to /login", async () => {
+    localStorage.setItem("auth-storage", JSON.stringify({ state: { user: { id: U } } }));
     deadSession();
 
-    await expect(h.handlers.onError!(sentFrom("/inventory"))).rejects.toBeDefined();
+    await expect(h.handlers.onError!(fail(401))).rejects.toBeDefined();
 
+    expect(localStorage.getItem("auth-storage")).toBeNull();
     expect(sets).toEqual(["/login"]);
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it("a request sent from / goes to /login if the person has since moved to a private page", async () => {
-    pathname = "/inventory";
-    href = "/inventory";
-    deadSession();
-
-    await expect(h.handlers.onError!(sentFrom("/"))).rejects.toBeDefined();
-
-    expect(sets).toEqual(["/login"]);
-    expect(reload).not.toHaveBeenCalled();
-  });
-
-  it("any request sharing the refresh that was sent from a private page sends the person to /login", async () => {
+  it("concurrent 401s sharing one refused refresh react once", async () => {
     pathname = "/";
     href = "/";
     deadSession();
 
-    // Two 401s in one tick share one refresh: the first from /, the second a
-    // late poll from /inventory. The second must still count.
-    const first = h.handlers.onError!(sentFrom("/"));
-    const second = h.handlers.onError!(sentFrom("/inventory"));
+    const first = h.handlers.onError!(fail(401));
+    const second = h.handlers.onError!(fail(401));
     await expect(first).rejects.toBeDefined();
     await expect(second).rejects.toBeDefined();
 
-    expect(sets).toEqual(["/login"]);
-    expect(reload).not.toHaveBeenCalled();
+    expect(h.globalPost).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it("after the reload, a page that dies again goes to /login instead of reloading again", async () => {
+  it("after the reload, a tokenless 401 neither refreshes nor navigates, so the reload cannot repeat", async () => {
     pathname = "/";
     href = "/";
     deadSession();
-    await expect(h.handlers.onError!(sentFrom("/"))).rejects.toBeDefined();
+    await expect(h.handlers.onError!(fail(401))).rejects.toBeDefined();
     expect(reload).toHaveBeenCalledTimes(1);
 
-    deadSession();
-    await expect(h.handlers.onError!(sentFrom("/"))).rejects.toBeDefined();
+    // The reloaded page's requests carry no token and no refresh token.
+    await expect(h.handlers.onError!(fail(401))).rejects.toBeDefined();
 
+    expect(h.globalPost).toHaveBeenCalledTimes(1);
     expect(reload).toHaveBeenCalledTimes(1);
-    expect(sets).toEqual(["/login"]);
-  });
-
-  it("after the reload, a tokenless 401 neither refreshes nor navigates", async () => {
-    pathname = "/";
-    href = "/";
-
-    await expect(h.handlers.onError!(sentFrom("/"))).rejects.toBeDefined();
-
-    expect(h.globalPost).not.toHaveBeenCalled();
-    expect(reload).not.toHaveBeenCalled();
     expect(sets).toEqual([]);
-  });
-
-  it("a refresh that succeeds clears the once-per-tab reload mark", async () => {
-    sessionStorage.setItem("deadSessionReloaded", "1");
-    localStorage.setItem("refreshToken", "r");
-    h.globalPost.mockResolvedValue({
-      data: { accessToken: jwt({ sub: U, restaurantId: A }), refreshToken: "r2" },
-    });
-    h.instance.mockResolvedValue({ data: "ok" });
-
-    await h.handlers.onError!(sentFrom("/"));
-
-    expect(sessionStorage.getItem("deadSessionReloaded")).toBeNull();
-  });
-
-  it("stamps each request with the page it was sent from", () => {
-    pathname = "/story";
-    const config = h.handlers.onRequest!({ headers: {} });
-    expect(config._sentFrom).toBe("/story");
   });
 });
