@@ -6,7 +6,8 @@ export const AUTH_STORAGE_KEY = 'auth-storage';
 /**
  * A refused refresh token ended the session. The one reaction to that, shared
  * by the API client's interceptor and the auth store's boot load, so whichever
- * of the two notices first, the person sees the same thing (ADR 0344).
+ * of the two notices first, the reaction is the same (ADR 0344). AuthContext's
+ * own refresh clears the tokens without this; at boot the store reloads anyway.
  *
  * Both tokens and the store's persisted copy of the person go. A public page
  * (`/`, `/story`, `/register`, …) stays where it is for a dead session
