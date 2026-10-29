@@ -8,10 +8,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  */
 
 const h = vi.hoisted(() => {
-  const handlers: { onError?: (e: unknown) => Promise<unknown> } = {};
+  const handlers: {
+    onError?: (e: unknown) => Promise<unknown>;
+    onRequest?: (c: any) => any;
+  } = {};
   const instance: any = vi.fn();
   instance.interceptors = {
-    request: { use: vi.fn() },
+    request: {
+      use: vi.fn((onRequest: (c: any) => any) => {
+        handlers.onRequest = onRequest;
+      }),
+    },
     response: {
       use: vi.fn((_ok: unknown, onError: (e: unknown) => Promise<unknown>) => {
         handlers.onError = onError;
@@ -50,6 +57,7 @@ const assign = vi.fn();
 const realLocation = window.location;
 let href = "/inventory";
 let pathname = "/inventory";
+let sets: string[] = [];
 
 beforeEach(() => {
   localStorage.clear();
@@ -57,6 +65,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   href = "/inventory";
   pathname = "/inventory";
+  sets = [];
   Object.defineProperty(window, "location", {
     configurable: true,
     value: {
@@ -69,7 +78,9 @@ beforeEach(() => {
       },
       set href(v: string) {
         href = v;
+        sets.push(v);
       },
+      search: "",
     },
   });
 });
@@ -137,20 +148,53 @@ describe("apiClient and the session house", () => {
     expect(href).toBe("/login");
   });
 
+  const deadSession = () => {
+    localStorage.setItem("accessToken", "a");
+    localStorage.setItem("refreshToken", "r");
+    h.globalPost.mockRejectedValue({ response: { status: 401 } });
+  };
+  const sentFrom = (path: string) => ({ ...fail(401), config: { headers: {}, _sentFrom: path } });
+
   it.each(["/", "/story", "/register", "/register/"])(
-    "a refused refresh token on the public page %s ends the session and stays put",
+    "a refused refresh token on the public page %s ends the session and reloads that page",
     async (page) => {
       pathname = page;
       href = page;
-      localStorage.setItem("accessToken", "a");
-      localStorage.setItem("refreshToken", "r");
-      h.globalPost.mockRejectedValue({ response: { status: 401 } });
+      deadSession();
 
-      await expect(h.handlers.onError!(fail(401))).rejects.toBeDefined();
+      await expect(h.handlers.onError!(sentFrom(page))).rejects.toBeDefined();
 
       expect(localStorage.getItem("accessToken")).toBeNull();
       expect(localStorage.getItem("refreshToken")).toBeNull();
-      expect(href).toBe(page);
+      // A reload, not a stay: the app boots with no session, so `/` draws the
+      // landing rather than a dashboard still holding the old person.
+      expect(sets).toEqual([page]);
     },
   );
+
+  it("a request sent from a private page goes to /login even if the person has since moved to /", async () => {
+    pathname = "/";
+    href = "/";
+    deadSession();
+
+    await expect(h.handlers.onError!(sentFrom("/inventory"))).rejects.toBeDefined();
+
+    expect(sets).toEqual(["/login"]);
+  });
+
+  it("a request sent from / goes to /login if the person has since moved to a private page", async () => {
+    pathname = "/inventory";
+    href = "/inventory";
+    deadSession();
+
+    await expect(h.handlers.onError!(sentFrom("/"))).rejects.toBeDefined();
+
+    expect(sets).toEqual(["/login"]);
+  });
+
+  it("stamps each request with the page it was sent from", () => {
+    pathname = "/story";
+    const config = h.handlers.onRequest!({ headers: {} });
+    expect(config._sentFrom).toBe("/story");
+  });
 });

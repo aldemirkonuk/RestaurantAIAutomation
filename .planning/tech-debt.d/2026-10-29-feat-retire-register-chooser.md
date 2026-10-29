@@ -8,4 +8,4 @@ Filed by `feat/retire-register-chooser` (#699), seen on production right after #
 
 **Re-check.** Store any expired `accessToken` plus a refused `refreshToken` on mudavym.com, then open `/`. Today it ends on `/login`.
 
-**Closed.** The founder picked "Public pages stay put (Recommended)" on 2026-10-29. On a public page the refused refresh now clears the tokens and stays (`client.ts`, and the same branch in `authStore.ts`, which runs on every boot); private pages still go to `/login`. Recorded in ADR 0344.
+**Closed.** The founder picked "Public pages stay put (Recommended)" on 2026-10-29. On a public page the refused refresh now clears the tokens and keeps the person there (`client.ts` reloads the same address so it boots with no session, and `authStore.ts`, which runs on every boot, does not navigate); private pages still go to `/login`. Recorded in ADR 0344.

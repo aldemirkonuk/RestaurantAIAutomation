@@ -61,6 +61,9 @@ class HouseAccessEnded extends Error {
   }
 }
 
+/** The path a request was sent from, stamped by the request interceptor. */
+type SentFrom = { _sentFrom?: string };
+
 function createApiClient(): AxiosInstance {
   const client = axios.create({
     baseURL: `${API_GATEWAY_URL}/api/v1`,
@@ -79,6 +82,10 @@ function createApiClient(): AxiosInstance {
         config.headers.Authorization = `Bearer ${token}`;
       }
 
+      // The page this request was sent from, so a session that dies later is
+      // judged by where it was asked, not where the person has moved since.
+      (config as SentFrom)._sentFrom = window.location.pathname;
+
       const restaurantId = localStorage.getItem('activeRestaurantId');
       if (restaurantId) {
         config.headers['X-Restaurant-Id'] = restaurantId;
@@ -93,12 +100,13 @@ function createApiClient(): AxiosInstance {
   // When the server rejects a token (expired or revoked), we:
   //   1. Start a single refresh call (or join the in-flight one)
   //   2. Retry the original request with the new token
-  //   3. If refresh fails, clear auth and redirect to /login (a public page
-  //      stays put)
+  //   3. If refresh fails, clear auth and redirect to /login, or, when both
+  //      the asking page and the current one are public, reload the current
+  //      page so it draws as it does for a stranger
   client.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {
-      const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
+      const originalRequest = error.config as AxiosRequestConfig & SentFrom & { _retry?: boolean };
 
       if (error.response?.status === 401 && !originalRequest._retry) {
         originalRequest._retry = true;
@@ -112,6 +120,7 @@ function createApiClient(): AxiosInstance {
 
         // Deduplicate: all concurrent 401s share the same refresh call
         if (!refreshPromise) {
+          const sentFrom = originalRequest._sentFrom ?? window.location.pathname;
           refreshPromise = doTokenRefresh()
             .catch((err) => {
               // Only a refused refresh token ends the session (a 401 from the
@@ -122,11 +131,15 @@ function createApiClient(): AxiosInstance {
               if (!(err instanceof HouseAccessEnded) && status === 401) {
                 localStorage.removeItem('accessToken');
                 localStorage.removeItem('refreshToken');
-                // A public page (/, /story, /register) reads the same for a
-                // stranger, so a dead session just ends there and the page
-                // stays put; only a private page goes to sign in (founder,
-                // 2026-10-29, ADR 0344).
-                if (!publicRouteFor(window.location.pathname)) {
+                // A public page (/, /story, /register) stays where it is for a
+                // dead session (founder, 2026-10-29, ADR 0344): it reloads, so
+                // the app boots with no session and draws the page as it does
+                // for a stranger (at `/`, the landing, not the dashboard). A
+                // request sent from a private page still goes to sign in.
+                const here = window.location.pathname;
+                if (publicRouteFor(sentFrom) && publicRouteFor(here)) {
+                  window.location.href = here + (window.location.search ?? '');
+                } else {
                   window.location.href = '/login';
                 }
               }
