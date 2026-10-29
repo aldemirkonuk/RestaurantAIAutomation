@@ -175,6 +175,21 @@ describe("apiClient and the session house", () => {
     },
   );
 
+  it.each(["/", "/story"])(
+    "the reload on %s also clears the auth store's persisted copy of the person",
+    async (page) => {
+      pathname = page;
+      href = page;
+      localStorage.setItem("auth-storage", JSON.stringify({ state: { user: { id: U } } }));
+      deadSession();
+
+      await expect(h.handlers.onError!(sentFrom(page))).rejects.toBeDefined();
+
+      expect(localStorage.getItem("auth-storage")).toBeNull();
+      expect(reload).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it("a request sent from a private page goes to /login even if the person has since moved to /", async () => {
     pathname = "/";
     href = "/";

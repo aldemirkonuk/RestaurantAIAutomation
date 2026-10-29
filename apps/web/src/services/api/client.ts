@@ -173,6 +173,9 @@ function createApiClient(): AxiosInstance {
                   publicRouteFor(window.location.pathname) &&
                   firstDeadSessionReload()
                 ) {
+                  // The store's persisted copy of the person goes too, so
+                  // nothing on the reloaded page can draw them.
+                  localStorage.removeItem('auth-storage');
                   window.location.reload();
                 } else {
                   window.location.href = '/login';
