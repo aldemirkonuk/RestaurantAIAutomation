@@ -72,6 +72,19 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
     sitemap: false,
   },
   {
+    // The platform told as one sample night (ADR 0344). Linked from the
+    // landing and listed, on the founder's answer of 2026-10-29. The title is
+    // the page's own eyebrow; the sentence is drawn from its opening lines.
+    path: '/story',
+    file: 'crawl/heads/story.html',
+    head: indexable(
+      '/story',
+      titleWithSite('A story in one night'),
+      'One sample night behind a restaurant: the invoices, counts, orders and vendor mail Mudavym handles, and where it asks first.',
+    ),
+    sitemap: true,
+  },
+  {
     // Title and sentence are the page's own words in the ratified public
     // treatment (ADR 0149, Codex public-pages lane: PublicShell title
     // "Privacy & data", voice line below). Change them with the page.

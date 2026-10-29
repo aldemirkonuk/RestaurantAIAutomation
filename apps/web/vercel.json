@@ -71,6 +71,10 @@
       "destination": "/crawl/heads/register.html"
     },
     {
+      "source": "/story",
+      "destination": "/crawl/heads/story.html"
+    },
+    {
       "source": "/privacy",
       "destination": "/crawl/heads/privacy.html"
     },

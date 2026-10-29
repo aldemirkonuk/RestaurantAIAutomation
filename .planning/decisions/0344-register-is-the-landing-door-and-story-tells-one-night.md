@@ -100,7 +100,7 @@ Before this record, `/register` with no query showed Register's two-card chooser
      - one ResizeObserver that measures the fit and keeps the reader's place.
    - The two asks (order, reply) can be approved and undone, and the closing receipt follows. The page says "Try it. Nothing leaves this page." and calls no API.
    - Its one button is the landing's (`CTA` → `START`). Its other links go to `/login` and `/`.
-   - `/story` is unlisted: it is not in the public route registry (`lib/seo/routes.ts`), and nothing on the landing links to it yet.
+   - ~~`/story` is unlisted: it is not in the public route registry (`lib/seo/routes.ts`), and nothing on the landing links to it yet.~~ [2026-10-29: listed and linked on the founder's pick, see Owed forks.]
 
 ## Consequences
 
@@ -142,12 +142,12 @@ Before this record, `/register` with no query showed Register's two-card chooser
   - On a phone at 390×844 only Tomorrow (`st-next`) plays by time; at 390×664 the ask and Tomorrow play. Every other chapter is pinned.
   - Tomorrow's call names its trigger as a labelled sample (`Story.tsx:958`): "Not built yet, and no date."
   - The contact sheets, the shoot script and the facts the landing may state (`landing-facts.md`) are in `p4-scratch/landing-2026-10-28/`; each review round's scripts and outputs are in its `round2/` and `round3/`.
-- **Owed forks, the founder's to answer** (never defaults):
-  - go-live itself;
-  - whether the "Coming soon" food band stays while ADR 0342 parks taste prediction;
-  - whether a stranger's ground follows the device's dark mode;
-  - whether `/story` is linked from the landing and listed in the sitemap;
-  - whether Login's "Create one now" goes straight to `?type=new`.
+- **Owed forks, the founder's to answer** (never defaults) [answered 2026-10-29 except go-live, his picks quoted]:
+  - go-live itself [still his];
+  - ~~whether the "Coming soon" food band stays while ADR 0342 parks taste prediction~~ [*"Keep, labelled (Recommended)"*: it stays worded as coming, with no figure, labelled];
+  - ~~whether a stranger's ground follows the device's dark mode~~ [*"Follow device (Recommended)"*: as built];
+  - ~~whether `/story` is linked from the landing and listed in the sitemap~~ [*"Link /story"*: linked from the landing's bar and footer as "The story", with its own crawl head, sitemap row and llms.txt line (`seo/routes.ts`, `vercel.json`; claims row `ADR-0344-STORY-IS-LISTED`)];
+  - ~~whether Login's "Create one now" goes straight to `?type=new`~~ [*"Login → ?type=new"*: `Login.tsx` links `START` from `doors.ts`; claims row `ADR-0344-LOGIN-OPENS-THE-FORM`].
 - **Owed work:**
   - ~~`/register`'s head still says "Create an account" and duplicates `/` without a canonical~~ [done 2026-10-29 on this PR: the served head for `/register` names `/` as its canonical, carries the root's title and sentence, and is out of the sitemap and llms.txt, since a sitemap lists canonical URLs only (`seo/routes.ts`, claims row `ADR-0344-REGISTER-HEAD-NAMES-ROOT`). The tab still says "Create an account · Mudavym" on the form: `RegisterDoor` names what it draws, because `RouteHead` keys on the path alone];
   - Register's chooser code, with its unverified claims, is still in `Register.tsx` and should be retired in its own change, after this PR merges (the router no longer reaches it);

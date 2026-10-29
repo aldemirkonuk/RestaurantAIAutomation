@@ -64,6 +64,13 @@ describe('Landing', () => {
     signIn.forEach((a) => expect(a.getAttribute('href')).toBe('/login'));
   });
 
+  it('links the story, in the bar and the footer (founder, 2026-10-29)', () => {
+    mount();
+    const story = screen.getAllByRole('link', { name: 'The story' });
+    expect(story).toHaveLength(2);
+    story.forEach((a) => expect(a.getAttribute('href')).toBe('/story'));
+  });
+
   it('links only to its own routes and anchors', () => {
     const { container } = mount();
     container.querySelectorAll('a').forEach((a) => {

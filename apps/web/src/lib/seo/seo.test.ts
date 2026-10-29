@@ -230,6 +230,13 @@ describe('sitemap and llms.txt', () => {
     expect(xml).not.toContain('lastmod');
   });
 
+  it('lists /story and leaves out /register, which copies the root (ADR 0344)', () => {
+    expect(renderPagesSitemap()).toContain('<loc>https://mudavym.com/story</loc>');
+    expect(renderLlmsTxt()).toContain('(https://mudavym.com/story)');
+    expect(renderPagesSitemap()).not.toContain('/register');
+    expect(renderLlmsTxt()).not.toContain('/register');
+  });
+
   it('holds /terms out of the sitemap and llms.txt (OD-170, noindex until final text)', () => {
     expect(renderPagesSitemap()).not.toContain('/terms');
     expect(renderLlmsTxt()).not.toContain('/terms');

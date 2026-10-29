@@ -1224,6 +1224,9 @@ export function Landing() {
             <a className="ld-nav-hide" href="#next" onClick={(e) => jump(e, 'next')}>
               Coming soon
             </a>
+            <Link className="ld-nav-hide" to="/story">
+              The story
+            </Link>
             <Link to="/login">Sign in</Link>
             <Go to={START} className="ld-btn ld-btn-sm" />
           </nav>
@@ -1654,6 +1657,7 @@ export function Landing() {
             <Wordmark size={16} />
           </Link>
           <nav aria-label="Legal">
+            <Link to="/story">The story</Link>
             <Link to="/privacy">Privacy</Link>
             <Link to="/terms">Terms</Link>
           </nav>
