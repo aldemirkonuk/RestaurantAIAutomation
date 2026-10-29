@@ -195,11 +195,10 @@ function App() {
             <Suspense fallback={<HousePageLoader />}>
               <Routes>
                 {/* The root: a stranger's landing page, a signed-in person's dashboard
-                    (ADR 0320). RootDoor is a pathless layout and the dashboard its
-                    `/` child, so it renders through the same DashboardLayout outlet
-                    as before and the route still names its page by path. */}
-                <Route element={<RootDoor landing={<Landing />} />}>
-                  <Route path="/" element={<PageGate page="dashboard" next={<DashboardNext />} />} />
+                    (ADR 0320). The dashboard is this route's index child so that it
+                    renders through the same DashboardLayout outlet as before. */}
+                <Route path="/" element={<RootDoor landing={<Landing />} />}>
+                  <Route index element={<PageGate page="dashboard" next={<DashboardNext />} />} />
                 </Route>
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />

@@ -116,6 +116,22 @@ describe("the flag", () => {
 });
 
 describe("armed, and every legitimate no-op carries its reason", () => {
+  // The service judges freshness against today. The fixture's newest month is
+  // 2026-08 and these series allow 70 days, so on the real clock they went
+  // stale on 2026-10-10 and every verdict here turned into a staleness refusal.
+  // Pin the date the fixture was taken; fake nothing but Date.
+  beforeEach(() => {
+    jest.useFakeTimers({
+      now: new Date("2026-09-05T12:00:00Z"),
+      doNotFake: [
+        "hrtime", "nextTick", "performance", "queueMicrotask", "requestAnimationFrame",
+        "cancelAnimationFrame", "requestIdleCallback", "cancelIdleCallback", "setImmediate",
+        "clearImmediate", "setInterval", "clearInterval", "setTimeout", "clearTimeout",
+      ],
+    });
+  });
+  afterEach(() => jest.useRealTimers());
+
   const withFlag = async (fn: () => Promise<void>) => {
     process.env[COMMODITY_ALERT_DARK_FLAG] = "true";
     try {
