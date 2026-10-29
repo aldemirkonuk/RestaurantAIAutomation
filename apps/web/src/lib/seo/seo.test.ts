@@ -101,7 +101,7 @@ describe('head block', () => {
 });
 
 describe('registry', () => {
-  it('every public route is indexable and canonical to itself, except /terms, held noindex on purpose', () => {
+  it('every public route is indexable and canonical to itself, except /terms, held noindex on purpose, and /register, which shows the landing', () => {
     for (const r of PUBLIC_ROUTES) {
       // OD-170: /terms is held noindex, out of the sitemap, until its final
       // legal text and subprocessor list exist. A held route carries no
@@ -111,6 +111,13 @@ describe('registry', () => {
         expect(r.head.robots, r.path).toBe('noindex, nofollow');
         expect(r.sitemap, r.path).toBe(false);
         expect(r.head.canonical, r.path).toBeUndefined();
+      } else if (r.path === '/register') {
+        // ADR 0344: a bare /register renders the landing page, so its head
+        // names the root as the page it copies and is out of the sitemap.
+        expect(r.head.robots, r.path).toBe('index, follow');
+        expect(r.head.canonical, r.path).toBe(`${SITE.origin}/`);
+        expect(r.head.title, r.path).toBe(SITE.name);
+        expect(r.sitemap, r.path).toBe(false);
       } else {
         expect(r.head.robots, r.path).toBe('index, follow');
         expect(r.head.canonical, r.path).toBe(`${SITE.origin}${r.path}`);

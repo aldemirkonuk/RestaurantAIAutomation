@@ -60,10 +60,16 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
     sitemap: true,
   },
   {
+    // A bare /register shows the landing page, the same one `/` shows a
+    // stranger (RegisterDoor, ADR 0344), and the host serves this head for
+    // every query on the path. So it names `/` as the page it copies, carries
+    // the root's title and sentence, and stays out of the sitemap, which lists
+    // canonical URLs only. The sign-up form behind `?type=new` is not a page to
+    // index.
     path: '/register',
     file: 'crawl/heads/register.html',
-    head: indexable('/register', titleWithSite('Create an account'), SITE.sentence),
-    sitemap: true,
+    head: indexable('/', SITE.name, SITE.sentence),
+    sitemap: false,
   },
   {
     // Title and sentence are the page's own words in the ratified public

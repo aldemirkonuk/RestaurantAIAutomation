@@ -3,8 +3,8 @@
  * anyone sent on to it: the landing's button, its invite-code line, and every
  * invite link.
  */
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { JOIN, START } from './Landing';
 import { RegisterDoor, wantsForm } from './RegisterDoor';
@@ -34,5 +34,22 @@ describe('RegisterDoor', () => {
     at('/register?type=other');
     expect(screen.getByText('landing')).toBeTruthy();
     expect(wantsForm(new URLSearchParams('type=other&utm_source=mail'))).toBe(false);
+  });
+
+  it('names the form in the tab, and the landing again when the query drops', () => {
+    render(
+      <MemoryRouter initialEntries={[START]}>
+        <Routes>
+          <Route
+            path="/register"
+            element={<RegisterDoor landing={<p>landing</p>} form={<Link to="/register">back</Link>} />}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(document.title).toBe('Create an account · Mudavym');
+    fireEvent.click(screen.getByText('back'));
+    expect(screen.getByText('landing')).toBeTruthy();
+    expect(document.title).toBe('Mudavym');
   });
 });

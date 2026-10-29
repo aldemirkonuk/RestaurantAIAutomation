@@ -149,9 +149,9 @@ Before this record, `/register` with no query showed Register's two-card chooser
   - whether `/story` is linked from the landing and listed in the sitemap;
   - whether Login's "Create one now" goes straight to `?type=new`.
 - **Owed work:**
-  - `/register`'s head still says "Create an account" and duplicates `/` without a canonical;
-  - Register's chooser code, with its unverified claims, is still in `Register.tsx` and should be retired in its own change;
-  - this record's README row goes in its own PR.
+  - ~~`/register`'s head still says "Create an account" and duplicates `/` without a canonical~~ [done 2026-10-29 on this PR: the served head for `/register` names `/` as its canonical, carries the root's title and sentence, and is out of the sitemap and llms.txt, since a sitemap lists canonical URLs only (`seo/routes.ts`, claims row `ADR-0344-REGISTER-HEAD-NAMES-ROOT`). The tab still says "Create an account · Mudavym" on the form: `RegisterDoor` names what it draws, because `RouteHead` keys on the path alone];
+  - Register's chooser code, with its unverified claims, is still in `Register.tsx` and should be retired in its own change, after this PR merges (the router no longer reaches it);
+  - ~~this record's README row goes in its own PR~~ [corrected 2026-10-29: README.md:18 puts a new ADR's row in the same PR as its file, and a deferred row becomes an owned edit, so the row is on this PR].
 - **Not done:**
   - no Lighthouse or Core Web Vitals measurement of `/story`;
   - every browser check was in Chromium. Firefox, Safari's scroll anchoring and a real iOS rotation were not run; browsers without `view-timeline` take the played path, which was run only by emulating its absence in Chromium;
