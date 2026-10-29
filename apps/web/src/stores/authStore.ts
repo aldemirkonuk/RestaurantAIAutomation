@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import axios from 'axios'
 import { doRefresh } from '../lib/sessionRefresh'
+import { publicRouteFor } from '../lib/seo/routes'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -293,7 +294,11 @@ export const useAuthStore = create<AuthState>()(
             if (!localStorage.getItem('refreshToken')) {
               get().clearTokens()
               set({ user: null, loading: false })
-              window.location.href = '/login'
+              // A public page (/, /story, /register) stays put for a dead
+              // session, as in the API client (founder, 2026-10-29, ADR 0344).
+              if (!publicRouteFor(window.location.pathname)) {
+                window.location.href = '/login'
+              }
             } else {
               set({ loading: false })
             }

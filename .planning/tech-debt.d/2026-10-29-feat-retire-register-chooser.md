@@ -1,4 +1,4 @@
-## A visitor with a dead stored session is sent from `/` to `/login` instead of seeing the landing — OPEN — 2026-10-29
+## A visitor with a dead stored session is sent from `/` to `/login` instead of seeing the landing — ~~OPEN~~ CLOSED on `fix/register-door-followups` — 2026-10-29
 
 Filed by `feat/retire-register-chooser` (#699), seen on production right after #697 merged (27069116d), in the browser pane, which held an old session.
 
@@ -7,3 +7,5 @@ Filed by `feat/retire-register-chooser` (#699), seen on production right after #
 **Why it is not fixed here.** On every protected page, that redirect is the intended end of a session (ADR 0164), and for a returning person with an account, `/login` is arguably the right door. Changing it means picking between keeping today's `/login`, or not navigating when the current path is a public page (`/`, `/register`, `/story`, `/privacy`) and letting `RootDoor` draw the landing. That choice is the founder's, so this entry only records the behaviour.
 
 **Re-check.** Store any expired `accessToken` plus a refused `refreshToken` on mudavym.com, then open `/`. Today it ends on `/login`.
+
+**Closed.** The founder picked "Public pages stay put (Recommended)" on 2026-10-29. On a public page the refused refresh now clears the tokens and stays (`client.ts`, and the same branch in `authStore.ts`, which runs on every boot); private pages still go to `/login`. Recorded in ADR 0344.

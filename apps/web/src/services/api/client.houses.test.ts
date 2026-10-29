@@ -49,16 +49,20 @@ function jwt(claims: Record<string, unknown>): string {
 const assign = vi.fn();
 const realLocation = window.location;
 let href = "/inventory";
+let pathname = "/inventory";
 
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   vi.clearAllMocks();
   href = "/inventory";
+  pathname = "/inventory";
   Object.defineProperty(window, "location", {
     configurable: true,
     value: {
-      pathname: "/inventory",
+      get pathname() {
+        return pathname;
+      },
       assign,
       get href() {
         return href;
@@ -132,4 +136,21 @@ describe("apiClient and the session house", () => {
     expect(localStorage.getItem("refreshToken")).toBeNull();
     expect(href).toBe("/login");
   });
+
+  it.each(["/", "/story", "/register", "/register/"])(
+    "a refused refresh token on the public page %s ends the session and stays put",
+    async (page) => {
+      pathname = page;
+      href = page;
+      localStorage.setItem("accessToken", "a");
+      localStorage.setItem("refreshToken", "r");
+      h.globalPost.mockRejectedValue({ response: { status: 401 } });
+
+      await expect(h.handlers.onError!(fail(401))).rejects.toBeDefined();
+
+      expect(localStorage.getItem("accessToken")).toBeNull();
+      expect(localStorage.getItem("refreshToken")).toBeNull();
+      expect(href).toBe(page);
+    },
+  );
 });

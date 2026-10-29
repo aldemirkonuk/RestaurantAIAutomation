@@ -17,6 +17,7 @@
 
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { goToChooser, noteHouseEnded, storeSession } from '../../lib/houseMemory';
+import { publicRouteFor } from '../../lib/seo/routes';
 
 const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
 
@@ -92,7 +93,8 @@ function createApiClient(): AxiosInstance {
   // When the server rejects a token (expired or revoked), we:
   //   1. Start a single refresh call (or join the in-flight one)
   //   2. Retry the original request with the new token
-  //   3. If refresh fails, clear auth and redirect to /login
+  //   3. If refresh fails, clear auth and redirect to /login (a public page
+  //      stays put)
   client.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {
@@ -120,7 +122,13 @@ function createApiClient(): AxiosInstance {
               if (!(err instanceof HouseAccessEnded) && status === 401) {
                 localStorage.removeItem('accessToken');
                 localStorage.removeItem('refreshToken');
-                window.location.href = '/login';
+                // A public page (/, /story, /register) reads the same for a
+                // stranger, so a dead session just ends there and the page
+                // stays put; only a private page goes to sign in (founder,
+                // 2026-10-29, ADR 0344).
+                if (!publicRouteFor(window.location.pathname)) {
+                  window.location.href = '/login';
+                }
               }
               throw err;
             })

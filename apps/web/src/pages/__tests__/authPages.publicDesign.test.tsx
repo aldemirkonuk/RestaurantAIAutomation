@@ -510,6 +510,9 @@ describe('the switch changes the chrome, never the fields', () => {
       renderAt(createElement(Register), '/register')
       await screen.findByText(CREATE_ACCOUNT, undefined, WAIT)
       expect(screen.queryByLabelText('Invite Code')).toBeNull()
+      // The retired chooser (ADR 0344) draws neither of its leaves.
+      expect(screen.queryByText(/Whose book is this/)).toBeNull()
+      expect(screen.queryByText(/POS \+ supplier sync/)).toBeNull()
       cleanup()
     }
   })

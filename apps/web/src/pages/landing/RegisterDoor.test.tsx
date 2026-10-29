@@ -36,6 +36,14 @@ describe('RegisterDoor', () => {
     expect(wantsForm(new URLSearchParams('type=other&utm_source=mail'))).toBe(false);
   });
 
+  it.each(['/register?invite=', '/register?invite', '/register?invite=&utm_source=mail'])(
+    'shows the landing page for an invite with no code at %s',
+    (url) => {
+      at(url);
+      expect(screen.getByText('landing')).toBeTruthy();
+    },
+  );
+
   it('names the form in the tab, and the landing again when the query drops', () => {
     render(
       <MemoryRouter initialEntries={[START]}>

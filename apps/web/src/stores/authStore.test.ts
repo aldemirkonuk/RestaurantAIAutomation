@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 /**
  * ADR 0164, item 2/3. Before this fix, `loadUser`'s catch block treated ANY
@@ -140,5 +140,58 @@ describe("authStore.loadUser — 401 goes through the one shared doRefresh", () 
 
     expect(localStorage.getItem("refreshToken")).toBe("r");
     expect(useAuthStore.getState().loading).toBe(false);
+  });
+});
+
+describe("authStore.loadUser — a dead session on a public page stays put", () => {
+  const realLocation = window.location;
+  let href = "";
+  let pathname = "";
+  const at = (page: string) => {
+    href = page;
+    pathname = page;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        get pathname() {
+          return pathname;
+        },
+        get href() {
+          return href;
+        },
+        set href(v: string) {
+          href = v;
+        },
+      },
+    });
+  };
+  const deadSession = () => {
+    localStorage.setItem("accessToken", "expired");
+    localStorage.setItem("refreshToken", "r");
+    h.get.mockRejectedValue({ response: { status: 401 } });
+    refresh.doRefresh.mockImplementation(async () => {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      return null;
+    });
+  };
+  afterEach(() => {
+    Object.defineProperty(window, "location", { configurable: true, value: realLocation });
+  });
+
+  it.each(["/", "/story", "/register"])("clears the session and stays on %s", async (page) => {
+    at(page);
+    deadSession();
+    await useAuthStore.getState().loadUser();
+    expect(localStorage.getItem("accessToken")).toBeNull();
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(href).toBe(page);
+  });
+
+  it("still sends a private page to /login", async () => {
+    at("/inventory");
+    deadSession();
+    await useAuthStore.getState().loadUser();
+    expect(href).toBe("/login");
   });
 });
