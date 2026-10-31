@@ -1,9 +1,11 @@
 -- New houses get InventoryNext at /inventory by default (ADR 0315; founder,
 -- 2026-10-31: "Default ON (Recommended)").
 --
--- Every house that existed on 2026-10-31 already has the column TRUE (the
--- coordinator's flip after #677; ADR 0315:43), so this changes only rows
--- inserted from now on. It writes no existing row. A house with NO settings row
+-- Every house measured on production at 2026-10-31 20:44Z (15 of 15, each with
+-- a settings row) had the column TRUE after the coordinator's flip (ADR
+-- 0315:43). This changes only the default for rows inserted after it is
+-- applied; it writes no existing row, so a house created between that
+-- measurement and the apply keeps whatever it was given. A house with NO settings row
 -- is answered by the gateway registry's `defaultValue` instead, which flips to
 -- true in this same change (apps/api-gateway/src/settings/feature-flag-registry.ts).
 -- The version is provisional: it is renumbered past main's newest at merge.
