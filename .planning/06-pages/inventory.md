@@ -913,7 +913,7 @@ ported). An earlier "mount dark" option was withdrawn in the same session: `inve
 `next`, and the mount line alone would put Next live for every house.
 
 So the order is:
-1. A new page key `inventory_next`, OFF by default, flag-gated, **not** in `LIVE_PAGES`. App.tsx:
+1. A new page key `inventory_next`, OFF by default [2026-10-31: on for every house after #677's flip, and ON by default for new houses since #704 (`97a0d324`)], flag-gated, **not** in `LIVE_PAGES`. App.tsx:
    `next={<InventoryRoute />}`, and `next/InventoryRoute.tsx` picks InventoryNext or the command
    page from `useMudavymDesign('inventory_next')`. [built 2026-10-30: a plain branch, not the nested
    `PageGate` first written here, because a second gate mounts a second `HouseHeader` and
