@@ -8,7 +8,10 @@
 -- measurement and the apply keeps whatever it was given. A house with NO settings row
 -- is answered by the gateway registry's `defaultValue` instead, which flips to
 -- true in this same change (apps/api-gateway/src/settings/feature-flag-registry.ts).
--- The version is provisional: it is renumbered past main's newest at merge.
+-- The version is final, not a placeholder. Main's and production's newest is
+-- 20261231000000 (mudavym_design_inventory_next_flag, #677; read from
+-- supabase_migrations.schema_migrations at 2026-10-31), and this sorts just
+-- after it, as scripts/check_migration_order.py requires of every new file.
 
 alter table public.restaurant_feature_flags
   alter column mudavym_design_inventory_next set default true;
