@@ -66,12 +66,12 @@ choose (`teams/product.md:108-114`).
 | Push and websocket infrastructure | [[engineering-charter]] *(Platform)* | `apps/api-gateway/src/push/expo-push.service.ts`, `websocket/websocket.gateway.ts` exist; we specify the routing, not the transport |
 | The waiter-facing screen and its motion | [[design-charter]] | We own *who is notified and how fast*; they own what it looks and feels like |
 | Guest identity on the check | [[guest-identity-consent-charter]] | We route to staff. A table is not a guest, and we never resolve one to the other |
-| Staff performance management | — **nobody, deliberately** | Check-in data is a service signal, not an HR record. See below |
+| Staff performance management | — **nobody, deliberately** | Check-in data is a service signal, not an HR record. See below **[SUPERSEDED 2026-10-31 for per-waiter floor figures by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): the founder answered *"EVERYTHING"* on 2026-10-30, so per-waiter scores, rankings (as a sort only, with no "#1", medal or "bottom" label: ADR 0346 F3, `0346:135`), reports and CSV ship; that they go to owners and managers only is his *"Nothing for now"* (the waiter's phone) and ADR 0346 D2's reading of it for every surface.]** |
 
 **The explicit non-goal that protects the mandate:** this team does **not** produce staff
 performance scores, rankings, or disciplinary evidence. If check-in timing becomes a
 management stick, the data becomes adversarial and the product stops working. That is a
-design constraint, not a nicety.
+design constraint, not a nicety. **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): the founder reversed this non-goal on 2026-10-30 (*"EVERYTHING"*). Scores, rankings and exports by name ship to owners and managers only, and a waiter's own phone shows none of them (*"Nothing for now"*). The management-stick risk named here is not removed: ADR 0346 carries it in its risk section, with mitigations it says do not stop a manager using a true figure as a stick.]**
 
 ## Metrics it moves
 
@@ -124,12 +124,12 @@ else here.
 
 ## Entry trigger
 
-This team is **gated**. It stands up in two stages, each with an explicit trigger:
+This team is **gated**. It stands up in two stages, each with an explicit trigger: **[SUPERSEDED 2026-10-31 by [[0345-floor-checker-is-ported-into-mudavym]] D4 (Proposed), the executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick; the build plan is [[floor-checker]] §2. He picked *"Port in-SPA (Recommended)"* and, for Food-up, *"Include it (Recommended)"* over "Leave it out for now", whose option text was that "the food-up alert waits for a kitchen-ready event from the POS" (2026-10-30). The floor runs on its own taps and Food-up is a tap, so neither Stage 1 nor Stage 2 waits for a provider. No question on these triggers was asked.]**
 
 1. **Stage 0 — input audit (unblocked, start now).** Per provider in
    `apps/api-gateway/src/pos-hub/pos-provider.registry.ts`, does it emit `table_id` and
    `server_name`, and does it emit any kitchen-ready signal? Deliverable is a table. No
-   product code.
+   product code. **[SUPERSEDED as a gate 2026-10-31 by [[0345-floor-checker-is-ported-into-mudavym]] D4 (Proposed, the executor's call under the founder's delegation): Stage 0 no longer gates the floor build. Its per-provider table is still an input to the features that need a till feed by their own option texts (the automatic Paid from a closed check, the till vs floor mismatch; OD-64), to ADR 0345 E4's till-name links, and to pick 9's tray of till-taught tables (*"Builder starts from the till"*, whose option text reads "Tables the till already taught wait in a tray to be named, placed and sectioned.", evidence `0345-floor-checker-research.md:484`), since it says which providers send table words. It gates none of them.]**
 2. **Stage 1 — check-in timing.** Trigger: **one non-simulator provider emitting
    `table_id` + `server_name` for a real restaurant.** This slice needs no kitchen-ready
    event and is the honest v0.

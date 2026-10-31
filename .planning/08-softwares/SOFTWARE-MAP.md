@@ -22,12 +22,13 @@ division (8, ADR 0049)  →  software (this layer)  →  page (47, PAGES-MAP)  �
 Contract: [[SOFTWARE-CONTRACT]] · Decision: [ADR 0052](../decisions/0052-software-catalog-layer.md)
 
 <!-- ROSTER:BEGIN — generated from note frontmatter; regenerate rather than hand-edit -->
-## The roster — 26 small softwares
+## The roster — 27 small softwares
 
 | Software | Division | Status | Tier | Screens | Gateway modules | Agents | Owner |
 |---|---|---|---|---|---|---|---|
 | **[[calendar\|Calendar]]** | Restaurant | `partial` | core | [[06-pages/calendar\|calendar]] | `calendar`, `events` | 1 | [[messaging-delivery-charter\|messaging-delivery]] |
 | **[[dashboard-home\|Dashboard Home]]** | Restaurant | `partial` | core | [[06-pages/dashboard\|dashboard]] | `dashboard` | — | **unowned — gap** |
+| **[[floor-checker\|Floor Checker]]** | Restaurant | `planned` | core | *no page note yet*; `/floor`, `/floor/builder`, `/floor/me` planned | `floor` (planned) | — | [[service-floor-charter\|service-floor]] |
 | **[[inventory-command\|Inventory Command]]** | Restaurant | `partial` | core | [[06-pages/inventory\|inventory]] | `inventory`, `inventory-ledger`, `storage-locations` | 4 | [[inventory-ledger-charter\|inventory-ledger]] |
 | **[[notifications\|Notifications]]** | Restaurant | `partial` | core | [[06-pages/notifications\|notifications]] | `notifications`, `push` | 1 | [[messaging-delivery-charter\|messaging-delivery]] |
 | **[[orders\|Orders]]** | Restaurant | `partial` | core | [[06-pages/orders\|orders]] | `procurement` | 2 | [[procurement-vendor-network-charter\|procurement-vendor-network]] |
@@ -106,7 +107,9 @@ none of them fixed here — this layer documents, it does not repair.
    2026-09-26 as roster rows only, `grep -c '^| \*\*\[\[.*unowned — gap' SOFTWARE-MAP.md` → 8,
    guarded by CLAIMS row `SOFTWARES-2026-09-26-UNOWNED-ROSTER-ROWS`. The unanchored grep an
    earlier draft cited also matched its own sentence and returned 9. This finding previously
-   said 6, which undercounted). The pattern
+   said 6, which undercounted). **[Amended 2026-10-31: the roster now has 27 rows. The new
+   one, [[floor-checker]] (`planned`, ADR 0345, Proposed), is owned by `service-floor`, so
+   8 rows are still unowned, now of 27; the CLAIMS row was re-pointed to 27. No roster generator exists (none under `scripts/` or `.github/` on `origin/main`, searched 2026-10-31), so the row was written by hand to match `floor-checker.md`'s frontmatter.]** The pattern
    is consistent and worth naming: charters were written per *module*, so every product that
    spans modules has four teams owning a slice and disclaiming the whole.
 3. **`common/orchestrator/` is where unowned product logic accumulates** — 7,256 LOC, 8

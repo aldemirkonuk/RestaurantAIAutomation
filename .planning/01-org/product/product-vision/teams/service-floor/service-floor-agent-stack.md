@@ -66,7 +66,7 @@ escalates_to: "[[product-vision-charter]]; unfiled or stale asks additionally to
 2. **No per-staff output, ever.** No performance scores, rankings, or disciplinary evidence
    (charter §Non-goals). If check-in timing becomes a management stick the data turns
    adversarial and the product stops working; emitting one would reverse that non-goal as a
-   side effect rather than as a founder decision (premortem M2).
+   side effect rather than as a founder decision (premortem M2). **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): the founder reversed the non-goal on 2026-10-30 (*"EVERYTHING"*). Per-waiter output ships to owners and managers only, gated at the gateway, the socket and the export (ADR 0346 D3), and none goes into an insight or recommendation until the post-#617 follow-up lands (ADR 0346 `:143`). An agent that showed staff a per-name figure would still reverse a ruling (*"Nothing for now"*) as a side effect.]**
 
 ## 3. Skills
 

@@ -42,7 +42,7 @@ graph TD
   J --> M
 
   L --> N[Escalate to OPEN-DECISIONS]
-  F --> O{Does it produce per-staff performance data?}
+  F --> O{"Does it produce per-staff performance data?<br/>[SUPERSEDED 2026-10-31 by ADR 0346 (Proposed):<br/>per-waiter figures for owners and managers are ruled.<br/>A figure shown to staff still escalates.]"}
   O -->|yes| N
   O -->|no| M
 ```
@@ -53,7 +53,7 @@ graph TD
 |---|---|---|
 | **Team** | The check-in window; the engagement signal's shape; the ambiguity fallback; the latency measurement boundary and its segments; the audit's format | What counts as "timely"; whether the fallback is section or expo; how staleness is defined for `server → device` |
 | **Department** ([[product-vision-charter]]) | Stage triggers; whether Stage 1 ships alone as a product; the person-routing contract as a shared shape | "Is check-in timing a product without the alert?" |
-| **Founder / `OPEN-DECISIONS.md`** | Reversing the no-performance-data non-goal; accepting a non-zero mis-route rate; changing the latency promise from acknowledgment to dispatch; an in-venue hardware path | A per-waiter ranking export; a floor-mounted screen instead of personal push |
+| **Founder / `OPEN-DECISIONS.md`** | Reversing the no-performance-data non-goal **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): reversed by the founder on 2026-10-30 (*"EVERYTHING"*), for owners and managers; showing staff a figure is still his call]**; accepting a non-zero mis-route rate; changing the latency promise from acknowledgment to dispatch; an in-venue hardware path | A per-waiter ranking export; a floor-mounted screen instead of personal push |
 
 **Null-input rule.** `simpos` is a **development target, never evidence**. A capability
 demonstrated only against `apps/api-gateway/src/simpos/` does not satisfy any stage trigger.
@@ -85,7 +85,7 @@ performance scores, rankings, or disciplinary exports. The commercial purpose is
 and better service. Reversing this is a founder decision recorded in `OPEN-DECISIONS.md`,
 because the consequence — staff defeating the measurement and the data becoming confidently
 false — is a product failure, not a policy disagreement
-([[service-floor-premortem]] M2).
+([[service-floor-premortem]] M2). **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): the founder made the reversal on 2026-10-30 (*"EVERYTHING"*), in AskUserQuestion, and ADR 0346 records it in place of an `OPEN-DECISIONS.md` row. Per-waiter scores, rankings and exports ship to owners and managers only, and a waiter's own phone shows none (*"Nothing for now"*). M2's consequence stands: ADR 0346 says its mitigations do not stop a manager using a true figure as a stick.]**
 
 ## Escalation trigger
 
@@ -93,7 +93,7 @@ Escalate to `OPEN-DECISIONS.md` when **any** of these holds:
 
 1. A mis-route is observed in **any** environment, including staging.
 2. A per-staff performance view, ranking, or export is requested — the **first** request,
-   not the tenth.
+   not the tenth. **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): met, and answered by the founder on 2026-10-30 (*"EVERYTHING"*): per-waiter figures ship to owners and managers. A request to show staff a figure still escalates.]**
 3. A stage trigger is proposed to be satisfied by simulator evidence.
 4. Two consecutive close-times report *blocked* without a named counterparty and a dated ask.
 5. The latency promise is proposed to change from device-acknowledgment to dispatch.

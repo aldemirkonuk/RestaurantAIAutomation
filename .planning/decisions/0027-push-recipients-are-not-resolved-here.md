@@ -151,7 +151,7 @@ and the 42P10, so the next reader does not re-derive this.
 - **Also standing:** the 42P10 on `notification_preferences` remains open, and
   web push cannot work until it is settled. This ADR does not settle it — it
   removes a reader that was pointed at the wrong thing regardless of how that
-  question is answered.
+  question is answered. **[Corrected 2026-10-31 by [ADR 0345](0345-floor-checker-is-ported-into-mudavym.md) D3 (Proposed): this is no longer standing. ADR 0149 row 39 (2026-09-18, *"Per person per house"*) moved push subscriptions out of the preferences table (`0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once.md:127`). They live in `notification_push_devices`, one row per device per user, keyed `UNIQUE (user_id, endpoint)` (`supabase/migrations/20260925160500_a_preference_is_kept_once_per_person_per_house.sql:96-120`). Registration upserts on that key (`apps/api-gateway/src/notifications/notifications.service.ts:229-238`), and `sendWebPush` reads that table (`:150-163`). So the 42P10 above no longer blocks web push, and the description of `sendWebPush` at `:62-68` here is of the code as it was on 2026-08-26. Not verified: whether any device in production has received a push. This ADR's Decision and Status are unchanged: it stays Proposed, and locking it is the founder's (`:5`; OD-238).]**
 - **Revisit when:** anything asks for push recipients by anything other than a
   user id, or when the 42P10 fork is settled and `push_subscription` becomes
   writable *and* a caller wants push routed by role rather than by user.
@@ -161,3 +161,4 @@ and the 42P10, so the next reader does not re-derive this.
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-08-26 | — | Created; supersedes the "repoint and rename" recommendation in `.planning/04-specs/HANDOFF-push-subscriptions.md` §4 |
+| 2026-10-31 | Fork-answer fold (workflow floor-checker-docs-reconcile, session ca58311b) | OD-238 decided (B) as the executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick (ADR 0345 D3): this ADR stays Proposed, because a lock is the founder's (`:5`), and ADR 0345 states its own no-new-push-table rule. Line 154 bracket-corrected in place: ADR 0149 row 39 and `notification_push_devices` closed the 42P10 it calls standing. Records only; no line moved |

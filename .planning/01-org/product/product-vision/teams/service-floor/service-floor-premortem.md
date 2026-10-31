@@ -37,7 +37,7 @@ which needs only `table_id` + `server_name`; Stage 2 — the personal alert — 
 until a kitchen-ready event is *modelled in `CanonicalCheck` and emitted by a non-simulator
 provider*. [[service-floor-directive]]'s null-input rule makes `simpos` a development
 target and never evidence. If the input audit comes back empty for every `available`
-provider, the honest product is Stage 1 alone, and that is a smaller thing that can be true.
+provider, the honest product is Stage 1 alone, and that is a smaller thing that can be true. **[SUPERSEDED 2026-10-31 for the Floor Checker port, as at `service-floor-charter.md:127` ([[floor-checker]] §2, Proposed): by the executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick ([[0345-floor-checker-is-ported-into-mudavym]] D4, where the delegation is quoted), his *"Port in-SPA (Recommended)"* and *"Include it (Recommended)"* (2026-10-30) replace the staged gate, so this counter-pressure and the signal at `:30-32` do not hold the port back. The port's floor and Food-up run on staff taps; M1 stays true for an alert that waits on a till's kitchen-ready event.]**
 
 ---
 
@@ -59,11 +59,11 @@ request for a per-staff ranking or export.
 **Counter-pressure.** Three, and they are design decisions made now rather than policy made
 later. **(a)** The charter names a deliberate non-goal — no staff performance scores,
 rankings, or disciplinary exports — and that is a founder-level decision to reverse
-([[service-floor-directive]]). **(b)** "Real engagement" is defined by a **signal the staff
+([[service-floor-directive]]). **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): the founder made that reversal on 2026-10-30 (*"EVERYTHING"*); per-waiter scores, rankings and exports ship to owners and managers only.]** **(b)** "Real engagement" is defined by a **signal the staff
 member benefits from producing**, not one that only indicts them: an alert acknowledged
 because it was useful, not a proximity beacon. **(c)** Aggregate before it leaves the team:
 service-level views by shift or section, not by name, unless the founder explicitly
-reverses.
+reverses. **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): the founder explicitly reversed on 2026-10-30 (*"EVERYTHING"*), so views by name ship; that they go to owners and managers only is his *"Nothing for now"* (the waiter's phone) and ADR 0346 D2's reading of it for every surface. M2's failure description above stays true and is not superseded.]**
 
 ---
 
@@ -138,11 +138,11 @@ than discovered after launch.
 
 - **The staging gate is the whole strategy.** Stage 0 (audit) → Stage 1 (check-in timing) →
   Stage 2 (personal alert), each with a named trigger in [[service-floor-charter]]. Skipping
-  to Stage 2 is M1.
+  to Stage 2 is M1. **[SUPERSEDED 2026-10-31 for the Floor Checker port, as at `service-floor-charter.md:127` (the executor's call under the founder's 2026-10-31T16:57:09Z delegation, [[0345-floor-checker-is-ported-into-mudavym]] D4; not the founder's words): the port ships before Stage 1's and Stage 2's triggers fire, because its floor and its Food-up alert run on staff taps, not on a till event.]**
 - **Mis-route target is zero and is never traded for latency.** Two errors that are not
   commensurable are never summed ([[service-floor-directive]]).
 - **The surveillance non-goal is a founder-level decision to reverse**, not a team
-  preference. That is what makes M2 survivable.
+  preference. That is what makes M2 survivable. **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): the founder made that reversal on 2026-10-30 (*"EVERYTHING"*). What stands against M2 now is ADR 0346's mitigation set, which it says does not stop a manager using a true figure as a stick.]**
 - **[[red-team-charter]] should attack the "real engagement" definition** specifically — it
   is the single place where a reasonable-looking design choice turns this into a monitoring
   product. Findings-only ([[ORG_STRUCTURE]] §3).

@@ -116,7 +116,7 @@ packaging, Core carries the product.
   is a tuning problem; each needs something built before any tier over it is honest.
 - **Two boundaries outrank packaging.** Floor Checker (S05/S07/S16) must never be sold as staff
   performance analytics — the moment it is, the floor produces false compliance data and every
-  tier above Core measures a fiction. And S17's Pro must never mean auto-merge: a false merge
+  tier above Core measures a fiction. **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): per-waiter floor scores, rankings and exports now ship to owners and managers (*"EVERYTHING"*, 2026-10-30); how a tier is named or sold is not ruled there.]** And S17's Pro must never mean auto-merge: a false merge
   is silent, global, and unrecoverable, and un-merge provably does not restore inventory.
 - **One labelling rule binds any tier page built from this map.** Never headline a catalogue
   total. The shipped UI prints *"375 insight types"*; the enumerated space is **573** and only

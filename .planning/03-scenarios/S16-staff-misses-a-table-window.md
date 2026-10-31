@@ -60,12 +60,12 @@ sales and better service, not compliance monitoring** — that distinction is lo
 - **Satisfiability check:** all three need the `table→server` join **and** a modelled kitchen-ready
   event — neither exists, so the owner sees none today. And by charter this is **not a staff
   performance score** ([[service-floor-charter|service-floor]] non-goals): check-in data is a service signal, and the
-  moment it becomes disciplinary evidence the floor produces confident, false compliance data.
+  moment it becomes disciplinary evidence the floor produces confident, false compliance data. **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): the charter's non-goal was reversed on 2026-10-30 (*"EVERYTHING"*): per-waiter scores, on-time % and rankings ship to owners and managers only. The false-compliance risk is carried in ADR 0346's risk section, not removed.]**
 
 ## 7. Decisions
 Human decides — the waiter acts on the alert, the manager reallocates a section. System
 **proposes** (ask→propose→confirm→execute): a reassignment or a nudge. It never disciplines,
-never scores a person, never silently records a miss against a name.
+never scores a person, never silently records a miss against a name. **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): the floor now scores each waiter and keeps their gaps against their name, for owners and managers (*"EVERYTHING"*, 2026-10-30), and the floor phone tells each waiter once that taps are timed and scored (ADR 0346 D11). The system still proposes and never disciplines.]**
 
 ## 8. Failure modes
 - Mis-route to the wrong waiter → `floor.misroute_rate` must be **0**; a wrong-waiter ping trains
@@ -106,7 +106,7 @@ them is absent from the *type system*, not just from the data.
 **Boundary that outranks the tier cut:** the commercial purpose is **more sales and better
 service, not compliance monitoring**, and that distinction is load-bearing. The moment
 check-in data becomes disciplinary evidence, the floor produces confident, false compliance
-data and every tier above Core is measuring a fiction. No pricing decision relaxes this.
+data and every tier above Core is measuring a fiction. No pricing decision relaxes this. **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): per-waiter floor figures now ship to owners and managers (*"EVERYTHING"*, 2026-10-30). The risk is carried in ADR 0346's risk section, not removed, and how a tier is sold is not ruled there.]**
 
 ## 11. Evolution feedback
 Where windows are missed teaches staffing and section sizing; where routing is ambiguous teaches

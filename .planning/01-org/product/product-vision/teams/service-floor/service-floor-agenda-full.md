@@ -90,9 +90,9 @@ the failure mode here is not building badly — it is building the fun part firs
 - [ ] Define "real engagement" as a staff-beneficial signal; record the rejected
       alternatives · [[service-floor-premortem]] M2
 - [ ] Record the no-performance-scores non-goal as a founder-level decision, not a team
-      preference
+      preference **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): moot: the founder reversed the non-goal on 2026-10-30 (*"EVERYTHING"*).]**
 - [ ] Do **not** build push routing until Stage 2's trigger fires. This is a listed
-      non-action on purpose.
+      non-action on purpose. **[SUPERSEDED 2026-10-31 for the Floor Checker port, as at `service-floor-charter.md:127` (the executor's call under the founder's 2026-10-31T16:57:09Z delegation, [[0345-floor-checker-is-ported-into-mudavym]] D4; not the founder's words): the port builds the floor's push chain (D2 and D3) before Stage 2's trigger fires, because its Food-up runs on staff taps, not on a till event.]**
 
 ## Questions for the founder
 
@@ -104,7 +104,7 @@ the failure mode here is not building badly — it is building the fun part firs
 2. **The surveillance line.** The charter names "no staff performance scores, rankings, or
    disciplinary exports" as a deliberate non-goal, because the alternative is a system staff
    defeat. The first manager to ask for a per-waiter report will have a reasonable case.
-   Confirm this is a founder-level decision to reverse, not a team preference.
+   Confirm this is a founder-level decision to reverse, not a team preference. **[SUPERSEDED 2026-10-31 by [[0346-waiter-scores-and-rankings-ship-to-managers]] (Proposed): answered: the founder reversed it on 2026-10-30 (*"EVERYTHING"*). Per-waiter figures go to owners and managers only, and a waiter's own phone shows none (*"Nothing for now"*).]**
 3. **What is "real engagement"?** A proximity beacon indicts; an acknowledged alert informs.
    The second is weaker evidence and a better product. Which are we building?
 4. **What is the latency promise?** p95 to *device acknowledgment* is honest and partly

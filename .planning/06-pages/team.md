@@ -409,8 +409,8 @@ nothing in the repository writes), :516 (`restaurants/members`), :87 (`calendar`
 **Core** — operate (scheduling is operating furniture; no S-scenario claims it as
 spine). Boundary that binds this page's future: Floor Checker scenarios
 (S05/S07/S16) "must never be sold as staff performance analytics"
-([TIER-MAP](../03-scenarios/TIER-MAP.md):104-105) — the PerformancePanel here is
-sales-ingest based, which is the permitted kind; keep the two apart.
+([TIER-MAP](../03-scenarios/TIER-MAP.md):117-118) — the PerformancePanel here is
+sales-ingest based, which is the permitted kind; keep the two apart. **[SUPERSEDED 2026-10-31 by [ADR 0346](../decisions/0346-waiter-scores-and-rankings-ship-to-managers.md) (Proposed): that boundary is superseded for per-waiter floor figures, which ship to owners and managers (*"EVERYTHING"*, 2026-10-30). The two measures still stay apart: ADR 0346 D6 keeps the floor score off this card. The TIER-MAP citation read `:104-105` until 2026-10-31, when it was corrected in place.]**
 
 ## 7. Rebrand surface
 
@@ -682,9 +682,9 @@ real upload; the performance panel refuses to draw numbers it does not have and 
 the rule (`PerformancePanel.tsx:200-207`); `TeamNext`'s error banner, its `— ` for an
 unanswered count, and its *"a withheld number, not a zero"* labour copy.
 
-The boundary to defend: TIER-MAP:104-105 — Floor Checker scenarios (S05/S07/S16)
+The boundary to defend: TIER-MAP:117-118 — Floor Checker scenarios (S05/S07/S16)
 "must never be sold as staff performance analytics". `PerformancePanel` is
-sales-ingest based, which is the permitted kind. Keep them apart.
+sales-ingest based, which is the permitted kind. Keep them apart. **[SUPERSEDED 2026-10-31 by [ADR 0346](../decisions/0346-waiter-scores-and-rankings-ship-to-managers.md) (Proposed): that boundary is superseded for per-waiter floor figures, which ship to owners and managers (*"EVERYTHING"*, 2026-10-30). The two measures still stay apart: ADR 0346 D6 keeps the floor score off this card. The TIER-MAP citation read `:104-105` until 2026-10-31, when it was corrected in place.]**
 
 ## 13. Roadmap
 

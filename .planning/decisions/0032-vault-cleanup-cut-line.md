@@ -236,6 +236,21 @@ None of the eleven duplicates or supersedes an existing doc, so there is nothing
 honest to retire. This is a one-time waiver for these eleven files, not a
 standing exemption. The next new doc still owes a real trade or its own row here.
 
+## Retire-to-write waiver — ADR 0345, the Floor Checker note and its evidence (2026-10-31)
+
+**The executor's call under the founder's 2026-10-31T16:57:09Z delegation, not
+his word** ([ADR 0345](0345-floor-checker-is-ported-into-mudavym.md) D5,
+`0345:359-371`): retire-to-write (CLAUDE.md §4) is waived for two new files,
+`.planning/08-softwares/floor-checker.md` (the software note) and
+`.planning/decisions/evidence/0345-floor-checker-research.md` (the evidence
+note). The software note is the catalog's own form, one document per small
+software, and no existing document holds its build plan. The evidence note is
+the durable copy of the founder's AskUserQuestion answers, which the session
+keeps only in a scratchpad a reboot deletes. ADRs 0345, 0346 and 0347 need no
+row: a decision record retires nothing. The founder can overrule this. It is
+a one-time waiver for these two files, not a standing exemption; the next new
+doc still owes a real trade or its own row here.
+
 ## Consequences
 
 - Vault search, the Obsidian graph, and the unique-filename rule now operate on
@@ -290,3 +305,7 @@ standing exemption. The next new doc still owes a real trade or its own row here
   (Recommended)": the five get the same one-time waiver, and all eleven now
   carry his word. See "Retire-to-write waiver — the 2026-09-21 research
   judges".
+- 2026-10-31 — the executor's call under the founder's 2026-10-31T16:57:09Z
+  delegation, not his word: a one-time retire-to-write waiver for the Floor
+  Checker software note and its evidence note (ADR 0345 D5). See "Retire-to-write
+  waiver — ADR 0345, the Floor Checker note and its evidence".
