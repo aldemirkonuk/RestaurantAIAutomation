@@ -563,7 +563,14 @@ export class AnalyticsController {
     return this.tableAnalytics.listTables(restaurantId);
   }
 
+  /**
+   * Owner or manager only, as the PATCH below (ADR 0303 residual 12: it
+   * carried only the class JwtAuthGuard, so any staff login of the house
+   * could add or overwrite a table). No web or mobile code calls it yet.
+   */
   @Post("tables/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Create/update a floor table",
     description:
@@ -681,7 +688,17 @@ export class AnalyticsController {
     }
   }
 
+  /**
+   * Owner or manager only (the founder, 2026-10-30: a waiter sees no figures
+   * for now). Each table's average check, revenue per seat and tip %. Until
+   * 2026-10-31 it carried only the class JwtAuthGuard, so any staff login of
+   * the house could read it; its export (`reports/exports`) was already owner
+   * or manager only. RolesGuard is exact, so admin is not admitted (ADR 0164).
+   * Pinned by `analytics-money-needs-a-manager.spec.ts`.
+   */
   @Get("table-performance/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Per-table metrics + geometry correlations + learned driver weights",
@@ -699,7 +716,13 @@ export class AnalyticsController {
     );
   }
 
+  /**
+   * Owner or manager only, as `table-performance` above: every server's
+   * revenue, average check, tip % and peer rank, by name.
+   */
   @Get("waiters/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Waiter performance — raw and table-adjusted",
     description:
@@ -726,7 +749,13 @@ export class AnalyticsController {
     return this.tableAnalytics.getBasketAffinity(restaurantId);
   }
 
+  /**
+   * Owner or manager only, as `table-performance` above: each open check's
+   * spend so far and pace per minute, with its table and its server's name.
+   */
   @Get("hot-tables/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Live table surge watchlist",
     description:

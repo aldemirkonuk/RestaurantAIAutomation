@@ -116,11 +116,13 @@ export function useReportExports({ queryRoot }: { queryRoot: string }): ExportDe
 
   // The gateway also admits `admin`; the web's role type has no such value.
   const canExport = activeRole === 'owner' || activeRole === 'manager';
+  // Not "every figure is still on the sheet": the table and server registers
+  // refuse staff too (the founder, 2026-10-30: a waiter sees no figures).
   const readOnlyReason = canExport
     ? null
     : activeRole == null
       ? 'Your role at this restaurant is not known yet, so exports are not offered until it is.'
-      : 'Exports are written for owners and managers. Every figure is still on the sheet above.';
+      : 'Exports are written for owners and managers, and so are the table and server registers above.';
 
   const key = [queryRoot, 'exports', activeRestaurantId, page];
   const list = useQuery({
