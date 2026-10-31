@@ -138,7 +138,8 @@ export function useGoalsDesk({ place, queryRoot }: GoalsDeskOptions): GoalsDesk 
   const readOnlyReason = canWrite
     ? null
     : activeRole === null
-      ? 'Your role at this restaurant is not known yet, so the desk is read-only until it is.'
+      ? 'Your role at this restaurant is not confirmed here, so the desk is read-only. ' +
+        'Ask a manager or an owner to set or change a goal.'
       : 'Goals are set by owners and managers. You can read every figure here; the controls are theirs.';
 
   const refresh = useCallback(() => {

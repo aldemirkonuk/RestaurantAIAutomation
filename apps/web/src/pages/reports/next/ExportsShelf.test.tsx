@@ -419,4 +419,17 @@ describe('useReportExports — the desk (OD-81)', () => {
     await new Promise((r) => setTimeout(r, 20));
     expect(api.get).not.toHaveBeenCalled();
   });
+
+  it('[REVERT-FAILS] a role that is not known reads no list, and is told its role is not confirmed, not that it will be', async () => {
+    auth.role = null;
+    const { result } = renderHook(() => useReportExports({ queryRoot: 'reports-next' }), { wrapper: wrapper() });
+    expect(result.current.canExport).toBe(false);
+    expect(result.current.readOnlyReason).toBe(
+      'Your role at this restaurant is not confirmed here, so exports are not offered. ' +
+        'Ask a manager or an owner to write one up.',
+    );
+    expect(result.current.readOnlyReason).not.toMatch(/yet|until/i);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(api.get).not.toHaveBeenCalled();
+  });
 });
