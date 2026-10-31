@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Get,
   HttpException,
@@ -19,6 +20,8 @@ import {
   ApiQuery,
 } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../auth/guards/roles.guard";
+import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { InventoryLedgerService } from "./inventory-ledger.service";
 import {
@@ -37,7 +40,7 @@ import {
 
 @ApiTags("inventory-ledger")
 @Controller("inventory-ledger")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 export class InventoryLedgerController {
   private readonly logger = new Logger(InventoryLedgerController.name);
 
@@ -47,7 +50,13 @@ export class InventoryLedgerController {
   // TRANSACTIONS
   // ==========================================================================
 
+  // Owners and managers only (ADR 0315, mount-line fix a). This route writes
+  // any movement its caller names, a write-off (waste, comp, return) among
+  // them, and a write-off is for owners and managers. The routes staff do use
+  // stay open: a count is `inventory/:id/reconcile` below, and a pour is
+  // `POST /inventory/:id/pour`.
   @Post("transactions")
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Record a new inventory transaction" })
   @ApiResponse({
     status: 201,
@@ -75,6 +84,9 @@ export class InventoryLedgerController {
       if (error.message?.includes("Insufficient stock")) {
         throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
       }
+      // A key already spent on a different movement (mount-line fix b). It
+      // is a 409 with its sentence, not a 500.
+      if (error instanceof ConflictException) throw error;
 
       throw new HttpException(
         error.message || "Failed to create transaction",
@@ -84,6 +96,7 @@ export class InventoryLedgerController {
   }
 
   @Post("transactions/bulk")
+  @Roles("owner", "manager")
   @ApiOperation({ summary: "Record multiple inventory transactions" })
   @ApiResponse({
     status: 201,
