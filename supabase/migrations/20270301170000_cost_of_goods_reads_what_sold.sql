@@ -21,6 +21,9 @@
 --                        house's checks that CLOSED at or after p_since and
 --                        are NOT voided. sales = sum(price x qty). price is the
 --                        line's unit price before tax and surcharge.
+--                        units = sum(qty), the quantity as rung: a glass line
+--                        counts glasses and a bottle line bottles, so units
+--                        is not a bottle count (ADR 0297). bottles_out is.
 --   bottles_out          from inventory_transactions: this house's rows with
 --                        source 'pos', type 'sale' or 'return', stock 'live',
 --                        dated at or after p_since; bottles_out =
@@ -39,7 +42,9 @@
 --
 -- plus the counts a reader needs to say what it could not read: checks,
 -- lines, unmapped_lines and unmapped_sales (lines naming no stock item; the
--- sales sum covers the readable ones), unreadable_lines (lines naming a stock
+-- sales sum covers the readable ones, so an unmapped line whose price or qty
+-- is not a number is counted in unmapped_lines and adds nothing to
+-- unmapped_sales), unreadable_lines (lines naming a stock
 -- item whose price, qty or id is not a number or a uuid: counted, not
 -- raised), and the window's two clocks: first_check_at (the earliest closed
 -- check, where sales start), first_move_at (the earliest POS ledger row,
@@ -54,11 +59,23 @@
 -- whole call. AnalyticsService reads an error as a failed read: the
 -- figures go null with that reason, never smaller ones (ADR 0067).
 --
--- WHAT A CALLER STILL CHECKS. An item id is proved to be this house's only
--- where mapped is true. The ids a line or a ledger row names come from this
--- house's rows but are not joined to restaurant_inventory, so a caller checks
--- each against the house's items before it names one (AnalyticsService lists
--- an id with no row as no longer in the books). The read also leans on two
+-- WHAT THE INGEST WRITES, AND THIS FILE ASSUMES. A line's price is in major
+-- units: CanonicalItem.price says so (pos-hub/pos-types.ts), and the Square
+-- and Clover adapters divide minor units by 100 (pos-adapters.ts `cents`). A
+-- void is a whole check: PosHubService writes the 'return' rows only for a
+-- check whose voided is true, and writes that flag to the check's row as
+-- pos_checks.voided, so both halves of this read drop it together. A
+-- canonical line carries no void of its own. A change to either breaks this
+-- read, and should change this file.
+--
+-- WHAT A CALLER STILL CHECKS. p_restaurant_id is trusted: service_role reads
+-- past RLS, so the caller takes the house from the tenant-checked route,
+-- never from a request body or a tool argument. An item id is proved to be
+-- this house's only where mapped is true. The ids a line or a ledger row
+-- names come from this house's rows but are not joined to
+-- restaurant_inventory, so a caller checks each against the house's items
+-- before it names one (AnalyticsService lists an id with no row as no longer
+-- in the books). The read also leans on two
 -- NOT NULL columns, pos_checks.voided and inventory_transactions.inventory_id:
 -- a NULL voided would drop its check's sales while its bottles still count,
 -- and the SQL test pins both.
@@ -199,12 +216,14 @@ COMMENT ON FUNCTION public.pos_item_sales(uuid, timestamptz) IS
   'naming the item on closed, non-voided checks) and bottles the POS moved '
   '(-sum of source pos sale/return ledger rows), and whether a mapping of this '
   'house points at it (mapped items that did neither are listed with zeros). '
-  'One jsonb value. A line whose price, qty or id is not a number or a uuid '
-  'is counted, not raised; a line the gateway ingest wrote cannot raise, but '
+  'units is the quantity as rung (glasses or bottles), not bottles; '
+  'bottles_out is bottles. One jsonb value. A line whose price, qty or id '
+  'is not a number or a uuid is counted, not raised; a line the gateway ingest wrote cannot raise, but '
   'a numeric string or product past numeric''s range, written directly, '
   'raises for the whole call. An item id is proved this house''s only where '
   'mapped is true; check any other against the house''s items before naming '
-  'it. Read by AnalyticsService (cost of goods, '
+  'it. p_restaurant_id is not checked here: pass the tenant-checked house. '
+  'Read by AnalyticsService (cost of goods, '
   'sales, revenue concentration). A second per-item till reader should call '
   'this rather than aggregate pos_checks.items again.';
 
