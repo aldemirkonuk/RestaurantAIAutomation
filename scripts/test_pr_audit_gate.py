@@ -877,6 +877,44 @@ def test_a_truncated_diff_still_escalates_at_the_call_site():
     assert call_site_probe(load()) == []
 
 
+def _fake_streaming_client(content, stop_reason, output_tokens, seen):
+    final = types.SimpleNamespace(content=content, stop_reason=stop_reason,
+                                  usage=types.SimpleNamespace(output_tokens=output_tokens))
+
+    class Stream:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+        def get_final_message(self):
+            return final
+
+    class Messages:
+        def stream(self, **kwargs):
+            seen.update(kwargs)
+            return Stream()
+
+    return types.SimpleNamespace(messages=Messages())
+
+
+def test_an_angle_that_runs_out_of_tokens_says_so_and_still_blocks():
+    """9 of 11 CI audits (2026-10-08..10) posted an EMPTY correctness body:
+    thinking used the whole budget. The call now streams with the larger
+    budget, and a run with no verdict names its stop_reason -- still BLOCK."""
+    mod = load()
+    seen = {}
+    thinking_only = [types.SimpleNamespace(type="thinking", thinking="...")]
+    text = mod._call_claude(_fake_streaming_client(thinking_only, "max_tokens", 64000, seen), "s", "u")
+    assert "stop_reason=max_tokens" in text and "output_tokens=64000" in text
+    assert mod._verdict_of(text) == "UNPARSEABLE"
+    assert seen["max_tokens"] == mod.MAX_TOKENS >= 64000
+    done = [types.SimpleNamespace(type="text", text="fine\n\nVERDICT: APPROVE")]
+    text = mod._call_claude(_fake_streaming_client(done, "end_turn", 900, {}), "s", "u")
+    assert text == "fine\n\nVERDICT: APPROVE" and mod._verdict_of(text) == "APPROVE"
+
+
 def test_self_test_passes():
     with contextlib.redirect_stdout(io.StringIO()) as out:
         assert load().run_self_test() == 0, out.getvalue()
