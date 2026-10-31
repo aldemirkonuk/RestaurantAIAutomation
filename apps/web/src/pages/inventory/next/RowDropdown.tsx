@@ -19,7 +19,13 @@
  */
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Popover } from '@/components/mudavym';
+import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
+import { updateInventoryItem } from '../../../services/api/inventory';
+import { queryKeys } from '../../../lib/query-keys';
+import type { InventoryItem } from '../useInventoryPage';
 import type { ProcurementDocument } from '../../../services/api/documents';
 import type { Provider } from '../../../services/api/providers';
 import type { StorageLocation } from '../../../hooks/useStorageLocations';
@@ -28,6 +34,7 @@ import { shortDate, volume } from '../../cellar/next/cellar-format';
 import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
+import { writeFailure } from './iv-failure';
 import {
   cellMoney,
   EM,
@@ -59,6 +66,32 @@ export interface RowDropdownProps {
 
 type SheetId = 'count' | 'order' | 'writeoff' | 'transfer' | 'pour';
 
+/**
+ * Why "Remove from inventory" cannot start for this row, or null when it can.
+ * The remove modal (shared with the legacy page) reconciles live, shadow and
+ * the open bottle to zero before it soft-deletes, and it reads a missing figure
+ * as 0. A figure this page did not read would therefore be removed without its
+ * ledger row, so the act waits until the book says what is held.
+ */
+export function removeBlocked(row: InvRow): string | null {
+  if (row.stock === null || row.shadow === null) return 'the book did not say how many are held, so it cannot be zeroed first';
+  if (row.wineId === null) return 'this row is not tied to a library title, so its stock cannot be zeroed first';
+  return null;
+}
+
+/** The row in the remove modal's shape: only the fields it reads, all read from the book. */
+function removeTarget(row: InvRow): InventoryItem {
+  return {
+    id: row.wineId ?? '',
+    inventoryId: row.id,
+    name: row.name ?? 'This title',
+    liveStock: row.stock,
+    shadowStock: row.shadow ?? undefined,
+    openMl: row.openMl ?? undefined,
+    wac: row.wac ?? undefined,
+  } as unknown as InventoryItem;
+}
+
 function KV({ k, children, testId }: { k: string; children: ReactNode; testId?: string }) {
   return (
     <div className="iv-kv" data-testid={testId}>
@@ -85,7 +118,7 @@ function onMenuKeys(e: KeyboardEvent<HTMLElement>, opener: HTMLElement | null, c
     close();
     return;
   }
-  const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+  const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)'));
   if (items.length === 0) return;
   const at = items.indexOf(document.activeElement as HTMLElement);
   const last = items.length - 1;
@@ -109,6 +142,39 @@ export default function RowDropdown(props: RowDropdownProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
   const detail = useRowDetail(row.id);
+  const queryClient = useQueryClient();
+  const [removing, setRemoving] = useState(false);
+  const [toggling, setToggling] = useState(false);
+  const blocked = removeBlocked(row);
+  const title = row.name ?? 'This title';
+
+  // Mark inactive / active: the legacy page's toggleActive
+  // (InventoryCommandPage.tsx:345), the same PATCH /inventory/:rid/item/:id.
+  // The book lists active titles only (database.service getRestaurantInventory
+  // filters is_active), so a row marked inactive leaves the list.
+  const toggleActive = async () => {
+    if (row.active === null || toggling) return;
+    const next = !row.active;
+    setMoreOpen(false);
+    setToggling(true);
+    try {
+      await updateInventoryItem(row.id, { isActive: next }, props.restaurantId ?? undefined);
+      toast.success(
+        next ? `${title} marked active` : `${title} marked inactive. The book lists active titles only, so it leaves this list.`,
+      );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+    } catch (e) {
+      const f = writeFailure(e, {
+        refused: 'Nothing changed',
+        act: `${title} was marked ${next ? 'active' : 'inactive'}`,
+        check: 'Re-read the book before trying again.',
+      });
+      if (f.unknown) void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+      toast.error(f.text);
+    } finally {
+      setToggling(false);
+    }
+  };
 
   const head: { k: string; v: ReactNode }[] = [];
   if (row.name) head.push({ k: 'House name', v: row.name });
@@ -167,7 +233,7 @@ export default function RowDropdown(props: RowDropdownProps) {
           onClose={() => setMoreOpen(false)}
           anchorRef={moreRef}
           width={220}
-          label="More things to do with this title: move bottles between zones, or record a pour by hand"
+          label="More things to do with this title: move bottles between zones, record a pour by hand, mark it inactive, or remove it from inventory"
         >
           <div className="iv-menu" role="menu" onKeyDown={(e) => onMenuKeys(e, moreRef.current, () => setMoreOpen(false))}>
             <button
@@ -192,6 +258,35 @@ export default function RowDropdown(props: RowDropdownProps) {
             >
               Record a pour
             </button>
+            {row.active !== null ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="iv-menu-item iv-focus"
+                disabled={toggling}
+                onClick={() => void toggleActive()}
+              >
+                {row.active ? 'Mark inactive' : 'Mark active'}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              role="menuitem"
+              className="iv-menu-item iv-focus"
+              disabled={blocked !== null}
+              aria-describedby={blocked ? `iv-remove-why-${row.id}` : undefined}
+              onClick={() => {
+                setMoreOpen(false);
+                setRemoving(true);
+              }}
+            >
+              Remove from inventory
+            </button>
+            {blocked ? (
+              <p className="iv-menu-note" id={`iv-remove-why-${row.id}`} data-testid="remove-blocked">
+                Remove waits: {blocked}.
+              </p>
+            ) : null}
           </div>
         </Popover>
       </div>
@@ -216,6 +311,18 @@ export default function RowDropdown(props: RowDropdownProps) {
         />
       ) : null}
       {sheet === 'pour' ? <PourSheet row={row} onClose={() => setSheet(null)} /> : null}
+      {removing && blocked === null ? (
+        <RemoveFromInventoryModal
+          isOpen
+          items={[removeTarget(row)]}
+          onClose={() => setRemoving(false)}
+          onRemoved={() => {
+            setRemoving(false);
+            void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+            void queryClient.invalidateQueries({ queryKey: ['inventory-next'] });
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -53,6 +53,23 @@ vi.mock('../../cellar/next/useCellarNextData', async (orig) => ({
 vi.mock('../../cellar/next/OrderCeremony', () => ({
   default: ({ label }: { label: string }) => <div data-testid="order-ceremony">{label}</div>,
 }));
+// The two acts ported from the legacy page call the same API functions it does.
+const inv = vi.hoisted(() => ({
+  update: vi.fn(),
+  reconcile: vi.fn(),
+  del: vi.fn(),
+}));
+vi.mock('../../../services/api/inventory', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  updateInventoryItem: inv.update,
+  reconcileItem: inv.reconcile,
+  deleteInventoryItem: inv.del,
+}));
+const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock('sonner', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  toast: Object.assign(vi.fn(), { success: toasts.success, error: toasts.error, warning: vi.fn(), message: vi.fn() }),
+}));
 vi.mock('../../../hooks/queries/useProviderQueries', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useRecommendedProviders: () => ({ data: undefined, isError: false }),
@@ -93,6 +110,7 @@ function row(over: Partial<InvRow> = {}): InvRow {
     providerId: 'p1',
     providerName: 'Vinoteca',
     standing: 'below',
+    active: true,
     ...over,
   };
 }
@@ -403,14 +421,16 @@ describe('INV-W36: the More menu keeps the menu keys', () => {
     expect(document.activeElement).toBe(items[0]);
     // fireEvent returns false when the handler cancelled the key: an arrow that
     // moved focus must not also scroll the page.
-    expect(fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })).toBe(false);
-    expect(document.activeElement).toBe(items[1]);
+    for (let n = 1; n < items.length; n += 1) {
+      expect(fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' })).toBe(false);
+      expect(document.activeElement).toBe(items[n]);
+    }
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
     expect(document.activeElement).toBe(items[0]);
     expect(fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' })).toBe(false);
-    expect(document.activeElement).toBe(items[1]);
+    expect(document.activeElement).toBe(items[items.length - 1]);
     fireEvent.keyDown(document.activeElement!, { key: 'ArrowUp' });
-    expect(document.activeElement).toBe(items[0]);
+    expect(document.activeElement).toBe(items[items.length - 2]);
   });
 
   it('Home and End jump to the first and last item', async () => {
@@ -449,4 +469,85 @@ describe('INV-W36: the More menu keeps the menu keys', () => {
       expect(more.getAttribute('aria-expanded')).toBe('false');
     });
   }
+});
+
+describe('Ported acts in the More menu: Mark inactive and Remove from inventory', () => {
+  beforeEach(() => {
+    inv.update.mockReset().mockResolvedValue({});
+    inv.reconcile.mockReset().mockResolvedValue({});
+    inv.del.mockReset().mockResolvedValue(undefined);
+    toasts.success.mockReset();
+    toasts.error.mockReset();
+  });
+
+  async function menu(over: Partial<RowDropdownProps> = {}) {
+    renderDrop(over);
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    return screen.findByRole('menu');
+  }
+
+  it('both acts are reachable from More, for staff as well as managers (legacy gates neither)', async () => {
+    const m = await menu({ canManage: false });
+    expect(within(m).getByRole('menuitem', { name: 'Mark inactive' })).toBeTruthy();
+    expect(within(m).getByRole('menuitem', { name: 'Remove from inventory' })).toBeTruthy();
+  });
+
+  it('Mark inactive sends the legacy PATCH body to updateInventoryItem for this row and house', async () => {
+    const m = await menu();
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Mark inactive' }));
+    });
+    expect(inv.update).toHaveBeenCalledWith('i1', { isActive: false }, 'r1');
+    expect(toasts.success.mock.calls[0][0]).toMatch(/Gravner Ribolla marked inactive/);
+  });
+
+  it('an inactive row offers Mark active, and a row whose state was not sent offers neither', async () => {
+    const m = await menu({ row: row({ active: false }) });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Mark active' }));
+    });
+    expect(inv.update).toHaveBeenCalledWith('i1', { isActive: true }, 'r1');
+  });
+
+  it('shows no toggle when the server did not say whether the row is active', async () => {
+    const m = await menu({ row: row({ active: null }) });
+    expect(within(m).queryByRole('menuitem', { name: /Mark (in)?active/ })).toBeNull();
+  });
+
+  it('a refused toggle says nothing changed, in the house words', async () => {
+    const { AxiosError } = await import('axios');
+    inv.update.mockRejectedValue(
+      new AxiosError('Request failed with status code 403', '403', undefined, {}, {
+        status: 403,
+        data: {},
+        statusText: '',
+        headers: {},
+        config: {} as never,
+      }),
+    );
+    const m = await menu();
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Mark inactive' }));
+    });
+    expect(toasts.error.mock.calls[0][0]).toMatch(/^Nothing changed — /);
+    expect(toasts.error.mock.calls[0][0]).not.toMatch(/status code/);
+  });
+
+  it('Remove opens the shared remove modal, which zeroes the stock and then soft-deletes, as legacy does', async () => {
+    const m = await menu();
+    fireEvent.click(within(m).getByRole('menuitem', { name: 'Remove from inventory' }));
+    const confirm = await screen.findByRole('button', { name: 'Remove wine' });
+    await act(async () => {
+      fireEvent.click(confirm);
+    });
+    expect(inv.reconcile).toHaveBeenCalledWith('i1', expect.objectContaining({ wineId: 'w1', actualCount: 0 }));
+    expect(inv.del).toHaveBeenCalledWith('i1');
+  });
+
+  it('Remove waits when a count was not read: the modal would read it as 0 and skip the ledger row', async () => {
+    const m = await menu({ row: row({ stock: null }) });
+    const item = within(m).getByRole('menuitem', { name: 'Remove from inventory' }) as HTMLButtonElement;
+    expect(item.disabled).toBe(true);
+    expect(screen.getByTestId('remove-blocked').textContent).toMatch(/did not say how many are held/);
+  });
 });

@@ -305,6 +305,35 @@ describe('OrderLetter — failures in the house\u2019s words (INV-W31)', () => {
     expect(m.approveDraft).not.toHaveBeenCalled();
   });
 
+  // The gateway's 409 for an order already approved (procurement.service.ts:4322).
+  const ALREADY = 'This order is already approved. Nothing more was reserved and no second letter was asked for.';
+
+  it('a 409 after an approval whose answer was lost says the earlier attempt approved it, and re-reads the gate', async () => {
+    m.approveOrder.mockRejectedValueOnce(answered(500)).mockRejectedValueOnce(answered(409, ALREADY));
+    mount();
+    holdByKeyboard(await screen.findByRole('button', { name: 'Hold to approve and send to Enoteca Rossi' }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('it is not known whether the order was approved'));
+    const reread = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    holdByKeyboard(await screen.findByRole('button', { name: 'Hold to approve and send to Enoteca Rossi' }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe(
+        'An earlier attempt already approved this order. Nothing more was done here, and the email was not sent. Look on Orders before trying again.',
+      ),
+    );
+    expect(text()).not.toContain('Nothing was approved');
+    expect(reread.mock.calls.some(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(['procurement', 'order-approval-gate', 'r1']))).toBe(true);
+    expect(m.approveDraft).not.toHaveBeenCalled();
+    reread.mockRestore();
+  });
+
+  it('a 409 with no lost approval before it keeps the refusal words: someone else may have approved it', async () => {
+    m.approveOrder.mockRejectedValue(answered(409, ALREADY));
+    mount();
+    holdByKeyboard(await screen.findByRole('button', { name: 'Hold to approve and send to Enoteca Rossi' }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/^Nothing was approved or sent — /));
+    expect(text()).not.toContain('An earlier attempt');
+  });
+
   it('an approval whose server failed on the ask path says nobody was asked', async () => {
     m.standing = { data: { draft: { id: 'c1', send_request: null }, sendOrAsk: ASK }, isPending: false, isError: false, error: null };
     m.approveOrder.mockRejectedValue(answered(502));

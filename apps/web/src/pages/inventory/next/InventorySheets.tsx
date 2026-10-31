@@ -38,7 +38,7 @@ import OrderCeremony from '../../cellar/next/OrderCeremony';
 import OrderLetter from './OrderLetter';
 import { useCellarSettings } from '../../cellar/next/useCellarNextData';
 import { fmtCount, suggestedToPar, type InvRow } from './useInventoryNextData';
-import { SAFE_RETRY, failureReason, writeFailure } from './iv-failure';
+import { LANDED_EARLIER, SAFE_RETRY, failureReason, landedEarlier, writeFailure } from './iv-failure';
 
 /** A whole number typed as a string, or null. "2.5", "" and "-1" are null. */
 function wholeNumber(s: string): number | null {
@@ -262,6 +262,11 @@ export function WriteOffSheet({ row, onClose }: SheetProps) {
     },
     onError: (e) => {
       setAttempt((a) => a + 1);
+      if (landedEarlier(e)) {
+        invalidate();
+        setSaid({ text: LANDED_EARLIER, alarm: true });
+        return;
+      }
       const f = writeFailure(e, { refused: 'Nothing was written off', act: 'the write-off was recorded', check: SAFE_RETRY });
       if (f.unknown) invalidate();
       setSaid({ text: f.text, alarm: true });
@@ -445,6 +450,11 @@ export function PourSheet({ row, onClose }: SheetProps) {
     },
     onError: (e) => {
       setAttempt((a) => a + 1);
+      if (landedEarlier(e)) {
+        invalidate();
+        setSaid({ text: LANDED_EARLIER, alarm: true });
+        return;
+      }
       const f = writeFailure(e, { refused: 'Nothing was recorded', act: 'the pour was recorded', check: SAFE_RETRY });
       if (f.unknown) invalidate();
       setSaid({ text: f.text, alarm: true });

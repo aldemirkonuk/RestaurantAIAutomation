@@ -33,7 +33,43 @@ vi.mock('../command/HousePriceCell', () => ({
   ),
 }));
 vi.mock('../../../components/inventory/PosMappingPanel', () => ({ PosMappingPanel: () => null, default: () => null }));
-vi.mock('../../../components/inventory/StorageLocationManager', () => ({ StorageLocationManager: () => null }));
+vi.mock('../../../components/inventory/StorageLocationManager', () => ({
+  StorageLocationManager: (p: Record<string, unknown>) => {
+    ported.slm = p;
+    return <div data-testid="storage-manager" />;
+  },
+}));
+// The four ported acts' own components are stubbed to capture what the page
+// hands them; each owns its own tests.
+const ported = vi.hoisted(() => ({
+  slm: null as Record<string, unknown> | null,
+  receipt: null as Record<string, unknown> | null,
+  auction: null as Record<string, unknown> | null,
+  preview: null as Record<string, unknown> | null,
+  create: vi.fn(),
+}));
+vi.mock('../../../components/inventory/ManualReceiptWorkspace', () => ({
+  ManualReceiptWorkspace: (p: Record<string, unknown>) => {
+    ported.receipt = p;
+    return <div data-testid="manual-receipt" />;
+  },
+}));
+vi.mock('../command/AuctionLotStart', () => ({
+  AuctionLotStart: (p: Record<string, unknown>) => {
+    ported.auction = p;
+    return <div data-testid="auction-start" />;
+  },
+}));
+vi.mock('../../../components/inventory/AutoLocatePreviewModal', () => ({
+  AutoLocatePreviewModal: (p: Record<string, unknown>) => {
+    ported.preview = p;
+    return <div data-testid="auto-locate-preview" />;
+  },
+}));
+vi.mock('../../../services/api/inventory', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  createInventoryItem: ported.create,
+}));
 vi.mock('./RowDropdown', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   default: () => <tr data-testid="row-dropdown" />,
@@ -82,6 +118,7 @@ function row(over: Partial<InvRow> = {}): InvRow {
     providerId: null,
     providerName: null,
     standing: 'above',
+    active: true,
     ...over,
   };
 }
@@ -101,7 +138,16 @@ function data(over: Record<string, unknown> = {}): Record<string, unknown> {
     libraryAnswered: true,
     paceUnread: false,
     currency: { state: 'recorded', code: 'EUR' },
-    locations: { list: [{ id: 'z1', name: 'Cave' }], loading: false, unavailable: false, setLocations: vi.fn() },
+    locations: {
+      list: [{ id: 'z1', name: 'Cave' }],
+      loading: false,
+      unavailable: false,
+      setLocations: vi.fn(),
+      mappings: [],
+      mappingsUnavailable: false,
+      mappingsLoading: false,
+      assignMany: vi.fn(async () => ({ assigned: 0, failed: 0 })),
+    },
     providers: { list: [], error: null },
     advice: { status: 'loading' },
     refetchAdvice: vi.fn(),
@@ -973,5 +1019,107 @@ describe('INV-W39 — the book has a name', () => {
     mock.data = data({ rows: [row()] });
     renderPage();
     expect(screen.getByRole('table', { name: 'The book: every title on hand' })).toBeTruthy();
+  });
+});
+
+describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, then flip)', () => {
+  const cave = { id: 'z1', name: 'Cave', type: 'cellar', capacity: 100, currentCount: 0, temperature: '55°F', color: '#000' };
+
+  it('A delivery without an order opens the shared workspace from the empty house and from Tools, and refreshes the book when saved', () => {
+    mock.data = data({ rows: [] });
+    const first = renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'A delivery without an order' }));
+    expect(screen.getByTestId('manual-receipt')).toBeTruthy();
+    first.unmount();
+
+    ported.receipt = null;
+    mock.data = data({ rows: [row()] });
+    renderPage();
+    fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'A delivery without an order' }));
+    expect(ported.receipt).not.toBeNull();
+    expect(ported.receipt!.isOpen).toBe(true);
+    expect(typeof ported.receipt!.onSaved).toBe('function');
+  });
+
+  it('the auction start carries the lot with legacy\'s POST body and hands back the row it made', async () => {
+    ported.create.mockReset().mockResolvedValue({ id: 'inv-new' });
+    mock.data = data({ rows: [row()] });
+    renderPage();
+    fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Start an auction lot' }));
+    expect(screen.getByTestId('auction-start')).toBeTruthy();
+    const onCarry = ported.auction!.onCarry as (i: unknown) => Promise<{ inventoryId: string }>;
+    const out = await onCarry({ wine: { id: 'w9' }, quantity: 6, costPerBottle: 42 });
+    expect(ported.create).toHaveBeenCalledWith(
+      { wineId: 'w9', stockLive: 6, thresholdMin: 0, costPerBottle: 42, costProvenance: 'manual' },
+      'r1',
+    );
+    expect(out).toEqual({ inventoryId: 'inv-new' });
+  });
+
+  it('the auction start is reachable from the empty house too', () => {
+    mock.data = data({ rows: [] });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Start an auction lot' }));
+    expect(screen.getByTestId('auction-start')).toBeTruthy();
+  });
+
+  it('Auto-Locate is handed to Storage locations, plans by wine id, and assigns what the manager confirms', async () => {
+    const assignMany = vi.fn(async () => ({ assigned: 1, failed: 0 }));
+    const ok = vi.spyOn(toast, 'success').mockImplementation(() => '' as never);
+    mock.data = data({
+      rows: [row({ id: 'i1', wineId: 'w1', type: 'red', stock: 3, shadow: 0 })],
+      locations: { ...(data().locations as object), list: [cave], assignMany },
+    });
+    renderPage();
+    fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Storage locations' }));
+    expect(typeof ported.slm!.onAutoLocate).toBe('function');
+    act(() => (ported.slm!.onAutoLocate as () => void)());
+    expect(screen.getByTestId('auto-locate-preview')).toBeTruthy();
+    const plan = ported.preview!.result as { assignments: { wineId: string; locationId: string; quantity: number }[] };
+    expect(plan.assignments).toEqual([expect.objectContaining({ wineId: 'w1', locationId: 'z1', quantity: 3 })]);
+    await act(async () => {
+      (ported.preview!.onConfirm as (s: unknown) => void)(plan.assignments);
+    });
+    expect(assignMany).toHaveBeenCalledWith([{ wineId: 'w1', locationId: 'z1', quantity: 3 }]);
+    expect(ok).toHaveBeenCalledWith('1 wine assigned to locations');
+    ok.mockRestore();
+  });
+
+  it('Auto-Locate waits, and says so, when what is already placed could not be read', () => {
+    const said = vi.spyOn(toast, 'error').mockImplementation(() => '' as never);
+    ported.preview = null;
+    mock.data = data({
+      rows: [row({ wineId: 'w1', stock: 3, shadow: 0 })],
+      locations: { ...(data().locations as object), list: [cave], mappingsUnavailable: true },
+    });
+    renderPage();
+    fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Storage locations' }));
+    act(() => (ported.slm!.onAutoLocate as () => void)());
+    expect(screen.queryByTestId('auto-locate-preview')).toBeNull();
+    expect(said.mock.calls[0][0]).toMatch(/^Auto-Locate waits/);
+    said.mockRestore();
+  });
+
+  it('Auto-Locate leaves out a title whose count was not read rather than planning it as one bottle', () => {
+    const note = vi.spyOn(toast, 'message').mockImplementation(() => '' as never);
+    mock.data = data({
+      rows: [row({ id: 'a', wineId: 'w1', type: 'red', stock: 3, shadow: 0 }), row({ id: 'b', wineId: 'w2', stock: null })],
+      locations: { ...(data().locations as object), list: [cave] },
+    });
+    renderPage();
+    fireEvent.click(within(document.getElementById('iv-tools')!).getByRole('button', { name: 'Storage locations' }));
+    act(() => (ported.slm!.onAutoLocate as () => void)());
+    const plan = ported.preview!.result as { assignments: { wineId: string }[] };
+    expect(plan.assignments.map((x) => x.wineId)).toEqual(['w1']);
+    expect(note.mock.calls[0][0]).toMatch(/^1 title is left out of the plan/);
+    note.mockRestore();
+  });
+
+  it('marks an inactive row in its title cell, and no other', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Kept', active: true }), row({ id: 'b', name: 'Delisted', active: false })] });
+    renderPage();
+    const marks = screen.getAllByTestId('row-inactive');
+    expect(marks).toHaveLength(1);
+    expect(marks[0].closest('td')!.textContent).toContain('Delisted');
   });
 });

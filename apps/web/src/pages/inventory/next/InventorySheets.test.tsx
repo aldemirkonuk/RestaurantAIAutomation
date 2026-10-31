@@ -86,6 +86,7 @@ function row(over: Partial<InvRow> = {}): InvRow {
     providerId: 'p1',
     providerName: 'Enoteca Rossi',
     standing: 'below',
+    active: true,
     ...over,
   } as InvRow;
 }
@@ -643,5 +644,35 @@ describe('a write key never falls back to Math.random', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('a 409 on a keyed write means an earlier attempt landed (security finding, 2026-10-31)', () => {
+  // The gateway's own words for a spent key (inventory-ledger.service.ts:69-70,
+  // inventory.service.ts:50-51). They read as "nothing written".
+  const KEY_USED = "This request's key was already used, so nothing new was recorded. Read the item again before writing.";
+  const POUR_KEY_USED = "This request's key was already used, so nothing new was poured. Read the item again before pouring.";
+
+  it('the write-off says the earlier attempt went through, never the key, and re-reads the book', async () => {
+    const reread = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    api.post.mockRejectedValue(answered(409, KEY_USED));
+    const t = await writeOff();
+    expect(t).toContain('An earlier attempt already went through. Look at the book before trying again.');
+    expect(t).not.toMatch(/key|Nothing was written off|nothing new/i);
+    noOperatorWords(t);
+    expect(reread.mock.calls.some(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(['inventory']))).toBe(true);
+    reread.mockRestore();
+  });
+
+  it('the pour says the earlier attempt went through, never the key, and re-reads the book', async () => {
+    const reread = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+    api.pour.mockRejectedValue(answered(409, POUR_KEY_USED));
+    mount(<PourSheet row={row({ pourMl: 150 })} onClose={() => {}} />);
+    holdByKeyboard(screen.getByRole('button', { name: 'Hold to record 1 × 150 ml' }));
+    const t = await alertText();
+    expect(t).toContain('An earlier attempt already went through. Look at the book before trying again.');
+    expect(t).not.toMatch(/key|Nothing was recorded|nothing new/i);
+    expect(reread).toHaveBeenCalled();
+    reread.mockRestore();
   });
 });

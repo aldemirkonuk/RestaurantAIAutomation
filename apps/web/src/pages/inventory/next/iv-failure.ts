@@ -84,6 +84,22 @@ export interface WriteWords {
 export const SAFE_RETRY = 'Trying again is safe: it is recorded once.';
 
 /**
+ * A keyed write answered 409. The ledger write-off and the pour return the
+ * first row on a replay of the same key with the same figures, and answer 409
+ * only when the key was already spent on a different one (inventory-ledger
+ * service KEY_ALREADY_USED, inventory.service POUR_KEY_ALREADY_USED). The sheet
+ * keeps one key per opening, so after a lost answer a 409 means the FIRST
+ * attempt landed. The server's own sentence ("nothing new was recorded", "this
+ * request's key") would read as nothing written, so it is never shown.
+ */
+export const LANDED_EARLIER = 'An earlier attempt already went through. Look at the book before trying again.';
+
+/** True when a keyed write's refusal is the replay above. */
+export function landedEarlier(e: unknown): boolean {
+  return getErrorStatus(e) === 409;
+}
+
+/**
  * A failed write. `unknown` is true when the server failed partway or never
  * answered, so the write may have landed and the caller should re-read.
  */

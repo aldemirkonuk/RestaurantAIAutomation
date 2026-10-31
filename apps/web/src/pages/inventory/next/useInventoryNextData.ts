@@ -121,6 +121,11 @@ export interface InvRow {
   providerId: string | null;
   providerName: string | null;
   standing: Standing;
+  /**
+   * The row's is_active as the server sent it; null when it did not say. The
+   * normaliser's camel `isActive` defaults to true, so it is not read here.
+   */
+  active: boolean | null;
 }
 
 export function standingOf(stock: number | null, par: number | null): Standing {
@@ -245,6 +250,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     providerId: text(r.providerId),
     providerName: text(r.providerName),
     standing: standingOf(stock, par),
+    active: typeof r.is_active === 'boolean' ? r.is_active : null,
   };
 }
 
@@ -745,6 +751,11 @@ export function useInventoryNextData() {
       loading: storage.locationsLoading,
       unavailable: storage.locationsUnavailable,
       setLocations: storage.setLocations,
+      /** Bottle-to-location assignments, keyed by wine id (Auto-Locate reads them). */
+      mappings: storage.mappings,
+      mappingsUnavailable: storage.mappingsUnavailable,
+      mappingsLoading: storage.mappingsLoading,
+      assignMany: storage.assignMany,
     },
     providers: {
       list: (providersQ.data ?? null) as Provider[] | null,

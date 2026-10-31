@@ -1,4 +1,4 @@
-## /inventory rebuild (InventoryNext): what the walk-through found and left for other branches — OPEN (7 of 8 items; item 1 fixed) — 2026-10-08
+## /inventory rebuild (InventoryNext): what the walk-through found and left for other branches — OPEN (6 of 8 items; items 1 and 7 fixed) — 2026-10-08
 
 Filed by `fix/review-inventory` ([ADR 0315](../decisions/0315-inventory-is-rebuilt-as-inventorynext-on-makeover-b.md)). Claims: `../decisions/claims.d/fix-review-inventory.jsonl:1-2`. Rows and evidence are in `.planning/06-pages/inventory.md` §14.
 
@@ -19,3 +19,10 @@ Filed by `fix/review-inventory` ([ADR 0315](../decisions/0315-inventory-is-rebui
 **Owed records:** the phone-first counting fork (INV-W11: barcode, level tap, voice) was meant for `OPEN-DECISIONS.md`. It is NOT filed on this branch, because a new row at the top of Open re-anchors about 173 citations across about 89 files. It needs its own docs branch.
 
 **Owed to the founder (open):** the three departures flagged in INV-W7 (no voice in the count sheet, `$` in the owner price editor, CSV-only exports) and the mount line [changed 2026-10-30: the founder answered the go-live, "Flip now, port with wave (Recommended)", ADR 0315's last bracket]. [changed 2026-10-08: the founder answered the toolbar look (keep the compact `.iv-toolbar .mdv-select` patch) and said yes to opening the PR, #677.]
+
+### Added 2026-10-31: five-act port (founder "Port all 5, then flip"). These are the same as on the legacy page, so the flip does not cause them.
+- **Remove and Mark inactive are open to staff.** On legacy they are open to staff too, but Write off is manager-only. Whether to limit these two to managers is open, and needs a gateway guard as well as the UI.
+- **Mark active cannot be reached.** The gateway list returns only active rows, which is also true on legacy.
+- **`RemoveFromInventoryModal` and `ManualReceiptWorkspace` are still legacy framer-motion modals.** They are not yet the ADR 0112 Sheet, and Remove writes ledger rows without a sealed hold.
+- **`RemoveFromInventoryModal` shows the server's raw text on failure.** It also deletes a row that holds only an open bottle without reconciling it first.
+- **Bulk remove was not ported.** Next has no row selection.

@@ -131,7 +131,15 @@ export default function InventoryTable(props: InventoryTableProps) {
                         onToggle(row.id);
                       }}
                     >
-                      <span className="iv-name">{row.name ?? 'Unnamed title'}</span>
+                      <span className="iv-name">
+                        {row.name ?? 'Unnamed title'}
+                        {row.active === false ? (
+                          <span className="iv-inactive" data-testid="row-inactive">
+                            {' '}
+                            · inactive
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="iv-producer">
                         {[row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ') || EM}
                       </span>

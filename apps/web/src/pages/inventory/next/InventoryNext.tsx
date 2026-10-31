@@ -29,6 +29,11 @@ import { DeliveriesToName } from '@/components/mudavym/DeliveriesToName';
 import { readView, writeView, type IvView } from './iv-url';
 import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager';
 import { PosMappingPanel } from '../../../components/inventory/PosMappingPanel';
+import { ManualReceiptWorkspace } from '../../../components/inventory/ManualReceiptWorkspace';
+import { AutoLocatePreviewModal } from '../../../components/inventory/AutoLocatePreviewModal';
+import { computeAutoLocatePlan, type AutoLocateResult, type WineInput, type WineLocationScore } from '../../../lib/autoLocateEngine';
+import { createInventoryItem } from '../../../services/api/inventory';
+import { AuctionLotStart } from '../command/AuctionLotStart';
 import { MenuScannerFlow } from '../../../components/scanner/MenuScannerFlow';
 import { summarizeMenuScanPersist } from '../../../lib/menuScannerPersistence';
 import { exportTable, type TableExportColumn } from '../../../lib/tableExport';
@@ -190,7 +195,9 @@ export default function InventoryNext() {
     (patch: Partial<IvView>) => setParams((cur) => writeView(cur, { ...readView(cur), ...patch }), { replace: true }),
     [setParams],
   );
-  const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos'>(null);
+  const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction'>(null);
+  const [autoLocate, setAutoLocate] = useState<AutoLocateResult | null>(null);
+  const [includeAssigned, setIncludeAssigned] = useState(false);
   // The delivered-order bell links to ?name-delivery=<order>; the card opens for it.
   const [naming, setNaming] = useState(() => params.has('name-delivery'));
   const searchRef = useRef<HTMLInputElement>(null);
@@ -301,6 +308,94 @@ export default function InventoryNext() {
 
   const refreshStock = () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+  };
+
+  // Auto-Locate, ported from the legacy page (InventoryCommandPage.tsx:306-340).
+  // The engine takes legacy rows keyed by WINE id, the key the mappings use.
+  // Legacy planned against whatever it held, so a failed mappings read planned
+  // every title as unassigned and a missing count as 0. Here the plan waits for
+  // both reads, and a title whose count was not read is left out and named.
+  const autoLocateInputs = (): { wines: WineInput[]; left: number } => {
+    const sale = new Map(data.rawItems.map((i) => [i.id, (i as { saleType?: unknown }).saleType]));
+    const wines: WineInput[] = [];
+    let left = 0;
+    for (const r of rows ?? []) {
+      if (r.wineId === null || r.stock === null || r.shadow === null) {
+        left += 1;
+        continue;
+      }
+      const saleType = sale.get(r.id);
+      wines.push({
+        id: r.wineId,
+        name: r.name ?? 'Unnamed title',
+        type: r.type ?? '',
+        liveStock: r.stock,
+        shadowStock: r.shadow,
+        saleType: typeof saleType === 'string' ? saleType : undefined,
+      } as unknown as WineInput);
+    }
+    return { wines, left };
+  };
+  const planAutoLocate = (withAssigned: boolean): AutoLocateResult | null => {
+    if (locs.loading || locs.mappingsLoading) {
+      toast.error('Auto-Locate waits: the storage locations and what is already in them are still being read.');
+      return null;
+    }
+    if (locs.unavailable || locs.mappingsUnavailable) {
+      toast.error(
+        'Auto-Locate waits: the storage locations, or what is already in them, could not be read. Planning without them would place bottles that are already placed.',
+      );
+      return null;
+    }
+    const { wines, left } = autoLocateInputs();
+    if (left > 0) {
+      toast.message(
+        `${fmtCount(left)} ${left === 1 ? 'title is' : 'titles are'} left out of the plan: ${left === 1 ? 'its count was' : 'their counts were'} not read, or ${left === 1 ? 'it is' : 'they are'} not tied to a library title.`,
+      );
+    }
+    return computeAutoLocatePlan(wines, locs.list, locs.mappings, { skipAssigned: !withAssigned });
+  };
+  const handleAutoLocate = () => {
+    const plan = planAutoLocate(includeAssigned);
+    if (plan) setAutoLocate(plan);
+  };
+  // The count is what the server accepted, not what was asked for (legacy :318).
+  const confirmAutoLocate = async (selected: WineLocationScore[]) => {
+    setAutoLocate(null);
+    const { assigned, failed } = await locs.assignMany(
+      selected.map((a) => ({ wineId: a.wineId, locationId: a.locationId, quantity: a.quantity })),
+    );
+    const plural = (n: number) => `${fmtCount(n)} wine${n === 1 ? '' : 's'}`;
+    if (failed === 0) toast.success(`${plural(assigned)} assigned to locations`);
+    else if (assigned === 0) toast.error(`No wines were assigned: ${plural(failed)} could not be saved`);
+    else toast.warning(`${plural(assigned)} assigned; ${plural(failed)} could not be saved`);
+  };
+
+  // The auction start's carry: legacy's onCarry (InventoryCommandPage.tsx:1683),
+  // the same POST /inventory/:rid/items. The lot links to the
+  // restaurant_inventory row this write returns.
+  const carryAuctionLot = async ({
+    wine,
+    quantity,
+    costPerBottle,
+  }: {
+    wine: { id: string };
+    quantity: number;
+    costPerBottle: number;
+  }): Promise<{ inventoryId: string }> => {
+    const created = await createInventoryItem(
+      {
+        wineId: wine.id,
+        stockLive: quantity,
+        thresholdMin: 0,
+        // A person typed the hammer price, so the figure is `manual`.
+        costPerBottle,
+        costProvenance: 'manual',
+      } as unknown as Parameters<typeof createInventoryItem>[0],
+      data.rid ?? undefined,
+    );
+    refreshStock();
+    return { inventoryId: (created as { id: string }).id };
   };
 
   const exportCountSheet = () =>
@@ -424,8 +519,14 @@ export default function InventoryNext() {
                 <Link to="/receiving" className="iv-btn iv-focus">
                   Upload an invoice
                 </Link>
+                <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('receipt')}>
+                  A delivery without an order
+                </button>
               </div>
-              <p className="iv-note">An invoice is uploaded at the door of its delivery, on Receiving.</p>
+              <p className="iv-note">
+                An invoice is uploaded at the door of its delivery, on Receiving. A delivery nobody ordered is written
+                in here, line by line.
+              </p>
             </section>
             <div className="iv-starts">
               <section className="iv-card">
@@ -436,7 +537,10 @@ export default function InventoryNext() {
                 </p>
                 <Link to="/wines" className="iv-btn iv-focus">
                   Add a bottle
-                </Link>
+                </Link>{' '}
+                <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('auction')}>
+                  Start an auction lot
+                </button>
               </section>
               <section className="iv-card">
                 <h3 className="iv-h3">Scan your menu</h3>
@@ -660,6 +764,12 @@ export default function InventoryNext() {
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('pos')}>
                   Map POS buttons
                 </button>
+                <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('receipt')}>
+                  A delivery without an order
+                </button>
+                <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('auction')}>
+                  Start an auction lot
+                </button>
                 <button type="button" className="iv-btn iv-focus" onClick={() => void exportCountSheet()}>
                   Export count sheet
                 </button>
@@ -729,7 +839,29 @@ export default function InventoryNext() {
             setPanel(null);
           }}
           onLocationsChange={(updated) => locs.setLocations(updated)}
+          onAutoLocate={handleAutoLocate}
         />
+      ) : null}
+      {autoLocate ? (
+        <AutoLocatePreviewModal
+          isOpen
+          onClose={() => setAutoLocate(null)}
+          result={autoLocate}
+          allLocations={locs.list}
+          includeAssigned={includeAssigned}
+          onToggleIncludeAssigned={(val) => {
+            setIncludeAssigned(val);
+            const plan = planAutoLocate(val);
+            if (plan) setAutoLocate(plan);
+          }}
+          onConfirm={(selected) => void confirmAutoLocate(selected)}
+        />
+      ) : null}
+      {panel === 'receipt' ? (
+        <ManualReceiptWorkspace isOpen onClose={() => setPanel(null)} onSaved={refreshStock} />
+      ) : null}
+      {panel === 'auction' ? (
+        <AuctionLotStart open onClose={() => setPanel(null)} onCarry={carryAuctionLot} />
       ) : null}
       {panel === 'pos' ? (
         <PosMappingPanel

@@ -43,7 +43,8 @@ import {
 } from '../../../hooks/queries/useDraftEmailQueries';
 import { SendStandingNote, holdAct } from '../../../components/orders/SendStanding';
 import type { ApprovalGate } from '../../orders/next/useOrdersNextData';
-import { failureReason, writeFailure, type WriteWords } from './iv-failure';
+import { failureReason, landedEarlier, writeFailure, type WriteWords } from './iv-failure';
+import { isUnconfirmedWrite } from '../../../services/api/client';
 
 /** How many times the panel looks again for the draft before saying it is not there. */
 export const DRAFT_WAIT_TRIES = 20;
@@ -120,6 +121,12 @@ export default function OrderLetter({
   const [attempt, setAttempt] = useState(0);
   const [said, setSaid] = useState<{ text: string; alarm?: boolean } | null>(null);
   const seals = useRef<{ order: string | null }>({ order: null });
+  // An approve in this letter whose answer was lost (5xx or none). Its retry
+  // can then meet a 409 because the FIRST approve landed, and "Nothing was
+  // approved" would be false. A 409 with no lost approve before it is one of
+  // the gateway's other refusals (approved by someone else, a status that does
+  // not allow it) and keeps its own words.
+  const approveUnknown = useRef(false);
 
   const outbound = (conversations.data ?? []).filter((r) => r.direction === 'OUTBOUND');
   const sentRow = sentId ? (outbound.find((r) => r.id === sentId) ?? null) : null;
@@ -153,6 +160,22 @@ export default function OrderLetter({
 
   // A 5xx or no answer may have landed (INV-W31): say so, and re-read the
   // order's messages so a sent email shows as sent rather than re-armed.
+  const approveRefused = (words: WriteWords, notDone: string) => (e: unknown) => {
+    if (approveUnknown.current && landedEarlier(e)) {
+      void queryClient.invalidateQueries({ queryKey: orderConversationKeys.byOrder(orderId) });
+      void queryClient.invalidateQueries({ queryKey: draftKeys.all });
+      void queryClient.invalidateQueries({ queryKey: ['procurement', 'order-approval-gate', restaurantId] });
+      setSaid({
+        text: `An earlier attempt already approved this order. Nothing more was done here, and ${notDone}. Look on Orders before trying again.`,
+        alarm: true,
+      });
+      setAttempt((a) => a + 1);
+      return;
+    }
+    if (isUnconfirmedWrite(e)) approveUnknown.current = true;
+    refused(words)(e);
+  };
+
   const refused = (words: WriteWords) => (e: unknown) => {
     const f = writeFailure(e, words);
     if (f.unknown) {
@@ -263,12 +286,16 @@ export default function OrderLetter({
               try {
                 await approveOrder(orderId, undefined, seals.current.order);
                 setApprovedHere(true);
+                approveUnknown.current = false;
               } catch (e) {
-                refused({
-                  refused: 'Nothing was approved or asked',
-                  act: 'the order was approved',
-                  check: 'Nobody was asked to send the email. Look on Orders before trying again.',
-                })(e);
+                approveRefused(
+                  {
+                    refused: 'Nothing was approved or asked',
+                    act: 'the order was approved',
+                    check: 'Nobody was asked to send the email. Look on Orders before trying again.',
+                  },
+                  'nobody was asked to send the email',
+                )(e);
                 throw e;
               }
             }
@@ -316,12 +343,16 @@ export default function OrderLetter({
               try {
                 await approveOrder(orderId, undefined, seals.current.order);
                 setApprovedHere(true);
+                approveUnknown.current = false;
               } catch (e) {
-                refused({
-                  refused: 'Nothing was approved or sent',
-                  act: 'the order was approved',
-                  check: 'The email was not sent. Look on Orders before trying again.',
-                })(e);
+                approveRefused(
+                  {
+                    refused: 'Nothing was approved or sent',
+                    act: 'the order was approved',
+                    check: 'The email was not sent. Look on Orders before trying again.',
+                  },
+                  'the email was not sent',
+                )(e);
                 throw e;
               }
             }
