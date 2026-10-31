@@ -18,6 +18,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { TenantGuard } from "../common/tenant/tenant.guard";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { MenusService } from "./menus.service";
+import { seesRawLine } from "./menu-line-view";
 import { ImportMenuDto } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
@@ -44,9 +45,11 @@ export class MenusController {
   @ApiOperation({
     summary:
       "The active menu and its items for a restaurant (the interactive menu's read path)",
+    description:
+      "Every line says kitchen_line. No line is sent its raw line (the row as the import kept it), whoever reads: no page reads it from this route, and a CSV line is the whole row, cost and supplier cells included. A line whose raw line is kept says raw_line_withheld, and the reply says rawLineWithheld.",
   })
   async getMenu(@Param("restaurantId") restaurantId: string) {
-    return this.menusService.getMenu(restaurantId);
+    return this.menusService.getMenu(restaurantId, { rawLine: false });
   }
 
   @Post("import")
@@ -145,7 +148,9 @@ export class MenusController {
  *
  * TENANT SCOPE comes from the signed token (`@CurrentUser("restaurantId")`),
  * never from the path or the body. Reads are for any member of the house;
- * making a menu current is an owner's or a manager's.
+ * a line's raw line goes only to a role that sees money and suppliers
+ * (ROLE_POLICY, menu-line-view.ts), because a CSV line is the whole row.
+ * Making a menu current is an owner's or a manager's.
  */
 @ApiTags("menus")
 @Controller("menu-versions")
@@ -176,12 +181,17 @@ export class MenuVersionsController {
   }
 
   @Get(":menuId")
-  @ApiOperation({ summary: "One kept menu of this house and its lines" })
+  @ApiOperation({
+    summary: "One kept menu of this house and its lines",
+    description:
+      "Every line says kitchen_line. A line's raw line (the row as the import kept it) is sent only to a role whose ROLE_POLICY row sees money and suppliers (owner, manager, admin by alias). Anyone else gets no such key, raw_line_withheld on a line whose raw line is kept, and rawLineWithheld on the reply.",
+  })
   async one(
     @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("role") role: string | null,
     @Param("menuId", new ParseUUIDPipe()) menuId: string,
   ) {
-    return this.menusService.getVersion(this.house(restaurantId), menuId);
+    return this.menusService.getVersion(this.house(restaurantId), menuId, { rawLine: seesRawLine(role) });
   }
 
   @Get(":menuId/source")

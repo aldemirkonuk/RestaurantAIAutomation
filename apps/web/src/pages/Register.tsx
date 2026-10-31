@@ -3,12 +3,13 @@ import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-do
 import { readInviteMailSecret } from '../lib/inviteMailSecret'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, ChevronRight } from 'lucide-react'
+import { Wine, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
 import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
 import { currencyForCountry, currencyToRecord } from '../lib/currency'
 import { getBrowserTimezone } from '../lib/browserTimezone'
+import { houseNotOpened } from '../lib/houseOpeningWords'
 import { CurrencyStep } from '../components/onboarding/CurrencyStep'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import { Button } from '../components/ui'
@@ -52,7 +53,7 @@ type EmailAvailability = {
   error: string | null
 }
 
-type Path = 'selector' | 'join' | 'create'
+type Path = 'join' | 'create'
 type PathAStep = 1 | 2
 type PathBStep = 1 | 2
 
@@ -76,7 +77,16 @@ export function Register() {
   const { registerAccount, registerRestaurant, joinViaInvite, error: authError } = useAuth()
   const on = usePublicDesign()
 
-  const [path, setPath] = useState<Path>('selector')
+  // Read the address before the first paint. The two-card chooser is retired
+  // (ADR 0344): RegisterDoor sends a bare /register to the landing page, so
+  // this form is only ever reached with `?type=new`, `?type=join` or an
+  // invite, and anything else opens the new-house form the landing's "Start
+  // free" asks for.
+  const [path, setPath] = useState<Path>(() => {
+    const type = searchParams.get('type')
+    if (searchParams.get('invite') || type === 'join') return 'join'
+    return 'create'
+  })
   const [pathAStep, setPathAStep] = useState<PathAStep>(1)
   const [pathBStep, setPathBStep] = useState<PathBStep>(1)
   const [loading, setLoading] = useState(false)
@@ -208,8 +218,7 @@ export function Register() {
   // Auto-route from URL params on mount (D-09):
   // ?invite=CODE  → Path A (join) with code pre-filled
   // ?type=join    → Path A (join), no code pre-filled
-  // ?type=new     → Path B (create restaurant), skip selector
-  // default       → show path selector
+  // ?type=new     → Path B (create restaurant)
   useEffect(() => {
     const code = searchParams.get('invite')
     const type = searchParams.get('type')
@@ -248,151 +257,6 @@ export function Register() {
     }
   }, [inviteCode])
 
-  // PATH SELECTOR — Desktop: 2-col feature cards | Mobile: bold stacked
-  const pathSelector = () => (
-    <motion.div
-      key="selector"
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      transition={{ duration: 0.25 }}
-    >
-      {on ? (
-        /* The door, as sketch 118 draws it: two plain acts, the new house
-           first. Same two paths as the cards below (create, join), one
-           layout at every width. */
-        <div className="mdv-ep-acts">
-          <Button type="button" variant="default" size="lg" onClick={() => setPath('create')} className={`w-full ${HOUSE_BUTTON}`}>
-            I&apos;m opening a new house
-          </Button>
-          <button type="button" onClick={() => setPath('join')} className="mdv-ep-act-quiet">
-            I have an invite code
-          </button>
-        </div>
-      ) : (
-      <>
-      {/* ── DESKTOP: Feature Cards (≥641px) ── */}
-      <div className="hidden sm:grid grid-cols-2 gap-4">
-        {/* Join card */}
-        <button
-          type="button"
-          onClick={() => setPath('join')}
-          className={on ? 'bg-paper-0 border border-paper-2 rounded-2xl p-7 text-left hover:-translate-y-0.5 transition-all hover:border-seal-ring' : 'bg-white border border-gray-200 rounded-2xl p-7 text-left hover:-translate-y-0.5 transition-all hover:shadow-card-hover hover:border-gray-300'}
-        >
-          <div className={on ? 'w-[50px] h-[50px] rounded-[13px] bg-seal-tint flex items-center justify-center mb-[18px]' : 'w-[50px] h-[50px] rounded-[13px] bg-wine-100 flex items-center justify-center mb-[18px]'}>
-            <Users className={on ? 'w-[22px] h-[22px] text-seal' : 'w-[22px] h-[22px] text-wine-600'} />
-          </div>
-          <p className={on ? 'font-bold !text-inkm-1 text-[1.1rem] leading-tight mb-2' : 'font-bold text-gray-900 text-[1.1rem] leading-tight mb-2'}>Join Your Team</p>
-          <p className={on ? 'text-[0.8rem] !text-inkm-3 leading-[1.55] mb-5' : 'text-[0.8rem] text-gray-500 leading-[1.55] mb-5'}>
-            Your manager sent you an invite. Enter the 8-character code to join their restaurant.
-          </p>
-          <ul className="space-y-[7px] mb-6">
-            {['Instant dashboard access', 'Role assigned by owner', 'No email verification needed'].map((item) => (
-              <li key={item} className={on ? 'flex items-center gap-[7px] text-[0.8rem] text-inkm-3' : 'flex items-center gap-[7px] text-[0.8rem] text-gray-500'}>
-                <Check className={on ? 'w-[11px] h-[11px] text-seal flex-shrink-0' : 'w-[11px] h-[11px] text-wine-600 flex-shrink-0'} />
-                {item}
-              </li>
-            ))}
-          </ul>
-          <div className={on ? 'w-full py-[11px] px-[18px] rounded-[9px] bg-seal text-paper-0 text-[0.9rem] font-bold text-center' : 'w-full py-[11px] px-[18px] rounded-[9px] bg-wine-600 text-white text-[0.9rem] font-bold text-center'}>
-            Enter Invite Code →
-          </div>
-        </button>
-
-        {/* Create card */}
-        <button
-          type="button"
-          onClick={() => setPath('create')}
-          className={on ? 'bg-seal rounded-2xl p-7 text-left hover:-translate-y-0.5 transition-all hover:bg-seal-deep' : 'bg-wine-600 rounded-2xl p-7 text-left hover:-translate-y-0.5 transition-all hover:bg-wine-700'}
-          style={on ? { boxShadow: '0 8px 24px var(--seal-ring)' } : { boxShadow: '0 8px 24px rgba(26,94,107,0.3)' }}
-        >
-          <div className={on ? 'w-[50px] h-[50px] rounded-[13px] bg-[color:color-mix(in_srgb,var(--paper-0)_20%,transparent)] flex items-center justify-center mb-[18px]' : 'w-[50px] h-[50px] rounded-[13px] bg-white/20 flex items-center justify-center mb-[18px]'}>
-            <Wine className={on ? 'w-[22px] h-[22px] text-paper-0' : 'w-[22px] h-[22px] text-white'} />
-          </div>
-          <p className={on ? 'font-bold !text-paper-0 text-[1.1rem] leading-tight mb-2' : 'font-bold text-white text-[1.1rem] leading-tight mb-2'}>Open a Restaurant</p>
-          <p className={on ? 'text-[0.8rem] !text-[color:color-mix(in_srgb,var(--paper-0)_75%,transparent)] leading-[1.55] mb-5' : 'text-[0.8rem] text-white/75 leading-[1.55] mb-5'}>
-            Register your restaurant and start managing wine inventory with AI in minutes.
-          </p>
-          <ul className="space-y-[7px] mb-6">
-            {['AI inventory agents', 'POS + supplier sync', 'Multi-location ready'].map((item) => (
-              <li key={item} className={on ? 'flex items-center gap-[7px] text-[0.8rem] text-[color:color-mix(in_srgb,var(--paper-0)_85%,transparent)]' : 'flex items-center gap-[7px] text-[0.8rem] text-white/85'}>
-                <Check className={on ? 'w-[11px] h-[11px] text-[color:color-mix(in_srgb,var(--paper-0)_90%,transparent)] flex-shrink-0' : 'w-[11px] h-[11px] text-white/90 flex-shrink-0'} />
-                {item}
-              </li>
-            ))}
-          </ul>
-          <div className={on ? 'w-full py-[11px] px-[18px] rounded-[9px] bg-[color:color-mix(in_srgb,var(--paper-0)_20%,transparent)] text-paper-0 text-[0.9rem] font-bold text-center hover:bg-[color:color-mix(in_srgb,var(--paper-0)_30%,transparent)] transition-colors' : 'w-full py-[11px] px-[18px] rounded-[9px] bg-white/20 text-white text-[0.9rem] font-bold text-center hover:bg-white/30 transition-colors'}>
-            Get Started Free →
-          </div>
-        </button>
-      </div>
-
-      {/* ── MOBILE: Bold primary stacked (<641px) ── */}
-      <div className="sm:hidden flex flex-col gap-[14px]">
-        {/* Create — primary */}
-        <button
-          type="button"
-          onClick={() => setPath('create')}
-          className={on ? 'relative bg-seal rounded-[20px] p-[26px] text-left overflow-hidden hover:-translate-y-0.5 transition-all' : 'relative bg-wine-600 rounded-[20px] p-[26px] text-left overflow-hidden hover:-translate-y-0.5 transition-all'}
-          style={on ? { boxShadow: '0 8px 24px var(--seal-ring)' } : { boxShadow: '0 8px 24px rgba(26,94,107,0.3)' }}
-        >
-          <span
-            className={on ? 'inline-flex items-center gap-[5px] bg-[color:color-mix(in_srgb,var(--paper-0)_20%,transparent)] text-paper-0 text-[0.65rem] font-bold tracking-widest uppercase px-[9px] py-[3px] rounded-full mb-3' : 'inline-flex items-center gap-[5px] bg-white/20 text-white text-[0.65rem] font-bold tracking-widest uppercase px-[9px] py-[3px] rounded-full mb-3'}
-          >
-            Most Popular
-          </span>
-          <p className={on ? 'font-bold !text-paper-0 text-[1.2rem] mb-[5px]' : 'font-bold text-white text-[1.2rem] mb-[5px]'}>Create a New Restaurant</p>
-          <p className={on ? 'text-[0.8125rem] !text-[color:color-mix(in_srgb,var(--paper-0)_80%,transparent)]' : 'text-[0.8125rem] text-white/80'}>Set up your restaurant in under 3 minutes</p>
-          <div className={on ? 'absolute right-[22px] top-1/2 -translate-y-1/2 w-[34px] h-[34px] rounded-full bg-[color:color-mix(in_srgb,var(--paper-0)_20%,transparent)] flex items-center justify-center' : 'absolute right-[22px] top-1/2 -translate-y-1/2 w-[34px] h-[34px] rounded-full bg-white/20 flex items-center justify-center'}>
-            <ArrowRight className={on ? 'w-[14px] h-[14px] text-paper-0' : 'w-[14px] h-[14px] text-white'} />
-          </div>
-        </button>
-
-        {/* Divider */}
-        <div className={on ? 'flex items-center gap-3 text-inkm-3 text-[0.75rem]' : 'flex items-center gap-3 text-gray-400 text-[0.75rem]'}>
-          <div className={on ? 'flex-1 h-px bg-paper-2' : 'flex-1 h-px bg-gray-200'} />
-          or
-          <div className={on ? 'flex-1 h-px bg-paper-2' : 'flex-1 h-px bg-gray-200'} />
-        </div>
-
-        {/* Join — secondary glassmorphism */}
-        <button
-          type="button"
-          onClick={() => setPath('join')}
-          className={on ? 'bg-paper-0 backdrop-blur border border-paper-2 rounded-[18px] px-[22px] py-[20px] flex items-center gap-[14px] hover:border-seal hover:-translate-y-0.5 transition-all' : 'bg-white/70 backdrop-blur border border-gray-200 rounded-[18px] px-[22px] py-[20px] flex items-center gap-[14px] hover:border-wine-400 hover:-translate-y-0.5 transition-all'}
-        >
-          <div className={on ? 'w-[40px] h-[40px] rounded-[11px] bg-seal-tint flex items-center justify-center flex-shrink-0' : 'w-[40px] h-[40px] rounded-[11px] bg-wine-100 flex items-center justify-center flex-shrink-0'}>
-            <Users className={on ? 'w-[18px] h-[18px] text-seal' : 'w-[18px] h-[18px] text-wine-600'} />
-          </div>
-          <div className="text-left">
-            <p className={on ? 'font-bold !text-inkm-1 text-[0.9375rem] mb-[2px]' : 'font-bold text-gray-900 text-[0.9375rem] mb-[2px]'}>Join an Existing Restaurant</p>
-            <p className={on ? 'text-[0.78rem] !text-inkm-3' : 'text-[0.78rem] text-gray-500'}>I have an invite code from my manager</p>
-          </div>
-          <ChevronRight className={on ? 'w-[14px] h-[14px] text-inkm-3 ml-auto' : 'w-[14px] h-[14px] text-gray-400 ml-auto'} />
-        </button>
-      </div>
-
-      {/* Trust row — desktop only */}
-      <div className="hidden sm:flex items-center justify-center gap-[18px] mt-4">
-        {['No credit card', '3-minute setup', 'Cancel anytime'].map((item) => (
-          <span key={item} className={on ? 'flex items-center gap-[5px] text-xs text-inkm-3' : 'flex items-center gap-[5px] text-xs text-gray-400'}>
-            <Check className="w-[11px] h-[11px] text-green-600 flex-shrink-0" />
-            {item}
-          </span>
-        ))}
-      </div>
-      </>
-      )}
-
-      <p className={on ? 'text-center text-sm !text-inkm-3 mt-6' : 'text-center text-sm text-gray-500 mt-6'}>
-        Already have an account?{' '}
-        <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium' : 'text-wine-600 hover:text-wine-700 font-medium'}>
-          Sign in
-        </Link>
-      </p>
-    </motion.div>
-  )
-
   // PATH A — Step 1: Invite code entry
   const pathAStep1 = () => (
     <motion.div
@@ -405,7 +269,7 @@ export function Register() {
       {/* Back */}
       <button
         type="button"
-        onClick={() => setPath('selector')}
+        onClick={() => navigate('/register')}
         className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-6' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-6'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
@@ -811,7 +675,7 @@ export function Register() {
     >
       <button
         type="button"
-        onClick={() => setPath('selector')}
+        onClick={() => navigate('/register')}
         className={on ? 'flex items-center gap-1 text-sm text-inkm-3 hover:text-inkm-4 mb-4' : 'flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4'}
       >
         <ArrowLeft className="w-4 h-4" /> Back
@@ -1104,7 +968,7 @@ export function Register() {
       })
       navigate('/verify-email', { replace: true })
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Registration failed')
+      setError(houseNotOpened(err, 'register'))
     } finally {
       setLoading(false)
     }
@@ -1507,7 +1371,6 @@ export function Register() {
   const stepKey = `${path}-${path === 'join' ? pathAStep : pathBStep}`
 
   const content = (() => {
-    if (path === 'selector') return pathSelector()
     if (path === 'join') return pathAStep === 1 ? pathAStep1() : pathAStep2()
     if (path === 'create') return pathBStep === 1 ? pathBStep1() : pathBStep2()
   })()
@@ -1525,14 +1388,6 @@ export function Register() {
   // is untouched.
   const endpaperFor = (): { houseLine: string; tag: string; folio: string; title: string; lede: string } => {
     const voice = { houseLine: 'Every house keeps its own.', tag: 'Open one, or be entered in one that already exists.' }
-    if (path === 'selector') {
-      return {
-        ...voice,
-        folio: 'Register',
-        title: 'Whose book is this?',
-        lede: 'A new house is a new set of books, or a line in one that exists.',
-      }
-    }
     if (path === 'join') {
       const named = invitePreview?.valid ? invitePreview.restaurant : undefined
       const expecting =

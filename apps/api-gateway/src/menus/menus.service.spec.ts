@@ -5,7 +5,8 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
-import { MenusService } from "./menus.service";
+import { LINE_SELECT, MenusService } from "./menus.service";
+import { MEMBER_LINE_KEYS, seesRawLine } from "./menu-line-view";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
 import { MenuReadWaitingException } from "./parsers/scan-parser.service";
@@ -173,6 +174,7 @@ describe("MenusService.getMenu", () => {
       name: null,
       status: null,
       items: [],
+      rawLineWithheld: true,
     });
   });
 
@@ -225,6 +227,166 @@ describe("MenusService.getMenu", () => {
 
     const result = await service.getMenu("rest-1");
     expect(result.items.map((i: any) => i.id)).toEqual(["mi-1"]);
+  });
+});
+
+/**
+ * ADR 0309 option 1c, amended after the audit of #655 at 220e3747d (BLOCK):
+ * a CSV line's raw line is the whole row, every unmapped column included
+ * (csv-parser.service.ts:55), so it goes only to a role whose ROLE_POLICY row
+ * sees money and suppliers (ADR 0145). Every member gets kitchen_line.
+ *
+ * The rows are built with the REAL CSV reader, so the stored string is the one
+ * production stores. The fake ignores the column list and hands back every
+ * fixture column, so these cases test the stripping itself, not the select.
+ */
+describe("MenusService line reads — a line's raw line is a holder's (ADR 0145 staff row)", () => {
+  const CSV =
+    "Name,Producer,Vintage,Type,Bottle,Cost,Supplier,Margin,Section\n" +
+    "Barolo,Vietti,2019,red,120,38.50,Vini Ltd,68%,Wines\n" +
+    "Tiramisu,,,,12,3.10,Metro,74%,Dessert\n";
+  const SECRETS = ["38.50", "3.10", "Vini Ltd", "Metro", "68%", "74%"];
+  /** Every column LINE_SELECT names except the raw line: what any member may be sent. */
+  const MEMBER_KEYS = [
+    "id", "name", "producer", "category", "vintage", "region", "country", "grape_variety",
+    "by_glass_price", "bottle_price", "wine_library_id", "inventory_item_id", "source", "status",
+    "price_flag", "price_flag_note", "created_at",
+  ];
+  const ROOT_KEYS = ["menuId", "name", "status", "items"];
+
+  function house() {
+    const [barolo, tiramisu] = new CsvParserService().parse(CSV);
+    // Every LINE_SELECT column is present, so the exact key set of a line is
+    // what the allowlist lets through, not what the fixture happened to hold.
+    const line = (over: Row): Row => ({
+      menu_id: "menu-1",
+      restaurant_id: "rest-1",
+      producer: null,
+      category: null,
+      vintage: null,
+      region: null,
+      country: null,
+      grape_variety: null,
+      by_glass_price: null,
+      bottle_price: null,
+      wine_library_id: null,
+      inventory_item_id: null,
+      source: "csv",
+      status: "approved",
+      price_flag: null,
+      price_flag_note: null,
+      raw_extracted_text: null,
+      created_at: "2026-10-07T10:00:00Z",
+      ...over,
+    });
+    return {
+      barolo,
+      tiramisu,
+      service: makeService({
+        restaurant_menus: [
+          { id: "menu-1", restaurant_id: "rest-1", name: "Wine List", status: "active" },
+        ],
+        menu_items: [
+          line({ id: "mi-1", name: "Barolo", producer: "Vietti", category: "red", bottle_price: 120, raw_extracted_text: barolo.raw_text }),
+          line({ id: "mi-2", name: "Tiramisu", bottle_price: 12, raw_extracted_text: tiramisu.raw_text }),
+          // A line added by hand keeps no raw line: nothing to withhold.
+          line({ id: "mi-3", name: "Soave", category: "white", bottle_price: 40, source: "manual" }),
+        ],
+      }),
+    };
+  }
+  const byName = (items: Array<Record<string, unknown>>, name: string) => items.find((l) => l.name === name)!;
+
+  it("the CSV reader keeps the unmapped cost, supplier and margin cells in the raw line", () => {
+    const { barolo, tiramisu } = house();
+    expect(barolo.raw_text).toBe("Barolo,Vietti,2019,red,120,38.50,Vini Ltd,68%,Wines");
+    expect(tiramisu.raw_text).toBe("Tiramisu,,,,12,3.10,Metro,74%,Dessert");
+  });
+
+  it("LINE_SELECT asks for exactly the member keys plus the raw line, which only lineForViewer may let out", () => {
+    expect(LINE_SELECT.split(",").map((c) => c.trim()).sort()).toEqual([...MEMBER_KEYS, "raw_extracted_text"].sort());
+    expect([...MEMBER_LINE_KEYS].sort()).toEqual([...MEMBER_KEYS].sort());
+  });
+
+  it("staff: the exact member keys, kitchen_line, and raw_line_withheld where a raw line is kept; no cell of the row", async () => {
+    const { service } = house();
+    const r: any = await service.getVersion("rest-1", "menu-1", { rawLine: seesRawLine("staff") });
+    expect(Object.keys(r).sort()).toEqual(["items", "namesReadable", "namesReason", "rawLineWithheld", "version"]);
+    expect(r.rawLineWithheld).toBe(true);
+    const barolo = byName(r.items, "Barolo");
+    const tiramisu = byName(r.items, "Tiramisu");
+    const soave = byName(r.items, "Soave");
+    expect(Object.keys(barolo).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "raw_line_withheld"].sort());
+    expect(Object.keys(tiramisu).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "raw_line_withheld"].sort());
+    expect(Object.keys(soave).sort()).toEqual([...MEMBER_KEYS, "kitchen_line"].sort());
+    expect(barolo.raw_line_withheld).toBe(true);
+    // The kitchen split survives withholding: Tiramisu's only kitchen clue is
+    // its unmapped "Dessert" cell.
+    expect(barolo.kitchen_line).toBe(false);
+    expect(tiramisu.kitchen_line).toBe(true);
+    expect(soave.kitchen_line).toBe(false);
+    // Sale prices still reach staff, as on main: withholding them is MENU-02.
+    expect(barolo.bottle_price).toBe(120);
+    // A second check on top of the key sets: no cell of the CSV row is anywhere.
+    const text = JSON.stringify(r);
+    for (const secret of SECRETS) expect(text).not.toContain(secret);
+  });
+
+  it("owner: the raw line itself, the same kitchen split, and no withheld markers", async () => {
+    const { service, barolo: row } = house();
+    const staff: any = await service.getVersion("rest-1", "menu-1", { rawLine: seesRawLine("staff") });
+    const r: any = await service.getVersion("rest-1", "menu-1", { rawLine: seesRawLine("owner") });
+    expect(Object.keys(r).sort()).toEqual(["items", "namesReadable", "namesReason", "version"]);
+    const barolo = byName(r.items, "Barolo");
+    expect(Object.keys(barolo).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "raw_extracted_text"].sort());
+    expect(barolo.raw_extracted_text).toBe(row.raw_text);
+    expect(byName(r.items, "Soave").raw_extracted_text).toBeNull();
+    for (const name of ["Barolo", "Tiramisu", "Soave"]) {
+      expect(byName(r.items, name).kitchen_line).toBe(byName(staff.items, name).kitchen_line);
+    }
+  });
+
+  it.each([null, undefined, "staff", "bartender", "STAFF", ""])("role %p: the raw line is withheld", async (role) => {
+    const { service } = house();
+    const r: any = await service.getVersion("rest-1", "menu-1", { rawLine: seesRawLine(role as any) });
+    expect(r.rawLineWithheld).toBe(true);
+    for (const line of r.items) expect(Object.keys(line)).not.toContain("raw_extracted_text");
+  });
+
+  it.each(["owner", "manager", "Manager", "admin"])("role %p: the raw line is sent", async (role) => {
+    const { service, barolo: row } = house();
+    const r: any = await service.getVersion("rest-1", "menu-1", { rawLine: seesRawLine(role) });
+    expect(Object.keys(r)).not.toContain("rawLineWithheld");
+    expect(byName(r.items, "Barolo").raw_extracted_text).toBe(row.raw_text);
+  });
+
+  it("getMenu: the exact root keys and the same withholding, and a call that names no view withholds", async () => {
+    const { service } = house();
+    for (const r of [await service.getMenu("rest-1"), await service.getMenu("rest-1", { rawLine: false })] as any[]) {
+      expect(Object.keys(r).sort()).toEqual([...ROOT_KEYS, "rawLineWithheld"].sort());
+      expect(r.rawLineWithheld).toBe(true);
+      expect(Object.keys(byName(r.items, "Barolo")).sort()).toEqual([...MEMBER_KEYS, "kitchen_line", "raw_line_withheld"].sort());
+      expect(byName(r.items, "Tiramisu").kitchen_line).toBe(true);
+      const text = JSON.stringify(r);
+      for (const secret of SECRETS) expect(text).not.toContain(secret);
+    }
+    const holder: any = await service.getMenu("rest-1", { rawLine: true });
+    expect(Object.keys(holder).sort()).toEqual([...ROOT_KEYS].sort());
+  });
+
+  it("a getVersion call that names no view withholds", async () => {
+    const { service } = house();
+    const r: any = await service.getVersion("rest-1", "menu-1");
+    expect(r.rawLineWithheld).toBe(true);
+    expect(JSON.stringify(r)).not.toContain("38.50");
+  });
+
+  it("the plan and the current-menu union never carry the raw line", async () => {
+    const { service } = house();
+    expect(JSON.stringify(await service.planFor("rest-1", "menu-1"))).not.toContain("38.50");
+    const current = await service.readCurrentMenus("rest-1");
+    for (const line of current.lines) expect(Object.keys(line)).not.toContain("raw_extracted_text");
+    expect(JSON.stringify(current)).not.toContain("38.50");
   });
 });
 

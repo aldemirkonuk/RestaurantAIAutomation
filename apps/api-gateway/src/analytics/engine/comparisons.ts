@@ -526,3 +526,118 @@ export function correlationSignificance(
   const p = Math.min(1, 2 * upperTail(Math.abs(z)));
   return { z, p, pAdjusted: Math.min(1, Math.max(1, tests) * p) };
 }
+
+/** ln Γ(x) for x > 0: Lanczos, g = 7, nine terms (about 15 digits). */
+function logGamma(x: number): number {
+  if (x < 0.5) {
+    // Reflection: Γ(x)Γ(1 − x) = π / sin(πx).
+    return (
+      Math.log(Math.PI / Math.abs(Math.sin(Math.PI * x))) - logGamma(1 - x)
+    );
+  }
+  const c = [
+    0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7,
+  ];
+  const z = x - 1;
+  let a = c[0];
+  for (let i = 1; i < 9; i++) a += c[i] / (z + i);
+  const t = z + 7.5;
+  return (
+    0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(a)
+  );
+}
+
+/** Continued fraction for the incomplete beta (modified Lentz). */
+function betaContinuedFraction(x: number, a: number, b: number): number {
+  const TINY = 1e-300;
+  const EPS = 1e-15;
+  let c = 1;
+  let d = 1 - ((a + b) * x) / (a + 1);
+  if (Math.abs(d) < TINY) d = TINY;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= 500; m++) {
+    const m2 = 2 * m;
+    let aa = (m * (b - m) * x) / ((a + m2 - 1) * (a + m2));
+    d = 1 + aa * d;
+    if (Math.abs(d) < TINY) d = TINY;
+    c = 1 + aa / c;
+    if (Math.abs(c) < TINY) c = TINY;
+    d = 1 / d;
+    h *= d * c;
+    aa = (-(a + m) * (a + b + m) * x) / ((a + m2) * (a + m2 + 1));
+    d = 1 + aa * d;
+    if (Math.abs(d) < TINY) d = TINY;
+    c = 1 + aa / c;
+    if (Math.abs(c) < TINY) c = TINY;
+    d = 1 / d;
+    const step = d * c;
+    h *= step;
+    if (Math.abs(step - 1) < EPS) break;
+  }
+  return h;
+}
+
+/**
+ * The regularized incomplete beta I_x(a, b) = P(Beta(a, b) ≤ x), for
+ * a, b > 0. Each side of the mean is summed by its own continued fraction,
+ * so a small tail is computed directly, never as 1 minus something close to 1.
+ */
+export function regularizedIncompleteBeta(
+  x: number,
+  a: number,
+  b: number,
+): number {
+  if (!(a > 0) || !(b > 0) || Number.isNaN(x)) return NaN;
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const front = Math.exp(
+    logGamma(a + b) -
+      logGamma(a) -
+      logGamma(b) +
+      a * Math.log(x) +
+      b * Math.log(1 - x),
+  );
+  if (x < (a + 1) / (a + b + 2))
+    return (front * betaContinuedFraction(x, a, b)) / a;
+  return 1 - (front * betaContinuedFraction(1 - x, b, a)) / b;
+}
+
+/**
+ * Upper tail of Snedecor's F with (d1, d2) degrees of freedom: P(F ≥ f).
+ * P(F ≥ f) = I_{d2/(d2 + d1·f)}(d2/2, d1/2), computed directly so a small p
+ * keeps its digits.
+ */
+export function fUpperTail(f: number, d1: number, d2: number): number {
+  if (!(d1 > 0) || !(d2 > 0) || Number.isNaN(f)) return NaN;
+  if (f <= 0) return 1;
+  if (f === Number.POSITIVE_INFINITY) return 0;
+  return regularizedIncompleteBeta(d2 / (d2 + d1 * f), d2 / 2, d1 / 2);
+}
+
+/**
+ * Does a least-squares fit with k predictors over n rows explain more than
+ * chance? The overall F-test: F = (R²/k) / ((1 − R²)/(n − k − 1)), p its
+ * upper tail on (k, n − k − 1) degrees of freedom. Null when there is no
+ * residual degree of freedom (n − k − 1 < 1), so no test can be made.
+ *
+ * R² = 1 with a residual degree of freedom left is an exact fit the
+ * dimensions did not force: F is infinite and p is 0. Whether the caller's
+ * R² of 1 is a fit at all (a constant y is called R² 1 by
+ * `multipleRegression`) is the caller's to check.
+ */
+export function regressionSignificance(
+  r2: number,
+  n: number,
+  k: number,
+): { f: number; df1: number; df2: number; p: number } | null {
+  const df1 = k;
+  const df2 = n - k - 1;
+  if (!Number.isFinite(r2) || !(df1 >= 1) || !(df2 >= 1)) return null;
+  const r = Math.max(0, Math.min(1, r2));
+  if (r >= 1) return { f: Number.POSITIVE_INFINITY, df1, df2, p: 0 };
+  const f = r / df1 / ((1 - r) / df2);
+  return { f, df1, df2, p: fUpperTail(f, df1, df2) };
+}

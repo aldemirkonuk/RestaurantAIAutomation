@@ -22,7 +22,8 @@ import type { Finding, QuestionClass, SourceTrace, WithheldSourceTrace } from ".
  *   ROLE_POLICY   ONE table, data not branches: per role, the classes it sees,
  *                 the answer kinds it gets, and its share of the house's daily
  *                 ask allowance (ADR 0146).
- *   the aliases   `admin` reads the owner row (RolesGuard's own admin rule);
+ *   the aliases   `admin` reads the owner row. RolesGuard does NOT admit
+ *                 `admin` (it is exact, ADR 0164); no one holds `admin`;
  *                 any other or absent role reads the FALLBACK row.
  *
  * `scripts/check_ask_field_classes.py` fails CI on a shown field with no tag,
@@ -237,7 +238,12 @@ export const FAILURE_DETAIL: Readonly<Record<Role, FailureDetail>> = {
   staff: "source_only",
 };
 
-/** `admin` passes every owner/manager gate in RolesGuard, so it reads the owner row. */
+/**
+ * `admin` reads the owner row. This is this table's own rule: RolesGuard is
+ * exact and refuses `admin` (ADR 0164), and no stored role is `admin` (ADR 0164,
+ * measured 2026-09-18). Any gate that reads ROLE_POLICY therefore admits
+ * `admin` where RolesGuard would not.
+ */
 export const ROLE_POLICY_ALIASES: Readonly<Record<string, Role>> = { admin: "owner" };
 /** Any other, absent or unrecognised role reads the least-privileged row. */
 export const ROLE_POLICY_FALLBACK: Role = "staff";

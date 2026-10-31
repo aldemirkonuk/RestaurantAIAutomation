@@ -656,7 +656,13 @@ describe("confirmLineMatch — a line pairs only with its own house's order line
     );
   }
   const UUID = "11111111-1111-4111-8111-111111111111";
-  const caller = { userId: "user-1", restaurantId: "rest-1" } as never;
+  // Pairing is a holder's act (`document-money-gate.ts`): a caller with no
+  // role is refused 403 before the 400 and 404 these cases pin.
+  const caller = {
+    userId: "user-1",
+    restaurantId: "rest-1",
+    role: "manager",
+  } as never;
 
   it("the route answers 404 for another house's order line", async () => {
     const db = houseFixture();

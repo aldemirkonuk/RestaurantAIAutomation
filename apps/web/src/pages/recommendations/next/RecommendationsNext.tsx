@@ -738,6 +738,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
             exclusionsProblem={data.exclusions?.problem ?? null}
             onExclude={(date, reason) => void data.ruleOutDay(date, reason)}
             onInclude={(date) => void data.includeDay(date)}
+            canRuleOut={data.canRuleOutDays}
             undated={undated}
             matching={dayScoped.length}
           />
@@ -830,13 +831,16 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                     <li key={x.businessDate}>
                       <span className="rc-num">{fmtDay(x.businessDate)}</span>
                       <span className="rc-why">{x.reason ?? 'no reason given'}</span>
-                      <button
-                        type="button"
-                        className="rc-quiet"
-                        onClick={() => void data.includeDay(x.businessDate)}
-                      >
-                        Count it again
-                      </button>
+                      {/* OPS-04: counting a day again is an owner's or a manager's; staff read the list */}
+                      {data.canRuleOutDays && (
+                        <button
+                          type="button"
+                          className="rc-quiet"
+                          onClick={() => void data.includeDay(x.businessDate)}
+                        >
+                          Count it again
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -976,6 +980,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
                         onToggleExpand={() => setExpanded((p) => toggle(p, e.ruleKey))}
                         onToggleSelect={() => setSelected((p) => toggle(p, e.ruleKey))}
                         exclusions={data.exclusions}
+                        canRuleOutDays={data.canRuleOutDays}
                         openDismiss={sheetFor === e.ruleKey}
                         onDismissOpened={() => setSheetFor(null)}
                         onAct={() => void act(e)}
