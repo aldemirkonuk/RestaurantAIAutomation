@@ -16,3 +16,13 @@ The size of the build was not measured here. ADR 0298 records that an earlier au
 Entry (ii) of this branch. From the same audit (compliance note 2, second bullet).
 
 ADR 0298's review trail said the question "is not answered here" (`:123`). It is answered elsewhere. `tech-debt.d/README.md:5-7` records the founder's answer of 2026-09-29: a file in this folder is an entry of the defect register, not a new document, so it names nothing to retire and gets no index row. The ADR's row now carries that citation in a dated bracket. Nothing else was owed.
+
+## ADR 0298 describes code that is not on `main` — OPEN — 2026-10-31
+
+Entry (iii) of this branch. From PR #703's audit at `8fa9d0494` (comment 6549556550, compliance note 1).
+
+**What is true.** Most of ADR 0298's decisions describe the gateway readers, /reports, the exports, the MCP reader and the goal producers, which land with PR #617, and the digest's two compositions, which land with a third PR. This branch lands only the function they read. The two `open` rows of `../decisions/claims.d/fix-cost-of-goods-reads-what-sold-sql.jsonl` fail the build once that code lands without the rows being flipped. Nothing fails if the code never lands. `main` would then hold an ADR whose sentences about routes and letters describe nothing.
+
+**What closes it.** One of two things:
+- PR #617 and the digest's PR both merge, and both rows are flipped to `resolved`; or
+- either PR is closed unmerged, and a dated bracket in ADR 0298 says which of its decisions did not land.
