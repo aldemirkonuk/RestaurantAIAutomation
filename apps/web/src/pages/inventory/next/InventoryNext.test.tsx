@@ -1215,6 +1215,20 @@ describe('row selection, ported from the legacy table (re-gate 2026-10-31)', () 
     ok.mockRestore();
   });
 
+  it('Copy names keeps a name with a newline in it on one line', async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const ok = vi.spyOn(toast, 'success').mockImplementation(() => '' as never);
+    mock.data = data({ rows: [row({ id: 'a', name: 'Alpha\nReserve' }), row({ id: 'b', name: 'Beta' })] });
+    renderPage();
+    for (const box of screen.getAllByRole('checkbox').filter((b) => /Select (Alpha|Beta)/.test(b.getAttribute('aria-label') ?? ''))) fireEvent.click(box);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy names' }));
+    });
+    expect(writeText).toHaveBeenCalledWith('Alpha Reserve\nBeta');
+    ok.mockRestore();
+  });
+
   it('Copy names says so when the device will not copy', async () => {
     Object.defineProperty(navigator, 'clipboard', {
       value: { writeText: vi.fn(async () => Promise.reject(new Error('denied'))) },
@@ -1421,6 +1435,28 @@ describe('the rest of the census: keys, realtime, POS queue, count-sheet notes (
     expect(byName.get('Alpha')).toContain('Shadow 3; reconcile after this count');
     expect(byName.get('Alpha')).toContain('Never counted');
     expect(byName.get('Beta')).toBe('');
+  });
+
+  it('writes the legacy count-sheet columns, blank where a figure was not read', async () => {
+    exportSpy.mockClear();
+    const tenDaysAgo = new Date(Date.now() - 10 * 86_400_000 - 3_600_000).toISOString();
+    mock.data = data({
+      rows: [
+        row({ id: 'a', name: 'Alpha', velocity: 0.5, runway: 7.6, wac: 12, value: 36, lastCountedAt: tenDaysAgo }),
+        row({ id: 'b', name: 'Beta', velocity: null, runway: null, wac: null, value: null, lastCountedAt: null }),
+      ],
+    });
+    renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    const file = exportSpy.mock.calls[0][0] as { rows: InvRow[]; columns: { header: string; value: (r: InvRow) => unknown }[] };
+    const headers = file.columns.map((c) => c.header);
+    for (const h of ['Days since counted', 'Last counted', 'Velocity/day', 'Runway d', 'WAC', 'Value']) expect(headers).toContain(h);
+    expect(headers.indexOf('Days since counted')).toBeLessThan(headers.indexOf('Observation'));
+    const cell = (name: string, h: string) => file.columns.find((c) => c.header === h)!.value(file.rows.find((r) => r.name === name)!);
+    expect([cell('Alpha', 'Days since counted'), cell('Alpha', 'Velocity/day'), cell('Alpha', 'Runway d'), cell('Alpha', 'WAC'), cell('Alpha', 'Value')]).toEqual([10, '0.50', 8, 12, '36.00']);
+    expect([cell('Beta', 'Days since counted'), cell('Beta', 'Velocity/day'), cell('Beta', 'Runway d'), cell('Beta', 'WAC'), cell('Beta', 'Value')]).toEqual(['never', '', '', '', '']);
   });
 
   it('shows the ABC class the server sent, and nothing when it sent none', () => {

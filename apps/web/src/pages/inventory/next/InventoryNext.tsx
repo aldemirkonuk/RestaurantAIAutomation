@@ -48,7 +48,7 @@ import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import InventoryTable from './InventoryTable';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
-import { blank, runExport, today, valuationColumns } from './iv-export';
+import { blank, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
 import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
@@ -368,7 +368,8 @@ export default function InventoryNext() {
 
   const selBlocked = selectedRows.filter((r) => removeBlocked(r) !== null).length;
   const copySelectedNames = async () => {
-    const names = selectedRows.map((r) => r.name ?? 'Unnamed title').join('\n');
+    // One line per name: a newline inside a name would split it into two on paste.
+    const names = selectedRows.map((r) => oneLine(r.name ?? 'Unnamed title')).join('\n');
     try {
       if (!navigator.clipboard) throw new Error('no clipboard');
       await navigator.clipboard.writeText(names);
@@ -538,7 +539,14 @@ export default function InventoryNext() {
         { header: 'Par', value: (r) => blank(r.par) },
         { header: 'Counted qty', value: () => '' },
         { header: 'Variance', value: () => '' },
+        // Legacy's columns (InventoryCommandPage.tsx:605-660), with Last counted kept
+        // beside Days since counted. An unread figure stays blank, never a 0.
+        { header: 'Days since counted', value: (r) => daysSinceCountedCell(r.lastCountedAt) },
         { header: 'Last counted', value: (r) => r.lastCountedAt ?? '' },
+        { header: 'Velocity/day', value: (r) => (r.velocity === null ? '' : r.velocity.toFixed(2)) },
+        { header: 'Runway d', value: (r) => (r.runway === null ? '' : Math.round(r.runway)) },
+        { header: 'WAC', value: (r) => blank(r.wac) },
+        { header: 'Value', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
         { header: 'Observation', value: (r) => countObservation(r) },
       ],
       `inventory-count-${today()}`,

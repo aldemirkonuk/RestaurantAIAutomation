@@ -685,7 +685,8 @@ describe('the rest of the legacy expansion (round 4 census)', () => {
       fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
     });
     expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5, notes: 'Shadow reconciled into live' });
-    expect(toasts.success.mock.calls[0][0]).toMatch(/2 shadow bottles booked into live, 5 on hand/);
+    expect(toasts.success.mock.calls[0][0]).toBe('Gravner Ribolla: live set to 5, the shadow bottles counted in.');
+    expect(toasts.success.mock.calls[0][0]).not.toMatch(/booked|moved/);
   });
 
   it('holds Reconcile while live stock is unread', async () => {
@@ -707,6 +708,105 @@ describe('the rest of the legacy expansion (round 4 census)', () => {
       fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
     });
     expect(toasts.error.mock.calls[0][0]).toMatch(/^Nothing was reconciled — /);
+  });
+
+  // The route sets live to an absolute count and leaves the shadow lots alone, so a
+  // second tap on the re-read row (live 5, shadow 2) would set live to 7.
+  function mountShared(r: InvRow) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const props = (rr: InvRow): RowDropdownProps => ({
+      row: rr,
+      canManage: true,
+      currency: { state: 'recorded', code: 'EUR' },
+      zoneName: () => 'Cave',
+      locations: [],
+      locationsUnavailable: false,
+      providers: PROVIDERS,
+      providersError: null,
+      restaurantId: 'r1',
+    });
+    const tree = (rr: InvRow) => (
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <RowDropdown {...props(rr)} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const view = render(tree(r));
+    return { ...view, show: (rr: InvRow) => view.rerender(tree(rr)), qc, tree };
+  }
+  const menu = async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    return screen.findByRole('menu');
+  };
+
+  it('holds Reconcile after one landed, before and after the re-read, even after the row reopens', async () => {
+    const v = mountShared(row({ stock: 3, shadow: 2 }));
+    const m0 = await menu();
+    await act(async () => {
+      fireEvent.click(within(m0).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
+    });
+    expect(inv.reconcile).toHaveBeenCalledTimes(1);
+    let m = await menu();
+    expect(within(m).queryByRole('menuitem', { name: /Reconcile/ })).toBeNull();
+    expect(within(m).getByTestId('reconcile-held').textContent).toMatch(/already set with the shadow bottles counted in/);
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    v.show(row({ stock: 5, shadow: 2 }));
+    m = await menu();
+    expect(within(m).queryByRole('menuitem', { name: /Reconcile/ })).toBeNull();
+    v.unmount();
+    render(v.tree(row({ stock: 5, shadow: 2 })));
+    m = await menu();
+    expect(within(m).queryByRole('menuitem', { name: /Reconcile/ })).toBeNull();
+    expect(inv.reconcile).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds Reconcile after an unknown outcome, and says it may have landed', async () => {
+    inv.reconcile.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { isAxiosError: true, request: {} }));
+    mountShared(row({ stock: 3, shadow: 2 }));
+    const m0 = await menu();
+    await act(async () => {
+      fireEvent.click(within(m0).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
+    });
+    const m = await menu();
+    expect(within(m).queryByRole('menuitem', { name: /Reconcile/ })).toBeNull();
+    expect(within(m).getByTestId('reconcile-held').textContent).toMatch(/may have landed/);
+  });
+
+  it('does not hold Reconcile after a refusal, since nothing was written', async () => {
+    inv.reconcile.mockRejectedValueOnce(
+      Object.assign(new Error('Request failed with status code 403'), { isAxiosError: true, response: { status: 403, data: {} } }),
+    );
+    mountShared(row({ stock: 3, shadow: 2 }));
+    const m0 = await menu();
+    await act(async () => {
+      fireEvent.click(within(m0).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
+    });
+    const m = await menu();
+    expect((within(m).getByRole('menuitem', { name: 'Reconcile 2 into live' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('offers Reconcile again once live or shadow reads differently', async () => {
+    const v = mountShared(row({ stock: 3, shadow: 2 }));
+    const m0 = await menu();
+    await act(async () => {
+      fireEvent.click(within(m0).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
+    });
+    v.show(row({ stock: 5, shadow: 4 }));
+    const m = await menu();
+    expect((within(m).getByRole('menuitem', { name: 'Reconcile 4 into live' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(within(m).queryByTestId('reconcile-held')).toBeNull();
+  });
+
+  it('Copy the name keeps a name with a newline on one line', async () => {
+    const write = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: write }, configurable: true });
+    renderDrop({ row: row({ name: 'Gravner\r\nRibolla' }) });
+    const m0 = await menu();
+    await act(async () => {
+      fireEvent.click(within(m0).getByRole('menuitem', { name: 'Copy the name' }));
+    });
+    expect(write).toHaveBeenCalledWith('Gravner Ribolla');
   });
 
   it('links View the ledger to the legacy destination', async () => {

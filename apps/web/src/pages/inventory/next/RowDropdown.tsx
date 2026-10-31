@@ -19,7 +19,7 @@
  */
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsStore';
 import { formatVolume } from '../../../utils/volumeUtils';
@@ -37,7 +37,7 @@ import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
 import { writeFailure } from './iv-failure';
-import { rowFilename, runExport, valuationColumns } from './iv-export';
+import { oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
 import {
   cellMoney,
   EM,
@@ -53,6 +53,20 @@ import {
   type PurchaseLine,
 } from './useInventoryNextData';
 import { NameThisWine } from './NameThisWine';
+
+type ReconcileFigures = { live: number; shadow: number };
+const HOLDS = new WeakMap<QueryClient, Map<string, ReconcileFigures[]>>();
+const WHY = new WeakMap<QueryClient, Map<string, 'landed' | 'unknown'>>();
+function reconcileHolds(qc: QueryClient): Map<string, ReconcileFigures[]> {
+  let m = HOLDS.get(qc);
+  if (!m) HOLDS.set(qc, (m = new Map()));
+  return m;
+}
+function reconcileWhy(qc: QueryClient): Map<string, 'landed' | 'unknown'> {
+  let m = WHY.get(qc);
+  if (!m) WHY.set(qc, (m = new Map()));
+  return m;
+}
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -200,36 +214,61 @@ export default function RowDropdown(props: RowDropdownProps) {
   // "Reconcile N into live": the legacy expansion's one tap (RowExpansion.tsx:207-214),
   // the same POST /inventory-ledger/inventory/:id/reconcile with the count set to
   // live + shadow. Held back while either figure is unread, since the sum would be a guess.
+  //
+  // The route sets LIVE to an absolute count and never touches the shadow lots
+  // (record_stock_count), so a landed tap leaves live = L+S with shadow still S and
+  // the row still offering the tap; each further tap would add S again. Once a tap
+  // has landed, or its outcome is unknown, it is held for this title while the row
+  // reads the figures from before or after that tap, and comes back only when live
+  // or shadow read differently. The hold lives with the page's query client, so it
+  // outlasts closing and reopening the row, but not a reload.
   const [reconciling, setReconciling] = useState(false);
+  const [, bumpHold] = useState(0);
+  const hold = reconcileHolds(queryClient).get(row.id);
+  const held =
+    hold !== undefined &&
+    row.stock !== null &&
+    row.shadow !== null &&
+    hold.some((f) => f.live === row.stock && f.shadow === row.shadow);
   const canReconcile =
-    row.stock !== null && row.shadow !== null && row.shadow > 0 && row.wineId !== null && !reconciling;
+    row.stock !== null && row.shadow !== null && row.shadow > 0 && row.wineId !== null && !reconciling && !held;
   const reconcileShadow = async () => {
     if (!canReconcile || row.stock === null || row.shadow === null || row.wineId === null) return;
+    const before = { live: row.stock, shadow: row.shadow };
     const total = row.stock + row.shadow;
-    const n = row.shadow;
+    const holdIt = (landed: boolean) => {
+      reconcileHolds(queryClient).set(row.id, [before, { live: total, shadow: before.shadow }]);
+      reconcileWhy(queryClient).set(row.id, landed ? 'landed' : 'unknown');
+      bumpHold((n) => n + 1);
+    };
     setMoreOpen(false);
     setReconciling(true);
     try {
       await reconcileItem(row.id, { wineId: row.wineId, actualCount: total, notes: 'Shadow reconciled into live' });
-      toast.success(`${title}: ${fmtCount(n)} shadow ${n === 1 ? 'bottle' : 'bottles'} booked into live, ${fmtCount(total)} on hand.`);
+      holdIt(true);
+      toast.success(`${title}: live set to ${fmtCount(total)}, the shadow bottles counted in.`);
       void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
     } catch (e) {
       const f = writeFailure(e, {
         refused: 'Nothing was reconciled',
-        act: 'the shadow bottles were booked into live',
+        act: 'live was set to the count with the shadow bottles in it',
         check: 'Re-read the book before trying again.',
       });
-      if (f.unknown) void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+      if (f.unknown) {
+        holdIt(false);
+        void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+      }
       toast.error(f.text);
     } finally {
       setReconciling(false);
     }
   };
+  const holdWhy = held ? reconcileWhy(queryClient).get(row.id) : undefined;
 
   const copyName = async () => {
     setMoreOpen(false);
     try {
-      await navigator.clipboard.writeText(row.name ?? 'Unnamed title');
+      await navigator.clipboard.writeText(oneLine(row.name ?? 'Unnamed title'));
       toast.success('Name copied');
     } catch {
       toast.error('Could not copy to the clipboard.');
@@ -322,7 +361,13 @@ export default function RowDropdown(props: RowDropdownProps) {
             >
               Record a pour
             </button>
-            {row.shadow !== null && row.shadow > 0 ? (
+            {row.shadow !== null && row.shadow > 0 && held ? (
+              <p className="iv-note" role="note" data-testid="reconcile-held">
+                {holdWhy === 'landed'
+                  ? 'Reconcile is done for now: live was already set with the shadow bottles counted in, and the shadow lots still read until they are cleared. It comes back when live or shadow reads differently.'
+                  : 'Reconcile is held: the last one may have landed. It comes back when live or shadow reads differently.'}
+              </p>
+            ) : row.shadow !== null && row.shadow > 0 ? (
               <button
                 type="button"
                 role="menuitem"

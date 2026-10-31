@@ -17,6 +17,23 @@ export function blank(v: number | null): number | string {
   return v === null ? '' : v;
 }
 
+/** A name on one line: a newline inside it would split it into two rows on paste. */
+export function oneLine(name: string): string {
+  return name.replace(/[\r\n\t]+/g, ' ').trim();
+}
+
+/**
+ * Legacy's "Days since counted" cell: "never" with no count on record (the same
+ * reading the Observation column gives a null date), blank for a date that does
+ * not parse, else whole days.
+ */
+export function daysSinceCountedCell(lastCountedAt: string | null, now: number = Date.now()): number | string {
+  if (lastCountedAt === null) return 'never';
+  const t = Date.parse(lastCountedAt);
+  if (!Number.isFinite(t)) return '';
+  return Math.max(0, Math.floor((now - t) / 86_400_000));
+}
+
 export function today(): string {
   return new Date().toISOString().slice(0, 10);
 }

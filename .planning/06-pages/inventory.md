@@ -932,7 +932,7 @@ So the order is:
 The #677 gate found missing acts in three rounds: the five acts, then selection, then the insights rail and Name this wine. Before the flip, every import, handler, button, menu item, key, toast and URL param of `InventoryCommandPage.tsx` was therefore classified as (a) in Next, (b) reachable by link, (c) retired by a recorded row, or (d) gap. All (d) items are ported except the two named in the tech-debt file: reversing a sort on a second header click, and re-fetching the branch list when the page loads.
 
 
-Worktree: /Users/aldemirkonuk/Projects/wt-inv-plan, based on ea3ba960b plus uncommitted round-4 edits.
+Taken in wt-inv-plan at ea3ba960b, with the round-4 ports. They were committed as f31fcbe8c.
 L = `apps/web/src/pages/inventory/command/InventoryCommandPage.tsx`, X = `command/RowExpansion.tsx`.
 N = `next/InventoryNext.tsx`, T = `next/InventoryTable.tsx`, R = `next/RowDropdown.tsx`, S = `next/InventorySheets.tsx`, D = `next/useInventoryNextData.ts`, U = `next/iv-url.ts`, W = `next/NameThisWine.tsx`.
 P = `.planning/06-pages/inventory.md`; A = `.planning/decisions/0315-inventory-is-rebuilt-as-inventorynext-on-makeover-b.md`.
@@ -994,7 +994,7 @@ Classes: (a) in Next · (b) reachable by a link from Next · (c) retired by a re
 - Search with the "( / )" hint, L:1165: (a), placeholder "Search titles, producers, grapes". The `/` key is at N:220, and the hint is hidden on touch screens (W40, P:655).
 - Location chips plus show-more, L:1173-1237: (a) as the Zone `Select` (N:734). Every zone is in one list, so there is nothing more to show. The unreadable notices for zones and mappings appear as the iv-note for unread zones and in the `data.unread` list.
 - Type chips, L:1238: (a) as the Type `Select` (N:745).
-- Sort dropdown, runway/velocity/value/name, L:96 and L:1253: (a) for needs (severity, then runway), name and value. Velocity was (d→a): the new `pace` sort, "Fastest moving" (D sortRows; U SORTS; N Sort options).
+- Sort dropdown, runway/velocity/value/name, L:96 and L:1253: (a) for needs (severity, then runway), name and value. Velocity was (d→a): the new `pace` sort, "Fastest moving" (D sortRows; U SORTS; N Sort options). [Note: legacy's "Runway, shortest first" and its sortable Runway header map to Next's "Needs you first", which sorts by severity and then runway. That is close to legacy but not the same; see the bracket at §14 line 777.]
 - Column-header sort with applySort, L:496 and L:1337: (d→a) for Title, Vel/day and Value (T:118,141; `aria-sort`). Clicking the active header goes back to Needs you first. **Direction toggling (asc/desc) is (d), not ported**: every Next sort reads in one fixed direction.
 
 ## Keyboard (L:772-830)
