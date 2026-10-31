@@ -122,6 +122,12 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // orders/:id/history, a line's history on the desk, with
     // @Roles("owner", "manager") on the method, the queue's rule (ADR 0167)
     // applied to the desk's newest route. It admits no admin, like the queue.
+    // A nineteenth, InventoryLedgerController, is the inventory mount line's
+    // fix (a) (ADR 0315): its two POSTs write any movement type, a loss
+    // included, so they now name owner AND manager. Staff counts go through
+    // `reconcile` and staff pours through `POST /inventory/:id/pour`, so
+    // reconcile and every read stay under RolesGuard with no @Roles, which
+    // admits everyone, as the five such rows above already do.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -135,6 +141,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "distributor-feed/distributor-feed.controller.ts",
       "house/house-counter.controller.ts",
       "house/house-day.controller.ts",
+      "inventory-ledger/inventory-ledger.controller.ts",
       "price-index/price-index.controller.ts",
       "procurement/documents/credits.controller.ts",
       "procurement/receiving.controller.ts",

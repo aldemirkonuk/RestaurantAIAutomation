@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   BadRequestException,
+  ConflictException,
   InternalServerErrorException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
@@ -61,6 +62,12 @@ interface TransactionRow {
 // SERVICE
 // ============================================================================
 
+
+// One refusal for every spent key: a key spent in another house and a key
+// spent here on a different movement answer alike, so the reply never says
+// whether another house holds it.
+const KEY_ALREADY_USED =
+  "This request's key was already used, so nothing new was recorded. Read the item again before writing.";
 @Injectable()
 export class InventoryLedgerService {
   private readonly logger = new Logger(InventoryLedgerService.name);
@@ -123,6 +130,30 @@ export class InventoryLedgerService {
     // p_order_id/p_location_id (transfers are not yet modeled as a single
     // atomic movement — from/to would need two calls, which is out of scope
     // for this port and unchanged from the pre-existing gap).
+    // `apply_stock_movement` looks a key up across every house. A key already
+    // spent by another house would come back as that house's movement, and
+    // the house-scoped read-back below would then report a write that never
+    // happened here. Refuse it first, naming nothing about the other row.
+    if (dto.idempotencyKey != null) {
+      const { data: elsewhere, error: keyError } =
+        await this.databaseService.supabase
+          .from("inventory_transactions")
+          .select("id")
+          .eq("idempotency_key", dto.idempotencyKey)
+          .neq("restaurant_id", restaurantId)
+          .limit(1);
+      if (keyError) {
+        throw new InternalServerErrorException(
+          "The request's key could not be checked, so nothing was recorded.",
+        );
+      }
+      if (elsewhere && elsewhere.length > 0) {
+        throw new ConflictException(
+          KEY_ALREADY_USED,
+        );
+      }
+    }
+
     const { data, error } = await this.databaseService.supabase.rpc(
       "apply_stock_movement",
       {
@@ -183,7 +214,34 @@ export class InventoryLedgerService {
     const transaction = await this.readBackCreatedTransaction(
       restaurantId,
       data,
+      dto.idempotencyKey != null,
     );
+
+    // A replayed key returns the FIRST movement it recorded, whatever this
+    // body says (`apply_stock_movement` looks the key up alone). If this body
+    // asks for a different movement, saying it was recorded would be false:
+    // a write-off of 3 that landed behind a 5xx, retried as 1, would read
+    // "Written off: 1" over a ledger holding 3 (ADR 0315, mount-line fix b).
+    const asked = {
+      inventoryId: dto.inventoryId,
+      transactionType: dto.transactionType,
+      quantityChange: dto.quantityChange,
+      stockType: dto.stockType || StockType.LIVE,
+    };
+    // Compared as values, not as wire shapes: a numeric column or an
+    // upper-cased enum must not turn a fresh write into a refusal.
+    const same = (a: unknown, b: unknown) =>
+      typeof b === "number"
+        ? Number(a) === b
+        : String(a ?? "").toLowerCase() === String(b ?? "").toLowerCase();
+    const differs = (Object.keys(asked) as (keyof typeof asked)[]).filter(
+      (k) => !same(transaction[k], asked[k]),
+    );
+    if (differs.length > 0) {
+      throw new ConflictException(
+        KEY_ALREADY_USED,
+      );
+    }
 
     // Emit event to event ingestion system
     try {
@@ -316,6 +374,7 @@ export class InventoryLedgerService {
   private async readBackCreatedTransaction(
     restaurantId: string,
     transactionId: string,
+    keyed = false,
   ): Promise<InventoryTransactionResponseDto> {
     const { data, error } = await this.databaseService.supabase
       .from("inventory_transactions")
@@ -331,11 +390,34 @@ export class InventoryLedgerService {
         transactionId,
         error: error.message,
       });
+      // A keyed reply may carry another house's row id (see below), so it
+      // names no id.
+      if (keyed) {
+        throw new InternalServerErrorException(
+          "The movement's record could not be read back, so this reply cannot say what was recorded. Read the item again before writing.",
+        );
+      }
       throw new InternalServerErrorException(
         `The stock movement was written as transaction ${transactionId}, but ` +
           `reading it back failed (${error.message}). The movement stands — ` +
           `nothing was rolled back — and this response could not describe it.`,
       );
+    }
+
+    if (!data && keyed) {
+      // The key check in createTransaction ran before the RPC. If another
+      // house spent the key in between, the RPC handed back that house's row
+      // id (its key lookup is global). A keyed write lands in this house or
+      // replays, so an id not visible here is that race: answer with the
+      // pre-check's refusal and name nothing of the other row. The log keeps
+      // the ADR 0141 signal for whoever reads it.
+      this.logger.error({
+        message:
+          "A keyed stock write returned a row this restaurant cannot see — key spent elsewhere, or a tenant contradiction",
+        restaurantId,
+        transactionId,
+      });
+      throw new ConflictException(KEY_ALREADY_USED);
     }
 
     if (!data) {
