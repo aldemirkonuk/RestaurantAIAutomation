@@ -54,6 +54,8 @@ import { ToastProvider } from './contexts/ToastContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { HousePageLoader } from './components/mudavym/HousePageLoader'
 import { RouteHead } from './lib/seo/RouteHead'
+import { RootDoor } from './pages/landing/RootDoor'
+import { RegisterDoor } from './pages/landing/RegisterDoor'
 import { RenamedRoute } from './lib/renamedRoute'
 // SyncStatus disabled — floating bottom-right sync widget (re-enable when needed)
 import { AppOfflineBanner } from './components/mudavym/AppOfflineBanner'
@@ -72,12 +74,17 @@ import { InviteLanding } from './pages/InviteLanding'
 import { NoAccess } from './pages/NoAccess'
 import { ChooseHouse } from './pages/ChooseHouse'
 import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
+import { InventoryRoute } from './pages/inventory/next/InventoryRoute'
 import { PageGate } from './components/mudavym'
 import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
 
 // Onboarding pages (lazy loaded)
 // Mudavym redesign variants (ADR 0044) — reachable only behind their per-page flag
 const DashboardNext = lazyWithRefresh(() => import('./pages/dashboard/next/DashboardNext'))
+// The landing page a stranger sees at `/` (ADR 0320); RootDoor picks it or the dashboard.
+const Landing = lazyWithRefresh(() => import('./pages/landing/Landing'))
+// The platform told as one sample night, chapter by chapter on scroll (founder, 2026-10-28).
+const Story = lazyWithRefresh(() => import('./pages/story/Story'))
 const OrdersNext = lazyWithRefresh(() => import('./pages/orders/next/OrdersNext'))
 const ReceivingNext = lazyWithRefresh(() => import('./pages/receiving/next/ReceivingNext'))
 const DoorNext = lazyWithRefresh(() => import('./pages/receiving/next/DoorNext'))
@@ -188,9 +195,16 @@ function App() {
             <RouteHead />
             <Suspense fallback={<HousePageLoader />}>
               <Routes>
+                {/* The root: a stranger's landing page, a signed-in person's dashboard
+                    (ADR 0320). The dashboard is this route's index child so that it
+                    renders through the same DashboardLayout outlet as before. */}
+                <Route path="/" element={<RootDoor landing={<Landing />} />}>
+                  <Route index element={<PageGate page="dashboard" next={<DashboardNext />} />} />
+                </Route>
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
+                <Route path="/register" element={<RegisterDoor landing={<Landing />} form={<Register />} />} />
+                <Route path="/story" element={<Story />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
@@ -359,7 +373,6 @@ function App() {
                     </ProtectedRoute>
                   }
                 >
-                  <Route path="/" element={<PageGate page="dashboard" next={<DashboardNext />} />} />
                   {/* `/inventory` is enrolled in the gate (founder, 2026-09-04) with the
                       SAME page on both branches. The command page is not being
                       redesigned — the gate is what mounts `HouseHeader`
@@ -367,7 +380,10 @@ function App() {
                       runs on all day was the only surface with no bell, no account
                       menu and no theme switch. Flag off, `legacy` renders the page
                       with no wrapper and no class: byte-for-byte what shipped. */}
-                  <Route path="/inventory" element={<PageGate page="inventory" legacy={<InventoryCommandPage />} next={<InventoryCommandPage />} />} />
+                  {/* [2026-10-30, ADR 0315 amendment: `next` is now InventoryRoute, which
+                      draws InventoryNext only where `mudavym_design_inventory_next` is ON
+                      (OFF for every house by default) and the command page otherwise.] */}
+                  <Route path="/inventory" element={<PageGate page="inventory" legacy={<InventoryCommandPage />} next={<InventoryRoute />} />} />
                   {/* `/inventory-legacy` is retired (ADR 0019 §B). It redirects
                       rather than 404s because every capability it had was ported
                       onto `/inventory` first — a bookmark lands somewhere that can

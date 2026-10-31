@@ -122,6 +122,10 @@ PAGES: tuple[str, ...] = (
     # here, so a flip of it failed "not a Mudavym page". It is live in code
     # now (founder item 53); the slug exists so that flip reports NO-OP.]
     "vendor_prices",
+    # ADR 0315's 2026-10-30 amendment — picks InventoryNext over the command
+    # page inside `/inventory`'s live gate. Flag-gated, OFF by default
+    # (migration mudavym_design_inventory_next_flag). Not live in code: a flip is real.
+    "inventory_next",
 )
 
 # ADR 0149 row 36 (2026-09-17, "16 locked pages"), live-review.md defect 2.

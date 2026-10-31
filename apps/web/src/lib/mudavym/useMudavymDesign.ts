@@ -77,6 +77,12 @@ export const MUDAVYM_PAGES = [
   // redirect, because it is still the real onboarding path for every house
   // until this one is turned on. Held back from LIVE_PAGES.
   'arrival',
+  // ADR 0315's 2026-10-30 amendment (founder: "New dark flag, port, flip").
+  // `inventory` is in LIVE_PAGES, so its gate always draws `next`; this key
+  // chooses WHICH page that is — InventoryNext when ON, the command page when
+  // OFF (pages/inventory/next/InventoryRoute.tsx). OFF by default, held back
+  // from LIVE_PAGES; on for every house once this merges (§16.4 flip-first).
+  'inventory_next',
   // ADR 0143: one desk and one switch, including the old health bookmark.
   // [2026-09-25: live for every house in code — see LIVE_PAGES below.]
   'admin',
@@ -316,4 +322,44 @@ export function useMudavymDesign(page: MudavymPage): boolean {
 
   if (override !== null) return override;
   return live || remote;
+}
+
+/**
+ * `useMudavymDesign` with the wait made visible: `null` while a held-back
+ * page's flag is still being read, then the same verdict. For a caller that
+ * chooses between two whole pages (`InventoryRoute`), where drawing the OFF
+ * side first would start its reads and consume its deep links before the
+ * ON side replaced it. A missing house, an override and LIVE_PAGES answer at
+ * once; a failed read is `false`, as above.
+ */
+export function useMudavymDesignVerdict(page: MudavymPage): boolean | null {
+  const override = typeof window === 'undefined' ? null : readOverride(page);
+  const live = LIVE_PAGES.has(page);
+  const activeRestaurantId = useContext(AuthContext)?.activeRestaurantId ?? null;
+  let restaurantId: string | null = activeRestaurantId;
+  if (!restaurantId && typeof window !== 'undefined') {
+    try {
+      restaurantId = window.localStorage.getItem(ACTIVE_RESTAURANT_KEY);
+    } catch {
+      restaurantId = null;
+    }
+  }
+  const asked = override === null && !live && restaurantId ? `${restaurantId}:${page}` : null;
+  const [answer, setAnswer] = useState<{ asked: string; enabled: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!asked || !restaurantId) return;
+    let cancelled = false;
+    fetchFlag(restaurantId, page).then((enabled) => {
+      if (!cancelled) setAnswer({ asked, enabled });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [asked, restaurantId, page]);
+
+  if (override !== null) return override;
+  if (live) return true;
+  if (!asked) return false;
+  return answer && answer.asked === asked ? answer.enabled : null;
 }

@@ -185,12 +185,12 @@ export function VendorPortal() {
         }
         eyebrow={error || !page ? 'Vendor catalogue' : 'Published vendor catalogue'}
         voice={page?.tagline ?? undefined}
-        homeHref="/login"
+        homeHref="/"
         seal={false}
         footer={
           error || !page ? undefined : (
             <>
-              <a className="mdv-link" href="/login">
+              <a className="mdv-link" href="/">
                 Published on Mudavym
               </a>
               . Prices and availability are supplied by the vendor.

@@ -31,7 +31,7 @@ export interface PublicRoute {
   /** File under dist that serves this path, without the leading slash. */
   file: string;
   head: HeadMeta;
-  /** Listed in sitemap-pages.xml. `/` is not: it redirects strangers to /login. */
+  /** Listed in sitemap-pages.xml. `/` is, since the landing page (ADR 0320). */
   sitemap: boolean;
 }
 
@@ -41,15 +41,17 @@ function indexable(path: string, title: string, description: string, jsonLd?: un
 
 export const PUBLIC_ROUTES: readonly PublicRoute[] = [
   {
-    // The house has no landing page; a stranger's home is the sign-in door
-    // (ADR 0143). The root still carries the site graph, and only the root:
+    // A stranger's home is the landing page (ADR 0320; it replaced the sign-in
+    // door of ADR 0143). The root carries the site graph, and only the root:
     // Google reads the WebSite name from the domain's home page and nowhere
     // else. It is written into dist/index.html itself, because the host serves
-    // that file for "/" before any rewrite runs (vite-plugin.ts).
+    // that file for "/" before any rewrite runs (vite-plugin.ts). The head's
+    // description is the site sentence, which is also the landing page's
+    // one-line summary under its headline.
     path: '/',
     file: 'index.html',
     head: indexable('/', SITE.name, SITE.sentence, siteGraph()),
-    sitemap: false,
+    sitemap: true,
   },
   {
     path: '/login',
@@ -58,9 +60,28 @@ export const PUBLIC_ROUTES: readonly PublicRoute[] = [
     sitemap: true,
   },
   {
+    // A bare /register shows the landing page, the same one `/` shows a
+    // stranger (RegisterDoor, ADR 0344), and the host serves this head for
+    // every query on the path. So it names `/` as the page it copies, carries
+    // the root's title and sentence, and stays out of the sitemap, which lists
+    // canonical URLs only. The sign-up form behind `?type=new` is not a page to
+    // index.
     path: '/register',
     file: 'crawl/heads/register.html',
-    head: indexable('/register', titleWithSite('Create an account'), SITE.sentence),
+    head: indexable('/', SITE.name, SITE.sentence),
+    sitemap: false,
+  },
+  {
+    // The platform told as one sample night (ADR 0344). Linked from the
+    // landing and listed, on the founder's answer of 2026-10-29. The title is
+    // the page's own eyebrow; the sentence is drawn from its opening lines.
+    path: '/story',
+    file: 'crawl/heads/story.html',
+    head: indexable(
+      '/story',
+      titleWithSite('A story in one night'),
+      'One sample night behind a restaurant: the invoices, counts, orders and vendor mail Mudavym handles, and where it asks first.',
+    ),
     sitemap: true,
   },
   {
@@ -172,7 +193,14 @@ export const TOKEN_PREFIXES: readonly string[] = [
   '/studio/invite/',
 ];
 
-/** Registry entry for an exact pathname, if it is a public page. */
+/**
+ * Registry entry for an exact pathname, if it is a public page.
+ *
+ * Load-bearing for auth too (ADR 0344, 2026-10-29): a dead session on a page
+ * this finds stays on it instead of going to /login (`lib/deadSession.ts`).
+ * Adding a page here is also a session decision; claims row
+ * `ADR-0344-PUBLIC-REGISTRY-MEMBERS` pins the list.
+ */
 export function publicRouteFor(pathname: string): PublicRoute | undefined {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
   return PUBLIC_ROUTES.find((r) => r.path === path);

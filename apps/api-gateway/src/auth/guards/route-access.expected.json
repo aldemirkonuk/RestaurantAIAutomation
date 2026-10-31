@@ -355,6 +355,56 @@
     "manager",
     "staff"
   ],
+  "POST /inventory-ledger/transactions (InventoryLedgerController.createTransaction)": [
+    "owner",
+    "manager"
+  ],
+  "POST /inventory-ledger/transactions/bulk (InventoryLedgerController.createBulkTransactions)": [
+    "owner",
+    "manager"
+  ],
+  "GET /inventory-ledger/transactions (InventoryLedgerController.listTransactions)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /inventory-ledger/transactions/:transactionId (InventoryLedgerController.getTransaction)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /inventory-ledger/inventory/:inventoryId/balance (InventoryLedgerController.getBalanceAt)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /inventory-ledger/inventory/:inventoryId/history (InventoryLedgerController.getTransactionHistory)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /inventory-ledger/summary (InventoryLedgerController.getTransactionSummary)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /inventory-ledger/inventory/:inventoryId/reconcile (InventoryLedgerController.reconcileInventory)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
   "GET /price-index/status (PriceIndexController.status)": [
     "owner",
     "manager"
