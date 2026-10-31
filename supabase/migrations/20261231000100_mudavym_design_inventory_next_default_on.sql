@@ -14,4 +14,4 @@ alter table public.restaurant_feature_flags
   alter column mudavym_design_inventory_next set default true;
 
 comment on column public.restaurant_feature_flags.mudavym_design_inventory_next is
-  'On the ''restaurant_settings'' row only. TRUE (default since 2026-10-31) renders InventoryNext at /inventory for this restaurant (ADR 0315); FALSE keeps the command page.';
+  'On the ''restaurant_settings'' row only. TRUE (the default from this migration; founder 2026-10-31) renders InventoryNext at /inventory for this restaurant (ADR 0315); FALSE keeps the command page.';

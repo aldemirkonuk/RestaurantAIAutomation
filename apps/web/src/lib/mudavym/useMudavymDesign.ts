@@ -82,6 +82,8 @@ export const MUDAVYM_PAGES = [
   // chooses WHICH page that is — InventoryNext when ON, the command page when
   // OFF (pages/inventory/next/InventoryRoute.tsx). OFF by default, held back
   // from LIVE_PAGES; on for every house once this merges (§16.4 flip-first).
+  // [2026-10-31: flipped on for every house after #677; on by default for new
+  // houses from migration mudavym_design_inventory_next_default_on.]
   'inventory_next',
   // ADR 0143: one desk and one switch, including the old health bookmark.
   // [2026-09-25: live for every house in code — see LIVE_PAGES below.]

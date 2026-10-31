@@ -382,7 +382,7 @@ function App() {
                       with no wrapper and no class: byte-for-byte what shipped. */}
                   {/* [2026-10-30, ADR 0315 amendment: `next` is now InventoryRoute, which
                       draws InventoryNext only where `mudavym_design_inventory_next` is ON
-                      (OFF for every house by default) and the command page otherwise.] */}
+                      (OFF for every house by default) and the command page otherwise. [2026-10-31: on for every house since the flip after #677, and on by default for new houses from migration mudavym_design_inventory_next_default_on.]] */}
                   <Route path="/inventory" element={<PageGate page="inventory" legacy={<InventoryCommandPage />} next={<InventoryRoute />} />} />
                   {/* `/inventory-legacy` is retired (ADR 0019 §B). It redirects
                       rather than 404s because every capability it had was ported
