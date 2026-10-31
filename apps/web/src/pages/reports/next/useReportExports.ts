@@ -114,13 +114,18 @@ export function useReportExports({ queryRoot }: { queryRoot: string }): ExportDe
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
-  // The gateway also admits `admin`; the web's role type has no such value.
+  // RolesGuard admits exactly the roles a route lists, owner and manager here;
+  // `admin` is not let in by a route that does not name it (roles.guard.ts,
+  // ADR 0164).
   const canExport = activeRole === 'owner' || activeRole === 'manager';
+  // Not "every figure is still on the sheet": the table and server registers
+  // are written for owners and managers too (ADR 0348). No "above": the
+  // registers may lie anywhere on the sheet, or not on it at all.
   const readOnlyReason = canExport
     ? null
     : activeRole == null
       ? 'Your role at this restaurant is not known yet, so exports are not offered until it is.'
-      : 'Exports are written for owners and managers. Every figure is still on the sheet above.';
+      : 'Exports are written for owners and managers, and so are the table and server registers.';
 
   const key = [queryRoot, 'exports', activeRestaurantId, page];
   const list = useQuery({

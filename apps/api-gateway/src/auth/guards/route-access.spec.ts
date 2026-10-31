@@ -128,6 +128,18 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // `reconcile` and staff pours through `POST /inventory/:id/pour`, so
     // reconcile and every read stay under RolesGuard with no @Roles, which
     // admits everyone, as the five such rows above already do.
+    // AnalyticsController is not a new controller, but four of its rows
+    // change (ADR 0348: the founder's "Fix staff money leak now", 2026-10-30,
+    // scoped to these four by "Your pick now, rest after #617", 2026-10-31):
+    // GET table-performance, waiters and hot-tables, which return each
+    // table's and each named server's takings, and POST tables, the one
+    // writer of a table (ADR 0303 residual 12), now name owner AND manager.
+    // With the four rows already gated, 8 of its 53 routes name roles and 45
+    // stay "open". The other staff-readable amounts (financial, overview,
+    // insights, recommendations, goals and the rest) are withheld by a
+    // follow-up after PR #617, the way #617 withholds them, not refused here
+    // (ADR 0348 §Decision 3; its §Decision 5 names the four role-less writes).
+    // Pinned end to end by analytics/analytics-money-needs-a-manager.spec.ts.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
