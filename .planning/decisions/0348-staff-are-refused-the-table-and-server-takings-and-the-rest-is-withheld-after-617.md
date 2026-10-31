@@ -109,6 +109,6 @@ Staff keep every page. The four routes they were reading takings through name ow
 |---|---|---|
 | 2026-10-30 | Founder | *"Fix staff money leak now"* |
 | 2026-10-31 | Two reviewers of the 12-route build | BLOCK: past the pick; refused routes #617 withholds inside |
-| 2026-10-31 | Founder | *"Your pick now, rest after #617 (Recommended)"*; PR #701 narrowed to the four routes |
+| 2026-10-31 | Founder | *"Your pick now, rest after #617 (Recommended)"*; PR #701 covers the four routes |
 | 2026-10-31 | ADR 0090 CI audit of PR #701 at `ad8454425` | BLOCK: no ADR; the page asked for the two registers; the claim could bind a neighbour's decorators. Security APPROVE WITH NOTES: the manager-claim/staff-row case, the test env restore, two stale `admin` comments |
 | 2026-10-31 | PR #701's executor | Created Locked; client gate, demoted-token spec rows, extractor rebuilt with mutations, comments fixed |
