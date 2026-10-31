@@ -84,6 +84,10 @@ export const PAGE_NAMES: Record<MudavymPage, string> = {
   // /get-started, outside DashboardLayout (like receiving_door below) — see
   // NO_CHROME. Named for the exhaustiveness check, not printed by any header.
   arrival: 'Arrival',
+  // Not a page of its own: it picks the page `/inventory`'s gate draws
+  // (InventoryRoute.tsx). Named for the exhaustiveness check; the header
+  // prints `inventory`'s name.
+  inventory_next: 'Inventory',
   admin: 'Operations desk',
   authorize_integration: 'Permission to connect',
   // The app shell, not a page (sketch 119 D). Named because the map is

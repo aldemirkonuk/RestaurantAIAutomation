@@ -509,6 +509,14 @@
       ]
     },
     {
+      "$comment": "A swap INSIDE /inventory's live gate, not a PageGate slot (ADR 0315, 2026-10-30; next/InventoryRoute.tsx). Flag off: InventoryCommandPage, the page every house sees; flag on: InventoryNext. Both sides sit under PageGate's HouseHeader, which carries its own .mudavym root, so a root count cannot tell them apart: `same` records it, as the inventory entry does. Off by default in the migration; the coordinator turns it on for every house once this merges, and the sim-wave fixes are re-aimed at InventoryNext when that wave lands (.planning/06-pages/inventory.md \u00a716.4).",
+      "slug": "inventory_next",
+      "flag": "mudavym_design_inventory_next",
+      "route": "/inventory",
+      "legacy": "same",
+      "source": "apps/web/src/pages/inventory/next"
+    },
+    {
       "slug": "arrival",
       "flag": "mudavym_design_arrival",
       "route": "/get-started",

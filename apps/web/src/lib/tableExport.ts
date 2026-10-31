@@ -62,8 +62,20 @@ function download(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+/**
+ * A cell a spreadsheet would read as a formula (=, +, -, @, tab, CR first) is
+ * written with a leading apostrophe, so opening the file runs nothing (CSV
+ * injection). A plain number, including a negative one passed as a string by
+ * a caller's toFixed(), is left as it is.
+ */
+const FORMULA_START = /^[=+\-@\t\r]/
+const PLAIN_NUMBER = /^-?\d+(\.\d+)?$/
+export function neutraliseFormula(value: string): string {
+  return FORMULA_START.test(value) && !PLAIN_NUMBER.test(value) ? `'${value}` : value
+}
+
 function escapeCsv(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`
+  return `"${neutraliseFormula(value).replace(/"/g, '""')}"`
 }
 
 function escapeHtml(value: string): string {

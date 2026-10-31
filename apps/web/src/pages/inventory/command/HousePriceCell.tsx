@@ -118,6 +118,7 @@ export function HousePriceCell({
   advice,
   canEdit,
   onChanged,
+  money = fmtMoneyExact,
 }: {
   inventoryId: string
   wineName: string
@@ -126,6 +127,10 @@ export function HousePriceCell({
   advice: AdviceLoad
   canEdit: boolean
   onChanged: () => void
+  /** How a price is drawn. Defaults to the legacy `$` format; /inventory's
+   * new page passes the house's own currency (or bare numbers when none is
+   * recorded) and its em dash for a missing figure. */
+  money?: (n: number | null) => string
 }) {
   const [editing, setEditing] = useState(false)
   const [bottleText, setBottleText] = useState('')
@@ -293,15 +298,15 @@ export function HousePriceCell({
           aria-label={`Change your price for ${wineName}`}
           className="font-mono text-xs text-gray-800 hover:text-wine-700 hover:underline decoration-dotted"
         >
-          {fmtMoneyExact(bottle)} <span className="text-[9.5px] text-gray-400">btl</span>
+          {money(bottle)} <span className="text-[9.5px] text-gray-400">btl</span>
           {' · '}
-          {fmtMoneyExact(glass)} <span className="text-[9.5px] text-gray-400">gl</span>
+          {money(glass)} <span className="text-[9.5px] text-gray-400">gl</span>
         </button>
       ) : (
         <span className="font-mono text-xs text-gray-800">
-          {fmtMoneyExact(bottle)} <span className="text-[9.5px] text-gray-400">btl</span>
+          {money(bottle)} <span className="text-[9.5px] text-gray-400">btl</span>
           {' · '}
-          {fmtMoneyExact(glass)} <span className="text-[9.5px] text-gray-400">gl</span>
+          {money(glass)} <span className="text-[9.5px] text-gray-400">gl</span>
         </span>
       )}
 
@@ -321,7 +326,7 @@ export function HousePriceCell({
                 data-testid={`locked-${a.kind}`}
                 title={`${a.sentence} This price is locked, so advice cannot be accepted here. Change it on Menu, under Locked prices.`}
               >
-                {KIND_SHORT[a.kind]} locked at {fmtMoneyExact(a.locked!.lockedPrice)} since {a.locked!.lockedAt.slice(0, 10)}
+                {KIND_SHORT[a.kind]} locked at {money(a.locked!.lockedPrice)} since {a.locked!.lockedAt.slice(0, 10)}
               </span>
             ))}
           {advice.status === 'ready' && !locksKnown && (
@@ -344,11 +349,11 @@ export function HousePriceCell({
                     a.state === 'raise' ? 'text-amber-700' : 'text-sky-700',
                   )}
                 >
-                  {a.state === 'raise' ? 'Raise' : 'Lower'} {KIND_SHORT[a.kind]} to {fmtMoneyExact(a.advisedPrice)}
+                  {a.state === 'raise' ? 'Raise' : 'Lower'} {KIND_SHORT[a.kind]} to {money(a.advisedPrice)}
                 </button>
               ) : (
                 <span key={a.kind} title={a.sentence} className="text-gray-500">
-                  {a.state === 'raise' ? 'Raise' : 'Lower'} {KIND_SHORT[a.kind]} to {fmtMoneyExact(a.advisedPrice)}
+                  {a.state === 'raise' ? 'Raise' : 'Lower'} {KIND_SHORT[a.kind]} to {money(a.advisedPrice)}
                 </span>
               ),
             )}
