@@ -1,6 +1,6 @@
 ## The `pos_checks` index is built without `CONCURRENTLY` — OPEN — 2026-10-31
 
-Entry (i) of this branch. Filed by `fix/cost-of-goods-reads-what-sold-sql`, the first of the three PRs ADR 0298 was split into, from the CI audit of PR #617 at `90b7dadff` (PR comment 6547565625, security note 4). The same audit's two forks, the `admin` reading and the delegation's missing record, are in the decision register, not here: OD-241 (OPEN-DECISIONS.md:319) and OD-242 (OPEN-DECISIONS.md:320).
+Entry (i) of this branch. Filed by `fix/cost-of-goods-reads-what-sold-sql`, the first of the three PRs ADR 0298 was split into, from the CI audit of PR #617 at `90b7dadff` (PR comment 6547565625, security note 4). The same audit's two forks, the `admin` reading and the delegation's missing record, are in the decision register, not here: OD-241 (OPEN-DECISIONS.md:328) and OD-242 (OPEN-DECISIONS.md:329).
 
 **What is true.** Migration `cost_of_goods_reads_what_sold` (cited by slug, ADR 0235) ends with `CREATE INDEX IF NOT EXISTS idx_pos_checks_restaurant_closed ON public.pos_checks (restaurant_id, closed_at DESC) WHERE closed_at IS NOT NULL`. A plain `CREATE INDEX` takes a SHARE lock. That lock blocks writes to `pos_checks` while the index builds, and leaves reads open. The audit's note called the lock ACCESS EXCLUSIVE; it is not.
 
