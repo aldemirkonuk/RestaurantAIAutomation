@@ -92,7 +92,7 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
   },
   {
     key: "mudavym_design_inventory_next",
-    // OFF by default (ADR 0315's 2026-10-30 amendment; founder: "New dark
+    // OFF by default until 2026-10-31, see below (ADR 0315's 2026-10-30 amendment; founder: "New dark
     // flag, port, flip"). `/inventory` is LIVE in code, so its gate always
     // draws `next`; this column picks which page that is. ON renders
     // InventoryNext, OFF keeps the command page every house runs today
@@ -101,7 +101,12 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // merge, and the sim-wave fixes follow with that wave. The column (migration
     // mudavym_design_inventory_next_flag) ships in this same change, for the
     // 42703 reason given under `mudavym_design_arrival` above.
-    defaultValue: false,
+    // [changed 2026-10-31: ON by default now (founder: "Default ON
+    // (Recommended)"). Every house was flipped on after #677, and a house with
+    // no settings row is answered from this value, so a new house gets
+    // InventoryNext too; migration mudavym_design_inventory_next_default_on
+    // moves the column default to match.]
+    defaultValue: true,
     readBy: "apps/web/src/lib/mudavym/useMudavymDesign.ts:269",
   },
 ];

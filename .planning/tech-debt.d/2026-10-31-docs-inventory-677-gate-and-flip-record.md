@@ -10,12 +10,12 @@ Filed by `docs/inventory-677-gate-and-flip-record` (#702), from its review.
 
 **Re-check.** CLAIMS `DESIGN-FLAG-READ-FAILURE-IS-NOT-CACHED-AS-OFF` (status `open`) fails to hold while `.catch(() => false)` is in `useMudavymDesign.ts`.
 
-## New houses still get the command page until the default-on change lands — OPEN — 2026-10-31
+## New houses still get the command page until the default-on change lands — CLOSED on `feat/inventory-next-default-on` — 2026-10-31
 
 Filed by `docs/inventory-677-gate-and-flip-record` (#702).
 
 **What happens.** The founder chose on 2026-10-31 that new houses get InventoryNext by default (ADR 0315's review trail). Until that ships, a house created after the flip gets the command page: its settings row, or the gateway registry's `defaultValue` when it has no row, says false (`apps/api-gateway/src/settings/feature-flag-registry.ts`, the `mudavym_design_inventory_next` entry).
 
-**Owed.** Branch `feat/inventory-next-default-on`: the column default and the registry default both move to true, with no existing row written.
+**Owed.** Branch `feat/inventory-next-default-on`: the column default and the registry default both move to true, with no existing row written. [CLOSED 2026-10-31 on that branch: migration `mudavym_design_inventory_next_default_on` and the registry entry; tests in `settings.service.spec.ts`.]
 
-**Re-check.** CLAIMS `NEW-HOUSES-GET-INVENTORY-NEXT-BY-DEFAULT` (status `open`) fails to hold while the registry entry's `defaultValue` is `false`.
+**Re-check.** CLAIMS `NEW-HOUSES-GET-INVENTORY-NEXT-BY-DEFAULT` (registry default) and `NEW-HOUSE-ROWS-DEFAULT-TO-INVENTORY-NEXT` (column default), both status `resolved` [changed 2026-10-31 on `feat/inventory-next-default-on`: the first was `open` until then].
