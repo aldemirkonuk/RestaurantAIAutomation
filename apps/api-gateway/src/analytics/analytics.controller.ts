@@ -385,8 +385,9 @@ export class AnalyticsController {
           body.enabled,
           actor,
           body.reason ?? null,
-          // The house role the token names: `RolesGuard` above also admits
-          // the platform admin, which the service refuses (round 4, answer 7).
+          // The house role the token names. `RolesGuard` above admits exactly
+          // owner and manager (ADR 0164), so the service's own refusal of the
+          // platform admin (round 4, answer 7) is a second line, not the first.
           actorOf(user).role,
         );
       return {

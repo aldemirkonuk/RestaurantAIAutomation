@@ -74,6 +74,10 @@ const PEOPLE = {
   unroled: "55555555-5555-4555-8555-555555555555",
   // An owner, but of house B: the tenant match refuses them at house A.
   ownerOfB: "66666666-6666-4666-8666-666666666666",
+  // A manager the house has since made staff: the access row says staff, while
+  // `users.role` and a token signed before the change still say manager. The
+  // access row is the one RolesGuard must hear (ADR 0162, ADR 0348).
+  demoted: "77777777-7777-4777-8777-777777777777",
 } as const;
 type Who = keyof typeof PEOPLE;
 const HOUSE_OF: Record<Who, string> = {
@@ -82,6 +86,7 @@ const HOUSE_OF: Record<Who, string> = {
   owner: HOUSE_A,
   unroled: HOUSE_A,
   ownerOfB: HOUSE_B,
+  demoted: HOUSE_A,
 };
 const ROLE_OF: Record<Who, string | null> = {
   staff: "staff",
@@ -89,6 +94,12 @@ const ROLE_OF: Record<Who, string | null> = {
   owner: "owner",
   unroled: null,
   ownerOfB: "owner",
+  demoted: "staff",
+};
+/** What a person's token and `users.role` claim, where it is not the access row's role. */
+const CLAIMED_ROLE_OF: Partial<Record<Who, string>> = {
+  unroled: "manager",
+  demoted: "manager",
 };
 
 /** What every stubbed service answers: the route's own name, so a body proves which service ran. */
@@ -189,7 +200,7 @@ function world(): StubDb {
       user_id: PEOPLE[who],
       email: `${who}@house.test`,
       name: who,
-      role: who === "unroled" ? "manager" : ROLE_OF[who],
+      role: CLAIMED_ROLE_OF[who] ?? ROLE_OF[who],
       restaurant_id: HOUSE_OF[who],
       email_verified: true,
     })),
@@ -209,9 +220,9 @@ const tokenFor = (who: Who) =>
   jwt.sign({
     sub: PEOPLE[who],
     email: `${who}@house.test`,
-    // The token's own claim says staff for the unroled caller; the house
-    // role comes from the access row, which names none.
-    role: ROLE_OF[who] ?? "staff",
+    // The token's own claim says staff for the unroled caller and manager for
+    // the demoted one; the house role comes from the access row either way.
+    role: who === "unroled" ? "staff" : (CLAIMED_ROLE_OF[who] ?? ROLE_OF[who]),
     restaurantId: HOUSE_OF[who],
   });
 const ORIGINAL_SECRET = process.env.JWT_SECRET;
@@ -259,7 +270,10 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app?.close();
-  process.env.JWT_SECRET = ORIGINAL_SECRET;
+  // Assigning `undefined` would store the string "undefined", which a later
+  // suite in the same worker would read as a secret.
+  if (ORIGINAL_SECRET === undefined) delete process.env.JWT_SECRET;
+  else process.env.JWT_SECRET = ORIGINAL_SECRET;
 });
 
 beforeEach(() => {
@@ -308,6 +322,18 @@ describe("an access row that names no role is not a manager, whatever users.role
     async (_label, method, path) => {
       const res = await call(method, path, tokenFor("unroled"));
       expect(res.status).toBe(403);
+      expect(serviceCalls()).toEqual([]);
+    },
+  );
+});
+
+describe("a token that still claims manager is held to the access row's staff", () => {
+  it.each(GATED)(
+    "[REVERT-FAILS] demoted to staff, token says manager: %s answers 403",
+    async (_label, method, path) => {
+      const res = await call(method, path, tokenFor("demoted"));
+      expect(res.status).toBe(403);
+      expect(res.body?.message).toBe("Forbidden resource");
       expect(serviceCalls()).toEqual([]);
     },
   );
