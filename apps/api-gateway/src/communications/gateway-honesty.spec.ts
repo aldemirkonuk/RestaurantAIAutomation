@@ -2,7 +2,6 @@ import "reflect-metadata";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { BadRequestException } from "@nestjs/common";
 import { PATH_METADATA } from "@nestjs/common/constants";
 import { CommunicationsController } from "./communications.controller";
 import { RelayEmailController } from "./relay/relay-email.controller";
@@ -197,72 +196,14 @@ describe("C2 — an SMS nobody sent reports failure", () => {
 // C3 — the broadcast tenant
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("C3 — the alert is broadcast into the caller's own tenant", () => {
-  function controllerWith(captured: any[]) {
-    return new CommunicationsController(
-      {
-        sendLowStockAlert: async (payload: any) => {
-          captured.push(payload);
-          return { success: true, timestamp: "t" };
-        },
-      } as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      {} as any,
-      { get: () => "" } as any,
-      {} as any,
-      {} as any,
-    );
-  }
-
-  const body = {
-    recipientEmail: "ops@example.com",
-    wineName: "Malbec",
-    currentStock: 1,
-    threshold: 6,
-  } as any;
-
-  it("uses the JWT's restaurant as the websocket room, ignoring the body", async () => {
-    const captured: any[] = [];
-    await controllerWith(captured).sendLowStockAlert(body, {
-      userId: "u1",
-      restaurantId: "rest-A",
-    });
-
-    expect(captured[0].restaurantId).toBe("rest-A");
-  });
-
-  it("refuses a body that names a different restaurant", async () => {
-    const captured: any[] = [];
-    await expect(
-      controllerWith(captured).sendLowStockAlert(
-        { ...body, restaurantId: "rest-B" },
-        { userId: "u1", restaurantId: "rest-A" },
-      ),
-    ).rejects.toBeInstanceOf(BadRequestException);
-
-    // Refused, not silently rewritten: a caller addressing someone else should
-    // hear about it rather than have its message quietly redirected.
-    expect(captured).toHaveLength(0);
-  });
-
-  it("accepts a body that agrees with the token", async () => {
-    const captured: any[] = [];
-    await controllerWith(captured).sendLowStockAlert(
-      { ...body, restaurantId: "rest-A" },
-      { userId: "u1", restaurantId: "rest-A" },
-    );
-    expect(captured[0].restaurantId).toBe("rest-A");
-  });
-
-  it("gives a tenantless session no room at all", async () => {
-    const captured: any[] = [];
-    await controllerWith(captured).sendLowStockAlert(body, { userId: "u1" });
-    // undefined means `communications.service.ts` skips the emit entirely.
-    expect(captured[0].restaurantId).toBeUndefined();
-  });
-});
+// C3's four cases drove `CommunicationsController.sendLowStockAlert`, the
+// `POST /communications/alerts/low-stock` handler, and pinned that its
+// websocket room came from the JWT rather than the body. That route was
+// CLOSED on 2026-09-29 (it relayed mail and SMS to any address for any
+// member, and nothing called it), and `resolveAlertTenant` went with it. The
+// absence is pinned over HTTP by `alert-relays-are-closed.spec.ts`. The only
+// producer left, `ScheduledTasksService`, passes each tenant's own id, so no
+// body can name a room at all.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // C5 — what the SMS says
@@ -368,8 +309,7 @@ describe("C5 — the SMS promises nothing it cannot do", () => {
 
   it("no longer accepts a deliveries count anywhere on the SMS path", () => {
     expect(SMS_CODE).not.toContain("deliveriesToday");
-    expect(
-      (dto.DailySummaryDto.prototype as any).deliveriesToday,
-    ).toBeUndefined();
+    // Its DTO went with its route on 2026-09-29, so no body can carry one.
+    expect((dto as any).DailySummaryDto).toBeUndefined();
   });
 });

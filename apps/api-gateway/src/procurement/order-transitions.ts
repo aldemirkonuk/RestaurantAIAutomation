@@ -126,7 +126,9 @@ export const ORDER_TRANSITIONS: Record<
   ],
   // Sealed by a person, not yet placed with the vendor. `syncOrderState` moves
   // it to CONFIRMED on a matching vendor receipt; the legacy desk's "Mark as
-  // Ordered" does the same by hand; the door can receive against it directly.
+  // Ordered" did the same by hand through `PATCH orders/:id` until #494 deleted
+  // the desk, and that PATCH moves no order since 2026-09-29; the door can
+  // receive against it directly.
   [ProcurementOrderStatus.APPROVED]: [
     ProcurementOrderStatus.NEGOTIATING,
     ProcurementOrderStatus.CONFIRMED,
