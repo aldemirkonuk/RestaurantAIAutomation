@@ -197,7 +197,7 @@ describe('ExportsShelf — every status looks like what it is (OD-81)', () => {
   });
 
   it('a role that cannot export is told so, and is offered no control and no list', () => {
-    shelf(desk({ canExport: false, readOnlyReason: 'Exports are written for owners and managers, and so are the table and server registers above.', exports: undefined }));
+    shelf(desk({ canExport: false, readOnlyReason: 'Exports are written for owners and managers, and so are the table and server registers.', exports: undefined }));
     expect(screen.getByRole('note')).toHaveTextContent('Exports are written for owners and managers');
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.queryByLabelText('Cutting to write up')).toBeNull();
@@ -414,11 +414,13 @@ describe('useReportExports — the desk (OD-81)', () => {
     const { result } = renderHook(() => useReportExports({ queryRoot: 'reports-next' }), { wrapper: wrapper() });
     expect(result.current.canExport).toBe(false);
     expect(result.current.readOnlyReason).toBe(
-      'Exports are written for owners and managers, and so are the table and server registers above.',
+      'Exports are written for owners and managers, and so are the table and server registers.',
     );
     // Staff are refused the table and server registers, so the shelf may not
     // tell them every figure is still on the sheet.
     expect(result.current.readOnlyReason).not.toMatch(/every figure/i);
+    // Nor place them: the two registers may lie below the shelf, or off the sheet.
+    expect(result.current.readOnlyReason).not.toMatch(/\babove\b/);
     await new Promise((r) => setTimeout(r, 20));
     expect(api.get).not.toHaveBeenCalled();
   });
