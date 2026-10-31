@@ -54,6 +54,15 @@
 -- whole call. AnalyticsService reads an error as a failed read: the
 -- figures go null with that reason, never smaller ones (ADR 0067).
 --
+-- WHAT A CALLER STILL CHECKS. An item id is proved to be this house's only
+-- where mapped is true. The ids a line or a ledger row names come from this
+-- house's rows but are not joined to restaurant_inventory, so a caller checks
+-- each against the house's items before it names one (AnalyticsService lists
+-- an id with no row as no longer in the books). The read also leans on two
+-- NOT NULL columns, pos_checks.voided and inventory_transactions.inventory_id:
+-- a NULL voided would drop its check's sales while its bottles still count,
+-- and the SQL test pins both.
+--
 -- WHY A FUNCTION. One jsonb value cannot be cut by PostgREST max_rows (ADR
 -- 0292's row cap), the aggregation stays in the database, and the output is
 -- bounded by the house's item count. SECURITY INVOKER: it reads with the
@@ -193,7 +202,9 @@ COMMENT ON FUNCTION public.pos_item_sales(uuid, timestamptz) IS
   'One jsonb value. A line whose price, qty or id is not a number or a uuid '
   'is counted, not raised; a line the gateway ingest wrote cannot raise, but '
   'a numeric string or product past numeric''s range, written directly, '
-  'raises for the whole call. Read by AnalyticsService (cost of goods, '
+  'raises for the whole call. An item id is proved this house''s only where '
+  'mapped is true; check any other against the house''s items before naming '
+  'it. Read by AnalyticsService (cost of goods, '
   'sales, revenue concentration). A second per-item till reader should call '
   'this rather than aggregate pos_checks.items again.';
 

@@ -310,4 +310,17 @@ begin
     'T8 FAIL idx_pos_checks_restaurant_closed is missing';
 end $$;
 
+-- T13 two columns the function leans on are NOT NULL. `not c.voided` would drop
+-- a check whose flag is NULL (sales gone, its bottles still counted out), and a
+-- NULL ledger inventory_id would surface as an item with no id.
+do $$
+begin
+  assert (select attnotnull from pg_attribute
+           where attrelid = 'public.pos_checks'::regclass and attname = 'voided'),
+    'T13 FAIL pos_checks.voided is nullable';
+  assert (select attnotnull from pg_attribute
+           where attrelid = 'public.inventory_transactions'::regclass and attname = 'inventory_id'),
+    'T13 FAIL inventory_transactions.inventory_id is nullable';
+end $$;
+
 rollback;
