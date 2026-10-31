@@ -14,17 +14,29 @@
   "GET /analytics/insight-prefs/:restaurantId (AnalyticsController.getInsightPrefs)": "open",
   "PUT /analytics/insight-prefs/:restaurantId/:category (AnalyticsController.setInsightPref)": "open",
   "GET /analytics/tables/:restaurantId (AnalyticsController.listTables)": "open",
-  "POST /analytics/tables/:restaurantId (AnalyticsController.upsertTable)": "open",
+  "POST /analytics/tables/:restaurantId (AnalyticsController.upsertTable)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/venue/:restaurantId (AnalyticsController.getVenue)": "open",
   "PUT /analytics/venue/:restaurantId (AnalyticsController.setVenue)": "open",
   "PATCH /analytics/tables/:restaurantId/:tableId (AnalyticsController.renameOrHideTable)": [
     "owner",
     "manager"
   ],
-  "GET /analytics/table-performance/:restaurantId (AnalyticsController.getTablePerformance)": "open",
-  "GET /analytics/waiters/:restaurantId (AnalyticsController.getWaiters)": "open",
+  "GET /analytics/table-performance/:restaurantId (AnalyticsController.getTablePerformance)": [
+    "owner",
+    "manager"
+  ],
+  "GET /analytics/waiters/:restaurantId (AnalyticsController.getWaiters)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/basket/:restaurantId (AnalyticsController.getBasket)": "open",
-  "GET /analytics/hot-tables/:restaurantId (AnalyticsController.getHotTables)": "open",
+  "GET /analytics/hot-tables/:restaurantId (AnalyticsController.getHotTables)": [
+    "owner",
+    "manager"
+  ],
   "GET /analytics/goal-scenarios (AnalyticsController.getGoalScenarios)": "open",
   "POST /analytics/goal-scenarios/requests/:restaurantId (AnalyticsController.requestGoalScenario)": "open",
   "GET /analytics/goal-scenarios/requests (AnalyticsController.listGoalScenarioRequests)": "open",

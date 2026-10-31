@@ -33,7 +33,7 @@ import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
-import { failureOf, num, type Failure } from './rp-format';
+import { failureOf, heldBackFailure, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
 import { useReportExports, type ExportDesk } from './useReportExports';
@@ -236,7 +236,7 @@ export function useReportsNextData(
   /** Puts a cutting the goals desk proposed onto the page's draft sheet. */
   placeCutting: (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => void = () => {},
 ): ReportsNextData {
-  const { activeRestaurantId } = useAuth();
+  const { activeRestaurantId, activeRole } = useAuth();
   const rid = activeRestaurantId;
   const qc = useQueryClient();
   const { preferences, updatePreferences, isLoading: prefsLoading } = useUserPreferences();
@@ -252,12 +252,30 @@ export function useReportsNextData(
     return ids.includes('reading') ? ids : ['reading', ...ids];
   }, [sheet, showing]);
 
+  /**
+   * The registers this reader is not sent (ADR 0348). A spec that names its
+   * readers (`readers`, the endpoint's `@Roles`) is asked for only when the
+   * house role is known and listed. Staff keep the page and every register
+   * open to them; a held-back one says who it is written for and fires no
+   * request, so the gateway's 403 is never walked into and nothing is retried.
+   * The role read is `activeRole` alone, the role RolesGuard checks, never the
+   * account-wide `user.role`, as `useReportExports` and `useGoalsDesk` do.
+   */
+  const heldBack = useMemo(() => {
+    const out = new Set<AnalysisId>();
+    for (const id of active) {
+      const readers = CATALOGUE[id].readers;
+      if (readers && (activeRole === null || !readers.includes(activeRole))) out.add(id);
+    }
+    return out;
+  }, [active, activeRole]);
+
   const results = useQueries({
     queries: active.map((id) => {
       const spec = CATALOGUE[id];
       return {
         queryKey: [ROOT, id, rid, spec.takesWindow ? tillDays : null],
-        enabled: !!rid,
+        enabled: !!rid && !heldBack.has(id),
         staleTime: 60_000,
         retry: 1,
         queryFn: async () => {
@@ -273,6 +291,17 @@ export function useReportsNextData(
     active.forEach((id, i) => {
       const q = results[i];
       if (!q) return;
+      const readers = CATALOGUE[id].readers;
+      if (readers && heldBack.has(id)) {
+        // Not in flight, not refused by the gateway, not empty: withheld.
+        map[id] = {
+          data: undefined,
+          loading: false,
+          failure: heldBackFailure(readers, activeRole),
+          refetch: () => {},
+        };
+        return;
+      }
       map[id] = {
         data: q.data,
         loading: q.isPending,
@@ -283,7 +312,7 @@ export function useReportsNextData(
     return map;
     // `results` is a fresh array each render; the ids and their states are what
     // actually matter, and recomputing a map of eight entries is free.
-  }, [active, results]);
+  }, [active, results, heldBack, activeRole]);
 
   const reading = (registers.reading ?? {
     data: undefined,
