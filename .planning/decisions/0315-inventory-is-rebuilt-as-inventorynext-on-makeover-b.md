@@ -61,4 +61,4 @@ Rows W8–W37 refine these. Each one is in §14 with its evidence and the founde
 | 2026-10-30 | founder | Finish order picked: dark `inventory_next` flag, port census, per-house flip (§16.4) |
 | 2026-10-30 | founder | Order changed: flip now for every house, port with the wave (§16.4 bracket) |
 | 2026-10-31 | founder | After the gate found five acts missing from Next: port all five, then flip |
-| 2026-10-31 | coordinator | #677 merged as 3bbec7bfa after the ADR 0090 gate PASS at 07a40dbe8 (`07-reference/pr-audits/677-07a40db.md`); `inventory_next` flipped on and read back for all 15 houses, founder's pick "You flip, all houses" |
+| 2026-10-31 | coordinator | #677 merged as 3bbec7bfa at 07:07Z after the local ADR 0090 gate PASS at 07a40dbe8 (`07-reference/pr-audits/677-07a40db.md`); the CI audit gate then posted BLOCK at the same SHA at 07:18Z (compliance: the INV-W11 fork said filed and was not; bracketed at `06-pages/inventory.md` §15), which was not seen before the flip; `inventory_next` flipped on and read back for all 15 houses, founder's pick "You flip, all houses" |

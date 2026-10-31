@@ -849,7 +849,7 @@ The drawn sketch (INV-W4) takes in every change bracketed above.
 - **Go-live.** A new `InventoryNext` on the gate's next side. The App.tsx mount line goes through the shared queue, the legacy page stays, and the flag flip is the founder's keystroke. [corrected 2026-10-01, INV-W7: `inventory` is in `LIVE_PAGES` (`useMudavymDesign.ts:203`), so the flag is never read. Merging the mount line IS the go-live, which is why that line is held in the shared queue for the founder's word.]
 - **Gateway work (F-10).** Its own PR, after the page. Until it lands, the page shows — wherever a read does not exist.
 - **Empty house.** It replaces the parked W2 code, whose temporary switch is removed.
-- **OD-TBD (INV-W11, 2026-10-01).** Phone-first counting (barcode, level tap, voice), the field's standard way to count, is parked together with the open "voice in the count sheet" departure. It is filed in `OPEN-DECISIONS.md` in this branch's last commit.
+- **OD-TBD (INV-W11, 2026-10-01).** Phone-first counting (barcode, level tap, voice), the field's standard way to count, is parked together with the open "voice in the count sheet" departure. It is filed in `OPEN-DECISIONS.md` in this branch's last commit. [changed 2026-10-31, after the CI audit gate BLOCK on #677 at 07a40dbe8 (comment 6540532939): it was never filed. #677 merged without the row, as `tech-debt.d/2026-10-08-fix-review-inventory.md:19` says; the fork is still open and still owes its `OPEN-DECISIONS.md` row on its own docs branch.]
 
 **OD-177** is overtaken for /inventory by INV-W4. The page ADR for this walk-through records
 it.
