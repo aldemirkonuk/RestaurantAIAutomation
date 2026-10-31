@@ -914,10 +914,13 @@ ported). An earlier "mount dark" option was withdrawn in the same session: `inve
 
 So the order is:
 1. A new page key `inventory_next`, OFF by default, flag-gated, **not** in `LIVE_PAGES`. App.tsx:
-   `next={<PageGate page="inventory_next" legacy={<InventoryCommandPage />} next={<InventoryNext />} />}`,
-   so the outer live gate keeps `HouseHeader` and the inner one picks the page. Register
-   `mudavym_design_inventory_next` in the gateway's `ACTIVE_FEATURE_FLAGS` with its `readBy`.
-   Unchecked: whether the registry also needs a per-house column (the 20261022000000 pattern).
+   `next={<InventoryRoute />}`, and `next/InventoryRoute.tsx` picks InventoryNext or the command
+   page from `useMudavymDesign('inventory_next')`. [built 2026-10-30: a plain branch, not the nested
+   `PageGate` first written here, because a second gate mounts a second `HouseHeader` and
+   `SheetStackProvider` (`PageGate.tsx`). The registry does need a column, `settings.service.ts`
+   selects every ACTIVE key, so `mudavym_design_inventory_next` ships with migration
+   `mudavym_design_inventory_next_flag` and a slug in `scripts/flip_mudavym_design_flags.py`.
+   Claim `INVENTORY-NEXT-IS-DARK-BEHIND-ITS-OWN-FLAG`; `InventoryRoute.test.tsx` 4/4, mutated 3 ways.]
 2. Gate and merge #685, then #677 with step 1 in it. Next is now on main, dark.
 3. Land the rehearsal wave on main (its owner), then do the port census (§16.3 step 3) into Next.
 4. Flip `inventory_next` house by house (the founder's keystroke). Delete the legacy page once (ADR 0149).

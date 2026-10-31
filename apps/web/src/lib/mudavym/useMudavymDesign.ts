@@ -77,6 +77,12 @@ export const MUDAVYM_PAGES = [
   // redirect, because it is still the real onboarding path for every house
   // until this one is turned on. Held back from LIVE_PAGES.
   'arrival',
+  // ADR 0315's 2026-10-30 amendment (founder: "New dark flag, port, flip").
+  // `inventory` is in LIVE_PAGES, so its gate always draws `next`; this key
+  // chooses WHICH page that is — InventoryNext when ON, the command page when
+  // OFF (pages/inventory/next/InventoryRoute.tsx). OFF by default, held back
+  // from LIVE_PAGES, flipped house by house once the sim-wave fixes are ported.
+  'inventory_next',
   // ADR 0143: one desk and one switch, including the old health bookmark.
   // [2026-09-25: live for every house in code — see LIVE_PAGES below.]
   'admin',
