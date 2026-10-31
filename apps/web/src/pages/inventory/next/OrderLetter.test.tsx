@@ -308,7 +308,7 @@ describe('OrderLetter — failures in the house\u2019s words (INV-W31)', () => {
   // The gateway's 409 for an order already approved (procurement.service.ts:4322).
   const ALREADY = 'This order is already approved. Nothing more was reserved and no second letter was asked for.';
 
-  it('a 409 after an approval whose answer was lost says the earlier attempt approved it, and re-reads the gate', async () => {
+  it('a 409 after an approval whose answer was lost says an earlier attempt may have gone through, never "approved", and re-reads the gate', async () => {
     m.approveOrder.mockRejectedValueOnce(answered(500)).mockRejectedValueOnce(answered(409, ALREADY));
     mount();
     holdByKeyboard(await screen.findByRole('button', { name: 'Hold to approve and send to Enoteca Rossi' }));
@@ -317,13 +317,26 @@ describe('OrderLetter — failures in the house\u2019s words (INV-W31)', () => {
     holdByKeyboard(await screen.findByRole('button', { name: 'Hold to approve and send to Enoteca Rossi' }));
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toBe(
-        'An earlier attempt already approved this order. Nothing more was done here, and the email was not sent. Look on Orders before trying again.',
+        'An earlier attempt may already have gone through. Nothing more was done here, and the email was not sent. Look on Orders to see where the order stands before trying again.',
       ),
     );
     expect(text()).not.toContain('Nothing was approved');
+    expect(screen.getByRole('alert').textContent).not.toMatch(/approved/);
     expect(reread.mock.calls.some(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(['procurement', 'order-approval-gate', 'r1']))).toBe(true);
     expect(m.approveDraft).not.toHaveBeenCalled();
     reread.mockRestore();
+  });
+
+  it('a 409 after a lost approval on an order cancelled meanwhile does not claim it was approved', async () => {
+    m.approveOrder
+      .mockRejectedValueOnce(silent())
+      .mockRejectedValueOnce(answered(409, 'This order was cancelled, so it cannot be approved.'));
+    mount();
+    holdByKeyboard(await screen.findByRole('button', { name: 'Hold to approve and send to Enoteca Rossi' }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('it is not known whether the order was approved'));
+    holdByKeyboard(await screen.findByRole('button', { name: 'Hold to approve and send to Enoteca Rossi' }));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/^An earlier attempt may already have gone through\./));
+    expect(screen.getByRole('alert').textContent).not.toMatch(/approved|cancelled/);
   });
 
   it('a 409 with no lost approval before it keeps the refusal words: someone else may have approved it', async () => {

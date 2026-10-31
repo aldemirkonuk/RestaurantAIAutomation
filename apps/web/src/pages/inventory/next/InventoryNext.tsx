@@ -33,16 +33,18 @@ import { ManualReceiptWorkspace } from '../../../components/inventory/ManualRece
 import { AutoLocatePreviewModal } from '../../../components/inventory/AutoLocatePreviewModal';
 import { computeAutoLocatePlan, type AutoLocateResult, type WineInput, type WineLocationScore } from '../../../lib/autoLocateEngine';
 import { createInventoryItem } from '../../../services/api/inventory';
+import { isUnconfirmedWrite } from '../../../services/api/client';
 import { AuctionLotStart } from '../command/AuctionLotStart';
 import { MenuScannerFlow } from '../../../components/scanner/MenuScannerFlow';
 import { summarizeMenuScanPersist } from '../../../lib/menuScannerPersistence';
-import { exportTable, type TableExportColumn } from '../../../lib/tableExport';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import { queryKeys } from '../../../lib/query-keys';
 import { CellarMapView } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import InventoryTable from './InventoryTable';
-import { plainText } from './iv-failure';
+import { removeBlocked, removeTarget } from './RowDropdown';
+import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
+import { blank, runExport, today, valuationColumns } from './iv-export';
 import {
   CHIPS,
   chipMatch,
@@ -162,26 +164,6 @@ function QuietLine({
   );
 }
 
-/* ── exports ────────────────────────────────────────────────────────────── */
-
-function blank(v: number | null): number | string {
-  return v === null ? '' : v;
-}
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-async function runExport<T>(rows: T[], columns: TableExportColumn<T>[], filename: string, title: string) {
-  try {
-    await exportTable({ format: 'csv', rows, columns, filename, title });
-    toast.success(`Exported ${fmtCount(rows.length)} rows`);
-  } catch (err) {
-    // Only a sentence written for a person is shown (INV-W31).
-    toast.error(err instanceof Error && plainText(err.message) ? err.message : 'The export could not be made.');
-  }
-}
-
 /* ── the page ───────────────────────────────────────────────────────────── */
 
 export default function InventoryNext() {
@@ -290,6 +272,41 @@ export default function InventoryNext() {
     );
   }, [rows, activeChip, zone, type, query, sort, locs.list]);
 
+  // ── Row selection, ported from the legacy page (NEW-064, InventoryCommandPage.tsx:507-531).
+  // Keyed by restaurant_inventory id. A house switch or a filter change empties
+  // it, so an action never reaches a row the person can no longer see.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [removeSel, setRemoveSel] = useState<InvRow[] | null>(null);
+  useEffect(() => {
+    setSelected(new Set());
+  }, [data.rid, activeChip, zone, type, query, view]);
+  const selectedRows = useMemo(() => visible.filter((r) => selected.has(r.id)), [visible, selected]);
+  const toggleSelect = useCallback((id: string) => {
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }, []);
+  const selectAllVisible = useCallback(() => {
+    setSelected((prev) =>
+      visible.length > 0 && visible.every((r) => prev.has(r.id)) ? new Set() : new Set(visible.map((r) => r.id)),
+    );
+  }, [visible]);
+  const clearSelect = useCallback(() => setSelected(new Set()), []);
+  const selBlocked = selectedRows.filter((r) => removeBlocked(r) !== null).length;
+  const copySelectedNames = async () => {
+    const names = selectedRows.map((r) => r.name ?? 'Unnamed title').join('\n');
+    try {
+      if (!navigator.clipboard) throw new Error('no clipboard');
+      await navigator.clipboard.writeText(names);
+      toast.success(`Copied ${fmtCount(selectedRows.length)} ${selectedRows.length === 1 ? 'name' : 'names'}`);
+    } catch {
+      toast.error('The names could not be copied on this device.');
+    }
+  };
+
   const zoneUnread = zone !== '' ? (rows ?? []).filter((r) => r.zones === null).length : 0;
   const filtered = activeChip !== 'all' || zone !== '' || type !== '' || query.trim() !== '';
   /** The filters in force, named in the footer beside a way out (INV-W25). */
@@ -383,17 +400,24 @@ export default function InventoryNext() {
     quantity: number;
     costPerBottle: number;
   }): Promise<{ inventoryId: string }> => {
-    const created = await createInventoryItem(
-      {
-        wineId: wine.id,
-        stockLive: quantity,
-        thresholdMin: 0,
-        // A person typed the hammer price, so the figure is `manual`.
-        costPerBottle,
-        costProvenance: 'manual',
-      } as unknown as Parameters<typeof createInventoryItem>[0],
-      data.rid ?? undefined,
-    );
+    let created: unknown;
+    try {
+      created = await createInventoryItem(
+        {
+          wineId: wine.id,
+          stockLive: quantity,
+          thresholdMin: 0,
+          // A person typed the hammer price, so the figure is `manual`.
+          costPerBottle,
+          costProvenance: 'manual',
+        } as unknown as Parameters<typeof createInventoryItem>[0],
+        data.rid ?? undefined,
+      );
+    } catch (e) {
+      // A lost answer may have written the row: re-read so the book shows it.
+      if (isUnconfirmedWrite(e)) refreshStock();
+      throw e;
+    }
     refreshStock();
     return { inventoryId: (created as { id: string }).id };
   };
@@ -428,24 +452,10 @@ export default function InventoryNext() {
       'Inventory count sheet',
     );
 
-  const valuationColumns: TableExportColumn<InvRow>[] = [
-    { header: 'Title', value: (r) => r.name ?? '' },
-    { header: 'Producer', value: (r) => r.producer ?? '' },
-    { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
-    { header: 'Live', value: (r) => blank(r.stock) },
-    { header: 'Shadow', value: (r) => blank(r.shadow) },
-    { header: 'Par', value: (r) => blank(r.par) },
-    { header: 'Velocity/day', value: (r) => (r.velocity === null ? '' : r.velocity.toFixed(2)) },
-    { header: 'Runway d', value: (r) => (r.runway === null ? '' : Math.round(r.runway)) },
-    { header: 'WAC', value: (r) => blank(r.wac) },
-    { header: 'Your bottle price', value: (r) => blank(r.bottle) },
-    { header: 'Your glass price', value: (r) => blank(r.glass) },
-    { header: 'Value at cost', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
-    { header: 'Currency', value: () => data.currency.code ?? '' },
-  ];
+  const valuation = valuationColumns(data.currency.code ?? null);
 
   const exportValuation = () =>
-    runExport(visible, valuationColumns, `inventory-valuation-${today()}`, 'Inventory valuation');
+    runExport(visible, valuation, `inventory-valuation-${today()}`, 'Inventory valuation');
 
   const showTools = () => toolsRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
 
@@ -721,7 +731,46 @@ export default function InventoryNext() {
                 ) : null}
               </div>
             ) : (
+              <>
+              {selected.size > 0 ? (
+                <div className="iv-selbar" role="group" aria-label="What to do with the selected titles" data-testid="inventory-selbar">
+                  <span className="iv-selbar-n">{fmtCount(selectedRows.length)} selected</span>
+                  <button
+                    type="button"
+                    className="iv-btn iv-focus"
+                    onClick={() =>
+                      void runExport(selectedRows, valuation, `inventory-selected-${today()}`, 'Inventory selection')
+                    }
+                  >
+                    Export selected
+                  </button>
+                  <button type="button" className="iv-btn iv-focus" onClick={() => void copySelectedNames()}>
+                    Copy names
+                  </button>
+                  <button
+                    type="button"
+                    className="iv-btn iv-focus"
+                    disabled={selBlocked > 0}
+                    aria-describedby={selBlocked > 0 ? 'iv-selbar-why' : undefined}
+                    onClick={() => setRemoveSel(selectedRows)}
+                  >
+                    Remove selected
+                  </button>
+                  <button type="button" className="iv-linkish iv-focus" onClick={clearSelect}>
+                    Clear selection
+                  </button>
+                  {selBlocked > 0 ? (
+                    <p className="iv-note" id="iv-selbar-why" data-testid="selbar-remove-blocked">
+                      Remove waits: {fmtCount(selBlocked)} selected {selBlocked === 1 ? 'title' : 'titles'} cannot be
+                      zeroed first. Open {selBlocked === 1 ? 'it' : 'each'} and look under More to see why.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               <InventoryTable
+                selected={selected}
+                onSelect={toggleSelect}
+                onSelectAll={selectAllVisible}
                 rows={visible}
                 libraryUnread={!data.libraryAnswered}
                 grouped={sort === 'needs'}
@@ -741,6 +790,7 @@ export default function InventoryNext() {
                   data.refetchAdvice();
                 }}
               />
+              </>
             )}
             {zoneUnread > 0 ? (
               <p className="iv-note">
@@ -855,6 +905,19 @@ export default function InventoryNext() {
             if (plan) setAutoLocate(plan);
           }}
           onConfirm={(selected) => void confirmAutoLocate(selected)}
+        />
+      ) : null}
+      {removeSel ? (
+        <RemoveFromInventoryModal
+          isOpen
+          items={removeSel.map(removeTarget)}
+          onClose={() => setRemoveSel(null)}
+          onRemoved={() => {
+            setRemoveSel(null);
+            clearSelect();
+            refreshStock();
+            void queryClient.invalidateQueries({ queryKey: ['inventory-next'] });
+          }}
         />
       ) : null}
       {panel === 'receipt' ? (

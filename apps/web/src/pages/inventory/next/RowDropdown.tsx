@@ -35,6 +35,7 @@ import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
 import { writeFailure } from './iv-failure';
+import { rowFilename, runExport, valuationColumns } from './iv-export';
 import {
   cellMoney,
   EM,
@@ -74,13 +75,27 @@ type SheetId = 'count' | 'order' | 'writeoff' | 'transfer' | 'pour';
  * ledger row, so the act waits until the book says what is held.
  */
 export function removeBlocked(row: InvRow): string | null {
-  if (row.stock === null || row.shadow === null) return 'the book did not say how many are held, so it cannot be zeroed first';
+  if (row.stock === null || row.shadow === null || row.openMl === null)
+    return 'the book did not say how many are held, so it cannot be zeroed first';
   if (row.wineId === null) return 'this row is not tied to a library title, so its stock cannot be zeroed first';
   return null;
 }
 
+/**
+ * Why "Mark inactive" cannot start for this row, or null when it can. An
+ * inactive row keeps its stock_live; a title brought back later is a new row
+ * beside it, so stock left on the inactive one falls out of the book unseen
+ * (security review, 2026-10-31). Only an empty row may be marked inactive.
+ */
+export function inactiveBlocked(row: InvRow): string | null {
+  if (row.stock === null || row.shadow === null || row.openMl === null)
+    return 'the book did not say how many are held. Count it to zero or remove it first';
+  if (row.stock > 0 || row.shadow > 0 || row.openMl > 0) return 'bottles are still held. Count it to zero or remove it first';
+  return null;
+}
+
 /** The row in the remove modal's shape: only the fields it reads, all read from the book. */
-function removeTarget(row: InvRow): InventoryItem {
+export function removeTarget(row: InvRow): InventoryItem {
   return {
     id: row.wineId ?? '',
     inventoryId: row.id,
@@ -146,6 +161,8 @@ export default function RowDropdown(props: RowDropdownProps) {
   const [removing, setRemoving] = useState(false);
   const [toggling, setToggling] = useState(false);
   const blocked = removeBlocked(row);
+  // Only marking INACTIVE is held back; marking a row active again never strands stock.
+  const toggleBlocked = row.active === true ? inactiveBlocked(row) : null;
   const title = row.name ?? 'This title';
 
   // Mark inactive / active: the legacy page's toggleActive
@@ -153,7 +170,7 @@ export default function RowDropdown(props: RowDropdownProps) {
   // The book lists active titles only (database.service getRestaurantInventory
   // filters is_active), so a row marked inactive leaves the list.
   const toggleActive = async () => {
-    if (row.active === null || toggling) return;
+    if (row.active === null || toggling || toggleBlocked !== null) return;
     const next = !row.active;
     setMoreOpen(false);
     setToggling(true);
@@ -233,7 +250,7 @@ export default function RowDropdown(props: RowDropdownProps) {
           onClose={() => setMoreOpen(false)}
           anchorRef={moreRef}
           width={220}
-          label="More things to do with this title: move bottles between zones, record a pour by hand, mark it inactive, or remove it from inventory"
+          label="More things to do with this title: move bottles between zones, record a pour by hand, export or copy it, mark it inactive, or remove it from inventory"
         >
           <div className="iv-menu" role="menu" onKeyDown={(e) => onMenuKeys(e, moreRef.current, () => setMoreOpen(false))}>
             <button
@@ -258,16 +275,34 @@ export default function RowDropdown(props: RowDropdownProps) {
             >
               Record a pour
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="iv-menu-item iv-focus"
+              onClick={() => {
+                setMoreOpen(false);
+                // Legacy's right-click "Export this row": the valuation columns, as CSV, named after the title.
+                void runExport([row], valuationColumns(currency.code ?? null), rowFilename(row), title);
+              }}
+            >
+              Export this row
+            </button>
             {row.active !== null ? (
               <button
                 type="button"
                 role="menuitem"
                 className="iv-menu-item iv-focus"
-                disabled={toggling}
+                disabled={toggling || toggleBlocked !== null}
+                aria-describedby={toggleBlocked ? `iv-inactive-why-${row.id}` : undefined}
                 onClick={() => void toggleActive()}
               >
                 {row.active ? 'Mark inactive' : 'Mark active'}
               </button>
+            ) : null}
+            {toggleBlocked ? (
+              <p className="iv-menu-note" id={`iv-inactive-why-${row.id}`} data-testid="inactive-blocked">
+                Mark inactive waits: {toggleBlocked}.
+              </p>
             ) : null}
             <button
               type="button"

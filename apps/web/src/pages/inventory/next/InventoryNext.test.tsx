@@ -74,6 +74,14 @@ vi.mock('./RowDropdown', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   default: () => <tr data-testid="row-dropdown" />,
 }));
+// The shared remove modal owns its own tests; here only what the page hands it.
+const removeModal = vi.hoisted(() => ({ props: null as Record<string, unknown> | null }));
+vi.mock('../../../components/inventory/RemoveFromInventoryModal', () => ({
+  RemoveFromInventoryModal: (p: Record<string, unknown>) => {
+    removeModal.props = p;
+    return <div data-testid="remove-modal" />;
+  },
+}));
 vi.mock('../../../components/scanner/MenuScannerFlow', () => ({ MenuScannerFlow: () => null }));
 vi.mock('@/components/mudavym/DeliveriesToName', () => ({
   DELIVERIES_TO_NAME_KEY: ['deliveries-to-name'],
@@ -1114,12 +1122,153 @@ describe('the acts ported from the legacy page (founder 2026-10-31: port all 5, 
     expect(note.mock.calls[0][0]).toMatch(/^1 title is left out of the plan/);
     note.mockRestore();
   });
+});
 
-  it('marks an inactive row in its title cell, and no other', () => {
-    mock.data = data({ rows: [row({ id: 'a', name: 'Kept', active: true }), row({ id: 'b', name: 'Delisted', active: false })] });
+describe('row selection, ported from the legacy table (re-gate 2026-10-31)', () => {
+  // openMl 0: the gateway always sends it; null would mean the open bottle was not read.
+  const three = () => [
+    row({ id: 'a', wineId: 'wa', name: 'Alpha', openMl: 0 }),
+    row({ id: 'b', wineId: 'wb', name: 'Beta', openMl: 0 }),
+    row({ id: 'c', wineId: 'wc', name: 'Gamma', openMl: 0 }),
+  ];
+  function tree() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return (
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <InventoryNext />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+  }
+  const tick = (name: string) => fireEvent.click(screen.getByRole('checkbox', { name: `Select ${name}` }));
+
+  it('shows no selection bar until a title is ticked, then counts it', () => {
+    mock.data = data({ rows: three() });
     renderPage();
-    const marks = screen.getAllByTestId('row-inactive');
-    expect(marks).toHaveLength(1);
-    expect(marks[0].closest('td')!.textContent).toContain('Delisted');
+    expect(screen.queryByTestId('inventory-selbar')).toBeNull();
+    tick('Alpha');
+    expect(screen.getByTestId('inventory-selbar').textContent).toContain('1 selected');
+    tick('Beta');
+    expect(screen.getByTestId('inventory-selbar').textContent).toContain('2 selected');
+    tick('Alpha');
+    expect(screen.getByTestId('inventory-selbar').textContent).toContain('1 selected');
+  });
+
+  it('select-all ticks only the titles listed now, and a second press clears them', () => {
+    mock.data = data({ rows: three() });
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText('Search titles, producers, grapes'), { target: { value: 'gamma' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select every listed title' }));
+    expect(screen.getByTestId('inventory-selbar').textContent).toContain('1 selected');
+    expect((screen.getByRole('checkbox', { name: 'Select Gamma' }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Clear the selection' }));
+    expect(screen.queryByTestId('inventory-selbar')).toBeNull();
+  });
+
+  it('Export selected writes the valuation columns for the selected rows only, as one CSV', async () => {
+    exportSpy.mockClear();
+    mock.data = data({ rows: three() });
+    renderPage();
+    tick('Alpha');
+    tick('Gamma');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export selected' }));
+    });
+    expect(exportSpy).toHaveBeenCalledTimes(1);
+    const opts = exportSpy.mock.calls[0][0] as { format: string; filename: string; title: string; rows: InvRow[]; columns: { header: string }[] };
+    expect(opts.format).toBe('csv');
+    expect(opts.filename).toMatch(/^inventory-selected-\d{4}-\d{2}-\d{2}$/);
+    expect(opts.title).toBe('Inventory selection');
+    expect(opts.rows.map((r) => r.id).sort()).toEqual(['a', 'c']);
+    expect(opts.columns.map((c) => c.header)).toContain('Value at cost');
+  });
+
+  it('Copy names puts one name per line on the clipboard and says how many', async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    const ok = vi.spyOn(toast, 'success').mockImplementation(() => '' as never);
+    mock.data = data({ rows: three() });
+    renderPage();
+    tick('Alpha');
+    tick('Beta');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy names' }));
+    });
+    expect(writeText).toHaveBeenCalledWith('Alpha\nBeta');
+    expect(ok).toHaveBeenCalledWith('Copied 2 names');
+    ok.mockRestore();
+  });
+
+  it('Copy names says so when the device will not copy', async () => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn(async () => Promise.reject(new Error('denied'))) },
+      configurable: true,
+    });
+    const said = vi.spyOn(toast, 'error').mockImplementation(() => '' as never);
+    mock.data = data({ rows: three() });
+    renderPage();
+    tick('Alpha');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Copy names' }));
+    });
+    expect(said).toHaveBeenCalledWith('The names could not be copied on this device.');
+    said.mockRestore();
+  });
+
+  it('Remove selected opens the shared remove modal with every selected row, and clears the selection once removed', async () => {
+    removeModal.props = null;
+    mock.data = data({ rows: three() });
+    renderPage();
+    tick('Alpha');
+    tick('Beta');
+    fireEvent.click(screen.getByRole('button', { name: 'Remove selected' }));
+    expect(screen.getByTestId('remove-modal')).toBeTruthy();
+    const items = removeModal.props!.items as { id: string; inventoryId: string; name: string }[];
+    expect(items.map((i) => [i.id, i.inventoryId, i.name])).toEqual([
+      ['wa', 'a', 'Alpha'],
+      ['wb', 'b', 'Beta'],
+    ]);
+    act(() => (removeModal.props!.onRemoved as () => void)());
+    expect(screen.queryByTestId('remove-modal')).toBeNull();
+    expect(screen.queryByTestId('inventory-selbar')).toBeNull();
+  });
+
+  it('Remove selected waits, and says why, when a selected title cannot be zeroed first', () => {
+    mock.data = data({ rows: [...three().slice(0, 2), row({ id: 'c', wineId: 'wc', name: 'Gamma', openMl: 0, stock: null })] });
+    renderPage();
+    tick('Alpha');
+    tick('Gamma');
+    expect((screen.getByRole('button', { name: 'Remove selected' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId('selbar-remove-blocked').textContent).toMatch(/^Remove waits: 1 selected title cannot be zeroed first/);
+    // Export and copy still work over the same selection.
+    expect((screen.getByRole('button', { name: 'Export selected' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('Clear selection empties it', () => {
+    mock.data = data({ rows: three() });
+    renderPage();
+    tick('Alpha');
+    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
+    expect(screen.queryByTestId('inventory-selbar')).toBeNull();
+  });
+
+  it('a house switch clears the selection, so nothing ticked in one house is acted on in another', () => {
+    mock.data = data({ rows: three() });
+    const r = render(tree());
+    tick('Alpha');
+    expect(screen.getByTestId('inventory-selbar')).toBeTruthy();
+    mock.data = data({ rid: 'r2', rows: three() });
+    r.rerender(tree());
+    expect(screen.queryByTestId('inventory-selbar')).toBeNull();
+    expect((screen.getByRole('checkbox', { name: 'Select Alpha' }) as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('a filter change clears the selection too', () => {
+    mock.data = data({ rows: three() });
+    renderPage();
+    tick('Alpha');
+    fireEvent.change(screen.getByPlaceholderText('Search titles, producers, grapes'), { target: { value: 'alpha' } });
+    expect(screen.queryByTestId('inventory-selbar')).toBeNull();
   });
 });

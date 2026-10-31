@@ -30,6 +30,11 @@ export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   onToggle: (id: string) => void;
   advice: AdviceLoad;
   onPriceChanged: () => void;
+  /** Row selection (legacy NEW-064). Absent = no checkbox column. */
+  selected?: Set<string>;
+  onSelect?: (id: string) => void;
+  /** Selects every listed row, or clears them when all are already selected. */
+  onSelectAll?: () => void;
 }
 
 const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Runway', 'Your price', 'Value', 'Status'];
@@ -72,6 +77,10 @@ export default function InventoryTable(props: InventoryTableProps) {
   const { rows, grouped, openId, onToggle, currency, canManage, advice, onPriceChanged, zoneName } = props;
   const counts = [0, 0, 0];
   for (const r of rows) counts[severity(r)] += 1;
+  const selecting = props.selected !== undefined && props.onSelect !== undefined;
+  const span = COLUMNS.length + (selecting ? 1 : 0);
+  const allSelected = selecting && rows.length > 0 && rows.every((r) => props.selected!.has(r.id));
+  const someSelected = selecting && !allSelected && rows.some((r) => props.selected!.has(r.id));
 
   return (
     <div className="iv-tablewrap">
@@ -81,6 +90,20 @@ export default function InventoryTable(props: InventoryTableProps) {
         <caption className="sr-only">The book: every title on hand</caption>
         <thead>
           <tr>
+            {selecting ? (
+              <th className="iv-sel">
+                <input
+                  type="checkbox"
+                  className="iv-focus"
+                  aria-label={allSelected ? 'Clear the selection' : 'Select every listed title'}
+                  checked={allSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someSelected;
+                  }}
+                  onChange={() => props.onSelectAll?.()}
+                />
+              </th>
+            ) : null}
             {COLUMNS.map((c) => (
               <th key={c} className={c === 'Title' || c === 'Type' || c === 'Zone' || c === 'Status' ? undefined : 'iv-r'}>
                 {c === 'Your price' ? (
@@ -107,7 +130,7 @@ export default function InventoryTable(props: InventoryTableProps) {
               <Fragment key={row.id}>
                 {startsGroup ? (
                   <tr className="iv-group">
-                    <td colSpan={COLUMNS.length}>
+                    <td colSpan={span}>
                       {SEVERITY_GROUP[sev]}
                       {sev < 2 ? <span className="iv-num"> {fmtCount(counts[sev])}</span> : null}
                     </td>
@@ -121,6 +144,17 @@ export default function InventoryTable(props: InventoryTableProps) {
                   aria-selected={open}
                   onClick={() => onToggle(row.id)}
                 >
+                  {selecting ? (
+                    <td data-label="Select" className="iv-sel" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        className="iv-focus"
+                        aria-label={`Select ${row.name ?? 'this title'}`}
+                        checked={props.selected!.has(row.id)}
+                        onChange={() => props.onSelect!(row.id)}
+                      />
+                    </td>
+                  ) : null}
                   <td data-label="Title" className="iv-title">
                     <button
                       type="button"
@@ -131,15 +165,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                         onToggle(row.id);
                       }}
                     >
-                      <span className="iv-name">
-                        {row.name ?? 'Unnamed title'}
-                        {row.active === false ? (
-                          <span className="iv-inactive" data-testid="row-inactive">
-                            {' '}
-                            · inactive
-                          </span>
-                        ) : null}
-                      </span>
+                      <span className="iv-name">{row.name ?? 'Unnamed title'}</span>
                       <span className="iv-producer">
                         {[row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ') || EM}
                       </span>
@@ -193,7 +219,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                 </tr>
                 {open ? (
                   <tr className="iv-openrow">
-                    <td colSpan={COLUMNS.length}>
+                    <td colSpan={span}>
                       <RowDropdown
                         row={row}
                         canManage={canManage}

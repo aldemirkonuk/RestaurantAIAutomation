@@ -166,7 +166,9 @@ export default function OrderLetter({
       void queryClient.invalidateQueries({ queryKey: draftKeys.all });
       void queryClient.invalidateQueries({ queryKey: ['procurement', 'order-approval-gate', restaurantId] });
       setSaid({
-        text: `An earlier attempt already approved this order. Nothing more was done here, and ${notDone}. Look on Orders before trying again.`,
+        // The gateway's 409s here also cover an order cancelled meanwhile
+        // (procurement.service.ts ~4316/4327), so this does not say "approved".
+        text: `An earlier attempt may already have gone through. Nothing more was done here, and ${notDone}. Look on Orders to see where the order stands before trying again.`,
         alarm: true,
       });
       setAttempt((a) => a + 1);

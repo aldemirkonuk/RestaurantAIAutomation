@@ -65,6 +65,8 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
   reconcileItem: inv.reconcile,
   deleteInventoryItem: inv.del,
 }));
+const tableExport = vi.hoisted(() => ({ exportTable: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../../../lib/tableExport', () => ({ exportTable: tableExport.exportTable }));
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -105,7 +107,7 @@ function row(over: Partial<InvRow> = {}): InvRow {
     costProvenance: 'invoice',
     value: 120,
     lastCountedAt: '2026-09-30T10:00:00Z',
-    openMl: null,
+    openMl: 0,
     zones: [{ locationId: 'z1', qty: 3 }],
     providerId: 'p1',
     providerName: 'Vinoteca',
@@ -408,7 +410,8 @@ describe('INV-W36: the More menu keeps the menu keys', () => {
     more.focus();
     fireEvent.click(more);
     const menu = await screen.findByRole('menu');
-    const items = within(menu).getAllByRole('menuitem');
+    // Keys step over a disabled item (Mark inactive waits while bottles are held).
+    const items = (within(menu).getAllByRole('menuitem') as HTMLButtonElement[]).filter((b) => !b.disabled);
     // Wait for the Popover to place focus on the first item (it does so once positioned).
     await act(async () => {
       for (let n = 0; n < 20 && document.activeElement !== items[0]; n += 1) await new Promise((r) => setTimeout(r, 10));
@@ -493,7 +496,7 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
   });
 
   it('Mark inactive sends the legacy PATCH body to updateInventoryItem for this row and house', async () => {
-    const m = await menu();
+    const m = await menu({ row: row({ stock: 0, shadow: 0, openMl: 0 }) });
     await act(async () => {
       fireEvent.click(within(m).getByRole('menuitem', { name: 'Mark inactive' }));
     });
@@ -525,7 +528,7 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
         config: {} as never,
       }),
     );
-    const m = await menu();
+    const m = await menu({ row: row({ stock: 0, shadow: 0, openMl: 0 }) });
     await act(async () => {
       fireEvent.click(within(m).getByRole('menuitem', { name: 'Mark inactive' }));
     });
@@ -549,5 +552,53 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     const item = within(m).getByRole('menuitem', { name: 'Remove from inventory' }) as HTMLButtonElement;
     expect(item.disabled).toBe(true);
     expect(screen.getByTestId('remove-blocked').textContent).toMatch(/did not say how many are held/);
+  });
+
+  it('Remove waits when the open bottle was not read, too', async () => {
+    const m = await menu({ row: row({ openMl: null }) });
+    const item = within(m).getByRole('menuitem', { name: 'Remove from inventory' }) as HTMLButtonElement;
+    expect(item.disabled).toBe(true);
+  });
+
+  for (const [label, over] of [
+    ['live bottles', { stock: 3, shadow: 0, openMl: 0 }],
+    ['shadow stock', { stock: 0, shadow: 2, openMl: 0 }],
+    ['an open bottle', { stock: 0, shadow: 0, openMl: 300 }],
+  ] as const) {
+    it(`Mark inactive waits while ${label} are held, and sends nothing`, async () => {
+      const m = await menu({ row: row(over) });
+      const item = within(m).getByRole('menuitem', { name: 'Mark inactive' }) as HTMLButtonElement;
+      expect(item.disabled).toBe(true);
+      expect(screen.getByTestId('inactive-blocked').textContent).toMatch(/bottles are still held\. Count it to zero or remove it first/);
+      fireEvent.click(item);
+      expect(inv.update).not.toHaveBeenCalled();
+    });
+  }
+
+  for (const field of ['stock', 'shadow', 'openMl'] as const) {
+    it(`Mark inactive waits when ${field} was not read`, async () => {
+      const m = await menu({ row: row({ stock: 0, shadow: 0, openMl: 0, [field]: null }) });
+      const item = within(m).getByRole('menuitem', { name: 'Mark inactive' }) as HTMLButtonElement;
+      expect(item.disabled).toBe(true);
+      expect(screen.getByTestId('inactive-blocked').textContent).toMatch(/did not say how many are held/);
+    });
+  }
+
+  it('Mark active is never held back by stock (bringing a row back loses nothing)', async () => {
+    const m = await menu({ row: row({ active: false, stock: 3 }) });
+    const item = within(m).getByRole('menuitem', { name: 'Mark active' }) as HTMLButtonElement;
+    expect(item.disabled).toBe(false);
+  });
+
+  it('Export this row writes the valuation columns for this one row, named after it', async () => {
+    tableExport.exportTable.mockClear();
+    const m = await menu();
+    fireEvent.click(within(m).getByRole('menuitem', { name: 'Export this row' }));
+    expect(tableExport.exportTable).toHaveBeenCalledTimes(1);
+    const arg = tableExport.exportTable.mock.calls[0][0];
+    expect(arg.filename).toBe('gravner-ribolla');
+    expect(arg.rows).toHaveLength(1);
+    expect(arg.rows[0].id).toBe('i1');
+    expect(arg.columns.map((c: { header: string }) => c.header)).toContain('Value at cost');
   });
 });
