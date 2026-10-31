@@ -7,6 +7,13 @@ import { InsightGeneratorService } from "../../analytics/insights/insight-genera
 import type { ExportableCutting } from "./report-export-cuttings";
 
 /**
+ * Exports read the till (ADR 0298 decision 9): `ReportExportsController`
+ * carries `RolesGuard` + `@Roles("owner", "manager")` on the class, so
+ * every export is asked for by a role ADR 0145's ROLE_POLICY lets see sales.
+ */
+const EXPORT_READS_SALES = { withSales: true } as const;
+
+/**
  * Reads one cutting's payload the way the /reports page reads it — through the
  * SAME gateway service, with the SAME parameters as the page's request path.
  *
@@ -71,10 +78,14 @@ export class ReportCuttingReader {
         return this.goals.getPosRevenueWindow(restaurantId, days ?? 30);
       // GET /analytics/goals/:rid/progress — the handler's default status.
       case "goals":
-        return this.goals.listGoalsWithProgress(restaurantId, "active");
+        return this.goals.listGoalsWithProgress(
+          restaurantId,
+          "active",
+          EXPORT_READS_SALES,
+        );
       // GET /analytics/overview/:rid
       case "bench":
-        return this.advanced.getOverview(restaurantId);
+        return this.advanced.getOverview(restaurantId, EXPORT_READS_SALES);
       // GET /analytics/cashflow/:rid
       case "pacing":
         return this.advanced.getCashflow(restaurantId);
@@ -93,7 +104,11 @@ export class ReportCuttingReader {
       // GET /analytics/financial/:rid — no `labor` on the page's path, which
       // the handler reads as 0.
       case "ledger":
-        return this.analytics.getFinancialSummary(restaurantId, 0);
+        return this.analytics.getFinancialSummary(
+          restaurantId,
+          0,
+          EXPORT_READS_SALES,
+        );
       // GET /analytics/table-performance/:rid?sinceDays=90
       case "seats":
         return this.tables.getTablePerformance(restaurantId, 90);

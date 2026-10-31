@@ -891,7 +891,15 @@ describe("AnalyticsService — loadConsumption reads every line, or refuses (for
       new AnalyticsService(db),
     );
     const err = await (goals as any)
-      .computeMetricWithSeries("r1", "days_of_inventory", at(30).slice(0, 10))
+      .computeMetricWithSeries(
+        "r1",
+        "days_of_inventory",
+        at(30).slice(0, 10),
+        undefined,
+        undefined,
+        // An owner's read: days of stock reads the till (ADR 0298, decision 9).
+        { withSales: true },
+      )
       .catch((e: unknown) => e);
     expect(err).toBeInstanceOf(WholeReadError);
   });

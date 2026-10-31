@@ -20,6 +20,7 @@ import {
   type QuietHours,
 } from "../../calendar/reminder-window";
 import { RecommendationsService } from "../recommendations.service";
+import { readSalesHolderIds } from "../../notifications/producers/sales-holders";
 import { AreaRoutingService } from "../../areas/area-routing.service";
 import { isAwayOn } from "../../areas/area-routing";
 import {
@@ -95,7 +96,9 @@ import {
  *  4. **It quotes the engine and recomputes nothing.** The letter carries each
  *     entry's own `observation` / `recommendation` / `rationale` from
  *     `RecommendationsService.getRecommendations` — the same call the page makes
- *     — with the rule, category and first-seen date beside it.
+ *     — with the rule, category and first-seen date beside it. Owners and
+ *     managers get a letter composed with the sales gate open, everyone else
+ *     one composed without it (ADR 0298 decision 9).
  *  5. **An empty digest is not sent, and says why.** Nothing at or above the
  *     house's floor → the row is recorded `skipped_empty` with a sentence naming
  *     how many rules the engine evaluated and what stood.
@@ -351,169 +354,198 @@ export class RecommendationDigestService {
       );
     }
 
-    // ── compose once, from the engine the page reads ────────────────────────
-    const feed = await this.recommendations.getRecommendations(tenant.id, {
-      recordImpressions: false,
-    });
-    if (!feed.suppressionsReadable) {
-      throw new Error(
-        "the dismissal store could not be read, so this digest might carry entries the house already dismissed; nothing was sent and the digest stays owed for the next sweep.",
-      );
-    }
-    const standing = feed.recommendations.filter((r) =>
-      meetsUrgencyFloor(r.urgency, house.floor),
+    // ── compose per audience, from the engine the page reads ────────────────
+    // The till's figures reach only a sales holder (ADR 0298 decision 9; ADR
+    // 0145 gives `sales` to owner and manager). Owners and managers among the
+    // recipients get a letter composed with the gate open, everyone else the
+    // one composed without it. Both are composed before anything is claimed, so
+    // a failed read leaves the whole digest owed. A failed role read throws like
+    // every other read here (point 6, ADR 0067): it is never "nobody holds it".
+    const holders = await readSalesHolderIds(
+      this.databaseService.getClient(),
+      tenant.id,
     );
-    const sourcesUnread = Array.isArray(feed.sourcesUnread)
-      ? feed.sourcesUnread
-      : [];
-    const unreadNote = sourcesUnreadWords(sourcesUnread);
+    const groups: Array<{ withSales: boolean; who: Candidate[] }> = [
+      {
+        withSales: false,
+        who: ready.filter((c) => !holders.has(c.sub.userId)),
+      },
+      { withSales: true, who: ready.filter((c) => holders.has(c.sub.userId)) },
+    ].filter((g) => g.who.length > 0);
+    const composed: Array<{
+      withSales: boolean;
+      who: Candidate[];
+      feed: Awaited<ReturnType<RecommendationsService["getRecommendations"]>>;
+    }> = [];
+    for (const g of groups) {
+      const feed = await this.recommendations.getRecommendations(tenant.id, {
+        recordImpressions: false,
+        withSales: g.withSales,
+      });
+      if (!feed.suppressionsReadable) {
+        throw new Error(
+          "the dismissal store could not be read, so this digest might carry entries the house already dismissed; nothing was sent and the digest stays owed for the next sweep.",
+        );
+      }
+      composed.push({ ...g, feed });
+    }
 
-    const provenance = {
-      rules_evaluated: feed.rulesEvaluated,
-      engine_generated_at: feed.generatedAt,
-    };
+    for (const { who, feed } of composed) {
+      const standing = feed.recommendations.filter((r) =>
+        meetsUrgencyFloor(r.urgency, house.floor),
+      );
+      const sourcesUnread = Array.isArray(feed.sourcesUnread)
+        ? feed.sourcesUnread
+        : [];
+      const unreadNote = sourcesUnreadWords(sourcesUnread);
 
-    if (standing.length === 0) {
-      const withheld =
-        feed.suppressed > 0
-          ? ` ${feed.suppressed} more fired and ${feed.suppressed === 1 ? "was" : "were"} withheld because the house dismissed ${feed.suppressed === 1 ? "it" : "them"}.`
-          : "";
-      // "Nothing stands" and "nothing could be read" are different facts, and
-      // the log row is the only place the second one would otherwise vanish.
-      const reason =
-        `Nothing to send: the engine evaluated ${feed.rulesEvaluated} rules at ${feed.generatedAt}; ` +
-        `${feed.recommendations.length} ${feed.recommendations.length === 1 ? "entry stood" : "entries stood"} and none at or above "${URGENCY_WORDS[house.floor]}".${withheld}` +
-        (unreadNote
-          ? ` ${unreadNote} This empty result is therefore not proof that nothing stands.`
-          : "");
+      const provenance = {
+        rules_evaluated: feed.rulesEvaluated,
+        engine_generated_at: feed.generatedAt,
+      };
+
+      if (standing.length === 0) {
+        const withheld =
+          feed.suppressed > 0
+            ? ` ${feed.suppressed} more fired and ${feed.suppressed === 1 ? "was" : "were"} withheld because the house dismissed ${feed.suppressed === 1 ? "it" : "them"}.`
+            : "";
+        // "Nothing stands" and "nothing could be read" are different facts, and
+        // the log row is the only place the second one would otherwise vanish.
+        const reason =
+          `Nothing to send: the engine evaluated ${feed.rulesEvaluated} rules at ${feed.generatedAt}; ` +
+          `${feed.recommendations.length} ${feed.recommendations.length === 1 ? "entry stood" : "entries stood"} and none at or above "${URGENCY_WORDS[house.floor]}".${withheld}` +
+          (unreadNote
+            ? ` ${unreadNote} This empty result is therefore not proof that nothing stands.`
+            : "");
+        const claimed = await this.claim(
+          tenant.id,
+          timeZone,
+          who.map((c) => ({
+            candidate: c,
+            extra: {
+              outcome: "skipped_empty",
+              finished_at: now.toISOString(),
+              reason,
+              entries_count: 0,
+              rule_keys: [],
+              ...provenance,
+            },
+          })),
+        );
+        tally.skippedEmpty += claimed.length;
+        tally.claimedElsewhere += who.length - claimed.length;
+        continue;
+      }
+
+      const carried = standing.slice(0, DIGEST_ENTRY_CAP);
+      const entries: DigestEntry[] = carried.map((r) => ({
+        ruleKey: r.ruleKey,
+        category: r.category,
+        urgency: r.urgency,
+        observation: r.observation,
+        recommendation: r.recommendation,
+        rationale: r.rationale,
+        firstSeenAt: r.firstSeenAt ?? null,
+      }));
+
+      const tokens = new Map<string, string>();
       const claimed = await this.claim(
         tenant.id,
         timeZone,
-        ready.map((c) => ({
-          candidate: c,
-          extra: {
-            outcome: "skipped_empty",
-            finished_at: now.toISOString(),
-            reason,
-            entries_count: 0,
-            rule_keys: [],
-            ...provenance,
-          },
-        })),
+        who.map((c) => {
+          const token = newUnsubscribeToken();
+          tokens.set(c.sub.userId, token);
+          return {
+            candidate: c,
+            extra: {
+              entries_count: entries.length,
+              rule_keys: entries.map((e) => e.ruleKey),
+              unsubscribe_token_hash: hashUnsubscribeToken(token),
+              ...provenance,
+            },
+          };
+        }),
       );
-      tally.skippedEmpty += claimed.length;
-      tally.claimedElsewhere += ready.length - claimed.length;
-      return this.finish(tenant, tally);
-    }
+      tally.claimedElsewhere += who.length - claimed.length;
 
-    const carried = standing.slice(0, DIGEST_ENTRY_CAP);
-    const entries: DigestEntry[] = carried.map((r) => ({
-      ruleKey: r.ruleKey,
-      category: r.category,
-      urgency: r.urgency,
-      observation: r.observation,
-      recommendation: r.recommendation,
-      rationale: r.rationale,
-      firstSeenAt: r.firstSeenAt ?? null,
-    }));
+      const byUser = new Map(who.map((c) => [c.sub.userId, c]));
+      for (const row of claimed) {
+        const c = byUser.get(row.user_id);
+        const token = tokens.get(row.user_id);
+        if (!c || !token) continue; // cannot happen: the claim only returns our rows
 
-    const tokens = new Map<string, string>();
-    const claimed = await this.claim(
-      tenant.id,
-      timeZone,
-      ready.map((c) => {
-        const token = newUnsubscribeToken();
-        tokens.set(c.sub.userId, token);
-        return {
-          candidate: c,
-          extra: {
-            entries_count: entries.length,
-            rule_keys: entries.map((e) => e.ruleKey),
-            unsubscribe_token_hash: hashUnsubscribeToken(token),
-            ...provenance,
-          },
-        };
-      }),
-    );
-    tally.claimedElsewhere += ready.length - claimed.length;
+        // Composing the letter sits inside the same try as the send: this row is
+        // already claimed, and a throw that escaped here would leave it (and every
+        // row after it) with outcome NULL for ever instead of a recorded failure.
+        let outcome: { success: boolean; messageId?: string; error?: string };
+        let stage: "compose" | "provider" = "compose";
+        try {
+          const letter = buildDigestLetter({
+            houseName: tenant.name,
+            recipientName: c.person.name,
+            frequency: c.sub.frequency,
+            weekday: c.sub.weekday,
+            hour: house.hour,
+            timeZone,
+            timeZoneIsFallback,
+            urgencyFloor: house.floor,
+            entries,
+            standing: standing.length,
+            rulesEvaluated: feed.rulesEvaluated,
+            engineGeneratedAt: feed.generatedAt,
+            sourcesUnread,
+            subscribedAt: c.sub.subscribedAt,
+            unsubscribeUrl: `${apiOrigin}${DIGEST_UNSUBSCRIBE_PATH}${token}`,
+            appOrigin: this.appOrigin(),
+          });
+          stage = "provider";
+          outcome = await this.gmail.sendEmail({
+            to: [c.person.email],
+            subject: letter.subject,
+            html: letter.html,
+            text: letter.text,
+            fromName: DIGEST_FROM_NAME,
+            listUnsubscribe: {
+              url: `${apiOrigin}${DIGEST_UNSUBSCRIBE_PATH}${token}`,
+              oneClick: true,
+            },
+          });
+        } catch (err) {
+          outcome = {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
 
-    const byUser = new Map(ready.map((c) => [c.sub.userId, c]));
-    for (const row of claimed) {
-      const c = byUser.get(row.user_id);
-      const token = tokens.get(row.user_id);
-      if (!c || !token) continue; // cannot happen: the claim only returns our rows
-
-      // Composing the letter sits inside the same try as the send: this row is
-      // already claimed, and a throw that escaped here would leave it (and every
-      // row after it) with outcome NULL for ever instead of a recorded failure.
-      let outcome: { success: boolean; messageId?: string; error?: string };
-      let stage: "compose" | "provider" = "compose";
-      try {
-        const letter = buildDigestLetter({
-          houseName: tenant.name,
-          recipientName: c.person.name,
-          frequency: c.sub.frequency,
-          weekday: c.sub.weekday,
-          hour: house.hour,
-          timeZone,
-          timeZoneIsFallback,
-          urgencyFloor: house.floor,
-          entries,
-          standing: standing.length,
-          rulesEvaluated: feed.rulesEvaluated,
-          engineGeneratedAt: feed.generatedAt,
-          sourcesUnread,
-          subscribedAt: c.sub.subscribedAt,
-          unsubscribeUrl: `${apiOrigin}${DIGEST_UNSUBSCRIBE_PATH}${token}`,
-          appOrigin: this.appOrigin(),
-        });
-        stage = "provider";
-        outcome = await this.gmail.sendEmail({
-          to: [c.person.email],
-          subject: letter.subject,
-          html: letter.html,
-          text: letter.text,
-          fromName: DIGEST_FROM_NAME,
-          listUnsubscribe: {
-            url: `${apiOrigin}${DIGEST_UNSUBSCRIBE_PATH}${token}`,
-            oneClick: true,
-          },
-        });
-      } catch (err) {
-        outcome = {
-          success: false,
-          error: err instanceof Error ? err.message : String(err),
-        };
-      }
-
-      if (outcome.success) {
-        tally.sent++;
-        const at = new Date().toISOString();
-        await this.confirm(row.id, {
-          outcome: "sent",
-          sent_at: at,
-          finished_at: at,
-          provider_message_id: outcome.messageId ?? null,
-          // A sent row carries a reason only when the letter was partial.
-          reason: unreadNote
-            ? `Sent with a gap the letter states: ${unreadNote}`
-            : null,
-        });
-      } else {
-        tally.failed++;
-        const words =
-          (outcome.error ?? "").trim() || "the provider gave no reason";
-        this.logger.error(
-          `RECOMMENDATION_DIGEST_SEND_FAILED restaurant=${tenant.id} user=${row.user_id} — ${words}`,
-        );
-        await this.confirm(row.id, {
-          outcome: "failed",
-          finished_at: new Date().toISOString(),
-          reason:
-            stage === "compose"
-              ? `The letter could not be composed, so nothing reached the provider: ${words}. Not retried.`
-              : `The mail provider did not accept it: ${words}. Not retried, so it cannot arrive twice.`,
-        });
+        if (outcome.success) {
+          tally.sent++;
+          const at = new Date().toISOString();
+          await this.confirm(row.id, {
+            outcome: "sent",
+            sent_at: at,
+            finished_at: at,
+            provider_message_id: outcome.messageId ?? null,
+            // A sent row carries a reason only when the letter was partial.
+            reason: unreadNote
+              ? `Sent with a gap the letter states: ${unreadNote}`
+              : null,
+          });
+        } else {
+          tally.failed++;
+          const words =
+            (outcome.error ?? "").trim() || "the provider gave no reason";
+          this.logger.error(
+            `RECOMMENDATION_DIGEST_SEND_FAILED restaurant=${tenant.id} user=${row.user_id} — ${words}`,
+          );
+          await this.confirm(row.id, {
+            outcome: "failed",
+            finished_at: new Date().toISOString(),
+            reason:
+              stage === "compose"
+                ? `The letter could not be composed, so nothing reached the provider: ${words}. Not retried.`
+                : `The mail provider did not accept it: ${words}. Not retried, so it cannot arrive twice.`,
+          });
+        }
       }
     }
 
@@ -550,7 +582,11 @@ export class RecommendationDigestService {
       return paused;
     }
     for (const c of candidates) {
-      if (windows.some((w) => w.userId === c.sub.userId && isAwayOn(w, c.due.periodKey))) {
+      if (
+        windows.some(
+          (w) => w.userId === c.sub.userId && isAwayOn(w, c.due.periodKey),
+        )
+      ) {
         paused.add(c);
       }
     }
@@ -878,47 +914,48 @@ export class RecommendationDigestService {
         : "Scheduled mail has not been switched on for this house yet, so the digest does not run here. " +
           "Mudavym switches it on per house; no setting a member can change turns it on.";
 
-      const [house, members, subRes, prefs, lastRes, letterRes, houseRes] = await Promise.all([
-        this.readHousePref(restaurantId),
-        this.readMemberIds(restaurantId, now),
-        client
-          .from("recommendation_digest_subscriptions")
-          .select(
-            "user_id, frequency, weekday, subscribed_at, updated_at, unsubscribed_at, unsubscribed_via",
-          )
-          .eq("restaurant_id", restaurantId)
-          .eq("user_id", userId)
-          .maybeSingle(),
-        this.readMemberPrefs(restaurantId, [userId]),
-        client
-          .from("recommendation_digest_sends")
-          .select(
-            "period_key, frequency, due_at, claimed_at, finished_at, sent_at, outcome, reason, entries_count",
-          )
-          .eq("restaurant_id", restaurantId)
-          .eq("user_id", userId)
-          .order("claimed_at", { ascending: false })
-          .limit(1),
-        // Sketch 122 Q9: this reader's own last SENT letter — a failed or
-        // skipped claim is not a letter anyone read.
-        client
-          .from("recommendation_digest_sends")
-          .select("period_key, sent_at, rule_keys")
-          .eq("restaurant_id", restaurantId)
-          .eq("user_id", userId)
-          .eq("outcome", "sent")
-          .order("sent_at", { ascending: false })
-          .limit(1),
-        // Sketch 122 Q8: the house's latest sent letter, for its date only —
-        // the count is read below; no user id leaves this method.
-        client
-          .from("recommendation_digest_sends")
-          .select("period_key, sent_at")
-          .eq("restaurant_id", restaurantId)
-          .eq("outcome", "sent")
-          .order("sent_at", { ascending: false })
-          .limit(1),
-      ]);
+      const [house, members, subRes, prefs, lastRes, letterRes, houseRes] =
+        await Promise.all([
+          this.readHousePref(restaurantId),
+          this.readMemberIds(restaurantId, now),
+          client
+            .from("recommendation_digest_subscriptions")
+            .select(
+              "user_id, frequency, weekday, subscribed_at, updated_at, unsubscribed_at, unsubscribed_via",
+            )
+            .eq("restaurant_id", restaurantId)
+            .eq("user_id", userId)
+            .maybeSingle(),
+          this.readMemberPrefs(restaurantId, [userId]),
+          client
+            .from("recommendation_digest_sends")
+            .select(
+              "period_key, frequency, due_at, claimed_at, finished_at, sent_at, outcome, reason, entries_count",
+            )
+            .eq("restaurant_id", restaurantId)
+            .eq("user_id", userId)
+            .order("claimed_at", { ascending: false })
+            .limit(1),
+          // Sketch 122 Q9: this reader's own last SENT letter — a failed or
+          // skipped claim is not a letter anyone read.
+          client
+            .from("recommendation_digest_sends")
+            .select("period_key, sent_at, rule_keys")
+            .eq("restaurant_id", restaurantId)
+            .eq("user_id", userId)
+            .eq("outcome", "sent")
+            .order("sent_at", { ascending: false })
+            .limit(1),
+          // Sketch 122 Q8: the house's latest sent letter, for its date only —
+          // the count is read below; no user id leaves this method.
+          client
+            .from("recommendation_digest_sends")
+            .select("period_key, sent_at")
+            .eq("restaurant_id", restaurantId)
+            .eq("outcome", "sent")
+            .order("sent_at", { ascending: false })
+            .limit(1),
+        ]);
       if (subRes.error)
         throw new Error(
           `recommendation_digest_subscriptions could not be read: ${subRes.error.message}`,

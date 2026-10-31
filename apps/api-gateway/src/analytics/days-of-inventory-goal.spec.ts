@@ -17,7 +17,10 @@
  * the common one on a house that has not costed its cellar — not an edge case.
  */
 
-import { GoalsService } from "./goals.service";
+import { DAYS_OF_STOCK_WITHHELD, GoalsService } from "./goals.service";
+
+/** Days of stock reads the till, so only an owner or a manager scores it (ADR 0298, decision 9). */
+const HOLDER = { withSales: true };
 
 const verdicts = { record: () => {}, recordForEvent: () => {} } as any;
 
@@ -73,7 +76,7 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
       targetValue: 9,
       direction: "at_most",
       period: "month",
-    });
+    }, HOLDER);
     // The baseline is the register's own number, not a re-derivation.
     expect(seen.patch.baseline_value).toBe(12.5);
     expect(seen.patch.metric_key).toBe("days_of_inventory");
@@ -87,7 +90,7 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
         metricKey: "days_of_inventory",
         targetValue: 9,
         direction: "at_most",
-      }),
+      }, HOLDER),
     ).rejects.toThrow(/every bottle on hand carries a recorded cost/);
   });
 
@@ -101,7 +104,7 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
         name: "x",
         metricKey: "days_of_inventory",
         targetValue: 9,
-      });
+      }, HOLDER);
     } catch {
       threw = true;
     }
@@ -116,8 +119,23 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
           name: "x",
           metricKey: "days_of_inventory",
           targetValue: 9,
-        }),
+        }, HOLDER),
       ).rejects.toThrow(/Days of stock cannot be read/);
+    }
+  });
+
+  it("is not scored for a caller who does not see sales, and the register is not read", async () => {
+    for (const gate of [undefined, {}, { withSales: false }]) {
+      const service = serviceWith(12.5);
+      const read = jest.spyOn((service as any).analyticsService, "getFinancialSummary");
+      await expect(
+        service.createGoal(
+          "r1",
+          { name: "x", metricKey: "days_of_inventory", targetValue: 9 },
+          gate,
+        ),
+      ).rejects.toThrow(DAYS_OF_STOCK_WITHHELD);
+      expect(read).not.toHaveBeenCalled();
     }
   });
 });

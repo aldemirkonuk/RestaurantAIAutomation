@@ -90,8 +90,32 @@ describe("the exportable cuttings (OD-81)", () => {
 });
 
 describe("a figure the engine did not compute is written as withheld, never as 0 (OD-81)", () => {
-  it("figures of record: no delivered order and an incomplete cost basis withhold COGS and every cost-derived figure", () => {
-    const doc = EXPORT_CUTTINGS.ledger.write(PAYLOADS.ledger, { days: null });
+  it("figures of record: an uncosted sale withholds cost of goods and every figure built on it (ADR 0298)", () => {
+    // The shared fixture predates ADR 0298, so the two new readings are
+    // stated here: the till took 5400 for stock items, one of two items that
+    // sold has no recorded cost, and 3 lines named no stock item.
+    const ledger = {
+      ...(PAYLOADS.ledger as Record<string, unknown>),
+      revenue: 5400,
+      shelfValueAtMenuPrice: 7200,
+      cogsCoverage: {
+        total: 2,
+        priced: 1,
+        unpriced: 1,
+        complete: false,
+        bottlesSold: 30,
+        bottlesCosted: 18,
+      },
+      salesCoverage: {
+        checks: 40,
+        lines: 90,
+        unmappedLines: 3,
+        unmappedSales: 120,
+        unreadableLines: 0,
+        itemsSoldWithoutStockMove: 1,
+      },
+    };
+    const doc = EXPORT_CUTTINGS.ledger.write(ledger, { days: null });
     for (const label of [
       "Cellar at cost",
       "Cost of goods (365d)",
@@ -103,9 +127,115 @@ describe("a figure the engine did not compute is written as withheld, never as 0
       "Capital sitting still",
     ])
       expect([label, isWithheld(figure(doc, label))]).toEqual([label, true]);
-    expect(figure(doc, "Sell-price valuation")).toBe(5400);
-    expect(doc.notes.join(" ")).toContain("1 of 2 on-hand wines carry a recorded cost");
+    expect(figure(doc, "Sales of stocked items, net (365d)")).toBe(5400);
+    expect(figure(doc, "Sell-price valuation")).toBe(7200);
+    const notes = doc.notes.join(" ");
+    expect(notes).toContain("1 of 2 items that sold carry a recorded cost");
+    expect(notes).toContain("1 of 2 on-hand items carry a recorded cost");
+    expect(notes).toContain("3 POS lines name no stock item");
+    expect(notes).toContain("1 item sold at the till but moved no stock");
     expect(countWithheld(doc)).toBe(8);
+  });
+
+  // PR #617's audit at 847f2470d: a deleted item is costed from its own row
+  // server-side; an item with no inventory row at all, or whose row could not
+  // be read, is named for what it is, not as one more uncosted item.
+  const soldGap = (gap: Record<string, unknown>) =>
+    EXPORT_CUTTINGS.ledger.write(
+      {
+        ...(PAYLOADS.ledger as Record<string, unknown>),
+        cogs: null,
+        cogsCoverage: {
+          total: 2,
+          priced: 1,
+          unpriced: 1,
+          complete: false,
+          ...gap,
+        },
+      },
+      { days: null },
+    );
+
+  it("figures of record: an item that sold with no inventory row is named as no longer in the books", () => {
+    const doc = soldGap({ itemsNotInBooks: 1, itemsCostUnread: 0 });
+    expect(isWithheld(figure(doc, "Cost of goods (365d)"))).toBe(true);
+    expect(doc.notes.join(" ")).toContain(
+      "1 of 2 items that sold carry a recorded cost. 1 item that sold is no longer in the books (no inventory row), so nothing records what it cost, and cost of goods and the ratios built on it are withheld rather than a floor.",
+    );
+  });
+
+  it("figures of record: a sold row that could not be read is named as unread, not as uncosted", () => {
+    const notes = soldGap({
+      itemsNotInBooks: 0,
+      itemsCostUnread: 2,
+    }).notes.join(" ");
+    expect(notes).toContain(
+      "The cost of 2 items that sold could not be read (their rows are no longer active, and the read failed), so cost of goods and the ratios built on it are withheld rather than a floor.",
+    );
+    expect(notes).not.toContain("items that sold carry a recorded cost");
+  });
+
+  it("figures of record: a till that sold stock but moved none withholds cost of goods, and says so", () => {
+    const doc = EXPORT_CUTTINGS.ledger.write(
+      {
+        ...(PAYLOADS.ledger as Record<string, unknown>),
+        cogs: null,
+        revenue: 500,
+        cogsCoverage: {
+          total: 0,
+          priced: 0,
+          unpriced: 0,
+          complete: false,
+          bottlesSold: 0,
+          bottlesCosted: 0,
+        },
+        salesCoverage: {
+          checks: 5,
+          lines: 5,
+          unmappedLines: 0,
+          unmappedSales: 0,
+          unreadableLines: 0,
+          itemsSoldWithoutStockMove: 1,
+        },
+      },
+      { days: null },
+    );
+    expect(isWithheld(figure(doc, "Cost of goods (365d)"))).toBe(true);
+    const notes = doc.notes.join(" ");
+    expect(notes).toContain(
+      "1 item sold at the till, but no item moved stock in the window",
+    );
+    expect(notes).toContain("withheld rather than $0");
+    expect(notes).not.toContain("adds sales and no cost");
+  });
+
+  it("figures of record: cost of goods and sales print when the till and its costs are whole", () => {
+    const doc = EXPORT_CUTTINGS.ledger.write(
+      {
+        ...(PAYLOADS.ledger as Record<string, unknown>),
+        cogs: 1800,
+        revenue: 5400,
+        grossMargin: 2 / 3,
+        cogsRatio: 1 / 3,
+        cogsCoverage: { total: 2, priced: 2, unpriced: 0, complete: true },
+      },
+      { days: null },
+    );
+    expect(figure(doc, "Cost of goods (365d)")).toBe(1800);
+    expect(figure(doc, "Sales of stocked items, net (365d)")).toBe(5400);
+    expect(figure(doc, "COGS ratio")).toBeCloseTo(1 / 3, 10);
+    expect(doc.notes.join(" ")).not.toContain("items that sold carry");
+  });
+
+  it("figures of record: a failed till read withholds sales rather than printing 0", () => {
+    const doc = EXPORT_CUTTINGS.ledger.write(
+      { ...(PAYLOADS.ledger as Record<string, unknown>), revenue: null },
+      { days: null },
+    );
+    expect(isWithheld(figure(doc, "Sales of stocked items, net (365d)"))).toBe(
+      true,
+    );
+    expect(figure(doc, "Sales of stocked items, net (365d)")).not.toBe(0);
   });
 
   it("what's coming: an unfitted model projects nothing and claims no total", () => {

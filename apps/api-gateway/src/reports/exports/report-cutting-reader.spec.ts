@@ -30,7 +30,10 @@ function build(stored: unknown[] | null = null) {
     getInventoryScience: echo("getInventoryScience"),
     getDemandForecast: echo("getDemandForecast"),
     getPosConsumptionBreakdown: echo("getPosConsumptionBreakdown"),
+    getRiskProfile: echo("getRiskProfile"),
   };
+  const recommendations = { getRecommendations: echo("getRecommendations") };
+  const consultants = { consult: echo("consult") };
   const advanced = {
     getOverview: echo("getOverview"),
     getCashflow: echo("getCashflow"),
@@ -75,12 +78,12 @@ function build(stored: unknown[] | null = null) {
   const controller = new AnalyticsController(
     analytics as never,
     advanced as never,
-    null as never, // recommendations
+    recommendations as never,
     recommendationActions,
     tables as never,
     goals as never,
     null as never, // goal scenario requests
-    null as never, // consultants
+    consultants as never,
     insights as never,
     null as never, // scheduler
     null as never, // day exclusions
@@ -96,6 +99,13 @@ function build(stored: unknown[] | null = null) {
 }
 
 /**
+ * Exports are an owner's or a manager's (`@Roles("owner","manager")` on the
+ * exports controller), so the page request they mirror is a holder's: the
+ * till-read cuttings answer with sales (ADR 0298, decision 9).
+ */
+const HOLDER = { role: "manager" };
+
+/**
  * The page's request for each cutting, as `rp-registers-*.tsx` builds its path,
  * turned into the controller call Nest would make for it. The path strings are
  * asserted against the web source below, so this table cannot drift from them.
@@ -106,13 +116,13 @@ const PAGE: Record<
 > = {
   reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40") },
   till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d)) },
-  goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined) },
-  bench: { path: "`/analytics/overview/${rid}`", call: (c) => c.getOverview(RID) },
+  goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, HOLDER) },
+  bench: { path: "`/analytics/overview/${rid}`", call: (c) => c.getOverview(RID, HOLDER) },
   pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID) },
   week: { path: "`/analytics/seasonality/${rid}`", call: (c) => c.getSeasonality(RID) },
   ahead: { path: "`/analytics/forecast/${rid}?horizon=14`", call: (c) => c.getForecast(RID, undefined, "14") },
   quadrants: { path: "`/analytics/menu-engineering/${rid}`", call: (c) => c.getMenuEngineering(RID) },
-  ledger: { path: "`/analytics/financial/${rid}`", call: (c) => c.getFinancial(RID, undefined) },
+  ledger: { path: "`/analytics/financial/${rid}`", call: (c) => c.getFinancial(RID, undefined, HOLDER) },
   seats: { path: "`/analytics/table-performance/${rid}?sinceDays=90`", call: (c) => c.getTablePerformance(RID, "90") },
   service: { path: "`/analytics/waiters/${rid}?sinceDays=90`", call: (c) => c.getWaiters(RID, "90") },
   restock: { path: "`/analytics/inventory-science/${rid}`", call: (c) => c.getInventoryScience(RID, undefined, undefined) },
@@ -159,6 +169,56 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       }
     });
   }
+
+  it("the till-read routes hand the caller's role gate to the service (ADR 0298, decision 9)", async () => {
+    // ADR 0145 ROLE_POLICY: owner and manager see sales, admin reads the owner
+    // row, and staff or an unknown role read the staff row.
+    const cases: Array<[{ role?: string } | undefined, boolean]> = [
+      [{ role: "owner" }, true],
+      [{ role: "manager" }, true],
+      [{ role: "admin" }, true],
+      [{ role: "staff" }, false],
+      [{ role: "sommelier" }, false],
+      [{}, false],
+      [undefined, false],
+    ];
+    for (const [user, withSales] of cases) {
+      const { controller } = build();
+      const gate = { withSales };
+      const fin = (await controller.getFinancial(RID, undefined, user)) as unknown as { args: unknown[] };
+      const bench = (await controller.getOverview(RID, user)) as unknown as { args: unknown[] };
+      const goals = (await controller.listGoalsWithProgress(RID, undefined, user)) as unknown as { args: unknown[] };
+      expect([user, fin.args, bench.args, goals.args]).toEqual([
+        user,
+        [RID, 0, gate],
+        [RID, gate],
+        [RID, "active", gate],
+      ]);
+    }
+  });
+
+  it("risk, consult and recommendations hand the caller's role gate on too (ADR 0298, decision 9)", async () => {
+    // A staff user's read goes out with the gate shut, so the service withholds
+    // the till's figures; an owner's goes out with it open.
+    const cases: Array<[{ userId?: string; role?: string }, boolean]> = [
+      [{ userId: "u-owner", role: "owner" }, true],
+      [{ userId: "u-manager", role: "manager" }, true],
+      [{ userId: "u-staff", role: "staff" }, false],
+      [{ userId: "u-none" }, false],
+    ];
+    for (const [user, withSales] of cases) {
+      const { controller } = build();
+      const risk = (await controller.getRisk(RID, user)) as unknown as { args: unknown[] };
+      const consult = (await controller.consult(RID, { persona: "finance" }, user)) as unknown as { args: unknown[] };
+      const recs = (await controller.getRecommendations(RID, undefined, user)) as unknown as { args: unknown[] };
+      expect([user, risk.args, consult.args, recs.args]).toEqual([
+        user,
+        [RID, { withSales }],
+        [RID, "finance", user.userId, { withSales }],
+        [RID, { includeHidden: false, withSales, viewerId: user.userId }],
+      ]);
+    }
+  });
 
   it("reading: on a cold start both compute once, live, and persist — the same call", async () => {
     const page = build([]);

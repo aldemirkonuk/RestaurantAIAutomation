@@ -414,14 +414,17 @@ function base() {
       }),
       ledger: ok({
         basis: {
-          revenue: 'unit_price × on-hand qty',
-          cogs: 'delivered procurement_orders (trailing 365d) — 4 orders summed',
+          revenue: 'POS line price × qty for lines naming a stock item — 120 checks',
+          cogs: 'POS bottles out × recorded unit cost — null: 3 of 5 items that sold carry a recorded cost',
           inventoryValue: 'on-hand qty × unit cost',
         },
         costCoverage: { total: 10, priced: 4, unpriced: 6, complete: false },
+        cogsCoverage: { total: 5, priced: 3, unpriced: 2, complete: false },
+        salesCoverage: { unmappedLines: 0, itemsSoldWithoutStockMove: 0 },
         inventoryValue: null,
-        cogs: 8400,
+        cogs: null,
         revenue: 21000,
+        shelfValueAtMenuPrice: 30000,
         grossMargin: null,
         cogsRatio: null,
         inventoryTurnover: null,
@@ -596,7 +599,7 @@ describe('ReportsNext — the drawing is the reader’s, within what is true', (
     expect(weekTypes).not.toContain('scatter');
     expect(within(week).getByText(/No heat map: seasonality returns one dimension/)).toBeInTheDocument();
 
-    // Eight figures in four different units cannot share one axis.
+    // Ten figures in four different units cannot share one axis.
     const ledger = screen.getByRole('region', { name: 'Figures of record' });
     const ledgerTypes = Array.from(
       (within(ledger).getByLabelText('Draw Figures of record as') as HTMLSelectElement).options,
@@ -821,12 +824,15 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
       'ledger',
       ok({
         basis: {
-          cogs: 'delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window',
+          cogs: 'POS bottles out × recorded unit cost — null: the POS sales read failed, and $0 would claim nothing sold',
         },
         costCoverage: { total: 0, priced: 0, unpriced: 0, complete: false },
+        cogsCoverage: { total: 0, priced: 0, unpriced: 0, complete: false },
+        salesCoverage: null,
         inventoryValue: null,
         cogs: null,
         revenue: null,
+        shelfValueAtMenuPrice: null,
         grossMargin: null,
         cogsRatio: null,
         inventoryTurnover: null,
@@ -840,9 +846,186 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     expect(within(ledger).queryByText('$0')).not.toBeInTheDocument();
     const cogs = within(ledger).getByText('Cost of goods (365d)').closest('.rp-fig');
     expect(within(cogs as HTMLElement).getByText('—')).toBeInTheDocument();
+    const sales = within(ledger).getByText('Sales of stocked items, net (365d)').closest('.rp-fig');
+    expect(within(sales as HTMLElement).getByText('—')).toBeInTheDocument();
     // …and the server's own reason is one click away.
     fireEvent.click(within(ledger).getByText('Show the working'));
-    expect(within(ledger).getByText(/no delivered order was returned/)).toBeInTheDocument();
+    expect(within(ledger).getByText(/the POS sales read failed/)).toBeInTheDocument();
+  });
+
+  it('says the till figures are withheld, not unread, for a caller who does not see sales (ADR 0298 decision 9)', () => {
+    hook.current = withRegister(
+      'ledger',
+      ok({
+        basis: {
+          revenue: "POS line price × qty — withheld: sales figures are an owner's or a manager's to see (ADR 0145 ROLE_POLICY, ADR 0290 §5), so the till was not read",
+        },
+        salesWithheld: true,
+        costCoverage: { total: 1, priced: 1, unpriced: 0, complete: true },
+        cogsCoverage: null,
+        salesCoverage: null,
+        inventoryValue: 100,
+        cogs: null,
+        revenue: null,
+        shelfValueAtMenuPrice: 300,
+        grossMargin: null,
+        cogsRatio: null,
+        inventoryTurnover: null,
+        daysInventoryOutstanding: null,
+        gmroi: null,
+        deadStockCapital: null,
+      }),
+    );
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    const at = (label: string) => within(ledger).getByText(label).closest('.rp-fig') as HTMLElement;
+    expect(within(at('Sales of stocked items, net (365d)')).getByText('—')).toBeInTheDocument();
+    const why = (label: string) => at(label).querySelector('dd')?.getAttribute('title');
+    expect(why('Sales of stocked items, net (365d)')).toBe('Sales are shown to owners and managers');
+    expect(why('Cost of goods (365d)')).toBe('Sales are shown to owners and managers');
+    expect(why('Gross margin')).toBe('Sales are shown to owners and managers');
+    expect(why('Days of inventory')).toBe('Sales are shown to owners and managers');
+    expect(within(ledger).getByText(/the till's figures are shown to owners and managers/)).toBeInTheDocument();
+    expect(within(at('Sell-price valuation')).getByText(/300/)).toBeInTheDocument();
+  });
+
+  it('reads salesWithheld off the wire as true only when the gateway sent true (ADR 0298 decision 9)', () => {
+    const read = (salesWithheld: unknown) =>
+      (CATALOGUE.ledger.select({ salesWithheld, revenue: null, cogs: null }) as { salesWithheld: boolean })
+        .salesWithheld;
+    expect(read(true)).toBe(true);
+    // Absent (a gateway that predates the gate) and anything not the boolean
+    // true read as "not withheld", so the page keeps the per-figure reasons.
+    expect(read(undefined)).toBe(false);
+    expect(read('true')).toBe(false);
+    expect(read(1)).toBe(false);
+  });
+
+  it('prints cost of goods and sales from the till when both are whole (ADR 0298)', () => {
+    hook.current = withRegister(
+      'ledger',
+      ok({
+        basis: {
+          cogs: 'POS bottles out × recorded unit cost — 5 items, 240 bottles out',
+          revenue: 'POS line price × qty for lines naming a stock item — 120 checks',
+        },
+        costCoverage: { total: 10, priced: 10, unpriced: 0, complete: true },
+        cogsCoverage: { total: 5, priced: 5, unpriced: 0, complete: true },
+        salesCoverage: { unmappedLines: 7, itemsSoldWithoutStockMove: 1 },
+        inventoryValue: 12000,
+        cogs: 8400,
+        revenue: 21000,
+        shelfValueAtMenuPrice: 30000,
+        grossMargin: 0.6,
+        cogsRatio: 0.4,
+        inventoryTurnover: 0.7,
+        daysInventoryOutstanding: 521.4,
+        gmroi: 1.05,
+        deadStockCapital: null,
+      }),
+    );
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    const at = (label: string) => within(ledger).getByText(label).closest('.rp-fig') as HTMLElement;
+    expect(within(at('Cost of goods (365d)')).getByText(/8,400/)).toBeInTheDocument();
+    expect(within(at('Sales of stocked items, net (365d)')).getByText(/21,000/)).toBeInTheDocument();
+    expect(within(at('Sell-price valuation')).getByText(/30,000/)).toBeInTheDocument();
+    expect(within(at('COGS ratio')).getByText(/40/)).toBeInTheDocument();
+    expect(within(ledger).queryByText(/items that sold carry a recorded cost/)).not.toBeInTheDocument();
+    expect(within(ledger).getByText(/7 POS lines name no stock item/)).toBeInTheDocument();
+    expect(within(ledger).getByText(/1 item sold at the till but moved no stock/)).toBeInTheDocument();
+  });
+
+  it('prints an em dash, never $0, for the cost of a till that sold stock but moved none', () => {
+    hook.current = withRegister(
+      'ledger',
+      ok({
+        basis: {
+          cogs: 'POS bottles out × recorded unit cost — null: 1 item sold at the till but the POS moved no stock for any item',
+        },
+        costCoverage: { total: 1, priced: 1, unpriced: 0, complete: true },
+        cogsCoverage: { total: 0, priced: 0, unpriced: 0, complete: false },
+        salesCoverage: { unmappedLines: 0, itemsSoldWithoutStockMove: 1 },
+        inventoryValue: 100,
+        cogs: null,
+        revenue: 500,
+        shelfValueAtMenuPrice: 300,
+        grossMargin: null,
+        cogsRatio: null,
+        inventoryTurnover: null,
+        daysInventoryOutstanding: null,
+        gmroi: null,
+        deadStockCapital: null,
+      }),
+    );
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    const at = (label: string) => within(ledger).getByText(label).closest('.rp-fig') as HTMLElement;
+    expect(within(at('Cost of goods (365d)')).getByText('—')).toBeInTheDocument();
+    expect(within(at('Gross margin')).getByText('—')).toBeInTheDocument();
+    expect(
+      within(ledger).getByText(/1 item sold at the till, but no item moved stock in the window/),
+    ).toBeInTheDocument();
+    expect(within(ledger).queryByText(/it adds sales and no cost/)).not.toBeInTheDocument();
+  });
+
+  // PR #617's audit at 847f2470d: an item deleted on /inventory is costed
+  // from its own row server-side; only an item with no inventory row at all,
+  // or whose row could not be read, is named apart, never as "no recorded cost".
+  const soldGap = (cogsCoverage: Record<string, unknown>) =>
+    withRegister(
+      'ledger',
+      ok({
+        basis: { cogs: 'POS bottles out × recorded unit cost — null' },
+        costCoverage: { total: 1, priced: 1, unpriced: 0, complete: true },
+        cogsCoverage,
+        salesCoverage: { unmappedLines: 0, itemsSoldWithoutStockMove: 0 },
+        inventoryValue: 100,
+        cogs: null,
+        revenue: 500,
+        shelfValueAtMenuPrice: 300,
+        grossMargin: null,
+        cogsRatio: null,
+        inventoryTurnover: null,
+        daysInventoryOutstanding: null,
+        gmroi: null,
+        deadStockCapital: null,
+      }),
+    );
+
+  it('names an item that sold with no inventory row as no longer in the books', () => {
+    hook.current = soldGap({
+      total: 2,
+      priced: 1,
+      unpriced: 1,
+      complete: false,
+      itemsNotInBooks: 1,
+      itemsCostUnread: 0,
+    });
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    expect(
+      within(ledger).getByText(
+        /1 of 2 items that sold carry a recorded cost\. 1 item that sold is no longer in the books \(no inventory row\), so nothing records what it cost/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says the cost read failed, not that a cost is missing, when a sold row could not be read', () => {
+    hook.current = soldGap({
+      total: 2,
+      priced: 1,
+      unpriced: 1,
+      complete: false,
+      itemsNotInBooks: 0,
+      itemsCostUnread: 1,
+    });
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    expect(
+      within(ledger).getByText(/The cost of 1 item that sold could not be read \(its row is no longer active, and the read failed\)/),
+    ).toBeInTheDocument();
+    expect(within(ledger).queryByText(/items that sold carry a recorded cost/)).not.toBeInTheDocument();
   });
 
   it('claims no forecast total when the server reports no model fitted', () => {
@@ -898,12 +1081,16 @@ describe('ReportsNext — honesty', () => {
   it('renders an unknown as an em dash, never as a zero', () => {
     paint();
     const ledger = screen.getByRole('region', { name: 'Figures of record' });
-    // Nine figures, six of which the engine returned as null.
-    expect(within(ledger).getAllByText('—').length).toBeGreaterThanOrEqual(6);
+    // Ten figures, eight of which the engine returned as null.
+    expect(within(ledger).getAllByText('—').length).toBeGreaterThanOrEqual(8);
     expect(within(ledger).queryByText('$0')).not.toBeInTheDocument();
-    // …and it says WHY they are dashes, in the engine's own coverage numbers.
+    // …and it says WHY they are dashes, in the engine's own coverage numbers:
+    // the fork's "N of M" for what sold, and the on-hand count for the rest.
     expect(
-      within(ledger).getByText(/4 of 10 on-hand wines carry a recorded cost/),
+      within(ledger).getByText(/3 of 5 items that sold carry a recorded cost, so cost of goods/),
+    ).toBeInTheDocument();
+    expect(
+      within(ledger).getByText(/4 of 10 on-hand items carry a recorded cost/),
     ).toBeInTheDocument();
   });
 

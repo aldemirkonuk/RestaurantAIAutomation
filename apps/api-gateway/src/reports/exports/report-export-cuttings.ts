@@ -589,27 +589,62 @@ function writeLedger(payload: unknown): ExportDoc {
   const d = obj(payload);
   const b = obj(d.basis);
   const cc = d.costCoverage == null ? null : obj(d.costCoverage);
-  const costBasis = "Needs a complete cost basis";
+  const gc = d.cogsCoverage == null ? null : obj(d.cogsCoverage);
+  const sc = d.salesCoverage == null ? null : obj(d.salesCoverage);
+  // ADR 0298: cost of goods is what the till sold at its recorded cost, and
+  // sales are the till's. The margin ratios need both; turns, days and GMROI
+  // also divide by the cellar at cost and annualise the till's span.
+  const soldBasis = "Needs the cost of every item that sold and the POS sales";
+  const turnsBasis =
+    "Needs a complete cost basis and at least 28 days of POS sales";
+  const unmapped = num(sc?.unmappedLines) ?? 0;
+  const noStockMove = num(sc?.itemsSoldWithoutStockMove) ?? 0;
+  // An item no longer active is costed from its own row; only one with no
+  // inventory row at all, or whose row could not be read, is named apart.
+  const soldCostNote = (c: Record<string, unknown>) => {
+    const gone = num(c.itemsNotInBooks) ?? 0;
+    const unread = num(c.itemsCostUnread) ?? 0;
+    const withheld =
+      "cost of goods and the ratios built on it are withheld rather than a floor.";
+    const nOfM = `${num(c.priced) ?? 0} of ${num(c.total) ?? 0} items that sold carry a recorded cost`;
+    return unread > 0
+      ? `The cost of ${nounCount(unread, "item", "items")} that sold could not be read (${unread === 1 ? "its row is" : "their rows are"} no longer active, and the read failed), so ${withheld}`
+      : gone > 0
+        ? `${nOfM}. ${nounCount(gone, "item that sold is", "items that sold are")} no longer in the books (no inventory row), so nothing records what ${gone === 1 ? "it" : "they"} cost, and ${withheld}`
+        : `${nOfM}, so ${withheld}`;
+  };
   return doc({
     figures: [
       f("Cellar at cost", figure(d.inventoryValue, "Not every on-hand row carries a recorded cost"), "money"),
-      f("Cost of goods (365d)", figure(d.cogs, "No delivered order came back for the window — which is either no buying or a read that failed"), "money"),
-      f("Sell-price valuation", figure(d.revenue, "No inventory row came back"), "money"),
-      f("Gross margin", figure(d.grossMargin, costBasis), "ratio"),
-      f("COGS ratio", figure(d.cogsRatio, costBasis), "ratio"),
-      f("Inventory turns", figure(d.inventoryTurnover, `${costBasis} and a year of delivered orders`), "count"),
-      f("Days of inventory", figure(d.daysInventoryOutstanding, `${costBasis} and a year of delivered orders`), "days"),
-      f("GMROI", figure(d.gmroi, costBasis), "count"),
+      f("Sales of stocked items, net (365d)", figure(d.revenue, "No POS sale could be read: no closed check, a line that cannot be read, or a read that failed"), "money"),
+      f("Cost of goods (365d)", figure(d.cogs, "Not every item that sold carries a recorded cost, the POS moved no stock, or the read failed"), "money"),
+      f("Sell-price valuation", figure(d.shelfValueAtMenuPrice, "No inventory row came back"), "money"),
+      f("Gross margin", figure(d.grossMargin, soldBasis), "ratio"),
+      f("COGS ratio", figure(d.cogsRatio, soldBasis), "ratio"),
+      f("Inventory turns", figure(d.inventoryTurnover, turnsBasis), "count"),
+      f("Days of inventory", figure(d.daysInventoryOutstanding, turnsBasis), "days"),
+      f("GMROI", figure(d.gmroi, turnsBasis), "count"),
       f("Capital sitting still", figure(d.deadStockCapital, "No movement signal recorded, or an idle row has no cost"), "money"),
     ],
     notes: [
+      gc && gc.complete === false && (num(gc.total) ?? 0) > 0
+        ? soldCostNote(gc)
+        : "",
       cc && cc.complete === false
         ? num(cc.total) === 0
-          ? "No on-hand wine carries a recorded cost, so every cost-derived figure above is withheld rather than a total assembled from nothing."
-          : `${num(cc.priced) ?? 0} of ${num(cc.total) ?? 0} on-hand wines carry a recorded cost, so every cost-derived figure above is withheld rather than a total assembled from part of the cellar.`
+          ? "No on-hand item carries a recorded cost, so the cellar at cost, turns, days of inventory and GMROI are withheld rather than a total assembled from nothing."
+          : `${num(cc.priced) ?? 0} of ${num(cc.total) ?? 0} on-hand items carry a recorded cost, so the cellar at cost, turns, days of inventory and GMROI are withheld rather than a total assembled from part of the cellar.`
+        : "",
+      unmapped > 0
+        ? `${nounCount(unmapped, "POS line names", "POS lines name")} no stock item (a dish, or a drink not linked to one), and ${unmapped === 1 ? "it is" : "they are"} left out of sales and cost of goods.`
+        : "",
+      noStockMove > 0
+        ? num(d.cogs) == null && gc != null && num(gc.total) === 0
+          ? `${nounCount(noStockMove, "item", "items")} sold at the till, but no item moved stock in the window, so cost of goods and the ratios built on it are withheld rather than $0.`
+          : `${nounCount(noStockMove, "item", "items")} sold at the till but moved no stock in the window, so ${noStockMove === 1 ? "it adds" : "they add"} sales and no cost.`
         : "",
     ],
-    basis: sentences(b.revenue, b.cogs, b.inventoryValue, b.deadStock, b.costDerived),
+    basis: sentences(b.revenue, b.cogs, b.shelfValueAtMenuPrice, b.inventoryValue, b.deadStock, b.costDerived),
   });
 }
 

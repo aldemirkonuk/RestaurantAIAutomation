@@ -28,14 +28,16 @@ import { houseDayBounds } from "../common/house-day";
  * shaping data and (b) mapping it onto the right formulas.
  *
  * Data-source conventions (documented so numbers are auditable):
- *   • Purchases / COGS   ← procurement_orders (delivered) total_cost|final_price
+ *   • Sales & COGS       ← public.pos_item_sales (ADR 0298): till lines per
+ *                          stock item, and the bottles the POS moved × the
+ *                          recorded unit cost
+ *   • Purchases          ← procurement_orders (delivered) total_cost|final_price
  *   • On-hand & cost     ← restaurant_inventory + inventory_lot_rollup.wac
  *   • Consumption/demand ← wine_consumption_log (quantity, volume_ml)
  *   • Vendor structure   ← procurement_orders.provider_id
  *
- * Where a true POS revenue feed is not yet wired, "revenue" is derived from
- * consumption × unit_price and clearly labelled `basis` in the payload so the
- * UI never presents an approximation as a booked figure.
+ * Every figure says what it was computed from in its `basis`, and a figure
+ * that cannot be measured is null with the reason (ADR 0051).
  */
 /**
  * One wine's measured POS sales over a window. A `null` here always means "we
@@ -61,6 +63,77 @@ export interface PosConsumptionRow {
   /** `restaurant_inventory.last_purchase_price`; null blocks margin honestly. */
   costPerBottle: number | null;
 }
+
+/** One stock item over a window, as public.pos_item_sales returns it (ADR 0298). */
+interface PosItemSales {
+  inventoryId: string;
+  /** Σ price × qty of the till lines naming this item: net of tax and surcharge. */
+  sales: number;
+  units: number;
+  lines: number;
+  /** −Σ POS sale/return ledger rows. Negative when voids outweigh sales. */
+  bottlesOut: number;
+  /**
+   * A POS mapping of this house points at the item, so the till can name it.
+   * Mapped items that neither sold nor moved are listed too, with zeros.
+   */
+  mapped: boolean;
+}
+
+interface PosSales {
+  since: string;
+  items: PosItemSales[];
+  checks: number;
+  lines: number;
+  unmappedLines: number;
+  unmappedSales: number;
+  unreadableLines: number;
+  /** The earlier of the two below. */
+  firstSaleAt: string | null;
+  /** The first closed check in the window: where sales start. */
+  firstCheckAt: string | null;
+  /** The first POS stock move in the window: where cost of goods starts. */
+  firstMoveAt: string | null;
+}
+
+/** A sold item's recorded cost, read from a row the active cellar left out. */
+interface SoldItemCost {
+  unitCost: number | null;
+  costBasis: ReturnType<typeof resolveUnitCost>["costBasis"];
+  /** `is_active` on the row: false for an item deleted on /inventory. */
+  active: boolean;
+}
+
+/** The trailing window cost of goods and sales are read over. */
+const COGS_WINDOW_DAYS = 365;
+/** A year, for annualising a shorter observed span. */
+const DAYS_PER_YEAR = 365;
+/**
+ * Below four weeks of observed sales a year's turns is an extrapolation of a
+ * fortnight, not a measurement, so turnover, days of stock and GMROI are null.
+ */
+const MIN_ANNUALISED_SPAN_DAYS = 28;
+/** Revenue concentration is read over the same 90 days as demand risk. */
+const CONCENTRATION_WINDOW_DAYS = 90;
+/** Ids per request in `loadSoldItemCost`: one row per id, far below the cap. */
+const SOLD_COST_READ_SLICE = 150;
+
+/**
+ * Who the till's figures are read for (ADR 0298, decision 9). ADR 0145's
+ * ROLE_POLICY gives the `sales` class to owners and managers and not to
+ * staff, and ADR 0290 §5 applies it to a read as
+ * `withSales = policyFor(role).sees.includes("sales")`: for anyone else the
+ * till is not read at all. Absent is `false`, so a caller that names no role
+ * gets no till figure; only a caller that has checked the role, or whose
+ * audience is owner/manager by its own guard, passes `true`.
+ */
+export interface SalesGate {
+  withSales?: boolean;
+}
+
+/** The basis tail for a figure read from the till and withheld. */
+export const SALES_WITHHELD =
+  "withheld: sales figures are an owner's or a manager's to see (ADR 0145 ROLE_POLICY, ADR 0290 §5), so the till was not read";
 
 @Injectable()
 export class AnalyticsService {
@@ -112,6 +185,19 @@ export class AnalyticsService {
   }
 
   private async loadInventory(restaurantId: string) {
+    return (await this.loadInventoryRead(restaurantId)).items;
+  }
+
+  /**
+   * `loadInventory`, with whether the active-rows read failed. `items` is `[]`
+   * either way, so a reader that tells "no rows" from "no answer" (ADR 0067)
+   * reads `failed`: the risk profile's concentration and the financial
+   * summary's cellar figures do (ADR 0298, CI gate at fd0a57669). A failed
+   * `inventory_lot_rollup` read is not counted here: it degrades a row's
+   * cost to its recorded last purchase price or to unknown, which
+   * `costBasis` already states per row.
+   */
+  private async loadInventoryRead(restaurantId: string) {
     const client = this.dbService.getClient();
     const [invRes, rollupRes] = await Promise.allSettled([
       client
@@ -150,6 +236,10 @@ export class AnalyticsService {
     this.reportSlice("restaurant_inventory", invRes);
     this.reportSlice("inventory_lot_rollup", rollupRes);
 
+    const failed =
+      invRes.status === "rejected" ||
+      invRes.value?.error != null ||
+      !Array.isArray(invRes.value?.data);
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
     const rollup = new Map<string, any>();
@@ -161,7 +251,7 @@ export class AnalyticsService {
     // The third branch used to be `unitPrice * 0.6`, a magic number with no
     // ADR behind it, and it was the live path for ~70 of 72 production rows.
     // See ./inventory-cost.ts for why cost is now `number | null`.
-    return inventory.map((i: any) => {
+    const items = inventory.map((i: any) => {
       const lot = rollup.get(i.id);
       const unitPrice = Number(i.menu_price_current) || 0;
       const { unitCost, costBasis } = resolveUnitCost(i, lot);
@@ -185,6 +275,77 @@ export class AnalyticsService {
         inventoryValue: unitCost == null ? null : qty * unitCost,
       };
     });
+    return { items, failed };
+  }
+
+  /**
+   * The recorded cost of items that moved stock at the till but are not in
+   * the active cellar `loadInventory` reads (ADR 0298 Decision 1). Deleting
+   * an item on /inventory only sets `is_active = false`
+   * (inventory.service.ts `softDeleteItem`), so its row keeps its
+   * last_purchase_price and its lots keep their cost. The answer comes from
+   * the same two sources through the same `resolveUnitCost`, so no valuation
+   * branch is added and OD-100 is untouched.
+   *
+   * The map holds only the ids this house still has a restaurant_inventory
+   * row for, with whether that row is active (it can be, when the active
+   * read above failed or raced); an id missing from it is not in this
+   * house's books at all. `null` means a read failed, so neither answer can
+   * be given (ADR 0067).
+   */
+  private async loadSoldItemCost(
+    restaurantId: string,
+    ids: string[],
+  ): Promise<Map<string, SoldItemCost> | null> {
+    const client = this.dbService.getClient();
+    try {
+      // Read in slices of SOLD_COST_READ_SLICE ids. Each slice returns at most
+      // one row per id from either relation, so no slice can reach
+      // PostgREST's 1,000-row cap (ADR 0292) and be cut short in silence,
+      // and no request carries thousands of ids in its URL. Under a failed
+      // active read every item that sold comes through here (CI gate at
+      // fd0a57669, note 1).
+      const rowsRead: any[] = [];
+      const lotsRead: any[] = [];
+      for (let at = 0; at < ids.length; at += SOLD_COST_READ_SLICE) {
+        const slice = ids.slice(at, at + SOLD_COST_READ_SLICE);
+        const [rowRes, lotRes] = await Promise.all([
+          client
+            .from("restaurant_inventory")
+            .select("id, last_purchase_price, is_active")
+            .eq("restaurant_id", restaurantId)
+            .in("id", slice),
+          client
+            .from("inventory_lot_rollup")
+            .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
+            .eq("restaurant_id", restaurantId)
+            .in("inventory_id", slice),
+        ]);
+        if (rowRes.error || lotRes.error) {
+          if (rowRes.error)
+            this.logQueryFailure("restaurant_inventory", rowRes.error);
+          if (lotRes.error)
+            this.logQueryFailure("inventory_lot_rollup", lotRes.error);
+          return null;
+        }
+        rowsRead.push(...(rowRes.data || []));
+        lotsRead.push(...(lotRes.data || []));
+      }
+      const wanted = new Set(ids);
+      const lots = new Map<string, any>();
+      for (const l of lotsRead) lots.set(l.inventory_id, l);
+      const cost = new Map<string, SoldItemCost>();
+      for (const r of rowsRead)
+        if (wanted.has(r.id))
+          cost.set(r.id, {
+            ...resolveUnitCost(r, lots.get(r.id)),
+            active: r.is_active !== false,
+          });
+      return cost;
+    } catch (e) {
+      this.logQueryFailure("restaurant_inventory", e);
+      return null;
+    }
   }
 
   private async loadDeliveredOrders(restaurantId: string, sinceDays = 365) {
@@ -440,17 +601,112 @@ export class AnalyticsService {
     });
   }
 
+  /**
+   * What the till sold per stock item, and the bottles the POS moved, since
+   * `sinceDays` ago: one call to public.pos_item_sales (migration
+   * cost_of_goods_reads_what_sold, ADR 0298). It returns ONE jsonb value, so
+   * no PostgREST row cap can cut it short.
+   *
+   * `null` means the read failed — never "sold nothing" (ADR 0067). A thrown
+   * call (a rejected request, a client with no `.rpc`) is a failed read too,
+   * and so is a payload that is not the function's shape.
+   */
+  private async loadPosSales(
+    restaurantId: string,
+    sinceDays: number,
+  ): Promise<PosSales | null> {
+    const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
+    try {
+      const { data, error } = await this.dbService
+        .getClient()
+        .rpc("pos_item_sales", {
+          p_restaurant_id: restaurantId,
+          p_since: since,
+        });
+      if (error) {
+        this.logQueryFailure("pos_item_sales", error);
+        return null;
+      }
+      const d: any = data;
+      const items: PosItemSales[] = Array.isArray(d?.items)
+        ? d.items.map((i: any) => ({
+            inventoryId: String(i?.inventory_id ?? ""),
+            sales: Number(i?.sales),
+            units: Number(i?.units),
+            lines: Number(i?.lines),
+            bottlesOut: Number(i?.bottles_out),
+            mapped: i?.mapped,
+          }))
+        : [];
+      const counts = [
+        d?.checks,
+        d?.lines,
+        d?.unmapped_lines,
+        d?.unmapped_sales,
+        d?.unreadable_lines,
+      ].map(Number);
+      const malformed =
+        !Array.isArray(d?.items) ||
+        counts.some((x) => !Number.isFinite(x)) ||
+        items.some(
+          (i) =>
+            !i.inventoryId ||
+            ![i.sales, i.units, i.lines, i.bottlesOut].every(Number.isFinite) ||
+            typeof i.mapped !== "boolean",
+        );
+      if (malformed) {
+        this.logQueryFailure("pos_item_sales", {
+          message: "the payload is not the function's shape",
+        });
+        return null;
+      }
+      const [checks, lines, unmappedLines, unmappedSales, unreadableLines] =
+        counts;
+      return {
+        since,
+        items,
+        checks,
+        lines,
+        unmappedLines,
+        unmappedSales,
+        unreadableLines,
+        firstSaleAt:
+          typeof d.first_sale_at === "string" ? d.first_sale_at : null,
+        firstCheckAt:
+          typeof d.first_check_at === "string" ? d.first_check_at : null,
+        firstMoveAt:
+          typeof d.first_move_at === "string" ? d.first_move_at : null,
+      };
+    } catch (e) {
+      this.logQueryFailure("pos_item_sales", e);
+      return null;
+    }
+  }
+
   // =========================================================================
   // 1. Financial summary — the P&L / capital-efficiency lens
   // =========================================================================
 
-  async getFinancialSummary(restaurantId: string, labor = 0) {
+  async getFinancialSummary(
+    restaurantId: string,
+    labor = 0,
+    opts: SalesGate = {},
+  ) {
     const DEAD_STOCK_WINDOW_DAYS = 90;
-    const [inventory, orders, consumption] = await Promise.all([
-      this.loadInventory(restaurantId),
-      this.loadDeliveredOrders(restaurantId, 365),
+    // A caller without the sales class gets no till read at all (ADR 0290
+    // §5): sales, cost of goods and everything built on them are null and
+    // say why. The cellar, purchases and dead stock do not read the till.
+    const withSales = opts.withSales === true;
+    const [inventoryRead, orders, consumption, pos] = await Promise.all([
+      this.loadInventoryRead(restaurantId),
+      this.loadDeliveredOrders(restaurantId, COGS_WINDOW_DAYS),
       this.loadConsumption(restaurantId, DEAD_STOCK_WINDOW_DAYS),
+      withSales
+        ? this.loadPosSales(restaurantId, COGS_WINDOW_DAYS)
+        : Promise.resolve(null),
     ]);
+    const inventory = inventoryRead.items;
+    const inventoryFailed = inventoryRead.failed;
 
     // A row holding no bottles contributes 0 to the valuation whatever it
     // cost, so it cannot block the total. Only ON-HAND rows need a cost.
@@ -469,52 +725,219 @@ export class AnalyticsService {
       ? E.stats.sum(onHand.map((i) => i.inventoryValue as number))
       : null;
 
-    // `E.stats.sum([])` is 0, and BOTH loaders above degrade a failed query to
-    // `[]` (see their comments), so an unconditional sum reported "the query
-    // failed" and "this restaurant bought nothing in a year" as the same $0 —
-    // absence rendered as a fact. An empty result set is not a measured zero:
-    // it is the absence of any row to measure, so it is null and the basis
-    // says which. A restaurant that genuinely placed orders still gets its
-    // real total, including a real 0 if every order carried no cost.
-    const cogs =
+    // What was BOUGHT, under its own name (ADR 0298). This used to be `cogs`,
+    // and /reports printed it as "Cost of goods (365d)": purchases are not
+    // what sold. Kept for the MCP and consultant readers, and it feeds no
+    // ratio. `E.stats.sum([])` is 0 and the loader degrades a failed read to
+    // `[]`, so an empty list is null, never a measured $0.
+    const deliveredPurchases =
       orders.length === 0 ? null : E.stats.sum(orders.map((o) => o.cost));
-
-    // Revenue basis: sell-price valuation of purchased bottles (proxy until a
-    // POS revenue feed lands). Menu price is recorded, so this survives an
-    // unknown cost — it is the cost-derived fields below that go null.
-    const revenue =
+    // Menu price × bottles on hand, under its own name. This used to be
+    // `revenue`, and the margin and COGS ratios divided by it: shelf value is
+    // not a sale. It feeds no ratio.
+    const shelfValueAtMenuPrice =
       inventory.length === 0
         ? null
         : E.stats.sum(inventory.map((i) => i.unitPrice * (i.qty || 0)));
-    const marginDollars =
-      inventoryValue == null || revenue == null ? null : revenue - inventoryValue;
 
-    // Every one of these takes inventory value as its cost input, and the two
-    // ratios take revenue as their denominator. A null on either side makes
-    // them unknown, not zero and not infinite.
+    // ---- Cost of goods: the bottles the till moved, at what they cost. ----
+    // Theoretical, sales-only cost (ADR 0298): POS sale rows net of POS void
+    // returns, glass pours counted as the bottles they opened, times the
+    // recorded unit cost from `resolveUnitCost` (inventory-cost.ts stays the
+    // only place that decides a cost; OD-100 is untouched). Waste, breakage,
+    // count corrections and sales outside the till are not in it.
+    //
+    // An item whose voids outweigh its sales in the window (ADR 0011 B19
+    // returns whole bottles for a voided glass) adds nothing and is counted.
+    //
+    // An item that moved stock but is no longer active (deleted on
+    // /inventory, a soft delete) is costed from its own row, as an active
+    // one is: its row still records what it cost. Only an id with no row of
+    // this house at all is "no longer in the books", counted apart, and it
+    // withholds like any other item with no recorded cost.
+    const byId = new Map(inventory.map((i) => [i.id, i]));
+    const movedItems = (pos?.items ?? []).filter((s) => s.bottlesOut > 0);
+    const retiredIds = movedItems
+      .map((s) => s.inventoryId)
+      .filter((id) => !byId.has(id));
+    const retiredCost =
+      retiredIds.length === 0
+        ? new Map<string, SoldItemCost>()
+        : await this.loadSoldItemCost(restaurantId, retiredIds);
+    const soldRows = movedItems.map((s) => {
+      const row = byId.get(s.inventoryId);
+      const retired = row ? undefined : retiredCost?.get(s.inventoryId);
+      const where: "active" | "retired" | "notInBooks" | "unread" = row
+        ? "active"
+        : retiredCost == null
+          ? "unread"
+          : retired == null
+            ? "notInBooks"
+            : retired.active
+              ? "active"
+              : "retired";
+      const known = row ?? retired;
+      return {
+        bottlesOut: s.bottlesOut,
+        unitCost: known?.unitCost ?? null,
+        costBasis: known?.costBasis ?? ("unknown" as const),
+        where,
+      };
+    });
+    const soldCoverage = summarizeCostBasis(soldRows);
+    // The rows the books hold, for the per-row sentence: an item with no
+    // row, or whose row could not be read, has no row to describe.
+    const rowCoverage = summarizeCostBasis(
+      soldRows.filter((r) => r.where === "active" || r.where === "retired"),
+    );
+    const countWhere = (w: (typeof soldRows)[number]["where"]) =>
+      soldRows.filter((r) => r.where === w).length;
+    const cogsCoverageRead = {
+      ...soldCoverage,
+      bottlesSold: E.stats.sum(soldRows.map((r) => r.bottlesOut)),
+      bottlesCosted: E.stats.sum(
+        soldRows.filter((r) => r.unitCost != null).map((r) => r.bottlesOut),
+      ),
+      itemsNetReturned: (pos?.items ?? []).filter((s) => s.bottlesOut < 0)
+        .length,
+      /** Sold, no longer active, costed (or not) from their own row. */
+      itemsNoLongerActive: countWhere("retired"),
+      /** Sold, with no restaurant_inventory row of this house at all. */
+      itemsNotInBooks: countWhere("notInBooks"),
+      /** Sold, not active, and the read of their rows failed. */
+      itemsCostUnread: countWhere("unread"),
+    };
+    // Counts of what the till sold are the till's too: withheld, not zeros.
+    const cogsCoverage = withSales ? cogsCoverageRead : null;
+    const posTraded = pos != null && (pos.checks > 0 || soldRows.length > 0);
+    // Items the till took money for that moved no stock in the window: a
+    // glass from a bottle opened before it, a mapped line flagged not-stock
+    // (pos-hub skips its depletion), or a sale the ledger refused (ADR 0285).
+    const soldWithoutMove = (pos?.items ?? []).filter(
+      (s) => s.sales > 0 && s.bottlesOut <= 0,
+    ).length;
+    // Founder fork, 2026-10-04: "Withhold, say N of M (Recommended)". A total
+    // over the items that happen to carry a cost is a floor wearing a
+    // total's label (ADR 0053), so one uncosted item withholds it, and
+    // `cogsCoverage` says how many of the items that sold are costed.
+    // A till that traded but moved no stock at all has no cost to read:
+    // `E.stats.sum([])` is 0, and $0 there would print an unknown cost as
+    // nothing and a 100% margin (ADR 0051).
+    const cogs =
+      !posTraded || soldRows.length === 0 || soldCoverage.unpriced > 0
+        ? null
+        : E.stats.sum(
+            soldRows.map((r) => r.bottlesOut * (r.unitCost as number)),
+          );
+
+    // ---- Sales: what the till took for stock items, net. ----
+    // Σ line price × qty on closed, non-voided checks, for the lines that
+    // name a stock item: before tax and surcharge, as /team reads it (AW17,
+    // "Net sales (Recommended)"). Check-level discounts are not apportioned.
+    // A line that names an item but cannot be read would make the total a
+    // floor, so it withholds it.
+    const revenue =
+      pos == null || pos.checks === 0 || pos.unreadableLines > 0
+        ? null
+        : E.stats.sum(pos.items.map((s) => s.sales));
+    const salesCoverage =
+      pos == null
+        ? null
+        : {
+            checks: pos.checks,
+            lines: pos.lines,
+            unmappedLines: pos.unmappedLines,
+            unmappedSales: pos.unmappedSales,
+            unreadableLines: pos.unreadableLines,
+            itemsSoldWithoutStockMove: soldWithoutMove,
+          };
+
+    // ---- The span the year is read from. ----
+    // A house with two months of till history has two months of cost of
+    // goods; reading that against today's stock as a year would understate
+    // turns sixfold. So the cost is annualised from the span actually
+    // observed, and withheld under four weeks.
+    const spanDays =
+      pos?.firstSaleAt == null
+        ? null
+        : Math.min(
+            COGS_WINDOW_DAYS,
+            Math.max(
+              1,
+              Math.round((Date.now() - Date.parse(pos.firstSaleAt)) / 86400000),
+            ),
+          );
+    const cogsWindow =
+      pos?.firstSaleAt == null || spanDays == null || !Number.isFinite(spanDays)
+        ? null
+        : {
+            since: pos.firstSaleAt,
+            days: spanDays,
+            firstCheckAt: pos.firstCheckAt,
+            firstMoveAt: pos.firstMoveAt,
+          };
+    // The span starts at the earlier of two clocks: sales at the first closed
+    // check, cost of goods at the first POS stock move. When they are a day
+    // or more apart, one figure holds days the other does not, and the basis
+    // says which clock starts first and how many days later the other does.
+    // It names no date: a date is a day of the house's clock (ADR 0296), and
+    // this reader needs no zone, so it cuts no day of its own. Nothing here
+    // corrects for the gap or measures its size.
+    const spanGap = (() => {
+      const c = Date.parse(pos?.firstCheckAt ?? "");
+      const m = Date.parse(pos?.firstMoveAt ?? "");
+      if (!Number.isFinite(c) || !Number.isFinite(m)) return null;
+      const days = Math.round(Math.abs(m - c) / 86400000);
+      if (days < 1) return null;
+      return { checksFirst: c < m, days };
+    })();
+    const annualFactor =
+      cogsWindow != null && cogsWindow.days >= MIN_ANNUALISED_SPAN_DAYS
+        ? DAYS_PER_YEAR / cogsWindow.days
+        : null;
+
+    const marginDollars =
+      cogs == null || revenue == null ? null : revenue - cogs;
+    const annualCogs =
+      cogs == null || annualFactor == null ? null : cogs * annualFactor;
+    const annualMargin =
+      marginDollars == null || annualFactor == null
+        ? null
+        : marginDollars * annualFactor;
+
+    // The three capital ratios divide by today's inventory at cost, so they
+    // also need every on-hand row costed; the margin ratios need only the
+    // cost of what sold and the sales it sold for.
     const turnover =
-      inventoryValue == null || cogs == null
+      inventoryValue == null || annualCogs == null
         ? null
-        : E.inventory.inventoryTurnover(cogs, inventoryValue);
+        : E.inventory.inventoryTurnover(annualCogs, inventoryValue);
     const dio =
-      inventoryValue == null || cogs == null
+      inventoryValue == null ||
+      cogs == null ||
+      annualFactor == null ||
+      cogsWindow == null
         ? null
-        : E.inventory.daysInventoryOutstanding(cogs, inventoryValue);
+        : E.inventory.daysInventoryOutstanding(
+            cogs,
+            inventoryValue,
+            cogsWindow.days,
+          );
     const gmroi =
-      inventoryValue == null || marginDollars == null
+      inventoryValue == null || annualMargin == null
         ? null
-        : E.inventory.gmroi(marginDollars, inventoryValue);
+        : E.inventory.gmroi(annualMargin, inventoryValue);
     const grossMargin =
-      inventoryValue != null && revenue != null && revenue > 0
-        ? E.finance.grossMargin(inventoryValue, revenue)
+      cogs != null && revenue != null && revenue > 0
+        ? E.finance.grossMargin(cogs, revenue)
         : null;
     const cogsRatioVal =
-      inventoryValue != null && revenue != null && revenue > 0
-        ? E.finance.cogsRatio(inventoryValue, revenue)
+      cogs != null && revenue != null && revenue > 0
+        ? E.finance.cogsRatio(cogs, revenue)
         : null;
     const primeCost =
-      inventoryValue != null && revenue != null && revenue > 0
-        ? E.finance.primeCostRatio(inventoryValue, labor, revenue)
+      cogs != null && revenue != null && revenue > 0
+        ? E.finance.primeCostRatio(cogs, labor, revenue)
         : null;
 
     // Dead stock: on hand, but NOT MOVING. The previous definition was a
@@ -547,62 +970,128 @@ export class AnalyticsService {
     // have no idea", which is the truth (ADR 0020).
     const hasMovementSignal =
       movedInventoryIds.size > 0 || movedMasterWineIds.size > 0;
-    const deadStock = !hasMovementSignal
-      ? []
-      : inventory
-          .filter(
-            (i) =>
-              i.qty > 0 &&
-              !movedInventoryIds.has(i.id) &&
-              !(i.masterWineId && movedMasterWineIds.has(i.masterWineId)),
-          )
-          .map((i) => ({
-            name: i.name,
-            value: i.inventoryValue,
-            qty: i.qty,
-            costBasis: i.costBasis,
-          }))
-          // Nulls sort last rather than poisoning the comparator with NaN;
-          // among themselves the unpriced rows rank by how many bottles are
-          // idle, which is the only thing about them we do know.
-          .sort((a, b) =>
-            a.value == null || b.value == null
-              ? (a.value == null ? 1 : 0) - (b.value == null ? 1 : 0) ||
-                b.qty - a.qty
-              : b.value - a.value,
-          );
+    // A failed active read is no cellar to compare movement against, not a
+    // cellar where nothing is idle: [] here summed to $0 (ADR 0067).
+    const deadStock =
+      !hasMovementSignal || inventoryFailed
+        ? []
+        : inventory
+            .filter(
+              (i) =>
+                i.qty > 0 &&
+                !movedInventoryIds.has(i.id) &&
+                !(i.masterWineId && movedMasterWineIds.has(i.masterWineId)),
+            )
+            .map((i) => ({
+              name: i.name,
+              value: i.inventoryValue,
+              qty: i.qty,
+              costBasis: i.costBasis,
+            }))
+            // Nulls sort last rather than poisoning the comparator with NaN;
+            // among themselves the unpriced rows rank by how many bottles are
+            // idle, which is the only thing about them we do know.
+            .sort((a, b) =>
+              a.value == null || b.value == null
+                ? (a.value == null ? 1 : 0) - (b.value == null ? 1 : 0) ||
+                  b.qty - a.qty
+                : b.value - a.value,
+            );
     // Same argument as inventoryValue: capital we cannot price is not $0 of
     // capital. recommendations.service.ts guards this rule with
     // `(deadStockCapital ?? 0) > 0`, so a null correctly withholds the
     // "discount these to cost" advice rather than attaching it to a guess.
     const deadStockPriced = deadStock.every((d) => d.value != null);
     const deadStockCapital =
-      hasMovementSignal && deadStockPriced
+      hasMovementSignal && !inventoryFailed && deadStockPriced
         ? E.stats.sum(deadStock.map((d) => d.value as number))
         : null;
 
+    const plural = (n: number, one: string, many: string) =>
+      `${n} ${n === 1 ? one : many}`;
+    const cogsHead = `POS bottles out × recorded unit cost (trailing ${COGS_WINDOW_DAYS}d; POS sale rows net of POS void returns, glass pours as the bottles they opened; waste, counts and sales outside the till excluded; a till line whose stock the ledger did not move adds no cost, and is counted only when its item moved none at all)`;
+    const gone = cogsCoverageRead.itemsNotInBooks;
+    const unread = cogsCoverageRead.itemsCostUnread;
+    const retiredRows = cogsCoverageRead.itemsNoLongerActive;
+    // A per-row sentence only for the rows the books hold.
+    const rowSentence =
+      rowCoverage.total === 0 ? "" : costBasisSentence(rowCoverage);
+    const retiredClause =
+      retiredRows > 0
+        ? `; ${plural(retiredRows, "of these rows is", "of these rows are")} no longer active and read all the same`
+        : "";
+    const goneClause =
+      gone > 0
+        ? `${rowSentence ? "; " : ""}${plural(gone, "item", "items")} that sold ${gone === 1 ? "is" : "are"} no longer in the books (no inventory row of this house), so nothing records what ${gone === 1 ? "it" : "they"} cost`
+        : "";
+    const spanClause =
+      spanGap == null
+        ? ""
+        : spanGap.checksFirst
+          ? `; sales start at the first closed check in the window and stock moves at the first POS ledger row ${plural(spanGap.days, "day", "days")} later, so cost of goods holds no stock move from those days while sales and the span annualised include them`
+          : `; stock moves start at the first POS ledger row in the window and sales at the first closed check ${plural(spanGap.days, "day", "days")} later, so sales hold no check from those days while cost of goods and the span annualised include them`;
+    const cogsBasis = !withSales
+      ? `${cogsHead} — ${SALES_WITHHELD}`
+      : pos == null
+        ? `${cogsHead} — null: the POS sales read failed, and $0 would claim nothing sold`
+        : !posTraded
+          ? `${cogsHead} — null: the POS recorded no closed check and moved no stock in the window, which is either no till feed or no trading`
+          : soldRows.length === 0
+            ? soldWithoutMove > 0
+              ? `${cogsHead} — null: ${plural(soldWithoutMove, "item", "items")} sold at the till but the POS moved no stock for any item, so the cost of what sold is unknown, and $0 would print it as nothing`
+              : `${cogsHead} — null: ${plural(pos.checks, "closed check", "closed checks")}, but no line sold a stock item and the POS moved no stock, which is either no stocked item sold or no POS mapping resolving one`
+            : unread > 0
+              ? `${cogsHead} — null: ${plural(unread, "item", "items")} that sold ${unread === 1 ? "is" : "are"} no longer active, and the read of ${unread === 1 ? "its row" : "their rows"} failed, so ${unread === 1 ? "its" : "their"} cost is unknown and a total would be a floor`
+              : cogs == null
+                ? `${cogsHead} — null: ${soldCoverage.priced} of ${soldCoverage.total} items that sold carry a recorded cost, so a total would be a floor (ADR 0053). ${rowSentence}${retiredClause}${goneClause}`
+                : `${cogsHead} — ${plural(soldCoverage.total, "item", "items")}, ${plural(cogsCoverageRead.bottlesSold, "bottle", "bottles")} out; ${rowSentence}${retiredClause}${soldWithoutMove > 0 ? `; ${plural(soldWithoutMove, "item", "items")} sold without moving stock, and ${soldWithoutMove === 1 ? "its" : "their"} cost is not in it` : ""}${spanClause}`;
+    const salesHead = `POS line price × qty for lines naming a stock item, on closed, non-voided checks (trailing ${COGS_WINDOW_DAYS}d; net: before tax and surcharge, check discounts not apportioned)`;
+    const revenueBasis = !withSales
+      ? `${salesHead} — ${SALES_WITHHELD}`
+      : pos == null
+        ? `${salesHead} — null: the POS sales read failed, and $0 would claim nothing sold`
+        : pos.checks === 0
+          ? `${salesHead} — null: no closed POS check in the window, which is either no till feed or no trading`
+          : pos.unreadableLines > 0
+            ? `${salesHead} — null: ${plural(pos.unreadableLines, "line names", "lines name")} a stock item but cannot be read, so a total would be a floor`
+            : `${salesHead} — ${plural(pos.checks, "check", "checks")}; ${plural(pos.unmappedLines, "line", "lines")} naming no stock item left out`;
+
     return {
       basis: {
-        cogs:
-          orders.length === 0
-            ? "delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window, which is either no purchasing or a read that failed, and $0 would claim the first"
-            : `delivered procurement_orders (trailing 365d) — ${orders.length} order${orders.length === 1 ? "" : "s"} summed`,
-        revenue:
-          inventory.length === 0
-            ? "unit_price × on-hand qty (POS-revenue proxy) — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"
-            : `unit_price × on-hand qty (POS-revenue proxy) — ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} valued`,
+        cogs: cogsBasis,
+        revenue: revenueBasis,
+        // What these two were called before ADR 0298, and what they are.
+        shelfValueAtMenuPrice: inventoryFailed
+          ? "menu price × on-hand qty — null: the active inventory read failed; feeds no ratio"
+          : shelfValueAtMenuPrice == null
+            ? "menu price × on-hand qty — null: no inventory row was returned, which is either an empty cellar or a read that failed; feeds no ratio"
+            : `menu price × on-hand qty — ${plural(inventory.length, "inventory row", "inventory rows")} valued; a shelf value, not a sale, and it feeds no ratio`,
+        deliveredPurchases:
+          deliveredPurchases == null
+            ? `delivered procurement_orders (trailing ${COGS_WINDOW_DAYS}d) — null: no delivered order was returned, which is either no purchasing or a read that failed; feeds no ratio`
+            : `delivered procurement_orders (trailing ${COGS_WINDOW_DAYS}d) — ${plural(orders.length, "order", "orders")} summed; what was bought, not what sold, and it feeds no ratio`,
         // This string used to read "on-hand qty × WAC (lot rollup)"
         // unconditionally while ~70 of 72 rows were valued off a fabricated
         // 0.6 × menu price. A basis now describes the rows it covered.
-        inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
-        deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
-        costDerived:
-          "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio",
+        inventoryValue: inventoryFailed
+          ? "on-hand qty × unit cost — null: the active inventory read failed"
+          : `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
+        deadStock: inventoryFailed
+          ? `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d — null: the active inventory read failed, so no idle row can be named`
+          : `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
+        costDerived: `grossMarginDollars, grossMargin, cogsRatio and primeCostRatio are null unless cogs and revenue are both known (primeCostRatio adds the labour figure the caller passed, ${labor}; with 0 it equals cogsRatio). inventoryTurnover, daysInventoryOutstanding and gmroi also need every on-hand row costed (ADR 0051) and at least ${MIN_ANNUALISED_SPAN_DAYS} days of POS sales: the cost of the observed span is annualised (${cogsWindow == null ? "no span observed" : `${cogsWindow.days} days observed`}) against today's inventory value, not an average. deadStockCapital needs every idle row costed`,
       },
+      /** True when the till was not read for this caller (ADR 0290 §5). */
+      salesWithheld: !withSales,
       costCoverage,
       inventoryValue,
       cogs,
+      cogsCoverage,
       revenue,
+      salesCoverage,
+      cogsWindow,
+      shelfValueAtMenuPrice,
+      deliveredPurchases,
       grossMarginDollars: marginDollars,
       grossMargin,
       cogsRatio: cogsRatioVal,
@@ -790,12 +1279,20 @@ export class AnalyticsService {
   // 3. Risk profile — the trader/PE lens
   // =========================================================================
 
-  async getRiskProfile(restaurantId: string) {
-    const [inventory, orders, consumption] = await Promise.all([
-      this.loadInventory(restaurantId),
+  async getRiskProfile(restaurantId: string, opts: SalesGate = {}) {
+    // The concentration is read from the till, so a caller without the sales
+    // class gets no till read and no concentration (ADR 0290 §5). Vendor
+    // concentration and demand risk do not read the till.
+    const withSales = opts.withSales === true;
+    const [inventoryRead, orders, consumption, pos] = await Promise.all([
+      this.loadInventoryRead(restaurantId),
       this.loadDeliveredOrders(restaurantId, 365),
       this.loadConsumption(restaurantId, 90),
+      withSales
+        ? this.loadPosSales(restaurantId, CONCENTRATION_WINDOW_DAYS)
+        : Promise.resolve(null),
     ]);
+    const inventory = inventoryRead.items;
 
     // Vendor concentration (HHI on spend share).
     const spendByVendor = new Map<string, number>();
@@ -809,10 +1306,55 @@ export class AnalyticsService {
     const effectiveVendors = E.finance.effectiveCount(vendorWeights);
     const cr4 = E.finance.concentrationRatio(vendorWeights, 4);
 
-    // Revenue concentration across SKUs (Gini) — sell-price valuation proxy.
-    const skuRevenue = inventory.map((i) => i.unitPrice * i.qty);
-    const gini = E.risk.giniCoefficient(skuRevenue);
-    const skuHhi = E.finance.herfindahlIndex(skuRevenue);
+    // Revenue concentration across stock items: what the till sold of each
+    // over 90 days (ADR 0298). It was menu price × bottles on hand, which
+    // measures where the shelf value sits, not where the sales come from.
+    // The weights are the items the till can sell: every active item a POS
+    // mapping points at, with 0 when it sold nothing, plus any item that
+    // sold (active or not, mapped now or not). An active row no mapping
+    // points at is left out: the till cannot name it, so its 0 is not a
+    // sales fact, and each such row would push the Gini up by itself
+    // (G' = (nG + k)/(n + k) for k zeros: Tuzlu's 18 unmapped menu rows,
+    // A-013, would lift 0.565 to about 0.62, over the rule's 0.6 line).
+    // No till read, no closed check, or no line naming a stock item is no
+    // answer rather than a perfectly even house (all-zero weights give 0).
+    // Nor is a failed active-inventory read: `activeIds` would be empty, every
+    // mapped item that sold nothing would drop out, and the Gini would be the
+    // sellers' alone (CI gate at fd0a57669; ADR 0067).
+    const activeIds = new Set(inventory.map((i) => i.id));
+    const weighed = (pos?.items ?? []).filter(
+      (s) => s.sales > 0 || (s.mapped && activeIds.has(s.inventoryId)),
+    );
+    const weighedIds = new Set(weighed.map((s) => s.inventoryId));
+    const activeNotWeighed = inventory.filter(
+      (i) => !weighedIds.has(i.id),
+    ).length;
+    const anyItemSale = weighed.some((s) => s.sales > 0);
+    // A mapped, active item whose voids outweigh its sales in the window has
+    // a negative net. It sold nothing, so it weighs 0 like any silent mapped
+    // item: giniCoefficient drops a negative value (engine/risk.ts) and
+    // herfindahlIndex drops anything not positive (engine/finance.ts), so
+    // unclamped it would leave the Gini's count while "items weighed" kept it.
+    const skuRevenue =
+      pos == null || inventoryRead.failed || pos.checks === 0 || !anyItemSale
+        ? null
+        : weighed.map((s) => Math.max(0, s.sales));
+    const gini = skuRevenue == null ? null : E.risk.giniCoefficient(skuRevenue);
+    const skuHhi =
+      skuRevenue == null ? null : E.finance.herfindahlIndex(skuRevenue);
+    const itemsWithSales =
+      skuRevenue == null ? null : skuRevenue.filter((v) => v > 0).length;
+    const concentrationBasis = !withSales
+      ? `POS line sales per stock item over ${CONCENTRATION_WINDOW_DAYS}d — ${SALES_WITHHELD}`
+      : pos == null
+        ? `POS line sales per stock item over ${CONCENTRATION_WINDOW_DAYS}d — null: the POS sales read failed`
+        : inventoryRead.failed
+          ? `POS line sales per stock item over ${CONCENTRATION_WINDOW_DAYS}d — null: the active inventory read failed, so which mapped items sold nothing cannot be told`
+          : pos.checks === 0
+            ? `POS line sales per stock item over ${CONCENTRATION_WINDOW_DAYS}d — null: no closed POS check in the window`
+            : !anyItemSale
+              ? `POS line sales per stock item over ${CONCENTRATION_WINDOW_DAYS}d — null: ${pos.checks} closed ${pos.checks === 1 ? "check" : "checks"}, but no line sold a stock item`
+              : `POS line sales per stock item over ${CONCENTRATION_WINDOW_DAYS}d — ${skuRevenue?.length ?? 0} items weighed, ${itemsWithSales ?? 0} with a sale; an active item a POS mapping points at weighs 0 when it sold nothing, and ${activeNotWeighed} active ${activeNotWeighed === 1 ? "item" : "items"} no mapping points at and that sold nothing ${activeNotWeighed === 1 ? "is" : "are"} left out, since the till cannot sell ${activeNotWeighed === 1 ? "it" : "them"}`;
 
     // Daily revenue series → returns → VaR / Sharpe / drawdown. Counted
     // lines only; `basis.demand` names any that carry no bottle figure.
@@ -857,9 +1399,15 @@ export class AnalyticsService {
                 ? "moderately concentrated"
                 : "competitive / diversified",
       },
+      /** True when the till was not read for this caller (ADR 0290 §5). */
+      salesWithheld: !withSales,
       revenueConcentration: {
         gini,
         hhi: skuHhi,
+        itemsWeighed: skuRevenue == null ? null : skuRevenue.length,
+        itemsWithSales,
+        activeItemsNotWeighed: skuRevenue == null ? null : activeNotWeighed,
+        basis: concentrationBasis,
         interpretation:
           gini === null
             ? "insufficient data"

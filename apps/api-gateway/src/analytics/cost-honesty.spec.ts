@@ -1,6 +1,9 @@
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { resolveUnitCost, summarizeCostBasis } from "./inventory-cost";
+import { METRIC_REGISTRY } from "./metric-registry";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 /**
  * Regression guard — analytics never invents what a bottle cost.
@@ -23,9 +26,12 @@ import { resolveUnitCost, summarizeCostBasis } from "./inventory-cost";
  * source the value did not come from cannot.
  */
 
-type Rows = Record<string, any[]>;
+type Rows = Record<string, any[] | null>;
 
-function makeClient(rowsByTable: Rows) {
+/** What `.rpc("pos_item_sales")` answers; unset reads as a failed read. */
+type Rpc = { data?: unknown; error?: unknown };
+
+function makeClient(rowsByTable: Rows, rpc: Rpc = {}) {
   const passthrough = [
     "select",
     "eq",
@@ -45,20 +51,49 @@ function makeClient(rowsByTable: Rows) {
     from: jest.fn((table: string) => {
       const builder: any = {};
       for (const m of passthrough) builder[m] = jest.fn(() => builder);
+      // `eq` and `in` filter a row only on a column the fixture row carries,
+      // so a fixture that sets `is_active: false` is a row the active cellar
+      // read leaves out, and every older fixture (no such column) reads as
+      // before.
+      const keep: Array<(r: any) => boolean> = [];
+      builder.eq = jest.fn((k: string, v: unknown) => {
+        keep.push((r) => !(k in r) || r[k] === v);
+        return builder;
+      });
+      builder.in = jest.fn((k: string, vs: unknown[]) => {
+        keep.push((r) => !(k in r) || vs.includes(r[k]));
+        return builder;
+      });
       builder.maybeSingle = jest.fn(() =>
         Promise.resolve({ data: null, error: null }),
       );
+      // A table set to `null` is a FAILED read, `{ data: null, error }`, the
+      // shape PostgREST gives a timed-out or refused query; absent is empty.
       builder.then = (resolve: any, reject: any) =>
-        Promise.resolve({ data: rowsByTable[table] ?? [], error: null }).then(
-          resolve,
-          reject,
-        );
+        Promise.resolve(
+          rowsByTable[table] === null
+            ? {
+                data: null,
+                error: { code: "57014", message: "statement timeout" },
+              }
+            : {
+                data: (rowsByTable[table] ?? []).filter((r) =>
+                  keep.every((k) => k(r)),
+                ),
+                error: null,
+              },
+        ).then(resolve, reject);
       return builder;
     }),
+    rpc: jest.fn(() =>
+      Promise.resolve({ data: rpc.data ?? null, error: rpc.error ?? null }),
+    ),
   };
 }
 
 const RESTAURANT = "33333333-3333-3333-3333-333333333333";
+/** A caller with the sales class: an owner or manager (ADR 0290 §5). */
+const HOLDER = { withSales: true };
 const recently = new Date(Date.now() - 3 * 86400000).toISOString();
 
 /** The production shape: a menu price, and no recorded cost of any kind. */
@@ -83,8 +118,28 @@ const RECORDED = {
   master_wine_id: "mw-recorded",
 };
 
-const analytics = (rows: Rows) =>
-  new AnalyticsService({ getClient: () => makeClient(rows) } as any);
+const analytics = (rows: Rows, rpc?: Rpc) =>
+  new AnalyticsService({ getClient: () => makeClient(rows, rpc) } as any);
+
+/** A pos_item_sales payload: per item [bottles out, sales], 60 days of till. */
+const till = (sold: Record<string, [number, number]>) => ({
+  data: {
+    items: Object.entries(sold).map(([id, [bottles, sales]]) => ({
+      inventory_id: id,
+      sales,
+      units: bottles,
+      lines: 1,
+      bottles_out: bottles,
+      mapped: true,
+    })),
+    checks: 4,
+    lines: Object.keys(sold).length,
+    unmapped_lines: 0,
+    unmapped_sales: 0,
+    unreadable_lines: 0,
+    first_sale_at: new Date(Date.now() - 60 * 86400000).toISOString(),
+  },
+});
 
 const advanced = (rows: Rows) =>
   new AdvancedAnalyticsService(
@@ -172,44 +227,67 @@ describe("resolveUnitCost never invents a number", () => {
 // ---------------------------------------------------------------------------
 
 describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
-  const build = (inventoryRows: any[]) =>
-    analytics({
-      restaurant_inventory: inventoryRows,
-      wine_consumption_log: [
-        {
-          inventory_id: RECORDED.id,
-          consumption_type: "bottle",
-          quantity: 3,
-          created_at: recently,
-          restaurant_inventory: { master_wine_id: RECORDED.master_wine_id },
-        },
-      ],
-    });
-
-  it("nulls every cost-derived field when an on-hand row has no cost", async () => {
-    const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
-      RESTAURANT,
+  /** By default the till sold 3 bottles of RECORDED, the costed wine, for 180. */
+  const build = (
+    inventoryRows: any[],
+    rpc: Rpc = till({ [RECORDED.id]: [3, 180] }),
+  ) =>
+    analytics(
+      {
+        restaurant_inventory: inventoryRows,
+        wine_consumption_log: [
+          {
+            inventory_id: RECORDED.id,
+            consumption_type: "bottle",
+            quantity: 3,
+            created_at: recently,
+            restaurant_inventory: { master_wine_id: RECORDED.master_wine_id },
+          },
+        ],
+      },
+      rpc,
     );
 
+  it("nulls the capital ratios when an on-hand row has no cost", async () => {
+    const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
+      RESTAURANT,
+      0,
+      HOLDER,
+    );
+    // Turns, DIO and GMROI divide by today's inventory at cost.
     expect(out.inventoryValue).toBeNull();
-    expect(out.grossMarginDollars).toBeNull();
-    expect(out.grossMargin).toBeNull();
-    expect(out.cogsRatio).toBeNull();
-    expect(out.primeCostRatio).toBeNull();
     expect(out.inventoryTurnover).toBeNull();
     expect(out.daysInventoryOutstanding).toBeNull();
     expect(out.gmroi).toBeNull();
   });
 
+  it("keeps the margin ratios, which need only what sold and its cost", async () => {
+    // Only RECORDED sold, and it carries a cost: 3 × 20 = 60 against 180.
+    // An uncosted bottle still on the shelf did not sell, so it is in
+    // neither side of these (ADR 0298).
+    const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
+      RESTAURANT,
+      0,
+      HOLDER,
+    );
+    expect(out.cogs).toBe(60);
+    expect(out.revenue).toBe(180);
+    expect(out.grossMarginDollars).toBe(120);
+    expect(out.cogsRatio).toBeCloseTo(1 / 3, 10);
+    expect(out.grossMargin).toBeCloseTo(2 / 3, 10);
+  });
+
   it("does not let the null become a zero anywhere in the payload", async () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
+      0,
+      HOLDER,
     );
     // The pre-fix payload reported a fabricated $600 + $100 valuation here.
     for (const field of [
       "inventoryValue",
-      "grossMarginDollars",
       "inventoryTurnover",
+      "daysInventoryOutstanding",
       "gmroi",
     ] as const) {
       expect(out[field]).not.toBe(0);
@@ -217,31 +295,244 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     }
   });
 
-  it("keeps revenue, which does not depend on unit cost", async () => {
-    const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
-      RESTAURANT,
-    );
-    // 10 × 100 + 5 × 60 — menu price is recorded for both rows.
-    expect(out.revenue).toBe(1300);
-    expect(out.basis.revenue).toContain("2 inventory rows valued");
+  it("keeps sales, which do not depend on unit cost", async () => {
+    const out = await build(
+      [UNPRICED, RECORDED],
+      till({ [UNPRICED.id]: [2, 200], [RECORDED.id]: [3, 180] }),
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
+    // What the till took for both, whatever either cost.
+    expect(out.revenue).toBe(380);
+    expect(out.basis.revenue).toContain("4 checks");
   });
 
-  it("withholds COGS when no delivered order came back at all", async () => {
-    // This assertion used to read `expect(out.cogs).toBe(0)`. There is no
-    // procurement_orders fixture here, so the loader returned [] — and it
-    // returns [] for a FAILED query too. $0 claimed "this restaurant bought
-    // nothing in a year" on the strength of an empty array (fixed 2026-09-03).
-    const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
-      RESTAURANT,
-    );
+  it("withholds COGS when an item that sold has no recorded cost (fork a)", async () => {
+    // Founder fork 2026-10-04: "Withhold, say N of M (Recommended)". Summing
+    // the costed part (3 × 20 = 60) would be a floor wearing a total's label.
+    // UNPRICED is sold out here, so the on-hand valuation is complete and is
+    // NOT what withholds this: the cost of what sold is.
+    const out = await build(
+      [{ ...UNPRICED, stock_live: 0 }, RECORDED],
+      till({ [UNPRICED.id]: [2, 200], [RECORDED.id]: [3, 180] }),
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
+    expect(out.inventoryValue).toBe(100);
     expect(out.cogs).toBeNull();
-    expect(out.cogs).not.toBe(0);
+    expect(out.cogs).not.toBe(60);
+    expect(out.cogsCoverage).toMatchObject({
+      total: 2,
+      priced: 1,
+      unpriced: 1,
+      complete: false,
+      bottlesSold: 5,
+      bottlesCosted: 3,
+    });
+    expect(out.basis.cogs).toContain(
+      "1 of 2 items that sold carry a recorded cost",
+    );
+    for (const field of [
+      "grossMarginDollars",
+      "grossMargin",
+      "cogsRatio",
+      "primeCostRatio",
+      "inventoryTurnover",
+      "daysInventoryOutstanding",
+      "gmroi",
+    ] as const) {
+      expect(out[field]).toBeNull();
+    }
+  });
+
+  // PR #617's audit at 847f2470d: a sold item deleted on /inventory (a soft
+  // delete, is_active = false) was missing from the active read, so it read
+  // as "has no recorded cost" and withheld cost of goods for the whole
+  // house, though its row still held its cost.
+  /** Deleted on /inventory: inactive, sold out, and its cost still recorded. */
+  const RETIRED = {
+    id: "inv-retired",
+    wine_name: "Delisted Barolo",
+    stock_live: 0,
+    menu_price_current: 90,
+    last_purchase_price: 30,
+    threshold_min: 0,
+    master_wine_id: "mw-retired",
+    is_active: false,
+  };
+  const ACTIVE_RECORDED = { ...RECORDED, is_active: true };
+
+  it("costs an item that sold and was deleted from its own row", async () => {
+    const out = await build(
+      [ACTIVE_RECORDED, RETIRED],
+      till({ [RETIRED.id]: [1, 90], [RECORDED.id]: [3, 180] }),
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
+    // 1 × 30 for the deleted Barolo, 3 × 20 for the Chablis.
+    expect(out.cogs).toBe(90);
+    expect(out.cogsCoverage).toMatchObject({
+      total: 2,
+      priced: 2,
+      unpriced: 0,
+      complete: true,
+      itemsNoLongerActive: 1,
+      itemsNotInBooks: 0,
+      itemsCostUnread: 0,
+    });
+    expect(out.basis.cogs).toContain(
+      "1 of these rows is no longer active and read all the same",
+    );
+    expect(out.basis.cogs).not.toContain("no recorded cost (");
+    // The deleted row is not on hand: the cellar value is the active one.
+    expect(out.inventoryValue).toBe(100);
+  });
+
+  it("costs a deleted item from its lots' WAC, through the same resolveUnitCost", async () => {
+    const out = await analytics(
+      {
+        restaurant_inventory: [
+          ACTIVE_RECORDED,
+          { ...RETIRED, last_purchase_price: null },
+        ],
+        inventory_lot_rollup: [
+          {
+            inventory_id: RETIRED.id,
+            live_qty: 2,
+            wac: 25,
+            has_invoice_cost: true,
+            wac_qty: 2,
+          },
+        ],
+      },
+      till({ [RETIRED.id]: [2, 180], [RECORDED.id]: [3, 180] }),
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
+    expect(out.cogs).toBe(2 * 25 + 3 * 20);
+    expect(out.cogsCoverage!.byBasis).toMatchObject({
+      invoice_lot_wac: 1,
+      last_purchase_price: 1,
+      unknown: 0,
+    });
+  });
+
+  it("withholds when a deleted item's row has no recorded cost, and says that", async () => {
+    const out = await build(
+      [ACTIVE_RECORDED, { ...RETIRED, last_purchase_price: null }],
+      till({ [RETIRED.id]: [1, 90], [RECORDED.id]: [3, 180] }),
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
+    expect(out.cogs).toBeNull();
+    expect(out.cogsCoverage).toMatchObject({
+      priced: 1,
+      unpriced: 1,
+      itemsNoLongerActive: 1,
+      itemsNotInBooks: 0,
+    });
+    expect(out.basis.cogs).toContain(
+      "1 of 2 items that sold carry a recorded cost",
+    );
+    expect(out.basis.cogs).toContain("no recorded cost (1)");
+  });
+
+  it("names an item with no inventory row as no longer in the books, not uncosted", async () => {
+    const out = await build(
+      [ACTIVE_RECORDED],
+      till({ "inv-gone": [1, 90], [RECORDED.id]: [3, 180] }),
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
+    expect(out.cogs).toBeNull();
+    expect(out.cogsCoverage).toMatchObject({
+      total: 2,
+      priced: 1,
+      unpriced: 1,
+      itemsNoLongerActive: 0,
+      itemsNotInBooks: 1,
+      itemsCostUnread: 0,
+    });
+    expect(out.basis.cogs).toContain(
+      "1 of 2 items that sold carry a recorded cost",
+    );
+    expect(out.basis.cogs).toContain(
+      "1 item that sold is no longer in the books (no inventory row of this house)",
+    );
+    // The one row the books hold is costed; no row is said to lack a cost.
+    expect(out.basis.cogs).toContain("every row in scope has a recorded cost");
+    expect(out.basis.cogs).not.toContain("have no recorded cost");
+  });
+
+  it("withholds and says the read failed when a deleted item's row cannot be read", async () => {
+    // The second restaurant_inventory read (the sold-item cost read) fails.
+    const client: any = makeClient(
+      { restaurant_inventory: [ACTIVE_RECORDED, RETIRED] },
+      till({ [RETIRED.id]: [1, 90], [RECORDED.id]: [3, 180] }),
+    );
+    const from = client.from;
+    let reads = 0;
+    client.from = jest.fn((table: string) => {
+      if (table !== "restaurant_inventory" || ++reads === 1) return from(table);
+      const failed: any = {};
+      for (const m of ["select", "eq", "in"]) failed[m] = jest.fn(() => failed);
+      failed.then = (resolve: any, reject: any) =>
+        Promise.resolve({ data: null, error: { message: "timeout" } }).then(
+          resolve,
+          reject,
+        );
+      return failed;
+    });
+    const out = await new AnalyticsService({
+      getClient: () => client,
+    } as any).getFinancialSummary(RESTAURANT, 0, HOLDER);
+    expect(reads).toBe(2);
+    expect(out.cogs).toBeNull();
+    expect(out.cogsCoverage).toMatchObject({
+      itemsCostUnread: 1,
+      itemsNotInBooks: 0,
+      itemsNoLongerActive: 0,
+    });
+    expect(out.basis.cogs).toContain("the read of its row failed");
+    expect(out.basis.cogs).not.toContain("no longer in the books");
+    expect(out.basis.cogs).not.toContain("no recorded cost");
+  });
+
+  it("reads no row twice when every item that sold is active", async () => {
+    const client: any = makeClient(
+      { restaurant_inventory: [ACTIVE_RECORDED, RETIRED] },
+      till({ [RECORDED.id]: [3, 180] }),
+    );
+    const out = await new AnalyticsService({
+      getClient: () => client,
+    } as any).getFinancialSummary(RESTAURANT, 0, HOLDER);
+    expect(out.cogs).toBe(60);
+    expect(
+      client.from.mock.calls.filter(
+        ([t]: [string]) => t === "restaurant_inventory",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("withholds COGS when the till cannot say, delivered orders or not", async () => {
+    // This assertion once read `expect(out.cogs).toBe(0)`, then summed the
+    // delivered orders. Neither is what sold (A-046, ADR 0298).
+    const out = await analytics(
+      {
+        restaurant_inventory: [RECORDED],
+        procurement_orders: [
+          {
+            id: "po-1",
+            provider_id: "prov-1",
+            total_cost: 480,
+            bottles_total: 12,
+            status: "DELIVERED",
+            delivered_at: recently,
+            created_at: recently,
+          },
+        ],
+      },
+      { error: { message: "timeout" } },
+    ).getFinancialSummary(RESTAURANT, 0, HOLDER);
+    expect(out.cogs).toBeNull();
+    expect(out.cogs).not.toBe(480);
+    expect(out.deliveredPurchases).toBe(480);
     expect(out.basis.cogs).toContain("null");
   });
 
   it("stops the basis claiming WAC for a value that never touched WAC", async () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
+      0,
+      HOLDER,
     );
     expect(out.basis.inventoryValue).not.toBe("on-hand qty × WAC (lot rollup)");
     expect(out.basis.inventoryValue).toContain("no recorded cost");
@@ -251,6 +542,8 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
   it("names the size of the gap so a page can say it out loud", async () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
+      0,
+      HOLDER,
     );
     expect(out.costCoverage).toMatchObject({
       total: 2,
@@ -261,7 +554,11 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
   });
 
   it("still reports real numbers when every on-hand row is costed", async () => {
-    const out = await build([RECORDED]).getFinancialSummary(RESTAURANT);
+    const out = await build([RECORDED]).getFinancialSummary(
+      RESTAURANT,
+      0,
+      HOLDER,
+    );
     expect(out.inventoryValue).toBe(100); // 5 × 20
     expect(out.costCoverage.complete).toBe(true);
     expect(out.basis.inventoryValue).toContain(
@@ -275,13 +572,15 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     const out = await build([
       RECORDED,
       { ...UNPRICED, stock_live: 0 },
-    ]).getFinancialSummary(RESTAURANT);
+    ]).getFinancialSummary(RESTAURANT, 0, HOLDER);
     expect(out.inventoryValue).toBe(100);
   });
 
   it("withholds deadStockCapital when an idle row has no recorded cost", async () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
+      0,
+      HOLDER,
     );
     // UNPRICED never moved, so it IS dead stock — we simply cannot price it.
     expect(out.deadStockTop.map((d: any) => d.name)).toEqual([
@@ -292,6 +591,30 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     // recommendations.service.ts gates the "discount these to cost" advice on
     // `(deadStockCapital ?? 0) > 0`, so a null must withhold it.
     expect((out.deadStockCapital ?? 0) > 0).toBe(false);
+  });
+
+  it("states no dead-stock capital, not $0, when the active inventory read fails", async () => {
+    // CI gate at fd0a57669 (check every consumer of the failed-read-as-empty
+    // inventory): the movement log had rows, so an empty cellar read as
+    // "nothing is idle" and summed to $0 of dead capital (ADR 0067).
+    const out: any = await build(null as any).getFinancialSummary(
+      RESTAURANT,
+      0,
+      HOLDER,
+    );
+    expect(out.deadStockCapital).toBeNull();
+    expect(out.deadStockTop).toEqual([]);
+    expect(out.basis.deadStock).toContain(
+      "null: the active inventory read failed",
+    );
+    expect(out.basis.shelfValueAtMenuPrice).toContain(
+      "null: the active inventory read failed",
+    );
+    expect(out.basis.inventoryValue).toContain(
+      "null: the active inventory read failed",
+    );
+    expect(out.inventoryValue).toBeNull();
+    expect(out.shelfValueAtMenuPrice).toBeNull();
   });
 });
 
@@ -454,5 +777,173 @@ describe("getWine360", () => {
     expect(out.unitCost).toBe(20);
     expect(out.marginPerBottle).toBe(40);
     expect(out.basis.unitCost).toContain("last_purchase_price");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// METRIC_REGISTRY claims only what a served field computes (AW16)
+// ---------------------------------------------------------------------------
+
+/**
+ * The registry is the vocabulary the consultant and the metric pages read, so
+ * a `computed: true` it cannot back is a claim made to the founder. It said
+ * true for all 33 entries, seven of which no served field computes
+ * (year-on-year growth, an early-payment APR, a newsvendor order, price
+ * elasticity, an optimal markup, a CUSUM break, a drawdown that is 0 by
+ * construction), and it named the Gini, the COGS ratio, turnover, DIO and
+ * GMROI after a revenue and a cost of goods they did not read. Every `true` below must map to a field a real service call returns,
+ * or, for the five entries the test does not call (vendor lead time and
+ * vendor price trend, sales correlation, the anomaly z-score and
+ * recommendations), to the source line that computes each. A new `true`
+ * without an entry here fails.
+ */
+describe("METRIC_REGISTRY claims only what a served field computes", () => {
+  type Lens =
+    | "financial"
+    | "science"
+    | "risk"
+    | "forecast"
+    | "seasonality"
+    | "menu"
+    | "cashflow";
+  const SERVED: Record<
+    string,
+    { lens: Lens; path: string } | { file: string; pattern: RegExp }
+  > = {
+    wine_cogs_ratio: { lens: "financial", path: "cogsRatio" },
+    prime_cost_ratio: { lens: "financial", path: "primeCostRatio" },
+    gross_margin_by_tier: { lens: "financial", path: "grossMargin" },
+    inventory_turnover: { lens: "financial", path: "inventoryTurnover" },
+    days_inventory_outstanding: {
+      lens: "financial",
+      path: "daysInventoryOutstanding",
+    },
+    gmroi: { lens: "financial", path: "gmroi" },
+    dead_stock_capital: { lens: "financial", path: "deadStockCapital" },
+    eoq: { lens: "science", path: "skus.0.eoq" },
+    safety_stock: { lens: "science", path: "skus.0.safetyStock" },
+    reorder_point: { lens: "science", path: "skus.0.reorderPoint" },
+    stockout_probability: {
+      lens: "science",
+      path: "skus.0.stockoutProbability",
+    },
+    abc_xyz_classification: { lens: "science", path: "skus.0.abcClass" },
+    vendor_concentration_hhi: { lens: "risk", path: "vendorConcentration.hhi" },
+    revenue_gini: { lens: "risk", path: "revenueConcentration.gini" },
+    demand_var: { lens: "risk", path: "demandRisk.historicalVar95" },
+    revenue_sharpe: { lens: "risk", path: "demandRisk.sharpe" },
+    demand_forecast: { lens: "forecast", path: "totalForecastDemand" },
+    seasonal_decomposition: {
+      lens: "seasonality",
+      path: "weeklySeasonalFactors",
+    },
+    weekday_seasonality: { lens: "seasonality", path: "weekdayProfile" },
+    menu_engineering: { lens: "menu", path: "items.0.quadrant" },
+    spend_pacing: { lens: "cashflow", path: "paceDeltaPct" },
+    vendor_lead_time: {
+      file: "advanced-analytics.service.ts",
+      pattern: /leadTimeDays: \{[^}]*stdev: E\.stdev\(/,
+    },
+    vendor_price_trend: {
+      file: "advanced-analytics.service.ts",
+      pattern: /trendPerOrderPct: E\.trendPerPeriodPct\(/,
+    },
+    sales_correlation: {
+      file: "table-analytics.service.ts",
+      pattern: /E\.pearson\(/,
+    },
+    anomaly_zscore: {
+      file: "insights/insight-generator.service.ts",
+      pattern: /E\.robustZScore\(/,
+    },
+    recommendations: {
+      file: "recommendations.service.ts",
+      pattern: /async getRecommendations\(/,
+    },
+  };
+
+  const pick = (o: unknown, path: string) =>
+    path.split(".").reduce<any>((v, k) => (v == null ? undefined : v[k]), o);
+
+  it("has an entry here for every `computed: true`, and for nothing else", () => {
+    const claimed = METRIC_REGISTRY.filter((m) => m.computed)
+      .map((m) => m.key)
+      .sort();
+    expect(claimed).toEqual(Object.keys(SERVED).sort());
+  });
+
+  it("finds every claimed field on a real service call", async () => {
+    const consumed = [
+      {
+        inventory_id: RECORDED.id,
+        consumption_type: "bottle",
+        quantity: 3,
+        created_at: recently,
+        restaurant_inventory: { master_wine_id: RECORDED.master_wine_id },
+      },
+    ];
+    const rows = {
+      restaurant_inventory: [RECORDED],
+      wine_consumption_log: consumed,
+    };
+    const svc = analytics(rows, till({ [RECORDED.id]: [3, 180] }));
+    const out: Record<Lens, unknown> = {
+      financial: await svc.getFinancialSummary(RESTAURANT, 0, HOLDER),
+      science: await svc.getInventoryScience(RESTAURANT),
+      risk: await svc.getRiskProfile(RESTAURANT, HOLDER),
+      forecast: await svc.getDemandForecast(RESTAURANT),
+      seasonality: await advanced(rows).getSeasonality(RESTAURANT),
+      menu: await advanced(rows).getMenuEngineering(RESTAURANT),
+      cashflow: await advanced(rows).getCashflow(RESTAURANT),
+    };
+    const missing: string[] = [];
+    for (const [key, where] of Object.entries(SERVED)) {
+      if ("lens" in where) {
+        if (pick(out[where.lens], where.path) === undefined)
+          missing.push(`${key} → ${where.lens}.${where.path}`);
+      } else {
+        const src = readFileSync(join(__dirname, where.file), "utf8");
+        if (!where.pattern.test(src)) missing.push(`${key} → ${where.file}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("says false for what nothing serves", () => {
+    const off = METRIC_REGISTRY.filter((m) => !m.computed)
+      .map((m) => m.key)
+      .sort();
+    expect(off).toEqual(
+      [
+        "early_payment_apr",
+        "newsvendor_event_order",
+        "optimal_markup",
+        "price_elasticity",
+        "revenue_max_drawdown",
+        "structural_break_cusum",
+        "yoy_growth",
+      ].sort(),
+    );
+  });
+
+  it("describes the till where a measure reads the till (A-018, A-046)", () => {
+    const text = (key: string) => {
+      const m = METRIC_REGISTRY.find((x) => x.key === key)!;
+      return `${m.name} ${m.description} ${m.formula}`;
+    };
+    expect(text("revenue_gini")).toContain("POS");
+    expect(text("revenue_gini")).not.toMatch(/on[- ]hand|stock value/i);
+    for (const key of [
+      "wine_cogs_ratio",
+      "inventory_turnover",
+      "days_inventory_outstanding",
+      "gmroi",
+    ]) {
+      expect(text(key)).toContain("POS");
+      expect(text(key)).not.toMatch(/purchas/i);
+    }
+    // Labour is the caller's figure; the text must not imply a feed.
+    expect(text("prime_cost_ratio")).toMatch(/labou?r/i);
+    expect(text("prime_cost_ratio")).toContain("?labor=");
   });
 });

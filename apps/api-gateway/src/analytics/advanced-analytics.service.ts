@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
 import * as E from "./engine";
-import { AnalyticsService } from "./analytics.service";
+import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
 import {
@@ -821,7 +821,11 @@ export class AdvancedAnalyticsService {
   // 6. Overview — every lens in one call (API-bus pattern, #207)
   // =========================================================================
 
-  async getOverview(restaurantId: string) {
+  /**
+   * `gate` is passed to the two lenses that read the till (ADR 0298 decision
+   * 5); absent, their till figures are withheld.
+   */
+  async getOverview(restaurantId: string, gate: SalesGate = {}) {
     const startedAt = Date.now();
     const [
       financial,
@@ -833,8 +837,8 @@ export class AdvancedAnalyticsService {
       insights,
       goals,
     ] = await Promise.allSettled([
-      this.analyticsService.getFinancialSummary(restaurantId),
-      this.analyticsService.getRiskProfile(restaurantId),
+      this.analyticsService.getFinancialSummary(restaurantId, 0, gate),
+      this.analyticsService.getRiskProfile(restaurantId, gate),
       this.analyticsService.getInventoryScience(restaurantId),
       this.getMenuEngineering(restaurantId),
       this.getSeasonality(restaurantId),
