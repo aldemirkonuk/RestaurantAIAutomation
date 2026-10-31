@@ -4,8 +4,8 @@
 -- `/inventory` is in LIVE_PAGES, so its PageGate always renders `next`. Inside
 -- it, `InventoryRoute` reads this column: TRUE renders InventoryNext (the
 -- makeover-B rebuild), FALSE keeps the command page every house runs today.
--- It stays FALSE everywhere until the fixes the owner-quarter sim wave made on
--- the command page are ported into InventoryNext (.planning/06-pages/inventory.md §16).
+-- It defaults FALSE; the coordinator turns it on for every house once this
+-- merges (founder, later 2026-10-30: "Flip now, port with wave"; inventory.md §16.4).
 --
 -- Same shape as mudavym_design_arrival: `settings.service.ts` joins every
 -- ACTIVE_FEATURE_FLAGS key into one `.select()`, and PostgREST answers a

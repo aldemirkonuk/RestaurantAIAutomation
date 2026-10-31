@@ -96,9 +96,9 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     // flag, port, flip"). `/inventory` is LIVE in code, so its gate always
     // draws `next`; this column picks which page that is. ON renders
     // InventoryNext, OFF keeps the command page every house runs today
-    // (apps/web/src/pages/inventory/next/InventoryRoute.tsx). It stays OFF
-    // for every house until the sim-wave fixes made on the command page are
-    // ported into InventoryNext. The column (migration
+    // (apps/web/src/pages/inventory/next/InventoryRoute.tsx). It defaults OFF;
+    // the founder's later 2026-10-30 pick turns it on for every house at
+    // merge, and the sim-wave fixes follow with that wave. The column (migration
     // mudavym_design_inventory_next_flag) ships in this same change, for the
     // 42703 reason given under `mudavym_design_arrival` above.
     defaultValue: false,

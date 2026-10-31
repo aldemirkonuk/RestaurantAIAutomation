@@ -37,21 +37,45 @@ describe('InventoryRoute', () => {
   it('keeps the command page where the flag is off', async () => {
     checkFeatureFlag.mockResolvedValue({ active: true, enabled: false });
     render(<InventoryRoute />);
-    await vi.waitFor(() => expect(checkFeatureFlag).toHaveBeenCalled());
-    expect(screen.getByTestId('command')).toBeTruthy();
+    expect(await screen.findByTestId('command')).toBeTruthy();
+    expect(checkFeatureFlag).toHaveBeenCalled();
     expect(screen.queryByTestId('next')).toBeNull();
   });
 
   it('keeps the command page when the flag read fails', async () => {
     checkFeatureFlag.mockRejectedValue(new Error('network'));
     render(<InventoryRoute />);
-    await vi.waitFor(() => expect(checkFeatureFlag).toHaveBeenCalled());
-    expect(screen.getByTestId('command')).toBeTruthy();
+    expect(await screen.findByTestId('command')).toBeTruthy();
+    expect(checkFeatureFlag).toHaveBeenCalled();
   });
 
-  it('draws the command page on the first render, before any read lands', () => {
+  it('mounts neither page while the flag is still being read', () => {
     checkFeatureFlag.mockReturnValue(new Promise(() => {}));
     render(<InventoryRoute />);
+    expect(screen.getByTestId('inventory-route-reading')).toBeTruthy();
+    expect(screen.queryByTestId('command')).toBeNull();
+    expect(screen.queryByTestId('next')).toBeNull();
+  });
+
+  it('never draws the command page on the way to InventoryNext', async () => {
+    checkFeatureFlag.mockResolvedValue({ active: true, enabled: true });
+    const seen: string[] = [];
+    const { container } = render(<InventoryRoute />);
+    if (container.querySelector('[data-testid="command"]')) seen.push('command');
+    const observer = new MutationObserver(() => {
+      if (container.querySelector('[data-testid="command"]')) seen.push('command');
+    });
+    observer.observe(container, { childList: true, subtree: true });
+    expect(await screen.findByTestId('next')).toBeTruthy();
+    observer.disconnect();
+    expect(seen).toEqual([]);
+    expect(screen.queryByTestId('command')).toBeNull();
+  });
+
+  it('keeps the command page, without waiting, where no house is chosen', () => {
+    window.localStorage.removeItem('activeRestaurantId');
+    render(<InventoryRoute />);
     expect(screen.getByTestId('command')).toBeTruthy();
+    expect(checkFeatureFlag).not.toHaveBeenCalled();
   });
 });
