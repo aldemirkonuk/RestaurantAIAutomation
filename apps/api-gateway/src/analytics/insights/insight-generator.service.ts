@@ -130,7 +130,9 @@ export const MIN_TREND_OBSERVED = 14;
  * (A-002). These are the four numbers the gates below share.
  *
  *  - SIGNIFICANCE_ALPHA: the family-wise error a printed #1 or pairing may
- *    carry, after the correction for having picked it out of many.
+ *    carry, after the correction for having picked it out of many. The
+ *    table driver fit's F-test uses it too (ADR 0303, founder 2026-10-07);
+ *    that fit is one pre-set model, not a pick, so it is not corrected.
  *  - MIN_RANK_N: checks a server or table needs before it is ranked at all.
  *  - BASKET_MIN_COUNT: checks a pair must share before it is tested; it also
  *    sizes the multiple-comparison family (items on at least this many).
@@ -231,8 +233,25 @@ export const BASKET_MIN_LIFT = 1.3;
  *       at its merge. [2026-10-08: 11 also covers the bundle's own wording
  *       for `evidence.units.basis` (ADR 0297 round 4b); not bumped, since 11
  *       has never been on `main`.]
+ *  12 — 2026-10-05 (ADR 0303): a hidden table leaves every table insight
+ *       (rank, correlation, drivers, live surge), and so does a retired one
+ *       or a check with no table; the driver fit reads only recorded seat
+ *       counts, distances and outdoor flags, never a NULL as 0. A row below
+ *       12 may rank a hidden table or fit an unrecorded 0, so it is
+ *       recomputed, not served. Same version, 2026-10-07 (the founder's
+ *       two rulings, ADR 0303; this version was not on `main` when they
+ *       were built): the driver sentence needs the fit's F-test at
+ *       SIGNIFICANCE_ALPHA and r² above DRIVER_MIN_R2, where it needed
+ *       r² > 0.15 alone. [2026-10-08, merge of `origin/main` at be9a16ccf
+ *       (#652): drafted as 8 on this branch (#625), with 7 held for lane
+ *       stockout (ADR 0299, #619). #652 landed 10 on `main` first, so this
+ *       change is 11, one past every value on `main`; no row was ever
+ *       written at 8 on `main`, and this branch holds neither 7 nor 8.]
+ *       [2026-10-08, merge of `origin/main` at 8b22448dc: #626 (ADR 0297)
+ *       landed 11 on `main` first, so this change is 12, one past every
+ *       value on `main`; no row was ever written at 11 for this change.]
  */
-export const INSIGHT_GENERATOR_VERSION = 11;
+export const INSIGHT_GENERATOR_VERSION = 12;
 
 /**
  * Each of the bundle's reads, in the words the house uses for it.
@@ -454,6 +473,7 @@ export class InsightGeneratorService {
     // category's next rebuild — a day for `daily`, a week for `weekly`, never
     // for `manual`. Same for a dismissal or a done returned to the book.
     // Bounded: at most twice the per-category cap.
+    let persisted: boolean | null = null;
     if (opts.persist && !narrowed) {
       const shown = new Set(ranked);
       const firedPerCat = new Map<string, number>();
@@ -469,7 +489,7 @@ export class InsightGeneratorService {
         ...ranked,
         ...firedCapped.filter((i) => !shown.has(i)),
       ].sort((a, b) => b.score - a.score);
-      await this.persist(restaurantId, toStore, opts.categories);
+      persisted = await this.persist(restaurantId, toStore, opts.categories);
     }
 
     return {
@@ -513,6 +533,11 @@ export class InsightGeneratorService {
       // built on it, and the per-table and wine-mover insights that take a
       // label or a name from it (`readWasRefused`; ADR 0292).
       sourcesUnread: bundle.unread,
+      // Whether the stored rows of the requested categories were replaced:
+      // null when no persist was asked (or the read was narrowed), false when
+      // the database refused the delete or the insert (logged), in which case
+      // whatever rows stood may still stand.
+      persisted,
       computedIn: Date.now() - startedAt,
       generatedAt: new Date().toISOString(),
     };
@@ -664,11 +689,88 @@ export class InsightGeneratorService {
     return byRestaurant;
   }
 
+  /**
+   * Drop the stored rows of `categories` for one house, so that the next
+   * read of those categories computes them live. For a write that changes
+   * what the rows may say — a table hidden, or shown again (ADR 0303,
+   * amendment item 7) — where a row stored at the 06:00 run would otherwise
+   * stand, naming the table, until the category's next run. Returns whether
+   * the rows are gone; a caller whose write must not outrun them refuses the
+   * write on false. With no category named, nothing is dropped.
+   */
+  async dropStored(
+    restaurantId: string,
+    categories: InsightCategory[],
+  ): Promise<boolean> {
+    if (!categories.length) return true;
+    const { error } = await this.dbService
+      .getClient()
+      .from("analytics_insights")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .in("category", categories);
+    if (error) {
+      this.logger.warn(
+        `dropStored(${categories.join(",")}) failed, the rows stand: ` +
+          error.message,
+      );
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Recompute `categories` for one house and replace their stored rows now,
+   * outside the cadence. Never throws: the caller has already made the
+   * change the rows must reflect. "refreshed" means the rows were replaced;
+   * "dropped" means the fresh rows could not be written, so the stale ones
+   * were removed and the next read of those categories computes live;
+   * "stale" means neither worked, which is logged as an error, and the rows
+   * stand until the category's next run.
+   */
+  async refreshStored(
+    restaurantId: string,
+    categories: InsightCategory[],
+  ): Promise<"refreshed" | "dropped" | "stale"> {
+    try {
+      const out = await this.generate(restaurantId, {
+        categories,
+        persist: true,
+      });
+      if (out.persisted) return "refreshed";
+    } catch (err: any) {
+      this.logger.warn(
+        `refreshStored(${categories.join(",")}) compute failed: ${err?.message}`,
+      );
+    }
+    let dropped = false;
+    try {
+      dropped = await this.dropStored(restaurantId, categories);
+    } catch (err: any) {
+      this.logger.warn(
+        `refreshStored(${categories.join(",")}) drop failed: ${err?.message}`,
+      );
+    }
+    if (dropped) return "dropped";
+    this.logger.error(
+      `refreshStored(${categories.join(",")}): the stored rows could be ` +
+        `neither replaced nor dropped, so they stand until the next run`,
+    );
+    return "stale";
+  }
+
+  /**
+   * Replace the stored rows of `categories` (every category when none is
+   * named) with `insights`. Returns whether both the delete and the insert
+   * were accepted: PostgREST answers an error rather than throwing, so each
+   * answer is read, and a refused write is logged and reported, never taken
+   * for a write.
+   */
   private async persist(
     restaurantId: string,
     insights: InsightRecord[],
     categories?: InsightCategory[],
-  ) {
+  ): Promise<boolean> {
     const client = this.dbService.getClient();
     try {
       // Replace the refreshed categories atomically-enough for analytics.
@@ -677,32 +779,37 @@ export class InsightGeneratorService {
         .delete()
         .eq("restaurant_id", restaurantId);
       if (categories?.length) del = del.in("category", categories);
-      await del;
+      const { error: deleteError } = (await del) ?? {};
+      if (deleteError) throw new Error(`delete: ${deleteError.message}`);
       if (insights.length) {
-        await client.from("analytics_insights").insert(
-          insights.map((i) => ({
-            restaurant_id: restaurantId,
-            candidate_key: i.candidateKey,
-            category: i.category,
-            entity_key: i.entityKey ?? null,
-            entity_label: i.entityLabel ?? null,
-            sentence: i.sentence,
-            score: i.score,
-            effect_pct: i.effectPct ?? null,
-            z_score: i.z ?? null,
-            evidence: i.evidence,
-            period_start: i.periodStart ?? null,
-            period_end: i.periodEnd ?? null,
-            // The item's identity, so a stored read resolves its shared
-            // state at every scope (ADR 0191, `20260925120000`).
-            subject: i.subject ?? null,
-            period_key: i.periodKey ?? null,
-            generator_version: INSIGHT_GENERATOR_VERSION,
-          })),
-        );
+        const { error: insertError } =
+          (await client.from("analytics_insights").insert(
+            insights.map((i) => ({
+              restaurant_id: restaurantId,
+              candidate_key: i.candidateKey,
+              category: i.category,
+              entity_key: i.entityKey ?? null,
+              entity_label: i.entityLabel ?? null,
+              sentence: i.sentence,
+              score: i.score,
+              effect_pct: i.effectPct ?? null,
+              z_score: i.z ?? null,
+              evidence: i.evidence,
+              period_start: i.periodStart ?? null,
+              period_end: i.periodEnd ?? null,
+              // The item's identity, so a stored read resolves its shared
+              // state at every scope (ADR 0191, `20260925120000`).
+              subject: i.subject ?? null,
+              period_key: i.periodKey ?? null,
+              generator_version: INSIGHT_GENERATOR_VERSION,
+            })),
+          )) ?? {};
+        if (insertError) throw new Error(`insert: ${insertError.message}`);
       }
+      return true;
     } catch (err: any) {
       this.logger.warn(`persist insights failed: ${err?.message}`);
+      return false;
     }
   }
 
@@ -793,7 +900,7 @@ export class InsightGeneratorService {
         client
           .from("restaurant_tables")
           .select(
-            "id, label, seats, zone, is_outdoor, distance_to_kitchen_m, distance_to_bar_m, distance_to_pool_m",
+            "id, label, seats, zone, is_outdoor, distance_to_kitchen_m, distance_to_bar_m, distance_to_pool_m, hidden_at",
           )
           .eq("restaurant_id", restaurantId)
           .eq("is_active", true),
@@ -1350,6 +1457,17 @@ export class InsightGeneratorService {
     });
 
     const tableById = new Map(bundle.tables.map((t: any) => [t.id, t]));
+    // A hidden table leaves every table figure, these insights included
+    // (ADR 0303, founder fork F2: "Out of every figure (Recommended)"). Only
+    // a table the house shows is ranked, correlated, fitted or watched. A
+    // check at a hidden or retired table stays in sales, in its server's
+    // figures and, when it has a server, in the waiter adjustment's table
+    // control (founder, 2026-10-05: "Keep them in the control
+    // (Recommended)"). A check with no table stays in sales and in its
+    // server's figures; the control, being a table control, never held it.
+    const shownTableIds = new Set(
+      bundle.tables.filter((t: any) => !t.hidden_at).map((t: any) => t.id),
+    );
     // The per-table insights (the table "#1", its attribute and driver
     // readings, and the live surge) take each table's label and attributes
     // from the table list. When that read was refused or failed they do not
@@ -1357,6 +1475,11 @@ export class InsightGeneratorService {
     // list nobody could read (ADR 0292, 2026-10-07; version 10). The insights
     // built on the checks alone (the till's series, the server "#1", the
     // basket) still may: a check carries its own `table_id`.
+    // [2026-10-08, merge of be9a16ccf (#652) into #625: both rules stand.
+    // A refused list also leaves `shownTableIds` empty, so no table is
+    // aggregated or watched either way; this gate says so outright rather
+    // than leave the rule to that emptiness. The waiter control reads only
+    // a check's own `table_id`, so it is not gated (ADR 0303, ADR 0292).]
     const tablesUnread = readWasRefused(bundle, "restaurant_tables");
 
     // ---- per-table aggregates --------------------------------------------
@@ -1400,7 +1523,7 @@ export class InsightGeneratorService {
         .filter(Boolean) as string[];
       if (itemNames.length >= 2) transactions.push(itemNames);
 
-      if (c.table_id) {
+      if (c.table_id && shownTableIds.has(c.table_id)) {
         const t = byTable.get(c.table_id) || {
           revenue: 0,
           sumSq: 0,
@@ -1434,6 +1557,9 @@ export class InsightGeneratorService {
         w.wineChecks += hasWine ? 1 : 0;
         w.tips += c.tip || 0;
         byWaiter.set(server, w);
+        // The control takes every check here (one with a server) that has a
+        // table, hidden or not: a hidden table still shapes what its servers
+        // took (ADR 0303).
         if (c.table_id) {
           waiterObs.y.push(c.total || 0);
           waiterObs.waiter.push(server);
@@ -1522,29 +1648,47 @@ export class InsightGeneratorService {
             );
           }
 
-          // Driver weights via ridge on table attributes.
-          const X: number[][] = [];
-          const y: number[] = [];
-          for (const x of withAttrs) {
-            const row = [
-              Number(x.t.distance_to_kitchen_m ?? 0),
-              Number(x.t.distance_to_bar_m ?? 0),
-              Number(x.t.seats ?? 0),
-              x.t.is_outdoor ? 1 : 0,
-            ];
-            X.push(row);
-            y.push(x.v);
-          }
-          const reg = E.multipleRegression(X, y, { ridgeLambda: 0.1 });
-          if (reg && reg.r2 > 0.15) {
-            const names = [
-              "kitchen distance",
-              "bar distance",
-              "seats",
-              "outdoor",
-            ];
+          // Driver weights via ridge on table attributes. An unknown is not
+          // a zero (ADR 0051, ADR 0053): a table learned from the till has no
+          // seat count, distance or outdoor flag (ADR 0303), and this step
+          // used to fit `?? 0` and "not outdoor" as if they were measured.
+          // The room register's rule now holds here too: an attribute enters
+          // only when it is recorded, and not the same, on at least
+          // DRIVER_MIN_RECORDED ranked tables, and the fit runs over the
+          // tables that carry every attribute kept. With none kept, no fit.
+          const kept = TABLE_DRIVERS.filter((f) => {
+            const values = withAttrs
+              .map((x) => f.of(x.t))
+              .filter((v) => Number.isFinite(v));
+            return (
+              values.length >= DRIVER_MIN_RECORDED && new Set(values).size > 1
+            );
+          });
+          const fitRows = withAttrs
+            .map((x) => ({ x: kept.map((f) => f.of(x.t)), y: x.v }))
+            .filter((r) => r.x.every((v) => Number.isFinite(v)));
+          const reg =
+            kept.length > 0 && fitRows.length >= DRIVER_MIN_RECORDED
+              ? E.multipleRegression(
+                  fitRows.map((r) => r.x),
+                  fitRows.map((r) => r.y),
+                  { ridgeLambda: 0.1 },
+                )
+              : null;
+          // The founder's two rulings (2026-10-07, ADR 0303): the sentence
+          // needs the fit's F-test at alpha and r² above DRIVER_MIN_R2; see
+          // driverSentencePrints. Both read the ridge fit's own r², the fit
+          // whose weights the sentence prints.
+          if (
+            reg &&
+            driverSentencePrints(
+              reg.r2,
+              fitRows.map((r) => r.y),
+              kept.length,
+            )
+          ) {
             const drivers = reg.standardizedBetas
-              .map((w, i) => ({ attribute: names[i], weight: w }))
+              .map((w, i) => ({ attribute: kept[i].name, weight: w }))
               .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));
             const evd: InsightEvidence = {
               measureLabel: "average check",
@@ -1559,7 +1703,7 @@ export class InsightGeneratorService {
                 evd,
                 {
                   effectPct: reg.r2,
-                  n: withAttrs.length,
+                  n: fitRows.length,
                 },
               ),
             );
@@ -1687,11 +1831,19 @@ export class InsightGeneratorService {
 
     // Hot tables — live surge detection on OPEN checks (no closed_at).
     const now = Date.now();
+    // Only an open check at a table the house shows is watched (ADR 0303):
+    // one at a hidden or retired table, or with no table, is no table's
+    // surge. The last used to be paced against every table-less check and
+    // printed as "A table". And none is watched when the table list could
+    // not be read (ADR 0292, 2026-10-07; `tablesUnread` above).
     const open = tablesUnread
       ? []
-      : checks.filter((c: any) => !c.closed_at && c.opened_at);
+      : checks.filter(
+          (c: any) =>
+            !c.closed_at && c.opened_at && shownTableIds.has(c.table_id),
+        );
     for (const c of open) {
-      const t: any = c.table_id ? tableById.get(c.table_id) : null;
+      const t: any = tableById.get(c.table_id);
       const minutes = Math.max(
         5,
         (now - new Date(c.opened_at).getTime()) / 60000,
@@ -2081,6 +2233,98 @@ function zOfUpperTail(p: number): number {
   const z = E.normalInv(Math.min(p, 0.5));
   return z === null ? Z_CAP : Math.min(Z_CAP, -z);
 }
+
+/**
+ * The fewest ranked tables an attribute must be recorded on before the table
+ * driver fit may use it, and the fewest tables that fit runs over: the room
+ * register's number (`getTablePerformance`, ADR 0303).
+ */
+export const DRIVER_MIN_RECORDED = 5;
+
+/**
+ * The share of the variation in average check a table driver fit must
+ * explain, strictly, before its sentence prints: the r² > 0.15 gate the
+ * sentence had before the F-test, kept beside it as its effect floor by the
+ * founder's second ruling of 2026-10-07 (ADR 0303), as ADR 0272 keeps
+ * |r| ≥ 0.35 beside its correlation test.
+ */
+export const DRIVER_MIN_R2 = 0.15;
+
+/**
+ * How far apart, relative to the largest |average|, the fitted tables'
+ * average checks must be before they count as varying. Each average is a sum
+ * of check totals over a count, so averages equal to the cent can differ in
+ * the last binary digits: 180.10 + 180.20 + 180.30 averages to
+ * 180.19999999999996, and 180.00 + 180.10 + 180.50 to 180.20000000000002.
+ * Compared exactly, that rounding was fitted and printed a "driver" (the
+ * spec's eight-table case). A double carries about 16 significant digits,
+ * so 1e-9 sits well above that rounding on a sum of a few thousand positive
+ * totals, and still counts a one-cent spread as varying on any average
+ * under 1,000,000.
+ */
+export const DRIVER_AVERAGES_REL_TOL = 1e-9;
+
+/**
+ * Does the table driver sentence print, for a fit of `k` attributes with
+ * r² `r2` over tables whose average checks are `averages`? Only when all of:
+ *
+ *  - the averages vary (by DRIVER_AVERAGES_REL_TOL). Equal averages leave
+ *    nothing to drive: multipleRegression calls their r² 1, and it is no fit;
+ *  - the fit leaves a residual degree of freedom (n − k − 1 ≥ 1, n the
+ *    number of averages), so there is a test to make;
+ *  - its overall F-test passes at SIGNIFICANCE_ALPHA, ADR 0272's bar (the
+ *    founder's first ruling of 2026-10-07; r² alone was no test, and five
+ *    tables on four attributes fit almost exactly by chance);
+ *  - r² is above DRIVER_MIN_R2 (his second ruling: real AND big enough).
+ *
+ * `r2` is the ridge fit's. A penalised fit never explains more than least
+ * squares on the same rows, so its p is never the smaller one. Under the
+ * F-test's assumptions (independent, normally distributed errors of equal
+ * variance), a sentence on a fit with no real driver therefore prints at a
+ * rate at or under alpha; the r² floor and the equal-averages check only
+ * remove prints. Those assumptions are not checked here (ADR 0303, *Ruling
+ * 2026-10-07*, residual 5).
+ */
+export function driverSentencePrints(
+  r2: number,
+  averages: number[],
+  k: number,
+): boolean {
+  if (averages.length === 0) return false;
+  let lo = Infinity;
+  let hi = -Infinity;
+  let scale = 0;
+  for (const v of averages) {
+    lo = Math.min(lo, v);
+    hi = Math.max(hi, v);
+    scale = Math.max(scale, Math.abs(v));
+  }
+  if (!(hi - lo > DRIVER_AVERAGES_REL_TOL * scale)) return false;
+  const test = E.regressionSignificance(r2, averages.length, k);
+  return test !== null && test.p <= SIGNIFICANCE_ALPHA && r2 > DRIVER_MIN_R2;
+}
+
+/** A recorded number, or NaN: `Number(null)` is 0, a measurement nobody took. */
+function recordedNumber(v: unknown): number {
+  if (v === null || v === undefined || v === "") return NaN;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/** The table attributes the driver fit may weigh; NaN where none was recorded. */
+const TABLE_DRIVERS: Array<{ name: string; of: (t: any) => number }> = [
+  {
+    name: "kitchen distance",
+    of: (t) => recordedNumber(t.distance_to_kitchen_m),
+  },
+  { name: "bar distance", of: (t) => recordedNumber(t.distance_to_bar_m) },
+  { name: "seats", of: (t) => recordedNumber(t.seats) },
+  {
+    name: "outdoor",
+    of: (t) =>
+      typeof t.is_outdoor === "boolean" ? (t.is_outdoor ? 1 : 0) : NaN,
+  },
+];
 
 export interface InsightRecord {
   candidateKey: string;

@@ -100,6 +100,14 @@ ALLOWLIST: dict[str, str] = {
     # the currency the ORDER states, and "currency not recorded" when it states
     # none; asserting both needs one stated currency literal. 2026-09-25.
     "apps/web/src/components/orders/__tests__/SealedRejectDie.test.tsx": "asserts the refund box prints the order's own stated currency, and 'currency not recorded' for a null one",
+    # The public pages a stranger reads before they have a house (ADR 0320,
+    # ADR 0344). No house currency exists there to use, and the founder's first
+    # market is the US (founder answers 2026-10-08: US/SF and East Lansing), so
+    # the your-numbers calculator asks the reader's hourly rate in dollars, and
+    # the story's invoice, labelled invented, is in dollars. 2026-10-29.
+    "apps/web/src/pages/landing/Landing.tsx": "the public landing's your-numbers calculator, read by a stranger with no house and so no house currency; the reader sets their own hourly rate, in dollars, for the US market",
+    "apps/web/src/pages/landing/Landing.test.tsx": "asserts the dollar figure the calculator prints from the reader's own rate",
+    "apps/web/src/pages/story/Story.test.tsx": "asserts the story's invented sample invoice ($32.40 held), which is in dollars by the page's own sample label",
     # The symbol map is keyed BY currency and returns '' for an unknown one.
     "apps/web/src/components/documents/canonical-format.ts": "symbol lookup keyed by the document's own currency; unknown renders unsymboled",
 }

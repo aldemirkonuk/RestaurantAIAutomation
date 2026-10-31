@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import axios from 'axios'
 import { doRefresh } from '../lib/sessionRefresh'
+import { AUTH_STORAGE_KEY, leaveDeadSession } from '../lib/deadSession'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -293,7 +294,9 @@ export const useAuthStore = create<AuthState>()(
             if (!localStorage.getItem('refreshToken')) {
               get().clearTokens()
               set({ user: null, loading: false })
-              window.location.href = '/login'
+              // The one reaction the API client shares: a public page reloads
+              // as a stranger's, any other goes to /login (ADR 0344).
+              leaveDeadSession()
             } else {
               set({ loading: false })
             }
@@ -313,7 +316,7 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: 'auth-storage',
+      name: AUTH_STORAGE_KEY,
       partialize: (state) => ({
         user: state.user,
         activeRestaurantId: state.activeRestaurantId,

@@ -334,6 +334,16 @@ export interface RecommendationsData {
   /** `excludeDay`, said in words afterwards — the ribbon's own control. */
   ruleOutDay: (date: string, reason: string) => Promise<void>;
   includeDay: (date: string) => Promise<void>;
+  /**
+   * Whether this person may rule a day out of the analysis, or count one
+   * again — owners and managers (OPS-04, 2026-10-07): a struck day leaves
+   * every baseline the insight generator builds from sales, and sales are
+   * theirs (ADR 0145, ADR 0290 §5). The
+   * gateway refuses anyone else (`RolesGuard`, the role on this house's
+   * access row), so this reads `activeRole` alone, never the account-wide
+   * `user.role` fallback. Everyone still SEES which days are struck.
+   */
+  canRuleOutDays: boolean;
   /** undefined = not asked yet; null = the read failed. */
   digest: DigestPref | null | undefined;
   /**
@@ -726,6 +736,9 @@ export function useRecommendationsNextData(): RecommendationsData {
       cancelled = true;
     };
   }, [rid]);
+
+  /** Owners and managers of this house, by the house's own role (see the type). */
+  const canRuleOutDays = mayActForTheHouse(activeRole);
 
   /**
    * Rule a day out of the analysis. Returns whether it landed — the caller
@@ -1275,6 +1288,7 @@ export function useRecommendationsNextData(): RecommendationsData {
     excludeDay,
     ruleOutDay,
     includeDay,
+    canRuleOutDays,
     phase,
     entries,
     failure,

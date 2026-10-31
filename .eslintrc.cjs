@@ -85,7 +85,6 @@ module.exports = {
         'apps/web/src/components/team/InviteTeamDialog.tsx',
         'apps/web/src/components/team/TeamGoalsSettings.tsx',
         'apps/web/src/components/wines/AddToInventoryFromLibraryModal.tsx',
-        'apps/web/src/components/wines/AddWineModal.tsx',
         'apps/web/src/components/wines/DevManualWineEntry.tsx',
         'apps/web/src/components/wines/DevWinePhotoUpload.tsx',
         'apps/web/src/components/wines/WineResearchQueue.tsx',

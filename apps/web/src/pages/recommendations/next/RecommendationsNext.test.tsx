@@ -193,6 +193,9 @@ const base = {
   excludeDay,
   ruleOutDay,
   includeDay,
+  // A manager's page: striking a day and counting it again are theirs (OPS-04).
+  // Staff are drawn explicitly in "ruling a day out is an owner's or a manager's".
+  canRuleOutDays: true,
   // `set: false` — most houses have never touched this preference (the
   // production-tenant shape is mostly single-tenant, minimal config). The
   // rail must say so honestly, never fabricate "Not armed, 07:00".
@@ -1456,6 +1459,153 @@ describe('RecommendationsNext — the ribbon', () => {
       within(screen.getByTestId('rc-dayhead')).getByRole('button', { name: 'Count it again' }),
     );
     expect(includeDay).toHaveBeenCalledWith(TILL_DAY);
+  });
+});
+
+/**
+ * OPS-04 (2026-10-07). Striking a day out of the analysis, and counting it
+ * again, are an owner's or a manager's: a struck day leaves every sales
+ * baseline, and the gateway refuses anyone else (`RolesGuard`). Staff still see
+ * the strike and its reason; they are offered neither control. Each case runs
+ * the SAME fixture as staff and as a manager, so the difference is the role.
+ */
+describe('ruling a day out is an owner’s or a manager’s (OPS-04)', () => {
+  const fired = (over = {}) =>
+    entry({ ruleKey: 'stockout_imminent', firstSeenAt: `${TILL_DAY}T09:00:00.000Z`, ...over });
+  const struck = {
+    items: [{ businessDate: TILL_DAY, reason: 'closed', createdAt: null }],
+    readable: true,
+    problem: null,
+  };
+  const asStaff = {
+    role: 'staff',
+    canActRuleWide: false,
+    canSnoozeForEveryone: false,
+    canRuleOutDays: false,
+  };
+  const asManager = {
+    role: 'manager',
+    canActRuleWide: true,
+    canSnoozeForEveryone: true,
+    canRuleOutDays: true,
+  };
+  const pick = (attr: string, value: string) =>
+    screen.getAllByTestId('mdv-ds-day').find((d) => (d.getAttribute(attr) ?? '').includes(value))!;
+
+  it('[REVERT-FAILS] staff: a struck day is drawn with its reason, and nothing offers to count it again', () => {
+    mockData.current = { ...base, ...asStaff, entries: [fired()], exclusions: struck };
+    draw();
+    const day = pick('data-struck', 'true');
+    expect(day.getAttribute('aria-label')).toContain('ruled out (closed)');
+    fireEvent.click(day);
+    const head = screen.getByTestId('rc-dayhead');
+    expect(within(head).getByText(/Out of the analysis/)).toBeInTheDocument();
+    expect(within(head).getByTestId('rc-ruleout-withheld')).toHaveTextContent(
+      'Only an owner or manager can count it again.',
+    );
+    // neither the strip's control nor the rail's list offers it
+    expect(screen.queryByRole('button', { name: 'Count it again' })).not.toBeInTheDocument();
+    expect(screen.getByText('closed')).toBeInTheDocument();
+    expect(includeDay).not.toHaveBeenCalled();
+  });
+
+  it('manager, same fixture: the strip and the rail both offer to count it again', () => {
+    mockData.current = { ...base, ...asManager, entries: [fired()], exclusions: struck };
+    draw();
+    fireEvent.click(pick('data-struck', 'true'));
+    expect(screen.getAllByRole('button', { name: 'Count it again' })).toHaveLength(2);
+    expect(screen.queryByTestId('rc-ruleout-withheld')).not.toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] staff: a past day is not offered the strike, and the strip says whose it is', () => {
+    mockData.current = { ...base, ...asStaff, entries: [fired()] };
+    draw();
+    fireEvent.click(pick('aria-label', '1 first fired'));
+    const head = screen.getByTestId('rc-dayhead');
+    expect(
+      within(head).queryByRole('button', { name: /Rule this day out of the analysis/ }),
+    ).not.toBeInTheDocument();
+    expect(within(head).getByTestId('rc-ruleout-withheld')).toHaveTextContent(
+      /Ruling a day out of the analysis is for an owner or manager/,
+    );
+    expect(ruleOutDay).not.toHaveBeenCalled();
+  });
+
+  it('manager, same fixture: a past day is offered the strike', () => {
+    mockData.current = { ...base, ...asManager, entries: [fired()] };
+    draw();
+    fireEvent.click(pick('aria-label', '1 first fired'));
+    const head = screen.getByTestId('rc-dayhead');
+    expect(
+      within(head).getByRole('button', { name: /Rule this day out of the analysis/ }),
+    ).toBeEnabled();
+    expect(within(head).queryByTestId('rc-ruleout-withheld')).not.toBeInTheDocument();
+  });
+
+  it('[REVERT-FAILS] staff: the dismissal sheet offers no "Also exclude", says whose it is, and carries no date', () => {
+    mockData.current = { ...base, ...asStaff, entries: [weekdayEntry()] };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    fireEvent.click(within(row).getByText('Dismiss'));
+    expect(within(row).queryByRole('checkbox', { name: /Also exclude/ })).not.toBeInTheDocument();
+    expect(within(row).getByTestId('rc-exclude-withheld')).toHaveTextContent(
+      /Ruling Wed 2 Sep out of the analysis is for an owner or manager/,
+    );
+    fireEvent.click(within(row).getByText('Not relevant'));
+    fireEvent.click(within(row).getByText('Dismiss it'));
+    expect(dismissFn).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ excludeDate: null }),
+    );
+  });
+
+  it('manager, same fixture: the dismissal sheet offers "Also exclude" and carries the date', () => {
+    mockData.current = { ...base, ...asManager, entries: [weekdayEntry()] };
+    draw();
+    const row = screen.getByTestId('rc-entry');
+    fireEvent.click(within(row).getByText('Dismiss'));
+    expect(within(row).queryByTestId('rc-exclude-withheld')).not.toBeInTheDocument();
+    fireEvent.click(within(row).getByRole('checkbox', { name: /Also exclude Wed 2 Sep/ }));
+    fireEvent.click(within(row).getByText('Not relevant'));
+    fireEvent.click(within(row).getByText('Dismiss it'));
+    expect(dismissFn).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ excludeDate: '2026-09-02' }),
+    );
+  });
+
+  it('[REVERT-FAILS] a box ticked while the house role read manager carries no date once it no longer does', () => {
+    // The house role can drop out under an open sheet (a house switch resets
+    // activeRole to null until the new house's row is read). The page's
+    // rule-wide reading falls back to the account role, so canActRuleWide
+    // stays true and the sheet's own reset does not run; canRuleOutDays reads
+    // activeRole alone and goes false. The tick must not ride out on the
+    // dismissal: the gateway would refuse the strike.
+    mockData.current = { ...base, ...asManager, entries: [weekdayEntry()] };
+    const view = draw();
+    const row = screen.getByTestId('rc-entry');
+    fireEvent.click(within(row).getByText('Dismiss'));
+    fireEvent.click(within(row).getByRole('checkbox', { name: /Also exclude Wed 2 Sep/ }));
+    expect(within(row).getByRole('checkbox', { name: /Also exclude Wed 2 Sep/ })).toBeChecked();
+    mockData.current = {
+      ...base,
+      ...asManager,
+      canRuleOutDays: false,
+      entries: mockData.current.entries,
+    };
+    view.rerender(
+      <MemoryRouter initialEntries={['/recommendations']}>
+        <RecommendationsNext />
+      </MemoryRouter>,
+    );
+    const again = screen.getByTestId('rc-entry');
+    expect(within(again).queryByRole('checkbox', { name: /Also exclude/ })).not.toBeInTheDocument();
+    fireEvent.click(within(again).getByText('Not relevant'));
+    fireEvent.click(within(again).getByText('Dismiss it'));
+    expect(dismissFn).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ excludeDate: null }),
+    );
   });
 });
 
