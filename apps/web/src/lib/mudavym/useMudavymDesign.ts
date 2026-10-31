@@ -81,7 +81,7 @@ export const MUDAVYM_PAGES = [
   // `inventory` is in LIVE_PAGES, so its gate always draws `next`; this key
   // chooses WHICH page that is — InventoryNext when ON, the command page when
   // OFF (pages/inventory/next/InventoryRoute.tsx). Held back from LIVE_PAGES;
-  // on for every house since 2026-10-31 and ON by default for new houses (#704).
+  // on for every house since 2026-10-31; new houses' rows default ON (#704).
   'inventory_next',
   // ADR 0143: one desk and one switch, including the old health bookmark.
   // [2026-09-25: live for every house in code — see LIVE_PAGES below.]
