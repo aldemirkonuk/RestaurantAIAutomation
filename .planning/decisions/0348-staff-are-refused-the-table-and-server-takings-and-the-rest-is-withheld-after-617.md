@@ -1,6 +1,6 @@
 # 0348 — Staff are refused the table and server takings now; the rest is withheld after #617
 
-- **Status:** Locked. The founder ruled the scope (2026-10-30 and 2026-10-31, both quoted verbatim below). Each part marked *executor's call, not the founder's* was decided by PR #701's executor without asking, under the brief's "Do not ask me anything"; the founder can overrule any of them.
+- **Status:** Locked. The founder ruled the scope (2026-10-30 and 2026-10-31, both quoted verbatim below). Each part marked *executor's call, not the founder's* was decided by PR #701's executor without asking, under the founder's 2026-10-31T16:57:09Z goal (session ca58311b), verbatim: *"complete the full integration with ful SOTA and robust connections with the current mudavym structure and foundation. Do not ask me anything just complete it fully."*; the founder can overrule any of them.
 - **Date:** 2026-10-31
 - **Decider:** Aldemir (founder) for the scope. PR #701's executor for the calls marked as its own.
 - **Keywords:** RolesGuard, @Roles, owner, manager, staff, admin, table-performance, waiters, hot-tables, POST tables, takings, peer rank, salesGateFor, withheld, held back, readers, AnalysisSpec, activeRole, insight-prefs, venue, consultants toggle, recommendation digest, toast sales, staff_spread, peer_rank, floor phone, PR15
