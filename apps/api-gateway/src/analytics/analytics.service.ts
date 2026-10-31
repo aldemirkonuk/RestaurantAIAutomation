@@ -237,7 +237,7 @@ export class AnalyticsService {
     this.reportSlice("inventory_lot_rollup", rollupRes);
 
     const failed =
-      invRes.status === "rejected" ||
+      invRes.status !== "fulfilled" ||
       invRes.value?.error != null ||
       !Array.isArray(invRes.value?.data);
     const inventory =
