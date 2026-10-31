@@ -853,3 +853,71 @@ The drawn sketch (INV-W4) takes in every change bracketed above.
 
 **OD-177** is overtaken for /inventory by INV-W4. The page ADR for this walk-through records
 it.
+
+## 16. Finishing the rebuild — lineage, the collision, the path (2026-10-30)
+
+The founder asked again that /inventory be updated because "it's the older version". It still is:
+`origin/main` `apps/web/src/App.tsx:382` mounts `InventoryCommandPage` (sketch 038, July) on
+**both** sides of the `PageGate`. The rebuild, `InventoryNext`, lives only on #677
+(`fix/review-inventory` at `8dd3366fc`, 11 commits behind main), unmerged.
+
+### 16.1 Lineage — every earlier design and where it lives
+
+| When | Artifact | What it decided | Where |
+|---|---|---|---|
+| 2026-07 | sketches 027 / 030 / 031 | honest stock, receiving into stock, cellar view | `.planning/sketches/027-*`, `030-*`, `031-*` |
+| 2026-07-10 | SOTA plan | lots are the one source of stock; 3 phases | `.planning/07-reference/INVENTORY_SOTA_PLAN.md` |
+| 2026-07-15 | sketch 038 "Command" → **the page on main today** | 9-column table, live/shadow gauge, attention rail, row expansion | `.planning/sketches/038-inventory-command/`, `pages/inventory/command/` |
+| 2026-07 | sketch 040 | insights panel | `.planning/sketches/040-inventory-insights-panel/` |
+| 2026-08-28 | makeover artboards A / B / C | three directions; B "Editorial" keeps the row dropdown and shows the invoice match | `p4-scratch/makeover-artboards/{A,B,C}-Inventory.dc.html`; artifact "Mudavym Makeover" |
+| 2026-08-29 | makeover verdicts | the gap is receipt and invoice actions | `.planning/06-pages/MAKEOVER-VERDICTS.md:66-73` |
+| 2026-10-01 | R4 walk-through: dossiers A–E + INV-W4 sketch | founder picked B; trim the row to count / order / write off | §14, §15; `p4-scratch/review-snap-4/dossier/`, `sketches/` |
+| 2026-10-01..08 | INV-W1..W40 built | `InventoryNext` behind the flag | #677, ADR 0315 |
+| 2026-10-08 | server holes behind the mount line | write-off role guard, retry-key refusal, `approveOrder` status check | #685 (`9664d60d8`), unmerged |
+
+### 16.2 The collision nobody has written down
+
+The owner-quarter sim fix wave landed on `integ/rehearsal-2026-10-10` (local only, 1501 commits past
+`origin/main`, never pushed). **146** of those commits touch `apps/web/src/pages/inventory/` — and
+they fix the **old** page: `InventoryCommandPage`, `RowExpansion`, `ReceivingWorkspace`,
+`SpotCountPanel`, `OpeningStockImport` (new), `bits`, `ReceiptDepth`, `HousePriceCell`,
+`InactiveWines`, `AuctionLotStart`, `auctionLotCost`, plus `useInventoryPage.ts` (+510).
+Measured: `git diff --stat origin/main integ/rehearsal-2026-10-10 -- apps/web/src/pages/inventory`
+(58 files, +20 520 / −928) and `git log --oneline origin/main..integ/rehearsal-2026-10-10 -- apps/web/src/pages/inventory | wc -l`.
+
+`InventoryNext` reads through `useInventoryPage` (`next/useInventoryNextData.ts`) and reuses only
+`command/CellarMapView`, so it **inherits the hook fixes** but **none of the component fixes**:
+opening-stock import, spot count / tenths, refusing Remove and shelving before a bottle moves,
+a pour kept on the phone offline, cost-basis and tax stamping, "a lost answer is not nothing
+received" (F-1727). Mounting `InventoryNext` as it stands would quietly retire those fixes —
+a regression the founder would not see until a house used them.
+
+### 16.3 The path to done
+
+1. Land the rehearsal wave on main (its own owner; out of this page's scope).
+2. Rebase #677 onto that main; re-measure inventory + cellar vitest and tsc.
+3. **Port census:** one row per sim commit above → carried / not needed on Next (with the reason) /
+   ported. Each port gets the test it had on the old page, re-pointed at Next.
+4. Gate #685, merge. Then gate #677 at its new head (the CI gate key 401s since 2026-10-29, so the
+   gate runs locally).
+5. Mount line (`next={<InventoryNext />}`) — the founder's word.
+6. Flag flip for the house — the founder's keystroke.
+7. Delete the legacy page once (ADR 0149).
+
+### 16.4 Founder's pick (2026-10-30)
+
+**"New dark flag, port, flip (Recommended)."** Rejected: *Port first, then mount* (#677 stays out of
+main longest) and *Mount live now, port after* (the live page loses the sim fixes until they are
+ported). An earlier "mount dark" option was withdrawn in the same session: `inventory` is in
+`LIVE_PAGES` (`apps/web/src/lib/mudavym/useMudavymDesign.ts:196-203`), so the gate always draws
+`next`, and the mount line alone would put Next live for every house.
+
+So the order is:
+1. A new page key `inventory_next`, OFF by default, flag-gated, **not** in `LIVE_PAGES`. App.tsx:
+   `next={<PageGate page="inventory_next" legacy={<InventoryCommandPage />} next={<InventoryNext />} />}`,
+   so the outer live gate keeps `HouseHeader` and the inner one picks the page. Register
+   `mudavym_design_inventory_next` in the gateway's `ACTIVE_FEATURE_FLAGS` with its `readBy`.
+   Unchecked: whether the registry also needs a per-house column (the 20261022000000 pattern).
+2. Gate and merge #685, then #677 with step 1 in it. Next is now on main, dark.
+3. Land the rehearsal wave on main (its owner), then do the port census (§16.3 step 3) into Next.
+4. Flip `inventory_next` house by house (the founder's keystroke). Delete the legacy page once (ADR 0149).
