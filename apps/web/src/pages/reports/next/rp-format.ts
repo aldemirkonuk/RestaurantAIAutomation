@@ -13,6 +13,7 @@
  */
 
 import { formatMoney, formatNumber } from '@/lib/utils';
+import type { HouseRole } from './rp-spec';
 
 export const EM = '—';
 
@@ -143,6 +144,14 @@ export interface Failure {
   message: string;
   /** 401/403 — understood and refused. */
   forbidden: boolean;
+  /**
+   * Set when the page never sent the request: the register names its readers
+   * and the reader is not one of them (`known: true`), or the reader's role at
+   * this house is not known yet (`known: false`). Not an error and not an
+   * empty register: the figures are withheld from this reader (ADR 0348).
+   * Always `forbidden` too, so no retry is offered.
+   */
+  heldBack?: { readers: readonly HouseRole[]; known: boolean };
 }
 
 export function failureOf(error: unknown): Failure | null {
@@ -152,11 +161,40 @@ export function failureOf(error: unknown): Failure | null {
   return { status, message, forbidden: status === 403 || status === 401 };
 }
 
+/** The register a reader is not sent: no status, because nothing was asked. */
+export function heldBackFailure(
+  readers: readonly HouseRole[],
+  role: HouseRole | null,
+): Failure {
+  return {
+    status: null,
+    message: 'held back for this role',
+    forbidden: true,
+    heldBack: { readers, known: role !== null },
+  };
+}
+
+const READER_WORDS = { owner: 'owners', manager: 'managers', staff: 'staff' } as const;
+
+/** "owners and managers"; "owners, managers and staff". */
+function readersWords(readers: readonly HouseRole[]): string {
+  const words = readers.map((r) => READER_WORDS[r]);
+  return words.length <= 1
+    ? (words[0] ?? 'no one')
+    : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+}
+
 /**
  * The one sentence a failed register is allowed to say. `register` names the
  * thing that could not be read, so an error never renders as an empty chart.
+ * A held-back register says who it is written for, the way the export shelf
+ * does, and claims nothing.
  */
 export function failureLine(register: string, f: Failure): string {
+  if (f.heldBack)
+    return f.heldBack.known
+      ? `The ${register} is written for ${readersWords(f.heldBack.readers)}. Nothing below is claimed.`
+      : `Your role at this restaurant is not known yet, so the ${register} is not read until it is. Nothing below is claimed.`;
   return f.forbidden
     ? `Your role cannot read the ${register}. Nothing below is claimed.`
     : `The ${register} could not be read (${f.message}). Nothing below is claimed.`;

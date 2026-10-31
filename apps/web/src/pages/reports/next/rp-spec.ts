@@ -6,9 +6,13 @@
  * imports the registers, and nothing points back up.
  */
 
+import type { AuthContextType } from '@/contexts/AuthContext';
 import type { GraphType } from './rp-sheet';
 import type { AnalysisView } from './rp-view';
 import type { GoalsDesk } from './useGoalsDesk';
+
+/** A role at the active house, as `useAuth().activeRole` names it (null aside). */
+export type HouseRole = NonNullable<AuthContextType['activeRole']>;
 
 export interface ViewCtx {
   /** The till window the reader picked. Only `till` takes one. */
@@ -43,6 +47,14 @@ export interface AnalysisSpec {
   graphNote: string;
   /** True for the one register whose endpoint takes a `days` parameter. */
   takesWindow?: boolean;
+  /**
+   * The house roles the endpoint admits, when it names any (its `@Roles`).
+   * Absent means every member of the house may read it. A reader whose role is
+   * not listed, or not known yet, is never sent the request: the register is
+   * held back and says so (ADR 0348), rather than drawing the gateway's 403 as
+   * a refusal the page walked into.
+   */
+  readers?: readonly HouseRole[];
   select: (raw: unknown) => unknown;
   view: (data: unknown, ctx: ViewCtx) => AnalysisView;
 }
@@ -57,6 +69,7 @@ export function analysis<T>(spec: {
   graphs: GraphType[];
   graphNote: string;
   takesWindow?: boolean;
+  readers?: readonly HouseRole[];
   select: (raw: unknown) => T;
   view: (data: T, ctx: ViewCtx) => AnalysisView;
 }): AnalysisSpec {
