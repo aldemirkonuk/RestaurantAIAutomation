@@ -15,10 +15,18 @@ let markHasDrawn = false
 
 /**
  * A whole leaf turning over is twice the arc of a screen change, so it takes
- * the house `turn` curve at a longer reach (the motion canvas's own "The page
- * turns" rotates 92°; a full leaf is 180°).
+ * a longer reach than `turn` (the motion canvas's own "The page turns"
+ * rotates 92°; a full leaf is 180°).
+ *
+ * It does not take `turn`'s curve. That curve is front-loaded: over a 760ms run the
+ * leaf was flat by ~430ms, and because every hand-off below is keyed to the
+ * leaf's eased progress, the rest of the run was a still book — the leaf's
+ * back fading on an open, the inside cover dissolving into the endpaper on a
+ * close — before the page settled. A standard in-out curve lifts the leaf
+ * promptly and lands it near the end of a shorter run, so each hand-off
+ * happens where the leaf is.
  */
-const LEAF_TURN: MotionToken = { easing: turn.easing, ms: 760 }
+const LEAF_TURN: MotionToken = { easing: 'cubic-bezier(0.4, 0, 0.2, 1)', ms: 600 }
 
 /** Under 700px the endpaper is a band above the leaf (endpaper.css). */
 function isNarrow(): boolean {

@@ -255,10 +255,10 @@ describe('EndpaperShell', () => {
         )
         calls = []
         fireEvent.click(screen.getByRole('button', { name: TURN }))
-        const turnRuns = calls.filter((c) => c.options.duration === 760)
+        const turnRuns = calls.filter((c) => c.options.duration === 600)
         expect(turnRuns.length).toBeGreaterThanOrEqual(4)
         act(() => {
-          vi.advanceTimersByTime(760)
+          vi.advanceTimersByTime(600)
         })
         expect(turnRuns.every((c) => c.cancelledWith === true)).toBe(true)
       })
@@ -271,7 +271,7 @@ describe('EndpaperShell', () => {
         )
         fireEvent.click(screen.getByRole('button', { name: TURN }))
         act(() => {
-          vi.advanceTimersByTime(760)
+          vi.advanceTimersByTime(600)
         })
         calls = []
         rerender(
