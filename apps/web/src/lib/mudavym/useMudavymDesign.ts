@@ -80,8 +80,8 @@ export const MUDAVYM_PAGES = [
   // ADR 0315's 2026-10-30 amendment (founder: "New dark flag, port, flip").
   // `inventory` is in LIVE_PAGES, so its gate always draws `next`; this key
   // chooses WHICH page that is — InventoryNext when ON, the command page when
-  // OFF (pages/inventory/next/InventoryRoute.tsx). OFF by default, held back
-  // from LIVE_PAGES; on for every house once this merges (§16.4 flip-first).
+  // OFF (pages/inventory/next/InventoryRoute.tsx). Held back from LIVE_PAGES;
+  // on for every house since 2026-10-31; new houses' rows default ON (#704).
   'inventory_next',
   // ADR 0143: one desk and one switch, including the old health bookmark.
   // [2026-09-25: live for every house in code — see LIVE_PAGES below.]
