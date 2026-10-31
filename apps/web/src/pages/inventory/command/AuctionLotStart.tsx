@@ -59,7 +59,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Sheet } from '@/components/mudavym';
-import { getErrorMessage } from '@/services/api/client';
+import { getErrorMessage, isUnconfirmedWrite } from '@/services/api/client';
 import { searchWines } from '@/services/api/wines';
 import { createAuctionLotRecord } from '@/services/api/inventory';
 import { settingsApi } from '@/services/api/settings';
@@ -206,6 +206,9 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
   const [lot, setLot] = useState<AuctionLot>(EMPTY_LOT);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  // A carry whose answer was lost (5xx or none) may have written the row, so
+  // this opening does not offer the carry again (security review, 2026-10-31).
+  const [carryUnknown, setCarryUnknown] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   /* The house's own currency. `undefined` = not read yet; `null` = unanswered
      or unreadable — both refuse a booked cost rather than assume one. */
@@ -288,10 +291,10 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
             }),
     [cost, lot.currency, lot.exchangeRate, lot.houseCost, houseCurrency, houseCurrencyUnread],
   );
-  const canCarry = !!wine && !detailsMissing && cost.ok && !!lot.currency && !!booked?.ok && !busy;
+  const canCarry = !!wine && !detailsMissing && cost.ok && !!lot.currency && !!booked?.ok && !busy && !carryUnknown;
 
   const carry = async () => {
-    if (!wine || detailsMissing || !cost.ok || !lot.currency || !booked?.ok || busy) return;
+    if (!wine || detailsMissing || !cost.ok || !lot.currency || !booked?.ok || busy || carryUnknown) return;
     setBusy(true);
     setFailure(null);
     setDone(null);
@@ -302,6 +305,13 @@ export function AuctionLotStart({ open, onClose, onCarry }: AuctionLotStartProps
       inventoryId = carried.inventoryId;
     } catch (e) {
       setBusy(false);
+      if (isUnconfirmedWrite(e)) {
+        setCarryUnknown(true);
+        setFailure(
+          "We couldn't tell whether these bottles were carried in. Look at the book before carrying them again, so they are not counted twice. Your figures are still here.",
+        );
+        return;
+      }
       setFailure(
         `The bottles were not carried in (${getErrorMessage(e)}). Nothing was written to the book and your figures are still here.`,
       );
