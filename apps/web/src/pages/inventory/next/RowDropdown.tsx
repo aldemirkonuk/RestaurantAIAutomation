@@ -21,9 +21,11 @@ import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'r
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsStore';
+import { formatVolume } from '../../../utils/volumeUtils';
 import { Popover } from '@/components/mudavym';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
-import { updateInventoryItem } from '../../../services/api/inventory';
+import { reconcileItem, updateInventoryItem } from '../../../services/api/inventory';
 import { queryKeys } from '../../../lib/query-keys';
 import type { InventoryItem } from '../useInventoryPage';
 import type { ProcurementDocument } from '../../../services/api/documents';
@@ -50,6 +52,7 @@ import {
   type PaperRead,
   type PurchaseLine,
 } from './useInventoryNextData';
+import { NameThisWine } from './NameThisWine';
 
 const DOW = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -164,6 +167,7 @@ export default function RowDropdown(props: RowDropdownProps) {
   // Only marking INACTIVE is held back; marking a row active again never strands stock.
   const toggleBlocked = row.active === true ? inactiveBlocked(row) : null;
   const title = row.name ?? 'This title';
+  const unit = useRestaurantSettingsStore((st) => st.measurementUnit);
 
   // Mark inactive / active: the legacy page's toggleActive
   // (InventoryCommandPage.tsx:345), the same PATCH /inventory/:rid/item/:id.
@@ -193,11 +197,52 @@ export default function RowDropdown(props: RowDropdownProps) {
     }
   };
 
+  // "Reconcile N into live": the legacy expansion's one tap (RowExpansion.tsx:207-214),
+  // the same POST /inventory-ledger/inventory/:id/reconcile with the count set to
+  // live + shadow. Held back while either figure is unread, since the sum would be a guess.
+  const [reconciling, setReconciling] = useState(false);
+  const canReconcile =
+    row.stock !== null && row.shadow !== null && row.shadow > 0 && row.wineId !== null && !reconciling;
+  const reconcileShadow = async () => {
+    if (!canReconcile || row.stock === null || row.shadow === null || row.wineId === null) return;
+    const total = row.stock + row.shadow;
+    const n = row.shadow;
+    setMoreOpen(false);
+    setReconciling(true);
+    try {
+      await reconcileItem(row.id, { wineId: row.wineId, actualCount: total, notes: 'Shadow reconciled into live' });
+      toast.success(`${title}: ${fmtCount(n)} shadow ${n === 1 ? 'bottle' : 'bottles'} booked into live, ${fmtCount(total)} on hand.`);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+    } catch (e) {
+      const f = writeFailure(e, {
+        refused: 'Nothing was reconciled',
+        act: 'the shadow bottles were booked into live',
+        check: 'Re-read the book before trying again.',
+      });
+      if (f.unknown) void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+      toast.error(f.text);
+    } finally {
+      setReconciling(false);
+    }
+  };
+
+  const copyName = async () => {
+    setMoreOpen(false);
+    try {
+      await navigator.clipboard.writeText(row.name ?? 'Unnamed title');
+      toast.success('Name copied');
+    } catch {
+      toast.error('Could not copy to the clipboard.');
+    }
+  };
+
   const head: { k: string; v: ReactNode }[] = [];
   if (row.name) head.push({ k: 'House name', v: row.name });
   if (row.libraryName) head.push({ k: 'On the library as', v: <em>{row.libraryName}</em> });
   if (row.grape) head.push({ k: 'Grape', v: row.grape });
-  if (row.bottleSizeMl !== null) head.push({ k: 'Format', v: volume(row.bottleSizeMl) });
+  // The house's measurement unit, as the legacy row reads it (RowExpansion.tsx:69,172).
+  if (row.bottleSizeMl !== null)
+    head.push({ k: 'Format', v: unit === 'oz' && row.bottleSizeMl > 0 ? formatVolume(row.bottleSizeMl, 'oz') : volume(row.bottleSizeMl) });
   if (row.vintage !== null) head.push({ k: 'Vintage', v: String(row.vintage) });
   // open_ml is what is LEFT in the open bottle: each pour subtracts from it
   // (inventory_lots.open_bottle_ml), as the legacy row says ("ml left").
@@ -214,6 +259,8 @@ export default function RowDropdown(props: RowDropdownProps) {
           ))}
         </dl>
       ) : null}
+
+      <NameThisWine inventoryId={row.id} currentName={row.name} restaurantId={props.restaurantId} />
 
       <div className="iv-drop-cols">
         <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} />
@@ -250,7 +297,7 @@ export default function RowDropdown(props: RowDropdownProps) {
           onClose={() => setMoreOpen(false)}
           anchorRef={moreRef}
           width={220}
-          label="More things to do with this title: move bottles between zones, record a pour by hand, export or copy it, mark it inactive, or remove it from inventory"
+          label="More things to do with this title: move bottles between zones, record a pour by hand, reconcile shadow into live, export or copy it, mark it inactive, or remove it from inventory"
         >
           <div className="iv-menu" role="menu" onKeyDown={(e) => onMenuKeys(e, moreRef.current, () => setMoreOpen(false))}>
             <button
@@ -274,6 +321,20 @@ export default function RowDropdown(props: RowDropdownProps) {
               }}
             >
               Record a pour
+            </button>
+            {row.shadow !== null && row.shadow > 0 ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="iv-menu-item iv-focus"
+                disabled={!canReconcile}
+                onClick={() => void reconcileShadow()}
+              >
+                Reconcile {fmtCount(row.shadow)} into live
+              </button>
+            ) : null}
+            <button type="button" role="menuitem" className="iv-menu-item iv-focus" onClick={() => void copyName()}>
+              Copy the name
             </button>
             <button
               type="button"
@@ -711,6 +772,13 @@ function Paperwork({
           </p>
         </>
       )}
+      {/* The legacy expansion's "View ledger" (RowExpansion.tsx), same destination. */}
+      <p className="iv-note">
+        <Link className="iv-linkish iv-focus" to="/documents-reports" data-testid="row-view-ledger">
+          View the ledger
+        </Link>{' '}
+        — it opens the house’s documents and reports, not this title alone.
+      </p>
     </section>
   );
 }

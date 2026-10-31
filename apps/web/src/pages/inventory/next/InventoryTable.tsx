@@ -18,7 +18,8 @@
 import { Fragment } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import RowDropdown, { type RowDropdownProps } from './RowDropdown';
-import { cellMoney, EM, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow } from './useInventoryNextData';
+import { cellMoney, EM, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
+import { NameHint } from './NameThisWine';
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   rows: InvRow[];
@@ -30,6 +31,9 @@ export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   onToggle: (id: string) => void;
   advice: AdviceLoad;
   onPriceChanged: () => void;
+  /** The sort in force, and how a sortable header sets one. Absent = plain headers. */
+  sort?: SortId;
+  onSort?: (sort: SortId) => void;
   /** Row selection (legacy NEW-064). Absent = no checkbox column. */
   selected?: Set<string>;
   onSelect?: (id: string) => void;
@@ -38,6 +42,9 @@ export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
 }
 
 const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Runway', 'Your price', 'Value', 'Status'];
+
+/** The headers that sort, and the sort each one sets. */
+const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day': 'pace', Value: 'value' };
 
 /** The status word, never a colour alone. */
 function statusWord(row: InvRow): string {
@@ -104,9 +111,40 @@ export default function InventoryTable(props: InventoryTableProps) {
                 />
               </th>
             ) : null}
-            {COLUMNS.map((c) => (
-              <th key={c} className={c === 'Title' || c === 'Type' || c === 'Zone' || c === 'Status' ? undefined : 'iv-r'}>
-                {c === 'Your price' ? (
+            {COLUMNS.map((c) => {
+              // The legacy column-header sort (InventoryCommandPage.tsx:496,1337):
+              // a header that has a sort sets it; clicking the active one goes
+              // back to Needs you first. Each sort reads one direction.
+              const key = HEADER_SORT[c];
+              const on = key !== undefined && props.sort === key;
+              const label =
+                c === 'Your price' ? (
+                  <>
+                    Your price <span className="iv-dim">btl · glass</span>
+                  </>
+                ) : c === 'Value' ? (
+                  <>
+                    Value <span className="iv-dim">at cost</span>
+                  </>
+                ) : (
+                  c
+                );
+              return (
+              <th
+                key={c}
+                className={c === 'Title' || c === 'Type' || c === 'Zone' || c === 'Status' ? undefined : 'iv-r'}
+                aria-sort={on ? (key === 'name' ? 'ascending' : 'descending') : undefined}
+              >
+                {key !== undefined && props.onSort ? (
+                  <button
+                    type="button"
+                    className="iv-thsort iv-focus"
+                    data-on={on}
+                    onClick={() => props.onSort?.(on ? 'needs' : key)}
+                  >
+                    {label}
+                  </button>
+                ) : c === 'Your price' ? (
                   <>
                     Your price <span className="iv-dim">btl · glass</span>
                   </>
@@ -118,7 +156,8 @@ export default function InventoryTable(props: InventoryTableProps) {
                   c
                 )}
               </th>
-            ))}
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -159,17 +198,26 @@ export default function InventoryTable(props: InventoryTableProps) {
                     <button
                       type="button"
                       className="iv-titlebtn iv-focus"
+                      data-row-id={row.id}
                       aria-expanded={open}
                       onClick={(e) => {
                         e.stopPropagation();
                         onToggle(row.id);
                       }}
                     >
-                      <span className="iv-name">{row.name ?? 'Unnamed title'}</span>
+                      <span className="iv-name">
+                        {row.name ?? 'Unnamed title'}
+                        {row.abc ? (
+                          <span className="iv-abc" data-testid="inv-abc" title={`ABC class ${row.abc}`}>
+                            {row.abc}
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="iv-producer">
                         {[row.producer, row.vintage === null ? null : String(row.vintage)].filter(Boolean).join(' · ') || EM}
                       </span>
                     </button>
+                    <NameHint inventoryId={row.id} />
                   </td>
                   <td data-label="Type" className={row.type && row.type !== 'unclassified' ? undefined : 'iv-dim'}>
                     {row.type ? typeLabel(row.type) : props.libraryUnread ? EM : 'not recorded'}

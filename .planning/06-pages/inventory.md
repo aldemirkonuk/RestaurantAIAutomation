@@ -926,3 +926,137 @@ So the order is:
 4. Flip `inventory_next` house by house (the founder's keystroke). Delete the legacy page once (ADR 0149).
 
 [changed 2026-10-30, later the same day, founder's pick "Flip now, port with wave (Recommended)"; rejected "Land the wave first" and "Stop at dark on main". Measured: the "146" above counts merge commits; `git log --no-merges origin/main..integ/rehearsal-2026-10-10 -- apps/web/src/pages/inventory` is **85** commits, `git cherry` finds none of them on main, and 80 of the 85 also change files outside `pages/inventory` (gateway, migrations) that exist only on that unpushed branch. So step 3's port cannot be done on main, and the page live on main today has none of those fixes either: flipping Next loses nothing a house has now. [changed 2026-10-31, after the #677 gate BLOCK at df245cab2: this clause was false. Next lacks five acts the command page has — remove from inventory, mark inactive/active, a delivery without an order, an auction-lot start, Auto-Locate — and `/inventory-legacy` redirects, so a flipped house could not reach them. Founder's pick "Port all 5, then flip (Recommended)"; rejected "Port top 3, flip, rest later", "Flip now, record the gaps", "Flip + old page behind a link". The five are built into Next on #677 before any house flips.] New order: merge #685, merge #677, flip `inventory_next` for every house — the founder also said the coordinator runs the flip (`scripts/flip_mudavym_design_flags.py`), not his keystroke this time — and the wave's 85 command-page fixes are re-aimed at Next **in the wave's own landing**. The legacy page is deleted once (ADR 0149) only after that landing, so the wave still has a target to land on.]
+
+### 16.5 Legacy-to-Next census (2026-10-31, #677 gate rounds 1–4)
+
+The #677 gate found missing acts in three rounds: the five acts, then selection, then the insights rail and Name this wine. Before the flip, every import, handler, button, menu item, key, toast and URL param of `InventoryCommandPage.tsx` was therefore classified as (a) in Next, (b) reachable by link, (c) retired by a recorded row, or (d) gap. All (d) items are ported except the two named in the tech-debt file: reversing a sort on a second header click, and re-fetching the branch list when the page loads.
+
+
+Worktree: /Users/aldemirkonuk/Projects/wt-inv-plan, based on ea3ba960b plus uncommitted round-4 edits.
+L = `apps/web/src/pages/inventory/command/InventoryCommandPage.tsx`, X = `command/RowExpansion.tsx`.
+N = `next/InventoryNext.tsx`, T = `next/InventoryTable.tsx`, R = `next/RowDropdown.tsx`, S = `next/InventorySheets.tsx`, D = `next/useInventoryNextData.ts`, U = `next/iv-url.ts`, W = `next/NameThisWine.tsx`.
+P = `.planning/06-pages/inventory.md`; A = `.planning/decisions/0315-inventory-is-rebuilt-as-inventorynext-on-makeover-b.md`.
+Classes: (a) in Next · (b) reachable by a link from Next · (c) retired by a recorded row · (d→a) was a gap, ported this round · (d) gap, not ported.
+
+## Imports (rendered pieces)
+- ContextualInsights, L:1087: (d→a). It is mounted at N:809 with `host="inventory" defaultOpen={false}`. Not mounted in the empty house, per INV-W2 (P:612: "the insights card" in a dashboard of zeros).
+- NameThisWineHint, L:1428: (d→a). W `NameHint`, mounted at T:220.
+- NameThisWine editor, X:166: (d→a). W `NameThisWine`, mounted at R:263. Same `fetchHouseItemResearch` query and key, same `updateInventoryItem(id,{wineName})`. It also invalidates `['inventory-next']`, and its errors use iv-failure words.
+- HouseItemResearchUnread, L:1597: (d→a). W `NamingUnread`, at N:910.
+- DeliveriesToName, L:1084: (a) at N:609,789, behind the quiet line. It is a different list from the one above.
+- useInventoryPage / getInventory: (a). D reads the stock (`queryKeys.inventory.all`).
+- useStorageLocations: (a). D supplies `locations`, and N passes them to the table, map and panel.
+- useCreateInventoryItem / createInventoryItem: (a) at N:476, the manual-receipt and menu-scan paths.
+- getOrders, used for the to-verify invoice chip at L:370: (c) by F-1 (P:769). The pinned match became a quiet line, "N invoices wait… Open in Receipts" (N:126-132).
+- AddWineToInventoryModal / AddWineSelectionModal, L:973 and L:1638-1755: (b). "Add a bottle" goes to /wines (N:641,775), per INV-W5's build rulings (P:619). Menu, receipt and auction each have their own Tools button (N:924, 933, 936).
+- StorageLocationManager, L:1757: (a) at N:661,829, through `setPanel('locations')`. The map's onManageLocations opens it too.
+- AutoLocatePreviewModal and computeAutoLocatePlan, L:306-341 and L:1769: (a) at N:1018, include-assigned toggle at N:1023.
+- RemoveFromInventoryModal, L:1903: (a). It is reached from R:379 (one row) and N:870 (the selection).
+- PosMappingPanel, L:1628: (a). The Tools button is at N:930.
+- getUnresolvedLines, the POS queue chip at L:397-408 and L:1115-1142: (d→a). The read is at N:362, and the line at N:792/799 says either "N POS lines rang up and moved no stock · Map them" or that the queue is unreadable.
+- getActiveRestaurantId: (a). N uses `data.rid`.
+- useTypedInventorySubscription, L:256: (d→a). It is at N:352 and invalidates `['inventory']`.
+- ManualReceiptWorkspace, L:1666: (a) at N:933.
+- AuctionLotStart, L:1679: (a) at N:936.
+- MenuScannerFlow and summarizeMenuScanPersist, L:1651: (a) at N:924 and N:993.
+- ThemedSelect, the sort and filter selects: (a) as the Mudavym `Select` at N:734-754.
+- ExportMenu formats (csv, clipboard and print), L:941-966: (c). CSV-only is recorded as a departure that is still open with the founder (A:50; INV-W7, P:617).
+- exportTable: (a), through `iv-export.runExport`.
+- classifyStock / StatusChip: (a). Next uses its own `severity`/`statusWord` in T and the chips in D.
+- formatVolume with measurementUnit, L:182 and X:69,172: (d→a). R:245 shows Format in oz when the house uses oz. The count-sheet "Bottle size (ml)" column stays a plain ml figure, so it is true in either unit.
+- useRestaurantSettingsStore: (d→a), as the line above.
+- RestaurantBranchSwitcher and refreshBranches, L:241 and L:916: (a). The Mudavym shell's HouseHeader renders the switcher (`components/mudavym/HouseHeader.tsx:73,127`) on every Next page.
+- useAuth / canEditPrice for owner and manager, L:196: (a) as `data.canManage` (N:894; R gates Write off).
+- watchSpotCountOutbox, L:247: (a). D reads `['inventory-next','spot-count-outbox']` (D:657-669), and the quiet line says how many counts wait on the device (N:150).
+- toast (sonner): (a). Next uses sonner in N and R.
+- bits Kpi tiles, L:1032-1081: (c) by F-4 (P:780). The header sentence replaces them.
+- bits StockGauge: (a) as the "Live / shadow · par" column in T.
+- bits AbcBadge, L:1426: (d→a). `abc` comes from `abcClass` (D toRow) and shows at T:211.
+- bits TypeChip: (a) as the Type column and filter.
+- bits rowFlags / FLAG_DEFS, the chips Below par, Reconcile, Count due, Dead stock and Price signals (L:120, L:1143): (a) as the chip tabs in D:357-401 and N:713. "Out" is split out from Below par (INV-W5).
+- bits runwayDays, marketDeltaPct and daysSinceCounted: (a) runway and days counted, in the T columns and the R count block. Market delta is (c) by INV-W15 (P:630): Market moved into the details, and there is no market read yet (R:638, N footer).
+- fmtMoney / COUNT_DUE_DAYS: (a). `cellMoney` in D; COUNT_DUE_DAYS is imported for the Observation column.
+- RowExpansion: (a). RowDropdown, R, has the same content, itemised below.
+- HousePriceCell / addedPriceNote / getPriceAdvice: (a) at T:14,19 (the price cell), with advice from D:619.
+- ReceivingWorkspace, used by `?verify=`, L:421 and L:1791: (b). `?verify=` goes to /receiving?order= (N:561-562; W38, P:653).
+- CellarMapView, L:1613: (a) at N:813, with onOpenInTable and onManageLocations.
+
+## Header and page states
+- Failed-read banner with "Try again", L:1011-1029: (a) at N:591-597 ("Read again").
+- Empty states, three variants, L:1559-1595: (a). The empty house is at N:602, nothing matching at N:835, and the failed read at N:591.
+- "Show all wines" / clear filters: (a). "Clear the filters" is in N:835 and in the footer (INV-W25).
+- Footer "Showing N of M": (a) at N:955.
+- Footer "Dead stock tip", L:1602-1606: (d→a) at N:978, only when the dead-stock count was read.
+- Table/Cellar Map toggle, L:918: (a) in the N View toggle.
+- "Locations" button, L:967: (a), the Tools zones panel.
+
+## Toolbar
+- Search with the "( / )" hint, L:1165: (a), placeholder "Search titles, producers, grapes". The `/` key is at N:220, and the hint is hidden on touch screens (W40, P:655).
+- Location chips plus show-more, L:1173-1237: (a) as the Zone `Select` (N:734). Every zone is in one list, so there is nothing more to show. The unreadable notices for zones and mappings appear as the iv-note for unread zones and in the `data.unread` list.
+- Type chips, L:1238: (a) as the Type `Select` (N:745).
+- Sort dropdown, runway/velocity/value/name, L:96 and L:1253: (a) for needs (severity, then runway), name and value. Velocity was (d→a): the new `pace` sort, "Fastest moving" (D sortRows; U SORTS; N Sort options).
+- Column-header sort with applySort, L:496 and L:1337: (d→a) for Title, Vel/day and Value (T:118,141; `aria-sort`). Clicking the active header goes back to Needs you first. **Direction toggling (asc/desc) is (d), not ported**: every Next sort reads in one fixed direction.
+
+## Keyboard (L:772-830)
+- Cmd/Ctrl+A selects all: (d→a) at N:320.
+- `/` focuses search: (a) at N:220.
+- Escape clears the selection: (d→a) at N:326.
+- ArrowUp/ArrowDown step between rows: (d→a) at N:330. Focus moves between the title buttons.
+- Enter expands the row: (a). Enter on a focused title button toggles it open (T, `aria-expanded`).
+- Space toggles selection: (d→a) at N:341, on a focused title.
+- The focused row scrolls into view, L:833: (d→a). `scrollIntoView({block:'nearest'})` runs at N:330.
+
+## Selection and bulk (L:508-531, L:1267-1302)
+- Row checkboxes and select-all: (a) in the T head and rows (phase 2).
+- Export selected / Copy names / Remove selected / Clear: (a) at N:849-870.
+
+## Exports
+- Count sheet, L:605: (a), "Export count sheet" at N:940. It has the Bottle size column; Observation was (d→a) at N:542, built only from figures that were read, with the market notes left out (no market read).
+- Valuation, L:569: (a), "Export valuation" at N:943. Its Market column is (c) by INV-W15 (P:630), since there is no market read.
+- Export all locations, L:723: (c) by INV-W18 (P:633).
+- Export this row: (a) at R:345.
+
+## Context menu (L:1800-1901)
+In Next these live in the row's More menu (R).
+- Expand/Collapse: (a), a title click.
+- Select/Deselect: (a), the row checkbox or Space.
+- Draft PO, which navigated to `/orders?draft=new&…`: (c) by F-6 (P:788) and INV-W5. Order more (R:278) replaces it.
+- Copy name: (d→a), "Copy the name" at R:337.
+- Mark inactive/active: (a) at R:360.
+- Export this row: (a) at R:345.
+- Remove from inventory: (a) at R:379.
+- Right-click itself as the gesture: (c). INV-W5 (P:615) puts row actions in the action row and More. Opening the row's own menu is the same reach.
+
+## Row expansion (X) against the RowDropdown (R)
+- Info strip (Grape, Region, Format, Vintage, Last counted, Open bottle ml): (a) in the R head facts. Format honours oz (R:245), Last counted is at R:475, Open bottle at R:247. Region: (a) in the T producer line and the library head (`libraryName`).
+- Live vs shadow card: (a) in `WhereTheCountComesFrom` (R:266).
+- "Reconcile N into live" through reconcileItem, X:207-214: (d→a), a More item at R:333. It is the same POST with live + shadow, and is held while live stock or shadow is unread.
+- Par and reorder (suggested order, reorder point, runway): (a) in R:266. The hard-coded 6d lead time is (c), an honesty trap (P §15, "The lead time is hard-coded to 6 days"); Next uses the server's reorder point.
+- Draft PO button: (c) by F-6 (P:788). Order more is at R:278.
+- Market price card (market avg, WAC, delta, menu price ×): (a) in `WhatItHasCost` (R:268, Market at R:638, margin at R:608,635).
+- Velocity 14d (getItemActivity): (a) in `HowFastItPours` (R:267) and `useRowRecord`.
+- "When it sells" heat map: (a) in R:494 (`whenItSells`).
+- Order history (getOrders by inventoryId): (a) in `Paperwork` (R:271), through the ledger purchases with an /orders?order= link.
+- Auction lot records (fetchAuctionLotRecords): (a) at D:856 and R:641.
+- ReceiptDepth, behind the flag: (a) in `Paperwork` (R:271), the fourth block that §15 names (P, "It adds an action row and a fourth block, Paperwork").
+- Spot count (SpotCountPanel): (a), Record a count at R:275 opening `CountSheet` (S, `submitSpotCount` outbox).
+- Manual adjust ± with reasons: (c) by F-7 (P:794) and F-5. Write off (R:282) is a sealed, role-gated sheet.
+- Transfer (MultiLocationCell → transferStock): (a), Transfer between zones at R:312 (S TransferSheet).
+- Record pour (recordPour): (a), Record a pour at R:300,323 (S PourSheet).
+- View ledger → /documents-reports: (d→a) at R:777. It is the same unfiltered destination, and the link text says so.
+- Toasts ('Ledger updated', 'Moved N bottles', 'Pour recorded' and their failures): (a). Each sheet says its outcome in house words (S, iv-failure).
+
+## Toasts on the page (L)
+- Auto-Locate success and failure, L:318-341: (a) in the N Auto-Locate handler.
+- Exports: (a) in iv-export runExport.
+- Menu scan, L:1651: (a) at N:993.
+- Add-wine sample / unknown-cost notes, L:1703-1755: (b), on /wines (P:619).
+
+## URL params
+- `?verify=`, L:421: (b), to /receiving?order= (N:561; W38).
+- `?wine=`, L:439: (a). N:196 and U, with `?highlight=` too (W38).
+- `?action=reorder`, which legacy deliberately does not read (L:433): (a). Next does not read it either.
+
+## Not ported (d), and why
+- **Sort direction toggle** (L:496: a second click on the same header reverses the order). It is not done. It can be done truthfully: it needs a `dir` field in the URL view (U), sortRows, and the sort words in the footer.
+- **refreshBranches on mount** (L:241). The branch list is fetched once when auth loads (`contexts/AuthContext.tsx:485`); Next does not fetch it again when the page mounts. A branch added in another tab shows only after a reload. This can be ported truthfully as a one-line effect, but it was not done. I counted it as a gap, not as (a).

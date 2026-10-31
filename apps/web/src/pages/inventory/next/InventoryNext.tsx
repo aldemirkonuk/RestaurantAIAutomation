@@ -22,10 +22,14 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTypedInventorySubscription } from '../../../contexts/RealtimeContext';
+import { getUnresolvedLines } from '../../../services/api/posHub';
 import { toast } from 'sonner';
 import { Select } from '@/components/mudavym';
 import { DeliveriesToName } from '@/components/mudavym/DeliveriesToName';
+import { ContextualInsights } from '@/components/insights/ContextualInsights';
+import { NamingUnread } from './NameThisWine';
 import { readView, writeView, type IvView } from './iv-url';
 import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager';
 import { PosMappingPanel } from '../../../components/inventory/PosMappingPanel';
@@ -45,6 +49,7 @@ import InventoryTable from './InventoryTable';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
 import { blank, runExport, today, valuationColumns } from './iv-export';
+import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
   chipMatch,
@@ -295,6 +300,72 @@ export default function InventoryNext() {
     );
   }, [visible]);
   const clearSelect = useCallback(() => setSelected(new Set()), []);
+
+  // The legacy table's keys (InventoryCommandPage.tsx:772-830), on this table:
+  // Cmd/Ctrl+A selects every listed title, Escape clears the selection, the
+  // arrows step between titles, and Space on a focused title ticks it. Enter on
+  // a focused title opens it, as any button does. Nothing fires while typing
+  // or while a panel or the remove modal is open.
+  const keyBlocked = view !== 'table' || panel !== null || removeSel !== null;
+  useEffect(() => {
+    if (keyBlocked) return;
+    const titles = () => Array.from(document.querySelectorAll<HTMLButtonElement>('.iv-titlebtn[data-row-id]'));
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+      if (typing) return;
+      // A sheet, a menu or a list box owns its own keys.
+      if (t?.closest?.('[role="dialog"],[role="menu"],[role="listbox"]')) return;
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'a' || e.key === 'A')) {
+        e.preventDefault();
+        setSelected(new Set(visible.map((r) => r.id)));
+        return;
+      }
+      if (e.metaKey || e.ctrlKey) return;
+      if (e.key === 'Escape' && selected.size > 0) {
+        clearSelect();
+        return;
+      }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        const list = titles();
+        if (list.length === 0) return;
+        e.preventDefault();
+        const at = list.indexOf(document.activeElement as HTMLButtonElement);
+        const next =
+          e.key === 'ArrowDown' ? list[at < 0 ? 0 : Math.min(list.length - 1, at + 1)] : list[at <= 0 ? 0 : at - 1];
+        next.focus();
+        next.scrollIntoView?.({ block: 'nearest' });
+        return;
+      }
+      if (e.key === ' ' && t instanceof HTMLElement && t.matches('.iv-titlebtn[data-row-id]')) {
+        e.preventDefault();
+        toggleSelect(t.dataset.rowId as string);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [keyBlocked, visible, selected.size, clearSelect, toggleSelect]);
+
+  // Cross-page stock events (a delivery booked, another tab's change): the
+  // legacy page refetches on each (InventoryCommandPage.tsx:256), and so does this one.
+  useTypedInventorySubscription(
+    useCallback(() => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
+    }, [queryClient]),
+  );
+
+  // POS lines that rang up and moved no stock (InventoryCommandPage.tsx:397-408,
+  // 1115-1142). A failed read is said, never drawn as an empty queue.
+  const posQueue = useQuery({
+    queryKey: ['pos-hub', 'unresolved', data.rid],
+    queryFn: () => getUnresolvedLines(data.rid ?? undefined),
+    enabled: Boolean(data.rid),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const posOpen = posQueue.data?.summary?.open_lines ?? 0;
+
   const selBlocked = selectedRows.filter((r) => removeBlocked(r) !== null).length;
   const copySelectedNames = async () => {
     const names = selectedRows.map((r) => r.name ?? 'Unnamed title').join('\n');
@@ -422,6 +493,27 @@ export default function InventoryNext() {
     return { inventoryId: (created as { id: string }).id };
   };
 
+  // The legacy count sheet's Observation column (InventoryCommandPage.tsx:534-567),
+  // from what this page read. A figure that was not read adds no note: an
+  // unread runway is not "no risk", and the row's own "never counted" (RowDropdown) reads a
+  // missing count date the same way. The market notes are left out because no market price is read.
+  const countObservation = (r: InvRow): string => {
+    const notes: string[] = [];
+    if (r.analyticsReadable && r.deadStock)
+      notes.push(`Dead stock${r.daysSinceSale !== null ? `, no sale in ${r.daysSinceSale}d` : ''}; consider clearing it`);
+    if (r.runway !== null && r.runway <= 3) notes.push(`Stock-out risk, ${Math.round(r.runway)}d runway`);
+    else if (r.runway !== null && r.runway <= 5) notes.push(`Reorder soon, ${Math.round(r.runway)}d runway`);
+    if (r.shadow !== null && r.shadow > 0) notes.push(`Shadow ${r.shadow}; reconcile after this count`);
+    if (r.lastCountedAt === null) notes.push('Never counted');
+    else if (r.lastCountedAt !== null) {
+      const days = Math.floor((Date.now() - Date.parse(r.lastCountedAt)) / 86_400_000);
+      if (Number.isFinite(days) && days > COUNT_DUE_DAYS) notes.push(`Count overdue, ${days}d`);
+    }
+    if (r.velocity !== null && r.velocity > 0 && r.par !== null && r.par > 0 && r.stock !== null && r.shadow !== null && r.stock + r.shadow > r.par * 3)
+      notes.push('Overstocked against par');
+    return notes.join('; ');
+  };
+
   const exportCountSheet = () =>
     runExport<InvRow>(
       visible,
@@ -447,6 +539,7 @@ export default function InventoryNext() {
         { header: 'Counted qty', value: () => '' },
         { header: 'Variance', value: () => '' },
         { header: 'Last counted', value: (r) => r.lastCountedAt ?? '' },
+        { header: 'Observation', value: (r) => countObservation(r) },
       ],
       `inventory-count-${today()}`,
       'Inventory count sheet',
@@ -665,6 +758,7 @@ export default function InventoryNext() {
                   { value: 'needs', label: 'Needs you first' },
                   { value: 'name', label: 'Name' },
                   { value: 'value', label: 'Value at cost' },
+                  { value: 'pace', label: 'Fastest moving' },
                 ]}
               />
               <span className="iv-toggle" role="group" aria-label="View">
@@ -694,6 +788,25 @@ export default function InventoryNext() {
 
             <QuietLine {...data.waiting} naming={naming} onName={() => setNaming((v) => !v)} />
             {naming ? <DeliveriesToName items={nameable} /> : null}
+            {posQueue.isError ? (
+              <p className="iv-note" data-testid="inv-pos-queue">
+                Whether POS lines are moving no stock could not be read. That is not a claim that none are.{' '}
+                <button type="button" className="iv-linkish iv-focus" onClick={() => void posQueue.refetch()}>
+                  Read again
+                </button>
+              </p>
+            ) : posOpen > 0 ? (
+              <p className="iv-note" data-testid="inv-pos-queue">
+                {fmtCount(posOpen)} POS {posOpen === 1 ? 'line rang up and moved' : 'lines rang up and moved'} no stock.{' '}
+                <button type="button" className="iv-linkish iv-focus" onClick={() => setPanel('pos')}>
+                  Map them
+                </button>
+              </p>
+            ) : null}
+            {/* The insights rail: the legacy page's only mount
+                (InventoryCommandPage.tsx:1087), same props. Its one-tap acts
+                are live since #483. */}
+            <ContextualInsights host="inventory" defaultOpen={false} className="iv-insights" />
 
             {view === 'map' ? (
               <div className="iv-map">
@@ -774,6 +887,8 @@ export default function InventoryNext() {
                 rows={visible}
                 libraryUnread={!data.libraryAnswered}
                 grouped={sort === 'needs'}
+                sort={sort}
+                onSort={(next) => setV({ sort: next })}
                 openId={openId}
                 onToggle={(id) => setV({ open: openId === id ? null : id })}
                 canManage={data.canManage}
@@ -792,6 +907,7 @@ export default function InventoryNext() {
               />
               </>
             )}
+            <NamingUnread />
             {zoneUnread > 0 ? (
               <p className="iv-note">
                 {zoneUnread} {zoneUnread === 1 ? 'title whose zones' : 'titles whose zones'} could not be read{' '}
@@ -857,6 +973,12 @@ export default function InventoryNext() {
                   : ' Every figure on this page was read.'}{' '}
               A figure the house could not read is —, never 0, and nothing on this page is a default.
             </p>
+            {/* The legacy footer's tip (InventoryCommandPage.tsx:1602-1606), only when dead stock was read. */}
+            {!data.paceUnread && (chipCounts.get('dead') ?? 0) > 0 ? (
+              <p className="iv-note" data-testid="inv-dead-tip">
+                Dead stock tip: feature slow movers by the glass this weekend.
+              </p>
+            ) : null}
           </>
         ) : null}
       </div>

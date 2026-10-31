@@ -107,6 +107,8 @@ export interface InvRow {
   runway: number | null;
   daysSinceSale: number | null;
   deadStock: boolean;
+  /** The analytics ABC class (inventory.service.ts:169); absent when not sent. */
+  abc?: 'A' | 'B' | 'C' | null;
   bottle: number | null;
   glass: number | null;
   pourMl: number | null;
@@ -238,6 +240,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     runway,
     daysSinceSale: num(r.daysSinceSale),
     deadStock: r.deadStock === true,
+    abc: r.abcClass === 'A' || r.abcClass === 'B' || r.abcClass === 'C' ? r.abcClass : null,
     bottle: num(r.menuPriceBottle),
     glass: num(r.menuPriceGlass),
     pourMl: num(r.pourSizeMl),
@@ -287,9 +290,14 @@ export function needsYouFirst(a: InvRow, b: InvRow): number {
   return (a.name ?? '').localeCompare(b.name ?? '');
 }
 
-export type SortId = 'needs' | 'name' | 'value';
+export type SortId = 'needs' | 'name' | 'value' | 'pace';
 
-export const SORT_LABEL: Record<SortId, string> = { needs: 'Needs you first', name: 'Name', value: 'Value at cost' };
+export const SORT_LABEL: Record<SortId, string> = {
+  needs: 'Needs you first',
+  name: 'Name',
+  value: 'Value at cost',
+  pace: 'Fastest moving',
+};
 
 /**
  * How the list is ordered, said truthfully (INV-W23). With no cost on any
@@ -300,6 +308,9 @@ export function sortWords(sort: SortId, rows: InvRow[]): string {
   if (sort === 'value' && rows.length > 0 && rows.every((r) => r.value === null)) {
     return 'sorted Value at cost, though no title listed has a cost yet, so they stay in Needs you first order';
   }
+  if (sort === 'pace' && rows.length > 0 && rows.every((r) => r.velocity === null)) {
+    return 'sorted Fastest moving, though no pace was read for any title listed, so they stay in Needs you first order';
+  }
   return `sorted ${SORT_LABEL[sort]}`;
 }
 
@@ -307,6 +318,14 @@ export function sortRows(rows: InvRow[], sort: SortId): InvRow[] {
   const out = [...rows];
   if (sort === 'needs') return out.sort(needsYouFirst);
   if (sort === 'name') return out.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+  // The legacy velocity sort (InventoryCommandPage.tsx:96), fastest first; an
+  // unread pace sorts after every read one, never as 0.
+  if (sort === 'pace')
+    return out.sort((a, b) => {
+      const va = a.velocity ?? Number.NEGATIVE_INFINITY;
+      const vb = b.velocity ?? Number.NEGATIVE_INFINITY;
+      return va === vb ? needsYouFirst(a, b) : vb > va ? 1 : -1;
+    });
   // Value at cost, largest first; an unknown value sorts after every known one.
   return out.sort((a, b) => {
     const va = a.value ?? Number.NEGATIVE_INFINITY;

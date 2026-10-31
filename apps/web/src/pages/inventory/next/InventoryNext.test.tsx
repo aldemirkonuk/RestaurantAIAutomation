@@ -66,9 +66,24 @@ vi.mock('../../../components/inventory/AutoLocatePreviewModal', () => ({
     return <div data-testid="auto-locate-preview" />;
   },
 }));
+// The ADR 0192 research list (NameThisWine.tsx) and the insights rail.
+const research = vi.hoisted(() => ({ fetch: vi.fn(async (): Promise<unknown[]> => []) }));
+const insights = vi.hoisted(() => ({ props: [] as Record<string, unknown>[] }));
+const pos = vi.hoisted(() => ({ lines: vi.fn(async (): Promise<unknown> => ({ summary: { open_lines: 0 } })) }));
+vi.mock('../../../services/api/posHub', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  getUnresolvedLines: pos.lines,
+}));
+vi.mock('@/components/insights/ContextualInsights', () => ({
+  ContextualInsights: (p: Record<string, unknown>) => {
+    insights.props.push(p);
+    return <div data-testid="contextual-insights" />;
+  },
+}));
 vi.mock('../../../services/api/inventory', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   createInventoryItem: ported.create,
+  fetchHouseItemResearch: research.fetch,
 }));
 vi.mock('./RowDropdown', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -1270,5 +1285,168 @@ describe('row selection, ported from the legacy table (re-gate 2026-10-31)', () 
     tick('Alpha');
     fireEvent.change(screen.getByPlaceholderText('Search titles, producers, grapes'), { target: { value: 'alpha' } });
     expect(screen.queryByTestId('inventory-selbar')).toBeNull();
+  });
+});
+
+describe('live legacy features the overturn named (round 4, 2026-10-31)', () => {
+  afterEach(() => {
+    insights.props = [];
+    research.fetch.mockReset();
+    research.fetch.mockImplementation(async () => []);
+  });
+
+  it('mounts the insights rail with the legacy props: host inventory, closed by default', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Alpha' })] });
+    renderPage();
+    expect(screen.getByTestId('contextual-insights')).toBeTruthy();
+    const last = insights.props[insights.props.length - 1];
+    expect(last.host).toBe('inventory');
+    expect(last.defaultOpen).toBe(false);
+  });
+
+  it('flags a placeholder-named title in its row with the gateway\'s words', async () => {
+    research.fetch.mockImplementation(async () => [
+      { inventoryId: 'a', status: 'not_findable', reason: 'placeholder', flag: 'Name this wine to get menu help.', updatedAt: '' },
+      { inventoryId: 'b', status: 'matched', reason: 'ok', flag: null, updatedAt: '' },
+    ]);
+    mock.data = data({ rows: [row({ id: 'a', name: 'house red' }), row({ id: 'b', name: 'Musar' })] });
+    renderPage();
+    const hint = await screen.findByTestId('name-this-wine-hint');
+    expect(hint.textContent).toBe('Name this wine to get menu help.');
+    expect(within(screen.getByTestId('inv-row-a')).getByTestId('name-this-wine-hint')).toBeTruthy();
+    expect(within(screen.getByTestId('inv-row-b')).queryByTestId('name-this-wine-hint')).toBeNull();
+  });
+
+  it('says a failed research read once, never as nothing to name', async () => {
+    research.fetch.mockImplementation(async () => {
+      throw new Error('boom');
+    });
+    mock.data = data({ rows: [row({ id: 'a', name: 'Alpha' })] });
+    renderPage();
+    const said = await screen.findByTestId('house-item-research-unread');
+    expect(said.textContent).toContain('could not be read');
+    expect(said.textContent).toContain('not “nothing to name”');
+    expect(screen.queryByTestId('name-this-wine-hint')).toBeNull();
+  });
+});
+
+describe('the rest of the census: keys, realtime, POS queue, count-sheet notes (round 4)', () => {
+  afterEach(() => {
+    pos.lines.mockReset();
+    pos.lines.mockImplementation(async () => ({ summary: { open_lines: 0 } }));
+  });
+  const three = () => [
+    row({ id: 'a', wineId: 'wa', name: 'Alpha', openMl: 0 }),
+    row({ id: 'b', wineId: 'wb', name: 'Beta', openMl: 0 }),
+  ];
+
+  it('Cmd/Ctrl+A selects every listed title and Escape clears them, never while typing', () => {
+    mock.data = data({ rows: three() });
+    renderPage();
+    fireEvent.keyDown(screen.getByPlaceholderText('Search titles, producers, grapes'), { key: 'a', metaKey: true });
+    expect(screen.queryByTestId('inventory-selbar')).toBeNull();
+    fireEvent.keyDown(document.body, { key: 'a', ctrlKey: true });
+    expect(screen.getByTestId('inventory-selbar').textContent).toContain('2 selected');
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(screen.queryByTestId('inventory-selbar')).toBeNull();
+  });
+
+  it('the arrows step between titles and Space on a title ticks it', () => {
+    mock.data = data({ rows: three() });
+    renderPage();
+    fireEvent.keyDown(document.body, { key: 'ArrowDown' });
+    const first = within(screen.getByTestId('inv-row-a')).getByRole('button', { expanded: false });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: 'ArrowDown' });
+    const second = within(screen.getByTestId('inv-row-b')).getByRole('button', { expanded: false });
+    expect(document.activeElement).toBe(second);
+    fireEvent.keyDown(second, { key: ' ' });
+    expect(screen.getByTestId('inventory-selbar').textContent).toContain('1 selected');
+  });
+
+  it('re-reads the stock on a cross-page inventory event', () => {
+    mock.data = data({ rows: three() });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter>
+          <InventoryNext />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    spy.mockClear();
+    act(() => {
+      window.dispatchEvent(new CustomEvent('inventory_change', { detail: { new: { id: 'a' } } }));
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['inventory'] });
+  });
+
+  it('names POS lines that moved no stock, and says an unread queue is unread', async () => {
+    pos.lines.mockImplementation(async () => ({ summary: { open_lines: 4 } }));
+    mock.data = data({ rows: three() });
+    const { unmount } = renderPage();
+    expect((await screen.findByTestId('inv-pos-queue')).textContent).toContain('4 POS lines rang up and moved no stock');
+    unmount();
+    pos.lines.mockImplementation(async () => {
+      throw new Error('down');
+    });
+    renderPage();
+    expect((await screen.findByTestId('inv-pos-queue')).textContent).toContain('could not be read');
+  });
+
+  it('says nothing about POS when the queue is read empty', async () => {
+    mock.data = data({ rows: three() });
+    renderPage();
+    await act(async () => {});
+    expect(screen.queryByTestId('inv-pos-queue')).toBeNull();
+  });
+
+  it('writes the legacy Observation column from what was read, never from an unread figure', async () => {
+    exportSpy.mockClear();
+    mock.data = data({
+      rows: [
+        row({ id: 'a', name: 'Alpha', runway: 2, shadow: 3, lastCountedAt: null }),
+        row({ id: 'b', name: 'Beta', runway: null, shadow: null, lastCountedAt: new Date().toISOString() }),
+      ],
+    });
+    renderPage();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export count sheet' }));
+    });
+    const file = exportSpy.mock.calls[0][0] as { rows: InvRow[]; columns: { header: string; value: (r: InvRow) => unknown }[] };
+    const obs = file.columns.find((c) => c.header === 'Observation')!;
+    const byName = new Map(file.rows.map((r) => [r.name, String(obs.value(r))]));
+    expect(byName.get('Alpha')).toContain('Stock-out risk, 2d runway');
+    expect(byName.get('Alpha')).toContain('Shadow 3; reconcile after this count');
+    expect(byName.get('Alpha')).toContain('Never counted');
+    expect(byName.get('Beta')).toBe('');
+  });
+
+  it('shows the ABC class the server sent, and nothing when it sent none', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Alpha', abc: 'A' }), row({ id: 'b', name: 'Beta', abc: null })] });
+    renderPage();
+    expect(within(screen.getByTestId('inv-row-a')).getByTestId('inv-abc').textContent).toBe('A');
+    expect(within(screen.getByTestId('inv-row-b')).queryByTestId('inv-abc')).toBeNull();
+  });
+});
+
+describe('the legacy velocity sort and column-header sort (round 4)', () => {
+  it('sorts fastest first, an unread pace last, and says so when no pace was read', () => {
+    const rs = [row({ id: 'a', name: 'A', velocity: 0.5 }), row({ id: 'b', name: 'B', velocity: null }), row({ id: 'c', name: 'C', velocity: 2 })];
+    expect(sortRows(rs, 'pace').map((r) => r.id)).toEqual(['c', 'a', 'b']);
+    expect(sortWords('pace', [row({ velocity: null })])).toMatch(/no pace was read/);
+  });
+
+  it('a sortable header sets its sort, and clicking it again goes back to Needs you first', () => {
+    mock.data = data({ rows: [row({ id: 'a', name: 'Beta', velocity: 0.1 }), row({ id: 'b', name: 'Alpha', velocity: 3 })] });
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: 'Vel/day' }));
+    expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Fastest moving');
+    expect(screen.getByRole('columnheader', { name: 'Vel/day' }).getAttribute('aria-sort')).toBe('descending');
+    fireEvent.click(screen.getByRole('button', { name: 'Title' }));
+    expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Name');
+    fireEvent.click(screen.getByRole('button', { name: 'Title' }));
+    expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Needs you first');
   });
 });

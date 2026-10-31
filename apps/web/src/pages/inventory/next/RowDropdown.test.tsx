@@ -58,12 +58,14 @@ const inv = vi.hoisted(() => ({
   update: vi.fn(),
   reconcile: vi.fn(),
   del: vi.fn(),
+  research: vi.fn(async (): Promise<unknown[]> => []),
 }));
 vi.mock('../../../services/api/inventory', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   updateInventoryItem: inv.update,
   reconcileItem: inv.reconcile,
   deleteInventoryItem: inv.del,
+  fetchHouseItemResearch: inv.research,
 }));
 const tableExport = vi.hoisted(() => ({ exportTable: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../../../lib/tableExport', () => ({ exportTable: tableExport.exportTable }));
@@ -600,5 +602,138 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     expect(arg.rows).toHaveLength(1);
     expect(arg.rows[0].id).toBe('i1');
     expect(arg.columns.map((c: { header: string }) => c.header)).toContain('Value at cost');
+  });
+});
+
+describe('Name this wine in the opened row (ADR 0192, ported from RowExpansion.tsx:166)', () => {
+  const FLAG = 'If you name this wine, we can help you build a better menu.';
+  beforeEach(() => {
+    inv.update.mockReset().mockResolvedValue({});
+    inv.research.mockReset();
+  });
+
+  it('shows nothing when the research list has no flag for this title', async () => {
+    inv.research.mockResolvedValue([{ inventoryId: 'i1', status: 'matched', reason: '', flag: null, updatedAt: '' }]);
+    renderDrop();
+    await screen.findByTestId('row-dropdown');
+    await act(async () => {});
+    expect(screen.queryByTestId('name-this-wine')).toBeNull();
+  });
+
+  it('saves the new name through the same PATCH and says what the re-read list says', async () => {
+    inv.research
+      .mockResolvedValueOnce([{ inventoryId: 'i1', status: 'not_findable', reason: '', flag: FLAG, updatedAt: '' }])
+      .mockResolvedValue([{ inventoryId: 'i1', status: 'queued', reason: '', flag: null, updatedAt: '' }]);
+    renderDrop({ row: row({ name: 'house red' }) });
+    const band = await screen.findByTestId('name-this-wine');
+    expect(band.textContent).toContain(FLAG);
+    fireEvent.click(within(band).getByRole('button', { name: 'Name this wine' }));
+    fireEvent.change(screen.getByLabelText('The wine’s name'), { target: { value: 'Kavaklıdere Yakut 2019' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save the name' }));
+    });
+    expect(inv.update).toHaveBeenCalledWith('i1', { wineName: 'Kavaklıdere Yakut 2019' }, 'r1');
+    expect((await screen.findByTestId('name-this-wine-says')).textContent).toBe(
+      'Saved. We will look this wine up by its new name.',
+    );
+  });
+
+  it('refuses an empty name before any request, and says a refusal in the house words', async () => {
+    inv.research.mockResolvedValue([{ inventoryId: 'i1', status: 'not_findable', reason: '', flag: FLAG, updatedAt: '' }]);
+    renderDrop();
+    const band = await screen.findByTestId('name-this-wine');
+    fireEvent.click(within(band).getByRole('button', { name: 'Name this wine' }));
+    fireEvent.change(screen.getByLabelText('The wine’s name'), { target: { value: '   ' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save the name' }));
+    });
+    expect(inv.update).not.toHaveBeenCalled();
+    expect(screen.getByTestId('name-this-wine-problem').textContent).toMatch(/Write the wine’s name/);
+
+    inv.update.mockRejectedValueOnce(
+      Object.assign(new Error('Request failed with status code 403'), {
+        isAxiosError: true,
+        response: { status: 403, data: { message: 'FORBIDDEN_ROLE' } },
+      }),
+    );
+    fireEvent.change(screen.getByLabelText('The wine’s name'), { target: { value: 'Musar 2015' } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save the name' }));
+    });
+    const problem = screen.getByTestId('name-this-wine-problem').textContent ?? '';
+    expect(problem).toMatch(/^The name was not saved — /);
+    expect(problem).not.toMatch(/FORBIDDEN_ROLE|status code/);
+  });
+});
+
+describe('the rest of the legacy expansion (round 4 census)', () => {
+  beforeEach(() => {
+    inv.reconcile.mockReset().mockResolvedValue({});
+    inv.research.mockReset().mockResolvedValue([]);
+    toasts.success.mockReset();
+    toasts.error.mockReset();
+  });
+  const openMore = async (over: Partial<RowDropdownProps> = {}) => {
+    renderDrop(over);
+    fireEvent.click(screen.getByRole('button', { name: 'More' }));
+    return screen.findByRole('menu');
+  };
+
+  it('Reconcile N into live posts live + shadow to the legacy reconcile route', async () => {
+    const m = await openMore({ row: row({ stock: 3, shadow: 2 }) });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
+    });
+    expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5, notes: 'Shadow reconciled into live' });
+    expect(toasts.success.mock.calls[0][0]).toMatch(/2 shadow bottles booked into live, 5 on hand/);
+  });
+
+  it('holds Reconcile while live stock is unread', async () => {
+    const m = await openMore({ row: row({ stock: null, shadow: 2 }) });
+    expect((within(m).getByRole('menuitem', { name: 'Reconcile 2 into live' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('offers no Reconcile when there is no shadow stock', async () => {
+    const m = await openMore({ row: row({ shadow: 0 }) });
+    expect(within(m).queryByRole('menuitem', { name: /Reconcile/ })).toBeNull();
+  });
+
+  it('a refused reconcile says nothing was reconciled, in the house words', async () => {
+    inv.reconcile.mockRejectedValueOnce(
+      Object.assign(new Error('Request failed with status code 403'), { isAxiosError: true, response: { status: 403, data: {} } }),
+    );
+    const m = await openMore({ row: row({ stock: 3, shadow: 2 }) });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
+    });
+    expect(toasts.error.mock.calls[0][0]).toMatch(/^Nothing was reconciled — /);
+  });
+
+  it('links View the ledger to the legacy destination', async () => {
+    renderDrop();
+    expect((await screen.findByTestId('row-view-ledger')).getAttribute('href')).toBe('/documents-reports');
+  });
+
+  it('Copy the name puts the title on the clipboard', async () => {
+    const write = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: write }, configurable: true });
+    const m = await openMore();
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Copy the name' }));
+    });
+    expect(write).toHaveBeenCalledWith('Gravner Ribolla');
+  });
+});
+
+describe('the format reads in the house unit (RowExpansion.tsx:69,172)', () => {
+  it('says ounces when the house measures in oz, and ml otherwise', async () => {
+    const { useRestaurantSettingsStore } = await import('../../../stores/restaurantSettingsStore');
+    useRestaurantSettingsStore.setState({ measurementUnit: 'oz' });
+    const { unmount } = renderDrop();
+    expect(screen.getByText(/oz$/)).toBeTruthy();
+    unmount();
+    useRestaurantSettingsStore.setState({ measurementUnit: 'ml' });
+    renderDrop();
+    expect(screen.getByText('750ml')).toBeTruthy();
   });
 });
