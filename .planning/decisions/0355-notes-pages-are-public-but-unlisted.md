@@ -1,14 +1,14 @@
 # 0355 — /notes/* pages are public but unlisted
 
-- **Status:** Locked for the route and its unlisted status; the content rule is Proposed and awaits the founder
+- **Status:** Locked
 - **Date:** 2026-11-01
-- **Decider:** Aldemir (founder), 2026-11-01, for the route and unlisted status. The content rule was proposed by the audit of PR #731 and is not yet decided by the founder.
+- **Decider:** Aldemir (founder), 2026-11-01
 - **Keywords:** notes, public, unlisted, noindex, robots, sitemap, gmail-session
 - **Links:** [[0158-seo-geo-surface]] (allow-list crawl rule), [[0344-register-is-the-landing-door-and-story-tells-one-night]]
 
 ## Context
 
-The founder wants the Gmail session prompt readable at a public URL on mudavym.com, and accepts that it exposes internal ops detail (ADR numbers and PR numbers). The web app is a Vite SPA; public pages use `PublicShell` (`apps/web/src/components/mudavym/PublicShell.tsx`). Crawl control is an allow-list: a route absent from `PUBLIC_ROUTES` (`apps/web/src/lib/seo/routes.ts`) is served the closed head (`noindex, nofollow`) and is disallowed by robots.txt.
+The founder wants the Gmail session prompt readable at a public URL on mudavym.com, and accepts that it exposes internal ops detail. The web app is a Vite SPA; public pages use `PublicShell` (`apps/web/src/components/mudavym/PublicShell.tsx`). Crawl control is an allow-list: a route absent from `PUBLIC_ROUTES` (`apps/web/src/lib/seo/routes.ts`) is served the closed head (`noindex, nofollow`) and is disallowed by robots.txt.
 
 ## Options considered
 
@@ -24,7 +24,7 @@ Pages under `/notes/` are public to anyone with the URL, `noindex, nofollow`, an
 
 This amends nothing in ADR 0158 but touches its surface: a `/notes/` page needs the first path segment `notes` in the SPA rewrite in `apps/web/vercel.json`, which sends `/notes/*` to `/crawl/app.html` (closed head). The rewrite is not the indexed path that Option 5 rejects: Option 5's `vercel.json` cost is a per-route head rewrite plus a `PUBLIC_ROUTES` entry, which this decision avoids.
 
-Content rule (proposed, founder to confirm): a `/notes/` page carries no gate or merge-control token (for example the ADR 0090 PASS marker), no capability link or document id, no workstation path, no line-number citation, and no control-plane or identity detail (gate thresholds, merge rules, who owns an OAuth client). The page test pins only the known past violations by shape; it cannot enforce a semantic rule. The first page was revised on 2026-11-01 after audit of PR #731 to remove all of these.
+This ADR decides only the route family and its unlisted status. It does not decide what may appear on a `/notes/` page: that is open, and each page's content is the founder's call when it is published.
 
 Retire-to-write: no document is retired for this ADR or page. The founder waived the rule for this page on 2026-11-01 ("do not retire another document").
 
@@ -41,3 +41,4 @@ Retire-to-write: no document is retired for this ADR or page. The founder waived
 | 2026-11-01 | — | Created |
 | 2026-11-01 | audit of PR #731, round 1 (BLOCK at fc240ba27) | Content rule and vercel.json amendment added |
 | 2026-11-01 | audit of PR #731, round 2 (BLOCK at 0dd74ad27) | Gate mechanics, OD-77 clause, SHA and scratch paths removed; banner added; Decider wording corrected |
+| 2026-11-01 | audit of PR #731, round 3 (BLOCK at c4ff5e703) | Content rule removed from this ADR (the founder has not decided it); ADR is the route decision only |
