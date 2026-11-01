@@ -236,6 +236,52 @@ None of the eleven duplicates or supersedes an existing doc, so there is nothing
 honest to retire. This is a one-time waiver for these eleven files, not a
 standing exemption. The next new doc still owes a real trade or its own row here.
 
+## Retire-to-write waiver — the Floor Checker records (2026-10-31)
+
+**Waived for:** `evidence/0345-floor-checker-research.md`, the evidence note. The series' other records name themselves here when they land.
+
+It changes no code.
+
+The rule is CLAUDE.md §4: adding a document means naming one to retire, merge
+or supersede. Its scope is his, ratified on 2026-08-28 (OD-34). The three
+earlier waivers in this file were his word (the third's five session-added
+files by his own 2026-09-22 pick, above), and so was ADR 0052's
+(`0052-software-catalog-layer.md:69`); ADR 0136 records his word for the first
+(`0136-session-2026-09-11-p1-readout-and-brand-sync-push.md:190`). This one is
+not, so it is his to overrule.
+
+**This waiver is the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242), not his pick.**
+His goal of that minute, quoted whole (the evidence note records it with his
+answers when they land):
+*"complete the full integration with ful SOTA and robust connections with the current mudavym structure and foundation. Do not ask me anything just complete it fully."*
+How far the delegation reaches is OD-242 (open). No question on §4 was asked.
+It is a one-time waiver for the records named here, not a standing exemption:
+the next new doc still owes a real trade or its own waiver row here (`:98-99`).
+
+The evidence note is the durable copy of the series' research and, once they
+land, of the founder's AskUserQuestion answers; the session's own copy sits in
+a scratchpad that a reboot deletes (the note's opening paragraphs). Every
+quoted pick in the series' records is checked against it (CLAUDE.md §5b). A
+software note for Floor Checker, when it lands, is the catalog's own form: the
+contract is "one document per small software"
+(`../08-softwares/SOFTWARE-CONTRACT.md:9`), and no existing document holds its
+build plan. The series' decision records need no row here: each says in its
+own Consequences line that it retires no document, and whether retire-to-write
+binds a new ADR is OD-243 (open). The two notes retire nothing either.
+
+**Rejected:**
+
+- Retiring `service-floor-agenda-full.md`: its Stage 0 audit
+  (`../01-org/product/product-vision/teams/service-floor/service-floor-agenda-full.md:18`)
+  still feeds the till-fed features, and every team under `teams/` keeps the
+  same nine files.
+- Merging the build plan into a decision record: it would move text that the
+  series' records cite, and an ADR is not a build plan.
+- Leaving §4 unaddressed: a silent skip is the shortcut CLAUDE.md §0 item 5
+  rules out.
+
+Full record: commit `88c30917a` on branch `docs/floor-checker-full-record-2026-10-31` (outside main's history), the four files at that commit.
+
 ## Consequences
 
 - Vault search, the Obsidian graph, and the unique-filename rule now operate on
