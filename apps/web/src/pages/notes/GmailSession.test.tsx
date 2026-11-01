@@ -4,7 +4,7 @@ import { resolve } from 'node:path'
 import { screen } from '@testing-library/react'
 import { renderWithProviders } from '../../__tests__/utils/test-utils'
 import GmailSession from './GmailSession'
-import { publicRouteFor } from '../../lib/seo/routes'
+import { publicRouteFor, PUBLIC_ROUTES } from '../../lib/seo/routes'
 
 /** ADR 0355: public on purpose, unlisted, so the shell's closed head applies. */
 describe('/notes/gmail-session', () => {
@@ -29,11 +29,18 @@ describe('/notes/gmail-session', () => {
     expect(text).not.toMatch(/pr-audit-gate|verdict=PASS|Y5VRZVvCaefSt4FNGgtBfw|d-e8fe9045eb|ex-invoice/)
     expect(text).not.toMatch(/\/Users\//)
     expect(text).not.toMatch(/auto-merges/i)
+    expect(text).not.toMatch(/--admin|--auto|press merge|\b30K\b|personal account|\b[0-9a-f]{9}\b/i)
+    expect(text).toMatch(/not current policy/i)
+  })
+
+  it('no /notes/ page is ever registered as a public route', () => {
+    expect(PUBLIC_ROUTES.filter((r) => r.path.startsWith('/notes'))).toEqual([])
   })
 
   it('is served the closed crawl head: the SPA rewrite lists notes', () => {
     const vercel = JSON.parse(readFileSync(resolve(__dirname, '../../../vercel.json'), 'utf8'))
     const spa = vercel.rewrites.find((r: { destination: string }) => r.destination === '/crawl/app.html')
-    expect(spa.source).toMatch(/[(|]notes[|)]/)
+    expect(spa).toBeDefined()
+    expect(new RegExp(`^${spa.source}$`).test('/notes/gmail-session')).toBe(true)
   })
 })
