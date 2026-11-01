@@ -46,6 +46,9 @@ function build(stored: unknown[] | null = null) {
   };
   const goals = {
     listGoalsWithProgress: echo("listGoalsWithProgress"),
+    listGoals: echo("listGoals"),
+    getGoalProgress: echo("getGoalProgress"),
+    createGoal: echo("createGoal"),
     getPosRevenueWindow: jest.fn(async (rid: string, days: number) => ({
       served: "getPosRevenueWindow",
       args: [rid, days],
@@ -116,7 +119,7 @@ const PAGE: Record<
 > = {
   reading: { path: "`/analytics/insights/${rid}?limit=40`", call: (c) => c.getInsights(RID, undefined, undefined, "40") },
   till: { path: "`/analytics/pos-revenue/${rid}?days=${ctx.days}`", call: (c, d) => c.getPosRevenue(RID, String(d)) },
-  goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined) },
+  goals: { path: "`/analytics/goals/${rid}/progress`", call: (c) => c.listGoalsWithProgress(RID, undefined, HOLDER) },
   bench: { path: "`/analytics/overview/${rid}`", call: (c) => c.getOverview(RID, HOLDER) },
   pacing: { path: "`/analytics/cashflow/${rid}`", call: (c) => c.getCashflow(RID) },
   week: { path: "`/analytics/seasonality/${rid}`", call: (c) => c.getSeasonality(RID) },
@@ -188,10 +191,34 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
       const gate = { withSales };
       const fin = (await controller.getFinancial(RID, undefined, user)) as unknown as { args: unknown[] };
       const bench = (await controller.getOverview(RID, user)) as unknown as { args: unknown[] };
-      expect([user, fin.args, bench.args]).toEqual([
+      const goals = (await controller.listGoalsWithProgress(RID, undefined, user)) as unknown as { args: unknown[] };
+      expect([user, fin.args, bench.args, goals.args]).toEqual([
         user,
         [RID, 0, gate],
         [RID, gate],
+        [RID, "active", gate],
+      ]);
+    }
+  });
+
+  it("the goal list, one goal's progress and a new goal hand the caller's role gate on (ADR 0298, decision 9)", async () => {
+    const cases: Array<[{ role?: string } | undefined, boolean]> = [
+      [{ role: "owner" }, true],
+      [{ role: "manager" }, true],
+      [{ role: "staff" }, false],
+      [undefined, false],
+    ];
+    for (const [user, withSales] of cases) {
+      const { controller } = build();
+      const gate = { withSales };
+      const list = (await controller.listGoals(RID, undefined, user)) as unknown as { args: unknown[] };
+      const one = (await controller.getGoalProgress(RID, "g1", user)) as unknown as { args: unknown[] };
+      const made = (await controller.createGoal(RID, { metricKey: "days_of_inventory" }, user)) as unknown as { args: unknown[] };
+      expect([user, list.args, one.args, made.args]).toEqual([
+        user,
+        [RID, "active", gate],
+        [RID, "g1", undefined, gate],
+        [RID, { metricKey: "days_of_inventory" }, gate],
       ]);
     }
   });
