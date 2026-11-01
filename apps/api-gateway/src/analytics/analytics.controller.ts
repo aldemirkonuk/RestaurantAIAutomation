@@ -21,7 +21,8 @@ import {
   ApiQuery,
   ApiResponse,
 } from "@nestjs/swagger";
-import { AnalyticsService } from "./analytics.service";
+import { AnalyticsService, SalesGate } from "./analytics.service";
+import { policyFor } from "../ask-readings/reading-data-classes";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { RecommendationsService } from "./recommendations.service";
 import {
@@ -81,6 +82,20 @@ import { Persona } from "./metric-registry";
  * did not ask for.
  */
 const MAX_FORECAST_HORIZON = 365;
+
+/**
+ * Whether this caller may read the till (ADR 0298 decision 9). ADR 0290 §5's
+ * rule, as the dashboard calendar applies it: `withSales =
+ * policyFor(role).sees.includes("sales")`, ADR 0145's ROLE_POLICY (owner and
+ * manager see `sales`, staff do not; an unknown or missing role reads the
+ * staff row). The role is re-read on every request from the person's access
+ * row in the house the token names (`jwt.strategy.ts`), so a demotion closes
+ * the gate on the next request; no route receives `admin` (OD-241). The route
+ * stays open; the till's figures are withheld and named withheld.
+ */
+function salesGateFor(user?: { role?: string | null }): SalesGate {
+  return { withSales: policyFor(user?.role).sees.includes("sales") };
+}
 
 function parseHorizon(raw?: string): number | undefined {
   if (raw === undefined || raw === "") return undefined;
@@ -172,12 +187,14 @@ export class AnalyticsController {
   async getFinancial(
     @Param("restaurantId") restaurantId: string,
     @Query("labor") laborStr?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
       const labor = laborStr ? parseFloat(laborStr) : 0;
       return await this.analyticsService.getFinancialSummary(
         restaurantId,
         Number.isFinite(labor) ? labor : 0,
+        salesGateFor(user),
       );
     } catch (error) {
       throw new HttpException(
@@ -229,9 +246,15 @@ export class AnalyticsController {
       "Vendor concentration (HHI), revenue concentration (Gini), and demand risk (VaR/CVaR, Sharpe, Sortino, max drawdown).",
   })
   @ApiParam({ name: "restaurantId", description: "Restaurant UUID" })
-  async getRisk(@Param("restaurantId") restaurantId: string) {
+  async getRisk(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
     try {
-      return await this.analyticsService.getRiskProfile(restaurantId);
+      return await this.analyticsService.getRiskProfile(
+        restaurantId,
+        salesGateFor(user),
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to compute risk profile",
@@ -1057,7 +1080,7 @@ export class AnalyticsController {
   async consult(
     @Param("restaurantId") restaurantId: string,
     @Body() body: { persona?: string },
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
     try {
       return await this.consultantsService.consult(
@@ -1067,6 +1090,7 @@ export class AnalyticsController {
         // from the body: "who asked" is a fact about the session, and a
         // client-supplied one would be an assertion about someone else.
         typeof user?.userId === "string" ? user.userId : null,
+        salesGateFor(user),
       );
     } catch (error) {
       throw new HttpException(
@@ -1201,8 +1225,11 @@ export class AnalyticsController {
     description:
       "Financial + risk + inventory + menu engineering + seasonality + cashflow + insights + goals in one parallel call (API-bus pattern).",
   })
-  async getOverview(@Param("restaurantId") restaurantId: string) {
-    return this.advanced.getOverview(restaurantId);
+  async getOverview(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    return this.advanced.getOverview(restaurantId, salesGateFor(user));
   }
 
   @Get("recommendations/:restaurantId")
@@ -1215,13 +1242,14 @@ export class AnalyticsController {
   async getRecommendations(
     @Param("restaurantId") restaurantId: string,
     @Query("includeHidden") includeHidden?: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
       return await this.recommendationsService.getRecommendations(
         restaurantId,
         {
           includeHidden: includeHidden === "true",
+          withSales: salesGateFor(user).withSales,
           // The person's own snoozes (ADR 0191 round 3) hide cards from them
           // alone; the digest calls this service with no viewer.
           viewerId: actorOf(user).userId,
