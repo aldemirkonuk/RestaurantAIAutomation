@@ -12,7 +12,7 @@
   - Held as they are: [ADR 0257](0257-dashboard-walk-through-r1-rulings.md) W22; [ADR 0027](0027-push-recipients-are-not-resolved-here.md) (Proposed).
   - The staff-invite step: [ADR 0348](0348-staff-are-refused-the-table-and-server-takings-and-the-rest-is-withheld-after-617.md) (Locked) and [ADR 0298](0298-cost-of-goods-is-what-sold-and-concentration-reads-the-till.md) decision 9.
   - Binding: [0020](0020-no-fabricated-answers.md), [0131](0131-the-new-house-goes-live-dark-then-one-house-at-a-time.md), [0149](0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once.md), [0162](0162-managers-grant-manager-or-staff-on-both-doors.md), [0164](0164-sessions-follow-membership-and-several-houses-choose.md), [0212](0212-a-new-migration-sorts-after-every-version-its-base-holds.md), [0272](0272-a-ranking-or-a-pairing-is-printed-only-when-the-data-can-tell-it-apart.md), [0294](0294-the-team-performance-card-prints-every-figure-with-its-unit.md).
-  - Register ([OPEN-DECISIONS](OPEN-DECISIONS.md)): OD-235 to OD-238, the forks these rulings left, and OD-246, all already in the register on main; OD-237 stays open. OD-64 (first real POS) is open. Two more are open and already in the register on main: OD-242 (OPEN-DECISIONS.md:329), how far the founder's 2026-10-31 delegation reaches; and OD-243 (OPEN-DECISIONS.md:330), whether retire-to-write binds a new ADR.
+  - Register ([OPEN-DECISIONS](OPEN-DECISIONS.md)): OD-235 to OD-238, the forks these rulings left, and OD-246, all already in the register on main; OD-237 stays open. OD-64 (first real POS) is open. Two more are open and already in the register on main: OD-242, how far the founder's 2026-10-31 delegation reaches; and OD-243, whether retire-to-write binds a new ADR.
 
 ## Context
 
