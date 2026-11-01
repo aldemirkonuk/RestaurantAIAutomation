@@ -32,17 +32,18 @@
 -- inventory_id at the top level; claim POS-LINE-KEYS-AT-TOP-LEVEL fails the
 -- build if that changes. price is ONE unit's list price in major units, before
 -- modifiers and discounts, so price x qty is the line's sale (CanonicalItem,
--- pos-types.ts:17). Each adapter in pos-adapters.ts writes it that way:
---   generic, csv_import  the canonical shape, read as sent (:106-107)
---   square               base_price_money, "for a single unit" (:154-157)
---   clover               price per unit; unitQty in thousandths (:53-56, :211-213)
---   toast                receiptLinePrice, not the selection total (:66-70, :258)
--- Measured on production on 2026-11-01, which holds only csv_import and
--- generic_webhook checks: of the 2,006 checks with a qty other than 1,
--- sum(price x qty) equals the subtotal on 2,005 and sum(price) on none. A tax
--- the menu price includes stays in price (Square and Toast say so); the house's
--- tax basis (founder, 2026-10-12) is not applied here. Modifiers and line
--- discounts are left out (tech-debt.d, fix-pos-lines-carry-unit-price).
+-- pos-types.ts:17). The adapters in pos-adapters.ts write it that way:
+--   generic, csv_import  the canonical shape, read as sent (:110-111)
+--   square               base_price_money, "for a single unit" (:158-161)
+--   clover               price per unit; unitQty in thousandths (:53-56, :215-217)
+--   toast                receiptLinePrice (:70-74, :262); a selection without
+--                        it stores a share of the net price
+-- Production on 2026-11-01 holds only csv_import and generic_webhook checks:
+-- of the 2,006 with a qty other than 1, sum(price x qty) equals the subtotal
+-- on 2,005 and sum(price) on none. A tax the menu price includes stays in
+-- price; the house's tax basis (founder, 2026-10-12) is not applied here.
+-- Modifiers, line discounts and the Toast fallback are filed in tech-debt.d
+-- (fix-pos-lines-carry-unit-price).
 --
 -- WHAT CAN RAISE. Nothing the ingest writes: the adapters coerce price and qty
 -- to finite numbers. A numeric string or product past numeric's range, written
