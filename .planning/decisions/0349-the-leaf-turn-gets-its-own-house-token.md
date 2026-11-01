@@ -33,7 +33,7 @@ Running `turn` at its own 420ms only shrinks that still tail to about 180ms; it 
 - The house vocabulary is now the seven tokens of ADR 0131 plus `leaf`.
 - `leaf` is for a whole leaf turning over (180°). Screen changes keep `turn`.
 - `EndpaperShell`'s six leaf runs and its settle timer read `leaf`.
-- ADR 0131:38-40 carries an in-place pointer to this amendment.
+- ADR 0131's own text is left unedited; this ADR and its row in the decisions index record the amendment.
 - `EndpaperShell.test.tsx` asserts that the leaf runs carry `leaf.easing`. Setting the easing back to `turn.easing` fails that test; this was checked on 2026-10-31.
 
 ## Consequences

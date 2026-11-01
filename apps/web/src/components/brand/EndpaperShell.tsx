@@ -112,8 +112,9 @@ export function EndpaperShell({
 
   // ── the front matter ────────────────────────────────────────────────────
   // closed → opening → open → closing → closed. While turning, both spreads
-  // are mounted, and every swap is keyed to the leaf's own progress, never to
-  // the clock — so it stays hidden whatever the curve:
+  // are mounted, and every swap is keyed to the leaf's own progress. Whether a
+  // swap stays hidden still depends on the curve: a curve that reaches a swap
+  // point early leaves the rest of the run over a still book (ADR 0349):
   //   - the inside cover is what lies UNDER the endpaper, so it is there from
   //     the first frame and the lifting leaf reveals it (and is covered again
   //     only as the leaf lands back on it);
