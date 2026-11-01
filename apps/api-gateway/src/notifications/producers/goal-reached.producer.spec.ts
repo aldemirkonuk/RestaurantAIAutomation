@@ -193,6 +193,16 @@ describe("GoalReachedProducer", () => {
     expect(tally.withheldReason).toMatch(/ceilings this producer does not report/);
   });
 
+  it("[REVERT-FAILS] a days-of-stock goal is not read without the sales gate, and is named", async () => {
+    // The answer it would get without the gate (ADR 0298 decision 9); it must not ask.
+    const { db, notifications, goals, producer } = build({ unreadable: true, withheld: true });
+    db.tables.analytics_goals.push(goalRow({ metric_key: "days_of_inventory" }));
+    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(goals.getGoalProgress.calls).toHaveLength(0);
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
+    expect(tally.withheldReason).toMatch(/Not read: 1 on days of stock/);
+  });
+
   it("with no active goal it says so rather than reporting an empty sweep", async () => {
     const { producer } = build(REACHED);
     const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);

@@ -1,6 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { GoalsService } from "../../analytics/goals.service";
+import {
+  SALES_GATED_GOAL_METRICS,
+  salesGatedBit,
+} from "../../analytics/sales-gated-goals";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import {
   ProducerLedgerService,
@@ -116,10 +120,18 @@ export class GoalReachedProducer {
     }
 
     let ceilingGoals = 0;
+    let salesGated = 0;
 
     for (const goal of goals) {
       if (goal.direction === "at_most") {
         ceilingGoals += 1;
+        continue;
+      }
+      // As in ceiling-held: a days-of-stock goal is a sales holder's figure
+      // and this producer carries no sales gate yet. Counted and named, not
+      // read.
+      if (SALES_GATED_GOAL_METRICS.has(String(goal.metric_key))) {
+        salesGated += 1;
         continue;
       }
 
@@ -225,6 +237,9 @@ export class GoalReachedProducer {
         ceilingGoals > 0 && tally.considered === 0
           ? `${goals.length} active goal(s), of which ${ceilingGoals} are 'at most' ceilings this producer does not report on — crossing a ceiling is not a success. No 'at least' goal has reached its target.`
           : "No active goal has reached its target.";
+      if (salesGated > 0) {
+        tally.withheldReason += ` Not read: ${salesGatedBit(salesGated)}.`;
+      }
     }
 
     return tally;
