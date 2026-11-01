@@ -125,6 +125,15 @@ export class CeilingHeldProducer {
     let breached = 0;
 
     for (const goal of goals) {
+      // A days-of-stock goal is a sales holder's figure (ADR 0298 decision
+      // 9), and this producer does not carry the sales gate yet, so it tells
+      // no one about one. First in the loop, so every such goal is counted
+      // and named, whatever its period; it is not read.
+      if (isSalesGatedGoal(goal.metric_key)) {
+        salesGated += 1;
+        continue;
+      }
+
       const periodEnd = String(goal.deadline).slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) {
         tally.failed += 1;
@@ -147,14 +156,6 @@ export class CeilingHeldProducer {
         CeilingHeldProducer.LOOKBACK_DAYS * 86_400_000
       ) {
         tooOld += 1;
-        continue;
-      }
-
-      // A days-of-stock goal is a sales holder's figure (ADR 0298 decision
-      // 9), and this producer does not carry the sales gate yet, so it tells
-      // no one about one. Counted, named in the run's reason, not read.
-      if (isSalesGatedGoal(goal.metric_key)) {
-        salesGated += 1;
         continue;
       }
 
@@ -264,7 +265,7 @@ export class CeilingHeldProducer {
       if (stillOpen > 0) bits.push(`${stillOpen} whose period has not closed yet`);
       if (breached > 0) {
         bits.push(
-          `${breached} that closed OVER the ceiling — this producer reports the success only, and "you went over by N" is a notification nobody has asked for yet`,
+          `${breached}${salesGated > 0 ? " that was read and" : ""} that closed OVER the ceiling — this producer reports the success only, and "you went over by N" is a notification nobody has asked for yet`,
         );
       }
       if (tooOld > 0) {
