@@ -171,12 +171,13 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
   }
 
   it("the till-read routes hand the caller's role gate to the service (ADR 0298, decision 9)", async () => {
-    // ADR 0145 ROLE_POLICY: owner and manager see sales, admin reads the owner
-    // row, and staff or an unknown role read the staff row.
+    // ADR 0145 ROLE_POLICY: owner and manager see sales, and staff or an
+    // unknown role read the staff row. `admin` pins ROLE_POLICY_ALIASES as it
+    // stands; no route receives it today, and which reading binds it is OD-241.
     const cases: Array<[{ role?: string } | undefined, boolean]> = [
       [{ role: "owner" }, true],
       [{ role: "manager" }, true],
-      [{ role: "admin" }, true],
+      [{ role: "admin" }, true], // OD-241 open: pins the alias, not a ruling
       [{ role: "staff" }, false],
       [{ role: "sommelier" }, false],
       [{}, false],

@@ -84,13 +84,14 @@ import { Persona } from "./metric-registry";
 const MAX_FORECAST_HORIZON = 365;
 
 /**
- * Whether this caller is read the till (ADR 0298 decision 9). ADR 0290 §5's
+ * Whether this caller may read the till (ADR 0298 decision 9). ADR 0290 §5's
  * rule, as the dashboard calendar applies it: `withSales =
  * policyFor(role).sees.includes("sales")`, ADR 0145's ROLE_POLICY (owner and
- * manager see `sales`, staff do not; `admin` reads the owner row; an unknown
- * or missing role reads the staff row). The role is the role in the token's
- * house (`jwt.strategy.ts`). The route stays open; the till's figures are
- * withheld and named withheld.
+ * manager see `sales`, staff do not; an unknown or missing role reads the
+ * staff row). The role is re-read on every request from the person's access
+ * row in the house the token names (`jwt.strategy.ts`), so a demotion closes
+ * the gate on the next request; no route receives `admin` (OD-241). The route
+ * stays open; the till's figures are withheld and named withheld.
  */
 function salesGateFor(user?: { role?: string | null }): SalesGate {
   return { withSales: policyFor(user?.role).sees.includes("sales") };

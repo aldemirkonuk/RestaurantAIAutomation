@@ -224,11 +224,11 @@ export class McpToolReadersService {
     // read as computed-from-zero rather than not-computed. When the caller
     // omits it, the result says so alongside the engine's own answer.
     const hasLabor = typeof args.labor === "number" && Number.isFinite(args.labor);
-    // The sales gate is open here (ADR 0298 decision 9): an MCP key is
-    // minted and revoked only by a manager or an owner of the house
-    // (`mcp-keys.controller.ts`, `assertCanManageRestaurant`), and its
-    // secret is shown to that person alone, so the reader is one a holder of
-    // the sales class let in.
+    // Open because ADR 0298 decision 9 says so: "MCP tools (keys are
+    // minted only by an owner or manager) ... pass it open". A key reads no
+    // minter and no role when used, so it outlives its minter's role
+    // (tech-debt.d/2026-11-01-docs-od-241-admin-remeasured.md, first entry).
+    // Whether that clause stands is OD-245.
     const summary = await this.analytics.getFinancialSummary(
       restaurantId,
       hasLabor ? (args.labor as number) : 0,
