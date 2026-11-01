@@ -44,7 +44,9 @@
 -- WHY A FUNCTION. One jsonb value cannot be cut by PostgREST max_rows (ADR
 -- 0292). SECURITY INVOKER, executable by service_role only. The index covers
 -- the closed_at window (pos_checks had indexes on opened_at and open checks
--- only). No table, no write, no RLS change.
+-- only). No table, no write, no RLS change. A grant past service_role, or
+-- SECURITY DEFINER, would leave p_restaurant_id the only boundary for that
+-- caller; the self-check refuses both, and RLS off on a relation read here.
 
 CREATE OR REPLACE FUNCTION public.pos_item_sales(p_restaurant_id uuid, p_since timestamptz)
 RETURNS jsonb
@@ -198,5 +200,11 @@ BEGIN
   IF has_function_privilege('anon', v_oid, 'EXECUTE')
      OR has_function_privilege('authenticated', v_oid, 'EXECUTE') THEN
     RAISE EXCEPTION 'public.pos_item_sales is executable by anon or authenticated';
+  END IF;
+  IF (SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relrowsecurity
+         AND c.relname IN ('pos_checks', 'pos_item_mappings',
+                           'inventory_transactions', 'restaurant_inventory')) <> 4 THEN
+    RAISE EXCEPTION 'a relation public.pos_item_sales reads is missing or has RLS off';
   END IF;
 END $$;
