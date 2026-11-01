@@ -3,13 +3,19 @@
 -- bottles it moved.
 --
 -- Self-asserting (assert -> P0004); run with `psql -v ON_ERROR_STOP=1 -f` on a
--- database built from supabase/migrations. CI runs no supabase/tests file.
--- Run on 2026-11-01 on PGlite 0.5.8 over every migration: it passes, and
--- without the migration it fails (42883). Synthetic fixtures, one transaction,
--- rolled back. House N is u('N'), item x u('2x0'), wine u('1x0'). Each block
--- says how its figures follow from the fixtures.
+-- database built from supabase/migrations. CI runs no supabase/tests file
+-- (claim SUPABASE-TESTS-RUN-IN-CI).
+-- Run on 2026-11-01 on PGlite 0.5.8 over every migration, T1 to T13: it
+-- passes, and without the migration it fails (42883). Synthetic fixtures, one
+-- transaction, rolled back. House N is u('N'), item x u('2x0'), wine u('1x0').
+-- Each block says how its figures follow from the fixtures.
 
 begin;
+-- Clocks in UTC; with asserts off every block below would pass unchecked.
+set local timezone = 'UTC';
+do $$ begin
+  if current_setting('plpgsql.check_asserts') <> 'on' then raise exception 'plpgsql.check_asserts is off'; end if;
+end $$;
 
 create function pg_temp.u(s text) returns uuid language sql immutable as $$
   select ('c0980000-0000-4000-8000-' || lpad(s, 12, '0'))::uuid
@@ -246,7 +252,8 @@ end $$;
 -- predates the window). first_move_at: A's row written 5 days back; every
 -- other row here is written at now(), the transaction's start. first_sale_at:
 -- the earlier, 5 days. A 4-day window drops that row, so its first move is
--- now(). House 2 from tomorrow on has nothing: every clock is null.
+-- now(). House 2 from tomorrow on has nothing: every clock is null. A block
+-- added above that dates a move inside 4 days moves r4's first_move_at.
 do $$
 declare
   r jsonb := pg_temp.cg_read();
@@ -262,10 +269,12 @@ begin
      and z -> 'first_check_at' = 'null'::jsonb and z -> 'first_move_at' = 'null'::jsonb, format('T12 empty %s', z);
 end $$;
 
--- T13 what the ingest can write never raises: the largest finite double,
--- 1.7976931348623157e308, squared is about 3.2e616, far inside numeric's
--- 131,072 digits. A then reads k1's 24 plus big x big. Raising cg-undo rolls
--- the check back.
+-- T13 no double the ingest writes raises: decision 8 raises only past
+-- numeric's range. The largest finite double, 1.7976931348623157e308, squared
+-- is about 3.2e616, far inside numeric's 131,072 digits. A then reads k1's 24
+-- plus big x big. A JSON number past a double (1e100000) reaches pos_checks
+-- only by a direct write, which T9 covers. Raising cg-undo rolls the check
+-- back; a failed assert is not caught by `when others`.
 do $$
 declare
   big numeric := 1.7976931348623157e308;
