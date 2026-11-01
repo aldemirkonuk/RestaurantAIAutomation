@@ -12,7 +12,8 @@ Nothing calls the function yet. Production was read on 2026-11-01T07:57Z, over 3
 **What closes it.** The first caller lands with:
 - a jest test showing it drops `in_house: false` items before it uses any id;
 - a figure that withholds when `unreadable_lines` is above 0 (ADR 0298 decisions 2 and 5 already say so);
-- a `file:line` showing whether the ingest's void writes both halves in one transaction, or else an entry here.
+- a `file:line` showing whether the ingest's void writes both halves in one transaction, or else an entry here;
+- a sentence naming which key its connection uses. Under the service-role key RLS is bypassed, so the house argument is the only tenant boundary, and it must come from the tenant-checked access row (PR #715's CI gate, comment 6555721555, security note 2).
 
 ADR 0298 decision 8 also says another per-item reader of the till calls this function. These gateway readers select `pos_checks.items` on `main`:
 - `analytics/insights/insight-generator.service.ts:891`
@@ -29,4 +30,9 @@ From the same PASS, correctness note 1.
 
 **What is true.** CI runs no `supabase/tests` file. The migration's own self-check covers only SECURITY INVOKER, the grants and RLS on the four relations. So nothing in CI catches it if `pos_checks.voided` or `inventory_transactions.inventory_id` becomes nullable. A nullable `voided` would drop those checks from sales while their ledger rows stay in `bottles_out`. `CREATE INDEX IF NOT EXISTS` matches on name only. Production was read on 2026-11-01T07:57Z and has the definition the migration wrote.
 
-**What closes it.** Either a CI job that runs `supabase/tests`, or a later migration whose self-check asserts both NOT NULLs.
+**What closes it.** A CI job that runs `supabase/tests`. The `open` claim `SUPABASE-TESTS-RUN-IN-CI` fails the build the day a workflow names that directory, until this entry is struck. A later migration's self-check could pin the two NOT NULLs, but not the file's other blocks, so it does not close this.
+
+**What that job must do**, from PR #715's CI gate (comment 6555721555):
+- give each run its own database: the fixtures' ids are fixed, so two runs on one database collide (correctness note 4);
+- keep `plpgsql.check_asserts` on. With it off every `assert` is skipped; this file now raises first (adversarial attack 2);
+- pin the session's TimeZone for the suite. This file sets UTC itself; its clocks also pass in Europe/Istanbul (correctness notes 1 and 2).
