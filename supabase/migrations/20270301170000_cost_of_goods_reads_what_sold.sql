@@ -30,19 +30,20 @@
 -- WHAT A LINE IS. The gateway writes pos_checks in one place, pos-hub.service.ts
 -- (upsert at :1090). It builds each line at :1045-1061 with qty, price and
 -- inventory_id at the top level; claim POS-LINE-KEYS-AT-TOP-LEVEL fails the
--- build if that changes. price is ONE unit's list price in major units, before
--- modifiers and discounts, so price x qty is the line's sale (CanonicalItem,
--- pos-types.ts:17). The adapters in pos-adapters.ts write it that way:
---   generic, csv_import  the canonical shape, read as sent (:118-119)
---   square               base_price_money, "for a single unit" (:167-169)
---   clover               price per unit; unitQty in thousandths (:55-58, :223-225)
---   toast                receiptLinePrice (:78-83, :270); a selection without
---                        it, or with 0, stores a share of the net price (OD-244)
+-- build if that changes. price is ONE unit's price in major units, so
+-- price x qty is the line's sale (CanonicalItem, pos-types.ts:17). The
+-- adapters in pos-adapters.ts write it that way, each on its own basis:
+--   generic, csv_import  the canonical shape, read as sent (:113-114)
+--   square               base_price_money, "for a single unit" (:162-164)
+--   clover               price per unit; unitQty in thousandths (:57-60, :218-220)
+--   toast                its net price over the quantity (:75-78, :265)
+-- Square and Clover give list price, before modifiers and discounts, and Toast
+-- its net amount; which one every line should carry is OD-244.
 -- Production on 2026-11-01 holds only csv_import and generic_webhook checks:
 -- of the 2,006 with a qty other than 1, sum(price x qty) equals the subtotal
 -- on 2,005 and sum(price) on none. A tax the menu price includes stays in
 -- price; the house's tax basis (founder, 2026-10-12) is not applied here.
--- Modifiers, line discounts and the Toast fallback are filed in tech-debt.d
+-- Modifiers, line discounts and the Toast basis are filed in tech-debt.d
 -- (fix-pos-lines-carry-unit-price).
 --
 -- WHAT CAN RAISE. Nothing the ingest writes: the adapters coerce price and qty
