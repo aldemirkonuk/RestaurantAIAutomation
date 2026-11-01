@@ -226,14 +226,26 @@ describe('EndpaperShell', () => {
     })
 
     describe('with Web Animations', () => {
-      let calls: { el: Element; options: KeyframeAnimationOptions; cancelledWith: boolean | null }[]
+      type Run = {
+        el: Element
+        keyframes: Keyframe[]
+        options: KeyframeAnimationOptions
+        cancelledWith: boolean | null
+        finish: () => void
+      }
+      let calls: Run[]
       beforeEach(() => {
         vi.useFakeTimers()
         calls = []
-        Element.prototype.animate = vi.fn(function (this: Element, _k: unknown, options: KeyframeAnimationOptions) {
-          const entry = { el: this, options, cancelledWith: null as boolean | null }
+        Element.prototype.animate = vi.fn(function (this: Element, keyframes: Keyframe[], options: KeyframeAnimationOptions) {
+          let finish = () => {}
+          const finished = new Promise<Animation>((resolve) => {
+            finish = () => resolve({} as Animation)
+          })
+          const entry: Run = { el: this, keyframes, options, cancelledWith: null, finish }
           calls.push(entry)
           return {
+            finished,
             cancel: () => {
               // what the DOM already says the FIRST time the run lets go of
               // its last frame (a later, redundant cancel must not mask it)
@@ -248,7 +260,22 @@ describe('EndpaperShell', () => {
         delete Element.prototype.animate
       })
 
-      it('lets go of the turn only after the landed page is on the DOM, never before', () => {
+      const leafRuns = () => calls.filter((c) => c.options.duration === leaf.ms)
+      const runOn = (selector: string) => {
+        const el = document.querySelector(selector)
+        const run = leafRuns().find((c) => c.el === el)
+        if (!run) throw new Error(`no leaf run on ${selector}`)
+        return run
+      }
+      const offsets = (run: Run) => run.keyframes.map((k) => [k.offset ?? null, k.opacity ?? null])
+      const finishAll = async () => {
+        await act(async () => {
+          for (const run of leafRuns()) run.finish()
+        })
+      }
+      const isOpen = () => !!document.querySelector('.mdv-ep-leaf[data-front]')
+
+      it('lets go of the turn only after the landed page is on the DOM, never before', async () => {
         render(
           <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
             <input aria-label="Email address" />
@@ -256,20 +283,18 @@ describe('EndpaperShell', () => {
         )
         calls = []
         fireEvent.click(screen.getByRole('button', { name: TURN }))
-        const turnRuns = calls.filter((c) => c.options.duration === leaf.ms)
+        const turnRuns = leafRuns()
         expect(turnRuns.length).toBeGreaterThanOrEqual(4)
         // The leaf runs on its own token, never `turn`'s front-loaded curve (ADR 0349).
         for (const run of turnRuns) expect(run.options.easing).toBe(leaf.easing)
         expect(leaf.easing).not.toBe(turn.easing)
-        act(() => {
-          vi.advanceTimersByTime(leaf.ms)
-        })
+        await finishAll()
         expect(turnRuns.every((c) => c.cancelledWith === true)).toBe(true)
       })
 
-      it('a sign-in step that lands while the front matter is open does not animate over it', () => {
-        const { rerender, container } = render(
-          <EndpaperShell kicker="k" houseLine="h" folio="Sign in" pageKey="address" frontMatter>
+      it("settles on the runs' own end, not on a clock beside them", async () => {
+        render(
+          <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
             <p>x</p>
           </EndpaperShell>,
         )
@@ -277,6 +302,65 @@ describe('EndpaperShell', () => {
         act(() => {
           vi.advanceTimersByTime(leaf.ms)
         })
+        // the token's length has passed, but the runs have not reported done
+        expect(isOpen()).toBe(false)
+        await finishAll()
+        expect(isOpen()).toBe(true)
+      })
+
+      it('lands on the backstop when a run never reports done, and not before', () => {
+        render(
+          <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
+            <p>x</p>
+          </EndpaperShell>,
+        )
+        fireEvent.click(screen.getByRole('button', { name: TURN }))
+        act(() => {
+          vi.advanceTimersByTime(leaf.ms * 2 - 1)
+        })
+        expect(isOpen()).toBe(false)
+        act(() => {
+          vi.advanceTimersByTime(1)
+        })
+        expect(isOpen()).toBe(true)
+      })
+
+      it('keys each hand-off to the leaf: the cut at 47–53%, the back at 80%, the cover at 97%', async () => {
+        render(
+          <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
+            <p>x</p>
+          </EndpaperShell>,
+        )
+        // opening
+        calls = []
+        fireEvent.click(screen.getByRole('button', { name: TURN }))
+        const OUT = [[null, 1], [0.47, 1], [0.53, 0], [null, 0]]
+        const IN = [[null, 0], [0.47, 0], [0.53, 1], [null, 1]]
+        expect(offsets(runOn('.mdv-ep-leaf-inner'))).toEqual(OUT)
+        expect(offsets(runOn('.mdv-ep-poem-page'))).toEqual(IN)
+        expect(offsets(runOn('.mdv-ep-sheet-face--verso'))).toEqual([[null, 1], [0.8, 1], [null, 0]])
+        // the inside cover is under the endpaper from the first frame
+        expect(offsets(runOn('.mdv-ep-cover-in'))).toEqual([[null, 1], [null, 1]])
+        await finishAll()
+        // closing
+        calls = []
+        fireEvent.keyDown(document, { key: 'Escape' })
+        expect(offsets(runOn('.mdv-ep-leaf-inner'))).toEqual(IN)
+        expect(offsets(runOn('.mdv-ep-poem-page'))).toEqual(OUT)
+        expect(offsets(runOn('.mdv-ep-sheet-face--verso'))).toEqual([[null, 0], [0.2, 1], [null, 1]])
+        // covered again only as the leaf lands back on it
+        expect(offsets(runOn('.mdv-ep-cover-in'))).toEqual([[null, 1], [0.97, 1], [null, 0]])
+        expect(offsets(runOn('.mdv-ep-turn'))).toEqual([[null, 0], [0.97, 0], [null, 1]])
+      })
+
+      it('a sign-in step that lands while the front matter is open does not animate over it', async () => {
+        const { rerender, container } = render(
+          <EndpaperShell kicker="k" houseLine="h" folio="Sign in" pageKey="address" frontMatter>
+            <p>x</p>
+          </EndpaperShell>,
+        )
+        fireEvent.click(screen.getByRole('button', { name: TURN }))
+        await finishAll()
         calls = []
         rerender(
           <EndpaperShell kicker="k" houseLine="h" folio="Sign in" pageKey="methods" frontMatter>

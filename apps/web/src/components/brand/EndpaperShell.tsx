@@ -18,7 +18,7 @@ let markHasDrawn = false
  * canvas's own "The page turns" rotates 92°; a full leaf is 180°), so it runs
  * on the house `leaf` token, not `turn` — see ADR 0349. Each cut and fade
  * below is keyed to the leaf's eased progress, so the curve decides where each
- * one lands; the settle timer runs on `LEAF_TURN.ms`, not on the curve.
+ * one lands; the book settles when the runs report `finished`.
  */
 const LEAF_TURN: MotionToken = leaf
 
@@ -175,13 +175,31 @@ export function EndpaperShell({
     // committed; they are cancelled in the layout effect below, after React
     // has written the settled state and before the browser paints it, so no
     // frame ever shows the half-turned book or the uncovered form.
-    const settle = () => setPhase(opening ? 'open' : 'closed')
+    let landed = false
+    const settle = () => {
+      if (landed) return
+      landed = true
+      setPhase(opening ? 'open' : 'closed')
+    }
     if (runs.length === 0 || runs.some((run) => !run)) {
       settle()
       return
     }
-    const done = window.setTimeout(settle, LEAF_TURN.ms)
-    return () => window.clearTimeout(done)
+    // Settle on the runs' own end, not on a clock started beside them: a timer
+    // at LEAF_TURN.ms can fire a frame before the last one is painted. The
+    // backstop is for an engine whose `finished` never settles; a cancelled
+    // run rejects `finished`, and by then the book has landed or unmounted.
+    let backstop: number
+    if (runs.every((run) => run?.finished)) {
+      Promise.all(runs.map((run) => run!.finished)).then(settle, () => {})
+      backstop = window.setTimeout(settle, LEAF_TURN.ms * 2)
+    } else {
+      backstop = window.setTimeout(settle, LEAF_TURN.ms)
+    }
+    return () => {
+      landed = true
+      window.clearTimeout(backstop)
+    }
   }, [phase])
 
   useLayoutEffect(() => {
@@ -257,10 +275,10 @@ export function EndpaperShell({
     // A sign-in step that lands while the front matter is open (or turning)
     // changes under the poem, unseen; it must not animate over it.
     if (phaseNow.current !== 'closed') return
-    const leaf = leafRef.current
-    if (!leaf) return
+    const leafEl = leafRef.current
+    if (!leafEl) return
     animate(
-      leaf,
+      leafEl,
       [
         { transform: 'perspective(1600px) rotateY(9deg)', opacity: 0.2 },
         { transform: 'perspective(1600px) rotateY(0deg)', opacity: 1 },
