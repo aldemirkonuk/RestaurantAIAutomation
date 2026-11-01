@@ -1,0 +1,92 @@
+# 0298 — Cost of goods is what sold, and concentration reads the till
+
+- **Status:** Proposed. The founder locks it by his word on this record; no reviewer or agent does. Four founder rulings bind parts of it, quoted where they apply: cost gaps (decision 1), the 'net' label (decision 2), partial no-move and check discounts (Consequences). Decision 9 is the coordinator's call under his 2026-10-07T20:04:10Z delegation (OD-241 (OPEN-DECISIONS.md:328), OD-242 (OPEN-DECISIONS.md:329)). The rest is lane `proxies`' proposal for his review. This record lands alone; decision 8 lands with its migration, decisions 1 to 7 and 9 with PR #617's slices, the digest's part of 9 after them. What a sentence below says a route, reader or letter does holds on `main` only once its PR merges. It names no document to retire, as ADRs 0249, 0265, 0273, 0287 and 0314 did; whether retire-to-write binds an ADR is OD-243 (OPEN-DECISIONS.md:330).
+- **Date:** 2026-10-04
+- **Decider:** Aldemir (founder) — decisions are locked by the founder, never by an agent
+- **Keywords:** cost of goods, COGS, cogsRatio, GMROI, turnover, DIO, revenue concentration, Gini, HHI, metric registry, pos_item_sales, deliveredPurchases, shelfValueAtMenuPrice, salesWithheld, net sales, A-046, A-018, AW16, AW17, Tuzlu Rüzgar
+- **Links:** migration `cost_of_goods_reads_what_sold` and its `supabase/tests` file (by slug, ADR 0235); ADRs 0051 (unknown is a dash), 0053 (a total is null, not a partial sum), 0067, 0115 (D3, R6; PR #589, unmerged), 0120:61-66, 0124, 0145, 0285, 0290, 0292, 0296, 0297, 0348
+
+## Context
+
+The owner-quarter sim's read-only analytics walk on Tuzlu Rüzgar (2026-10-03, at `e2cbe426a`) found three stand-ins for measures the POS feed already gives.
+
+- **A-046.** `getFinancialSummary` called 365 days of DELIVERED `procurement_orders` `cogs`, and menu price × bottles on hand `revenue`. Gross margin took on-hand value at cost as its cost, so no ratio described a sale. Tuzlu was shown $39,302.50 of purchases as cost of goods; the ledger's count-based cost for July and August is about $47,914, and the shelf value was $28,889.
+- **A-018.** `getRiskProfile` computed the revenue Gini and SKU HHI over `unitPrice * qty`, where shelf value sits: 0.7775 for Tuzlu. The `revenue_concentration` rule fires above 0.6. The walk's truth figure, a Gini of POS line sales over the 116 imported rows (Jul 1–Aug 30, 4 unsold rows as 0), is 0.5651 (wine 0.5091). The house has 134 active rows; the 18 extra are menu rows no POS mapping points at (A-013), so the till cannot sell them.
+- **AW16.** `METRIC_REGISTRY` marked all 33 entries `computed: true`. Seven have no served field (year-on-year growth, early-payment APR, newsvendor order, price elasticity, optimal markup, CUSUM break, a drawdown that is 0 by construction), and others describe inputs they do not read.
+
+The till holds both halves: `pos_checks.items` carries each line's price, quantity and the `inventory_id` stamped at ingest, and the POS writes the stock it moves to `inventory_transactions` as source `pos` (a `sale` per bottle, a `return` per void, one `sale` per bottle a glass pour opened, ADR 0285).
+
+## Options considered
+
+For **cost of goods**:
+
+1. **POS bottles out × recorded unit cost (chosen).** Theoretical, sales-only cost: POS `sale` rows net of void `return` rows, glass pours as the bottles they opened, times `resolveUnitCost` (still the only place a cost is decided; OD-100 untouched). It needs no counts.
+2. **Delivered purchases (status quo).** What was bought is not what sold. Rejected.
+3. **Opening + purchases − closing, from counts.** The accountant's figure, but counts exist on three dates. Rejected for now; the cross-check once counts are regular.
+4. **`wine_consumption_log` × cost.** ADR 0297's log measures bottle-equivalents *poured*; this figure prices bottles *opened*. Rejected: a different quantity.
+5. **Write-time FIFO cost per depletion row.** The long-term answer (ADR 0115 D3/R6, PR #589), and it would collide with lane glasspour's `record_glass_pour` rewrite. The follow-up, not built.
+
+For **an item that sold without a recorded cost** (the founder's fork): (a) withhold and say N of M, as ADR 0051 does for the cellar value (**his pick**); (b) cost a sold-out item at its last lot cost, a valuation branch OD-100 has not decided; (c) a labelled floor, against ADR 0053; (d) option 5.
+
+For **which items weigh in the concentration**:
+
+1. **Every active item a POS mapping of the house points at, 0 if unsold, plus every item that sold (chosen).** A line's `inventory_id` comes only from `pos_item_mappings`, so a mapped unsold item is a real 0 and an unmapped row's 0 is not a sales fact.
+2. **Every active item, 0 if unsold.** k zeros on n weights give G' = (nG + k)/(n + k): Tuzlu's 18 unmappable rows lift 0.5651 to about 0.62, over the line. Rejected (round 1, confirmed on synthetic data).
+3. **Only items that sold.** Drops mapped dead sellers, so a house reads more even than it is. Rejected.
+4. **Items with any sale or POS move.** The gap of 3, plus void-only zero weights. Rejected.
+
+For **sales**:
+
+1. **POS line price × qty for lines naming a stock item, on closed, non-voided checks (chosen).** Net of tax and surcharge (AW17); check discounts are not apportioned, and the basis says so.
+2. **Menu price × units sold.** Ignores the price the line carried (happy hour, a comp). Rejected.
+3. **Check totals.** Gross, with food and non-stock lines. Rejected.
+
+For **where the aggregation runs**:
+
+1. **One SECURITY INVOKER SQL function returning one jsonb value (chosen).** `max_rows` cuts rows, not values (ADR 0292), so a year of checks cannot be truncated; a partial index covers the `closed_at` window.
+2. **`.from('pos_checks')` in the gateway.** Capped at 1,000 rows, every check over the wire. Rejected.
+
+For **who reads the till's figures** (decision 9):
+
+1. **Withhold for a caller without sales, by the token's role, failing closed (chosen).** ADR 0290 §5's mechanism under ADR 0145, so no new rule; staff keep the non-sales figures on the same routes.
+2. **Merge with the widening disclosed.** Ships till money to staff where ADR 0145 (Locked) gives sales to owner and manager only. Rejected.
+3. **`RolesGuard` with `@Roles("owner", "manager")`.** Staff lose the stock figures too, and it refuses `admin`, which `ROLE_POLICY` reads as the owner row (OD-241). Rejected here.
+4. **Gate open by default.** A caller that forgets the gate leaks the till; closed by default makes it a dash. Rejected.
+
+**Relabel only** was rejected: the feed is connected, so the real measure is available.
+
+## Decision
+
+The till's figures replace the stand-ins, and the stand-ins keep their own names.
+
+1. **`cogs`** = POS bottles out × recorded unit cost over 365 days. Null when the till read fails, when there is no closed check and no POS move, when the till traded but no item moved stock (a sum over no rows printed $0), or when **any** item that sold has no recorded cost. Cost gaps are the founder's ruling (AskUserQuestion, 2026-10-04 ~20:50Z): *"Withhold, say N of M (Recommended)"*. `cogsCoverage` gives items costed of items sold, bottles out and costed, and items that net-returned (B19). Recorded cost is what `resolveUnitCost` reads: invoiced lots' WAC, else `last_purchase_price` above 0. A sold item no longer active is costed from its own row (`itemsNoLongerActive`). A moved id with no row of this house is **no longer in the books** (`itemsNotInBooks`) and withholds like an uncosted item; if that read fails, `itemsCostUnread` counts it and the figure is withheld.
+2. **`revenue`** = POS line sales of stock items, net, same window. The label is the founder's ruling (AW17, AskUserQuestion, 2026-10-04 ~00:15Z): *"Net sales (Recommended)"*, option text *'Use the subtotal before tax and surcharge, as /team already does and as restaurant P&Ls do. The tip rate is on net. Every figure is labelled net.'* Null when the read fails, there is no closed check, or a stock line cannot be read (a total would be a floor). `salesCoverage` counts checks, lines, non-stock lines and their sales, unreadable lines, and items sold without moving stock (a glass from a bottle opened earlier, a mapped not-stock line, a sale the ledger refused), and every surface names that count.
+3. **Margin ratios** (`grossMarginDollars`, `grossMargin`, `cogsRatio`, `primeCostRatio`) divide that cost by those sales. `primeCostRatio` adds only the labour the caller passes.
+4. **Turnover, DIO and GMROI** annualise the observed span's cost (at most 365 days) against today's inventory at cost. Null under 28 days of POS history, or unless every on-hand row is costed. The span starts at the earlier of the first closed check and the first POS move (`cogsWindow.firstCheckAt`, `firstMoveAt`). A day or more apart, the basis says which clock starts first and how many days later the other does, and names no date: a date is a day of the house's clock (ADR 0296), and this reader has no zone. The value is today's, not an average, and says so.
+5. **Concentration** (`gini`, `hhi`) uses 90 days of POS sales per stock item over the items the till can sell (option 1). An unmapped active row or a non-active item that sold nothing is left out. Net sales below 0 weigh 0 and are counted. Null, never "well-distributed", when the read fails, there is no closed check, or no line sold a stock item. `itemsWeighed`, `itemsWithSales`, `activeItemsNotWeighed` and `basis` say what was weighed.
+6. **The old figures keep true names**, `deliveredPurchases` and `shelfValueAtMenuPrice`, and feed no ratio. /reports and the export print "Sales of stocked items, net (365d)".
+7. **A registry entry is `computed: true` only where a served field computes it.** Seven go to false; the rest describe what they read. A test maps every `true` to a served field, or for five it does not call, to the line that computes it.
+8. **`public.pos_item_sales(house, since)`** aggregates: one jsonb value, SECURITY INVOKER, STABLE, executable by `service_role` only. Each item carries `mapped`; a mapped item that neither sold nor moved is listed with zeros, and an item without the flag is a failed read. A line that is not a JSON object, or whose price, quantity or item id is not a number or uuid, is counted in `unreadable_lines`, not raised. A value beyond `numeric`'s range, written to `pos_checks` directly (the ingest coerces to finite numbers), raises and fails the whole call, which the gateway reads as a failed read (ADR 0067). The SQL test pins both. Another per-item reader of the till calls this function rather than aggregate `pos_checks.items` again.
+9. **The till's figures reach only a caller who sees sales.** The coordinator's call under the founder's delegation, not his pick, and he can overrule it: *"Do not ask me questions, I allow and approve for you to decide on your own. If its a decision question then research deep, find answers. While you can change decisions, you cannot change any feature we decided unless it breaks everything then only you can, but before that you should research."* The rule is ADR 0145's `ROLE_POLICY` as ADR 0290 §5 applies it: `withSales = policyFor(role).sees.includes("sales")`. Owner and manager see sales, `admin` reads the owner row (OD-241), staff and unknown roles do not. Without sales, `getFinancialSummary` and `getRiskProfile` skip `pos_item_sales`, the figures above are null, `salesWithheld` is true, and each basis says withheld. Both default closed. The routes pass the token's gate (`salesGateFor`) on financial, risk, overview, consult, recommendations and goals; a `days_of_inventory` goal is not scored without sales. MCP tools (keys are minted only by an owner or manager) and report exports (`@Roles("owner", "manager")`) pass it open. The digest and the goal producers pass it open only to the house's holders, the users on a live `user_restaurant_access` row with role `owner` or `manager`; a failed role read is a failure, never an empty audience. The gate covers only what this ADR moved onto the till.
+
+**Not in these figures, and named in their bases:** waste, breakage, count corrections, off-till sales, check discounts, and food lines (no recipe cost).
+
+What carried it: a number should describe the event its label names. The till records sales and the stock they moved, so the honest figure was available; where part is not, say how much is missing rather than print a smaller number under the same label (ADR 0051/0053).
+
+## Consequences
+
+- Cost and sales of what sold reach /reports, the export, the MCP financial tool, the consultant evidence and the `days_of_inventory` goal for a caller who sees sales, and `revenue_concentration` fires on the till's Gini. Tuzlu's figure was not measured. Derived: if its mappings point at the 116 imported rows only, it lands near 0.565, or about 0.550 if the 4 unsold rows are unmapped too ((116 × 0.5651 − 4)/112), both under 0.6.
+- **Tuzlu will likely see dashes** for cost of goods and the ratios until its uncosted rows carry a cost: a dash where a wrong $39,302 stood.
+- An item sold without moving stock adds sales and no cost, so cost can be understated; its count is named, and the 28-day rule keeps annualised ratios off the shortest windows.
+- **Partial no-move.** Asked whether to withhold when only some items sold without moving stock, the founder picked (AskUserQuestion, 2026-10-05T01:39Z) *"Show it, name the gap (Recommended)"*. Withholding would catch a mapped not-stock line, but would dash a glass from a bottle opened before the window, a true zero here.
+- **A sale the ledger refused in part** leaves bottles out above 0, so it is not counted, and cost is understated by an unmeasured amount; the basis says so. The founder picked (AskUserQuestion, 2026-10-07 13:51:58Z) *"Show the gap next (Recommended)"*: a follow-up counts at read time, beside cost of goods, each stock line that moved no stock, by cause, with its sales, plus glass-void over-returns (B19), after proving on a fixture that pos-hub's per-line ledger key recovers a missing bottle move (if not, it returns to him). Rejected: *"A note is enough"* and *"Log each refused sale"* (a new table, blind to the past).
+- **Check discounts.** The founder picked (AskUserQuestion, answered 2026-10-07, recorded 04:29:14Z) *"Name it now, spread later (Recommended)"*: sales stay before check discounts, named, until ADR 0295 settles 'net', then each discount is spread over its lines by line value. Rejected: *"Spread it now"* (another audit round, likely redone after ADR 0295) and *"Show total beside it"* (the house's total discount beside the figure).
+- **Owed, each named:** `goal-scenarios.ts` `food-cost-ratio` text (`1b5d5b89a`, unpushed); "no longer active" said when the active-rows read failed; the `days_of_inventory` refusal names only the on-hand gap; the `leadTimeStdev` note; the "Revenue rides" copy; `maxDrawdown`; "eight figures" comments; the export-render fixture; older sales on role-open reads (`pos-revenue`, `waiters`, `basket`, `table-performance`, `hot-tables`, `insights`, consult's evidence, check-based goals), which ADR 0348 refuses or withholds; a demoted minter's MCP key keeps reading the till; one unreadable line withholds `revenue` house-wide (a per-line exclusion is the founder's call).
+- **Revisit when** ADR 0115 D3 records cost per depletion row, counts are regular (show opening + purchases − closing beside this), or ADR 0295 settles 'net'.
+
+## Review trail
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-10-04 to 10-09 | lane `proxies`, coordinator, CI gate (PR #617) | Created, Proposed. The SQL test passes on the fix database and fails on the control. Round 1 fixed two majors (the Gini weighed unsellable rows; a no-move till printed $0). Decision 9 added after the BLOCK at `fd0a57669`; PASSes at `22a192cf2`, `f013a3aa6`, `b19bb603a`, `cc3bfdb10` on earlier heads |
+| 2026-10-31 | lane `proxies` (executor) | PR #617's diff ran past the gate's 300,000-character read, so this record and its migration moved to PR #703, whose five CI audits blocked (`a8501a47b` to `38e4cf374`), four with correctness cut off by the reviewer's output budget; its compliance notes became OD-241 to OD-243. Re-split into PRs of 30,000 characters or less (the OD rows, this record, the migration with its test, #617 in slices, the digest); #703 closed; this record compressed, brackets folded, build detail moved to the PRs that build it. The executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick: *"complete the full integration with ful SOTA and robust connections with the current mudavym structure and foundation. Do not ask me anything just complete it fully."* |
