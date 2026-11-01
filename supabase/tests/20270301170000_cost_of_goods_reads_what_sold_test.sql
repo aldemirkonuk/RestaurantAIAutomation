@@ -7,8 +7,7 @@
 -- Run on 2026-11-01 on PGlite 0.5.8 over every migration: it passes, and
 -- without the migration it fails (42883). Synthetic fixtures, one transaction,
 -- rolled back. House N is u('N'), item x u('2x0'), wine u('1x0'). Each block
--- says how its figures follow from the fixtures. Not pinned yet: the three
--- clocks and numeric's ceiling.
+-- says how its figures follow from the fixtures.
 
 begin;
 
@@ -237,6 +236,45 @@ begin
     perform pg_temp.chk('1', 'k-foreign', '0', jsonb_build_array(pg_temp.ln('d', 1, 10)));
     r := pg_temp.cg_read();
     assert pg_temp.cg_item(r, 'd') @> '{"in_house": false, "mapped": false, "sales": 10}', format('T11 D %s', pg_temp.cg_item(r, 'd'));
+    raise exception 'cg-undo';
+  exception when others then
+    if sqlerrm <> 'cg-undo' then raise; end if;
+  end;
+end $$;
+
+-- T12 the clocks. first_check_at: k7, 3 days back (k1 and k2 are later, k5
+-- predates the window). first_move_at: A's row written 5 days back; every
+-- other row here is written at now(), the transaction's start. first_sale_at:
+-- the earlier, 5 days. A 4-day window drops that row, so its first move is
+-- now(). House 2 from tomorrow on has nothing: every clock is null.
+do $$
+declare
+  r jsonb := pg_temp.cg_read();
+  r4 jsonb := pg_temp.cg_read(4);
+  z jsonb := public.pos_item_sales(pg_temp.u('2'), now() + interval '1 day');
+begin
+  assert (r ->> 'first_check_at')::timestamptz = now() - interval '3 days'
+     and (r ->> 'first_move_at')::timestamptz = now() - interval '5 days'
+     and (r ->> 'first_sale_at')::timestamptz = now() - interval '5 days', format('T12 %s', r - 'items');
+  assert (r4 ->> 'first_check_at')::timestamptz = now() - interval '3 days' and (r4 ->> 'first_move_at')::timestamptz = now(),
+    format('T12 4 days %s', r4 - 'items');
+  assert (z ->> 'checks')::int = 0 and z -> 'items' = '[]'::jsonb and z -> 'first_sale_at' = 'null'::jsonb
+     and z -> 'first_check_at' = 'null'::jsonb and z -> 'first_move_at' = 'null'::jsonb, format('T12 empty %s', z);
+end $$;
+
+-- T13 what the ingest can write never raises: the largest finite double,
+-- 1.7976931348623157e308, squared is about 3.2e616, far inside numeric's
+-- 131,072 digits. A then reads k1's 24 plus big x big. Raising cg-undo rolls
+-- the check back.
+do $$
+declare
+  big numeric := 1.7976931348623157e308;
+  r jsonb;
+begin
+  begin
+    perform pg_temp.chk('1', 'k-max', '0', jsonb_build_array(pg_temp.ln('a', big, big)));
+    r := pg_temp.cg_read();
+    assert (pg_temp.cg_item(r, 'a') ->> 'sales')::numeric = 24 + big * big, format('T13 %s', pg_temp.cg_item(r, 'a'));
     raise exception 'cg-undo';
   exception when others then
     if sqlerrm <> 'cg-undo' then raise; end if;
