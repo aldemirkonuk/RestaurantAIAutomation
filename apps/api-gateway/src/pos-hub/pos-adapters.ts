@@ -6,6 +6,11 @@ import { CanonicalCheck, CanonicalItem, checkChannelOf } from "./pos-types";
  * Money convention: Square/Clover speak minor units (cents/kuruş) → divide by
  * 100; Toast speaks major units. Adapters never touch the database — the hub
  * service owns validation, wine mapping, and the pos_checks upsert.
+ *
+ * Line convention: `price` is the list price of ONE unit, before modifiers and
+ * discounts, and `qty` is the units rung, so price × qty is the line's sale
+ * (CanonicalItem, pos-types.ts; ADR 0298 decision 1 sums exactly that). Each
+ * provider's field for it is named at its adapter.
  */
 
 export interface PosAdapter {
@@ -37,6 +42,32 @@ const num = (v: unknown): number | null => {
 const cents = (v: unknown): number | null => {
   const n = num(v);
   return n === null ? null : n / 100;
+};
+
+/**
+ * Clover's `unitQty` is set only on a line priced per unit (by weight or
+ * measure), as a fixed-point integer scaled by 1000: 2500 is 2.5 units, and
+ * the line's total is price × unitQty / 1000. A fixed-price line has none,
+ * since Clover rings each unit as its own line. Read raw, 1.5 kg was 1500.
+ */
+const cloverQty = (v: unknown): number => {
+  const n = num(v);
+  return n === null ? 1 : n / 1000;
+};
+
+/**
+ * One unit's price on a Toast selection. Toast's `price` is the selection's
+ * net total, with its quantity, modifiers and discounts applied, so reading it
+ * as a unit price counted a two-glass line at four glasses. `receiptLinePrice`
+ * is the price without quantity, discount or modifier adjustments, the same
+ * basis as Square's `base_price_money`. A payload without it falls back to
+ * `price` over the quantity: one unit's share of the net total.
+ */
+const toastUnitPrice = (s: any, qty: number): number => {
+  const unit = num(s.receiptLinePrice);
+  if (unit !== null) return unit;
+  const total = num(s.price);
+  return total === null || qty === 0 ? 0 : total / qty;
 };
 
 // ---------------------------------------------------------------------------
@@ -121,6 +152,8 @@ export const squareAdapter: PosAdapter = {
             externalItemId: li.catalog_object_id ?? null,
             category: null,
             qty: num(li.quantity) ?? 1,
+            // base_price_money is "the base price for a single unit of the
+            // line item" (Square, OrderLineItem).
             price: cents(li.base_price_money?.amount) ?? 0,
           }),
         ),
@@ -175,7 +208,8 @@ export const cloverAdapter: PosAdapter = {
             name: String(li.name ?? "unknown"),
             externalItemId: li.item?.id ?? null,
             category: null,
-            qty: num(li.unitQty) ?? 1,
+            qty: cloverQty(li.unitQty),
+            // `price` is one unit's, before modifiers and discounts.
             price: cents(li.price) ?? 0,
           }),
         ),
@@ -214,15 +248,16 @@ export const toastAdapter: PosAdapter = {
         subtotal: num(c.amount),
         total: num(c.totalAmount ?? c.amount),
         tip: num(c.tipAmount),
-        items: (c.selections ?? []).map(
-          (s: any): CanonicalItem => ({
+        items: (c.selections ?? []).map((s: any): CanonicalItem => {
+          const qty = num(s.quantity) ?? 1;
+          return {
             name: String(s.displayName ?? s.itemName ?? "unknown"),
             externalItemId: s.item?.guid ?? null,
             category: s.salesCategory?.name ?? null,
-            qty: num(s.quantity) ?? 1,
-            price: num(s.price) ?? 0,
-          }),
-        ),
+            qty,
+            price: toastUnitPrice(s, qty),
+          };
+        }),
         raw: c,
       }));
   },
