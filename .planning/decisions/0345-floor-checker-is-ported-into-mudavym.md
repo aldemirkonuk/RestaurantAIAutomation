@@ -3,7 +3,7 @@
 - **Status:** Proposed (2026-10-31)
 - **Parts:** 1 of 3. The other parts land in later PRs of this series; until the last one merges, Consequences and the Review trail below are stubs.
 - **Date:** 2026-10-31 (rulings of 2026-10-30 EDT, session ca58311b)
-- **Decider:** the founder, for the port and his picks: five AskUserQuestion calls on 2026-10-30 EDT, asked 2026-10-31T02:52:37Z, 03:03:50Z, 03:13:20Z, 03:41:53Z and 03:46:17Z, and on 2026-10-31 the leak fix's scope (pick 14, asked 04:34:21Z) and, in the call asked at 16:54:31Z, that a departed waiter's floor figures are kept for owners and managers. Each is quoted under § Context. His builder answer is read in the way stated where it appears; that reading is the executor's (session ca58311b), not his words. Of his Out tonight answer, only the part its label and text share ships. The founder can overrule any part of this record, and a lock is his. Its role map, reuse map and engineering rules are the executor's design; what "run dry" means (pick 11) is not decided here: it waits on OD-242 (OPEN-DECISIONS.md:329 on main), and pick 11 states the executor's proposal for it, not a call. This record answers none of OD-235, OD-236 or OD-238.
+- **Decider:** the founder, for the port and his picks: five AskUserQuestion calls on 2026-10-30 EDT, asked 2026-10-31T02:52:37Z, 03:03:50Z, 03:13:20Z, 03:41:53Z and 03:46:17Z, and on 2026-10-31 the leak fix's scope (pick 14, asked 04:34:21Z) and, in the call asked at 16:54:31Z, that a departed waiter's floor figures are kept for owners and managers. Each is quoted under § Context. His builder answer is read in the way stated where it appears; that reading is the executor's (session ca58311b), not his words. Of his Out tonight answer, only the part its label and text share ships. The founder can overrule any part of this record, and a lock is his. Its role map, reuse map and engineering rules are the executor's design; what "run dry" means (pick 11) is not decided here: it waits on OD-242, and pick 11 states the executor's proposal for it, not a call. This record answers none of OD-235, OD-236 or OD-238.
 - **Keywords:** Floor Checker, floor coverage, waiter-coverage, port, in-SPA, /floor, /floor/builder, /floor/me, floor module, floor-core, floor_sections, Food-up, meal run, Paid, punches, Out tonight, pos_server_links, emitToHouseRoles, memberRoom, notification_push_devices, restaurant_tables, subdomain, manifest
 - **Links:**
   - His answers are cited by the UTC time each question was asked (session ca58311b's transcript, outside the repo).
@@ -12,7 +12,7 @@
   - Held as they are: [ADR 0257](0257-dashboard-walk-through-r1-rulings.md) W22; [ADR 0027](0027-push-recipients-are-not-resolved-here.md) (Proposed).
   - Pick 14: [ADR 0348](0348-staff-are-refused-the-table-and-server-takings-and-the-rest-is-withheld-after-617.md) (Locked) and [ADR 0298](0298-cost-of-goods-is-what-sold-and-concentration-reads-the-till.md) decision 9.
   - Binding: [0020](0020-no-fabricated-answers.md), [0131](0131-the-new-house-goes-live-dark-then-one-house-at-a-time.md), [0149](0149-mudavym-is-the-only-design-finish-every-page-then-delete-legacy-once.md), [0162](0162-managers-grant-manager-or-staff-on-both-doors.md), [0164](0164-sessions-follow-membership-and-several-houses-choose.md), [0212](0212-a-new-migration-sorts-after-every-version-its-base-holds.md), [0272](0272-a-ranking-or-a-pairing-is-printed-only-when-the-data-can-tell-it-apart.md), [0294](0294-the-team-performance-card-prints-every-figure-with-its-unit.md).
-  - Register ([OPEN-DECISIONS](OPEN-DECISIONS.md)): OD-235 to OD-238 (OPEN-DECISIONS.md:340-343 on main), the forks these rulings left, and OD-246 (OPEN-DECISIONS.md:344 on main), already on main; OD-237 stays open. OD-64 (first real POS) is open. OD-242 (how far the founder's 2026-10-31 delegation reaches) and OD-243 (OPEN-DECISIONS.md:330 on main), whether retire-to-write binds a new ADR, are open.
+  - Register ([OPEN-DECISIONS](OPEN-DECISIONS.md)): OD-235 to OD-238, the forks these rulings left, and OD-246, all already in the register on main; OD-237 stays open. OD-64 (first real POS) is open. OD-242 (how far the founder's 2026-10-31 delegation reaches) and OD-243, whether retire-to-write binds a new ADR, are open.
 
 ## Context
 
@@ -125,7 +125,7 @@ He took all fourteen offered items (AskUserQuestion asked 2026-10-31T03:41:53Z, 
 
 #### pick 11
 
-*"'Out tonight' list on phone"* (Q3): "Waiters see what not to sell: items staff mark out, plus drinks the cellar shows run dry, and 'Back' when they return. No figures." Who marks is Round 4; the run-dry drinks enter without a mark. "Run dry" waits on OD-242 (OPEN-DECISIONS.md:329 on main); the executor's proposal, not a call: a drink reads Out when its linked inventory item has had live stock and no live `active` lot holds a sealed bottle or an open-bottle measure above 0, and Back when such a lot appears.
+*"'Out tonight' list on phone"* (Q3): "Waiters see what not to sell: items staff mark out, plus drinks the cellar shows run dry, and 'Back' when they return. No figures." Who marks is Round 4; the run-dry drinks enter without a mark. "Run dry" waits on OD-242, and no code PR builds the run-dry half of the list until its meaning is recorded; the executor's proposal, not a call: a drink reads Out when its linked inventory item has had live stock and no live `active` lot holds a sealed bottle or an open-bottle measure above 0, and Back when such a lot appears.
 
 #### pick 12
 
@@ -146,7 +146,7 @@ He took all fourteen offered items (AskUserQuestion asked 2026-10-31T03:41:53Z, 
    - **Per-origin sessions.** The web app keeps the access token in `localStorage` (`apps/web/src/stores/authStore.ts:94`, `apps/web/src/contexts/AuthContext.tsx:814`), which a second origin cannot read, so the subdomain needs a second sign-in or a new handoff-token surface with its own security ADR.
    - **Push devices.** `notification_push_devices` has no app or origin column (`supabase/migrations/20260925160500_a_preference_is_kept_once_per_person_per_house.sql:96-120`, keyed `UNIQUE (user_id, endpoint)` at `:119`), so a device row cannot say which surface it came from.
    - **Realtime.** The socket's CORS list would need the new origin (`apps/api-gateway/src/websocket/websocket.gateway.ts:174-190`).
-   - **Not ruled out.** His Round 1 answer named a subdomain; it stays open as OD-237.
+   - **Not ruled out.** His Round 1 answer named a subdomain; it stays open as register entry OD-237 (not gate ADR 0237).
 3. **A separate subdomain app with sync.** The checker stays a Next.js app on its own Supabase, and the two systems sync. Rejected:
    - **Identity.** The checker allows one house per user (`0001_init.sql:35-37`); Mudavym lets a person hold several houses and choose one (ADR 0164).
    - **Roles.** The checker's are `manager`/`waiter`; Mudavym's are `owner`/`manager`/`staff` (`supabase/migrations/20260902200000_team_access_role_is_a_known_role.sql:61-63`).
@@ -185,10 +185,9 @@ Adopted, from his rulings and picks (§ Context):
 
 ## Consequences
 
-**Retire-to-write (CLAUDE.md §4).** This file is the one decision record §5 requires. It retires no document, as ADRs 0249, 0265, 0273, 0287 and 0314 did. Whether retire-to-write binds a new ADR is OD-243 (OPEN-DECISIONS.md:330 on main), open.
+**Retire-to-write (CLAUDE.md §4).** This file is the one decision record §5 requires. It retires no document, as ADRs 0249, 0265, 0273, 0287 and 0314 did. Whether retire-to-write binds a new ADR is OD-243, open, and is raised again when this record is locked.
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
-| 2026-11-01 | — | Part 1 of 3 |
