@@ -1,6 +1,9 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
-import { GoalsService } from "../../analytics/goals.service";
+import {
+  GoalsService,
+  SALES_GATED_GOAL_METRICS,
+} from "../../analytics/goals.service";
 import {
   ProducerLedgerService,
   emptyTally,
@@ -144,6 +147,11 @@ export class CeilingHeldProducer {
         tooOld += 1;
         continue;
       }
+
+      // A days-of-stock goal is behind the sales gate (ADR 0298 decision 9),
+      // which this producer does not carry yet: read without it, the goal
+      // has no score, and a ceiling would read as held at zero. Not read.
+      if (SALES_GATED_GOAL_METRICS.has(String(goal.metric_key))) continue;
 
       let progress: any;
       try {

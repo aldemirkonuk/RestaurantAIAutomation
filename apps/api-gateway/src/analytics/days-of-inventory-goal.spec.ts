@@ -17,7 +17,10 @@
  * the common one on a house that has not costed its cellar — not an edge case.
  */
 
-import { GoalsService } from "./goals.service";
+import { DAYS_OF_STOCK_WITHHELD, GoalsService } from "./goals.service";
+
+/** Only a sales holder scores days of stock (ADR 0298 decision 9). */
+const HOLDER = { withSales: true };
 
 const verdicts = { record: () => {}, recordForEvent: () => {} } as any;
 
@@ -73,7 +76,7 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
       targetValue: 9,
       direction: "at_most",
       period: "month",
-    });
+    }, HOLDER);
     // The baseline is the register's own number, not a re-derivation.
     expect(seen.patch.baseline_value).toBe(12.5);
     expect(seen.patch.metric_key).toBe("days_of_inventory");
@@ -87,7 +90,7 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
         metricKey: "days_of_inventory",
         targetValue: 9,
         direction: "at_most",
-      }),
+      }, HOLDER),
     ).rejects.toThrow(/every bottle on hand carries a recorded cost/);
   });
 
@@ -101,7 +104,7 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
         name: "x",
         metricKey: "days_of_inventory",
         targetValue: 9,
-      });
+      }, HOLDER);
     } catch {
       threw = true;
     }
@@ -116,8 +119,99 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
           name: "x",
           metricKey: "days_of_inventory",
           targetValue: 9,
-        }),
+        }, HOLDER),
       ).rejects.toThrow(/Days of stock cannot be read/);
     }
+  });
+
+  it("is not scored for a caller who does not see sales, and the register is not read", async () => {
+    for (const gate of [undefined, {}, { withSales: false }]) {
+      const service = serviceWith(12.5);
+      const read = jest.spyOn((service as any).analyticsService, "getFinancialSummary");
+      await expect(
+        service.createGoal(
+          "r1",
+          { name: "x", metricKey: "days_of_inventory", targetValue: 9 },
+          gate,
+        ),
+      ).rejects.toThrow(DAYS_OF_STOCK_WITHHELD);
+      expect(read).not.toHaveBeenCalled();
+    }
+  });
+});
+
+/** Read without sales, the row's scores are blanked (ADR 0298 decision 9). */
+describe("a days-of-stock goal read without sales", () => {
+  const ROW = {
+    id: "g1",
+    restaurant_id: "r1",
+    metric_key: "days_of_inventory",
+    target_value: 30,
+    baseline_value: 41.2,
+    current_value: 37.9,
+    status: "active",
+    created_at: "2026-10-01T10:00:00Z",
+    deadline: null,
+  };
+  const OTHER = { ...ROW, id: "g2", metric_key: "bottles_sold" };
+
+  /** A goals service over `rows`, counting writes and register reads. */
+  function over(rows: Array<Record<string, unknown>>) {
+    const seen = { updates: 0 };
+    const chain: any = {
+      select: () => chain,
+      eq: () => chain,
+      order: () => chain,
+      update: () => {
+        seen.updates += 1;
+        return chain;
+      },
+      single: async () => ({ data: rows[0], error: null }),
+      maybeSingle: async () => ({ data: { timezone: "Europe/Istanbul" }, error: null }),
+      then: (ok: (v: unknown) => unknown) => ok({ data: rows, error: null }),
+    };
+    const financial = jest.fn(async () => ({ daysInventoryOutstanding: 37.9 }));
+    const service = new GoalsService(
+      { getClient: () => ({ from: () => chain }) } as any,
+      { getStored: async () => [] } as any,
+      { get: () => undefined } as any,
+      {} as any,
+      verdicts,
+      { getFinancialSummary: financial } as any,
+    );
+    return { service, seen, financial };
+  }
+
+  it("answers the one-goal read with the reason, computes nothing and writes nothing", async () => {
+    for (const gate of [undefined, {}, { withSales: false }]) {
+      const { service, seen, financial } = over([ROW]);
+      const out: any = await service.getGoalProgress("r1", "g1", undefined, gate);
+      expect(out.unreadable).toBe(true);
+      expect(out.withheld).toBe(true);
+      expect(out.reason).toBe(DAYS_OF_STOCK_WITHHELD);
+      expect(out.goal.current_value).toBeNull();
+      expect(out.goal.baseline_value).toBeNull();
+      expect(out.goal.target_value).toBe(30);
+      expect(financial).not.toHaveBeenCalled();
+      expect(seen.updates).toBe(0);
+    }
+  });
+
+  it("blanks the stored scores on the goal list, and only on a days-of-stock goal", async () => {
+    const { service } = over([ROW, OTHER]);
+    const rows: any[] = await service.listGoals("r1", "active", {});
+    expect(rows[0].current_value).toBeNull();
+    expect(rows[0].baseline_value).toBeNull();
+    expect(rows[0].withheld).toBe(DAYS_OF_STOCK_WITHHELD);
+    expect(rows[1].current_value).toBe(37.9);
+    expect(rows[1].withheld).toBeUndefined();
+  });
+
+  it("keeps the stored scores for a caller who sees sales", async () => {
+    const { service } = over([ROW]);
+    const rows: any[] = await service.listGoals("r1", "active", HOLDER);
+    expect(rows[0].current_value).toBe(37.9);
+    expect(rows[0].baseline_value).toBe(41.2);
+    expect(rows[0].withheld).toBeUndefined();
   });
 });

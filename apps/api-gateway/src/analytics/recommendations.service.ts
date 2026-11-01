@@ -3,7 +3,7 @@ import * as crypto from "crypto";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
-import { GoalsService } from "./goals.service";
+import { GoalsService, SALES_GATED_GOAL_METRICS } from "./goals.service";
 import { DatabaseService } from "../database/database.service";
 import {
   RecommendationActionsService,
@@ -338,7 +338,9 @@ export class RecommendationsService {
       this.advanced.getSeasonality(restaurantId),
       this.advanced.getCashflow(restaurantId),
       this.insightGenerator.generate(restaurantId, { maxPerCategory: 4 }),
-      this.goalsService.listGoals(restaurantId, "active"),
+      this.goalsService.listGoals(restaurantId, "active", {
+        withSales: opts.withSales === true,
+      }),
       this.marginAdvice
         ? this.marginAdvice.adviseHouse(restaurantId)
         : Promise.reject(new Error("price advice is not wired into this build")),
@@ -791,7 +793,14 @@ export class RecommendationsService {
     }));
 
     // ---- Goal rules -------------------------------------------------------
-    for (const g of ctx.goals.slice(0, 3)) {
+    // "N% done" on a sales-gated goal is a sales holder's figure: left out
+    // unless the gate is open (ADR 0298 decision 9).
+    const goalsForViewer = ctx.goals.filter(
+      (g: { metric_key?: unknown }) =>
+        opts.withSales === true ||
+        !SALES_GATED_GOAL_METRICS.has(String(g?.metric_key ?? "")),
+    );
+    for (const g of goalsForViewer.slice(0, 3)) {
       const target = Number(g.target_value) || 0;
       const current = Number(g.current_value) || 0;
       const behind =
