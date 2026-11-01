@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Seal } from '../mudavym/Seal'
 import { MarkDraws } from '../mudavym/MarkDraws'
-import { animate, ink, prefersReducedMotion, turn, type MotionToken } from '../../lib/mudavym/motion'
+import { animate, ink, leaf, prefersReducedMotion, turn, type MotionToken } from '../../lib/mudavym/motion'
 import { FrontMatterPoem, InsideCover } from './FrontMatter'
 import { cn } from '../../lib/utils'
 import './endpaper.css'
@@ -14,11 +14,13 @@ import './endpaper.css'
 let markHasDrawn = false
 
 /**
- * A whole leaf turning over is twice the arc of a screen change, so it takes
- * the house `turn` curve at a longer reach (the motion canvas's own "The page
- * turns" rotates 92°; a full leaf is 180°).
+ * A whole leaf turning over is twice the arc of a screen change (the motion
+ * canvas's own "The page turns" rotates 92°; a full leaf is 180°), so it runs
+ * on the house `leaf` token, not `turn` — see ADR 0349. Each cut and fade
+ * below is keyed to the leaf's eased progress, so the curve decides where each
+ * one lands; the settle timer runs on `LEAF_TURN.ms`, not on the curve.
  */
-const LEAF_TURN: MotionToken = { easing: turn.easing, ms: 760 }
+const LEAF_TURN: MotionToken = leaf
 
 /** Under 700px the endpaper is a band above the leaf (endpaper.css). */
 function isNarrow(): boolean {
@@ -110,8 +112,9 @@ export function EndpaperShell({
 
   // ── the front matter ────────────────────────────────────────────────────
   // closed → opening → open → closing → closed. While turning, both spreads
-  // are mounted, and every swap is keyed to the leaf's own progress, never to
-  // the clock — so it stays hidden whatever the curve:
+  // are mounted, and every swap is keyed to the leaf's own progress. Whether a
+  // swap stays hidden still depends on the curve: a curve that reaches a swap
+  // point early leaves the rest of the run over a still book (ADR 0349):
   //   - the inside cover is what lies UNDER the endpaper, so it is there from
   //     the first frame and the lifting leaf reveals it (and is covered again
   //     only as the leaf lands back on it);
