@@ -228,7 +228,8 @@ export class McpToolReadersService {
     // minted and revoked only by a manager or an owner of the house
     // (`mcp-keys.controller.ts`, `assertCanManageRestaurant`), and its
     // secret is shown to that person alone, so the reader is one a holder of
-    // the sales class let in.
+    // the sales class let in. A key outlives its minter's role: tech-debt.d,
+    // 2026-11-01-docs-od-241-admin-remeasured.md.
     const summary = await this.analytics.getFinancialSummary(
       restaurantId,
       hasLabor ? (args.labor as number) : 0,
