@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { EndpaperShell } from './EndpaperShell'
+import { leaf, turn } from '../../lib/mudavym/motion'
 
 /**
  * The book frame itself — sketch 118 Direction B. Per-screen copy and field
@@ -255,10 +256,13 @@ describe('EndpaperShell', () => {
         )
         calls = []
         fireEvent.click(screen.getByRole('button', { name: TURN }))
-        const turnRuns = calls.filter((c) => c.options.duration === 760)
+        const turnRuns = calls.filter((c) => c.options.duration === leaf.ms)
         expect(turnRuns.length).toBeGreaterThanOrEqual(4)
+        // The leaf runs on its own token, never `turn`'s front-loaded curve (ADR 0349).
+        for (const run of turnRuns) expect(run.options.easing).toBe(leaf.easing)
+        expect(leaf.easing).not.toBe(turn.easing)
         act(() => {
-          vi.advanceTimersByTime(760)
+          vi.advanceTimersByTime(leaf.ms)
         })
         expect(turnRuns.every((c) => c.cancelledWith === true)).toBe(true)
       })
@@ -271,7 +275,7 @@ describe('EndpaperShell', () => {
         )
         fireEvent.click(screen.getByRole('button', { name: TURN }))
         act(() => {
-          vi.advanceTimersByTime(760)
+          vi.advanceTimersByTime(leaf.ms)
         })
         calls = []
         rerender(
