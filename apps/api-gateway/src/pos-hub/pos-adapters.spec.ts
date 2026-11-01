@@ -142,7 +142,7 @@ describe("adapters normalize to the canonical check", () => {
 
 /**
  * A line's price is ONE unit's, so price × qty is its sale (CanonicalItem;
- * ADR 0298 decision 1). Toast's `price` is the selection's total and Clover's
+ * ADR 0298 decisions 2 and 8). Toast's `price` is the selection's total and Clover's
  * `unitQty` is in thousandths; read raw, both overstated a line's sale.
  */
 describe("adapters — a line carries one unit's price and the units rung", () => {
@@ -161,6 +161,15 @@ describe("adapters — a line carries one unit's price and the units rung", () =
   it("toast without receiptLinePrice takes the total over the quantity", () => {
     const it = toast({ quantity: 2, price: 30 });
     expect(it.price * it.qty).toBe(30);
+  });
+
+  it("toast priced in its modifiers is not a $0 sale", () => {
+    const it = toast({ quantity: 2, price: 24, receiptLinePrice: 0 });
+    expect(it.price * it.qty).toBe(24);
+  });
+
+  it("toast with no money in the selection stays at 0", () => {
+    expect(toast({ quantity: 1, price: 0, receiptLinePrice: 0 }).price).toBe(0);
   });
 
   it("clover reads unitQty in thousandths on a per-unit line", () => {

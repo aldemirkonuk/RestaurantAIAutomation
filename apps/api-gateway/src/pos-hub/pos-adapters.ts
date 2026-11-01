@@ -9,8 +9,8 @@ import { CanonicalCheck, CanonicalItem, checkChannelOf } from "./pos-types";
  *
  * Line convention: `price` is the list price of ONE unit, before modifiers and
  * discounts, and `qty` is the units rung, so price × qty is the line's sale
- * (CanonicalItem, pos-types.ts; ADR 0298 decision 1 sums exactly that). Each
- * provider's field for it is named at its adapter.
+ * (CanonicalItem, pos-types.ts; ADR 0298's sales, decisions 2 and 8, sum
+ * exactly that). Each provider's field for it is named at its adapter.
  */
 
 export interface PosAdapter {
@@ -49,6 +49,8 @@ const cents = (v: unknown): number | null => {
  * measure), as a fixed-point integer scaled by 1000: 2500 is 2.5 units, and
  * the line's total is price × unitQty / 1000. A fixed-price line has none,
  * since Clover rings each unit as its own line. Read raw, 1.5 kg was 1500.
+ * This trusts the sender to follow Clover's scale: a `unitQty` of 1 meant as
+ * one unit reads as 0.001, and nothing here can tell the two apart.
  */
 const cloverQty = (v: unknown): number => {
   const n = num(v);
@@ -62,14 +64,20 @@ const cloverQty = (v: unknown): number => {
  * quantity and modifiers in it, so reading it as a unit price counted a
  * two-glass line at four glasses. `receiptLinePrice` is the price "without any
  * quantity, taxes, discounts, and modifier adjustments", the same basis as
- * Square's `base_price_money`. Toast does not require it, so a selection
- * without it falls back to `price` over the quantity: one unit's share of the
- * net price, a different basis, filed in tech-debt.d
- * (fix-pos-lines-carry-unit-price).
+ * Square's `base_price_money`.
+ *
+ * Toast does not require `receiptLinePrice`, and an item whose menu price is
+ * 0, with the money in its modifiers (a glass priced by its pour), reads 0.
+ * Either way the line falls back to `price` over the quantity, one unit's
+ * share of the net amount, so a priced selection is never stored as a $0
+ * sale. Which basis such a line should carry is open (OD-244). Until it is
+ * answered, this keeps main's reading of Toast's `price`, divided by the
+ * quantity, as an assumption stated in tech-debt.d
+ * (fix-pos-lines-carry-unit-price), not an answer.
  */
 const toastUnitPrice = (s: any, qty: number): number => {
   const unit = num(s.receiptLinePrice);
-  if (unit !== null) return unit;
+  if (unit !== null && unit !== 0) return unit;
   const total = num(s.price);
   return total === null || qty === 0 ? 0 : total / qty;
 };
