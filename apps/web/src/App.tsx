@@ -137,6 +137,7 @@ const LogsNext = lazyWithRefresh(() => import('./pages/logs/next/LogsNext'))
 const HelpNext = lazyWithRefresh(() => import('./pages/help/next/HelpNext'))
 const Privacy = lazyWithRefresh(() => import('./pages/Privacy'))
 const Terms = lazyWithRefresh(() => import('./pages/Terms'))
+const GmailSession = lazyWithRefresh(() => import('./pages/notes/GmailSession'))
 // Public vendor catalogue — resolved by slug, also served on a vendors.* subdomain.
 const VendorPortal = lazyWithRefresh(() => import('./pages/VendorPortal'))
 // Owner/manager only — vendor pricing is the restaurant's negotiating position.
@@ -219,6 +220,9 @@ function App() {
                     data-terms acceptance work; placeholder text per OD-132/
                     OD-124 until a lawyer reviews it (founder Q11, 2026-09-22). */}
                 <Route path="/terms" element={<Terms />} />
+                {/* Public on purpose, unlisted: not in PUBLIC_ROUTES, so noindex,
+                    nofollow, robots-disallowed, no sitemap entry (ADR 0355). */}
+                <Route path="/notes/gmail-session" element={<GmailSession />} />
                 {/* Public vendor catalogue. No auth: this is what a vendor chose
                     to publish, and our own ingester reads it back as structured data. */}
                 <Route path="/v/:slug" element={<VendorPortal />} />
