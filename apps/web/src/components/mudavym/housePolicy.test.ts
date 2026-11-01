@@ -68,8 +68,8 @@ function motionArgs(text: string): string[] {
   return out;
 }
 
-/** The seven tokens, and nothing else, may be handed to `animate()`. */
-const TOKENS = ['settle', 'ink', 'tuck', 'turn', 'pour', 'press', 'stamp', 'tally'];
+/** The house tokens, and nothing else, may be handed to `animate()`. */
+const TOKENS = ['settle', 'ink', 'tuck', 'turn', 'pour', 'press', 'stamp', 'tally', 'leaf'];
 
 describe('the house policy holds in the primitive family', () => {
   it('closes with words — the default is a word and there is no glyph', () => {

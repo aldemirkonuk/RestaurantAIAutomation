@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Seal } from '../mudavym/Seal'
 import { MarkDraws } from '../mudavym/MarkDraws'
-import { animate, ink, prefersReducedMotion, turn, type MotionToken } from '../../lib/mudavym/motion'
+import { animate, ink, leaf, prefersReducedMotion, turn, type MotionToken } from '../../lib/mudavym/motion'
 import { FrontMatterPoem, InsideCover } from './FrontMatter'
 import { cn } from '../../lib/utils'
 import './endpaper.css'
@@ -14,19 +14,13 @@ import './endpaper.css'
 let markHasDrawn = false
 
 /**
- * A whole leaf turning over is twice the arc of a screen change, so it takes
- * a longer reach than `turn` (the motion canvas's own "The page turns"
- * rotates 92°; a full leaf is 180°).
- *
- * It does not take `turn`'s curve. That curve is front-loaded: over a 760ms run the
- * leaf was flat by ~430ms, and because every hand-off below is keyed to the
- * leaf's eased progress, the rest of the run was a still book — the leaf's
- * back fading on an open, the inside cover dissolving into the endpaper on a
- * close — before the page settled. A standard in-out curve lifts the leaf
- * promptly and lands it near the end of a shorter run, so each hand-off
- * happens where the leaf is.
+ * A whole leaf turning over is twice the arc of a screen change (the motion
+ * canvas's own "The page turns" rotates 92°; a full leaf is 180°), so it runs
+ * on the house `leaf` token, not `turn` — see ADR 0349. Every hand-off below
+ * is keyed to the leaf's eased progress, so the curve decides where each one
+ * lands.
  */
-const LEAF_TURN: MotionToken = { easing: 'cubic-bezier(0.4, 0, 0.2, 1)', ms: 600 }
+const LEAF_TURN: MotionToken = leaf
 
 /** Under 700px the endpaper is a band above the leaf (endpaper.css). */
 function isNarrow(): boolean {
