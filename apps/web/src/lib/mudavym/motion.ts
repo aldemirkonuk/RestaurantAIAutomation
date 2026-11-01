@@ -15,7 +15,8 @@
  * card says so explicitly ("time to within 1% of target … fully at rest at
  * 1408ms"). The sampler below integrates to that same 1% envelope, so its
  * measured settle time reproduces 083's numbers (the unit test asserts it);
- * the exported tokens carry 083's documented figures verbatim.
+ * the seven 083 tokens carry 083's documented figures verbatim. `leaf` is
+ * not an 083 token: it is ADR 0349's, and stays out of {@link motionTokens}.
  */
 
 import { useEffect, useState } from 'react';

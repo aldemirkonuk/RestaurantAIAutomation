@@ -37,7 +37,7 @@ What was measured before anything moved (all on 2026-09-06, production project
   in passes 2–4; overlays — ADR 0112 Locked, sketch 102's census, the founder's ten-sketch
   canvas registered as sketch 103, BUILD-PROMPT packets 1–5; motions — the seven house
   tokens in `lib/mudavym/motion.ts` (settle 320 · ink 160 · tuck 300 · turn 420 · pour 620
-  · stamp 360 · tally 840) and the founder's 136-demo curation (087); models — ADR 0120
+  · stamp 360 · tally 840) [amended 2026-10-31 by ADR 0349: plus `leaf` 600 for a whole leaf turning over] and the founder's 136-demo curation (087); models — ADR 0120
   Locked 2026-09-06 (Haiku 4.5 for lookup/help, Sonnet 5 for compose, the `consult`
   class, metered per house).
 
