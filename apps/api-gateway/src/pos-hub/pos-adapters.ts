@@ -56,12 +56,16 @@ const cloverQty = (v: unknown): number => {
 };
 
 /**
- * One unit's price on a Toast selection. Toast's `price` is the selection's
- * net total, with its quantity, modifiers and discounts applied, so reading it
- * as a unit price counted a two-glass line at four glasses. `receiptLinePrice`
- * is the price without quantity, discount or modifier adjustments, the same
- * basis as Square's `base_price_money`. A payload without it falls back to
- * `price` over the quantity: one unit's share of the net total.
+ * One unit's price on a Toast selection. Toast's Selection schema
+ * (doc.toasttab.com/openapi/orders/tag/Data-definitions/schema/Selection):
+ * `price` is the "Net price for this selection", after discounts, with its
+ * quantity and modifiers in it, so reading it as a unit price counted a
+ * two-glass line at four glasses. `receiptLinePrice` is the price "without any
+ * quantity, taxes, discounts, and modifier adjustments", the same basis as
+ * Square's `base_price_money`. Toast does not require it, so a selection
+ * without it falls back to `price` over the quantity: one unit's share of the
+ * net price, a different basis, filed in tech-debt.d
+ * (fix-pos-lines-carry-unit-price).
  */
 const toastUnitPrice = (s: any, qty: number): number => {
   const unit = num(s.receiptLinePrice);
