@@ -207,7 +207,7 @@ describe("CeilingHeldProducer", () => {
     expect(goals.getGoalProgress.calls).toHaveLength(0);
     expect(notifications.persistForRestaurant.calls).toHaveLength(0);
     expect(tally.withheldReason).toMatch(
-      /1 on days of stock, a sales holder's figure/,
+      /1 on days of stock or without a metric key, a sales holder's figure/,
     );
   });
 

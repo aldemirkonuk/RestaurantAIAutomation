@@ -26,7 +26,11 @@ export function isSalesGatedGoal(metricKey: unknown): boolean {
   return SALES_GATED_GOAL_METRICS.has(String(metricKey));
 }
 
-/** How a goal producer names the sales-gated goals it did not read. */
+/**
+ * How a goal producer names the goals it did not read. It names both causes
+ * `isSalesGatedGoal` counts, so a row read without its key is never reported
+ * as a days-of-stock goal alone.
+ */
 export function salesGatedBit(n: number): string {
-  return `${n} on days of stock, a sales holder's figure this producer does not read yet (ADR 0298 decision 9)`;
+  return `${n} on days of stock or without a metric key, a sales holder's figure this producer does not read yet (ADR 0298 decision 9)`;
 }

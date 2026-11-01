@@ -224,7 +224,9 @@ describe("GoalReachedProducer", () => {
     const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
     expect(goals.getGoalProgress.calls).toHaveLength(0);
     expect(notifications.persistForRestaurant.calls).toHaveLength(0);
-    expect(tally.withheldReason).toMatch(/Not read: 1 on days of stock/);
+    expect(tally.withheldReason).toMatch(
+      /Not read: 1 on days of stock or without a metric key/,
+    );
     expect(tally.withheldReason).toMatch(/No active goal that was read has/);
   });
 
