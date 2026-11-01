@@ -1,57 +1,49 @@
--- COST OF GOODS READS WHAT SOLD, AND SALES READ THE TILL. ADR 0298 (A-046,
--- A-018): cost of goods summed purchases, and revenue and its Gini read shelf
--- value; none of them read a sale.
+-- COST OF GOODS READS WHAT SOLD, AND SALES READ THE TILL: ADR 0298 decision 8
+-- (A-046, A-018).
 --
--- ADDS public.pos_item_sales(house, since): one jsonb value, per stock item
+-- ADDS public.pos_item_sales(house, since), one jsonb value. Per stock item:
 --   sales, units, lines  lines naming the item (inventory_id) on this house's
---                        checks closed at or after p_since and not voided;
---                        sales = sum(price x qty); units is qty as rung, not
---                        bottles (ADR 0297).
---   bottles_out          -sum(quantity_change) of this house's ledger rows with
---                        source 'pos', type 'sale' or 'return', stock 'live',
---                        since p_since (decision 1, option 1). A void's 'return'
+--                        checks closed at or after p_since and not voided.
+--                        sales = sum(price x qty), the basis ADR 0298 chose
+--                        (net of tax and surcharge, AW17); units is qty as
+--                        rung, not bottles (ADR 0297).
+--   bottles_out          -sum(quantity_change) over this house's ledger rows
+--                        with source 'pos', type 'sale' or 'return', stock
+--                        'live', since p_since (decision 1). A void's 'return'
 --                        nets out. Not clamped: a return whose sale predates
 --                        p_since reads negative.
 --   mapped               a mapping of this house points at the item, and the
---                        item is this house's; listed with zeros if it neither
---                        sold nor moved (A-013).
---   in_house             the id is an item of this house. A line can name
---                        another house's item: name none whose in_house is false.
--- plus checks, lines, unmapped_lines, unmapped_sales (lines naming no item),
+--                        item is this house's. Such an item is listed with
+--                        zeros if it neither sold nor moved.
+--   in_house             the item is this house's. A line can name another
+--                        house's item: name none whose in_house is false.
+-- Then checks, lines, unmapped_lines and unmapped_sales (lines naming no item),
 -- unreadable_lines (not an object, or a stock line whose price, qty or id is
--- not a number or uuid: counted, not raised), and the clocks first_check_at
--- (sales), first_move_at (cost of goods), first_sale_at (the earlier).
+-- not a number or uuid: counted, not raised), and the clocks first_check_at,
+-- first_move_at and first_sale_at (the earlier of the two).
 --
--- WHAT A LINE IS. The gateway writes pos_checks at pos-hub.service.ts:1090,
--- each line the object at :1050-1061 (claim POS-LINE-KEYS-AT-TOP-LEVEL). price
--- is one unit's, in major units (CanonicalItem, pos-types.ts:17), as each
--- adapter in pos-adapters.ts writes it; Square and Clover give list price,
--- Toast its net amount (OD-244, tech-debt.d/2026-11-01-fix-pos-lines-carry-
--- unit-price.md). At 2026-11-01T06:42Z production holds only csv_import and
--- generic_webhook checks; of the 2,006 with a qty other than 1, sum(price x
--- qty) equals the subtotal on 2,005 and sum(price) on none. No tax basis is
--- applied here.
+-- A LINE is the object the ingest builds in pos-hub.service.ts (the
+-- check.items.map block; claim POS-LINE-KEYS-AT-TOP-LEVEL). price is one
+-- unit's; which amount that is differs by adapter (OD-244).
 --
--- WHAT CAN RAISE. Nothing the ingest writes (the adapters coerce price and qty
--- to finite numbers). A numeric string or product past numeric's range,
--- written directly, raises for the whole call: a failed read, never a smaller
--- figure (ADR 0067).
+-- RAISES only on what the ingest never writes (it coerces price and qty to
+-- finite numbers): a numeric string past numeric's range, written directly,
+-- fails the whole call. That is a failed read, never a smaller figure (ADR
+-- 0067).
 --
--- WHAT IT ASSUMES. A void is a whole check (pos_checks.voided, with the
--- ledger's 'return' rows), so both halves drop together; NOT NULL
--- pos_checks.voided and inventory_transactions.inventory_id (the test pins
--- both). p_restaurant_id is trusted (service_role reads past RLS): pass the
--- tenant-checked house, never a body or tool argument.
+-- ASSUMES a void is a whole check (pos_checks.voided, with the ledger's
+-- 'return' rows), and NOT NULL pos_checks.voided and
+-- inventory_transactions.inventory_id (the test pins both). p_restaurant_id is
+-- trusted, since service_role reads past RLS: pass the tenant-checked house.
 --
--- WHY A FUNCTION. One jsonb value cannot be cut by PostgREST max_rows (ADR
--- 0292). SECURITY INVOKER, service_role only; the self-check refuses SECURITY
--- DEFINER, a wider grant, and RLS off on a relation read here.
+-- A FUNCTION, because PostgREST max_rows cannot cut one value (ADR 0292).
+-- SECURITY INVOKER, service_role only; the self-check refuses SECURITY
+-- DEFINER, a wider grant, and RLS off on a relation it reads.
 --
--- THE INDEXES. The new one covers the closed-check window; the ledger's is
--- idx_inv_txn_restaurant_date (baseline). CREATE INDEX takes SHARE on
--- pos_checks, so writes wait while it builds: 4,197 rows (12 MB) at
--- 2026-11-01T06:42Z, built in 3 to 13 ms on PGlite, far inside authenticator's
--- lock_timeout of 8 s, past which a waiting write would abort.
+-- THE INDEX covers the closed-check window (the ledger's is
+-- idx_inv_txn_restaurant_date). It holds SHARE on pos_checks until this
+-- migration commits, so ingest writes wait: 4,197 rows on 2026-11-01, built in
+-- 3 to 13 ms on PGlite, inside the 8 s lock_timeout past which one would abort.
 
 CREATE OR REPLACE FUNCTION public.pos_item_sales(p_restaurant_id uuid, p_since timestamptz)
 RETURNS jsonb
@@ -179,10 +171,11 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.pos_item_sales(uuid, timestamptz) IS
-  'ADR 0298. Per stock item since p_since: till sales (price x qty on closed, '
-  'non-voided checks), bottles the POS moved, mapped and in_house. Name no item '
-  'whose in_house is false. Pass the tenant-checked house. A second per-item '
-  'till reader should call this.';
+  'ADR 0298 decision 8. Per stock item since p_since: till sales (price x qty on '
+  'closed, non-voided checks; what a unit price counts differs by adapter, '
+  'OD-244), bottles the POS moved, mapped and in_house. Name no item whose '
+  'in_house is false. Pass the tenant-checked house. Another per-item reader '
+  'of the till calls this (decision 8).';
 
 REVOKE ALL ON FUNCTION public.pos_item_sales(uuid, timestamptz) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.pos_item_sales(uuid, timestamptz) TO service_role;
