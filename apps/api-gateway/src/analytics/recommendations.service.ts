@@ -338,7 +338,10 @@ export class RecommendationsService {
       this.advanced.getMenuEngineering(restaurantId),
       this.advanced.getSeasonality(restaurantId),
       this.advanced.getCashflow(restaurantId),
-      this.insightGenerator.generate(restaurantId, { maxPerCategory: 4 }),
+      this.insightGenerator.generate(restaurantId, {
+        maxPerCategory: 4,
+        withSales: opts.withSales === true,
+      }),
       this.goalsService.listGoals(restaurantId, "active", {
         withSales: opts.withSales === true,
       }),

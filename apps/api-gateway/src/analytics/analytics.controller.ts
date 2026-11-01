@@ -452,7 +452,7 @@ export class AnalyticsController {
     @Query("categories") categoriesStr?: string,
     @Query("limit") limitStr?: string,
     @Query("candidateKey") candidateKey?: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
     try {
       const answer = await this.readInsights(
@@ -461,6 +461,7 @@ export class AnalyticsController {
         categoriesStr,
         limitStr,
         candidateKey,
+        salesGateFor(user).withSales === true,
       );
       return await this.forViewer(restaurantId, user, answer);
     } catch (error) {
@@ -507,6 +508,7 @@ export class AnalyticsController {
     categoriesStr?: string,
     limitStr?: string,
     candidateKey?: string,
+    withSales = false,
   ) {
     const categories = categoriesStr
       ? (categoriesStr.split(",").map((c) => c.trim()) as any)
@@ -518,17 +520,20 @@ export class AnalyticsController {
         categories,
         candidateKeys: [candidateKey.trim()],
         persist: false,
+        withSales,
       });
     }
     if (refresh === "true") {
       return await this.insightGenerator.generate(restaurantId, {
         categories,
         persist: true,
+        withSales,
       });
     }
     const stored = await this.insightGenerator.readStored(restaurantId, {
       categories,
       limit: limitStr ? parseInt(limitStr, 10) : undefined,
+      withSales,
     });
     // Stored rows go out through the same shared per-item state as a live
     // compute (ADR 0191): withheld counts and the readability flag travel
@@ -541,11 +546,13 @@ export class AnalyticsController {
         suppressed: stored.withheld.dismissed,
         withheld: stored.withheld,
         suppressionsReadable: stored.suppressionsReadable,
+        salesGated: stored.salesGated,
       };
     // cold start: compute live once and persist
     return await this.insightGenerator.generate(restaurantId, {
       categories,
       persist: true,
+      withSales,
     });
   }
 
