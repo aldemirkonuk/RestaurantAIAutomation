@@ -262,7 +262,7 @@ describe('EndpaperShell', () => {
         for (const run of turnRuns) expect(run.options.easing).toBe(leaf.easing)
         expect(leaf.easing).not.toBe(turn.easing)
         act(() => {
-          vi.advanceTimersByTime(600)
+          vi.advanceTimersByTime(leaf.ms)
         })
         expect(turnRuns.every((c) => c.cancelledWith === true)).toBe(true)
       })
@@ -275,7 +275,7 @@ describe('EndpaperShell', () => {
         )
         fireEvent.click(screen.getByRole('button', { name: TURN }))
         act(() => {
-          vi.advanceTimersByTime(600)
+          vi.advanceTimersByTime(leaf.ms)
         })
         calls = []
         rerender(

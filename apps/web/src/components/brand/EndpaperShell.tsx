@@ -16,9 +16,9 @@ let markHasDrawn = false
 /**
  * A whole leaf turning over is twice the arc of a screen change (the motion
  * canvas's own "The page turns" rotates 92°; a full leaf is 180°), so it runs
- * on the house `leaf` token, not `turn` — see ADR 0349. Every hand-off below
- * is keyed to the leaf's eased progress, so the curve decides where each one
- * lands.
+ * on the house `leaf` token, not `turn` — see ADR 0349. Each cut and fade
+ * below is keyed to the leaf's eased progress, so the curve decides where each
+ * one lands; the settle timer runs on `LEAF_TURN.ms`, not on the curve.
  */
 const LEAF_TURN: MotionToken = leaf
 
