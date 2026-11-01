@@ -1,0 +1,7 @@
+## The goal routes and the export's goals cutting pass no sales gate, so a days-of-stock goal reads as withheld for its owner — OPEN — 2026-10-31
+
+Filed when PR #617 was split. `GoalsService` now scores `days_of_inventory` only with `withSales` true (ADR 0298 decision 9). The overview and the recommendations feed hand the token's gate on. The four goal routes on `AnalyticsController` (`listGoals`, `createGoal`, `listGoalsWithProgress`, `getGoalProgress`) and the export's goals cutting (`report-cutting-reader.service.ts`) do not yet. So an owner or a manager sees such a goal as withheld there, and creating one is refused with a 400. The gate fails closed: nothing leaks. A read-only count of production at 2026-11-01T01:00Z found one goal, on `checks`, and none on `days_of_inventory`. **Closes with** `fix/goal-routes-hand-the-sales-gate-on`, which covers the routes and the export in one change.
+
+## The goal producers pass no sales gate, so they tell no one about a days-of-stock goal — OPEN — 2026-10-31
+
+Filed with the entry above. `ceiling-held.producer.ts` skips such a goal before reading it, because read without the gate it has no score, and would read as a ceiling held at zero (its spec pins this). `goal-reached.producer.ts` reads it, gets the `withheld` answer and finds no score at or over the target. **Closes with** `fix/goal-producers-tell-only-sales-holders`, which reads such a goal with the gate open and tells only the house's owners and managers.

@@ -840,7 +840,7 @@ export class AdvancedAnalyticsService {
       this.getSeasonality(restaurantId),
       this.getCashflow(restaurantId),
       this.insightGenerator.getStored(restaurantId, { limit: 8 }),
-      this.goalsService.listGoals(restaurantId, "active"),
+      this.goalsService.listGoals(restaurantId, "active", gate),
     ]);
     const ok = (r: PromiseSettledResult<any>) =>
       r.status === "fulfilled" ? r.value : null;
