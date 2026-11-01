@@ -14,9 +14,16 @@ export const SALES_GATED_GOAL_METRICS: ReadonlySet<string> = new Set([
   "days_of_inventory",
 ]);
 
-/** Whether a goal's `metric_key` is sales-gated: the one test every reader uses. */
+/**
+ * Whether a goal's `metric_key` is sales-gated: the one test every reader
+ * uses. A row read without its key counts as gated, so a select that drops
+ * the column withholds the goal rather than serving it to every role.
+ */
 export function isSalesGatedGoal(metricKey: unknown): boolean {
-  return SALES_GATED_GOAL_METRICS.has(String(metricKey ?? ""));
+  if (metricKey === null || metricKey === undefined || metricKey === "") {
+    return true;
+  }
+  return SALES_GATED_GOAL_METRICS.has(String(metricKey));
 }
 
 /** How a goal producer names the sales-gated goals it did not read. */
