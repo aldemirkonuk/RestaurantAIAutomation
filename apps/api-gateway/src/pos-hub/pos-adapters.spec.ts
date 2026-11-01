@@ -152,20 +152,17 @@ describe("adapters — a line carries one unit's price and the units rung", () =
     cloverAdapter.normalize({ id: "c-2", lineItems: { elements: [li] } })[0]
       .items[0];
 
-  it("toast reads receiptLinePrice, not the selection total", () => {
+  it("toast takes the selection's net price over its quantity", () => {
     const it = toast({ quantity: 2, price: 27, receiptLinePrice: 15 });
     expect(it.qty).toBe(2);
-    expect(it.price).toBe(15);
+    expect(it.price).toBe(13.5);
   });
 
-  it("toast without receiptLinePrice takes the total over the quantity", () => {
-    const it = toast({ quantity: 2, price: 30 });
-    expect(it.price * it.qty).toBe(30);
-  });
-
-  it("toast priced in its modifiers is not a $0 sale", () => {
-    const it = toast({ quantity: 2, price: 24, receiptLinePrice: 0 });
-    expect(it.price * it.qty).toBe(24);
+  it("toast keeps the money in a selection's modifiers", () => {
+    const pour = toast({ quantity: 2, price: 24, receiptLinePrice: 0 });
+    expect(pour.price * pour.qty).toBe(24);
+    const large = toast({ quantity: 1, price: 14, receiptLinePrice: 9 });
+    expect(large.price).toBe(14);
   });
 
   it("toast with no money in the selection stays at 0", () => {

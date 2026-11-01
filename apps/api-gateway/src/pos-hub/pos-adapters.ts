@@ -7,10 +7,12 @@ import { CanonicalCheck, CanonicalItem, checkChannelOf } from "./pos-types";
  * 100; Toast speaks major units. Adapters never touch the database — the hub
  * service owns validation, wine mapping, and the pos_checks upsert.
  *
- * Line convention: `price` is the list price of ONE unit, before modifiers and
- * discounts, and `qty` is the units rung, so price × qty is the line's sale
- * (CanonicalItem, pos-types.ts; ADR 0298's sales, decisions 2 and 8, sum
- * exactly that). Each provider's field for it is named at its adapter.
+ * Line convention: `price` is the price of ONE unit and `qty` the units rung,
+ * so price × qty is the line's sale (CanonicalItem, pos-types.ts; ADR 0298's
+ * sales, decisions 2 and 8, sum exactly that). Which amount a unit's price
+ * counts is each provider's, as on main: Square and Clover give list price,
+ * before modifiers and discounts, and Toast its net amount. Which one every
+ * line should carry is OD-244. Each field is named at its adapter.
  */
 
 export interface PosAdapter {
@@ -58,26 +60,19 @@ const cloverQty = (v: unknown): number => {
 };
 
 /**
- * One unit's price on a Toast selection. Toast's Selection schema
- * (doc.toasttab.com/openapi/orders/tag/Data-definitions/schema/Selection):
- * `price` is the "Net price for this selection", after discounts, with its
- * quantity and modifiers in it, so reading it as a unit price counted a
- * two-glass line at four glasses. `receiptLinePrice` is the price "without any
- * quantity, taxes, discounts, and modifier adjustments", the same basis as
- * Square's `base_price_money`.
- *
- * Toast does not require `receiptLinePrice`, and an item whose menu price is
- * 0, with the money in its modifiers (a glass priced by its pour), reads 0.
- * Either way the line falls back to `price` over the quantity, one unit's
- * share of the net amount, so a priced selection is never stored as a $0
- * sale. Which basis such a line should carry is open (OD-244). Until it is
- * answered, this keeps main's reading of Toast's `price`, divided by the
- * quantity, as an assumption stated in tech-debt.d
- * (fix-pos-lines-carry-unit-price), not an answer.
+ * One unit's price on a Toast selection: its `price` over its quantity.
+ * Toast's Selection schema
+ * (doc.toasttab.com/openapi/orders/tag/Data-definitions/schema/Selection)
+ * gives `price` as the "Net price for this selection", after its discounts
+ * and the check's, with its quantity and modifiers in it, so read raw as a
+ * unit price a two-glass line counted four glasses. It is the only amount on
+ * a selection with the modifiers in: `receiptLinePrice` leaves them out (a
+ * glass priced by its pour reads 0), and `preDiscountPrice` is documented as
+ * receiptLinePrice × quantity. This keeps main's net basis for every Toast
+ * line and changes only the arithmetic; the basis is OD-244's, an assumption
+ * stated in tech-debt.d (fix-pos-lines-carry-unit-price), not an answer.
  */
 const toastUnitPrice = (s: any, qty: number): number => {
-  const unit = num(s.receiptLinePrice);
-  if (unit !== null && unit !== 0) return unit;
   const total = num(s.price);
   return total === null || qty === 0 ? 0 : total / qty;
 };
