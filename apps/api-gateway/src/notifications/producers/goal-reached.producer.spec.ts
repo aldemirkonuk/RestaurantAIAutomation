@@ -193,6 +193,25 @@ describe("GoalReachedProducer", () => {
     expect(tally.withheldReason).toMatch(/ceilings this producer does not report/);
   });
 
+  it("a run that reports a goal still names the days-of-stock goal it did not read", async () => {
+    const { db, notifications, goals, producer } = build(REACHED);
+    db.tables.analytics_goals.push(
+      goalRow(),
+      goalRow({ id: "goal-dio", metric_key: "days_of_inventory" }),
+    );
+    seedCrossing(db);
+    seedShift(db);
+    const log = jest.spyOn((producer as any).logger, "log");
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(goals.getGoalProgress.calls.map((c: any[]) => c[1])).toEqual([
+      "goal-1",
+    ]);
+    expect(notifications.persistForRestaurant.calls).toHaveLength(1);
+    expect(log).toHaveBeenCalledWith(
+      expect.stringMatching(/not read: 1 on days of stock/),
+    );
+  });
+
   it("[REVERT-FAILS] a days-of-stock goal is not read without the sales gate, and is named", async () => {
     // The answer it would get without the gate (ADR 0298 decision 9); it must not ask.
     const { db, notifications, goals, producer } = build({

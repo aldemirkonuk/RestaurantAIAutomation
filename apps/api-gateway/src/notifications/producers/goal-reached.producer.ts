@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { GoalsService } from "../../analytics/goals.service";
 import {
-  SALES_GATED_GOAL_METRICS,
+  isSalesGatedGoal,
   salesGatedBit,
 } from "../../analytics/sales-gated-goals";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
@@ -130,7 +130,7 @@ export class GoalReachedProducer {
       // As in ceiling-held: a days-of-stock goal is a sales holder's figure
       // and this producer carries no sales gate yet. Counted and named, not
       // read.
-      if (SALES_GATED_GOAL_METRICS.has(String(goal.metric_key))) {
+      if (isSalesGatedGoal(goal.metric_key)) {
         salesGated += 1;
         continue;
       }
@@ -229,6 +229,13 @@ export class GoalReachedProducer {
             },
           },
         },
+      );
+    }
+
+    // Named on every run; `withheld_reason` carries only a no-op's sentence.
+    if (salesGated > 0) {
+      this.logger.log(
+        `${restaurantId}: not read: ${salesGatedBit(salesGated)}`,
       );
     }
 

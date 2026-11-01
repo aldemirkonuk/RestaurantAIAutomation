@@ -1,5 +1,7 @@
 import { RecommendationsService } from "./recommendations.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
+import { GoalsService } from "./goals.service";
+import { SALES_GATED_GOAL_METRICS } from "./sales-gated-goals";
 
 /**
  * A days-of-stock goal's score is a sales holder's figure (ADR 0298 decision 9):
@@ -20,7 +22,7 @@ const GOALS = [
   behind("sold", "bottles_sold"),
 ];
 
-function feed() {
+function feed(goals: unknown[] = GOALS) {
   const b: any = {};
   for (const m of [
     "select",
@@ -39,7 +41,7 @@ function feed() {
   b.then = (ok: any, no: any) =>
     Promise.resolve({ data: [], error: null }).then(ok, no);
   const client = { from: () => b };
-  const listGoals = jest.fn(async () => GOALS);
+  const listGoals = jest.fn(async () => goals);
   const svc = new RecommendationsService(
     {
       getFinancialSummary: async () => null,
@@ -68,6 +70,34 @@ function feed() {
 const keys = (out: any) => out.recommendations.map((r: any) => r.ruleKey);
 
 describe("a days-of-stock goal's stored pace stays with a sales holder", () => {
+  it("every sales-gated key is a goal metric createGoal accepts and stores", () => {
+    // createGoal refuses a key outside SUPPORTED_METRICS and stores the one
+    // it accepts as metric_key, so a renamed key fails here, not in silence.
+    const supported = Object.keys(GoalsService.SUPPORTED_METRICS);
+    expect(SALES_GATED_GOAL_METRICS.size).toBeGreaterThan(0);
+    for (const key of SALES_GATED_GOAL_METRICS)
+      expect(supported).toContain(key);
+  });
+
+  it("recommendations: the next readable goal takes a left-out goal's slot", async () => {
+    const goals = [
+      behind("dio", "days_of_inventory"),
+      behind("a", "bottles_sold"),
+      behind("b", "checks"),
+      behind("c", "wine_revenue"),
+    ];
+    const { svc } = feed(goals);
+    const k = keys(await svc.getRecommendations("r1", { withSales: false }));
+    expect(k).toEqual(
+      expect.arrayContaining([
+        "goal_behind_a",
+        "goal_behind_b",
+        "goal_behind_c",
+      ]),
+    );
+    expect(k).not.toContain("goal_behind_dio");
+  });
+
   it("recommendations: left out without sales, and the gate goes to the goal list", async () => {
     for (const opts of [undefined, {}, { withSales: false }]) {
       const { svc, listGoals } = feed();

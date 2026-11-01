@@ -4,7 +4,7 @@ import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
-import { SALES_GATED_GOAL_METRICS } from "./sales-gated-goals";
+import { isSalesGatedGoal } from "./sales-gated-goals";
 import { DatabaseService } from "../database/database.service";
 import {
   RecommendationActionsService,
@@ -795,11 +795,11 @@ export class RecommendationsService {
 
     // ---- Goal rules -------------------------------------------------------
     // "N% done" on a sales-gated goal is a sales holder's figure: left out
-    // unless the gate is open (ADR 0298 decision 9).
+    // unless the gate is open (ADR 0298 decision 9). Filtered before the cut,
+    // so a viewer without sales sees their next readable goal in its slot.
     const goalsForViewer = ctx.goals.filter(
       (g: { metric_key?: unknown }) =>
-        opts.withSales === true ||
-        !SALES_GATED_GOAL_METRICS.has(String(g?.metric_key ?? "")),
+        opts.withSales === true || !isSalesGatedGoal(g?.metric_key),
     );
     for (const g of goalsForViewer.slice(0, 3)) {
       const target = Number(g.target_value) || 0;

@@ -25,7 +25,7 @@ import {
   unitsLabel,
 } from "../consumption-units";
 import { DayExclusionsService } from "./day-exclusions.service";
-import { SALES_GATED_GOAL_METRICS } from "../sales-gated-goals";
+import { isSalesGatedGoal } from "../sales-gated-goals";
 import { RecommendationActionsService } from "../recommendation-actions.service";
 import {
   SuppressionScope,
@@ -1898,7 +1898,7 @@ export class InsightGeneratorService {
     for (const g of bundle.goals) {
       // Behind the sales gate (ADR 0298 decision 9), and every role reads
       // this feed: its pace is read on the goal itself.
-      if (SALES_GATED_GOAL_METRICS.has(String(g.metric_key ?? ""))) continue;
+      if (isSalesGatedGoal(g.metric_key)) continue;
       const target = Number(g.target_value) || 0;
       const current = Number(g.current_value) || 0;
       if (target <= 0) continue;
