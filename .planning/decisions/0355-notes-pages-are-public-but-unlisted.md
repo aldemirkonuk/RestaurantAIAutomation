@@ -22,6 +22,10 @@ The founder wants the Gmail session prompt readable at a public URL on mudavym.c
 
 Pages under `/notes/` are public to anyone with the URL, `noindex, nofollow`, and absent from the sitemap, robots allow lines and `llms.txt`. A `/notes/` page is never added to `PUBLIC_ROUTES`. The first is `/notes/gmail-session`.
 
+This amends nothing in ADR 0158 but touches its surface: a `/notes/` page needs the first path segment `notes` in the SPA rewrite in `apps/web/vercel.json`, which sends `/notes/*` to `/crawl/app.html` (closed head). The rewrite is not the indexed path that Option 5 rejects: Option 5's `vercel.json` cost is a per-route head rewrite plus a `PUBLIC_ROUTES` entry, which this decision avoids.
+
+Content rule: a `/notes/` page carries no gate or merge-control token (for example the ADR 0090 PASS marker), no capability link or document id, no workstation path and no line-number citation. The first page was revised on 2026-11-01 after audit of PR #731 to remove all of these.
+
 ## Consequences
 
 - Easier: a founder-approved working note can be shared by link without a search footprint.
@@ -33,3 +37,4 @@ Pages under `/notes/` are public to anyone with the URL, `noindex, nofollow`, an
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-11-01 | — | Created |
+| 2026-11-01 | audit of PR #731, round 1 (BLOCK at fc240ba27) | Content rule and vercel.json amendment added |

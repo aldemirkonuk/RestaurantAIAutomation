@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { screen } from '@testing-library/react'
 import { renderWithProviders } from '../../__tests__/utils/test-utils'
 import GmailSession from './GmailSession'
@@ -19,5 +21,19 @@ describe('/notes/gmail-session', () => {
   it('carries no em or en dashes', () => {
     const { container } = renderWithProviders(<GmailSession />)
     expect(container.textContent).not.toMatch(/[–—]/)
+  })
+
+  it('keeps gate tokens, capability ids and workstation paths off the public page', () => {
+    const { container } = renderWithProviders(<GmailSession />)
+    const text = container.textContent ?? ''
+    expect(text).not.toMatch(/pr-audit-gate|verdict=PASS|Y5VRZVvCaefSt4FNGgtBfw|d-e8fe9045eb|ex-invoice/)
+    expect(text).not.toMatch(/\/Users\//)
+    expect(text).not.toMatch(/auto-merges/i)
+  })
+
+  it('is served the closed crawl head: the SPA rewrite lists notes', () => {
+    const vercel = JSON.parse(readFileSync(resolve(__dirname, '../../../vercel.json'), 'utf8'))
+    const spa = vercel.rewrites.find((r: { destination: string }) => r.destination === '/crawl/app.html')
+    expect(spa.source).toMatch(/[(|]notes[|)]/)
   })
 })
