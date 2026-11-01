@@ -33,11 +33,11 @@
 -- build if that changes. price is ONE unit's list price in major units, before
 -- modifiers and discounts, so price x qty is the line's sale (CanonicalItem,
 -- pos-types.ts:17). The adapters in pos-adapters.ts write it that way:
---   generic, csv_import  the canonical shape, read as sent (:110-111)
---   square               base_price_money, "for a single unit" (:158-161)
---   clover               price per unit; unitQty in thousandths (:53-56, :215-217)
---   toast                receiptLinePrice (:70-74, :262); a selection without
---                        it stores a share of the net price
+--   generic, csv_import  the canonical shape, read as sent (:118-119)
+--   square               base_price_money, "for a single unit" (:167-169)
+--   clover               price per unit; unitQty in thousandths (:55-58, :223-225)
+--   toast                receiptLinePrice (:78-83, :270); a selection without
+--                        it, or with 0, stores a share of the net price (OD-244)
 -- Production on 2026-11-01 holds only csv_import and generic_webhook checks:
 -- of the 2,006 with a qty other than 1, sum(price x qty) equals the subtotal
 -- on 2,005 and sum(price) on none. A tax the menu price includes stays in
