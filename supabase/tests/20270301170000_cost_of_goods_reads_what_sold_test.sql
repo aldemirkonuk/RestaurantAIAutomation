@@ -1,7 +1,5 @@
--- A-046 / A-018 (analytics walk, 2026-10-03): cost of goods summed delivered
--- purchases and the revenue Gini read shelf value. Migration
--- cost_of_goods_reads_what_sold (ADR 0298) adds public.pos_item_sales, the one
--- read of what the till sold per stock item and the bottles the POS moved.
+-- public.pos_item_sales, migration cost_of_goods_reads_what_sold (ADR 0298,
+-- A-046 / A-018): what the till sold per stock item and the bottles it moved.
 --
 -- Self-asserting (assert -> P0004, or a RAISE naming the test); run with
 -- `psql -v ON_ERROR_STOP=1 -f` on a database built from supabase/migrations.
@@ -31,8 +29,11 @@ create function pg_temp.chk(h text, k text, ago interval, items jsonb, v boolean
   insert into public.pos_checks (restaurant_id, source, external_check_id, opened_at, closed_at, voided, items)
   values (pg_temp.u(h), 'cg_test', k, coalesce(now() - ago, now()) - interval '1 hour', now() - ago, v, items)
 $$;
+-- A stock line in the shape the ingest writes (pos-hub.service.ts:1050-1061).
 create function pg_temp.ln(l text, q numeric, p numeric) returns jsonb language sql as $$
-  select jsonb_build_object('name', upper(l), 'inventory_id', pg_temp.u('2' || l || '0'), 'qty', q, 'price', p)
+  select jsonb_build_object('name', upper(l), 'external_item_id', 'x-' || l, 'category', null, 'qty', q,
+    'price', p, 'is_wine', true, 'master_wine_id', pg_temp.u('1' || l || '0'),
+    'inventory_id', pg_temp.u('2' || l || '0'), 'sale_unit', null, 'sale_volume_ml', null)
 $$;
 
 do $$
@@ -158,20 +159,6 @@ begin
   assert jsonb_array_length(r -> 'items') = 4, format('T5 FAIL %s items, expected A, B, E and the mapped F', jsonb_array_length(r -> 'items'));
 end $$;
 
--- T6 first_sale_at is the earliest closed check or POS ledger row in the
--- window (the direct row, five days back); an empty window reads zero checks,
--- no items and no date.
-do $$
-declare
-  z jsonb := public.pos_item_sales(pg_temp.u('2'), now() + interval '1 day');
-begin
-  assert (pg_temp.cg_read() ->> 'first_sale_at')::timestamptz = now() - interval '5 days', 'T6 FAIL first_sale_at is not five days back';
-  assert (z ->> 'checks')::int = 0 and z -> 'items' = '[]'::jsonb and z -> 'first_sale_at' = 'null'::jsonb,
-    format('T6 FAIL an empty window reads %s', z);
-  assert (pg_temp.cg_read(4) ->> 'first_sale_at')::timestamptz = now() - interval '3 days',
-    'T6 FAIL a 4-day window should start at the 3-day-old check';
-end $$;
-
 -- T7 SECURITY INVOKER, STABLE, and only service_role may run it.
 do $$
 declare
@@ -218,7 +205,7 @@ end $$;
 -- T10 the two clocks, apart: sales start at the first closed check (k7, three
 -- days back), cost of goods at the first POS ledger row (five days back), and
 -- first_sale_at is the earlier. A 4-day window starts its moves at today's
--- rows; an empty window has neither.
+-- rows; an empty window reads no check, no item and no clock.
 do $$
 declare
   r jsonb := pg_temp.cg_read();
@@ -231,7 +218,8 @@ begin
     format('T10 FAIL first_sale_at %s is not the earlier clock', r ->> 'first_sale_at');
   assert (r4 ->> 'first_check_at')::timestamptz = now() - interval '3 days' and (r4 ->> 'first_move_at')::timestamptz = now(),
     format('T10 FAIL a 4-day window reads check %s and move %s', r4 ->> 'first_check_at', r4 ->> 'first_move_at');
-  assert z -> 'first_check_at' = 'null'::jsonb and z -> 'first_move_at' = 'null'::jsonb, format('T10 FAIL an empty window reads %s', z);
+  assert (z ->> 'checks')::int = 0 and z -> 'items' = '[]'::jsonb and z -> 'first_sale_at' = 'null'::jsonb
+     and z -> 'first_check_at' = 'null'::jsonb and z -> 'first_move_at' = 'null'::jsonb, format('T10 FAIL an empty window reads %s', z);
 end $$;
 
 -- T11 what the gateway's ingest can write does not raise: the adapters coerce
@@ -253,9 +241,8 @@ begin
   end;
 end $$;
 
--- T12 what does raise: a price string longer than numeric holds, written
--- directly (not through ingest), passes the digit pattern and overflows the
--- cast for the whole call, which the gateway reads as a failed read.
+-- T12 what does raise: a price string past numeric's range, written directly
+-- (not through ingest), passes the digit pattern and fails the whole call.
 do $$
 declare
   raised boolean := false;

@@ -1,19 +1,21 @@
--- COST OF GOODS READS WHAT SOLD, AND SALES READ THE TILL. ADR 0298
--- (analytics walk A-046, A-018). Cost of goods summed delivered purchases,
--- "revenue" was menu price x bottles on hand, and the revenue Gini read the
--- same shelf value; none of them read a sale.
+-- COST OF GOODS READS WHAT SOLD, AND SALES READ THE TILL. ADR 0298 (A-046,
+-- A-018): cost of goods summed purchases, and revenue and its Gini read shelf
+-- value; none of them read a sale.
 --
 -- ADDS public.pos_item_sales(house, since): one jsonb value, per stock item
 --   sales, units, lines  lines naming the item (inventory_id, stamped at
 --                        ingest) on this house's checks CLOSED at or after
 --                        p_since and NOT voided. sales = sum(price x qty),
---                        price before tax and surcharge. units is qty as
+--                        with price as WHAT A LINE IS says. units is qty as
 --                        rung (glasses or bottles), not bottles (ADR 0297).
 --   bottles_out          -sum(quantity_change) of this house's ledger rows
 --                        with source 'pos', type 'sale' or 'return', stock
 --                        'live', since p_since. A void's 'return' nets out; a
 --                        glass pour writes one 'sale' per bottle it opened.
---                        Manual, count, waste and purchase rows are excluded.
+--                        Manual, count, waste and purchase rows are excluded
+--                        (ADR 0298 option 1 of decision 1, and its "Not in
+--                        these figures"), and so are 'shadow' rows, which
+--                        move shadow_stock (migration baseline_from_production).
 --   mapped               a pos_item_mappings row of this house points at the
 --                        item and the item is this house's. A mapped item that
 --                        neither sold nor moved is listed with zeros, so a
@@ -21,19 +23,34 @@
 --                        never a row the till cannot sell (A-013).
 -- plus checks, lines, unmapped_lines, unmapped_sales (lines naming no stock
 -- item), unreadable_lines (a stock line whose price, qty or id is not a number
--- or uuid, or a line that is not an object: counted, not raised), and two
+-- or uuid, or a line that is not an object: counted, not raised), and three
 -- clocks: first_check_at (sales start), first_move_at (cost of goods starts),
 -- first_sale_at (the earlier).
 --
--- WHAT CAN RAISE. Not a line the gateway's ingest wrote: the adapters coerce
--- price and qty to finite numbers (pos-adapters.ts). A numeric string or
--- product past numeric's range, written directly, raises for the whole call,
--- which the gateway reads as a failed read, never a smaller figure (ADR 0067).
+-- WHAT A LINE IS. The gateway writes pos_checks in one place, pos-hub.service.ts
+-- (upsert at :1090). It builds each line at :1045-1061 with qty, price and
+-- inventory_id at the top level; claim POS-LINE-KEYS-AT-TOP-LEVEL fails the
+-- build if that changes. price is ONE unit's list price in major units, before
+-- modifiers and discounts, so price x qty is the line's sale (CanonicalItem,
+-- pos-types.ts:17). Each adapter in pos-adapters.ts writes it that way:
+--   generic, csv_import  the canonical shape, read as sent (:106-107)
+--   square               base_price_money, "for a single unit" (:154-157)
+--   clover               price per unit; unitQty in thousandths (:53-56, :211-213)
+--   toast                receiptLinePrice, not the selection total (:66-70, :258)
+-- Measured on production on 2026-11-01, which holds only csv_import and
+-- generic_webhook checks: of the 2,006 checks with a qty other than 1,
+-- sum(price x qty) equals the subtotal on 2,005 and sum(price) on none. A tax
+-- the menu price includes stays in price (Square and Toast say so); the house's
+-- tax basis (founder, 2026-10-12) is not applied here. Modifiers and line
+-- discounts are left out (tech-debt.d, fix-pos-lines-carry-unit-price).
 --
--- WHAT IT ASSUMES. Price is in major units (CanonicalItem, pos-hub/pos-types.ts;
--- the adapters divide minor units by 100, `cents` in pos-adapters.ts). A void
--- is a whole check (pos_checks.voided, with the ledger's 'return' rows), so both
--- halves drop it together. A change to either should change this file.
+-- WHAT CAN RAISE. Nothing the ingest writes: the adapters coerce price and qty
+-- to finite numbers. A numeric string or product past numeric's range, written
+-- directly, raises for the whole call: a failed read, never a smaller figure
+-- (ADR 0067).
+--
+-- WHAT IT ASSUMES. A void is a whole check (pos_checks.voided, with the
+-- ledger's 'return' rows), so both halves drop it together.
 --
 -- WHAT A CALLER CHECKS. p_restaurant_id is trusted (service_role reads past
 -- RLS): pass the tenant-checked house, never a body or tool argument. An item
@@ -42,11 +59,16 @@
 -- inventory_transactions.inventory_id are leaned on; the SQL test pins both.
 --
 -- WHY A FUNCTION. One jsonb value cannot be cut by PostgREST max_rows (ADR
--- 0292). SECURITY INVOKER, executable by service_role only. The index covers
--- the closed_at window (pos_checks had indexes on opened_at and open checks
--- only). No table, no write, no RLS change. A grant past service_role, or
--- SECURITY DEFINER, would leave p_restaurant_id the only boundary for that
--- caller; the self-check refuses both, and RLS off on a relation read here.
+-- 0292). SECURITY INVOKER, executable by service_role only: a wider grant or
+-- SECURITY DEFINER would leave p_restaurant_id the only boundary, so the
+-- self-check refuses both, and RLS off on a relation read here. The index
+-- covers the closed_at window. No table, no write, no RLS change.
+--
+-- THE INDEX LOCK. A plain CREATE INDEX holds writes to pos_checks while it
+-- builds. Measured 2026-11-01: production's pos_checks is 4,197 rows (12 MB
+-- heap); the same index over 4,197 rows builds in 3 to 13 ms on PGlite. The
+-- ingest writes through PostgREST, whose login role (authenticator) sets
+-- lock_timeout 8s, so a write waits out the build rather than failing.
 
 CREATE OR REPLACE FUNCTION public.pos_item_sales(p_restaurant_id uuid, p_since timestamptz)
 RETURNS jsonb
@@ -188,9 +210,7 @@ DO $$
 DECLARE
   v_oid oid;
 BEGIN
-  SELECT p.oid INTO v_oid
-    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname = 'public' AND p.proname = 'pos_item_sales';
+  v_oid := to_regprocedure('public.pos_item_sales(uuid, timestamptz)');
   IF v_oid IS NULL THEN
     RAISE EXCEPTION 'public.pos_item_sales was not created';
   END IF;
