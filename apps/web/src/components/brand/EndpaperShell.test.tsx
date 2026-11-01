@@ -235,9 +235,12 @@ describe('EndpaperShell', () => {
         cancel: () => void
       }
       let calls: Run[]
+      // an engine that runs some elements without exposing `finished`
+      let withoutFinished: string | null
       beforeEach(() => {
         vi.useFakeTimers()
         calls = []
+        withoutFinished = null
         Element.prototype.animate = vi.fn(function (this: Element, keyframes: Keyframe[], options: KeyframeAnimationOptions) {
           // `finished` settles the way the DOM's does: it resolves when the
           // run ends and rejects with an AbortError when the run is cancelled.
@@ -247,7 +250,7 @@ describe('EndpaperShell', () => {
             finish = () => resolve({} as Animation)
             abort = () => reject(new DOMException('The animation was cancelled', 'AbortError'))
           })
-          finished.catch(() => {})
+          // no catch here: the component must handle every rejection itself
           const entry: Run = {
             el: this,
             keyframes,
@@ -262,6 +265,11 @@ describe('EndpaperShell', () => {
             },
           }
           calls.push(entry)
+          if (withoutFinished && this.matches(withoutFinished)) {
+            // the engine never exposes this promise, so nobody else can handle it
+            finished.catch(() => {})
+            return { cancel: entry.cancel } as unknown as Animation
+          }
           return { finished, cancel: entry.cancel } as unknown as Animation
         }) as unknown as Element['animate']
       })
@@ -333,6 +341,32 @@ describe('EndpaperShell', () => {
           for (const run of rest) run.finish()
         })
         expect(isOpen()).toBe(true)
+      })
+
+      it('a run without `finished` falls back to the timer, and cancelling the others leaves no unhandled rejection', async () => {
+        const unhandled: unknown[] = []
+        const onUnhandled = (reason: unknown) => unhandled.push(reason)
+        process.on('unhandledRejection', onUnhandled)
+        try {
+          withoutFinished = '.mdv-ep-turn'
+          render(
+            <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
+              <p>x</p>
+            </EndpaperShell>,
+          )
+          fireEvent.click(screen.getByRole('button', { name: TURN }))
+          act(() => {
+            vi.advanceTimersByTime(leaf.ms)
+          })
+          // landing cancels every run, rejecting the `finished` nobody awaited
+          expect(isOpen()).toBe(true)
+          expect(leafRuns().every((c) => c.cancelledWith === true)).toBe(true)
+          vi.useRealTimers()
+          await new Promise((resolve) => setTimeout(resolve, 0))
+          expect(unhandled).toEqual([])
+        } finally {
+          process.off('unhandledRejection', onUnhandled)
+        }
       })
 
       it('lands on the backstop when a run never reports done, and not before', () => {

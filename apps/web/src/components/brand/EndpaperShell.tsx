@@ -179,6 +179,11 @@ export function EndpaperShell({
     ]
     const runs = pairs.flatMap(([el, frames]) => (el ? [animate(el, frames, LEAF_TURN)] : []))
     turnRuns.current = runs
+    // Every run is cancelled when the turn lands or unmounts, and a cancel
+    // rejects `finished`. Mark each one handled here, so the fallback paths
+    // below, which never listen to `finished`, cannot surface an unhandled
+    // rejection.
+    for (const run of runs) run?.finished?.catch(() => {})
     // The runs hold their last frame (fill both) until the settled page has
     // committed; they are cancelled in the layout effect below, after React
     // has written the settled state and before the browser paints it, so no

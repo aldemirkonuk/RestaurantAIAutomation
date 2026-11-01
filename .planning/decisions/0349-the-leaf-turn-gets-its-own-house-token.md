@@ -52,9 +52,10 @@ Built on `fix/book-turn-settles-on-finish` (PR #717), the follow-up that #709's 
 - A cancelled run counts as settled, so a stray cancel lands the book rather than stalling it. A cancel that comes from the book landing or unmounting is already ignored by the effect's cleanup flag.
 - A backstop, `SETTLE_BACKSTOP_MS = LEAF_TURN.ms * 2` (1.2s), lands the book if `finished` never settles. One case where it never settles is a page whose animations do not run, such as a hidden tab.
 - A run without `finished` keeps the old `LEAF_TURN.ms` timer.
+- Every run's `finished` is marked handled as soon as the runs start, so the fallback paths, which never await it, leave no unhandled rejection when landing cancels the runs.
 - The runs fill `both` (`lib/mudavym/motion.ts` `animate()`), so the last frame holds until the settled page commits.
 
-In the same headless runs, the book landed 2–6ms after the last run finished.
+In the same headless runs, the book landed 2–6ms after the last run finished. These timings were measured once, at `aecaa3f`, with a Playwright script that was not kept. Re-measure them; do not copy them forward as established fact.
 
 **The backstop at twice the run.** Options considered:
 1. **2 × the run (1.2s).** A whole run's slack past its own end, so it never beats a run that is only a few frames late. It covers the sign-in form for at most 1.2s when `finished` never comes. *Chosen.*
