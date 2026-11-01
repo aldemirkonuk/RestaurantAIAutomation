@@ -1,0 +1,99 @@
+# 0352 — Floor pushes use only the existing device stores; ADR 0027 stays Proposed
+
+- **Status:** Proposed (2026-10-31)
+- **Date:** 2026-10-31
+- **Decider:** the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242 (OPEN-DECISIONS.md:329 on main)), not his pick; how far that delegation reaches is OD-242, open, and a lock is his. It answers OD-238, which stays open in the register with this answer marked.
+- **Keywords:** web push, Expo, sendWebPush, cover offer, Call out
+- **Links:** [ADR 0027](0027-push-recipients-are-not-resolved-here.md); [ADR 0351](0351-a-floor-alert-climbs-past-an-absent-person-at-once.md) § Decision; ADR 0218 (Locked); ADR 0164; ADR 0020; OD-237, OD-238, OD-243 (OPEN-DECISIONS.md:330 on main).
+
+## Context
+
+ADR 0351 sets who a floor alert climbs to; this record sets how it is pushed and what counts as sent. OD-238 asked whether to lock ADR 0027, still Proposed. The question put to the founder read "Floor alerts reuse today's push devices and add no push table, as ADR 0027 (still Proposed) says. Should ADR 0027 be locked?", with two options: *"Leave it Proposed (Recommended)"*, "ADR 0345 records 'no new push table' as its own rule, so the floor does not depend on 0027's status.", and *"Lock it as written"*, "ADR 0027 becomes binding for every future push feature, not only the floor." (AskUserQuestion asked 2026-10-31T16:57:03Z, Q3). The call's result, verbatim, was *"Tool permission request aborted"*, and his goal message took effect at 2026-10-31T16:57:09Z. No option is his pick. The rule that option text gave to ADR 0345 is stated in this record (§ Decision › The push rule).
+
+## Options considered
+
+OD-238 offered (A) lock ADR 0027, (B) leave it Proposed, relying only on its no-new-push-table consequence, or (C) amend it. **(B) is chosen**, as the narrow, reversible option: it changes no line of ADR 0027's rule and leaves its lock to the founder. The fork was put to him at 16:57:03Z and the prompt aborted with no pick; it is answered here only because of his 2026-10-31T16:57:09Z goal message, and OD-238's row stays open with this answer marked. (A): a lock is the founder's (`0027:5`), and would bind *Also standing*, whose 42P10 half no longer holds (`0027:151-154`). (C): the floor needs nothing from ADR 0027 beyond the push rule below, and an amendment would change a rule for every future push feature. Also rejected: no bracket on ADR 0027, whose *Also standing* would keep calling the 42P10 open; `sendToUser`, with no result per channel; and `sendWebPush` as it is, which an adversary pass refuted, as a silent return reads as delivered (ADR 0020).
+
+## Decision
+
+ADR 0027 stays Proposed (option B); this record states the floor's own push rule. Every rule below is the executor's call under the founder's 2026-10-31T16:57:09Z delegation. Gateway paths are under `apps/api-gateway/src/`, web paths under `apps/web/`.
+
+### The push rule
+
+**The rule.** The floor adds no push subscription or device store; it uses only the existing ones. Web-push devices live only in `notification_push_devices` (`UNIQUE (user_id, endpoint)`, `supabase/migrations/20260925160500_a_preference_is_kept_once_per_person_per_house.sql:96-120`); the floor alert scanner's sends ledger (`floor_nudges_are_sent_once`, owed, not on main) records sends, not devices. Floor alerts go to the house's live members' web-push devices in that table; a recipient with nothing sent (no device the push service accepted) is not reached, and ADR 0351's chain climbs past them. The only floor-triggered Expo sends are pick 6's cover offer and Call out, as below.
+
+**Sent is not seen.** The chain, the manager copy and the `/floor` row say "sent to a device", never "reached"; "nobody was reached" means nothing was sent (ADR 0351 § Decision › Not reached). Floor pushes carry a TTL of `late_after_min` × 60 seconds, high urgency and a 10-second send timeout; a timeout counts as not sent.
+
+**Not reached also covers** a person with push off for this house (`notification_preferences.push_enabled`, `notifications/notifications.service.ts:1288`; honoured by the team broadcast, `team/broadcast-preferences.ts:95-98`) and one whose floor push quiet hours defer (ADR 0351 § Decision › Quiet hours), dropped, not queued. A failed push-switch read is never read as on or off.
+
+**Members only, roles at send time.** Every recipient is a live member of the alert's house, read with `houseMembersInRoles` (`common/tenant/live-membership.ts:93-122`: `isLiveMembership`, no `users.restaurant_id` fallback, a throw on failure), not `getRestaurantMemberIdsOrThrow` (`is_active` only, with the fallback ADR 0164 retired, `database/database.service.ts:109-127`). The manager step, its push and the last-step row read `OWNER_AND_MANAGER` (`live-membership.ts:62`) at send time; a plan row's free-text role (`team/schedule.service.ts:694`) never decides the manager copy. A waiter or cover whose access ended is passed over as an absent one is, with no alert counted against them (ADR 0351 § Decision › What managers see, and attribution).
+
+**The house is named.** Every floor push, staff and manager copy alike, and every leg of the cover offer and Call out names its house in the title or body and carries `restaurant_id` in its data: a web-push device has no house (`notifications.service.ts:140-149`) and a person may hold several (ADR 0164). A house name is neither a person's name nor a figure, so it fits the founder's pick *"Nothing for now"*, whose option text reads "Waiters only tap check-ins; all figures stay with managers for the first rollout." (AskUserQuestion asked 2026-10-31T03:03:50Z, Q3). Any tag includes the house id, as a same-tag notification replaces the shown one (`public/sw.js:82`, `:95-96`). The last-step row stays in the alert's house inbox (`notifications/notifications-are-tenant-scoped.spec.ts:15-18`).
+
+**The staff copy** carries the house, the table and state words only, with no minutes, names or reasons (ADR 0351 § Decision › Late tables), as no per-person floor detail goes to a staff screen or a lock screen under *"Nothing for now"*; who it went to and why is on the manager copy and the `/floor` row. The Food-up staff copy is the house, the table label and "Food up"; the checker's brief lines and the pass's note (`lib/meal-alert.ts:125-165`; `app/meal-actions.ts:272-274`) stay on signed-in screens, never on a lock screen.
+
+**The last step is a row.** Without it, a house with no web-push device (no page writes one today) leaves a late table as a `/floor` row sent to nobody. When the manager step is sent to nobody (ADR 0351 § Decision › ADR 0218's manager step), whether or not the waiter or cover was, every not-Away owner and manager gets a notification-center row with no push (`0218:111-112`); when all are Away, every owner (managers, in a house with no owner row) gets it inbox only, as ADR 0218 step 3 does (`0218:107-109`). The scanner writes it with one `persistForRestaurant` call per person, with `onlyUserIds` and `skipMobilePush` (`notifications.service.ts:619-669`), plus `broadcast: false` when all are Away (`:632`, `:772-791`), since the funnel returns row ids only (`:750-762`) and its member read can drop a live member unwarned (`:682-693`, `:763-770`). Its sends ledger keys each row on (the alert, `last_step_row`, the user), stamped when the call returns one id. It passes no `dedupeWithinMinutes`, whose hit reads as a failed write (`:709-724`). The funnel never throws (`:609`), so a person with no id back is named under "notification-center row not written" on the `/floor` row (ADR 0020) and only they are written next tick; a stamp lost after a good write may repeat that row once, a duplicate, not a loss (`0218:507-511`). The scanner joins the `skipMobilePush` setter list of `PR-448-TEAM-BROADCAST-ONE-PUSH-PATH` (`CLAIMS.jsonl:697`).
+
+**A failed read.** The reads ADR 0351 § Decision › ADR 0218's manager step names each fail their own way for pushes and rows:
+
+- A failed member or role read (`houseMembersInRoles` throws) fails the house's tick: no push, no row, no good-tick stamp.
+- A failed Away read is read as nobody Away on that tick, as ADR 0218 rules for a register that only narrows an audience (`0218:121-125`, `:321-331`; `notifications/producers/producer-ledger.service.ts:219-242`): logged at error level, the tick sends, is stamped, and says on the manager copy, the `/floor` row and the alert that Away could not be read.
+- A failed push-switch read sends no push, as the team broadcast skips its push leg (`team/team.controller.ts:588-596`), nor does a failed quiet-hours read (`audienceFor` throws, `producer-ledger.service.ts:187-190`), since neither failure is a consent, nor a failed plan or punch read (ADR 0351 § Decision). Each leaves the tick unstamped and still writes the last-step row, saying the alert could not be pushed and why.
+
+At a Food-up tap, a failed member, role, plan, punch, push-switch or quiet-hours read sends no push, still records the meal run, and says why on the POST response and the `/floor` row; all but the member and role reads also write the last-step row, since those two leave its audience unread. A failed Away read at a tap is read as nobody Away; the push goes and says so. The next good tick climbs an unsent, unacknowledged Food-up (ADR 0351 § Decision › Food-up) to the manager step at once, under its one climb key (meal run, threshold).
+
+### The alert scanner's code change
+
+**`sendWebPush` reports.** Today it returns nothing and fails silently (`notifications.service.ts:150-206`), with web-push 3.6.7's defaults of four weeks, normal urgency and no timeout (`web-push/src/web-push-lib.js:12-13`, `:109`, `:112`, `:222-223`). The scanner's change makes it report, per user, the devices found, sent and pruned, and a reason when it sent nothing: not configured, read failed, no web-push device, no usable subscription, every send failed, every device pruned, a send timed out, or an error after the read. Floor sends pass the TTL, urgency and timeout above; the icons move from `/icons/wineops-*` (`:172-173`, absent from `apps/web/public`) to `/icon-192.png` and `/badge.png`.
+
+**The tap.** The scanner's change adds a `/floor` branch to `resolveNotificationUrl`, which reads no house and no `actionUrl` (`sw.js:132-171`); the cover offer's change adds `shift_offer`, opening `/team?shift=<id>`. Each opens the push's house. When the session is in another (the token's house, `0164:50`), the page shows "This alert is for <house>" with a one-tap switch (`src/contexts/AuthContext.tsx:655-704`), never an automatic one (`0164:57`); a non-member is refused (`NOT_A_MEMBER`, `0164:43`) and told they are no longer in that house. A switch moves every tab (requests stamp the stored session, `src/services/api/client.ts:75-90`; no tab is told, `src/lib/sessionRenewed.ts:57`), and the prompt says so; each tab remembers the house it drew and sends nothing while the stored one differs, showing "This tab is now in <house>" with Reload and Switch back or, with none stored (sign-out, or access ended, `src/lib/houseMemory.ts:255-264`), "This tab is no longer in <house>" with Reload only. The guard sits where the session is stored, so the chooser's switch gets it too.
+
+**Expo.** Floor pushes do not go through `sendToUser`, which sends one payload to the socket, web push and Expo (`notifications.service.ts:116-138`). Whether floor alerts also reach Expo devices (`mobile_devices`, `push/expo-push.service.ts:66`) is a sub-question on OD-237's row, not settled here; until it is ruled, floor alerts go by web push only, and the cover offer and Call out keep /team's Expo push, as the founder's pick *"No-show + forgotten clock-out"* reads "A shift started with no clock-in shows Call out / Offer cover buttons (reusing /team's flow)." and "Cover offers also reach phones by web push." (AskUserQuestion asked 2026-10-31T03:41:53Z, Q2).
+
+**The cover offer.** `offerCover` sends Expo only and reads neither Away nor any preference (`schedule.service.ts:970-1008`); the floor adds web push to it. Both legs go only to live members among the chosen, hold for push off as the team broadcast does (`team.controller.ts:592-596`), and leave out, not hold, each one Away today (house-local, `:557-562`) or on the shift's `shift_date` (`awayWindowsSince` from the earlier date, `isAwayOn`: `areas/area-routing.service.ts:206`; `areas/area-routing.ts:121`), as no alert reaches a person on Away days (`0218:74-75`), naming each "away until <date>" (`0218:276-277`). A failed Away read leaves nobody out and says so (`0218:321-331`). The cover offer returns what each leg sent per person (`notified` counts the roster today, `schedule.service.ts:1007`); the screen says "Nobody could be reached by push" when neither sent anything. The web-push TTL runs to the shift's end by `shiftWindow` in the house's time zone, across midnight (`notifications/producers/shift-window.ts:79-117`), never under 15 minutes. Who is offered stays /team's list, the top three active members free that day by role, skill and account (`src/pages/team/next/WeekGrid.tsx:241-270`, `:501-511`), from this house's shifts only, so a person working another house that night may be offered and declines by the named house.
+
+**Call out.** `reportCallout` writes a routed broadcast whose Expo fan-out reads no preference (`schedule.service.ts:954-962`; `notifications.service.ts:811-829`). Call out routes the live members (`AreaRoutingService.route`, `area-routing.service.ts:137`), writes rows with `onlyUserIds` (everyone routing alerted or wrote inbox only), `skipMobilePush`, and `broadcast: false` when only the owners' inbox was reached (`notifications.service.ts:782-786`), and sends its own Expo leg to the alerted minus anyone with push off; the funnel still returns counts only (`:22-34`). The change is in `reportCallout`, so it holds for every caller, /team's button included, and joins the same setter list.
+
+**Quiet hours for these two sends.** Floor alerts take quiet hours from ADR 0351 § Decision › Quiet hours, which follows ADR 0218 and main's audience split (`producer-ledger.service.ts:192-215`). The cover offer and Call out are a person's own sends by /team's flow, which reads none (in /team only the Away release does, `team/away-release.service.ts:311`), so neither is held. One preferences read gives the push switch and the quiet-hours columns (`broadcast-preferences.ts:128` selects only the channel columns today); if it fails, no push leg goes, the rows are still written, and the screen and the audit row say so. If only the house's time zone cannot be read, the send goes and the audit row says quiet hours were not judged; a malformed window is not quiet (`calendar/reminder-window.ts:176-189`). Each send writes one `system_audit_log` row: the sender in `actor_id`, and in `changes` how many recipients were inside quiet hours, never who; its retention is the audit log's, left to counsel (`0218:573-575`).
+
+**Web push is dark until a push opt-in ships.** No web page writes a device row: `useSubscribeToPushNotifications` (`src/hooks/queries/useNotificationQueries.ts:393`) has no caller, nothing under `apps/web` calls `pushManager`, and nothing hands the web the VAPID public key (`notifications.service.ts:89-98`). The 42P10 in ADR 0027's *Also standing* is closed: registration upserts on `user_id,endpoint` (`:229-238`). The `/floor` manager board's push opt-in and `/floor/me`'s staff push opt-in, both owed by the port, are the first writers; whichever lands first adds the public-key delivery, endpoint-scoped removal on sign-out, removal on register of any other user's row for that endpoint, and the house's Push switch, with Settings' Push row (`src/pages/settings/next/NotifySection.tsx:122-125`) made a live toggle with true copy.
+
+## Evidence
+
+Main cites were measured at `ce1ecaaa5`; no file they cite changed up to `origin/main` `5e966c8b6` (`git diff --stat ce1ecaaa5 origin/main` touches analytics, `mcp-server`, `pos-adapters` and report exports only). No migration creates `push_subscriptions` (OD-95, resolved, `CLAIMS.jsonl:84`; why, migration `:53-59`); ADR 0149 row 39 moved push subscriptions out of preferences (`0149:127`). The checker's sender returns a sent count (`lib/push.ts:47-50`, `:98` at `5958689`). /team offers cover from any shift tile of its week (`WeekGrid.tsx:118`, `:389`).
+
+## Consequences
+
+**Retire-to-write (CLAUDE.md §4).** This file is the one decision record §5 requires. It retires no document, as ADRs 0249, 0265, 0273, 0287 and 0314 did. Whether retire-to-write binds a new ADR is OD-243 (OPEN-DECISIONS.md:330 on main), open.
+
+OD-238 stays open, marked answered here; ADR 0027 stays Proposed, with a dated bracket at `0027:154` pointing at § Decision › The push rule.
+
+### What the build changes
+
+Owed by this record, with the code that builds it:
+
+- The floor alert scanner: `sendWebPush` reporting per user, the floor TTL, urgency and timeout, the icon fix, the `/floor` tap branch with its house prompt and per-tab guard, and the last-step rows with their sends ledger (§ Decision › The alert scanner's code change, › The last step is a row).
+- Pick 6's cover offer and Call out: the web-push leg, the `shift_offer` tap, the per-person result, and Call out's own Expo leg in `reportCallout` (§ Decision › The alert scanner's code change).
+- The first web writer of `notification_push_devices`: the `/floor` manager board's opt-in or `/floor/me`'s staff opt-in, whichever lands first, with the public-key delivery, sign-out and re-register removal, and a live Push row in Settings.
+
+Owed outside this PR: a pointer here at each line naming Expo push as the floor's transport, `service-floor-charter.md:66`, `:107`, `service-floor-premortem.md:23`, `:117`, `service-floor-agent-stack.md:128`, `service-floor-schedule.md:49`, `service-floor-loops.md:99` (in `.planning/01-org/product/product-vision/teams/service-floor/`) and `S05-service-runs-floor-is-checked.md:51`, `:107`, `S07-guest-complaint-mid-service.md:40`, `S16-staff-misses-a-table-window.md:40` (in `.planning/03-scenarios/`); `grep -rni 'expo.push'` there re-checks the list.
+
+## Not verified
+
+- No code was run, no test exists; the per-person funnel cost was reasoned.
+- Not re-queried: the 2026-09-18 several-house count (`0164:25`), the `mobile_devices` count (0 rows on 2026-09-19, `0175:17`).
+- Checker cites are from its working tree at `5958689` (uncommitted changes); web-push lines, the installed 3.6.7.
+- Read, not exercised: the house switch, the per-tab check, sign-out, and the Away-day read (`area-routing.service.ts:206-222`; `team/away-hold.service.ts:52-61`). The phone app's tap was not traced past `apps/mobile/src/lib/notificationRoute.ts`.
+- Counsel has not checked the KVKK Art. 4(2)(c), (d) reading behind the quiet-hours count; the 10-second timeout and 15-minute TTL floor are the executor's numbers.
+- The research, adversary and judge passes (workflows wf_469ff9fa-840, wf_8682b40b-65c) were not re-run; their outputs sit in session ca58311b's scratchpad, outside the repo.
+
+## Review trail
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-10-31 | the founder | Asked OD-238 (AskUserQuestion asked 2026-10-31T16:57:03Z, Q3); no pick. |
+| 2026-10-31 | executor | Option B, `sendWebPush` unchanged; refuted (ADR 0020). |
+| 2026-10-31 | executor, judge rounds | Reporting sender, push off, members only, last-step row, Call out's Expo leg. |
+| 2026-10-31 | executor, OD-238 judge | House named; roles at send time; failed reads per ADR 0218; quiet hours for /team sends. |
+| 2026-10-31 | executor, restructure | Moved out of ADR 0345. Each row is the executor's call under the founder's 2026-10-31T16:57:09Z delegation. |
+| 2026-11-01 | executor | R3 rewrite: no held-note cites; single decision record |
