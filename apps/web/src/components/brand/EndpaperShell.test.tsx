@@ -232,26 +232,37 @@ describe('EndpaperShell', () => {
         options: KeyframeAnimationOptions
         cancelledWith: boolean | null
         finish: () => void
+        cancel: () => void
       }
       let calls: Run[]
       beforeEach(() => {
         vi.useFakeTimers()
         calls = []
         Element.prototype.animate = vi.fn(function (this: Element, keyframes: Keyframe[], options: KeyframeAnimationOptions) {
+          // `finished` settles the way the DOM's does: it resolves when the
+          // run ends and rejects with an AbortError when the run is cancelled.
           let finish = () => {}
-          const finished = new Promise<Animation>((resolve) => {
+          let abort = () => {}
+          const finished = new Promise<Animation>((resolve, reject) => {
             finish = () => resolve({} as Animation)
+            abort = () => reject(new DOMException('The animation was cancelled', 'AbortError'))
           })
-          const entry: Run = { el: this, keyframes, options, cancelledWith: null, finish }
-          calls.push(entry)
-          return {
-            finished,
+          finished.catch(() => {})
+          const entry: Run = {
+            el: this,
+            keyframes,
+            options,
+            cancelledWith: null,
+            finish,
             cancel: () => {
               // what the DOM already says the FIRST time the run lets go of
               // its last frame (a later, redundant cancel must not mask it)
               if (entry.cancelledWith === null) entry.cancelledWith = !!document.querySelector('.mdv-ep-leaf[data-front]')
+              abort()
             },
-          } as unknown as Animation
+          }
+          calls.push(entry)
+          return { finished, cancel: entry.cancel } as unknown as Animation
         }) as unknown as Element['animate']
       })
       afterEach(() => {
@@ -305,6 +316,22 @@ describe('EndpaperShell', () => {
         // the token's length has passed, but the runs have not reported done
         expect(isOpen()).toBe(false)
         await finishAll()
+        expect(isOpen()).toBe(true)
+      })
+
+      it('a run cancelled mid-turn lands the book at once instead of stalling it to the backstop', async () => {
+        render(
+          <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
+            <p>x</p>
+          </EndpaperShell>,
+        )
+        fireEvent.click(screen.getByRole('button', { name: TURN }))
+        const [cancelled, ...rest] = leafRuns()
+        // something outside the book cancels one run; the others end on time
+        await act(async () => {
+          cancelled.cancel()
+          for (const run of rest) run.finish()
+        })
         expect(isOpen()).toBe(true)
       })
 

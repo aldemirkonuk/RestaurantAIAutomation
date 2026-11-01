@@ -22,6 +22,14 @@ let markHasDrawn = false
  */
 const LEAF_TURN: MotionToken = leaf
 
+/**
+ * How long the book waits for the runs to report `finished` before it lands
+ * anyway (ADR 0349, amendment 2026-11-01). Twice the run: a whole run's slack
+ * past its own end, so it never beats a run that is merely a few frames late,
+ * while the sign-in form under the leaf is covered for at most 1.2s.
+ */
+const SETTLE_BACKSTOP_MS = LEAF_TURN.ms * 2
+
 /** Under 700px the endpaper is a band above the leaf (endpaper.css). */
 function isNarrow(): boolean {
   return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 700px)').matches
@@ -186,13 +194,16 @@ export function EndpaperShell({
       return
     }
     // Settle on the runs' own end, not on a clock started beside them: a timer
-    // at LEAF_TURN.ms can fire a frame before the last one is painted. The
-    // backstop is for an engine whose `finished` never settles; a cancelled
-    // run rejects `finished`, and by then the book has landed or unmounted.
+    // at LEAF_TURN.ms can fire a frame before the last one is painted. Every
+    // run settling counts, cancelled ones too (a cancel rejects `finished`), so
+    // a run cancelled mid-turn lands the book instead of stalling it; a cancel
+    // that comes from the book landing or unmounting finds `landed` already set
+    // by the cleanup below. The backstop is for an engine whose `finished`
+    // never settles.
     let backstop: number
     if (runs.every((run) => run?.finished)) {
-      Promise.all(runs.map((run) => run!.finished)).then(settle, () => {})
-      backstop = window.setTimeout(settle, LEAF_TURN.ms * 2)
+      void Promise.allSettled(runs.map((run) => run!.finished)).then(settle)
+      backstop = window.setTimeout(settle, SETTLE_BACKSTOP_MS)
     } else {
       backstop = window.setTimeout(settle, LEAF_TURN.ms)
     }
