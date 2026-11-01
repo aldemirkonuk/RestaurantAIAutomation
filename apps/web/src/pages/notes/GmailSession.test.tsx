@@ -26,7 +26,7 @@ describe('/notes/gmail-session', () => {
   it('keeps gate tokens, capability ids and workstation paths off the public page', () => {
     const { container } = renderWithProviders(<GmailSession />)
     const text = container.textContent ?? ''
-    expect(text).not.toMatch(/pr-audit-gate|verdict=PASS|Y5VRZVvCaefSt4FNGgtBfw|d-e8fe9045eb|ex-invoice/)
+    expect(text).not.toMatch(/<!--|\bd-[0-9a-f]{10}\b|\b[A-Za-z0-9_-]{22}\b/)
     expect(text).not.toMatch(/\/Users\//)
     expect(text).not.toMatch(/auto-merges/i)
     expect(text).not.toMatch(/--admin|--auto|press merge|\b30K\b|personal account|\b[0-9a-f]{9}\b/i)

@@ -1,8 +1,8 @@
 # 0355 — /notes/* pages are public but unlisted
 
-- **Status:** Locked
+- **Status:** Locked for the route and its unlisted status; the content rule is Proposed and awaits the founder
 - **Date:** 2026-11-01
-- **Decider:** Aldemir (founder), 2026-11-01 for the route and unlisted status; the content rule below was added after audit of PR #731, not decided by the founder in the moment
+- **Decider:** Aldemir (founder), 2026-11-01, for the route and unlisted status. The content rule was proposed by the audit of PR #731 and is not yet decided by the founder.
 - **Keywords:** notes, public, unlisted, noindex, robots, sitemap, gmail-session
 - **Links:** [[0158-seo-geo-surface]] (allow-list crawl rule), [[0344-register-is-the-landing-door-and-story-tells-one-night]]
 
@@ -24,7 +24,7 @@ Pages under `/notes/` are public to anyone with the URL, `noindex, nofollow`, an
 
 This amends nothing in ADR 0158 but touches its surface: a `/notes/` page needs the first path segment `notes` in the SPA rewrite in `apps/web/vercel.json`, which sends `/notes/*` to `/crawl/app.html` (closed head). The rewrite is not the indexed path that Option 5 rejects: Option 5's `vercel.json` cost is a per-route head rewrite plus a `PUBLIC_ROUTES` entry, which this decision avoids.
 
-Content rule: a `/notes/` page carries no gate or merge-control token (for example the ADR 0090 PASS marker), no capability link or document id, no workstation path, no line-number citation, and no control-plane or identity detail (gate thresholds, merge rules, who owns an OAuth client). No lexical test can enforce a semantic rule, so a human reads the prose of every `/notes/` page before it merges; the page test pins only the known past violations. The first page was revised on 2026-11-01 after audit of PR #731 to remove all of these.
+Content rule (proposed, founder to confirm): a `/notes/` page carries no gate or merge-control token (for example the ADR 0090 PASS marker), no capability link or document id, no workstation path, no line-number citation, and no control-plane or identity detail (gate thresholds, merge rules, who owns an OAuth client). The page test pins only the known past violations by shape; it cannot enforce a semantic rule. The first page was revised on 2026-11-01 after audit of PR #731 to remove all of these.
 
 Retire-to-write: no document is retired for this ADR or page. The founder waived the rule for this page on 2026-11-01 ("do not retire another document").
 
