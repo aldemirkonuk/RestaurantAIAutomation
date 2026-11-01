@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ink,
+  leaf,
   motionTokens,
   pour,
   press,
@@ -82,5 +83,10 @@ describe('motion tokens carry the 083 names and numbers verbatim', () => {
       ['ink', 'pour', 'settle', 'stamp', 'tally', 'tuck', 'turn'].sort(),
     );
     expect(press).toBe(pour);
+  });
+
+  it('leaf is ADR 0349\'s token and stays out of the seven', () => {
+    expect(leaf).toEqual({ easing: 'cubic-bezier(0.4, 0, 0.2, 1)', ms: 600 });
+    expect(Object.keys(motionTokens)).not.toContain('leaf');
   });
 });

@@ -141,6 +141,46 @@ describe("adapters normalize to the canonical check", () => {
 });
 
 /**
+ * A line's price is ONE unit's, so price × qty is its sale (CanonicalItem;
+ * ADR 0298 decisions 2 and 8). Toast's `price` is the selection's total and Clover's
+ * `unitQty` is in thousandths; read raw, both overstated a line's sale.
+ */
+describe("adapters — a line carries one unit's price and the units rung", () => {
+  const toast = (sel: Record<string, unknown>) =>
+    toastAdapter.normalize({ guid: "t-2", selections: [sel] })[0].items[0];
+  const clover = (li: Record<string, unknown>) =>
+    cloverAdapter.normalize({ id: "c-2", lineItems: { elements: [li] } })[0]
+      .items[0];
+
+  it("toast takes the selection's net price over its quantity", () => {
+    const it = toast({ quantity: 2, price: 27, receiptLinePrice: 15 });
+    expect(it.qty).toBe(2);
+    expect(it.price).toBe(13.5);
+  });
+
+  it("toast keeps the money in a selection's modifiers", () => {
+    const pour = toast({ quantity: 2, price: 24, receiptLinePrice: 0 });
+    expect(pour.price * pour.qty).toBe(24);
+    const large = toast({ quantity: 1, price: 14, receiptLinePrice: 9 });
+    expect(large.price).toBe(14);
+  });
+
+  it("toast with no money in the selection stays at 0", () => {
+    expect(toast({ quantity: 1, price: 0, receiptLinePrice: 0 }).price).toBe(0);
+  });
+
+  it("clover reads unitQty in thousandths on a per-unit line", () => {
+    const it = clover({ price: 2000, unitQty: 1500 });
+    expect(it.qty).toBe(1.5);
+    expect(it.price * it.qty).toBe(30);
+  });
+
+  it("clover counts a fixed-price line as one unit", () => {
+    expect(clover({ price: 950 }).qty).toBe(1);
+  });
+});
+
+/**
  * An absent number and a zero are different facts (ADR 0105 D5, ADR 0020).
  *
  * `num()` was `Number(v)` guarded by `Number.isFinite`. `Number(null)` is `0`
