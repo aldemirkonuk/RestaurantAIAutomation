@@ -285,6 +285,12 @@ export class RecommendationsService {
        * answer is the house's.
        */
       viewerId?: string | null;
+      /**
+       * Whether the viewer sees sales (ADR 0290 §5), handed to the financial
+       * and risk reads as their sales gate (ADR 0298 decision 9); absent, it
+       * is false. The digest passes no flag, so its reads go out shut.
+       */
+      withSales?: boolean;
     } = {},
   ): Promise<{
     recommendations: Recommendation[];
@@ -321,14 +327,20 @@ export class RecommendationsService {
       priceAdviceRes,
       priceLocksRes,
     ] = await Promise.allSettled([
-      this.analyticsService.getFinancialSummary(restaurantId),
-      this.analyticsService.getRiskProfile(restaurantId),
+      this.analyticsService.getFinancialSummary(restaurantId, 0, {
+        withSales: opts.withSales === true,
+      }),
+      this.analyticsService.getRiskProfile(restaurantId, {
+        withSales: opts.withSales === true,
+      }),
       this.analyticsService.getInventoryScience(restaurantId),
       this.advanced.getMenuEngineering(restaurantId),
       this.advanced.getSeasonality(restaurantId),
       this.advanced.getCashflow(restaurantId),
       this.insightGenerator.generate(restaurantId, { maxPerCategory: 4 }),
-      this.goalsService.listGoals(restaurantId, "active"),
+      this.goalsService.listGoals(restaurantId, "active", {
+        withSales: opts.withSales === true,
+      }),
       this.marginAdvice
         ? this.marginAdvice.adviseHouse(restaurantId)
         : Promise.reject(new Error("price advice is not wired into this build")),
