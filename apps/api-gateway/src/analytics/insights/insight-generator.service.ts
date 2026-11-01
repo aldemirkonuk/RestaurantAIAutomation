@@ -25,6 +25,7 @@ import {
   unitsLabel,
 } from "../consumption-units";
 import { DayExclusionsService } from "./day-exclusions.service";
+import { goalPaceForViewer } from "../sales-gated-goals";
 import { RecommendationActionsService } from "../recommendation-actions.service";
 import {
   SuppressionScope,
@@ -383,6 +384,12 @@ export class InsightGeneratorService {
       candidateKeys?: string[];
       maxPerCategory?: number;
       persist?: boolean;
+      /**
+       * Whether the caller sees sales (ADR 0298 decision 9). Missing reads as
+       * no: a sales-gated goal's pace is persisted whole and returned only
+       * to a holder (`goalPaceForViewer`).
+       */
+      withSales?: boolean;
     } = {},
   ) {
     const startedAt = Date.now();
@@ -492,9 +499,12 @@ export class InsightGeneratorService {
       persisted = await this.persist(restaurantId, toStore, opts.categories);
     }
 
+    const view = goalPaceForViewer(ranked, opts.withSales === true);
     return {
       restaurantId,
-      insights: ranked,
+      insights: view.kept,
+      // Sales-gated goal paces left out for this caller (ADR 0298 decision 9).
+      salesGated: view.salesGated,
       availability: Array.from(bundle.availability),
       // UPPER BOUND, not a count of what this restaurant can receive.
       // `availableCandidates` (insight-catalog.ts:557) filters on DATA
@@ -567,7 +577,7 @@ export class InsightGeneratorService {
    */
   async getStored(
     restaurantId: string,
-    opts: { categories?: string[]; limit?: number } = {},
+    opts: { categories?: string[]; limit?: number; withSales?: boolean } = {},
   ) {
     return (await this.readStored(restaurantId, opts)).rows;
   }
@@ -594,12 +604,13 @@ export class InsightGeneratorService {
    */
   async readStored(
     restaurantId: string,
-    opts: { categories?: string[]; limit?: number } = {},
+    opts: { categories?: string[]; limit?: number; withSales?: boolean } = {},
   ): Promise<{
     rows: any[];
     read: number;
     withheld: WithheldCounts;
     suppressionsReadable: boolean;
+    salesGated: number;
   }> {
     const limit = opts.limit ?? 30;
     const [rows, state] = await Promise.all([
@@ -607,8 +618,11 @@ export class InsightGeneratorService {
       this.actions.readState(restaurantId),
     ]);
     const held = withholdByState(rows, storedTarget, state.book);
+    // Before the cut, as the state is: a left-out pace does not shorten the
+    // page. Missing `withSales` reads as no (ADR 0298 decision 9).
+    const view = goalPaceForViewer(held.kept, opts.withSales === true);
     return {
-      rows: held.kept.slice(0, limit).map((r) => {
+      rows: view.kept.slice(0, limit).map((r) => {
         const target = storedTarget(r);
         return {
           ...r,
@@ -622,6 +636,7 @@ export class InsightGeneratorService {
       read: rows.length,
       withheld: held.withheld,
       suppressionsReadable: state.readable,
+      salesGated: view.salesGated,
     };
   }
 

@@ -4,6 +4,7 @@ import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
+import { isSalesGatedGoal } from "./sales-gated-goals";
 import { DatabaseService } from "../database/database.service";
 import {
   RecommendationActionsService,
@@ -337,7 +338,10 @@ export class RecommendationsService {
       this.advanced.getMenuEngineering(restaurantId),
       this.advanced.getSeasonality(restaurantId),
       this.advanced.getCashflow(restaurantId),
-      this.insightGenerator.generate(restaurantId, { maxPerCategory: 4 }),
+      this.insightGenerator.generate(restaurantId, {
+        maxPerCategory: 4,
+        withSales: opts.withSales === true,
+      }),
       this.goalsService.listGoals(restaurantId, "active", {
         withSales: opts.withSales === true,
       }),
@@ -793,7 +797,14 @@ export class RecommendationsService {
     }));
 
     // ---- Goal rules -------------------------------------------------------
-    for (const g of ctx.goals.slice(0, 3)) {
+    // "N% done" on a sales-gated goal is a sales holder's figure: left out
+    // unless the gate is open (ADR 0298 decision 9). Filtered before the cut,
+    // so a viewer without sales sees their next readable goal in its slot.
+    const goalsForViewer = ctx.goals.filter(
+      (g: { metric_key?: unknown }) =>
+        opts.withSales === true || !isSalesGatedGoal(g?.metric_key),
+    );
+    for (const g of goalsForViewer.slice(0, 3)) {
       const target = Number(g.target_value) || 0;
       const current = Number(g.current_value) || 0;
       const behind =

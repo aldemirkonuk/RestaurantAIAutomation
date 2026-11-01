@@ -2,6 +2,10 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { GoalsService } from "../../analytics/goals.service";
 import {
+  isSalesGatedGoal,
+  salesGatedBit,
+} from "../../analytics/sales-gated-goals";
+import {
   ProducerLedgerService,
   emptyTally,
   type ProducerAudience,
@@ -116,6 +120,7 @@ export class CeilingHeldProducer {
     }
 
     let stillOpen = 0;
+    let salesGated = 0;
     let tooOld = 0;
     let breached = 0;
 
@@ -142,6 +147,14 @@ export class CeilingHeldProducer {
         CeilingHeldProducer.LOOKBACK_DAYS * 86_400_000
       ) {
         tooOld += 1;
+        continue;
+      }
+
+      // A days-of-stock goal is a sales holder's figure (ADR 0298 decision
+      // 9), and this producer does not carry the sales gate yet, so it tells
+      // no one about one. Counted, named in the run's reason, not read.
+      if (isSalesGatedGoal(goal.metric_key)) {
+        salesGated += 1;
         continue;
       }
 
@@ -239,6 +252,13 @@ export class CeilingHeldProducer {
       );
     }
 
+    // Named on every run; `withheld_reason` carries only a no-op's sentence.
+    if (salesGated > 0) {
+      this.logger.log(
+        `${restaurantId}: not read: ${salesGatedBit(salesGated)}`,
+      );
+    }
+
     if (tally.emitted === 0 && tally.withheldReason === null) {
       const bits = [`${goals.length} ceiling goal(s) with a deadline`];
       if (stillOpen > 0) bits.push(`${stillOpen} whose period has not closed yet`);
@@ -252,6 +272,7 @@ export class CeilingHeldProducer {
           `${tooOld} that closed more than ${CeilingHeldProducer.LOOKBACK_DAYS} days ago, outside this sweep's window`,
         );
       }
+      if (salesGated > 0) bits.push(salesGatedBit(salesGated));
       if (tally.alreadyClaimed > 0) {
         bits.push(`${tally.alreadyClaimed} already reported`);
       }

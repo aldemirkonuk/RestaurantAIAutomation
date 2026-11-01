@@ -54,9 +54,11 @@ export class ReportCuttingReader {
       // queued and read later, and the file can reach others — so it is the
       // house's answer, as the digest and the MCP reader are.
       case "reading": {
+        // A holder's page keeps a days-of-stock goal's pace (decision 9a).
         const stored = await this.insights.readStored(restaurantId, {
           categories: undefined,
           limit: 40,
+          ...EXPORT_READS_SALES,
         });
         if (stored.read > 0)
           return {
@@ -65,10 +67,12 @@ export class ReportCuttingReader {
             suppressed: stored.withheld.dismissed,
             withheld: stored.withheld,
             suppressionsReadable: stored.suppressionsReadable,
+            salesGated: stored.salesGated,
           };
         return this.insights.generate(restaurantId, {
           categories: undefined,
           persist: true,
+          ...EXPORT_READS_SALES,
         });
       }
       // GET /analytics/pos-revenue/:rid?days= — AnalyticsController.getPosRevenue.
