@@ -177,7 +177,7 @@ describe("ReportCuttingReader reads what the /reports page reads (OD-81)", () =>
     const cases: Array<[{ role?: string } | undefined, boolean]> = [
       [{ role: "owner" }, true],
       [{ role: "manager" }, true],
-      [{ role: "admin" }, true],
+      [{ role: "admin" }, true], // OD-241 open: pins the alias, not a ruling
       [{ role: "staff" }, false],
       [{ role: "sommelier" }, false],
       [{}, false],
