@@ -174,7 +174,16 @@ export class RecurringOrdersController {
    * `NonProductionGuard`, operators included; anyone else gets
    * `JwtAuthGuard`'s answer first, because class guards run before route
    * guards: 401 if not signed in, 403 for a path naming another house, an
-   * unverified email, or a session in no house. Outside production,
+   * unverified email, or a session in no house. [Corrected 2026-10-01,
+   * audit of PR #537 at 08a3f7f4c, round 4: admitted means signed in and
+   * not blacklisted, a verified email, a chosen house, and a top-level
+   * restaurantId/restaurant_id in path, query and body that each names
+   * nothing or is one string equal to the session's house; a caller
+   * JwtAuthGuard does not admit gets its refusal (401 not signed in or
+   * blacklisted; 403 for a path, query or body house that differs from the
+   * session's or is not one string, an unverified email, or a session in no
+   * house), unless the global RateLimitGuard answers 429 first, and that 429
+   * can also come before the 404.] Outside production,
    * `PlatformOperatorGuard` (the `/health/agent-operations` gate) admits only
    * a platform operator. The real runner, the in-process
    * `@Cron("0 8 * * *")`, is untouched.
@@ -183,7 +192,7 @@ export class RecurringOrdersController {
   @UseGuards(NonProductionGuard, PlatformOperatorGuard)
   @ApiOperation({
     summary:
-      "Run the daily recurring-order check for EVERY house's due schedules (dev/test; non-production, platform operators only)",
+      "Run the daily recurring-order check for EVERY house's due schedules (dev/test; non-production, platform operators only: PlatformOperatorGuard answers 403 for a non-operator and 503 when the operator lookup returns an error)",
   })
   async manualExecuteCheck() {
     try {

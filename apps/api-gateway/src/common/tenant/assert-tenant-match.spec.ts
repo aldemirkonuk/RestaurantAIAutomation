@@ -322,6 +322,26 @@ describe("assertTenantMatch — a house is named by one string", () => {
     );
   });
 
+  it.each([5, 0, true, false])(
+    "refuses %p as the body name on the tenant-change route, housed or not",
+    (value) => {
+      // Numbers and booleans were pinned only on ordinary routes. A mutation
+      // that let them through on this route alone survived every other test
+      // (audit of PR #537 at 08a3f7f4c, round 4, M16).
+      refused(() =>
+        assertTenantMatch(req({ user, body: { restaurantId: value } }), {
+          allowBodyTenantChange: true,
+        }),
+      );
+      refused(() =>
+        assertTenantMatch(
+          req({ user: { userId: "u1" }, body: { restaurant_id: value } }),
+          { allowBodyTenantChange: true },
+        ),
+      );
+    },
+  );
+
   it("still passes a single string naming the caller's house, in each place", () => {
     expect(() =>
       assertTenantMatch(
