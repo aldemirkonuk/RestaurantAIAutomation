@@ -15,7 +15,8 @@
  * card says so explicitly ("time to within 1% of target … fully at rest at
  * 1408ms"). The sampler below integrates to that same 1% envelope, so its
  * measured settle time reproduces 083's numbers (the unit test asserts it);
- * the exported tokens carry 083's documented figures verbatim.
+ * the seven 083 tokens carry 083's documented figures verbatim. `leaf` is
+ * not an 083 token: it is ADR 0349's, and stays out of {@link motionTokens}.
  */
 
 import { useEffect, useState } from 'react';
@@ -91,7 +92,7 @@ export function springLinear(
   };
 }
 
-/* ── The seven tokens — names and numbers are 083's, verbatim ────────────── */
+/* ── The house tokens — the first seven are 083's, verbatim; `leaf` is ADR 0349's ── */
 
 const HOUSE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
@@ -127,6 +128,14 @@ export const stamp: MotionToken = { easing: stampSpring.easing, ms: 360 };
 
 /** Number tickers. Overdamped — figures arrive, they never bounce past. */
 export const tally: MotionToken = { easing: tallySpring.easing, ms: 840 };
+
+/**
+ * A whole leaf turning over — the endpaper's front matter (ADR 0349). Not
+ * `turn`: that curve is front-loaded, so a 180° leaf on it lies flat early and
+ * every hand-off keyed to its progress plays out over a still book. A
+ * standard in-out lifts the leaf promptly and lands it at the end of the run.
+ */
+export const leaf: MotionToken = { easing: 'cubic-bezier(0.4, 0, 0.2, 1)', ms: 600 };
 
 /** All tokens by 083 name, for data-driven use. */
 export const motionTokens = { settle, ink, tuck, turn, pour, stamp, tally } as const;
