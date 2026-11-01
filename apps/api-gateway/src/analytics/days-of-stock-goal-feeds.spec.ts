@@ -15,21 +15,51 @@ const behind = (id: string, metric_key: string) => ({
   created_at: new Date(Date.now() - 50 * DAY).toISOString(),
   deadline: new Date(Date.now() + 10 * DAY).toISOString(),
 });
-const GOALS = [behind("dio", "days_of_inventory"), behind("sold", "bottles_sold")];
+const GOALS = [
+  behind("dio", "days_of_inventory"),
+  behind("sold", "bottles_sold"),
+];
 
 function feed() {
   const b: any = {};
-  for (const m of ["select", "order", "limit", "insert", "eq", "gte", "in", "is", "gt", "neq"]) b[m] = () => b;
+  for (const m of [
+    "select",
+    "order",
+    "limit",
+    "insert",
+    "eq",
+    "gte",
+    "in",
+    "is",
+    "gt",
+    "neq",
+  ])
+    b[m] = () => b;
   b.maybeSingle = async () => ({ data: null, error: null });
-  b.then = (ok: any, no: any) => Promise.resolve({ data: [], error: null }).then(ok, no);
+  b.then = (ok: any, no: any) =>
+    Promise.resolve({ data: [], error: null }).then(ok, no);
   const client = { from: () => b };
   const listGoals = jest.fn(async () => GOALS);
   const svc = new RecommendationsService(
-    { getFinancialSummary: async () => null, getRiskProfile: async () => null, getInventoryScience: async () => null } as any,
-    { getMenuEngineering: async () => null, getSeasonality: async () => null, getCashflow: async () => null } as any,
+    {
+      getFinancialSummary: async () => null,
+      getRiskProfile: async () => null,
+      getInventoryScience: async () => null,
+    } as any,
+    {
+      getMenuEngineering: async () => null,
+      getSeasonality: async () => null,
+      getCashflow: async () => null,
+    } as any,
     { generate: async () => ({ insights: [] }) } as any,
     { listGoals } as any,
-    { readDispositions: async () => ({ map: new Map(), readable: true, problem: null }) } as any,
+    {
+      readDispositions: async () => ({
+        map: new Map(),
+        readable: true,
+        problem: null,
+      }),
+    } as any,
     { supabase: client, getClient: () => client } as any,
   );
   return { svc, listGoals };
@@ -44,14 +74,18 @@ describe("a days-of-stock goal's stored pace stays with a sales holder", () => {
       const k = keys(await svc.getRecommendations("r1", opts as any));
       expect(k).toContain("goal_behind_sold");
       expect(k).not.toContain("goal_behind_dio");
-      expect(listGoals).toHaveBeenCalledWith("r1", "active", { withSales: false });
+      expect(listGoals).toHaveBeenCalledWith("r1", "active", {
+        withSales: false,
+      });
     }
   });
 
   it("recommendations: kept for a viewer who sees sales", async () => {
     const { svc, listGoals } = feed();
     const k = keys(await svc.getRecommendations("r1", { withSales: true }));
-    expect(k).toEqual(expect.arrayContaining(["goal_behind_dio", "goal_behind_sold"]));
+    expect(k).toEqual(
+      expect.arrayContaining(["goal_behind_dio", "goal_behind_sold"]),
+    );
     expect(listGoals).toHaveBeenCalledWith("r1", "active", { withSales: true });
   });
 
