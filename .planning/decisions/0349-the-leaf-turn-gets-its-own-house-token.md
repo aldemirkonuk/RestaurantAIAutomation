@@ -49,7 +49,7 @@ Built on `fix/book-turn-settles-on-finish` (PR #717), the follow-up that #709's 
 
 **What changed.** The front-matter turn used to settle on `setTimeout(LEAF_TURN.ms)`, started beside its six runs. In headless Chromium, on a local build of the branch over three opens and three closes, the runs reported `finished` 608–641ms after the click. So the timer could land the page before the last frame was painted. Now:
 - The book settles on `Promise.allSettled` of the runs' `finished`.
-- A cancelled run counts as settled, so a stray cancel lands the book rather than stalling it. A cancel that comes from the book landing or unmounting is already ignored by the effect's cleanup flag.
+- A cancelled run counts as settled, so a stray cancel lands the book rather than stalling it. A cancel that comes from the book landing or unmounting is ignored, because `landed` is already set, by the `settle` that landed the book or by the effect's cleanup on unmount.
 - A backstop, `SETTLE_BACKSTOP_MS = LEAF_TURN.ms * 2` (1.2s), lands the book if `finished` never settles. One case where it never settles is a page whose animations do not run, such as a hidden tab.
 - A run without `finished` keeps the old `LEAF_TURN.ms` timer.
 - Every run's `finished` is marked handled as soon as the runs start, so the fallback paths, which never await it, leave no unhandled rejection when landing cancels the runs.
@@ -58,9 +58,10 @@ Built on `fix/book-turn-settles-on-finish` (PR #717), the follow-up that #709's 
 In the same headless runs, the book landed 2–6ms after the last run finished. These timings were measured once, at `aecaa3f`, with a Playwright script that was not kept. Re-measure them; do not copy them forward as established fact.
 
 **The backstop at twice the run.** Options considered:
-1. **2 × the run (1.2s).** A whole run's slack past its own end, so it never beats a run that is only a few frames late. It covers the sign-in form for at most 1.2s when `finished` never comes. *Chosen by the founder, 2026-11-01, over a 0.9s (1.5×) option and the one-frame option below.*
-2. **The run plus about one frame (~620ms).** Rejected: the measured runs already ended up to 41ms late, so this backstop would race the very frame the change exists to wait for.
-3. **No backstop.** Rejected: where `finished` never settles, the book would never land and the form underneath would stay covered.
+1. **2 × the run (1.2s).** A whole run's slack past its own end, so it never beats a run that is only a few frames late. It covers the sign-in form for 1.2s when `finished` never comes, longer only where the browser delays timers, as it may in a hidden tab. *Chosen by the founder, 2026-11-01.*
+2. **1.5 × the run (0.9s).** Offered to the founder, not chosen. Less slack past a late run, and the form is covered 300ms less when `finished` never comes.
+3. **The run plus about one frame (~620ms).** Offered to the founder, not chosen; the executor's case against it: the measured runs already ended up to 41ms late, so this backstop would race the very frame the change exists to wait for.
+4. **No backstop.** Not offered to the founder; rejected by the executor: where `finished` never settles, the book would never land and the form underneath would stay covered.
 
 **Tests.** `EndpaperShell.test.tsx` pins:
 - the hand-offs: the 47–53% cut, the back at 80% and 20%, and the inside cover and the turn button at 97%;

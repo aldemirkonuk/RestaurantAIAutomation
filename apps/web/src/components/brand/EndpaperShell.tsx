@@ -26,7 +26,8 @@ const LEAF_TURN: MotionToken = leaf
  * How long the book waits for the runs to report `finished` before it lands
  * anyway (ADR 0349, amendment 2026-11-01). Twice the run: a whole run's slack
  * past its own end, so it never beats a run that is merely a few frames late,
- * while the sign-in form under the leaf is covered for at most 1.2s.
+ * while the sign-in form under the leaf stays covered no longer than 1.2s,
+ * unless the browser delays timers (as it may in a hidden tab).
  */
 const SETTLE_BACKSTOP_MS = LEAF_TURN.ms * 2
 
@@ -202,8 +203,8 @@ export function EndpaperShell({
     // at LEAF_TURN.ms can fire a frame before the last one is painted. Every
     // run settling counts, cancelled ones too (a cancel rejects `finished`), so
     // a run cancelled mid-turn lands the book instead of stalling it; a cancel
-    // that comes from the book landing or unmounting finds `landed` already set
-    // by the cleanup below. The backstop is for an engine whose `finished`
+    // that comes from the book landing or unmounting finds `landed` already set,
+    // by `settle` or by the cleanup below. The backstop is for an engine whose `finished`
     // never settles.
     let backstop: number
     if (runs.every((run) => run?.finished)) {
