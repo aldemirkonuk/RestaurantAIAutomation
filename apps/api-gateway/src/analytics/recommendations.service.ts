@@ -338,7 +338,9 @@ export class RecommendationsService {
       this.advanced.getSeasonality(restaurantId),
       this.advanced.getCashflow(restaurantId),
       this.insightGenerator.generate(restaurantId, { maxPerCategory: 4 }),
-      this.goalsService.listGoals(restaurantId, "active"),
+      this.goalsService.listGoals(restaurantId, "active", {
+        withSales: opts.withSales === true,
+      }),
       this.marginAdvice
         ? this.marginAdvice.adviseHouse(restaurantId)
         : Promise.reject(new Error("price advice is not wired into this build")),

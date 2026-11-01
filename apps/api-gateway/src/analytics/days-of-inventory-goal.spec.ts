@@ -121,3 +121,26 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
     }
   });
 });
+
+describe("the goal methods hand the caller's sales gate down to the register (ADR 0298 decision 9)", () => {
+  it("createGoal passes the gate it was given, and a closed one when given none", async () => {
+    const calls: unknown[][] = [];
+    const service = serviceWith(12.5);
+    (service as any).analyticsService = {
+      getFinancialSummary: async (...args: unknown[]) => {
+        calls.push(args);
+        return { daysInventoryOutstanding: 12.5 };
+      },
+    };
+    const input = { name: "g", metricKey: "days_of_inventory", targetValue: 9 };
+    await service.createGoal("r1", input, { withSales: true });
+    await service.createGoal("r1", input, { withSales: false });
+    await service.createGoal("r1", input);
+    // 0 is `labor`'s own default, so the register reads what it read before.
+    expect(calls).toEqual([
+      ["r1", 0, { withSales: true }],
+      ["r1", 0, { withSales: false }],
+      ["r1", 0, {}],
+    ]);
+  });
+});

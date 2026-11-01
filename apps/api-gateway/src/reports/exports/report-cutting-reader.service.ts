@@ -78,7 +78,11 @@ export class ReportCuttingReader {
         return this.goals.getPosRevenueWindow(restaurantId, days ?? 30);
       // GET /analytics/goals/:rid/progress — the handler's default status.
       case "goals":
-        return this.goals.listGoalsWithProgress(restaurantId, "active");
+        return this.goals.listGoalsWithProgress(
+          restaurantId,
+          "active",
+          EXPORT_READS_SALES,
+        );
       // GET /analytics/overview/:rid
       case "bench":
         return this.advanced.getOverview(restaurantId, EXPORT_READS_SALES);

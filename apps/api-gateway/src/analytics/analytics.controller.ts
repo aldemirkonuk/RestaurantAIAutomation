@@ -898,8 +898,14 @@ export class AnalyticsController {
   async listGoals(
     @Param("restaurantId") restaurantId: string,
     @Query("status") status?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
-    return this.goalsService.listGoals(restaurantId, status || "active");
+    // The goal routes hand the token's gate on (ADR 0298 decision 9).
+    return this.goalsService.listGoals(
+      restaurantId,
+      status || "active",
+      salesGateFor(user),
+    );
   }
 
   @Post("goals/:restaurantId")
@@ -912,9 +918,14 @@ export class AnalyticsController {
   async createGoal(
     @Param("restaurantId") restaurantId: string,
     @Body() body: any,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.goalsService.createGoal(restaurantId, body || {});
+      return await this.goalsService.createGoal(
+        restaurantId,
+        body || {},
+        salesGateFor(user),
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to create goal",
@@ -933,11 +944,13 @@ export class AnalyticsController {
   async listGoalsWithProgress(
     @Param("restaurantId") restaurantId: string,
     @Query("status") status?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
       return await this.goalsService.listGoalsWithProgress(
         restaurantId,
         status || "active",
+        salesGateFor(user),
       );
     } catch (error) {
       throw new HttpException(
@@ -1009,9 +1022,15 @@ export class AnalyticsController {
   async getGoalProgress(
     @Param("restaurantId") restaurantId: string,
     @Param("goalId") goalId: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.goalsService.getGoalProgress(restaurantId, goalId);
+      return await this.goalsService.getGoalProgress(
+        restaurantId,
+        goalId,
+        undefined,
+        salesGateFor(user),
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to compute goal progress",
