@@ -7,7 +7,7 @@
  * reduced-motion block, and fonts that exist under `public/fonts/`.
  *
  * What it cannot cover: it reads text, it paints nothing. Whether every
- * figure is labelled a sample where it stands, and whether reduced motion
+ * block of figures carries a "Sample" label, and whether reduced motion
  * really shows the finished state, are checked in a browser, not here.
  */
 
