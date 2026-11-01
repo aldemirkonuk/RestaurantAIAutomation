@@ -2,8 +2,7 @@
 
 /**
  * The goal metrics that are a sales holder's figure (ADR 0298 decision 9).
- * The feeds every role reads leave them out, and the goal producers, which
- * carry no sales gate yet, do not read them.
+ * The goal producers, which carry no sales gate yet, do not read them.
  *
  * Each member is a key of `GoalsService.SUPPORTED_METRICS`, which
  * `createGoal` checks before it stores the key as `metric_key`; a spec and a
