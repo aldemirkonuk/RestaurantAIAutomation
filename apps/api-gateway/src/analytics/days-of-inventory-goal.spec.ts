@@ -19,7 +19,7 @@
 
 import { DAYS_OF_STOCK_WITHHELD, GoalsService } from "./goals.service";
 
-/** Days of stock is behind the sales gate, so only an owner or a manager scores it (ADR 0298, decision 9). */
+/** Only a sales holder scores days of stock (ADR 0298 decision 9). */
 const HOLDER = { withSales: true };
 
 const verdicts = { record: () => {}, recordForEvent: () => {} } as any;
@@ -140,7 +140,7 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
   });
 });
 
-/** A reader that hands the row to a caller without sales blanks its scores (ADR 0298 decision 9). */
+/** Read without sales, the row's scores are blanked (ADR 0298 decision 9). */
 describe("a days-of-stock goal read without sales", () => {
   const ROW = {
     id: "g1",

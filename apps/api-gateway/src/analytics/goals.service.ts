@@ -50,11 +50,7 @@ import {
 
 export { DAYS_OF_STOCK_WITHHELD, SALES_GATED_GOAL_METRICS };
 
-/**
- * A goal row as a caller without the sales class may see it (ADR 0298
- * decision 9): a sales-gated goal's stored scores are blanked, with the
- * reason. The target, name and deadline stay.
- */
+/** A goal row for a caller without sales (ADR 0298 decision 9): a gated goal's scores blanked. */
 export function goalRowForViewer<T extends Record<string, any>>(
   row: T,
   gate: SalesGate,
@@ -521,9 +517,7 @@ export class GoalsService {
     ]);
     if (error || !goal) throw new Error(error?.message || "Goal not found");
 
-    // A sales-gated goal read without sales (ADR 0298 decision 9) is
-    // answered with the reason, not thrown (a 500 on the one-goal route).
-    // Nothing is computed or written.
+    // Without sales, a gated goal is answered with the reason, not thrown.
     if (
       gate.withSales !== true &&
       SALES_GATED_GOAL_METRICS.has(String(goal.metric_key))
@@ -988,8 +982,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
      * against a deadline still does (`getGoalProgress`, `paceUnread`).
      */
     if (metricKey === "days_of_inventory") {
-      // Behind the sales gate (ADR 0298 decision 9, ADR 0290 §5): withheld,
-      // it is not scored, and says why.
+      // Behind the sales gate (ADR 0298 decision 9): not scored.
       if (gate.withSales !== true) throw new Error(DAYS_OF_STOCK_WITHHELD);
       const financial: any = await this.analyticsService.getFinancialSummary(
         restaurantId,

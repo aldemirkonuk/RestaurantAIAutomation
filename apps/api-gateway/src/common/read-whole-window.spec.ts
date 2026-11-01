@@ -897,7 +897,7 @@ describe("AnalyticsService — loadConsumption reads every line, or refuses (for
         at(30).slice(0, 10),
         undefined,
         undefined,
-        // An owner's read: days of stock is behind the sales gate (ADR 0298, decision 9).
+        // An owner's read (ADR 0298 decision 9).
         { withSales: true },
       )
       .catch((e: unknown) => e);

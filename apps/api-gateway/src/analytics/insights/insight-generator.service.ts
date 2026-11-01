@@ -1896,9 +1896,8 @@ export class InsightGeneratorService {
   private computeGoalsFamily(bundle: Bundle, push: Push) {
     if (!bundle.availability.has("goals")) return;
     for (const g of bundle.goals) {
-      // A days-of-stock goal is behind the sales gate (ADR 0298 decision 9),
-      // and the stored feed is read by every role, so its pace is not
-      // written here. Its owner reads it on the goal itself.
+      // Behind the sales gate (ADR 0298 decision 9), and every role reads
+      // this feed: its pace is read on the goal itself.
       if (SALES_GATED_GOAL_METRICS.has(String(g.metric_key ?? ""))) continue;
       const target = Number(g.target_value) || 0;
       const current = Number(g.current_value) || 0;

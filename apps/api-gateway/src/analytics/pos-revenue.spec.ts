@@ -703,7 +703,7 @@ describe("GoalsService goal progress on the house's days (j)", () => {
     getFinancialSummary: async () => ({ daysInventoryOutstanding: 42 }),
   };
   const NO_ZONE = { timezone: null, country: "US" };
-  // Days of stock is behind the sales gate: an owner's or a manager's (ADR 0298, decision 9).
+  // Days of stock needs the sales gate (ADR 0298 decision 9).
   const HOLDER = { withSales: true };
 
   it("(k) scores a days-of-stock goal for a house with no zone, and says why its deadline has no pace", async () => {

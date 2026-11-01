@@ -2,9 +2,8 @@ import { RecommendationsService } from "./recommendations.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 
 /**
- * A days-of-stock goal's stored score is a sales holder's figure (ADR 0298
- * decision 9). The recommendations feed leaves it out for a viewer without
- * sales; the stored insight feed, which every role reads, leaves it out.
+ * A days-of-stock goal's score is a sales holder's figure (ADR 0298 decision 9):
+ * left out of both feeds for a viewer without sales.
  */
 const DAY = 86_400_000;
 const behind = (id: string, metric_key: string) => ({
