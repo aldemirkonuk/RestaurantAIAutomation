@@ -240,10 +240,12 @@ export class GoalReachedProducer {
     }
 
     if (tally.emitted === 0 && tally.withheldReason === null) {
+      // A goal not read is not a goal that missed its target.
+      const read = salesGated > 0 ? " that was read" : "";
       tally.withheldReason =
         ceilingGoals > 0 && tally.considered === 0
-          ? `${goals.length} active goal(s), of which ${ceilingGoals} are 'at most' ceilings this producer does not report on — crossing a ceiling is not a success. No 'at least' goal has reached its target.`
-          : "No active goal has reached its target.";
+          ? `${goals.length} active goal(s), of which ${ceilingGoals} are 'at most' ceilings this producer does not report on — crossing a ceiling is not a success. No 'at least' goal${read} has reached its target.`
+          : `No active goal${read} has reached its target.`;
       if (salesGated > 0) {
         tally.withheldReason += ` Not read: ${salesGatedBit(salesGated)}.`;
       }
