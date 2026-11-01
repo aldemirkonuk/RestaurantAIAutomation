@@ -122,25 +122,53 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
   });
 });
 
-describe("the goal methods hand the caller's sales gate down to the register (ADR 0298 decision 9)", () => {
-  it("createGoal passes the gate it was given, and a closed one when given none", async () => {
+describe("the gate the goal methods take changes nothing yet (ADR 0298 decision 9)", () => {
+  it("createGoal reads the register the same way and stores the same baseline for every gate", async () => {
     const calls: unknown[][] = [];
-    const service = serviceWith(12.5);
-    (service as any).analyticsService = {
-      getFinancialSummary: async (...args: unknown[]) => {
-        calls.push(args);
-        return { daysInventoryOutstanding: 12.5 };
-      },
+    const baselines: unknown[] = [];
+    for (const gate of [{ withSales: true }, { withSales: false }, undefined]) {
+      const seen = { patch: {} as Record<string, unknown> };
+      const service = serviceWith(12.5, seen);
+      (service as any).analyticsService = {
+        getFinancialSummary: async (...args: unknown[]) => {
+          calls.push(args);
+          return { daysInventoryOutstanding: 12.5 };
+        },
+      };
+      await service.createGoal(
+        "r1",
+        { name: "g", metricKey: "days_of_inventory", targetValue: 9 },
+        gate,
+      );
+      baselines.push(seen.patch.baseline_value);
+    }
+    expect(calls).toEqual([["r1"], ["r1"], ["r1"]]);
+    expect(baselines).toEqual([12.5, 12.5, 12.5]);
+  });
+
+  it("listGoals returns the stored row, scores included, whatever the gate", async () => {
+    const row = {
+      id: "g1",
+      metric_key: "days_of_inventory",
+      current_value: 12.5,
+      baseline_value: 14,
     };
-    const input = { name: "g", metricKey: "days_of_inventory", targetValue: 9 };
-    await service.createGoal("r1", input, { withSales: true });
-    await service.createGoal("r1", input, { withSales: false });
-    await service.createGoal("r1", input);
-    // 0 is `labor`'s own default, so the register reads what it read before.
-    expect(calls).toEqual([
-      ["r1", 0, { withSales: true }],
-      ["r1", 0, { withSales: false }],
-      ["r1", 0, {}],
-    ]);
+    const chain: any = {
+      select: () => chain,
+      eq: () => chain,
+      order: () => chain,
+      then: (ok: (v: unknown) => unknown) => ok({ data: [row], error: null }),
+    };
+    const service = new GoalsService(
+      { getClient: () => ({ from: () => chain }) } as any,
+      {} as any,
+      { get: () => undefined } as any,
+      {} as any,
+      verdicts,
+      {} as any,
+    );
+    for (const gate of [{ withSales: true }, { withSales: false }, undefined]) {
+      expect(await service.listGoals("r1", "all", gate)).toEqual([row]);
+    }
   });
 });

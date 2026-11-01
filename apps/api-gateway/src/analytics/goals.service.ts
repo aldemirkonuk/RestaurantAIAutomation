@@ -160,15 +160,14 @@ export class GoalsService {
   // ==========================================================================
 
   /**
-   * `gate` is the caller's sales gate (ADR 0298 decision 9), closed when
-   * absent as that record decides (option 4, "gate open by default", is
-   * rejected there). Every goal method takes it and hands it down to
-   * `getFinancialSummary`; no goal reads it yet.
+   * `_gate` is the caller's sales gate (ADR 0298 decision 9). The goal
+   * methods a route calls take it so that every caller already hands it on;
+   * none reads it yet, so every caller is answered as before.
    */
   async listGoals(
     restaurantId: string,
     status = "active",
-    gate: SalesGate = {},
+    _gate: SalesGate = {},
   ) {
     const q = this.dbService
       .getClient()
@@ -247,7 +246,7 @@ export class GoalsService {
        */
       sourceRuleKey?: string | null;
     },
-    gate: SalesGate = {},
+    _gate: SalesGate = {},
   ) {
     if (!GoalsService.SUPPORTED_METRICS[input.metricKey]) {
       throw new Error(
@@ -277,7 +276,6 @@ export class GoalsService {
       input.metricKey,
       house.zone ? this.periodStart(input.period, house.zone) : null,
       house.zone,
-      gate,
     );
     const { data, error } = await this.dbService
       .getClient()
@@ -485,7 +483,7 @@ export class GoalsService {
     restaurantId: string,
     goalId: string,
     known?: HouseZone,
-    gate: SalesGate = {},
+    _gate: SalesGate = {},
   ) {
     const [{ data: goal, error }, house] = await Promise.all([
       this.dbService
@@ -515,7 +513,6 @@ export class GoalsService {
       periodStart,
       undefined,
       zone,
-      gate,
     );
 
     // Refresh stored current_value (cheap side effect, keeps insights honest).
@@ -887,7 +884,6 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     metricKey: string,
     sinceDate: string | null,
     zone: string | null,
-    gate: SalesGate = {},
   ): Promise<number> {
     const { current } = await this.computeMetricWithSeries(
       restaurantId,
@@ -895,7 +891,6 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       sinceDate,
       undefined,
       zone,
-      gate,
     );
     return current;
   }
@@ -916,7 +911,6 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     sinceDate: string | null,
     untilDate: string | undefined,
     zone: string | null,
-    gate: SalesGate = {},
   ): Promise<{
     current: number;
     dailySeries: number[];
@@ -952,11 +946,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
      * against a deadline still does (`getGoalProgress`, `paceUnread`).
      */
     if (metricKey === "days_of_inventory") {
-      // 0 is `labor`'s own default (`analytics.service.ts`, getFinancialSummary).
       const financial: any = await this.analyticsService.getFinancialSummary(
         restaurantId,
-        0,
-        gate,
       );
       const dio = financial?.daysInventoryOutstanding;
       if (typeof dio !== "number" || !Number.isFinite(dio)) {
