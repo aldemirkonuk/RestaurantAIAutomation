@@ -1625,8 +1625,8 @@ export function Landing() {
           <div className="ld-wrap" data-reveal>
             <h2>Free for the first houses.</h2>
             <p>
-              We are not charging the first houses, and we have not decided what comes after. Built in San Francisco,
-              for a small number of restaurants first.
+              We are not charging the first houses, and we have not decided what comes after. Built for a small
+              number of restaurants first.
             </p>
           </div>
         </section>
