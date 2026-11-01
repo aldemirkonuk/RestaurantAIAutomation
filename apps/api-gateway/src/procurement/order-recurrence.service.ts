@@ -47,12 +47,16 @@
 
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 import { CreateOrderDto } from "./dto/procurement.dto";
 import { ProcurementService, asUuid } from "./procurement.service";
 import {
@@ -65,7 +69,9 @@ import {
 } from "./order-recurrence";
 
 /**
- * Every recurrence column, written out rather than `*`.
+ * Every recurrence column, written out rather than `*`, plus `created_by`:
+ * who placed the order, which decides whether staff may set its first rule
+ * (ADR 0247).
  *
  * A literal for the same reason `RECURRING_SELECT` is one: a column removed
  * from the table breaks this query loudly instead of arriving as `undefined`,
@@ -78,7 +84,8 @@ export const RECURRENCE_SELECT =
   "total_cost, status, approved_at, manager_notes, expected_delivery_date, " +
   "recurrence_frequency, recurrence_anchor_day, recurrence_anchored_on, " +
   "recurrence_next_due_on, recurrence_status, recurrence_status_by, " +
-  "recurrence_status_at, recurrence_parent_order_id, recurrence_occurrence_on";
+  "recurrence_status_at, recurrence_parent_order_id, recurrence_occurrence_on, " +
+  "created_by";
 
 /** One recurring order's row, as the table actually is after the migration. */
 export interface RecurrenceRow {
@@ -110,6 +117,8 @@ export interface RecurrenceRow {
   recurrence_status_at: string | null;
   recurrence_parent_order_id: string | null;
   recurrence_occurrence_on: string | null;
+  /** Who placed the order (`public.users.user_id`); NULL when nobody is recorded. */
+  created_by?: string | null;
 }
 
 /**
@@ -163,7 +172,49 @@ export class OrderRecurrenceService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly procurementService: ProcurementService,
+    @Optional() private readonly organizations?: OrganizationsService,
   ) {}
+
+  /**
+   * CHANGING A RULE THAT IS ALREADY THERE NEEDS A MANAGER OR AN OWNER (ADR 0247).
+   *
+   * Founder, 2026-10-01, asked whether staff may pause, resume or end a
+   * manager's order recurrence: "Managers and owners only (Recommended)".
+   * Pause, resume and end call this before the order is read. Replacing a rule
+   * calls it once the read has shown there is a rule to replace, and so does
+   * setting a first rule on an order the caller did not place. A first rule on
+   * one's own order does not call it.
+   *
+   * It is `assertCanManageRestaurant`, the check order cancel uses
+   * (`ProcurementService.assertMayCancelOrder`). It answers 403 unless the
+   * caller's `is_active = true` access row here (dates unread) or, when that
+   * read fails or finds no such row with a role, the legacy `users` row for
+   * this house names owner or manager (`lookupRestaurantRole`). A failed read
+   * is not thrown, so both reads failing is refused like no role.
+   *
+   * REFUSES when the helper is not wired, rather than letting the change
+   * through: `ProcurementModule` imports `OrganizationsModule`, so this branch
+   * is unreachable in the running gateway, and a wiring mistake must not drop
+   * the only role check on these writes.
+   */
+  private async assertMayChangeARule(
+    restaurantId: string,
+    userId: string,
+    act: string,
+  ): Promise<void> {
+    if (!this.organizations) {
+      throw new InternalServerErrorException(
+        `Who may ${act} could not be established (the organizations service is not ` +
+          `wired into procurement), so nothing was changed. This is a gateway fault, ` +
+          `not a decision about this order.`,
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      act,
+    );
+  }
 
   /** Today in UTC, YYYY-MM-DD. Overridable so the tests do not need a clock. */
   private today(now: Date = new Date()): string {
@@ -206,6 +257,37 @@ export class OrderRecurrenceService {
   ): Promise<RecurrenceRow> {
     const order = await this.readOrder(restaurantId, orderId);
 
+    /*
+     * REPLACING A RULE IS CHANGING IT (ADR 0247).
+     *
+     * This write sets the status to `active` and derives a new next date from
+     * the start date it is given. On an order that already carries a rule, that
+     * resumes a paused rule, restarts an ended one, or puts an active one's next
+     * date as far out as the caller likes. Those are the acts the founder kept
+     * for managers and owners, so a replace takes the same check. Founder,
+     * 2026-10-01: "Yes, replace needs a manager (Recommended)".
+     *
+     * A FIRST RULE GOES ON ONE'S OWN ORDER, OR NEEDS A MANAGER OR AN OWNER.
+     * Founder, 2026-10-01: "Only on their own order (Recommended)". The order
+     * is one's own when its `created_by` is the caller. Any other order,
+     * including one with no recorded creator, takes the same check.
+     */
+    const replacing =
+      order.recurrence_status !== null || order.recurrence_frequency !== null;
+    if (replacing) {
+      await this.assertMayChangeARule(
+        restaurantId,
+        userId,
+        "replace an order's recurrence",
+      );
+    } else if (!placedBy(order, userId)) {
+      await this.assertMayChangeARule(
+        restaurantId,
+        userId,
+        "set a recurrence on an order someone else placed",
+      );
+    }
+
     if (order.recurrence_parent_order_id) {
       throw new BadRequestException({
         reason: "child_cannot_recur",
@@ -242,7 +324,7 @@ export class OrderRecurrenceService {
     }
 
     const now = new Date().toISOString();
-    const { data, error } = await this.databaseService.supabase
+    let write = this.databaseService.supabase
       .from("procurement_orders")
       .update({
         recurrence_frequency: plan.value.frequency,
@@ -254,11 +336,23 @@ export class OrderRecurrenceService {
         recurrence_status_at: now,
       })
       .eq("restaurant_id", restaurantId)
-      .eq("id", orderId)
-      .select(RECURRENCE_SELECT)
-      .single();
+      .eq("id", orderId);
+    // A first rule lands only on an order that still carries none. Without
+    // this, a rule set between the read above and this write would be replaced
+    // by a caller the replace check never asked about.
+    if (!replacing) write = write.is("recurrence_status", null);
+    const { data, error } = await write.select(RECURRENCE_SELECT).single();
 
     if (error) {
+      if (!replacing && (error as { code?: unknown }).code === "PGRST116") {
+        throw new ConflictException({
+          reason: "rule_set_meanwhile",
+          message:
+            `Order ${order.order_number} changed while this recurrence was being set, so ` +
+            `nothing was changed. Reload it: if it now carries a rule, replacing that rule ` +
+            `is a manager's or an owner's act.`,
+        });
+      }
       this.logger.error(
         `Could not set a recurrence on order ${orderId}: ${error.message}`,
       );
@@ -318,6 +412,14 @@ export class OrderRecurrenceService {
     to: OrderRecurrenceStatus,
     action: string,
   ): Promise<RecurrenceRow> {
+    // Before the order is read: a refused call reads no order and writes
+    // nothing (ADR 0247).
+    await this.assertMayChangeARule(
+      restaurantId,
+      userId,
+      `${to === "ended" ? "end" : to === "paused" ? "pause" : "resume"} an order's recurrence`,
+    );
+
     const order = await this.readOrder(restaurantId, orderId);
     const from = readRecurrenceStatus(order.recurrence_status);
 
@@ -334,9 +436,9 @@ export class OrderRecurrenceService {
         reason: "already_ended",
         message:
           `The recurrence on order ${order.order_number} was ended on ` +
-          `${order.recurrence_status_at ?? "a date this row does not record"} and an ended ` +
-          `series is not restarted — a second life for the same rule would make one ` +
-          `standing order look like two. Set a new recurrence on a current order instead.`,
+          `${order.recurrence_status_at ?? "a date this row does not record"}, and pause, ` +
+          `resume and end do not restart an ended rule. A manager or an owner may restart ` +
+          `it by setting a new rule on this order.`,
       });
     }
     if (from === to) {
@@ -861,6 +963,17 @@ export class OrderRecurrenceService {
       );
     }
   }
+}
+
+/** Did this person place this order? Never true for an unrecorded creator. */
+function placedBy(order: { created_by?: string | null }, userId: string): boolean {
+  const creator = order.created_by;
+  return (
+    typeof creator === "string" &&
+    typeof userId === "string" &&
+    creator !== "" &&
+    creator.toLowerCase() === userId.toLowerCase()
+  );
 }
 
 /** PostgREST/Postgres unique violation, by code rather than by message text. */
