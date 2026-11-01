@@ -133,6 +133,15 @@
       ]
     },
     {
+      "source": "/l/(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex"
+        }
+      ]
+    },
+    {
       "source": "/(reset-password|reset-password/.*|verify-email|verify-email/.*|invite/.*|studio/invite/.*)",
       "headers": [
         {
