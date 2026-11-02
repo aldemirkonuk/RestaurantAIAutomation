@@ -52,4 +52,4 @@ and an owner — no speculative skills. The repo has exactly one project skill t
   which is its own premortem M1.
 - **No check-in compliance reporting skill.** Per the charter's deliberate non-goal, this
   team does not produce per-staff performance output. A skill that generates one would make
-  reversing that non-goal a side effect rather than a founder decision.
+  reversing that non-goal a side effect rather than a founder decision. [2026-10-31: proposed to be superseded by ADR 0346 (Proposed; nothing is superseded until it locks) § Decision: the founder reversed the non-goal (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2), so this reason no longer holds. Per-waiter reports and CSV ship to owners and managers only (§ Decision › D3, D8); ADR 0346 proposes no skill.]

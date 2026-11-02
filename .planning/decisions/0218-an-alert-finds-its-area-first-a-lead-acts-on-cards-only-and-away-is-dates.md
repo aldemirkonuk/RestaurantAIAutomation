@@ -139,7 +139,7 @@ a lead only on an item labelled with a switched-on area they lead; nobody on a
 house-wide item through a lead mark. The recommendation lane decides which verbs
 ask it (snooze for everyone, finish, dismiss, undo others' acts). The mark
 changes no house role and writes no access row, wage or roster row (asserted in
-`house-areas.service.spec.ts`).
+`house-areas.service.spec.ts`). [2026-10-31: [ADR 0345](0345-floor-checker-is-ported-into-mudavym.md) § Decision (Proposed) lets a lead also mark a menu item *Out tonight*. The founder picked *"Managers + kitchen/bar leads"* (2026-10-30 EDT, AskUserQuestion asked 2026-10-31T03:46:17Z, Q1). Its option text, the executor's, says "Only owners, managers and area leads can mark items out; waiters only see the list." ADR 0345 builds the label, the narrower of the two, as the executor's reading: a lead of an area of kind `kitchen` or `bar` (`supabase/migrations/20260930100000_a_house_names_its_areas_and_who_is_away.sql:98`, `:104`). Widening it to every area lead is his to say, and is open as OD-249. Outside Out tonight the mark still acts on cards only, changes no house role and writes no access, wage or roster row.]
 
 ### Away — dates only
 
@@ -572,12 +572,12 @@ Put to counsel, not to a build, per the founder's round-2 pick:
 
 - **Retention of the house-log rows** this ADR writes (`system_audit_log`:
   `house_area_changed` … `away_ended_for_member`): how long they are kept, and
-  what is deleted or anonymised after.
+  what is deleted or anonymised after. [2026-10-31: a waiter's floor figures join this item when they leave the house ([ADR 0346](0346-waiter-scores-and-rankings-ship-to-managers.md) § Decision › D10, Proposed). Asked what happens to them (taps, scores, on-time %), the founder picked *"Keep, owners/managers only (Recommended)"* (AskUserQuestion asked 2026-10-31T16:54:31Z, Q2), whose option text, the executor's, reads "Their history stays as it was, named, visible only to owners and managers, like their shifts on /team. Deleting or anonymising later waits on the retention answer ADR 0218 already sent to counsel." So they are kept, named, owners and managers only, until counsel answers; that they join this item is the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242). Nothing is deleted or built from it yet.] [2026-10-31: punches join this item ([ADR 0350](0350-punches-show-beside-the-plan-and-a-manager-marks-every-shift.md) § Decision, Proposed; it answers OD-235, which stays open, as the executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick). They will be shown beside ADR 0215's day-end sheet when it is built, and no punch fills or confirms the hours a manager marks there, the hours the export hands to payroll (`0215-money-on-team-is-the-owners-and-hours-are-worked-hours.md:1239-1240`); a kept punch can differ from them. They are kept, nothing deleted, until counsel answers. Counsel has not read it (ADR 0350 § Not verified).]
 - **The staff privacy notice** (KVKK aydınlatma metni) for Away and areas: what
   is kept (two dates and who set them; no reason), who sees it (since round 2,
   everyone in the house sees a colleague's dates; since round 3, staff see a
   colleague's only once it is under way, owners and managers see it before it
-  starts too), and for how long.
+  starts too), and for how long. [2026-10-31: the floor phone's notice joins this item (ADR 0346 § Decision › D11, Proposed). The founder picked *"Mudavym shows a notice (Recommended)"* (AskUserQuestion asked 2026-10-31T16:54:31Z, Q3); the line's wording is the executor's: taps are timed and scored, and owners and managers see the scores while the waiter does not. It shows once per waiter per house, and again when who sees the scores changes, the executor's call under the founder's 2026-10-31T16:57:09Z delegation.]
 - For the same review: a held message's title and body sit in
   `house_away_held` until it is delivered (at most the rest of an Away window,
   366 days), then are deleted.
