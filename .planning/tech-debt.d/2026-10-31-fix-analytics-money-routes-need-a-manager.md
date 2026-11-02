@@ -3,7 +3,7 @@
 `fix/analytics-money-routes-need-a-manager` closes only what the founder
 picked on 2026-10-30 ("Fix staff money leak now", ranked item 1 of
 `decisions/evidence/0345-floor-checker-research.md` on
-`docs/floor-checker-is-a-mudavym-software`): GET `table-performance`,
+`docs/floor-checker-is-a-mudavym-software`; [2026-11-01: that note is held under OD-246; the pick is in [ADR 0345](../decisions/0345-floor-checker-is-ported-into-mudavym.md) § Context › His fourteen picks › pick 14]): GET `table-performance`,
 `waiters` and `hot-tables`, and POST `tables`, now name owner and manager
 (claim `A-TABLE-AND-SERVER-TAKINGS-NEED-A-MANAGER`). The rulings, the rejected
 twelve-route build, the follow-up's shape and the executor's calls on the writes
@@ -18,7 +18,7 @@ the figures inside them and keeps the route.
 *"Your pick now, rest after #617 (Recommended)"*. Its text: a follow-up PR
 after #617 merges closes the rest the way #617 already does (staff keep the
 page, the figures are withheld), and **that PR must land before any waiter is
-invited to the floor phone** (the ADR 0345 build plan's staff-invite step).
+invited to the floor phone** (the ADR 0345 build plan's staff-invite step [2026-11-01: [ADR 0345](../decisions/0345-floor-checker-is-ported-into-mudavym.md) § Decision › The staff-invite step]).
 
 What a staff login of the house can still read, at `9914f5cbf`
 (`apps/api-gateway/src/analytics/analytics.controller.ts`, class
