@@ -80,7 +80,7 @@ REPO = "aldemirkonuk/RestaurantAIAutomation"
 MAX_WAIT_SECONDS = 20 * 60  # bounded — see merge-races-need-sequencing: never poll forever
 POLL_INTERVAL_SECONDS = 30
 
-MODEL = "claude-opus-5"
+MODEL = "claude-sonnet-5-5"  # ADR 0355 (2026-11-02, founder): was "claude-opus-5"
 # Corrected 2026-09-02: the original ask was "Sonnet max"; ADR 0050 (locked)
 # overrides to Opus for production/ADR/outward-send consequence, all three of
 # which this role hits, and says never substitute effort for the model tier

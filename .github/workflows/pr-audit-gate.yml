@@ -65,7 +65,13 @@ name: PR Audit Gate
 on:
   pull_request_target:
     branches: [main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    # ADR 0355 (2026-11-02, founder): the audit runs only when a PR is marked
+    # ready for review, never on every push. A PR is opened as a draft, pushed
+    # to as often as needed, then marked ready once; to re-audit after further
+    # pushes, convert it back to draft and mark it ready again. Was:
+    # [opened, synchronize, reopened, ready_for_review] — 100 runs (300 Opus
+    # calls) on 2026-11-01..02 alone.
+    types: [ready_for_review]
 
 # One run per PR NUMBER (not per head SHA, despite how that reads) — a new
 # push supersedes an in-flight audit of the old commit on the same PR.
@@ -126,8 +132,35 @@ jobs:
       - name: Self-test the verdict/push-pattern/state-classifier logic
         run: python3 -I scripts/pr_audit_gate.py --self-test
 
+      # ADR 0355: a PR that changes only plain documentation is not sent to the
+      # model. "Plain documentation" is every changed path ending in .md or
+      # under docs/ or .planning/ — EXCEPT anything that instructs an agent or
+      # binds a decision, which is still audited: CLAUDE.md, AGENTS.md,
+      # SKILL.md, anything under .claude/ or .github/, and the ADRs under
+      # .planning/decisions/. A skipped PR is NOT a PASS: nothing is merged by
+      # this job, and the PR is merged by a person.
+      - name: Skip docs-only PRs (no API call)
+        id: docs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          files="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" --paginate --jq '.[].filename')"
+          if [ -z "$files" ]; then echo "docs_only=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          not_docs="$(printf '%s\n' "$files" | grep -vE '(\.md$|^docs/|^\.planning/)' || true)"
+          sensitive="$(printf '%s\n' "$files" | grep -E '(^|/)(CLAUDE|AGENTS|SKILL)\.md$|^\.claude/|^\.github/|^\.planning/decisions/' || true)"
+          if [ -z "$not_docs" ] && [ -z "$sensitive" ]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Docs-only PR (ADR 0355): the audit was skipped and no model was called. This is not a PASS and nothing was merged; merge it by hand."
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Wait for the existing required checks
         id: upstream
+        if: steps.docs.outputs.docs_only != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -139,7 +172,7 @@ jobs:
           echo "::notice::Upstream CI is red or still pending — nothing for the audit to review yet. This is not a PASS; it is a no-op until CI turns green on its own."
 
       - name: Run the PR audit gate
-        if: steps.upstream.outputs.status == 'upstream_green'
+        if: steps.docs.outputs.docs_only != 'true' && steps.upstream.outputs.status == 'upstream_green'
         env:
           GH_TOKEN: ${{ github.token }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
