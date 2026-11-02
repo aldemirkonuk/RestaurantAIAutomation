@@ -1,7 +1,7 @@
 # 0345 — Floor Checker is ported into Mudavym
 
 - **Status:** Proposed (2026-10-31); not to be locked before all three parts have landed.
-- **Parts:** 3. This is the second of part 1's two PRs. Parts 2 and 3 follow, and part 3 completes Consequences and the Review trail.
+- **Parts:** 3. This is the second of part 1's two PRs: it adds his fourteen picks, the options considered, the research and the decisions resting on them. This record's row in the decision index (`README.md`) is not in it: the first PR added this file without the row, and a row added after its record is the founder's to merge, so it lands in its own draft PR after part 3. Parts 2 and 3 follow, and part 3 completes Consequences and the Review trail.
 - **Date:** 2026-10-31 (rulings of 2026-10-30 EDT, session ca58311b)
 - **Decider:** the founder, for the port and his picks: five AskUserQuestion calls on 2026-10-30 EDT, asked 2026-10-31T02:52:37Z, 03:03:50Z, 03:13:20Z, 03:41:53Z and 03:46:17Z, and on 2026-10-31 the leak fix's scope (pick 14, asked 04:34:21Z) and, in the call asked at 16:54:31Z, that a departed waiter's floor figures are kept for owners and managers. Each is quoted under § Context. His builder answer and his Out tonight answer, whose label and text differ, are read in the ways stated where they appear; those readings are the executor's (session ca58311b), not his words, and they wait on OD-242 together with what they would change in ADRs 0303 and 0218. The founder can overrule any part of this record, and a lock is his. Its role map, reuse map and engineering rules are the executor's design; what "run dry" means (pick 11) is not decided here: it waits on OD-242, and pick 11 states the executor's proposal for it, not a call. This record answers none of OD-235, OD-236 or OD-238.
 - **Keywords:** Floor Checker, floor coverage, waiter-coverage, port, in-SPA, /floor, /floor/builder, /floor/me, floor module, floor-core, floor_sections, Food-up, meal run, Paid, punches, Out tonight, pos_server_links, emitToHouseRoles, memberRoom, notification_push_devices, restaurant_tables, subdomain, manifest
@@ -176,7 +176,7 @@ Proposed, from his rulings and picks (§ Context):
 - **The waiter phone shows no figure** (*"Nothing for now"*). Every figure is owners' and managers' only for the first rollout; DASH-G6 is not answered here; a departed waiter's are kept, named.
 - **Out tonight**: who marks it is not decided here. The part both halves of his answer share is managers and kitchen and bar leads; that reading, and whether owners mark it, wait on OD-242, and no code PR builds marking before then. Waiters only see the list.
 - **Tables**: optional seats, never guessed; one shared add-table form; a closed till check marks Paid, never ends a seating, and waits on OD-64.
-- **All fourteen picks ship**; wages stay on planned hours.
+- **All fourteen picks ship**; wages stay on planned hours, and what punches do to ADR 0215 is OD-235.
 - **Open forks stay open.** OD-235, OD-236 and OD-238 stay open here; this record authorises no answer to any of them, and a later record that gives one states its own basis.
 
 ### The staff-invite step
