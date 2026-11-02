@@ -248,7 +248,7 @@ The executor's design, Proposed.
 
 - It is a gateway job (`app.module.ts:90`) that takes a single-runner lock per tick.
 - Each table alert carries an idempotency key of seating, kind, the visit its lateness counts from and the 15-minute window since the table turned late, so a re-run or a second replica sends nothing twice, a new visit starts a new episode, and a table that stays late is pushed again. A Food-up alert is keyed on its meal run and threshold instead. An On break handoff is keyed on the alert, `handoff` and the cover's user id, so the cover's copy of an alert already sent to the waiter is sent once.
-- The keys follow when an alert climbs, which is OD-236: the window and the handoff key are the executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick.
+- The keys follow when an alert climbs, which is OD-236, open: the window and the handoff key are the executor's proposal, not a call, and wait on OD-236 (§ Decision › Open forks stay open).
 - The checker's per-seating guards are the precedent: `last_nudge_at`, and `last_meal_alert_at` kept separate (`0018_meal_run_alerts.sql:14-18`, working tree; untracked at `5958689`).
 
 ### E4. A till name becomes a person only when a manager confirms it

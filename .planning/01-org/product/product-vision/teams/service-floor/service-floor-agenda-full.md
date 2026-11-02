@@ -90,9 +90,9 @@ the failure mode here is not building badly — it is building the fun part firs
 - [ ] Define "real engagement" as a staff-beneficial signal; record the rejected
       alternatives · [[service-floor-premortem]] M2
 - [ ] Record the no-performance-scores non-goal as a founder-level decision, not a team
-      preference [2026-10-31: moot under ADR 0346 § Decision (Proposed): the founder reversed the non-goal on 2026-10-30 (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2).]
+      preference [2026-10-31: moot only once ADR 0346 § Decision (Proposed) locks; until then this item stands. The executor reads the founder's *"EVERYTHING"* (AskUserQuestion asked 2026-10-31T02:52:37Z, Q2) as reversing the non-goal; that reading is not his words.]
 - [ ] Do **not** build push routing until Stage 2's trigger fires. This is a listed
-      non-action on purpose. [2026-10-31: set aside for the Floor Checker port (`service-floor-charter.md:127`), the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242), not his pick (ADR 0345 § Executor's calls › The service-floor charter's staged entry): the port builds the floor's push chain (ADR 0351 § Decision, ADR 0352 § Decision) before Stage 2's trigger fires, because Food-up runs on staff taps, not a till event.]
+      non-action on purpose. [2026-10-31: proposed to be set aside, not in force until ADR 0345 locks, for the Floor Checker port (`service-floor-charter.md:127`), the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242), not his pick (ADR 0345 § Executor's calls › The service-floor charter's staged entry): once it locks, the port would build the floor's push chain (ADR 0351, ADR 0352, both Proposed) before Stage 2's trigger fires; until then this non-action holds, because Food-up runs on staff taps, not a till event.]
 
 ## Questions for the founder
 
@@ -104,7 +104,7 @@ the failure mode here is not building badly — it is building the fun part firs
 2. **The surveillance line.** The charter names "no staff performance scores, rankings, or
    disciplinary exports" as a deliberate non-goal, because the alternative is a system staff
    defeat. The first manager to ask for a per-waiter report will have a reasonable case.
-   Confirm this is a founder-level decision to reverse, not a team preference. [2026-10-31: answered by ADR 0346 § Decision (Proposed): the founder reversed it (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2). Figures reach owners and managers only; a waiter's phone shows none (*"Nothing for now"*, AskUserQuestion asked 2026-10-31T03:03:50Z, Q3).]
+   Confirm this is a founder-level decision to reverse, not a team preference. [2026-10-31: proposed answer in ADR 0346 § Decision (Proposed, not in force until it locks), which reads the founder as reversing it (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2). Figures reach owners and managers only; a waiter's phone shows none (*"Nothing for now"*, AskUserQuestion asked 2026-10-31T03:03:50Z, Q3).]
 3. **What is "real engagement"?** A proximity beacon indicts; an acknowledged alert informs.
    The second is weaker evidence and a better product. Which are we building?
 4. **What is the latency promise?** p95 to *device acknowledgment* is honest and partly

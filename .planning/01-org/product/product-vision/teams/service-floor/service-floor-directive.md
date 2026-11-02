@@ -42,7 +42,7 @@ graph TD
   J --> M
 
   L --> N[Escalate to OPEN-DECISIONS]
-  F --> O{"Does it produce per-staff performance data?<br/>[2026-10-31: ADR 0346 (Proposed, not in force):<br/>figures for owners and managers proposed;<br/>one shown to staff still escalates.]"}
+  F --> O{"Does it produce per-staff performance data?<br/>[2026-10-31: ADR 0346 (Proposed, not in force):<br/>until it locks, every such request<br/>still takes the yes edge.]"}
   O -->|yes| N
   O -->|no| M
 ```
