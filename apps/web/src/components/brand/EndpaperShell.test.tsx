@@ -226,20 +226,51 @@ describe('EndpaperShell', () => {
     })
 
     describe('with Web Animations', () => {
-      let calls: { el: Element; options: KeyframeAnimationOptions; cancelledWith: boolean | null }[]
+      type Run = {
+        el: Element
+        keyframes: Keyframe[]
+        options: KeyframeAnimationOptions
+        cancelledWith: boolean | null
+        finish: () => void
+        cancel: () => void
+      }
+      let calls: Run[]
+      // an engine that runs some elements without exposing `finished`
+      let withoutFinished: string | null
       beforeEach(() => {
         vi.useFakeTimers()
         calls = []
-        Element.prototype.animate = vi.fn(function (this: Element, _k: unknown, options: KeyframeAnimationOptions) {
-          const entry = { el: this, options, cancelledWith: null as boolean | null }
-          calls.push(entry)
-          return {
+        withoutFinished = null
+        Element.prototype.animate = vi.fn(function (this: Element, keyframes: Keyframe[], options: KeyframeAnimationOptions) {
+          // `finished` settles the way the DOM's does: it resolves when the
+          // run ends and rejects with an AbortError when the run is cancelled.
+          let finish = () => {}
+          let abort = () => {}
+          const finished = new Promise<Animation>((resolve, reject) => {
+            finish = () => resolve({} as Animation)
+            abort = () => reject(new DOMException('The animation was cancelled', 'AbortError'))
+          })
+          // no catch here: the component must handle every rejection itself
+          const entry: Run = {
+            el: this,
+            keyframes,
+            options,
+            cancelledWith: null,
+            finish,
             cancel: () => {
               // what the DOM already says the FIRST time the run lets go of
               // its last frame (a later, redundant cancel must not mask it)
               if (entry.cancelledWith === null) entry.cancelledWith = !!document.querySelector('.mdv-ep-leaf[data-front]')
+              abort()
             },
-          } as unknown as Animation
+          }
+          calls.push(entry)
+          if (withoutFinished && this.matches(withoutFinished)) {
+            // the engine never exposes this promise, so nobody else can handle it
+            finished.catch(() => {})
+            return { cancel: entry.cancel } as unknown as Animation
+          }
+          return { finished, cancel: entry.cancel } as unknown as Animation
         }) as unknown as Element['animate']
       })
       afterEach(() => {
@@ -248,7 +279,22 @@ describe('EndpaperShell', () => {
         delete Element.prototype.animate
       })
 
-      it('lets go of the turn only after the landed page is on the DOM, never before', () => {
+      const leafRuns = () => calls.filter((c) => c.options.duration === leaf.ms)
+      const runOn = (selector: string) => {
+        const el = document.querySelector(selector)
+        const run = leafRuns().find((c) => c.el === el)
+        if (!run) throw new Error(`no leaf run on ${selector}`)
+        return run
+      }
+      const offsets = (run: Run) => run.keyframes.map((k) => [k.offset ?? null, k.opacity ?? null])
+      const finishAll = async () => {
+        await act(async () => {
+          for (const run of leafRuns()) run.finish()
+        })
+      }
+      const isOpen = () => !!document.querySelector('.mdv-ep-leaf[data-front]')
+
+      it('lets go of the turn only after the landed page is on the DOM, never before', async () => {
         render(
           <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
             <input aria-label="Email address" />
@@ -256,20 +302,18 @@ describe('EndpaperShell', () => {
         )
         calls = []
         fireEvent.click(screen.getByRole('button', { name: TURN }))
-        const turnRuns = calls.filter((c) => c.options.duration === leaf.ms)
+        const turnRuns = leafRuns()
         expect(turnRuns.length).toBeGreaterThanOrEqual(4)
         // The leaf runs on its own token, never `turn`'s front-loaded curve (ADR 0349).
         for (const run of turnRuns) expect(run.options.easing).toBe(leaf.easing)
         expect(leaf.easing).not.toBe(turn.easing)
-        act(() => {
-          vi.advanceTimersByTime(leaf.ms)
-        })
+        await finishAll()
         expect(turnRuns.every((c) => c.cancelledWith === true)).toBe(true)
       })
 
-      it('a sign-in step that lands while the front matter is open does not animate over it', () => {
-        const { rerender, container } = render(
-          <EndpaperShell kicker="k" houseLine="h" folio="Sign in" pageKey="address" frontMatter>
+      it("settles on the runs' own end, not on a clock beside them", async () => {
+        render(
+          <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
             <p>x</p>
           </EndpaperShell>,
         )
@@ -277,6 +321,107 @@ describe('EndpaperShell', () => {
         act(() => {
           vi.advanceTimersByTime(leaf.ms)
         })
+        // the token's length has passed, but the runs have not reported done
+        expect(isOpen()).toBe(false)
+        await finishAll()
+        expect(isOpen()).toBe(true)
+      })
+
+      it('a run cancelled mid-turn lands the book at once instead of stalling it to the backstop', async () => {
+        render(
+          <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
+            <p>x</p>
+          </EndpaperShell>,
+        )
+        fireEvent.click(screen.getByRole('button', { name: TURN }))
+        const [cancelled, ...rest] = leafRuns()
+        // something outside the book cancels one run; the others end on time
+        await act(async () => {
+          cancelled.cancel()
+          for (const run of rest) run.finish()
+        })
+        expect(isOpen()).toBe(true)
+      })
+
+      it('a run without `finished` falls back to the timer, and cancelling the others leaves no unhandled rejection', async () => {
+        const unhandled: unknown[] = []
+        const onUnhandled = (reason: unknown) => unhandled.push(reason)
+        process.on('unhandledRejection', onUnhandled)
+        try {
+          withoutFinished = '.mdv-ep-turn'
+          render(
+            <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
+              <p>x</p>
+            </EndpaperShell>,
+          )
+          fireEvent.click(screen.getByRole('button', { name: TURN }))
+          act(() => {
+            vi.advanceTimersByTime(leaf.ms)
+          })
+          // landing cancels every run, rejecting the `finished` nobody awaited
+          expect(isOpen()).toBe(true)
+          expect(leafRuns().every((c) => c.cancelledWith === true)).toBe(true)
+          vi.useRealTimers()
+          await new Promise((resolve) => setTimeout(resolve, 0))
+          expect(unhandled).toEqual([])
+        } finally {
+          process.off('unhandledRejection', onUnhandled)
+        }
+      })
+
+      it('lands on the backstop when a run never reports done, and not before', () => {
+        render(
+          <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
+            <p>x</p>
+          </EndpaperShell>,
+        )
+        fireEvent.click(screen.getByRole('button', { name: TURN }))
+        act(() => {
+          vi.advanceTimersByTime(leaf.ms * 2 - 1)
+        })
+        expect(isOpen()).toBe(false)
+        act(() => {
+          vi.advanceTimersByTime(1)
+        })
+        expect(isOpen()).toBe(true)
+      })
+
+      it('keys each hand-off to the leaf: the cut at 47–53%, the back at 80%, the cover at 97%', async () => {
+        render(
+          <EndpaperShell kicker="k" houseLine="h" folio="Sign in" frontMatter>
+            <p>x</p>
+          </EndpaperShell>,
+        )
+        // opening
+        calls = []
+        fireEvent.click(screen.getByRole('button', { name: TURN }))
+        const OUT = [[null, 1], [0.47, 1], [0.53, 0], [null, 0]]
+        const IN = [[null, 0], [0.47, 0], [0.53, 1], [null, 1]]
+        expect(offsets(runOn('.mdv-ep-leaf-inner'))).toEqual(OUT)
+        expect(offsets(runOn('.mdv-ep-poem-page'))).toEqual(IN)
+        expect(offsets(runOn('.mdv-ep-sheet-face--verso'))).toEqual([[null, 1], [0.8, 1], [null, 0]])
+        // the inside cover is under the endpaper from the first frame
+        expect(offsets(runOn('.mdv-ep-cover-in'))).toEqual([[null, 1], [null, 1]])
+        await finishAll()
+        // closing
+        calls = []
+        fireEvent.keyDown(document, { key: 'Escape' })
+        expect(offsets(runOn('.mdv-ep-leaf-inner'))).toEqual(IN)
+        expect(offsets(runOn('.mdv-ep-poem-page'))).toEqual(OUT)
+        expect(offsets(runOn('.mdv-ep-sheet-face--verso'))).toEqual([[null, 0], [0.2, 1], [null, 1]])
+        // covered again only as the leaf lands back on it
+        expect(offsets(runOn('.mdv-ep-cover-in'))).toEqual([[null, 1], [0.97, 1], [null, 0]])
+        expect(offsets(runOn('.mdv-ep-turn'))).toEqual([[null, 0], [0.97, 0], [null, 1]])
+      })
+
+      it('a sign-in step that lands while the front matter is open does not animate over it', async () => {
+        const { rerender, container } = render(
+          <EndpaperShell kicker="k" houseLine="h" folio="Sign in" pageKey="address" frontMatter>
+            <p>x</p>
+          </EndpaperShell>,
+        )
+        fireEvent.click(screen.getByRole('button', { name: TURN }))
+        await finishAll()
         calls = []
         rerender(
           <EndpaperShell kicker="k" houseLine="h" folio="Sign in" pageKey="methods" frontMatter>

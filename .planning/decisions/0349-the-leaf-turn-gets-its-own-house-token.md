@@ -32,7 +32,7 @@ Running `turn` at its own 420ms only shrinks that still tail to about 180ms; it 
 - `lib/mudavym/motion.ts` exports `leaf: { easing: 'cubic-bezier(0.4, 0, 0.2, 1)', ms: 600 }`. It stays out of `motionTokens`, which lists the seven tokens by their sketch-083 names.
 - The house vocabulary is now the seven tokens of ADR 0131 plus `leaf`.
 - `leaf` is for a whole leaf turning over (180°). Screen changes keep `turn`.
-- `EndpaperShell`'s six leaf runs and its settle timer read `leaf`.
+- `EndpaperShell`'s six leaf runs and its settle timer read `leaf`. [2026-11-01: the book now settles when the runs report `finished`, not on a timer; see the amendment below.]
 - ADR 0131's own text is left unedited; this ADR and its row in the decisions index (`README.md`, added in this PR) record the amendment.
 - `EndpaperShell.test.tsx` asserts that the leaf runs carry `leaf.easing`. Setting the easing back to `turn.easing` fails that test; this was checked on 2026-10-31.
 
@@ -42,3 +42,32 @@ Running `turn` at its own 420ms only shrinks that still tail to about 180ms; it 
 - The house-policy tests (`components/mudavym/housePolicy.test.ts(x)`) name the seven tokens and scan only the primitive family, which does not use `leaf`. A family file that adopts `leaf` must add it there.
 - Sketch 118's `FLIP=760` on `TURN` no longer describes the build. The sketch stays as the record of what was picked; this ADR is what the build follows.
 - Not covered: the phone-band poem drop and reduced motion never run the leaf. They keep `turn` and `linear` and are unchanged.
+
+## Amendment 2026-11-01 — the book settles when the runs finish
+
+Built on `fix/book-turn-settles-on-finish` (PR #717), the follow-up that #709's body listed as owed. The token, the curve, and the 600ms length are unchanged; only how `EndpaperShell` decides that the turn is over changes. The settle on `finished` is an implementation choice made by the session that built it. The backstop's length is the founder's ruling: asked on 2026-11-01, he chose 1.2s, twice the turn.
+
+**What changed.** The front-matter turn used to settle on `setTimeout(LEAF_TURN.ms)`, started beside its six runs. In headless Chromium, on a local build of the branch over three opens and three closes, the runs reported `finished` 608–641ms after the click. So the timer could land the page before the last frame was painted. Now:
+- The book settles on `Promise.allSettled` of the runs' `finished`.
+- A cancelled run counts as settled, so a stray cancel lands the book rather than stalling it. A cancel that comes from the book landing or unmounting is ignored, because `landed` is already set, by the `settle` that landed the book or by the effect's cleanup on unmount.
+- A backstop, `SETTLE_BACKSTOP_MS = LEAF_TURN.ms * 2` (1.2s), lands the book if `finished` never settles. One case where it never settles is a page whose animations do not run, such as a hidden tab.
+- A run without `finished` keeps the old `LEAF_TURN.ms` timer.
+- Every run's `finished` is marked handled as soon as the runs start, so the fallback paths, which never await it, leave no unhandled rejection when landing cancels the runs.
+- The runs fill `both` (`lib/mudavym/motion.ts` `animate()`), so the last frame holds until the settled page commits.
+
+In the same headless runs, the book landed 2–6ms after the last run finished. These timings were measured once, at `aecaa3f`, with a Playwright script that was not kept. Re-measure them; do not copy them forward as established fact.
+
+**The backstop at twice the run.** Options considered:
+1. **2 × the run (1.2s).** A whole run's slack past its own end, so it never beats a run that is only a few frames late. It covers the sign-in form for 1.2s when `finished` never comes, longer only where the browser delays timers, as it may in a hidden tab. *Chosen by the founder, 2026-11-01.*
+2. **1.5 × the run (0.9s).** Offered to the founder, not chosen. Less slack past a late run, and the form is covered 300ms less when `finished` never comes.
+3. **The run plus about one frame (~620ms).** Offered to the founder, not chosen; the executor's case against it: the measured runs already ended up to 41ms late, so this backstop would race the very frame the change exists to wait for.
+4. **No backstop.** Not offered to the founder; rejected by the executor: where `finished` never settles, the book would never land and the form underneath would stay covered.
+
+**Tests.** `EndpaperShell.test.tsx` pins:
+- the hand-offs: the 47–53% cut, the back at 80% and 20%, and the inside cover and the turn button at 97%;
+- that the token's length alone no longer lands the page;
+- that a cancelled run lands the book at once;
+- that the backstop lands it at exactly 2× and not 1ms sooner.
+
+The claim is `claims.d/fix-book-turn-settles-on-finish.jsonl:1`.
+
