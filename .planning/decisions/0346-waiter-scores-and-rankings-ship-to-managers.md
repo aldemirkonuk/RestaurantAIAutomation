@@ -201,7 +201,7 @@ The founder answered all seven on 2026-10-31, in AskUserQuestion, before his 16:
 - **F6 → D11** (asked 16:54:31Z, Q3). Whether waiters are told that taps are timed and scored. Not picked: *"Leave it to each house"*, *"Ask counsel first"*.
 - **F7 → D5** (asked 06:00:41Z, Q4). Whether a hidden table's past seatings count in each waiter's score and rank. Not picked: *"Leave them out"*.
 
-Two forks found in the build were not put to him. D4 (b)'s open-gap terminators and D4 (c)'s absence rule are stated there. D4 (d)'s is the executor's call under the founder's 2026-10-31T16:57:09Z delegation. Under D4 (d) the board compares unfloored minutes, so *Due soon* runs from warn to late for every pair `floor_settings`' CHECK accepts (each 1..120, warn below late, as `app/sla-actions.ts:34`). Not taken: late at least warn + 2, which refuses 119 pairs the checker took, and the documented empty band. It sets no default and moves no ADR 0351 climb.
+Three forks found in the build were not put to him: D4 (b)'s open-gap terminators and D4 (c)'s absence rule, each stated and attributed there, and D4 (d)'s, which is the executor's call under the founder's 2026-10-31T16:57:09Z delegation. Under D4 (d) the board compares unfloored minutes, so *Due soon* runs from warn to late for every pair `floor_settings`' CHECK accepts (each 1..120, warn below late, as `app/sla-actions.ts:34`). Not taken: late at least warn + 2, which refuses 119 pairs the checker took, and the documented empty band. It sets no default and moves no ADR 0351 climb.
 
 ## Not verified
 
