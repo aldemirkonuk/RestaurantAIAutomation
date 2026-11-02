@@ -77,14 +77,14 @@ The Paid rule that this record first held, that a closed, unvoided, live till ch
 ### D3. One create route, one twin-table guard (executor's design)
 
 - **One route.** `POST /analytics/tables/:restaurantId` becomes the only way to create a table by hand. Both screens call it through one form component.
-- **Who may call it.** Owner or manager, which is 0303's F1 role set and `0303:65`'s "for owners and managers". PR #701 (ADR 0348) put `@UseGuards(RolesGuard)` and `@Roles("owner", "manager")` on this route (`analytics.controller.ts:596-597`), so D3 adds no role guard of its own. #701 changed only who may call the route; create-only, the body rules and the twin guard below are D3's.
+- **Who may call it.** Owner or manager, which is 0303's F1 role set and `0303:65`'s "for owners and managers". PR #701 (ADR 0348) put `@UseGuards(RolesGuard)` and `@Roles("owner", "manager")` on this route (`analytics.controller.ts:596-597`), so D3 adds no role guard of its own.
 - **It only creates.** It never upserts and never overwrites.
 - **What the body may say:** name, required, trimmed, 1 to 60 characters, as PATCH requires (`table-analytics.service.ts:105`); seats, optional, a whole number from 1 to 999; outdoor, optional, true or false; section, position and shape, optional (D6). A value the body leaves out is stored as NULL.
 - **No `learned_at`.** The insert carries none, so `relink_on_add` links the waiting checks in the same statement. No matching rule is copied into the gateway. The answer reports how many checks the new table took, or null when that count could not be read.
 - **The twin guard.** A name N is refused with 409, on add and on rename, when any table of the house already answers the word N or the word `table N`.
   - A rename leaves the table being renamed out of "any table". "Any table" includes shown, hidden and retired tables.
   - "Answers" means by any of the four ranked rules of `pos_table_for_ref` (`20261222230000_tables_learned_from_the_pos.sql:202-241`), for any source: a `pos_refs` word; its label; `table <label>`; a `till_words` word or a former label, under either label rule.
-  - The refusal names the table that answers. It closes residual 17 for adds, because a new table can never outrank a word another table already answers.
+  - The refusal names the table that answers. Guard and insert run in one transaction under `pg_advisory_xact_lock` on the house (as `20261201000000_a_vendor_has_one_primary_branch.sql:77` does), and the till's learner takes the same lock before it inserts. Two adds of one word, or an add racing the till, so run one after the other: the later gets the 409 naming the table just made. That is what closes residual 17 for adds.
 - **The rename half is the founder's F3 pick**, *"Yes, same twin rule (Recommended)"* (AskUserQuestion asked 2026-10-31T16:55:36Z, Q2). Its option text read "Rename uses the same twin check as adding a table, ignoring the table being renamed. Closes the last way to make a twin by hand." Today's PATCH checks stay, with the guard in front of them, so residual 17 closes for renames as well.
 
 ### D4. Seats are optional, shown as a dash, never guessed (founder's pick; executor's mechanics)
@@ -98,7 +98,7 @@ The Paid rule that this record first held, that a closed, unvoided, live till ch
 
 ### D5. The tray: the builder starts from what the till taught (executor's design of the pick)
 
-- **What is in the tray.** Every shown, active table with `x_pos` or `y_pos` NULL. A table with `learned_at` set is tagged "from the till". Nothing gets the checker's default position of 50,50 (`0001_init.sql:61-62`): unplaced means NULL, and NULL means the tray. *"Start fresh (Recommended)"* means no checker table is imported, so the tray holds only what the till taught and what a person added.
+- **What is in the tray.** Every shown, active table with `x_pos` or `y_pos` NULL. A table with `learned_at` set is tagged "from the till". Nothing gets the checker's default position of 50,50 (`0001_init.sql:61-62`); Mudavym's columns have no default (`baseline_from_production.sql:5179`): unplaced means NULL, and NULL means the tray. *"Start fresh (Recommended)"* means no checker table is imported, so the tray holds only what the till taught and what a person added.
 - **How a table leaves the tray.** It leaves when it is placed or hidden. Naming happens through the same PATCH, so the keep trigger keeps every spelling. Sectioning goes through ADR 0345's `floor_sections` (ADR 0345 § Context › The founder's rulings › Round 2).
   - ADR 0345 has the builder start from the tables the till taught (ADR 0345 § Context › His fourteen picks › pick 9). Here `zone` is only read, as a hint, and the builder never writes it.
   - SimPOS houses learn tables labelled by UUID (`apps/api-gateway/src/simpos/simpos.service.ts:676`; `0303:94`). The tray is where those get a name.
@@ -137,7 +137,7 @@ The build PR changes, in the same commit as the code, every page sentence and ev
 - **His answer.** *"Merge words, hide twin (Recommended)"* (AskUserQuestion asked 2026-10-31T16:54:31Z, Q4). Its option text read "New checks that say 'T7' go to table 7 from now on, and the twin is hidden. Past checks stay where they were, so 'past checks never move' (ADR 0303) still holds." Everything else in D10 is the executor's.
 - **The rule.** Folding points the twin at the kept table and hides the twin. From then on a new check whose word the twin answers goes to the kept table. Past checks never move, in either direction. Showing the twin undoes the fold.
 - **The kept table may be hidden; the fold stands.** This is the executor's call under the founder's 2026-10-31T16:57:09Z delegation. Hidden 7 catches 'T7' as it does its own checks: out of its figures, in takings (D8). Every control that hides a kept table says the twin's checks keep coming to it.
-- **Refused:** a fold into a table that is in another house, retired, hidden or itself folded; a fold into itself; folding a table that others are folded into; retiring a kept table while a twin points at it; folding a twin that has an open seating or is in an active merge, as hiding is (D6).
+- **Refused:** a fold into a table that is, at the moment of folding, in another house, retired, hidden or itself folded; a fold into itself; folding a table that others are folded into; retiring a kept table while a twin points at it; folding a twin that has an open seating or is in an active merge, as hiding is (D6).
 - Owner or manager only, from the builder's tray and its hidden group.
 
 ### D11. "Not a table" for a waiting word (founder's F2 pick; executor's mechanics)
