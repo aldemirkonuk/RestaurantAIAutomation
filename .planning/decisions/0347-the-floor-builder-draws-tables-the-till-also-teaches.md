@@ -130,7 +130,7 @@ Moved to [ADR 0353](0353-a-closed-till-check-marks-paid-only-a-person-ends-a-sea
 
 ### D9. Copy and claims the build must change
 
-The build PR changes, in the same commit as the code, every page sentence and every claims row that D1 to D6 make untrue, and adds `open` rows for the seat-2 fallback and the column defaults.
+The build PR changes, in the same commit as the code, every page sentence and every claims row that D1 to D12 make untrue, and adds `open` rows for the seat-2 fallback and the column defaults. It also states what ADR 0093's scenario runner, the one in-repo caller of `POST /analytics/tables`, does when a replay meets D3's 409, since the route no longer upserts.
 
 ### D10. Folding a till-taught twin into the kept table (founder's F1 pick; executor's mechanics)
 
