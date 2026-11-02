@@ -1,7 +1,6 @@
 # 0346 — Per-waiter scores, rankings and exports ship, to owners and managers only
 
 - **Status:** Proposed (2026-10-31)
-- **Parts:** 1 of 2. The other parts land in later PRs of this series; until the last one merges, Consequences and the Review trail below are stubs.
 - **Rulings:** The founder ruled two parts himself, in AskUserQuestion on 2026-10-30 in his zone (EDT): that per-waiter figures ship (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2) and that a waiter's own phone shows none of them (*"Nothing for now"*, AskUserQuestion asked 2026-10-31T03:03:50Z, Q3). Both are quoted in Context. On 2026-10-31 he answered the seven forks this record had left open, F1–F7 (asked 2026-10-31T06:00:41Z and 2026-10-31T16:54:31Z), each quoted where it decides. The executor read "Nothing for now" as owner-and-manager-only on every surface (D2), which the option text of his F4 pick now matches. Who made every other call is named in the Decider line. A lock is his.
 - **Date:** 2026-10-31 (rulings of 2026-10-30 and 2026-10-31, session ca58311b)
 - **Decider:** founder: the reversal of the service-floor non-goal (*"EVERYTHING"*), the waiter phone's "Nothing for now", the option picks named in Context (the till-vs-floor mismatch check, the Paid tap, auto-Paid, the analytics route fix and its 2026-10-31 scope; asked 2026-10-31T03:41:53Z, 03:46:17Z and 04:34:21Z), and his seven fork answers of 2026-10-31: F1 in D4 (b) and (c), F3 and F7 in D5, F4 in D2 (asked 06:00:41Z), and F2 in D9, F5 in D10, F6 in D11 (asked 16:54:31Z). Executor (session ca58311b): D2's reading, which is the executor's reading and not his words; the executor's design for D3, for D4 where no fork answer is named, and for D5–D8 where no fork answer is named; how ADR 0272 and ADR 0294 bind the figures; the copy inside D9–D11; the mitigation set and the owed edits. Taking F2's example as D9's copy, the mechanics inside D10 and D11, and D4 (d)'s unfloored board minutes are the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242 (OPEN-DECISIONS.md:329 on main)), not his pick.
@@ -61,9 +60,9 @@
 **The executor's design, except (b) and (c), which are the founder's F1 pick, *"Fix both (Recommended)"* (AskUserQuestion asked 2026-10-31T06:00:41Z, Q1). The score's curve is ported, with five corrections, (a)–(e):** what it prints with no evidence (a), which gaps count and whose they are (b, c, e), and the on-time boundary (d). His option text: "Silence counts as one long gap, so a waiter who never taps scores low, not 100. The seated-to-first-visit gap goes to the table's waiter. Scores will differ from the old checker's." Where (b) and (c) say more than that text (where the open gap ends, the 120-minute rule, credit at seat time), the detail is the executor's.
 
 - (a) **No evidence is "—", not 100.** No gaps in the window prints the em dash (ADR 0051 `:57-59`). So does the live board's on-time for a waiter holding no tables.
-- (b) **Silence is not rewarded.** In the checker, a party seated and never visited yields no gap and a score of 100, while one late visit scores low. The port counts the open gap: from the last anchor to Paid (tap or the till's auto-Paid), or to leave when nothing marked Paid, is one gap when it exceeds T. A gap over 120 minutes is kept, not dropped. The open gap ends at the earliest of Paid, leave, and the caretaker's last tap on any table that service day, so it measures only time the caretaker was shown on the floor; a leave tapped next morning, or by someone else hours later, does not stretch it. A seating with neither Paid nor leave by the report is listed as *Not closed* beside its caretaker, a count of missing taps, not a lateness; its gap to that last tap still counts. These terminators are the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242), not his pick.
-- (c) **The greeting gap belongs to the table's waiter.** The checker writes the seated event's actor as whoever seated (`app/actions.ts:233`), while the seating's caretaker is the assigned waiter (`:222`). With the prior-actor credit rule, a manager who seats the party collects the greeting gap. The port credits the seated → first-visit gap to the seating's caretaker at seat time, under D8's absence rule: never to someone known to be absent then or no longer one of the house's active members, and if the caretaker goes absent before the first visit, the gap from then goes to whoever holds the table next (executor's call, OD-242). The handoff rule for later gaps (`response-time.ts:33-41`) is kept.
-- (d) **One boundary.** On-time means t ≤ T, the score's full-marks rule (`waiter-score.ts:68`). The checker counts on-time as t < T (`reports.ts:182`), so a gap of exactly T scored 100 and was not on time. The live board's *On time* status (`lib/freshness.ts:16-18`, labelled at `:22`), whose per-waiter share is described under *What the checker computes*, compares the floored minute it shows (`:3-6` floors the minutes, `:17` warns at minute T), so the screen reproduces its own status: *Due soon* starts when the shown count passes T. The score takes t ≤ T on whole seconds, so a gap of T plus under a minute shows *On time* on the board and loses marks in the score; that split is the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242), not his pick.
+- (b) **Silence is not rewarded.** In the checker, a party seated and never visited yields no gap and a score of 100, while one late visit scores low. The port counts the open gap: from the last anchor to Paid (tap or the till's auto-Paid), or to leave when nothing marked Paid, is one gap when it exceeds T. A gap over 120 minutes is kept, not dropped.
+- (c) **The greeting gap belongs to the table's waiter.** The checker writes the seated event's actor as whoever seated (`app/actions.ts:233`), while the seating's caretaker is the assigned waiter (`:222`). With the prior-actor credit rule, a manager who seats the party collects the greeting gap. The port credits the seated → first-visit gap to the seating's caretaker at seat time. The handoff rule for later gaps (`response-time.ts:33-41`) is kept.
+- (d) **One boundary.** On-time means t ≤ T, the score's full-marks rule (`waiter-score.ts:68`). The checker counts on-time as t < T (`reports.ts:182`), so a gap of exactly T scored 100 and was not on time. The live board's *On time* status (`lib/freshness.ts:16-18`, labelled at `:22`), whose per-waiter share is described under *What the checker computes*, takes the same t ≤ T boundary on the unfloored time since the anchor, so *Due soon* starts the moment a table passes T, as in the checker (`:3-6` floors the minutes, `:17` warns at minute T) except at exactly T; the minute count shown stays floored; comparing unfloored minutes is the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242), not his pick.
 - (e) **Paid stops the clock.** After Paid, no gap accrues to anyone. This follows the founder's Paid and auto-Paid picks.
 
 ### D5
@@ -104,12 +103,125 @@
 
 **The founder's F6 pick, *"Mudavym shows a notice (Recommended)"* (AskUserQuestion asked 2026-10-31T16:54:31Z, Q3); the line's wording is the executor's. The floor phone tells each waiter, the first time they sign in, that taps are timed and scored and who sees the scores.** His option text: "A one-line notice on the floor phone the first time a waiter signs in, saying taps are timed and scored and who sees the scores. Turkey's KVKK and California's CPRA both expect employees to be told." The line, in the executor's words, not a pick: "Your floor taps are timed and scored. Owners and managers see the scores; you do not." It shows once per waiter per house, and again if who sees the scores changes: the executor's call under the founder's 2026-10-31T16:57:09Z delegation; rejected, on every sign-in, which teaches a tap-through.
 
+## What the checker computes
+
+At `5958689`:
+
+- **Waiter score** (`lib/waiter-score.ts`). Per visit gap t in minutes, with T = max(1, `warn_after_min`) (the house setting; its column is `not null` with default 6, `supabase/migrations/0001_init.sql:30`; the report falls back to 8 only when the house row is not read, `lib/reports.ts:108`): a visit scores 100 when t ≤ T, else 100·e^(−ln2·(t−T)/T), so it halves every T minutes past T (`:8-11`, `:18-20`, `:66-71`). The waiter's score is round(mean(visit scores)) over the window (`:77-87`), and **100 when there are no gaps** (`:81`). Bands: ≥90 "On pace", ≥80 "Watch", below 80 "Needs review" (`:27-42`). A capped severity measure (`:23`, `:44-59`) exists but is not part of the score.
+- **Which gaps count** (`lib/response-time.ts`). A gap runs seated → first check-in, then check-in → check-in, on one seating (`:44-67`). Only a check-in closes a gap (`:67`). Gaps over 120 minutes are dropped (`:72`). When the tapper differs from the previous anchor's actor, the gap is credited to the previous actor (`:33-41`, `:79`).
+- **On-time %** is the share of gaps under `warn_after_min` (`lib/reports.ts:182-186`), house-wide or for one waiter when the report is filtered to them (`:56`, `:150-158`); null with no gaps. Overdue gaps are those at or over `late_after_min` (column default 10, `supabase/migrations/0001_init.sql:31`; report fallback 12, `lib/reports.ts:107`; applied at `:181`, `:353`). The live board's per-waiter on-time is the share of that waiter's seated tables now fresh, **100 when they hold none**, sorted worst first (`components/ManagerBoard.tsx:1234-1251` at `HEAD`).
+- **Coverage attribution.** A party counts for a waiter whose assignment intervals cover at least 50% of its seated window (`lib/attribution.ts:45-64`); at exactly 50/50 both get it (`:43`, `:63`). House coverage % is tables with a check-in or turn over all tables (`lib/reports.ts:389-393`).
+- **Per-waiter report and CSV.** One row per waiter with score, hours, check-ins, tables, average response, overdue gaps, nudges and alerts (`lib/reports.ts:341-373`), sorted by check-ins (`:373`), each linking to `/manager/staff/:id` (`components/ShiftReport.tsx:306`). The CSV route is manager-only (`app/manager/reports/export/route.ts:31-33`) and repeats those columns (`:139-170`).
+- **"Rankings" in the checker are sort orders and bar charts.** Its only ranked bars are tables, by check-ins or by average dwell (`components/ShiftReport.tsx:243-250`, `components/reports/FloorTableView.tsx:204-205`, drawn by `RankBars`, `components/reports/Charts.tsx:223-224`); no ranking names a waiter, and no rank position, "#1" or medal for a waiter is in `app/`, `components/` or `lib/`.
+- **The score has not run on live rows in the shipped app.** It is computed only in `getReportsAnalytics` (`lib/reports.ts:50`, `:355`). Both callers read a mock instead while `REPORTS_MOCK_ONLY = true` (`lib/reports-mock.ts:4`; `app/manager/reports/page.tsx:32`; `export/route.ts:86`). Only the per-shift CSV reads live rows (`export/route.ts:39-40`), and it carries no score.
+
+## Options considered
+
+1. **Ship the checker's figures, owner and manager only, with the corrections in D4.** Chosen. The founder's two answers fix the scope and the audience; the corrections are needed because the checker's formula breaks locked ADRs (D4).
+2. **Keep the non-goal: views by shift or section, never by name** (premortem `:64-66`). Rejected by the founder's "EVERYTHING".
+3. **Also show each waiter their own score and their own tables' invoices.** It was the round-2 option marked (Recommended), *"Own stats + own invoices (Recommended)"*, which would have redrawn W22. Rejected by the founder's "Nothing for now".
+4. **Port the score byte-for-byte.** Rejected by the founder's F1 pick, *"Fix both (Recommended)"*, over *"Keep checker's formula"* (AskUserQuestion asked 2026-10-31T06:00:41Z, Q1). The executor had rejected it first: it prints 100 for a waiter with no evidence (ADR 0051), and it scores a waiter who never taps above one who taps late (D4 (b), measured).
+5. **Do nothing.** The port's reports would ship as the checker's do: a mock.
+
+## How D3-D6, D8, D10 and D11 were checked
+
+Supporting detail for the decisions named; the binding rules stay in § Decision.
+
+- **D3.** #617 itself was closed unmerged and its work re-split; of that work, #719 and #723 put the sales gate (`salesGateFor`, `analytics.controller.ts:96`) on the till's readers, and `GET recommendations` takes it (`:1271`). But `GET insights` (`:433`) takes no gate, and the insight feed the recommendations read (`recommendations.service.ts:340`) takes none, so `peer_rank` and `staff_spread` still reach a staff login (read from code at `5e966c8b6`, not queried).
+- **D4 (b), (c).** Measured by running the checker's own `responseSamples` and `waiterPerformanceScore` on a scratch copy: a party seated and never visited for 90 minutes yields no gap and a score of 100; one visit 30 minutes after seating scores 15 at `warn_after_min` = 8 (the report's fallback) and 6 at the column default of 6. For (c), measured on the same copy: a manager seats, the waiter first visits at 20 minutes and again at 26, and the result is 20 minutes credited to the manager and 6 to the waiter.
+- **D5.** ADR 0303 left a hidden table's place in a waiter's score open: it keeps a hidden table's checks in the waiter adjustment's table control (`0303:61`, the founder's *"Keep them in the control (Recommended)"*), and the PATCH description keeps them in the servers' figures (`analytics.controller.ts:682` at `5e966c8b6`). F7 matches both.
+- **D6.** Neither 2026-10-07 pick is built yet on the /team card itself: `apps/api-gateway/src/team/performance.service.ts:305` still tests only `servers.size === 1 && includesMember`, and `:366-370` takes the upper middle.
+- **D8.** The checker counts alerts and nudges by `meta.waiter_id` (`lib/push.ts:255-256`; `lib/reports.ts:316-321`, at `5958689`); the port does not.
+- **D10.** Two checks by the executor. First, /team's former-staff history is owner-only and ends at removal plus five years (`06-pages/team.md:1018-1022`; its route is owner-only, `:388`), so "like their shifts on /team" holds for kept and named, not for the audience or an end date. Second, ADR 0218's list for counsel names its own house-log rows (`0218:573-575`), not floor figures.
+- **D11.** What the two laws list, as the executor read the fetched texts (not legal advice). KVKK, Law No. 6698, Article 10 has the controller inform the data subject, when data are obtained, of its identity, the purpose, to whom and why the data may be transferred, the method and legal basis of collection, and the Article 11 rights (English text at https://www.kvkk.gov.tr/Icerik/6649/Personal-Data-Protection-Law). Cal. Civ. Code §1798.100(a), as the CPRA amended it, has a business tell consumers, at or before collection, the categories and purposes, whether the data are sold or shared, and how long each is kept (the CPPA's text effective 2024-07-15, https://cppa.ca.gov/regulations/pdf/cppa_act.pdf, p. 3). Its employee exemption, §1798.145(m)(1)(A), became inoperative on 2023-01-01 and never covered §1798.100(a) (`(m)(3)`, `(m)(4)`, p. 38), and only a "business" past a §1798.140(d)(1) threshold, such as annual gross revenues of more than $25,000,000 as adjusted, is bound (p. 19). One line carries the purpose and the audience, not those full lists. Whether a house also owes its full staff notice (the KVKK *aydınlatma metni*) is counsel's, beside ADR 0218's notice question (`0218:576-580`).
+
+## The risk the charter named, and what answers it
+
+The founder accepted the risk by ruling. It does not go away: a figure by name is a figure a manager can discipline with, and the premortem's prediction is that staff then game the taps (`service-floor-premortem.md:50-52`). The checker's own code says the taps are trusted. `logCheckIn` is documented as *"an honor-system check-in"* (`app/actions.ts:136`). Any clocked-in staff member may check in any seated table (`:137`), and a manager may log one from the board without a shift (`:150-153`). Under the prior-actor credit rule, one waiter's tap on a colleague's table closes the colleague's gap and credits the colleague with it.
+
+| Mitigation | Who chose it | Available today? |
+|---|---|---|
+| **Till-vs-floor mismatch.** After service, a check the till closed at a table the floor showed empty, and a party that left with no linked check, plus the till-backed share (D7). Matches on `pos_checks.table_id` and `closed_at` (baseline `:4197`, `:4201`); `booth_event` checks are left out (`20261223150000_a_check_carries_its_channel.sql:18`); the wording is "no linked check", never "walk-out". | Founder | **No production feed was verified** (not queried, see *Not verified*; SimPOS is not loaded in production, `app.module.ts:117`; the first real POS is OD-64, open). At a house with no feed, the score is self-reported, and D7 says so. |
+| **The score does not pay for silence** (D4 (a), (b)). | Executor | With the port |
+| **Taps on a colleague's table are counted** for the tapper and for the waiter credited. The checker already counts quick check-ins apart (`meta.via = "quick_check_in"`, set when a tap is marked physical-only, `app/actions.ts:164-166`; counted at `lib/reports.ts:41-44`, `:161`). | Executor | With the port |
+| **Waiters see no figures**, so there is no peer ranking on the phone, and the phone tells each of them once that taps are timed and scored, and who sees the scores (D11). | Founder | With the port; it does not stop a manager |
+| **Rank claims and comparisons gated** (D5, D6). | Executor, under ADR 0272, 0294 | With the port |
+| **A compliance watch.** A house line that sets on-time % beside the till-backed share, so that the premortem's earliest signal (`:55-57`) is a check, not a hope. | Executor | Where a feed exists |
+| **Exports audited and expired** (D3, D8). | Executor | With the port |
+
+None of these stops a manager from using a true figure as a stick. That is the trade the ruling made, and the reason D7 prints the basis beside every score.
+
+## What this does not redraw
+
+ADR 0257 W22 (staff see counts, never amounts, on the dashboard's routes, `0257:94`, built in `apps/api-gateway/src/dashboard/amounts-for-role.ts:37-68`) stays as built. DASH-G6's direction that waiters will see their own stats and table invoices (`0257:79`, `:146`) is **deferred by "Nothing for now"**, not answered. This record neither redraws W22 nor hardens it; the later ruling that answers "for now" owns both. The /team card's staff read (`performance.service.ts:181-190`, own card only) is unchanged. On the web, staff are routed to My Shifts (`apps/web/src/pages/team/next/TeamNext.tsx:287-291`), which renders no Performance card.
+
+## Superseded text
+
+No mechanical guard holds the non-goal: `service-floor-charter`, `per-staff`, `non-goal` and `surveillance` match nothing in `CLAIMS.jsonl` or `claims.d/`, and in `scripts/` only a scaffold template's heading (`build_vault_scaffold.py:59`) (grep, origin/main). Superseding it changes prose only.
+
+Each passage below is superseded by this record for per-waiter floor figures; none is deleted. A bracketed pointer to this record is owed at each, inside an existing line so no cited line moves; its line follows "→" (re-measured on origin/main). The service-floor files are in `01-org/product/product-vision/teams/service-floor/`.
+
+- `service-floor-charter.md:69` (the row) and `:71-74` (the paragraph) → `:69`, `:74`.
+- `service-floor-premortem.md:59-62` (counter-pressure (a)), `:64-66` (counter-pressure (c)) and `:144-145` ("a founder-level decision to reverse") → `:62`, `:66`, `:145`. M2's failure description (`:44-57`) stays true and is not superseded.
+- `service-floor-directive.md:45-47` (the flowchart's per-staff node), `:56` (decision-rights row), `:83-88` (the not-a-monitoring-product rule) and `:95-96` (escalation trigger 2, which this ruling has met) → `:45`, `:56`, `:88`, `:96`. The `:45` pointer is to sit inside the node's label, quoted, since a diagram's code block cannot carry the bracket as prose.
+- `service-floor-agent-stack.md:66-69` ("No per-staff output, ever") → `:69`; `service-floor-schedule.md:53-55` (no compliance-reporting skill) → `:55`; `service-floor-agenda-full.md:92-93` (the to-do) and `:104-107` (question 2, now answered) → `:93`, `:107`.
+- `03-scenarios/S05-service-runs-floor-is-checked.md:65`, `:75-76`, `:81` ("never disciplines") and `:122-124` → `:65`, `:76`, `:82`, `:124`. `S07-guest-complaint-mid-service.md:61-64` and `:102-104` → `:64`, `:104`, both in part: complaint figures by server are not among this record's figures. `S16-staff-misses-a-table-window.md:61-63`, `:67-68` ("never scores a person, never silently records a miss against a name") and `:106-109` → `:63`, `:68`, `:109`.
+- `03-scenarios/TIER-MAP.md:117-119` (the first of "two boundaries") → `:119`.
+- `06-pages/team.md:409-413` and `:685-687` → `:413`, `:687`. Both cite `TIER-MAP.md:104-105` (`team.md:412`, `:685`) for a passage now at `:117-118`; both corrections are owed too.
+
+A sweep of `.planning/` for `staff performance analytics`, `no staff performance scores`, `not by name`, `per-staff ranking`, `scores a person`, `performance scores`, `staff ranking` and `per-waiter` found no other passage on per-person floor figures, outside `decisions/evidence/` (two hits in ADR 0301 are about products, not staff).
+
 ## Consequences
 
 **Retire-to-write (CLAUDE.md §4).** This file is the one decision record §5 requires. It retires no document, as ADRs 0249, 0265, 0273, 0287 and 0314 did. Whether retire-to-write binds a new ADR is OD-243 (OPEN-DECISIONS.md:330 on main), open.
+
+- **Easier.** The port can build the checker's reports on real rows. The checker never did (§ What the checker computes). Owners and managers get the figures the founder asked for in DASH-G6.
+- **Harder.** Every per-name route, emit and export needs its role check, and the post-#617 follow-up must land before any waiter is invited (D3; ADR 0348's four routes have landed). The score differs from the checker's in D4 (a)–(e), and its band words in D9, so the two apps' numbers and words for the same night would not match. The floor product is now the performance report the premortem said it was one dashboard away from (`service-floor-premortem.md:48`), and only the mitigations above stand against M2.
+- **Owed, not done here.**
+  - A CLAIMS row that no floor emit with a per-name payload targets `restaurant:`. The route-guard claim `A-TABLE-AND-SERVER-TAKINGS-NEED-A-MANAGER` is on main (ADR 0348); the post-#617 follow-up is to be pinned by a staff-token spec, not a static claim, for the reason its residual entry gives.
+  - Two lines in ADR 0218's lawyer's list (`0218:569-580`): the floor's figures beside the retention question (D10, `0218:573-575`) and the floor notice beside the notice question (D11, `0218:576-580`).
+  - The bracketed pointers at every passage under *Superseded text*, and the two `team.md` citation fixes.
+  - The build of D9's words, D10's read and D11's notice, with the rest of the port.
+  - No OD row is owed for F1–F7, which the founder answered. The README row was added with this file's first part.
+- **Revisit when:**
+  - on-time % nears 100% while the till-backed share falls or table outcomes stay flat (premortem `:55-57`);
+  - a house reports taps made from the pass or for a colleague;
+  - the founder answers "for now" (D11's line then changes with it), or counsel answers ADR 0218's retention or notice question for the floor too (D10, D11);
+  - a printed #1 fails a shuffled-data replay (ADR 0272's own trigger, `0272:82`).
+
+## Forks answered
+
+The founder answered all seven on 2026-10-31, in AskUserQuestion, before his 16:57:09Z delegation: F1, F3, F4 and F7 in the question asked at 2026-10-31T06:00:41Z, and F2, F5 and F6 in the one asked at 2026-10-31T16:54:31Z. Each pick and its option text are quoted in the decision it settles.
+
+- **F1 → D4 (b), (c)** (asked 06:00:41Z, Q1). Whether the port fixes the score's reward for silence and the greeting gap's credit. Not picked: *"Keep checker's formula"*.
+- **F2 → D9** (asked 16:54:31Z, Q1). What a manager reads beside a name. Not picked: *"Keep the checker's words"*, *"Number only"*.
+- **F3 → D5** (asked 06:00:41Z, Q2). Whether a "#1" or "bottom" prints before a busy-table adjustment exists. Not picked: *"Yes, when the test passes"*.
+- **F4 → D2** (asked 06:00:41Z, Q3). Whether kitchen, bar and area leads see any waiter figure. Not picked: *"Their area's figures"*.
+- **F5 → D10** (asked 16:54:31Z, Q2). What happens to a leaver's floor figures. Not picked: *"Keep, name removed"*, *"Delete after a period"*.
+- **F6 → D11** (asked 16:54:31Z, Q3). Whether waiters are told that taps are timed and scored. Not picked: *"Leave it to each house"*, *"Ask counsel first"*.
+- **F7 → D5** (asked 06:00:41Z, Q4). Whether a hidden table's past seatings count in each waiter's score and rank. Not picked: *"Leave them out"*.
+
+One fork found in the build was not put to him; it is D4 (d)'s, and it is the executor's call under the founder's 2026-10-31T16:57:09Z delegation. Under D4 (d) the board compares unfloored minutes, so *Due soon* runs from warn to late for every pair `floor_settings`' CHECK accepts (each 1..120, warn below late, as `app/sla-actions.ts:34`). Not taken: late at least warn + 2, which refuses 119 pairs the checker took, and the documented empty band. It sets no default and moves no ADR 0351 climb.
+
+## Not verified
+
+- No production query was made of the number of houses with a till feed that sends table words.
+- Whether insight and recommendation reads are staff-readable is answered from code, not by a query: at origin/main `5e966c8b6`, GET `insights` (`analytics.controller.ts:433`) and GET `recommendations` (`:1254`) carry only the class `JwtAuthGuard` (`:132`) and no `@Roles`, so any member of the house can read them; the recommendations route's sales gate (`:1271`) does not reach the insight feed it reads (`recommendations.service.ts:340`). The 2026-10-31 security review saw a staff token get 200 on `recommendations` (PR #701's residual entry, which did not re-run it). A per-name floor insight or recommendation must not be written until the post-#617 follow-up (D3) withholds per-name figures there.
+- The D4 measurements ran the checker's two functions, unchanged, on a scratch copy under Node 22's type stripping. They did not run the checker's app or tests. The checker's cites were not re-read for this text.
+- D8's alerts and nudges columns rest on ADR 0351 § Decision › What managers see, and attribution.
+- D11's reading of the two laws is the executor's, from the English translation of Law No. 6698 on kvkk.gov.tr (the Turkish text prevails) and the CPPA's posted text of the CCPA, both fetched on 2026-10-31. Counsel has not read it, KVKK's Article 11 and the CPPA's regulations were not read, and no house's revenue or consumer count was checked against §1798.140(d)(1).
+- D10's comparison with /team was checked against `06-pages/team.md`, not against the gateway's former-staff code.
+- D9's three words are the option text's example ("e.g."); the founder did not see them as final copy.
+- The directive's flowchart (`service-floor-directive.md:45`) has not been rendered with the owed quoted node label.
 
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
-| 2026-11-01 | — | Part 1 of 2 |
+| 2026-10-31 | — | Created (session ca58311b) from the founder's 2026-10-30 answers |
+| 2026-10-31 | Skeptic-and-fixer pass | D3's prerequisite, D4's five corrections, rank claims narrowed to what `leaderTest` tests, hidden tables narrowed to ADR 0303 `:60` |
+| 2026-10-31 | Fork-answer fold | The founder's F1–F7 folded into D2, D4, D5 and new D9–D11 |
+| 2026-10-31 | Restructure, part 1 of 2 | Context to D4, cites re-measured on origin/main; PR #701 merged (ADR 0348) |
+| 2026-10-31 | Restructure, part 2 of 2 | D5 to the end; D8 follows ADR 0351's attribution; pointers owed |
+| 2026-11-01 | Judge, *Due soon* | *Due soon* runs warn to late; every checker pair kept |
+| 2026-11-01 | executor | R3 rewrite: no held-note cites; single decision record |
