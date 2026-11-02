@@ -56,7 +56,7 @@ The Paid rule that this record first held, that a closed, unvoided, live till ch
 - **`0303:67`, *"So a learned table keeps `seats` NULL and no screen asks for it"*, and his rejection there of *"Add a seats field"*.**
   - Amended by *"Optional seats (Recommended)"*: the shared form and the builder ask for seats, and leaving them empty is allowed. A learned table still starts with `seats` NULL; that half stands.
   - A chart of per-seat figures can still be empty when no table states its seats (`apps/web/src/pages/reports/next/rp-registers-house.tsx:433`). The sentence that says why is still owed to the `seatsnote` lane.
-- **`0303:96`, residual 4, and `0303:104`'s clauses "no role guard beyond the class JwtAuthGuard", "it upserts on the label" and "it writes `seats` 2 and `is_outdoor` false when none is given".** The role clause is closed on main: PR #701 (ADR 0348) put owner/manager roles on the route (`analytics.controller.ts:596-597`). The upsert, `seats` 2 and `is_outdoor` false close by D3 and D4 when built.
+- **`0303:96`, residual 4, and three clauses inside residual 12's text at `0303:104`: "no role guard beyond the class JwtAuthGuard", "it upserts on the label" and "it writes `seats` 2 and `is_outdoor` false when none is given".** The role clause is closed on main: PR #701 (ADR 0348) put owner/manager roles on the route (`analytics.controller.ts:596-597`). The upsert, `seats` 2 and `is_outdoor` false close by D3 and D4 when built.
 
 ### D2. What in ADR 0303 stands, unchanged
 
