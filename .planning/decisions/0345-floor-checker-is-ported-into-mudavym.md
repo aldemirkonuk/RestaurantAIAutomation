@@ -299,7 +299,7 @@ So each call in this section is the executor's call under the founder's 2026-10-
 
 ### The lot rule
 
-This is what pick 11's "drinks the cellar shows run dry" means (§ Context › His fourteen picks › pick 11); those drinks enter the list without a mark. It is the executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick:
+This is what pick 11's "drinks the cellar shows run dry" means (§ Context › His fourteen picks › pick 11); those drinks enter the list without a mark. It is the executor's proposal, not a call and not his pick: it waits on OD-242 (§ Decider), and no code PR builds it before its meaning is recorded:
 
 - **Only the live book counts** (`stock_state`, `baseline:3177`, CHECK `:3192`).
 - **Out.** A drink on the house's menu reads Out when its linked inventory item (`menu_items.inventory_item_id`, `baseline:3797`, a `restaurant_inventory` id, `apps/api-gateway/src/menus/menus.service.ts:852-857`) has had live stock, that is a live lot of any status (`inventory_lots.inventory_id`, `baseline:3174`) or a live ledger row (`inventory_transactions.stock_type`, `baseline:3223`, `:3233`), and no live lot whose `status` is `active` (`:3183`, CHECK `:3191`) has `qty` or `open_bottle_ml` above 0 (`:3178-3179`).
@@ -322,7 +322,7 @@ This is what pick 11's "drinks the cellar shows run dry" means (§ Context › H
   - Keeping the staged gate: it contradicts *"Include it (Recommended)"*.
   - Asking the founder: the delegation says "Do not ask me anything". This stays live only if OD-242 rules the delegation narrower.
   - Deleting the section: retirement is a bracket in place, and the premortem cites the charter's staged entry (`service-floor-premortem.md:34`, `:140`).
-- The charter's `:69` and `:71-74` are not touched by this call, and this record edits no line of the charter.
+- This part brackets the charter's `:127` and `:132` for this call; the charter's `:69` and `:74` brackets are ADR 0346's, not this call's.
 
 ## Consequences
 
