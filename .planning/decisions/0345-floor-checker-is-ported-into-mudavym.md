@@ -1,7 +1,7 @@
 # 0345 — Floor Checker is ported into Mudavym
 
 - **Status:** Proposed (2026-10-31); not to be locked before all three parts have landed.
-- **Parts:** 3. This is the second of part 1's two PRs: it adds his fourteen picks, the options considered, the research and the decisions resting on them. This record's row in the decision index (`README.md`) is not in it: the first PR added this file without the row, and a row added after its record is the founder's to merge, so it lands in its own draft PR after part 3. Parts 2 and 3 follow, and part 3 completes Consequences and the Review trail.
+- **Parts:** 2 of 3. This record's row in the decision index is owed in its own draft PR after part 3 (see part 1). Part 3 completes Consequences and the Review trail.
 - **Date:** 2026-10-31 (rulings of 2026-10-30 EDT, session ca58311b)
 - **Decider:** the founder, for the port and his picks: five AskUserQuestion calls on 2026-10-30 EDT, asked 2026-10-31T02:52:37Z, 03:03:50Z, 03:13:20Z, 03:41:53Z and 03:46:17Z, and on 2026-10-31 the leak fix's scope (pick 14, asked 04:34:21Z) and, in the call asked at 16:54:31Z, that a departed waiter's floor figures are kept for owners and managers. Each is quoted under § Context. His builder answer and his Out tonight answer, whose label and text differ, are read in the ways stated where they appear; those readings are the executor's (session ca58311b), not his words, and they wait on OD-242 together with what they would change in ADRs 0303 and 0218. The founder can overrule any part of this record, and a lock is his. Its role map, reuse map and engineering rules are the executor's design; what "run dry" means (pick 11) is not decided here: it waits on OD-242, and pick 11 states the executor's proposal for it, not a call. This record answers none of OD-235, OD-236 or OD-238.
 - **Keywords:** Floor Checker, floor coverage, waiter-coverage, port, in-SPA, /floor, /floor/builder, /floor/me, floor module, floor-core, floor_sections, Food-up, meal run, Paid, punches, Out tonight, pos_server_links, emitToHouseRoles, memberRoom, notification_push_devices, restaurant_tables, subdomain, manifest
@@ -183,6 +183,147 @@ Proposed, from his rulings and picks (§ Context):
 
 **No waiter is invited to `/floor/me` until #701 and the follow-up after #617 have merged.** Source: pick 14 (§ Context › His fourteen picks) and ADR 0348 (Locked). #701 merged as `e7ef31145`; the follow-up has not. The code PR that opens staff invites owes a check of both.
 
+## Feature ideas the adversaries killed
+
+- **Live till check, hot-table flag, fast-spender nudged first, the till running a table's clock**: no feed sends open checks. The manual Paid tap was kept (pick 1).
+- **Till name as a floor person with sales, tips and a /team bridge; floor-filled sales register and card**: figures in front of staff, and tips are payroll. A manager-confirmed link survives.
+- **Punches crossed with the till, or as a prime-cost labour feed**: under-recorded hours, a meaningless ratio.
+- **Does a table visit pay; takings per table-hour; server figures from attribution**: no real checks, a default party of 2 printed as measured, double counting.
+- **Covers forecast to waiters; open days from the floor; learned coverage rules; who is missing now**: no history, a circular method, already covered, or empty data.
+- **Clock-in line-up from weekly notes**: a stale item all week; reduced to pick 7.
+- **Late tables climb the area ladder**: reopens his sections pick; floor-only form is pick 5.
+
+## Role map
+
+The executor's design, from his picks.
+
+| Mudavym `user_restaurant_access.role` (`20260902200000:61-63`) | Checker role (`0001_init.sql:11`) | On the floor |
+|---|---|---|
+| `owner` | `manager` | Board, builder, sections, settings, assignments, every figure and CSV, confirm till-name links (E4), mark Out tonight |
+| `manager` | `manager` | Same as owner |
+| `staff` | `waiter` | `/floor/me`: own tables, taps, clock-in and clock-out, raise Food-up, read Out tonight. No figure of any kind (*"Nothing for now"*) |
+| `staff` with a kitchen or bar lead mark | none | As staff, plus mark Out tonight. Nothing else |
+
+House roles are granted as today (ADR 0162). A person with several houses picks one (ADR 0164), and the floor follows the chosen house.
+
+## Reuse map
+
+The executor's design. Each target is re-measured at `origin/main` `037452ebe`; `baseline` is `supabase/migrations/20260805000000_baseline_from_production.sql`.
+
+| Checker | Mudavym | Where |
+|---|---|---|
+| `dining_tables` | `restaurant_tables` | `baseline:5169-5185`; `seats` nullable since `20261222230000:130`; `hidden_at`, `till_words`, `former_labels` at `:133-147` |
+| `profiles`, `invitations` | `public.users` + `user_restaurant_access`, invites through `RestaurantsModule` | role CHECK `20260902200000:61-63`; `apps/api-gateway/src/app.module.ts:148`; role names `apps/api-gateway/src/common/tenant/live-membership.ts:62-64`, role read `houseMembersInRoles` at `:93` |
+| `push_subscriptions` | `notification_push_devices`; no `push_subscriptions` table is created | `20260925160500:96-120` (why it is not called `push_subscriptions`: `:53`); sender `apps/api-gateway/src/notifications/notifications.service.ts:150-163`; ADR 0027 `:119` |
+| Supabase realtime on nine tables | gateway socket.io, `emitToHouseRoles` → `memberRoom` | `apps/api-gateway/src/websocket/websocket.gateway.ts:39-51`, `:337`, `:343-344`, `:663-691` |
+| staff and settings history | `system_audit_log` | `baseline:5553-5568`; writer precedent `apps/api-gateway/src/team/access-audit.ts:97` |
+| per-house switches | `restaurant_feature_flags` + registry | `baseline:5097-5105`; `apps/api-gateway/src/settings/feature-flag-registry.ts:38`, `:44-46` (`readBy` required), `:54` |
+| `sections` | new `floor_sections` (his pick) | not `house_areas` (`20260930100000:86`) |
+| `shifts` (punches) | new punch table, linked to `public.shifts` by a nullable id | `baseline:5378`; no clock-in table on main (`roster.ts:15-16`) |
+| `assignments`, `seatings`, `events`, `table_merges` | new floor tables in the floor module | named in the migrations, not fixed here |
+| `/api/push/nudge` daily cron | a gateway job under `ScheduleModule` | `app.module.ts:90` |
+| till server names | new `pos_server_links` (E4) | `pos_checks.server_external_id`, `server_name` at `baseline:4198-4199` |
+
+Floor taps are written to the floor's own event table. `system_audit_log` keeps who changed staff, sections, settings and links, as the area tables already do (`20260930100000:46-48`).
+
+## Engineering rules E1-E9
+
+The executor's design, Proposed.
+
+### E1. One floor logic, `packages/floor-core`
+
+- What moves: the checker's pure modules, without React and without a database (`lib/` adjacency, attribution, floor-merge, freshness, heat, meal-alert, merge-orientation, response-time, visit-leave, waiter-score).
+- The gateway (nudges, reports, insights) and the web board both import it, so a waiter's figure on screen and in Recommendations is one computation.
+- Tests import the real code, not a mirror: the checker's tests copy the logic today (*"Mirrors lib/meal-alert.ts"*, `scripts/test-meal-brief.mjs:5`).
+- `packages/` holds only `database` and `ui` today.
+
+### E2. Per-name floor payloads travel only through role-gated rooms
+
+- Who seated, lag minutes and scores go to `memberRoom`/`user:` rooms through `emitToHouseRoles`.
+- `restaurant:<id>`, which staff also join (`websocket.gateway.ts:42-43`), carries word-only state. `emitToHouseRoles` reads roles at send time and emits nothing on a failed read (`:663-691`).
+- The gateway has no socket.io adapter: its socket packages are `@nestjs/platform-socket.io`, `@nestjs/websockets` and `socket.io` (`apps/api-gateway/package.json:35`, `:38`, `:65`), no adapter package is listed, and no gateway code sets one. Rooms are per process, so one gateway replica is a stated limit.
+- `pos-hub` emits nothing over the socket today, so auto-Paid needs a new emit or a read.
+
+### E3. The nudge scanner runs on one runner and is idempotent
+
+- It is a gateway job (`app.module.ts:90`) that takes a single-runner lock per tick.
+- Each table alert carries an idempotency key of seating, kind, the visit its lateness counts from and the 15-minute window since the table turned late, so a re-run or a second replica sends nothing twice, a new visit starts a new episode, and a table that stays late is pushed again. A Food-up alert is keyed on its meal run and threshold instead. An On break handoff is keyed on the alert, `handoff` and the cover's user id, so the cover's copy of an alert already sent to the waiter is sent once.
+- The keys follow when an alert climbs, which is OD-236: the window and the handoff key are the executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick.
+- The checker's per-seating guards are the precedent: `last_nudge_at`, and `last_meal_alert_at` kept separate (`0018_meal_run_alerts.sql:14-18`, working tree; untracked at `5958689`).
+
+### E4. A till name becomes a person only when a manager confirms it
+
+- `pos_server_links` holds (house, source, till id or normalised name) → member. Links are proposed by name match and seated-time overlap.
+- An owner or manager confirms or unlinks a link.
+- An unlinked till name prints as unlinked, never as a guessed person (ADR 0020). Past checks' raw words are never rewritten.
+- ADR 0303's "not every word is a name" care applies: its dry run found six people's names among the till's table words (`20261222230000:22-23`).
+
+### E5. Migrations
+
+- RLS is on, service_role only, in the file that creates the table (precedent `20260930100000:152-171`).
+- Actor columns reference `public.users(user_id)` (`:41-44`).
+- Versions sort after the newest on main, `20270301170000` at `5e966c8b6`, and are assigned at merge (ADR 0212).
+
+### E6. Every floor route carries its own `@Roles`
+
+The global `TenantGuard` (`app.module.ts:187-188`) reads no role (`apps/api-gateway/src/common/tenant/tenant.guard.ts` contains no "role"). Waiter routes admit `staff`, and every figure route admits `owner`/`manager` only.
+
+### E7. Dark, then one house at a time
+
+- One flag ships with a `restaurant_feature_flags` column and an `ACTIVE_FEATURE_FLAGS` entry with its `readBy`, in one change, default off (ADR 0131).
+- The `mudavym_design_arrival` entry is the precedent (`feature-flag-registry.ts:82-92`).
+
+### E8. Routes and install
+
+- `/floor` and `/floor/builder` sit in the shell.
+- `/floor/me` is chrome-free, like the door route (`apps/web/src/App.tsx:297-310`).
+- `apps/web/vercel.json:86`'s SPA rewrite list gains `floor`.
+- A second manifest is scoped to `/floor/`. Today's manifest has scope and `start_url` `/` (`apps/web/public/manifest.json:5-6`).
+
+### E9. Seats are never guessed
+
+- The floor and the shared add-table form write `seats` NULL when nobody said.
+- Today the column keeps `DEFAULT 2` (`baseline:5173`): `20261222230000:130` drops only NOT NULL.
+- `upsertTable` writes `Number(table.seats) || 2` (`apps/api-gateway/src/analytics/table-analytics.service.ts:59`).
+- Both writers change before pick 9 ships.
+
+## Executor's calls
+
+**The delegation.** At 2026-10-31T16:57:03Z the session asked the founder three questions, on OD-235, OD-236 and OD-238. They closed without an answer, with the result *"Tool permission request aborted"*, as his queued `/goal` took effect at 16:57:09Z (session ca58311b's transcript, outside the repo). His goal, verbatim and whole:
+
+> complete the full integration with ful SOTA and robust connections with the current mudavym structure and foundation. Do not ask me anything just complete it fully.
+
+So each call in this section is the executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick. The options and *(Recommended)* marks those questions offered were the executor's, and he picked none of them. How far the delegation reaches is OD-242, which is open. The founder can overrule any of this.
+
+**OD-237 stays open.** It was not among the 16:57:03Z questions. It waits for measured iPhone and Android install and web-push results, and then the founder decides. Until then neither `floor.mudavym.com` nor an Expo waiter tab is built.
+
+### The lot rule
+
+This is what pick 11's "drinks the cellar shows run dry" means (§ Context › His fourteen picks › pick 11); those drinks enter the list without a mark. It is the executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick:
+
+- **Only the live book counts** (`stock_state`, `baseline:3177`, CHECK `:3192`).
+- **Out.** A drink on the house's menu reads Out when its linked inventory item (`menu_items.inventory_item_id`, `baseline:3797`, a `restaurant_inventory` id, `apps/api-gateway/src/menus/menus.service.ts:852-857`) has had live stock, that is a live lot of any status (`inventory_lots.inventory_id`, `baseline:3174`) or a live ledger row (`inventory_transactions.stock_type`, `baseline:3223`, `:3233`), and no live lot whose `status` is `active` (`:3183`, CHECK `:3191`) has `qty` or `open_bottle_ml` above 0 (`:3178-3179`).
+- **Back.** It reads Back when such a lot appears.
+- **Edges.** A `reserved` lot is held back and keeps no drink Back; a `depleted` lot counts as empty; a shadow lot never makes a drink Out or Back; an imported item with no live lot and no live ledger row stays off the list.
+- **Why "every lot is empty" was dropped.** An earlier form of this call read Out when the item had had at least one lot and every lot had `qty` 0 and `open_bottle_ml` 0. It ignored `stock_state` and `status`, and a whole-bottle sale that takes a lot's last sealed bottle deletes the lot (`supabase/migrations/20261222100000_a_pos_sale_is_dated_by_its_check.sql:228`; open as tech debt, `.planning/tech-debt.d/2026-10-04-fix-a-short-pour-opens-the-next-bottle.md:14-16`), so "has had a lot" cannot be read from lots alone.
+- **Rejected: a zero stock figure.** Menu import writes `restaurant_inventory` rows with no stock (`menus.service.ts:1940-1948`), and the dashboard counts `stock_live` 0 as critical (`apps/api-gateway/src/dashboard/dashboard.service.ts:631-632`), so every imported drink never received would read Out.
+- **Rejected: a person confirming each entry.** It undoes the automatic entry his option names.
+
+### The service-floor charter's staged entry
+
+- **What it said.** The service-floor charter, a plan document at `.planning/01-org/product/product-vision/teams/service-floor/service-floor-charter.md`, stages the team's start under its Entry trigger (`:125`): Stage 0, a per-provider input audit; Stage 1, a non-simulator provider emitting `table_id` and `server_name`; Stage 2, a kitchen-ready event in `CanonicalCheck` (`:127-139`). No question on these triggers was asked.
+- **The call.** The staged entry no longer holds back the floor build; the floor is built on his rulings and picks, not on the charter's stages. This is the executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick. Only Stage 2's yield follows from his pick *"Include it (Recommended)"*.
+- **Evidence.**
+  - Food-up: he picked *"Include it (Recommended)"* over "Leave it out for now", whose option text was "the food-up alert waits for a kitchen-ready event from the POS" (AskUserQuestion asked 2026-10-31T02:52:37Z, Q4). That is Stage 2's trigger, and it was the option he did not pick.
+  - Who raises it: *"Any staff (Recommended)"*, whose option text says "A POS kitchen-ready event can replace the tap later." (AskUserQuestion asked 2026-10-31T03:13:20Z, Q2).
+  - *"Port in-SPA (Recommended)"* (AskUserQuestion asked 2026-10-31T03:03:50Z, Q1), *"EVERYTHING"* (AskUserQuestion asked 2026-10-31T02:52:37Z, Q2) and all fourteen picks: the floor times check-ins from its own taps, not the till, so Stage 1's trigger gates nothing the floor needs.
+  - The features that need a till say so in their own option texts: *"Paid tap"*'s automatic Paid comes "once a real till feed exists", and *"Till vs floor mismatch"* "needs a real till feed (sim only today)" (AskUserQuestion asked 2026-10-31T03:41:53Z, Q1 and Q3). Both wait on OD-64. Stage 0's per-provider table still serves them, E4's till-name links and pick 9's tray, since it says which providers send table words: *"Builder starts from the till"* reads "Tables the till already taught wait in a tray to be named, placed and sectioned." It gates none of them, nor any other part of the build.
+- **Rejected.**
+  - Keeping the staged gate: it contradicts *"Include it (Recommended)"*.
+  - Asking the founder: the delegation says "Do not ask me anything". This stays live only if OD-242 rules the delegation narrower.
+  - Deleting the section: retirement is a bracket in place, and the premortem cites the charter's staged entry (`service-floor-premortem.md:34`, `:140`).
+- The charter's `:69` and `:71-74` are not touched by this call, and this record edits no line of the charter.
+
 ## Consequences
 
 **Retire-to-write (CLAUDE.md §4).** This file is the one decision record §5 requires. It retires no document, as ADRs 0249, 0265, 0273, 0287 and 0314 did. Whether retire-to-write binds a new ADR is OD-243, open, and is raised again when this record is locked.
@@ -191,3 +332,4 @@ Proposed, from his rulings and picks (§ Context):
 
 | Date | Reviewer | Outcome |
 |---|---|---|
+| 2026-11-01 | — | Part 2 of 3 |
