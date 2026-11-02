@@ -92,7 +92,7 @@ the failure mode here is not building badly — it is building the fun part firs
 - [ ] Record the no-performance-scores non-goal as a founder-level decision, not a team
       preference [2026-10-31: moot only once ADR 0346 § Decision (Proposed) locks; until then this item stands. The founder reversed the non-goal (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2), his answer to a question that named this non-goal (ADR 0346 § Context, round 1).]
 - [ ] Do **not** build push routing until Stage 2's trigger fires. This is a listed
-      non-action on purpose. [2026-10-31: proposed to be set aside, not in force until ADR 0345 locks, for the Floor Checker port (`service-floor-charter.md:127`), the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242), not his pick (ADR 0345 § Executor's calls › The service-floor charter's staged entry): once it locks, the port would build the floor's push chain (ADR 0351, ADR 0352, both Proposed) before Stage 2's trigger fires; until then this non-action holds, because Food-up runs on staff taps, not a till event.]
+      non-action on purpose. [2026-10-31: proposed to be set aside, not in force until ADR 0345 locks, for the Floor Checker port (`service-floor-charter.md:127`), the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242), not his pick (ADR 0345 § Executor's calls › The service-floor charter's staged entry): once it locks, the port would build the floor's push chain (ADR 0351, ADR 0352, both Proposed) before Stage 2's trigger fires; until then it holds.]
 
 ## Questions for the founder
 

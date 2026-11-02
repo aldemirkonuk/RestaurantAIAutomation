@@ -202,7 +202,7 @@ The executor's design, from his picks.
 | `owner` | `manager` | Board, builder, sections, settings, assignments, every figure and CSV, confirm till-name links (E4), mark Out tonight |
 | `manager` | `manager` | Same as owner |
 | `staff` | `waiter` | `/floor/me`: own tables, taps, clock-in and clock-out, raise Food-up, read Out tonight. No figure of any kind (*"Nothing for now"*) |
-| `staff` with a kitchen or bar lead mark | none | As staff, plus mark Out tonight. Nothing else |
+| `staff` leading a `kitchen` or `bar` area (`is_lead`, `20260930100000:104`, ADR 0218) | none | As staff, plus mark Out tonight; other areas: OD-249. Grants no role (ADR 0162) |
 
 House roles are granted as today (ADR 0162). A person with several houses picks one (ADR 0164), and the floor follows the chosen house.
 
@@ -305,7 +305,7 @@ This is what pick 11's "drinks the cellar shows run dry" means (§ Context › H
 - **Out.** A drink on the house's menu reads Out when its linked inventory item (`menu_items.inventory_item_id`, `baseline:3797`, a `restaurant_inventory` id, `apps/api-gateway/src/menus/menus.service.ts:852-857`) has had live stock, that is a live lot of any status (`inventory_lots.inventory_id`, `baseline:3174`) or a live ledger row (`inventory_transactions.stock_type`, `baseline:3223`, `:3233`), and no live lot whose `status` is `active` (`:3183`, CHECK `:3191`) has `qty` or `open_bottle_ml` above 0 (`:3178-3179`).
 - **Back.** It reads Back when such a lot appears.
 - **Edges.** A `reserved` lot is held back and keeps no drink Back; a `depleted` lot counts as empty; a shadow lot never makes a drink Out or Back; an imported item with no live lot and no live ledger row stays off the list.
-- **Why "every lot is empty" was dropped.** An earlier form of this call read Out when the item had had at least one lot and every lot had `qty` 0 and `open_bottle_ml` 0. It ignored `stock_state` and `status`, and a whole-bottle sale that takes a lot's last sealed bottle deletes the lot (`supabase/migrations/20261222100000_a_pos_sale_is_dated_by_its_check.sql:228`; open as tech debt, `.planning/tech-debt.d/2026-10-04-fix-a-short-pour-opens-the-next-bottle.md:14-16`), so "has had a lot" cannot be read from lots alone.
+- **Why "every lot is empty" was dropped.** Out when every lot had `qty` 0 and `open_bottle_ml` 0 ignored `stock_state` and `status`, and a sale taking a lot's last sealed bottle deletes the lot (`supabase/migrations/20261222100000_a_pos_sale_is_dated_by_its_check.sql:228`), so "has had a lot" cannot be read from lots alone.
 - **Rejected: a zero stock figure.** Menu import writes `restaurant_inventory` rows with no stock (`menus.service.ts:1940-1948`), and the dashboard counts `stock_live` 0 as critical (`apps/api-gateway/src/dashboard/dashboard.service.ts:631-632`), so every imported drink never received would read Out.
 - **Rejected: a person confirming each entry.** It undoes the automatic entry his option names.
 

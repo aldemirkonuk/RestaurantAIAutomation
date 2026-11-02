@@ -52,7 +52,7 @@ graph TD
 | Level | Decides | Examples |
 |---|---|---|
 | **Team** | The check-in window; the engagement signal's shape; the ambiguity fallback; the latency measurement boundary and its segments; the audit's format | What counts as "timely"; whether the fallback is section or expo; how staleness is defined for `server → device` |
-| **Department** ([[product-vision-charter]]) | Stage triggers; whether Stage 1 ships alone as a product; the person-routing contract as a shared shape | "Is check-in timing a product without the alert?" |
+| **Department** ([[product-vision-charter]]) | Stage triggers; whether Stage 1 ships alone as a product; the person-routing contract as a shared shape | "Is check-in timing a product without the alert?" [2026-10-31: to change under ADR 0345 (Proposed, not in force until it locks): stages would no longer gate the floor port.] |
 | **Founder / `OPEN-DECISIONS.md`** | Reversing the no-performance-data non-goal [2026-10-31: to change under [[0346-waiter-scores-and-rankings-ship-to-managers]] § Decision (Proposed, not in force until it locks): reversed by the founder on 2026-10-30 (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2), for owners and managers; showing staff a figure is still his call]; accepting a non-zero mis-route rate; changing the latency promise from acknowledgment to dispatch; an in-venue hardware path | A per-waiter ranking export; a floor-mounted screen instead of personal push |
 
 **Null-input rule.** `simpos` is a **development target, never evidence**. A capability
@@ -93,7 +93,7 @@ Escalate to `OPEN-DECISIONS.md` when **any** of these holds:
 
 1. A mis-route is observed in **any** environment, including staging.
 2. A per-staff performance view, ranking, or export is requested — the **first** request,
-   not the tenth. [2026-10-31: ADR 0346 § Decision (Proposed) answers it, but until 0346 locks this trigger still sends such a request to the founder (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2): figures go to owners and managers; a request to show staff one still escalates.]
+   not the tenth. [2026-10-31: ADR 0346 § Decision (Proposed) answers it, but until 0346 locks this trigger still sends such a request to the founder (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2). Once it locks, figures go to owners and managers; a request to show staff one still escalates.]
 3. A stage trigger is proposed to be satisfied by simulator evidence.
 4. Two consecutive close-times report *blocked* without a named counterparty and a dated ask.
 5. The latency promise is proposed to change from device-acknowledgment to dispatch.
