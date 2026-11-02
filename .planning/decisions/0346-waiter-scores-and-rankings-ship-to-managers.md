@@ -1,0 +1,115 @@
+# 0346 — Per-waiter scores, rankings and exports ship, to owners and managers only
+
+- **Status:** Proposed (2026-10-31)
+- **Parts:** 1 of 2. The other parts land in later PRs of this series; until the last one merges, Consequences and the Review trail below are stubs.
+- **Rulings:** The founder ruled two parts himself, in AskUserQuestion on 2026-10-30 in his zone (EDT): that per-waiter figures ship (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2) and that a waiter's own phone shows none of them (*"Nothing for now"*, AskUserQuestion asked 2026-10-31T03:03:50Z, Q3). Both are quoted in Context. On 2026-10-31 he answered the seven forks this record had left open, F1–F7 (asked 2026-10-31T06:00:41Z and 2026-10-31T16:54:31Z), each quoted where it decides. The executor read "Nothing for now" as owner-and-manager-only on every surface (D2), which the option text of his F4 pick now matches. Who made every other call is named in the Decider line. A lock is his.
+- **Date:** 2026-10-31 (rulings of 2026-10-30 and 2026-10-31, session ca58311b)
+- **Decider:** founder: the reversal of the service-floor non-goal (*"EVERYTHING"*), the waiter phone's "Nothing for now", the option picks named in Context (the till-vs-floor mismatch check, the Paid tap, auto-Paid, the analytics route fix and its 2026-10-31 scope; asked 2026-10-31T03:41:53Z, 03:46:17Z and 04:34:21Z), and his seven fork answers of 2026-10-31: F1 in D4 (b) and (c), F3 and F7 in D5, F4 in D2 (asked 06:00:41Z), and F2 in D9, F5 in D10, F6 in D11 (asked 16:54:31Z). Executor (session ca58311b): D2's reading, which is the executor's reading and not his words; the executor's design for D3, for D4 where no fork answer is named, and for D5–D8 where no fork answer is named; how ADR 0272 and ADR 0294 bind the figures; the copy inside D9–D11; the mitigation set and the owed edits. Taking F2's example as D9's copy, the mechanics inside D10 and D11, and D4 (d)'s unfloored board minutes are the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242 (OPEN-DECISIONS.md:329 on main)), not his pick.
+- **Keywords:** waiter score, waiterPerformanceScore, visitScore, on-time, coverage attribution, handoff credit, ranking, leaderTest, CSV, export, owner, manager, staff, surveillance, management stick, honour-system taps, till-vs-floor mismatch, DASH-G6, W22, service-floor charter, non-goal, Floor Checker, band words, departed waiter, staff notice, KVKK, CPRA
+- **Links:**
+  - [ADR 0345](0345-floor-checker-is-ported-into-mudavym.md): the port this record serves. Each founder answer here is quoted verbatim and cited by the UTC time its question was asked.
+  - **Supersedes (planning text, not ADRs):** the service-floor non-goal (`service-floor-charter.md:69`, `:71-74`) and its restatements in the service-floor, scenario and /team planning docs.
+  - [ADR 0257](0257-dashboard-walk-through-r1-rulings.md) W22 and DASH-G6: **not amended** and not redrawn here.
+  - [ADR 0272](0272-a-ranking-or-a-pairing-is-printed-only-when-the-data-can-tell-it-apart.md) (Proposed) and [ADR 0294](0294-the-team-performance-card-prints-every-figure-with-its-unit.md) (Locked): bind how a ranking and a figure print.
+  - [ADR 0020](0020-no-fabricated-answers.md), [ADR 0051](0051-rebuilt-pages-show-live-data-only.md), [ADR 0067](0067-a-failed-read-is-never-an-empty-one.md): unknown is never a figure.
+  - [ADR 0303](0303-tables-learned-from-the-pos.md) `:60`: a hidden table is out of every table figure and ranking.
+  - [ADR 0348](0348-staff-are-refused-the-table-and-server-takings-and-the-rest-is-withheld-after-617.md) (Locked): staff are refused the table and server takings now, and the rest is withheld after #617. [ADR 0298](0298-cost-of-goods-is-what-sold-and-concentration-reads-the-till.md) (Proposed) decision 9: the till's figures reach only a caller who sees sales.
+  - Source app: `/Users/aldemirkonuk/Projects/checker` at `5958689` (its `lib/` files cited here carry no uncommitted changes; `components/ManagerBoard.tsx` does, so it is cited at `HEAD`).
+
+## Context
+
+### What the founder said
+
+- **2026-10-01, DASH-G6** (verbatim, `0257:79`): *"narrow claim,. + but keep in my mind when we integrate the POS and when system start to work we're going to using floor coverage software we're going save the stats of each waiter, and they'll be able to see table invoices."* ADR 0257 recorded it as a direction: the staff-and-money line W22 *"is to be redrawn then, not hardened now"* (`0257:146`, ADR 0257's words).
+- **2026-10-30 EDT, round 1** (AskUserQuestion asked 2026-10-31T02:52:37Z, Q2). The question, verbatim: *"The Mudavym charter forbids per-waiter scores and rankings ('by shift or section, not by name'), but on 2026-10-01 you said we'd save each waiter's stats. Checker has a waiter score (100, halves when late) and per-waiter reports. What should ship?"* Among the options was *"Full checker metrics"* ("Keep the waiter score, per-waiter reports and CSV exports as built in checker. Fully reverses the charter rule."). His typed answer, in place of an option, verbatim: **"EVERYTHING"**. That its scope is the waiter score, per-waiter reports, rankings and CSV is the executor's reading, from that question and from the next round's, which took it up as "'Everything' ships" and said "Managers and owners see all scores, rankings and CSV either way."
+- **2026-10-30 EDT, round 2** (AskUserQuestion asked 2026-10-31T03:03:50Z, Q3). The question, verbatim: *"'Everything' ships. What does a WAITER see on their own phone? (Managers and owners see all scores, rankings and CSV either way.)"* His pick, verbatim: **"Nothing for now"**, whose option text reads "Waiters only tap check-ins; all figures stay with managers for the first rollout." It is not the option marked (Recommended), *"Own stats + own invoices (Recommended)"*.
+- **2026-10-30 EDT, round 3** (AskUserQuestion asked 2026-10-31T03:41:53Z, Q1–Q4). He picked all fourteen offered features (listed in ADR 0345 § Context › His fourteen picks), among them *"Till vs floor mismatch"* (option text: "After service: 'the till closed a check at T12 while the floor showed it empty', 'a party left with no check'. A check on the honour system. M-L; needs a real till feed (sim only today)."), *"Paid tap"* and *"Fix staff money leak now"*.
+- **2026-10-30 EDT, round 4** (AskUserQuestion asked 2026-10-31T03:46:17Z, Q4), the till's closed check, verbatim: **"Auto-Paid, never auto-leave (Recommended)"**, whose option text reads "A closed check marks the table Paid (with one-tap undo for split bills); the waiter still taps Leave. Voided checks and backfills are ignored."
+- **2026-10-31** (AskUserQuestion asked 2026-10-31T04:34:21Z, Q1), the scope of the leak fix, verbatim pick: **"Your pick now, rest after #617 (Recommended)"**. Its option text, paraphrased here (ADR 0348 quotes it in full): the fix closes only what he picked, the three waiter and table reports and adding a table; staff still see cost, margin, vendor spend, the till total, and the waiter ranking inside insights and recommendations until a follow-up after #617 merges withholds them; and that follow-up must land before any waiter is invited to the floor phone.
+
+### What the corpus said
+
+- The charter's non-goal row (`service-floor-charter.md:69`, "Staff performance management", owned by nobody, deliberately), and its paragraph: the team *"does **not** produce staff performance scores, rankings, or disciplinary evidence. If check-in timing becomes a management stick, the data becomes adversarial and the product stops working"* (`:71-74`).
+- The premortem's M2 names the failure: once check-in data is management evidence, *"staff optimize the measurement: tap check-ins from the pass, leave the phone in an apron on a station, check in for each other"*, producing *"confident, false compliance data"* (`service-floor-premortem.md:50-52`). Its earliest signal is compliance near 100% while table outcomes do not move, and *"the **first** request for a per-staff ranking or export"* (`:55-57`). Counter-pressure (c) is *"service-level views by shift or section, not by name, unless the founder explicitly reverses"* (`:64-66`).
+- The directive makes reversal a founder decision (`service-floor-directive.md:83-88`). This record is that reversal in writing; the founder made it in AskUserQuestion, not here.
+
+## Decision
+
+**Per-waiter score, on-time %, coverage attribution, per-waiter reports, rankings and CSV ship. Owners and managers see them; staff see none, on any surface, until a later ruling.**
+
+### D1
+
+**The founder's.** The checker's per-waiter figures (its waiter score, on-time %, coverage attribution, per-waiter report and CSV, at `5958689`) ship, from the floor's own rows. Owed, not built: the floor's reports, waiter score, ranked lists, CSV export, seating timeline and till-vs-floor mismatch check, computed on real rows (not the checker's mock), shown to owners and managers only, under D2–D11.
+
+### D2
+
+**The executor's reading of *"Nothing for now"*, following its option text ("all figures stay with managers") and the question's ("Managers and owners see all scores, rankings and CSV either way"); not his words.** Visible to the `owner` and `manager` roles only (`apps/api-gateway/src/auth/guards/roles.guard.ts:5`: `"owner" | "manager" | "staff"`). Area, kitchen and bar leads hold `staff` (the lead mark changes no house role, `0218:140-141`) and see none: the founder's F4 pick, *"No, owner/manager only (Recommended)"* (AskUserQuestion asked 2026-10-31T06:00:41Z, Q3), whose option text reads "A lead sees what any staff member sees: taps and the 'Out tonight' list, with no scores. No new gate is needed." That text also says what any staff member sees, so D2's reading for every surface now matches the option he picked; the reading itself stays the executor's.
+
+### D3
+
+**The executor's design. Access is checked at the gateway, then the socket, then the export.**
+
+- Every floor route returning a per-name figure carries `@UseGuards(RolesGuard)` and `@Roles("owner", "manager")`, as `PATCH /analytics/tables` does (`apps/api-gateway/src/analytics/analytics.controller.ts:676-678`). The global `TenantGuard` reads no role (`common/tenant/tenant.guard.ts`: 0 matches for `role`; registered at `app.module.ts:187-188`).
+- Per-name floor payloads go out only through `emitToHouseRoles` (`websocket/websocket.gateway.ts:663-691`), never to `restaurant:<id>`, which staff sockets also join (`:39-43`; joined at `:343`).
+- The CSV is a cutting of the reports export module: its controller is already owner/manager (`reports/exports/report-exports.controller.ts:55-56`), and exports are deleted after 90 days (`report-export-retention.cron.ts:1-4`).
+- **Prerequisite: two changes land before any waiter is invited to the floor phone** (ADR 0345 § Decision › The staff-invite step).
+  1. **Landed.** PR #701 (`fix/analytics-money-routes-need-a-manager`) merged as `e7ef31145` and is recorded as ADR 0348 (Locked). It gives `GET table-performance` (`analytics.controller.ts:723-725` at `5e966c8b6`), `GET waiters` (`:747-749`), `GET hot-tables` (`:780-782`) and `POST tables` (`:595-597`) `@UseGuards(RolesGuard)` and `@Roles("owner", "manager")`, pinned by `analytics-money-needs-a-manager.spec.ts` and by the claim `A-TABLE-AND-SERVER-TAKINGS-NEED-A-MANAGER` (`.planning/decisions/claims.d/fix-analytics-money-routes-need-a-manager.jsonl:1`). Before it, their class carried `@UseGuards(JwtAuthGuard)` only (`:132`), and `GET waiters` returned per-server revenue, average check, wine attach, tip % and peer ranks (described at `:753`) to any member of the house. This is the founder's *"Fix staff money leak now"* pick, scoped on 2026-10-31 by *"Your pick now, rest after #617 (Recommended)"* (Context).
+  2. **Owed, not built.** A follow-up, after #617 merges, withholds the rest from staff the way #617 does (the route stays and the figures are withheld; ADR 0298 decision 9, `0298-cost-of-goods-is-what-sold-and-concentration-reads-the-till.md:70`): cost, margin, vendor spend, the till total, and the waiter ranking inside insights (`peer_rank`) and recommendations (`staff_spread`, `analytics/recommendations.service.ts:770`). PR #701 filed that residual as `.planning/tech-debt.d/2026-10-31-fix-analytics-money-routes-need-a-manager.md`. At `5e966c8b6`, `peer_rank` and `staff_spread` still reach a staff login, so this step stays owed.
+
+### D4
+
+**The executor's design, except (b) and (c), which are the founder's F1 pick, *"Fix both (Recommended)"* (AskUserQuestion asked 2026-10-31T06:00:41Z, Q1). The score's curve is ported, with five corrections, (a)–(e):** what it prints with no evidence (a), which gaps count and whose they are (b, c, e), and the on-time boundary (d). His option text: "Silence counts as one long gap, so a waiter who never taps scores low, not 100. The seated-to-first-visit gap goes to the table's waiter. Scores will differ from the old checker's." Where (b) and (c) say more than that text (where the open gap ends, the 120-minute rule, credit at seat time), the detail is the executor's.
+
+- (a) **No evidence is "—", not 100.** No gaps in the window prints the em dash (ADR 0051 `:57-59`). So does the live board's on-time for a waiter holding no tables.
+- (b) **Silence is not rewarded.** In the checker, a party seated and never visited yields no gap and a score of 100, while one late visit scores low. The port counts the open gap: from the last anchor to Paid (tap or the till's auto-Paid), or to leave when nothing marked Paid, is one gap when it exceeds T. A gap over 120 minutes is kept, not dropped.
+- (c) **The greeting gap belongs to the table's waiter.** The checker writes the seated event's actor as whoever seated (`app/actions.ts:233`), while the seating's caretaker is the assigned waiter (`:222`). With the prior-actor credit rule, a manager who seats the party collects the greeting gap. The port credits the seated → first-visit gap to the seating's caretaker at seat time. The handoff rule for later gaps (`response-time.ts:33-41`) is kept.
+- (d) **One boundary.** On-time means t ≤ T, the score's full-marks rule (`waiter-score.ts:68`). The checker counts on-time as t < T (`reports.ts:182`), so a gap of exactly T scored 100 and was not on time. The live board's *On time* status (`lib/freshness.ts:16-18`, labelled at `:22`), whose per-waiter share is described under *What the checker computes*, takes the same t ≤ T boundary on the unfloored time since the anchor, so *Due soon* starts the moment a table passes T, as in the checker (`:3-6` floors the minutes, `:17` warns at minute T) except at exactly T; the minute count shown stays floored; comparing unfloored minutes is the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242), not his pick.
+- (e) **Paid stops the clock.** After Paid, no gap accrues to anyone. This follows the founder's Paid and auto-Paid picks.
+
+### D5
+
+**The executor's design; its sort-only rule and its hidden-table rule are the founder's F3 and F7 picks. How ADR 0272 binds the ranking.** ADR 0272 is Proposed (`0272:3`). Its rule gates a printed "#1" (`0272:36-40`); it does not gate the order of a descriptive register (`0272:92`).
+
+- The ranked lists ship as sort orders, as in the checker. A list's order is not a claim that adjacent waiters differ.
+- Once a load-adjusted fit exists, a "#1" or "top" prints only when `leaderTest` (`apps/api-gateway/src/analytics/engine/comparisons.ts:436`) rejects at `SIGNIFICANCE_ALPHA` 0.05 (`analytics/insights/insight-generator.service.ts:141`) against both the runner-up and the Bonferroni-corrected pooled rest. A "bottom" prints only when the same test, run on the negated visit scores, rejects. No other rank number or medal prints: `leaderTest` tests only the highest mean (`comparisons.ts:443-448`, `:463`), and nothing in `comparisons.ts` tests a middle place (`peerComparison`, `:107`, numbers ranks without a test). The observation is the visit score, so the test's mean is the score's own statistic.
+- A waiter under `MIN_RANK_N` = 30 gaps in the window (`insight-generator.service.ts:142`; `leaderTest` filters at `comparisons.ts:444`) is listed but not placed.
+- ADR 0272 also makes a waiter's lead survive table adjustment (`0272:40`). No load-adjusted fit exists for visit scores, so no "#1", medal or "bottom" prints until one exists: the founder's F3 pick, *"No, sort only (Recommended)"* (AskUserQuestion asked 2026-10-31T06:00:41Z, Q2), whose option text reads "Lists stay sorted by score. No '#1', medal or 'bottom' label prints until a busy-table adjustment exists. This is ADR 0272's rule for the dashboard, applied to the floor." What a withheld #1 says is ADR 0272's open fork 2 (`0272:97`), not taken here.
+- A hidden table's seatings leave every per-table floor figure and table ranking (ADR 0303 `:60`). Whether they also leave a waiter's score ADR 0303 did not rule. The founder ruled it on 2026-10-31: a hidden table's past seatings stay in each waiter's score and rank, his F7 pick *"Keep them in (Recommended)"* (AskUserQuestion asked 2026-10-31T06:00:41Z, Q4), whose option text reads "This matches the till, where a hidden table's checks stay in the servers' figures. Hiding a table never rewrites a waiter's history."
+
+### D6
+
+**The executor's design. How ADR 0294 binds the figures.** ADR 0294 governs the /team Performance card. Its locked rules are applied to the floor by analogy:
+
+- Every figure prints with its unit and its count: "of 100, over N visits", "% of N visits", minutes, "N of M parties". The window is stated (M6, `0294:46`). Unknown is not zero (M4, `0294:44`), and here not 100 either.
+- A house comparison (a median score) prints only when it is fed by at least two distinct waiters, and it is the textbook median. Both are the founder's 2026-10-07 picks, *"At least two waiters (Recommended)"* and *"Textbook median (Recommended)"* (`0294:56`).
+- The two measures stay apart. The /team card is sales-ingest based (`06-pages/team.md:410-413`), and the floor score does not join it under this record.
+
+### D7
+
+**The executor's design. Each score says what stands behind it.** Beside the score: how many of its seatings a till check backs, when the house has a feed; otherwise *"self-reported taps; no till check at this house"* (the executor's copy).
+
+### D8
+
+**The executor's design.** The CSV carries the checker's columns, plus each figure's n, the window, the warn and late windows used, and the till-backed share. Its per-waiter alerts and nudges columns count an alert as [ADR 0351](0351-a-floor-alert-climbs-past-an-absent-person-at-once.md) § Decision › What managers see, and attribution counts it: against whoever held the table when it fired, the live cover or else the waiter, never against someone known to be absent then or no longer one of the house's active members. Each export is written to `system_audit_log` (`supabase/migrations/20260805000000_baseline_from_production.sql:5553`) with who exported which window.
+
+### D9
+
+**The founder's F2 pick, *"Describe the visits (Recommended)"* (AskUserQuestion asked 2026-10-31T16:54:31Z, Q1); the copy is the executor's. The word beside a score describes the visits, not the person.** His option text: "Same three bands, but the words describe the tables, not the person, e.g. 'Visits on time / Some late / Many late'. This matches your sort-only pick: no verdict on the waiter until busy tables are adjusted for." The bands keep the checker's cuts, 90 and 80 (`lib/waiter-score.ts:27-31`). The copy is that example: *Visits on time* (90 and up), *Some late* (80 to 89), *Many late* (below 80), replacing the checker's *On pace*, *Watch* and *Needs review* (`:33-41`). Taking the example as the copy is the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242), whose goal message (2026-10-31T16:57:09Z) reads, verbatim, *"complete the full integration with ful SOTA and robust connections with the current mudavym structure and foundation. Do not ask me anything just complete it fully."* The reason: the example is the only wording shown to him; rejected, fresh wording, which would put copy he never saw beside a name. A score of "—" (D4 (a)) carries no word, and the word prints with the score's count (D6) and claims no rank (D5).
+
+### D10
+
+**The founder's F5 pick, *"Keep, owners/managers only (Recommended)"* (AskUserQuestion asked 2026-10-31T16:54:31Z, Q2). A waiter who leaves keeps their floor history, named, for owners and managers.** His option text: "Their history stays as it was, named, visible only to owners and managers, like their shifts on /team. Deleting or anonymising later waits on the retention answer ADR 0218 already sent to counsel." "Like their shifts on /team" holds for kept and named, not for the audience or an end date. The mechanics are the executor's call under the founder's 2026-10-31T16:57:09Z delegation: the pick's own words govern, so managers keep the read and nothing is deleted or anonymised until counsel answers, and the floor's figures join counsel's retention question (`0218:573-575`; that line is owed). Rejected: owner-only, as on /team (his words say owners and managers); /team's five-year end (his words say deleting waits on counsel).
+
+### D11
+
+**The founder's F6 pick, *"Mudavym shows a notice (Recommended)"* (AskUserQuestion asked 2026-10-31T16:54:31Z, Q3); the line's wording is the executor's. The floor phone tells each waiter, the first time they sign in, that taps are timed and scored and who sees the scores.** His option text: "A one-line notice on the floor phone the first time a waiter signs in, saying taps are timed and scored and who sees the scores. Turkey's KVKK and California's CPRA both expect employees to be told." The line, in the executor's words, not a pick: "Your floor taps are timed and scored. Owners and managers see the scores; you do not." It shows once per waiter per house, and again if who sees the scores changes: the executor's call under the founder's 2026-10-31T16:57:09Z delegation; rejected, on every sign-in, which teaches a tap-through.
+
+## Consequences
+
+**Retire-to-write (CLAUDE.md §4).** This file is the one decision record §5 requires. It retires no document, as ADRs 0249, 0265, 0273, 0287 and 0314 did. Whether retire-to-write binds a new ADR is OD-243 (OPEN-DECISIONS.md:330 on main), open.
+
+## Review trail
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-11-01 | — | Part 1 of 2 |
