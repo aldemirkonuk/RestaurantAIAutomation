@@ -4,7 +4,7 @@
 - **Date:** 2026-10-31
 - **Decider:** Aldemir (founder) for the scope. PR #701's executor for the calls marked as its own.
 - **Keywords:** RolesGuard, @Roles, owner, manager, staff, admin, table-performance, waiters, hot-tables, POST tables, takings, peer rank, salesGateFor, withheld, held back, readers, AnalysisSpec, activeRole, insight-prefs, venue, consultants toggle, recommendation digest, toast sales, staff_spread, peer_rank, floor phone, PR15
-- **Links:** [[0162-managers-grant-manager-or-staff-on-both-doors]] (the house role is the access row's); [[0164-sessions-follow-membership-and-several-houses-choose]] (`RolesGuard` admits exactly what a route lists); [[0303-tables-learned-from-the-pos]] residual 12 (POST tables carried no role); [[0317-only-an-owner-or-manager-rules-a-day-out]] (owner and manager on an analytics write, the precedent for a delegated call); ADR 0298 decision 9, `0298-cost-of-goods-is-what-sold-and-concentration-reads-the-till.md:70` on PR #617's branch `fix/cost-and-revenue-from-the-pos` (`2c554ed5a`, not on `main`); ADR 0345 and `.planning/08-softwares/floor-checker.md` PR15 on branch `docs/floor-checker-is-a-mudavym-software` (uncommitted there on 2026-10-31); `.planning/tech-debt.d/2026-10-31-fix-analytics-money-routes-need-a-manager.md`; claim `A-TABLE-AND-SERVER-TAKINGS-NEED-A-MANAGER`; PR #701
+- **Links:** [[0162-managers-grant-manager-or-staff-on-both-doors]] (the house role is the access row's); [[0164-sessions-follow-membership-and-several-houses-choose]] (`RolesGuard` admits exactly what a route lists); [[0303-tables-learned-from-the-pos]] residual 12 (POST tables carried no role); [[0317-only-an-owner-or-manager-rules-a-day-out]] (owner and manager on an analytics write, the precedent for a delegated call); ADR 0298 decision 9, `0298-cost-of-goods-is-what-sold-and-concentration-reads-the-till.md:70` on PR #617's branch `fix/cost-and-revenue-from-the-pos` (`2c554ed5a`, not on `main`); ADR 0345 and `.planning/08-softwares/floor-checker.md` PR15 on branch `docs/floor-checker-is-a-mudavym-software` (uncommitted there on 2026-10-31) [2026-11-01: that branch was never pushed, and the note is held for the founder under OD-246; the port is [ADR 0345](0345-floor-checker-is-ported-into-mudavym.md), and the step cited is its § Decision › The staff-invite step]; `.planning/tech-debt.d/2026-10-31-fix-analytics-money-routes-need-a-manager.md`; claim `A-TABLE-AND-SERVER-TAKINGS-NEED-A-MANAGER`; PR #701
 
 ## Context
 
@@ -17,7 +17,7 @@ At `9914f5cbf` four routes in `apps/api-gateway/src/analytics/analytics.controll
 - GET `hot-tables/:restaurantId` (now `:757`): each open check's spend so far and its pace, with its table and its server's name.
 - POST `tables/:restaurantId` (now `:572`): the one writer of a table (ADR 0303 residual 12).
 
-On 2026-10-30 the founder picked, among the floor-checker features: *"Fix staff money leak now"* (`floor-checker.md:47` on the docs branch).
+On 2026-10-30 the founder picked, among the floor-checker features: *"Fix staff money leak now"* (`floor-checker.md:47` on the docs branch) [2026-11-01: that note is held under OD-246; the pick is in [ADR 0345](0345-floor-checker-is-ported-into-mudavym.md) § Context › His fourteen picks › pick 14].
 
 The first build gated 12 routes. Two reviewers blocked it. It went past the pick, and it refused whole routes where open PR #617 keeps the route and withholds the figures inside it (ADR 0298 decision 9, `salesGateFor`).
 
@@ -73,7 +73,7 @@ Staff keep every page. The four routes they were reading takings through name ow
      #617 withholds only the figures ADR 0298 moved onto the till. Its open claim `A-POS-MONEY-ANALYTICS-ROUTES-ARE-A-HOLDERS` also names `basket`.
    - The follow-up pins this with a spec on a staff token, not with a grep. Once #617 puts `salesGateFor(` into these bodies, a grep would read HOLDS while `staff_spread` and `peer_rank` still reach staff.
 4. **Binding precondition: the follow-up merges before any waiter is invited to the floor phone.**
-   - The floor-checker build plan carries it as PR15's dependency: *"No waiter is invited to /floor/me until both have merged"* (`.planning/08-softwares/floor-checker.md:387` on `docs/floor-checker-is-a-mudavym-software`; also `:199`). "Both" means #701 and this follow-up.
+   - The floor-checker build plan carries it as PR15's dependency: *"No waiter is invited to /floor/me until both have merged"* (`.planning/08-softwares/floor-checker.md:387` on `docs/floor-checker-is-a-mudavym-software`; also `:199`). "Both" means #701 and this follow-up. [2026-11-01: that note is held under OD-246, and the step it names is a build step, not a GitHub PR; the obligation is in [ADR 0345](0345-floor-checker-is-ported-into-mudavym.md) § Decision › The staff-invite step.]
    - The plan asks for a staff-token spec on each, showing that no per-name figure reaches staff.
    - Nothing in CI enforces it yet: no invite step exists to pin a claim on. The step that first lets a real house's staff reach `/floor/me` must check it.
 5. **Four writes that name no role, and one read** (*executor's call, not the founder's*, built in the follow-up rather than here, because the ruling scoped this PR to the four routes in item 1):
@@ -88,7 +88,7 @@ Staff keep every page. The four routes they were reading takings through name ow
 
    Why these are not refused in this PR: the ruling's text names exactly what this PR closes. Widening it was the first build's fault.
 6. **`hot-tables` and the floor phone** (*executor's call, not the founder's*). It stays owner and manager.
-   - The floor plan puts a live floor on the waiter's phone, and the founder's answer for what a waiter sees there is *"Nothing for now"* (`floor-checker.md:44`).
+   - The floor plan puts a live floor on the waiter's phone, and the founder's answer for what a waiter sees there is *"Nothing for now"* (`floor-checker.md:44`) [2026-11-01: that note is held under OD-246; the answer is in [ADR 0345](0345-floor-checker-is-ported-into-mudavym.md) § Context › The founder's rulings › Round 2].
    - If a later ruling gives waiters a live watch, it gets a route that carries no amount, or a new ruling on this one. It is not reopened quietly.
 
 ## Consequences
