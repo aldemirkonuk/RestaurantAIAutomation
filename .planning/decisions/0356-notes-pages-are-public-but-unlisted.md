@@ -1,4 +1,4 @@
-# 0355 — /notes/* pages are public but unlisted
+# 0356 — /notes/* pages are public but unlisted
 
 - **Status:** Locked
 - **Date:** 2026-11-01

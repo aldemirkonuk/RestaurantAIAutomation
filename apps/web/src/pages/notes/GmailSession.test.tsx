@@ -6,7 +6,7 @@ import { renderWithProviders } from '../../__tests__/utils/test-utils'
 import GmailSession from './GmailSession'
 import { publicRouteFor, PUBLIC_ROUTES } from '../../lib/seo/routes'
 
-/** ADR 0355: public on purpose, unlisted, so the shell's closed head applies. */
+/** ADR 0356: public on purpose, unlisted, so the shell's closed head applies. */
 describe('/notes/gmail-session', () => {
   it('renders the page with one h1 and the two-jobs summary', () => {
     renderWithProviders(<GmailSession />)

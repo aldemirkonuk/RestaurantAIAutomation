@@ -2,7 +2,7 @@ import { PublicShell } from '../../components/mudavym/PublicShell'
 
 /**
  * /notes/gmail-session: a short, dated summary of the Gmail and house-mail
- * handoff, public on purpose and unlisted (ADR 0355).
+ * handoff, public on purpose and unlisted (ADR 0356).
  *
  * The route is deliberately absent from PUBLIC_ROUTES (lib/seo/routes.ts), so
  * the shell serves it the closed head (`noindex, nofollow`), robots.txt
