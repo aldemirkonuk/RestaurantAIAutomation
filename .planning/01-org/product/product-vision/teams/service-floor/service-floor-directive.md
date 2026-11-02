@@ -85,7 +85,7 @@ performance scores, rankings, or disciplinary exports. The commercial purpose is
 and better service. Reversing this is a founder decision recorded in `OPEN-DECISIONS.md`,
 because the consequence — staff defeating the measurement and the data becoming confidently
 false — is a product failure, not a policy disagreement
-([[service-floor-premortem]] M2). [2026-10-31: to change under ADR 0346 § Decision (Proposed, not in force until it locks): the founder reversed it (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2); ADR 0346 records it, not an `OPEN-DECISIONS.md` row. Scores, rankings and exports go to owners and managers only; a waiter's own phone shows none (*"Nothing for now"*, AskUserQuestion asked 2026-10-31T03:03:50Z, Q3). M2's consequence stands (ADR 0346 § The risk the charter named): its mitigations do not stop a manager using a true figure as a stick.]
+([[service-floor-premortem]] M2). [2026-10-31: to change under ADR 0346 § Decision (Proposed, not in force until it locks): the founder reversed it (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2); ADR 0346 records his ruling, his answer to a question that named this non-goal (ADR 0346 § Context, round 1), so no `OPEN-DECISIONS.md` row is open for it. Scores, rankings and exports go to owners and managers only; a waiter's own phone shows none (*"Nothing for now"*, AskUserQuestion asked 2026-10-31T03:03:50Z, Q3). M2's consequence stands (ADR 0346 § The risk the charter named): its mitigations do not stop a manager using a true figure as a stick.]
 
 ## Escalation trigger
 
