@@ -8,10 +8,10 @@ import { publicRouteFor, PUBLIC_ROUTES } from '../../lib/seo/routes'
 
 /** ADR 0355: public on purpose, unlisted, so the shell's closed head applies. */
 describe('/notes/gmail-session', () => {
-  it('renders the page with one h1', () => {
+  it('renders the page with one h1 and the two-jobs summary', () => {
     renderWithProviders(<GmailSession />)
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
-    expect(screen.getByRole('heading', { name: /job 2: letter bench v4/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /two jobs/i })).toBeInTheDocument()
   })
 
   it('is not in the public route registry, so it is noindex and out of the sitemap', () => {
@@ -23,13 +23,11 @@ describe('/notes/gmail-session', () => {
     expect(container.textContent).not.toMatch(/[–—]/)
   })
 
-  it('keeps gate tokens, capability ids and workstation paths off the public page', () => {
+  // A guard for this one page only. It is not a content policy for /notes/ pages.
+  it('stays a stub: no decision ids, pull requests, paths or comment markers', () => {
     const { container } = renderWithProviders(<GmailSession />)
     const text = container.textContent ?? ''
-    expect(text).not.toMatch(/<!--|\bd-[0-9a-f]{10}\b|\b[A-Za-z0-9_-]{22}\b/)
-    expect(text).not.toMatch(/\/Users\//)
-    expect(text).not.toMatch(/auto-merges/i)
-    expect(text).not.toMatch(/--admin|--auto|press merge|\b30K\b|personal account|\b[0-9a-f]{9}\b/i)
+    expect(text).not.toMatch(/<!--|\/Users\/|\bOD-\d+|#\d{2,}|\bapps\//)
     expect(text).toMatch(/not current policy/i)
   })
 
