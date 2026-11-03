@@ -24,14 +24,31 @@ export type FreshnessStatus = "fresh" | "warn" | "late" | "idle";
  * Statuses compare these (Proposed ADR 0346 D4 (d): the board compares unfloored
  * minutes). `minutesSince` floors them for display.
  */
-/** A trailing `Z` or `±HH`, `±HH:MM` or `±HHMM` offset. */
-const HAS_OFFSET = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
+/**
+ * The one shape read: `YYYY-MM-DDTHH:MM[:SS[.fff]]` plus `Z`, `±HH`, `±HH:MM`
+ * or `±HHMM`, as PostgREST prints `timestamptz`. It is parsed by hand, not by
+ * `Date`, whose reading of anything else differs between browsers.
+ */
+const ISO_WITH_OFFSET =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(?:Z|([+-])(\d{2})(?::?(\d{2}))?)$/i;
+
+function parseIsoMs(iso: string): number | null {
+  const m = ISO_WITH_OFFSET.exec(iso);
+  if (!m) return null;
+  const [y, mo, d, h, mi, sec = 0] = m.slice(1, 7).map((v) => Number(v ?? 0));
+  const offH = Number(m[9] ?? 0);
+  const offM = Number(m[10] ?? 0);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || sec > 59) return null;
+  if (offH > 23 || offM > 59) return null;
+  const fracMs = m[7] ? Number(`0.${m[7]}`) * 1000 : 0;
+  const offset = (m[8] === "-" ? -1 : 1) * (offH * 60 + offM) * 60000;
+  return Date.UTC(y, mo - 1, d, h, mi, sec) + fracMs - offset;
+}
 
 export function exactMinutesSince(iso: string | null, now: number): number | null {
-  if (!iso || !HAS_OFFSET.test(iso)) return null;
-  // `Date` rejects a bare `±HH`, so it is widened to `±HH:00`.
-  const ms = new Date(iso.replace(/([+-]\d{2})$/, "$1:00")).getTime();
-  if (!Number.isFinite(ms) || !Number.isFinite(now)) return null;
+  if (!iso) return null;
+  const ms = parseIsoMs(iso);
+  if (ms === null || !Number.isFinite(now)) return null;
   return Math.max(0, (now - ms) / 60000);
 }
 

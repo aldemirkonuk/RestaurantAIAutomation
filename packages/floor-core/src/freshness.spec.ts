@@ -25,6 +25,16 @@ describe("minutesSince and exactMinutesSince", () => {
     expect(exactMinutesSince(iso.replace("Z", "+00:00"), T0)).toBe(exactMinutesSince(iso, T0));
     expect(exactMinutesSince(iso.replace("Z", "+0000"), T0)).toBe(exactMinutesSince(iso, T0));
     expect(exactMinutesSince(iso.replace("Z", "+00"), T0)).toBe(exactMinutesSince(iso, T0));
+    expect(exactMinutesSince("2026-11-03 12:00:00+00", T0)).toBeNull();
+    expect(exactMinutesSince("2026-13-03T12:00:00Z", T0)).toBeNull();
+  });
+
+  it("reads an offset the way it is written", () => {
+    const utc = "2026-11-03T12:00:00Z";
+    const now = Date.parse(utc) + 30 * MIN;
+    expect(exactMinutesSince("2026-11-03T15:00:00+03:00", now)).toBe(30);
+    expect(exactMinutesSince("2026-11-03T07:00:00-0500", now)).toBe(30);
+    expect(exactMinutesSince("2026-11-03T12:00:00.500Z", now)).toBeCloseTo(29.99, 2);
   });
 
   it("floors for display and keeps the fraction for statuses", () => {
@@ -60,11 +70,13 @@ describe("freshnessOf (ADR 0346 D4 (d))", () => {
     expect(freshnessOf(null, WARN, LATE)).toBe("idle");
   });
 
-  it("reads a non-finite minute or setting as late (OD-256)", () => {
+  it("reads a non-finite minute, or a null, missing or non-finite setting, as late (OD-256)", () => {
     expect(freshnessOf(NaN, WARN, LATE)).toBe("late");
     expect(freshnessOf(Infinity, WARN, LATE)).toBe("late");
     expect(freshnessOf(3, NaN, LATE)).toBe("late");
     expect(freshnessOf(3, WARN, -Infinity)).toBe("late");
+    expect(freshnessOf(3, null as unknown as number, LATE)).toBe("late");
+    expect(freshnessOf(3, WARN, undefined as unknown as number)).toBe("late");
   });
 });
 
