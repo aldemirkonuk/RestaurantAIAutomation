@@ -409,8 +409,8 @@ nothing in the repository writes), :516 (`restaurants/members`), :87 (`calendar`
 **Core** — operate (scheduling is operating furniture; no S-scenario claims it as
 spine). Boundary that binds this page's future: Floor Checker scenarios
 (S05/S07/S16) "must never be sold as staff performance analytics"
-([TIER-MAP](../03-scenarios/TIER-MAP.md):104-105) — the PerformancePanel here is
-sales-ingest based, which is the permitted kind; keep the two apart.
+([TIER-MAP](../03-scenarios/TIER-MAP.md):104-105 [2026-10-31: corrected to `:117-118`, the quoted boundary; `:104-105` is the POS bullet, as when cited]) — the PerformancePanel here is
+sales-ingest based, which is the permitted kind; keep the two apart. [2026-10-31: to change under [ADR 0346](../decisions/0346-waiter-scores-and-rankings-ship-to-managers.md) (Proposed, not in force until it locks) § Decision for per-waiter floor figures, which ship to owners and managers (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2). The measures still stay apart: ADR 0346 § Decision › D6 keeps the floor score off this card. Until it locks, what it brackets holds.]
 
 ## 7. Rebrand surface
 
@@ -682,9 +682,9 @@ real upload; the performance panel refuses to draw numbers it does not have and 
 the rule (`PerformancePanel.tsx:200-207`); `TeamNext`'s error banner, its `— ` for an
 unanswered count, and its *"a withheld number, not a zero"* labour copy.
 
-The boundary to defend: TIER-MAP:104-105 — Floor Checker scenarios (S05/S07/S16)
+The boundary to defend: TIER-MAP:104-105 [2026-10-31: corrected to `:117-118`, the boundary; `:104-105` is the POS bullet] — Floor Checker scenarios (S05/S07/S16)
 "must never be sold as staff performance analytics". `PerformancePanel` is
-sales-ingest based, which is the permitted kind. Keep them apart.
+sales-ingest based, which is the permitted kind. Keep them apart. [2026-10-31: to change under ADR 0346 (Proposed, not in force until it locks) § Decision for per-waiter floor figures, which ship to owners and managers (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2); the two measures still stay apart (§ Decision › D6 keeps the floor score off this card). Until it locks, what it brackets holds.]
 
 ## 13. Roadmap
 
