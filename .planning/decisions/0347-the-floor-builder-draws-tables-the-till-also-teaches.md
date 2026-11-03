@@ -1,7 +1,6 @@
 # 0347 — The floor builder draws and adds tables, and the till still teaches them
 
 - **Status:** Proposed (2026-10-31)
-- **Parts:** 2 of 3. The other parts land in later PRs of this series; until the last one merges, Consequences and the Review trail below are stubs.
 - **Amends:** [ADR 0303](0303-tables-learned-from-the-pos.md), which is itself still `Proposed` (`0303:3`). A lock is his. If he locks 0303, he locks it as amended here, or he rejects this amendment.
 - **Date:** 2026-10-31 (rulings of 2026-10-30 EDT and 2026-10-31, session ca58311b)
 - **Decider:** the founder, in AskUserQuestion. His 2026-10-30 EDT picks, quoted in *Context*, decide D1 and D2: his typed builder answer, *"Optional seats (Recommended)"*, *"Both, one shared form (Recommended)"* and *"Builder starts from the till"*. His 2026-10-31 answers to F1 and F3 decide what D2 says of residuals 5 and 17. Which 0303 sentences change and which stand is the executor's reading of those picks, and so is reading his builder answer as setting aside 0303's *"No drawing."* (D1). D3 to D6 and D8 are the executor's design and mapping. The picks they build are his: seats in D4, the till start in D5, and his F3 and F4 answers in D3 and D8. D7 moved to ADR 0353. D9's mechanics are the executor's design. D10 to D12 build his F1, F2 and F5 picks with the executor's mechanics. D10's rule that a kept table may be hidden while a twin points at it, D11's Put back and D12's straight line are the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242 (OPEN-DECISIONS.md:329 on main)), not his pick.
@@ -278,9 +277,77 @@ ADR 0345 makes the floor's own tables new floor migrations (ADR 0345 § Decision
 
 **Retire-to-write (CLAUDE.md §4).** This file is the one decision record §5 requires. It retires no document, as ADRs 0249, 0265, 0273, 0287 and 0314 did. Whether retire-to-write binds a new ADR is OD-243 (OPEN-DECISIONS.md:330 on main), open.
 
+### Easier
+
+- A table with no digit in its name ("Bar", "Window") can finally exist, in either screen, and its waiting checks link to it.
+- The till's tables arrive in the builder ready to be named and placed, rather than redrawn.
+- One route and one guard means there is one place where a twin can be refused.
+- The overwriting, seat-guessing create route goes away (its role guard is on main since PR #701).
+- The floor and the room analytics read one table identity.
+- A till-taught twin can be folded, and new checks then reach the kept table (D10). A word that is not a table can leave the waiting list (D11). Once the owner sets a scale, the plan fills the room distances (D12).
+
+### Harder, or given up
+
+- The twin guard refuses some names a person might want (the "5" and "Table 5" pair). The person must rename or show the existing table instead.
+- Hiding a table with an open seating is refused.
+- Per-seat figures stay empty until people type seat counts.
+- Builder plan units are not metres, so the distance figures need a scale step before the plan can feed them (D12). A derived distance is a straight line on the plan, not a walking path.
+- A folded twin's past checks stay on the twin, out of the kept table's per-table figures, and a kept table cannot be retired or folded while a twin points at it (D10).
+
+### Residuals
+
+- Residual 16 (`0303:108`) stays: two concurrent case-different names can both land, because `uq_restaurant_tables_label` is case-sensitive (`baseline_from_production.sql:11922`). A unique index on `(restaurant_id, lower(btrim(label)))` would close it.
+- Residual 15 (`0303:107`) stays: no cap on how many tables one house can learn. `POST /pos-hub/import/:restaurantId` still carries only the class guard (`pos-hub.controller.ts:53`, `:129`). The tray makes it visible, but does not fix it.
+- Residual 5 (`0303:97`) closes for new checks through D10's fold. Past checks stay where they were.
+
+### Not verified
+
+- Whether production already holds case-different label pairs, which would block that unique index.
+- Whether a production till posts closed checks with a table word during service.
+- Whether a table can hold more than one open seating (seatings are new floor migrations, ADR 0345 § Decision). If it can, the Paid rule must mark none (ADR 0353 § Decision).
+- Whether the `addtable` lane rebases on current main (`5e966c8b6`).
+- The role of the scenario runner's account.
+- Whether production already holds twin pairs (a learned "T7" beside a drawn "7"). No query was run. The tray will list them.
+
+### Forks answered
+
+The founder answered F1 to F5 in AskUserQuestion on 2026-10-31, before his delegation, and F6 by his 2026-10-30 option text. Each was answered before filing, so none became an OD row.
+
+- **F1, folding a till-taught twin (residual 5), → D10.** His pick: *"Merge words, hide twin (Recommended)"* (asked 2026-10-31T16:54:31Z, Q4). Not picked: *"Hide the twin only"* and *"Merge and move past checks"*, the second of which breaks *"past checks never move"* (`0303:54`).
+- **F2, dismissing a digitless waiting word, → D11.** His pick: *"Per-house 'not a table' list (Recommended)"* (asked 16:55:36Z, Q1). Not picked: *"No dismiss"*.
+- **F3, the twin guard on rename, → D3.** His pick: *"Yes, same twin rule (Recommended)"* (asked 16:55:36Z, Q2). It closes residual 17 for renames.
+- **F4, a hidden table's past seatings in waiter figures, → D8.** His pick: *"Keep them in (Recommended)"* (asked 06:00:41Z, Q4), asked once, as one question for this record and for ADR 0346's F7.
+- **F5, plan-derived distances, → D12.** His pick: *"After a scale is set (Recommended)"* (asked 16:55:36Z, Q3). Not picked: *"Typed distances only"*. Deriving with no scale was rejected before he was asked, because plan units would be printed as metres.
+- **F6, a void after Paid,** moved with the Paid rule to ADR 0353 § Decision › Voids. It was not asked again: his 2026-10-30 pick *"Auto-Paid, never auto-leave (Recommended)"* carries the text "Voided checks and backfills are ignored." (asked 2026-10-31T03:46:17Z, Q4). Reading that text as "a void neither marks nor clears Paid" is the executor's call under the founder's 2026-10-31T16:57:09Z delegation, recorded there.
+
+### Where his picks were first kept
+
+The session's rulings record, a scratchpad file under `/private/tmp` that does not survive a reboot, kept his picks but not the option texts, and glossed three: "dash when unset, never a guessed 2; amends ADR 0303"; "builder AND Settings → Point of sale, one form, one twin-table guard"; "one-tap undo for split bills; voids and backfills ignored". Those glosses are the coordinator's summary, **not his words**. Each option text quoted in § Context says what its gloss says, and more.
+
+### Still owed
+
+Owed by the code PRs, not by a repo doc:
+
+- The create-only route, the twin guard on add and rename, and the migration that drops the `seats` and `is_outdoor` defaults, with the D9 claims and copy changes.
+- The fold and Not a table routes, D10 and D11's two migrations, their claims and their tests.
+- The builder's screens at `/floor/builder`: the tray, the words waiting for a table, and the one shared add-a-table form, mounted in the builder and in Settings → Point of sale.
+- The plan's scale and marks, D12's migration and its tests, and the derived distances.
+
+### Revisit when
+
+- the first real till house posts webhooks during service (the Paid rule's reach, ADR 0353);
+- an owner meets a refused name that is not a twin;
+- a mapped till's `pos_refs` word points at a folded twin (D10 follows one hop from the winner, whatever rank won);
+- the plan gains walls or aisles (D12's straight line could then become a walking path);
+- a Square house connects (the digit rule, `0303:66`).
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
-| 2026-11-01 | — | Part 1 of 3 |
-| 2026-11-01 | — | Part 2 of 3 |
+| 2026-10-31 | Executor, session ca58311b | Created. Not audited. |
+| 2026-10-31 | Fork-answer fold, same session | His F1 to F5 picks and his F6 option text folded in; D10, D11 and D12 added. Not audited. No adversarial pass was run on the D10 pointer, the D11 list or the D12 store. |
+| 2026-10-31 | Repair round, same session | Fork cites re-pointed to his verbatim answers; delegated calls marked. |
+| 2026-10-31 | Restructure, same session | Split into parts; old D7 (Paid) moved to ADR 0353; cites re-measured at `037452ebe`. Not audited. |
+| 2026-11-01 | Fork judge, same session | D10: a kept table may be hidden; its fold stands. Not audited. |
+| 2026-11-01 | executor | R3 rewrite: no held-note cites; single decision record |
