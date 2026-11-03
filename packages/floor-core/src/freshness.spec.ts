@@ -21,7 +21,8 @@ describe("minutesSince and exactMinutesSince", () => {
   it("reads a time without an offset as unreadable, not as local time", () => {
     expect(exactMinutesSince("2026-11-03T14:00:00", T0)).toBeNull();
     expect(exactMinutesSince("2026-11-03 14:00:00", T0)).toBeNull();
-    const iso = at(5);
+    const iso = at(-5);
+    expect(exactMinutesSince(iso, T0)).toBe(5);
     expect(exactMinutesSince(iso.replace("Z", "+00:00"), T0)).toBe(exactMinutesSince(iso, T0));
     expect(exactMinutesSince(iso.replace("Z", "+0000"), T0)).toBe(exactMinutesSince(iso, T0));
     expect(exactMinutesSince(iso.replace("Z", "+00"), T0)).toBe(exactMinutesSince(iso, T0));
@@ -67,6 +68,11 @@ describe("freshnessOf (ADR 0346 D4 (d))", () => {
     expect(freshnessOf(9, 9, 10)).toBe("fresh");
     expect(freshnessOf(9.5, 9, 10)).toBe("warn");
     expect(freshnessOf(10, 9, 10)).toBe("late");
+  });
+
+  it("has no Due soon when late is at or below the one-minute floor", () => {
+    expect(freshnessOf(1, 0, 1)).toBe("late");
+    expect(freshnessOf(0.5, 0, 1)).toBe("fresh");
   });
 
   it("takes T = max(1, warn), as the score does", () => {

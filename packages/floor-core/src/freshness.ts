@@ -91,8 +91,10 @@ export function minutesSince(iso: string | null, now: number): number | null {
  * Proposed ADR 0346 D4 (d), one boundary: on time means `sinceMin <= T`, the score's
  * full-marks rule, with T = max(1, `warnAfter`) as the score takes it (ADR
  * 0346 `:110`). `sinceMin` is unfloored (`exactMinutesSince`), so "Due soon"
- * starts the moment a table passes T and runs to `lateAfter` for every
- * warn < late pair, late = warn + 1 included (ADR 0346 `:204`). The checker
+ * starts the moment a table passes T and runs to `lateAfter` whenever
+ * `lateAfter` > T, late = warn + 1 included for `warnAfter >= 1` (ADR 0346
+ * `:204`). With `lateAfter <= 1` (warn 0, late 1) the window is empty and a
+ * table goes from on time straight to late; a spec pins that. The checker
  * returned "warn" at floored `sinceMin >= warnAfter`; for `warnAfter >= 1` the
  * two differ only at exactly t = T, and below 1 the floor of T = 1 keeps a
  * table on time for its first minute. The late boundary is unchanged.
