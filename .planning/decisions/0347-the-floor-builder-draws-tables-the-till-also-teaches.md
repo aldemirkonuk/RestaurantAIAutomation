@@ -1,7 +1,7 @@
 # 0347 — The floor builder draws and adds tables, and the till still teaches them
 
 - **Status:** Proposed (2026-10-31)
-- **Parts:** 1 of 3. The other parts land in later PRs of this series; until the last one merges, Consequences and the Review trail below are stubs.
+- **Parts:** 2 of 3. The other parts land in later PRs of this series; until the last one merges, Consequences and the Review trail below are stubs.
 - **Amends:** [ADR 0303](0303-tables-learned-from-the-pos.md), which is itself still `Proposed` (`0303:3`). A lock is his. If he locks 0303, he locks it as amended here, or he rejects this amendment.
 - **Date:** 2026-10-31 (rulings of 2026-10-30 EDT and 2026-10-31, session ca58311b)
 - **Decider:** the founder, in AskUserQuestion. His 2026-10-30 EDT picks, quoted in *Context*, decide D1 and D2: his typed builder answer, *"Optional seats (Recommended)"*, *"Both, one shared form (Recommended)"* and *"Builder starts from the till"*. His 2026-10-31 answers to F1 and F3 decide what D2 says of residuals 5 and 17. Which 0303 sentences change and which stand is the executor's reading of those picks, and so is reading his builder answer as setting aside 0303's *"No drawing."* (D1). D3 to D6 and D8 are the executor's design and mapping. The picks they build are his: seats in D4, the till start in D5, and his F3 and F4 answers in D3 and D8. D7 moved to ADR 0353. D9's mechanics are the executor's design. D10 to D12 build his F1, F2 and F5 picks with the executor's mechanics. D10's rule that a kept table may be hidden while a twin points at it, D11's Put back and D12's straight line are the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242 (OPEN-DECISIONS.md:329 on main)), not his pick.
@@ -154,6 +154,126 @@ The build PR changes, in the same commit as the code, every page sentence and ev
 - **0303's rule still holds.** The room reads only what was recorded, and NULL is not 0 (`0303:63`). A derived value exists only after the owner sets a scale.
 - **The straight line** is the executor's call under the founder's 2026-10-31T16:57:09Z delegation: a derived distance is the straight line between the table and the mark on the scaled plan, labelled "straight line on the plan".
 
+## What the code does today
+
+- **The only create route guesses, and it overwrites.**
+  - `POST /analytics/tables/:restaurantId` (`analytics.controller.ts:590-615`) is owner or manager only since PR #701 (ADR 0348) merged: `@UseGuards(RolesGuard)` and `@Roles("owner", "manager")` (`:596-597`), under the class's `JwtAuthGuard` (`:132`), and `apps/api-gateway/src/auth/guards/route-access.expected.json:17-20` records it so. PR #701 left the upsert as it was.
+  - Its description says *"Upserts on (restaurant, label)."* (`:601`). `upsertTable` writes `seats: Number(table.seats) || 2` (`apps/api-gateway/src/analytics/table-analytics.service.ts:59`), `is_outdoor: Boolean(table.is_outdoor)` (`:61`), then `.upsert(row, { onConflict: "restaurant_id,label" })` (`:72`).
+  - So a POST naming an existing label overwrites that table's seats, zone, outdoor flag, distances and position. A learned table's NULL seats become 2 when the POST gives no seat count (or 0), and its NULL `is_outdoor` becomes false when the POST gives none.
+  - The conflict key `uq_restaurant_tables_label` on `(restaurant_id, label)` is case-sensitive (`supabase/migrations/20260805000000_baseline_from_production.sql:11922`), so a POST of "t12" beside "T12" makes a twin. This is ADR 0303's residual 4 (`0303:96`) and residual 12 (`0303:104`).
+- **A table cannot be deleted while it has checks.** `pos_checks_table_id_fkey` has no ON DELETE action (`baseline_from_production.sql:12926`).
+- **Where a table lands on a plan is free today.** `x_pos` and `y_pos` are `numeric(8,2)` (`baseline_from_production.sql:5179-5180`). `upsertTable` writes them (`table-analytics.service.ts:65-66`), and nothing in `apps/` reads them.
+- **The distances are read.** The room's correlations read `distance_to_kitchen_m` (`table-analytics.service.ts:390`, `:535`), and so does the insight generator's driver step (`apps/api-gateway/src/analytics/insights/insight-generator.service.ts:2318`).
+
+## How it is built
+
+The mechanics behind § Decision, moved here so that part holds every binding rule. Each subsection serves the decision named in its heading.
+
+### The code behind D3 and D4
+
+- **No screen calls the create route.** A grep of `apps/web/src` and `apps/mobile` finds only `GET` and `PATCH` callers (`apps/web/src/pages/settings/next/PosSection.tsx:177`, `:242`), and the route's own comment says no web or mobile code calls it (`analytics.controller.ts:593`). The one caller is the scenario runner: `upsert_tables` posts `{"label", "seats"}` per table and relies on the upsert (`scripts/simulate/scenario_apply.py:161-189`, `:184`).
+- **The column defaults still guess.** The baseline gives `seats integer DEFAULT 2 NOT NULL` and `is_outdoor boolean DEFAULT false NOT NULL` (`baseline_from_production.sql:5173`, `:5175`). ADR 0303's migration dropped only NOT NULL (`20261222230000_tables_learned_from_the_pos.sql:130-131`); no migration drops either default. The learner writes NULL explicitly (`:307-310`), so the defaults bite only an insert that leaves the column out. No such insert exists in `apps/` today (grep).
+
+### The create route and twin guard, in detail (D3)
+
+- The guard is one SQL function, or one gateway reading of the same four rules; the build picks.
+- **The refusal sentence.** It names the table that answers. When that table is hidden, it says to show it again instead. When it is retired, it says the name cannot be used.
+- **What the guard refuses, and why.** It refuses "5" while a "Table 5" table exists, and "Table 5" while a "5" exists. That is deliberate: those two spellings are the case `0303:50` was asked on.
+- **On rename.** Today PATCH compares labels only, case-blind, against every other row of the house (`table-analytics.service.ts:140-150`), and the unique index answers a race with 23505 (`:163-166`). Both stay, and the guard is added in front of them. A table folded into another (D10) answers for the kept table, so a rename to its word names the kept table in the refusal.
+- **Prior work.** Unmerged: `origin/backup/2026-10-08/addtable` (head `75678fa12`) and `origin/backup/2026-10-08/seatsnote` (head `ef8c08605`). Neither has a PR: `gh pr list --state all --head` returned `[]` for `feat/add-a-table-by-hand` and for `fix/seats-chart-says-why-it-is-empty`, 2026-10-31. The lane `addtable` already built most of this for Settings (`91c30008b`): the route, insert-only, NULL when not given, range checks, `checksLinked` and the form.
+  - Its guard checks only the label and active `pos_refs` (`git show 75678fa12:apps/api-gateway/src/analytics/table-analytics.service.ts`, `:141-163`). It predates `till_words`/`former_labels`, which reached main with #621 on 2026-10-06, and must gain them.
+  - It validates `x_pos`/`y_pos` over -999999.99 to 999999.99 (`:115-116`). D6's plan units need 0 to 100, so the build narrows them.
+  - Its 83-line edit to 0303 (`git show --stat 91c30008b`) is replaced by this record. The build takes the lane's code, not its 0303 text.
+- **The scenario runner.** It must stop relying on the upsert (`scripts/simulate/scenario_apply.py:161-189`), as the lane's fix round `c24cc1565` did. The CLI test's fake transport answers every tables call with 200 (`scripts/test_simulate_scenarios.py:952`) and changes with it.
+  - Since PR #701 merged, this route refuses a login that is neither an owner nor a manager. So with such an account the runner's apply already fails, before D3 is built.
+  - Not verified: the role of the account the runner signs in with (`scenario_apply.py:112-133`; `SIM_OWNER_EMAIL` and `SIM_OWNER_PASSWORD`, `scripts/simulate/cli.py:452-463`).
+
+### The checker's builder features, mapped (D6)
+
+Source app: `/Users/aldemirkonuk/Projects/checker` at `5958689`. Every checker file cited here matches `HEAD`, with two exceptions. `EDGE_CASES.md` is modified in the working tree, but its line 18 is identical at `HEAD`. `lib/meal-alert.ts` is untracked (working tree only).
+
+**The checker guesses where Mudavym must not:** `seats int not null default 2` (`checker/supabase/migrations/0001_init.sql:59`), and `createTable` falls back to 2 (`checker/app/floor-actions.ts:208`); the capacity form falls back to 2 (`checker/components/FloorCapacitySettings.tsx:29`, `:35`); bulk setup picks the shape from the seat count, `defaultSeats > 4 ? "rect" : "round"` (`floor-actions.ts:323`); it deletes tables (`:668`, `:682`); merges add the seats up (`checker/lib/floor-merge.ts:238`, `:387`). Its seating has two states, `('seated', 'left')` (`0001_init.sql:12`). Its notes design "Mark paid": after it, "service obligations stop" and "the waiter is never flagged for a camping guest" (`checker/EDGE_CASES.md:18`).
+
+| Checker feature | Checker code (`5958689`) | In Mudavym |
+|---|---|---|
+| Sections: create, rename, delete | `app/floor-actions.ts:94`, `:129`, `:155`; deleting a section clears its tables' link (`0001_init.sql:57`) | `floor_sections` (ADR 0345). Deleting a section leaves its tables placed, with no section. |
+| Add a table | `createTable`, `floor-actions.ts:197`, seats `\|\| 2` (`:208`) | The D3 form and route, seats optional (D4). |
+| Edit a table | `updateTable`, `floor-actions.ts:614` | `PATCH /analytics/tables/:rid/:tid`, gaining `seats`, `is_outdoor`, `x_pos`, `y_pos`, `shape` and the section. Owner or manager, as today (`analytics.controller.ts:676-678`). |
+| Place and move tables | `moveTable`, `floor-actions.ts:776`; `PositionsCanvas`, `components/FloorBuilder.tsx:352`; 0 to 100 plan coordinates (`0001_init.sql:61`) | `x_pos`/`y_pos` hold plan units from 0 to 100, not metres. |
+| Shape | `table_shape ('round','rect')`, default round (`0001_init.sql:13`, `:60`); guessed from seats in bulk setup (`floor-actions.ts:323`) | A new nullable `shape` column with the same two values. NULL draws a plain marker. Never guessed from seats. |
+| Delete, bulk delete | `deleteTable`/`deleteTables`, `floor-actions.ts:668`, `:682`; bulk delete skips tables with open seatings or merges (`FloorBuilder.tsx:100`) | Hide and bulk hide (`0303:37`; `baseline_from_production.sql:12926`). Hiding a table with an open seating or an active merge is refused with a sentence that says so. The builder shows hidden tables in a closed "Hidden" group with Show. |
+| Quick start | `setupSeatingLayout`, `floor-actions.ts:262`; labels `{prefix}1`, `{prefix}2` and on (`:47-49`) | Offered only while the house has no table. Each label passes the D3 guard. Seats are set only if typed, and no shape is set. |
+| Default seats for new tables | `syncRestaurantCapacity`, `floor-actions.ts:424` (*"Default seats apply to newly created tables only"*, `:422`); form `\|\| 2` (`FloorCapacitySettings.tsx:29`, `:35`) | No default for future tables. Instead, an explicit "Set seats" act on the selected tables, each write validated as D4. |
+| Merges | `lib/floor-merge.ts` | ADR 0345's merge rows. A merge never writes `restaurant_tables`. Its seats follow D4. |
+
+ADR 0345 makes the floor's own tables new floor migrations (ADR 0345 § Decision) and does not fix where the plan's marks and scale are stored; the D12 mechanics below name that store.
+
+**Additions beyond the checker**, which his builder answer asks for (*Context*): the tray and the words waiting for a table, with their check counts (D5); the twin guard (D3); seats that are honestly unknown (D4); a till-driven Paid (ADR 0353).
+
+### The tray's waiting words, in detail (D5)
+
+- Mostly these are words with no digit. The list also holds a digit word that only a retired table answers (`0303:90`), and a word over 60 characters (`0303:47`, T29). For those two, "Make it a table" is refused, by the twin guard or by the 60-character rule (D3).
+- The list is read from `pos_checks` where `table_id IS NULL AND table_ref IS NOT NULL`, which the partial index `idx_pos_checks_unlinked_ref` serves (`20261222230000_tables_learned_from_the_pos.sql:149-151`).
+
+### Copy and claims, in detail (D9)
+
+- **`PosSection.tsx`.** *"Nothing is drawn."* (`:29`, `:255`) and *"No seat count or position is asked for here."* (`:36-37`) stop being true once D3 and D6 ship. *"Only the owner or a manager can rename or hide a table."* (`:323`) gains "add". The register's empty state (`rp-registers-house.tsx:391`) and the export's equivalent gain the clause about adding a table.
+- **`claims.d/feat-tables-learned-from-the-pos.jsonl:6`, `ADR-0303-NO-PAGE-ASKS-FOR-A-DRAWING`.** It checks for that exact `PosSection.tsx:323` sentence, so the build PR changes the row in the same commit as the copy. Its retired phrase ("has to be drawn before it can be read") stays retired: the builder is a screen, and no page tells the owner to draw.
+- **New rows the build PR adds**, each `open` until built: `table-analytics.service.ts` holds no `Number(table.seats) || 2`; a migration drops the `seats` and `is_outdoor` defaults.
+- **No new row for the roles.** They are pinned on main by `A-TABLE-AND-SERVER-TAKINGS-NEED-A-MANAGER` (`claims.d/fix-analytics-money-routes-need-a-manager.jsonl:1`, `resolved`) and by `route-access.expected.json:17-20`. An `open` row saying the route is no longer `"open"` would fail at once.
+
+### The fold, in detail (D10)
+
+- **Why hiding alone does not do it.** A hidden table still catches its checks (`20261222230000_tables_learned_from_the_pos.sql:140-141`). The resolver reads only `is_active` (`:236`), and the gateway's `loadTables` and `resolveTable` match by label among active rows (`apps/api-gateway/src/pos-hub/pos-hub.service.ts:1910-1947`). So a hidden 'T7' would keep every new 'T7' check, and none would reach table 7. The rejected *"Hide the twin only"* option said the twin would be recreated; by `:140-141` it would instead keep catching them.
+- **A pointer, not a word copy.** Three nullable columns go on `restaurant_tables`: `folded_into` (the kept table's id); `folded_by`, with an FK to `public.users(user_id)`; `folded_at`. Folding writes those three and `hidden_at` in one UPDATE.
+- **New checks go to the kept table.** When the winning row has a `folded_into`, `pos_table_for_ref` returns that id. It follows one hop only, because chains are refused (D10).
+  - `resolveTable` must do the same: a `table_id` the gateway sets stands (`20261222230000_tables_learned_from_the_pos.sql:291`), and `resolveTable` is the only gateway writer of `pos_checks.table_id` (`pos-hub.service.ts:1068`). So `loadTables` selects `folded_into` too.
+- **Past checks never move.** A fold writes no `pos_checks` row, and none of the three guarantees moves a link. In `20261222230000_tables_learned_from_the_pos.sql`: a re-sent check whose word is unchanged keeps its table (`:284-286`); the relink trigger fills only NULL links (`:441`); a fold changes none of the columns the relink-on-change trigger watches (`:459`).
+- **The refusals** of D10 are enforced by a trigger; the kept table's house, retired, hidden and folded states are checked at the fold.
+- **The kept table hidden.** Rejected: refusing that hide (it forces an unfold), unfolding on it, or a resolver that skips it. Each sends the 'T7' checks made while 7 is hidden to the twin, for good.
+- **The guard names the kept table.** When D3's guard refuses a name because a folded twin holds it, the message says where the word goes now ("'T7' already goes to table 7").
+- **Show undoes it.** Showing a folded twin clears those four columns in one UPDATE. Checks that reached table 7 while the twin was folded stay on table 7. A fold and its undo each write a `system_audit_log` row, as `stop-links-on-leaving.ts:116` writes one.
+- **Figures.** The twin's past checks stay on the hidden twin: out of every per-table figure (`0303:60`) and in takings. Its seatings stay in the waiter figures (D8, his F4 pick). Folding goes through the hide path, so the stored table insights are cleared and recomputed as for a hide (`analytics.controller.ts:692`, `:711`).
+- **A fold is not a floor merge.** A fold changes a table's identity until someone shows the twin again. A floor merge seats two tables for one party (ADR 0345).
+- **Route.** The rename and hide route and guard, `PATCH tables/:restaurantId/:tableId` (`analytics.controller.ts:676`), with a new `fold_into` field.
+- **Rejected:**
+  - Copying the twin's words into table 7's `till_words` and retiring the twin. That column is "Written by restaurant_tables_keep_till_names only" (`20261222230000_tables_learned_from_the_pos.sql:145`), the founder said *hidden*, not retired, and there would be no clean undo.
+  - Putting 'T7' into table 7's `pos_refs`. That holds one word per source (`:217`), and a mapped till already owns it.
+  - Moving past checks: his rejected *"Merge and move past checks"*.
+- **Build.** Migration `a_folded_twin_sends_new_checks_to_the_kept_table`, its version assigned at merge, with its claims and tests. Owed by the build PRs.
+
+### The not-a-table list, in detail (D11)
+
+- **Store.** A table `pos_not_table_words`: `restaurant_id`, with an FK to `restaurants`; `word`, stored as `lower(btrim())`, as the resolver normalises (`20261222230000_tables_learned_from_the_pos.sql:233`); `marked_by`, with an FK to `public.users(user_id)`; `marked_at`; primary key `(restaurant_id, word)`.
+  - RLS is on, with a service-role policy and `REVOKE ALL` from `anon` and `authenticated`, as `20260925160500_a_preference_is_kept_once_per_person_per_house.sql:125-131` does. Only the gateway reads or writes it.
+- **Why "never comes back" holds with D2 intact.** Every word that can wait is one the learner never learns: it has no digit, is over 60 characters, or is answered only by a retired table (`20261222230000_tables_learned_from_the_pos.sql:301-305`). So a check carrying the word still lands with `table_id` NULL.
+- **Put back.** The goal message the delegation rests on reads *"complete the full integration with ful SOTA and robust connections with the current mudavym structure and foundation. Do not ask me anything just complete it fully."* Rejected: no undo; and an undo that also moves past checks, which "never refuses or unlinks a check" rules out. Marking and putting back each write a `system_audit_log` row.
+- **A table named like a marked word.** `relink_on_add` links its waiting checks (`20261222230000_tables_learned_from_the_pos.sql:451-455`), and the marked row is then inert.
+- **Build.** Migration `a_house_says_a_word_is_not_a_table`, its version assigned at merge, with its tests. Owed by the build PRs.
+
+### The plan's scale and marks, in detail (D12)
+
+- **Store.** Floor-module rows (ADR 0345 § Decision, new migrations):
+  - A per-house plan row holds the plan's aspect ratio, so one scale holds on both axes of the 0 to 100 plan; metres per plan unit, with the two marked points and the typed length; `set_by`, with an FK to `public.users(user_id)`; and `set_at`.
+  - Plan marks hold a `kind` (kitchen, bar or pool) and `x`, `y`.
+  - Both have RLS on and `REVOKE ALL` from `anon` and `authenticated`.
+- **Typed always wins, mechanically.** Each table records which of its kitchen, bar and pool distances came from the plan (for example a `distances_from_plan text[]` column). A move, a mark or a scale change recomputes only those. Clearing the scale sets them back to NULL. A typed PATCH removes that kind from the set.
+- **Why a straight line.** The question said "walking distance" (AskUserQuestion asked 2026-10-31T16:55:36Z, Q3), but the plan holds no walls or aisles, so no walking path can be computed from it. His option text says only "distances come from the drawing". Rejected: a computed walking path, which needs geometry the plan does not have; calling the straight line "walking"; printing plan units as metres, which was rejected before he was asked.
+- **Build.** Migration `a_plan_has_a_scale_and_its_marks`, its version assigned at merge, with its tests. Owed by the build PRs.
+
+## Options considered
+
+1. **The builder edits `restaurant_tables` in place, the till keeps teaching, and one guarded create route serves both screens (chosen).** One table identity serves the till, the room analytics and the floor. What it costs: the create route is rebuilt (residual 4), and a guard must keep hand-added tables from twinning till-taught ones.
+2. **A separate builder-owned floor-table row, mapped to `restaurant_tables`.** It appeals because the checker's model ports one to one, and 0303's rules stay untouched. Rejected by the executor: there would be two identities for one table, so every check-to-floor join and every per-table figure needs a mapping that can drift. The twin problem `0303:50` closed would reopen between the two tables.
+3. **The builder only positions and sections till-taught tables, and adds none.** The architecture run wf_c6c2a59b-b8b (ADR 0345 § Options considered) named this the cheapest path, with no twin risk; it was offered to him as "Position only" (AskUserQuestion asked 2026-10-31T03:03:50Z, Q2). It is superseded by his builder answer and *"Both, one shared form (Recommended)"*.
+4. **The full checker builder as written:** hard delete, seats 2 by default, shape guessed from seats. Rejected:
+   - Deleting re-learns the table on its next check (`0303:37`), and the foreign key refuses it for any table that has checks (`baseline_from_production.sql:12926`).
+   - A default of 2 is the answer nobody gave (`0303:36`; ADR 0020), and he picked *"Optional seats (Recommended)"*.
+   - D6 rejects the shape guess.
+5. **For Paid, a database trigger on `pos_checks`.** Rejected: a trigger cannot emit to the board's sockets. It would also put floor code inside the check write that ADR 0303's trigger already guards, and a fault there would fail the check. The Paid rule is ADR 0353's now.
+6. **For Paid, derive it at read time by joining `pos_checks` to the open seating.** Rejected: there is no event for the board or the nudge scanner to react to, and an undo still needs stored state.
+7. *Doing nothing.* Residual 12 stays open (no table without a digit can ever exist), the builder cannot be built under `0303:24`, and the only create route keeps overwriting and guessing seats. Its role guard is on main either way, since PR #701.
+
 ## Consequences
 
 **Retire-to-write (CLAUDE.md §4).** This file is the one decision record §5 requires. It retires no document, as ADRs 0249, 0265, 0273, 0287 and 0314 did. Whether retire-to-write binds a new ADR is OD-243 (OPEN-DECISIONS.md:330 on main), open.
@@ -163,3 +283,4 @@ The build PR changes, in the same commit as the code, every page sentence and ev
 | Date | Reviewer | Outcome |
 |---|---|---|
 | 2026-11-01 | — | Part 1 of 3 |
+| 2026-11-01 | — | Part 2 of 3 |
