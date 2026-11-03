@@ -83,7 +83,7 @@ describe("founder F3 (2026-10-31): sort only, no rank", () => {
 
 /**
  * Every gap and house-minute argument of every guarded function gets all
- * three values (the severity cap is not a house minute and is not guarded).
+ * three values (the severity cap is not a house minute; it has its own spec).
  * For some pairs the unguarded formula already reads late (a +Infinity gap
  * scores 0), so those assertions pin the outcome, not the guard; the rest
  * fail when the guard for that argument is narrowed to skip that value.
@@ -95,30 +95,30 @@ const NON_FINITE: ReadonlyArray<readonly [string, number]> = [
 ];
 
 
-describe("a gap or house minute that is not a finite number reads late (executor's call)", () => {
+describe("OD-256: a gap that is not finite reads late; an unreadable house minute gives no score", () => {
   describe.each(NON_FINITE)("%s", (_label, x) => {
     it("visitScore gives 0, not full marks, and the waiter score follows", () => {
       expect(visitScore(x, WARN)).toBe(0);
-      expect(visitScore(5, x)).toBe(0);
+      expect(visitScore(5, x)).toBeNull();
       expect(waiterPerformanceScore([5, x], WARN)).toBe(50);
-      expect(waiterPerformanceScore([5, 5], x)).toBe(0);
+      expect(waiterPerformanceScore([5, 5], x)).toBeNull();
     });
 
-    it("latenessSeverity gives the cap, not 0", () => {
+    it("latenessSeverity gives the cap for a gap, null for a setting", () => {
       expect(latenessSeverity(x, WARN)).toBe(SEVERITY_CAP);
-      expect(latenessSeverity(5, x)).toBe(SEVERITY_CAP);
+      expect(latenessSeverity(5, x)).toBeNull();
       expect(latenessSeverity(x, WARN, 7)).toBe(7);
-      expect(latenessSeverity(5, x, 7)).toBe(7);
+      expect(latenessSeverity(5, x, 7)).toBeNull();
     });
 
     it("the report's on-time share counts none of them on time", () => {
       expect(onTimePct([5, x], WARN)).toBe(50);
-      expect(onTimePct([1, 5], x)).toBe(0);
+      expect(onTimePct([1, 5], x)).toBeNull();
     });
 
     it("the overdue count counts every one of them", () => {
       expect(overdueGapCount([5, x], LATE)).toBe(1);
-      expect(overdueGapCount([5, 20], x)).toBe(2);
+      expect(overdueGapCount([5, 20], x)).toBeNull();
     });
 
     it("freshnessOf reads late, not fresh; null is still no open seating", () => {
@@ -141,9 +141,29 @@ describe("a gap or house minute that is not a finite number reads late (executor
   });
 });
 
-describe("a severity cap that is not finite (OD-256)", () => {
-  it("falls back to SEVERITY_CAP, never NaN", () => {
+describe("the severity cap (OD-256)", () => {
+  it("falls back to SEVERITY_CAP for NaN or a negative cap, never NaN", () => {
     expect(latenessSeverity(20, 10, NaN)).toBeCloseTo(Math.exp((Math.LN2 / 10) * 10) - 1);
     expect(latenessSeverity(NaN, 10, NaN)).toBe(SEVERITY_CAP);
+    expect(latenessSeverity(NaN, 10, -1)).toBe(SEVERITY_CAP);
+    expect(latenessSeverity(100, 10, -Infinity)).toBe(SEVERITY_CAP);
+  });
+
+  it("leaves severity uncapped for an Infinity cap", () => {
+    expect(latenessSeverity(100, 10, Infinity)).toBeCloseTo(2 ** 9 - 1);
+  });
+});
+
+describe("OD-258: sortByScore puts a score that is not finite with the no-score rows", () => {
+  it("orders NaN and Infinity scores last, by id", () => {
+    const rows = [
+      { id: "b", score: NaN },
+      { id: "c", score: 70 },
+      { id: "a", score: Infinity },
+      { id: "d", score: null },
+      { id: "e", score: 90 },
+    ];
+    expect(sortByScore(rows).map((r) => r.id)).toEqual(["e", "c", "a", "b", "d"]);
+    expect(sortByScore(rows, "worst_first").map((r) => r.id)).toEqual(["c", "e", "a", "b", "d"]);
   });
 });
