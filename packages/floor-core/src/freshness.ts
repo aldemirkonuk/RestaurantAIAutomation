@@ -29,7 +29,8 @@ const HAS_OFFSET = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
 
 export function exactMinutesSince(iso: string | null, now: number): number | null {
   if (!iso || !HAS_OFFSET.test(iso)) return null;
-  const ms = new Date(iso).getTime();
+  // `Date` rejects a bare `±HH`, so it is widened to `±HH:00`.
+  const ms = new Date(iso.replace(/([+-]\d{2})$/, "$1:00")).getTime();
   if (!Number.isFinite(ms) || !Number.isFinite(now)) return null;
   return Math.max(0, (now - ms) / 60000);
 }
