@@ -18,6 +18,14 @@ describe("minutesSince and exactMinutesSince", () => {
     expect(minutesSince(at(0), NaN)).toBeNull();
   });
 
+  it("reads a time without an offset as unreadable, not as local time", () => {
+    expect(exactMinutesSince("2026-11-03T14:00:00", T0)).toBeNull();
+    expect(exactMinutesSince("2026-11-03 14:00:00", T0)).toBeNull();
+    const iso = at(5);
+    expect(exactMinutesSince(iso.replace("Z", "+00:00"), T0)).toBe(exactMinutesSince(iso, T0));
+    expect(exactMinutesSince(iso.replace("Z", "+0000"), T0)).toBe(exactMinutesSince(iso, T0));
+  });
+
   it("floors for display and keeps the fraction for statuses", () => {
     expect(minutesSince(at(0), T0 + 9.5 * MIN)).toBe(9);
     expect(exactMinutesSince(at(0), T0 + 9.5 * MIN)).toBe(9.5);
@@ -57,6 +65,10 @@ describe("freshnessOf (ADR 0346 D4 (d))", () => {
     expect(freshnessOf(3, NaN, LATE)).toBe("late");
     expect(freshnessOf(3, WARN, -Infinity)).toBe("late");
   });
+});
+
+it("freshnessOf reads an undefined minute as idle, as seatingFreshness does", () => {
+  expect(freshnessOf(undefined as unknown as null, WARN, LATE)).toBe("idle");
 });
 
 describe("seatingFreshness", () => {

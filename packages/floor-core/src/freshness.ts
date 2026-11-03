@@ -2,12 +2,18 @@
  * Table freshness: how long since a table's last visit, against the house's
  * warn and late minutes.
  *
- * Ported from the Floor Checker's `lib/freshness.ts` (frozen at `5958689`,
- * p4-scratch/floor-checker-freeze-2026-10-31). No clock is read here: every
+ * Ported from the Floor Checker's `lib/freshness.ts` (its repo frozen at
+ * commit `5958689`). No clock is read here: every
  * caller passes `now`, and the warn/late minutes are the house's settings.
  * `now` must come from the server's clock, never a phone's or browser's: a
  * slow client clock would read every overdue table as on time, since a time
- * ahead of `now` counts as 0 minutes.
+ * ahead of `now` counts as 0 minutes. A time must carry its offset (`Z` or
+ * `+03:00`): an offset-less one would parse as the reader's local time, so it
+ * is unreadable here, and an unreadable time reads late (OD-256).
+ *
+ * ADR 0346 and ADR 0353 are Proposed; every clause cited from them below is
+ * built as the executor's reading under OD-242 (OD-255 records why), and is
+ * re-read when the founder locks them.
  */
 
 /** From the checker's `lib/types.ts:26` (at `5958689`). */
@@ -15,11 +21,14 @@ export type FreshnessStatus = "fresh" | "warn" | "late" | "idle";
 
 /**
  * Minutes since `iso`, unfloored and never negative; null without a time.
- * Statuses compare these (ADR 0346 D4 (d): the board compares unfloored
+ * Statuses compare these (Proposed ADR 0346 D4 (d): the board compares unfloored
  * minutes). `minutesSince` floors them for display.
  */
+/** A trailing `Z` or `±HH:MM` / `±HHMM` offset. */
+const HAS_OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+
 export function exactMinutesSince(iso: string | null, now: number): number | null {
-  if (!iso) return null;
+  if (!iso || !HAS_OFFSET.test(iso)) return null;
   const ms = new Date(iso).getTime();
   if (!Number.isFinite(ms) || !Number.isFinite(now)) return null;
   return Math.max(0, (now - ms) / 60000);
@@ -27,7 +36,7 @@ export function exactMinutesSince(iso: string | null, now: number): number | nul
 
 /**
  * Whole minutes since `iso`, floored and never negative; null without a time.
- * The minute count shown (ADR 0346 D4 (d): it stays floored).
+ * The minute count shown (Proposed ADR 0346 D4 (d): it stays floored).
  *
  * An unparseable time is no time: null, never NaN. The checker's
  * `minutesSince` (`lib/freshness.ts:3-6` at `5958689`) gave NaN here, which
@@ -49,20 +58,21 @@ export function minutesSince(iso: string | null, now: number): number | null {
  * `seatingFreshness` instead, so an unvisited party or an unreadable time is
  * never read as idle.
  *
- * ADR 0346 D4 (d), one boundary: on time means `sinceMin <= T`, the score's
+ * Proposed ADR 0346 D4 (d), one boundary: on time means `sinceMin <= T`, the score's
  * full-marks rule, with T = max(1, `warnAfter`) as the score takes it (ADR
  * 0346 `:110`). `sinceMin` is unfloored (`exactMinutesSince`), so "Due soon"
  * starts the moment a table passes T and runs to `lateAfter` for every
  * warn < late pair, late = warn + 1 included (ADR 0346 `:204`). The checker
- * returned "warn" at floored `sinceMin >= warnAfter`; the two differ only at
- * exactly t = T. The late boundary is unchanged.
+ * returned "warn" at floored `sinceMin >= warnAfter`; for `warnAfter >= 1` the
+ * two differ only at exactly t = T, and below 1 the floor of T = 1 keeps a
+ * table on time for its first minute. The late boundary is unchanged.
  */
 export function freshnessOf(
   sinceMin: number | null,
   warnAfter: number,
   lateAfter: number,
 ): FreshnessStatus {
-  if (sinceMin === null) return "idle";
+  if (sinceMin == null) return "idle";
   // Open as OD-256, the executor's reading under OD-242, not the founder's
   // pick: a minute count or a warn/late minute that is not a finite number
   // (NaN, Infinity or -Infinity) reads late, as an unreadable time does in
@@ -86,8 +96,8 @@ export interface SeatingAnchors {
   seatedAt: string | null;
   /**
    * The later of the last visit (`floor_visits.visited_at`) and
-   * `paid_undone_at` (ADR 0347 D7: the late clock restarts from an undo of
-   * Paid); null when neither exists.
+   * `paid_undone_at` (Proposed ADR 0353 `:43`: the late clock restarts from
+   * the moment of an undo of Paid); null when neither exists.
    */
   lastVisitAt: string | null;
 }
@@ -95,9 +105,10 @@ export interface SeatingAnchors {
 /**
  * A table's status from its open seating: minutes since the last visit, else
  * since the seat time. Mudavym stores no last-visit column and no seated
- * visit row (PR3's `floor_seatings` and `floor_visits`), so a party nobody
+ * visit row (the `floor_seatings` and `floor_visits` tables a later part
+ * adds), so a party nobody
  * has visited has only its seat time; reading it as idle would be silence
- * read as health, which ADR 0346 D4 (b) removes.
+ * read as health, which Proposed ADR 0346 D4 (b) removes.
  *
  * idle only when both anchors are null (no open seating). When an anchor is
  * given but none can be read (or `now` is not a time), the gap is unknown,
@@ -139,7 +150,7 @@ export const STATUS_RANK: Readonly<Record<FreshnessStatus, number>> = Object.fre
  * waiter's seated tables that are fresh right now. Pass the statuses of that
  * waiter's seated tables only.
  *
- * ADR 0346 D4 (a): a waiter holding no seated table has no evidence, so this
+ * Proposed ADR 0346 D4 (a): a waiter holding no seated table has no evidence, so this
  * returns null (printed "—"). The checker printed 100
  * (`components/ManagerBoard.tsx:1247` at `5958689`).
  */
