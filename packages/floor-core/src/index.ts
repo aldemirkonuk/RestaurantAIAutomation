@@ -7,6 +7,8 @@
  * `now`, and the warn/late minutes are the house's settings, passed in.
  *
  * The package lands in serial parts; `.planning/STATE.md` records what has
- * landed and what follows. This part exports only table freshness.
+ * landed and what follows. Exported so far: table freshness and
+ * the waiter score.
  */
 export * from "./freshness";
+export * from "./waiter-score";
