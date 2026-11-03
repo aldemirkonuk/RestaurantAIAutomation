@@ -5,8 +5,7 @@
  * logic into the test file (`scripts/test-attribution.mjs:8`), so they could
  * pass while the app drifted; that is not repeated.
  *
- * One spec per module, so each part stays under the CI audit gate's diff
- * limit; shared fixtures live in `test-fixtures.ts`.
+ * One spec per module; shared fixtures live in `test-fixtures.ts`.
  */
 import {
   freshnessOf,
@@ -59,6 +58,13 @@ describe("founder F2 (2026-10-31): the band describes the visits", () => {
     expect(scoreBandLabel(scoreBand(89))).toBe("Some late");
     expect(scoreBandLabel(scoreBand(80))).toBe("Some late");
     expect(scoreBandLabel(scoreBand(79))).toBe("Many late");
+  });
+
+  it("gives no band and prints — for no score, not Many late", () => {
+    expect(scoreBand(null)).toBeNull();
+    expect(scoreBand(NaN)).toBeNull();
+    expect(scoreBandLabel(scoreBand(null))).toBe("—");
+    expect(overdueGapCount([], LATE)).toBeNull();
   });
 });
 

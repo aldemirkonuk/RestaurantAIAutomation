@@ -60,13 +60,17 @@ export const SEVERITY_CAP = 31;
  */
 export type ScoreBand = "on_time" | "some_late" | "many_late";
 
-export function scoreBand(score: number): ScoreBand {
+/** No score (null, or not finite) has no band: D4 (a), as `sortByScore` reads it. */
+export function scoreBand(score: number | null): ScoreBand | null {
+  if (score === null || !Number.isFinite(score)) return null;
   if (score >= 90) return "on_time";
   if (score >= 80) return "some_late";
   return "many_late";
 }
 
-export function scoreBandLabel(band: ScoreBand): string {
+/** No band prints "—" (ADR 0051). */
+export function scoreBandLabel(band: ScoreBand | null): string {
+  if (band === null) return "—";
   switch (band) {
     case "on_time":
       return "Visits on time";
@@ -153,11 +157,12 @@ export function onTimePct(gapMinutes: number[], warnAfterMin: number): number | 
 
 /**
  * Gaps at or over the house's late minutes (`lib/reports.ts:181`). A gap that
- * is not finite counts as overdue; an unreadable late minute gives null (see
- * the header).
+ * is not finite counts as overdue; no gaps (D4 (a)) or an unreadable late
+ * minute gives null (see the header). The late minute is used as set, like
+ * `freshnessOf`'s late boundary; only the warn minute takes the max(1, …) floor.
  */
 export function overdueGapCount(gapMinutes: number[], lateAfterMin: number): number | null {
-  if (unreadable(lateAfterMin)) return null;
+  if (gapMinutes.length === 0 || unreadable(lateAfterMin)) return null;
   return gapMinutes.filter((t) => unreadable(t) || t >= lateAfterMin).length;
 }
 
