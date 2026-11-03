@@ -24,6 +24,7 @@ describe("minutesSince and exactMinutesSince", () => {
     const iso = at(5);
     expect(exactMinutesSince(iso.replace("Z", "+00:00"), T0)).toBe(exactMinutesSince(iso, T0));
     expect(exactMinutesSince(iso.replace("Z", "+0000"), T0)).toBe(exactMinutesSince(iso, T0));
+    expect(exactMinutesSince(iso.replace("Z", "+00"), T0)).toBe(exactMinutesSince(iso, T0));
   });
 
   it("floors for display and keeps the fraction for statuses", () => {

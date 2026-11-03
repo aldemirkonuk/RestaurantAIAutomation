@@ -24,8 +24,8 @@ export type FreshnessStatus = "fresh" | "warn" | "late" | "idle";
  * Statuses compare these (Proposed ADR 0346 D4 (d): the board compares unfloored
  * minutes). `minutesSince` floors them for display.
  */
-/** A trailing `Z` or `±HH:MM` / `±HHMM` offset. */
-const HAS_OFFSET = /(?:Z|[+-]\d{2}:?\d{2})$/i;
+/** A trailing `Z` or `±HH`, `±HH:MM` or `±HHMM` offset. */
+const HAS_OFFSET = /(?:Z|[+-]\d{2}(?::?\d{2})?)$/i;
 
 export function exactMinutesSince(iso: string | null, now: number): number | null {
   if (!iso || !HAS_OFFSET.test(iso)) return null;
