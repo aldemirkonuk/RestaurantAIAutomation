@@ -1,0 +1,94 @@
+import {
+  exactMinutesSince,
+  freshnessOf,
+  liveOnTimePct,
+  minutesSince,
+  seatingFreshness,
+  STATUS_LABEL,
+  STATUS_RANK,
+} from "./freshness";
+import { at, LATE, MIN, T0, WARN } from "./test-fixtures";
+
+describe("minutesSince and exactMinutesSince", () => {
+  it("is null without a time, never NaN", () => {
+    expect(minutesSince(null, T0)).toBeNull();
+    expect(minutesSince("", T0)).toBeNull();
+    expect(minutesSince("not a time", T0)).toBeNull();
+    expect(exactMinutesSince("not a time", T0)).toBeNull();
+    expect(minutesSince(at(0), NaN)).toBeNull();
+  });
+
+  it("floors for display and keeps the fraction for statuses", () => {
+    expect(minutesSince(at(0), T0 + 9.5 * MIN)).toBe(9);
+    expect(exactMinutesSince(at(0), T0 + 9.5 * MIN)).toBe(9.5);
+  });
+
+  it("reads a time ahead of now as 0, never negative", () => {
+    expect(minutesSince(at(5), T0)).toBe(0);
+    expect(exactMinutesSince(at(5), T0)).toBe(0);
+  });
+});
+
+describe("freshnessOf (ADR 0346 D4 (d))", () => {
+  it("is on time at exactly T and due soon past it", () => {
+    expect(freshnessOf(WARN, WARN, LATE)).toBe("fresh");
+    expect(freshnessOf(WARN + 0.01, WARN, LATE)).toBe("warn");
+    expect(freshnessOf(LATE, WARN, LATE)).toBe("late");
+  });
+
+  it("keeps Due soon reachable when late = warn + 1", () => {
+    expect(freshnessOf(9, 9, 10)).toBe("fresh");
+    expect(freshnessOf(9.5, 9, 10)).toBe("warn");
+    expect(freshnessOf(10, 9, 10)).toBe("late");
+  });
+
+  it("takes T = max(1, warn), as the score does", () => {
+    expect(freshnessOf(1, 0, 5)).toBe("fresh");
+    expect(freshnessOf(1.5, 0, 5)).toBe("warn");
+  });
+
+  it("is idle only for null", () => {
+    expect(freshnessOf(null, WARN, LATE)).toBe("idle");
+  });
+
+  it("reads a non-finite minute or setting as late (OD-256)", () => {
+    expect(freshnessOf(NaN, WARN, LATE)).toBe("late");
+    expect(freshnessOf(Infinity, WARN, LATE)).toBe("late");
+    expect(freshnessOf(3, NaN, LATE)).toBe("late");
+    expect(freshnessOf(3, WARN, -Infinity)).toBe("late");
+  });
+});
+
+describe("seatingFreshness", () => {
+  const now = T0 + 9.5 * MIN;
+
+  it("is idle only with no open seating", () => {
+    expect(seatingFreshness({ seatedAt: null, lastVisitAt: null }, 9, 10, now)).toBe("idle");
+  });
+
+  it("falls back to the seat time for an unvisited party", () => {
+    expect(seatingFreshness({ seatedAt: at(0), lastVisitAt: null }, 9, 10, now)).toBe("warn");
+  });
+
+  it("prefers the last visit", () => {
+    expect(seatingFreshness({ seatedAt: at(0), lastVisitAt: at(5) }, 9, 10, now)).toBe("fresh");
+  });
+
+  it("reads an anchor that cannot be read as late", () => {
+    expect(seatingFreshness({ seatedAt: "garbage", lastVisitAt: null }, 9, 10, now)).toBe("late");
+    expect(seatingFreshness({ seatedAt: at(0), lastVisitAt: null }, 9, 10, NaN)).toBe("late");
+  });
+});
+
+describe("labels, ranks and the live on-time share", () => {
+  it("freezes the label and rank tables", () => {
+    expect(Object.isFrozen(STATUS_LABEL)).toBe(true);
+    expect(Object.isFrozen(STATUS_RANK)).toBe(true);
+    expect(STATUS_RANK.late).toBeLessThan(STATUS_RANK.warn);
+  });
+
+  it("prints no evidence as null (ADR 0346 D4 (a))", () => {
+    expect(liveOnTimePct([])).toBeNull();
+    expect(liveOnTimePct(["fresh", "late", "fresh"])).toBe(67);
+  });
+});
