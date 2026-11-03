@@ -6,8 +6,7 @@
  * No React, no database, no clock: every function that needs the time takes
  * `now`, and the warn/late minutes are the house's settings, passed in.
  *
- * The package lands in serial parts, each under the audit gate's size limit;
- * `.planning/decisions/claims.d/feat-floor-core-1-skeleton-and-freshness.jsonl`
- * records the order. This part exports only table freshness.
+ * The package lands in serial parts; `.planning/STATE.md` records what has
+ * landed and what follows. This part exports only table freshness.
  */
 export * from "./freshness";

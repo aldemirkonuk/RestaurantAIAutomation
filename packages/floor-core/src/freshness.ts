@@ -5,9 +5,10 @@
  * Ported from the Floor Checker's `lib/freshness.ts` (its repo frozen at
  * commit `5958689`). No clock is read here: every
  * caller passes `now`, and the warn/late minutes are the house's settings.
- * `now` must come from the server's clock, never a phone's or browser's: a
- * slow client clock would read every overdue table as on time, since a time
- * ahead of `now` counts as 0 minutes. A time must carry its offset (`Z` or
+ * `now` must come from the server's clock, never a phone's or browser's. A
+ * time more than a minute ahead of `now` is unreadable, so a fast device
+ * clock reads late rather than on time (OD-257); within a minute it counts
+ * as 0. A time must carry its offset (`Z` or
  * `+03:00`): an offset-less one would parse as the reader's local time, so it
  * is unreadable here, and an unreadable time reads late (OD-256).
  *
@@ -19,11 +20,6 @@
 /** From the checker's `lib/types.ts:26` (at `5958689`). */
 export type FreshnessStatus = "fresh" | "warn" | "late" | "idle";
 
-/**
- * Minutes since `iso`, unfloored and never negative; null without a time.
- * Statuses compare these (Proposed ADR 0346 D4 (d): the board compares unfloored
- * minutes). `minutesSince` floors them for display.
- */
 /**
  * The one shape read: `YYYY-MM-DDTHH:MM[:SS[.fff]]` plus `Z`, `±HH`, `±HH:MM`
  * or `±HHMM`, as PostgREST prints `timestamptz`. It is parsed by hand, not by
@@ -42,13 +38,29 @@ function parseIsoMs(iso: string): number | null {
   if (offH > 23 || offM > 59) return null;
   const fracMs = m[7] ? Number(`0.${m[7]}`) * 1000 : 0;
   const offset = (m[8] === "-" ? -1 : 1) * (offH * 60 + offM) * 60000;
-  return Date.UTC(y, mo - 1, d, h, mi, sec) + fracMs - offset;
+  const utc = Date.UTC(y, mo - 1, d, h, mi, sec);
+  // `Date.UTC` rolls 31 February into March and maps years below 100 to
+  // 1900s; a date that does not round-trip is no date.
+  const back = new Date(utc);
+  if (y < 1970 || back.getUTCFullYear() !== y || back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) {
+    return null;
+  }
+  return utc + fracMs - offset;
 }
 
+/** How far ahead of `now` a time may sit and still count as 0 (OD-257). */
+const FUTURE_SKEW_MS = 60000;
+
+/**
+ * Minutes since `iso`, unfloored and never negative; null without a time or
+ * for a time more than a minute ahead of `now`. Statuses compare these
+ * (Proposed ADR 0346 D4 (d): the board compares unfloored minutes).
+ * `minutesSince` floors them for display.
+ */
 export function exactMinutesSince(iso: string | null, now: number): number | null {
   if (!iso) return null;
   const ms = parseIsoMs(iso);
-  if (ms === null || !Number.isFinite(now)) return null;
+  if (ms === null || !Number.isFinite(now) || ms - now > FUTURE_SKEW_MS) return null;
   return Math.max(0, (now - ms) / 60000);
 }
 

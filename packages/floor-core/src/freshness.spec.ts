@@ -42,9 +42,17 @@ describe("minutesSince and exactMinutesSince", () => {
     expect(exactMinutesSince(at(0), T0 + 9.5 * MIN)).toBe(9.5);
   });
 
-  it("reads a time ahead of now as 0, never negative", () => {
-    expect(minutesSince(at(5), T0)).toBe(0);
-    expect(exactMinutesSince(at(5), T0)).toBe(0);
+  it("reads a time up to a minute ahead of now as 0, and further as unreadable (OD-257)", () => {
+    expect(exactMinutesSince(at(1), T0)).toBe(0);
+    expect(minutesSince(at(0.5), T0)).toBe(0);
+    expect(exactMinutesSince(at(1.01), T0)).toBeNull();
+    expect(exactMinutesSince(at(20), T0)).toBeNull();
+    expect(seatingFreshness({ seatedAt: at(20), lastVisitAt: null }, WARN, LATE, T0)).toBe("late");
+  });
+
+  it("refuses a calendar date that does not exist", () => {
+    expect(exactMinutesSince("2026-02-31T12:00:00Z", T0)).toBeNull();
+    expect(exactMinutesSince("0026-11-03T12:00:00Z", T0)).toBeNull();
   });
 });
 
