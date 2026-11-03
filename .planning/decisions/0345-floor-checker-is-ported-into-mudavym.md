@@ -1,7 +1,7 @@
 # 0345 — Floor Checker is ported into Mudavym
 
 - **Status:** Proposed (2026-10-31); not to be locked before all three parts have landed.
-- **Parts:** 2 of 3. This record's row in the decision index is owed in its own draft PR after part 3 (see part 1). Part 3 completes Consequences and the Review trail.
+- **Parts:** 3 of 3; this is part 3, and all three have landed. This record's row in the decision index is still owed, in its own draft PR (see part 1).
 - **Date:** 2026-10-31 (rulings of 2026-10-30 EDT, session ca58311b)
 - **Decider:** the founder, for the port and his picks: five AskUserQuestion calls on 2026-10-30 EDT, asked 2026-10-31T02:52:37Z, 03:03:50Z, 03:13:20Z, 03:41:53Z and 03:46:17Z, and on 2026-10-31 the leak fix's scope (pick 14, asked 04:34:21Z) and, in the call asked at 16:54:31Z, that a departed waiter's floor figures are kept for owners and managers. Each is quoted under § Context. His builder answer and his Out tonight answer, whose label and text differ, are read in the ways stated where they appear; those readings are the executor's (session ca58311b), not his words, and they wait on OD-242 together with what they would change in ADRs 0303 and 0218. The founder can overrule any part of this record, and a lock is his. Its role map, reuse map and engineering rules are the executor's design; what "run dry" means (pick 11) is not decided here: it waits on OD-242, and pick 11 states the executor's proposal for it, not a call. This record answers none of OD-235, OD-236 or OD-238.
 - **Keywords:** Floor Checker, floor coverage, waiter-coverage, port, in-SPA, /floor, /floor/builder, /floor/me, floor module, floor-core, floor_sections, Food-up, meal run, Paid, punches, Out tonight, pos_server_links, emitToHouseRoles, memberRoom, notification_push_devices, restaurant_tables, subdomain, manifest
@@ -328,8 +328,88 @@ This is what pick 11's "drinks the cellar shows run dry" means (§ Context › H
 
 **Retire-to-write (CLAUDE.md §4).** This file is the one decision record §5 requires. It retires no document, as ADRs 0249, 0265, 0273, 0287 and 0314 did. Whether retire-to-write binds a new ADR is OD-243, open, and is raised again when this record is locked.
 
+### OD-235, OD-236 and OD-238
+
+Each of the three was put to him at 16:57:03Z; the prompt was aborted and he made no pick, so each is answered only because of the 16:57:09Z goal message. Each answer is the executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick, is Proposed and takes the narrow, reversible option; each OD row stays open in the register, with that answer marked, until he rules.
+
+- **OD-235**, what punches do to ADR 0215's day-end sheet: [ADR 0350](0350-punches-show-beside-the-plan-and-a-manager-marks-every-shift.md) § Decision.
+- **OD-236**, when a floor alert climbs: [ADR 0351](0351-a-floor-alert-climbs-past-an-absent-person-at-once.md) § Decision.
+- **OD-238**, whether ADR 0027 is locked: [ADR 0352](0352-floor-pushes-use-only-the-existing-device-stores.md) § Decision, with the floor's own rule in § Decision › The push rule.
+
+### Easier
+
+- One sign-in, one house choice and one push registry serve the floor.
+- The floor's data reaches insights and Recommendations through the engine that already exists.
+- Per-waiter figures come from the same rows the board shows.
+
+### Harder
+
+- The checker's history is lost at retirement (*"Start fresh (Recommended)"*).
+- Realtime is limited to one gateway replica until an adapter exists (§ Engineering rules E1-E9 › E2).
+- The checker's uncommitted Food-up work and its 12 modified files have to be frozen (tag or tarball) before porting, or the spec moves under the port. This record does not freeze them.
+
+### Text changed in published files
+
+- **The rule.** A change this record causes in a published file is a dated bracket written in place inside the existing line; no merged sentence is reworded, and no line moves.
+- **Brackets this series writes:** ADR 0027's at `0027:154`, pointing at ADR 0352 § Decision › The push rule; the register rows of OD-235, OD-236 and OD-238, each marked with its Proposed answer in place and kept open.
+- **Changed by his rulings, bracketed by the other records of this series:** ADR 0303 (`:3`, `:24` *"No drawing."*; `:67` seats, which `:36` already agrees with; `:65` add-a-table), at [ADR 0347](0347-the-floor-builder-draws-tables-the-till-also-teaches.md) and [ADR 0353](0353-a-closed-till-check-marks-paid-only-a-person-ends-a-seating.md); ADR 0218's lead-mark rule (`0218:138-142`, Out tonight) and its retention item (`:572-575`, a departed waiter's floor figures), with the service-floor plans, at [ADR 0346](0346-waiter-scores-and-rankings-ship-to-managers.md) among others; and the service-floor charter's staged entry (§ Executor's calls › The service-floor charter's staged entry).
+- **Re-pointed at this record:** ADR 0348 and `.planning/tech-debt.d/2026-10-31-fix-analytics-money-routes-need-a-manager.md` point at § Context › His fourteen picks › pick 14, § Context › The founder's rulings › Round 2 (*"Nothing for now"*) and § Decision › The staff-invite step. That re-pointing is the executor's call under the founder's 2026-10-31T16:57:09Z delegation, not his pick.
+
+### ADR 0215 is untouched
+
+- This series edits no line of ADR 0215 (Locked). Pick 10's option text, "It amends ADR 0215; wages stay on planned hours" (AskUserQuestion asked 2026-10-31T03:41:53Z, Q3), is what he was shown; what it changes is recorded here and in ADR 0350, not in 0215.
+- Wages stay on planned hours: /team's labour cost is priced on the planned span less the counted break (`laborCost` in `apps/api-gateway/src/team/schedule.service.ts` returns `priceShift`, which prices `workedHours` in `apps/api-gateway/src/team/pay-rules.ts`; claim ADR-0345-WAGES-PRICED-ON-PLANNED-HOURS checks it), and a punch changes no hours figure or wage by itself.
+- The day-end sheet (`0215:1231-1233`) is OD-235, which stays open; ADR 0350 § Decision gives the executor's Proposed answer.
+- Any bracket in ADR 0215 is the founder's to review, in its own PR. Clock hardware stays out of scope (`0215:1243`).
+
+### Held
+
+- The evidence note, the software note, its SOFTWARE-MAP row and the CLAIMS roster bump are held for the founder under OD-246; nothing landed depends on them.
+- ADR 0257 W22 (`0257:146`): a waiter sees no figures for now, so the staff-money line is not redrawn.
+- ADR 0027 stays Proposed. Its rule that `push_subscriptions` *"does not exist and must not be created"* (`0027:119`) is matched by ADR 0352 § Decision › The push rule, so the floor does not depend on its status.
+- Ask AI: its action families stay `procurement` and `communications` (`apps/api-gateway/src/ask-ai/ask-ai-actions.ts:32`). The port adds no floor action there.
+- ADR 0348 (Locked) holds as written: its post-#617 follow-up merges before any waiter is invited to `/floor/me` (§ Decision › The staff-invite step).
+
+### Open items
+
+- **OD-237**: `floor.mudavym.com` or an Expo waiter tab? Neither is built. It waits for measured iPhone and Android install and web-push results; then the founder decides. Whether floor alerts also reach a person's Expo devices waits on the Expo staff app running on a device (OD-109).
+- OD-235, OD-236 and OD-238 stay open in the register; their answers are Proposed (› OD-235, OD-236 and OD-238 above).
+- OD-246 (whether the held notes land), OD-242 (how far the delegation reaches), OD-243 (retire-to-write for a new ADR) and OD-64 (first real POS; auto-Paid and the mismatch check wait on it) are open.
+
+### Owed
+
+- By the code PRs that build the port, each citing the section of this record it builds (no repo doc holds these obligations): the floor module and routes (E6, E8); the `floor_sections` table; the punch table linked to `public.shifts` by a nullable shift id, and its /team week display (pick 10); `packages/floor-core` (E1); `pos_server_links` (E4); the nudge job (E3); the flag (E7); and the two seats writers' change before pick 9 ships (E9).
+- CLAIMS rows: no migration creates `push_subscriptions`; no floor emit of per-name data targets `restaurant:`; Call out's Expo leg; the Settings Push row.
+- The checker snapshot (tag or tarball), before any porting starts.
+- The post-#617 follow-up of ADR 0348, before any waiter invite (§ Decision › The staff-invite step).
+
+### Revisit when
+
+- `/floor/me` fails to install or to receive push on a waiter's iPhone (OD-237);
+- a second gateway replica is added (§ Engineering rules E1-E9 › E2, E3);
+- a real till feed lands (OD-64): auto-Paid and the mismatch check start to carry weight, and the live-till features the adversaries killed are re-asked (§ Feature ideas the adversaries killed);
+- tap compliance sits near 100% while table outcomes do not move, the premortem's signal for gamed taps;
+- the founder lifts the "for now" of *"Nothing for now"* on the waiter phone (ADR 0257 W22).
+
+## Not verified
+
+- Whether a second same-origin manifest installs, and receives web push, on an iPhone (OD-237).
+- The gateway's replica count in production, whether any device in production has received a web push, and the production device counts.
+- The checker's line counts; its cites above were re-read at `5958689` and in its working tree on 2026-10-31.
+- The research runs' own citations, beyond those this record uses; Mudavym cites were read at `037452ebe`, and the `analytics.controller.ts` lines, the newest migration and the absence of a floor route were re-read at `5e966c8b6`.
+- The research and adversary passes behind OD-235, OD-236 and OD-238, and the law and counsel items, are in ADR 0350, ADR 0351 and ADR 0352 § Not verified.
+
 ## Review trail
 
 | Date | Reviewer | Outcome |
 |---|---|---|
-| 2026-11-01 | — | Part 2 of 3 |
+| 2026-10-31 | executor, session ca58311b | Created from the founder's 2026-10-30 rulings and the two research workflows; citations read at `origin/main` and the checker at `5958689` |
+| 2026-10-31 | skeptic and fixer | Pick 14 brought up to #701 and his 2026-10-31 scope pick, with the staff-invite rule; citations corrected |
+| 2026-10-31 | fork-answer fold | The executor's calls added under the founder's 2026-10-31T16:57:09Z delegation, quoted verbatim; OD-237 kept open |
+| 2026-10-31 | judge rounds on OD-235 | The day-end sheet answer kept and repaired, the executor's call under the founder's 2026-10-31T16:57:09Z delegation |
+| 2026-10-31 | judge rounds on OD-236 | When an alert climbs, and E3's keys, kept and repaired, the executor's call under the founder's 2026-10-31T16:57:09Z delegation |
+| 2026-10-31 | judge rounds on OD-238 | ADR 0027 left Proposed with the floor's own push rule, the executor's call under the founder's 2026-10-31T16:57:09Z delegation |
+| 2026-10-31 | finish round | Five calls, not four; the lot rule corrected to the live book; #701 recorded as merged |
+| 2026-10-31 | consolidation | Each answer to OD-235, OD-236 and OD-238 stated once, unchanged |
+| 2026-10-31 | restructure | Three parts; the three answers moved to ADRs 0350, 0351 and 0352, the staged entry to § Executor's calls |
+| 2026-11-01 | executor | R3 rewrite: no held-note cites; single decision record |
