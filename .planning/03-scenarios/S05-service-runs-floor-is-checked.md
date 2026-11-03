@@ -62,7 +62,7 @@ up") · the floor router (decides *which one human* is pinged, on which device) 
 ## 5. Outputs (in the moment)
 - A **direct, individual** alert to the one assigned waiter's device — *not* a shared
   kitchen-ready board everyone glances at (`service-floor-charter.md:26-30,136-138`).
-- A quiet nudge if a table's check-in window is about to lapse — nudge, never a scorecard.
+- A quiet nudge if a table's check-in window is about to lapse — nudge, never a scorecard. [2026-10-31: superseded in part by Proposed [ADR 0346](../decisions/0346-waiter-scores-and-rankings-ship-to-managers.md) § Decision: the waiter's phone still shows no figure (*"Nothing for now"*, AskUserQuestion asked 2026-10-31T03:03:50Z, Q3), but owners and managers get a per-waiter score (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2).]
 
 ## 6. Insights the owner sees (the payoff)
 Gated, and honestly so — none is readable until §3's signals arrive:
@@ -73,13 +73,13 @@ Gated, and honestly so — none is readable until §3's signals arrive:
 - **Misroute count** (`floor.misroute_rate`) — pinged the wrong server; **zero is the only
   acceptable target during service** (`service-floor-charter.md:81-83`).
 - Explicitly **not** a staff ranking or disciplinary record — that framing defeats the
-  system in a week (`service-floor-charter.md:69-74`).
+  system in a week (`service-floor-charter.md:69-74`). [2026-10-31: superseded by ADR 0346 § Decision: per-waiter scores, rankings and CSV ship to owners and managers (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2). The framing risk stays, in § The risk the charter named, and what answers it.]
 
 ## 7. Decisions
 Human: the waiter decides how to work the table; the manager decides the check-in window
 and the engagement definition. System **proposes only** (ask→propose→confirm→execute): it
 *routes* a ping and *flags* a lapsing window. It never auto-assigns tables, never disciplines,
-never resolves an ambiguous route silently — an ambiguous route surfaces to a human.
+never resolves an ambiguous route silently — an ambiguous route surfaces to a human. [2026-10-31: superseded in part by ADR 0346 § Decision: the system still disciplines no one, but owners and managers get a per-waiter score they could discipline with (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2).]
 
 ## 8. Failure modes
 - Wrong-waiter ping → staff learn to ignore the alert → the p95 becomes meaningless
@@ -121,7 +121,7 @@ type. Transports (`expo-push`, `websocket.gateway`) exist; the routing contract 
 
 **Boundary, not a satisfiability note:** none of these tiers may be sold or built as a staff
 ranking or disciplinary record. That framing defeats the system in a week and the data goes
-adversarial — a Pro tier marketed as floor-performance analytics destroys its own input.
+adversarial — a Pro tier marketed as floor-performance analytics destroys its own input. [2026-10-31: superseded by ADR 0346 § Decision: per-waiter scores, rankings and CSV ship to owners and managers (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2). How a tier is named or sold is not ruled there.]
 
 ## 11. Evolution feedback
 Where routes go ambiguous teaches the routing contract its real edge cases (splits,
