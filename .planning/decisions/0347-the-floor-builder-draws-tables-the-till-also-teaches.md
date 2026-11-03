@@ -90,7 +90,7 @@ The Paid rule that this record first held, that a closed, unvoided, live till ch
 ### D4. Seats are optional, shown as a dash, never guessed (founder's pick; executor's mechanics)
 
 - A table states its seats only when a person typed them. Unset is NULL everywhere, and every screen shows it as "—".
-- A migration drops both column defaults (`ALTER COLUMN seats DROP DEFAULT`, and the same for `is_outdoor`). With D3, no writer then supplies a 2 or a false that nobody gave. This is an executor proposal: the defaults bite only an insert that omits the column, and none in `apps/` does today.
+- A migration drops both column defaults (`ALTER COLUMN seats DROP DEFAULT`, and the same for `is_outdoor`). With D3, no writer then supplies a 2 or a false that nobody gave. This is an executor proposal: the defaults bite only an insert that omits the column, and none in `apps/` does today. The migration lands in the same commit as D3's route, and the route's insert names `seats` and `is_outdoor` explicitly, so no build order can turn an unset seat count into 2.
 - PATCH gains `seats` (a whole number from 1 to 999, or null to clear it).
 - Per-seat figures stay withheld for a table with no seat count (`table-analytics.service.ts:397`; `rp-registers-house.tsx:433`).
 - A merged table's seats show "—" when any member's seats are unknown, never a partial sum. The checker sums (`floor-merge.ts:238`, `:387`).
@@ -176,10 +176,10 @@ The mechanics behind § Decision, moved here so that part holds every binding ru
 
 ### The create route and twin guard, in detail (D3)
 
-- The guard is one SQL function, or one gateway reading of the same four rules; the build picks.
+- The guard is one SQL function that reads the same four rules and inserts in the same transaction, under D3's per-house `pg_advisory_xact_lock`, which the till's learner and the fold (D10) also take. The lock, not an index, is what makes the guard race-safe: `uq_restaurant_tables_label` is case-sensitive (`baseline_from_production.sql:11922`), so it cannot stop `T12` beside `t12`.
 - **The refusal sentence.** It names the table that answers. When that table is hidden, it says to show it again instead. When it is retired, it says the name cannot be used.
 - **What the guard refuses, and why.** It refuses "5" while a "Table 5" table exists, and "Table 5" while a "5" exists. That is deliberate: those two spellings are the case `0303:50` was asked on.
-- **On rename.** Today PATCH compares labels only, case-blind, against every other row of the house (`table-analytics.service.ts:140-150`), and the unique index answers a race with 23505 (`:163-166`). Both stay, and the guard is added in front of them. A table folded into another (D10) answers for the kept table, so a rename to its word names the kept table in the refusal.
+- **On rename.** Today PATCH compares labels only, case-blind, against every other row of the house (`table-analytics.service.ts:140-150`), and the unique index answers an exact-label race with 23505 (`:163-166`). Both stay as a backstop; the guard runs in front of them under the same per-house lock, which is what covers the case-blind race the index cannot. A table folded into another (D10) answers for the kept table, so a rename to its word names the kept table in the refusal.
 - **Prior work.** Unmerged: `origin/backup/2026-10-08/addtable` (head `75678fa12`) and `origin/backup/2026-10-08/seatsnote` (head `ef8c08605`). Neither has a PR: `gh pr list --state all --head` returned `[]` for `feat/add-a-table-by-hand` and for `fix/seats-chart-says-why-it-is-empty`, 2026-10-31. The lane `addtable` already built most of this for Settings (`91c30008b`): the route, insert-only, NULL when not given, range checks, `checksLinked` and the form.
   - Its guard checks only the label and active `pos_refs` (`git show 75678fa12:apps/api-gateway/src/analytics/table-analytics.service.ts`, `:141-163`). It predates `till_words`/`former_labels`, which reached main with #621 on 2026-10-06, and must gain them.
   - It validates `x_pos`/`y_pos` over -999999.99 to 999999.99 (`:115-116`). D6's plan units need 0 to 100, so the build narrows them.
@@ -229,7 +229,7 @@ ADR 0345 makes the floor's own tables new floor migrations (ADR 0345 § Decision
 - **New checks go to the kept table.** When the winning row has a `folded_into`, `pos_table_for_ref` returns that id. It follows one hop only, because chains are refused (D10).
   - `resolveTable` must do the same: a `table_id` the gateway sets stands (`20261222230000_tables_learned_from_the_pos.sql:291`), and `resolveTable` is the only gateway writer of `pos_checks.table_id` (`pos-hub.service.ts:1068`). So `loadTables` selects `folded_into` too.
 - **Past checks never move.** A fold writes no `pos_checks` row, and none of the three guarantees moves a link. In `20261222230000_tables_learned_from_the_pos.sql`: a re-sent check whose word is unchanged keeps its table (`:284-286`); the relink trigger fills only NULL links (`:441`); a fold changes none of the columns the relink-on-change trigger watches (`:459`).
-- **The refusals** of D10 are enforced by a trigger; the kept table's house, retired, hidden and folded states are checked at the fold.
+- **The refusals** of D10 are enforced by a trigger that first takes D3's per-house lock, so two concurrent folds (A into B, B into C) run one after the other and the second is refused; the kept table's house, retired, hidden and folded states are checked at the fold.
 - **The kept table hidden.** Rejected: refusing that hide (it forces an unfold), unfolding on it, or a resolver that skips it. Each sends the 'T7' checks made while 7 is hidden to the twin, for good.
 - **The guard names the kept table.** When D3's guard refuses a name because a folded twin holds it, the message says where the word goes now ("'T7' already goes to table 7").
 - **Show undoes it.** Showing a folded twin clears those four columns in one UPDATE. Checks that reached table 7 while the twin was folded stay on table 7. A fold and its undo each write a `system_audit_log` row, as `stop-links-on-leaving.ts:116` writes one.
