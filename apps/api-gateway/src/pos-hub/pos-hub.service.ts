@@ -315,6 +315,104 @@ export interface StockTally {
 type StockFailureKind = "stock" | "queue" | "consumption";
 
 /**
+ * What saving a mapping did to its item's sales that arrived before it
+ * (POS-2), in POS lines. `unavailable`: the queue could not be read, so the
+ * counts are unknown (null), not zeros (ADR 0020).
+ */
+export interface PastSalesReplay {
+  status: "done" | "unavailable";
+  /** Stock moved now. */
+  applied: number | null;
+  /** Already moved (a re-sent check); cleared, not moved again. */
+  already_applied: number | null;
+  /** Nothing to move: a voided check, or mapped as not stock. */
+  cleared_without_stock: number | null;
+  /** Still queued: no volume yet, or no stored check to replay from. */
+  still_waiting: number | null;
+  /** The stock write failed; still queued, the next save retries. */
+  failed: number | null;
+  /** Moved, but the queue row could not be cleared. */
+  not_cleared: number | null;
+  /** More were queued than one save replays. */
+  truncated: boolean;
+  message: string;
+}
+
+type PastSalesCount = {
+  [K in Exclude<
+    keyof PastSalesReplay,
+    "status" | "message" | "truncated"
+  >]: number;
+} & { truncated: boolean };
+
+type MappingIdentity = {
+  source?: string | null;
+  external_item_id?: string | null;
+  item_name?: string | null;
+} | null;
+
+/** Lines read per lookup per save. */
+const REPLAY_LINE_LIMIT = 500;
+
+const emptyPastSales = (): PastSalesCount => ({
+  applied: 0,
+  already_applied: 0,
+  cleared_without_stock: 0,
+  still_waiting: 0,
+  failed: 0,
+  not_cleared: 0,
+  truncated: false,
+});
+
+const sales = (n: number) => `${n} past sale${n === 1 ? "" : "s"}`;
+
+function finishPastSales(c: PastSalesCount): PastSalesReplay {
+  const said: Array<[number, string]> = [
+    [c.applied, "of this item came off stock."],
+    [c.already_applied, "had already come off stock; none was taken twice."],
+    [
+      c.cleared_without_stock,
+      "needed no stock (a voided check, or not a stock item).",
+    ],
+    [
+      c.still_waiting,
+      "stayed in the unmatched list: the item needs a pour size, or the check could not be found.",
+    ],
+    [
+      c.failed,
+      "could not be taken off stock and stayed in the unmatched list; save the mapping again to retry.",
+    ],
+    [
+      c.not_cleared,
+      "came off stock but stayed listed as unmatched because the list could not be updated; saving again will not take them twice.",
+    ],
+  ];
+  const parts = said.filter(([n]) => n > 0).map(([n, t]) => `${sales(n)} ${t}`);
+  if (c.truncated)
+    parts.push("More sales are waiting; save the mapping again to apply them.");
+  if (!parts.length) parts.push("No past sales of this item were waiting.");
+  return { status: "done", ...c, message: parts.join(" ") };
+}
+
+const pastSalesUnavailable = (): PastSalesReplay => ({
+  status: "unavailable",
+  applied: null,
+  already_applied: null,
+  cleared_without_stock: null,
+  still_waiting: null,
+  failed: null,
+  not_cleared: null,
+  truncated: false,
+  message:
+    "The mapping is saved, but its earlier sales could not be read or replayed. Save it again to finish; no sale is taken twice.",
+});
+
+/** An ILIKE pattern that matches `s` exactly, case aside. */
+function escapeLikePattern(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/**
  * The import report a check's stock effects count into (ADR 0281), keyed by
  * the check object, so two imports running at once never share one. Module
  * scope rather than an instance field, so a service built without its
@@ -1874,7 +1972,324 @@ export class PosHubService {
       .select()
       .single();
     if (error) throw new Error(error.message);
-    return data;
+    // POS-2: replay this item's queued sales; the reply says what moved.
+    const pastSales = await this.replayUnresolvedLines(restaurantId, data);
+    return { ...data, past_sales: pastSales };
+  }
+
+  /**
+   * Replay the open `pos_unresolved_lines` of a mapping's item through the
+   * live depletion path (POS-2).
+   *
+   * Lines are replayed from the stored check (`pos_checks.items`), not the
+   * queue row: the queue keeps one row per (check, item, reason), so two
+   * lines of one wine on a check share a row. Every line keeps its position
+   * and only this item's lines count as stock, so each carries the live key
+   * `pos:{source}:{check}:{item}:{lineNo}`. That key makes it idempotent per
+   * line: the stock RPCs and the consumption log answer a seen key by moving
+   * nothing, so a line replayed twice, or replayed then re-sent by the till,
+   * depletes once. Every read and the clearing write are scoped to
+   * `restaurant_id`. Never throws: the mapping is saved already, and a replay
+   * that cannot run says so (ADR 0020).
+   */
+  async replayUnresolvedLines(
+    restaurantId: string,
+    mapping: MappingIdentity,
+  ): Promise<PastSalesReplay> {
+    try {
+      return await this.replayUnresolvedLinesOrThrow(restaurantId, mapping);
+    } catch (err: any) {
+      this.logger.error(
+        `Replaying queued POS lines failed for r=${restaurantId}: ${err?.message ?? err}`,
+      );
+      return pastSalesUnavailable();
+    }
+  }
+
+  private async replayUnresolvedLinesOrThrow(
+    restaurantId: string,
+    mapping: MappingIdentity,
+  ): Promise<PastSalesReplay> {
+    const out = emptyPastSales();
+    if (!mapping) return finishPastSales(out);
+    const db = this.dbService.getClient();
+    const source = mapping.source || "*";
+    const externalId = (mapping.external_item_id ?? "").trim();
+    const name = (mapping.item_name ?? "").trim();
+    if (!externalId && !name) return finishPastSales(out);
+
+    // As resolveWine finds a mapping: by item id, or by name without case.
+    const reads: Array<PromiseLike<{ data: any[] | null; error: any }>> = [];
+    const openLines = () => {
+      let q = db
+        .from("pos_unresolved_lines")
+        .select(
+          "id, source, external_check_id, external_item_id, item_name, reason, raw",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("resolved", false);
+      if (source !== "*") q = q.eq("source", source);
+      return q;
+    };
+    if (externalId)
+      reads.push(
+        openLines()
+          .eq("external_item_id", externalId)
+          .order("created_at", { ascending: true })
+          .limit(REPLAY_LINE_LIMIT),
+      );
+    if (name)
+      reads.push(
+        openLines()
+          .ilike("item_name", escapeLikePattern(name))
+          .order("created_at", { ascending: true })
+          .limit(REPLAY_LINE_LIMIT),
+      );
+    const results = await Promise.all(reads);
+    const rows = new Map<string, any>();
+    for (const r of results) {
+      if (r.error) {
+        this.logger.error(
+          `pos_unresolved_lines read failed for r=${restaurantId}: ${r.error.message}`,
+        );
+        return pastSalesUnavailable();
+      }
+      const data = r.data || [];
+      if (data.length >= REPLAY_LINE_LIMIT) out.truncated = true;
+      for (const row of data) rows.set(String(row.id), row);
+    }
+    if (!rows.size) return finishPastSales(out);
+
+    const bySource = new Map<string, any[]>();
+    for (const row of rows.values()) {
+      const list = bySource.get(row.source) ?? [];
+      list.push(row);
+      bySource.set(row.source, list);
+    }
+
+    for (const [lineSource, sourceRows] of bySource) {
+      // A Toast-door row holds a Toast selection, keyed toast_sale_… on
+      // that door; replayed under the hub's key it could move twice, so it
+      // is left alone. A hub row always carries is_wine.
+      const hubRows = sourceRows.filter(
+        (r) => r.raw && r.raw.is_wine === true && r.external_check_id,
+      );
+      out.still_waiting += sourceRows.length - hubRows.length;
+      if (!hubRows.length) continue;
+
+      const mappingRead = await this.loadItemMappings(restaurantId, lineSource);
+      if (mappingRead.error) {
+        out.failed += hubRows.length;
+        this.logger.error(
+          `Replay could not read the mappings for r=${restaurantId} src=${lineSource}: ${mappingRead.error}`,
+        );
+        continue;
+      }
+      const checkIds = [
+        ...new Set(hubRows.map((r) => String(r.external_check_id))),
+      ];
+      const { data: checks, error: checksError } = await db
+        .from("pos_checks")
+        .select("external_check_id, closed_at, voided, items")
+        .eq("restaurant_id", restaurantId)
+        .eq("source", lineSource)
+        .in("external_check_id", checkIds);
+      if (checksError) {
+        out.failed += hubRows.length;
+        this.logger.error(
+          `Replay could not read pos_checks for r=${restaurantId} src=${lineSource}: ${checksError.message}`,
+        );
+        continue;
+      }
+      const checkById = new Map<string, any>(
+        (checks || []).map((c: any) => [String(c.external_check_id), c]),
+      );
+
+      for (const checkId of checkIds) {
+        const queued = hubRows.filter(
+          (r) => String(r.external_check_id) === checkId,
+        );
+        await this.replayOneCheck(
+          restaurantId,
+          lineSource,
+          checkById.get(checkId) ?? null,
+          queued,
+          mappingRead.rows,
+          out,
+        );
+      }
+    }
+    return finishPastSales(out);
+  }
+
+  /** One stored check's share of a replay; counts its outcome into `out`. */
+  private async replayOneCheck(
+    restaurantId: string,
+    source: string,
+    stored: any | null,
+    queued: any[],
+    mappings: any[],
+    out: PastSalesCount,
+  ): Promise<void> {
+    if (!stored) {
+      out.still_waiting += queued.length;
+      return;
+    }
+    // A voided check never happened: its line moved nothing on the sale or
+    // the void, so clearing it is the whole replay.
+    if (stored.voided === true) {
+      if (await this.clearQueuedLines(restaurantId, queued, null))
+        out.cleared_without_stock += queued.length;
+      else out.still_waiting += queued.length;
+      return;
+    }
+    // ADR 0281: dated by the check's close, never by the replay.
+    const when = saleInstant(stored.closed_at, Date.now());
+    if (when.fellBack) {
+      out.still_waiting += queued.length;
+      return;
+    }
+
+    const isQueued = (line: any) =>
+      queued.some(
+        (r) =>
+          (r.external_item_id ?? null) === (line?.external_item_id ?? null) &&
+          String(r.item_name) === String(line?.name),
+      );
+    let targets = 0;
+    let inventoryId: string | null = null;
+    const items = (Array.isArray(stored.items) ? stored.items : []).map(
+      (line: any) => {
+        const base = {
+          name: String(line?.name ?? ""),
+          external_item_id: line?.external_item_id ?? null,
+          qty: Number(line?.qty) || 0,
+          price: Number(line?.price) || 0,
+        };
+        // Every other line keeps its position (its key) and moves nothing.
+        if (!isQueued(line))
+          return {
+            ...base,
+            is_wine: false,
+            inventory_id: null,
+            sale_unit: null,
+            sale_volume_ml: null,
+          };
+        targets++;
+        const m = this.resolveWine(base.name, base.external_item_id, mappings);
+        inventoryId = inventoryId ?? m.inventoryId;
+        return {
+          ...base,
+          is_wine: m.isWine,
+          inventory_id: m.inventoryId,
+          sale_unit: m.saleUnit,
+          sale_volume_ml: m.saleVolumeMl,
+        };
+      },
+    );
+    // The till re-sent the check without the line: it stays queued for a
+    // person rather than being cleared on a guess.
+    if (!targets) {
+      out.still_waiting += queued.length;
+      return;
+    }
+
+    const report = new StockReport();
+    const check = {
+      externalCheckId: String(stored.external_check_id),
+      openedAt: "",
+      closedAt: when.closedAt as string,
+      voided: false,
+      items: [],
+    } as CanonicalCheck;
+    try {
+      await this.applyStockEffects(
+        restaurantId,
+        source,
+        check,
+        items,
+        report,
+        when,
+      );
+    } catch (err: any) {
+      out.failed += queued.length;
+      this.logger.warn(
+        `Replay of check ${check.externalCheckId} threw for r=${restaurantId}: ${err?.message}`,
+      );
+      return;
+    }
+
+    const t = report.tally;
+    if (t.failed > 0) {
+      // All keyed: the next save finishes it, moving nothing twice.
+      out.failed += queued.length;
+      this.logger.warn(
+        `Replay of check ${check.externalCheckId} for r=${restaurantId}: ${report.errorLines().join("; ")}`,
+      );
+      return;
+    }
+    const requeued = new Set<string>();
+    if (t.queued.unmapped > 0) requeued.add("unmapped");
+    if (t.queued.no_sale_volume > 0) requeued.add("no_sale_volume");
+    if (requeued.size) {
+      // Still refused: a row whose question was answered (`unmapped`, now
+      // `no_sale_volume`) is cleared; the open question's row stays.
+      const answered = queued.filter(
+        (r) => !requeued.has(String(r.reason ?? "unmapped")),
+      );
+      if (answered.length)
+        await this.clearQueuedLines(restaurantId, answered, inventoryId);
+      out.still_waiting += queued.length;
+      return;
+    }
+    const cleared = await this.clearQueuedLines(
+      restaurantId,
+      queued,
+      inventoryId,
+    );
+    if (t.booked + t.alreadyBooked > 0) {
+      // The stock moved and is keyed, so it counts as applied even when the
+      // queue row could not be cleared.
+      out.applied += t.booked;
+      out.already_applied += t.alreadyBooked;
+      if (!cleared) out.not_cleared += queued.length;
+    } else if (cleared) {
+      // Mapped as not stock, or a quantity that rounds to nothing.
+      out.cleared_without_stock += queued.length;
+    } else out.still_waiting += queued.length;
+  }
+
+  /**
+   * Mark replayed rows resolved, only while still open and only in this
+   * house. False when the write failed: the stock is keyed, so an open row
+   * costs a second look, never a second movement.
+   */
+  private async clearQueuedLines(
+    restaurantId: string,
+    rows: any[],
+    inventoryId: string | null,
+  ): Promise<boolean> {
+    const { error } = await this.dbService
+      .getClient()
+      .from("pos_unresolved_lines")
+      .update({
+        resolved: true,
+        resolved_at: new Date().toISOString(),
+        resolved_inventory_id: inventoryId,
+      })
+      .eq("restaurant_id", restaurantId)
+      .eq("resolved", false)
+      .in(
+        "id",
+        rows.map((r) => String(r.id)),
+      );
+    if (error) {
+      this.logger.warn(
+        `Clearing ${rows.length} replayed queue row(s) failed for r=${restaurantId}: ${error.message}`,
+      );
+      return false;
+    }
+    return true;
   }
 
   async listItemMappings(restaurantId: string) {
