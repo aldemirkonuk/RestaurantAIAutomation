@@ -123,7 +123,7 @@ INSERT INTO public.procurement_conversations
   ('d3000000-0000-4000-8000-000000000003', '33333333-3333-4333-8333-333333333333', 'c0000000-0000-4000-8000-000000000003',
    'inbound', 'email', 'Delivery Status Notification (Failure)', 'RECEIVED', 'mid:v3', '<bounce@mx.example>', now() - interval '1 second', now() - interval '1 second', '{"from":"Mail Delivery Subsystem <MAILER-DAEMON@mx.example>"}'),
   ('d3000000-0000-4000-8000-000000000004', '33333333-3333-4333-8333-333333333333', 'c0000000-0000-4000-8000-000000000003',
-   'inbound', 'email', 'I am out of the office', 'RECEIVED', 'mid:v3', '<ooo@v3.example>', now(), now(), '{"from":"sales@v3.example","transport":{"autoSubmitted":true}}'),
+   'inbound', 'email', 'I am out of the office', 'RECEIVED', 'mid:v3', '<ooo@v3.example>', now(), now(), '{"from":"sales@v3.example","transport":{"autoSubmitted":true,"autoReplied":true}}'),
   ('d6000000-0000-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333', 'c0000000-0000-4000-8000-000000000006',
    'inbound', 'email', 'Win a cruise', 'DISCARDED', 'mid:v6', '<spam@v6.example>', now() - interval '5 seconds', now() - interval '5 seconds', '{"from":"x@v6.example"}');
 UPDATE public.procurement_conversations SET discard_reason = 'not a vendor letter'
@@ -215,6 +215,69 @@ DO $$ DECLARE n int; BEGIN
   SELECT count(*) INTO n FROM public.list_mail_people('33333333-3333-4333-8333-333333333333', true, true)
    WHERE provider_id = 'c0000000-0000-4000-8000-000000000004';
   PERFORM pg_temp.ok(n = 0, 'H4 waiting-only leaves out unsent-only vendors');
+END $$;
+
+-- ── Automatic is a bounce or an auto-reply, never a letter a person wrote ───
+-- (audit follow-up on PR 951; migration mail_automatic_is_a_bounce_or_an_auto_reply)
+-- House H4 (its own, so the counts are exact), timezone UTC, all "today":
+--   V7: the house asked; the vendor answered from Outlook / Microsoft 365, so
+--       the reply carries X-Auto-Response-Suppress (transport.autoSubmitted
+--       true, autoReplied false).
+--   V8: the vendor's ERP confirmed an order (Auto-Submitted: auto-generated).
+--   V9: a price list, then a delivery status report from the vendor's own
+--       server (multipart/report; delivery-status), not from mailer-daemon.
+INSERT INTO public.restaurants (id, name, slug, timezone)
+VALUES ('44444444-4444-4444-8444-444444444444', 'Test house 4', 'test-house-4', 'UTC');
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, direction, channel, message_text, status, thread_key, message_id, received_at, sent_at, created_at, email_headers) VALUES
+  ('d7000000-0000-4000-8000-000000000001', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000007',
+   'outbound', 'email', 'Can you deliver Friday?', 'SENT', 'mid:v7', '<ask@house4.example>', NULL, now() - interval '4 seconds', now() - interval '4 seconds', '{}'),
+  ('d7000000-0000-4000-8000-000000000002', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000007',
+   'inbound', 'email', 'Yes, Friday works', 'RECEIVED', 'mid:v7', '<re@v7.example>', now() - interval '3 seconds', NULL, now() - interval '3 seconds',
+   '{"from":"Ayse <ayse@v7.example>","transport":{"autoSubmitted":true,"autoReplied":false,"deliveryReport":false,"isAutomated":true}}'),
+  ('d8000000-0000-4000-8000-000000000001', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000008',
+   'inbound', 'email', 'Order 1042 confirmed', 'RECEIVED', 'mid:v8', '<erp@v8.example>', now() - interval '3 seconds', NULL, now() - interval '3 seconds',
+   '{"from":"orders@v8.example","transport":{"autoSubmitted":true,"autoReplied":false,"deliveryReport":false}}'),
+  ('d9000000-0000-4000-8000-000000000001', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000009',
+   'inbound', 'email', 'Price list', 'RECEIVED', 'mid:v9', '<list@v9.example>', now() - interval '3 seconds', NULL, now() - interval '3 seconds',
+   '{"from":"sales@v9.example"}'),
+  ('d9000000-0000-4000-8000-000000000002', '44444444-4444-4444-8444-444444444444', 'c0000000-0000-4000-8000-000000000009',
+   'inbound', 'email', 'Undeliverable: your message', 'RECEIVED', 'mid:v9', '<dsn@mx.v9.example>', now() - interval '1 second', NULL, now() - interval '1 second',
+   '{"from":"Postmaster Service <service@mx.v9.example>","transport":{"autoSubmitted":true,"autoReplied":false,"deliveryReport":true}}');
+
+-- A1: an Outlook reply is the vendor's letter: last line, and the house owes it.
+DO $$ DECLARE r record; a boolean; BEGIN
+  SELECT * INTO r FROM public.list_mail_people('44444444-4444-4444-8444-444444444444', true)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000007';
+  PERFORM pg_temp.ok(r.last_line = 'Yes, Friday works', 'A1 a reply carrying X-Auto-Response-Suppress is the last line (got ' || coalesce(r.last_line, 'null') || ')');
+  PERFORM pg_temp.ok(r.waiting, 'A1b and the house is waiting on it');
+  SELECT automatic INTO a FROM public.mail_thread_letters('44444444-4444-4444-8444-444444444444', 'mid:v7')
+   WHERE id = 'd7000000-0000-4000-8000-000000000002';
+  PERFORM pg_temp.ok(a IS FALSE, 'A1c it is not labelled automatic');
+END $$;
+
+-- A2: an ERP confirmation (auto-generated) is a letter too.
+DO $$ DECLARE r record; BEGIN
+  SELECT * INTO r FROM public.list_mail_people('44444444-4444-4444-8444-444444444444', true)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000008';
+  PERFORM pg_temp.ok(r.waiting AND r.last_line = 'Order 1042 confirmed', 'A2 an auto-generated confirmation is a letter');
+END $$;
+
+-- A3: a delivery report is automatic whoever it claims to be from.
+DO $$ DECLARE r record; a boolean; BEGIN
+  SELECT automatic INTO a FROM public.mail_thread_letters('44444444-4444-4444-8444-444444444444', 'mid:v9')
+   WHERE id = 'd9000000-0000-4000-8000-000000000002';
+  PERFORM pg_temp.ok(a IS TRUE, 'A3 a delivery status report is automatic');
+  SELECT * INTO r FROM public.list_mail_people('44444444-4444-4444-8444-444444444444', true)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000009';
+  PERFORM pg_temp.ok(r.last_line = 'Price list', 'A3b the last line is the letter, not the report');
+END $$;
+
+-- A4: today's letters in are the reply, the confirmation and the price list.
+DO $$ DECLARE s record; BEGIN
+  SELECT * INTO s FROM public.mail_inbox_summary('44444444-4444-4444-8444-444444444444', true);
+  PERFORM pg_temp.ok(s.in_today = 3, 'A4 in_today counts the three letters, not the report (got ' || s.in_today || ')');
+  PERFORM pg_temp.ok(s.waiting_people = 3, 'A4b three people waiting (got ' || s.waiting_people || ')');
 END $$;
 
 rollback;

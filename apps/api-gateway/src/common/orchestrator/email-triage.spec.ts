@@ -92,6 +92,54 @@ describe("email-triage", () => {
     });
   });
 
+  // The Mail tab's "automatic" (not a letter) reads only these two, never
+  // autoSubmitted: a Microsoft 365 vendor's real reply carries
+  // X-Auto-Response-Suppress, and an ERP order confirmation carries
+  // Auto-Submitted: auto-generated (audit follow-up on PR 951).
+  describe("deriveTransportSignals — what the Mail tab may call automatic", () => {
+    it("a person's Outlook reply (X-Auto-Response-Suppress) is not an auto-reply", () => {
+      const s = deriveTransportSignals({
+        from: "Ayse <ayse@bigdist.com>",
+        "x-auto-response-suppress": "DR, NDR, RN, NRN, OOF, AutoReply",
+        "content-type": 'multipart/alternative; boundary="b1"',
+      });
+      expect(s.autoReplied).toBe(false);
+      expect(s.deliveryReport).toBe(false);
+    });
+    it("an ERP confirmation (Auto-Submitted: auto-generated) is not an auto-reply", () => {
+      const s = deriveTransportSignals({
+        from: "orders@bigdist.com",
+        "auto-submitted": "auto-generated",
+      });
+      expect(s.autoReplied).toBe(false);
+    });
+    it("an out-of-office (Auto-Submitted: auto-replied, with parameters) is", () => {
+      expect(
+        deriveTransportSignals({ "auto-submitted": "auto-replied" })
+          .autoReplied,
+      ).toBe(true);
+      expect(
+        deriveTransportSignals({
+          "auto-submitted": "Auto-Replied; owner-email=jean@vin-vendor.fr",
+        }).autoReplied,
+      ).toBe(true);
+    });
+    it("a delivery status notification is a delivery report; a read receipt is not", () => {
+      expect(
+        deriveTransportSignals({
+          "content-type":
+            'multipart/report; report-type="delivery-status"; boundary="x"',
+        }).deliveryReport,
+      ).toBe(true);
+      expect(
+        deriveTransportSignals({
+          "content-type":
+            "multipart/report; report-type=disposition-notification; boundary=x",
+        }).deliveryReport,
+      ).toBe(false);
+    });
+  });
+
   describe("deriveTransportSignals — failing / spoofed auth", () => {
     const signals = deriveTransportSignals({
       from: "Sales <sales@realvendor.com>",
