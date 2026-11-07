@@ -66,6 +66,7 @@ type Tables = Record<string, any[]>;
 
 /** A fake PostgREST: filters, keyset, count, the 1000-row cap, failures. */
 function fakePg(tables: Tables, fail: Set<string> = new Set()) {
+  const asked: Record<string, number> = {};
   const from = (table: string): any => {
     const where: ((r: any) => boolean)[] = [];
     let lim = Infinity;
@@ -87,7 +88,8 @@ function fakePg(tables: Tables, fail: Set<string> = new Set()) {
     c.limit = (n: number) => ((lim = n), c);
     c.update = (p: any) => ((patch = p), c);
     const run = () => {
-      if (fail.has(table))
+      asked[table] = (asked[table] ?? 0) + 1;
+      if (fail.has(table) || fail.has(`${table}#${asked[table]}`))
         return { data: null, error: { message: `${table} is down` } };
       const hit = (tables[table] ?? []).filter((r) => where.every((w) => w(r)));
       if (patch) {
@@ -266,5 +268,31 @@ describe("low stock: every read agrees with v_low_stock_items (QA round 12)", ()
     expect((await alertsOf(pg).getLowStockByRestaurant()).get(R).length).toBe(
       1050,
     );
+    // QA round 15 H2: the dashboard's stats and alert list read whole too.
+    const dash = new DashboardService(db as any);
+    const stats = await dash.getStats(R);
+    expect([stats.totalWines, stats.lowStockItems]).toEqual([1100, 1050]);
+    const low = (await dash.getAlerts(R)).filter((a) => a.type === "low_stock");
+    expect(low.length).toBe(1050);
+  });
+
+  it("H2: a later page that fails refuses the stats and the alert list, never 1000 of them", async () => {
+    const rows = Array.from({ length: 1100 }, (_, i) =>
+      row(`w-${String(i).padStart(4, "0")}`, 1, 3, true),
+    );
+    for (const table of ["restaurant_inventory", "v_low_stock_items"]) {
+      const pg = fakePg(
+        { restaurant_inventory: rows, v_low_stock_items: rows },
+        new Set([`${table}#2`]),
+      );
+      const dash = new DashboardService(dbOf(pg) as any);
+      await expect(dash.getStats(R)).rejects.toThrow("could not be read whole");
+    }
+    const pg = fakePg(
+      { restaurant_inventory: rows, v_low_stock_items: rows },
+      new Set(["v_low_stock_items#2"]),
+    );
+    const alerts = new DashboardService(dbOf(pg) as any).getAlerts(R);
+    await expect(alerts).rejects.toThrow("could not be read whole");
   });
 });
