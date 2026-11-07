@@ -1,6 +1,6 @@
 import { PublicShell } from '../components/mudavym/PublicShell'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
@@ -9,7 +9,7 @@ import { Button } from '../components/ui'
 import { toast } from 'sonner'
 import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
-import { storeSession } from '../lib/houseMemory'
+import { tokenHouse } from '../lib/houseMemory'
 import {
   clearSignUpMail,
   readSignUpMail,
@@ -18,6 +18,8 @@ import {
   verificationMailSentence,
   type VerificationResendAnswer,
 } from '../lib/verificationMail'
+
+type SessionPair = { accessToken: string; refreshToken: string }
 
 /**
  * The two answers the verify route gives a click it will not honour (ADR 0229
@@ -38,13 +40,14 @@ export function VerifyEmail() {
   const publicDesign = usePublicDesign()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { user, loading, logout } = useAuth()
+  const { user, loading, logout, signInWithSession } = useAuth()
   const [verifying, setVerifying] = useState(false)
   const [resending, setResending] = useState(false)
   const [verified, setVerified] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastResent, setLastResent] = useState<Date | null>(null)
   const [refusal, setRefusal] = useState<'sign-in' | 'other-account' | null>(null)
+  const verifyInFlight = useRef(false)
   // OB-6: what the sign-up's send came to, kept by `registerAccount` across
   // the one navigation here. Read once and cleared, so a reload shows the
   // page's usual words.
@@ -52,6 +55,10 @@ export function VerifyEmail() {
   useEffect(() => clearSignUpMail(), [])
   // A resend whose send had not answered in time (OB-6): said, never an error.
   const [mailNote, setMailNote] = useState<string | null>(null)
+  // The address is verified but the session read after it failed (ADR 0020:
+  // a failed read says it failed). The pair is kept for "Try again".
+  const [sessionReadFailed, setSessionReadFailed] = useState(false)
+  const verifiedPair = useRef<SessionPair | null>(null)
 
   const token = searchParams.get('token')
   // Back to this very link after signing in (Login honours `redirect`).
@@ -64,46 +71,77 @@ export function VerifyEmail() {
   const mustSignIn = Boolean(token) && ((!loading && !user) || refusal === 'sign-in')
   const alreadyVerified = Boolean(token) && user?.emailVerified === true && !verified
 
+  /**
+   * The link or the code verified the address: keep the new session and move
+   * on through the router (OB-6). `signInWithSession` stores the pair with
+   * the one helper every sign-in uses, so `activeRestaurantId` follows the
+   * token's house (ADR 0164), and resolves only after `/auth/me` has set the
+   * now-verified person. No 1.5 s wait and no full page load.
+   */
+  const finishVerified = async (pair: SessionPair) => {
+    verifiedPair.current = pair
+    setVerified(true)
+    setSessionReadFailed(false)
+    try {
+      await signInWithSession(pair)
+    } catch {
+      setSessionReadFailed(true)
+      return
+    }
+    // A session in no house goes to the chooser (ADR 0164): it shows a
+    // membership waiting to be accepted (ADR 0229 fork 13), and sends an
+    // account-only signup (ADR 0213) with nothing waiting on to
+    // /get-started. Only a session in a house asks whether the menu is
+    // already uploaded (re-verification flows).
+    const house = tokenHouse(pair.accessToken)
+    const progress = house ? await getOnboardingProgress().catch(() => null) : null
+    const destination = !house
+      ? '/choose-house'
+      : progress?.menu_uploaded
+        ? '/'
+        : '/get-started'
+    toast.success('Email verified.')
+    navigate(destination, { replace: true })
+  }
+
   const handleVerify = async () => {
     if (!token) {
       setError('No verification token found in URL.')
       return
     }
+    if (verifyInFlight.current) return
+    verifyInFlight.current = true
     setVerifying(true)
     setError(null)
     try {
-      const { data } = await apiClient.post<{
-        accessToken: string
-        refreshToken: string
-      }>('/auth/verify-email', { token })
-
-      // Store new tokens that include emailVerified: true in JWT payload.
-      // One helper stores every session, so `activeRestaurantId` follows the
-      // token's house (ADR 0164).
-      const house = storeSession(data.accessToken, data.refreshToken)
-      setVerified(true)
-      toast.success('Email verified! Redirecting...')
-      // A session in no house goes to the chooser (ADR 0164): it shows a
-      // membership waiting to be accepted (ADR 0229 fork 13), and sends an
-      // account-only signup (ADR 0213) with nothing waiting on to
-      // /get-started. Only a session in a house asks whether the menu is
-      // already uploaded (re-verification flows).
-      const progress = house ? await getOnboardingProgress().catch(() => null) : null
-      const destination = !house
-        ? '/choose-house'
-        : progress?.menu_uploaded
-          ? '/'
-          : '/get-started'
-      setTimeout(() => {
-        window.location.href = destination
-      }, 1500)
+      const { data } = await apiClient.post<SessionPair>('/auth/verify-email', {
+        token,
+      })
+      await finishVerified(data)
     } catch (err: unknown) {
       const refused = linkRefusal(err)
       if (refused) setRefusal(refused)
       else setError(getErrorMessage(err))
     } finally {
+      verifyInFlight.current = false
       setVerifying(false)
     }
+  }
+
+  // F3: a link opened where its person is signed in verifies by itself, once.
+  // Mail scanners hold no session, so the signed-out branch keeps its button.
+  const autoVerified = useRef(false)
+  useEffect(() => {
+    if (autoVerified.current || !token || loading || !user) return
+    if (user.emailVerified === true) return
+    autoVerified.current = true
+    void handleVerify()
+    // handleVerify reads only state this effect already keys on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, loading, user])
+
+  const retrySession = () => {
+    if (verifiedPair.current) void finishVerified(verifiedPair.current)
   }
 
   const signOutThenSignIn = () =>
@@ -199,7 +237,9 @@ export function VerifyEmail() {
         eyebrow="Account access"
         voice={
           verified
-            ? 'Opening your workspace…'
+            ? sessionReadFailed
+              ? 'Your address is verified.'
+              : 'Opening your workspace…'
             : token
               ? 'Confirm this address to continue.'
               : 'Look for the verification email from Mudavym.'
@@ -213,7 +253,19 @@ export function VerifyEmail() {
       >
         <div className="mdv-pub__plate mdv-pub__stack">
           {verified ? (
-            <p role="status">Your address is verified. Redirecting you now…</p>
+            sessionReadFailed ? (
+              <>
+                <p className="mdv-alert" role="alert">
+                  Your address is verified, but your account could not be
+                  loaded just now.
+                </p>
+                <button className="mdv-btn mdv-btn--seal" onClick={retrySession}>
+                  Try again
+                </button>
+              </>
+            ) : (
+              <p role="status">Your address is verified. Opening your workspace…</p>
+            )
           ) : (
             <>
               {error && (
@@ -313,12 +365,30 @@ export function VerifyEmail() {
 
   if (verified) {
     return (
-      <AuthShell title="Email Verified!" subtitle="Redirecting you now…">
-        <AuthCard className="text-center py-10">
+      <AuthShell
+        title="Email Verified!"
+        subtitle={
+          sessionReadFailed
+            ? 'Your account could not be loaded just now.'
+            : 'Opening your workspace…'
+        }
+      >
+        <AuthCard className="text-center py-10 space-y-4">
           <CheckCircle
             className="w-14 h-14 text-emerald-500 mx-auto"
             strokeWidth={1.5}
           />
+          {sessionReadFailed && (
+            <>
+              <p role="alert" className="text-sm text-red-700">
+                Your address is verified, but your account could not be
+                loaded just now.
+              </p>
+              <Button className="w-full" size="lg" onClick={retrySession}>
+                Try again
+              </Button>
+            </>
+          )}
         </AuthCard>
       </AuthShell>
     )
