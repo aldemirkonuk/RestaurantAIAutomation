@@ -1,4 +1,4 @@
-## Stored wine keys computed before the dotless-ı fold are stale — OPEN — 2026-11-07
+## Stored wine keys computed before the dotless-ı fold are stale — PARTLY RESOLVED — 2026-11-07
 
 Branch `fix/wine-name-folds-turkish-i` (QA round 1, B-1) makes
 `public.wine_normalize_text` and its three mirrors fold Turkish dotless "ı"
@@ -22,14 +22,26 @@ recompute `signature_hash`, on purpose:
   through the normalized-name leg of `match_library_wine`, not the signature
   leg, so it still links; what stays stale is the hash itself.
 
-How many rows this touches is **not measured** (this branch may not query
-production). The next step, by whoever is allowed to read production:
+Recompute (stacked `fix/wine-signatures-refold-dotless-i`): the migration
+`wine_signatures_refold_dotless_i` moves each live drifting row with an "ı"
+to its folded hash, oldest first, together with its submissions, menu_changes
+and roster copies. When another row already holds the folded hash it moves
+NEITHER row: the later one keeps its old hash and the pair goes to
+`public.wine_signature_refold_review` (`held_by` = the holder); a roster row
+whose venue already holds the new hash is kept and recorded the same way.
+Each review row is a merge decision (`merge_library_wines`), never an UPDATE.
+Proven in PGlite 0.5.8 (p4-scratch/pglite-probe/f785-wave3-refold-proof.mjs,
+29 checks, second run a no-op); removing the holder check or the roster guard
+fails on the UNIQUE index (23505).
+
+Still open: how many rows it moves or holds in production is **not
+measured** (no production reads from this lane):
 `SELECT count(*) FROM master_wine_library WHERE concat_ws(' ', producer, name,
-country, region, grape_variety) LIKE '%ı%';`, then
-`SELECT * FROM fn_repair_signature_hashes(false);` (reports only, skips
-collisions) once the migration is live; rows needing a merge show as
-`SKIPPED_COLLISION`. Every row with an "ı" also shows in `v_signature_drift`
-until it is repaired or merged.
+country, region, grape_variety) LIKE '%ı%';` before, and
+`SELECT * FROM wine_signature_refold_review WHERE resolved_at IS NULL;` after.
+Provisional (venue-scoped) rows were not seeded in the PGlite proof; the
+migration takes their hash from `v_signature_drift`, which applies the venue
+formula, but that path is unexercised. Nobody resolves the review rows yet.
 
 ## Other letters NFD cannot fold are still split — OPEN — 2026-11-07
 
