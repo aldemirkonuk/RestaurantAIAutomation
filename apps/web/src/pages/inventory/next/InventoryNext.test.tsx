@@ -86,6 +86,7 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
   fetchHouseItemResearch: research.fetch,
   getItemFigures: vi.fn(() => new Promise(() => undefined)),
   getItemUsedIn: vi.fn(() => new Promise(() => undefined)),
+  getItemNutrition: vi.fn(() => new Promise(() => undefined)),
 }));
 vi.mock('./RowDropdown', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),

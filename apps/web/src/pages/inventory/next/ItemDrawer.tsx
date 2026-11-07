@@ -11,12 +11,13 @@
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
-import { getItemFigures, getItemUsedIn, inventoryItemKeys, type HouseFields } from '../../../services/api/inventory';
+import { getItemFigures, getItemNutrition, getItemUsedIn, inventoryItemKeys, type HouseFields } from '../../../services/api/inventory';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import type { Provider } from '../../../services/api/providers';
 import type { StorageLocation } from '../../../hooks/useStorageLocations';
-import ItemCards, { CARD_TITLE, type CardId, type FiguresLoad } from './ItemCards';
+import ItemCards, { CARD_TITLE, type CardId, type FiguresLoad, type InsideLoad } from './ItemCards';
 import ItemUsedIn, { type UsedInLoad } from './ItemUsedIn';
+import WhatIsInIt from './NutritionCard';
 import RowDropdown from './RowDropdown';
 import { failureReason } from './iv-failure';
 import { noZoneWord, typeLabel, type HouseCurrency, type InvRow } from './useInventoryNextData';
@@ -55,16 +56,8 @@ export interface NutritionCardProps {
   row: InvRow;
   house: HouseFields;
   restaurantId: string | null;
-}
-
-/**
- * The NutritionCard slot's default. Nothing about nutrition is recorded or
- * read anywhere yet, so it says that in one line: never an empty box and never
- * "0 kcal" (ADR 0020). The nutrition card replaces this through the drawer's
- * `NutritionCard` prop; it is the only place nutrition mounts.
- */
-export function NutritionNotRecorded(_: NutritionCardProps) {
-  return <p className="iv-note">Nutrition and allergens are not recorded for this item yet.</p>;
+  /** Owners and managers may change what is recorded; staff read it. */
+  canManage: boolean;
 }
 
 export interface ItemDrawerProps {
@@ -86,7 +79,7 @@ export interface ItemDrawerProps {
 
 export default function ItemDrawer(props: ItemDrawerProps) {
   const { row, house, canManage, currency, zoneName, restaurantId, onClose } = props;
-  const NutritionCard = props.NutritionCard ?? NutritionNotRecorded;
+  const NutritionCard = props.NutritionCard ?? WhatIsInIt;
   const [evidence, setEvidence] = useState<CardId | 'all' | null>(null);
   const detailRef = useRef<HTMLElement | null>(null);
   // On a phone the detail card opens below the fold: bring it into view.
@@ -101,6 +94,14 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     queryFn: () => getItemFigures(id, restaurantId ?? undefined),
     enabled,
     staleTime: 30_000,
+    retry: false,
+  });
+  // The same query the slot's card reads, so the KPI card and the card agree.
+  const nutritionQ = useQuery({
+    queryKey: inventoryItemKeys.nutrition(restaurantId ?? '', id),
+    queryFn: () => getItemNutrition(id, restaurantId ?? undefined),
+    enabled,
+    staleTime: 60_000,
     retry: false,
   });
   const usedInQ = useQuery({
@@ -126,6 +127,11 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     ? { status: 'failed', reason: failureReason(figuresQ.error) }
     : figuresQ.data
       ? { status: 'ready', data: figuresQ.data }
+      : { status: 'reading' };
+  const inside: InsideLoad = nutritionQ.isError
+    ? { status: 'failed' }
+    : nutritionQ.data
+      ? { status: 'ready', data: nutritionQ.data }
       : { status: 'reading' };
   const usedIn: UsedInLoad = usedInQ.isError
     ? { status: 'failed', reason: failureReason(usedInQ.error) }
@@ -167,6 +173,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
         canManage={canManage}
         currency={currency}
         figures={figures}
+        inside={inside}
         open={evidence === 'all' ? null : evidence}
         onOpen={toggle}
       />
@@ -191,7 +198,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
         >
           <h3 className="iv-sec">{evidence === 'all' ? 'Evidence and actions' : `${CARD_TITLE[evidence]}: where it comes from`}</h3>
           <div className="ivd-nutrition" data-slot="NutritionCard" data-testid="ivd-nutrition-slot">
-            <NutritionCard row={row} house={house} restaurantId={restaurantId} />
+            <NutritionCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} />
           </div>
           <RowDropdown
             row={row}

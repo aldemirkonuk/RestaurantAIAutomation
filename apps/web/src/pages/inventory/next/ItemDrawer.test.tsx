@@ -7,13 +7,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
-import type { HouseFields, ItemFigures } from '../../../services/api/inventory';
+import { ALLERGENS, type HouseFields, type ItemFigures, type ItemNutrition } from '../../../services/api/inventory';
 
-const api = vi.hoisted(() => ({ figures: vi.fn(), usedIn: vi.fn() }));
+const api = vi.hoisted(() => ({ figures: vi.fn(), usedIn: vi.fn(), nutrition: vi.fn() }));
 vi.mock('../../../services/api/inventory', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   getItemFigures: api.figures,
   getItemUsedIn: api.usedIn,
+  getItemNutrition: api.nutrition,
 }));
 vi.mock('./RowDropdown', () => ({ default: () => <div data-testid="row-dropdown" /> }));
 
@@ -46,6 +47,13 @@ const figures = (over: Partial<ItemFigures> = {}): ItemFigures => ({
   },
   ...over,
 });
+
+const nothingStated: ItemNutrition = {
+  item: { id: 'i1', name: 'Gravner Ribolla', kind: 'wine', uom: 'bottle' },
+  suggestedBasis: '100ml',
+  figures: null,
+  allergens: ALLERGENS.map((a) => ({ allergen: a, status: 'not_stated' as const, statedByName: null, statedAt: null })),
+};
 
 const NO_HOUSE: HouseFields = { kind: null, uom: null, displayName: null };
 const CURRENCY = /€|EUR|\$|£|₺|TRY|USD/;
@@ -80,6 +88,8 @@ beforeEach(() => {
   api.figures.mockResolvedValue(figures());
   api.usedIn.mockReset();
   api.usedIn.mockImplementation(() => new Promise(() => undefined));
+  api.nutrition.mockReset();
+  api.nutrition.mockResolvedValue(nothingStated);
 });
 
 describe('the item drawer', () => {
@@ -165,12 +175,42 @@ describe('the item drawer', () => {
       expect(card.getAttribute('aria-controls')).toBe('ivd-evidence');
       const slot = within(detail).getByTestId('ivd-nutrition-slot');
       expect(slot.getAttribute('data-slot')).toBe('NutritionCard');
-      // Until the nutrition card lands, the slot says nothing is recorded: never empty, never 0.
-      expect(slot.textContent).toBe('Nutrition and allergens are not recorded for this item yet.');
+      // The slot holds the nutrition card: reading, or what is recorded. Never empty, never 0.
+      expect(within(slot).getByTestId('ivn')).toBeTruthy();
+      expect(slot.textContent).not.toMatch(/\b0 (kcal|g)\b/);
       fireEvent.click(card);
       expect(screen.queryByTestId('ivd-evidence')).toBeNull();
       expect(card.getAttribute('aria-controls')).toBeNull();
     }
+  });
+
+  it('shows energy per 100 ml on the "What’s in it" card, and the nutrition card in the slot', async () => {
+    api.nutrition.mockResolvedValue({
+      ...nothingStated,
+      figures: {
+        basis: '100ml', energyKcal: 69, fatG: null, saturatesG: null, carbohydrateG: null, sugarsG: null, proteinG: null,
+        saltG: null, abvPct: 12.5, energyFromAbv: true, source: 'house', sourceRef: null, statedByName: 'Ayşe', statedAt: '2026-11-07T10:00:00Z',
+      },
+      allergens: nothingStated.allergens.map((a) => (a.allergen === 'sulphites' ? { ...a, status: 'contains' as const } : a)),
+    });
+    open(row(), { canManage: false });
+    await waitFor(() => expect(screen.getByTestId('ivd-card-inside').textContent).toContain('69 kcal per 100 ml'));
+    expect(screen.getByTestId('ivd-card-inside').textContent).toContain('Contains 1 of the 14 allergens');
+    expect(api.nutrition).toHaveBeenCalledWith('i1', 'r1');
+    fireEvent.click(screen.getByTestId('ivd-card-inside'));
+    const slot = within(screen.getByTestId('ivd-evidence')).getByTestId('ivd-nutrition-slot');
+    expect(within(slot).getByTestId('ivn-figures').textContent).toContain('from the alcohol alone');
+    expect(within(slot).getByTestId('ivn-allergens').textContent).toContain('Contains sulphites.');
+    // The drawer hands its canManage to the card: staff read only.
+    expect(within(slot).queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(api.nutrition).toHaveBeenCalledTimes(1);
+  });
+
+  it('says the "What’s in it" card could not be read, never "not recorded"', async () => {
+    api.nutrition.mockRejectedValue(new Error('Network Error'));
+    open(row());
+    await waitFor(() => expect(screen.getByTestId('ivd-card-inside').textContent).toContain('could not be read'));
+    expect(screen.getByTestId('ivd-card-inside').textContent).not.toContain('Not recorded');
   });
 
   it('mounts a given NutritionCard once, in the slot, handed the item', () => {
@@ -184,7 +224,7 @@ describe('the item drawer', () => {
     fireEvent.click(screen.getByTestId('ivd-card-inside'));
     expect(screen.getAllByTestId('nutrition-card')).toHaveLength(1);
     expect(within(screen.getByTestId('ivd-nutrition-slot')).getByTestId('nutrition-card').textContent).toBe('Gravner Ribolla');
-    expect(seen.at(-1)).toMatchObject({ row: { id: 'i1' }, house: { kind: 'food' }, restaurantId: 'r1' });
+    expect(seen.at(-1)).toMatchObject({ row: { id: 'i1' }, house: { kind: 'food' }, restaurantId: 'r1', canManage: true });
   });
 
   it('says a count-gap read that failed could not be read, never "Never counted"', async () => {

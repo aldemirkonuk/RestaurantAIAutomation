@@ -11,7 +11,8 @@
  * trend come from GET /inventory/:rid/item/:id/figures.
  */
 import type { ReactNode } from 'react';
-import type { ItemFigures } from '../../../services/api/inventory';
+import type { ItemFigures, ItemNutrition } from '../../../services/api/inventory';
+import { figureWords, PER } from './nutrition-words';
 import { cellMoney, EM, fmtCount, fmtPace, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import { fmtWhen } from '../../../lib/mudavym/format';
 
@@ -33,6 +34,23 @@ export type FiguresLoad =
   | { status: 'reading' }
   | { status: 'failed'; reason: string }
   | { status: 'ready'; data: ItemFigures };
+
+/** What's in it, read for its card: still reading, failed, or answered. */
+export type InsideLoad = { status: 'reading' } | { status: 'failed' } | { status: 'ready'; data: ItemNutrition };
+
+/** The "What's in it" card: energy per 100 g or 100 ml, never 0 for unknown. */
+function insideCard(inside: InsideLoad): { figure: ReactNode; source: string; unread: boolean } {
+  if (inside.status === 'reading') return { figure: EM, source: 'Reading…', unread: false };
+  if (inside.status === 'failed') return { figure: EM, source: 'Nutrition and allergens could not be read; open it to try again.', unread: true };
+  const { figures, allergens } = inside.data;
+  const contains = allergens.filter((a) => a.status === 'contains').length;
+  const stated = allergens.some((a) => a.status !== 'not_stated');
+  const allergenWords =
+    contains > 0 ? `Contains ${contains} of the 14 allergens` : stated ? 'Allergens stated' : 'Allergens not stated yet';
+  if (!figures) return { figure: 'Not recorded', source: `${allergenWords}; nutrition not recorded yet.`, unread: false };
+  const per = PER[figures.basis].toLowerCase();
+  return { figure: `${figureWords(figures.energyKcal, 'kcal')} ${per}`, source: `${allergenWords}.`, unread: false };
+}
 
 const UNREAD = 'could not be read';
 
@@ -169,11 +187,12 @@ export interface ItemCardsProps {
   canManage: boolean;
   currency: HouseCurrency;
   figures: FiguresLoad;
+  inside: InsideLoad;
   open: CardId | null;
   onOpen: (id: CardId) => void;
 }
 
-export default function ItemCards({ row, uom, canManage, currency, figures, open, onOpen }: ItemCardsProps) {
+export default function ItemCards({ row, uom, canManage, currency, figures, inside, open, onOpen }: ItemCardsProps) {
   const f = figures.status === 'ready' ? figures.data : null;
   const reading = figures.status === 'reading';
   const failedWhy = figures.status === 'failed' ? `This item’s figures ${UNREAD} — ${figures.reason}.` : null;
@@ -303,13 +322,7 @@ export default function ItemCards({ row, uom, canManage, currency, figures, open
         }
         source={fromFigures(gap?.readable, gap?.source, 'the count gap')}
       />
-      <Card
-        id="inside"
-        open={open}
-        onOpen={onOpen}
-        figure="Not recorded"
-        source="Nutrition and allergens are not recorded for this item yet."
-      />
+      <Card id="inside" open={open} onOpen={onOpen} {...insideCard(inside)} />
     </div>
   );
 }
