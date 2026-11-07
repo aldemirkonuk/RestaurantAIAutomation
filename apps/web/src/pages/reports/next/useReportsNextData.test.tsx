@@ -212,6 +212,23 @@ describe('useReportsNextData — whose sheet this is', () => {
     expect(result.current.sheetUnread).toMatch(/could not be read \(Request failed with status code 500\)/);
   });
 
+  it('keeps the last good sheet, stays arrangeable and says the refresh failed when a refetch fails after a good load', () => {
+    const { result, rerender } = mount();
+    expect(result.current.sheetKnown).toBe(true);
+    // A background refetch rejects: React Query keeps the data and sets `error`.
+    prefs.error = new Error('Network Error');
+    rerender();
+    expect(result.current.sheetKnown).toBe(true);
+    expect(result.current.sheetUnread).toBeNull();
+    expect(result.current.sheetStale).toMatch(/could not be refreshed/);
+    result.current.saveSheet(defaultSheet());
+    expect(prefs.write).toHaveBeenCalledTimes(1);
+    // It heals when a later read answers.
+    prefs.error = null;
+    rerender();
+    expect(result.current.sheetStale).toBeNull();
+  });
+
   it('never waits forever: with no account to read from, it says so', () => {
     // The preferences query is disabled without a user id, and a disabled
     // query keeps its placeholder forever — so placeholder alone cannot be

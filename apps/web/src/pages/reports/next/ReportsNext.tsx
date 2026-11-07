@@ -464,6 +464,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
           </p>
         )}
 
+        {data.sheetStale && data.restaurantId !== null && (
+          <p role="status" className="rp-note" style={{ marginBottom: 12 }}>
+            {data.sheetStale}
+          </p>
+        )}
+
         {data.restaurantId === null ? (
           <p role="status" className="rp-note">
             No restaurant is active yet, so none of these registers is addressed to anyone. Pick a
