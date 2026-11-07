@@ -247,3 +247,31 @@ can, and 5x is not a rounding error.
 | 2026-08-25 | Claude | Declined to auto-fill `sale_volume_ml` from `normalizeDescription()` despite the pointer: a by-the-glass SKU carries the size of the bottle it is poured from, so parsing it rebuilds the bottle default under a new name |
 | 2026-08-25 | Claude | Left B19 (glass voids return whole bottles) and the Toast door untouched and raised both rather than fixing them silently — both change recorded/live behaviour and are the founder's call. OD-64 |
 | 2026-10-04 | Claude | Corrected 1b in place ([[0285-a-short-pour-opens-the-next-bottle]]): the over-container pour never wrote a negative `open_bottle_ml`. The CHECK refused it as 23514, measured on PGlite at `8c673db4b`. The queue guard is unchanged |
+
+## Amendment — 2026-11-07: a volume void gives back the ml its sale poured (B19 superseded)
+
+**Authority.** The founder's /goal of 2026-11-07 ("I approve you decide them
+all"), after the founder's pick "voids return volume" (#589 group 5); G11,
+proposal F9. Fixes OD-67's defect for new voids; the OD-67 row is still
+listed open. Striking it and old voids are leftovers in
+`../tech-debt.d/2026-11-07-fix-a-void-gives-back-what-was-poured.md`.
+
+**What changes.** Both doors call `public.return_glass_pour` (migration
+`a_void_gives_back_the_pour`), not `apply_stock_movement(+qty)`. It gives
+back `least(voided, sale.pours) × sale.pour_ml` from the sale's own
+`pour_events` row, folds full bottles back (never more than the sale opened),
+and names more than one bottle in the container as `overflow_ml`. The void
+key (ADR 0093 D5), the tenant refusal (ADR 0141) and the dating (ADR 0281)
+are unchanged.
+
+**QA 8c (same day).** Every void, at both doors, goes to `return_glass_pour`,
+which follows the unit the sale was **booked** in (its `pour_events` row, else
+its `sale` ledger row: bottles back), not today's mapping. All voids of one
+sale together give back at most what it booked (`pour_events.returns_sale_key`,
+the ledger's `metadata.sale_key`), whatever key each carries. No booked sale
+raises P0002; it never returns 0 quietly. Rejected: keying the return on the
+sale line alone (a second partial void could never land); routing by today's
+mapping (QA 8c's two failures).
+
+**Rejected:** waiting for ADR 0115 D3; today's pour size (drifts from the
+sale's). **Revisit when** ADR 0115 D3 (R49) replaces the body.

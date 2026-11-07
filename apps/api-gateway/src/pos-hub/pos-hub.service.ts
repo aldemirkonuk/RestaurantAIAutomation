@@ -1448,40 +1448,40 @@ export class PosHubService {
             // ADR 0281: dated by the check, not by its arrival.
             p_occurred_at: when.at,
           }));
+        } else if (isVoid) {
+          // A void gives back what its sale (`idem`) BOOKED, in the unit it was
+          // booked in -- ml of a glass sale, bottles of a bottle sale -- not by
+          // today's mapping, and at most once across every void of that sale.
+          // No booked sale is an error, never a quiet 0 (QA 8c; ADR 0011).
+          //
+          // ADR 0093 D5 -- THE VOID'S KEY IS NOT THE SALE'S KEY. Reusing `idem`
+          // hit the sale's idempotent early return and moved nothing.
+          // `${idem}:void` is derived from it, so a replayed void stays a no-op
+          // (pos-hub.void-idempotency.spec.ts).
+          const { data: back, error } = await db.rpc("return_glass_pour", {
+            p_restaurant_id: restaurantId,
+            p_inventory_id: it.inventory_id,
+            p_sale_key: idem,
+            p_pours: qty,
+            p_idempotency_key: `${idem}:void`,
+            p_occurred_at: when.at,
+          });
+          rpcError = error;
+          if (!error && Number((back as any)?.overflow_ml) > 0) {
+            this.logger.warn(
+              `Void of ${it.name}: ${(back as any).overflow_ml} ml not added back (${(back as any).reason})`,
+            );
+          }
         } else {
-          // Whole-bottle sales, and every void.
-          //
-          // B19 (unchanged, and wrong — see ADR 0011 Consequences): a partial-
-          // volume void returns `qty` WHOLE BOTTLES because record_glass_pour
-          // has no reversal mode. Voiding 5 glasses returns 5 bottles. Left as
-          // it is because B19 is a recorded decision; superseding it is the
-          // founder's call, not this change's.
-          //
-          // ADR 0093 D5 — THE VOID'S KEY IS NOT THE SALE'S KEY.
-          //
-          // `apply_stock_movement` (production definition, read 2026-09-02)
-          // opens with `SELECT id ... WHERE idempotency_key = p_idempotency_key
-          // ... IF FOUND RETURN`. Passing `idem` here — the key the SALE
-          // already wrote — therefore returned the sale's transaction id and
-          // MOVED NOTHING: a voided check stayed depleted forever, and the
-          // caller could not tell, because an idempotent hit and a real
-          // movement are the same `{ error: null }`.
-          //
-          // `${idem}:void` is derived from the sale's key rather than random,
-          // so a REPLAYED void is still idempotent — the property the sale
-          // already had, extended to the reversal.
-          //
-          // pos-hub.void-idempotency.spec.ts pins this against a mock that
-          // actually implements the early return; the older B19 tests could
-          // not see it because their mock ignores the key.
+          // Whole-bottle sales.
           ({ error: rpcError } = await db.rpc("apply_stock_movement", {
             p_inventory_id: it.inventory_id,
             p_stock_state: "live",
-            p_delta: isVoid ? qty : -qty,
-            p_transaction_type: isVoid ? "return" : "sale",
+            p_delta: -qty,
+            p_transaction_type: "sale",
             p_source: "pos",
-            p_reason: `POS ${isVoid ? "void" : "sale"} (${label}): ${it.name}`,
-            p_idempotency_key: isVoid ? `${idem}:void` : idem,
+            p_reason: `POS sale (${label}): ${it.name}`,
+            p_idempotency_key: idem,
             // ADR 0141 — the house this check belongs to. `it.inventory_id`
             // comes from a `pos_item_mappings` row read for this restaurant;
             // the row belonging here does not make the item it names belong

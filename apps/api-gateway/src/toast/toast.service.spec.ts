@@ -171,7 +171,7 @@ describe("ToastService.applyOrderSaleEffects (via processWebhook)", () => {
     expect(calls.rpc[0].name).toBe("apply_stock_movement");
   });
 
-  it("reverses a glass void via apply_stock_movement instead of skipping it (B19)", async () => {
+  it("gives back the poured ml on a glass void, never a bottle per glass (B19 superseded, G11)", async () => {
     const { service, calls } = makeService({
       // ADR 0141, second correction: a mapped item pours only when a read
       // scoped to this restaurant returns it -- the fixture's item is the house's own.
@@ -191,9 +191,28 @@ describe("ToastService.applyOrderSaleEffects (via processWebhook)", () => {
     );
 
     expect(calls.rpc).toHaveLength(1);
-    expect(calls.rpc[0].name).toBe("apply_stock_movement");
-    expect(calls.rpc[0].args.p_delta).toBe(2);
-    expect(calls.rpc[0].args.p_transaction_type).toBe("return");
+    expect(calls.rpc[0].name).toBe("return_glass_pour");
+    expect(calls.rpc[0].args).toEqual({
+      p_restaurant_id: "r1",
+      p_inventory_id: "inv-1",
+      p_sale_key: "toast_sale_order-1_item-1",
+      p_pours: 2,
+      p_idempotency_key: "toast_void_order-1_item-1",
+    });
+  });
+
+  it("voids by the sale's booked unit, not today's mapping (QA 8c)", async () => {
+    const { service, calls } = makeService({
+      inventory: { id: "inv-1" },
+      mapping: { inventory_id: "inv-1", sale_unit: "bottle", item_name: "Caymus Cabernet" },
+    });
+
+    await service.processWebhook(webhookDto(ToastWebhookEventType.ORDER_VOIDED), "{}", null, null);
+
+    // Under the old bottle branch this was apply_stock_movement(+2): two
+    // bottles back for a sale that may have been booked as glasses.
+    expect(calls.rpc.map((c: any) => c.name)).toEqual(["return_glass_pour"]);
+    expect(calls.rpc[0].args.p_sale_key).toBe("toast_sale_order-1_item-1");
   });
 
   it("queues an unmapped line in pos_unresolved_lines instead of dropping it (B20)", async () => {
