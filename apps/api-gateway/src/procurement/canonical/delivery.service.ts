@@ -993,10 +993,22 @@ export class DeliveryService {
     const why = [...new Set(held.map((p) => p.reason))]
       .map((r) => r.charAt(0).toUpperCase() + r.slice(1))
       .join(" ");
+    // Once per invoice: what it carries that is in no bottle's cost (deposits,
+    // a fee printed as a line), and what was done with its tax (lane 1.4).
+    const papers = cost.value.papers ?? [];
+    const paperNote = papers
+      .map((p, i) => {
+        const which =
+          papers.length === 1
+            ? "On the invoice"
+            : `On invoice ${p.docNumber ?? `${i + 1} of ${papers.length}`}`;
+        return ` ${which}: ${p.leftOut} ${p.taxSaid}`;
+      })
+      .join("");
     const note = cost.value.finalised.length
-      ? `Cost posted for ${cost.value.finalised.length} item(s); ${held.length} left provisional.${held.length ? ` ${why}` : ""}`
+      ? `Cost posted for ${cost.value.finalised.length} item(s); ${held.length} left provisional.${held.length ? ` ${why}` : ""}${paperNote}`
       : held.length
-        ? `No cost was posted: ${held.length} item(s) stay provisional. ${why}`
+        ? `No cost was posted: ${held.length} item(s) stay provisional. ${why}${paperNote}`
         : "This delivery booked no stock at the door, so there was no cost to settle.";
 
     return {

@@ -662,6 +662,45 @@ describe("DeliveryService", () => {
       );
     });
 
+    it("names, once per invoice, what was left out of cost and how tax was read (lane 1.4)", async () => {
+      db.answers.deliveries = {
+        data: deliveryRow({ state: "AGREED" }),
+        error: null,
+      };
+      db.updateAnswers.deliveries = {
+        data: deliveryRow({ state: "VERIFIED", verified_by: "u1" }),
+        error: null,
+      };
+      const spy = jest
+        .spyOn(DeliveryStockService.prototype, "finaliseAtVerified")
+        .mockResolvedValueOnce({
+          ok: true,
+          value: {
+            finalised: [{ inventoryId: "i1" }, { inventoryId: "i2" }],
+            stillProvisional: [],
+            papers: [
+              {
+                documentId: "d1",
+                docNumber: "A-1",
+                leftOut: "Not cost: a deposit of 30.00.",
+                taxSaid: "Tax is unset.",
+              },
+              {
+                documentId: "d2",
+                docNumber: null,
+                leftOut: "Nothing was left out.",
+                taxSaid: "Tax is unset.",
+              },
+            ],
+          },
+        } as never);
+      const res = await service.verify(REST, DEL, "u1");
+      spy.mockRestore();
+      expect(res.ok && res.value.costNote).toBe(
+        "Cost posted for 2 item(s); 0 left provisional. On invoice A-1: Not cost: a deposit of 30.00. Tax is unset. On invoice 2 of 2: Nothing was left out. Tax is unset.",
+      );
+    });
+
     it("is idempotent — a second verify returns the first stamp and writes nothing", async () => {
       db.answers.deliveries = {
         data: deliveryRow({
