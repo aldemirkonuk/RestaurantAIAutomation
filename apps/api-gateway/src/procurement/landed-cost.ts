@@ -51,8 +51,12 @@ export interface LandedCostHeader {
   delivery_fee: number | null;
   other_charges: number | null;
   deposit_total: number | null;
-  /** The tax the paper prints (BT-110). Never added as cost. */
+  /** The tax the paper prints (BT-110). Cross-checked, never added as cost. */
   tax: number | null;
+  /** Whether the charges and the discount above are printed with tax inside. Null: the paper does not say. */
+  charges_tax_basis: PrintedTaxBasis | null;
+  /** The tax rate on the charges and the discount, a percentage. Null: not printed. */
+  charges_vat_rate_percent: number | null;
 }
 
 /** One `procurement_document_lines` row (baseline, around line 4391) plus the door's count. */
@@ -449,10 +453,27 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
   }
   const D = isNum(discount) && discount > 0 ? discount : 0;
 
-  // The paper's charges and discount are shared as printed: what tax they
-  // hold is not read yet, so a line that carries a share is not stamped.
-  const C = charges;
-  const Dc = D;
+  // The charges and the discount are tax-treated like a line (ADR 0359 C3).
+  const chargesT = treatTax(
+    charges,
+    header.charges_tax_basis,
+    header.charges_vat_rate_percent,
+    reclaim,
+    "The paper's charges",
+  );
+  const discountT = treatTax(
+    D,
+    header.charges_tax_basis,
+    header.charges_vat_rate_percent,
+    reclaim,
+    "The paper's discount",
+  );
+  if (!paperProblem && (charges > 0 || D > 0)) {
+    if (!chargesT.ok) paperProblem = chargesT.sentence;
+    else if (!discountT.ok) paperProblem = discountT.sentence;
+  }
+  const C = chargesT.ok ? chargesT.cost : charges;
+  const Dc = discountT.ok ? discountT.cost : D;
 
   // Step 1: each line on its own, then its tax.
   type Step =
@@ -502,9 +523,44 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
     return { line, kind: "value", net: r.net, how: r.how, tax: t };
   });
 
+  // The tax the paper prints must agree with its lines' rates, when every
+  // line's tax can be worked out; otherwise the rates or the basis are wrong.
   const valueSteps = steps.filter(
     (x): x is Extract<Step, { kind: "value" }> => x.kind === "value",
   );
+  const lineTax = (
+    amount: number,
+    basis: PrintedTaxBasis | null,
+    rate: number | null,
+  ) => {
+    if (rate === 0) return 0;
+    if (rate == null || basis == null) return null;
+    const rr = rate / 100;
+    return basis === "includes_tax" ? amount - amount / (1 + rr) : amount * rr;
+  };
+  if (
+    !paperProblem &&
+    isNum(header.tax) &&
+    steps.length > 0 &&
+    steps.every((x) => x.kind === "value")
+  ) {
+    const parts = valueSteps.map((x) =>
+      lineTax(x.net, x.line.price_tax_basis, x.line.vat_rate_percent),
+    );
+    if (charges > 0 || D > 0) {
+      const rate = header.charges_vat_rate_percent;
+      const basis = header.charges_tax_basis;
+      const c = lineTax(charges, basis, rate);
+      const d = lineTax(D, basis, rate);
+      parts.push(c == null || d == null ? null : c - d);
+    }
+    if (parts.every((p) => p != null)) {
+      const worked = (parts as number[]).reduce((s, p) => s + p, 0);
+      if (Math.abs(worked - header.tax) > 0.01 * (parts.length + 1)) {
+        paperProblem = `The paper prints tax of ${m(header.tax)}, but its lines' rates come to ${m(worked)}, so no line's cost can be final.`;
+      }
+    }
+  }
 
   // Step 2: share the paper's charges and discount by the lines' cost value (F3).
   const base = valueSteps.reduce((s, x) => s + x.tax.cost, 0);
@@ -518,8 +574,9 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
   } else if (!shareProblem && Dc > base + C) {
     shareProblem = `This paper's discount of ${m(D)} is more than its stock and charges, so no line's cost is final.`;
   }
-  // Unknown until the charges' tax is read: a line carrying a share is null.
-  const headerStamps: CostTaxBasis[] = [null];
+  const headerStamps: CostTaxBasis[] = [];
+  if (charges > 0 && chargesT.ok) headerStamps.push(chargesT.stamp);
+  if (D > 0 && discountT.ok) headerStamps.push(discountT.stamp);
 
   const out: LandedLine[] = steps.map((x): LandedLine => {
     const item_key = x.line.item_key ?? null;
@@ -556,14 +613,15 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
         `It is free goods: its bottles add no value and dilute the item's cost.`,
       );
     else said.push(`For cost, ${x.tax.said}: ${m(cost_value)}.`);
+    const headerSaid = (t: TaxTreated) => (t.ok ? `; ${t.said}` : "");
     if (charge_share > 0) {
       said.push(
-        `It carries ${m(charge_share)} of the paper's ${chargeNames.join(", ")}, shared by line value.`,
+        `It carries ${m(charge_share)} of the paper's ${chargeNames.join(", ")}, shared by line value${headerSaid(chargesT)}.`,
       );
     }
     if (discount_share < 0) {
       said.push(
-        `It carries ${m(-discount_share)} of the paper's discount, shared by line value.`,
+        `It carries ${m(-discount_share)} of the paper's discount, shared by line value${headerSaid(discountT)}.`,
       );
     }
     if ((x.line.deposit ?? 0) > 0)

@@ -22,6 +22,8 @@ const NO_HEADER: LandedCostHeader = {
   other_charges: null,
   deposit_total: null,
   tax: null,
+  charges_tax_basis: null,
+  charges_vat_rate_percent: null,
 };
 
 const UNSET: HouseTax = { tax_basis: "unset", reclaims_input_tax: null };
@@ -379,6 +381,35 @@ describe("landedCost: tax follows the line's basis and the house's reclaim (ADR 
     expect(noBasis.basis).toContain(
       "the paper does not say whether its price includes tax",
     );
+  });
+
+  it("a header tax that the lines' rates do not reach leaves every line unresolved", () => {
+    const r = cost({ tax: 20 }, [inside()], RECLAIMS);
+    expect(open(r.lines[0]).unresolved).toBe(
+      "The paper prints tax of 20.00, but its lines' rates come to 18.00, so no line's cost can be final.",
+    );
+  });
+
+  it("freight printed with KDV inside is shared before tax for a house that reclaims", () => {
+    const lines = sixFour().map((l) => ({
+      ...l,
+      price_tax_basis: "excludes_tax" as const,
+      vat_rate_percent: 18,
+    }));
+    const r = cost(
+      {
+        freight: 11.8,
+        charges_tax_basis: "includes_tax",
+        charges_vat_rate_percent: 18,
+        tax: 181.8,
+      },
+      lines,
+      RECLAIMS,
+    );
+    const [a, b] = r.lines.map(costed);
+    expect(a.charge_share).toBeCloseTo(6, 6);
+    expect(b.charge_share).toBeCloseTo(4, 6);
+    expect(a.cost_tax_basis).toBe("net");
   });
 
   it("a line that carries a share of freight whose tax the paper does not state is not stamped", () => {
