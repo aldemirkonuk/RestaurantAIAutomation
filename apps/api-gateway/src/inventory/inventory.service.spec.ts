@@ -917,25 +917,33 @@ describe("InventoryService", () => {
 // Supabase returns `{ data: null, error }` instead of throwing, so the error
 // the old fetchers dropped is exactly the case these tests drive.
 describe("InventoryService list reads say when they fail (G15)", () => {
-  type Answer = { data: any; error: any };
+  type Answer = { data: any; error: any; failFrom?: number };
   const ROW = { id: "inv1", restaurant_id: "r1", master_wine_id: "w1" };
 
-  function serviceWith(answers: Record<string, Answer>) {
+  function serviceWith(answers: Record<string, Answer>, rows: any[] = [ROW]) {
     const client = {
       from: (table: string) => {
         const answer = answers[table] ?? { data: [], error: null };
+        let range: [number, number] | null = null;
         const builder: any = {
           select: () => builder,
           eq: () => builder,
-          then: (resolve: (a: Answer) => unknown, reject?: any) =>
-            Promise.resolve(answer).then(resolve, reject),
+          order: () => builder,
+          // PostgREST's max_rows: an unranged read stops at 1000 rows.
+          range: (a: number, b: number) => ((range = [a, b]), builder),
+          then: (resolve: (a: Answer) => unknown, reject?: any) => {
+            const [a, b] = range ?? [0, 999];
+            if (a >= (answer.failFrom ?? Infinity)) return Promise.resolve(failed).then(resolve, reject);
+            const data = Array.isArray(answer.data) ? answer.data.slice(a, Math.min(b, a + 999) + 1) : answer.data;
+            return Promise.resolve({ ...answer, data }).then(resolve, reject);
+          },
         };
         return builder;
       },
     };
     const db = {
       getClient: () => client,
-      getRestaurantInventory: jest.fn().mockResolvedValue([ROW]),
+      getRestaurantInventory: jest.fn().mockResolvedValue(rows),
     };
     return new InventoryService(db as unknown as DatabaseService);
   }
@@ -985,6 +993,31 @@ describe("InventoryService list reads say when they fail (G15)", () => {
     });
     expect(item.openMl).toBe(300);
     expect(item.locations).toEqual([{ locationId: "z1", qty: 4, wac: 12 }]);
+  });
+
+  // QA round 10b: past PostgREST's 1000-row cap the rest of the house read
+  // as 0 ml open and in no zone, flagged readable.
+  const ids = Array.from({ length: 1200 }, (_, i) => `inv${i}`);
+  const big = (failFrom?: number) =>
+    serviceWith(
+      {
+        inventory_lot_rollup: { data: ids.map((id) => ({ inventory_id: id, open_ml: 100 })), error: null, failFrom },
+        inventory_location_breakdown: { data: ids.map((id) => ({ inventory_id: id, location_id: "z1", qty: 1, wac: 5 })), error: null, failFrom },
+      },
+      ids.map((id) => ({ ...ROW, id })),
+    ).getRestaurantInventory("r1") as Promise<Record<string, any>[]>;
+
+  it("reads every page past the 1000-row cap", async () => {
+    const last = (await big())[1199];
+    expect(last.openMl).toBe(100);
+    expect(last.locations).toEqual([{ locationId: "z1", qty: 1, wac: 5 }]);
+    expect(last.rollupReadable).toBe(true);
+  });
+
+  it("a page that fails after the first says the whole read failed", async () => {
+    const first = (await big(1000))[0];
+    expect(first.rollupReadable).toBe(false);
+    expect(first.locationsReadable).toBe(false);
   });
 
   it("a mapper call that never read either side claims no read", () => {

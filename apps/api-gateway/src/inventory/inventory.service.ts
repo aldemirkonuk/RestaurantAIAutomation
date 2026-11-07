@@ -190,11 +190,7 @@ export class InventoryService {
 
   /**
    * Phase 2: per-inventory WAC / on-hand / location spread derived from inventory_lots.
-   *
-   * `ok: false` is a FAILED read (a thrown error or a returned `error`), told
-   * apart from a real, empty result -- the same shape as `fetchAnalytics`.
-   * Supabase returns `{ data: null, error }` rather than throwing, so the
-   * returned error is treated exactly like a throw (G15).
+   * `ok: false` is a failed read, a returned `error` included (G15).
    */
   private async fetchLotRollup(
     restaurantId: string,
@@ -202,14 +198,14 @@ export class InventoryService {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
-      const { data, error } = await client
+      const read = () => client
         .from("inventory_lot_rollup")
         .select(
           "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count, open_ml",
         )
-        .eq("restaurant_id", restaurantId);
-      if (error) throw error;
-      for (const r of data || []) map.set(r.inventory_id, r);
+        .eq("restaurant_id", restaurantId)
+        .order("inventory_id");
+      for (const r of await this.readEveryPage(read)) map.set(r.inventory_id, r);
       return { ok: true, data: map };
     } catch (err: any) {
       this.logger.warn(`fetchLotRollup failed: ${err?.message}`);
@@ -217,23 +213,33 @@ export class InventoryService {
     }
   }
 
-  /**
-   * Phase 2 multi-location: per-inventory live lot quantities by location.
-   * `ok: false` is a failed read, returned error included (see fetchLotRollup).
-   */
+  /** Every page: PostgREST stops an unranged select at max_rows (1000). */
+  private async readEveryPage(build: () => any): Promise<any[]> {
+    const PAGE = 1000;
+    const rows: any[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await build().range(from, from + PAGE - 1);
+      if (error) throw error;
+      rows.push(...(data ?? []));
+      if ((data ?? []).length < PAGE) return rows;
+    }
+  }
+
+  /** Phase 2 multi-location: per-inventory live lot quantities by location. */
   private async fetchLocationBreakdown(
     restaurantId: string,
   ): Promise<{ ok: boolean; data: Map<string, any[]> }> {
     const map = new Map<string, any[]>();
     try {
       const client = this.dbService.getClient();
-      const { data, error } = await client
+      const read = () => client
         .from("inventory_location_breakdown")
         .select("inventory_id, location_id, qty, wac")
         .eq("restaurant_id", restaurantId)
-        .eq("stock_state", "live");
-      if (error) throw error;
-      for (const r of data || []) {
+        .eq("stock_state", "live")
+        .order("inventory_id")
+        .order("location_id");
+      for (const r of await this.readEveryPage(read)) {
         const arr = map.get(r.inventory_id) ?? [];
         arr.push({ locationId: r.location_id, qty: r.qty, wac: r.wac });
         map.set(r.inventory_id, arr);
@@ -241,7 +247,6 @@ export class InventoryService {
       return { ok: true, data: map };
     } catch (err: any) {
       this.logger.warn(`fetchLocationBreakdown failed: ${err?.message}`);
-      // A half-filled map from a throw mid-loop is not a read either.
       return { ok: false, data: new Map() };
     }
   }
