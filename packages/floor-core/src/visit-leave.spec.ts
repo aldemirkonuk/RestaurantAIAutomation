@@ -32,7 +32,7 @@ describe("kept from the checker (`lib/visit-leave.ts` at 5958689)", () => {
     expect(needsShortVisitConfirm({ ...seated, nowMs: T0 + 11.49 * MIN })).toBe(true);
   });
 
-  it("a seat time ahead of the clock counts as 0 minutes and opens the confirm (OD-257 applies)", () => {
+  it("a seat time ahead of the clock counts as 0 minutes and opens the confirm (the executor's reading under OD-242)", () => {
     expect(dwellMinutesSince(at(20), T0)).toBe(0);
     expect(needsShortVisitConfirm({ seatedAt: at(20), lastCheckInAt: null, nowMs: T0 })).toBe(true);
   });
@@ -41,6 +41,19 @@ describe("kept from the checker (`lib/visit-leave.ts` at 5958689)", () => {
     expect(honorCheckInCount(at(0), at(0))).toBe(0);
     expect(honorCheckInCount(at(0), at(3))).toBe(1);
     expect(honorCheckInCount(at(0), null)).toBe(0);
+  });
+
+  it("the proxy's window is 2 seconds: 1.999s reads 0, 2s reads 1", () => {
+    const sec = (ms: number) => new Date(T0 + ms).toISOString();
+    expect(honorCheckInCount(sec(0), sec(1_999))).toBe(0);
+    expect(honorCheckInCount(sec(0), sec(2_000))).toBe(1);
+    expect(honorCheckInCount(sec(2_000), sec(0))).toBe(1);
+  });
+
+  it("a seat time that cannot be read gives no dwell and no confirm", () => {
+    expect(dwellMinutesSince("not a time", T0)).toBeNull();
+    expect(dwellMinutesSince(null, T0)).toBeNull();
+    expect(needsShortVisitConfirm({ seatedAt: "not a time", lastCheckInAt: null, nowMs: T0 })).toBe(false);
   });
 
   it("check-in count: 1 still confirms; negative reads 0; fractional floors; NaN falls back", () => {
@@ -66,11 +79,5 @@ describe("changed from the checker", () => {
       expect(dwellMinutesSince(at(0), nowMs)).toBeNull();
       expect(needsShortVisitConfirm({ seatedAt: at(0), lastCheckInAt: null, nowMs })).toBe(false);
     }
-  });
-
-  it("a seat time that cannot be read gives no dwell and no confirm", () => {
-    expect(dwellMinutesSince("not a time", T0)).toBeNull();
-    expect(dwellMinutesSince(null, T0)).toBeNull();
-    expect(needsShortVisitConfirm({ seatedAt: "not a time", lastCheckInAt: null, nowMs: T0 })).toBe(false);
   });
 });
