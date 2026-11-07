@@ -7,8 +7,11 @@ import {
   Logger,
   Post,
   Query,
+  ServiceUnavailableException,
+  UnauthorizedException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { createHash, timingSafeEqual } from "crypto";
 import { Public } from "../../auth/decorators/public.decorator";
 import { OrchestratorService } from "./orchestrator.service";
 import { InboundAddressService } from "./inbound-address.service";
@@ -36,9 +39,24 @@ interface NormalizedInbound {
  * restaurant_id — so the existing bridge/prospects/responder pipeline handles it unchanged.
  * Runs ALONGSIDE the Gmail ingest (dual-run); nothing here disables the legacy path.
  *
- * Security: gated by a shared secret (`INBOUND_WEBHOOK_SECRET`, sent as `x-inbound-secret`
- * header or `?secret=` query). With no secret configured the endpoint refuses, so it can never
- * act as an open relay.
+ * Security: gated by a shared secret (`INBOUND_WEBHOOK_SECRET`, sent as the `x-inbound-secret`
+ * header, or as `?secret=` while `INBOUND_WEBHOOK_ALLOW_QUERY_SECRET` is not `false`). The
+ * compare is constant-time (`timingSafeEqual` over SHA-256 digests, so unequal lengths cannot
+ * throw or leak a length). Neither secret value is ever logged.
+ *
+ * Status codes — the door refuses loudly, because an inbound-parse provider only retries a
+ * letter it did not get a 2xx for (mail proposal F16, G8):
+ *   - 401  wrong or missing secret (header, or query while the query form is allowed).
+ *   - 503  `INBOUND_WEBHOOK_SECRET` not configured — the endpoint refuses, so it can never act
+ *          as an open relay, and the provider keeps the letter.
+ *   - 503  resolving the house or publishing the event failed — the provider retries instead of
+ *          treating a lost letter as delivered.
+ *   - 200  `{status:'ignored'}` for a payload with no sender (a retry cannot fix it).
+ *   - 200  `{status:'ok', restaurant_id}` on success.
+ *
+ * `INBOUND_WEBHOOK_ALLOW_QUERY_SECRET`: unset (default) keeps `?secret=` working so a deployed
+ * provider that cannot send a header does not break; set it to `false` once the provider sends
+ * the header, and the query form alone is refused with 401.
  */
 @Controller("webhooks")
 export class InboundEmailController {
@@ -65,14 +83,19 @@ export class InboundEmailController {
       this.logger.warn(
         "inbound-email webhook hit but INBOUND_WEBHOOK_SECRET is not set — refusing.",
       );
-      return { status: "disabled" };
+      throw new ServiceUnavailableException("inbound-email webhook disabled");
     }
-    const provided = (headerSecret || querySecret || "").trim();
-    if (provided !== configured) {
+    const allowQuery = this.querySecretAllowed();
+    const provided = (
+      headerSecret ||
+      (allowQuery ? querySecret : undefined) ||
+      ""
+    ).trim();
+    if (!provided || !secretsMatch(provided, configured)) {
       this.logger.warn(
-        "inbound-email webhook: bad or missing secret — rejected.",
+        `inbound-email webhook: bad or missing secret — rejected (header=${headerSecret ? "present" : "absent"}, query=${querySecret ? (allowQuery ? "present" : "present-but-disallowed") : "absent"}).`,
       );
-      return { status: "unauthorized" };
+      throw new UnauthorizedException("inbound-email webhook: bad secret");
     }
 
     try {
@@ -113,9 +136,25 @@ export class InboundEmailController {
       );
       return { status: "ok", restaurant_id: restaurantId };
     } catch (e: any) {
+      // A 2xx here tells the provider the letter was delivered and it never
+      // retries — the letter would be lost. 503 makes it try again.
       this.logger.error(`inbound-email webhook failed: ${e?.message}`);
-      return { status: "error" };
+      throw new ServiceUnavailableException(
+        "inbound-email webhook could not accept the letter; retry",
+      );
     }
+  }
+
+  /** `?secret=` is accepted unless INBOUND_WEBHOOK_ALLOW_QUERY_SECRET is exactly `false`. */
+  private querySecretAllowed(): boolean {
+    const raw = this.configService.get<string>(
+      "INBOUND_WEBHOOK_ALLOW_QUERY_SECRET",
+    );
+    return (
+      String(raw ?? "")
+        .trim()
+        .toLowerCase() !== "false"
+    );
   }
 
   /**
@@ -217,4 +256,15 @@ export class InboundEmailController {
       headers: headerMap,
     };
   }
+}
+
+/**
+ * Constant-time secret compare. Hashing both sides first gives equal-length
+ * buffers, so `timingSafeEqual` never throws on a length mismatch and the
+ * time taken does not reveal the configured secret's length.
+ */
+function secretsMatch(provided: string, configured: string): boolean {
+  const a = createHash("sha256").update(provided, "utf8").digest();
+  const b = createHash("sha256").update(configured, "utf8").digest();
+  return timingSafeEqual(a, b);
 }
