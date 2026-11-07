@@ -103,6 +103,8 @@ function makeService(opts: {
         if (col === "rule_key") ruleKey = val;
         return builder;
       };
+      // The house's clock (QA round 4 H4): no zone set keeps the UTC firing key.
+      builder.maybeSingle = async () => ({ data: null, error: null });
       builder.then = (resolve: any, reject: any) => {
         if (table === "recommendation_impressions" && ruleKey) {
           impressionQueries.push(ruleKey);

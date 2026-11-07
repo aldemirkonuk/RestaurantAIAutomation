@@ -25,13 +25,17 @@ import {
   unitsLabel,
 } from "../consumption-units";
 import { DayExclusionsService } from "./day-exclusions.service";
+import { readHouseZone } from "../../common/house-day";
 import { RecommendationActionsService } from "../recommendation-actions.service";
 import {
   SuppressionScope,
   buildSuppressionKey,
   dayGrain,
   effectiveScope,
+  firingGrain,
   insightRuleId,
+  isFiringGrain,
+  onHouseClock,
   suppressionKeys,
   trendGrain,
   windowGrain,
@@ -409,6 +413,27 @@ export class InsightGeneratorService {
     this.computeChecksFamily(bundle, push);
     this.computeGoalsFamily(bundle, push);
 
+    // QA round 4 H4 (2026-11-07): `record` keys a firing by the UTC week, and
+    // a US house's week then rolled on Sunday evening local. Re-key each
+    // firing on the house's clock here, where the house is known. A house
+    // with no zone, or one whose zone cannot be read, keeps UTC.
+    // An unread zone is said through `suppressionsReadable: false` below:
+    // under the UTC key a dismissed item may show again.
+    let firingZone: string | null = null;
+    let firingZoneRead = true;
+    try {
+      firingZone = (await readHouseZone(this.dbService.supabase, restaurantId)).zone;
+    } catch (err: any) {
+      firingZoneRead = false;
+      this.logger.warn(`FIRING_ZONE_UNREAD restaurant=${restaurantId}: ${err?.message}`);
+    }
+    if (firingZone) {
+      const firedAt = new Date();
+      for (const i of insights)
+        if (isFiringGrain(i.periodKey))
+          i.periodKey = firingGrain("week", onHouseClock(firedAt, firingZone));
+    }
+
     if (opts.categories?.length) {
       const set = new Set(opts.categories);
       insights = insights.filter((i) => set.has(i.category));
@@ -516,7 +541,7 @@ export class InsightGeneratorService {
       // Every hiding state, counted apart: a page that shows four when six
       // fired says which of the two were snoozed and which were ruled off.
       withheld: held.withheld,
-      suppressionsReadable: state.readable,
+      suppressionsReadable: state.readable && firingZoneRead,
       // Days the manager ruled out of the baselines, and whether THAT store
       // was readable. Same contract, same reason.
       excludedDays: Array.from(bundle.excludedDates).sort(),
