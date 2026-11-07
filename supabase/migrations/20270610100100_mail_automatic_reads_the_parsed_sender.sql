@@ -1,30 +1,20 @@
 -- Mail: a bounce is read from the From's own mailbox, and older auto-reply
 -- markers count (QA round 24, item 3, 2026-11-07).
 --
--- 20270601090000_mail_automatic_is_a_bounce_or_an_auto_reply called an inbound
--- row automatic when its RAW From matched (^|[<\s"'])(mailer-daemon|postmaster)@.
--- That matches a display name or a comment: "postmaster@x.example"
--- <ayse@bigdist.com> is a person's letter, and it was hidden from "waiting",
--- never the last line and not counted. The bridge now writes
--- transport.fromMailServer from the parsed From (senderAddress, the one
--- mailbox the header names), and this reads it.
+-- 20270601090000 called a row automatic when its RAW From matched
+-- (^|[<\s"'])(mailer-daemon|postmaster)@, so a display name or comment naming
+-- postmaster hid a person's letter. The bridge now writes
+-- transport.fromMailServer from the parsed From; this reads it.
 --
--- Rows stored before the bridge wrote fromMailServer have no flag. They fall
--- back to the raw From, anchored at its END: mailer-daemon@ / postmaster@
--- must be the last address, bare or in the final <...>, optionally followed by
--- one comment. A real bounce ("Mail Delivery Subsystem
--- <mailer-daemon@googlemail.com>", "MAILER-DAEMON@x (Mail Delivery System)")
--- still reads as automatic; a display name or a leading comment does not. No
--- backfill: nothing stored is rewritten.
+-- Older rows have no flag and fall back to the raw From anchored at its END:
+-- mailer-daemon@ / postmaster@ must be the last address, bare or in the final
+-- <...>, optionally followed by one comment. No backfill.
 --
--- transport.autoReplied now also covers X-Autoreply, X-Autorespond (not
--- "no"/"false") and Precedence: auto_reply. That is the bridge's flag; this
--- function reads it as before. Rows stored earlier keep the value they were
--- stored with.
+-- transport.autoReplied (the bridge's flag) now also covers X-Autoreply,
+-- X-Autorespond and Precedence: auto_reply; older rows keep their value.
 --
--- Only the `automatic` expression and the comment change; the function's
--- shape, privileges (service_role only) and every other column are as
--- before. A new migration rather than an edit of 20270601090000, so the change
+-- Only `automatic` and the comment change; shape and privileges (service_role
+-- only) are as before. A new migration, not an edit of 20270601090000, so it
 -- lands whatever order the mail stack's PRs merge in.
 
 CREATE OR REPLACE FUNCTION public.mail_letter_rows(
