@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
-import { perBottleLotCost } from "./lot-unit-cost";
+import { perBottleLotCost, proposalPerBottle } from "./lot-unit-cost";
 
 /**
  * DeliveryStockService — ADR 0103 A1 + A5: stock at the door, cost at VERIFIED.
@@ -116,6 +116,21 @@ interface LineRow {
   pack_size?: number | string | null;
   price_base_qty?: number | string | null;
   price_base_uom?: string | null;
+  line_total?: number | string | null;
+}
+
+/** QA 12b D1: the invoice line whose price base a door-count proposal is read
+ * in — the item's own, else the delivery's only, unattached, invoice line.
+ * Several lines count only when their printed prices settle one base. */
+function baseLine(invoice: LineRow[], id: string | null): LineRow | undefined {
+  const own = id ? invoice.filter((l) => l.inventory_id === id) : [];
+  const lines = own.length ? own : invoice.length === 1 && !invoice[0].inventory_id ? invoice : [];
+  if (lines.length === 1) return lines[0];
+  const bases = new Set(lines.map((l) => {
+    const c = perBottleLotCost(l);
+    return c.ok ? c.bottles : NaN;
+  }));
+  return lines.length && bases.size === 1 && !bases.has(NaN) ? lines[0] : undefined;
 }
 
 interface AgreedPrice {
@@ -728,13 +743,14 @@ export class DeliveryStockService {
     const unattachedRefused: string[] = [];
 
     const lineByKey = new Map<string, LineRow>();
+    const invoiceLines: LineRow[] = [];
     const invoiceSet = new Set(invoiceIds);
     if (allIds.length) {
       const read = await this.db
         .getClient()
         .from("procurement_document_lines")
         .select(
-          "document_id, line_no, inventory_id, qty_bottles, unit_price, uom, pack_size, price_base_qty, price_base_uom, description, vendor_sku",
+          "document_id, line_no, inventory_id, qty_bottles, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, description, vendor_sku",
         )
         .eq("restaurant_id", restaurantId)
         .in("document_id", allIds)
@@ -752,6 +768,7 @@ export class DeliveryStockService {
         // count carries no money at all (ADR 0104 D11), so it is indexed for
         // the proposal lookup and never read as a price.
         if (!invoiceSet.has(line.document_id)) continue;
+        invoiceLines.push(line);
         // QA 7c B1: `unit_price` is as PRINTED, per its price base.
         const cost = perBottleLotCost({
           unit_price: line.unit_price,
@@ -759,6 +776,8 @@ export class DeliveryStockService {
           pack_size: line.pack_size,
           price_base_qty: line.price_base_qty,
           price_base_uom: line.price_base_uom,
+          qty_bottles: line.qty_bottles,
+          line_total: line.line_total,
         });
         const id = line.inventory_id;
         if (!cost.ok) {
@@ -806,23 +825,50 @@ export class DeliveryStockService {
       unit_price_proposed: number | string | null;
     }[]) {
       if (p.unit_price_proposed == null) continue;
-      const price = Number(p.unit_price_proposed);
-      if (!Number.isFinite(price) || price <= 0) continue;
-      const line = lineByKey.get(`${p.document_id}:${p.line_no}`);
+      const keyed = lineByKey.get(`${p.document_id}:${p.line_no}`);
+      const id = keyed?.inventory_id ?? null;
+      const said = Number(p.unit_price_proposed);
+      // QA 10a (1): a settled price is a counter to its line's printed price,
+      // so it is in that line's price base. QA 12b D1: a door count prints no
+      // price, so a proposal keyed to it is read in the base of the item's
+      // invoice line (or the delivery's only invoice line); none, or several
+      // that disagree, and it is refused. A proposal on no line has no unit.
+      const line = keyed && !invoiceSet.has(keyed.document_id) ? baseLine(invoiceLines, id) : keyed;
+      const cost = line
+        ? proposalPerBottle(p.unit_price_proposed, line)
+        : !(said > 0)
+          ? ({ ok: false, kind: "no_price" } as const)
+          : ({
+              ok: false,
+              kind: "refused",
+              reason: keyed
+                ? `an accepted proposal settles a price of ${said} on the door count, which prints no price, and no single invoice line of this item says what unit that price is for`
+                : `an accepted proposal settles a price of ${said} but names no invoice line, so what unit that price is for is not known`,
+            } as const);
+      if (!cost.ok) {
+        if (cost.kind !== "refused") continue;
+        const reason = line
+          ? `the accepted proposal's price ${Number(p.unit_price_proposed)} is read in its invoice line's unit, and ${cost.reason}`
+          : cost.reason;
+        if (!id) unattachedRefused.push(reason);
+        else {
+          byItem.delete(id);
+          refused.set(id, reason);
+        }
+        continue;
+      }
       // A settled price is one a person put their name to, so its provenance is
       // `manual` — calling it `invoice` would claim a document said it.
-      if (line?.inventory_id)
-        byItem.set(line.inventory_id, {
-          unitCost: price,
-          provenance: "manual",
-          source: "accepted_proposal",
-        });
-      else
-        unattached.push({
-          unitCost: price,
-          provenance: "manual",
-          source: "accepted_proposal",
-        });
+      const agreed: AgreedPrice = {
+        unitCost: cost.unitCost,
+        provenance: "manual",
+        source: "accepted_proposal",
+        basis: `accepted proposal: ${cost.basis.replace(/^invoice price/, "price")}`,
+      };
+      if (id) {
+        byItem.set(id, agreed);
+        refused.delete(id);
+      } else unattached.push(agreed);
     }
 
     return {

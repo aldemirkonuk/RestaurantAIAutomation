@@ -346,12 +346,16 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     };
     db.answers.procurement_document_lines = {
       data: [
+        // QA 12b D1: the invoice line, carrying no item, sets the price base.
+        { document_id: "inv-1", line_no: 1, inventory_id: null, qty_bottles: 10, unit_price: 125, uom: "bottle", pack_size: 1, description: "x", vendor_sku: null },
         {
           document_id: "door-1",
           line_no: 1,
           inventory_id: ITEM,
           qty_bottles: 10,
           unit_price: null,
+          uom: "bottle",
+          pack_size: 1,
           description: "counted at the door",
           vendor_sku: null,
         },
@@ -489,6 +493,46 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     expect(posted()).toEqual([]);
     await run({}, { line_no: 3 });
     expect(posted().map((c) => c.args.p_unit_cost)).toEqual([22]);
+  });
+
+  it("QA 10a (1): an accepted proposal is read in its line's price base, or refused by name, never posted raw", async () => {
+    const accept = (unit_price_proposed: number, line_no: number | null = 1) =>
+      (db.answers.delivery_proposals = { data: [{ document_id: line_no ? "inv-1" : null, line_no, unit_price_proposed }], error: null });
+    accept(240);
+    await run({});
+    expect(posted()[0].args).toMatchObject({ p_unit_cost: 20, p_cost_provenance: "manual" });
+    expect(String(posted()[0].args.p_reason)).toMatch(/accepted proposal: price 240 per case of 12 = 20\.0000 per bottle/);
+    expect(await held(run({ pack_size: 1 }))).toMatch(/proposal's price 240 .* how many bottles a case holds/);
+    // A delivery-wide proposal has no unit: it never stands in for the one item.
+    accept(240, null);
+    expect(await held(run({ inventory_id: null, unit_price: null }))).toMatch(/settles a price of 240 but names no invoice line/);
+    expect(posted()).toEqual([]);
+    expect(await held(run({}))).toBe("");
+    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([22]);
+  });
+
+  it("QA 12b D1+C: a door-count proposal takes the invoice line's base; a total settles a bottle row's", async () => {
+    const accept = (document_id: string, unit_price_proposed: number) =>
+      (db.answers.delivery_proposals = { data: [{ document_id, line_no: 1, unit_price_proposed }], error: null });
+    const door = { document_id: "door-1", uom: "bottle", pack_size: 1, unit_price: null };
+    accept("door-1", 240);
+    await run({}, door);
+    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([20]);
+    await run({ inventory_id: null }, door);
+    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([20]);
+    expect(await held(run(door))).toMatch(/240 on the door count, which prints no price/);
+    expect(await held(run({}, { line_no: 2, unit_price: 264, pack_size: 6 }, door))).toMatch(/240 on the door count/);
+    expect(posted()).toEqual([]);
+    accept("inv-1", 250);
+    await run({ uom: "bottle", qty: 24, line_total: 6336 });
+    expect(posted()[0].args).toMatchObject({ p_unit_cost: 250, p_cost_provenance: "manual" });
+  });
+
+  it("QA 10a (2): 24 bottles @ 264, pack 12, no total stays PROVISIONAL; a total that bears it out posts", async () => {
+    expect(await held(run({ uom: "bottle", qty: 24 }))).toMatch(/a bottle's price or a case's is not known/);
+    expect(posted()).toEqual([]);
+    await run({ uom: "bottle", qty: 24, line_total: 6336 });
+    expect(posted()[0].args.p_unit_cost).toBe(264);
   });
 });
 
