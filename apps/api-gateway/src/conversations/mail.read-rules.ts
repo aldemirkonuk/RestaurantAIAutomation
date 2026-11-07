@@ -109,14 +109,6 @@ export function stripSubjectLine(text: string | null | undefined): string {
   return (text ?? "").replace(SUBJECT_LINE_RE, "");
 }
 
-export function subjectFromText(
-  text: string | null | undefined,
-): string | null {
-  const m = /^\s*subject:[ \t]*([^\r\n]*)/i.exec((text ?? "").slice(0, 2000));
-  const s = m?.[1]?.trim();
-  return s ? s : null;
-}
-
 /** Which door a stored letter came by, from stored columns alone. */
 export function mailDoorOf(row: {
   direction?: string | null;
