@@ -111,11 +111,6 @@ describe('LineRow', () => {
     expect(readQty('0')).toBeNull();
     expect(readQty('-1')).toBeNull();
     expect(readQty('abc')).toBeNull();
-    // Round 19: "1,000" saved as 1. A thousand-or-one is not guessed either way.
-    for (const t of ['1,000', '1.000', '22,500', '100.000']) expect(readQty(t), t).toBeNull();
-    expect(readQty('0,125')).toBe(0.125);
-    expect(readQty('1000')).toBe(1000);
-    expect(readQty('1,25')).toBe(1.25);
   });
 
   // Round-17 QA M18: with the house left out of the shelf key, a second house

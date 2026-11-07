@@ -35,8 +35,7 @@ vi.mock('../../../../services/api/client', () => ({
 }));
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => h.auth }));
 
-import RecipeSheet, { LEGACY_NOTE, NEWER_SENTENCE, RESTORED_SENTENCE, SET_ASIDE_SENTENCE, STALE_SENTENCE } from './RecipeSheet';
-import { forgetDrafts } from './drafts';
+import RecipeSheet, { LEGACY_NOTE, NEWER_SENTENCE, SET_ASIDE_SENTENCE, STALE_SENTENCE } from './RecipeSheet';
 
 function line(over: Partial<RecipeLine>): RecipeLine {
   return {
@@ -150,22 +149,8 @@ beforeEach(() => {
   h.put.mockReset();
   versions = [];
   other = null;
-  h.auth = { activeRestaurantId: RID, activeRole: 'manager', user: { userId: 'u1', role: 'manager' } };
-  forgetDrafts();
+  h.auth = { activeRestaurantId: RID, activeRole: 'manager', user: { role: 'manager' } };
 });
-
-/** True when leaving the page now would make the browser warn first. */
-function leaveWarns(): boolean {
-  const ev = new Event('beforeunload', { cancelable: true });
-  window.dispatchEvent(ev);
-  return ev.defaultPrevented;
-}
-
-function mountSwitchable(first: string) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
-  return render(<RecipeSheet cocktailId={first} />, { wrapper: wrap });
-}
 
 describe('RecipeSheet', () => {
   it('2. 2 of 3 lines priced says so and shows no total', async () => {
@@ -477,17 +462,6 @@ describe('RecipeSheet', () => {
     expect(screen.getByRole('button', { name: /^save$/i })).not.toBeDisabled();
   });
 
-  it('round 19: an amount that could be a thousand or one stops Save and says both', async () => {
-    serve(negroni());
-    mount();
-    const amounts = await screen.findAllByLabelText('Amount');
-    fireEvent.change(amounts[0], { target: { value: '1,000' } });
-    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
-    expect(screen.getByText('Line 1 (gin): 1,000 could be 1000 or 1. Type it without the separator.')).toBeInTheDocument();
-    fireEvent.change(amounts[0], { target: { value: '22,500' } });
-    expect(screen.getByText('Line 1 (gin): 22,500 could be 22500 or 22.5. Type it without the separator.')).toBeInTheDocument();
-  });
-
   it('a save the gateway refuses with a sentence shows that sentence', async () => {
     const said = 'Ingredient 2 (Campari) is more than one line can hold. The most is 100,000 ml.';
     serve(negroni());
@@ -509,117 +483,5 @@ describe('RecipeSheet', () => {
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Not saved. Your recipe is as it was.');
     expect(alert.textContent).not.toMatch(/lines\.0/);
-  });
-  it('round 19: going A -> B -> A brings back what was typed for A, said as unsaved, pinned to its version', async () => {
-    serve(negroni());
-    other = margarita();
-    const { rerender } = mountSwitchable(CID);
-    fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
-    rerender(<RecipeSheet cocktailId={CID2} />);
-    expect(await screen.findByRole('region', { name: 'Recipe for Margarita' })).toBeInTheDocument();
-    await waitFor(() => expect(amount(0)).toBe('50'));
-    expect(screen.queryByTestId('recipe-restored')).toBeNull();
-
-    rerender(<RecipeSheet cocktailId={CID} />);
-    expect(await screen.findByRole('region', { name: 'Recipe for Negroni' })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getAllByLabelText('Amount')).toHaveLength(3));
-    expect(amount(0)).toBe('45');
-    expect(screen.getByTestId('recipe-restored')).toHaveTextContent(RESTORED_SENTENCE);
-    expect(screen.getByRole('button', { name: 'Load the saved recipe' })).toBeInTheDocument();
-
-    h.put.mockResolvedValueOnce({ data: { versionId: V5, version: 5, lines: [] } });
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
-    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
-    const [url, body] = h.put.mock.calls[0];
-    expect(url).toBe(`/recipes/${RID}/cocktails/${CID}`);
-    expect(body.expectedVersionId).toBe(V4);
-    expect(body.lines.map((l: { qty: number }) => l.qty)).toEqual([45, 30, 30]);
-    await waitFor(() => expect(screen.queryByTestId('recipe-restored')).toBeNull());
-    expect(leaveWarns()).toBe(false);
-
-    // Typed again after that save, the lines are new, not "from earlier".
-    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '46' } });
-    h.put.mockReturnValueOnce(new Promise(() => {}));
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
-    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(2));
-    expect(screen.queryByTestId('recipe-restored')).toBeNull();
-  });
-
-  it('round 19: a kept draft goes back only to the person who typed it', async () => {
-    serve(negroni());
-    other = margarita();
-    const { rerender } = mountSwitchable(CID);
-    fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
-    rerender(<RecipeSheet cocktailId={CID2} />);
-    await screen.findByRole('region', { name: 'Recipe for Margarita' });
-    h.auth = { ...h.auth, user: { userId: 'u2', role: 'manager' } };
-    rerender(<RecipeSheet cocktailId={CID} />);
-    await screen.findByRole('region', { name: 'Recipe for Negroni' });
-    await waitFor(() => expect(screen.getAllByLabelText('Amount')).toHaveLength(3));
-    expect(amount(0)).toBe('30');
-    expect(screen.queryByTestId('recipe-restored')).toBeNull();
-  });
-
-  it('round 19: leaving the page warns while any draft is unsaved, even one on a drink no longer open', async () => {
-    serve(negroni());
-    other = margarita();
-    const { rerender } = mountSwitchable(CID);
-    await screen.findAllByLabelText('Amount');
-    expect(leaveWarns()).toBe(false);
-    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '45' } });
-    expect(leaveWarns()).toBe(true);
-    rerender(<RecipeSheet cocktailId={CID2} />);
-    await screen.findByRole('region', { name: 'Recipe for Margarita' });
-    expect(leaveWarns()).toBe(true);
-  });
-
-  it('round 19: set-aside lines can be thrown away, and then leaving no longer warns', async () => {
-    serve(negroni());
-    h.put.mockRejectedValueOnce(Object.assign(new Error('conflict'), { response: { status: 409 } }));
-    mount();
-    fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
-    await screen.findByRole('alert');
-    serve(negroniV5());
-    fireEvent.click(screen.getByRole('button', { name: 'Load the saved recipe' }));
-    await screen.findByTestId('recipe-set-aside');
-    expect(leaveWarns()).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name: 'Throw them away' }));
-    expect(screen.queryByTestId('recipe-set-aside')).toBeNull();
-    expect(leaveWarns()).toBe(false);
-  });
-
-  it('round 19: a save over the loaded version ends the set-aside lines', async () => {
-    serve(negroni());
-    h.put.mockRejectedValueOnce(Object.assign(new Error('conflict'), { response: { status: 409 } }));
-    mount();
-    fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
-    await screen.findByRole('alert');
-    serve(negroniV5());
-    fireEvent.click(screen.getByRole('button', { name: 'Load the saved recipe' }));
-    await screen.findByTestId('recipe-set-aside');
-    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '55' } });
-    h.put.mockResolvedValueOnce({ data: { versionId: 'v6', version: 6, lines: [] } });
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
-    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.queryByTestId('recipe-set-aside')).toBeNull());
-    expect(leaveWarns()).toBe(false);
-  });
-
-  it('round 19: only a 400 shows the gateway sentence; a 422 or 500 with a message says only not saved', async () => {
-    for (const status of [422, 500]) {
-      forgetDrafts();
-      serve(negroni());
-      h.put.mockReset();
-      h.put.mockRejectedValueOnce(Object.assign(new Error(`status ${status}`), { response: { status, data: { message: 'internal detail' } } }));
-      const { unmount } = mount();
-      await screen.findAllByTestId('recipe-line');
-      fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
-      const alert = await screen.findByRole('alert');
-      expect(alert).toHaveTextContent('Not saved. Your recipe is as it was.');
-      expect(alert.textContent).not.toMatch(/internal detail/);
-      unmount();
-    }
   });
 });

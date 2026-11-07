@@ -16,15 +16,8 @@ export const UNIT_LABEL: Record<RecipeUnit, string> = {
   dash: 'dash', barspoon: 'barspoon', g: 'g', kg: 'kg', each: 'each',
 };
 
-/**
- * 1,000 or 1.000: a thousand in one country, one in another (round 19: "1,000"
- * saved as 1). Not guessed; the sheet asks for it without the separator.
- */
-export const AMBIGUOUS_AMOUNT = /^[1-9]\d{0,2}[.,]\d{3}$/;
-
-/** "22,5" → 22.5; anything that is not a positive number, or could be two numbers → null. */
+/** "22,5" → 22.5; anything that is not a positive number → null. */
 export function readQty(text: string): number | null {
-  if (AMBIGUOUS_AMOUNT.test(text.trim())) return null;
   const s = text.trim().replace(',', '.');
   if (!/^\d+(?:\.\d+)?$|^\.\d+$/.test(s)) return null;
   const n = Number(s);
