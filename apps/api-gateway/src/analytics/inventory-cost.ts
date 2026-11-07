@@ -51,6 +51,7 @@
 export type CostBasis =
   | "invoice_lot_wac"
   | "invoice_lot_wac_partial"
+  | "agreed_lot_wac"
   | "last_purchase_price"
   | "unknown";
 
@@ -65,6 +66,8 @@ export const COST_BASIS_LABEL: Record<CostBasis, string> = {
   invoice_lot_wac: "invoiced lot WAC (inventory_lot_rollup.wac)",
   invoice_lot_wac_partial:
     "invoiced lot WAC covering only part of the on-hand quantity (inventory_lot_rollup.wac)",
+  agreed_lot_wac:
+    "agreed lot cost, settled at delivery (inventory_lot_agreed_cost.agreed_wac)",
   last_purchase_price: "restaurant_inventory.last_purchase_price",
   unknown: "no recorded cost",
 };
@@ -84,12 +87,22 @@ export interface LotRollupRow {
    */
   wac_qty?: unknown;
   live_qty?: unknown;
+  /**
+   * From `inventory_lot_agreed_cost`: a price settled at delivery (final cost,
+   * any non-sample provenance, e.g. an accepted vendor proposal posted as
+   * 'manual'). Optional; a caller that has not joined the view is unchanged.
+   * `agreed_wac` keeps six decimal places, which the rollup's `wac` does not.
+   */
+  has_agreed_cost?: unknown;
+  agreed_wac?: unknown;
 }
 
 /**
  * Best *recorded* unit cost, or null.
  *
- * Order: invoiced lot WAC → recorded last purchase price → unknown.
+ * Order: invoiced lot WAC → agreed lot cost → recorded last purchase price →
+ * unknown. The agreed cost is a price settled at delivery but not printed on an
+ * invoice, so it sits below the invoice and is never labelled one.
  *
  * Two deliberate judgement calls, both narrower than they look:
  *
@@ -146,6 +159,12 @@ export function resolveUnitCost(
       };
     }
   }
+  const rawAgreed = lot?.agreed_wac;
+  if (lot?.has_agreed_cost && rawAgreed != null) {
+    const agreed = Number(rawAgreed);
+    if (Number.isFinite(agreed) && agreed > 0)
+      return { unitCost: agreed, costBasis: "agreed_lot_wac" };
+  }
   const rawLast = row?.last_purchase_price;
   if (rawLast != null) {
     const last = Number(rawLast);
@@ -173,6 +192,7 @@ export function summarizeCostBasis(
   const byBasis: Record<CostBasis, number> = {
     invoice_lot_wac: 0,
     invoice_lot_wac_partial: 0,
+    agreed_lot_wac: 0,
     last_purchase_price: 0,
     unknown: 0,
   };
