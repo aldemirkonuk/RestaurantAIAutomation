@@ -711,4 +711,40 @@ describe('RecipeSheet', () => {
       unmount();
     }
   });
+
+  it('round 19: a mistyped unit in a paste is flagged before use, and Save waits for a unit', async () => {
+    serve(EMPTY);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /paste a spec/i }));
+    fireEvent.change(screen.getByLabelText(/paste a spec/i), { target: { value: '30 mll gin' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read it' }));
+    const box = screen.getByTestId('recipe-proposed');
+    expect(within(box).getByTestId('recipe-proposed-flag')).toHaveTextContent('"mll" is not a unit I know. Pick the unit.');
+    fireEvent.click(within(box).getByRole('button', { name: 'Use these lines' }));
+    expect(amount(0)).toBe('30');
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    expect(screen.getByText('Line 1 (mll gin) needs a unit.')).toBeInTheDocument();
+  });
+
+  it('round 19: a paste that makes exactly 40 lines can be used; 41 cannot', async () => {
+    serve(negroni());
+    mount();
+    await screen.findAllByTestId('recipe-line');
+    const paste = (n: number) => {
+      const open = screen.queryByRole('button', { name: /paste a spec/i });
+      if (open) fireEvent.click(open);
+      fireEvent.change(screen.getByLabelText(/paste a spec/i), {
+        target: { value: Array.from({ length: n }, (_, i) => `${i + 1} ml syrup ${i}`).join('\n') },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Read it' }));
+      return screen.getByTestId('recipe-proposed');
+    };
+    let box = paste(38);
+    expect(within(box).getByRole('button', { name: 'Use these lines' })).toBeDisabled();
+    fireEvent.click(within(box).getByRole('button', { name: 'Discard' }));
+    box = paste(37);
+    expect(within(box).queryByTestId('recipe-too-many')).toBeNull();
+    fireEvent.click(within(box).getByRole('button', { name: 'Use these lines' }));
+    expect(screen.getAllByTestId('recipe-line')).toHaveLength(40);
+  });
 });

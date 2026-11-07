@@ -453,6 +453,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
                   <span>
                     {p.label}
                     {p.role === 'untracked' ? <span className="cl-dim"> · not counted</span> : null}
+                    {p.flag ? <span className="cl-rcp-flag" data-testid="recipe-proposed-flag"> · {p.flag}</span> : null}
                   </span>
                 </div>
               </li>
