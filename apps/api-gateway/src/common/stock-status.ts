@@ -82,3 +82,69 @@ export function isCritical(
 ): boolean {
   return classifyStock(stockLive, parLevel) === "critical";
 }
+
+/** The fields of a `restaurant_inventory` row the summaries classify. */
+export interface StockRow {
+  id: string;
+  stock_live?: number | null;
+  threshold_min?: number | null;
+  last_counted_at?: string | null;
+}
+
+export interface StockSummary {
+  lowStockCount: number;
+  criticalCount: number;
+  atParCount: number;
+  unknownCount: number;
+  healthyCount: number;
+}
+
+/**
+ * A row's band, with OD-161's rule for a wine nobody has counted.
+ *
+ * `last_counted_at` is stamped only by a count. An uncounted row's figure is
+ * a count of nothing unless receipts and sales gave it one, and which rows
+ * have one is decided in SQL by a live stock movement
+ * (a_received_wine_not_counted_yet_can_run_low): `v_low_stock_items` holds the
+ * uncounted rows whose received-minus-sold figure is below par. So an
+ * uncounted row is classified only when the view holds it, and is `unknown`
+ * otherwise. `inView` is null when the view could not be read; then no
+ * uncounted row is classified.
+ */
+export function bandOfRow(
+  row: StockRow,
+  inView: ReadonlySet<string> | null,
+): StockBand {
+  const counted = row.last_counted_at != null;
+  if (!counted && !(inView?.has(row.id) ?? false)) return "unknown";
+  return classifyStock(row.stock_live, row.threshold_min);
+}
+
+/**
+ * The stock counts every summary shows (GET /inventory/summary and the
+ * dashboard's inventory card), from ONE classification over ONE array. QA
+ * round 9c found the dashboard counting `stock_live === 0` over counted rows
+ * while /inventory counted `classifyStock` over counted rows plus the
+ * uncounted rows the view holds: a wine received 5 and sold 5, never counted,
+ * par 3, fired a critical alert and read criticalCount 1 on /inventory and 0
+ * on the dashboard. Both now read this, so they cannot disagree.
+ */
+export function summarizeStock(
+  inventory: readonly StockRow[] | null | undefined,
+  lowStock: readonly { id: string }[] | null | undefined,
+): StockSummary {
+  const inView = lowStock ? new Set(lowStock.map((item) => item.id)) : null;
+  const bands = (inventory ?? []).map((row) => bandOfRow(row, inView));
+  const count = (...want: StockBand[]) =>
+    bands.filter((b) => want.includes(b)).length;
+  return {
+    lowStockCount: count("low", "critical"),
+    criticalCount: count("critical"),
+    atParCount: count("at_par"),
+    // A wine whose stock or par we could not read, or nobody counted, is NOT
+    // healthy. Folding it into the healthy count is how an unreadable row
+    // becomes a reassuring one.
+    unknownCount: count("unknown"),
+    healthyCount: count("healthy"),
+  };
+}

@@ -48,6 +48,14 @@ const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day':
 
 /** The status word, never a colour alone. */
 function statusWord(row: InvRow): string {
+  const word = standingWord(row);
+  // A figure nobody counted is receipts minus sales; say so beside it (OD-161).
+  return row.neverCounted && row.standing !== 'uncounted' && row.standing !== 'unknown' && row.standing !== 'out'
+    ? `${word} · not counted yet`
+    : word;
+}
+
+function standingWord(row: InvRow): string {
   const dry = row.runway !== null && row.runway < 1.5;
   switch (row.standing) {
     case 'out':
@@ -56,6 +64,8 @@ function statusWord(row: InvRow): string {
       return dry ? 'Below par · dry tomorrow' : 'Below par';
     case 'unknown':
       return 'Stock not read';
+    case 'uncounted':
+      return 'Not counted yet';
     case 'nopar':
       return dry ? 'Dry tomorrow' : 'No par set';
     default:
@@ -82,7 +92,7 @@ function zoneCell(row: InvRow, zoneName: (id: string | null) => string, unavaila
 
 export default function InventoryTable(props: InventoryTableProps) {
   const { rows, grouped, openId, onToggle, currency, canManage, advice, onPriceChanged, zoneName } = props;
-  const counts = [0, 0, 0];
+  const counts = [0, 0, 0, 0];
   for (const r of rows) counts[severity(r)] += 1;
   const selecting = props.selected !== undefined && props.onSelect !== undefined;
   const span = COLUMNS.length + (selecting ? 1 : 0);
@@ -171,7 +181,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                   <tr className="iv-group">
                     <td colSpan={span}>
                       {SEVERITY_GROUP[sev]}
-                      {sev < 2 ? <span className="iv-num"> {fmtCount(counts[sev])}</span> : null}
+                      {sev < 3 ? <span className="iv-num"> {fmtCount(counts[sev])}</span> : null}
                     </td>
                   </tr>
                 ) : null}

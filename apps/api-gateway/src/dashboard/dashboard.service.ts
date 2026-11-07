@@ -24,6 +24,7 @@ import {
   hasStatus,
 } from "../procurement/order-status";
 import { houseFrame } from "../common/house-frame";
+import { summarizeStock } from "../common/stock-status";
 import {
   localDateIn,
   localMidnight,
@@ -627,23 +628,22 @@ export class DashboardService {
     const totalItems = inventory?.length || 0;
     const totalBottles =
       inventory?.reduce((sum, item) => sum + (item.stock_live || 0), 0) || 0;
-    const lowStockCount = lowStock?.length || 0;
-    // OD-161: a wine nobody has counted is unknown, not zero. It is neither
-    // critical nor healthy here; `v_low_stock_items` already leaves it out.
-    const counted = (inventory ?? []).filter(
-      (item) => item.last_counted_at != null,
+    // The same helper GET /inventory/summary reads, over the same two reads,
+    // so the card and the page cannot count one wine two ways (QA 9c: a wine
+    // received 5, sold 5, never counted, read critical on /inventory and not
+    // on this card). It was `stock_live === 0` over counted rows: "out", not
+    // "critical", and blind to the uncounted rows the view holds (OD-161).
+    const { lowStockCount, criticalCount, healthyCount } = summarizeStock(
+      inventory,
+      lowStock,
     );
-    const criticalCount = counted.filter(
-      (item) => (item.stock_live || 0) === 0,
-    ).length;
-    const lowIds = new Set((lowStock ?? []).map((item) => item.id));
 
     return {
       totalItems,
       totalBottles,
       lowStockCount,
       criticalCount,
-      healthyCount: counted.filter((item) => !lowIds.has(item.id)).length,
+      healthyCount,
     };
   }
 
@@ -1425,7 +1425,9 @@ export class DashboardService {
         await Promise.allSettled([
           client
             .from("v_low_stock_items")
-            .select("id, stock_live, threshold_min, wine_name, vintage")
+            .select(
+              "id, stock_live, threshold_min, wine_name, vintage, last_counted_at",
+            )
             .eq("restaurant_id", restaurantId),
           client
             .from("procurement_orders")
@@ -1467,7 +1469,12 @@ export class DashboardService {
           type: "low_stock",
           severity: item.stock_live === 0 ? "critical" : "warning",
           title: "Low Stock",
-          message: `${label} — ${bottles(item.stock_live)} left, you keep at least ${item.threshold_min}`,
+          // OD-161: a wine nobody counted is in the view only when receipts
+          // and sales gave it a figure; say whose figure it is.
+          message:
+            item.last_counted_at === null
+              ? `${label} — ${bottles(item.stock_live)} by receipts and sales, not counted yet, you keep at least ${item.threshold_min}`
+              : `${label} — ${bottles(item.stock_live)} left, you keep at least ${item.threshold_min}`,
           actionUrl: `/inventory?highlight=${item.id}`,
           createdAt: new Date().toISOString(),
         });

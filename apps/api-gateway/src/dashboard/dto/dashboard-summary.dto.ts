@@ -10,7 +10,10 @@ export class InventorySummaryDto {
   @ApiProperty({ description: "Number of low stock items" })
   lowStockCount: number;
 
-  @ApiProperty({ description: "Number of critical (zero stock) items" })
+  @ApiProperty({
+    description:
+      "Number of critical items (stock at or under half of par; summarizeStock, as GET /inventory/summary)",
+  })
   criticalCount: number;
 
   @ApiProperty({ description: "Number of healthy stock items" })

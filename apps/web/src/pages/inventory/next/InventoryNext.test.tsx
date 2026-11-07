@@ -11,7 +11,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
-import { fmtPace, MAP_WORDS, mapTone, sold30 } from './useInventoryNextData';
+import { fmtPace, MAP_WORDS, mapTone, sold30, standingFor } from './useInventoryNextData';
 
 const mock = vi.hoisted(() => ({ data: {} as Record<string, unknown>, mapProps: null as Record<string, unknown> | null }));
 const exportSpy = vi.hoisted(() => vi.fn(async (_opts: unknown) => undefined));
@@ -106,7 +106,19 @@ vi.mock('@/components/mudavym/DeliveriesToName', () => ({
 import { toast } from 'sonner';
 import InventoryNext from './InventoryNext';
 import { IV_DEFAULT, readView, writeView } from './iv-url';
-import { fold, matchesSearch, needsYouFirst, readSentence, sortRows, sortWords, toRow, typeLabel, typeOf } from './useInventoryNextData';
+import {
+  chipMatch,
+  fold,
+  matchesSearch,
+  needsYouFirst,
+  readSentence,
+  severity,
+  sortRows,
+  sortWords,
+  toRow,
+  typeLabel,
+  typeOf,
+} from './useInventoryNextData';
 
 function row(over: Partial<InvRow> = {}): InvRow {
   return {
@@ -1484,5 +1496,115 @@ describe('the legacy velocity sort and column-header sort (round 4)', () => {
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Name');
     fireEvent.click(screen.getByRole('button', { name: 'Title' }));
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Needs you first');
+  });
+});
+
+describe('A title nobody counted says "Not counted yet", never Out (OD-161)', () => {
+  it('stands a never-counted row apart from Out, and a counted 0 is still Out', () => {
+    const uncounted = toRow({ id: 'u', wineId: null, stockLive: 0, thresholdMin: 3, lastCountedAt: null } as never, null);
+    const received = toRow({ id: 'r', wineId: null, stockLive: 2, thresholdMin: 3, lastCountedAt: null } as never, null);
+    const counted = toRow(
+      { id: 'c', wineId: null, stockLive: 0, thresholdMin: 3, lastCountedAt: '2026-11-01T10:00:00Z' } as never,
+      null,
+    );
+    const silent = toRow({ id: 's', wineId: null, stockLive: 0, thresholdMin: 3 } as never, null);
+    // Only the 0 is ambiguous; a received-and-sold 2 of 3 is below par, as the
+    // low-stock alert and the dashboard call it.
+    expect([uncounted.standing, received.standing, counted.standing, silent.standing]).toEqual([
+      'uncounted',
+      'below',
+      'out',
+      'out',
+    ]);
+    expect([uncounted.neverCounted, received.neverCounted, counted.neverCounted, silent.neverCounted]).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+    // The figure is kept: received minus sold is what the stock column shows.
+    expect(received.stock).toBe(2);
+  });
+
+  it('writes "Not counted yet" on a never-counted 0, with the figure beside it, and no Out', () => {
+    mock.data = data({
+      rows: [row({ id: 'n', name: 'Untouched Red', stock: 0, par: 3, lastCountedAt: null, standing: 'uncounted', neverCounted: true })],
+    });
+    renderPage();
+    const tr = screen.getByTestId('inv-row-n');
+    expect(within(tr).getByText('Not counted yet')).toBeTruthy();
+    expect(tr.querySelector('td[data-label="Live / shadow · par"]')!.textContent).toMatch(/^0/);
+    expect(tr.textContent).not.toMatch(/\bOut\b/);
+  });
+
+  it('keeps a never-counted 2 of 3 under Below par, in the order and in the sentence', () => {
+    const received = toRow(
+      { id: 'r', wineId: null, name: 'Received Red', stockLive: 2, thresholdMin: 3, lastCountedAt: null } as never,
+      null,
+    );
+    const plenty = row({ id: 'p', name: 'Plenty', stock: 12, par: 6, runway: 12 });
+    expect(chipMatch(received, 'below')).toBe(true);
+    expect(severity(received)).toBe(1);
+    expect([plenty, received].sort(needsYouFirst).map((r) => r.id)).toEqual(['r', 'p']);
+    const s = readSentence([plenty, received], { state: 'recorded', code: 'EUR' }, true);
+    expect(s).not.toContain('Nothing is out or below par');
+    expect(s).toContain('None is out; 1 is below par');
+
+    mock.data = data({ rows: [plenty, received] });
+    renderPage();
+    const tr = screen.getByTestId('inv-row-r');
+    expect(within(tr).getByText(/^Below par.* · not counted yet$/)).toBeTruthy();
+  });
+
+  // QA 9c: a wine received 5 and sold 5, never counted, par 3, fires a
+  // critical alert. Its row says "Not counted yet", so the sentence must not
+  // say "Nothing is out or below par" past it, and the order must not bury it.
+  it('names a never-counted 0 in the read sentence instead of saying nothing is out', () => {
+    const recvZero = toRow(
+      { id: 'z', wineId: null, name: 'Sold Out Red', stockLive: 0, thresholdMin: 3, lastCountedAt: null } as never,
+      null,
+    );
+    const plenty = row({ id: 'p', name: 'Plenty', stock: 12, par: 6, runway: 12 });
+    const eur = { state: 'recorded', code: 'EUR' } as const;
+    const alone = readSentence([plenty, recvZero], eur, true);
+    expect(alone).not.toContain('Nothing is out or below par');
+    expect(alone).toContain(
+      '1 is not counted yet, so whether it is out is not known until it is counted; nothing else is out or below par.',
+    );
+    const two = toRow({ id: 'y', wineId: null, stockLive: 0, thresholdMin: 2, lastCountedAt: null } as never, null);
+    expect(readSentence([recvZero, two], eur, true)).toContain('2 are not counted yet, so whether they are out');
+    // Beside an Out and a Below par it is still named, never folded into either.
+    const out = row({ id: 'o', name: 'Gone', stock: 0, par: 3, standing: 'out' });
+    const low = row({ id: 'l', name: 'Low', stock: 1, par: 3, standing: 'below' });
+    expect(readSentence([out, low, recvZero], eur, true)).toContain(
+      '1 is out, and 1 more is below par; 1 more is not counted yet.',
+    );
+    // It sorts after Below par and before everything else, under its own heading.
+    expect(severity(recvZero)).toBe(2);
+    expect([plenty, recvZero, low].sort(needsYouFirst).map((r) => r.id)).toEqual(['l', 'z', 'p']);
+    mock.data = data({ rows: [plenty, recvZero] });
+    renderPage();
+    const groups = [...screen.getByTestId('inventory-table').querySelectorAll('tr.iv-group')].map((g) => g.textContent);
+    expect(groups).toEqual(['Not counted yet 1', 'Everything else, by runway']);
+  });
+
+  it('decides the standing by one rule for the row and the map tile', () => {
+    expect(standingFor(0, 3, true)).toBe('uncounted');
+    expect(standingFor(2, 3, true)).toBe('below');
+    expect(standingFor(0, 3, false)).toBe('out');
+    expect(standingFor(null, 3, true)).toBe('unknown');
+    const tile = { id: 'm', liveStock: 0, threshold: 3, shadowStock: 0, lastCounted: null } as never;
+    const asRow = toRow({ id: 'm', wineId: null, stockLive: 0, thresholdMin: 3, lastCountedAt: null } as never, null);
+    expect(asRow.standing).toBe(standingFor(0, 3, true));
+    expect(mapTone(tile)).toBe('neutral');
+  });
+
+  it('tints a never-counted tile as not read, not as Out', () => {
+    const tile = { id: 'm', liveStock: 0, threshold: 3, shadowStock: 0, lastCounted: null } as never;
+    expect(mapTone(tile)).toBe('neutral');
+    expect(mapTone({ ...(tile as object), lastCounted: '2026-11-01T10:00:00Z' } as never)).toBe('rose');
+    // Above 0 the figure is real movement, so a never-counted 2 of 3 is below par.
+    expect(mapTone({ ...(tile as object), liveStock: 2 } as never)).toBe('amber');
+    expect(MAP_WORDS.neutral).toContain('not counted yet');
   });
 });
