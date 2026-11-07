@@ -117,8 +117,13 @@ export interface InvRow {
   /** stock × WAC; null when either is unknown. */
   value: number | null;
   lastCountedAt: string | null;
+  /** False when the gateway's lot-rollup read failed (G15): openMl is then null, never 0. */
+  rollupReadable: boolean;
+  /** Null when not read: the rollup failed, or the row carried no figure. */
   openMl: number | null;
-  /** Null when the row carried no lot list at all. */
+  /** False when the gateway's location-breakdown read failed (G15): zones is then null, never []. */
+  locationsReadable: boolean;
+  /** Null when the row carried no lot list at all, or the breakdown could not be read. */
   zones: ZoneQty[] | null;
   providerId: string | null;
   providerName: string | null;
@@ -215,7 +220,13 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   // library's own name, carried beside it (inventory.service.ts:95-103).
   const name = text(r.wineName) ?? text(w?.displayName) ?? text(w?.name);
   const library = text(r.libraryName) ?? text(w?.name);
-  const zones = Array.isArray(r.locations)
+  // G15: the normaliser fills a missing openMl with 0 and missing locations
+  // with [] (services/api/inventory.ts), so the gateway's flags are what tell
+  // a failed read from an empty one. Absent flags (an older gateway) read as
+  // true, the same rule as analyticsReadable.
+  const rollupReadable = r.rollupReadable !== false;
+  const locationsReadable = r.locationsReadable !== false;
+  const zones = locationsReadable && Array.isArray(r.locations)
     ? (r.locations as Raw[])
         .map((l) => ({ locationId: text(l.locationId), qty: num(l.qty) }))
         .filter((l): l is ZoneQty => l.qty !== null)
@@ -248,7 +259,9 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     costProvenance: provenance,
     value: stock !== null && wac !== null ? stock * wac : null,
     lastCountedAt: text(r.lastCountedAt),
-    openMl: num(r.openMl),
+    rollupReadable,
+    openMl: rollupReadable ? num(r.openMl) : null,
+    locationsReadable,
     zones,
     providerId: text(r.providerId),
     providerName: text(r.providerName),
@@ -712,6 +725,11 @@ export function useInventoryNextData() {
   // (inventory.service.ts:163,265), so "Dead stock 0" would read a failure as health.
   const paceUnread = (rows ?? []).some((r) => !r.analyticsReadable);
   if (paceUnread) unread.push('the selling pace, so pace, runway and dead stock show —');
+  // G15: the open-bottle and where-it-sits reads ride on the stock read too.
+  const openUnread = (rows ?? []).some((r) => !r.rollupReadable);
+  const whereUnread = (rows ?? []).some((r) => !r.locationsReadable);
+  if (openUnread) unread.push('the open bottles, so open ml says it could not be read');
+  if (whereUnread) unread.push('where each title sits, so its zones say they could not be read');
   if (wines.isError) unread.push('the wine library, so type shows —, the type filter is off, and grapes are left out of details and search');
   if (storage.locationsUnavailable) unread.push('the storage locations, so zones show — and the zone filter is off');
   if (currency.state === 'unreadable') unread.push('the house’s currency');
@@ -732,7 +750,7 @@ export function useInventoryNextData() {
   if (invoicesQ.isPending) pending.push('the invoices waiting for a match');
   if (deliveriesQ.isPending) pending.push('the delivered lines waiting for their item');
   const rereadUnread = () => {
-    if (paceUnread) void list.refetch();
+    if (paceUnread || openUnread || whereUnread) void list.refetch();
     if (wines.isError) void wines.refetch();
     if (storage.locationsUnavailable) void queryClient.invalidateQueries({ queryKey: ['storageLocations', rid] });
     if (currency.state === 'unreadable') void currencyQ.refetch();

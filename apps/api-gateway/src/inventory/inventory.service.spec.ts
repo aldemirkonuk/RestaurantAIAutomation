@@ -911,3 +911,85 @@ describe("InventoryService", () => {
     });
   });
 });
+
+// G15 (inventory walk #7, proposal §3 I1): a failed read of the lot rollup or
+// the location breakdown is not an empty open bottle or "in no location".
+// Supabase returns `{ data: null, error }` instead of throwing, so the error
+// the old fetchers dropped is exactly the case these tests drive.
+describe("InventoryService list reads say when they fail (G15)", () => {
+  type Answer = { data: any; error: any };
+  const ROW = { id: "inv1", restaurant_id: "r1", master_wine_id: "w1" };
+
+  function serviceWith(answers: Record<string, Answer>) {
+    const client = {
+      from: (table: string) => {
+        const answer = answers[table] ?? { data: [], error: null };
+        const builder: any = {
+          select: () => builder,
+          eq: () => builder,
+          then: (resolve: (a: Answer) => unknown, reject?: any) =>
+            Promise.resolve(answer).then(resolve, reject),
+        };
+        return builder;
+      },
+    };
+    const db = {
+      getClient: () => client,
+      getRestaurantInventory: jest.fn().mockResolvedValue([ROW]),
+    };
+    return new InventoryService(db as unknown as DatabaseService);
+  }
+
+  const failed: Answer = { data: null, error: { message: "boom" } };
+  // The list's mapped rows are typed loosely by the service; read them as such.
+  async function firstItem(answers: Record<string, Answer>) {
+    const items = await serviceWith(answers).getRestaurantInventory("r1");
+    return items[0] as Record<string, any>;
+  }
+
+  it("a failed rollup read gives no open ml and says it was not read", async () => {
+    const item = await firstItem({ inventory_lot_rollup: failed });
+    expect(item.openMl).toBeUndefined();
+    expect(item.rollupReadable).toBe(false);
+    // The other side still read: its list and flag are untouched.
+    expect(item.locations).toEqual([]);
+    expect(item.locationsReadable).toBe(true);
+  });
+
+  it("a failed location read gives no location list and says it was not read", async () => {
+    const item = await firstItem({ inventory_location_breakdown: failed });
+    expect(item.locations).toBeUndefined();
+    expect(item.locationsReadable).toBe(false);
+    expect(item.openMl).toBe(0);
+    expect(item.rollupReadable).toBe(true);
+  });
+
+  it("a successful read with no row for the item still says 0 ml and no locations", async () => {
+    const item = await firstItem({});
+    expect(item.openMl).toBe(0);
+    expect(item.locations).toEqual([]);
+    expect(item.rollupReadable).toBe(true);
+    expect(item.locationsReadable).toBe(true);
+  });
+
+  it("a successful read with a row carries its figures", async () => {
+    const item = await firstItem({
+      inventory_lot_rollup: {
+        data: [{ inventory_id: "inv1", open_ml: 300, wac: 12 }],
+        error: null,
+      },
+      inventory_location_breakdown: {
+        data: [{ inventory_id: "inv1", location_id: "z1", qty: 4, wac: 12 }],
+        error: null,
+      },
+    });
+    expect(item.openMl).toBe(300);
+    expect(item.locations).toEqual([{ locationId: "z1", qty: 4, wac: 12 }]);
+  });
+
+  it("a mapper call that never read either side claims no read", () => {
+    const item = (serviceWith({}) as any).mapInventoryItem(ROW);
+    expect(item).not.toHaveProperty("rollupReadable");
+    expect(item).not.toHaveProperty("locationsReadable");
+  });
+});
