@@ -1,4 +1,5 @@
 import { Module, forwardRef } from "@nestjs/common";
+import { AnalyticsModule } from "../analytics/analytics.module";
 import { AuthModule } from "../auth/auth.module";
 import { DatabaseModule } from "../database/database.module";
 import { NotificationsModule } from "../notifications/notifications.module";
@@ -9,6 +10,7 @@ import { FloorEnabledGuard } from "./floor-enabled.guard";
 import { FloorManagerController } from "./floor-manager.controller";
 import { FloorNudgeScanner } from "./floor-nudge.scanner";
 import { FloorStaffController } from "./floor-staff.controller";
+import { FloorTablesService } from "./floor-tables.service";
 import { FloorService } from "./floor.service";
 
 /**
@@ -21,8 +23,15 @@ import { FloorService } from "./floor.service";
  * is what proves the injector resolves it — tsc and jest cannot.
  */
 @Module({
-  imports: [DatabaseModule, AuthModule, WebsocketModule, forwardRef(() => NotificationsModule)],
+  imports: [DatabaseModule, AuthModule, WebsocketModule, forwardRef(() => AnalyticsModule), forwardRef(() => NotificationsModule)],
   controllers: [FloorStaffController, FloorManagerController],
-  providers: [FloorService, FloorBoardService, FloorAdminService, FloorEnabledGuard, FloorNudgeScanner],
+  providers: [
+    FloorService,
+    FloorBoardService,
+    FloorAdminService,
+    FloorTablesService,
+    FloorEnabledGuard,
+    FloorNudgeScanner,
+  ],
 })
 export class FloorModule {}

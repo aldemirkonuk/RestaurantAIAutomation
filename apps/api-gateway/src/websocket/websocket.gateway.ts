@@ -86,7 +86,10 @@ export type FloorWord =
   | "assigned"
   | "released"
   | "sections_changed"
-  | "out_tonight_changed";
+  | "out_tonight_changed"
+  | "tables_changed"
+  | "merged"
+  | "split";
 
 export interface FloorWordPayload {
   tableId: string | null;
