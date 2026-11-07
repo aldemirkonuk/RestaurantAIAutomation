@@ -26,9 +26,13 @@
  * is a sentence naming the register, an unknown is an em dash, and a true
  * answer that must be SAID rather than drawn (`view.say`) suppresses the chart
  * whatever type is selected.
+ *
+ * While reading, a cutting with a register also offers "full screen"
+ * (`CuttingFlat.tsx`, `?flat=<id>`), drawn here over the same register.
  */
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChartArea,
   ChartColumn,
@@ -36,6 +40,7 @@ import {
   ChartScatter,
   Grid3x3,
   Hash,
+  Maximize2,
   Table,
 } from 'lucide-react';
 import {
@@ -51,6 +56,7 @@ import {
 } from './rp-plot';
 import { CATALOGUE, graphOrDefault, type ViewCtx } from './rp-catalogue';
 import { Grip, PlacingBar } from './Placing';
+import CuttingFlat, { FLAT_PARAM } from './CuttingFlat';
 import type { ArrangeApi } from './rp-arrange';
 import { GRAPH_LABEL, type AnalysisId, type GraphType } from './rp-sheet';
 import type { AnalysisView } from './rp-view';
@@ -158,10 +164,13 @@ function Body({
   view,
   graph,
   windowLine,
+  workingOpen = false,
 }: {
   view: AnalysisView;
   graph: GraphType;
   windowLine: string;
+  /** Start with the server's working shown — the flat view has the room. */
+  workingOpen?: boolean;
 }) {
   // With a bespoke table (the reading's sentences, the writing desk) the
   // figures would repeat what the rows already say, so they are left off.
@@ -182,7 +191,7 @@ function Body({
           {n}
         </p>
       ))}
-      <Working lines={view.basis} />
+      <Working lines={view.basis} defaultOpen={workingOpen} />
     </>
   );
 }
@@ -221,21 +230,72 @@ export default function Cutting({
   const drawn = graphOrDefault(id, graph);
   const windowLine = spec.window(ctx);
 
-  const body = spec.path ? (
-    <RegisterBody
-      register={spec.register}
-      loading={register?.loading ?? true}
-      failure={register?.failure ?? null}
-      data={register?.data}
-      onRetry={() => register?.refetch()}
-    >
-      {(data) => <Body view={spec.view(data, ctx)} graph={drawn} windowLine={windowLine} />}
-    </RegisterBody>
-  ) : (
-    <Body view={spec.view(null, ctx)} graph={drawn} windowLine={windowLine} />
-  );
+  // One body, two places: the sheet, and the flat view (working open).
+  const bodyFor = (g: GraphType, workingOpen = false) =>
+    spec.path ? (
+      <RegisterBody
+        register={spec.register}
+        loading={register?.loading ?? true}
+        failure={register?.failure ?? null}
+        data={register?.data}
+        onRetry={() => register?.refetch()}
+      >
+        {(data) => (
+          <Body
+            view={spec.view(data, ctx)}
+            graph={g}
+            windowLine={windowLine}
+            workingOpen={workingOpen}
+          />
+        )}
+      </RegisterBody>
+    ) : (
+      <Body
+        view={spec.view(null, ctx)}
+        graph={g}
+        windowLine={windowLine}
+        workingOpen={workingOpen}
+      />
+    );
+  const body = bodyFor(drawn);
 
   const held = arrange.picked === id;
+
+  /* Laid flat: only with a register, only while reading, only for the id
+     the URL names (`get` answers the first, so two params open one dialog).
+     Opening pushes an entry marked with this id, so close goes back through
+     history and Back, Esc and the button agree; a cold `?flat=` has no entry
+     of ours, so close removes the param in place. */
+  const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const canLayFlat = spec.path !== null;
+  const flat = canLayFlat && !arranging && params.get(FLAT_PARAM) === id;
+  const openerRef = useRef<HTMLButtonElement | null>(null);
+  const flatLabel = `Show ${spec.title} full screen`;
+
+  const openFlat = () => {
+    const next = new URLSearchParams(params);
+    next.set(FLAT_PARAM, id);
+    setParams(next, { state: { rpFlat: id } });
+  };
+  const closeFlat = () => {
+    const ours = (location.state as { rpFlat?: unknown } | null)?.rpFlat === id;
+    if (ours) {
+      navigate(-1);
+      return;
+    }
+    const next = new URLSearchParams(params);
+    next.delete(FLAT_PARAM);
+    setParams(next, { replace: true });
+  };
+
+  // Focus goes back to the control that opened the view, however it closed.
+  const wasFlat = useRef(flat);
+  useEffect(() => {
+    if (wasFlat.current && !flat) openerRef.current?.focus();
+    wasFlat.current = flat;
+  }, [flat]);
 
   return (
     <section className="rp-cut" aria-label={spec.title} data-held={held || undefined}>
@@ -257,8 +317,22 @@ export default function Cutting({
               Take off
             </button>
           </div>
-        ) : spec.takesWindow ? (
-          <TillWindowPicker days={ctx.days} onChange={onDays} />
+        ) : spec.takesWindow || canLayFlat ? (
+          <div className="rp-row" style={{ gap: 6 }}>
+            {spec.takesWindow && <TillWindowPicker days={ctx.days} onChange={onDays} />}
+            {canLayFlat && (
+              <button
+                ref={openerRef}
+                type="button"
+                className="rp-flat-open rp-ink rp-focus rp-no-drag"
+                aria-label={flatLabel}
+                title={flatLabel}
+                onClick={openFlat}
+              >
+                <Maximize2 size={14} strokeWidth={1.6} color="var(--ink-3)" aria-hidden />
+              </button>
+            )}
+          </div>
         ) : null}
       </div>
 
@@ -310,6 +384,21 @@ export default function Cutting({
       )}
 
       <div className="rp-cut__body">{body}</div>
+
+      {flat && (
+        <CuttingFlat
+          title={spec.title}
+          windowLine={windowLine}
+          graphs={spec.graphs}
+          initialGraph={drawn}
+          renderBody={(g) => bodyFor(g, true)}
+          windowControl={
+            spec.takesWindow ? <TillWindowPicker days={ctx.days} onChange={onDays} /> : undefined
+          }
+          anchorRef={openerRef}
+          onClose={closeFlat}
+        />
+      )}
     </section>
   );
 }
