@@ -32,6 +32,8 @@ Admits owner, manager and staff. Returns no figures.
 | POST | `/floor/me/seatings/:id/leave` | `{ confirmShort?: boolean }` | `{ seatingId, left: true, quickLeave }`. A very short stay answers `409 { code: "CONFIRM_SHORT_VISIT" }` until `confirmShort: true` is sent |
 | POST | `/floor/me/food-up` | `{ tableId, course?: "drinks"\|"starters"\|"mains"\|"dessert"\|"other", note? (≤400) }` | `{ foodUpId, tableId, pushed: { sentTo, notSent, reason } }` |
 | POST | `/floor/me/food-up/:id/ack` | | `{ foodUpId, acknowledged: true }` |
+| POST | `/floor/me/food-up/:id/delivered` | | `{ foodUpId, delivered: true, visitId \| null }`. Writes a visit with source `food_delivered` on the table's open seating (when one is open) and a `food_ack` with `meta.resolution = "delivered"`. A second delivery gets 409 |
+| GET | `/floor/me/clock` | | `{ state: "in"\|"on_break"\|"out", punchId, since, coverUserId, coverName }`. The caller's latest punch only; the cover is the one named at the On break tap (OD-236) |
 | POST | `/floor/me/clock-in` | | `{ punchId, clockedInAt }` |
 | POST | `/floor/me/clock-out` | | `{ punchId, clockedOutAt, reason }` |
 | POST | `/floor/me/on-break` | `{ coverUserId? }` | Same shape as clock-out, with reason `break`. Records who covers; the cover must be a member of the house |
@@ -46,7 +48,10 @@ Every figure route and every admin route admits **owner and manager only**.
 
 | Method | Path | Body / query | Shape |
 |---|---|---|---|
-| GET | `/floor/board` | | `{ serviceDate, zoneSet, warnAfterMin, lateAfterMin, tables: [{ tableId, label, seats, sectionId, holders: [{ userId, name }], seatingId, seatedAt, seatedBy, partySize, paidAt, paidSource, minutesSinceVisit, status, statusLabel }], waiters: [{ userId, name, liveOnTimePct, gaps, notClosed, avgGapMin, onTimePct, overdueGaps, score, band, bandLabel }] in floor-core `sortByScore` order (best first, ties on userId, no score last; no rank field) }` |
+| GET | `/floor/board` | | `{ serviceDate, zoneSet, warnAfterMin, lateAfterMin, tables: [{ tableId, label, seats, sectionId, mergeId, holders: [{ userId, name }], seatingId, seatedAt, seatedBy, partySize, paidAt, paidSource, minutesSinceVisit, status, statusLabel }], waiters: [{ userId, name, liveOnTimePct, gaps, notClosed, avgGapMin, onTimePct, overdueGaps, score, band, bandLabel }] in floor-core `sortByScore` order (best first, ties on userId, no score last; no rank field), merges: [{ mergeId, tableIds, orientation: "horizontal"\|"vertical"\|null, seats }] }`. A merge's `seats` is the members' sum, or `null` when any member's seats are unknown (ADR 0347 D4) |
+| GET | `/floor/food-ups` | | `{ foodUps: [{ foodUpId, tableId, tableLabel, course, note, raisedAt, raisedBy: { userId, name }, acknowledgedAt }] }`: Food-ups of the last 6 hours not yet delivered, newest first. The 6 hours stand in for ADR 0351's service day (open as OD-242) |
+| POST | `/floor/tables` | `{ label (1–60), seats? (1–999), is_outdoor?, x_pos? (0–100), y_pos? (0–100), shape?: "round"\|"rect" }` | `{ table, checksLinked }`. One insert under the house lock (ADR 0347 D3); anything not given is stored as `null`, seats included. A name any table of the house already answers to, by any till rule, gets `409 { code: "TABLE_TWIN", twinId, twinLabel }` |
+| PATCH | `/floor/tables/:id` | `{ label?, hidden?, seats? \| null, x_pos? \| null, y_pos? \| null, shape? \| null, tray?: true }` | `{ table }`. `null` clears a value; `tray: true` clears both coordinates (D5) and cannot be sent with a coordinate. A rename refuses a till twin (409 `TABLE_TWIN`). Hiding refuses a table with a party (409 `TABLE_SEATED`) or in a live merge (409 `TABLE_MERGED`). Rename and hide run through `TableAnalyticsService.renameOrHideTable`, and hide clears and recomputes the stored table insights, as `PATCH /analytics/tables` does |
 | GET | `/floor/report?date=YYYY-MM-DD` | defaults to today's service date | `{ serviceDate, window: { start, end }, measuredTo, warnAfterMin, lateAfterMin, waiters: [...as on the board without liveOnTimePct, same order], notClosed: { total, unassigned }; a seating's open gap ends at its caretaker's last floor tap that day (`floor_visits` and table taps in `floor_events`); `notClosed` counts seatings with neither Paid nor leave, beside the caretaker at seat time, timeline: [{ seatingId, tableId, tableLabel, tableHidden, seatedAt, seatedBy, partySize, paidAt, paidSource, leftAt, visits: [{ at, by }] }] }` |
 | GET | `/floor/report/seatings.csv?date=` | | `text/csv` attachment. A cell that starts with `= + - @` is written as text |
 | GET | `/floor/report/waiters.csv?date=` | | `text/csv` attachment; last column `not_closed` |
@@ -75,6 +80,17 @@ area. This is open as OD-242 (the executor's reading under OD-242).
 | POST | `/floor/out-tonight` | `{ menuItemId \| label }` | `{ id, serviceDate }` |
 | POST | `/floor/out-tonight/:id/back` | | `{ id, back: true }` |
 
+**Merges.** These two routes also admit staff at the role gate. Owners and
+managers may push together any tables of one section. A waiter must hold at
+least one of the tables, and the tables must be neighbours by floor-core's
+`formsAdjacentGroup` (the checker's 8-neighbour rule; a table in the tray is
+next to nothing). A merge never writes `restaurant_tables` (D6).
+
+| Method | Path | Body | Shape |
+|---|---|---|---|
+| POST | `/floor/merges` | `{ tableIds: [2–8 ids] }` | `{ mergeId, tableIds, orientation, seats }`. 409 with `code` `MERGE_SECTIONS` (not one section), `MERGE_NOT_ADJACENT`, `MERGE_ALREADY` (a table is in a live merge), or `MERGE_NONE_SEATED`. 403 for a waiter who holds none of them |
+| POST | `/floor/merges/:id/split` | | `{ mergeId, split: true, tableIds }`. 409 if already split; 403 for a waiter who holds no member |
+
 Every manager write adds a row to `system_audit_log`, with `entity_type` set to
 one of `floor_section`, `floor_assignment`, `floor_settings` or
 `pos_server_link`.
@@ -87,7 +103,7 @@ one of `floor_section`, `floor_assignment`, `floor_settings` or
 
 `word` is one of: `seated`, `visited`, `paid`, `paid_undone`, `left`,
 `food_up`, `food_ack`, `assigned`, `released`, `sections_changed`,
-`out_tonight_changed`.
+`out_tonight_changed`, `tables_changed`, `merged`, `split`.
 
 The event never carries names, minutes or figures. When a client receives it,
 it fetches again: `/floor/me/tables` on the phone, `/floor/board` on the
@@ -129,7 +145,15 @@ timeout.
 ## Not built here
 
 - Automatic Paid from the till (ADR 0353).
-- Merge and split routes. The tables exist; the routes do not.
+- From the checker's merge: the "joined empty" seating opened on an empty
+  member, the shared visit clock, and picking a caretaker. Here an empty member
+  is recorded with `joined_empty` and no seating, and each seating keeps its
+  own clock (open as OD-242). The database keeps only horizontal or vertical,
+  so a diagonal pair is stored with a null orientation and `meta.drawn`.
+- Table width, height and rotation: ADR 0347 names none, so they are an open
+  fork.
+- The till's learner taking the same house lock as `floor_create_table` (D3).
+- `POST /analytics/tables` still upserts (OD-253); only its seat guess is gone.
 - Linking a punch to a shift.
 - ADR 0351's full service-day rule and absence chain, including presence reads,
   Away, quiet hours and the last-step notification row.
