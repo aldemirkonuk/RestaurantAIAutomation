@@ -263,14 +263,20 @@ export class CsvParserService {
 
   /**
    * One ExcelJS cell value as read. A stored number stays a number (one
-   * reading); rich text is its joined plain text; a formula is its cached
+   * reading); a valid Date is its day, an invalid one comes back as
+   * `{ error: "Invalid Date" }`; rich text is its joined plain text; a formula is its cached
    * result (none cached: empty); an error value comes back as `{ error }`
    * for the caller to note. No object is ever stringified ("[object Object]").
    */
   private cellValue(value: unknown): Cell | CellError {
     if (value === null || value === undefined) return "";
     if (typeof value === "number") return value;
-    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    if (value instanceof Date)
+      // A date-formatted serial past the calendar is an Invalid Date, and
+      // toISOString throws on it: noted like an error cell, never a 500.
+      return Number.isNaN(value.getTime())
+        ? { error: "Invalid Date" }
+        : value.toISOString().slice(0, 10);
     if (typeof value !== "object") return String(value);
     const v = value as Record<string, unknown>;
     if (typeof v.error === "string") return { error: v.error };

@@ -144,6 +144,22 @@ describe("CsvParserService.parseExcel", () => {
     ]);
   });
 
+  it("leaves a date cell past the calendar blank with a note, and still reads the file", async () => {
+    const ExcelJS = await import("exceljs");
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Menu");
+    ws.addRow(["name", "vintage"]);
+    ws.addRow(["A", 1e12]);
+    ws.getCell("B2").numFmt = "dd/mm/yyyy";
+    const file = Buffer.from(await wb.xlsx.writeBuffer()).toString("base64");
+
+    const { items, issues } = await parser().readExcel(file);
+    expect(items).toEqual([{ name: "A", raw_text: "A," }]);
+    expect(issues).toEqual([
+      { row: 2, reason: "cell_error", field: "vintage", raw: "Invalid Date" },
+    ]);
+  });
+
   it("maps Turkish headers, takes a stored number as is, reads a text price, and sets the raw row", async () => {
     const items = await parser().parseExcel(
       await xlsx([
