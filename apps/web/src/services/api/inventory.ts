@@ -629,6 +629,7 @@ export interface ItemUsedIn {
 export const inventoryItemKeys = {
   figures: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'figures'] as const,
   usedIn: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'used-in'] as const,
+  nutrition: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'nutrition'] as const,
 };
 
 export async function getItemUsedIn(itemId: string, restaurantId?: string): Promise<ItemUsedIn> {
@@ -666,6 +667,92 @@ export async function carryHouseItem(body: CarryHouseItemBody, restaurantId?: st
   if (!id) throw new Error('No restaurant ID available');
   const response = await apiClient.post<CarriedHouseItem>(`${INVENTORY_PATH}/${id}/house-items`, body);
   return response.data;
+}
+
+/**
+ * What a good is made of: GET/PUT /inventory/:rid/item/:id/nutrition and the
+ * label lookup. Every figure is per 100 g or 100 ml (basis), and null when not
+ * known, never 0. All 14 allergens always come back; one nobody stated is
+ * 'not_stated'.
+ */
+export type NutritionBasis = '100g' | '100ml';
+export type NutritionSource = 'house' | 'pack_label' | 'open_food_facts' | 'usda_fdc';
+export type AllergenStatus = 'contains' | 'may_contain' | 'free' | 'not_stated';
+export const ALLERGENS = [
+  'gluten', 'crustaceans', 'eggs', 'fish', 'peanuts', 'soy', 'milk',
+  'tree_nuts', 'celery', 'mustard', 'sesame', 'sulphites', 'lupin', 'molluscs',
+] as const;
+export type Allergen = (typeof ALLERGENS)[number];
+
+export interface NutritionFigures {
+  energyKcal: number | null;
+  fatG: number | null;
+  saturatesG: number | null;
+  carbohydrateG: number | null;
+  sugarsG: number | null;
+  proteinG: number | null;
+  saltG: number | null;
+  abvPct: number | null;
+}
+
+export interface StoredNutrition extends NutritionFigures {
+  basis: NutritionBasis;
+  /** Energy was worked out from the ABV alone: the alcohol, not any sugar. */
+  energyFromAbv: boolean;
+  source: NutritionSource;
+  sourceRef: string | null;
+  statedByName: string;
+  statedAt: string;
+}
+
+export interface ItemNutrition {
+  item: { id: string; name: string; kind: string | null; uom: string | null };
+  suggestedBasis: NutritionBasis | null;
+  figures: StoredNutrition | null;
+  allergens: Array<{ allergen: Allergen; status: AllergenStatus; statedByName: string | null; statedAt: string | null }>;
+}
+
+export interface SaveItemNutritionBody {
+  figures: (Partial<NutritionFigures> & { basis: NutritionBasis; source: NutritionSource; sourceRef?: string | null }) | null;
+  allergens: Array<{ allergen: Allergen; status: AllergenStatus }>;
+}
+
+export interface NutritionDraft {
+  source: 'open_food_facts' | 'usda_fdc';
+  sourceRef: string;
+  productName: string | null;
+  basis: NutritionBasis;
+  figures: NutritionFigures;
+  allergens: Array<{ allergen: Allergen; status: 'contains' | 'may_contain' }>;
+  notes: string[];
+  attribution: string;
+}
+
+export type NutritionLookup =
+  | { kind: 'draft'; draft: NutritionDraft }
+  | { kind: 'choices'; choices: Array<{ source: 'open_food_facts' | 'usda_fdc'; ref: string; name: string; brand: string | null }>; said: string[] }
+  | { kind: 'none'; why: string; said: string[] };
+
+const nutritionPath = (restaurantId: string | undefined, itemId: string) => {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  return `${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/nutrition`;
+};
+
+export async function getItemNutrition(itemId: string, restaurantId?: string): Promise<ItemNutrition> {
+  return (await apiClient.get<ItemNutrition>(nutritionPath(restaurantId, itemId))).data;
+}
+
+export async function saveItemNutrition(itemId: string, body: SaveItemNutritionBody, restaurantId?: string): Promise<ItemNutrition> {
+  return (await apiClient.put<ItemNutrition>(nutritionPath(restaurantId, itemId), body)).data;
+}
+
+export async function lookupItemNutrition(
+  itemId: string,
+  by: { barcode?: string; name?: string; fdcId?: string },
+  restaurantId?: string,
+): Promise<NutritionLookup> {
+  return (await apiClient.post<NutritionLookup>(`${nutritionPath(restaurantId, itemId)}/lookup`, by)).data;
 }
 
 export const inventoryApi = {
