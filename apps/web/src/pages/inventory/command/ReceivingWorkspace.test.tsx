@@ -963,3 +963,100 @@ describe('ReceivingWorkspace — the count starts from the ledger (ADR 0192)', (
     expect(body.acceptedQuantityInCountedUom).toBe(5)
   })
 })
+
+/*
+ * PRICE AS PRINTED — founder, 2026-10-02, RECEIPTS-W56 (F-103). A unit pick sits beside the
+ * price, starting at the order line's own price unit (ADR 0119), and the gateway converts once.
+ */
+describe('ReceivingWorkspace — the invoice price in the unit it is printed in', () => {
+  const priceUnitSelect = () =>
+    screen.getByLabelText('Invoice price unit') as HTMLSelectElement
+  /** One case of 24 agreed at $44.00 the case, one whole case on the shelf. */
+  const caseOf24 = (over: Record<string, unknown> = {}) => ({
+    ...order,
+    quantity: 1,
+    unitType: 'case',
+    finalPrice: 44,
+    priceUom: 'case',
+    pricePackSize: 24,
+    received: shelf({
+      quantityInStockUom: 24,
+      packUnit: 'case',
+      packSize: 24,
+      packs: 1,
+      looseInStockUom: 0,
+      words: '1 case',
+    }),
+    ...over,
+  })
+
+  it('starts the pick at the order line’s own unit and sends it beside the printed figure', async () => {
+    const user = userEvent.setup()
+    renderWorkspace({ order: caseOf24() })
+
+    expect(priceUnitSelect().value).toBe('case:24')
+    expect(priceUnitSelect()).toHaveDisplayValue('per case of 24')
+    // The agreed figure in the picked unit: $44.00 a case, not $1.83.
+    expect(screen.getByTestId('receiving-agreed-price')).toHaveTextContent('$44.00/ case')
+
+    await enterInvoice(user, 1, 44)
+    const status = screen.getByTestId('receiving-price-status')
+    expect(status).toHaveTextContent('Matches agreed price')
+    expect(status).toHaveTextContent('$1.83 a bottle')
+
+    await user.click(submit())
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    expect(body.invoiceUnitPrice).toBe(44)
+    expect(body.invoicePriceUom).toBe('case')
+    expect(body.invoicePricePackSize).toBe(24)
+    expect(body.priceOverrideReason).toBeUndefined()
+  })
+
+  it('counting whole cases compares like the gateway: 44 per bottle is a variance against $1.83', async () => {
+    // F-103, exactly. Counting whole packs, the screen used to compare the typed figure against
+    // the raw header ($44) and say "matches" while the gateway read the same figure per bottle
+    // against $1.83 and refused it with a 422.
+    const user = userEvent.setup()
+    renderWorkspace({ order: caseOf24() })
+
+    await user.selectOptions(priceUnitSelect(), 'bottle:1')
+    expect(screen.getByTestId('receiving-agreed-price')).toHaveTextContent('$1.83')
+    await enterInvoice(user, 1, 44)
+
+    expect(screen.getByText('Price variance')).toBeInTheDocument()
+    expect(screen.getByText('Billed $44.00 a bottle against an agreed $1.83 a bottle.')).toBeInTheDocument()
+    expect(screen.getByTestId('receiving-price-status')).toHaveTextContent('$42.17/btl over agreed')
+    expect(submit()).toHaveTextContent('Reason required')
+
+    // Saying what the 44 is per resolves it — no override owed.
+    await user.selectOptions(priceUnitSelect(), 'case:24')
+    expect(screen.getByTestId('receiving-price-status')).toHaveTextContent('Matches agreed price')
+    expect(submit()).not.toBeDisabled()
+  })
+
+  it('a ten-cent case variance is a variance, said in the case unit', async () => {
+    const user = userEvent.setup()
+    renderWorkspace({ order: caseOf24() })
+    await enterInvoice(user, 1, 43.9)
+    expect(screen.getByTestId('receiving-price-status')).toHaveTextContent('$0.10 a case under agreed')
+  })
+
+  it('an order with no stated price unit keeps per bottle and sends no unit', async () => {
+    const user = userEvent.setup()
+    renderWorkspace()
+    expect(priceUnitSelect().value).toBe('bottle:1')
+    expect(priceUnitSelect().options).toHaveLength(1)
+
+    await enterInvoice(user, 24, 22)
+    await user.click(submit())
+    const [, body] = verifyOrderReceipt.mock.calls[0]
+    expect(body.invoiceUnitPrice).toBe(22)
+    expect('invoicePriceUom' in body).toBe(false)
+    expect('invoicePricePackSize' in body).toBe(false)
+  })
+
+  it('offers no pick on a keg-priced line — that door waits for ADR 0115', () => {
+    renderWorkspace({ order: caseOf24({ priceUom: 'keg', pricePackSize: 1 }) })
+    expect(screen.queryByLabelText('Invoice price unit')).toBeNull()
+  })
+})
