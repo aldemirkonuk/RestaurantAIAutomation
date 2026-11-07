@@ -1839,7 +1839,7 @@ describe('ReportsNext — bars and a line on one cutting', () => {
     paint();
     const week = screen.getByRole('region', { name: 'The week’s shape' });
     fireEvent.change(within(week).getByLabelText('Line shows'), { target: { value: 'seen' } });
-    expect(within(week).getByText(/Line: Days seen, in days, on the right scale/)).toBeInTheDocument();
+    expect(within(week).getByText(/Line: Days seen \(days\), on the right scale/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Show The week’s shape full screen' }));
     const flat = screen.getByRole('dialog', { name: 'The week’s shape' });
@@ -1847,14 +1847,14 @@ describe('ReportsNext — bars and a line on one cutting', () => {
       'combo',
     );
     // Opens on the sheet's own choice…
-    expect(within(flat).getByText(/Line: Days seen, in days, on the right scale/)).toBeInTheDocument();
+    expect(within(flat).getByText(/Line: Days seen \(days\), on the right scale/)).toBeInTheDocument();
     // …and changing it there is view-only: the sheet behind keeps its own.
     fireEvent.change(within(flat).getByLabelText('Line shows'), { target: { value: 'spread' } });
     expect(within(flat).getByText(WORDS)).toBeInTheDocument();
     fireEvent.click(within(flat).getByRole('button', { name: 'Back to the sheet' }));
     expect(
       within(screen.getByRole('region', { name: 'The week’s shape' })).getByText(
-        /Line: Days seen, in days, on the right scale/,
+        /Line: Days seen \(days\), on the right scale/,
       ),
     ).toBeInTheDocument();
   });
