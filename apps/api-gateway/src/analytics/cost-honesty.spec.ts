@@ -151,6 +151,54 @@ describe("resolveUnitCost never invents a number", () => {
     ).toBe("unknown");
   });
 
+  it("reads a delivery-agreed cost when no invoice carries one", () => {
+    expect(
+      resolveUnitCost(
+        {},
+        { has_invoice_cost: false, has_agreed_cost: true, agreed_wac: "20.000000" },
+      ),
+    ).toEqual({ unitCost: 20, costBasis: "agreed_lot_wac" });
+  });
+
+  it("keeps the agreed cost's six places", () => {
+    expect(
+      resolveUnitCost({}, { has_agreed_cost: true, agreed_wac: 10.0049 }).unitCost,
+    ).toBe(10.0049);
+  });
+
+  it.each([[0], [null], [NaN], [-3], ["abc"]])(
+    "never counts an agreed_wac of %p",
+    (bad) => {
+      expect(
+        resolveUnitCost({}, { has_agreed_cost: true, agreed_wac: bad }),
+      ).toEqual({ unitCost: null, costBasis: "unknown" });
+    },
+  );
+
+  it("does not read an agreed_wac the view says does not exist", () => {
+    expect(
+      resolveUnitCost({}, { has_agreed_cost: false, agreed_wac: 20 }).costBasis,
+    ).toBe("unknown");
+  });
+
+  it("lets the invoice path win when both are present", () => {
+    expect(
+      resolveUnitCost(
+        { last_purchase_price: 9 },
+        { has_invoice_cost: true, wac: 31.5, has_agreed_cost: true, agreed_wac: 20 },
+      ),
+    ).toEqual({ unitCost: 31.5, costBasis: "invoice_lot_wac" });
+  });
+
+  it("prefers an agreed cost to a last purchase price", () => {
+    expect(
+      resolveUnitCost(
+        { last_purchase_price: 9 },
+        { has_agreed_cost: true, agreed_wac: 20 },
+      ),
+    ).toEqual({ unitCost: 20, costBasis: "agreed_lot_wac" });
+  });
+
   it("reports coverage instead of hiding the gap", () => {
     const cov = summarizeCostBasis([
       { unitCost: 12, costBasis: "invoice_lot_wac" },
