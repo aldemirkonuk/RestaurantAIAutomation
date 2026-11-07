@@ -39,6 +39,7 @@ import {
   PlatformOperatorService,
 } from "../common/orchestrator/platform-operator.service";
 import { DatabaseService } from "../database/database.service";
+import { OrganizationsService } from "../organizations/organizations.service";
 import { DeliveryClockService } from "./canonical/delivery-clock.service";
 import { DeliverySpineService } from "./canonical/delivery-spine.service";
 import { DeliveryService } from "./canonical/delivery.service";
@@ -165,6 +166,9 @@ beforeAll(async () => {
       { provide: DeliverySpineService, useValue: {} },
       { provide: DeliveryService, useValue: {} },
       { provide: RecurringOrdersService, useValue: recurring },
+      // RecurringOrdersController needs it for PUT/DELETE (ADR 0246); the
+      // routes exercised here never call it.
+      { provide: OrganizationsService, useValue: {} },
     ],
   }).compile();
   app = moduleRef.createNestApplication({ logger: false });
