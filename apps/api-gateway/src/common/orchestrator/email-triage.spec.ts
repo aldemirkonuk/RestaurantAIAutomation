@@ -124,6 +124,32 @@ describe("email-triage", () => {
         }).autoReplied,
       ).toBe(true);
     });
+    // QA round 24, item 3a: the markers autoresponders wrote before RFC 3834.
+    it.each<[string, Record<string, string>, boolean]>([
+      ["X-Autoreply: yes", { "x-autoreply": "yes" }, true],
+      ["X-Autoreply with an empty value", { "x-autoreply": "" }, true],
+      ["X-Autorespond present", { "x-autorespond": "Out of office" }, true],
+      ["Precedence: auto_reply", { precedence: "auto_reply" }, true],
+      ["Precedence: Auto_Reply, any case", { precedence: " Auto_Reply " }, true],
+      ["X-Autoreply: no", { "x-autoreply": "no" }, false],
+      ["X-Autorespond: false", { "x-autorespond": "FALSE" }, false],
+      ["Precedence: bulk is not an auto-reply", { precedence: "bulk" }, false],
+    ])("%s", (_l, h, want) => {
+      expect(
+        deriveTransportSignals({ from: "jean@vin-vendor.fr", ...h }).autoReplied,
+      ).toBe(want);
+    });
+    // QA round 24, item 3b: the parsed address, never the raw From.
+    it.each<[string, string, boolean]>([
+      ["a bounce", "Mail Delivery Subsystem <mailer-daemon@googlemail.com>", true],
+      ["a bare postmaster", "POSTMASTER@bigdist.com", true],
+      ["a display name that names postmaster", '"postmaster@x.example" <ayse@bigdist.com>', false],
+      ["a comment that names mailer-daemon", "ayse@bigdist.com (mailer-daemon@x.example)", false],
+      ["a From that names nobody", "mailer-daemon@x.example, ayse@bigdist.com", false],
+      ["a person", "Ayse <ayse@bigdist.com>", false],
+    ])("fromMailServer: %s", (_l, from, want) => {
+      expect(deriveTransportSignals({ from }).fromMailServer).toBe(want);
+    });
     it("a delivery status notification is a delivery report; a read receipt is not", () => {
       expect(
         deriveTransportSignals({
