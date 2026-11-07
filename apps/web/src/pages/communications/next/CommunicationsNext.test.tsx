@@ -354,15 +354,11 @@ describe('CommunicationsNext', () => {
       isError: true,
       errorMessage: 'down',
       failed: { ...noFailures, history: true },
-      failedSources: ['the conversation book'],
+      failedSources: ['the letter counts'],
     };
     render(<CommunicationsNext />);
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Part of this page could not be read: the conversation book. That does not mean there is nothing there.',
-    );
-    // COMMS-W33: the book says its own failure where its rows would be.
-    expect(screen.getByTestId('book-unread')).toHaveTextContent(
-      'The conversation book could not be read (down). That does not mean nothing was written.',
+      'Part of this page could not be read: the letter counts. That does not mean there is nothing there.',
     );
   });
 
@@ -398,7 +394,7 @@ describe('CommunicationsNext', () => {
     expect(screen.queryByLabelText(/Sent · 30 days: could not be/i)).toBeNull();
   });
 
-  it('the banner names every failed owned source, not only the conversation book', () => {
+  it('the banner names every failed owned source, not only the letter counts', () => {
     mockData.current = {
       ...base,
       glance: { draftsPending: null, sentLast30: null, repliesLast30: null },
@@ -408,12 +404,12 @@ describe('CommunicationsNext', () => {
       drafts: [],
       draftsKnown: false,
       failed: { history: true, drafts: true },
-      failedSources: ['the conversation book', 'the replies the house has written'],
+      failedSources: ['the letter counts', 'the replies the house has written'],
     };
     render(<CommunicationsNext />);
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent(
-      'Part of this page could not be read: the conversation book and the replies the house has written. That does not mean there is nothing there.',
+      'Part of this page could not be read: the letter counts and the replies the house has written. That does not mean there is nothing there.',
     );
     // COMMS-W33: no protocol, no bare dash standing for a word, no "in flight".
     expect(alert.querySelector('span')?.textContent).not.toMatch(/status code|in flight|—/);
@@ -630,7 +626,7 @@ describe('a read that fails after it answered (COMMS-W33)', () => {
   const at = AT.getTime();
   const reply = { id: 'a1', orderId: 'o1', orderNumber: 'PO-014', providerName: 'Bodega Álvaro', wineName: null, replaces: 0 };
 
-  it('the book keeps its rows and figures and says when they are from', () => {
+  it('the figures keep their values and say when they are from', () => {
     mockData.current = {
       ...base,
       rows: [item({})],
@@ -643,12 +639,8 @@ describe('a read that fails after it answered (COMMS-W33)', () => {
     render(<CommunicationsNext />);
     expect(screen.getByLabelText('Sent · 30 days: 9 as it was at 20:43. It could not be read again.')).toHaveTextContent('9');
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Part of this page could not be read again just now: the conversation book. What you see is as it was at 20:43.',
+      'Part of this page could not be read again just now: the letter counts. What you see is as it was at 20:43.',
     );
-    expect(screen.getByTestId('book-unread')).toHaveTextContent(
-      'The conversation book could not be read again (Internal server error). This is as it was at 20:43; there may be more or fewer now.',
-    );
-    expect(screen.getByText('Bodega Álvaro')).toBeInTheDocument();
   });
 
   it('the replies it read stay openable, under a line saying when, and the figure agrees', () => {
@@ -933,8 +925,7 @@ describe('what the address keeps (COMMS-W35)', () => {
 // its own ink, so the old Dark theme a browser may still keep (`html.dark`,
 // no control left since #576) cannot turn it pale on paper (it
 // measured 1.13:1); the two lists inside "Waiting on you" are a level below
-// it; and the conversation book, the one region a heading list skipped, has
-// the house's small label.
+// it; and the tabs, which replaced the book (2026-11-07), name themselves.
 describe('the outline and the title’s ink (COMMS-W36)', () => {
   beforeEach(() => {
     mockData.current = { ...base };
@@ -946,16 +937,14 @@ describe('the outline and the title’s ink (COMMS-W36)', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Communications' }).style.color).toBe('var(--ink-1, #211C16)');
   });
 
-  it('reads as one outline: the waiting lists under "Waiting on you", the book labelled', () => {
+  it('reads as one outline: the waiting lists under "Waiting on you", the tabs named', () => {
     mockData.current = { ...base, drafts: [{ id: 'a1', orderId: 'o1' }, { id: 'a2', orderId: 'o2' }] };
     render(<CommunicationsNext />);
     // Only its level changed: the line it had as an h2 is kept, so nothing below it moves.
     expect(screen.getByRole('heading', { level: 3, name: 'The house has written · 2 waiting' }).style.lineHeight).toBe('2rem');
     expect(screen.queryByRole('heading', { level: 2, name: /The house has written/ })).toBeNull();
-    const book = screen.getByRole('region', { name: 'Conversation book' });
-    expect(within(book).getByRole('heading', { level: 2, name: 'The conversation book' })).toBe(
-      within(book).getAllByRole('heading')[0],
-    );
+    const tabs = screen.getByRole('navigation', { name: 'Mail and letters' });
+    expect(within(tabs).getAllByRole('button').map((b) => b.textContent)).toEqual(['Mail · —', 'Letters']);
   });
 });
 
@@ -1021,11 +1010,14 @@ describe('Mail and Letters', () => {
     mockMailSummary.current = { data: undefined };
   });
 
-  it('opens on Letters, and the Mail tab is one click and one address away', () => {
+  it('opens on Letters, with the one line that points to Mail where the book was', () => {
     at('/communications');
     expect(tabs()[1]).toHaveAttribute('aria-current', 'page');
     expect(screen.queryByTestId('mail-tab-stub')).toBeNull();
-    fireEvent.click(tabs()[0]);
+    expect(screen.getByRole('region', { name: 'Every letter' })).toHaveTextContent(
+      'Every letter in and out, by vendor and by thread, is under Mail.',
+    );
+    fireEvent.click(within(screen.getByRole('region', { name: 'Every letter' })).getByRole('button', { name: 'Mail' }));
     expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
     expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail');
   });
