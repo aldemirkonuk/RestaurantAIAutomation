@@ -116,6 +116,20 @@ describe("MailSetupService.read", () => {
     expect(view.arrival.failed).toBeNull();
   });
 
+  it("a failed read of the stored choice says so, never 'no choice' (QA round 26, #975 M11)", async () => {
+    const { service } = build({
+      house_mail_sender_choice: { error: { message: "invalid_grant: relation unavailable" } },
+    });
+    const view = await service.read(HOUSE, ME, "owner");
+    expect(view.senders).toEqual({
+      failed: "The house's chosen mailbox could not be read.",
+      choices: [],
+      chosenConnectionId: null,
+    });
+    expect(JSON.stringify(view)).not.toMatch(/invalid_grant/);
+    expect(view.arrival.failed).toBeNull();
+  });
+
   it("with no inbound domain, says mail cannot arrive by address and reads nothing for it", async () => {
     const { service, inbound } = build({}, { domain: null });
     const view = await service.read(HOUSE, ME, "owner");
