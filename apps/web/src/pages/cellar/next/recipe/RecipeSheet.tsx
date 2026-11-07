@@ -52,10 +52,10 @@ import { AlertTriangle, ClipboardPaste, History, Plus, RotateCcw, Save } from 'l
 import { useAuth } from '../../../../contexts/AuthContext';
 import { getErrorStatus } from '../../../../services/api/client';
 import type { CocktailRecipe, RecipeLine, SaveRecipeBody } from '../../../../services/api/recipes';
-import LineRow, { LineRowRead, rowName, type DraftRow } from './LineRow';
+import LineRow, { LineRowRead, rowName, rowQty, type DraftRow } from './LineRow';
 import { draftKey, dropDraft, keepDraft, takeDraft } from './drafts';
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
-import { AMBIGUOUS_AMOUNT, qtyText, readQty } from './units';
+import { AMBIGUOUS_AMOUNT, qtyText } from './units';
 import {
   useCanEditRecipe,
   useHouseMoney,
@@ -92,6 +92,7 @@ function fromServer(l: RecipeLine): DraftRow {
     itemKind: l.itemKind,
     label: l.label,
     qtyText: qtyText(l.qtyEntered),
+    storedQty: l.qtyEntered,
     unit: (l.unitCode as DraftRow['unit']) ?? '',
     saved: { status: l.status, costPerServe: l.costPerServe, costBasis: l.costBasis },
   };
@@ -202,7 +203,7 @@ export function whyBlocked(rows: DraftRow[]): string | null {
   };
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    const q = readQty(r.qtyText);
+    const q = rowQty(r);
     if (q === null && AMBIGUOUS_AMOUNT.test(r.qtyText.trim())) {
       const t = r.qtyText.trim();
       return `${named(i)}: ${t} could be ${t.replace(/[.,]/, '')} or ${t.replace(',', '.').replace(/0+$/, '').replace(/\.$/, '')}. Type it without the separator.`;
@@ -344,7 +345,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
         role: r.role,
         inventoryId: r.role === 'stocked' ? r.inventoryId : null,
         label: rowName(r),
-        qty: readQty(r.qtyText) as number,
+        qty: rowQty(r) as number,
         unit: r.unit as string,
       })),
     };

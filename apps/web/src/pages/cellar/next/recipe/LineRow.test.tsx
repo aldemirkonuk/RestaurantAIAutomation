@@ -18,8 +18,8 @@ const h = vi.hoisted(() => ({ get: vi.fn(), rid: '11111111-1111-4111-8111-111111
 vi.mock('../../../../services/api/client', () => ({ apiClient: { get: h.get } }));
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: h.rid }) }));
 
-import LineRow, { LineRowRead, type DraftRow } from './LineRow';
-import { readQty } from './units';
+import LineRow, { LineRowRead, rowQty, type DraftRow } from './LineRow';
+import { qtyText, readQty } from './units';
 import { useShelf } from './useRecipe';
 
 const blank: DraftRow = {
@@ -104,6 +104,39 @@ describe('LineRow', () => {
     fireEvent.click(screen.getByRole('button', { name: /link it to your shelf/i }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Your shelf could not be read just now (Network Error).');
     expect(screen.queryByText(/Nothing on your shelf matches/)).toBeNull();
+  });
+
+  it('QA round 21: the ambiguity rule is exactly one to three digits, a separator, three digits', () => {
+    // u2: four or more decimals is a plain decimal, not a thousand-or-one.
+    expect(readQty('1.1255')).toBe(1.1255);
+    expect(readQty('1,0001')).toBe(1.0001);
+    // u4: four integer digits and a separator is a plain decimal too.
+    expect(readQty('1000.125')).toBe(1000.125);
+    expect(readQty('1234,567')).toBe(1234.567);
+    // and the edges that are still ambiguous
+    for (const t of ['1,250', '12,345', '123.456', '999,999']) expect(readQty(t), t).toBeNull();
+  });
+
+  it('QA round 21: a stored three-decimal amount the person did not edit is never refused', () => {
+    for (const n of [1.125, 1.375, 2.125, 3.333, 15.625, 999.999]) {
+      const row = { ...blank, qtyText: qtyText(n), storedQty: n };
+      expect(readQty(row.qtyText), `typed ${n}`).toBeNull();
+      expect(rowQty(row), `loaded ${n}`).toBe(n);
+    }
+    // keeps the stored number past the three printed decimals
+    expect(rowQty({ ...blank, qtyText: '3.333', storedQty: 3.3333 })).toBe(3.3333);
+  });
+
+  it('QA round 21: typing into a loaded amount makes it typed again', () => {
+    mount(<Harness start={{ ...blank, qtyText: '1.125', storedQty: 1.125 }} />);
+    const box = screen.getByLabelText('Amount');
+    expect(box).toHaveAttribute('aria-invalid', 'false');
+    fireEvent.change(box, { target: { value: '1.12' } });
+    fireEvent.change(box, { target: { value: '1.125' } });
+    expect(last.storedQty).toBeNull();
+    expect(box).toHaveAttribute('aria-invalid', 'true');
+    fireEvent.change(box, { target: { value: '1.25' } });
+    expect(box).toHaveAttribute('aria-invalid', 'false');
   });
 
   it('the amount takes a comma, and nothing at or below zero', () => {

@@ -14,6 +14,7 @@
  */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
+import { draftKey, dropDraft } from './drafts';
 import { recipesApi, type SaveRecipeBody } from '../../../../services/api/recipes';
 import { settingsApi } from '../../../../services/api/settings';
 import { managesHouse } from '../../../communications/next/cm-format';
@@ -72,11 +73,17 @@ export function useShelf(search: string, enabled: boolean) {
 }
 
 export function useSaveRecipe(cocktailId: string) {
-  const { activeRestaurantId } = useAuth();
+  const { activeRestaurantId, user } = useAuth();
   const qc = useQueryClient();
+  const storeKey = draftKey(user?.userId, activeRestaurantId, cocktailId);
   return useMutation({
     mutationFn: (body: SaveRecipeBody) => recipesApi.save(activeRestaurantId as string, cocktailId, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, cocktailId) }),
+    // Here, not in the sheet: a save that finishes after the sheet was left
+    // must still clear its draft, or the leave warning fires for saved work.
+    onSuccess: () => {
+      dropDraft(storeKey);
+      return qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, cocktailId) });
+    },
   });
 }
 
