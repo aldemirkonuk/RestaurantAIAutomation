@@ -1027,3 +1027,107 @@ describe("A5 — the two legacy paths are no longer second writers", () => {
     expect(res.value).toEqual({ booked: false, deliveryIds: [] });
   });
 });
+
+describe("DeliveryStockService — a re-verify finishes a post that failed partway (QA round 15 (4))", () => {
+  const B = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+  let db: MockDb;
+  let service: DeliveryStockService;
+  let failOn: string | null;
+
+  beforeEach(() => {
+    db = makeMockDb();
+    db.reset();
+    failOn = null;
+    const real = db.client.getClient;
+    db.client.getClient = () => ({
+      ...real(),
+      rpc: async (fn: string, args: Record<string, unknown>) => {
+        db.rpcCalls.push({ fn, args });
+        if (fn === "finalise_delivery_cost" && args.p_inventory_id === failOn)
+          return { data: null, error: { message: "connection reset" } };
+        return { data: { lots_matched: 1, lots_finalised: 1, bottles_finalised: 10 }, error: null };
+      },
+    });
+    service = new DeliveryStockService(db.client as unknown as DatabaseService);
+    db.answers.deliveries = { data: { id: DEL, state: "VERIFIED", order_id: null }, error: null };
+    db.answers.document_deliveries = { data: [{ document_id: "inv-1", role: "invoice" }], error: null };
+    db.answers.delivery_proposals = { data: [], error: null };
+    db.answers.procurement_documents = { data: [{ id: "inv-1", doc_number: "A-1", freight: 50 }], error: null };
+    const line = (o: Record<string, unknown>) => ({
+      document_id: "inv-1", line_no: 1, inventory_id: ITEM, qty_bottles: 10, uom: "bottle",
+      pack_size: 1, unit_price: 60, line_total: 600, ...o,
+    });
+    db.answers.procurement_document_lines = {
+      data: [line({}), line({ line_no: 2, inventory_id: B, unit_price: 40, line_total: 400 })],
+      error: null,
+    };
+    db.answers.inventory_transactions = {
+      data: [{ inventory_id: ITEM, quantity_change: 10 }, { inventory_id: B, quantity_change: 10 }],
+      error: null,
+    };
+  });
+  const posts = () => db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost");
+
+  it("B's post fails, the re-verify posts B once at its landed cost and leaves A alone; a second re-verify posts nothing", async () => {
+    failOn = B;
+    const first = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(first.ok).toBe(false);
+    if (!first.ok) expect(first.error).toMatch(/verifying the delivery again posts the cost of every item still provisional, once/);
+    // 50 freight over 600 + 400: A 30.00 (63 a bottle), B 20.00 (42 a bottle).
+    expect(posts().map((c) => [c.args.p_inventory_id, c.args.p_unit_cost])).toEqual([[ITEM, 63], [B, 42]]);
+
+    // A is final at 63; B is still provisional.
+    failOn = null;
+    db.rpcCalls.length = 0;
+    db.answers.inventory_lots = {
+      data: [
+        { inventory_id: ITEM, cost_state: "final", qty: 10 },
+        { inventory_id: B, cost_state: "provisional", qty: 10 },
+      ],
+      error: null,
+    };
+    const retry = await service.finishProvisional(REST, DEL, USER);
+    expect(retry.ok && retry.value.finalised.map((f) => [f.inventoryId, f.unitCost])).toEqual([[B, 42]]);
+    expect(posts().map((c) => [c.args.p_inventory_id, c.args.p_unit_cost])).toEqual([[B, 42]]);
+
+    // Both final now: nothing is posted again.
+    db.rpcCalls.length = 0;
+    db.answers.inventory_lots = {
+      data: [
+        { inventory_id: ITEM, cost_state: "final", qty: 10 },
+        { inventory_id: B, cost_state: "final", qty: 10 },
+      ],
+      error: null,
+    };
+    const again = await service.finishProvisional(REST, DEL, USER);
+    expect(again.ok && again.value.finalised).toEqual([]);
+    expect(posts()).toEqual([]);
+  });
+
+  it("a lot revalued by hand after the verify is final, so the re-verify does not overwrite it", async () => {
+    db.answers.inventory_lots = {
+      data: [
+        { inventory_id: ITEM, cost_state: "final", qty: 10 },
+        { inventory_id: B, cost_state: "final", qty: 10 },
+      ],
+      error: null,
+    };
+    const res = await service.finishProvisional(REST, DEL, USER);
+    expect(res.ok && res.value.finalised).toEqual([]);
+    expect(posts()).toEqual([]);
+  });
+
+  it("a sold-out provisional lot (qty 0) is not posted; finalise_delivery_cost would match no lot", async () => {
+    db.answers.inventory_lots = { data: [{ inventory_id: B, cost_state: "provisional", qty: 0 }], error: null };
+    const res = await service.finishProvisional(REST, DEL, USER);
+    expect(res.ok && res.value.finalised).toEqual([]);
+    expect(posts()).toEqual([]);
+  });
+
+  it("an unreadable lot list is an error, never 'nothing left to post'", async () => {
+    db.answers.inventory_lots = { data: null, error: { message: "connection reset" } };
+    const res = await service.finishProvisional(REST, DEL, USER);
+    expect(res.ok).toBe(false);
+    expect(posts()).toEqual([]);
+  });
+});
