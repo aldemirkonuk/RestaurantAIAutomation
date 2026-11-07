@@ -179,15 +179,17 @@ def test_an_ambiguous_from_is_never_looked_up(header):
 
 
 def _like_to_regex(pattern: str) -> "re.Pattern":
-    """ILIKE as PostgREST and Postgres run it: ``*`` and ``%`` match any run,
-    ``_`` one character, a backslash escapes the next character."""
+    """ILIKE as PostgREST and Postgres run it: PostgREST first rewrites every
+    ``*`` to ``%``, escaped or not (QA round 25); then ``%`` matches any run,
+    ``_`` one character, and a backslash escapes the next character."""
+    pattern = pattern.replace("*", "%")
     out, i = "", 0
     while i < len(pattern):
         ch = pattern[i]
         if ch == "\\" and i + 1 < len(pattern):
             i += 1
             out += re.escape(pattern[i])
-        elif ch in "%*":
+        elif ch == "%":
             out += ".*"
         elif ch == "_":
             out += "."

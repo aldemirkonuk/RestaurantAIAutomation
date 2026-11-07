@@ -931,7 +931,14 @@ class EmailIntelAgent(BaseAgent):
         PROVINT-04: Check if sender email exists as a known provider contact.
         Returns True if sender is unknown (not in providers or provider_contacts tables).
         Fails open — a lookup failure returns False to avoid blocking email processing.
+
+        Both lookups answer for one house (QA round 25): a vendor of another
+        house is unknown here. With no house there is no "here", so nothing is
+        read and nothing is flagged.
         """
+        restaurant_id = (restaurant_id or "").strip()
+        if not restaurant_id:
+            return False
         try:
             result = (
                 self.database.supabase.table("providers")

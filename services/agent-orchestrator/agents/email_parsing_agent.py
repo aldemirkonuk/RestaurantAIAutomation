@@ -64,10 +64,15 @@ def like_exactly(address: str) -> str:
     """A sender address as a PostgREST ``ilike`` value that matches that
     address and nothing else (QA round 24: ``%@%`` was read as a pattern and
     resolved to another house's provider). Backslash, ``%``, ``_`` and ``*``
-    are escaped; PostgREST turns ``*`` into ``%``, so an escaped ``*`` can only
-    miss. ilike, not eq: ``providers.contact_email`` keeps the case a manager
-    typed (unique on ``lower(contact_email)``), so eq on the folded address
-    would stop matching ``Sales@BigDist.com``."""
+    are escaped. PostgREST rewrites every ``*`` to ``%`` before Postgres sees
+    the value, escaped or not, so ``\\*`` arrives as ``\\%``, a literal percent
+    sign (QA round 25, measured live): an address with a ``*`` in it is matched
+    as if that ``*`` were a ``%``. It never becomes a wildcard, but it can match
+    the vendor ``a%b@x.com`` and miss the vendor ``a*b@x.com``. (This docstring
+    used to promise an escaped ``*`` could only miss.) ilike, not eq:
+    ``providers.contact_email`` keeps the case a manager typed (unique on
+    ``lower(contact_email)``), so eq on the folded address would stop matching
+    ``Sales@BigDist.com``."""
     return _LIKE_META.sub(lambda m: "\\" + m.group(0), address)
 
 
