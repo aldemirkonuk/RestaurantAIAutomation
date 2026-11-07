@@ -297,49 +297,62 @@ export const cloverAdapter: PosAdapter = {
           subtotal: null,
           total: cents(o.total),
           tip: cents(o.tipAmount),
-          items: lineItems.map(cloverLine),
+          // A refunded line comes back on its own refund check below, every
+          // time, so on a deleted order it stays in place at quantity 0: the
+          // void returns only what the refund did not.
+          items: lineItems.map((li) =>
+            voided && isCloverRefund(li)
+              ? { ...cloverLine(li), qty: 0 }
+              : cloverLine(li),
+          ),
           raw: o,
         };
         // Way 3. A refunded line keeps its place and quantity on the sale
         // (it sold, and its stock was taken), and is also returned on its own
         // voided check keyed by the line id: Clover marks a line `refunded`
-        // once (LineItem schema, same page). A deleted order already returns
-        // every line, so its refunded lines are not returned a second time.
-        const refunded = voided
-          ? []
-          : lineItems
-              .filter((li) => li?.refunded === true && li?.id)
-              .map(
-                (li): CanonicalCheck => ({
-                  externalCheckId: returnCheckId(
-                    String(o.id),
-                    "refund",
-                    String(li.id),
-                  ),
-                  openedAt,
-                  closedAt:
-                    instantMs(li.refund?.createdTime) !== null
-                      ? new Date(
-                          instantMs(li.refund?.createdTime) as number,
-                        ).toISOString()
-                      : closedAt,
-                  voided: true,
-                  tableRef: null,
-                  channel: null,
-                  serverExternalId: o.employee?.id ?? null,
-                  serverName: o.employee?.name ?? null,
-                  covers: null,
-                  subtotal: null,
-                  total: null,
-                  tip: null,
-                  items: [cloverLine(li)],
-                  raw: li,
-                }),
-              );
+        // once (LineItem schema, same page). The refund check is emitted on
+        // every send, deleted or not, so its key is the one key a refunded
+        // line ever comes back under: a refund seen first and a deletion seen
+        // later return it once, not twice (the deleted sale holds it at 0).
+        //
+        // It closes only when its sale closed: an order still open took no
+        // stock, so a refund on it has nothing to give back. The refund's own
+        // time dates it when Clover gives one.
+        const refundAt = (li: any): string | null => {
+          if (closedAt === null) return null;
+          const ms = instantMs(li.refund?.createdTime);
+          return ms !== null ? new Date(ms).toISOString() : closedAt;
+        };
+        const refunded = lineItems.filter(isCloverRefund).map(
+          (li): CanonicalCheck => ({
+            externalCheckId: returnCheckId(
+              String(o.id),
+              "refund",
+              String(li.id),
+            ),
+            openedAt,
+            closedAt: refundAt(li),
+            voided: true,
+            tableRef: null,
+            channel: null,
+            serverExternalId: o.employee?.id ?? null,
+            serverName: o.employee?.name ?? null,
+            covers: null,
+            subtotal: null,
+            total: null,
+            tip: null,
+            items: [cloverLine(li)],
+            raw: li,
+          }),
+        );
         return [sale, ...refunded];
       });
   },
 };
+
+/** A Clover line marked refunded, with the id its refund check is keyed by. */
+const isCloverRefund = (li: any): boolean =>
+  li?.refunded === true && Boolean(li?.id);
 
 function cloverLine(li: any): CanonicalItem {
   return {

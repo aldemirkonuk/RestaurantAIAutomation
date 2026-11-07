@@ -243,7 +243,7 @@ describe("POS-1: each provider maps its voids and returns onto `voided`", () => 
     ]);
   });
 
-  it("Clover: a deleted order does not return its refunded lines a second time", () => {
+  it("Clover: a deleted order holds its refunded line at 0 and keeps returning it under the refund key", () => {
     const checks = cloverAdapter.normalize({
       id: "clv-dr",
       state: "locked",
@@ -251,11 +251,43 @@ describe("POS-1: each provider maps its voids and returns onto `voided`", () => 
       modifiedTime: 2,
       deletedTimestamp: 3,
       lineItems: {
-        elements: [{ id: "li-a", name: "Caymus", price: 9000, refunded: true }],
+        elements: [
+          { id: "li-a", name: "Caymus", price: 9000, refunded: true },
+          { id: "li-b", name: "Barolo", price: 14000 },
+        ],
       },
     });
-    expect(checks).toHaveLength(1);
-    expect(checks[0].voided).toBe(true);
+    expect(checks).toHaveLength(2);
+    const [sale, refund] = checks;
+    expect(sale.voided).toBe(true);
+    expect(sale.items.map((i) => i.qty)).toEqual([0, 1]);
+    expect(refund).toMatchObject({
+      externalCheckId: "clv-dr:refund:li-a",
+      voided: true,
+    });
+    expect(refund.items.map((i) => i.qty)).toEqual([1]);
+  });
+
+  it("Clover: a refund on an order that never closed does not close either", () => {
+    const [sale, refund] = cloverAdapter.normalize({
+      id: "clv-open",
+      state: "open",
+      createdTime: 1,
+      modifiedTime: 2,
+      lineItems: {
+        elements: [
+          {
+            id: "li-a",
+            name: "Caymus",
+            price: 9000,
+            refunded: true,
+            refund: { createdTime: Date.parse("2026-11-06T22:00:00Z") },
+          },
+        ],
+      },
+    });
+    expect(sale.closedAt).toBeNull();
+    expect(refund.closedAt).toBeNull();
   });
 });
 
@@ -455,6 +487,70 @@ describe("POS-1 through the hub: stock comes back and sales drop", () => {
     await hub.ingest("r1", "clover", order(true));
     expect(state.stockLive).toBe(12);
     await hub.ingest("r1", "clover", order(true));
+    expect(state.stockLive).toBe(12);
+  });
+
+  it("Clover: an open order with a refunded line moves no stock", async () => {
+    const { db, state } = makeDb(12, ["item-1"]);
+    const hub = new PosHubService(db);
+    await hub.ingest("r1", "clover", {
+      id: "clv-open",
+      state: "open",
+      createdTime: Date.parse(OPENED),
+      modifiedTime: Date.parse(CLOSED),
+      lineItems: {
+        elements: [
+          {
+            id: "li-a",
+            name: "Caymus",
+            item: { id: "item-1" },
+            price: 9000,
+            refunded: true,
+            refund: { createdTime: Date.parse("2026-11-06T22:00:00Z") },
+          },
+        ],
+      },
+    });
+    expect(state.stockLive).toBe(12);
+  });
+
+  it("Clover: a refund then a deletion of the same order returns the refunded bottle once", async () => {
+    const { db, state } = makeDb(12, ["item-1", "item-2"]);
+    const hub = new PosHubService(db);
+    const order = (over: Row = {}) => ({
+      id: "clv-2",
+      state: "locked",
+      createdTime: Date.parse(OPENED),
+      modifiedTime: Date.parse(CLOSED),
+      lineItems: {
+        elements: [
+          {
+            id: "li-a",
+            name: "Caymus",
+            item: { id: "item-1" },
+            price: 9000,
+            refunded: true,
+          },
+          { id: "li-b", name: "Barolo", item: { id: "item-2" }, price: 14000 },
+        ],
+      },
+      ...over,
+    });
+    // Locked with li-a refunded: 2 sold, li-a back, net 1 off the shelf.
+    await hub.ingest("r1", "clover", order());
+    expect(state.stockLive).toBe(11);
+    // Deleted: li-b comes back through the void; li-a is already back.
+    await hub.ingest(
+      "r1",
+      "clover",
+      order({ deletedTimestamp: Date.parse("2026-11-07T09:00:00Z") }),
+    );
+    expect(state.stockLive).toBe(12);
+    await hub.ingest(
+      "r1",
+      "clover",
+      order({ deletedTimestamp: Date.parse("2026-11-07T09:00:00Z") }),
+    );
     expect(state.stockLive).toBe(12);
   });
 });
