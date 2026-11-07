@@ -33,6 +33,7 @@ import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
+import { useAuthStore } from '@/stores/authStore';
 import { failureOf, heldBackFailure, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
@@ -216,9 +217,26 @@ export interface ReportsNextData {
   tillDays: number;
   setTillDays: (days: number) => void;
   sheet: SheetState;
+  /**
+   * Writes the sheet to the reader's preferences — and writes NOTHING while
+   * the sheet is not known, so the house sheet can never be saved over the
+   * reader's own.
+   */
   saveSheet: (next: SheetState) => void;
-  /** False while the preferences API has not answered — the sheet is not yet the reader's. */
+  /**
+   * True once the account's preferences have answered, so `sheet` is the
+   * reader's own. Read from `isPlaceholderData`, not `isLoading`: the
+   * preferences query has `placeholderData: {}`, so `isLoading` is false before
+   * the gateway has said anything (`useUserPreferences.ts`, its own note).
+   */
   sheetKnown: boolean;
+  /**
+   * Why the reader's own sheet cannot be known, when it cannot: the read
+   * failed, or no one is signed in so there is nothing to read. `sheet` is
+   * then the house sheet, and the page says so and keeps arranging shut. Null
+   * while the read is simply in flight, and once it has answered.
+   */
+  sheetUnread: string | null;
   refetchAll: () => void;
 }
 
@@ -239,7 +257,28 @@ export function useReportsNextData(
   const { activeRestaurantId, activeRole } = useAuth();
   const rid = activeRestaurantId;
   const qc = useQueryClient();
-  const { preferences, updatePreferences, isLoading: prefsLoading } = useUserPreferences();
+  const {
+    preferences,
+    updatePreferences,
+    isPlaceholderData: prefsPlaceholder,
+    error: prefsError,
+  } = useUserPreferences();
+  // The preferences query is disabled without a user id, and a disabled query
+  // keeps its placeholder forever — so the placeholder alone would leave the
+  // sheet unknown forever. Read the id the hook itself keys on.
+  const userId = useAuthStore((s) => s.user?.userId) ?? null;
+  // `error` first: a failed read leaves `{}` behind, which would otherwise look
+  // like a perfectly good answer of "no sheet saved" (GroundChoiceSync.tsx
+  // reads the same three in the same order).
+  const sheetKnown = userId !== null && !prefsError && !prefsPlaceholder;
+  const sheetUnread =
+    userId === null
+      ? 'No one is signed in, so there is no arrangement of yours to read: the house sheet is shown, and arranging is off.'
+      : prefsError
+        ? `Your own arrangement of this sheet could not be read (${
+            failureOf(prefsError)?.message ?? 'the request failed'
+          }), so the house sheet is shown. Arranging is off until it can be read.`
+        : null;
 
   const sheet = useMemo(() => decodeSheet(preferences?.[SHEET_PREF_KEY]), [preferences]);
 
@@ -323,9 +362,10 @@ export function useReportsNextData(
 
   const saveSheet = useCallback(
     (next: SheetState) => {
+      if (!sheetKnown) return;
       updatePreferences({ [SHEET_PREF_KEY]: encodeSheet(next) });
     },
-    [updatePreferences],
+    [sheetKnown, updatePreferences],
   );
 
   const refetchAll = useCallback(() => {
@@ -345,7 +385,8 @@ export function useReportsNextData(
     setTillDays,
     sheet,
     saveSheet,
-    sheetKnown: !prefsLoading,
+    sheetKnown,
+    sheetUnread,
     refetchAll,
   };
 }
