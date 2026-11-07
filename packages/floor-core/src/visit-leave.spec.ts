@@ -48,6 +48,9 @@ describe("kept from the checker (`lib/visit-leave.ts` at 5958689)", () => {
     expect(honorCheckInCount(sec(0), sec(1_999))).toBe(0);
     expect(honorCheckInCount(sec(0), sec(2_000))).toBe(1);
     expect(honorCheckInCount(sec(2_000), sec(0))).toBe(1);
+    expect(honorCheckInCount(sec(2_000), sec(1))).toBe(0);
+    expect(honorCheckInCount(sec(0), "not a time")).toBe(0);
+    expect(honorCheckInCount("not a time", sec(0))).toBe(0);
   });
 
   it("a seat time that cannot be read gives no dwell and no confirm", () => {

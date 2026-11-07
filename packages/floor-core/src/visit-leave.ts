@@ -7,8 +7,8 @@
  * number gives no dwell (null), not NaN. The checker's confirm already stayed
  * shut on a NaN clock; only -Infinity opened it. An unreadable seat time gives
  * null, as in the checker. A seat time ahead of `nowMs` still counts as 0
- * minutes, as in the checker, so it opens the confirm: the executor's reading
- * under OD-242. Freshness reads the same input as late (OD-257); whether this
+ * minutes, as in the checker, so with under 2 honor check-ins it opens the
+ * confirm: the executor's reading under OD-242. Freshness reads the same input as late (OD-257); whether this
  * rule follows OD-257's answer is not decided. Seat times are read with
  * `new Date`, as the checker did; pass ISO strings with a zone.
  */
