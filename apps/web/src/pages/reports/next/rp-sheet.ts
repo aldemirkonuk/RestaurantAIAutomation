@@ -46,6 +46,7 @@ export function isAnalysisId(v: unknown): v is AnalysisId {
 export const GRAPH_TYPES = [
   'line',
   'bars',
+  'combo',
   'area',
   'heatmap',
   'scatter',
@@ -63,6 +64,7 @@ export function isGraphType(v: unknown): v is GraphType {
 export const GRAPH_LABEL: Record<GraphType, string> = {
   line: 'Line',
   bars: 'Bars',
+  combo: 'Bars and a line',
   area: 'Area',
   heatmap: 'Heat map',
   scatter: 'Scatter',

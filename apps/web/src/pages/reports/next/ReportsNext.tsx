@@ -74,6 +74,7 @@ import {
   type SheetState,
   type Slot,
 } from './rp-sheet';
+import type { ComboPick } from './rp-combo';
 import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
@@ -107,6 +108,9 @@ function Action({
 
 export default function ReportsNext({ ground }: ReportsNextProps) {
   const [tillDays, setTillDays] = useState(30);
+  // Which measure is the bars and which the line, by cutting id. Held here, not
+  // in the cutting, so moving a cutting about the sheet can never lose it.
+  const [comboPicks, setComboPicks] = useState<Partial<Record<AnalysisId, ComboPick>>>({});
   const [arranging, setArranging] = useState(false);
   const [draft, setDraft] = useState<SheetState | null>(null);
   // The fetch follows what is ON SCREEN, draft included: a cutting swapped to
@@ -326,6 +330,8 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         arranging={arranging}
         swapOptions={swapOptions}
         arrange={arrange}
+        comboPick={comboPicks[c.id]}
+        onComboPick={(p) => setComboPicks((all) => ({ ...all, [c.id]: p }))}
         onGraph={(g) => onGraph(c.id, g)}
         onSwap={(to) => onSwap(c.id, to)}
         onRemove={() => onRemove(c.id)}

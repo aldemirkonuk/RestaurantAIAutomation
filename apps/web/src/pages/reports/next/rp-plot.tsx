@@ -38,6 +38,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  ComposedChart,
   Label,
   Line,
   LineChart,
@@ -52,6 +53,7 @@ import {
 } from 'recharts';
 import { turn } from '@/lib/mudavym';
 import { EM, MONO, failureLine, type Failure } from './rp-format';
+import { choose, planCombo, type ComboPick, type ComboPlan } from './rp-combo';
 import type { CatSeries, Fig, MatrixSeries, PointSeries, TableSpec } from './rp-view';
 
 /* ─────────────────────────────────────────────────── shared chrome ─────── */
@@ -392,6 +394,173 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
         )}
       </LineChart>
     </Plot>
+  );
+}
+
+/**
+ * Bars for one measure and a line for another, on the same points — see
+ * `rp-combo.ts` for the three rules (one axis per unit, a gap is a gap, the
+ * picker never names a measure twice).
+ *
+ * The picker is shown only when the register offers more than two measures; with
+ * exactly two there is nothing to choose. `pick`/`onPick` make it controlled
+ * (the sheet keeps the choice above the cutting, keyed by its id, so moving the
+ * cutting never loses it); with no `onPick` it keeps its own, which is what the
+ * full-screen view wants — that view is not saved to the sheet.
+ */
+export function ComboPlot({
+  series,
+  pick,
+  onPick,
+}: {
+  series: CatSeries;
+  pick?: Partial<ComboPick>;
+  onPick?: (p: ComboPick) => void;
+}) {
+  const [own, setOwn] = useState<Partial<ComboPick> | undefined>(pick);
+  const plan = planCombo(series, onPick ? pick : own);
+  if (!plan) return null;
+  const set = (side: keyof ComboPick, key: string) => {
+    const next = choose(plan.pick, side, key);
+    if (onPick) onPick(next);
+    else setOwn(next);
+  };
+  const { bars, line, split, rows } = plan;
+  const shared = split ? null : bars.unit;
+  const words = split
+    ? `Bars: ${bars.label}, in ${bars.unit}, on the left scale. Line: ${line.label}, in ${line.unit}, on the right scale.`
+    : `Bars: ${bars.label}. Line: ${line.label}. Both are in ${bars.unit}, so they share one scale.`;
+  return (
+    <>
+      {plan.measures.length > 2 && (
+        <div className="rp-row rp-no-drag" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <label className="rp-field">
+            <span className="rp-eyebrow">Bars show</span>
+            <select
+              className="rp-select rp-focus"
+              aria-label="Bars show"
+              value={plan.pick.bars}
+              onChange={(e) => set('bars', e.target.value)}
+            >
+              {plan.measures.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="rp-field">
+            <span className="rp-eyebrow">Line shows</span>
+            <select
+              className="rp-select rp-focus"
+              aria-label="Line shows"
+              value={plan.pick.line}
+              onChange={(e) => set('line', e.target.value)}
+            >
+              {plan.measures.map((m) => (
+                <option key={m.key} value={m.key}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+      <Plot>
+        <ComposedChart
+          data={rows}
+          margin={split ? { ...MARGIN, right: 2 } : MARGIN}
+        >
+          <CartesianGrid vertical={false} stroke="var(--paper-2)" />
+          <XAxis dataKey="label" {...AXIS} interval="preserveStartEnd" minTickGap={26}>
+            <Label value={series.xLabel} position="insideBottom" offset={-11} style={AXIS_LABEL} />
+          </XAxis>
+          <YAxis
+            yAxisId="bars"
+            {...AXIS}
+            width={52}
+            tickFormatter={(v: number) => bars.format(v)}
+          >
+            <Label
+              value={shared ?? bars.label}
+              angle={-90}
+              position="insideLeft"
+              offset={12}
+              style={AXIS_LABEL}
+            />
+          </YAxis>
+          {split && (
+            <YAxis
+              yAxisId="line"
+              orientation="right"
+              {...AXIS}
+              width={52}
+              tickFormatter={(v: number) => line.format(v)}
+            >
+              <Label
+                value={line.label}
+                angle={90}
+                position="insideRight"
+                offset={12}
+                style={AXIS_LABEL}
+              />
+            </YAxis>
+          )}
+          <Tooltip
+            cursor={{ fill: 'var(--seal-tint)' }}
+            content={<ComboTip plan={plan} /> as unknown as never}
+          />
+          <Bar
+            yAxisId="bars"
+            dataKey="bar"
+            name={bars.label}
+            fill="var(--seal)"
+            radius={[3, 3, 0, 0]}
+            isAnimationActive={false}
+          />
+          <Line
+            yAxisId={split ? 'line' : 'bars'}
+            dataKey="line"
+            name={line.label}
+            type="monotone"
+            stroke="var(--ink-2)"
+            strokeWidth={1.8}
+            dot={{ r: 2.4, fill: 'var(--ink-2)', stroke: 'var(--ink-2)' }}
+            isAnimationActive={false}
+            connectNulls={false}
+          />
+        </ComposedChart>
+      </Plot>
+      <p className="rp-cap">{words}</p>
+    </>
+  );
+}
+
+/** The tooltip for the combination: each measure in its OWN unit, in words. */
+function ComboTip({
+  active,
+  payload,
+  plan,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: { full?: string; bar: number | null; line: number | null } }>;
+  plan: ComboPlan;
+}) {
+  const row = active ? payload?.[0]?.payload : undefined;
+  if (!row) return null;
+  const lines: Array<[string, number | null, ComboPlan['bars']]> = [
+    ['Bars', row.bar, plan.bars],
+    ['Line', row.line, plan.line],
+  ];
+  return (
+    <div className="rp-tip">
+      <span className="rp-tip__head">{row.full}</span>
+      {lines.map(([side, v, m]) => (
+        <span key={side} className="rp-tip__row">
+          {m.label}: {v == null ? <b>{EM}</b> : <b>{m.format(v)}</b>} {v == null ? '' : m.unit}
+        </span>
+      ))}
+    </div>
   );
 }
 
