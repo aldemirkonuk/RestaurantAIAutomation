@@ -76,46 +76,6 @@ export interface MenuImportResult {
   sourceImage?: string | null
   /** Whether the source file (photo, PDF, CSV) was kept, and why not when it was not. */
   source?: { kept: boolean; failure: string | null }
-  /** The parts of the file a scan could not read (ADR 0213 #17). */
-  warnings?: MenuReadWarning[]
-}
-
-/**
- * Why a scan holds fewer lines than its file (gateway `MenuReadWarning`).
- * `pages` is 1-based, or null when no narrower range is known.
- */
-export interface MenuReadWarning {
-  kind: 'truncated' | 'chunk_failed' | 'page_cap' | 'unreadable_reply' | string
-  pages: { first: number; last: number } | null
-}
-
-/** One plain sentence for one warning, naming its pages when they are known. */
-export function readWarningSentence(w: MenuReadWarning): string {
-  const p = w.pages
-  const one = !!p && p.first === p.last
-  const pages = p ? (one ? `Page ${p.first}` : `Pages ${p.first}–${p.last}`) : null
-  const was = one ? 'was' : 'were'
-  const them = one ? 'it' : 'them'
-  switch (w.kind) {
-    case 'chunk_failed':
-      return pages
-        ? `${pages} could not be read; send ${them} again.`
-        : 'Part of this file could not be read; send it again.'
-    case 'truncated':
-      return pages
-        ? `${pages} ${was} cut off partway, so some lines may be missing; send ${them} again as a smaller file.`
-        : 'The reading was cut off partway, so some lines may be missing; send the menu again in smaller files.'
-    case 'page_cap':
-      return pages
-        ? `${pages} ${was} not read, because only the first ${p!.first - 1} pages of a file are read; send ${them} as a file of ${them === 'it' ? 'its' : 'their'} own.`
-        : 'Pages past the first 120 were not read; send them as a file of their own.'
-    case 'unreadable_reply':
-      return pages
-        ? `${pages} came back in a form that could not be read; send ${them} again.`
-        : 'The reading came back in a form that could not be read; send the file again.'
-    default:
-      return 'Part of this file may not have been read; send it again.'
-  }
 }
 
 export const MENU_CADENCES = ['weekly', 'monthly', 'quarterly', 'yearly', 'none'] as const
@@ -307,8 +267,6 @@ export interface MenuVersion {
   sourceMethod: 'scan' | 'csv' | 'manual' | null
   source: { kept: boolean; mime: string | null; bytes: number | null; failure: string | null }
   linesExtracted: number | null
-  /** null = read before warnings were recorded; [] = none of the four kinds happened. */
-  readWarnings?: MenuReadWarning[] | null
   extractedAt: string | null
   extractedBy: MenuPerson | null
   madeCurrentAt: string | null

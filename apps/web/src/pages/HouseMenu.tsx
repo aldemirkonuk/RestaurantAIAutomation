@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import {
   addMenuItem,
-  readWarningSentence,
   reviewMenuItem,
   type MenuImportReviewItem,
 } from '../services/api/menus'
@@ -172,13 +171,6 @@ export default function HouseMenu() {
           <p><strong className="block font-serif text-3xl">{items.length - pencilled}</strong><span className="text-xs uppercase tracking-wider">set</span></p>
           <p><strong className="block font-serif text-3xl">{pencilled}</strong><span className="text-xs uppercase tracking-wider">pencilled</span></p>
         </div>
-        {proof.warnings?.length ? (
-          <ul data-testid="first-proof-warnings" className="mt-4 space-y-1 text-sm text-[#6d685f]">
-            {proof.warnings.map((w, i) => (
-              <li key={i}>{readWarningSentence(w)}</li>
-            ))}
-          </ul>
-        ) : null}
 
         <div className="mt-12 space-y-12">
           {grouped.map(([category, rows]) => (

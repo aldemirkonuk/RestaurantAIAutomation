@@ -19,7 +19,6 @@ import {
   importMenu,
   listMenuVersions,
   makeMenuCurrent,
-  readWarningSentence,
   type MenuPlan,
   type MenuVersion,
 } from '../../../services/api/menus';
@@ -164,99 +163,7 @@ describe('the words the panel uses', () => {
   });
 });
 
-describe('the sentence for each part of a file that was not read (ADR 0213 #17)', () => {
-  it('names the pages when they are known, one sentence per warning', () => {
-    expect(readWarningSentence({ kind: 'chunk_failed', pages: { first: 13, last: 14 } })).toBe(
-      'Pages 13–14 could not be read; send them again.',
-    );
-    expect(readWarningSentence({ kind: 'chunk_failed', pages: { first: 7, last: 7 } })).toBe(
-      'Page 7 could not be read; send it again.',
-    );
-    expect(readWarningSentence({ kind: 'truncated', pages: { first: 19, last: 20 } })).toBe(
-      'Pages 19–20 were cut off partway, so some lines may be missing; send them again as a smaller file.',
-    );
-    expect(readWarningSentence({ kind: 'page_cap', pages: { first: 121, last: 150 } })).toBe(
-      'Pages 121–150 were not read, because only the first 120 pages of a file are read; send them as a file of their own.',
-    );
-    expect(readWarningSentence({ kind: 'unreadable_reply', pages: { first: 1, last: 10 } })).toBe(
-      'Pages 1–10 came back in a form that could not be read; send them again.',
-    );
-  });
-
-  it('says so plainly when no page range is known, and for a kind it does not know', () => {
-    expect(readWarningSentence({ kind: 'truncated', pages: null })).toBe(
-      'The reading was cut off partway, so some lines may be missing; send the menu again in smaller files.',
-    );
-    expect(readWarningSentence({ kind: 'unreadable_reply', pages: null })).toBe(
-      'The reading came back in a form that could not be read; send the file again.',
-    );
-    expect(readWarningSentence({ kind: 'something_new', pages: null })).toBe(
-      'Part of this file may not have been read; send it again.',
-    );
-  });
-});
-
 describe('MenuVersions', () => {
-  it('a kept menu says which of its pages were not read; one read before warnings were kept says nothing', async () => {
-    mockList.mockResolvedValue({
-      current: null,
-      lastUsed: null,
-      versions: [
-        version({ menuId: 'm2', readWarnings: [{ kind: 'chunk_failed', pages: { first: 13, last: 14 } }, { kind: 'page_cap', pages: { first: 121, last: 130 } }] }),
-        version({ menuId: 'm1', readWarnings: null }),
-      ],
-    });
-    mount(false);
-    const rows = await screen.findAllByTestId('menu-version-row');
-    const items = rows[0].querySelectorAll('[data-testid="menu-version-warnings"] li');
-    expect(Array.from(items).map((li) => li.textContent)).toEqual([
-      'Pages 13–14 could not be read; send them again.',
-      'Pages 121–130 were not read, because only the first 120 pages of a file are read; send them as a file of their own.',
-    ]);
-    expect(rows[1].querySelector('[data-testid="menu-version-warnings"]')).toBeNull();
-  });
-
-  it('a read that kept a menu with missing pages says which, under its result', async () => {
-    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
-    mockImport.mockResolvedValue({
-      menuId: 'm9',
-      itemsExtracted: 30,
-      submissionsCreated: 0,
-      items: [],
-      warnings: [{ kind: 'truncated', pages: { first: 19, last: 20 } }],
-    });
-    mount(false);
-    const file = new File(['%PDF'], 'menu.pdf', { type: 'application/pdf' });
-    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
-    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
-    expect(await screen.findByTestId('menu-read-warnings')).toHaveTextContent(
-      'Pages 19–20 were cut off partway, so some lines may be missing; send them again as a smaller file.',
-    );
-  });
-
-  it('a read refused for finding no line says the gateway\'s sentence and the pages that failed', async () => {
-    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
-    mockImport.mockRejectedValue({
-      response: {
-        status: 422,
-        data: {
-          message: 'No line could be read from this file, so no menu was kept. Try a clearer photo or the PDF itself.',
-          warnings: [{ kind: 'chunk_failed', pages: { first: 1, last: 10 } }],
-        },
-      },
-    });
-    mount(true);
-    const file = new File(['%PDF'], 'menu.pdf', { type: 'application/pdf' });
-    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
-    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
-    expect(await screen.findByTestId('menu-read-error')).toHaveTextContent(
-      'The menu was not read: No line could be read from this file, so no menu was kept. Try a clearer photo or the PDF itself.',
-    );
-    expect(screen.getByTestId('menu-read-error').textContent).not.toMatch(/\.\.$/);
-    expect(screen.getByTestId('menu-read-error-warnings')).toHaveTextContent('Pages 1–10 could not be read; send them again.');
-    expect(screen.queryByTestId('menu-read-result')).not.toBeInTheDocument();
-  });
-
   it('names the current menu and the last one used, and lists every kept menu', async () => {
     mockList.mockResolvedValue({
       current: version({ menuId: 'm2', status: 'active', current: true, madeCurrentAt: '2026-09-01T00:00:00Z', madeCurrentBy: { userId: 'u2', name: 'Bo' } }),
