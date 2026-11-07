@@ -299,6 +299,26 @@ describe('add as a vendor', () => {
   });
 });
 
+describe('a held letter (QA round 24)', () => {
+  it('says it could not confirm the sender, offers no "Add as a vendor", and can still be put away', () => {
+    h.strangers = ok([stranger({ held_reason: 'sender_unconfirmed', capture_reason: 'sender_unconfirmed' })]);
+    render(<WhoIsWriting />);
+    expect(screen.getByText('could not confirm it came from sales@tuscandirect.co')).toBeInTheDocument();
+    expect(screen.getByText(/Check with them another way before you pay or act on it/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /as a vendor/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Put Tuscan Direct Imports away' })).toBeInTheDocument();
+  });
+
+  it('a letter whose sender could not be read is named, not blank', () => {
+    h.strangers = ok([
+      stranger({ held_reason: 'sender_unreadable', capture_reason: 'sender_unreadable', sender_name: null, sender_email: null, domain: '' }),
+    ]);
+    render(<WhoIsWriting />);
+    expect(screen.getByText('could not read who sent it')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Put no sender named away' })).toBeInTheDocument();
+  });
+});
+
 describe('put away, and the undo', () => {
   it('puts away, offers Undo, and restores', async () => {
     h.putAway.mutateAsync.mockResolvedValue({ dismissed: true });

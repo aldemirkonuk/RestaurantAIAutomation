@@ -77,6 +77,13 @@ export interface ProspectDto {
   snippet: string | null
   body_preview: string | null
   capture_reason: string | null
+  /**
+   * Set on a letter held for a person and filed under no vendor (QA round 24):
+   * its From named no single address, or the receiving server could not
+   * confirm it came from the address it names. Never added as a vendor.
+   * Absent from a gateway that predates it.
+   */
+  held_reason?: 'sender_unreadable' | 'sender_unconfirmed' | null
   has_attachments: boolean
   attachments: ProspectAttachmentMetaDto[]
   message_count: number

@@ -660,14 +660,6 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     // (`inbound-headers.ts`, which records the rule).
     const sender = parseSender(from);
     const senderEmail = sender?.address;
-    if (!senderEmail) {
-      if (from.trim()) {
-        this.logger.warn(
-          "handleInboundEmail: From names no single unambiguous address; not attributed",
-        );
-      }
-      return;
-    }
 
     // The house the letter was written to, stamped by every publisher: the
     // house inbox (the grant's house), the dedicated-domain webhook (the
@@ -689,6 +681,29 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     // `HouseInboxService.readOneGrant`.
     const mirroredByGrantId: string | null =
       payload.mirrored_by_grant_id || null;
+
+    // A From that names nobody (QA round 24, item 3) is not attributed to
+    // anyone, and it is not dropped either: the letter is held in the
+    // receiving house's "Who is writing" list, or for the operator when no
+    // house is known, as one whose sender could not be read. The raw From
+    // goes with it as the label, so a person can tell who it might be.
+    if (!senderEmail) {
+      this.logger.warn(
+        "handleInboundEmail: From names no single unambiguous address; held, not attributed",
+      );
+      await this.holdLetter({
+        restaurantId: restaurantIdFromEvent,
+        heldReason: "sender_unreadable",
+        senderEmail: null,
+        senderName: rawFromLabel(from),
+        subject,
+        body,
+        attachments,
+        gmailMessageId,
+        gmailThreadId,
+      });
+      return;
+    }
 
     if (!restaurantIdFromEvent) {
       await this.holdUnattributed({
@@ -1156,6 +1171,78 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * A letter kept for a person and filed under no vendor (QA round 24): its
+   * sender could not be read, or the receiving server could not confirm it.
+   * One row per letter in the house's "Who is writing" list (or the
+   * operator's, with no house), with a notice to the house. Never an order,
+   * a thread, an attachment for the books or a responder.
+   */
+  private async holdLetter(letter: {
+    restaurantId: string | null;
+    heldReason: "sender_unreadable" | "sender_unconfirmed";
+    senderEmail: string | null;
+    senderName: string | null;
+    subject: string;
+    body: string;
+    attachments: Array<{ filename: string; mime_type: string; data: string }>;
+    gmailMessageId: string;
+    gmailThreadId: string;
+  }): Promise<void> {
+    try {
+      const domain = letter.senderEmail
+        ? this.prospects.domainOf(letter.senderEmail)
+        : "";
+      const refs = await this.persistProspectAttachments(
+        domain,
+        letter.attachments,
+      );
+      const held = await this.prospects.holdLetter({
+        restaurantId: letter.restaurantId,
+        heldReason: letter.heldReason,
+        senderEmail: letter.senderEmail,
+        senderName: letter.senderName,
+        subject: letter.subject,
+        body: letter.body,
+        attachments: refs,
+        gmailMessageId: letter.gmailMessageId || null,
+        gmailThreadId: letter.gmailThreadId || null,
+      });
+      if (!held.captured || !held.isNew || !letter.restaurantId) return;
+      const title =
+        letter.heldReason === "sender_unconfirmed"
+          ? `Could not confirm a letter came from ${letter.senderEmail}`
+          : "A letter whose sender could not be read";
+      const message =
+        letter.heldReason === "sender_unconfirmed"
+          ? `The receiving mail server could not confirm ${letter.senderEmail} sent "${letter.subject.slice(0, 80)}". It was not filed with that vendor. Review it in Communications, under Who is writing.`
+          : `"${letter.subject.slice(0, 80)}" arrived with a From that names no single address. It was not filed with any vendor. Review it in Communications, under Who is writing.`;
+      this.websocketGateway.emitRestaurantNotification(letter.restaurantId, {
+        id: `held-${letter.restaurantId}-${Date.now()}`,
+        title,
+        message,
+        type: "warning",
+        action_url: "/communications",
+      });
+      void this.inboundResponder.persistManagerNotification(
+        letter.restaurantId,
+        {
+          type: "prospect",
+          title,
+          message,
+          priority:
+            letter.heldReason === "sender_unconfirmed" ? "high" : "low",
+          actionUrl: "/communications",
+          metadata: { kind: "held_letter", held_reason: letter.heldReason },
+        },
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `handleInboundEmail: holding a letter (${letter.heldReason}) failed — ${err?.message}`,
+      );
+    }
+  }
+
+  /**
    * Persist cold-email (prospect) attachments to the private vendor-attachments bucket and
    * return refs to store on the prospect row. No conversation exists yet, so these live under a
    * `prospects/<domain>/` prefix, deduped by content hash. Best-effort — never throws.
@@ -1357,4 +1444,17 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       subscriptions: this.isConnected ? 21 : 0, // number of route handlers
     };
   }
+}
+
+/**
+ * A From that names nobody, as a label a person can read: control characters
+ * out, whitespace folded, at most 200 characters. Shown only beside "could
+ * not read who sent it", never as a sender.
+ */
+function rawFromLabel(from: string): string | null {
+  const s = (from || "")
+    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return s ? s.slice(0, 200) : null;
 }
