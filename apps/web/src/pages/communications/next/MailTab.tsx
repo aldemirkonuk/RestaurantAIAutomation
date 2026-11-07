@@ -14,6 +14,9 @@
  * /communications (QA round 16, N2). The in-app Back steps that history, or
  * replaces the address on a link opened cold, so it never leaves the page.
  *
+ * `?setup=1` opens the mail setup (MailSetup.tsx): reached from the status
+ * line, from an empty list, from "Not connected", and from Connections.
+ *
  * Only vendor mail is stored (`storedKinds`), so there are no Team, Guests or
  * Strangers chips; a quiet line says what the list does not cover (F5).
  */
@@ -24,6 +27,7 @@ import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { EM, MONO, SANS, failedReadWords, fmtWhen, managesHouse } from './cm-format';
 import { IntakeHealthSheet } from './IntakeHealthSheet';
+import { MailSetup } from './MailSetup';
 import { MailThread, type LetterFacts } from './MailThread';
 import {
   channelWords,
@@ -215,11 +219,13 @@ function People({
   reader,
   summary,
   onOpenPerson,
+  onSetup,
 }: {
   waitingOnly: boolean;
   reader: MailboxReader | null;
   summary: Parameters<typeof emptyListWords>[1];
   onOpenPerson: (key: string) => void;
+  onSetup: () => void;
 }) {
   const q = useMailPeople(waitingOnly);
   const pages = q.data?.pages ?? [];
@@ -239,7 +245,12 @@ function People({
         <p style={{ margin: 0, ...QUIET }}>Reading the mail…</p>
       ) : people.length === 0 ? (
         <p data-testid="people-empty" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)', maxWidth: '68ch' }}>
-          {emptyListWords(reader, summary, { waitingOnly })}
+          {emptyListWords(reader, summary, { waitingOnly })}{' '}
+          {!waitingOnly && (
+            <button type="button" data-testid="empty-setup" onClick={onSetup} style={LINK_BUTTON}>
+              Set up how mail reaches the house
+            </button>
+          )}
         </p>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
@@ -326,6 +337,7 @@ export function MailTab({
   const status = mailStatusLine(reader, summary, { readerFailed, summaryFailed: summaryQ.isError, now });
   const withKey = params.get('with');
   const threadKey = params.get('thread');
+  const setup = params.get('setup') === '1';
 
   // The address is the state; opening pushes an entry the tab marks as its own.
   const go = (set: Record<string, string | null>, how: 'push' | 'replace' = 'push') => {
@@ -344,6 +356,7 @@ export function MailTab({
     else go(set, 'replace');
   };
 
+  const openSetup = () => go({ setup: '1', with: null, thread: null });
   const tone = status.tone === 'warn' ? 'var(--warn, #96601A)' : status.tone === 'alarm' ? 'var(--alarm, #A33A2B)' : 'var(--ink-2, #4F473C)';
 
   return (
@@ -371,10 +384,43 @@ export function MailTab({
           >
             How mail reaches the house
           </button>
+          {!setup && (
+            <button type="button" data-testid="setup-link" onClick={openSetup} style={{ ...LINK_BUTTON, fontWeight: 500 }}>
+              Mail setup
+            </button>
+          )}
         </p>
+        {!setup && (status.state === 'not_connected' || status.state === 'switched_off') && (
+          <button
+            type="button"
+            data-testid="status-setup"
+            onClick={openSetup}
+            style={{
+              justifySelf: 'start',
+              marginTop: 4,
+              fontSize: 12,
+              fontWeight: 600,
+              padding: '5px 12px',
+              borderRadius: 999,
+              border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+              background: 'transparent',
+              color: 'var(--seal-deep, #14515C)',
+              cursor: 'pointer',
+            }}
+          >
+            Set up how mail reaches the house
+          </button>
+        )}
       </header>
 
-      {threadKey ? (
+      {setup ? (
+        <MailSetup
+          status={status}
+          sender={senderQ.data ?? null}
+          senderFailed={senderQ.isError}
+          onBack={() => back({ setup: null })}
+        />
+      ) : threadKey ? (
         <MailThread
           threadKey={threadKey}
           backLabel={withKey ? 'Back to their threads' : 'Back to everyone'}
@@ -406,6 +452,7 @@ export function MailTab({
             reader={reader}
             summary={summary}
             onOpenPerson={(key) => go({ with: key })}
+            onSetup={openSetup}
           />
         </>
       )}

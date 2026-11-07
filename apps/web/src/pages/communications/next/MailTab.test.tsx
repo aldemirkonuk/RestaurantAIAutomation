@@ -369,3 +369,57 @@ describe('Back', () => {
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail$/);
   });
 });
+
+describe('the setup path', () => {
+  const SETUP = {
+    canChange: true,
+    senders: { failed: null, chosenConnectionId: null, choices: [] },
+    arrival: { domainReady: true, address: 'bodega@in.mudavym.com', failed: null },
+    testLetter: { failed: null, latest: null },
+  };
+  beforeEach(() => {
+    routes['/communications/mail-setup'] = () => SETUP;
+  });
+
+  it('"Mail setup" opens ?setup=1 with the tab\'s own status line, and browser Back returns to the list', async () => {
+    mount(['/orders', '/communications?tab=mail']);
+    await screen.findAllByTestId('mail-person');
+    fireEvent.click(screen.getByTestId('setup-link'));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail&setup=1$/);
+    expect(await screen.findByTestId('mail-setup')).toBeInTheDocument();
+    expect(screen.queryByTestId('mail-person')).toBeNull();
+    await waitFor(() => expect(screen.getByTestId('setup-status')).toHaveTextContent('Connected · last letter 1 h ago'));
+    fireEvent.click(screen.getByTestId('browser-back'));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail$/);
+    expect(await screen.findAllByTestId('mail-person')).toHaveLength(2);
+  });
+
+  it('the in-app Back on a setup link opened cold stays on the page', async () => {
+    mount(['/orders', '/communications?tab=mail&setup=1']);
+    fireEvent.click(await screen.findByRole('button', { name: '← Back to the mail' }));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail$/);
+  });
+
+  it('"Not connected" offers the setup', async () => {
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, granted: false } });
+    routes['/mail/summary'] = () => ({ ...SUMMARY, address: { configured: true, address: null } });
+    mount();
+    fireEvent.click(await screen.findByTestId('status-setup'));
+    expect(screen.getByTestId('where')).toHaveTextContent(/setup=1/);
+    expect(await screen.findByTestId('mail-setup')).toBeInTheDocument();
+  });
+
+  it('a connected house is not nagged to set up', async () => {
+    mount();
+    await screen.findAllByTestId('mail-person');
+    await waitFor(() => expect(screen.getByTestId('mail-status')).toHaveAttribute('data-state', 'connected'));
+    expect(screen.queryByTestId('status-setup')).toBeNull();
+  });
+
+  it('an empty list offers the setup', async () => {
+    routes['/mail/people'] = () => ({ people: [], next: null, storedKinds: ['vendor'] });
+    mount();
+    fireEvent.click(await screen.findByTestId('empty-setup'));
+    expect(await screen.findByTestId('mail-setup')).toBeInTheDocument();
+  });
+});
