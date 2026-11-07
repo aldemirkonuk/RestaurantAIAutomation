@@ -11,7 +11,11 @@ import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { storeSession } from '../lib/houseMemory'
 import {
+  clearSignUpMail,
+  noteSignUpMail,
+  readSignUpMail,
   resendOutcome,
+  signUpMailSentence,
   verificationMailSentence,
   type VerificationResendAnswer,
 } from '../lib/verificationMail'
@@ -42,6 +46,12 @@ export function VerifyEmail() {
   const [error, setError] = useState<string | null>(null)
   const [lastResent, setLastResent] = useState<Date | null>(null)
   const [refusal, setRefusal] = useState<'sign-in' | 'other-account' | null>(null)
+  // OB-6: what became of the latest verification mail, one state for the
+  // whole page. The sign-up's send is kept in session storage by
+  // `registerAccount`; a resend writes its own answer to the same key, so a
+  // reload says the same thing and a newer answer replaces an older one.
+  const [mailState, setMailState] = useState(() => readSignUpMail())
+  const mailSentence = signUpMailSentence(mailState)
 
   const token = searchParams.get('token')
   // Back to this very link after signing in (Login honours `redirect`).
@@ -71,6 +81,9 @@ export function VerifyEmail() {
       // One helper stores every session, so `activeRestaurantId` follows the
       // token's house (ADR 0164).
       const house = storeSession(data.accessToken, data.refreshToken)
+      // Verified: the sign-up's mail note (OB-6) has nothing left to say, and
+      // must not come back if this account ever has to verify again.
+      clearSignUpMail()
       setVerified(true)
       toast.success('Email verified! Redirecting...')
       // A session in no house goes to the chooser (ADR 0164): it shows a
@@ -148,11 +161,15 @@ export function VerifyEmail() {
       const { data } = await apiClient.post<VerificationResendAnswer>(
         '/auth/resend-verification',
       )
-      // Said from what the mailer answered (round 2 B-5, round 6 #789): a
-      // refused send is an inline error in words, never "check your inbox".
+      // Said from what the mailer answered (round 2 B-5, round 6 #789):
+      // one state, so a newer answer replaces an older note instead of
+      // stacking beside it. A send that did not leave, or was not confirmed,
+      // is never "sent" and leaves the resend button enabled.
       const outcome = resendOutcome(data)
+      setMailState(outcome)
+      noteSignUpMail(outcome)
       if (outcome !== 'sent') {
-        setError(verificationMailSentence(outcome))
+        setLastResent(null)
         return
       }
       setLastResent(new Date())
@@ -165,6 +182,8 @@ export function VerifyEmail() {
       setResending(false)
     }
   }
+
+  const mailTrouble = mailState === 'not_sent' || mailState === 'unconfirmed'
 
   if (publicDesign) {
     return (
@@ -201,6 +220,14 @@ export function VerifyEmail() {
                   {error}
                 </p>
               )}
+              {mailSentence && (
+                <p
+                  className={mailState === 'not_sent' ? 'mdv-alert' : 'mdv-note'}
+                  role={mailState === 'not_sent' ? 'alert' : 'status'}
+                >
+                  {mailSentence}
+                </p>
+              )}
               {token ? (
                 linkGate ?? (
                   <>
@@ -213,7 +240,7 @@ export function VerifyEmail() {
                     </button>
                     {/* Round 2 B-4: a link the gateway refused (expired,
                         used) offers a fresh one, not only the same button. */}
-                    {error && user && (
+                    {(error || mailTrouble) && user && (
                       <button
                         className="mdv-btn"
                         onClick={handleResend}
@@ -237,10 +264,12 @@ export function VerifyEmail() {
                       Account: <strong>{user.email}</strong>
                     </p>
                   )}
-                  <p>
-                    Open the verification link in your inbox. If it is missing,
-                    check your spam folder.
-                  </p>
+                  {mailState !== 'not_sent' && (
+                    <p>
+                      Open the verification link in your inbox. If it is
+                      missing, check your spam folder.
+                    </p>
+                  )}
                   {user ? (
                     <button
                       className="mdv-btn mdv-btn--seal"
@@ -290,9 +319,13 @@ export function VerifyEmail() {
     <AuthShell
       title="Check Your Email"
       subtitle={
-        user?.email
-          ? `We sent a verification link to ${user.email}`
-          : 'We sent a verification link to your inbox'
+        mailState === 'not_sent'
+          ? 'We could not send the verification email'
+          : mailState === 'unconfirmed'
+            ? 'Sending the verification email is taking longer than usual'
+            : user?.email
+              ? `We sent a verification link to ${user.email}`
+              : 'We sent a verification link to your inbox'
       }
     >
       <AuthCard>
@@ -312,12 +345,25 @@ export function VerifyEmail() {
           </div>
         )}
 
+        {mailSentence && (
+          <p
+            role={mailState === 'not_sent' ? 'alert' : 'status'}
+            className={
+              mailState === 'not_sent'
+                ? 'mb-4 p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-700'
+                : 'mb-4 text-sm text-gray-600 text-center'
+            }
+          >
+            {mailSentence}
+          </p>
+        )}
+
         <div className="space-y-3 my-6">
-          {[
+          {(mailState === 'not_sent' ? [] : [
             'Open the email from Mudavym',
             'Click "Verify My Email"',
             `You'll be guided through setting up your wine list`,
-          ].map((text, i) => (
+          ]).map((text, i) => (
             <div
               key={i}
               className="flex items-start gap-3 bg-wine-50/50 rounded-xl p-3"
@@ -357,7 +403,7 @@ export function VerifyEmail() {
                 'Verify My Email'
               )}
             </Button>
-            {error && user && (
+            {(error || mailTrouble) && user && (
               <Button
                 variant="outline"
                 className="w-full"
@@ -376,10 +422,12 @@ export function VerifyEmail() {
           </div>
         ) : (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600 text-center">
-              Didn&apos;t receive the email? Check your spam folder or resend
-              below.
-            </p>
+            {mailState !== 'not_sent' && (
+              <p className="text-sm text-gray-600 text-center">
+                Didn&apos;t receive the email? Check your spam folder or resend
+                below.
+              </p>
+            )}
             <Button
               variant="outline"
               className="w-full"
