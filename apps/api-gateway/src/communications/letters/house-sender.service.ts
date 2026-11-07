@@ -447,6 +447,57 @@ export class HouseSenderService {
     }
   }
 
+  /**
+   * The grant a QUEUED letter was pinned to, re-read at send time (QA round
+   * 26, #973). A letter leaves from the mailbox it was queued under or not at
+   * all: this never falls back to the house's current rule, because the
+   * writer approved one address and a vendor must not see another.
+   *
+   * Throws plain words when the grant is gone, no longer sends, or could not
+   * be read; the dispatcher records them as the letter's failure, which the
+   * manager sees.
+   */
+  async pinned(
+    restaurantId: string,
+    connectionId: string,
+    queuedAddress: string | null,
+  ): Promise<{ address: string | null; grant: NonNullable<HouseSenderIdentity["grant"]> }> {
+    const named = queuedAddress ? ` (${queuedAddress})` : "";
+    let row: Record<string, unknown> | null = null;
+    try {
+      const { data, error } = await this.db.client
+        .from("integration_oauth_connections")
+        .select("id, user_id, integration_id, account_email, scopes")
+        .eq("id", connectionId)
+        .eq("restaurant_id", restaurantId)
+        .eq("provider", "google")
+        .is("revoked_at", null)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      row = (data as Record<string, unknown> | null) ?? null;
+    } catch {
+      throw new Error(
+        `The mailbox this letter was queued to leave from${named} could not be read, so it was not sent, and not from another mailbox either. Write it again to try once more.`,
+      );
+    }
+    const scopes = Array.isArray(row?.scopes) ? (row!.scopes as string[]) : [];
+    if (!row || !scopes.includes(GMAIL_SEND_SCOPE)) {
+      throw new Error(
+        `The mailbox this letter was queued to leave from${named} can no longer send for this house, so it was not sent, and not from another mailbox either. Write it again to send it from the mailbox the house uses now.`,
+      );
+    }
+    const accountEmail = (row.account_email as string | null) ?? null;
+    return {
+      address: accountEmail,
+      grant: {
+        connectionId: String(row.id),
+        integrationId: String(row.integration_id),
+        accountEmail,
+        personUserId: String(row.user_id),
+      },
+    };
+  }
+
   /** The identity when what it rests on could not be read: never "none". */
   private unreadable(
     base: Pick<HouseSenderIdentity, "deployment" | "subdomain" | "missing">,
