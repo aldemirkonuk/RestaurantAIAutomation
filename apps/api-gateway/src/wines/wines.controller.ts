@@ -26,6 +26,7 @@ import { WineSubmissionsService } from "./wine-submissions.service";
 import {
   CreateWineSubmissionDto,
   ProcessSubmissionsDto,
+  RefoldReviewQueryDto,
   SubmissionListQueryDto,
 } from "./dto/wine-submissions.dto";
 
@@ -119,6 +120,23 @@ export class WinesController {
       query.status,
       query.limit,
     );
+  }
+
+  /**
+   * The library pairs the dotless-ı signature refold held back, for a person
+   * to merge or dismiss (QA round 10c F3: nothing read them). PLATFORM ADMIN
+   * ONLY, for the same reason as `submissions/process` below: the library is
+   * shared, so the list crosses every house. No screen reads it yet.
+   */
+  @Get("library/refold-review")
+  @ApiOperation({ summary: "List the wine pairs the dotless-i refold held back; platform admin only" })
+  @ApiResponse({ status: 403, description: "The caller is not a platform admin" })
+  async listRefoldReview(
+    @Query() query: RefoldReviewQueryDto,
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ) {
+    this.assertPlatformAdmin(user.userId);
+    return await this.wineSubmissionsService.listRefoldReview(query.limit);
   }
 
   /**
