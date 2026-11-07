@@ -41,6 +41,7 @@
     "@supabase/supabase-js": "^2.103.0",
     "@types/nodemailer": "^7.0.9",
     "@types/passport-azure-ad": "^4.3.6",
+    "@wineops/floor-core": "workspace:*",
     "amqplib": "^0.10.3",
     "axios": "^1.20.0",
     "bcrypt": "^5.1.1",
@@ -99,6 +100,9 @@
       "ts"
     ],
     "rootDir": "src",
+    "moduleNameMapper": {
+      "^@wineops/floor-core$": "<rootDir>/../../../packages/floor-core/src/index.ts"
+    },
     "testRegex": ".*\\.spec\\.ts$",
     "testPathIgnorePatterns": [
       "/node_modules/",
