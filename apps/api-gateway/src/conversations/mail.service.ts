@@ -53,17 +53,6 @@ import {
   withholdsHouseLetters,
 } from "./mail.read-rules";
 
-function emptyThread(key: string): MailThreadPage {
-  return {
-    key,
-    subject: null,
-    person: null,
-    order: null,
-    messages: [],
-    before: null,
-  };
-}
-
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -207,7 +196,7 @@ export class MailService {
   async getThread(
     houseId: string,
     callerRole: string | null | undefined,
-    opts: { key?: string; with?: string; before?: string },
+    opts: { key?: string; before?: string },
   ): Promise<MailThreadPage> {
     const key = (opts.key ?? "").trim();
     if (!key || key.length > 500) {
@@ -217,25 +206,12 @@ export class MailService {
     if (before && !UUID_RE.test(before.key)) {
       throw new BadRequestException(BAD_CURSOR);
     }
-    // A thread is the pair (provider_id, thread_key) — migration
-    // the_mail_list_is_read_by_person groups by both, so one Gmail thread sent
-    // to two vendors (a `gm:` key) or one group mail (a `mid:` key) is two
-    // thread rows. `with` names the row's person, and the page then holds only
-    // that person's letters and that person's name. A `with` that names no
-    // stored person is an empty page, the same as /mail/threads (F11).
-    const withRaw = (opts.with ?? "").trim();
-    const providerId = withRaw
-      ? PERSON_KEY_RE.exec(withRaw)?.[1]?.toLowerCase()
-      : undefined;
-    if (withRaw && !providerId) return emptyThread(key);
     const withhold = withholdsHouseLetters(callerRole);
-    // Every read is this house's rows of this thread (of this person, when
-    // named), with the same withholding. Each read names its columns as a
-    // literal, so check_read_columns_exist.py can check every one of them
-    // against the migrations.
+    // Every read is this house's rows of this thread, with the same withholding.
+    // Each read names its columns as a literal, so check_read_columns_exist.py
+    // can check every one of them against the migrations.
     const scope = (q: any) => {
-      let s = q.eq("restaurant_id", houseId).eq("thread_key", key);
-      if (providerId) s = s.eq("provider_id", providerId);
+      const s = q.eq("restaurant_id", houseId).eq("thread_key", key);
       return withhold
         ? s.or(WITHHOLD_HOUSE_DRAFT).or(WITHHOLD_HOUSE_CANCELLED)
         : s;
@@ -287,7 +263,14 @@ export class MailService {
     const head = ((headRes.data ?? []) as any[])[0];
     if (!head) {
       // Another house's key, or one that names nothing: empty, never theirs (F11).
-      return emptyThread(key);
+      return {
+        key,
+        subject: null,
+        person: null,
+        order: null,
+        messages: [],
+        before: null,
+      };
     }
     const provider = Array.isArray(head.providers)
       ? head.providers[0]

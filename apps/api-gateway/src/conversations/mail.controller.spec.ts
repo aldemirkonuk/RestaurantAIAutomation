@@ -169,17 +169,6 @@ describe("the house comes from the token and nowhere else", () => {
     expect(JSON.stringify(reads)).not.toContain(HOUSE_B);
   });
 
-  it("/thread?with= scopes every read to that person as well", async () => {
-    const res = await get(`/thread?key=gm%3Ashared&with=vendor%3A${VENDOR}`);
-    expect(res.status).toBe(200);
-    expect(reads.length).toBeGreaterThan(0);
-    for (const r of reads) {
-      expect(r.calls).toContainEqual(["eq", ["restaurant_id", HOUSE_A]]);
-      expect(r.calls).toContainEqual(["eq", ["thread_key", "gm:shared"]]);
-      expect(r.calls).toContainEqual(["eq", ["provider_id", VENDOR]]);
-    }
-  });
-
   it.each(["/people", "/threads?with=x", "/thread?key=t-1", "/summary"])(
     "%s: a session that names no house is a 403 in words and reads nothing",
     async (path) => {

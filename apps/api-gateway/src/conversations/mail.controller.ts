@@ -114,12 +114,6 @@ export class MailController {
   @ApiOperation({ summary: "One thread, 50 letters a page, oldest to newest" })
   @ApiQuery({ name: "key", required: true })
   @ApiQuery({
-    name: "with",
-    required: false,
-    description:
-      "vendor:<provider uuid> — the thread row's person. One key can be two threads (one Gmail thread to two vendors); name the person to read only theirs.",
-  })
-  @ApiQuery({
     name: "before",
     required: false,
     description: "The `before` cursor of the newer page",
@@ -128,14 +122,9 @@ export class MailController {
     @CurrentUser() user: AuthUser,
     @CurrentUser("role") role: string | null,
     @Query("key") key?: string,
-    @Query("with") withKey?: string,
     @Query("before") before?: string,
   ): Promise<MailThreadPage> {
-    return this.mail.getThread(houseOf(user), role, {
-      key,
-      with: withKey,
-      before,
-    });
+    return this.mail.getThread(houseOf(user), role, { key, before });
   }
 
   @Get("summary")
