@@ -15,6 +15,7 @@ import {
   Delete,
   BadRequestException,
   GoneException,
+  Optional,
 } from "@nestjs/common";
 import { AuthService, LoginCredentials } from "./auth.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
@@ -47,6 +48,13 @@ import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.gua
 import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
 import { RateLimit } from "../common/rate-limit";
 import { clientAddress } from "../common/rate-limit/client-address";
+import {
+  foldAccount,
+  issueSignInDevice,
+  readSignInDevice,
+  signInDeviceSecret,
+} from "../common/rate-limit/sign-in-device";
+import { ConfigService } from "@nestjs/config";
 import { Request } from "express";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
@@ -54,7 +62,10 @@ import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    @Optional() private readonly config?: ConfigService,
+  ) {}
 
   /**
    * Login with email/password
@@ -70,9 +81,21 @@ export class AuthController {
   async login(@Body() credentials: LoginCredentials) {
     this.logger.log(`Login attempt: ${credentials.email}`);
     const tokens = await this.authService.login(credentials);
+    // Known-device token (rate-limit/sign-in-device.ts); a valid one sent in
+    // keeps its device id.
+    const secret = signInDeviceSecret(
+      this.config?.get<string>("JWT_SECRET") ?? process.env.JWT_SECRET,
+    );
+    const folded = foldAccount(String(credentials.email ?? ""));
+    const signInDevice = issueSignInDevice(
+      secret,
+      folded,
+      readSignInDevice(secret, credentials.signInDevice, folded) ?? undefined,
+    );
     return {
       success: true,
       ...tokens,
+      signInDevice,
       message: "Login successful",
     };
   }

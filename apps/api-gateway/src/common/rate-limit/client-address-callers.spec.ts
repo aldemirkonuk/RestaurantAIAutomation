@@ -1,7 +1,16 @@
 import { HttpException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { RateLimitGuard } from "./rate-limit.guard";
-import { PEER_LIMIT_FACTOR, requestAddresses } from "./client-address";
+import {
+  PEER_LIMIT_FACTOR,
+  UNTRUSTED_PEER_FACTOR,
+  requestAddresses,
+} from "./client-address";
+import {
+  foldAccount,
+  issueSignInDevice,
+  signInDeviceSecret,
+} from "./sign-in-device";
 import { PasswordResetThrottleGuard } from "../../auth/guards/password-reset-throttle.guard";
 import { requestSource } from "../../passkeys/request-source";
 import { AuthController } from "../../auth/auth.controller";
@@ -28,22 +37,26 @@ const BROWSER_A = "203.0.113.5";
 const BROWSER_B = "203.0.113.6";
 const FORGED = "192.0.2.66"; // an address the caller wrote
 
-function loginRequest(xff: string | undefined, email?: string) {
+/** The token a returning browser sends (no JWT_SECRET here: the dev default). */
+const deviceFor = (email: string) =>
+  issueSignInDevice(signInDeviceSecret(undefined), foldAccount(email));
+
+function loginRequest(xff: string | undefined, email?: string, signInDevice?: string) {
   return {
     headers: xff === undefined ? {} : { "x-forwarded-for": xff },
     url: "/api/v1/auth/login",
     route: { path: "/auth/login" },
     socket: { remoteAddress: "100.64.0.2" },
-    body: email === undefined ? {} : { email },
+    body: email === undefined ? {} : { email, signInDevice },
   };
 }
 
 /** The real login handler, so its @RateLimit (the account bucket) is read. */
-function realLoginContext(xff: string | undefined, email?: string) {
+function realLoginContext(xff: string | undefined, email?: string, signInDevice?: string) {
   const res = { setHeader: jest.fn() };
   return {
     switchToHttp: () => ({
-      getRequest: () => loginRequest(xff, email),
+      getRequest: () => loginRequest(xff, email, signInDevice),
       getResponse: () => res,
     }),
     getHandler: () => AuthController.prototype.login,
@@ -206,14 +219,15 @@ describe("POST /auth/login after QA round 14", () => {
     else process.env.TRUSTED_PROXY_HOPS = hopsEnv;
   });
 
-  it("40 browsers behind one Vercel egress, 5 logins each: none is refused", async () => {
+  // Known devices only: first-time logins share the untrusted peer budget.
+  it("40 known browsers behind one Vercel egress, 5 logins each: none is refused", async () => {
     const guard = newGuard();
     let refused = 0;
     for (let u = 0; u < 40; u++) {
       for (let t = 0; t < 5; t++) {
         const ok = await allowed(
           guard,
-          realLoginContext(`203.0.113.${u}, ${VERCEL}`, `cook${u}@house.test`),
+          realLoginContext(`203.0.113.${u}, ${VERCEL}`, `cook${u}@house.test`, deviceFor(`cook${u}@house.test`)),
         );
         if (!ok) refused++;
       }
@@ -229,7 +243,10 @@ describe("POST /auth/login after QA round 14", () => {
       }
     }
     expect(
-      await allowed(guard, realLoginContext(`${BROWSER_A}, ${VERCEL}`, "owner@house.test")),
+      await allowed(
+        guard,
+        realLoginContext(`${BROWSER_A}, ${VERCEL}`, "owner@house.test", deviceFor("owner@house.test")),
+      ),
     ).toBe(true);
   });
 
@@ -295,12 +312,23 @@ describe("POST /auth/login after QA round 14", () => {
     ).toBe(true);
   });
 
-  it("many accounts from one real address are held at the egress-sized bucket", async () => {
+  it("many accounts from one address, no token: held at UNTRUSTED_PEER_FACTOR", async () => {
     const guard = newGuard();
     let n = 0;
     for (let i = 0; i < 10 * PEER_LIMIT_FACTOR + 50; i++) {
       const forged = `10.${i >> 16}.${(i >> 8) & 255}.${i & 255}`;
       if (await allowed(guard, realLoginContext(`${forged}, ${EDGE_SAW}`, `u${i}@x.test`))) n++;
+    }
+    expect(n).toBe(10 * UNTRUSTED_PEER_FACTOR);
+  });
+
+  it("many known devices from one address: held at the egress-sized bucket", async () => {
+    const guard = newGuard();
+    let n = 0;
+    for (let i = 0; i < 10 * PEER_LIMIT_FACTOR + 50; i++) {
+      const forged = `10.${i >> 16}.${(i >> 8) & 255}.${i & 255}`;
+      const email = `u${i}@x.test`;
+      if (await allowed(guard, realLoginContext(`${forged}, ${EDGE_SAW}`, email, deviceFor(email)))) n++;
     }
     expect(n).toBe(10 * PEER_LIMIT_FACTOR);
   });

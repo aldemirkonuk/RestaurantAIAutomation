@@ -74,6 +74,9 @@ import { isIP } from "net";
 /** The `peer` bucket allows this many times a route's own limit. */
 export const PEER_LIMIT_FACTOR = 100;
 
+/** Peer budget factor for attempts without a valid known-device token (sign-in-device.ts). */
+export const UNTRUSTED_PEER_FACTOR = 10;
+
 /** The appending hops that are known to sit in front of the gateway: Railway's edge. */
 export const MAX_TRUSTED_PROXY_HOPS = 1;
 
