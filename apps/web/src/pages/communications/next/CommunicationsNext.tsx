@@ -60,6 +60,9 @@ import { LetterRequestsPanel, PILL, useLetterRequests } from './LetterRequestsPa
 import { useLetterSenderStanding } from './Compose/useComposeData';
 import { HouseDrafts, useHouseDrafts, type HouseDraft } from './Compose/HouseDrafts';
 import { COMMS_SERVER_WINDOWS, useCommsNextData } from './useCommsNextData';
+import { MailTab } from './MailTab';
+import { mailTabLabel } from './mail-format';
+import { useMailSummary } from './useMailData';
 
 const TYPE_LABELS: Record<string, string> = {
   PRICE_INQUIRY: 'Price inquiry',
@@ -502,6 +505,34 @@ export default function CommunicationsNext() {
       void queryClient.invalidateQueries({ queryKey: [key] });
   };
 
+  /* Mail and Letters (founder /goal 2026-11-07). The tab is in the address so
+     a refresh, a shared link and Back keep it: `?tab=mail`, or a person
+     (`?with=`) or thread (`?thread=`) link, opens Mail; `?draft=` and
+     `?reply=` keep opening on Letters exactly as before. Switching tabs is a
+     step Back can undo, so it pushes; opening inside Mail replaces. */
+  const tabParam = params.get('tab');
+  const tab: 'mail' | 'letters' =
+    tabParam === 'letters'
+      ? 'letters'
+      : tabParam === 'mail' || params.has('with') || params.has('thread')
+        ? 'mail'
+        : 'letters';
+  // The label's waiting count: read once on Letters, polled only on Mail.
+  const mailSummary = useMailSummary(tab === 'mail');
+  const showTab = (next: 'mail' | 'letters') => {
+    if (next === tab) return;
+    const p = new URLSearchParams(params);
+    if (next === 'mail') p.set('tab', 'mail');
+    else for (const k of ['tab', 'with', 'thread']) p.delete(k);
+    setParams(p);
+  };
+  const draftedOrderIds = new Set(data.drafts.map((d) => d.orderId));
+  // What the book already read about why a letter was held or refused (ADR
+  // 0099, COMMS-W22); the Mail thread shows it beside the letter it names.
+  const bookFacts = new Map(
+    data.rows.map((r) => [r.id, { relayRefusalReason: r.relayRefusalReason, constraintFlags: r.constraintFlags }]),
+  );
+
   return (
     <div
       className="mudavym min-h-screen"
@@ -540,7 +571,9 @@ export default function CommunicationsNext() {
               Communications
             </h1>
           </div>
-          {/* the at-a-glance strip the old page earned its keep with */}
+          {/* the at-a-glance strip the old page earned its keep with — Letters' own
+              figures, so it stands with Letters; Mail says its count in words. */}
+          {tab === 'letters' && (
           <div className="flex flex-wrap gap-6">
             <GlanceFigure
               label="Waiting on you"
@@ -565,7 +598,38 @@ export default function CommunicationsNext() {
               at={data.historyAt}
             />
           </div>
+          )}
         </header>
+
+        {/* Mail and Letters. A tab is a place in the address, not a toggle. */}
+        <nav aria-label="Mail and letters" data-tour="comms-tabs" className="mb-5 flex gap-1" style={{ fontFamily: SANS, borderBottom: '1px solid var(--paper-2, #EAE4D8)' }}>
+          {(['mail', 'letters'] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              aria-current={tab === t ? 'page' : undefined}
+              onClick={() => showTab(t)}
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                padding: '8px 12px',
+                marginBottom: -1,
+                background: 'none',
+                border: 0,
+                borderBottom: tab === t ? '2px solid var(--seal, #1A5E6B)' : '2px solid transparent',
+                color: tab === t ? 'var(--ink-1, #211C16)' : 'var(--ink-4, #665D50)',
+                cursor: 'pointer',
+              }}
+            >
+              {t === 'mail' ? mailTabLabel(mailSummary.data ?? null) : 'Letters'}
+            </button>
+          ))}
+        </nav>
+
+        {tab === 'mail' ? (
+          <MailTab draftedOrderIds={draftedOrderIds} onOpenReply={openReply} bookFacts={bookFacts} />
+        ) : (
+        <>
 
         {/* The banner covers EVERY source this page owns, not just the
             conversation book. Before ADR 0083 it read `historyQ.isError`
@@ -972,6 +1036,8 @@ export default function CommunicationsNext() {
             strangers are mail, not money — they moved here from /promotions,
             with the hold-to-trust and add-vendor acts. */}
         <WhoIsWriting />
+        </>
+        )}
       </div>
 
       <ComposeSheet
