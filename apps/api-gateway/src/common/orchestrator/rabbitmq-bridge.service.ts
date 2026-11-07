@@ -669,12 +669,18 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    // Phase 2 — transport-derived attribution. The dedicated-domain webhook stamps the event
-    // with the restaurant it resolved from the recipient address. When present we use it as the
-    // source of truth (deterministic) and SCOPE the provider lookup to that tenant, which kills
-    // the global limit(1) cross-tenant misrouting. When absent (legacy Gmail path) we fall back
-    // to the prior behaviour: unscoped match, and triage-safe attribution for cold email.
-    const restaurantIdFromEvent: string | null = payload.restaurant_id || null;
+    // The house the letter was written to, stamped by every publisher: the
+    // house inbox (the grant's house), the dedicated-domain webhook (the
+    // recipient address) and the shared mailbox (`shared-mailbox-house.ts`).
+    // Every read below is scoped to it. An event without one is refused
+    // attribution (QA round 25): looking the sender up across every house and
+    // taking the first row filed a letter to house A under house B's vendor
+    // and order when both houses list the same vendor address. The letter is
+    // kept for the operator, unattributed, never dropped and never guessed.
+    const restaurantIdFromEvent: string | null =
+      typeof payload.restaurant_id === "string" && payload.restaurant_id.trim()
+        ? payload.restaurant_id.trim()
+        : null;
     // ADR 0118 (retention) — which reading grant mirrored this message out of a
     // person's private mailbox, or null for the shared mailbox and the
     // dedicated-domain webhook, neither of which any personal grant covers.
@@ -684,20 +690,30 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     const mirroredByGrantId: string | null =
       payload.mirrored_by_grant_id || null;
 
+    if (!restaurantIdFromEvent) {
+      await this.holdUnattributed({
+        senderEmail,
+        senderName: displayLabel(sender),
+        subject,
+        body,
+        attachments,
+        gmailMessageId,
+        gmailThreadId,
+        why: payload.house_resolution || "no_house",
+      });
+      return;
+    }
+    const restaurantId: string = restaurantIdFromEvent;
+
     try {
-      // 1. Find provider by email (scoped to the attributed restaurant when we know it).
-      let providerQuery = this.databaseService.supabase
+      // 1. Find provider by email, in the receiving house only.
+      const { data: providers } = await this.databaseService.supabase
         .from("providers")
         .select("id, restaurant_id, name")
+        .eq("restaurant_id", restaurantId)
         // Exact, never a pattern: a From of `%@%` must not reach a vendor.
-        .ilike("contact_email", likeExactly(senderEmail));
-      if (restaurantIdFromEvent) {
-        providerQuery = providerQuery.eq(
-          "restaurant_id",
-          restaurantIdFromEvent,
-        );
-      }
-      const { data: providers } = await providerQuery.limit(1);
+        .ilike("contact_email", likeExactly(senderEmail))
+        .limit(1);
       const provider = providers?.[0];
       if (!provider) {
         // D1 — cold email from an unknown sender. Capture GENUINE vendor outreach (a personal
@@ -737,9 +753,9 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             gmailMessageId: gmailMessageId || null,
             gmailThreadId: gmailThreadId || null,
             bodyPreview: body,
-            // Deterministic when the dedicated-domain webhook resolved the tenant; otherwise
-            // null → captureFromColdEmail falls back to triage-safe attribution.
-            restaurantId: restaurantIdFromEvent,
+            // The receiving house, always set here (an event without one
+            // was held above), so captureFromColdEmail never guesses one.
+            restaurantId,
           });
           // Digest/notify parity with promotions — only for a NEW, attributed prospect. Triage
           // rows belong to no tenant, so there is no one to notify (they are logged instead).
@@ -821,7 +837,6 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       let orderId: string | null = null;
       let threadOrderId: string | null = null;
       let threadId: string | null = null;
-      let restaurantId: string = provider.restaurant_id;
       // A FAILED thread read is not "no thread" (ADR 0067). supabase-js
       // resolves a failed read with { data: null, error }, and reading that as
       // an empty thread would hand the reply to 2b, which guesses the vendor's
@@ -846,6 +861,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
               "id, order_id, thread_id, restaurant_id, direction, email_headers",
             )
             .eq("gmail_thread_id", gmailThreadId)
+            .eq("restaurant_id", restaurantId)
             .order("created_at", { ascending: true })
             .order("id", { ascending: true })
             .limit(1);
@@ -864,7 +880,6 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
               ? origin.order_id
               : null;
           threadId = origin.thread_id;
-          restaurantId = origin.restaurant_id || restaurantId;
         }
       }
 
@@ -890,23 +905,16 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           .from("procurement_orders")
           .select("id, restaurant_id")
           .eq("provider_id", provider.id)
+          .eq("restaurant_id", restaurantId)
           .not("status", "in", `(${TERMINAL_ORDER_STATUSES.join(",")})`)
           .order("requested_at", { ascending: false })
           .limit(1);
         if (openOrders?.[0]) {
           orderId = openOrders[0].id;
-          restaurantId = openOrders[0].restaurant_id || restaurantId;
           this.logger.log(
             `handleInboundEmail: fallback-matched order ${orderId} for provider ${provider.id} (no gmail_thread_id hit)`,
           );
         }
-      }
-
-      if (!restaurantId) {
-        this.logger.warn(
-          "handleInboundEmail: could not determine restaurant_id",
-        );
-        return;
       }
 
       // 3. Deduplicate — skip if same gmail_message_id already stored
@@ -1100,6 +1108,50 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           `persistAttachments: failed for ${a?.filename} — ${e?.message}`,
         );
       }
+    }
+  }
+
+  /**
+   * A letter whose event names no receiving house (QA round 25): kept for
+   * the operator in the unattributed bucket (email_prospects with no house,
+   * listed by ProspectsService.listUnattributed for platform operators only),
+   * whoever wrote it. No vendor, order, notice or responder: nothing is
+   * filed against any house on its strength. Not gated on "looks like
+   * outreach": a vendor's real letter must not vanish because it was plain.
+   */
+  private async holdUnattributed(letter: {
+    senderEmail: string;
+    senderName: string | null;
+    subject: string;
+    body: string;
+    attachments: Array<{ filename: string; mime_type: string; data: string }>;
+    gmailMessageId: string;
+    gmailThreadId: string;
+    why: string;
+  }): Promise<void> {
+    try {
+      const refs = await this.persistProspectAttachments(
+        this.prospects.domainOf(letter.senderEmail),
+        letter.attachments,
+      );
+      const held = await this.prospects.holdUnattributed({
+        senderEmail: letter.senderEmail,
+        senderName: letter.senderName,
+        subject: letter.subject,
+        body: letter.body,
+        hasAttachments: letter.attachments.length > 0,
+        attachments: refs,
+        gmailMessageId: letter.gmailMessageId || null,
+        gmailThreadId: letter.gmailThreadId || null,
+        why: letter.why,
+      });
+      this.logger.warn(
+        `handleInboundEmail: no receiving house (${letter.why}); ${held.captured || held.duplicate ? "held unattributed for the operator" : "NOT held, see the prospects log"}, not filed under any house`,
+      );
+    } catch (err: any) {
+      this.logger.error(
+        `handleInboundEmail: no receiving house (${letter.why}) and holding the letter failed — ${err?.message}`,
+      );
     }
   }
 

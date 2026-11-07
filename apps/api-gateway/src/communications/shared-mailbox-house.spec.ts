@@ -12,7 +12,7 @@
  */
 import { CommunicationsController } from "./communications.controller";
 import { receivingHouse } from "./shared-mailbox-house";
-import { memoryDb, Row } from "./testing/mail-store";
+import { bridge, inbound, memoryDb, Row } from "./testing/mail-store";
 
 const SHARED = "sales@bigdist.com";
 const VENDOR_B = {
@@ -187,6 +187,143 @@ describe("receivingHouse: the house a shared-mailbox letter was written to", () 
       });
     },
   );
+});
+
+const housesTouched = (events: any[]) =>
+  events
+    .filter((e) =>
+      [
+        "emitRestaurantNotification",
+        "emitConversationUpdated",
+        "persistManagerNotification",
+      ].includes(e[0]),
+    )
+    .map((e) => e[1]);
+
+describe("the bridge: two houses, the same vendor address", () => {
+  it("a letter to house A is filed under house A's vendor and order only", async () => {
+    const { svc, inserts, events } = bridge(twoHouses());
+    await svc.handleInboundEmail(
+      inbound({
+        restaurant_id: "house-A",
+        from: `BigDist <${SHARED}>`,
+        gmail_message_id: "m-A",
+      }),
+    );
+    const rows = inserts
+      .filter((i) => i.table === "procurement_conversations")
+      .map((i) => i.row);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      restaurant_id: "house-A",
+      provider_id: "prov-A",
+      order_id: "order-A",
+    });
+    expect(new Set(housesTouched(events))).toEqual(new Set(["house-A"]));
+    const responder = events.find((e) => e[0] === "responder")?.[1];
+    expect(responder).toMatchObject({
+      restaurantId: "house-A",
+      orderId: "order-A",
+      providerId: "prov-A",
+    });
+  });
+
+  it("a letter to house A carrying house B's Gmail thread does not join house B's thread or order", async () => {
+    const { svc, inserts, events } = bridge(twoHouses());
+    await svc.handleInboundEmail(
+      inbound({
+        restaurant_id: "house-A",
+        from: SHARED,
+        gmail_thread_id: "gt-B",
+        gmail_message_id: "m-AB",
+      }),
+    );
+    const row = inserts.find(
+      (i) => i.table === "procurement_conversations",
+    )?.row;
+    expect(row).toMatchObject({
+      restaurant_id: "house-A",
+      provider_id: "prov-A",
+    });
+    expect(row?.order_id).not.toBe("order-B");
+    expect(row?.thread_id).not.toBe("thread-B");
+    expect(housesTouched(events)).not.toContain("house-B");
+  });
+
+  it("an order row of house B that names house A's vendor is not house A's open order", async () => {
+    // A mixed-house row is what the order agent wrote before this fix (QA
+    // round 25, Python: house B's vendor under house A); the open-order
+    // fallback must not trust provider_id alone to say whose order it is.
+    const MIXED = { ...ORDER_B, id: "order-mixed", provider_id: "prov-A" };
+    const { svc, inserts } = bridge(
+      twoHouses({ procurement_orders: [MIXED, ORDER_B, ORDER_A] }),
+    );
+    await svc.handleInboundEmail(
+      inbound({
+        restaurant_id: "house-A",
+        from: SHARED,
+        gmail_message_id: "m-mx",
+      }),
+    );
+    const row = inserts.find(
+      (i) => i.table === "procurement_conversations",
+    )?.row;
+    expect(row).toMatchObject({
+      restaurant_id: "house-A",
+      order_id: "order-A",
+    });
+  });
+
+  it.each([
+    [undefined, "no_house"],
+    ["", "no_house"],
+    ["   ", "no_house"],
+  ])(
+    "an event with restaurant_id %j is held unattributed: no vendor, order, notice or responder",
+    async (restaurantId, why) => {
+      const { svc, inserts, events } = bridge(twoHouses());
+      await svc.handleInboundEmail(
+        inbound({
+          ...(restaurantId === undefined
+            ? {}
+            : { restaurant_id: restaurantId }),
+          from: `BigDist <${SHARED}>`,
+          subject: "Re: Opus One Reserve",
+          body: "Confirming the Opus One Reserve price.",
+          gmail_message_id: "m-none",
+          gmail_thread_id: "gt-B",
+        }),
+      );
+      expect(inserts).toEqual([]);
+      expect(housesTouched(events)).toEqual([]);
+      expect(events.some((e) => e[0] === "responder")).toBe(false);
+      expect(events.some((e) => e[0] === "prospect")).toBe(false);
+      const held = events.filter((e) => e[0] === "hold").map((e) => e[1]);
+      expect(held).toHaveLength(1);
+      expect(held[0]).toMatchObject({
+        senderEmail: SHARED,
+        subject: "Re: Opus One Reserve",
+        gmailMessageId: "m-none",
+        gmailThreadId: "gt-B",
+        why,
+      });
+    },
+  );
+
+  it("the hold says why the publisher found no house", async () => {
+    const { svc, events } = bridge(twoHouses());
+    await svc.handleInboundEmail(
+      inbound({
+        restaurant_id: null,
+        house_resolution: "vendor_in_many_houses",
+        from: SHARED,
+        gmail_message_id: "m-why",
+      }),
+    );
+    expect(events.find((e) => e[0] === "hold")?.[1].why).toBe(
+      "vendor_in_many_houses",
+    );
+  });
 });
 
 describe("the shared-mailbox publishers stamp the receiving house", () => {
