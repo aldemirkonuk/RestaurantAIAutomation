@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen , configure } from '@testing-library/react';
+import { render, screen, configure, fireEvent, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -30,6 +30,11 @@ const api = vi.hoisted(() => ({
   week: {} as Record<string, unknown>,
   members: [] as unknown[],
   certs: [] as unknown[],
+  /** QA round 4, B2: the gateway now answers a failed file read with a 500. */
+  certsFail: false,
+  timeOffFail: false,
+  certCalls: 0,
+  timeOffCalls: 0,
   templates: [] as unknown[],
   createShift: vi.fn(() => Promise.resolve({})),
   createCoverageTemplate: vi.fn(() => Promise.resolve({})),
@@ -60,7 +65,12 @@ vi.mock('../../../services/api/team', () => ({
       myConsent: { consent: null, readable: true, reason: null },
       crewConsents: 0,
     }),
-  getTimeOff: () => Promise.resolve(api.timeOff),
+  getTimeOff: () => {
+    api.timeOffCalls += 1;
+    return api.timeOffFail
+      ? Promise.reject(new Error('Request failed with status code 500'))
+      : Promise.resolve(api.timeOff);
+  },
   getMyWeek: () => Promise.resolve(api.myWeek),
   getMemberPerformance: () => Promise.resolve({ hasData: false }),
   createSchedule: vi.fn(() => Promise.resolve({ id: 'sch1' })),
@@ -81,7 +91,12 @@ vi.mock('../../../services/api/team', () => ({
   ingestSalesBatch: vi.fn(() => Promise.resolve({})),
   getWeek: () => Promise.resolve(api.week),
   getTeamMembers: () => Promise.resolve(api.members),
-  getCertifications: () => Promise.resolve(api.certs),
+  getCertifications: () => {
+    api.certCalls += 1;
+    return api.certsFail
+      ? Promise.reject(new Error('Request failed with status code 500'))
+      : Promise.resolve(api.certs);
+  },
   getCoverageTemplates: () => Promise.resolve(api.templates),
   createCoverageTemplate: api.createCoverageTemplate,
   createShift: api.createShift,
@@ -195,6 +210,10 @@ beforeEach(() => {
   api.week = weekPayload();
   api.members = [];
   api.certs = [];
+  api.certsFail = false;
+  api.timeOffFail = false;
+  api.certCalls = 0;
+  api.timeOffCalls = 0;
   api.templates = [];
   api.createCoverageTemplate.mockClear();
 });
@@ -334,5 +353,38 @@ describe('the blocker sentence claims only what the schema supports', () => {
     // What IS known: whose credential expired, and how much of their week is
     // exposed if it turns out to be required.
     expect(screen.getByText(/which shifts require it is not recorded/i)).toBeInTheDocument();
+  });
+});
+
+/**
+ * QA round 4, B2 — a failed credential or time-off read says so AND can be
+ * retried in place, rather than an empty file or a dead end.
+ */
+describe('a failed file read says so and offers a retry', () => {
+  it('the credentials panel: unknown, not absent, with Try again that re-reads', async () => {
+    api.certsFail = true;
+    render(<TeamNext />, { wrapper });
+    const alert = await screen.findByText(/credentials file could not be read/);
+    expect(screen.queryByText(/No credential is on file/)).not.toBeInTheDocument();
+    const retry = within(alert.closest('[role="alert"]') as HTMLElement).getByRole('button', {
+      name: 'Try again',
+    });
+    const before = api.certCalls;
+    fireEvent.click(retry);
+    await waitFor(() => expect(api.certCalls).toBeGreaterThan(before));
+  });
+
+  it('the time-off sheet: unknown, not no, with Try again that re-reads', async () => {
+    api.timeOffFail = true;
+    render(<TeamNext />, { wrapper });
+    fireEvent.click(await screen.findByRole('button', { name: /^Time off/ }));
+    const alert = await screen.findByText(/time-off file could not be read/);
+    expect(screen.queryByText(/No request is on file/)).not.toBeInTheDocument();
+    const retry = within(alert.closest('[role="alert"]') as HTMLElement).getByRole('button', {
+      name: 'Try again',
+    });
+    const before = api.timeOffCalls;
+    fireEvent.click(retry);
+    await waitFor(() => expect(api.timeOffCalls).toBeGreaterThan(before));
   });
 });
