@@ -12,9 +12,9 @@ QA round 7c B1 (`~/Projects/p4-scratch/sw-walk/qa-report/round7-end-to-end-seams
 6. No `uom` (test doubles only; the column is `NOT NULL`) → refused.
 7. The manager's `costNote` gives each provisional item's own reason (audit D3). The web still renders it as one sentence; not changed here.
 
-## An accepted proposal's price states no unit — OPEN — 2026-11-07
+## An accepted proposal's price states no unit — CLOSED — 2026-11-07
 
-`unit_price_proposed` (`dto/deliveries.dto.ts`) carries no unit, is posted raw as per bottle, and wins over a refused invoice line. No web or mobile caller sets it (`grep -rn unitPriceProposed apps/web/src apps/mobile/src`). QA round 9a (3) re-raised it; not fixed, because `delivery_proposals` holds no unit to convert from. **Closes when** it states its unit and is converted the same way.
+QA round 10a (1), branch `fix/lot-cost-proposal-and-case-row`. `unit_price_proposed` posted raw as per bottle. Now it goes through `perBottleLotCost` with its line's `uom`, `pack_size` and price base; a refusal leaves the lot provisional by name. Claim `QA-R10A-PROPOSAL-AND-BOTTLE-ROW-PER-BOTTLE`. **Fork, the session's call:** a proposal is a counter to its line's printed price, so it is in that line's price base (documented on the DTO). Rejected: per bottle (silently 12x on a case line), refusing all proposals. A proposal on no line has no unit and is refused, no longer the one-item fallback.
 
 ## Lots already finalised at a printed price stay wrong — OPEN — 2026-11-07
 
@@ -30,9 +30,14 @@ Audit D1 and QA round 9a (1), branch `fix/unknown-unit-is-refused`. The extracto
 
 Not covered: lines entered or corrected by a person (no `printed` glyph); the door count's unmapped unit becomes `bottle`, but it carries no money (D11).
 
+QA round 10a (3)+(4), same branch. `normalizeUom` now maps the ordinary spellings of a piece and a bottle (`pcs`, `pc`, `piece`, `adet`, `ad`, `stk`, `stück`, `c62`, `h87`; `btl`, `btl.`, `şişe`, `bouteille`, `botella`, `bottiglia`, `flasche`, `fles`; `ltr`), folding dots, spaces and a trailing `(s)`; `kutu`, `box`, `carton`, `ml`, `cl` stay unmapped and refused. An `each` line whose printed glyph maps to `each` or `bottle` is costed, not refused. The `line_total` check now runs on credit-note rows by magnitude, and a zero total against a non-zero count is refused. Claim `QA-R10A-UNIT-SPELLINGS-AND-CREDIT-TOTAL`. Forks, the session's call under the 2026-11-07 /goal:
+
+4. A credit note is compared by absolute value: per-bottle cost × |count| against |total|. Rejected: skipping signed rows (the 9a gap QA found) and requiring both signs to match (a supplier that prints the count positive and the total negative is common).
+5. A glyph that means one piece counts as `each` and one that means a bottle counts as `bottle`; neither is a case. Rejected: mapping `kutu`/`box`/`carton` to `case` (their size is not on the line).
+
 ## Landed cost is unwired; some per-case prices are invisible — OPEN — 2026-11-07
 
-QA round 8a: nothing imports `landed-cost.ts` (#780/#812), so freight, fees and discounts never reach a lot and its tax stamp is null when a charge is present. A row stored as `bottle`, qty 24, 264, whose paper meant per case and printed no base and no total, still books 264: nothing on the row says otherwise.
+QA round 8a: nothing imports `landed-cost.ts` (#780/#812), so freight, fees and discounts never reach a lot and its tax stamp is null when a charge is present. A row stored as `bottle`, qty 24, 264, pack 12, with no printed base is now refused unless its `line_total` bears out the bottle reading (QA 10a (2), the session's call: pack > 1 on a bottle/each row makes a bare price ambiguous; rejected: dividing by the pack, guessing from the item's history).
 
 ## Other readers of the printed `unit_price` were not audited — OPEN — 2026-11-07
 

@@ -811,23 +811,48 @@ export class DeliveryStockService {
       unit_price_proposed: number | string | null;
     }[]) {
       if (p.unit_price_proposed == null) continue;
-      const price = Number(p.unit_price_proposed);
-      if (!Number.isFinite(price) || price <= 0) continue;
       const line = lineByKey.get(`${p.document_id}:${p.line_no}`);
+      // QA 10a (1): a settled price is a counter to its line's printed price,
+      // so it is in that line's price base and goes through the same per-bottle
+      // rule. A proposal on no line has no unit at all, and is refused by name.
+      const cost = line
+        ? perBottleLotCost({
+            unit_price: p.unit_price_proposed,
+            uom: line.uom,
+            pack_size: line.pack_size,
+            price_base_qty: line.price_base_qty,
+            price_base_uom: line.price_base_uom,
+            // The unit glyph still decides; the printed total is for the printed price.
+            printed: line.printed,
+          })
+        : Number(p.unit_price_proposed) > 0
+          ? ({ ok: false, kind: "refused", reason: `an accepted proposal settles a price of ${Number(p.unit_price_proposed)} but names no invoice line, so what unit that price is for is not known` } as const)
+          : ({ ok: false, kind: "no_price" } as const);
+      const id = line?.inventory_id ?? null;
+      if (!cost.ok) {
+        if (cost.kind !== "refused") continue;
+        const reason = line
+          ? `the accepted proposal's price ${Number(p.unit_price_proposed)} is read in its invoice line's unit, and ${cost.reason}`
+          : cost.reason;
+        if (!id) unattachedRefused.push(reason);
+        else {
+          byItem.delete(id);
+          refused.set(id, reason);
+        }
+        continue;
+      }
       // A settled price is one a person put their name to, so its provenance is
       // `manual` — calling it `invoice` would claim a document said it.
-      if (line?.inventory_id)
-        byItem.set(line.inventory_id, {
-          unitCost: price,
-          provenance: "manual",
-          source: "accepted_proposal",
-        });
-      else
-        unattached.push({
-          unitCost: price,
-          provenance: "manual",
-          source: "accepted_proposal",
-        });
+      const agreed: AgreedPrice = {
+        unitCost: cost.unitCost,
+        provenance: "manual",
+        source: "accepted_proposal",
+        basis: `accepted proposal: ${cost.basis.replace(/^invoice price/, "price")}`,
+      };
+      if (id) {
+        byItem.set(id, agreed);
+        refused.delete(id);
+      } else unattached.push(agreed);
     }
 
     return {

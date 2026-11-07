@@ -72,7 +72,9 @@ export function perBottleLotCost(line: LotCostLine): LotUnitCost {
   // Audit D1: the extractor keeps an unmapped unit as `each` and its glyph in
   // `printed`. "kutu" stored as `each` is not one bottle; neither guess holds.
   const said = printedUnit(line.printed, "uom");
-  if (said && line.uom === "each" && normalizeUom(said) !== "each")
+  const saidUom = said ? normalizeUom(said) : null;
+  // A glyph that means one piece or one bottle (`pcs`, `btl.`) counts as `each` does (QA 10a (3)).
+  if (said && line.uom === "each" && saidUom !== "each" && saidUom !== "bottle")
     return refuse(`the invoice prints its unit as "${said}", which this house does not count in, so what one bottle costs is not known`);
   const saidBase = printedUnit(line.printed, "priceBaseUom");
   if (saidBase && !line.price_base_uom && !normalizeUom(saidBase))
@@ -135,21 +137,33 @@ export function perBottleLotCost(line: LotCostLine): LotUnitCost {
       reason: `a price per bottle of ${perBottle} rounds to ${unitCost.toFixed(2)}, and a lot is never booked at a cost of nothing`,
     };
 
+  // QA 9a: a printed line total that contradicts the per-bottle cost means the
+  // price's unit was misread (24 bottles @ 264 printed as 528). Refused, not
+  // re-derived from the total, which may carry a deposit or an allowance.
+  // QA 10a (4): a credit note prints its count and total negative (or only the
+  // total), so magnitudes are compared: a sign says which way the money went,
+  // not what unit the price is in.
+  const total = asNumber(line.line_total);
+  const counted = asNumber(line.qty_bottles);
+  const checked = total != null && counted != null && counted !== 0;
+  if (checked) {
+    const implied = four(perBottle * Math.abs(counted));
+    if (Math.abs(implied - Math.abs(total)) > Math.max(0.05, Math.abs(total) * 0.01))
+      return refuse(`the invoice line totals ${total} for ${counted} counted, but ${perBottle.toFixed(4)} each makes ${four(perBottle * counted)}, so the price's unit is not what the line says`);
+  }
+
+  // QA 10a (2): `24 bottle @ 264, pack 12` with no base reads 264 a bottle,
+  // and is as likely a case's price. Only a printed base, or a total that
+  // bears the bottle reading out (above), decides it; otherwise refused.
+  const statedBase = (rawBaseUom != null && rawBaseUom !== "") || (rawBase != null && rawBase !== "");
+  if ((uom === "bottle" || uom === "each") && bottlesPriced === 1 && !statedBase && pack != null && pack > 1 && !checked)
+    return refuse(`the invoice line counts ${words(uom)}s that come ${pack} to a case and prints ${price} for one, with no line total that settles it, so whether ${price} is a bottle's price or a case's is not known`);
+
   const priced = MULTIPLYING.has(baseUom) ? `${per} of ${pack}` : per;
   const basis =
     bottlesPriced === 1
       ? `invoice price ${price} per ${priced}; booked as-is`
       : `invoice price ${price} per ${priced} = ${perBottle.toFixed(4)} per ${baseUom === "keg" || baseUom === "liter" ? baseUom : "bottle"}`;
-  // QA 9a: a printed line total that contradicts the per-bottle cost means the
-  // price's unit was misread (24 bottles @ 264 printed as 528). Refused, not
-  // re-derived from the total, which may carry a deposit or an allowance.
-  const total = asNumber(line.line_total);
-  const counted = asNumber(line.qty_bottles);
-  if (total != null && total > 0 && counted != null && counted > 0) {
-    const implied = four(perBottle * counted);
-    if (Math.abs(implied - total) > Math.max(0.05, total * 0.01))
-      return refuse(`the invoice line totals ${total} for ${counted} counted, but ${perBottle.toFixed(4)} each makes ${implied}, so the price's unit is not what the line says`);
-  }
   return { ok: true, perBottle, unitCost, basis };
 }
 

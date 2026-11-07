@@ -62,6 +62,31 @@ describe("perBottleLotCost", () => {
     expect(cost({ uom: "bottle", unit_price: 142, price_base_qty: 12, qty_bottles: 12, line_total: 142 })).toBe(11.8333);
   });
 
+  it("QA 10a (2): a bare price on a bottle row whose bottles come in cases is decided by its total, or refused", () => {
+    const row = { uom: "bottle", pack_size: 12, qty_bottles: 24 };
+    expect(refusal(row)).toMatch(/bottles that come 12 to a case and prints 264 .* a bottle's price or a case's is not known/);
+    expect(refusal({ ...row, uom: "each" })).toMatch(/eachs that come 12/);
+    // A total that contradicts the bottle reading is refused by the QA 9a check.
+    expect(refusal({ ...row, line_total: 528 })).toMatch(/totals 528/);
+    expect(refusal({ ...row, line_total: 528, qty_bottles: null })).toMatch(/not known/);
+    // The total bears the bottle reading out (a credit note's signs too), or the paper printed its base.
+    expect(cost({ ...row, line_total: 6336 })).toBe(264);
+    expect(cost({ ...row, line_total: -6336, qty_bottles: -24 })).toBe(264);
+    expect(cost({ ...row, price_base_uom: "bottle" })).toBe(264);
+    expect(cost({ ...row, pack_size: 1 })).toBe(264);
+  });
+
+  it("QA 10a (3)+(4): a piece or bottle glyph on an each line costs; a credit note's total is checked by magnitude", () => {
+    for (const uom of ["pcs", "btl.", "Stk", "şişe"])
+      expect(cost({ uom: "each", pack_size: 1, unit_price: 22, qty_bottles: 24, line_total: 528, printed: { uom } })).toBe(22);
+    expect(refusal({ uom: "each", pack_size: 1, printed: { uom: "kutu" } })).toMatch(/"kutu"/);
+    // Credit note filed as an invoice: count and total negative, price positive.
+    expect(refusal({ uom: "bottle", pack_size: 1, qty_bottles: -24, line_total: -528 })).toMatch(/totals -528 for -24 counted, but 264\.0000 each makes -6336/);
+    expect(refusal({ uom: "bottle", pack_size: 1, qty_bottles: 24, line_total: -528 })).toMatch(/totals -528/);
+    expect(cost({ qty_bottles: -24, line_total: -528 })).toBe(22);
+    expect(refusal({ uom: "bottle", pack_size: 1, qty_bottles: 24, line_total: 0 })).toMatch(/totals 0 for 24/);
+  });
+
   it("rounds half away from zero, as Postgres numeric does", () => {
     expect([1.005, 11.8333, 11.835, 22].map(toLotCostPrecision)).toEqual([1.01, 11.83, 11.84, 22]);
   });
