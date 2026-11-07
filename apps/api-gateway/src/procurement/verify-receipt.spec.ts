@@ -207,13 +207,7 @@ function makeDb(opts: {
   leaseHeldElsewhere?: boolean;
   /** The lease RPC fails with this. */
   leaseError?: { message: string } | null;
-  /**
-   * The order-level claims already on `procurement_credits`, kept live: a read
-   * answers the rows its `state` filter matches (never `never_arrived`), an
-   * insert or a reason change that would put a second non-written-off claim
-   * on one reason is refused 23505 (`uq_pc_order_match_reason`), and an update
-   * lands on the rows its `id`/`in(id)` and `state` filters match.
-   */
+  /** Live order-level claims; `uq_pc_order_match_reason` refuses a second per reason. */
   credits?: Row[];
   /** The read of the order's open claims fails with this. */
   creditsReadError?: { message: string } | null;

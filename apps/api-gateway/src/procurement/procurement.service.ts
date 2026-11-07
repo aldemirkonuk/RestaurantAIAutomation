@@ -5771,34 +5771,20 @@ export class ProcurementService {
       const claim = draftClaimFromMatch(match);
       const supabase = this.databaseService.supabase;
 
-      // A CORRECTION REPLACES THE CLAIM IT CORRECTS (QA round 5 on H-1, and
-      // the audit of #821, 2026-11-07). A verification that reaches here is
-      // never a repeat (the guard in `verifyReceipt` returned before any write
-      // for those), so it is the house's current count of this delivery, and
-      // every claim this writer raised for the order that is still `open` was
-      // drafted from an earlier count. The session's call under the
-      // 2026-11-07 /goal, in full:
-      //  - The corrected claim RESTATES one open claim — reason, amount,
-      //    summary and evidence — so "2 refused as cracked" corrected to "2
-      //    never shipped" is one claim for the new reason, never a second one
-      //    beside the stale `damaged` one. The kept row is the one already
-      //    holding the new reason, else the oldest.
-      //  - Every other open claim from this writer for the order is SET ASIDE:
-      //    `written_off`, with a note naming the correction. Also every open
-      //    one when the corrected count owes nothing (10 accepted / 0 refused).
-      //    `written_off` because it is the ledger's existing terminal state
-      //    that counts in no recovery or outstanding figure
-      //    (`recoveryStats`), frees `uq_pc_order_match_reason` for a later
-      //    claim, is a legal move from `open`, and keeps the row and the
-      //    evidence of what was first counted. Deleting it would lose that
-      //    evidence; a new `withdrawn` state would need a migration, the
-      //    ledger and both apps' labels, and is left as a follow-up.
-      //  - Only `open` claims are touched. One already requested from,
-      //    promised or settled by the vendor carries the figure the vendor
-      //    was given, and changing it under them is a person's call.
-      //  - A correction that finds money owed but cannot price it (no invoice
-      //    unit price), or that has no invoice to compare (`unmatched`), does
-      //    not say nothing is owed, so the open claim is left as it was.
+      // A CORRECTION REPLACES THE CLAIM IT CORRECTS (audit of #821,
+      // 2026-11-07; the session's call under the 2026-11-07 /goal). A
+      // verification reaching here is never a repeat (the guard returned
+      // first), so it is the house's current count, and this writer's open
+      // claims for the order were drafted from an earlier one:
+      //  - the corrected claim restates ONE (the row with its reason, else the
+      //    oldest): reason, amount, summary, evidence. Never a second claim.
+      //  - the others, or all of them when nothing is owed, are set aside as
+      //    `written_off` with a note: counted in no figure (`recoveryStats`),
+      //    free the index, keep the evidence. (A `withdrawn` state would need
+      //    a migration and both apps; left as a follow-up.)
+      //  - only `open` is touched: a claim with the vendor is a person's call.
+      //  - no invoice (`unmatched`) or no invoice price does not prove nothing
+      //    is owed, so the open claim is left as it was.
       const { data: openRows, error: openReadError } = await supabase
         .from("procurement_credits")
         .select("id, reason")
@@ -5810,9 +5796,7 @@ export class ProcurementService {
         .eq("state", "open")
         .order("opened_at", { ascending: true });
       if (openReadError) {
-        // Not read as "no claims": nothing is restated or set aside on an
-        // unread ledger. A new claim is still raised; the index keeps it to
-        // one per order and reason.
+        // Never read as "no claims": nothing is restated or set aside.
         this.logger.warn(
           `openCreditClaim could not read the open claims for order ${orderId}, so none was ` +
             `restated or set aside: ${openReadError.message}`,
@@ -5873,10 +5857,8 @@ export class ProcurementService {
         .eq("state", "open")
         .select("id");
       if (restateError?.code === "23505") {
-        // The new reason is already claimed for this order by a claim with the
-        // vendor (`uq_pc_order_match_reason`): that claim stands, and the open
-        // one, drafted from the earlier count, is set aside rather than left
-        // beside it.
+        // The new reason is already held by a claim with the vendor: theirs
+        // stands, and the open draft of the earlier count is set aside.
         await this.setAsideOrderCreditClaims(
           restaurantId,
           orderId,
@@ -5945,11 +5927,7 @@ export class ProcurementService {
       );
   }
 
-  /**
-   * Set aside open claims a corrected count superseded: `written_off`, with a
-   * note naming the correction. Scoped to `open` so a claim that moved on to
-   * the vendor in the meantime is never written off under them.
-   */
+  /** Set aside superseded open claims; scoped to `open`, never under the vendor. */
   private async setAsideOrderCreditClaims(
     restaurantId: string,
     orderId: string,
