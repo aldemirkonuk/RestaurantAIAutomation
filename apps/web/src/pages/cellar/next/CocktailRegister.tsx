@@ -8,13 +8,11 @@
  * — everywhere else the absence of one is the honest answer rather than an
  * oversight.
  *
- * THE RECIPE HALF, WHICH HAS NEVER EXISTED. `cocktail_ingredients` was created
- * empty and stayed empty because the extraction pass over the scanned cocktail
- * sections never ran (20260817090000_cocktails.sql:20-25). Every version of
- * this page has repeated that as though it were a permanent property of the
- * product: *"this register can list names and never a recipe."* It was a fact
- * about the EXTRACTOR. It was never a reason a bartender could not type one.
- * The recipe editor below is the first writer that table has ever had.
+ * THE RECIPE. A drink's recipe is its own sheet (`recipe/RecipeSheet.tsx`,
+ * ADR 0360): each ingredient linked to something on the house's shelf, a cost
+ * a serve at today's prices, and every save a new version. It replaced a text
+ * box whose lines a regex split into words that linked to nothing and cost
+ * nothing.
  *
  * TWO BOOKS, NOT ONE. The house's cocktail list is `public.cocktails`. What the
  * house's OTHER books say about cocktails — menu lines, till lines — is the
@@ -38,8 +36,8 @@ import {
   shortDate,
   type HouseBookId,
 } from './cellar-format';
+import RecipeSheet from './recipe/RecipeSheet';
 import {
-  useCocktailRecipe,
   useCocktailRegister,
   useCocktailWrites,
   type CocktailInput,
@@ -74,139 +72,6 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
       />
     </span>
-  );
-}
-
-/* ── the recipe: the first writer cocktail_ingredients has ever had ──────── */
-
-function Recipe({ cocktailId }: { cocktailId: string }) {
-  const recipe = useCocktailRecipe(cocktailId);
-  const { setRecipe } = useCocktailWrites();
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState('');
-  const [said, setSaid] = useState<string | null>(null);
-
-  const start = () => {
-    setText(
-      (recipe.data?.rows ?? [])
-        .map((l) =>
-          [l.quantity ?? '', l.unit ?? '', l.free_text ?? '']
-            .filter((v) => String(v).trim() !== '')
-            .join(' '),
-        )
-        .join('\n'),
-    );
-    setEditing(true);
-    setSaid(null);
-  };
-
-  const save = async () => {
-    // One line of free text per row, with a leading quantity and unit when the
-    // bartender wrote one. Nothing is parsed beyond that: a recipe line is a
-    // sentence a human wrote, and guessing structure out of it would put words
-    // in their mouth.
-    const lines = text
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l, i) => {
-        const m = /^(\d+(?:[.,]\d+)?)\s*([a-zA-Z]{1,10})?\s+(.*)$/.exec(l);
-        return m
-          ? {
-              quantity: Number(m[1].replace(',', '.')),
-              unit: m[2] || undefined,
-              freeText: m[3],
-              sortOrder: i,
-            }
-          : { freeText: l, sortOrder: i };
-      });
-    try {
-      const out = await setRecipe.mutateAsync({ id: cocktailId, lines });
-      setEditing(false);
-      setSaid(
-        `${out.lines} ${out.lines === 1 ? 'line' : 'lines'} recorded. This is the first recipe data this house has ever had — cocktail_ingredients was created empty in August and no extraction pass ever filled it.`,
-      );
-    } catch (e) {
-      setSaid(
-        `The recipe was NOT recorded${e instanceof Error ? ` — ${e.message}` : ''}. Nothing was changed.`,
-      );
-    }
-  };
-
-  if (recipe.loading) {
-    return <p className="cl-note" role="status">Reading the recipe…</p>;
-  }
-  if (recipe.error) {
-    return (
-      <p className="cl-note" role="alert">
-        <AlertTriangle size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 5 }} />
-        The recipe could not be read ({recipe.error}). It is unread, not absent.
-      </p>
-    );
-  }
-
-  return (
-    <div style={{ marginTop: 10 }}>
-      <h4 className="cl-sec" style={{ margin: '0 0 6px' }}>Recipe</h4>
-      {editing ? (
-        <>
-          <label htmlFor={`cl-recipe-${cocktailId}`} className="cl-sr">Recipe lines</label>
-          <textarea
-            id={`cl-recipe-${cocktailId}`}
-            className="cl-field cl-focus"
-            rows={6}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={'30 ml gin\n30 ml Campari\n30 ml sweet vermouth\norange peel'}
-            style={{ width: '100%', height: 'auto', padding: 8, lineHeight: 1.5 }}
-          />
-          <p className="cl-note" style={{ marginTop: 4 }}>
-            One ingredient per line. A leading number and unit are read as the
-            measure; everything else is kept as the bartender wrote it.
-          </p>
-          <span style={{ display: 'inline-flex', gap: 6, marginTop: 8 }}>
-            <button type="button" className="cl-btn cl-focus" onClick={save} disabled={setRecipe.isPending}>
-              <Check size={13} aria-hidden />
-              {setRecipe.isPending ? 'Recording…' : 'Record the recipe'}
-            </button>
-            <button type="button" className="cl-btn cl-focus" onClick={() => setEditing(false)}>
-              <X size={13} aria-hidden />
-              Leave it
-            </button>
-          </span>
-        </>
-      ) : (recipe.data?.rows.length ?? 0) === 0 ? (
-        <>
-          <p className="cl-said" data-testid="recipe-empty">
-            No recipe has been recorded for this cocktail. The table has been
-            writable since this pass — it was empty because the extraction pass
-            over the scanned menus never ran, not because a recipe cannot be kept.
-          </p>
-          <button type="button" className="cl-btn cl-focus" onClick={start} style={{ marginTop: 8 }}>
-            <Plus size={13} aria-hidden />
-            Write the recipe
-          </button>
-        </>
-      ) : (
-        <>
-          <ol style={{ margin: '0 0 0 18px', padding: 0, fontSize: 12.5, lineHeight: 1.7 }}>
-            {recipe.data!.rows.map((l, i) => (
-              <li key={l.id ?? i}>
-                {l.quantity !== null && l.quantity !== undefined ? (
-                  <span className="cl-num">{l.quantity}{l.unit ? ` ${l.unit}` : ''} </span>
-                ) : null}
-                {l.free_text ?? EM}
-              </li>
-            ))}
-          </ol>
-          <button type="button" className="cl-btn cl-focus" onClick={start} style={{ marginTop: 8 }}>
-            <Pencil size={13} aria-hidden />
-            Amend the recipe
-          </button>
-        </>
-      )}
-      {said ? <p className="cl-note" role="status">{said}</p> : null}
-    </div>
   );
 }
 
@@ -477,7 +342,8 @@ export default function CocktailRegister({
                             </button>
                           </span>
                         </div>
-                        <Recipe cocktailId={c.id} />
+                        {/* The sheet keys its own draft by drink (RecipeSheet's default export), so typed lines never cross drinks. */}
+                        <RecipeSheet cocktailId={c.id} />
                       </>
                     );
                   })()}
