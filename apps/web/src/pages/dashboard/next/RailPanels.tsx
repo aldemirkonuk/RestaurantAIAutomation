@@ -122,16 +122,52 @@ interface RawLowStockFields {
   stock_live?: number;
   threshold_min?: number;
   vintage?: number | null;
+  /**
+   * The unit the row's stock AND its par are written in (ADR 0070), from
+   * migration 20270502100000_every_good_can_run_low. The view now holds every
+   * good, so a flour's 200 is grams, not bottles. Absent on an older view.
+   */
+  uom?: string | null;
+}
+
+/** restaurant_inventory_uom_check's vocabulary, in the house's words. */
+const UNIT_WORDS: Record<string, [one: string, many: string]> = {
+  bottle: ['bottle', 'bottles'],
+  case: ['case', 'cases'],
+  keg: ['keg', 'kegs'],
+  pack: ['pack', 'packs'],
+  each: ['unit', 'units'],
+  glass: ['glass', 'glasses'],
+  shot: ['shot', 'shots'],
+  ml: ['ml', 'ml'],
+  l: ['l', 'l'],
+  mg: ['mg', 'mg'],
+  g: ['g', 'g'],
+  kg: ['kg', 'kg'],
+};
+
+/**
+ * The unit word after a figure. An unknown unit is shown as written rather
+ * than folded into "bottles"; no unit at all says nothing, as before.
+ */
+export function unitWord(uom: string | null | undefined, n: number | null): string | null {
+  const key = (uom ?? '').trim().toLowerCase();
+  if (!key) return null;
+  const pair = UNIT_WORDS[key];
+  if (!pair) return key;
+  return n === 1 ? pair[0] : pair[1];
 }
 
 function lowStockView(it: InventoryItem) {
   const raw = it as InventoryItem & RawLowStockFields;
+  const min = it.thresholdMin ?? raw.threshold_min ?? null;
   return {
     id: it.id,
     name: it.wineName ?? raw.wine_name ?? null,
     vintage: it.wineVintage ?? raw.vintage ?? null,
     stock: it.stockLive ?? raw.stock_live ?? null,
-    min: it.thresholdMin ?? raw.threshold_min ?? null,
+    min,
+    unit: unitWord(raw.uom, min),
   };
 }
 
@@ -172,7 +208,7 @@ export function LowStockPanel({
         </EmptyLine>
       )}
       {items != null && items.length === 0 && (
-        <EmptyLine>Nothing is running low. The cellar holds.</EmptyLine>
+        <EmptyLine>Nothing is running low.</EmptyLine>
       )}
       {items != null && sorted.length > 0 && (
         <ul className="space-y-1.5">
@@ -199,7 +235,10 @@ export function LowStockPanel({
                 <span className={it.stock === 0 ? 'text-seal font-semibold' : 'text-inkm-1'}>
                   {it.stock == null ? DASH : formatNumber(it.stock)}
                 </span>
-                <span className="text-inkm-4"> / min {it.min == null ? DASH : formatNumber(it.min)}</span>
+                <span className="text-inkm-4">
+                  {' '}/ min {it.min == null ? DASH : formatNumber(it.min)}
+                  {it.unit ? ` ${it.unit}` : null}
+                </span>
               </span>
             </li>
           ))}
