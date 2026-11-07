@@ -13,22 +13,33 @@ vi.mock('../../../lib/spotCountOutbox', () => ({ submitSpotCount: vi.fn(), newCl
 
 import { SpotCountPanel } from './SpotCountPanel';
 
+const shoot = () => {
+  render(
+    <SpotCountPanel
+      item={{ inventoryId: 'i1', name: 'House lager', liveStock: 4 } as unknown as InventoryItem}
+      onClose={() => {}}
+      onCommitted={() => {}}
+    />,
+  );
+  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, { target: { files: [new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })] } });
+};
+
 describe('SpotCountPanel photo toast (inventory walk #7, I2: G11, ADR 0104)', () => {
   it('says what the photo suggests with no confidence word', async () => {
     m.photo.mockResolvedValue({ suggestedQty: 9, confidence: 'medium', note: 'Nine on the shelf.' });
-    render(
-      <SpotCountPanel
-        item={{ inventoryId: 'i1', name: 'House lager', liveStock: 4 } as unknown as InventoryItem}
-        onClose={() => {}}
-        onCommitted={() => {}}
-      />,
-    );
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    fireEvent.change(input, { target: { files: [new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })] } });
+    shoot();
     await waitFor(() => expect(m.toast.info).toHaveBeenCalled());
     const said = m.toast.info.mock.calls[0].join(' ');
     expect(said).toContain('Photo suggests 9');
     expect(said.toLowerCase()).not.toContain('confidence');
     expect(said).not.toContain('medium');
+  });
+
+  it('says the photo gave no count, with no "confident"', async () => {
+    m.photo.mockResolvedValue({ suggestedQty: null, confidence: 'low', note: 'Too blurry.' });
+    shoot();
+    await waitFor(() => expect(m.toast.error).toHaveBeenCalled());
+    expect(m.toast.error).toHaveBeenCalledWith('The photo gave no count', 'Too blurry.');
   });
 });
