@@ -628,15 +628,22 @@ export class DashboardService {
     const totalBottles =
       inventory?.reduce((sum, item) => sum + (item.stock_live || 0), 0) || 0;
     const lowStockCount = lowStock?.length || 0;
-    const criticalCount =
-      inventory?.filter((item) => (item.stock_live || 0) === 0).length || 0;
+    // OD-161: a wine nobody has counted is unknown, not zero. It is neither
+    // critical nor healthy here; `v_low_stock_items` already leaves it out.
+    const counted = (inventory ?? []).filter(
+      (item) => item.last_counted_at != null,
+    );
+    const criticalCount = counted.filter(
+      (item) => (item.stock_live || 0) === 0,
+    ).length;
+    const lowIds = new Set((lowStock ?? []).map((item) => item.id));
 
     return {
       totalItems,
       totalBottles,
       lowStockCount,
       criticalCount,
-      healthyCount: totalItems - lowStockCount,
+      healthyCount: counted.filter((item) => !lowIds.has(item.id)).length,
     };
   }
 
@@ -1433,7 +1440,11 @@ export class DashboardService {
             .eq("restaurant_id", restaurantId)
             .is("deleted_at", null)
             .eq("is_active", true)
-            .eq("stock_live", 0),
+            .eq("stock_live", 0)
+            // OD-161: a wine nobody has counted is unknown, not out of stock.
+            // `last_counted_at` is stamped only by a count; the low-stock view
+            // applies the same test.
+            .not("last_counted_at", "is", null),
         ]);
 
       // The cellar is the active, undeleted wines — the rule
