@@ -50,7 +50,7 @@ import { getErrorStatus } from '../../../../services/api/client';
 import type { CocktailRecipe, RecipeLine, SaveRecipeBody } from '../../../../services/api/recipes';
 import LineRow, { LineRowRead, rowName, type DraftRow } from './LineRow';
 import { draftKey, dropDraft, keepDraft, takeDraft } from './drafts';
-import { qtyText, readQty } from './units';
+import { AMBIGUOUS_AMOUNT, qtyText, readQty } from './units';
 import {
   useCanEditRecipe,
   useHouseMoney,
@@ -173,6 +173,10 @@ export function whyBlocked(rows: DraftRow[]): string | null {
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     const q = readQty(r.qtyText);
+    if (q === null && AMBIGUOUS_AMOUNT.test(r.qtyText.trim())) {
+      const t = r.qtyText.trim();
+      return `${named(i)}: ${t} could be ${t.replace(/[.,]/, '')} or ${t.replace(',', '.').replace(/0+$/, '').replace(/\.$/, '')}. Type it without the separator.`;
+    }
     if (q === null) return `${named(i)} needs an amount above zero.`;
     if (q > MAX_LINE_QTY) {
       return `${named(i)} is more than one line can hold. The most is ${MAX_LINE_QTY.toLocaleString('en-US')} ${r.unit || 'of its unit'}.`;
