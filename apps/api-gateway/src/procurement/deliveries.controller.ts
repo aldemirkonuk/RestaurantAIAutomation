@@ -321,7 +321,7 @@ export class DeliveriesController {
   @ApiOperation({
     summary: "Work the due clocks now (ADR 0103 A10) — platform operators only",
     description:
-      "The same idempotent poller the hourly cron runs, across every house, exposed so a catch-up after an outage is a deliberate act rather than a wait. Platform operators only (403 otherwise). `now` runs the ladder as if it were that moment, and is refused with 400 in production. Returns what it DID per rung, so a caller can assert on the work rather than on the absence of an exception.",
+      "The same idempotent poller the hourly cron runs, across every house, exposed so a catch-up after an outage is a deliberate act rather than a wait. Platform operators only: PlatformOperatorGuard answers 403 for a non-operator and 503 when the operator lookup returns an error. `now` runs the ladder as if it were that moment, and is refused with 400 in production. Returns what it DID per rung, so a caller can assert on the work rather than on the absence of an exception.",
   })
   async runClocks(@Body() body: RunClocksDto) {
     if (body?.now && process.env.NODE_ENV === "production")
