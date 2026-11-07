@@ -429,6 +429,18 @@ describe("queueing a letter", () => {
     expect(out.says).not.toMatch(/\bSent\b/);
   });
 
+  it("pins the mailbox it was queued under on the letter (QA round 26, #973)", async () => {
+    const { rec, service: svc } = service({
+      ...BOOK_ROWS,
+      integration_oauth_connections: [GRANT_WITH_SEND],
+      analytics_insights: [],
+    });
+    await svc.queue({ restaurantId: HOUSE, userId: PERSON, dto: draft });
+    const headers = rec.inserts[0].email_headers as Record<string, unknown>;
+    expect(headers.sender_connection_id).toBe("conn-1");
+    expect(headers.sender_address).toBe("siparis@lokantamudavim.com");
+  });
+
   it("records only the insight sentences it could re-read", async () => {
     const { rec, service: svc } = service({
       ...BOOK_ROWS,

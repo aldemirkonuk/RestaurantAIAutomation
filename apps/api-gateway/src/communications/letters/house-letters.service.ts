@@ -791,6 +791,11 @@ export class HouseLettersService {
         to: match.email,
         sender_address: identity.address,
         sender_kind: identity.kind,
+        // The grant this letter leaves through, pinned now (QA round 26,
+        // #973): the cron sends through THIS grant or refuses, so a mailbox
+        // chosen during the undo window never changes the From line the
+        // writer approved.
+        sender_connection_id: identity.grant?.connectionId ?? null,
         written_by: userId,
         template_id: dto.templateId ?? null,
         // The staff request this release took, by its id, on the letter
@@ -1659,7 +1664,24 @@ export class HouseLettersService {
       // let a manager release the same letter again.
       let leftTheHouse = false;
       try {
-        const identity = await this.sender.resolve(restaurantId, writer);
+        // A letter pinned at queue time leaves through that grant or not at
+        // all (QA round 26, #973). Only a letter queued before pins existed
+        // still follows the house's rule as it stands now.
+        const pin =
+          typeof headers.sender_connection_id === "string" && headers.sender_connection_id
+            ? headers.sender_connection_id
+            : null;
+        const identity = pin
+          ? {
+              sendable: true,
+              words: "",
+              ...(await this.sender.pinned(
+                restaurantId,
+                pin,
+                typeof headers.sender_address === "string" ? headers.sender_address : null,
+              )),
+            }
+          : await this.sender.resolve(restaurantId, writer);
         // Each failure in its own words: the reason is now shown to the
         // manager and to the person who asked (founder, 2026-09-22).
         if (!identity.sendable) throw new Error(identity.words || "the house's mailbox cannot send");
