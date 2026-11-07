@@ -21,6 +21,7 @@ import { useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
 import { settle, turn } from '@/lib/mudavym/motion';
 import type { ProcurementCredit } from '@/services/api/credits';
+import { reasonWords } from '../../receipts/next/ReceiptsCredits';
 import { EM, MONO, SANS, SERIF, capStyle, fmtDate, fmtMoney } from './rc-format';
 import { useApproveCreditDraft, type CreditDraftsData } from './useReceivingNextData';
 
@@ -98,7 +99,10 @@ function DraftCard({ draft }: { draft: ProcurementCredit }) {
           margin: '8px 0 0',
         }}
       >
-        {draft.reason || 'Credit claim'}
+        {/* The claim's reason in its one wording (W54, ADR 0267 option 8) —
+            the same words /receipts › Credits and the vendor letter use, never
+            the raw code ("damaged" once named a wrong-item refusal here). */}
+        {draft.reason ? reasonWords(draft.reason) : 'Credit claim'}
         {draft.self_evidenced && (
           <span
             title="Provable from the vendor's own paperwork"
@@ -165,7 +169,9 @@ function DraftCard({ draft }: { draft: ProcurementCredit }) {
             }}
           >
             <span style={capStyle}>What the house knows</span>
-            <p style={{ margin: '3px 0 0' }}>{draft.notes || draft.reason || EM}</p>
+            <p style={{ margin: '3px 0 0' }}>
+              {draft.notes || (draft.reason ? reasonWords(draft.reason) : EM)}
+            </p>
             <p style={{ margin: '3px 0 0', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>
               claimed {fmtMoney(draft.claimed_amount)} · state {draft.state}
               {draft.document_id ? ' · document attached' : ' · no document attached'}

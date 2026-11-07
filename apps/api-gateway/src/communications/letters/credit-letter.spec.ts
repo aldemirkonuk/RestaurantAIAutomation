@@ -23,7 +23,8 @@ import { DatabaseService } from "../../database/database.service";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import { HouseSenderService } from "./house-sender.service";
 import { HouseLettersService, LETTER_STATUS } from "./house-letters.service";
-import { composeCreditLetter } from "./credit-letter";
+import { composeCreditLetter, CREDIT_REASON_SENTENCE } from "./credit-letter";
+import { CREDIT_REASON_WORDING } from "../../procurement/documents/credit-ledger";
 import { composerGuardrails } from "./composer-guardrails";
 import { CreditsController } from "../../procurement/documents/credits.controller";
 import type { VendorSendAuthorityService } from "../../organizations/vendor-send-authority.service";
@@ -252,6 +253,10 @@ describe("composeCreditLetter", () => {
       "price_variance",
       "never_ordered",
       "other",
+      "never_arrived",
+      "wrong_item",
+      "broken",
+      "temperature",
       "unknown_code",
     ]) {
       const l = composeCreditLetter({ ...facts, reason });
@@ -266,6 +271,29 @@ describe("composeCreditLetter", () => {
     expect(composeCreditLetter({ ...facts, reason: "damaged" }).category).toBe(
       "delivery_dispute",
     );
+  });
+
+  it("tells the vendor the door's own reason, in the words the pages use (W54 / F-158)", () => {
+    // A wrong-item refusal used to reach the vendor as "arrived damaged".
+    const wrong = composeCreditLetter({ ...facts, reason: "wrong_item" });
+    expect(wrong.body).toContain(
+      "because part of the delivery was not what we ordered, and we refused it at the door.",
+    );
+    expect(wrong.body).not.toMatch(/damaged/);
+    expect(wrong.category).toBe("delivery_dispute");
+    expect(
+      composeCreditLetter({ ...facts, reason: "broken" }).body,
+    ).toContain("because part of the delivery arrived broken.");
+    expect(
+      composeCreditLetter({ ...facts, reason: "temperature" }).category,
+    ).toBe("delivery_dispute");
+    // An old `damaged` row says only what it knows.
+    expect(composeCreditLetter({ ...facts, reason: "damaged" }).body).toContain(
+      "because part of the delivery was refused or arrived broken at the door.",
+    );
+    // Every sentence comes from the one wording, none restated here.
+    for (const [code, w] of Object.entries(CREDIT_REASON_WORDING))
+      expect(CREDIT_REASON_SENTENCE[code]).toBe(w.sentence);
   });
 });
 
