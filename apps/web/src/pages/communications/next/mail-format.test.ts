@@ -321,30 +321,98 @@ describe('the mail status line', () => {
         whatsapp: { lastStoredAt: new Date(NOW - 1 * MIN).toISOString() },
         mudavymMail: { lastStoredAt: new Date(NOW - 4 * MIN).toISOString() },
       },
+      address: { configured: true, address: 'bodega@in.mudavym.com' },
     });
     expect(line(reader(), sm)).toEqual({ state: 'connected', words: 'Connected · last letter 4 min ago', tone: 'ink' });
-    expect(line(reader(), summary())).toMatchObject({ state: 'connected', words: 'Connected · no letter yet' });
   });
 
-  it('connected by the Mudavym address alone, with no mailbox', () => {
-    const sm = summary({ address: { configured: true, address: 'bodega@in.mudavym.com' } });
-    expect(line(reader({ granted: false }), sm)).toMatchObject({ state: 'connected', words: 'Connected · no letter yet' });
-    expect(line(null, sm, { readerFailed: true })).toMatchObject({ state: 'connected' });
+  // QA round 26, #977: an address row, or a mailbox read, is not mail arriving.
+  describe('connected only on evidence', () => {
+    const ADDR = { configured: true, address: 'bodega@in.mudavym.com' };
+    const inMailbox = (min: number) => ({
+      houseMailbox: { lastStoredAt: new Date(NOW - min * MIN).toISOString() },
+      whatsapp: { lastStoredAt: null },
+      mudavymMail: { lastStoredAt: null },
+    });
+
+    it('an address with nothing ever arrived is "Address made, no letter yet", never connected', () => {
+      expect(line(reader({ granted: false }), summary({ address: ADDR }))).toEqual({
+        state: 'unproven',
+        words: 'Address made, no letter yet',
+        tone: 'warn',
+      });
+    });
+
+    it('a failed mailbox read with an address is not connected, and keeps the old letter\'s time', () => {
+      const out = line(null, summary({ address: ADDR, doors: inMailbox(5) }), { readerFailed: true });
+      expect(out.state).toBe('unproven');
+      expect(out.words).toBe(
+        'Address made, no letter yet · the last letter came to your mailbox 5 min ago · whether your mailbox is read could not be checked',
+      );
+      expect(line(reader({ granted: 'unknown' }), summary({ address: ADDR, doors: inMailbox(5) })).state).toBe('unproven');
+    });
+
+    it('reading switched off with an address is not connected', () => {
+      const out = line(reader({ enabled: false }), summary({ address: ADDR, doors: inMailbox(5) }));
+      expect(out.state).toBe('unproven');
+      expect(out.words).toContain('reading your mailbox is switched off');
+      expect(out.words).not.toMatch(/^Connected/);
+    });
+
+    it('a mailbox read with no letter says reading, not connected', () => {
+      expect(line(reader(), summary())).toEqual({ state: 'reading', words: 'Reading your mailbox · no letter yet', tone: 'ink' });
+      expect(line(reader(), summary({ address: ADDR }))).toMatchObject({ state: 'reading' });
+    });
+
+    it('the arrived test letter is the evidence for the address', () => {
+      const test = { state: 'known' as const, arrivedAt: new Date(NOW - 2 * MIN).toISOString() };
+      expect(mailStatusLine(reader({ granted: false }), summary({ address: ADDR }), { readerFailed: false, summaryFailed: false, now: NOW, test })).toEqual({
+        state: 'connected',
+        words: 'Connected · the test letter arrived 2 min ago',
+        tone: 'ink',
+      });
+      // A failed mailbox read is still said beside it.
+      expect(mailStatusLine(null, summary({ address: ADDR }), { readerFailed: true, summaryFailed: false, now: NOW, test })).toEqual({
+        state: 'connected',
+        words: 'Connected · the test letter arrived 2 min ago · whether your mailbox is read could not be checked',
+        tone: 'warn',
+      });
+    });
+
+    it('a letter stored at the address is evidence too; the newest wins', () => {
+      const sm = summary({
+        address: ADDR,
+        doors: { houseMailbox: { lastStoredAt: null }, whatsapp: { lastStoredAt: null }, mudavymMail: { lastStoredAt: new Date(NOW - MIN).toISOString() } },
+      });
+      const test = { state: 'known' as const, arrivedAt: new Date(NOW - 30 * MIN).toISOString() };
+      expect(mailStatusLine(reader({ granted: false }), sm, { readerFailed: false, summaryFailed: false, now: NOW, test }).words).toBe(
+        'Connected · last letter 1 min ago',
+      );
+    });
+
+    it('a test letter not yet read keeps the line checking; a failed one says "stored"', () => {
+      const sm = summary({ address: ADDR });
+      const base = { readerFailed: false, summaryFailed: false, now: NOW };
+      expect(mailStatusLine(reader({ granted: false }), sm, { ...base, test: { state: 'checking' } }).state).toBe('checking');
+      expect(mailStatusLine(reader({ granted: false }), sm, { ...base, test: { state: 'failed' } }).words).toBe(
+        'Address made, no letter stored yet',
+      );
+    });
   });
 
-  it('connected but behind says when the mailbox was last read, in warn', () => {
+  it('reading but behind says when the mailbox was last read, in warn', () => {
     const r = reader({ lastReadAt: new Date(NOW - 180 * MIN).toISOString() });
     expect(line(r, summary())).toEqual({
-      state: 'connected',
-      words: 'Connected · no letter yet · your mailbox was last read 3 h ago',
+      state: 'reading',
+      words: 'Reading your mailbox · no letter yet · your mailbox was last read 3 h ago',
       tone: 'warn',
     });
   });
 
   it('a failed summary is said, never "no letter yet"', () => {
     expect(line(reader(), null, { summaryFailed: true })).toMatchObject({
-      state: 'connected',
-      words: 'Connected · when the last letter came could not be read',
+      state: 'reading',
+      words: 'Reading your mailbox · when the last letter came could not be read',
     });
   });
 

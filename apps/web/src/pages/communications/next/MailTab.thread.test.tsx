@@ -257,7 +257,13 @@ describe('the intake sheet', () => {
     }
     // The house mailbox has no recorded read in this fixture, so it cannot tell either.
     expect(screen.getByTestId('door-house-mailbox')).toHaveAttribute('data-state', 'cannot_tell');
-    expect(screen.getByTestId('mail-status')).toHaveTextContent('Connected · last letter 1 h ago');
+    // QA round 26, #977: an address and an unread mailbox prove nothing, so
+    // the line is not "Connected"; it keeps the old letter's time. The setup
+    // read is not served here, so whether a test letter came is not known:
+    // "no letter stored yet".
+    expect(screen.getByTestId('mail-status')).toHaveTextContent(
+      'Address made, no letter stored yet · the last letter came to your mailbox 1 h ago · no read of your mailbox is recorded yet',
+    );
     expect(screen.getByTestId('held-at-door')).toHaveTextContent(/^Letters held before reaching the house: — not recorded yet\.$/);
     expect(screen.getByTestId('sender-address')).toHaveTextContent('Letters leave from siparis@mail.mudavym.com.');
   });

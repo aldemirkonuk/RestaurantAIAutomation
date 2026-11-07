@@ -39,8 +39,10 @@ import {
   todayLine,
   type MailboxReader,
   type MailPersonRow,
+  type TestArrival,
 } from './mail-format';
 import { useMailPeople, useMailSender, useMailSummary, useMailThreads } from './useMailData';
+import { useMailSetup } from './useMailSetup';
 
 const QUIET = { fontSize: 11.5, color: 'var(--ink-4, #665D50)' } as const;
 const LINK_BUTTON = {
@@ -341,7 +343,17 @@ export function MailTab({
   const reader: MailboxReader | null = senderQ.data?.reader ?? null;
   // A reply with no reader is as unread as a failed one (QA S5b).
   const readerFailed = senderQ.isError || (senderQ.data !== undefined && !senderQ.data.reader);
-  const status = mailStatusLine(reader, summary, { readerFailed, summaryFailed: summaryQ.isError, now });
+  // The test letter is the one proof that the Mudavym address works (QA
+  // round 26, #977); the line reads it from the setup page's own read.
+  const setupQ = useMailSetup();
+  const test: TestArrival = setupQ.data
+    ? setupQ.data.testLetter.failed
+      ? { state: 'failed' }
+      : { state: 'known', arrivedAt: setupQ.data.testLetter.latest?.arrivedAt ?? null }
+    : setupQ.isError
+      ? { state: 'failed' }
+      : { state: 'checking' };
+  const status = mailStatusLine(reader, summary, { readerFailed, summaryFailed: summaryQ.isError, now, test });
   const withKey = params.get('with');
   const threadKey = params.get('thread');
   const setup = params.get('setup') === '1';
@@ -406,7 +418,7 @@ export function MailTab({
             </button>
           )}
         </p>
-        {!setup && (status.state === 'not_connected' || status.state === 'switched_off') && (
+        {!setup && (status.state === 'not_connected' || status.state === 'switched_off' || status.state === 'unproven') && (
           <button
             type="button"
             data-testid="status-setup"
