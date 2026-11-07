@@ -38,6 +38,35 @@ import { normalizeTaxId, type TaxIdentity } from "./tax-identity";
  * remembered pairings have been written underneath it.
  */
 
+/**
+ * The partial unique index on (restaurant_id, provider_id, doc_type,
+ * doc_number) WHERE doc_number IS NOT NULL AND status <> 'superseded'
+ * (baseline_from_production.sql). The quotes are part of the match: PostgreSQL
+ * quotes the name in a 23505's message, and an index whose name merely starts
+ * the same is another rule.
+ */
+export const SAME_NUMBER_INDEX = '"uq_pd_restaurant_provider_type_number"';
+
+/** True only for a 23505 on the number index, never another duplicate. */
+export function isSameNumberCollision(
+  error: { code?: string; message?: string } | null | undefined,
+): boolean {
+  return (
+    error?.code === "23505" &&
+    typeof error.message === "string" &&
+    error.message.includes(SAME_NUMBER_INDEX)
+  );
+}
+
+/**
+ * The sentence the document page shows after "rejected as duplicate:". It
+ * names the earlier paper by its number and its id, and says what was not
+ * done, in the house's words. No score, no likelihood (ADR 0104).
+ */
+export function duplicateReason(otherNumber: string, otherId: string): string {
+  return `this vendor's paper no. ${otherNumber} is already on file (document ${otherId}), so this paper was not filed under the vendor a second time.`;
+}
+
 export type VendorResolutionState =
   | "matched"
   | "created"
@@ -333,6 +362,19 @@ export class VendorResolutionService {
    * names none. A provider a caller supplied is a fact about the order, not a
    * reading of the paper, and D15 does not overwrite it; the disagreement is
    * recorded by `decide` instead.
+   *
+   * WHEN THE STAMP COLLIDES. Naming the vendor can make this paper the second
+   * live one with the same (house, vendor, type, number): the partial unique
+   * index `uq_pd_restaurant_provider_type_number` refuses that with a 23505.
+   * That refusal is a fact about the paper, not a database fault, so it is
+   * recorded as one: the document keeps no vendor, and its intake verdict
+   * becomes `duplicate` with a sentence naming the earlier paper (proposal-
+   * receipt §3, Phase 1A row 1.4). Any other 23505, and any other error, keeps
+   * returning the raw text. A failed read or write on the way returns a string
+   * too, never `undefined` (ADR 0067: absence is not health).
+   *
+   * Returns `undefined` on success, a string on failure — the contract
+   * document-intake.service.ts relies on.
    */
   async applyToDocument(
     restaurantId: string,
@@ -349,10 +391,84 @@ export class VendorResolutionService {
       .eq("restaurant_id", restaurantId)
       .is("provider_id", null);
     if (!error) return undefined;
+    if (isSameNumberCollision(error))
+      return this.recordSameNumberDuplicate(
+        restaurantId,
+        documentId,
+        r.providerId,
+      );
     this.logger.warn(
       `document ${documentId} resolved to provider ${r.providerId} but the document was not updated: ${error.message}`,
     );
     return error.message;
+  }
+
+  /**
+   * The stamp collided with an earlier paper. Find it, and say so on THIS
+   * document. Every step that cannot finish returns a sentence.
+   */
+  private async recordSameNumberDuplicate(
+    restaurantId: string,
+    documentId: string,
+    providerId: string,
+  ): Promise<string | undefined> {
+    const fail = (what: string): string => {
+      const msg = `document ${documentId} carries the same number as an earlier paper from provider ${providerId}, but ${what}`;
+      this.logger.warn(msg);
+      return msg;
+    };
+    const client = this.db.getClient();
+
+    const own = await client
+      .from("procurement_documents")
+      .select("doc_type, doc_number")
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (own.error)
+      return fail(`its own number could not be read: ${own.error.message}`);
+    const row = own.data as {
+      doc_type: string | null;
+      doc_number: string | null;
+    } | null;
+    if (!row || !row.doc_type || !row.doc_number)
+      return fail("its own type and number could not be read back");
+
+    const earlier = await client
+      .from("procurement_documents")
+      .select("id, doc_number")
+      .eq("restaurant_id", restaurantId)
+      .eq("provider_id", providerId)
+      .eq("doc_type", row.doc_type)
+      .eq("doc_number", row.doc_number)
+      .neq("status", "superseded")
+      .neq("id", documentId)
+      .limit(1);
+    if (earlier.error)
+      return fail(
+        `the earlier paper could not be read: ${earlier.error.message}`,
+      );
+    const other = ((earlier.data as
+      | { id: string; doc_number: string }[]
+      | null) ?? [])[0];
+    if (!other) return fail("the earlier paper was not found on a second read");
+
+    const { error } = await client
+      .from("procurement_documents")
+      .update({
+        intake_verdict: "duplicate",
+        intake_reason: duplicateReason(other.doc_number, other.id),
+      })
+      .eq("id", documentId)
+      .eq("restaurant_id", restaurantId);
+    if (error)
+      return fail(
+        `the duplicate verdict naming ${other.id} was not written: ${error.message}`,
+      );
+    this.logger.log(
+      `document ${documentId} set aside as a duplicate of ${other.id} (number ${other.doc_number}, provider ${providerId})`,
+    );
+    return undefined;
   }
 
   /** The latest answer for one document. A failed read says so (ADR 0067). */
