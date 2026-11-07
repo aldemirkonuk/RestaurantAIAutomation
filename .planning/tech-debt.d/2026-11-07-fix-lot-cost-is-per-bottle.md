@@ -16,6 +16,15 @@ QA round 7c B1 (`~/Projects/p4-scratch/sw-walk/qa-report/round7-end-to-end-seams
 
 QA round 10a (1), branch `fix/lot-cost-proposal-and-case-row`. `unit_price_proposed` posted raw as per bottle. Now it goes through `perBottleLotCost` with its line's `uom`, `pack_size` and price base; a refusal leaves the lot provisional by name. Claim `QA-R10A-PROPOSAL-AND-BOTTLE-ROW-PER-BOTTLE`. **Fork, the session's call:** a proposal is a counter to its line's printed price, so it is in that line's price base (documented on the DTO). Rejected: per bottle (silently 12x on a case line), refusing all proposals. A proposal on no line has no unit and is refused, no longer the one-item fallback.
 
+QA round 12b (D1, C), same branch. A proposal keyed to the door count, which prints no price, was read per bottle (240 a case booked 240 a bottle). It is now read in the base of the item's invoice line, or of the delivery's only invoice line when that line names no item; none, or several that settle different bases, and it is refused by name. A proposal on a bottle row whose total bore out its printed price was refused, because the proposal path dropped the total; `proposalPerBottle` now takes the base the line's own facts settle. Claim `QA-R10A-PROPOSAL-AND-BOTTLE-ROW-PER-BOTTLE`, restated. Forks, the session's call:
+
+1. A refused proposal still holds the lot provisional, and the countered invoice price is not booked in its place. Rejected: falling back to the invoice price (a price both sides set aside).
+2. A proposal stays in its line's price base (D2: 20 typed per bottle on a case line books 1.67). Rejected for now: a separate per-bottle field; no caller sends the price yet.
+
+## A case row read as bottles, with a total that agrees, books a case's price — OPEN — 2026-11-07
+
+QA round 12b K. `2 bottle @ 264, pack 12, total 528` is self-consistent, so the total check passes and 264 is booked a bottle. No fact on the line can tell it from two real bottles. **Closes when** the door count's bottles are compared with the invoice line's (24 counted against 2 invoiced), or the founder declines it.
+
 ## Lots already finalised at a printed price stay wrong until re-verified — OPEN — 2026-11-07
 
 Production was not queried and nothing was backfilled. Since QA round 9a (2) (below), a lot is only corrected when someone re-verifies its delivery. **A one-off correction for the existing lots needs the founder's word.** Candidates are invoice lines with `uom in ('case','pack','split_case')` or `price_base_qty > 1` whose revaluation reason has no basis suffix. Two ways to correct them: call `repairPrintedCost` once per VERIFIED delivery, or count and revalue each lot through `revalue_lot`. **Closes when** that correction is run, or declined on the record.

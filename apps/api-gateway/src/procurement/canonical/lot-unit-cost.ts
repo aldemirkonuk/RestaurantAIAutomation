@@ -21,11 +21,11 @@ import {
 /** The money and unit columns of one `procurement_document_lines` row. */
 export interface LotCostLine {
   unit_price: number | string | null | undefined;
-  uom: string | null | undefined;
-  pack_size: number | string | null | undefined;
-  price_base_qty: number | string | null | undefined;
-  price_base_uom: string | null | undefined;
-  /** For the line-total cross-check (QA 9a); absent means not checked. */
+  uom?: string | null;
+  pack_size?: number | string | null;
+  price_base_qty?: number | string | null;
+  price_base_uom?: string | null;
+  /** What the line counted and printed as its total: the cross-check (QA 9a) and a bare bottle price (QA 10a). */
   qty_bottles?: number | string | null;
   line_total?: number | string | null;
   /** The paper's own glyphs; `uom` / `priceBaseUom` keep a unit we could not map. */
@@ -34,7 +34,7 @@ export interface LotCostLine {
 
 /** `unitCost` is `perBottle` at the column's precision, and what is posted. */
 export type LotUnitCost =
-  | { ok: true; perBottle: number; unitCost: number; basis: string; printed?: number }
+  | { ok: true; perBottle: number; unitCost: number; basis: string; bottles: number; priced: string; per: string; printed?: number }
   | { ok: false; kind: "no_price" }
   | { ok: false; kind: "refused"; reason: string; printed?: number };
 
@@ -135,12 +135,7 @@ function resolve(line: LotCostLine, price: number): LotUnitCost {
     return { ok: false, kind: "refused", reason: `${price} for ${bottlesPriced} bottles is not a price per bottle` };
 
   const unitCost = toLotCostPrecision(perBottle);
-  if (!(unitCost > 0))
-    return {
-      ok: false,
-      kind: "refused",
-      reason: `a price per bottle of ${perBottle} rounds to ${unitCost.toFixed(2)}, and a lot is never booked at a cost of nothing`,
-    };
+  if (!(unitCost > 0)) return roundsToNothing(perBottle, unitCost);
 
   // QA 9a: a printed line total that contradicts the per-bottle cost means the
   // price's unit was misread (24 bottles @ 264 printed as 528). Refused, not
@@ -165,11 +160,48 @@ function resolve(line: LotCostLine, price: number): LotUnitCost {
     return refuse(`the invoice line counts ${words(uom)}s that come ${pack} to a case and prints ${price} for one, with no line total that settles it, so whether ${price} is a bottle's price or a case's is not known`);
 
   const priced = MULTIPLYING.has(baseUom) ? `${per} of ${pack}` : per;
-  const basis =
-    bottlesPriced === 1
-      ? `invoice price ${price} per ${priced}; booked as-is`
-      : `invoice price ${price} per ${priced} = ${perBottle.toFixed(4)} per ${baseUom === "keg" || baseUom === "liter" ? baseUom : "bottle"}`;
-  return { ok: true, perBottle, unitCost, basis };
+  const unit = baseUom === "keg" || baseUom === "liter" ? baseUom : "bottle";
+  return { ok: true, perBottle, unitCost, basis: basisOf(price, priced, bottlesPriced, perBottle, unit), bottles: bottlesPriced, priced, per: unit };
+}
+
+function roundsToNothing(perBottle: number, unitCost: number): LotUnitCost {
+  return {
+    ok: false,
+    kind: "refused",
+    reason: `a price per bottle of ${perBottle} rounds to ${unitCost.toFixed(2)}, and a lot is never booked at a cost of nothing`,
+  };
+}
+
+function basisOf(price: number, priced: string, bottles: number, perBottle: number, unit: string): string {
+  return bottles === 1
+    ? `invoice price ${price} per ${priced}; booked as-is`
+    : `invoice price ${price} per ${priced} = ${perBottle.toFixed(4)} per ${unit}`;
+}
+
+/**
+ * An accepted proposal's price per bottle (QA 10a (1), QA 12b C). A proposal
+ * counters `line`'s printed price, so it is in the base the line's OWN facts
+ * settle — printed base, pack, and the total that decides a bare bottle-row
+ * price. A line whose printed price is refused refuses the proposal with it;
+ * a line that prints no price is read on its unit columns alone.
+ */
+export function proposalPerBottle(proposed: unknown, line: LotCostLine): LotUnitCost {
+  const price = asNumber(proposed);
+  const cost = inLineBase(price, line);
+  // `printed`: an earlier build booked the proposal's RAW price; a re-verify spots it (10a (1)).
+  return price == null || price <= 0 ? cost : ({ ...cost, printed: toLotCostPrecision(price) } as LotUnitCost);
+}
+
+function inLineBase(price: number | null, line: LotCostLine): LotUnitCost {
+  if (price == null || price <= 0) return { ok: false, kind: "no_price" };
+  const printed = perBottleLotCost(line);
+  if (!printed.ok && printed.kind === "no_price")
+    return perBottleLotCost({ ...line, unit_price: price, qty_bottles: null, line_total: null });
+  if (!printed.ok) return printed;
+  const perBottle = four(price / printed.bottles);
+  const unitCost = toLotCostPrecision(perBottle);
+  if (!(unitCost > 0)) return roundsToNothing(perBottle, unitCost);
+  return { ...printed, perBottle, unitCost, basis: basisOf(price, printed.priced, printed.bottles, perBottle, printed.per) };
 }
 
 /** What `unit_cost numeric(10,2)` keeps, half away from zero: posting 11.8333
