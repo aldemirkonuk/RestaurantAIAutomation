@@ -1112,6 +1112,13 @@ export class DocumentsController {
       // included. Omitting a refusal would leave the caller unable to tell
       // `unresolved` from "resolution never ran".
       ...(result.vendor ? { vendor: result.vendor } : {}),
+      // Proposal-receipt §3 row 1.4: a paper whose number this vendor already
+      // has on file names the earlier paper, beside `duplicate: true`; a stamp
+      // that did not land says so. Never "vendor matched, duplicate false".
+      ...(result.duplicateOf ? { duplicateOf: result.duplicateOf } : {}),
+      ...(result.vendorStampError
+        ? { vendorStampError: result.vendorStampError }
+        : {}),
     };
   }
 
@@ -1557,6 +1564,10 @@ export class DocumentsController {
       revision: applied.revision,
       // ADR 0104 D15 — what resolving the vendor answered on this read.
       ...(applied.vendor ? { vendor: applied.vendor } : {}),
+      ...(applied.duplicateOf ? { duplicateOf: applied.duplicateOf } : {}),
+      ...(applied.vendorStampError
+        ? { vendorStampError: applied.vendorStampError }
+        : {}),
     };
   }
 

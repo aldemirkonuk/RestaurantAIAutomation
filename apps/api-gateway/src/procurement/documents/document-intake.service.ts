@@ -32,9 +32,43 @@ import {
   ReadResult,
 } from "../canonical/canonical-document.service";
 import {
+  DocumentStamp,
+  isSameNumberCollision,
+  duplicateReason,
   VendorResolution,
   VendorResolutionService,
 } from "../vendor-identity/vendor-resolution.service";
+
+/**
+ * The earlier paper a duplicate answer names (proposal-receipt §3, Phase 1A
+ * row 1.4; QA round 3 on PR #775). `reason` is the sentence written on the
+ * paper; `keptVerdict` is a stronger verdict the paper already carried, which
+ * a number collision did not replace.
+ */
+export interface DuplicateOf {
+  documentId: string;
+  docNumber: string;
+  reason: string;
+  keptVerdict?: string;
+}
+
+/** What the vendor stamp came to, in the shape the intake replies carry. */
+function stampAnswer(stamp: DocumentStamp | null): {
+  duplicateOf?: DuplicateOf;
+  vendorStampError?: string;
+} {
+  if (!stamp || stamp.kind === "stamped") return {};
+  if (stamp.kind === "failed") return { vendorStampError: stamp.error };
+  return {
+    duplicateOf: {
+      documentId: stamp.earlier.documentId,
+      docNumber: stamp.earlier.docNumber,
+      reason: stamp.reason,
+      ...(stamp.keptVerdict ? { keptVerdict: stamp.keptVerdict } : {}),
+    },
+    ...(stamp.recordError ? { vendorStampError: stamp.recordError } : {}),
+  };
+}
 
 /**
  * DocumentIntakeService — the single door every vendor document comes through.
@@ -82,8 +116,25 @@ export interface IntakeInput {
 export interface IntakeResult {
   documentId: string | null;
   parsed: ParsedDocument | null;
-  /** True when this exact content was already ingested. */
+  /**
+   * True when this exact content was already ingested — or when this paper's
+   * (vendor, type, number) is already on file, which `duplicateOf` then names.
+   */
   duplicate: boolean;
+  /**
+   * The earlier live paper holding this paper's vendor, type and number. Set
+   * when the vendor stamp collided (`documentId` is then THIS paper, stored
+   * with no vendor and a `duplicate` verdict) and when the insert itself
+   * collided because the caller named the vendor (`documentId` is then the
+   * earlier paper, and no second row was written).
+   */
+  duplicateOf?: DuplicateOf;
+  /**
+   * The vendor was resolved and could NOT be written on the paper, or a
+   * duplicate was found and could not be recorded on it. The document is on
+   * the record; this says what is missing from it (ADR 0067).
+   */
+  vendorStampError?: string;
   error?: string;
   /**
    * The original bytes arrived and could NOT be stored (ADR 0067).
@@ -122,6 +173,10 @@ export interface ExternalExtractionResult {
   revision: ReadResult<{ revision: number; id: string }>;
   /** ADR 0104 D15 — what resolving the vendor answered on this read. */
   vendor?: VendorResolution;
+  /** As on `IntakeResult`: the paper this one's number collided with. */
+  duplicateOf?: DuplicateOf;
+  /** As on `IntakeResult`: the vendor stamp, or its record, did not land. */
+  vendorStampError?: string;
 }
 
 @Injectable()
@@ -511,12 +566,23 @@ export class DocumentIntakeService {
       const parsedWithStorage = stored.failure
         ? { ...parsed, warnings: [...parsed.warnings, stored.failure] }
         : parsed;
-      const documentId = await this.persist(
+      const persisted = await this.persist(
         resolvedInput,
         sha256,
         bytes,
         parsedWithStorage,
       );
+      // The caller named the vendor and the number is already on file under
+      // it: no second row exists, so the answer is the earlier paper.
+      if (persisted.duplicateOf)
+        return {
+          documentId: persisted.documentId,
+          parsed: parsedWithStorage,
+          duplicate: true,
+          duplicateOf: persisted.duplicateOf,
+          ...(stored.failure ? { storageError: stored.failure } : {}),
+        };
+      const documentId = persisted.documentId;
 
       /**
        * ADR 0104 D15 — the vendor, from the seller party the document PRINTED.
@@ -528,20 +594,22 @@ export class DocumentIntakeService {
        * resolve is still a document, and D15's answer for that case is
        * `unresolved` with a sentence, never a discarded upload.
        */
-      const vendor = documentId
+      const resolved = documentId
         ? await this.resolveVendorFor(
             documentId,
             resolvedInput,
             parsedWithStorage,
           )
         : null;
+      const stamped = stampAnswer(resolved?.stamp ?? null);
 
       return {
         documentId,
         parsed: parsedWithStorage,
-        duplicate: false,
+        duplicate: Boolean(stamped.duplicateOf),
         ...(stored.failure ? { storageError: stored.failure } : {}),
-        ...(vendor ? { vendor } : {}),
+        ...(resolved ? { vendor: resolved.vendor } : {}),
+        ...stamped,
       };
     } catch (err: any) {
       this.logger.warn(`ingest failed: ${err?.message}`);
@@ -987,7 +1055,7 @@ export class DocumentIntakeService {
     sha256: string,
     bytes: Buffer,
     parsed: ParsedDocument,
-  ): Promise<string | null> {
+  ): Promise<{ documentId: string | null; duplicateOf?: DuplicateOf }> {
     const needsReview = this.needsReview(parsed);
 
     /**
@@ -1136,6 +1204,12 @@ export class DocumentIntakeService {
     }
 
     if (error) {
+      // The caller named the vendor, and this (house, vendor, type, number)
+      // is already on file: `uq_pd_restaurant_provider_type_number` refused
+      // the row. The answer is the earlier paper, said as a duplicate — never
+      // a null id under a 200 (QA round 3 on PR #775, item 2).
+      if (isSameNumberCollision(error) && input.providerId && parsed.docNumber)
+        return this.earlierSameNumberPaper(input, parsed, input.providerId);
       // A unique violation means another path won the race on the same bytes.
       // That is the dedupe working, not a failure.
       if (error.code === "23505") {
@@ -1146,7 +1220,7 @@ export class DocumentIntakeService {
           .eq("restaurant_id", input.restaurantId)
           .eq("sha256", sha256)
           .maybeSingle();
-        return dup.data?.id ?? null;
+        return { documentId: dup.data?.id ?? null };
       }
       throw new Error(error.message);
     }
@@ -1179,7 +1253,43 @@ export class DocumentIntakeService {
       parsed,
     );
 
-    return documentId;
+    return { documentId };
+  }
+
+  /**
+   * The insert collided on the number index. Name the paper that holds the
+   * number; a look-up that cannot is a THROWN sentence, so `ingest` answers
+   * with an error instead of a document id it does not have.
+   */
+  private async earlierSameNumberPaper(
+    input: IntakeInput,
+    parsed: ParsedDocument,
+    providerId: string,
+  ): Promise<{ documentId: string; duplicateOf: DuplicateOf }> {
+    const said = `this vendor's paper no. ${parsed.docNumber} is already on file`;
+    const found = await this.vendorResolution.findSameNumberPaper(
+      input.restaurantId,
+      providerId,
+      parsed.docType,
+      parsed.docNumber as string,
+      null,
+    );
+    if (!found.ok)
+      throw new Error(
+        `${said}, but the earlier paper could not be read: ${found.error}`,
+      );
+    if (!found.paper)
+      throw new Error(
+        `${said} by the database's own rule, but no earlier paper holds it on a second read`,
+      );
+    return {
+      documentId: found.paper.documentId,
+      duplicateOf: {
+        documentId: found.paper.documentId,
+        docNumber: found.paper.docNumber,
+        reason: duplicateReason(found.paper.docNumber, found.paper.documentId),
+      },
+    };
   }
 
   /**
@@ -1208,7 +1318,7 @@ export class DocumentIntakeService {
     input: { restaurantId: string; providerId?: string | null },
     parsed: ParsedDocument,
     actorUserId: string | null = null,
-  ): Promise<VendorResolution | null> {
+  ): Promise<{ vendor: VendorResolution; stamp: DocumentStamp | null }> {
     try {
       const resolution = await this.vendorResolution.resolveVendor({
         restaurantId: input.restaurantId,
@@ -1230,12 +1340,12 @@ export class DocumentIntakeService {
         existingProviderId: input.providerId ?? null,
         actorUserId,
       });
-      await this.vendorResolution.applyToDocument(
+      const stamp = await this.vendorResolution.applyToDocument(
         input.restaurantId,
         documentId,
         resolution,
       );
-      return resolution;
+      return { vendor: resolution, stamp };
     } catch (err: any) {
       // A THROW here is our own failure, not the document's, so it is reported
       // as `unavailable` rather than swallowed — `unresolved` would blame the
@@ -1244,11 +1354,14 @@ export class DocumentIntakeService {
         `vendor resolution threw for document ${documentId}: ${err?.message}`,
       );
       return {
-        state: "unavailable",
-        providerId: null,
-        source: null,
-        identity: null,
-        reason: `The vendor could not be resolved because the resolution itself failed: ${err?.message ?? "unknown error"}`,
+        vendor: {
+          state: "unavailable",
+          providerId: null,
+          source: null,
+          identity: null,
+          reason: `The vendor could not be resolved because the resolution itself failed: ${err?.message ?? "unknown error"}`,
+        },
+        stamp: null,
       };
     }
   }
@@ -1581,7 +1694,7 @@ export class DocumentIntakeService {
     // seller party at all, so it is the door that most often resolves one. It
     // runs BEFORE the revision is appended (step 7), so the canonical object
     // that revision records already names the vendor it resolved.
-    const vendor = await this.resolveVendorFor(
+    const { vendor, stamp } = await this.resolveVendorFor(
       documentId,
       { restaurantId },
       parsed,
@@ -1617,6 +1730,7 @@ export class DocumentIntakeService {
     return {
       warnings: parsed.warnings,
       ...(vendor ? { vendor } : {}),
+      ...stampAnswer(stamp),
       tieOut: {
         computedLinesTotal: parsed.computedLinesTotal,
         tieOutDelta: parsed.tieOutDelta,

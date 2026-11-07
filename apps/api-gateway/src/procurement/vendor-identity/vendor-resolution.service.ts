@@ -67,6 +67,54 @@ export function duplicateReason(otherNumber: string, otherId: string): string {
   return `this vendor's paper no. ${otherNumber} is already on file (document ${otherId}), so this paper was not filed under the vendor a second time.`;
 }
 
+/** The earlier live paper a number collision names. */
+export interface EarlierPaper {
+  documentId: string;
+  docNumber: string;
+}
+
+/**
+ * What stamping the vendor onto a document came to (`applyToDocument`).
+ *
+ * - `stamped`: written, or there was nothing to write.
+ * - `duplicate`: the number index refused the stamp; `earlier` is the paper
+ *   that already holds the number. `keptVerdict` is a stronger verdict the
+ *   paper already carried and kept; `recordError` says the verdict or reason
+ *   was NOT written on the paper.
+ * - `failed`: the stamp did not land, and `error` says why.
+ */
+export type DocumentStamp =
+  | { kind: "stamped" }
+  | {
+      kind: "duplicate";
+      earlier: EarlierPaper;
+      reason: string;
+      keptVerdict?: string;
+      recordError?: string;
+    }
+  | { kind: "failed"; error: string };
+
+/**
+ * The verdicts a number collision may replace (see
+ * `recordSameNumberDuplicate`). Anything else already on the paper is the
+ * stronger fact and stays.
+ */
+export const DUPLICATE_MAY_REPLACE: ReadonlyArray<string | null> = [
+  null,
+  "ok",
+  "duplicate",
+];
+
+/** A kept reason with the duplicate sentence added once, never twice. */
+export function withDuplicateNoted(
+  kept: string | null,
+  sentence: string,
+): string {
+  const note = `Also, ${sentence}`;
+  if (!kept) return note;
+  return kept.includes(sentence) ? kept : `${kept} ${note}`;
+}
+
 export type VendorResolutionState =
   | "matched"
   | "created"
@@ -369,20 +417,21 @@ export class VendorResolutionService {
    * That refusal is a fact about the paper, not a database fault, so it is
    * recorded as one: the document keeps no vendor, and its intake verdict
    * becomes `duplicate` with a sentence naming the earlier paper (proposal-
-   * receipt §3, Phase 1A row 1.4). Any other 23505, and any other error, keeps
-   * returning the raw text. A failed read or write on the way returns a string
-   * too, never `undefined` (ADR 0067: absence is not health).
+   * receipt §3, Phase 1A row 1.4). Any other 23505, and any other error, is
+   * `failed` with the raw text. A failed read on the way is `failed` too, never
+   * `stamped` (ADR 0067: absence is not health).
    *
-   * Returns `undefined` on success, a string on failure — the contract
-   * document-intake.service.ts relies on.
+   * Returns what the stamp came to, so the intake door can say it in its reply
+   * (a duplicate names the earlier paper; a failure carries its sentence).
    */
   async applyToDocument(
     restaurantId: string,
     documentId: string,
     r: VendorResolution,
-  ): Promise<string | undefined> {
-    if (r.state !== "matched" && r.state !== "created") return undefined;
-    if (!r.providerId) return undefined;
+  ): Promise<DocumentStamp> {
+    if (r.state !== "matched" && r.state !== "created")
+      return { kind: "stamped" };
+    if (!r.providerId) return { kind: "stamped" };
     const { error } = await this.db
       .getClient()
       .from("procurement_documents")
@@ -390,7 +439,7 @@ export class VendorResolutionService {
       .eq("id", documentId)
       .eq("restaurant_id", restaurantId)
       .is("provider_id", null);
-    if (!error) return undefined;
+    if (!error) return { kind: "stamped" };
     if (isSameNumberCollision(error))
       return this.recordSameNumberDuplicate(
         restaurantId,
@@ -400,28 +449,72 @@ export class VendorResolutionService {
     this.logger.warn(
       `document ${documentId} resolved to provider ${r.providerId} but the document was not updated: ${error.message}`,
     );
-    return error.message;
+    return { kind: "failed", error: error.message };
+  }
+
+  /**
+   * The live paper that already holds (house, vendor, type, number) — the one
+   * `uq_pd_restaurant_provider_type_number` protects. One look-up for both
+   * places a number collision is met: the stamp above, and the intake insert
+   * that named its vendor up front (document-intake.service.ts `persist`).
+   * `excludeDocumentId` is the colliding paper itself when it has a row.
+   */
+  async findSameNumberPaper(
+    restaurantId: string,
+    providerId: string,
+    docType: string,
+    docNumber: string,
+    excludeDocumentId: string | null,
+  ): Promise<
+    { ok: true; paper: EarlierPaper | null } | { ok: false; error: string }
+  > {
+    let q = this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id, doc_number")
+      .eq("restaurant_id", restaurantId)
+      .eq("provider_id", providerId)
+      .eq("doc_type", docType)
+      .eq("doc_number", docNumber)
+      .neq("status", "superseded");
+    if (excludeDocumentId) q = q.neq("id", excludeDocumentId);
+    const { data, error } = await q.limit(1);
+    if (error) return { ok: false, error: error.message };
+    const row = ((data as { id: string; doc_number: string }[] | null) ??
+      [])[0];
+    return {
+      ok: true,
+      paper: row ? { documentId: row.id, docNumber: row.doc_number } : null,
+    };
   }
 
   /**
    * The stamp collided with an earlier paper. Find it, and say so on THIS
-   * document. Every step that cannot finish returns a sentence.
+   * document. A step that cannot finish says so; nothing reports `stamped`.
+   *
+   * WHICH VERDICT WINS (session's call under the 2026-11-07 /goal, QA round 3
+   * item 3). `duplicate` replaces only no verdict, `ok`, or an earlier
+   * `duplicate`. A page verdict already on the paper — `blank_page`,
+   * `low_resolution`, `unreadable`, `bundle` — stays: it says the page, and so
+   * the number read off it, may not be what it seems, and a collision on a
+   * misread number is the weaker fact. The duplicate sentence is then added to
+   * the kept reason, so the record still names the earlier paper.
    */
   private async recordSameNumberDuplicate(
     restaurantId: string,
     documentId: string,
     providerId: string,
-  ): Promise<string | undefined> {
-    const fail = (what: string): string => {
+  ): Promise<DocumentStamp> {
+    const fail = (what: string): DocumentStamp => {
       const msg = `document ${documentId} carries the same number as an earlier paper from provider ${providerId}, but ${what}`;
       this.logger.warn(msg);
-      return msg;
+      return { kind: "failed", error: msg };
     };
     const client = this.db.getClient();
 
     const own = await client
       .from("procurement_documents")
-      .select("doc_type, doc_number")
+      .select("doc_type, doc_number, intake_verdict, intake_reason")
       .eq("id", documentId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -430,45 +523,51 @@ export class VendorResolutionService {
     const row = own.data as {
       doc_type: string | null;
       doc_number: string | null;
+      intake_verdict: string | null;
+      intake_reason: string | null;
     } | null;
     if (!row || !row.doc_type || !row.doc_number)
       return fail("its own type and number could not be read back");
 
-    const earlier = await client
-      .from("procurement_documents")
-      .select("id, doc_number")
-      .eq("restaurant_id", restaurantId)
-      .eq("provider_id", providerId)
-      .eq("doc_type", row.doc_type)
-      .eq("doc_number", row.doc_number)
-      .neq("status", "superseded")
-      .neq("id", documentId)
-      .limit(1);
-    if (earlier.error)
-      return fail(
-        `the earlier paper could not be read: ${earlier.error.message}`,
-      );
-    const other = ((earlier.data as
-      | { id: string; doc_number: string }[]
-      | null) ?? [])[0];
+    const earlier = await this.findSameNumberPaper(
+      restaurantId,
+      providerId,
+      row.doc_type,
+      row.doc_number,
+      documentId,
+    );
+    if (!earlier.ok)
+      return fail(`the earlier paper could not be read: ${earlier.error}`);
+    const other = earlier.paper;
     if (!other) return fail("the earlier paper was not found on a second read");
 
+    const reason = duplicateReason(other.docNumber, other.documentId);
+    const priorVerdict = row.intake_verdict ?? null;
+    const keep = !DUPLICATE_MAY_REPLACE.includes(priorVerdict);
     const { error } = await client
       .from("procurement_documents")
-      .update({
-        intake_verdict: "duplicate",
-        intake_reason: duplicateReason(other.doc_number, other.id),
-      })
+      .update(
+        keep
+          ? { intake_reason: withDuplicateNoted(row.intake_reason, reason) }
+          : { intake_verdict: "duplicate", intake_reason: reason },
+      )
       .eq("id", documentId)
       .eq("restaurant_id", restaurantId);
-    if (error)
-      return fail(
-        `the duplicate verdict naming ${other.id} was not written: ${error.message}`,
-      );
+    const answer: DocumentStamp = {
+      kind: "duplicate",
+      earlier: other,
+      reason,
+      ...(keep && priorVerdict ? { keptVerdict: priorVerdict } : {}),
+    };
+    if (error) {
+      const recordError = `document ${documentId} carries the same number as ${other.documentId}, but that was not written on it: ${error.message}`;
+      this.logger.warn(recordError);
+      return { ...answer, recordError };
+    }
     this.logger.log(
-      `document ${documentId} set aside as a duplicate of ${other.id} (number ${other.doc_number}, provider ${providerId})`,
+      `document ${documentId} set aside as a duplicate of ${other.documentId} (number ${other.docNumber}, provider ${providerId})${keep ? `; its ${priorVerdict} verdict was kept` : ""}`,
     );
-    return undefined;
+    return answer;
   }
 
   /** The latest answer for one document. A failed read says so (ADR 0067). */

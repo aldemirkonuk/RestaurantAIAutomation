@@ -401,7 +401,11 @@ describe("VendorResolutionService (ADR 0104 D15)", () => {
         { data: null, error: null },
       ];
       const out = await service.applyToDocument(RESTAURANT, DOCUMENT, MATCHED);
-      expect(out).toBeUndefined();
+      expect(out).toEqual({
+        kind: "duplicate",
+        earlier: { documentId: EARLIER, docNumber: "SYN-0042" },
+        reason: expect.stringContaining(EARLIER),
+      });
       const u = docUpdates();
       expect(u).toHaveLength(2);
       expect(u[0].payload).toEqual({ provider_id: "prov-A" });
@@ -445,8 +449,10 @@ describe("VendorResolutionService (ADR 0104 D15)", () => {
         { data: null, error: { message: "boom" } },
       ];
       const out = await service.applyToDocument(RESTAURANT, DOCUMENT, MATCHED);
-      expect(typeof out).toBe("string");
-      expect(out).toMatch(/earlier paper could not be read: boom/);
+      expect(out.kind).toBe("failed");
+      expect(out.kind === "failed" && out.error).toMatch(
+        /earlier paper could not be read: boom/,
+      );
       expect(docUpdates()).toHaveLength(1);
     });
 
@@ -457,7 +463,7 @@ describe("VendorResolutionService (ADR 0104 D15)", () => {
         { data: [], error: null },
       ];
       const out = await service.applyToDocument(RESTAURANT, DOCUMENT, MATCHED);
-      expect(out).toMatch(/not found/);
+      expect(out.kind === "failed" && out.error).toMatch(/not found/);
       expect(docUpdates()).toHaveLength(1);
     });
 
@@ -469,8 +475,79 @@ describe("VendorResolutionService (ADR 0104 D15)", () => {
         { data: null, error: { message: "denied" } },
       ];
       const out = await service.applyToDocument(RESTAURANT, DOCUMENT, MATCHED);
-      expect(out).toMatch(/verdict naming .* was not written: denied/);
+      // Still a duplicate — the earlier paper is known — and it says the
+      // record of it did not land, never success.
+      expect(out.kind).toBe("duplicate");
+      expect(out.kind === "duplicate" && out.earlier.documentId).toBe(EARLIER);
+      expect(out.kind === "duplicate" && out.recordError).toMatch(
+        /was not written on it: denied/,
+      );
     });
+
+    // QA round 3 item 3: a page verdict already on the paper is the stronger
+    // fact and stays; the duplicate sentence is added to its reason.
+    it.each(["blank_page", "low_resolution", "unreadable", "bundle"])(
+      "keeps an earlier %s verdict and adds the duplicate to its reason",
+      async (prior) => {
+        answers.procurement_documents = [
+          numberCollision,
+          {
+            data: {
+              doc_type: "invoice",
+              doc_number: "SYN-0042",
+              intake_verdict: prior,
+              intake_reason: "page 2 of 3 is blank.",
+            },
+            error: null,
+          },
+          { data: [{ id: EARLIER, doc_number: "SYN-0042" }], error: null },
+          { data: null, error: null },
+        ];
+        const out = await service.applyToDocument(
+          RESTAURANT,
+          DOCUMENT,
+          MATCHED,
+        );
+        expect(out.kind === "duplicate" && out.keptVerdict).toBe(prior);
+        const u = docUpdates();
+        expect(u).toHaveLength(2);
+        expect(u[1].payload).not.toHaveProperty("intake_verdict");
+        expect(u[1].payload).not.toHaveProperty("provider_id");
+        expect(u[1].payload.intake_reason).toMatch(
+          /^page 2 of 3 is blank\. Also, this vendor's paper no\. SYN-0042/,
+        );
+        expect(u[1].payload.intake_reason).toContain(EARLIER);
+      },
+    );
+
+    it.each([null, "ok", "duplicate"])(
+      "replaces a %s verdict with duplicate",
+      async (prior) => {
+        answers.procurement_documents = [
+          numberCollision,
+          {
+            data: {
+              doc_type: "invoice",
+              doc_number: "SYN-0042",
+              intake_verdict: prior,
+              intake_reason: prior ? "old" : null,
+            },
+            error: null,
+          },
+          { data: [{ id: EARLIER, doc_number: "SYN-0042" }], error: null },
+          { data: null, error: null },
+        ];
+        const out = await service.applyToDocument(
+          RESTAURANT,
+          DOCUMENT,
+          MATCHED,
+        );
+        expect(out.kind === "duplicate" && out.keptVerdict).toBeUndefined();
+        const u = docUpdates();
+        expect(u[1].payload.intake_verdict).toBe("duplicate");
+        expect(u[1].payload.intake_reason).not.toContain("old");
+      },
+    );
 
     it("a 23505 on any other constraint keeps returning the raw text", async () => {
       const other =
@@ -479,7 +556,7 @@ describe("VendorResolutionService (ADR 0104 D15)", () => {
         { data: null, error: { code: "23505", message: other } },
       ];
       const out = await service.applyToDocument(RESTAURANT, DOCUMENT, MATCHED);
-      expect(out).toBe(other);
+      expect(out).toEqual({ kind: "failed", error: other });
       expect(docUpdates()).toHaveLength(1);
     });
   });
