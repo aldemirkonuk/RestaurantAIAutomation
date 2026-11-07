@@ -427,24 +427,79 @@ CREATE INDEX IF NOT EXISTS idx_floor_nudge_sends_house_time
 -- 11. Lock every new table down in the file that creates it (E5)
 -- ---------------------------------------------------------------------------
 
-DO $$
-DECLARE t text;
-BEGIN
-  FOREACH t IN ARRAY ARRAY[
-    'floor_settings', 'floor_sections', 'floor_section_tables', 'floor_assignments',
-    'floor_seatings', 'floor_visits', 'floor_events', 'floor_table_merges',
-    'floor_table_merge_members', 'floor_punches', 'floor_out_tonight',
-    'pos_server_links', 'floor_nudge_ticks', 'floor_nudge_sends'
-  ] LOOP
-    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
-    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', t || '_service_role', t);
-    EXECUTE format(
-      'CREATE POLICY %I ON public.%I FOR ALL TO service_role USING (true) WITH CHECK (true)',
-      t || '_service_role', t
-    );
-    EXECUTE format('REVOKE ALL ON public.%I FROM anon, authenticated', t);
-  END LOOP;
-END $$;
+-- Written out per table, not as a loop: the lockdown guard reads static SQL
+-- (scripts/check_new_tables_are_locked_down.py), and a FOREACH over format()
+-- is a dynamic block it cannot credit.
+
+ALTER TABLE public.floor_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_settings_service_role ON public.floor_settings;
+CREATE POLICY floor_settings_service_role ON public.floor_settings FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_settings FROM anon, authenticated;
+
+ALTER TABLE public.floor_sections ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_sections_service_role ON public.floor_sections;
+CREATE POLICY floor_sections_service_role ON public.floor_sections FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_sections FROM anon, authenticated;
+
+ALTER TABLE public.floor_section_tables ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_section_tables_service_role ON public.floor_section_tables;
+CREATE POLICY floor_section_tables_service_role ON public.floor_section_tables FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_section_tables FROM anon, authenticated;
+
+ALTER TABLE public.floor_assignments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_assignments_service_role ON public.floor_assignments;
+CREATE POLICY floor_assignments_service_role ON public.floor_assignments FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_assignments FROM anon, authenticated;
+
+ALTER TABLE public.floor_seatings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_seatings_service_role ON public.floor_seatings;
+CREATE POLICY floor_seatings_service_role ON public.floor_seatings FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_seatings FROM anon, authenticated;
+
+ALTER TABLE public.floor_visits ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_visits_service_role ON public.floor_visits;
+CREATE POLICY floor_visits_service_role ON public.floor_visits FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_visits FROM anon, authenticated;
+
+ALTER TABLE public.floor_events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_events_service_role ON public.floor_events;
+CREATE POLICY floor_events_service_role ON public.floor_events FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_events FROM anon, authenticated;
+
+ALTER TABLE public.floor_table_merges ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_table_merges_service_role ON public.floor_table_merges;
+CREATE POLICY floor_table_merges_service_role ON public.floor_table_merges FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_table_merges FROM anon, authenticated;
+
+ALTER TABLE public.floor_table_merge_members ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_table_merge_members_service_role ON public.floor_table_merge_members;
+CREATE POLICY floor_table_merge_members_service_role ON public.floor_table_merge_members FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_table_merge_members FROM anon, authenticated;
+
+ALTER TABLE public.floor_punches ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_punches_service_role ON public.floor_punches;
+CREATE POLICY floor_punches_service_role ON public.floor_punches FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_punches FROM anon, authenticated;
+
+ALTER TABLE public.floor_out_tonight ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_out_tonight_service_role ON public.floor_out_tonight;
+CREATE POLICY floor_out_tonight_service_role ON public.floor_out_tonight FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_out_tonight FROM anon, authenticated;
+
+ALTER TABLE public.pos_server_links ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS pos_server_links_service_role ON public.pos_server_links;
+CREATE POLICY pos_server_links_service_role ON public.pos_server_links FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.pos_server_links FROM anon, authenticated;
+
+ALTER TABLE public.floor_nudge_ticks ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_nudge_ticks_service_role ON public.floor_nudge_ticks;
+CREATE POLICY floor_nudge_ticks_service_role ON public.floor_nudge_ticks FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_nudge_ticks FROM anon, authenticated;
+
+ALTER TABLE public.floor_nudge_sends ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS floor_nudge_sends_service_role ON public.floor_nudge_sends;
+CREATE POLICY floor_nudge_sends_service_role ON public.floor_nudge_sends FOR ALL TO service_role USING (true) WITH CHECK (true);
+REVOKE ALL ON public.floor_nudge_sends FROM anon, authenticated;
 
 COMMENT ON TABLE public.floor_seatings IS
   'One party at one table (ADR 0345). Paid never ends it; only a person''s Leave does (ADR 0353). party_size NULL when nobody said (E9). RLS on, service_role only.';
