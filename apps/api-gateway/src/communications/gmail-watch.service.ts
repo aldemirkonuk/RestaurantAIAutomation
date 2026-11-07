@@ -28,6 +28,8 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
   private renewalTimer: NodeJS.Timeout | null = null;
   private readonly HISTORY_ID_KEY = "gmail:watch:historyId";
   private readonly WATCH_EXPIRY_KEY = "gmail:watch:expiration";
+  /** Most history.list pages read per push before giving up without moving the cursor. */
+  static readonly HISTORY_PAGE_LIMIT = 100;
 
   constructor(
     private readonly configService: ConfigService,
@@ -180,7 +182,14 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Fetch new messages since the last historyId using gmail.users.history.list()
+   * Fetch new messages since the last historyId using gmail.users.history.list().
+   *
+   * history.list is paged: every page is read (following nextPageToken) before
+   * the stored cursor moves, so no letter past page one is skipped. The cursor
+   * advances only after the last page, to that page's historyId. If the page
+   * bound is hit the cursor stays put and the next push re-reads; the bridge
+   * dedupes on gmail_message_id. A message deleted between the push and the
+   * fetch (404 on messages.get) is skipped without losing the rest.
    */
   async fetchNewMessages(
     sinceHistoryId: string,
@@ -188,33 +197,72 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
     if (!this.isConfigured) return [];
 
     try {
-      const historyResponse = await this.gmail.users.history.list({
-        userId: "me",
-        startHistoryId: sinceHistoryId,
-        historyTypes: ["messageAdded"],
-        labelId: "INBOX",
-      });
+      const ids: string[] = [];
+      const seen = new Set<string>();
+      let pageToken: string | undefined;
+      let latestHistoryId: string | undefined;
+      let pagesRead = 0;
+      let readEveryPage = false;
 
-      const history = historyResponse.data.history || [];
-      const messages: gmail_v1.Schema$Message[] = [];
+      while (pagesRead < GmailWatchService.HISTORY_PAGE_LIMIT) {
+        const historyResponse = await this.gmail.users.history.list({
+          userId: "me",
+          startHistoryId: sinceHistoryId,
+          historyTypes: ["messageAdded"],
+          labelId: "INBOX",
+          ...(pageToken ? { pageToken } : {}),
+        });
+        pagesRead++;
 
-      for (const entry of history) {
-        for (const added of entry.messagesAdded || []) {
-          if (added.message?.id) {
-            // Fetch full message
-            const fullMessage = await this.gmail.users.messages.get({
-              userId: "me",
-              id: added.message.id,
-              format: "full",
-            });
-            messages.push(fullMessage.data);
+        for (const entry of historyResponse.data.history || []) {
+          for (const added of entry.messagesAdded || []) {
+            const id = added.message?.id;
+            if (id && !seen.has(id)) {
+              seen.add(id);
+              ids.push(id);
+            }
           }
+        }
+
+        if (historyResponse.data.historyId) {
+          latestHistoryId = historyResponse.data.historyId.toString();
+        }
+        pageToken = historyResponse.data.nextPageToken || undefined;
+        if (!pageToken) {
+          readEveryPage = true;
+          break;
         }
       }
 
-      // Update historyId to latest
-      if (historyResponse.data.historyId) {
-        await this.updateHistoryId(historyResponse.data.historyId.toString());
+      const messages: gmail_v1.Schema$Message[] = [];
+      for (const id of ids) {
+        try {
+          const fullMessage = await this.gmail.users.messages.get({
+            userId: "me",
+            id,
+            format: "full",
+          });
+          messages.push(fullMessage.data);
+        } catch (error: any) {
+          if (error?.code === 404 || error?.status === 404) {
+            this.logger.warn(
+              `Gmail message ${id} no longer exists (404) — skipped`,
+            );
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      if (!readEveryPage) {
+        this.logger.warn(
+          `Gmail history has more than ${GmailWatchService.HISTORY_PAGE_LIMIT} pages since ${sinceHistoryId} — cursor not advanced; the next push re-reads`,
+        );
+        return messages;
+      }
+
+      if (latestHistoryId) {
+        await this.updateHistoryId(latestHistoryId);
       }
 
       return messages;
