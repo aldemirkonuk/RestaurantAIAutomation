@@ -37,12 +37,19 @@
  * can never be saved into a different drink (round-17 HARM). Loading the saved
  * recipe over a draft sets the typed lines aside instead of dropping them, and
  * "Put my lines back" restores them on top of what was loaded.
+ *
+ * An unsaved draft outlives the sheet for the session (`drafts.ts`): opening
+ * another drink and coming back finds the typed lines again, said as unsaved,
+ * still pinned to the version they were typed over. Leaving the page while a
+ * draft is unsaved asks the browser to warn first.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, History, Plus, RotateCcw, Save } from 'lucide-react';
+import { useAuth } from '../../../../contexts/AuthContext';
 import { getErrorStatus } from '../../../../services/api/client';
 import type { CocktailRecipe, RecipeLine, SaveRecipeBody } from '../../../../services/api/recipes';
 import LineRow, { LineRowRead, rowName, type DraftRow } from './LineRow';
+import { draftKey, dropDraft, keepDraft, takeDraft } from './drafts';
 import { qtyText, readQty } from './units';
 import {
   useCanEditRecipe,
@@ -63,6 +70,8 @@ export const LEGACY_NOTE = 'Lines from the old recipe box, not saved here yet.';
 const LOAD_FAILED = 'The saved recipe could not be read just now. Your lines stay here.';
 export const SET_ASIDE_SENTENCE =
   'Your lines are set aside. Put them back to work on them again; saving them then replaces the version shown.';
+export const RESTORED_SENTENCE =
+  'Your unsaved lines from earlier are back. They are not saved yet: save them, or load the saved recipe to set them aside.';
 /** The most one line holds, in the unit typed. Matches the gateway (recipes.service.ts MAX_LINE_QTY). */
 export const MAX_LINE_QTY = 100_000;
 
@@ -187,19 +196,32 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
   const save = useSaveRecipe(cocktailId);
+  const { user, activeRestaurantId } = useAuth();
+  const storeKey = draftKey(user?.userId, activeRestaurantId, cocktailId);
+  // An unsaved draft this person left on this drink earlier in the session.
+  const [kept] = useState(() => (canEdit ? takeDraft(storeKey) : null));
 
-  const [rows, setRows] = useState<DraftRow[] | null>(null);
+  const [rows, setRows] = useState<DraftRow[] | null>(kept?.rows ?? null);
   // The version the draft was seeded from. A save names it, so a colleague's
   // later save is refused (409) rather than quietly overwritten.
-  const [openedFrom, setOpenedFrom] = useState<string | null>(null);
+  const [openedFrom, setOpenedFrom] = useState<string | null>(kept?.openedFrom ?? null);
   // Set by the first edit; cleared by a seed. While set, a newer server
   // version never replaces the draft.
-  const [dirty, setDirty] = useState(false);
+  const [dirty, setDirty] = useState(kept?.dirty ?? false);
   const [said, setSaid] = useState<Said | null>(null);
   const [showVersions, setShowVersions] = useState(false);
-  // The typed lines a "Load the saved recipe" replaced, kept until put back or saved over.
-  const [setAside, setSetAside] = useState<DraftRow[] | null>(null);
-  const seededFrom = useRef<string | null | undefined>(undefined);
+  // The typed lines a "Load the saved recipe" replaced, kept until put back, thrown away or saved over.
+  const [setAside, setSetAside] = useState<DraftRow[] | null>(kept?.setAside ?? null);
+  const [restored, setRestored] = useState(Boolean(kept?.dirty));
+  const seededFrom = useRef<string | null | undefined>(kept ? kept.openedFrom : undefined);
+
+  // Write the unsaved draft through to the session store, and drop it once
+  // nothing typed is left unsaved.
+  useEffect(() => {
+    if (!canEdit) return;
+    if ((dirty && rows) || setAside) keepDraft(storeKey, { rows: rows ?? [], openedFrom, dirty, setAside });
+    else dropDraft(storeKey);
+  }, [canEdit, storeKey, rows, openedFrom, dirty, setAside]);
 
   const data = recipe.data;
   const versionId = data?.current?.versionId ?? null;
@@ -210,6 +232,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
     setOpenedFrom(v);
     setRows((d.current?.lines ?? []).map(fromServer));
     setDirty(false);
+    setRestored(false);
   }, []);
 
   // Seed from the server on first read, and again when a new version arrives
@@ -295,6 +318,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       // invalidates will seed the saved lines and their costs.
       setOpenedFrom(out.versionId);
       setDirty(false);
+      setRestored(false);
       setSetAside(null);
       setSaid({
         tone: 'ok',
@@ -325,7 +349,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   })();
 
   const earlier = Math.max(0, data.versionCount - 1);
-  const offerLoad = canEdit && (behind || said?.offerLoad);
+  const offerLoad = canEdit && (behind || said?.offerLoad || (restored && dirty));
 
   return (
     <section className="cl-rcp" data-testid="recipe-sheet" aria-label={`Recipe for ${c.name}`}>
@@ -401,6 +425,11 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       ) : null}
       {canEdit && blocked && lines.length > 0 ? <p className="cl-note">{blocked}</p> : null}
 
+      {canEdit && restored && dirty && !said ? (
+        <p className="cl-rcp-said" role="status" data-testid="recipe-restored">
+          {RESTORED_SENTENCE}
+        </p>
+      ) : null}
       {behind && said?.tone !== 'alarm' ? (
         <p className="cl-rcp-said cl-rcp-said-alarm" role="status" data-testid="recipe-newer">
           {NEWER_SENTENCE}
@@ -433,6 +462,9 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
           <button type="button" className="cl-btn cl-focus" style={{ marginTop: 6 }} onClick={putBack}>
             <RotateCcw size={13} aria-hidden />
             Put my lines back
+          </button>{' '}
+          <button type="button" className="cl-btn cl-focus" style={{ marginTop: 6 }} onClick={() => setSetAside(null)}>
+            Throw them away
           </button>
         </div>
       ) : null}
