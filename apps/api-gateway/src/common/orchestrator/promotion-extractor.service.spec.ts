@@ -74,6 +74,26 @@ describe("PromotionExtractorService.extractAndStore", () => {
     expect(gateway.emitRoleNotification).toHaveBeenCalledTimes(1);
   });
 
+  it("a passed date the mail does not name as the offer's end leaves a live offer open and toasted", async () => {
+    jest.useFakeTimers({ now: new Date(2026, 10, 7, 10, 0) }); // 2026-11-07
+    const { svc, inserted, gateway } = service();
+    await svc.extractAndStore(ctx("Special offer", "Special offer: 20% off Rioja Reserva. Harvest finished Sept 3"));
+    const row = inserted.find((i) => i.table === "provider_promotions")!.row;
+    expect(row.end_date ?? null).toBeNull();
+    expect(row.conditions.priority).not.toBe("ended");
+    expect(gateway.emitRoleNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it("an offer running into next year by its stated year is open and toasted", async () => {
+    jest.useFakeTimers({ now: new Date(2026, 10, 7, 10, 0) }); // 2026-11-07
+    const { svc, inserted, gateway } = service();
+    await svc.extractAndStore(ctx("Rioja Reserva", "Offer valid through June 30, 2027. 10% off Rioja Reserva"));
+    const row = inserted.find((i) => i.table === "provider_promotions")!.row;
+    expect(row.end_date).toBe("2027-06-30");
+    expect(row.conditions.priority).not.toBe("ended");
+    expect(gateway.emitRoleNotification).toHaveBeenCalledTimes(1);
+  });
+
   it("a new-arrivals mail quoting ABV is not filed as a percentage off", async () => {
     const { svc, inserted } = service();
     await svc.extractAndStore(ctx("New arrivals from Barolo", "Our 2019 Barolo 14.5% ABV is just arrived. Stock limited."));
