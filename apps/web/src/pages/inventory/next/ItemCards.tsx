@@ -110,7 +110,9 @@ export function Sparkline({ points }: { points: number[] }) {
 
 function trendWords(f: ItemFigures['costTrend']): string {
   if (!f.readable) return `What each delivery cost ${UNREAD}.`;
-  const pts = f.points ?? [];
+  // No points is the server saying why there is no trend, not "too few receipts".
+  if (f.points === null) return f.source;
+  const pts = f.points;
   if (pts.length < 2 || f.changePct === null) return 'Not enough receipts to show a change.';
   const month = new Date(pts[0].receivedAt).toLocaleDateString('en-GB', { month: 'long' });
   const pct = Math.abs(f.changePct);
@@ -152,7 +154,7 @@ function Card({ id, figure, extra, source, unread, open, onOpen }: CardProps) {
       className="ivd-card iv-focus"
       data-testid={`ivd-card-${id}`}
       aria-expanded={open === id}
-      aria-controls="ivd-evidence"
+      aria-controls={open === id ? 'ivd-evidence' : undefined}
       data-on={open === id}
       onClick={() => onOpen(id)}
     >
@@ -304,6 +306,7 @@ export default function ItemCards({ row, uom, canManage, currency, figures, open
       <Card
         id="inside"
         open={open}
+        onOpen={onOpen}
         figure="Not recorded"
         source="Nutrition and allergens are not recorded for this item yet."
       />

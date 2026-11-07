@@ -16,7 +16,7 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
 }));
 vi.mock('./RowDropdown', () => ({ default: () => <div data-testid="row-dropdown" /> }));
 
-import ItemDrawer from './ItemDrawer';
+import ItemDrawer, { type NutritionCardProps } from './ItemDrawer';
 
 const row = (over: Partial<InvRow> = {}) =>
   ({
@@ -49,7 +49,10 @@ const figures = (over: Partial<ItemFigures> = {}): ItemFigures => ({
 const NO_HOUSE: HouseFields = { kind: null, uom: null, displayName: null };
 const CURRENCY = /€|EUR|\$|£|₺|TRY|USD/;
 
-function open(r: InvRow | null, opts: { canManage?: boolean; house?: HouseFields } = {}) {
+function open(
+  r: InvRow | null,
+  opts: { canManage?: boolean; house?: HouseFields; NutritionCard?: (p: NutritionCardProps) => JSX.Element } = {},
+) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
@@ -65,6 +68,7 @@ function open(r: InvRow | null, opts: { canManage?: boolean; house?: HouseFields
         providersError={null}
         restaurantId="r1"
         onClose={vi.fn()}
+        NutritionCard={opts.NutritionCard}
       />
     </QueryClientProvider>,
   );
@@ -105,6 +109,14 @@ describe('the item drawer', () => {
     expect(screen.getByTestId('ivd-card-waste').textContent).toContain('could not be read');
   });
 
+  it('says why there is no cost trend when the server keeps none, not "too few receipts"', async () => {
+    const why = "What each delivery cost is not shown yet: no record here keeps a delivery's final price.";
+    api.figures.mockResolvedValue(figures({ costTrend: { readable: true, points: null, changePct: null, source: why } }));
+    open(row());
+    await waitFor(() => expect(screen.getByTestId('ivd-card-cost').textContent).toContain(why));
+    expect(screen.getByTestId('ivd-card-cost').textContent).not.toContain('Not enough receipts');
+  });
+
   it('(c) staff see no currency and no Value card', async () => {
     api.figures.mockResolvedValue(
       figures({
@@ -131,5 +143,63 @@ describe('the item drawer', () => {
     expect(screen.queryByTestId('row-dropdown')).toBeNull();
     fireEvent.click(screen.getByTestId('ivd-card-gap'));
     expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown')).toBeTruthy();
+  });
+  it('opens the item detail card, with the NutritionCard slot, from every KPI card', () => {
+    open(row());
+    for (const id of ['onhand', 'value', 'usage', 'cover', 'cost', 'waste', 'gap', 'inside']) {
+      const card = screen.getByTestId(`ivd-card-${id}`);
+      expect(card.tagName).toBe('BUTTON');
+      fireEvent.click(card);
+      const detail = screen.getByTestId('ivd-evidence');
+      expect(card.getAttribute('aria-expanded')).toBe('true');
+      expect(card.getAttribute('aria-controls')).toBe('ivd-evidence');
+      const slot = within(detail).getByTestId('ivd-nutrition-slot');
+      expect(slot.getAttribute('data-slot')).toBe('NutritionCard');
+      // Until the nutrition card lands, the slot says nothing is recorded: never empty, never 0.
+      expect(slot.textContent).toBe('Nutrition and allergens are not recorded for this item yet.');
+      fireEvent.click(card);
+      expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+      expect(card.getAttribute('aria-controls')).toBeNull();
+    }
+  });
+
+  it('mounts a given NutritionCard once, in the slot, handed the item', () => {
+    const seen: NutritionCardProps[] = [];
+    const Nutrition = (p: NutritionCardProps) => {
+      seen.push(p);
+      return <div data-testid="nutrition-card">{p.row.name}</div>;
+    };
+    open(row(), { NutritionCard: Nutrition, house: { kind: 'food', uom: 'g', displayName: 'Flour' } });
+    expect(screen.queryByTestId('nutrition-card')).toBeNull();
+    fireEvent.click(screen.getByTestId('ivd-card-inside'));
+    expect(screen.getAllByTestId('nutrition-card')).toHaveLength(1);
+    expect(within(screen.getByTestId('ivd-nutrition-slot')).getByTestId('nutrition-card').textContent).toBe('Gravner Ribolla');
+    expect(seen.at(-1)).toMatchObject({ row: { id: 'i1' }, house: { kind: 'food' }, restaurantId: 'r1' });
+  });
+
+  it('says a count-gap read that failed could not be read, never "Never counted"', async () => {
+    api.figures.mockResolvedValue(figures({ countGap: { readable: false, last: null, source: 'timeout' } }));
+    open(row());
+    await waitFor(() => expect(screen.getByTestId('ivd-card-gap').textContent).toContain('could not be read'));
+    expect(screen.getByTestId('ivd-card-gap').textContent).not.toContain('Never counted');
+  });
+
+  it('says on hand could not be read when the stock is unknown, never 0', () => {
+    open(row({ stock: null, value: null }));
+    const text = (screen.getByTestId('ivd-card-onhand').textContent ?? '').replace('On hand', '');
+    expect(text).toContain('could not be read');
+    expect(text).not.toMatch(/\d/);
+  });
+
+  it('reads a food kept in grams in kg, and gives it no bottle size', () => {
+    open(row({ stock: 12400, kind: null, type: null, bottleSizeMl: 750 }), { house: { kind: 'food', uom: 'g', displayName: 'Flour' } });
+    expect(screen.getByTestId('ivd-card-onhand').textContent).toContain('12.4 kg');
+    expect(screen.getByTestId('ivd-card-onhand').textContent).not.toContain('bottle');
+  });
+
+  it('gives a food with no unit recorded no bottle size', () => {
+    open(row({ kind: null, type: null, bottleSizeMl: 750 }), { house: { kind: 'food', uom: null, displayName: 'Flour' } });
+    expect(screen.getByTestId('ivd-head').textContent).toMatch(/^Food · Cave/);
+    expect(screen.getByTestId('ivd-head').textContent).not.toContain('ml bottle');
   });
 });

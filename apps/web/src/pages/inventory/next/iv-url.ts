@@ -5,7 +5,8 @@
  * map, the open row) survives a reload, Back, and a link sent to someone else.
  * Only what differs from the default is written, so a plain /inventory stays
  * plain. Every write replaces the history entry: typing a search is not twelve
- * Back presses.
+ * Back presses. Opening an item from a row is the one step Back undoes: it
+ * closes the drawer (InventoryNext.tsx).
  *
  * The links other places already send here are read as well:
  *   ?wine=<name>      Notifications' held band, the low-stock email and the

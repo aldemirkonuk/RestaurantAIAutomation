@@ -109,3 +109,14 @@ button.ivd-card:hover {
   padding-top: 8px;
   border-top: 1px solid var(--paper-2);
 }
+/* The NutritionCard slot: one bordered card at the top of the detail card. */
+.ivd-nutrition {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+}
+.ivd-nutrition > .iv-note {
+  margin: 0;
+}

@@ -2,11 +2,12 @@
  * The /inventory item drawer (proposal §2 S2, §3 I13, §4 K1-K2): one item in
  * a right-side sheet over the list, the whole screen on a phone. The head says
  * what it is, where it sits and when it was last counted; then eight cards
- * (ItemCards) and the evidence a card opens. The evidence is the row's own
+ * (ItemCards) and the detail card any one of them opens. The detail card
+ * holds the NutritionCard slot and the evidence; the evidence is the row's own
  * dropdown, unchanged, with its Count / Write off / Order acts, until each
  * card gets its own panel (I14).
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { getItemFigures, inventoryItemKeys, type HouseFields } from '../../../services/api/inventory';
@@ -47,6 +48,23 @@ function bottleWords(row: InvRow, house: HouseFields): string | null {
   return `${row.bottleSizeMl} ml bottle`;
 }
 
+/** What the NutritionCard slot is handed: the item as the drawer knows it. */
+export interface NutritionCardProps {
+  row: InvRow;
+  house: HouseFields;
+  restaurantId: string | null;
+}
+
+/**
+ * The NutritionCard slot's default. Nothing about nutrition is recorded or
+ * read anywhere yet, so it says that in one line: never an empty box and never
+ * "0 kcal" (ADR 0020). The nutrition card replaces this through the drawer's
+ * `NutritionCard` prop; it is the only place nutrition mounts.
+ */
+export function NutritionNotRecorded(_: NutritionCardProps) {
+  return <p className="iv-note">Nutrition and allergens are not recorded for this item yet.</p>;
+}
+
 export interface ItemDrawerProps {
   /** The row the URL opened, or null when its id is not on the list. */
   row: InvRow | null;
@@ -60,11 +78,19 @@ export interface ItemDrawerProps {
   providersError: string | null;
   restaurantId: string | null;
   onClose: () => void;
+  /** NutritionCard slot: what mounts in the detail card a KPI card opens. */
+  NutritionCard?: ComponentType<NutritionCardProps>;
 }
 
 export default function ItemDrawer(props: ItemDrawerProps) {
   const { row, house, canManage, currency, zoneName, restaurantId, onClose } = props;
+  const NutritionCard = props.NutritionCard ?? NutritionNotRecorded;
   const [evidence, setEvidence] = useState<CardId | 'all' | null>(null);
+  const detailRef = useRef<HTMLElement | null>(null);
+  // On a phone the detail card opens below the fold: bring it into view.
+  useEffect(() => {
+    if (evidence !== null) detailRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [evidence]);
   const id = row?.id ?? '';
 
   const figuresQ = useQuery({
@@ -134,15 +160,24 @@ export default function ItemDrawer(props: ItemDrawerProps) {
           type="button"
           className="iv-linkish iv-focus"
           aria-expanded={evidence !== null}
-          aria-controls="ivd-evidence"
+          aria-controls={evidence !== null ? 'ivd-evidence' : undefined}
           onClick={() => toggle('all')}
         >
           {evidence !== null ? 'Hide the evidence' : 'Evidence and actions'}
         </button>
       </p>
       {evidence !== null ? (
-        <section id="ivd-evidence" className="ivd-evidence" aria-label="Evidence and actions" data-testid="ivd-evidence">
-          {evidence !== 'all' ? <h3 className="iv-sec">{CARD_TITLE[evidence]}: where it comes from</h3> : null}
+        <section
+          ref={detailRef}
+          id="ivd-evidence"
+          className="ivd-evidence"
+          aria-label={`${name}: detail card`}
+          data-testid="ivd-evidence"
+        >
+          <h3 className="iv-sec">{evidence === 'all' ? 'Evidence and actions' : `${CARD_TITLE[evidence]}: where it comes from`}</h3>
+          <div className="ivd-nutrition" data-slot="NutritionCard" data-testid="ivd-nutrition-slot">
+            <NutritionCard row={row} house={house} restaurantId={restaurantId} />
+          </div>
           <RowDropdown
             row={row}
             canManage={canManage}
