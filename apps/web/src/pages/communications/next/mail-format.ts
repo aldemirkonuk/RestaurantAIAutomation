@@ -1,6 +1,6 @@
 /**
  * The Mail tab's words (founder /goal 2026-11-07; sw-walk mail proposal §2,
- * Phase C). Pure: every sentence the tab prints about people, doors and
+ * Phase C). Pure: every sentence the tab prints about people, ways in and
  * letters is decided here, so the rules are proved without a DOM.
  *
  * Rules kept here, not in the components:
@@ -177,7 +177,7 @@ export function mailTabLabel(summary: MailSummary | null): string {
   return `Mail · ${summary ? summary.waitingPeople : EM}`;
 }
 
-export type DoorState = 'not_connected' | 'switched_off' | 'reading' | 'behind' | 'cannot_tell';
+export type DoorState = 'not_connected' | 'switched_off' | 'reading' | 'behind' | 'failing' | 'cannot_tell';
 
 export interface DoorStatus {
   state: DoorState;
@@ -188,14 +188,33 @@ export interface DoorStatus {
 }
 
 /**
+ * A failed read of the house mailbox, in the house's words. The raw error
+ * (`invalid_grant: Token has been expired or revoked.`, `HTTP 401 from
+ * gmail.googleapis.com/...`) is never printed: it means nothing to an owner
+ * and leaks how the reader works (QA round 16, finding 3). Google refusing
+ * the grant is the one cause the owner can act on, so it is named; anything
+ * else is said as a failed read.
+ */
+export function readErrorWords(raw: string | null | undefined): string {
+  const r = String(raw ?? '').toLowerCase();
+  if (/invalid_grant|expired|revoked|unauthori[sz]ed|insufficient|\b40[13]\b/.test(r)) {
+    return 'Google no longer lets Mudavym read your mailbox. Connect it again in Connections.';
+  }
+  return 'The last read of your mailbox failed.';
+}
+
+/**
  * The house mailbox reader's status. `reader` is null when the sender read
- * failed or has not answered; `readFailed` tells those apart.
+ * failed, has not answered, or answered without a reader; `readFailed` says
+ * the first or the last (MailTab passes both as failed, so a reply with no
+ * reader never reads "checking" forever — QA S5b).
  *
  * - not connected: no read grant exists;
  * - reading: the last read was within READING_WITHIN_MIN minutes;
- * - behind by N min: the last read is older than that;
- * - cannot tell: no read was ever recorded, the grants could not be read,
- *   the last read failed, or the reader itself could not be read.
+ * - behind: the last read is older than that, said as a span ("3 h");
+ * - failing: the last read failed, said in words, never the raw error;
+ * - cannot tell: no read was ever recorded, or the grants or the reader
+ *   could not be read.
  */
 export function houseMailboxStatus(
   reader: MailboxReader | null,
@@ -203,50 +222,49 @@ export function houseMailboxStatus(
 ): DoorStatus {
   if (!reader) {
     return opts.readFailed
-      ? { state: 'cannot_tell', words: 'Cannot tell: the mailbox reader could not be read.', tone: 'alarm' }
-      : { state: 'cannot_tell', words: 'Cannot tell yet: still reading the mailbox reader.', tone: 'ink' };
+      ? { state: 'cannot_tell', words: 'Whether your mailbox is connected could not be read.', tone: 'alarm' }
+      : { state: 'cannot_tell', words: 'Checking your mailbox…', tone: 'ink' };
   }
   if (reader.granted === false) {
     return { state: 'not_connected', words: 'Not connected.', tone: 'ink' };
   }
   if (reader.granted === 'unknown') {
-    return {
-      state: 'cannot_tell',
-      words: `Cannot tell: ${reader.lastError ?? 'whether it is connected could not be read.'}`,
-      tone: 'alarm',
-    };
+    return { state: 'cannot_tell', words: 'Whether your mailbox is connected could not be read.', tone: 'alarm' };
   }
   if (!reader.enabled) {
     return { state: 'switched_off', words: 'Connected, but reading is switched off for this house.', tone: 'warn' };
   }
   if (reader.lastError) {
-    return { state: 'cannot_tell', words: `Cannot tell: the last read failed (${reader.lastError}).`, tone: 'alarm' };
+    return { state: 'failing', words: readErrorWords(reader.lastError), tone: 'alarm' };
   }
   const last = at(reader.lastReadAt);
   if (last === null) {
-    return { state: 'cannot_tell', words: 'Cannot tell: no read has been recorded yet.', tone: 'ink' };
+    return { state: 'cannot_tell', words: 'Cannot tell yet: no read has been recorded.', tone: 'ink' };
   }
   const gap = opts.now - last;
   if (gap <= READING_WITHIN_MIN * MIN) {
     return { state: 'reading', words: `Reading. Last read ${shortSpan(gap)} ago.`, tone: 'seal' };
   }
-  return { state: 'behind', words: `Behind by ${Math.floor(gap / MIN)} min.`, tone: 'warn' };
+  return { state: 'behind', words: `Behind: last read ${shortSpan(gap)} ago.`, tone: 'warn' };
 }
 
 /**
- * A door that keeps no durable record of its reads (Mudavym's mailbox, the
+ * A way in that keeps no durable record of its reads (Mudavym's mailbox, the
  * house's Mudavym address, WhatsApp) — proposal L3. It is never "reading":
- * that a letter was stored once says nothing about whether the door is open now.
+ * that a letter was stored once says nothing about whether it is open now.
  */
 export function unrecordedDoorStatus(): DoorStatus {
   return {
     state: 'cannot_tell',
-    words: 'Cannot tell: this door keeps no record of its reads yet.',
+    words: 'Cannot tell: when this was last checked is not recorded yet.',
     tone: 'ink',
   };
 }
 
-/** The one line under the header that opens the intake sheet. */
+/**
+ * The one line under the header that opens the intake sheet. Kept for the
+ * tab until it reads mailStatusLine (the next change in this stack).
+ */
 export function intakeLine(status: DoorStatus, reader: MailboxReader | null, now: number): string {
   if (status.state === 'reading' && reader?.lastReadAt) {
     const last = at(reader.lastReadAt);
@@ -258,6 +276,98 @@ export function intakeLine(status: DoorStatus, reader: MailboxReader | null, now
   }
   if (status.state === 'switched_off') return 'Your mailbox is connected, but not being read';
   return 'Mail arrival: cannot tell yet';
+}
+
+export type MailStatusState = 'checking' | 'connected' | 'switched_off' | 'needs_attention' | 'not_connected' | 'unknown';
+
+export interface MailStatus {
+  state: MailStatusState;
+  words: string;
+  tone: DoorStatus['tone'];
+}
+
+/**
+ * The one status line of the Mail tab and the setup page (founder /goal
+ * 2026-11-07: "check if the email comes"): "Connected · last letter 4 min
+ * ago", or "Not connected". The house is connected when its mailbox is read
+ * OR it has a Mudavym address — either way a vendor's letter can arrive.
+ *
+ * "Not connected" is said only when both are known to be absent; it is never
+ * softened to "cannot tell" (QA round 16, finding 4). What could not be read
+ * is said as not read, never as not connected (ADR 0020).
+ */
+export function mailStatusLine(
+  reader: MailboxReader | null,
+  summary: MailSummary | null,
+  opts: { readerFailed: boolean; summaryFailed: boolean; now: number },
+): MailStatus {
+  const mailbox = houseMailboxStatus(reader, { readFailed: opts.readerFailed, now: opts.now });
+  const hasAddress = Boolean(summary?.address.address);
+
+  if (mailbox.state === 'failing') {
+    return { state: 'needs_attention', words: `Needs attention · ${mailbox.words}`, tone: 'alarm' };
+  }
+
+  if (mailbox.state === 'reading' || mailbox.state === 'behind' || (mailbox.state === 'cannot_tell' && reader?.granted === true) || hasAddress) {
+    let words: string;
+    if (!summary) {
+      words = opts.summaryFailed ? 'Connected · when the last letter came could not be read' : 'Connected';
+    } else {
+      const times = [summary.doors.houseMailbox.lastStoredAt, summary.doors.mudavymMail.lastStoredAt]
+        .map(at)
+        .filter((t): t is number => t !== null);
+      words = times.length
+        ? `Connected · last letter ${shortSpan(opts.now - Math.max(...times))} ago`
+        : 'Connected · no letter yet';
+    }
+    if (mailbox.state === 'behind' && reader?.lastReadAt) {
+      const last = at(reader.lastReadAt) ?? opts.now;
+      return { state: 'connected', words: `${words} · your mailbox was last read ${shortSpan(opts.now - last)} ago`, tone: 'warn' };
+    }
+    return { state: 'connected', words, tone: 'ink' };
+  }
+
+  if (mailbox.state === 'switched_off') {
+    return { state: 'switched_off', words: 'Not reading · your mailbox is connected, but reading is switched off', tone: 'warn' };
+  }
+
+  const mailboxKnownOff = mailbox.state === 'not_connected';
+  const addressKnownOff = summary !== null && !hasAddress;
+  if (mailboxKnownOff && addressKnownOff) {
+    return { state: 'not_connected', words: 'Not connected', tone: 'warn' };
+  }
+
+  const stillReading = (!reader && !opts.readerFailed) || (!summary && !opts.summaryFailed);
+  if (stillReading) return { state: 'checking', words: 'Checking the mail connection…', tone: 'ink' };
+
+  if (mailboxKnownOff) {
+    return {
+      state: 'unknown',
+      words: "Your mailbox is not connected · whether the house's Mudavym address works could not be read",
+      tone: 'alarm',
+    };
+  }
+  return { state: 'unknown', words: 'Whether mail is connected could not be read', tone: 'alarm' };
+}
+
+/** The sender, as GET /communications/letters/sender answers it (the fields the line reads). */
+export interface SenderLineInput {
+  kind: 'house_mailbox' | 'mudavym_subdomain' | 'none' | 'unknown';
+  address: string | null;
+}
+
+/**
+ * Which address letters leave from. Only an address the server named is ever
+ * printed: a failed or unknown read says it could not be read, and no
+ * fallback address is invented (QA round 16, M13).
+ */
+export function senderLine(sender: SenderLineInput | null, opts: { failed: boolean }): string {
+  if (opts.failed) return 'Which address letters leave from could not be read.';
+  if (!sender) return 'Checking which address letters leave from…';
+  if (sender.kind === 'unknown') return 'Which address letters leave from could not be read.';
+  if (sender.address) return `Letters leave from ${sender.address}.`;
+  if (sender.kind === 'none') return 'No address is set up yet for letters to leave from.';
+  return 'Which address letters leave from could not be read.';
 }
 
 /** "Last letter stored" for a door: when, "none stored yet", or the em dash on a failed read. */
@@ -357,7 +467,7 @@ export function storedKindsLine(storedKinds: readonly string[] | null): string {
 
 /**
  * The empty list, said so it never reads as a healthy one: it names which
- * doors are connected and which are not.
+ * ways in are connected and which are not.
  */
 export function emptyListWords(
   reader: MailboxReader | null,
@@ -370,12 +480,12 @@ export function emptyListWords(
   if (reader?.granted === true && reader.enabled) open.push('your mailbox');
   else if (reader?.granted === false) shut.push('your mailbox is not connected');
   else if (reader && reader.granted === true && !reader.enabled) shut.push('your mailbox is connected but not being read');
-  else shut.push('whether your mailbox is connected cannot be told');
+  else shut.push('whether your mailbox is connected could not be read');
   if (summary?.address.address) open.push(`your Mudavym address (${summary.address.address})`);
   else if (summary) shut.push('the house has no Mudavym address');
-  else shut.push('whether the house has a Mudavym address cannot be told');
+  else shut.push('whether the house has a Mudavym address could not be read');
   const lead = 'No vendor mail has been stored yet.';
-  const opened = open.length ? ` Mail is read from ${open.join(' and ')}.` : ' No door of this house is known to be connected.';
+  const opened = open.length ? ` Mail is read from ${open.join(' and ')}.` : ' Nothing is known to be connected for this house yet.';
   const closed = shut.length ? ` ${shut.map((s, i) => (i === 0 ? s[0].toUpperCase() + s.slice(1) : s)).join('; ')}.` : '';
   return `${lead}${opened}${closed} Replies to letters sent from Mudavym's mailbox arrive there.`;
 }
