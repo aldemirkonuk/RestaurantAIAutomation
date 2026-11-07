@@ -4,9 +4,13 @@ import { minutesSince, seatingFreshness, type FreshnessStatus } from "./freshnes
  * Pre-delivery run alerts (Food up).
  *
  * The pass knows the food is up; the waiter knows the table. This composes the
- * brief the waiter reads on a signed-in screen (`/floor/me`): what's ready,
- * the pass's own message, and the table insights that change how the plates
- * get dropped (party size, dwell, how stale the last visit is).
+ * Food-up brief for a signed-in screen: what's ready, the pass's own message,
+ * and the table insights that change how the plates get dropped (party size,
+ * dwell, how stale the last visit is). Whether a waiter's `/floor/me` may show
+ * its minute and count lines under "Nothing for now" is open: ADR 0345 `:176`
+ * and `:204` give the waiter phone no figure, ADR 0351 `:62` counts minutes as
+ * figures, and ADR 0352 `:33` keeps the brief lines on signed-in screens
+ * without saying whose. This file decides none of it.
  *
  * None of it is a push payload. The Food-up push (ADR 0352 `:33`) carries
  * only the house, the table label and "Food up", composed by the gateway; the
@@ -45,7 +49,7 @@ import { minutesSince, seatingFreshness, type FreshnessStatus } from "./freshnes
  *   joiners, presentation selectors or blanks) counts as empty: the note is
  *   null and the label prints "—";
  * - `durationText` prints "—" for a non-finite minute count, where the
- *   checker's printed "NaNh".
+ *   checker printed "NaNh" for NaN (and "Infinityh" for Infinity).
  */
 
 export type MealCourse = "drinks" | "starters" | "mains" | "dessert" | "other";
@@ -242,7 +246,7 @@ export interface MealBrief {
    * with neither; late when one is given and none can be read.
    */
   status: FreshnessStatus;
-  /** high → the table is already overdue; the signed-in screen puts it first. */
+  /** high → the table is already overdue. */
   priority: "normal" | "high";
   minsSinceCheckIn: number | null;
   dwellMin: number | null;
@@ -255,7 +259,7 @@ const CUE: Record<FreshnessStatus, string> = {
   idle: "Run it now — tap Delivered once the plates are down.",
 };
 
-/** Compose the brief the waiter's device shows. */
+/** Compose the Food-up brief for a signed-in screen. */
 export function buildMealBrief(input: MealBriefInput): MealBrief {
   const now = input.now;
   const tableLabel = sanitizeLabel(input.tableLabel);
