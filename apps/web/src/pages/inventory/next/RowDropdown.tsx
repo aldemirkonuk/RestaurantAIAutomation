@@ -40,7 +40,6 @@ import { writeFailure } from './iv-failure';
 import { oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
 import {
   cellMoney,
-  cellUnitCost,
   EM,
   fmtCount,
   fmtPace,
@@ -646,7 +645,7 @@ function WhatItHasCost({
   const unread = detail.purchasesError !== null;
   const reading = detail.purchases === null && !unread;
   const bought = (l: PurchaseLine | null) =>
-    reading ? EM : unread ? 'could not be read' : l === null ? 'none on the ledger' : `${cellUnitCost(l.unitCost, currency)} · ${shortDate(l.at)}`;
+    reading ? EM : unread ? 'could not be read' : l === null ? 'none on the ledger' : `${cellMoney(l.unitCost, currency)} · ${shortDate(l.at)}`;
   const change =
     last && before && last.unitCost !== null && before.unitCost !== null && before.unitCost > 0
       ? ((last.unitCost - before.unitCost) / before.unitCost) * 100
@@ -658,7 +657,7 @@ function WhatItHasCost({
       <h4 className="iv-sec">What it has cost</h4>
       <dl>
         <KV k="Weighted average cost">
-          <span className="iv-num">{cellUnitCost(row.wac, currency)}</span>
+          <span className="iv-num">{cellMoney(row.wac, currency)}</span>
           {row.wac !== null && row.costProvenance ? <span className="iv-dim"> · {row.costProvenance === 'invoice' ? 'from invoices' : 'estimated'}</span> : null}
         </KV>
         <KV k="Last bought">{bought(last)}</KV>
@@ -668,7 +667,7 @@ function WhatItHasCost({
             EM
           ) : (
             <span className="iv-num">
-              {cellUnitCost(before.unitCost, currency)} → {cellUnitCost(last.unitCost, currency)} ({change > 0 ? '+' : ''}
+              {cellMoney(before.unitCost, currency)} → {cellMoney(last.unitCost, currency)} ({change > 0 ? '+' : ''}
               {change.toFixed(0)}%)
             </span>
           )}
@@ -798,7 +797,7 @@ function Paperwork({
                       {line.qty === null ? EM : fmtCount(line.qty)}
                     </td>
                     <td data-label="Unit" className="iv-num">
-                      {cellUnitCost(line.unitCost, currency)}
+                      {cellMoney(line.unitCost, currency)}
                     </td>
                     <td data-label="Invoice">{doc ? (doc.doc_number ?? 'filed, no number') : EM}</td>
                     <td>
