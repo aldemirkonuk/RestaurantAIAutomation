@@ -83,14 +83,14 @@ describe("queueEmailVerification — account mail identity (ADR 0143)", () => {
     );
   });
 
-  it("logs a warning and does not throw when the send fails", async () => {
+  it("logs a warning, does not throw, and says 'not_sent' when the send fails (OB-3)", async () => {
     const sendEmail = jest.fn().mockResolvedValue({ success: false, error: "SMTP down" });
     const service = makeAuthService({ token: "tok-fail", sendEmail, frontendUrl: "https://mudavym.com" });
     const warn = jest.spyOn((service as any).logger, "warn").mockImplementation(() => {});
 
     await expect(
       (service as any).queueEmailVerification("u3", "third@example.test"),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe("not_sent");
 
     expect(warn).toHaveBeenCalledWith(
       expect.stringContaining("Verification email not delivered to third@example.test"),
