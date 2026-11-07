@@ -49,9 +49,11 @@ import {
   buildIdentityKey,
   identityDisplayLabel,
   identityKeyBeforeFold,
+  likePatternBeforeFold,
   normaliseGtin,
   parseLwin,
   readIdentity,
+  storedRowIsBeforeFold,
 } from "./beverage-identity";
 import {
   LWIN_ATTRIBUTION,
@@ -400,6 +402,45 @@ export class IdentityService {
         .select("id, standing, curation_state")
         .eq("identity_key", keyBeforeFold)
         .maybeSingle();
+    }
+    // The same bottle asserted before the fold with "ı" and now in ASCII or
+    // capitals ("Kavaklidere", "KAVAKLIDERE") has no "ı" to rebuild the old key
+    // from (QA round 10c, F1). The register is asked for every row whose parts
+    // could be a pre-fold spelling of these, and a row is taken only when
+    // storedRowIsBeforeFold says it is this bottle. Oldest first, so rows
+    // written before the fold come ahead of any written after it, and two
+    // pre-fold rows of one bottle resolve to the oldest, as the signature
+    // refold (#832) does. The limit can still cut a qualifying row when more
+    // than 200 older rows share the pattern; that is a missed match (a second
+    // row, the behaviour before this fix), never a wrong one.
+    if (!existing.error && !existing.data) {
+      const producerLike = likePatternBeforeFold(reading.producerNormalised);
+      const nameLike = likePatternBeforeFold(reading.nameNormalised);
+      if (producerLike || nameLike) {
+        const candidates = await this.databaseService.supabase
+          .from("beverage_identities")
+          .select(
+            "id, standing, curation_state, identity_key, producer_normalised, name_normalised, vintage_text, size_ml, pack, display_label, created_at",
+          )
+          .eq("vintage_text", reading.vintageText)
+          .like("producer_normalised", producerLike ?? reading.producerNormalised)
+          .like("name_normalised", nameLike ?? reading.nameNormalised)
+          .order("created_at", { ascending: true })
+          .limit(200);
+        if (candidates.error) {
+          throw new BadRequestException(
+            `The identity register could not be read (${candidates.error.message}). Nothing was written.`,
+          );
+        } else {
+          const match = ((candidates.data ?? []) as any[]).find((row) =>
+            storedRowIsBeforeFold(params.subject, reading, row),
+          );
+          if (match) {
+            existingKey = match.identity_key;
+            existing = { ...existing, data: match, error: null };
+          }
+        }
+      }
     }
     if (existing.error) {
       throw new BadRequestException(

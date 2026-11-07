@@ -72,3 +72,26 @@ until a person or a later backfill re-keys them.
 `services/agent-orchestrator/services/beverage_ontology.py` `normalize_text`
 (token matching only, not an identity key) and the other Python normalisers in
 `services/agent-orchestrator` were not changed.
+
+QA round 10c F1 (2026-11-07, fix/vendor-identity-folds-turkish-i): the
+pre-fold lookup in `assertIdentity` only ran when the new subject itself held
+an "ı" (`identityKeyBeforeFold` returns null otherwise), so a bottle first
+asserted as "Kavaklıdere" before the fold (key `kavakl dere|yakut|…`) and then
+as "Kavaklidere" or "KAVAKLIDERE" still got a second row. When neither the
+folded nor the pre-fold key is found, `assertIdentity` now asks for rows of
+the same vintage whose producer and name match a LIKE prefilter (every "i" or
+space run of the folded text as `%`, `likePatternBeforeFold`), and keeps one
+only when `storedRowIsBeforeFold` holds: same vintage, size and pack; the
+stored producer and name are exactly what the pre-fold rule makes of some
+spelling of the folded text (`couldBeBeforeFold`: each "i" may have been an
+"ı" that became a space, collapsed or trimmed); and the stored
+`display_label`, which kept what was typed, folds to the same text as the new
+subject's label. The label check is what tells "Domaine Al" (a real pre-fold
+image of "Domaine Ali") and a real space ("Kavakl Dere") apart from a folded
+"ı". Spec: `vendor-intel/identity-assert-fold.spec.ts` (ı then ASCII then
+caps = one row; three guards stay two rows). The session's calls (founder
+delegated design forks under the 2026-11-07 /goal): when several pre-fold rows
+qualify, the oldest wins, the same rule the signature refold uses; the
+prefilter reads at most 200 candidates, oldest first, so a later qualifying
+row past that cap is a missed match (a second row, the pre-fix behaviour), not
+a wrong merge. `suggest()` is unchanged and still not covered.

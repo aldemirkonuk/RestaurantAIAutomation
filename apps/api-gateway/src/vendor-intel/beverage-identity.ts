@@ -247,6 +247,101 @@ export function identityKeyBeforeFold(input: IdentityInput): string | null {
   return now.ok && buildIdentityKey(now) === key ? null : key;
 }
 
+/**
+ * Whether `stored` is what the pre-fold normaliser could have made of a text
+ * the folded normaliser makes into `folded`.
+ *
+ * Before the fold, "ı" became a space and the spaces collapsed and trimmed; after
+ * it, "ı" becomes "i". So a stored pre-fold part is the folded part with some
+ * of its "i"s turned into spaces, collapsed and trimmed: "kavaklidere" ->
+ * "kavakl dere", "isik" -> "s k". Which "i"s were "ı" is not known from an
+ * ASCII or all-caps spelling, so every choice is tried, in O(n^2) rather than
+ * 2^n. Pure; a lookup test only, never a key to write.
+ */
+export function couldBeBeforeFold(folded: string, stored: string): boolean {
+  if (folded === stored) return true;
+  // walk(a, b, pending): a = next char of `folded`, b = next char of `stored`
+  // to match, pending = a space is owed before the next letter (collapsed).
+  const seen = new Set<string>();
+  const walk = (a: number, b: number, pending: boolean): boolean => {
+    if (a === folded.length) return b === stored.length; // trailing space trims
+    const memo = `${a},${b},${pending ? 1 : 0}`;
+    if (seen.has(memo)) return false;
+    seen.add(memo);
+    const c = folded[a];
+    const options = c === "i" ? ["i", " "] : [c];
+    for (const out of options) {
+      if (out === " ") {
+        // A leading space trims away; any other space is owed, once.
+        if (walk(a + 1, b, b > 0)) return true;
+        continue;
+      }
+      let at = b;
+      if (pending) {
+        if (stored[at] !== " ") continue;
+        at += 1;
+      }
+      if (stored[at] === out && walk(a + 1, at + 1, false)) return true;
+    }
+    return false;
+  };
+  return walk(0, 0, false);
+}
+
+/**
+ * A SQL LIKE pattern every pre-fold spelling of a folded part matches: each run
+ * of "i" and space becomes "%". A prefilter only; `couldBeBeforeFold` decides.
+ * Null when the part has no "i" (the fold changed nothing) or nothing but "i"s
+ * and spaces (the pattern would match every row).
+ */
+export function likePatternBeforeFold(folded: string): string | null {
+  if (!folded.includes("i")) return null;
+  const pattern = folded.replace(/[i ]+/g, "%");
+  return /[^%]/.test(pattern) ? pattern : null;
+}
+
+/** The register row fields a pre-fold match is judged on. */
+export interface StoredIdentityRow {
+  producer_normalised: string;
+  name_normalised: string;
+  vintage_text: string;
+  size_ml: number | null;
+  pack: number | null;
+  display_label: string;
+}
+
+/**
+ * Whether a register row asserted before the dotless-ı fold is the bottle this
+ * folded reading describes, whatever "i"/"I"/"ı" spelling either side used.
+ *
+ * Three things must hold. Vintage, size and pack are the same. Producer and name
+ * are each a possible pre-fold image of the folded part (`couldBeBeforeFold`).
+ * And the row's own display label, which kept the letters as typed, folds to
+ * the label this assertion would write: that is what stops "Domaine Al" being
+ * taken for "Domaine Ali" (an image too, the trailing "i" trimmed) and a
+ * producer with a real space in it being taken for one that had an "ı" there.
+ */
+export function storedRowIsBeforeFold(
+  subject: IdentityInput,
+  reading: IdentityParts,
+  row: StoredIdentityRow,
+): boolean {
+  if (row.vintage_text !== reading.vintageText) return false;
+  const size = row.size_ml === null ? null : Number(row.size_ml);
+  const pack = row.pack === null ? null : Number(row.pack);
+  if (size !== reading.sizeMl || pack !== reading.pack) return false;
+  if (!couldBeBeforeFold(reading.producerNormalised, row.producer_normalised)) {
+    return false;
+  }
+  if (!couldBeBeforeFold(reading.nameNormalised, row.name_normalised)) {
+    return false;
+  }
+  return (
+    normalizeIdentityText(row.display_label) ===
+    normalizeIdentityText(identityDisplayLabel(subject, reading))
+  );
+}
+
 /** How a person should see this identity. */
 export function identityDisplayLabel(
   input: IdentityInput,
