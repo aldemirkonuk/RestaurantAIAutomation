@@ -11,6 +11,7 @@ import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { storeSession } from '../lib/houseMemory'
 import {
+  clearSignUpMail,
   noteSignUpMail,
   readSignUpMail,
   resendOutcome,
@@ -80,6 +81,9 @@ export function VerifyEmail() {
       // One helper stores every session, so `activeRestaurantId` follows the
       // token's house (ADR 0164).
       const house = storeSession(data.accessToken, data.refreshToken)
+      // Verified: the sign-up's mail note (OB-6) has nothing left to say, and
+      // must not come back if this account ever has to verify again.
+      clearSignUpMail()
       setVerified(true)
       toast.success('Email verified! Redirecting...')
       // A session in no house goes to the chooser (ADR 0164): it shows a
