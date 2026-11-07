@@ -3,17 +3,8 @@
  *
  * The database is a recording fake: every `from(...)` / `rpc(...)` call and
  * every chained filter is kept, and each read answers from a resolver the test
- * sets. Nothing leaves this process. What is proven here:
- *   - one extra row decides whether `next` exists, and a cursor's time and
- *     key reach the database untouched; a malformed one never does;
- *   - a person or thread this house has no mail with is an empty answer;
- *   - a thread page is at most 50 letters, oldest to newest, with a `before`
- *     cursor, and never carries email headers, Gmail ids or message ids;
- *   - the summary reads the house's address with a plain select and never
- *     provisions one, and says `configured: false` when no domain is set;
- *   - a failed read is a 503 in words, never an empty answer (ADR 0020).
- * The pure rules (cursor, page size, role, door, Subject line) are proven in
- * mail.read-rules.spec.ts.
+ * sets. Nothing leaves this process. The pure rules (cursor, page size, role,
+ * door, Subject line) are proven in mail.read-rules.spec.ts.
  */
 import {
   BadRequestException,
