@@ -110,7 +110,9 @@ export function Sparkline({ points }: { points: number[] }) {
 
 function trendWords(f: ItemFigures['costTrend']): string {
   if (!f.readable) return `What each delivery cost ${UNREAD}.`;
-  const pts = f.points ?? [];
+  // No points is the server saying why there is no trend, not "too few receipts".
+  if (f.points === null) return f.source;
+  const pts = f.points;
   if (pts.length < 2 || f.changePct === null) return 'Not enough receipts to show a change.';
   const month = new Date(pts[0].receivedAt).toLocaleDateString('en-GB', { month: 'long' });
   const pct = Math.abs(f.changePct);
