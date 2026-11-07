@@ -41,7 +41,7 @@ import {
   landedCost,
 } from "../landed-cost";
 import { snapshotLineKinds } from "./from-document-rows";
-import { LotUnitCost, toLotCostPrecision } from "./lot-unit-cost";
+import { LotUnitCost } from "./lot-unit-cost";
 
 /**
  * The house's tax answers for a lot cost, until they exist.
@@ -143,6 +143,15 @@ export interface DeliveryLandedCost {
 }
 
 const m = (n: number): string => n.toFixed(2);
+/** A cost per bottle as posted: up to six places, never fewer than two. */
+const six = (n: number): string =>
+  n.toFixed(6).replace(/(\.\d\d\d*?)0+$/, "$1");
+
+/** What `unit_cost numeric(14,6)` keeps (#839), half away from zero; posting
+ * more places would defeat `finalise_delivery_cost`'s idempotency check. */
+export function toLandedPrecision(perBottle: number): number {
+  return Number(`${Math.round(Number(`${perBottle.toFixed(12)}e6`))}e-6`);
+}
 const plural = (n: number, word: string): string =>
   `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -566,12 +575,24 @@ export function landDelivery(input: {
       );
       continue;
     }
+    // A cost per bottle to six places (#839's numeric(14,6)), checked to add
+    // back to the item's landed value to the cent (its charge shares already
+    // are whole cents): 4.90 freight over 1000 bottles at 10
+    // posts 10.0049, not 10.00 (QA round 15).
+    const valueCents = Math.round(value * 100);
     const perBottle = value / bottles;
-    const unitCost = toLotCostPrecision(perBottle);
+    const unitCost = toLandedPrecision(perBottle);
     if (!(unitCost > 0)) {
       hold(
         key,
         `its bottles came free on the invoice, and a lot is never booked at a cost of nothing. The lot stays provisional.`,
+      );
+      continue;
+    }
+    if (Math.round(unitCost * bottles * 100) !== valueCents) {
+      hold(
+        key,
+        `its ${plural(bottles, "bottle")} are too many for a cost per bottle to six places to add back to the invoice's ${m(valueCents / 100)} to the cent. The lot stays provisional.`,
       );
       continue;
     }
@@ -590,7 +611,7 @@ export function landDelivery(input: {
     const basis = [
       `landed cost per accepted bottle; ${(said.get(key) ?? []).join("; ")}.`,
       ...costed.map((l) => l.basis),
-      `${plural(bottles, "bottle")} accepted across ${plural(costed.length, "line")}, landed at ${m(value)}: ${perBottle.toFixed(4)} a bottle, posted as ${m(unitCost)}.`,
+      `${plural(bottles, "bottle")} accepted across ${plural(costed.length, "line")}, landed at ${m(valueCents / 100)}: posted as ${six(unitCost)} a bottle, which adds back to ${m(valueCents / 100)}.`,
       ...(extra > 0
         ? [
             `The door booked ${plural(extra, "bottle")} more than the invoice lists; ${extra === 1 ? "it takes" : "they take"} the same cost a bottle.`,
