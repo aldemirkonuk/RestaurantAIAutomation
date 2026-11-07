@@ -23,7 +23,8 @@
 --   floor_nudge_sends         the scanner's sends, claimed once (E3, ADR 0352)
 --
 -- and the house switch `restaurant_feature_flags.floor_checker`, default OFF
--- (E7, ADR 0131), shipped with its ACTIVE_FEATURE_FLAGS entry.
+-- (E7, ADR 0131). Its registry entry and the gateway's fail-closed read land
+-- with the floor module; until then nothing reads it and the floor is dark.
 --
 -- WHAT IT DOES NOT DO
 -- -------------------
