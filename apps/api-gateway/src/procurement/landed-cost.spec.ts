@@ -417,9 +417,70 @@ describe("landedCost: tax follows the line's basis and the house's reclaim (ADR 
     const a = costed(r.lines[0]);
     expect(a.landed_value).toBeCloseTo(110, 6);
     expect(a.cost_tax_basis).toBeNull();
-    expect(r.tax_said).toContain(
-      "the paper does not say enough about the tax on its lines, charges or discount",
+    expect(r.tax_said).toBe(
+      "The price of 1 line is costed before tax, since the house reclaims it. 1 line carries a share of the paper's charges or discount whose tax is not known, so what its cost holds is not stated.",
     );
+  });
+
+  it("a line whose own tax is treated is never said to be costed as printed because its freight's tax is not known (audit, #812)", () => {
+    // 120.00 with 20 % inside, plus freight 10 with no tax stated.
+    const inclusive = line({
+      price_tax_basis: "includes_tax",
+      vat_rate_percent: 20,
+    });
+    const reclaims = cost({ freight: 10 }, [inclusive], RECLAIMS);
+    const a = costed(reclaims.lines[0]);
+    expect(a.cost_value).toBeCloseTo(100, 6);
+    expect(a.tax_taken_out).toBeCloseTo(20, 6);
+    expect(a.cost_tax_basis).toBeNull();
+    expect(a.basis).toContain("the 20.00 of tax inside its price is taken out");
+    expect(reclaims.tax_said).toBe(
+      "Tax of 20.00 printed inside the prices is taken out of cost, since the house reclaims it. 1 line carries a share of the paper's charges or discount whose tax is not known, so what its cost holds is not stated.",
+    );
+    const keeps = cost(
+      { freight: 10 },
+      [
+        {
+          ...inclusive,
+          price_tax_basis: "excludes_tax",
+          line_total: 100,
+          unit_price: 100 / 12,
+        },
+      ],
+      DOES_NOT_RECLAIM,
+    );
+    expect(costed(keeps.lines[0]).tax_in_cost).toBeCloseTo(20, 6);
+    expect(keeps.tax_said).toBe(
+      "Tax of 20.00 is in cost, since the house does not reclaim it. 1 line carries a share of the paper's charges or discount whose tax is not known, so what its cost holds is not stated.",
+    );
+  });
+
+  it("a paper none of whose lines could be costed never says nothing on it carries tax (audit, #812)", () => {
+    const badRate = cost(
+      {},
+      [{ ...inside(), vat_rate_percent: 118 }],
+      RECLAIMS,
+    );
+    open(badRate.lines[0]);
+    expect(badRate.tax_said).toBe(
+      "The paper's tax could not be treated, since none of its lines could be costed.",
+    );
+    const bigDiscount = cost(
+      { discount_total: 500, tax: 18 },
+      [outside()],
+      RECLAIMS,
+    );
+    open(bigDiscount.lines[0]);
+    expect(bigDiscount.tax_said).toBe(
+      "The paper's tax could not be treated, since none of its lines could be costed.",
+    );
+    // A paper with no tax anywhere still says so.
+    const untaxed = cost(
+      {},
+      [{ ...outside(), vat_rate_percent: 0 }],
+      DOES_NOT_RECLAIM,
+    );
+    expect(untaxed.tax_said).toBe("Nothing on this paper carries tax.");
   });
 
   it("an item whose lines do not agree on what their cost holds is stamped null", () => {
