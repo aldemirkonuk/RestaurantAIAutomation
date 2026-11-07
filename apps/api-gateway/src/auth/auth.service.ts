@@ -2653,11 +2653,19 @@ export class AuthService {
     userId: string,
     code: string,
   ): Promise<{ restaurant: string; role: string; restaurantId: string }> {
-    const { data: actor } = await this.databaseService.supabase
+    const { data: actor, error: actorErr } = await this.databaseService.supabase
       .from("users")
       .select("email")
       .eq("user_id", userId)
       .maybeSingle();
+    // A failed read used to fall through and spend the invite with no
+    // `used_by_email` (QA round 11, R11-09's side note). Refuse before the
+    // invite is touched.
+    if (actorErr) {
+      throw new ServiceUnavailableException(
+        "Could not read your account. Nothing was done; try again.",
+      );
+    }
 
     const { data: invite, error: inviteErr } =
       await this.databaseService.supabase
@@ -2937,6 +2945,15 @@ export class AuthService {
         !unprovenPasswordHasLapsed(existingUser, Date.now());
 
       if (!passwordMatches) {
+        // QA round 11, R11-03: the invite was consumed above, before the
+        // password was known to be wrong. Give it back, as the already_member
+        // and failed-insert branches do, or one mistyped password -- or anyone
+        // who holds the code and types a member's address -- spends a code
+        // the invited person has not used yet.
+        await this.databaseService.supabase
+          .from("organization_invites")
+          .update({ used_at: null, used_by_email: null })
+          .eq("id", invite.id);
         // Deliberately identical to the credential error used elsewhere, and
         // deliberately NOT "that account exists, wrong password" — this is a
         // @Public route, so a distinguishable message would turn it into an
