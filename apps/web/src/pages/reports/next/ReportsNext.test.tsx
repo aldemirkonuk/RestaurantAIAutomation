@@ -1795,3 +1795,95 @@ describe('ReportsNext — a register this role is not sent (ADR 0348)', () => {
     expect(within(room).queryByText(/written for owners and managers/)).not.toBeInTheDocument();
   });
 });
+
+/* ───────────────────────── bars and a line, together (founder /goal 2026-11-07) ── */
+
+describe('ReportsNext — bars and a line on one cutting', () => {
+  /** The default sheet with the week's shape drawn as bars-and-a-line. */
+  const weekAsCombo = () => ({
+    ...base(),
+    sheet: {
+      cuttings: defaultSheet().cuttings.map((c) =>
+        c.id === 'week' ? { ...c, graph: 'combo' as const } : c,
+      ),
+    },
+  });
+  const WORDS = /Bars: Mean per day\. Line: Spread\. Both are in bottles\/day, so they share one scale\./;
+
+  it('offers the combination only where the register has a second measure', () => {
+    paint();
+    arrange();
+    const types = (title: string) =>
+      Array.from(
+        (
+          within(screen.getByRole('region', { name: title })).getByLabelText(
+            `Draw ${title} as`,
+          ) as HTMLSelectElement
+        ).options,
+      ).map((o) => o.value);
+    expect(types('The week’s shape')).toContain('combo');
+    // Two windows are two bars; there is no second measure to lay beside them.
+    expect(types('Spend pacing')).not.toContain('combo');
+  });
+
+  it('says in words which measure is the bars, which the line, and which scale', () => {
+    hook.current = weekAsCombo();
+    paint();
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    expect(within(week).getByText(/Bars: Mean per day/)).toBeInTheDocument();
+    expect(within(week).getByLabelText('Bars show')).toBeInTheDocument();
+  });
+
+  it('is the same drawing, with the same measures, when laid full screen', () => {
+    hook.current = weekAsCombo();
+    paint();
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    fireEvent.change(within(week).getByLabelText('Line shows'), { target: { value: 'seen' } });
+    expect(within(week).getByText(/Line: Days seen, in days, on the right scale/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show The week’s shape full screen' }));
+    const flat = screen.getByRole('dialog', { name: 'The week’s shape' });
+    expect((within(flat).getByLabelText('Draw The week’s shape as') as HTMLSelectElement).value).toBe(
+      'combo',
+    );
+    // Opens on the sheet's own choice…
+    expect(within(flat).getByText(/Line: Days seen, in days, on the right scale/)).toBeInTheDocument();
+    // …and changing it there is view-only: the sheet behind keeps its own.
+    fireEvent.change(within(flat).getByLabelText('Line shows'), { target: { value: 'spread' } });
+    expect(within(flat).getByText(WORDS)).toBeInTheDocument();
+    fireEvent.click(within(flat).getByRole('button', { name: 'Back to the sheet' }));
+    expect(
+      within(screen.getByRole('region', { name: 'The week’s shape' })).getByText(
+        /Line: Days seen, in days, on the right scale/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the drawing and its measures when the cutting is moved to another place', () => {
+    hook.current = alone('week', { x: 0, y: 0, w: 4, h: 4 }, 'combo');
+    paint();
+    fireEvent.change(screen.getByLabelText('Line shows'), { target: { value: 'seen' } });
+    arrange();
+    const grip = gripFor('The week’s shape');
+    fireEvent.keyDown(grip, { key: ' ' });
+    fireEvent.keyDown(grip, { key: 'ArrowRight' });
+    fireEvent.keyDown(grip, { key: 'ArrowRight' });
+    fireEvent.keyDown(grip, { key: ' ' });
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    expect((within(week).getByLabelText('Draw The week’s shape as') as HTMLSelectElement).value).toBe(
+      'combo',
+    );
+    expect((within(week).getByLabelText('Line shows') as HTMLSelectElement).value).toBe('seen');
+
+    fireEvent.click(screen.getByText('Rule it off'));
+    const saved = saveSheet.mock.calls[0][0] as {
+      cuttings: Array<{ id: string; graph: string; slot: { x: number } }>;
+    };
+    const moved = saved.cuttings.find((c) => c.id === 'week');
+    expect(moved?.slot.x).toBe(2);
+    expect(moved?.graph).toBe('combo');
+    expect(
+      within(screen.getByRole('region', { name: 'The week’s shape' })).getByText(/Line: Days seen/),
+    ).toBeInTheDocument();
+  });
+});

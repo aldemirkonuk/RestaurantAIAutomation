@@ -388,9 +388,9 @@ const week = analysis<WeekRegister>({
   answers: 'Which nights carry the week',
   window: () => 'the last 90 days of the consumption log',
   path: (rid) => `/analytics/seasonality/${rid}`,
-  graphs: ['bars', 'line', 'area', 'table'],
+  graphs: ['bars', 'combo', 'line', 'area', 'table'],
   graphNote:
-    'No heat map: seasonality returns one dimension — a mean per weekday — and a heat map needs two. No scatter, and no reference line: the endpoint publishes no median or threshold for this register, and a rule we invented is not the engine’s.',
+    'Bars and a line puts the mean beside its spread or the days seen. No heat map: seasonality returns one dimension — a mean per weekday — and a heat map needs two. No scatter, and no reference line: the endpoint publishes no median or threshold for this register, and a rule we invented is not the engine’s.',
   select: (raw) => {
     const d = obj(raw);
     return {
@@ -462,6 +462,24 @@ const week = analysis<WeekRegister>({
         yLabel: 'bottles/day',
         unit: 'bottles/day',
         format: (v) => figure(v),
+        measureLabel: 'Mean per day',
+        // Same points as `data`; a weekday never observed is a gap in both.
+        measures: [
+          {
+            key: 'spread',
+            label: 'Spread',
+            unit: 'bottles/day',
+            format: (v) => figure(v),
+            values: w.weekdayProfile.map((d) => (d.n > 0 ? Number(d.stdev.toFixed(2)) : null)),
+          },
+          {
+            key: 'seen',
+            label: 'Days seen',
+            unit: 'days',
+            format: (v) => figure(v),
+            values: w.weekdayProfile.map((d) => (d.n > 0 ? d.n : null)),
+          },
+        ],
       },
       table: {
         cols: [
