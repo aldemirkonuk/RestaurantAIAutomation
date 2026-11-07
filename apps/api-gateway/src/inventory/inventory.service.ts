@@ -1514,12 +1514,17 @@ export class InventoryService {
     // the page can no longer disagree about the same wine.
     //
     // OD-161: a wine nobody has counted (`last_counted_at` null; only a count
-    // stamps it) is `unknown`, not zero. `v_low_stock_items` leaves the same
-    // rows out, so they do not set off the disagreement warning below.
+    // stamps it) is `unknown`, not zero, unless receipts and sales gave it a
+    // figure. Which uncounted rows have one is decided in SQL, by a live
+    // stock movement (a_received_wine_not_counted_yet_can_run_low), and this
+    // summary does not read the ledger, so an uncounted row is classified
+    // only when the view holds it (below par on received minus sold). Any
+    // other uncounted row stays `unknown`. A failed view read classifies none.
+    const inView = new Set(lowStock.map((item: any) => item.id));
     const bands = inventory.map((item: any) =>
-      item.last_counted_at == null
-        ? ("unknown" as const)
-        : classifyStock(item.stock_live, item.threshold_min),
+      item.last_counted_at != null || inView.has(item.id)
+        ? classifyStock(item.stock_live, item.threshold_min)
+        : ("unknown" as const),
     );
     const lowStockCount = bands.filter(
       (b) => b === "low" || b === "critical",
