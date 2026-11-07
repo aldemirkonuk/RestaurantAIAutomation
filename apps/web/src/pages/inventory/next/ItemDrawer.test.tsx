@@ -128,6 +128,13 @@ describe('the item drawer', () => {
     expect(within(panel).queryByTestId('ivd-card-value')).toBeNull();
   });
 
+  it('draws a food with no library row in kg, without bottle words', () => {
+    open(row({ wineId: null, name: 'Un', type: null, kind: null, stock: 12400 }), { house: { kind: 'food', uom: 'g', displayName: 'Un' } });
+    expect(screen.getByTestId('ivd-card-onhand').textContent).toContain('12.4 kg');
+    expect(screen.getByTestId('ivd-head').textContent).toContain('Food');
+    expect(screen.getByTestId('ivd-head').textContent).not.toContain('ml bottle');
+  });
+
   it('says an id not on the list is not on the list, and reads nothing', () => {
     open(null);
     expect(screen.getByTestId('ivd-gone')).toBeTruthy();

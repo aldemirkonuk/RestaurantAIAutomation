@@ -645,6 +645,29 @@ export async function getItemFigures(itemId: string, restaurantId?: string): Pro
   return response.data;
 }
 
+/** POST /inventory/:rid/house-items: "Carry this", a good the wine library does not hold. */
+export interface CarryHouseItemBody {
+  kind: string;
+  uom: string;
+  displayName: string;
+  thresholdMin?: number;
+}
+
+export interface CarriedHouseItem {
+  id: string;
+  kind: string;
+  uom: string;
+  displayName: string;
+  thresholdMin: number;
+}
+
+export async function carryHouseItem(body: CarryHouseItemBody, restaurantId?: string): Promise<CarriedHouseItem> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.post<CarriedHouseItem>(`${INVENTORY_PATH}/${id}/house-items`, body);
+  return response.data;
+}
+
 export const inventoryApi = {
   getInventory,
   createInventoryItem,
