@@ -33,8 +33,9 @@
  * last terminator is the executor's under OD-242, inside the D4 (b)
  * terminators ADR 0346 `:63` already attributes to the executor.
  *
- * The seat time is an anchor (ADR 0346 D4 b). Mudavym stores it only as
- * `floor_seatings.seated_at`: `floor_visits` has no seated row (PR3). So a
+ * The seat time is an anchor (ADR 0346 D4 b). The port's floor schema (its
+ * migration is not on main yet) stores it only as `floor_seatings.seated_at`;
+ * `floor_visits` has no seated row. So a
  * seating's facts carry `seatedAt`, and when its events hold no "seated" event
  * the anchor is made from `seatedAt` / `seatedBy`. A seating with facts and no
  * events at all (seated, never visited) is still scored. At one millisecond, a
