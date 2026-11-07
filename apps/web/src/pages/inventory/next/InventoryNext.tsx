@@ -30,7 +30,7 @@ import { Select } from '@/components/mudavym';
 import { DeliveriesToName } from '@/components/mudavym/DeliveriesToName';
 import { ContextualInsights } from '@/components/insights/ContextualInsights';
 import { NamingUnread } from './NameThisWine';
-import { readView, writeView, type IvView } from './iv-url';
+import { KIND_CHIPS, readView, writeView, type GoodKind, type IvView } from './iv-url';
 import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager';
 import { PosMappingPanel } from '../../../components/inventory/PosMappingPanel';
 import { ManualReceiptWorkspace } from '../../../components/inventory/ManualReceiptWorkspace';
@@ -47,6 +47,7 @@ import { CellarMapView } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import InventoryTable from './InventoryTable';
 import ItemDrawer from './ItemDrawer';
+import CarryThis from './CarryThis';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
 import { blank, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
@@ -178,7 +179,7 @@ export default function InventoryNext() {
   // INV-W38: the view is the URL (iv-url.ts), so a reload, Back or a sent
   // link keeps it, and the links other pages send here land where they say.
   const [params, setParams] = useSearchParams();
-  const { chip, q: query, zone, type, sort, view, open: openParam } = useMemo(() => readView(params), [params]);
+  const { chip, q: query, zone, type, sort, view, kind, open: openParam } = useMemo(() => readView(params), [params]);
   const setV = useCallback(
     (patch: Partial<IvView>) => setParams((cur) => writeView(cur, { ...readView(cur), ...patch }), { replace: true }),
     [setParams],
@@ -199,7 +200,7 @@ export default function InventoryNext() {
   useEffect(() => {
     if (openParam === null) openedHere.current = false;
   }, [openParam]);
-  const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction'>(null);
+  const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction' | 'carry'>(null);
   const [autoLocate, setAutoLocate] = useState<AutoLocateResult | null>(null);
   const [includeAssigned, setIncludeAssigned] = useState(false);
   // The delivered-order bell links to ?name-delivery=<order>; the card opens for it.
@@ -282,17 +283,32 @@ export default function InventoryNext() {
     return opts;
   }, [rows, data.libraryAnswered]);
 
+  // A food or supply is a house item with its own kind (house-items, #862);
+  // every other row is a drink. The kind chips show once the house carries one.
+  const goodOf = useMemo(() => {
+    const k = new Map(data.rawItems.map((i) => [i.id, houseFieldsOf(i).kind]));
+    return (r: InvRow): GoodKind => {
+      const own = k.get(r.id) ?? r.kind;
+      return own === 'food' || own === 'supply' ? own : 'drink';
+    };
+  }, [data.rawItems]);
+  const carriesGoods = kind !== '' || (rows ?? []).some((r) => goodOf(r) !== 'drink');
   const visible = useMemo(() => {
     if (!rows) return [];
     const now = Date.now();
     const zn = (id: string | null) => (id === null ? 'Unassigned' : (locs.list.find((l) => l.id === id)?.name ?? null));
     return sortRows(
       rows.filter(
-        (r) => chipMatch(r, activeChip, now) && inZone(r, zone) && ofType(r, type) && matchesSearch(r, query, zn),
+        (r) =>
+          chipMatch(r, activeChip, now) &&
+          (kind === '' || goodOf(r) === kind) &&
+          inZone(r, zone) &&
+          ofType(r, type) &&
+          matchesSearch(r, query, zn),
       ),
       sort,
     );
-  }, [rows, activeChip, zone, type, query, sort, locs.list]);
+  }, [rows, activeChip, kind, goodOf, zone, type, query, sort, locs.list]);
 
   // ── Row selection, ported from the legacy page (NEW-064, InventoryCommandPage.tsx:507-531).
   // Keyed by restaurant_inventory id. A house switch or a filter change empties
@@ -741,6 +757,23 @@ export default function InventoryNext() {
               )}
             </div>
 
+            {carriesGoods ? (
+              <div className="iv-chips" role="group" aria-label="Kind" data-testid="inventory-kinds">
+                {[{ id: '' as const, label: 'Every kind' }, ...KIND_CHIPS].map((k) => (
+                  <button
+                    key={k.id || 'all'}
+                    type="button"
+                    className="iv-chip iv-focus"
+                    aria-pressed={kind === k.id}
+                    data-on={kind === k.id}
+                    onClick={() => setV({ kind: k.id })}
+                  >
+                    {k.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
             <div className="iv-toolbar" data-testid="inventory-toolbar">
               <label className="iv-search">
                 <span className="iv-sr">Search titles, producers, grapes</span>
@@ -949,6 +982,11 @@ export default function InventoryNext() {
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('scanner')}>
                   Scan a menu
                 </button>
+                {data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('carry')}>
+                    Carry a food or supply
+                  </button>
+                ) : null}
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('locations')}>
                   Storage locations
                 </button>
@@ -1069,6 +1107,18 @@ export default function InventoryNext() {
       ) : null}
       {panel === 'receipt' ? (
         <ManualReceiptWorkspace isOpen onClose={() => setPanel(null)} onSaved={refreshStock} />
+      ) : null}
+      {panel === 'carry' ? (
+        <CarryThis
+          restaurantId={data.rid}
+          onClose={() => setPanel(null)}
+          onCarried={(item) => {
+            setPanel(null);
+            refreshStock();
+            void queryClient.invalidateQueries({ queryKey: ['inventory-next'] });
+            toast.success(`${item.displayName} is carried. Nothing is on hand until a delivery or a count.`);
+          }}
+        />
       ) : null}
       {panel === 'auction' ? (
         <AuctionLotStart open onClose={() => setPanel(null)} onCarry={carryAuctionLot} />

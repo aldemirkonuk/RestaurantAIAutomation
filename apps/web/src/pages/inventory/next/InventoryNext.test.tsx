@@ -1023,6 +1023,62 @@ describe('INV-W38 — the view is the URL', () => {
     expect(new URLSearchParams(seen.search).has('open')).toBe(false);
   });
 
+  it('(g) a carried food lists under Food, and the kind is kept in the URL', () => {
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+    });
+    const seen = renderAt('/inventory');
+    fireEvent.click(within(screen.getByTestId('inventory-kinds')).getByRole('button', { name: 'Food' }));
+    expect(screen.getByTestId('inv-row-f')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-a')).toBeNull();
+    expect(new URLSearchParams(seen.search).get('kind')).toBe('food');
+  });
+
+  it('draws no kind chips for a house that carries only drinks', () => {
+    mock.data = data({ rows: two() });
+    renderAt('/inventory');
+    expect(screen.queryByTestId('inventory-kinds')).toBeNull();
+  });
+
+  it('lists a supply under Supplies, never under Drinks', () => {
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 's', wineId: null, name: 'Napkins', type: null, kind: null })],
+      rawItems: [{ id: 's', kind: 'supply', uom: 'each', display_name: 'Napkins' }],
+    });
+    renderAt('/inventory');
+    const kinds = screen.getByTestId('inventory-kinds');
+    fireEvent.click(within(kinds).getByRole('button', { name: 'Drinks' }));
+    expect(screen.queryByTestId('inv-row-s')).toBeNull();
+    expect(screen.getByTestId('inv-row-a')).toBeTruthy();
+    fireEvent.click(within(kinds).getByRole('button', { name: 'Supplies' }));
+    expect(screen.getByTestId('inv-row-s')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-a')).toBeNull();
+  });
+
+  it('ignores a ?kind= the page does not know, and lists every good', () => {
+    expect(readView(new URLSearchParams('kind=bogus')).kind).toBe('');
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+    });
+    renderAt('/inventory?kind=bogus');
+    expect(screen.getByTestId('inv-row-a')).toBeTruthy();
+    expect(screen.getByTestId('inv-row-f')).toBeTruthy();
+  });
+
+  it('offers Carry to an owner or manager', () => {
+    mock.data = data({ rows: two(), canManage: true });
+    renderAt('/inventory');
+    expect(screen.getByRole('button', { name: 'Carry a food or supply' })).toBeTruthy();
+  });
+
+  it('offers no Carry to staff', () => {
+    mock.data = data({ rows: two(), canManage: false });
+    renderAt('/inventory');
+    expect(screen.queryByRole('button', { name: 'Carry a food or supply' })).toBeNull();
+  });
+
   const closeDrawer = () => fireEvent.click(document.querySelector('.iv-drawer .mdv-ovl__close') as HTMLElement);
 
   it('(f) Close on a row opened here steps back, so the next Back leaves the page', () => {
