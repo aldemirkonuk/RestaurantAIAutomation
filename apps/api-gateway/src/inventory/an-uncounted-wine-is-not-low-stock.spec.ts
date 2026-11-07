@@ -68,4 +68,45 @@ describe("OD-161 — the /inventory summary does not call an uncounted wine low"
       expect.stringContaining("Low-stock count disagreement"),
     );
   });
+
+  // Second half (a_received_wine_not_counted_yet_can_run_low): receipts and
+  // sales give an uncounted wine a figure, and the view holds it when that
+  // figure is below par. The summary classifies it then, and only then.
+  it("counts a received, never-counted wine below par as low, as the view does", async () => {
+    const RECEIVED_LOW = {
+      id: "inv-received",
+      stock_live: 2,
+      threshold_min: 3,
+      is_active: true,
+      last_counted_at: null,
+    };
+    const summary = await serviceWith(
+      [NEVER_COUNTED, RECEIVED_LOW],
+      [RECEIVED_LOW],
+    ).getInventorySummary("r1");
+
+    expect(summary).toMatchObject({
+      totalItems: 2,
+      lowStockCount: 1,
+      criticalCount: 0,
+      unknownCount: 1,
+      healthyCount: 0,
+    });
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("Low-stock count disagreement"),
+    );
+  });
+
+  it("keeps every uncounted wine unknown when the view could not be read", async () => {
+    const db = {
+      getRestaurantInventory: jest.fn().mockResolvedValue([
+        { ...NEVER_COUNTED, id: "inv-received", stock_live: 2 },
+      ]),
+      getLowStockItems: jest.fn().mockResolvedValue(null),
+    };
+    const summary = await new InventoryService(db as any).getInventorySummary(
+      "r1",
+    );
+    expect(summary).toMatchObject({ lowStockCount: 0, unknownCount: 1 });
+  });
 });
