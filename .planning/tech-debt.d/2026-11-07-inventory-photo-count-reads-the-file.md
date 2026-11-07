@@ -1,6 +1,6 @@
-## The photo note still says "confident" and shows twice — OPEN — 2026-11-07
+## The photo note still says "confident" and shows twice — CLOSED — 2026-11-07
 
-QA round 10b: the gateway's fallback says "confident count"; `SpotCountPanel` shows the note in the toast and beside the photo. Over #833's 30K bound; stacked `fix/photo-note-says-plain-house-words` closes it.
+QA round 10b: the gateway's fallback said "confident count"; `SpotCountPanel` showed the note in the toast and beside the photo. Closed on `fix/photo-note-says-plain-house-words`: `NO_COUNT_NOTE` in plain house words (TR for a Türkiye house, else EN), the toast no longer carries the note. The model's own note is asked for in the house language without confidence words; untested against a live model.
 
 ## The counted shelf photo is not kept — OPEN — 2026-11-07
 

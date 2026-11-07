@@ -1,6 +1,7 @@
 import { BadRequestException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
+  NO_COUNT_NOTE,
   PhotoCountService,
   UNREADABLE_PHOTO,
   sniffPhotoMediaType,
@@ -27,10 +28,8 @@ const HEIC = b64(0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x68, 0x65, 0x69, 0x63);
 const HEIF = b64(0, 0, 0, 0x1c, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x69, 0x66, 0x31);
 const PDF = Buffer.from("%PDF-1.7\n%âãÏÓ\n1 0 obj").toString("base64");
 
-function service(key: string | null = "test-key") {
-  const call = jest
-    .fn()
-    .mockResolvedValue({ content: [{ text: '{"suggestedQty": 6}' }] });
+function service(key: string | null = "test-key", reply = '{"suggestedQty": 6}') {
+  const call = jest.fn().mockResolvedValue({ content: [{ text: reply }] });
   const svc = new PhotoCountService(
     { get: () => key ?? undefined } as unknown as ConfigService,
     { call } as unknown as ModelClientService,
@@ -90,5 +89,30 @@ describe("sniffPhotoMediaType", () => {
   it("does not take a RIFF that is not WEBP (a WAV, say) for a photo", () => {
     const wav = b64(0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x41, 0x56, 0x45);
     expect(sniffPhotoMediaType(wav)).toBeNull();
+  });
+});
+
+describe("the note says no confidence word, in the house's language (QA round 10b)", () => {
+  const note = (reply: string, lang?: "en" | "tr") =>
+    service("k", reply).svc.estimate(PNG, "Lager", "r1", undefined, lang).then((e) => e.note);
+
+  it.each([
+    ["a note-less reply with no count", '{"suggestedQty": null}'],
+    ["an unreadable reply", "not json"],
+  ])("%s says the plain fallback", async (_name, reply) => {
+    expect(await note(reply)).toBe(NO_COUNT_NOTE.en);
+    expect(await note(reply, "tr")).toBe(NO_COUNT_NOTE.tr);
+    expect(Object.values(NO_COUNT_NOTE).join(" ")).not.toMatch(/confiden|emin|güven/i);
+  });
+
+  it("a count with no note says nothing more", async () => {
+    expect(await note('{"suggestedQty": 2}')).toBe("");
+  });
+
+  it("asks the model for a plain note in the house's language", async () => {
+    const { svc, call } = service();
+    await svc.estimate(PNG, "Lager", "r1", undefined, "tr");
+    expect(sent(call)[1].text).toContain("no word about confidence or certainty");
+    expect(sent(call)[1].text).toContain("Write the note in Turkish.");
   });
 });

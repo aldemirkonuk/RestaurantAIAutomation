@@ -706,6 +706,8 @@ describe('the photo count reads the file it got (inventory walk #7, I2: G10, G11
       mount(<CountSheet row={row()} onClose={() => {}} />);
       pickPhoto(new File(['heic'], 'IMG_0001.HEIC', { type: 'image/heic' }));
       await waitFor(() => expect(api.photo).toHaveBeenCalledWith('i1', 'SMALL'));
+      // A count with no note says only the sheet's own sentence (QA round 10b).
+      await waitFor(() => expect(document.querySelector('.iv-note')?.textContent).toBe('The photo suggests 3. It only fills the field — check it before you seal.'));
     } finally {
       ctx.mockRestore();
       url.mockRestore();

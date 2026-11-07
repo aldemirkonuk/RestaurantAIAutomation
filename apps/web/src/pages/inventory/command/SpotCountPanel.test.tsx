@@ -36,10 +36,11 @@ describe('SpotCountPanel photo toast (inventory walk #7, I2: G11, ADR 0104)', ()
     expect(said).not.toContain('medium');
   });
 
-  it('says the photo gave no count, with no "confident"', async () => {
+  it('says the photo gave no count, and its note once, beside the photo (QA round 10b)', async () => {
     m.photo.mockResolvedValue({ suggestedQty: null, confidence: 'low', note: 'Too blurry.' });
     shoot();
     await waitFor(() => expect(m.toast.error).toHaveBeenCalled());
-    expect(m.toast.error).toHaveBeenCalledWith('The photo gave no count', 'Too blurry.');
+    expect(m.toast.error).toHaveBeenCalledWith('The photo gave no count');
+    await waitFor(() => expect(document.body.textContent).toContain('Too blurry.'));
   });
 });
