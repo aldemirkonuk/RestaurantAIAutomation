@@ -5,19 +5,22 @@
  * fails without this line.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, renderHook, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 
 const RID = '11111111-1111-4111-8111-111111111111';
 const GIN = '33333333-3333-4333-8333-333333333333';
 
-const h = vi.hoisted(() => ({ get: vi.fn() }));
+const RID_B = '99999999-9999-4999-8999-999999999999';
+
+const h = vi.hoisted(() => ({ get: vi.fn(), rid: '11111111-1111-4111-8111-111111111111' }));
 vi.mock('../../../../services/api/client', () => ({ apiClient: { get: h.get } }));
-vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: RID }) }));
+vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => ({ activeRestaurantId: h.rid }) }));
 
 import LineRow, { LineRowRead, type DraftRow } from './LineRow';
 import { readQty } from './units';
+import { useShelf } from './useRecipe';
 
 const blank: DraftRow = {
   key: 'r1', role: 'stocked', inventoryId: null, itemName: null, itemKind: null,
@@ -42,6 +45,7 @@ function mount(node: ReactNode) {
 
 beforeEach(() => {
   h.get.mockReset();
+  h.rid = RID;
   last = blank;
 });
 
@@ -107,5 +111,22 @@ describe('LineRow', () => {
     expect(readQty('0')).toBeNull();
     expect(readQty('-1')).toBeNull();
     expect(readQty('abc')).toBeNull();
+  });
+
+  // Round-17 QA M18: with the house left out of the shelf key, a second house
+  // was shown the first house's cached shelf for 30 s (the key's staleTime).
+  // The house-switch cache wipe covers it today; this pins the key itself.
+  it("reads the shelf per house: another house never gets this house's cached items", async () => {
+    h.get.mockImplementation(async (url: string) => ({
+      data: [{ id: GIN, name: url.includes(RID_B) ? 'House B gin' : 'House A gin', kind: 'spirit', uom: 'bottle', bottleSizeMl: 700 }],
+    }));
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    const { result, rerender } = renderHook(() => useShelf('gin', true), { wrapper });
+    await waitFor(() => expect(result.current.data?.[0]?.name).toBe('House A gin'));
+    h.rid = RID_B;
+    rerender();
+    await waitFor(() => expect(result.current.data?.[0]?.name).toBe('House B gin'));
+    expect(h.get).toHaveBeenCalledWith(`/recipes/${RID_B}/shelf`, expect.anything());
   });
 });
