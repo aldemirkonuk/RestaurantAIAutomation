@@ -8,6 +8,9 @@
  * were made.
  */
 import { ServiceUnavailableException } from "@nestjs/common";
+import { plainToInstance } from "class-transformer";
+import { validate } from "class-validator";
+import { RefoldReviewQueryDto } from "./dto/wine-submissions.dto";
 import { WineSubmissionsService } from "./wine-submissions.service";
 
 type Tables = Record<string, any[]>;
@@ -114,5 +117,35 @@ describe("listRefoldReview: the pairs the dotless-ı refold held back", () => {
   ])("refuses to answer, rather than answer empty, when %s cannot be read", async (table) => {
     const svc = makeDb(tables(), [table]);
     await expect(svc.listRefoldReview(100)).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+});
+
+describe("listRefoldReview: a stable order when pairs share a timestamp", () => {
+  it("breaks recorded_at ties by id, so a page boundary never shuffles", async () => {
+    const t = tables();
+    const at = "2026-11-07T11:00:00Z";
+    // Inserted in reverse id order, all at the same instant.
+    t.wine_signature_refold_review = ["rv-c", "rv-b", "rv-a"].map((id) => ({
+      id, table_name: "master_wine_library", row_id: "a1", held_by: "k1",
+      stored_hash: "h", folded_hash: "f", recorded_at: at, resolved_at: null,
+    }));
+    const out = await makeDb(t).listRefoldReview(100);
+    expect(out.pairs.map((p) => p.id)).toEqual(["rv-a", "rv-b", "rv-c"]);
+  });
+});
+
+describe("RefoldReviewQueryDto: the limit is capped at 200", () => {
+  const check = async (limit: unknown) =>
+    validate(plainToInstance(RefoldReviewQueryDto, { limit }));
+
+  it("accepts 1 and 200", async () => {
+    expect(await check("1")).toHaveLength(0);
+    expect(await check("200")).toHaveLength(0);
+  });
+
+  it("refuses 201, 0 and a non-integer", async () => {
+    expect(await check("201")).not.toHaveLength(0);
+    expect(await check("0")).not.toHaveLength(0);
+    expect(await check("2.5")).not.toHaveLength(0);
   });
 });
