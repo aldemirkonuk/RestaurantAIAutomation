@@ -221,8 +221,9 @@ describe("the sign-up's mail outcome", () => {
         </Routes>
       </MemoryRouter>,
     )
-    fireEvent.click(screen.getByRole('button', { name: 'Verify my email' }))
+    // Signed in, the link verifies by itself (F3, this PR): no click.
     await vi.waitFor(() => expect(h.toastSuccess).toHaveBeenCalled())
+    expect(h.auth.signInWithSession).toHaveBeenCalled()
     expect(sessionStorage.getItem(KEY)).toBeNull()
   })
 })

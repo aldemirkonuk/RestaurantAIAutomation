@@ -91,15 +91,15 @@ it('offers a new link when the link itself was refused (expired or used)', async
     .mockResolvedValueOnce({
       data: { success: true, sent: true, verificationMail: 'sent' },
     })
+  // OB-6 (F3): signed in, the link runs by itself; no click is needed for
+  // the gateway to refuse it.
   mount('/verify-email?token=3f2b8c1e-9a4d-4c7b-8e2f-1a2b3c4d5e6f')
-  expect(
-    screen.queryByRole('button', { name: 'Send me a new link' }),
-  ).not.toBeInTheDocument()
-
-  fireEvent.click(screen.getByRole('button', { name: 'Verify my email' }))
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Verification token expired',
   )
+  expect(h.post).toHaveBeenNthCalledWith(1, '/auth/verify-email', {
+    token: '3f2b8c1e-9a4d-4c7b-8e2f-1a2b3c4d5e6f',
+  })
   fireEvent.click(screen.getByRole('button', { name: 'Send me a new link' }))
 
   expect(await screen.findByText(/was sent at/)).toBeInTheDocument()
