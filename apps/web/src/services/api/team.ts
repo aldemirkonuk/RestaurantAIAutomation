@@ -206,12 +206,23 @@ export interface WeekPayload {
   money?: HouseMoney
 }
 
+/** A shift as `my-week` returns it: marked `draft` while its week is unpublished. */
+export type MyWeekShift = Shift & { draft?: boolean }
+
 export interface MyWeekPayload {
   member: { id: string; display_name: string } | null
+  /** Staff get the schedule only once it is published; owner/manager always. */
   schedule: Schedule | null
-  mine: Shift[]
-  open: Shift[]
+  mine: MyWeekShift[]
+  open: MyWeekShift[]
   acknowledged?: boolean
+  /** The week asked for is published. Absent from an older gateway. */
+  published?: boolean
+  /**
+   * Staff on an unpublished week: the gateway withholds its shifts until the
+   * manager publishes, so an empty day is "not published", never "Off".
+   */
+  draftsWithheld?: boolean
 }
 
 export interface Certification {
