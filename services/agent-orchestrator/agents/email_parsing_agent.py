@@ -143,6 +143,113 @@ def sender_address(from_header: Optional[str]) -> Optional[str]:
     return address.lower()
 
 
+def _strip_comments_and_quotes(value: str) -> str:
+    """Comments and quoted strings out, so ``(dmarc=fail)`` is not a result."""
+    out: List[str] = []
+    depth = 0
+    quoted = False
+    i = 0
+    while i < len(value):
+        ch = value[i]
+        if ch == "\\" and (quoted or depth > 0):
+            i += 2
+            continue
+        if quoted:
+            if ch == '"':
+                quoted = False
+        elif ch == "(":
+            depth += 1
+        elif ch == ")" and depth > 0:
+            depth -= 1
+        elif depth > 0:
+            pass
+        elif ch == '"':
+            quoted = True
+        else:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+_RESULT_HEAD = re.compile(r"^([a-z0-9-]+)=([a-z]+)$")
+
+
+def _domain_of_prop(value: Optional[str]) -> str:
+    """The domain a ``header.d=``, ``header.i=@x`` or ``smtp.mailfrom=a@x`` names."""
+    s = (value or "").strip().lower()
+    s = s.rsplit("@", 1)[-1] if "@" in s else s
+    return s[:-1] if s.endswith(".") else s
+
+
+def _aligned(a: str, b: str) -> bool:
+    """Relaxed alignment: one domain is the other or a subdomain of it."""
+    if not a or not b:
+        return False
+    return a == b or a.endswith("." + b) or b.endswith("." + a)
+
+
+def sender_unconfirmed(
+    ingress_verdict: Optional[str], sender: Optional[str]
+) -> bool:
+    """Did the receiving mail server say this letter did not come from the
+    domain of ``sender`` (QA round 24, item 2)?
+
+    ``ingress_verdict`` is the event's ``ingress_authentication_results``: the
+    receiving server's OWN Authentication-Results, which the gateway publisher
+    picked as the topmost one with Gmail's authserv-id. The header map is never
+    read for this: it keeps the last value of a repeated header, the sender's.
+
+    True on ``dmarc=fail``, or on ``spf=fail`` for an envelope aligned with the
+    sender's domain with no ``dkim=pass`` aligned with it. Anything else,
+    including no verdict at all, decides nothing: a vendor that publishes no
+    SPF or DMARC can still be imitated. Mirrors ``senderUnconfirmed`` in
+    ``apps/api-gateway/src/communications/sender-authentication.ts``; the two
+    share their test table by hand.
+    """
+    verdict = str(ingress_verdict or "")
+    if not verdict.strip():
+        return False
+    address = sender_address(sender) or ""
+    from_domain = address.rsplit("@", 1)[-1] if "@" in address else ""
+    results = []
+    for part in _strip_comments_and_quotes(verdict).split(";")[1:]:
+        tokens = part.split()
+        if not tokens:
+            continue
+        m = _RESULT_HEAD.match(tokens[0].lower())
+        if not m:
+            continue
+        props = {}
+        for t in tokens[1:]:
+            eq = t.find("=")
+            if eq > 0:
+                props[t[:eq].lower()] = t[eq + 1 :]
+        results.append((m.group(1), m.group(2), props))
+    if any(meth == "dmarc" and res == "fail" for meth, res, _p in results):
+        return True
+    spf_fail = any(
+        meth == "spf"
+        and res == "fail"
+        and (
+            "smtp.mailfrom" not in props
+            or _aligned(_domain_of_prop(props["smtp.mailfrom"]), from_domain)
+        )
+        for meth, res, props in results
+    )
+    if not spf_fail:
+        return False
+    dkim_aligned = any(
+        meth == "dkim"
+        and res == "pass"
+        and _aligned(
+            _domain_of_prop(props.get("header.d", props.get("header.i"))),
+            from_domain,
+        )
+        for meth, res, props in results
+    )
+    return not dkim_aligned
+
+
 class EmailParsingAgent(BaseAgent):
     """
     Subscribes to email.events / email.inbound.received
@@ -234,8 +341,31 @@ class EmailParsingAgent(BaseAgent):
         # nothing is filed against a provider or an order on its strength.
         sender_email = self._extract_email(sender)
         if not sender_email:
+            # QA round 24, item 1: not dropped. The gateway bridge consumes the
+            # same event and holds the letter, filed under no vendor, in the
+            # house's "Who is writing" list; this agent files nothing for it.
             self.logger.warning(
-                f"From names no single unambiguous address; not attributed: {sender!r}"
+                "From names no single unambiguous address; held by the gateway "
+                f"bridge, not filed here: {sender!r}"
+            )
+            return
+
+        # QA round 24, item 2: the receiving server said this letter did not
+        # come from the sender's domain (dmarc=fail, or an aligned spf=fail
+        # with no aligned dkim=pass). It is not filed as the vendor's, not
+        # threaded into an order and not routed: a forged invoice must not
+        # reach the order it names. When the address is one of the house's
+        # vendors, the gateway bridge holds it in the house as "could not
+        # confirm it came from <address>"; a stranger's letter stays a
+        # prospect there. Read before any thread match: a forged letter can
+        # carry a real thread id.
+        if sender_unconfirmed(
+            payload.get("ingress_authentication_results"), sender_email
+        ):
+            self.logger.warning(
+                f"Receiving server could not confirm {sender_email} sent this "
+                "(ingress authentication results); held by the gateway bridge, "
+                "not filed here"
             )
             return
 
