@@ -27,12 +27,21 @@ describe("HouseSenderService.resolve honours the house's choice", () => {
 
   it("the house's choice wins over the asker's own grant", async () => {
     const { sender } = build({
-      house_mail_sender_choice: { rows: [{ restaurant_id: HOUSE, connection_id: G_CHEF }] },
+      house_mail_sender_choice: { rows: [{ restaurant_id: HOUSE, connection_id: G_CHEF, chosen_by: CHEF }] },
     });
     const id = await sender.resolve(HOUSE, ME);
     expect(id.kind).toBe("house_mailbox");
     expect(id.grant?.connectionId).toBe(G_CHEF);
     expect(id.address).toBe("office@house.test");
+  });
+
+  it("a colleague's mailbox chosen by someone other than its owner is not obeyed", async () => {
+    // QA round 26, #973 defect 2: the second wall. chooseSender refuses this,
+    // and a row that got past it anyway does not move the house's letters.
+    const { sender } = build({
+      house_mail_sender_choice: { rows: [{ restaurant_id: HOUSE, connection_id: G_CHEF, chosen_by: ME }] },
+    });
+    expect((await sender.resolve(HOUSE, ME)).grant?.connectionId).toBe(G_MINE);
   });
 
   it("another house's choice row is never read for this house", async () => {
