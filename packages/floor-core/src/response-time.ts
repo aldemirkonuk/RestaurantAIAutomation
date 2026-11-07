@@ -66,9 +66,9 @@
  * the last row wins. With no caretaker at seat time (none assigned, cleared as
  * absent, or a deleted user), `:64` says only who must not get the greeting
  * gap; D8's "the live cover or else the waiter" (`:92`) is said of alerts,
- * and these facts carry no live cover. So the gap never falls to whoever
- * tapped Seat: a closed one goes to the waiter whose visit closed it, and an
- * open one counts for the table only.
+ * and these facts carry no live cover. So credit follows the visit, not the
+ * Seat tap: a closed greeting gap goes to the first visitor, who may be the
+ * person who seated; an open one counts for the table only.
  *
  * Handoff rule (Hybrid attribution, kept): when the waiter who closes a gap is
  * different from the waiter on the previous anchor, credit the **previous**
@@ -308,7 +308,7 @@ export function responseSamples(
       const minutes = (timeOf(curr.createdAt) - timeOf(prev.createdAt)) / 60_000;
 
       // D4 (c): the greeting gap goes to the caretaker at seat time.
-      // With facts and no caretaker, the first visitor (never the seater).
+      // With facts and no caretaker, the first visitor (who may have seated).
       const creditId =
         prev.type === "seated" && facts
           ? facts.caretakerAtSeatId ?? curr.actorId
@@ -325,7 +325,7 @@ export function responseSamples(
       const openEnd = tap === null ? stopMs : Math.min(stopMs, tap);
       const minutes = (openEnd - timeOf(last.createdAt)) / 60_000;
       if (minutes > T) {
-        // A seat with no caretaker: the table's figure only, never the seater.
+        // A seat with no caretaker: the table's figure only, no waiter's.
         const creditId =
           last.type === "seated" ? facts.caretakerAtSeatId : last.actorId;
         record(facts.tableId ?? last.tableId, creditId, minutes);
