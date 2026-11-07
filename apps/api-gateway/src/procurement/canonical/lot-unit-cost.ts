@@ -34,9 +34,9 @@ export interface LotCostLine {
 
 /** `unitCost` is `perBottle` at the column's precision, and what is posted. */
 export type LotUnitCost =
-  | { ok: true; perBottle: number; unitCost: number; basis: string }
+  | { ok: true; perBottle: number; unitCost: number; basis: string; printed?: number }
   | { ok: false; kind: "no_price" }
-  | { ok: false; kind: "refused"; reason: string };
+  | { ok: false; kind: "refused"; reason: string; printed?: number };
 
 /** Units where one of them holds `pack_size` bottles. Mirrors `agreed-price.ts`. */
 const MULTIPLYING: ReadonlySet<Uom> = new Set<Uom>([
@@ -69,6 +69,11 @@ export function perBottleLotCost(line: LotCostLine): LotUnitCost {
   const price = asNumber(line.unit_price);
   // Skipped before this existed, and still: not a price anybody agreed.
   if (price == null || price <= 0) return { ok: false, kind: "no_price" };
+  // `printed` lets a re-verify spot a lot booked AT the printed price (QA 9a).
+  return { ...resolve(line, price), printed: toLotCostPrecision(price) } as LotUnitCost;
+}
+
+function resolve(line: LotCostLine, price: number): LotUnitCost {
   // Audit D1: the extractor keeps an unmapped unit as `each` and its glyph in
   // `printed`. "kutu" stored as `each` is not one bottle; neither guess holds.
   const said = printedUnit(line.printed, "uom");

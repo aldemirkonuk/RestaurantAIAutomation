@@ -501,6 +501,31 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     expect(posted()).toEqual([]);
   });
 
+  // QA round 9a (2): a re-verify repairs what an earlier verify booked at 264.
+  const lot = (unit_cost: number, cost_state = "final") => ({ inventory_id: ITEM, unit_cost, cost_state, qty: 24 });
+  const repair = (lots: Record<string, unknown>[], ...lines: Record<string, unknown>[]) => {
+    db.rpcCalls.length = 0;
+    db.answers.inventory_lots = { data: lots, error: null };
+    db.answers.procurement_document_lines = { data: lines.map(invoiceLine), error: null };
+    return service.repairPrintedCost(REST, DEL, USER);
+  };
+
+  it("QA 9a: a re-verify revalues a lot finalised at the printed 264 to 22, and only that lot", async () => {
+    const r = await repair([lot(264)], {});
+    expect(r.ok && r.value.repaired.map((x) => x.unitCost)).toEqual([22]);
+    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([22]);
+    expect(String(posted()[0].args.p_reason)).toMatch(/re-verified: the printed 264 was booked/);
+    for (const other of [lot(21.5), lot(22), lot(264, "provisional")]) {
+      await repair([other], {});
+      expect(posted()).toEqual([]);
+    }
+  });
+
+  it("QA 9a: a lot at the printed price whose line now refuses keeps it, and the reason is returned", async () => {
+    const r = await repair([lot(264)], { pack_size: 1 });
+    expect(posted()).toEqual([]);
+    expect(r.ok && r.value.flagged.map((f) => f.reason).join()).toMatch(/finalised at the printed price 264.*how many bottles a case holds/);
+  });
 });
 
 describe("DeliveryStockService — a rejected delivery gives the bottles back", () => {

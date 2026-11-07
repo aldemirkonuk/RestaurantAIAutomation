@@ -434,26 +434,91 @@ export class DeliveryStockService {
         continue;
       }
 
-      const rpc = await this.db
-        .getClient()
-        .rpc("finalise_delivery_cost", {
-          p_delivery_id: deliveryId,
-          p_inventory_id: inventoryId,
-          p_unit_cost: price.unitCost,
-          p_cost_provenance: price.provenance,
-          p_performed_by: userId,
-          p_reason: price.basis
-            ? `delivery ${deliveryId} verified (ADR 0103 A1); ${price.basis}`
-            : `delivery ${deliveryId} verified (ADR 0103 A1)`,
-        });
-      if (rpc.error)
+      const posted = await this.post(deliveryId, inventoryId, price, userId, `delivery ${deliveryId} verified (ADR 0103 A1)`);
+      if (!posted.ok)
         return {
           ok: false,
           status: 503,
-          error: `the delivery is VERIFIED but its cost could not be posted for item ${inventoryId}: ${rpc.error.message}. The stock is correct and the lot stays provisional; this is safe to retry.`,
+          error: `the delivery is VERIFIED but its cost could not be posted for item ${inventoryId}: ${posted.error}. The stock is correct and the lot stays provisional; this is safe to retry.`,
         };
-      const receipt = (rpc.data ?? {}) as Record<string, unknown>;
-      finalised.push({
+      finalised.push(posted.value);
+    }
+
+    return { ok: true, value: { deliveryId, finalised, stillProvisional } };
+  }
+
+  /**
+   * QA round 9a (2): a RE-VERIFY repairs a lot an earlier verify finalised at
+   * the invoice's PRINTED price (B1). Only a final lot whose cost IS a printed
+   * price of its item, and is not the per-bottle cost, is touched: a cost a
+   * person revalued by hand is left alone. When the line now refuses, the lot
+   * keeps its cost and the reason is returned, so the screen can say so.
+   * Lines that name no item are not repaired.
+   */
+  async repairPrintedCost(
+    restaurantId: string,
+    deliveryId: string,
+    userId: string | null,
+  ): Promise<StockResult<{ repaired: FinalisedItem[]; flagged: { inventoryId: string; reason: string }[] }>> {
+    const delivery = await this.deliveryFor(restaurantId, deliveryId);
+    if (!delivery.ok) return delivery;
+    const lots = await this.db
+      .getClient()
+      .from("inventory_lots")
+      .select("inventory_id, unit_cost, cost_state, qty")
+      .eq("delivery_id", deliveryId)
+      .eq("stock_state", "live");
+    if (lots.error)
+      return { ok: false, status: 500, error: `the lots of delivery ${deliveryId} could not be read: ${lots.error.message}` };
+    const priced = await this.agreedPrices(restaurantId, deliveryId);
+    if (!priced.ok) return priced;
+
+    const repaired: FinalisedItem[] = [];
+    const flagged: { inventoryId: string; reason: string }[] = [];
+    const done = new Set<string>();
+    for (const lot of (lots.data ?? []) as { inventory_id: string; unit_cost: number | string | null; cost_state: string; qty: number }[]) {
+      const id = lot.inventory_id;
+      const booked = Number(lot.unit_cost);
+      if (done.has(id) || lot.cost_state !== "final" || !(Number(lot.qty) > 0)) continue;
+      if (!priced.value.printed.get(id)?.has(booked)) continue;
+      const price = priced.value.byItem.get(id);
+      if (price?.unitCost === booked) continue;
+      done.add(id);
+      const why = priced.value.refused.get(id);
+      if (why)
+        flagged.push({ inventoryId: id, reason: `its lot was finalised at the printed price ${booked}, which is not known to be a cost per bottle: ${why}. It keeps that cost until someone revalues it.` });
+      if (!price || price.source !== "invoice_line") continue;
+      const posted = await this.post(deliveryId, id, price, userId, `delivery ${deliveryId} re-verified: the printed ${booked} was booked as a bottle's cost (QA 7c B1)`);
+      if (!posted.ok)
+        return { ok: false, status: 503, error: `the cost of item ${id} could not be corrected: ${posted.error}. This is safe to retry.` };
+      repaired.push(posted.value);
+    }
+    return { ok: true, value: { repaired, flagged } };
+  }
+
+  /** One `finalise_delivery_cost` call, and its receipt. */
+  private async post(
+    deliveryId: string,
+    inventoryId: string,
+    price: AgreedPrice,
+    userId: string | null,
+    reason: string,
+  ): Promise<StockResult<FinalisedItem>> {
+    const rpc = await this.db
+      .getClient()
+      .rpc("finalise_delivery_cost", {
+        p_delivery_id: deliveryId,
+        p_inventory_id: inventoryId,
+        p_unit_cost: price.unitCost,
+        p_cost_provenance: price.provenance,
+        p_performed_by: userId,
+        p_reason: price.basis ? `${reason}; ${price.basis}` : reason,
+      });
+    if (rpc.error) return { ok: false, status: 503, error: rpc.error.message };
+    const receipt = (rpc.data ?? {}) as Record<string, unknown>;
+    return {
+      ok: true,
+      value: {
         inventoryId,
         unitCost: price.unitCost,
         provenance: price.provenance,
@@ -462,10 +527,8 @@ export class DeliveryStockService {
         bottlesFinalised: Number(receipt.bottles_finalised ?? 0),
         source: price.source,
         ...(price.basis ? { basis: price.basis } : {}),
-      });
-    }
-
-    return { ok: true, value: { deliveryId, finalised, stillProvisional } };
+      },
+    };
   }
 
   // -------------------------------------------------------------------------
@@ -689,6 +752,8 @@ export class DeliveryStockService {
       unattached: AgreedPrice[];
       refused: Map<string, string>;
       unattachedRefused: string[];
+      /** Each item's printed prices, in cents (QA 9a). */
+      printed: Map<string, Set<number>>;
     }>
   > {
     const join = await this.db
@@ -728,6 +793,7 @@ export class DeliveryStockService {
     const unattached: AgreedPrice[] = [];
     const refused = new Map<string, string>();
     const unattachedRefused: string[] = [];
+    const printed = new Map<string, Set<number>>();
 
     const lineByKey = new Map<string, LineRow>();
     const invoiceSet = new Set(invoiceIds);
@@ -766,6 +832,8 @@ export class DeliveryStockService {
           printed: line.printed,
         });
         const id = line.inventory_id;
+        if (id && "printed" in cost && cost.printed != null)
+          printed.set(id, (printed.get(id) ?? new Set<number>()).add(cost.printed));
         if (!cost.ok) {
           // A refusal on any line of an item holds, whatever line comes after.
           if (cost.kind === "refused") {
@@ -832,7 +900,7 @@ export class DeliveryStockService {
 
     return {
       ok: true,
-      value: { byItem, unattached, refused, unattachedRefused },
+      value: { byItem, unattached, refused, unattachedRefused, printed },
     };
   }
 }
