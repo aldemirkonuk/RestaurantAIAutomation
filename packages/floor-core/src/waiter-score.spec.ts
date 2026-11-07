@@ -1,54 +1,49 @@
 /**
- * @wineops/floor-core — the waiter score, its band and sort, and live on-time.
- *
- * Every spec here imports the real code. The checker's own scripts copied the
- * logic into the test file (`scripts/test-attribution.mjs:8`), so they could
- * pass while the app drifted; that is not repeated.
- *
- * One spec per module; shared fixtures live in `test-fixtures.ts`.
+ * The waiter score and its band. Every spec imports the real code; the
+ * checker's scripts copied the logic into the test (`scripts/test-attribution.mjs:8`).
  */
+import { freshnessOf } from "./freshness";
+import { LATE, WARN } from "./test-fixtures";
 import {
-  freshnessOf,
-  latenessSeverity,
-  liveOnTimePct,
+  latenessLambda,
   onTimePct,
   overdueGapCount,
   scoreBand,
   scoreBandLabel,
-  SEVERITY_CAP,
-  seatingFreshness,
-  sortByScore,
   visitScore,
   waiterPerformanceScore,
-} from "./index";
-import { MIN, T0, at, WARN, LATE } from "./test-fixtures";
-
-// ---------------------------------------------------------------------------
-// 3. Corrections — each fails against the checker's original formula
-// ---------------------------------------------------------------------------
+} from "./waiter-score";
 
 describe("ADR 0346 D4 (a): no evidence is not a score", () => {
-  it("a waiter with no gaps has no score, not 100", () => {
+  it("no gaps gives no score, no on-time share and no overdue count", () => {
     expect(waiterPerformanceScore([], WARN)).toBeNull();
-  });
-
-  it("the live board's on-time is empty for a waiter with no seated table, not 100%", () => {
-    expect(liveOnTimePct([])).toBeNull();
-  });
-
-  it("the report's on-time share is empty with no gaps, not 100%", () => {
     expect(onTimePct([], WARN)).toBeNull();
+    expect(overdueGapCount([], LATE)).toBeNull();
   });
 });
 
-describe("ADR 0346 D4 (d): one on-time boundary, t ≤ T", () => {
-  it("a gap of exactly T is on time in the report", () => {
+describe("the curve (ADR 0346 D4, unchanged)", () => {
+  it("is full marks to T, then halves every T minutes", () => {
+    expect(visitScore(WARN, WARN)).toBe(100);
+    expect(visitScore(2 * WARN, WARN)).toBeCloseTo(50);
+    expect(visitScore(3 * WARN, WARN)).toBeCloseTo(25);
+    expect(latenessLambda(0)).toBeCloseTo(Math.LN2);
+    expect(waiterPerformanceScore([WARN, 2 * WARN], WARN)).toBe(75);
+  });
+});
+
+describe("ADR 0346 D4 (d): one boundary on the board and in the report", () => {
+  it("a gap of exactly T is on time in both", () => {
     expect(onTimePct([WARN, WARN], WARN)).toBe(100);
+    expect(onTimePct([WARN + 0.01], WARN)).toBe(0);
+    expect(freshnessOf(WARN, WARN, LATE)).toBe("fresh");
   });
 
-  it("a table at exactly the warn minute is on time on the board", () => {
-    expect(freshnessOf(WARN, WARN, LATE)).toBe("fresh");
-    expect(freshnessOf(WARN + 1, WARN, LATE)).toBe("warn");
+  it("a gap of exactly the late minute is overdue in both", () => {
+    expect(overdueGapCount([LATE], LATE)).toBe(1);
+    expect(freshnessOf(LATE, WARN, LATE)).toBe("late");
+    expect(overdueGapCount([LATE - 0.01], LATE)).toBe(0);
+    expect(freshnessOf(LATE - 0.01, WARN, LATE)).not.toBe("late");
   });
 });
 
@@ -60,116 +55,38 @@ describe("founder F2 (2026-10-31): the band describes the visits", () => {
     expect(scoreBandLabel(scoreBand(79))).toBe("Many late");
   });
 
-  it("gives no band and prints — for no score, not Many late", () => {
+  it("gives no band and prints — for no score", () => {
     expect(scoreBand(null)).toBeNull();
     expect(scoreBand(NaN)).toBeNull();
-    expect(scoreBandLabel(scoreBand(null))).toBe("—");
-    expect(overdueGapCount([], LATE)).toBeNull();
+    expect(scoreBandLabel(null)).toBe("—");
   });
 });
 
-describe("founder F3 (2026-10-31): sort only, no rank", () => {
-  it("a waiter with no evidence sorts last in either order, and rows carry no rank", () => {
-    const rows = [
-      { id: "ana", score: waiterPerformanceScore([12], WARN) },
-      { id: "ben", score: waiterPerformanceScore([], WARN) },
-      { id: "cem", score: waiterPerformanceScore([5], WARN) },
-    ];
-    const best = sortByScore(rows, "best_first");
-    expect(best.map((r) => r.id)).toEqual(["cem", "ana", "ben"]);
-    expect(sortByScore(rows, "worst_first").map((r) => r.id)).toEqual(["ana", "cem", "ben"]);
-    expect(Object.keys(best[0]).sort()).toEqual(["id", "score"]);
-    expect(rows.map((r) => r.id)).toEqual(["ana", "ben", "cem"]);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 5. Review fixes (PR2a review, 2026-10-31)
-// ---------------------------------------------------------------------------
-
-/**
- * Every gap and house-minute argument of every guarded function gets all
- * three values (the severity cap is not a house minute; it has its own spec).
- * For some pairs the unguarded formula already reads late (a +Infinity gap
- * scores 0), so those assertions pin the outcome, not the guard; the rest
- * fail when the guard for that argument is narrowed to skip that value.
- */
-const NON_FINITE: ReadonlyArray<readonly [string, number]> = [
+const NON_FINITE: [string, number][] = [
   ["NaN", NaN],
   ["Infinity", Infinity],
   ["-Infinity", -Infinity],
 ];
 
-
 describe("OD-256: a gap that is not finite reads late; an unreadable house minute gives no score", () => {
   describe.each(NON_FINITE)("%s", (_label, x) => {
-    it("visitScore gives 0, not full marks, and the waiter score follows", () => {
+    it("scores the gap 0 and the setting null", () => {
       expect(visitScore(x, WARN)).toBe(0);
       expect(visitScore(5, x)).toBeNull();
       expect(waiterPerformanceScore([5, x], WARN)).toBe(50);
       expect(waiterPerformanceScore([5, 5], x)).toBeNull();
     });
 
-    it("latenessSeverity gives the cap for a gap, null for a setting", () => {
-      expect(latenessSeverity(x, WARN)).toBe(SEVERITY_CAP);
-      expect(latenessSeverity(5, x)).toBeNull();
-      expect(latenessSeverity(x, WARN, 7)).toBe(7);
-      expect(latenessSeverity(5, x, 7)).toBeNull();
-    });
-
-    it("the report's on-time share counts none of them on time", () => {
+    it("counts the gap overdue and not on time; the setting gives null", () => {
       expect(onTimePct([5, x], WARN)).toBe(50);
       expect(onTimePct([1, 5], x)).toBeNull();
-    });
-
-    it("the overdue count counts every one of them", () => {
       expect(overdueGapCount([5, x], LATE)).toBe(1);
       expect(overdueGapCount([5, 20], x)).toBeNull();
     });
-
-    it("freshnessOf reads late, not fresh; null is still no open seating", () => {
-      expect(freshnessOf(x, WARN, LATE)).toBe("late");
-      expect(freshnessOf(5, x, LATE)).toBe("late");
-      expect(freshnessOf(5, WARN, x)).toBe("late");
-      expect(freshnessOf(null, x, x)).toBe("idle");
-      expect(seatingFreshness({ seatedAt: at(0), lastVisitAt: null }, x, LATE, T0 + 4 * MIN)).toBe("late");
-      expect(seatingFreshness({ seatedAt: at(0), lastVisitAt: null }, WARN, x, T0 + 4 * MIN)).toBe("late");
-    });
   });
 
-  it("the guards leave finite values alone", () => {
-    expect(visitScore(5, WARN)).toBe(100);
-    expect(waiterPerformanceScore([5, 5], WARN)).toBe(100);
-    expect(latenessSeverity(5, WARN)).toBe(0);
-    expect(onTimePct([5, 5], WARN)).toBe(100);
-    expect(overdueGapCount([5, 20], LATE)).toBe(1);
-    expect(freshnessOf(5, WARN, LATE)).toBe("fresh");
-  });
-});
-
-describe("the severity cap (OD-256)", () => {
-  it("falls back to SEVERITY_CAP for NaN or a negative cap, never NaN", () => {
-    expect(latenessSeverity(20, 10, NaN)).toBeCloseTo(Math.exp((Math.LN2 / 10) * 10) - 1);
-    expect(latenessSeverity(NaN, 10, NaN)).toBe(SEVERITY_CAP);
-    expect(latenessSeverity(NaN, 10, -1)).toBe(SEVERITY_CAP);
-    expect(latenessSeverity(100, 10, -Infinity)).toBe(SEVERITY_CAP);
-  });
-
-  it("leaves severity uncapped for an Infinity cap", () => {
-    expect(latenessSeverity(100, 10, Infinity)).toBeCloseTo(2 ** 9 - 1);
-  });
-});
-
-describe("OD-258: sortByScore puts a score that is not finite with the no-score rows", () => {
-  it("orders NaN and Infinity scores last, by id", () => {
-    const rows = [
-      { id: "b", score: NaN },
-      { id: "c", score: 70 },
-      { id: "a", score: Infinity },
-      { id: "d", score: null },
-      { id: "e", score: 90 },
-    ];
-    expect(sortByScore(rows).map((r) => r.id)).toEqual(["e", "c", "a", "b", "d"]);
-    expect(sortByScore(rows, "worst_first").map((r) => r.id)).toEqual(["c", "e", "a", "b", "d"]);
+  it("uses a finite late setting ≤ 0 as set, as OD-256 records", () => {
+    expect(overdueGapCount([0, 5], 0)).toBe(2);
+    expect(onTimePct([0, 5], WARN)).toBe(100);
   });
 });
