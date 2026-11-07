@@ -81,13 +81,6 @@ export function calculatePourCost(
   return (costPrice / menuPrice) * 100;
 }
 
-/**
- * Get default menu price based on cost (3x markup as industry standard)
- */
-export function getDefaultMenuPrice(costPrice: number): number {
-  return Math.round(costPrice * 3);
-}
-
 type WineType = Wine["type"];
 
 type WineOpsBasicV1Record = {
