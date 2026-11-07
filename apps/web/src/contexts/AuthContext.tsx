@@ -1067,7 +1067,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // they sign in again; no one else's session can send them (ADR 0241).
   const endSession = useCallback(async () => {
     try {
-      await api.post("/api/v1/auth/logout");
+      // QA round 11, R11-07: the refresh token goes too, so the gateway
+      // refuses it after sign-out instead of minting pairs for a week.
+      await api.post("/api/v1/auth/logout", {
+        refreshToken: localStorage.getItem("refreshToken") ?? undefined,
+      });
     } catch (err) {
       console.error("Logout error:", err);
     } finally {

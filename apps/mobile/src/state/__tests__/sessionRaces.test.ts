@@ -246,3 +246,27 @@ it("an answer with no token pair adopts nothing", async () => {
   expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
   expect(useSession.getState().generation).toBe(0);
 });
+
+it("sign-out sends the device's stored refresh token to /auth/logout", async () => {
+  (SecureStore.getItemAsync as jest.Mock).mockImplementation(async (key: string) =>
+    key === REFRESH_KEY ? "device-refresh" : null,
+  );
+  useSession.setState({ generation: 1, status: "signedIn", accessToken: "device-access", user: { id: "alice", email: "a@example.com" } });
+  await useSession.getState().signOut();
+  await flush();
+  const call = (global.fetch as jest.Mock).mock.calls.find((c) => String(c[0]).endsWith("/auth/logout"));
+  expect(call).toBeDefined();
+  expect(call[1].headers.Authorization).toBe("Bearer device-access");
+  expect(JSON.parse(call[1].body)).toEqual({ refreshToken: "device-refresh" });
+  expect(storedTokens()).toEqual({});
+  (SecureStore.getItemAsync as jest.Mock).mockResolvedValue(null);
+});
+
+it("sign-out still clears local state when the logout request fails", async () => {
+  (global.fetch as jest.Mock).mockImplementation(() => Promise.reject(new Error("offline")));
+  useSession.setState({ generation: 1, status: "signedIn", accessToken: "device-access", user: { id: "alice", email: "a@example.com" } });
+  await useSession.getState().signOut();
+  await flush();
+  expect(useSession.getState()).toMatchObject({ status: "signedOut", accessToken: null });
+  expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith(REFRESH_KEY);
+});

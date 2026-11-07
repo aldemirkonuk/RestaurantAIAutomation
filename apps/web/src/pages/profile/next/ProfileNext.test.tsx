@@ -509,6 +509,25 @@ describe('ProfileNext — security', () => {
     expect(screen.getByLabelText('New password')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Change password' })).toBeEnabled();
   });
+
+  it('says the gateway\'s own reason when a first password needs a recent sign-in (R11-08)', async () => {
+    const refusal = Object.assign(new Error('Request failed with status code 403'), {
+      response: {
+        status: 403,
+        data: {
+          code: 'STEP_UP_REQUIRED',
+          message: 'You signed in more than ten minutes ago. Sign in again, then add your password. Nothing was changed.',
+        },
+      },
+    });
+    mockData.current = base({ hasPassword: false, changePassword: vi.fn(() => Promise.reject(refusal)) });
+    draw();
+    fireEvent.change(screen.getByLabelText('New password'), { target: { value: 'a-new-password' } });
+    fireEvent.change(screen.getByLabelText('Confirm new password'), { target: { value: 'a-new-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Set password' }));
+    expect(await screen.findByText(/Sign in again, then add your password/)).toBeInTheDocument();
+    expect(screen.queryByText(/status code 403/)).not.toBeInTheDocument();
+  });
 });
 
 describe('ProfileNext — the model-context register (built this pass)', () => {

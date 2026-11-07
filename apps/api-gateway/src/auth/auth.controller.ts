@@ -223,7 +223,7 @@ export class AuthController {
   @Public()
   @Post("refresh")
   async refresh(@Body() body: { refreshToken: string }) {
-    const tokens = await this.authService.refreshAccessToken(body.refreshToken);
+    const tokens = await this.authService.refreshSession(body.refreshToken);
 
     return {
       success: true,
@@ -241,11 +241,14 @@ export class AuthController {
   async logout(
     @Req() req: Request & { user: any },
     @Headers("authorization") authorization?: string,
+    // R11-07: the device's refresh token, so it is refused from now on too.
+    // Optional -- an older client that sends none still signs out as before.
+    @Body("refreshToken") refreshToken?: unknown,
   ) {
     const token = authorization?.startsWith("Bearer ")
       ? authorization.substring("Bearer ".length)
       : undefined;
-    await this.authService.logout(req.user.userId, token);
+    await this.authService.logout(req.user.userId, token, refreshToken);
 
     return {
       success: true,
