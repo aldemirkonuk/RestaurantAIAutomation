@@ -62,7 +62,7 @@ export class AdvancedAnalyticsService {
 
   private async loadInventoryWithCost(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes] = await Promise.allSettled([
+    const [invRes, rollupRes, agreedRes] = await Promise.allSettled([
       client
         .from("restaurant_inventory")
         // Same schema-drift fix as AnalyticsService.loadInventory: a single
@@ -82,16 +82,31 @@ export class AdvancedAnalyticsService {
           "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
         )
         .eq("restaurant_id", restaurantId),
+      // The cost agreed at delivery; see AnalyticsService.loadInventory.
+      client
+        .from("inventory_lot_agreed_cost")
+        .select("inventory_id, has_agreed_cost, agreed_wac")
+        .eq("restaurant_id", restaurantId),
     ]);
     if (invRes.status === "fulfilled" && invRes.value.error)
       this.logQueryFailure("restaurant_inventory", invRes.value.error);
     if (rollupRes.status === "fulfilled" && rollupRes.value.error)
       this.logQueryFailure("inventory_lot_rollup", rollupRes.value.error);
+    if (agreedRes.status === "fulfilled" && agreedRes.value.error)
+      this.logQueryFailure("inventory_lot_agreed_cost", agreedRes.value.error);
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
     const rollup = new Map<string, any>();
     if (rollupRes.status === "fulfilled")
       for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
+    if (agreedRes.status === "fulfilled")
+      for (const r of agreedRes.value.data || [])
+        rollup.set(r.inventory_id, {
+          ...rollup.get(r.inventory_id),
+          inventory_id: r.inventory_id,
+          has_agreed_cost: r.has_agreed_cost,
+          agreed_wac: r.agreed_wac,
+        });
     // Same fix as AnalyticsService.loadInventory: the third branch here was
     // `unitPrice * 0.6`, an undocumented magic number that was the live path
     // for ~70 of 72 production rows while `basis.margin` below called the

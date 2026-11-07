@@ -126,7 +126,7 @@ export class AnalyticsService {
 
   private async loadInventory(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes] = await Promise.allSettled([
+    const [invRes, rollupRes, agreedRes] = await Promise.allSettled([
       client
         .from("restaurant_inventory")
         // Column names must match the live schema exactly. PostgREST rejects
@@ -153,6 +153,13 @@ export class AnalyticsService {
           "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
         )
         .eq("restaurant_id", restaurantId),
+      // A price settled at delivery (final cost, not on an invoice): the
+      // rollup does not carry it, so a bottle whose only cost is an agreed
+      // one would read as unknown. See inventory-cost.ts (agreed_lot_wac).
+      client
+        .from("inventory_lot_agreed_cost")
+        .select("inventory_id, has_agreed_cost, agreed_wac")
+        .eq("restaurant_id", restaurantId),
     ]);
 
     // allSettled makes a REJECTION invisible and `{ data, error }` makes a
@@ -162,12 +169,22 @@ export class AnalyticsService {
     // file, same directory and same tables, was not. See ADR 0067.
     this.reportSlice("restaurant_inventory", invRes);
     this.reportSlice("inventory_lot_rollup", rollupRes);
+    this.reportSlice("inventory_lot_agreed_cost", agreedRes);
 
     const inventory =
       invRes.status === "fulfilled" ? invRes.value.data || [] : [];
     const rollup = new Map<string, any>();
     if (rollupRes.status === "fulfilled") {
       for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
+    }
+    if (agreedRes.status === "fulfilled") {
+      for (const r of agreedRes.value.data || [])
+        rollup.set(r.inventory_id, {
+          ...rollup.get(r.inventory_id),
+          inventory_id: r.inventory_id,
+          has_agreed_cost: r.has_agreed_cost,
+          agreed_wac: r.agreed_wac,
+        });
     }
 
     // Unit cost: invoiced lot WAC → recorded last purchase price → UNKNOWN.
