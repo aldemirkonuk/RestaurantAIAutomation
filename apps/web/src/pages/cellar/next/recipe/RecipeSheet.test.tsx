@@ -208,6 +208,7 @@ describe('RecipeSheet', () => {
     expect(screen.queryByRole('button', { name: /save/i })).toBeNull();
     expect(screen.queryByRole('spinbutton')).toBeNull();
     expect(screen.queryByLabelText('Amount')).toBeNull();
+    expect(screen.queryByRole('button', { name: /paste a spec/i })).toBeNull();
   });
 
   it('4b. staff see the old recipe box lines when nothing is saved here yet', async () => {
@@ -219,6 +220,8 @@ describe('RecipeSheet', () => {
     expect(box).toHaveTextContent('1.5 oz');
     expect(box).toHaveTextContent('orange twist');
     expect(screen.queryByText('No recipe yet.')).toBeNull();
+    expect(screen.queryByTestId('recipe-proposed')).toBeNull();
+    expect(screen.queryByRole('button', { name: /use these lines/i })).toBeNull();
   });
 
   it('4c. staff see "No recipe yet." only when there is none at all', async () => {
@@ -305,7 +308,7 @@ describe('RecipeSheet', () => {
   it('7. never shows a table name or the word confidence', async () => {
     serve({ ...EMPTY, legacyLines: [{ label: 'whites', quantity: 2, unit: 'egg' }] });
     const { container } = mount();
-    await screen.findByTestId('recipe-legacy');
+    await screen.findByTestId('recipe-proposed');
     for (const html of [container.innerHTML, container.textContent ?? '']) {
       expect(html).not.toMatch(/cocktail_ingredients/);
       expect(html).not.toMatch(/confidence/i);
@@ -325,6 +328,40 @@ describe('RecipeSheet', () => {
     expect(list).toHaveTextContent('Version 4');
     expect(list).not.toHaveTextContent('Version 5');
     expect(list.textContent).not.toMatch(/9999/);
+  });
+
+  it('an editor gets the old recipe box as proposed rows, read by the parser', async () => {
+    serve({ ...EMPTY, legacyLines: [{ label: 'whites', quantity: 2, unit: 'egg' }, { label: 'gin', quantity: 1.5, unit: 'oz' }] });
+    mount();
+    const box = await screen.findByTestId('recipe-proposed');
+    expect(box).toHaveTextContent(LEGACY_NOTE);
+    expect(box).toHaveTextContent('2 each');
+    expect(box).toHaveTextContent('egg white');
+    expect(screen.queryAllByTestId('recipe-line')).toHaveLength(0);
+    fireEvent.click(within(box).getByRole('button', { name: 'Use these lines' }));
+    expect(screen.getAllByTestId('recipe-line')).toHaveLength(2);
+    expect(amount(1)).toBe('1.5');
+    expect(h.put).not.toHaveBeenCalled();
+  });
+
+  it('pasting a spec proposes rows and saves nothing until they are used', async () => {
+    serve(EMPTY);
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /paste a spec/i }));
+    fireEvent.change(screen.getByLabelText(/paste a spec/i), { target: { value: '1½ oz gin / 2 dashes Angostura' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read it' }));
+    const box = screen.getByTestId('recipe-proposed');
+    expect(box).toHaveTextContent('1.5 oz');
+    expect(box).toHaveTextContent('Nothing is saved yet.');
+    fireEvent.click(within(box).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByTestId('recipe-proposed')).toBeNull();
+    expect(screen.queryAllByTestId('recipe-line')).toHaveLength(0);
+    // Discarding the reading keeps the pasted text to correct and read again.
+    expect(screen.getByLabelText(/paste a spec/i)).toHaveValue('1½ oz gin / 2 dashes Angostura');
+    fireEvent.click(screen.getByRole('button', { name: 'Read it' }));
+    fireEvent.click(within(screen.getByTestId('recipe-proposed')).getByRole('button', { name: 'Use these lines' }));
+    expect(screen.getAllByTestId('recipe-line')).toHaveLength(2);
+    expect(h.put).not.toHaveBeenCalled();
   });
 
   it('Save is disabled while a line has no amount above zero', async () => {
