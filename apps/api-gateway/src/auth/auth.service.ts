@@ -260,6 +260,21 @@ export interface SignInResult extends TokenPair {
  */
 export type VerificationMail = "sent" | "not_sent";
 
+/**
+ * What a resend answers: the same `verificationMail` sign-up answers, read
+ * from the same `queueEmailVerification` (round 2 B-5, round 6 #789: until
+ * this, a resend said `{ sent: true }` whatever the mailer said). `sent` is
+ * kept for the clients that read it, and is now true only when the mail left.
+ */
+export interface VerificationResend {
+  sent: boolean;
+  verificationMail: VerificationMail;
+}
+
+function resendAnswer(verificationMail: VerificationMail): VerificationResend {
+  return { sent: verificationMail === "sent", verificationMail };
+}
+
 export type InvitationEmailOutcome =
   | "sent"
   | "not_sent"
@@ -3596,7 +3611,7 @@ export class AuthService {
     userId: string,
     email: string,
     devBypassSession = false,
-  ): Promise<{ sent: boolean }> {
+  ): Promise<VerificationResend> {
     // ADR 0229 fork 12 (item 81): a resend honours the fork 8 lapse, as a
     // refresh does (fork 10). Past the seven days an unproven password opens
     // nothing, and the session that password opened asks for no more links:
@@ -3660,9 +3675,9 @@ export class AuthService {
         }
       }
 
-      // queueEmailVerification inserts the row and sends in one step.
-      await this.queueEmailVerification(userId, email);
-      return { sent: true };
+      // queueEmailVerification inserts the row and sends in one step, and
+      // says whether the mail left: the person is told, as at sign-up.
+      return resendAnswer(await this.queueEmailVerification(userId, email));
     }
 
     if (verif.last_resent_at) {
@@ -3681,8 +3696,10 @@ export class AuthService {
       })
       .eq("id", verif.id);
 
-    await this.queueEmailVerification(userId, email);
-    return { sent: true };
+    // A refused send still counts toward the one-a-minute cooldown above: it
+    // also paces calls into a mailer that is failing, and the page says
+    // "try again in a minute" to match.
+    return resendAnswer(await this.queueEmailVerification(userId, email));
   }
 
   /**

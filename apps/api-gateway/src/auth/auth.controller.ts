@@ -602,7 +602,10 @@ export class AuthController {
   }
 
   /**
-   * Resend verification email — rate-limited to 1 per minute.
+   * Resend verification email — rate-limited to 1 per minute. Answers
+   * `verificationMail: 'sent' | 'not_sent'` as sign-up does (onboarding OB-3,
+   * round 6 #789): `success` means the request was handled, not that a mail
+   * left.
    */
   @Post("resend-verification")
   @UseGuards(JwtAuthGuard)

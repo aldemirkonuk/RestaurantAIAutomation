@@ -4,15 +4,19 @@ Filed by `fix/verify-mail-carries-a-code` (onboarding OB-3; founder /goal 2026-1
 
 **What is true.** The gateway half is built: the verification mail carries a six-digit `verify_email` code beside its link (`verify-email.template.ts`), `POST /auth/register/account` answers `verificationMail: 'sent' | 'not_sent'`, and `POST /auth/verify-email` takes `{ code }` from a signed-in person (`AuthService.verifyEmailWithCode`). The web app does neither: `/verify-email` has no code box, and sign-up ignores `verificationMail`, so a person whose mail was not sent is still told to check their inbox.
 
-**What closes it.** Onboarding OB-6 (web): a code box on `/verify-email` posting `{ code }`, and sign-up words for `not_sent` that offer the resend.
+**What closes it.** Onboarding OB-6 (web): a code box on `/verify-email` posting `{ code }`, and sign-up words for `not_sent` that offer the resend. (Round 2 B-4 is closed by the round 6 follow-up: a link the gateway refuses, expired or used, now offers "Send me a new link" to a signed-in person on both renderings of `/verify-email`.)
 
-## Four other paths still say nothing when the verification mail fails — OPEN — 2026-11-07
+## Two other paths still say nothing when the verification mail fails — OPEN — 2026-11-07
 
-Filed with the entry above.
+Filed with the entry above; narrowed the same day by the round 6 follow-up (QA `round6-pr-retest.md`, "#789").
 
-**What is true.** OB-3 changed only `registerAccount`. `resendVerification` still answers `{ sent: true }` whatever `queueEmailVerification` returned, and `registerRestaurant` plus one other caller in `auth.service.ts` still fire it with `.catch(...)` and drop the result. `grep -n "queueEmailVerification(" apps/api-gateway/src/auth/auth.service.ts` lists them. Proposal §5 I15 ("A failed send is said to the person") holds on sign-up only.
+**What is true.** `registerAccount` and, since the follow-up, `resendVerification` answer `verificationMail: 'sent' | 'not_sent'` from `queueEmailVerification`'s own answer, and `/verify-email`'s resend button says a refused send in words (`apps/web/src/lib/verificationMail.ts`, `VerifyEmail.resend.test.tsx`). `registerRestaurant` and the unproven invite join in `auth.service.ts` still fire it with `.catch(...)` and drop the result; they are fire-and-forget on purpose (their comments: mail latency must not delay the answer). `grep -n "queueEmailVerification(" apps/api-gateway/src/auth/auth.service.ts` lists them. A refused resend still counts toward the one-a-minute cooldown on a pending row; the page says "try again in a minute" to match.
 
-**What closes it.** Each caller returns the `VerificationMail` it gets, and its screen says it. The resend spec (`resend-verification-lockout.spec.ts`) pins the current `{ sent: true }` and changes with it.
+**What closes it.** Each remaining caller returns the `VerificationMail` it gets, and its screen says it. The sign-up screen (`Register.tsx`) also still ignores `verificationMail` (OB-6, entry above).
+
+## Sign-up and resend now wait on the mailer with no timeout — OPEN — 2026-11-07
+
+Filed by the round 6 follow-up. QA round 6 noted that awaiting the send puts the mail call inside sign-up's latency and that no timeout was seen on that path. The resend path always awaited it. Neither was measured; `GmailService.sendEmail` was not read for a timeout in this lane. **What closes it:** measure the mailer's worst case and bound it, with a timed-out send answered as its own outcome (it may still have left), never as `not_sent`.
 
 ## A verify_email code is a weaker mailbox proof than the link — OPEN — 2026-11-07
 
