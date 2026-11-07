@@ -119,8 +119,11 @@ export class ScheduleService {
     );
     const weekEnd = addDays(weekStart, 6);
 
-    const [{ data: schedule }, { data: shifts, error: shiftsErr }, settings] =
-      await Promise.all([
+    const [
+      { data: schedule, error: scheduleErr },
+      { data: shifts, error: shiftsErr },
+      settings,
+    ] = await Promise.all([
         this.sb
           .from("schedules")
           .select("*")
@@ -147,6 +150,17 @@ export class ScheduleService {
         "Could not read this week's shifts, so the week is not shown.",
       );
     }
+    // Nor is a week whose schedule row could not be read a week never drafted:
+    // `schedule: null` printed it unpublished and dropped every receipt.
+    if (scheduleErr) {
+      this.logger.error(
+        `getWeek: could not read the schedule of ${weekStart} for ` +
+          `restaurant ${restaurantId}: ${scheduleErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read whether this week is drafted or published, so the week is not shown.",
+      );
+    }
 
     // A removed person's shifts are kept five years, not shown (ADR 0215 item
     // 20, `onTheRoster`): read as they were before the removal stopped
@@ -154,12 +168,7 @@ export class ScheduleService {
     const roster = await this.team.rosterMemberIds(restaurantId);
     const shiftRows = onTheRoster(shifts ?? [], roster);
     const receipts = schedule
-      ? ((
-          await this.sb
-            .from("schedule_receipts")
-            .select("member_id, seen_at")
-            .eq("schedule_id", schedule.id)
-        ).data ?? [])
+      ? await this.weekReceipts(restaurantId, weekStart, schedule.id)
       : [];
 
     const coverage = await this.computeCoverage(
@@ -192,6 +201,31 @@ export class ScheduleService {
   }
 
   /**
+   * Who has confirmed this week. A failed read is not "nobody has seen it":
+   * `[]` told the manager every person still had to be chased.
+   */
+  private async weekReceipts(
+    restaurantId: string,
+    weekStart: string,
+    scheduleId: string,
+  ): Promise<{ member_id: string; seen_at: string }[]> {
+    const { data, error } = await this.sb
+      .from("schedule_receipts")
+      .select("member_id, seen_at")
+      .eq("schedule_id", scheduleId);
+    if (error) {
+      this.logger.error(
+        `getWeek: could not read who confirmed ${weekStart} for ` +
+          `restaurant ${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read who has confirmed this week, so the week is not shown.",
+      );
+    }
+    return data ?? [];
+  }
+
+  /**
    * The house's own currency and country, so a figure is printed in its money
    * and its locale. `currency: null` is "not recorded" (ADR 0117 Q25), never
    * dollars; a failed read says so rather than reading as not recorded.
@@ -219,31 +253,52 @@ export class ScheduleService {
     };
   }
 
-  /** Read-only week for a staff member: only their own shifts. */
+  /**
+   * Read-only week for a staff member: only their own shifts.
+   *
+   * FAILS CLOSED (QA round 4, B1). Every read here used to take `{ data }`
+   * alone, so a failed shifts read came back as `mine: []` and the page
+   * printed "Off" for seven days: a week reported as free because a query
+   * failed. A read that fails now raises, and the page says the week could
+   * not be loaded.
+   */
   async getMyWeek(userId: string, restaurantId: string, weekStart: string) {
     await this.team.assertAccess(userId, restaurantId);
     const weekEnd = addDays(weekStart, 6);
-    const { data: member } = await this.sb
+    const refuse = (what: string, err: { message: string }): never => {
+      this.logger.error(
+        `getMyWeek: could not read ${what} for restaurant ${restaurantId}, ` +
+          `week ${weekStart}: ${err.message}`,
+      );
+      throw new InternalServerErrorException(
+        `Could not read ${what}, so your week is not shown. This is not a week off.`,
+      );
+    };
+
+    const { data: member, error: memberErr } = await this.sb
       .from("team_members")
       .select("id, display_name")
       .eq("restaurant_id", restaurantId)
       .eq("user_id", userId)
       .maybeSingle();
+    if (memberErr) refuse("your place on the team", memberErr);
 
-    const { data: schedule } = await this.sb
+    const { data: schedule, error: scheduleErr } = await this.sb
       .from("schedules")
       .select("*")
       .eq("restaurant_id", restaurantId)
       .eq("week_start", weekStart)
       .maybeSingle();
+    if (scheduleErr) refuse("this week's schedule", scheduleErr);
 
-    const { data: shifts } = await this.sb
+    const { data: shifts, error: shiftsErr } = await this.sb
       .from("shifts")
       .select("*, shift_breaks(*)")
       .eq("restaurant_id", restaurantId)
       .gte("shift_date", weekStart)
       .lte("shift_date", weekEnd)
       .order("shift_date", { ascending: true });
+    if (shiftsErr) refuse("this week's shifts", shiftsErr);
 
     // Staff must never see labor cost. Strip it from every row.
     const strip = (s: any) => {
@@ -258,12 +313,14 @@ export class ScheduleService {
 
     let acknowledged = false;
     if (member && schedule) {
-      const { data: receipt } = await this.sb
+      const { data: receipt, error: receiptErr } = await this.sb
         .from("schedule_receipts")
         .select("id")
         .eq("schedule_id", schedule.id)
         .eq("member_id", member.id)
         .maybeSingle();
+      if (receiptErr)
+        refuse("whether you have confirmed this week", receiptErr);
       acknowledged = !!receipt;
     }
     return { member, schedule, mine, open, acknowledged };
@@ -563,25 +620,52 @@ export class ScheduleService {
     };
   }
 
-  /** Staff opening a published schedule records a read receipt. */
+  /**
+   * Staff opening a published schedule records a read receipt.
+   *
+   * It used to answer `{ acknowledged: true }` whatever the write did, and
+   * 200 `{ acknowledged: false }` for a caller with no roster row, which the
+   * page took as success either way (QA round 4, B3): the person believed
+   * they had confirmed, and the manager's "seen" count never moved. Every
+   * outcome that is not a stored receipt is now an error that says why.
+   */
   async acknowledge(userId: string, restaurantId: string, scheduleId: string) {
     await this.team.assertAccess(userId, restaurantId);
-    const { data: schedule } = await this.sb
+    const { data: schedule, error: scheduleErr } = await this.sb
       .from("schedules")
       .select("id")
       .eq("id", scheduleId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
+    if (scheduleErr) {
+      this.logger.error(
+        `acknowledge: could not read schedule ${scheduleId}: ${scheduleErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this week, so your manager was not told you have seen it.",
+      );
+    }
     if (!schedule) throw new NotFoundException("Schedule not found");
 
-    const { data: member } = await this.sb
+    const { data: member, error: memberErr } = await this.sb
       .from("team_members")
       .select("id")
       .eq("restaurant_id", restaurantId)
       .eq("user_id", userId)
       .maybeSingle();
-    if (!member) return { acknowledged: false };
-    await this.sb.from("schedule_receipts").upsert(
+    if (memberErr) {
+      this.logger.error(
+        `acknowledge: could not read the roster row of ${userId}: ${memberErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not look up your place on the team, so your manager was not told you have seen this week.",
+      );
+    }
+    if (!member)
+      throw new ConflictException(
+        "You are not on this house's roster, so there is no one to record as having seen this week. Ask your manager to add you.",
+      );
+    const { error: upsertErr } = await this.sb.from("schedule_receipts").upsert(
       {
         schedule_id: scheduleId,
         member_id: member.id,
@@ -589,6 +673,15 @@ export class ScheduleService {
       },
       { onConflict: "schedule_id,member_id" },
     );
+    if (upsertErr) {
+      this.logger.error(
+        `acknowledge: could not store the receipt of member ${member.id} on ` +
+          `schedule ${scheduleId}: ${upsertErr.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Your confirmation was not saved, so your manager was not told you have seen this week.",
+      );
+    }
     return { acknowledged: true };
   }
 
