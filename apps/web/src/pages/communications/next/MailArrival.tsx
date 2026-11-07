@@ -14,9 +14,19 @@ import { shortSpan } from './mail-format';
 import { ACT, ALERT, NOT_YOURS, Part, QUIET, TEXT } from './MailSetupParts';
 import { useMakeAddress, useStartTestLetter, waitingForTestLetter, type MailSetupView } from './useMailSetup';
 
+/**
+ * Who a test letter says it is from. The From line of a letter is written by
+ * whoever sends it and nothing here checks it, so the page repeats it as a
+ * claim, never as a fact (QA round 26, #974 defect 3).
+ */
+function claimedFrom(from: string | null): string {
+  return from ? ` It claims to be from ${from}; nothing checks that.` : '';
+}
+
 function TestLetter({ view, now }: { view: MailSetupView; now: number }) {
   const start = useStartTestLetter();
   const { failed, latest } = view.testLetter;
+  const lastArrival = view.testLetter.lastArrival ?? null;
   const waiting = waitingForTestLetter(view, now);
   const started = latest ? Date.parse(latest.startedAt) : NaN;
 
@@ -36,13 +46,24 @@ function TestLetter({ view, now }: { view: MailSetupView; now: number }) {
   } else if (latest.arrivedAt) {
     state = (
       <p data-testid="setup-test-state" data-state="arrived" style={{ ...TEXT, color: 'var(--seal-deep, #14515C)', fontWeight: 600 }}>
-        Arrived {shortSpan(now - Date.parse(latest.arrivedAt))} ago{latest.arrivedFrom ? `, from ${latest.arrivedFrom}` : ''}. Mail
-        reaches this house.
+        Arrived {shortSpan(now - Date.parse(latest.arrivedAt))} ago.{claimedFrom(latest.arrivedFrom)} Mail reaches this house.
       </p>
     );
   } else {
+    // An older check can be answered while the newest is still open: the owner
+    // started two and sent the first. That letter proves the address as well,
+    // so it is shown — but only if it landed after the newest was started, so
+    // an old arrival is not presented as news (QA round 26, #974 defect 2).
+    const earlier =
+      lastArrival && lastArrival.code !== latest.code && Date.parse(lastArrival.arrivedAt) >= started ? lastArrival : null;
     state = (
       <div className="grid gap-1">
+        {earlier && (
+          <p data-testid="setup-test-earlier" style={{ ...TEXT, color: 'var(--seal-deep, #14515C)', fontWeight: 600 }}>
+            An earlier test letter, {earlier.code}, arrived {shortSpan(now - Date.parse(earlier.arrivedAt))} ago.
+            {claimedFrom(earlier.arrivedFrom)} Mail reaches this house.
+          </p>
+        )}
         <p data-testid="setup-test-state" data-state={waiting ? 'waiting' : 'late'} style={TEXT}>
           {waiting
             ? `Not arrived yet. Started ${shortSpan(now - started)} ago; this page checks again every few seconds.`

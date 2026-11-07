@@ -23,7 +23,14 @@ export interface TableSpec {
 export function fakeDb(tables: Record<string, TableSpec>) {
   const writes: Array<{ table: string; op: string; payload?: any; filters: any[] }> = [];
   const from = (table: string) => {
-    const q: { op: string; payload?: any; filters: Array<[string, string, any]>; single: boolean; limit?: number } = {
+    const q: {
+      op: string;
+      payload?: any;
+      filters: Array<[string, string, any]>;
+      single: boolean;
+      limit?: number;
+      order?: { key: string; ascending: boolean };
+    } = {
       op: "select",
       filters: [],
       single: false,
@@ -43,6 +50,16 @@ export function fakeDb(tables: Record<string, TableSpec>) {
       }
       if (t.error) return { data: null, error: t.error };
       let rows = (t.rows ?? []).filter(match);
+      if (q.order) {
+        // Stable; rows missing the key keep their place among themselves.
+        const { key, ascending } = q.order;
+        rows = [...rows].sort((a, b) => {
+          const x = a[key] ?? null;
+          const y = b[key] ?? null;
+          if (x === y || x === null || y === null) return 0;
+          return (String(x) < String(y) ? -1 : 1) * (ascending ? 1 : -1);
+        });
+      }
       if (q.limit !== undefined) rows = rows.slice(0, q.limit);
       return { data: q.single ? (rows[0] ?? null) : rows, error: null };
     };
@@ -56,7 +73,9 @@ export function fakeDb(tables: Record<string, TableSpec>) {
               ? (v as any[]).map(String).includes(String(r[k]))
               : kind === "lte"
                 ? r[k] != null && String(r[k]) <= String(v)
-                : true,
+                : kind === "not_is"
+                  ? (r[k] ?? null) !== v
+                  : true,
       );
     const chain: any = {
       select: () => chain,
@@ -65,7 +84,13 @@ export function fakeDb(tables: Record<string, TableSpec>) {
       in: (k: string, v: any[]) => (q.filters.push(["in", k, v]), chain),
       // ISO timestamps compare correctly as strings.
       lte: (k: string, v: any) => (q.filters.push(["lte", k, v]), chain),
-      order: () => chain,
+      // Only `not(column, "is", value)`, the one form the services use.
+      not: (k: string, op: string, v: any) => {
+        if (op !== "is") throw new Error(`fakeDb: not(${op}) is not supported`);
+        q.filters.push(["not_is", k, v]);
+        return chain;
+      },
+      order: (key: string, o?: { ascending?: boolean }) => ((q.order = { key, ascending: o?.ascending !== false }), chain),
       limit: (n: number) => ((q.limit = n), chain),
       maybeSingle: () => ((q.single = true), Promise.resolve(run())),
       delete: () => ((q.op = "delete"), chain),

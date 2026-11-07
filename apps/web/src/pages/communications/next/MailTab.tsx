@@ -349,7 +349,11 @@ export function MailTab({
   const test: TestArrival = setupQ.data
     ? setupQ.data.testLetter.failed
       ? { state: 'failed' }
-      : { state: 'known', arrivedAt: setupQ.data.testLetter.latest?.arrivedAt ?? null }
+      : {
+          state: 'known',
+          // Any arrived check proves the address, not only the newest one (QA round 26, #974).
+          arrivedAt: setupQ.data.testLetter.lastArrival?.arrivedAt ?? setupQ.data.testLetter.latest?.arrivedAt ?? null,
+        }
     : setupQ.isError
       ? { state: 'failed' }
       : { state: 'checking' };

@@ -157,11 +157,14 @@ export class InboundAddressService {
   ): Promise<boolean> {
     const code = testCodeIn(subject);
     if (!code || !restaurantId) return false;
-    return recordTestLetterArrival(
+    // A repeat of this house's own code is still its test letter: kept out of
+    // the vendor pipeline, and the first arrival stands (QA round 26, #974).
+    const seen = await recordTestLetterArrival(
       this.databaseService.supabase,
       restaurantId,
       code,
       from,
     );
+    return seen !== "none";
   }
 }
