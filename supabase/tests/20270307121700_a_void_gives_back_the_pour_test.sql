@@ -1,8 +1,5 @@
--- G11: a glass void gives back the ml its sale poured (migration
--- a_void_gives_back_the_pour). Self-asserting; run with psql -v ON_ERROR_STOP=1
--- on a database built from supabase/migrations. Synthetic rows, rolled back.
--- Without the migration it stops at 42883. Main's apply_stock_movement(+2)
--- on V1's fixture leaves 2700 ml where 1500 ml stood.
+-- G11; psql -v ON_ERROR_STOP=1, rolled back. Without the migration: 42883.
+-- Main books V1 as 2700 ml where 1500 ml stood.
 
 begin;
 
@@ -37,29 +34,29 @@ begin
     insert into public.restaurant_inventory (id, restaurant_id, master_wine_id, bottle_size_ml, pour_size_ml)
     values (pg_temp.it(i), pg_temp.h(), ('a2000000-0000-4000-8000-0000000001' || lpad(i::text, 2, '0'))::uuid, 750, 150);
   end loop;
-  perform pg_temp.lot(1, 2, 0, 3);                                -- V1-V4
-  perform pg_temp.lot(2, 1, 0, 3);                                -- V5: never sold
+  perform pg_temp.lot(1, 2, 0, 3); -- V1-V4
+  perform pg_temp.lot(2, 1, 0, 3); -- V5: never sold
   perform pg_temp.lot(3, 0, 100, 9); perform pg_temp.lot(3, 1, 0, 3); -- V6: straddle
-  perform pg_temp.lot(4, 2, 0, 3);                                -- V7
-  perform pg_temp.lot(5, 0, 700, 3);                              -- V8
-  perform pg_temp.lot(6, 1, 0, 3);                                -- V9
+  perform pg_temp.lot(4, 2, 0, 3); -- V7
+  perform pg_temp.lot(5, 0, 700, 3); -- V8
+  perform pg_temp.lot(6, 1, 0, 3); -- V9
   perform pg_temp.sell(1, 2, 'a2:s1');
   assert pg_temp.st(pg_temp.it(1)) = '1+450', 'setup: the sale did not open one bottle';
 end $$;
 
--- V1 the void gives back the 300 ml: the bottle the sale opened is sealed again.
+-- V1 300 ml back; the bottle the sale opened is sealed again.
 do $$
 declare r jsonb; t record; it uuid := pg_temp.it(1);
 begin
   r := pg_temp.vd(1, 'a2:s1', 2, 'a2:s1:void', '2026-11-06T21:00:00Z');
-  assert pg_temp.ml(it) = 1500, format('V1 FAIL %s ml, expected 1500 (main: 2700)', pg_temp.ml(it));
-  assert pg_temp.st(it) = '2+0', format('V1 FAIL lots %s, expected 2+0', pg_temp.st(it));
+  assert pg_temp.ml(it) = 1500, format('V1 FAIL %s ml', pg_temp.ml(it));
+  assert pg_temp.st(it) = '2+0', 'V1 FAIL lots';
   assert (r->>'returned_ml')::int = 300 and (r->>'bottles_folded')::int = 1 and (r->>'overflow_ml')::int = 0,
     format('V1 FAIL result %s', r);
   select * into t from public.inventory_transactions where inventory_id = it and transaction_type = 'return';
   assert t.quantity_change = 1 and t.quantity_after = 2 and t.idempotency_key = 'a2:s1:void', 'V1 FAIL return row';
-  assert t.transaction_date = '2026-11-06T21:00:00Z'::timestamptz, 'V1 FAIL not dated by the check';
-  assert (select pours from public.pour_events where idempotency_key = 'a2:s1:void') = -2, 'V1 FAIL no -2 pour row';
+  assert t.transaction_date = '2026-11-06T21:00:00Z'::timestamptz, 'V1 FAIL date';
+  assert (select pours from public.pour_events where idempotency_key = 'a2:s1:void') = -2, 'V1 FAIL pour row';
 end $$;
 
 -- V2 a replayed void moves nothing.
@@ -67,10 +64,10 @@ do $$
 declare r jsonb := pg_temp.vd(1, 'a2:s1', 2, 'a2:s1:void');
 begin
   assert (r->>'idempotent')::boolean, format('V2 FAIL not idempotent: %s', r);
-  assert pg_temp.st(pg_temp.it(1)) = '2+0' and pg_temp.rets(pg_temp.it(1)) = 1, 'V2 FAIL the replay moved stock';
+  assert pg_temp.st(pg_temp.it(1)) = '2+0' and pg_temp.rets(pg_temp.it(1)) = 1, 'V2 FAIL replay moved stock';
 end $$;
 
--- V3 another house, or none, cannot void this house's pour (ADR 0141).
+-- V3 another house, or none, cannot void it (ADR 0141).
 do $$
 begin
   perform pg_temp.sell(1, 1, 'a2:s3');
@@ -81,13 +78,21 @@ begin
   end;
   begin
     perform public.return_glass_pour(null, pg_temp.it(1), 'a2:s3', 1, 'a2:s3:void');
-    raise exception 'V3 FAIL a void naming no house was accepted';
+    raise exception 'V3 FAIL no house accepted';
   exception when sqlstate '42501' then null;
   end;
-  assert pg_temp.st(pg_temp.it(1)) = '1+600', format('V3 FAIL lots %s after refusals', pg_temp.st(pg_temp.it(1)));
+  assert pg_temp.st(pg_temp.it(1)) = '1+600', 'V3 FAIL lots moved';
 end $$;
 
--- V5 no sale pour for this item: nothing moves.
+-- V4 the void's key must not be the sale's key (ADR 0093 D5).
+do $$
+begin
+  perform pg_temp.vd(1, 'a2:s3', 1, 'a2:s3');
+  raise exception 'V4 FAIL sale key accepted';
+exception when sqlstate '22023' then null;
+end $$;
+
+-- V5 no sale pour for this item moves nothing.
 do $$
 declare r jsonb;
 begin
@@ -95,30 +100,30 @@ begin
   assert r->>'reason' = 'no sale pour found' and pg_temp.st(pg_temp.it(2)) = '1+0', format('V5 FAIL %s', r);
   assert not exists (select 1 from public.pour_events where idempotency_key = 'a2:never:void'), 'V5 FAIL pour row';
   r := pg_temp.vd(2, 'a2:s1', 2, 'a2:other:void');  -- another item's sale
-  assert r->>'reason' = 'no sale pour found', format('V5 FAIL another item''s sale reversed: %s', r);
+  assert r->>'reason' = 'no sale pour found', 'V5 FAIL another item''s sale';
 end $$;
 
--- V6 a sale that straddled two bottles: every ml and the sealed count come back.
+-- V6 a sale across two bottles: every ml and the sealed count come back.
 do $$
 begin
   perform pg_temp.sell(3, 2, 'a2:s6');
-  assert pg_temp.st(pg_temp.it(3)) = '0+0 | 0+550', format('V6 setup %s', pg_temp.st(pg_temp.it(3)));
+  assert pg_temp.st(pg_temp.it(3)) = '0+0 | 0+550', 'V6 setup';
   perform pg_temp.vd(3, 'a2:s6', 2, 'a2:s6:void');
   assert pg_temp.ml(pg_temp.it(3)) = 850 and pg_temp.st(pg_temp.it(3)) = '0+0 | 1+100',
     format('V6 FAIL lots %s', pg_temp.st(pg_temp.it(3)));
 end $$;
 
--- V7 six glasses opened two bottles; the void seals both again.
+-- V7 six glasses opened two bottles; both are sealed again.
 do $$
 begin
   perform pg_temp.sell(4, 6, 'a2:s7');
   perform pg_temp.vd(4, 'a2:s7', 6, 'a2:s7:void');
   assert pg_temp.st(pg_temp.it(4)) = '2+0', format('V7 FAIL lots %s', pg_temp.st(pg_temp.it(4)));
   assert (select quantity_change from public.inventory_transactions
-           where inventory_id = pg_temp.it(4) and transaction_type = 'return') = 2, 'V7 FAIL return row not +2';
+           where inventory_id = pg_temp.it(4) and transaction_type = 'return') = 2, 'V7 FAIL return row';
 end $$;
 
--- V8 more than the container can hold is named, not added, and seals nothing.
+-- V8 more than the container holds is named, not added.
 do $$
 declare r jsonb;
 begin
@@ -129,7 +134,7 @@ begin
   assert pg_temp.st(pg_temp.it(5)) = '0+750', format('V8 FAIL lots %s', pg_temp.st(pg_temp.it(5)));
 end $$;
 
--- V9 a void never gives back more glasses than the sale poured.
+-- V9 never more glasses back than the sale poured.
 do $$
 declare r jsonb;
 begin

@@ -13,3 +13,7 @@ It reaches the ledger only when a bottle folds; else only the RPC result and the
 ## OD-67's register row is not struck yet — OPEN — 2026-11-07
 
 Its long row would add 13K of diff past the gate's 30K wall. **Closes with** a one-line strike citing the ADR 0011 amendment.
+
+## No total caps several voids of one sale — OPEN — 2026-11-07
+
+Each call caps at its sale's pours; `pour_events` cannot tie a return to its sale. The doors' second void replays. **Closes with** a sale-key column.

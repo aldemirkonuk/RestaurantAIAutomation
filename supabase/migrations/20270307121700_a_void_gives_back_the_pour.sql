@@ -1,8 +1,5 @@
 -- A void gives back what was poured (G11; B19 superseded, ADR 0011 amendment
--- 2026-11-07). A glass void used to return a sealed bottle per glass. This
--- returns least(p_pours, sale.pours) * sale.pour_ml, read from the sale's own
--- pour_events row, to the open container; full bottles fold back (never more
--- than the sale opened); above one bottle is named overflow_ml, not added.
+-- 2026-11-07): least(p_pours, sale.pours) * sale.pour_ml, not a bottle a glass.
 
 BEGIN;
 
@@ -49,7 +46,7 @@ BEGIN
     RETURN jsonb_build_object('returned_ml', 0, 'reason', 'nothing to return');
   END IF;
 
-  -- A replay moves nothing, nor does a void the old path booked under this key.
+  -- A replay moves nothing, nor an old-path void under this key.
   SELECT id INTO v_existing FROM public.pour_events WHERE idempotency_key = p_idempotency_key LIMIT 1;
   IF v_existing IS NULL THEN
     SELECT id INTO v_existing FROM public.inventory_transactions WHERE idempotency_key = p_idempotency_key LIMIT 1;
@@ -76,7 +73,7 @@ BEGIN
   v_before := (SELECT COALESCE(SUM(qty), 0) FROM public.inventory_lots
                 WHERE inventory_id = p_inventory_id AND stock_state = 'live');
 
-  -- The open container ADR 0285's draw last touched; else the lot it last touched.
+  -- ADR 0285's last-touched open container, else the last-touched lot.
   SELECT id, open_bottle_ml INTO v_lot FROM public.inventory_lots
    WHERE inventory_id = p_inventory_id AND stock_state = 'live' AND open_bottle_ml > 0
    ORDER BY updated_at DESC, received_at DESC, created_at DESC, id DESC LIMIT 1;
@@ -89,7 +86,7 @@ BEGIN
     RETURN jsonb_build_object('returned_ml', 0, 'reason', 'no live lot to return to');
   END IF;
 
-  -- Fold full bottles back, never more than the sale opened; cap at one bottle.
+  -- Fold bottles back, never more than the sale opened; cap at one bottle.
   v_total := v_lot.open_bottle_ml::bigint + v_returned;
   v_folds := LEAST(v_total / v_bottle_ml, GREATEST(v_sale.bottles_opened, 0)::bigint)::int;
   v_rest := v_total - v_folds::bigint * v_bottle_ml;
@@ -114,7 +111,7 @@ BEGIN
                           'added_ml', v_added, 'bottles_folded', v_folds, 'sale_key', p_sale_key,
                           'overflow_ml', v_overflow,
                           'overflow_reason', CASE WHEN v_overflow > 0 THEN 'void above container cap' END),
-       -- ADR 0281: dated by the check, never later than now.
+       -- ADR 0281: dated by the check, never after now.
        LEAST(COALESCE(p_occurred_at, now()), now()),
        p_idempotency_key)
     RETURNING id INTO v_txn;
@@ -134,7 +131,20 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.return_glass_pour IS
-  'Reverses a by-the-glass sale on its void, by the ml the sale''s own pour took. '
-  'Supersedes B19 (ADR 0011 amendment 2026-11-07); migration a_void_gives_back_the_pour.';
+  'A glass void gives back the ml its sale poured; B19 superseded (ADR 0011).';
+
+-- Self-check: one INVOKER definition, guards kept.
+DO $$
+BEGIN
+  IF (SELECT count(*) FILTER (WHERE NOT p.prosecdef AND p.prorettype = 'jsonb'::regtype
+            AND position('ERRCODE = ''42501''' in p.prosrc) > 0
+            AND position('LEAST(COALESCE(p_occurred_at, now()), now())' in p.prosrc) > 0
+            AND position('p_idempotency_key = p_sale_key' in p.prosrc) > 0) || '/' || count(*)
+        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname = 'return_glass_pour') <> '1/1' THEN
+    RAISE EXCEPTION 'return_glass_pour self-check failed';
+  END IF;
+END;
+$$;
 
 COMMIT;

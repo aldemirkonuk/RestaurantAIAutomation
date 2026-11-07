@@ -252,7 +252,8 @@ can, and 5x is not a rounding error.
 
 **Authority.** The founder's /goal of 2026-11-07 ("I approve you decide them
 all"), after the founder's pick "voids return volume" (#589 group 5); G11,
-proposal F9. Closes OD-67 for new voids. Old voids are a leftover in
+proposal F9. Fixes OD-67's defect for new voids; the OD-67 row is still
+listed open. Striking it and old voids are leftovers in
 `../tech-debt.d/2026-11-07-fix-a-void-gives-back-what-was-poured.md`.
 
 **What changes.** Both doors call `public.return_glass_pour` (migration
