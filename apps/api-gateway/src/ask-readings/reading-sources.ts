@@ -24,11 +24,12 @@ export class ReadingSources {
     return this.session.read(c => c.from("restaurants").select("id,threshold_configured", selected)
       .eq("id", this.restaurantId), r => r.id === this.restaurantId);
   }
+  /** Lots that hold stock. A used-up lot is kept at 0 (a_used_up_lot_is_kept, R6) and is not stock. */
   lots(itemId: string): Promise<Evidence> {
     return this.session.read(c => c.from("inventory_lots")
-      .select("id,restaurant_id,inventory_id,location_id,stock_state,qty,status", selected)
-      .eq("restaurant_id", this.restaurantId).eq("inventory_id", itemId),
-    r => this.houseScope(r) && r.inventory_id === itemId);
+      .select("id,restaurant_id,inventory_id,location_id,stock_state,qty,open_bottle_ml,status", selected)
+      .eq("restaurant_id", this.restaurantId).eq("inventory_id", itemId).or("qty.gt.0,open_bottle_ml.gt.0"),
+    r => this.houseScope(r) && r.inventory_id === itemId && (Number(r.qty) > 0 || Number(r.open_bottle_ml) > 0));
   }
   locations(): Promise<Evidence> {
     return this.session.read(c => c.from("storage_locations").select("id,restaurant_id,name", selected)
