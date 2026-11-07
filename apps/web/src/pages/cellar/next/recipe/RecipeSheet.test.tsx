@@ -477,6 +477,17 @@ describe('RecipeSheet', () => {
     expect(screen.getByRole('button', { name: /^save$/i })).not.toBeDisabled();
   });
 
+  it('round 19: an amount that could be a thousand or one stops Save and says both', async () => {
+    serve(negroni());
+    mount();
+    const amounts = await screen.findAllByLabelText('Amount');
+    fireEvent.change(amounts[0], { target: { value: '1,000' } });
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    expect(screen.getByText('Line 1 (gin): 1,000 could be 1000 or 1. Type it without the separator.')).toBeInTheDocument();
+    fireEvent.change(amounts[0], { target: { value: '22,500' } });
+    expect(screen.getByText('Line 1 (gin): 22,500 could be 22500 or 22.5. Type it without the separator.')).toBeInTheDocument();
+  });
+
   it('a save the gateway refuses with a sentence shows that sentence', async () => {
     const said = 'Ingredient 2 (Campari) is more than one line can hold. The most is 100,000 ml.';
     serve(negroni());
