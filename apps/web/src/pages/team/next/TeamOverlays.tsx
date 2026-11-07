@@ -721,10 +721,15 @@ export function TimeOffSheet({
             The request was not filed. Nothing is on the manager&apos;s desk.
           </MutationError>
           {failed ? (
-            <p className="tm-alert" role="alert">
-              The time-off file could not be read, so whether anyone has asked for this
-              week is unknown — not no.
-            </p>
+            <div className="tm-banner" role="alert">
+              <span>
+                The time-off file could not be read, so whether anyone has asked for this
+                week is unknown — not no.
+              </span>
+              <button type="button" className="tm-ctl" onClick={onChanged}>
+                Try again
+              </button>
+            </div>
           ) : requests === null ? (
             <p className="tm-quiet">Reaching the gateway…</p>
           ) : requests.length === 0 ? (
