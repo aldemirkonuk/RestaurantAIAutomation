@@ -137,3 +137,15 @@ button.ivd-card:hover {
   border-bottom: 1px solid var(--paper-2);
   font-size: 13px;
 }
+
+/* "Carry this" (CarryThis.tsx). */
+.ivc-form {
+  display: grid;
+  gap: 12px;
+}
+.ivc-label {
+  display: grid;
+  gap: 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+}

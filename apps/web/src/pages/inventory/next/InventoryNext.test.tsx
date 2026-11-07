@@ -1021,6 +1021,24 @@ describe('INV-W38 — the view is the URL', () => {
     expect(new URLSearchParams(seen.search).has('open')).toBe(false);
   });
 
+  it('(g) a carried food lists under Food, and the kind is kept in the URL', () => {
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+    });
+    const seen = renderAt('/inventory');
+    fireEvent.click(within(screen.getByTestId('inventory-kinds')).getByRole('button', { name: 'Food' }));
+    expect(screen.getByTestId('inv-row-f')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-a')).toBeNull();
+    expect(new URLSearchParams(seen.search).get('kind')).toBe('food');
+  });
+
+  it('draws no kind chips for a house that carries only drinks', () => {
+    mock.data = data({ rows: two() });
+    renderAt('/inventory');
+    expect(screen.queryByTestId('inventory-kinds')).toBeNull();
+  });
+
   it('opens the title a ?highlight= link names, by row id or by wine id', () => {
     mock.data = data({ rows: two() });
     renderAt('/inventory?highlight=wb');

@@ -19,6 +19,13 @@
  */
 import { CHIPS, type ChipId, type SortId } from './useInventoryNextData';
 
+export type GoodKind = 'drink' | 'food' | 'supply';
+export const KIND_CHIPS: { id: GoodKind; label: string }[] = [
+  { id: 'drink', label: 'Drinks' },
+  { id: 'food', label: 'Food' },
+  { id: 'supply', label: 'Supplies' },
+];
+
 export interface IvView {
   chip: ChipId;
   q: string;
@@ -26,15 +33,17 @@ export interface IvView {
   type: string;
   sort: SortId;
   view: 'table' | 'map';
+  /** What kind of good: '' every kind, else a drink, a food or a supply (KIND_CHIPS). */
+  kind: '' | GoodKind;
   /** A row id, or a wine id from ?highlight= until the rows resolve it. */
   open: string | null;
 }
 
 const SORTS: readonly SortId[] = ['needs', 'name', 'value', 'pace'];
 
-export const IV_DEFAULT: IvView = { chip: 'all', q: '', zone: '', type: '', sort: 'needs', view: 'table', open: null };
+export const IV_DEFAULT: IvView = { chip: 'all', q: '', zone: '', type: '', sort: 'needs', view: 'table', kind: '', open: null };
 
-const KEYS = ['chip', 'q', 'zone', 'type', 'sort', 'view', 'open'] as const;
+const KEYS = ['chip', 'q', 'zone', 'type', 'sort', 'view', 'kind', 'open'] as const;
 const ALIASES = ['wine', 'highlight'] as const;
 
 export function readView(p: URLSearchParams): IvView {
@@ -47,6 +56,7 @@ export function readView(p: URLSearchParams): IvView {
     type: p.get('type') ?? IV_DEFAULT.type,
     sort: SORTS.includes(sort as SortId) ? (sort as SortId) : IV_DEFAULT.sort,
     view: p.get('view') === 'map' ? 'map' : IV_DEFAULT.view,
+    kind: KIND_CHIPS.find((k) => k.id === p.get('kind'))?.id ?? IV_DEFAULT.kind,
     open: p.get('open') || p.get('highlight') || IV_DEFAULT.open,
   };
 }
