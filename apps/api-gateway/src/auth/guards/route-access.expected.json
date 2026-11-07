@@ -695,6 +695,38 @@
     "manager",
     "staff"
   ],
+  "GET /floor/me/clock (FloorStaffController.clock)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/me/food-up/:id/delivered (FloorStaffController.foodDelivered)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/merges (FloorManagerController.merge)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/merges/:id/split (FloorManagerController.split)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "GET /floor/food-ups (FloorManagerController.foodUps)": [
+    "owner",
+    "manager"
+  ],
+  "POST /floor/tables (FloorManagerController.createTable)": [
+    "owner",
+    "manager"
+  ],
+  "PATCH /floor/tables/:id (FloorManagerController.patchTable)": [
+    "owner",
+    "manager"
+  ],
   "DELETE /floor/assignments/:id (FloorManagerController.release)": [
     "owner",
     "manager"

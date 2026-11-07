@@ -38,6 +38,7 @@ import {
 } from "./floor-common";
 import { readHolders } from "./floor-holders";
 import { FloorService } from "./floor.service";
+import { readLiveMerges } from "./floor-tables.service";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -248,6 +249,8 @@ export class FloorBoardService {
       readHolders(this.sb, a.restaurantId, date),
     ]);
     const hidden = new Set(tables.filter((t) => t.hidden_at).map((t) => t.id));
+    const merges = await readLiveMerges(this.sb, a.restaurantId, new Map(tables.map((t) => [t.id, t.seats])));
+    const mergeOf = new Map(merges.flatMap((m) => m.tableIds.map((id) => [id, m.mergeId] as const)));
     const window = date && house.zone ? FloorBoardService.windowOf(date, house.zone) : null;
     // Without a zone the floor still shows what is open now; the day's figures
     // need a day, and a day needs the house's clock (never UTC).
@@ -284,6 +287,7 @@ export class FloorBoardService {
           label: t.label,
           seats: t.seats,
           sectionId: holders.sectionOf.get(t.id) ?? null,
+          mergeId: mergeOf.get(t.id) ?? null,
           holders: held.map((userId) => ({ userId, name: names.get(userId) ?? null })),
           seatingId: s?.id ?? null,
           seatedAt: s?.seated_at ?? null,
@@ -311,6 +315,7 @@ export class FloorBoardService {
       warnAfterMin: house.warnAfterMin,
       lateAfterMin: house.lateAfterMin,
       tables: rows,
+      merges,
       waiters: sortByScore(
         [...allWaiters].map((userId) => ({
           ...(byId.get(userId) ?? {
@@ -325,6 +330,63 @@ export class FloorBoardService {
       ).map(({ id: _id, ...w }) => w),
     };
   }
+
+  /**
+   * The Food-ups not yet delivered, newest first, each with whether someone
+   * has acknowledged it. Open as OD-242, the executor's reading under OD-242:
+   * "open" looks back FOOD_UP_LOOKBACK_HOURS rather than to the start of the
+   * service day, which needs ADR 0351's full rule.
+   */
+  async openFoodUps(a: FloorActor, now = Date.now()) {
+    const since = new Date(now - FloorBoardService.FOOD_UP_LOOKBACK_HOURS * 3_600_000).toISOString();
+    const { data, error } = await this.sb
+      .from("floor_events")
+      .select("id, kind, table_id, actor_id, meta, created_at")
+      .eq("restaurant_id", a.restaurantId)
+      .in("kind", ["food_up", "food_ack"])
+      .gte("created_at", since)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (error) throw new InternalServerErrorException("The Food ups could not be read.");
+    const rows = (data ?? []) as Array<{
+      id: string;
+      kind: string;
+      table_id: string | null;
+      actor_id: string | null;
+      meta: Record<string, unknown> | null;
+      created_at: string;
+    }>;
+    const acked = new Map<string, string>();
+    const delivered = new Set<string>();
+    for (const r of rows.filter((x) => x.kind === "food_ack")) {
+      const id = String(r.meta?.food_up_id ?? "");
+      if (!acked.has(id) || r.created_at < (acked.get(id) as string)) acked.set(id, r.created_at);
+      if (r.meta?.resolution === "delivered") delivered.add(id);
+    }
+    const open = rows.filter((r) => r.kind === "food_up" && !delivered.has(r.id));
+    const tableIds = [...new Set(open.map((r) => r.table_id).filter((t): t is string => Boolean(t)))];
+    const labels = new Map<string, string>();
+    if (tableIds.length > 0) {
+      const t = await this.sb.from("restaurant_tables").select("id, label").eq("restaurant_id", a.restaurantId).in("id", tableIds);
+      if (t.error) throw new InternalServerErrorException("The tables could not be read.");
+      for (const x of (t.data ?? []) as Array<{ id: string; label: string }>) labels.set(x.id, x.label);
+    }
+    const names = await this.names(open.map((r) => r.actor_id ?? ""));
+    return {
+      foodUps: open.map((r) => ({
+        foodUpId: r.id,
+        tableId: r.table_id,
+        tableLabel: r.table_id ? (labels.get(r.table_id) ?? null) : null,
+        course: typeof r.meta?.course === "string" ? r.meta.course : null,
+        note: typeof r.meta?.note === "string" ? r.meta.note : null,
+        raisedAt: r.created_at,
+        raisedBy: r.actor_id ? { userId: r.actor_id, name: names.get(r.actor_id) ?? null } : null,
+        acknowledgedAt: acked.get(r.id) ?? null,
+      })),
+    };
+  }
+
+  static readonly FOOD_UP_LOOKBACK_HOURS = 6;
 
   private async openSeatings(restaurantId: string) {
     const { data, error } = await this.sb

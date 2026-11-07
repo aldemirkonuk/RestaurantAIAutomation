@@ -25,8 +25,11 @@ const ctx = (handler: object, cls: object, role: string | null, restaurantId = "
 const methodsOf = (cls: any): string[] =>
   Object.getOwnPropertyNames(cls.prototype).filter((m) => m !== "constructor");
 
-/** Staff-admitted on the manager controller: Out tonight, lead-checked in the service (OD-242). */
-const STAFF_ON_MANAGER = new Set(["markOut", "backOn"]);
+/**
+ * Staff-admitted on the manager controller: Out tonight, lead-checked in the
+ * service (OD-242), and merge/split, holder-checked in the service.
+ */
+const STAFF_ON_MANAGER = new Set(["markOut", "backOn", "merge", "split"]);
 
 describe("floor route roles (E6)", () => {
   const guard = new RolesGuard(new Reflector());
@@ -42,9 +45,9 @@ describe("floor route roles (E6)", () => {
   it("covers every figure and admin route (no route left unchecked)", () => {
     expect(figureRoutes.sort()).toEqual(
       [
-        "apply", "archiveSection", "assign", "assignments", "confirmLink", "createSection", "getBoard",
-        "posLinks", "propose", "release", "report", "saveSettings", "seatingsCsv", "sections",
-        "setSectionTables", "settings", "unlink", "updateSection", "waitersCsv",
+        "apply", "archiveSection", "assign", "assignments", "confirmLink", "createSection", "createTable",
+        "foodUps", "getBoard", "patchTable", "posLinks", "propose", "release", "report", "saveSettings",
+        "seatingsCsv", "sections", "setSectionTables", "settings", "unlink", "updateSection", "waitersCsv",
       ].sort(),
     );
   });
@@ -58,9 +61,10 @@ describe("floor route roles (E6)", () => {
     expect(guard.canActivate(ctx(h, FloorManagerController, "manager"))).toBe(true);
   });
 
-  it.each([...STAFF_ON_MANAGER])("Out tonight %s admits staff at the role gate (the lead check is the service's)", (m) => {
+  it.each([...STAFF_ON_MANAGER])("%s admits staff at the role gate (the lead or holder check is the service's)", (m) => {
     const h = (FloorManagerController.prototype as any)[m];
     expect(guard.canActivate(ctx(h, FloorManagerController, "staff"))).toBe(true);
+    expect(guard.canActivate(ctx(h, FloorManagerController, "admin"))).toBe(false);
   });
 
   it.each(methodsOf(FloorStaffController))("/floor/me %s admits owner, manager and staff only", (m) => {

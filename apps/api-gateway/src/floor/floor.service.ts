@@ -478,6 +478,53 @@ export class FloorService {
   }
 
   /**
+   * The meal reached the table: a visit with source `food_delivered` on the
+   * table's open seating (when one is open) and a `food_ack` that says so.
+   * A second delivery of the same Food-up is refused.
+   */
+  async foodDelivered(a: FloorActor, foodUpId: string) {
+    const { data, error } = await this.sb
+      .from("floor_events")
+      .select("id, table_id, seating_id")
+      .eq("id", foodUpId)
+      .eq("restaurant_id", a.restaurantId)
+      .eq("kind", "food_up")
+      .maybeSingle();
+    if (error) throw new InternalServerErrorException("The Food up could not be read.");
+    if (!data) throw new NotFoundException("No such Food up in this house.");
+    const ev = data as { id: string; table_id: string | null; seating_id: string | null };
+    const { data: acks, error: ackError } = await this.sb
+      .from("floor_events")
+      .select("meta")
+      .eq("restaurant_id", a.restaurantId)
+      .eq("kind", "food_ack")
+      .eq("meta->>food_up_id", ev.id);
+    if (ackError) throw new InternalServerErrorException("The Food up could not be read.");
+    if (((acks ?? []) as Array<{ meta: Record<string, unknown> }>).some((r) => r.meta?.resolution === "delivered")) {
+      throw new ConflictException("This Food up is already delivered.");
+    }
+    let visitId: string | null = null;
+    if (ev.table_id) {
+      const { data: seating, error: seatingError } = await this.sb
+        .from("floor_seatings")
+        .select("id")
+        .eq("restaurant_id", a.restaurantId)
+        .eq("table_id", ev.table_id)
+        .is("left_at", null)
+        .maybeSingle();
+      if (seatingError) throw new InternalServerErrorException("The table's party could not be read.");
+      if (seating) visitId = (await this.visit(a, (seating as { id: string }).id, "food_delivered")).visitId;
+    }
+    await this.event(a, "food_ack", {
+      tableId: ev.table_id,
+      seatingId: ev.seating_id,
+      meta: { food_up_id: ev.id, resolution: "delivered", visit_id: visitId },
+    });
+    this.word(a.restaurantId, ev.table_id, "food_ack");
+    return { foodUpId: ev.id, delivered: true, visitId };
+  }
+
+  /**
    * The covers of people now on break: the cover named on each holder's latest
    * `on_break` with no `back` after it. Open as OD-236, the executor's reading
    * under OD-242: the cover is the person the waiter names at the On break
@@ -596,6 +643,44 @@ export class FloorService {
 
   async back(a: FloorActor) {
     return this.clockIn(a, "back");
+  }
+
+  /**
+   * Where I stand on the clock, for `/floor/me`: in (an open punch), on break
+   * (the latest punch closed for a break, with the cover named at the tap), or
+   * out. Only the asker's own punch and their cover's name; no minutes.
+   */
+  async clockState(a: FloorActor) {
+    const { data, error } = await this.sb
+      .from("floor_punches")
+      .select("id, clocked_in_at, clocked_out_at, clocked_out_reason")
+      .eq("restaurant_id", a.restaurantId)
+      .eq("user_id", a.userId)
+      .is("superseded_at", null)
+      .order("clocked_in_at", { ascending: false })
+      .limit(1);
+    if (error) throw new InternalServerErrorException("Your punch could not be read.");
+    const p = ((data ?? []) as Array<{
+      id: string;
+      clocked_in_at: string;
+      clocked_out_at: string | null;
+      clocked_out_reason: string | null;
+    }>)[0];
+    if (!p) return { state: "out" as const, punchId: null, since: null, coverUserId: null, coverName: null };
+    if (!p.clocked_out_at) {
+      return { state: "in" as const, punchId: p.id, since: p.clocked_in_at, coverUserId: null, coverName: null };
+    }
+    if (p.clocked_out_reason !== "break") {
+      return { state: "out" as const, punchId: p.id, since: p.clocked_out_at, coverUserId: null, coverName: null };
+    }
+    const cover = (await this.breakState(a.restaurantId, [a.userId])).get(a.userId) ?? null;
+    let coverName: string | null = null;
+    if (cover) {
+      const { data: u, error: nameError } = await this.sb.from("users").select("name").eq("user_id", cover).maybeSingle();
+      if (nameError) throw new InternalServerErrorException("Your cover's name could not be read.");
+      coverName = (u as { name?: string } | null)?.name ?? null;
+    }
+    return { state: "on_break" as const, punchId: p.id, since: p.clocked_out_at, coverUserId: cover, coverName };
   }
 
   // -------------------------------------------------------------------------
