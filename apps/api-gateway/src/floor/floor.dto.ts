@@ -1,9 +1,11 @@
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   IsArray,
   IsBoolean,
   IsIn,
   IsInt,
+  IsNumber,
   IsOptional,
   IsString,
   IsUUID,
@@ -161,4 +163,94 @@ export class ReportQueryDto {
   @IsString()
   @MaxLength(10)
   date?: string;
+}
+
+/** A new table (ADR 0347 D3). Anything left out is stored as NULL (D4). */
+export class CreateTableDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  label!: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(999)
+  seats?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  is_outdoor?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  x_pos?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  y_pos?: number;
+
+  @IsOptional()
+  @IsIn(["round", "rect"])
+  shape?: string;
+}
+
+/**
+ * A change to one table (ADR 0347 D6). `null` clears seats, shape or a
+ * coordinate; `tray: true` clears the place (D5). The names match the web
+ * client's `TablePatch`.
+ */
+export class TablePatchDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(60)
+  label?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  hidden?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(999)
+  seats?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  x_pos?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Max(100)
+  y_pos?: number | null;
+
+  @IsOptional()
+  @IsIn(["round", "rect"])
+  shape?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  tray?: boolean;
+}
+
+/**
+ * 2 to 8 tables. The checker's mergeTables took exactly 2; taking up to 8 is
+ * the executor's reading under OD-242 (a long table is several pushed
+ * together), and a pair is still the only shape given an orientation.
+ */
+export class MergeDto {
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(8)
+  @IsUUID("all", { each: true })
+  tableIds!: string[];
 }
