@@ -1,4 +1,4 @@
--- G11; psql -v ON_ERROR_STOP=1, rolled back. Without the migration: 42883.
+-- G11 + QA 8c; psql -v ON_ERROR_STOP=1, rolled back. Without the migration: 42883.
 -- Main books V1 as 2700 ml where 1500 ml stood.
 
 begin;
@@ -28,7 +28,7 @@ do $$
 declare i int;
 begin
   insert into public.restaurants (id, name, slug) values (pg_temp.h(), 'A2 test house', 'a2-test-house');
-  for i in 1..6 loop
+  for i in 1..8 loop
     insert into public.master_wine_library (id, wine_id, name, primary_type)
     values (('a2000000-0000-4000-8000-0000000001' || lpad(i::text, 2, '0'))::uuid, 'A2-TEST-' || i, 'A2 wine ' || i, 'red');
     insert into public.restaurant_inventory (id, restaurant_id, master_wine_id, bottle_size_ml, pour_size_ml)
@@ -40,6 +40,8 @@ begin
   perform pg_temp.lot(4, 2, 0, 3); -- V7
   perform pg_temp.lot(5, 0, 700, 3); -- V8
   perform pg_temp.lot(6, 1, 0, 3); -- V9
+  perform pg_temp.lot(7, 2, 0, 3); -- V10
+  perform pg_temp.lot(8, 2, 0, 3); -- V11
   perform pg_temp.sell(1, 2, 'a2:s1');
   assert pg_temp.st(pg_temp.it(1)) = '1+450', 'setup: the sale did not open one bottle';
 end $$;
@@ -92,15 +94,21 @@ begin
 exception when sqlstate '22023' then null;
 end $$;
 
--- V5 no sale pour for this item moves nothing.
+-- V5 no booked sale is an error the caller sees, and moves nothing.
 do $$
-declare r jsonb;
 begin
-  r := pg_temp.vd(2, 'a2:never', 2, 'a2:never:void');
-  assert r->>'reason' = 'no sale pour found' and pg_temp.st(pg_temp.it(2)) = '1+0', format('V5 FAIL %s', r);
+  begin
+    perform pg_temp.vd(2, 'a2:never', 2, 'a2:never:void');
+    raise exception 'V5 FAIL a void with no sale returned quietly';
+  exception when sqlstate 'P0002' then null;
+  end;
+  begin
+    perform pg_temp.vd(2, 'a2:s1', 2, 'a2:other:void');  -- another item's sale
+    raise exception 'V5 FAIL another item''s sale';
+  exception when sqlstate 'P0002' then null;
+  end;
+  assert pg_temp.st(pg_temp.it(2)) = '1+0', 'V5 FAIL lots moved';
   assert not exists (select 1 from public.pour_events where idempotency_key = 'a2:never:void'), 'V5 FAIL pour row';
-  r := pg_temp.vd(2, 'a2:s1', 2, 'a2:other:void');  -- another item's sale
-  assert r->>'reason' = 'no sale pour found', 'V5 FAIL another item''s sale';
 end $$;
 
 -- V6 a sale across two bottles: every ml and the sealed count come back.
@@ -141,6 +149,35 @@ begin
   perform pg_temp.sell(6, 2, 'a2:s9');
   r := pg_temp.vd(6, 'a2:s9', 5, 'a2:s9:void');
   assert (r->>'returned_ml')::int = 300 and pg_temp.ml(pg_temp.it(6)) = 750, format('V9 FAIL %s', r);
+end $$;
+
+-- V10 several voids of one sale, each under its own key, give back the sale once.
+do $$
+declare r jsonb; it uuid := pg_temp.it(7);
+begin
+  perform pg_temp.sell(7, 3, 'a2:s10');
+  r := pg_temp.vd(7, 'a2:s10', 1, 'a2:s10:void');
+  assert (r->>'returned_ml')::int = 150 and pg_temp.st(it) = '1+450', format('V10 FAIL first %s', r);
+  r := pg_temp.vd(7, 'a2:s10', 3, 'a2:s10:void-line2');
+  assert (r->>'returned_ml')::int = 300 and pg_temp.st(it) = '2+0', format('V10 FAIL second %s %s', r, pg_temp.st(it));
+  r := pg_temp.vd(7, 'a2:s10', 2, 'a2:s10:void-line3');
+  assert (r->>'returned_ml')::int = 0 and pg_temp.ml(it) = 1500, format('V10 FAIL phantom %s ml', pg_temp.ml(it));
+  r := pg_temp.vd(6, 'a2:s9', 2, 'a2:s9:void-line2');
+  assert (r->>'returned_ml')::int = 0 and pg_temp.ml(pg_temp.it(6)) = 750, format('V10 FAIL V9 again %s', r);
+end $$;
+
+-- V11 a sale booked as a bottle comes back as a bottle, once, whatever the item sells as now.
+do $$
+declare r jsonb; it uuid := pg_temp.it(8);
+begin
+  perform public.apply_stock_movement(p_inventory_id => it, p_stock_state => 'live', p_delta => -1,
+    p_transaction_type => 'sale', p_source => 'pos', p_idempotency_key => 'a2:s11', p_restaurant_id => pg_temp.h());
+  r := pg_temp.vd(8, 'a2:s11', 1, 'a2:s11:void');
+  assert (r->>'returned_bottles')::int = 1 and pg_temp.ml(it) = 1500, format('V11 FAIL %s, %s ml', r, pg_temp.ml(it));
+  assert (select metadata->>'sale_key' from public.inventory_transactions where idempotency_key = 'a2:s11:void') = 'a2:s11',
+    'V11 FAIL return row';
+  r := pg_temp.vd(8, 'a2:s11', 3, 'a2:s11:void-line2');
+  assert (r->>'returned_bottles')::int = 0 and pg_temp.ml(it) = 1500, format('V11 FAIL phantom %s ml', pg_temp.ml(it));
 end $$;
 
 rollback;

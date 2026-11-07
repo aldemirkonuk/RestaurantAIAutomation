@@ -167,7 +167,7 @@ describe("PosHubService.ingest — stock effects", () => {
     expect(calls.rpc[0].args.p_pours).toBe(2);
   });
 
-  it("reverses a bottle void with a positive return delta (B19)", async () => {
+  it("voids a bottle-mapped line by its booked sale, not a blind +qty (QA 8c)", async () => {
     const { service, calls } = makeService({
       mappings: [
         {
@@ -184,8 +184,8 @@ describe("PosHubService.ingest — stock effects", () => {
       closedCheckPayload({ voided: true }),
     ]);
 
-    expect(calls.rpc[0].args.p_delta).toBe(2);
-    expect(calls.rpc[0].args.p_transaction_type).toBe("return");
+    expect(calls.rpc[0].name).toBe("return_glass_pour");
+    expect(calls.rpc[0].args.p_pours).toBe(2);
   });
 
   it("reverses a glass void via return_glass_pour, not a bottle per glass (G11)", async () => {

@@ -201,6 +201,20 @@ describe("ToastService.applyOrderSaleEffects (via processWebhook)", () => {
     });
   });
 
+  it("voids by the sale's booked unit, not today's mapping (QA 8c)", async () => {
+    const { service, calls } = makeService({
+      inventory: { id: "inv-1" },
+      mapping: { inventory_id: "inv-1", sale_unit: "bottle", item_name: "Caymus Cabernet" },
+    });
+
+    await service.processWebhook(webhookDto(ToastWebhookEventType.ORDER_VOIDED), "{}", null, null);
+
+    // Under the old bottle branch this was apply_stock_movement(+2): two
+    // bottles back for a sale that may have been booked as glasses.
+    expect(calls.rpc.map((c: any) => c.name)).toEqual(["return_glass_pour"]);
+    expect(calls.rpc[0].args.p_sale_key).toBe("toast_sale_order-1_item-1");
+  });
+
   it("queues an unmapped line in pos_unresolved_lines instead of dropping it (B20)", async () => {
     const { service, calls } = makeService({ mapping: null, inventory: null });
 

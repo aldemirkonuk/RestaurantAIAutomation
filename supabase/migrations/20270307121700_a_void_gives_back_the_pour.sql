@@ -1,7 +1,14 @@
 -- A void gives back what was poured (G11; B19 superseded, ADR 0011 amendment
 -- 2026-11-07): least(p_pours, sale.pours) * sale.pour_ml, not a bottle a glass.
+-- QA 8c: the unit is the one the sale was booked in, and every void of one sale
+-- together gives back at most what it booked, whatever key each void carries.
 
 BEGIN;
+
+-- The sale a negative pour_events row gives back; NULL on a sale.
+ALTER TABLE public.pour_events ADD COLUMN returns_sale_key text;
+CREATE INDEX pour_events_returns_sale_key_idx ON public.pour_events (inventory_id, returns_sale_key)
+  WHERE returns_sale_key IS NOT NULL;
 
 CREATE FUNCTION public.return_glass_pour(
     p_restaurant_id uuid,
@@ -16,7 +23,7 @@ CREATE FUNCTION public.return_glass_pour(
     AS $$
 DECLARE
   v_restaurant uuid; v_wine uuid; v_bottle_ml int;
-  v_existing uuid; v_sale record; v_pours int;
+  v_existing uuid; v_sale record; v_pours int; v_given bigint; v_folded bigint;
   v_returned bigint; v_lot record; v_total bigint;
   v_folds int := 0; v_rest bigint; v_overflow bigint := 0; v_added bigint;
   v_before int; v_after int; v_txn uuid; v_event uuid;
@@ -62,10 +69,41 @@ BEGIN
      AND pe.inventory_id = p_inventory_id
      AND pe.pours > 0;
   IF NOT FOUND THEN
-    RETURN jsonb_build_object('returned_ml', 0, 'reason', 'no sale pour found');
+    -- Booked as bottles (apply_stock_movement under the sale key): bottles back,
+    -- whatever unit the item is sold in today.
+    SELECT -t.quantity_change AS bottles INTO v_sale
+      FROM public.inventory_transactions t
+     WHERE t.idempotency_key = p_sale_key
+       AND t.restaurant_id = p_restaurant_id
+       AND t.inventory_id = p_inventory_id
+       AND t.transaction_type = 'sale' AND t.stock_type = 'live'
+       AND t.quantity_change < 0;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'return_glass_pour: no sale of item % is booked under %; nothing moved',
+        p_inventory_id, p_sale_key USING ERRCODE = 'P0002';
+    END IF;
+    v_given := (SELECT COALESCE(SUM(quantity_change), 0) FROM public.inventory_transactions
+                 WHERE inventory_id = p_inventory_id AND transaction_type = 'return'
+                   AND metadata->>'sale_key' = p_sale_key);
+    v_pours := LEAST(p_pours::bigint, v_sale.bottles - v_given)::int;
+    IF v_pours <= 0 THEN
+      RETURN jsonb_build_object('returned_bottles', 0, 'reason', 'the sale is already given back');
+    END IF;
+    v_txn := public.apply_stock_movement(
+      p_inventory_id => p_inventory_id, p_stock_state => 'live', p_delta => v_pours,
+      p_transaction_type => 'return', p_source => 'pos', p_reason => 'POS void: bottles returned',
+      p_idempotency_key => p_idempotency_key, p_metadata => jsonb_build_object('sale_key', p_sale_key),
+      p_restaurant_id => p_restaurant_id, p_occurred_at => p_occurred_at);
+    RETURN jsonb_build_object('returned_bottles', v_pours, 'txn', v_txn);
   END IF;
 
-  v_pours := LEAST(p_pours, v_sale.pours);
+  -- Every earlier void of this sale, under any key, counts against it.
+  SELECT COALESCE(SUM(-pours), 0), COALESCE(SUM(-bottles_opened), 0) INTO v_given, v_folded
+    FROM public.pour_events WHERE inventory_id = p_inventory_id AND returns_sale_key = p_sale_key;
+  v_pours := LEAST(p_pours::bigint, v_sale.pours - v_given)::int;
+  IF v_pours <= 0 THEN
+    RETURN jsonb_build_object('returned_ml', 0, 'reason', 'the sale is already given back');
+  END IF;
   v_returned := v_pours::bigint * v_sale.pour_ml;
 
   PERFORM 1 FROM public.inventory_lots
@@ -88,7 +126,7 @@ BEGIN
 
   -- Fold bottles back, never more than the sale opened; cap at one bottle.
   v_total := v_lot.open_bottle_ml::bigint + v_returned;
-  v_folds := LEAST(v_total / v_bottle_ml, GREATEST(v_sale.bottles_opened, 0)::bigint)::int;
+  v_folds := LEAST(v_total / v_bottle_ml, GREATEST(v_sale.bottles_opened - v_folded, 0))::int;
   v_rest := v_total - v_folds::bigint * v_bottle_ml;
   v_overflow := GREATEST(v_rest - v_bottle_ml, 0);
   v_rest := v_rest - v_overflow;
@@ -117,8 +155,8 @@ BEGIN
     RETURNING id INTO v_txn;
   END IF;
 
-  INSERT INTO public.pour_events (restaurant_id, inventory_id, master_wine_id, pours, pour_ml, bottles_opened, location_id, source, performed_by, idempotency_key)
-  VALUES (v_restaurant, p_inventory_id, v_wine, -v_pours, v_sale.pour_ml, -v_folds, NULL, 'pos', NULL, p_idempotency_key)
+  INSERT INTO public.pour_events (restaurant_id, inventory_id, master_wine_id, pours, pour_ml, bottles_opened, location_id, source, performed_by, idempotency_key, returns_sale_key)
+  VALUES (v_restaurant, p_inventory_id, v_wine, -v_pours, v_sale.pour_ml, -v_folds, NULL, 'pos', NULL, p_idempotency_key, p_sale_key)
   RETURNING id INTO v_event;
 
   RETURN jsonb_build_object(
@@ -131,7 +169,9 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.return_glass_pour IS
-  'A glass void gives back the ml its sale poured; B19 superseded (ADR 0011).';
+  'A void gives back what its sale booked, in the unit it was booked in (ml of a glass sale, bottles '
+  'of a bottle sale), at most once across every void of that sale; no booked sale is an error (P0002). '
+  'B19 superseded (ADR 0011).';
 
 -- Self-check: one INVOKER definition, guards kept.
 DO $$
@@ -139,7 +179,9 @@ BEGIN
   IF (SELECT count(*) FILTER (WHERE NOT p.prosecdef AND p.prorettype = 'jsonb'::regtype
             AND position('ERRCODE = ''42501''' in p.prosrc) > 0
             AND position('LEAST(COALESCE(p_occurred_at, now()), now())' in p.prosrc) > 0
-            AND position('p_idempotency_key = p_sale_key' in p.prosrc) > 0) || '/' || count(*)
+            AND position('p_idempotency_key = p_sale_key' in p.prosrc) > 0
+            AND position('ERRCODE = ''P0002''' in p.prosrc) > 0
+            AND position('returns_sale_key = p_sale_key' in p.prosrc) > 0) || '/' || count(*)
         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
        WHERE n.nspname = 'public' AND p.proname = 'return_glass_pour') <> '1/1' THEN
     RAISE EXCEPTION 'return_glass_pour self-check failed';

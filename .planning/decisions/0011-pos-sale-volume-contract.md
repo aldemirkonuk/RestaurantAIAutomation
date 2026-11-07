@@ -264,5 +264,14 @@ and names more than one bottle in the container as `overflow_ml`. The void
 key (ADR 0093 D5), the tenant refusal (ADR 0141) and the dating (ADR 0281)
 are unchanged.
 
+**QA 8c (same day).** Every void, at both doors, goes to `return_glass_pour`,
+which follows the unit the sale was **booked** in (its `pour_events` row, else
+its `sale` ledger row: bottles back), not today's mapping. All voids of one
+sale together give back at most what it booked (`pour_events.returns_sale_key`,
+the ledger's `metadata.sale_key`), whatever key each carries. No booked sale
+raises P0002; it never returns 0 quietly. Rejected: keying the return on the
+sale line alone (a second partial void could never land); routing by today's
+mapping (QA 8c's two failures).
+
 **Rejected:** waiting for ADR 0115 D3; today's pour size (drifts from the
 sale's). **Revisit when** ADR 0115 D3 (R49) replaces the body.

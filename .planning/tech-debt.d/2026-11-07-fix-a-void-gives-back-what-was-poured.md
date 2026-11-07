@@ -14,6 +14,10 @@ It reaches the ledger only when a bottle folds; else only the RPC result and the
 
 Its long row would add 13K of diff past the gate's 30K wall. **Closes with** a one-line strike citing the ADR 0011 amendment.
 
-## No total caps several voids of one sale — OPEN — 2026-11-07
+## No total caps several voids of one sale — CLOSED — 2026-11-07
 
-Each call caps at its sale's pours; `pour_events` cannot tie a return to its sale. The doors' second void replays. **Closes with** a sale-key column.
+Closed by QA 8c's follow-up: `pour_events.returns_sale_key` and the ledger's `metadata.sale_key` cap every void of a sale together (pgtest V10, V11).
+
+## A sale booked before its key existed cannot be voided — OPEN — 2026-11-07
+
+A void now raises P0002 when no `pour_events` or `sale` ledger row carries the sale key; before, a bottle void returned `qty` blind. Old sales without a keyed booking fail loudly on void and need a manual `return`. Production was not read. **Closes with** a count of such voids from the import report.
