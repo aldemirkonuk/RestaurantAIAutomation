@@ -563,12 +563,22 @@ describe("findOrCreateOAuthUser — resolves, never provisions", () => {
         return chain;
       }
       if (table !== "users") throw new Error(`unexpected table: ${table}`);
+      // A row answers the address it is stored under (any address when the
+      // fixture names none), the way findUserBySignInAddress reads it: as
+      // typed, then folded, then through the `email_folded` filter.
+      const matches = (val: unknown) =>
+        !!opts.row && (opts.row.email === undefined || opts.row.email === val);
       const chain: any = {
         select: () => chain,
-        eq: (_col: string, val: unknown) => {
+        eq: (col: string, val: unknown) => {
           chain._email = val;
+          if (col === "email_folded") {
+            return Promise.resolve({ data: matches(val) ? [opts.row] : [], error: null });
+          }
           return chain;
         },
+        maybeSingle: () =>
+          Promise.resolve({ data: matches(chain._email) ? opts.row : null, error: null }),
         insert: (payload: unknown) => {
           inserts.push(payload);
           return {
@@ -644,15 +654,20 @@ describe("findOrCreateOAuthUser — resolves, never provisions", () => {
     // users.email is UNIQUE and case-sensitive; the un-normalised lookup used
     // to miss and fall through into the create branch.
     const { svc, from } = makeOAuthService({
-      row: { user_id: "u1" },
+      row: { user_id: "u1", email: "known@gmail.com" },
       defaultRestaurantId: "550e8400-e29b-41d4-a716-446655440000",
       oauthRows: [{ provider: "google", provider_user_id: "google-123" }],
     });
 
-    await svc.findOrCreateOAuthUser({ ...params, email: "  Known@GMAIL.com " });
+    await expect(
+      svc.findOrCreateOAuthUser({ ...params, email: "  Known@GMAIL.com " }),
+    ).resolves.toMatchObject({ user_id: "u1" });
 
-    const chain = from.mock.results[0].value as any;
-    expect(chain._email).toBe("known@gmail.com");
+    // The as-typed read misses; the folded read is the one that finds it.
+    const looked = from.mock.calls
+      .map((c, i) => (c[0] === "users" ? (from.mock.results[i].value as any)._email : undefined))
+      .filter((v) => v !== undefined);
+    expect(looked).toContain("known@gmail.com");
   });
 
   it("the source carries no self-provisioning insert into users", () => {
