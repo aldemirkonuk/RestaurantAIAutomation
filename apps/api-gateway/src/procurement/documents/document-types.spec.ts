@@ -61,6 +61,18 @@ describe("normalizeUom", () => {
     expect(normalizeUom("kutu")).toBeNull();
   });
 
+  it("maps the ordinary spellings of a piece and a bottle (QA 10a (3))", () => {
+    for (const u of ["pcs", "PCS", "pc", "Pc.", "piece", "pieces", "Stk.", "St.", "Stück", "Ad.", "C62", "H87"])
+      expect([u, normalizeUom(u)]).toEqual([u, "each"]);
+    for (const u of ["btl", "btl.", "BTL.", "bt.", "bottle(s)", "Bottles", "Şişe", "bouteille", "botellas", "bottiglie", "Flasche", "fles"])
+      expect([u, normalizeUom(u)]).toEqual([u, "bottle"]);
+    expect(normalizeUom("LTR")).toBe("liter");
+    expect(normalizeUom("cs.")).toBe("case");
+    // Still refused: a container that is not a count of bottles, and a volume.
+    for (const u of ["kutu", "carton", "box", "ctn", "palet", "ml", "cl", "magnum"])
+      expect([u, normalizeUom(u)]).toEqual([u, null]);
+  });
+
   it("returns null rather than guessing on an unknown unit", () => {
     // Guessing 'bottle' here would produce confident, wrong quantity maths.
     expect(normalizeUom("magnum")).toBeNull();
