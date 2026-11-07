@@ -15,10 +15,9 @@
  * into the draft. The "Show instead" and "Draw as" selects sit inside
  * `draggableCancel`, so choosing from them never starts a drag.
  *
- * Same engine as the page it merges from — `react-grid-layout`, already a
- * dependency and already the canvas under `components/reports/DashboardCanvas`
- * — so this is a re-clothing of a proven interaction, not a second one. No new
- * package (ADR 0042's motion rule: this system is CSS easings + WAAPI).
+ * The engine is `react-grid-layout`, already a dependency, so this is a
+ * re-clothing of a proven interaction, not a second one. No new package
+ * (ADR 0042's motion rule: this system is CSS easings + WAAPI).
  *
  * The one idea: THE GRID IS THE PAPER'S RULING. While you are reading, the
  * sheet is plain paper and the cuttings sit flush. Press "Arrange the sheet"
