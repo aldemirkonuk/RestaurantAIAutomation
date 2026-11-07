@@ -104,7 +104,7 @@ describe("parity: buildMealBrief (test-meal-brief.mjs)", () => {
     expect(b.insights.some((i) => i.startsWith("Merged party"))).toBe(false);
   });
 
-  it("quotes the pass note first in the push body", () => {
+  it("quotes the pass note first in the one-line body", () => {
     const b = buildMealBrief(base({ note: "Nut allergy — seat 3" }));
     expect(b.note).toBe("Nut allergy — seat 3");
     expect(b.body.startsWith("“Nut allergy — seat 3” · Party of 3")).toBe(true);
@@ -236,6 +236,19 @@ describe("Food-up text is cut on code points and cleaned", () => {
 
   it("replaces a lone surrogate with U+FFFD", () => {
     expect(sanitizeMealNote("a\uD800b\uDC00c")).toBe("a\uFFFDb\uFFFDc");
+  });
+
+  it("keeps a whole pair and replaces halves in a run of surrogates", () => {
+    // Low-then-high is two lone halves; a high-low pair stays a pair.
+    expect(sanitizeMealNote("\uDC00\uD800\uD83D\uDE00\uD800")).toBe("\uFFFD\uFFFD\uD83D\uDE00\uFFFD");
+    // Two low halves are not a pair either.
+    expect(sanitizeMealNote("\uDC00\uDC01")).toBe("\uFFFD\uFFFD");
+  });
+
+  it("prints no seat, party or check-in line for a count that is not a positive whole number", () => {
+    const b = buildMealBrief(base({ seats: Infinity, partySize: 1.5, checkInCount: 2.5, lastCheckInAt: null }));
+    expect(b.insights.some((l) => /top|Party of|check-in/.test(l))).toBe(false);
+    expect(b.insights).toContain("No visit logged yet this party");
   });
 
   it("cleans and caps the labels in the title, headline and insights", () => {
