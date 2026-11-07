@@ -49,8 +49,10 @@ QA round 10c: the body is now `public.refold_wine_signatures_dotless_i()`
 (CI does not run supabase/tests; run by hand through pgtest). The Kavaklıdere
 / KAVAKLIDERE Yakut pair stays two rows by design (test T1): the capitals row
 already holds the folded hash. The session's call: held for review, not
-merged (ADR 0124). The reader of the review table is the stacked PR on this
-one; no screen shows it. Still open, F2: a roster row kept on its old hash
+merged (ADR 0124). The review table's reader is `GET
+/wines/library/refold-review` (platform admin only, branch
+fix/wine-refold-review-reader); **no screen shows it yet** and nothing
+resolves a pair. Still open, F2: a roster row kept on its old hash
 joins no live library row once its library row has moved.
 
 ## Other letters NFD cannot fold are still split — OPEN — 2026-11-07
