@@ -21,7 +21,7 @@
  * A figure that is pending or failed is "—", never 0.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTypedInventorySubscription } from '../../../contexts/RealtimeContext';
 import { getUnresolvedLines } from '../../../services/api/posHub';
@@ -36,7 +36,7 @@ import { PosMappingPanel } from '../../../components/inventory/PosMappingPanel';
 import { ManualReceiptWorkspace } from '../../../components/inventory/ManualReceiptWorkspace';
 import { AutoLocatePreviewModal } from '../../../components/inventory/AutoLocatePreviewModal';
 import { computeAutoLocatePlan, type AutoLocateResult, type WineInput, type WineLocationScore } from '../../../lib/autoLocateEngine';
-import { createInventoryItem } from '../../../services/api/inventory';
+import { createInventoryItem, houseFieldsOf } from '../../../services/api/inventory';
 import { isUnconfirmedWrite } from '../../../services/api/client';
 import { AuctionLotStart } from '../command/AuctionLotStart';
 import { MenuScannerFlow } from '../../../components/scanner/MenuScannerFlow';
@@ -46,6 +46,7 @@ import { queryKeys } from '../../../lib/query-keys';
 import { CellarMapView } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import InventoryTable from './InventoryTable';
+import ItemDrawer from './ItemDrawer';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
 import { blank, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
@@ -182,6 +183,22 @@ export default function InventoryNext() {
     (patch: Partial<IvView>) => setParams((cur) => writeView(cur, { ...readView(cur), ...patch }), { replace: true }),
     [setParams],
   );
+  // A row opened here is a history step, so Back closes the drawer; one
+  // opened by a link closes in place, so Close never leaves the page.
+  const navigate = useNavigate();
+  const openedHere = useRef(false);
+  const openItem = (id: string) => {
+    openedHere.current = true;
+    setParams((cur) => writeView(cur, { ...readView(cur), open: id }));
+  };
+  const closeItem = () => {
+    if (openedHere.current) navigate(-1);
+    else setV({ open: null });
+    openedHere.current = false;
+  };
+  useEffect(() => {
+    if (openParam === null) openedHere.current = false;
+  }, [openParam]);
   const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction'>(null);
   const [autoLocate, setAutoLocate] = useState<AutoLocateResult | null>(null);
   const [includeAssigned, setIncludeAssigned] = useState(false);
@@ -898,7 +915,7 @@ export default function InventoryNext() {
                 sort={sort}
                 onSort={(next) => setV({ sort: next })}
                 openId={openId}
-                onToggle={(id) => setV({ open: openId === id ? null : id })}
+                onToggle={openItem}
                 canManage={data.canManage}
                 currency={data.currency}
                 zoneName={zoneName}
@@ -1068,6 +1085,22 @@ export default function InventoryNext() {
             pourSizeMl: r.pourMl,
           }))}
           onChanged={refreshStock}
+        />
+      ) : null}
+      {openId !== null && data.state === 'ready' && rows !== null ? (
+        <ItemDrawer
+          key={openId}
+          row={rows.find((r) => r.id === openId) ?? null}
+          house={houseFieldsOf(data.rawItems.find((i) => i.id === openId))}
+          canManage={data.canManage}
+          currency={data.currency}
+          zoneName={zoneName}
+          locations={locs.list}
+          locationsUnavailable={locs.unavailable}
+          providers={data.providers.list}
+          providersError={data.providers.error}
+          restaurantId={data.rid}
+          onClose={closeItem}
         />
       ) : null}
     </div>
