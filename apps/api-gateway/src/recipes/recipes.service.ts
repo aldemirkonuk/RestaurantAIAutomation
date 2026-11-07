@@ -19,6 +19,16 @@ export const SAVE_FAILED = "We could not save this recipe. Nothing was changed."
 const SHELF_FAILED = "We could not read the shelf just now.";
 
 /**
+ * The most one line may hold, in the unit typed, and the most serves one
+ * recipe makes. The database stores a line as an integer in a base unit
+ * (kg x 1,000,000 = mg) and the serves as an integer, so a number past these
+ * used to reach it and come back as a 500 "bigint out of range". 100,000 is
+ * 100 l or 100 kg on one line: well past any batch a bar makes.
+ */
+export const MAX_LINE_QTY = 100_000;
+export const MAX_YIELD_SERVES = 1_000;
+
+/**
  * A cocktail's recipe: the current version, its lines linked to house items,
  * and its cost per serve at today's prices (ADR 0360). Writes go through ONE
  * rpc, `save_recipe_version`, which is the whole save in one transaction.
@@ -56,8 +66,17 @@ export class RecipesService {
     const cocktail = await this.houseCocktail(restaurantId, cocktailId);
 
     const [pointer, count, legacy] = await Promise.all([
-      client.from("recipe_current").select("version_id").eq("cocktail_id", cocktailId).maybeSingle(),
-      client.from("recipe_versions").select("id", { count: "exact", head: true }).eq("cocktail_id", cocktailId),
+      client
+        .from("recipe_current")
+        .select("version_id")
+        .eq("cocktail_id", cocktailId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle(),
+      client
+        .from("recipe_versions")
+        .select("id", { count: "exact", head: true })
+        .eq("cocktail_id", cocktailId)
+        .eq("restaurant_id", restaurantId),
       client
         .from("cocktail_ingredients")
         .select("free_text, quantity, unit, sort_order, beverages(name), master_wine_library(name)")
@@ -83,11 +102,13 @@ export class RecipesService {
           .from("recipe_versions")
           .select("id, version, yield_serves, method, glass, garnish, created_at")
           .eq("id", versionId)
+          .eq("restaurant_id", restaurantId)
           .maybeSingle(),
         client
           .from("recipe_lines")
           .select("id, position, role, inventory_id, label, qty_entered, unit_code, qty_base, base_unit")
           .eq("version_id", versionId)
+          .eq("restaurant_id", restaurantId)
           .order("position", { ascending: true }),
       ]);
       if (version.error || !version.data) this.failed("version read", version.error ?? "pointer names no version");
@@ -198,7 +219,28 @@ export class RecipesService {
     }));
   }
 
+  /**
+   * Numbers the DTO lets through (any finite number) but the database cannot
+   * hold, refused here with a sentence. Done in the service, not as a DTO
+   * `@Max`, because ValidationPipe prefixes a nested line's message with its
+   * path ("lines.0.") and the founder's rule is a plain sentence.
+   */
+  private assertSavable(dto: SaveRecipeDto) {
+    if (dto.yieldServes > MAX_YIELD_SERVES) {
+      throw new BadRequestException(`A recipe makes at most ${MAX_YIELD_SERVES.toLocaleString("en-US")} serves.`);
+    }
+    dto.lines.forEach((l, i) => {
+      if (l.qty > MAX_LINE_QTY) {
+        throw new BadRequestException(
+          `Ingredient ${i + 1} (${l.label}) is more than one line can hold. ` +
+            `The most is ${MAX_LINE_QTY.toLocaleString("en-US")} ${l.unit}.`,
+        );
+      }
+    });
+  }
+
   async saveRecipe(restaurantId: string, cocktailId: string, author: string | null, dto: SaveRecipeDto) {
+    this.assertSavable(dto);
     const { data, error } = await this.db.getClient().rpc("save_recipe_version", {
       p_restaurant: restaurantId,
       p_cocktail: cocktailId,

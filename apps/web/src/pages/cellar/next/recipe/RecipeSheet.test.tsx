@@ -16,6 +16,9 @@ const CID = '22222222-2222-4222-8222-222222222222';
 const GIN = '33333333-3333-4333-8333-333333333333';
 const V4 = '44444444-4444-4444-8444-444444444444';
 const V5 = '77777777-7777-4777-8777-777777777777';
+const CID2 = '88888888-8888-4888-8888-888888888888';
+const V9 = '99999999-9999-4999-8999-000000000009';
+const TEQ = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 const h = vi.hoisted(() => ({
   get: vi.fn(),
@@ -32,7 +35,7 @@ vi.mock('../../../../services/api/client', () => ({
 }));
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => h.auth }));
 
-import RecipeSheet, { LEGACY_NOTE, NEWER_SENTENCE, STALE_SENTENCE } from './RecipeSheet';
+import RecipeSheet, { LEGACY_NOTE, NEWER_SENTENCE, SET_ASIDE_SENTENCE, STALE_SENTENCE } from './RecipeSheet';
 
 function line(over: Partial<RecipeLine>): RecipeLine {
   return {
@@ -101,11 +104,24 @@ const EMPTY: CocktailRecipe = {
   legacyLines: [],
 };
 
+/** A second drink, for switching rows: a Margarita with 50 ml tequila. */
+function margarita(): CocktailRecipe {
+  const n = negroni();
+  return {
+    ...n,
+    cocktail: { ...n.cocktail, id: CID2, name: 'Margarita' },
+    current: { ...n.current!, versionId: V9, version: 9, lines: [{ ...linked('tequila', 20, TEQ), qtyEntered: 50 }] },
+    cost: { perServe: 20, priced: 1, of: 1, complete: true },
+  };
+}
+
 let versions: unknown[] = [];
+let other: CocktailRecipe | null = null;
 function serve(recipe: CocktailRecipe, shelf: unknown[] = []) {
   h.get.mockImplementation(async (url: string) => {
     if (url === '/settings/currency') return { data: { restaurantId: RID, code: 'TRY', country: 'Turkey', readable: true, reason: null, statedAt: null } };
     if (url === `/recipes/${RID}/cocktails/${CID}`) return { data: recipe };
+    if (other && url === `/recipes/${RID}/cocktails/${CID2}`) return { data: other };
     if (url === `/recipes/${RID}/shelf`) return { data: shelf };
     if (url === `/recipes/${RID}/cocktails/${CID}/versions`) return { data: versions };
     throw new Error(`unexpected GET ${url}`);
@@ -132,6 +148,7 @@ beforeEach(() => {
   h.get.mockReset();
   h.put.mockReset();
   versions = [];
+  other = null;
   h.auth = { activeRestaurantId: RID, activeRole: 'manager', user: { role: 'manager' } };
 });
 
@@ -353,6 +370,7 @@ describe('RecipeSheet', () => {
     const amounts = await screen.findAllByLabelText('Amount');
     fireEvent.change(amounts[1], { target: { value: '0' } });
     expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    expect(screen.getByText('Line 2 (Campari) needs an amount above zero.')).toBeInTheDocument();
     fireEvent.change(amounts[1], { target: { value: '22,5' } });
     expect(screen.getByRole('button', { name: /^save$/i })).not.toBeDisabled();
   });
@@ -384,5 +402,123 @@ describe('RecipeSheet', () => {
     const { container } = mount();
     await screen.findAllByTestId('recipe-line');
     expect(container.textContent).not.toMatch(/₺|a serve at/);
+  });
+
+  it('switching to another drink with an unsaved draft never carries it into that drink', async () => {
+    serve(negroni());
+    other = margarita();
+    h.put.mockResolvedValue({ data: { versionId: 'v10', version: 10, lines: [] } });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    const { rerender } = render(<RecipeSheet cocktailId={CID} />, { wrapper: wrap });
+    fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
+
+    rerender(<RecipeSheet cocktailId={CID2} />);
+    expect(await screen.findByRole('region', { name: 'Recipe for Margarita' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getAllByLabelText('Amount')).toHaveLength(1));
+    expect(amount(0)).toBe('50');
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    const [url, body] = h.put.mock.calls[0];
+    expect(url).toBe(`/recipes/${RID}/cocktails/${CID2}`);
+    expect(body.expectedVersionId).toBe(V9);
+    expect(body.lines).toEqual([{ role: 'stocked', inventoryId: TEQ, label: 'tequila', qty: 50, unit: 'ml' }]);
+  });
+
+  it('a new recipe typed for one drink does not appear on another drink with none', async () => {
+    serve(EMPTY);
+    other = { ...EMPTY, cocktail: { ...EMPTY.cocktail, id: CID2, name: 'Margarita' } };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
+    const { rerender } = render(<RecipeSheet cocktailId={CID} />, { wrapper: wrap });
+    fireEvent.click(await screen.findByRole('button', { name: /add an ingredient/i }));
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '45' } });
+    rerender(<RecipeSheet cocktailId={CID2} />);
+    expect(await screen.findByRole('region', { name: 'Recipe for Margarita' })).toBeInTheDocument();
+    expect(screen.queryAllByLabelText('Amount')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+  });
+
+  it('a Turkish decimal comma saves as the number it means: 22,5 is 22.5', async () => {
+    serve(negroni());
+    h.put.mockResolvedValue({ data: { versionId: V5, version: 5, lines: [] } });
+    mount();
+    fireEvent.change((await screen.findAllByLabelText('Amount'))[1], { target: { value: '22,5' } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    expect(h.put.mock.calls[0][1].lines.map((l: { qty: number }) => l.qty)).toEqual([30, 22.5, 30]);
+  });
+
+  it('loading the saved recipe sets the typed lines aside, and they can be put back over it', async () => {
+    serve(negroni());
+    h.put.mockRejectedValueOnce(Object.assign(new Error('conflict'), { response: { status: 409 } }));
+    mount();
+    fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(STALE_SENTENCE);
+
+    serve(negroniV5());
+    fireEvent.click(screen.getByRole('button', { name: 'Load the saved recipe' }));
+    await waitFor(() => expect(screen.getAllByLabelText('Amount')).toHaveLength(1));
+    expect(amount(0)).toBe('50');
+    expect(screen.getByTestId('recipe-set-aside')).toHaveTextContent(SET_ASIDE_SENTENCE);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Put my lines back' }));
+    expect(screen.getAllByLabelText('Amount')).toHaveLength(3);
+    expect(amount(0)).toBe('45');
+    expect(screen.queryByTestId('recipe-set-aside')).toBeNull();
+
+    // Put back on top of version 5, so a save now replaces version 5 on purpose.
+    h.put.mockResolvedValueOnce({ data: { versionId: 'v6', version: 6, lines: [] } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(2));
+    expect(h.put.mock.calls[1][1].expectedVersionId).toBe(V5);
+    expect(h.put.mock.calls[1][1].lines.map((l: { qty: number }) => l.qty)).toEqual([45, 30, 30]);
+  });
+
+  it('a clean sheet loads the saved recipe with nothing to set aside', async () => {
+    serve(negroni());
+    h.put.mockRejectedValue(Object.assign(new Error('Network Error'), { request: {} }));
+    mount();
+    await screen.findAllByTestId('recipe-line');
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Load the saved recipe' }));
+    await waitFor(() => expect(screen.queryByTestId('recipe-said')).toBeNull());
+    expect(screen.queryByTestId('recipe-set-aside')).toBeNull();
+  });
+
+  it('an amount past what one line holds stops Save and says the most', async () => {
+    serve(negroni());
+    mount();
+    const amounts = await screen.findAllByLabelText('Amount');
+    fireEvent.change(amounts[0], { target: { value: '100001' } });
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    expect(screen.getByText('Line 1 (gin) is more than one line can hold. The most is 100,000 ml.')).toBeInTheDocument();
+    fireEvent.change(amounts[0], { target: { value: '100000' } });
+    expect(screen.getByRole('button', { name: /^save$/i })).not.toBeDisabled();
+  });
+
+  it('a save the gateway refuses with a sentence shows that sentence', async () => {
+    const said = 'Ingredient 2 (Campari) is more than one line can hold. The most is 100,000 ml.';
+    serve(negroni());
+    h.put.mockRejectedValueOnce(Object.assign(new Error('Request failed with status code 400'), { response: { status: 400, data: { message: said } } }));
+    mount();
+    await screen.findAllByTestId('recipe-line');
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(`${said} Not saved. Your recipe is as it was.`);
+  });
+
+  it('a 400 without a sentence (a validation list) says only that it was not saved', async () => {
+    serve(negroni());
+    h.put.mockRejectedValueOnce(
+      Object.assign(new Error('Request failed with status code 400'), { response: { status: 400, data: { message: ['lines.0.qty must be a number'] } } }),
+    );
+    mount();
+    await screen.findAllByTestId('recipe-line');
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Not saved. Your recipe is as it was.');
+    expect(alert.textContent).not.toMatch(/lines\.0/);
   });
 });
