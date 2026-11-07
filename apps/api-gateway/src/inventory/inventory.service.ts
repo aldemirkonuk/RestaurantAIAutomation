@@ -83,9 +83,7 @@ export class InventoryService {
     rollup?: Record<string, any>,
     locations?: any[],
     analytics?: Record<string, any>,
-    // Which side reads answered (G15). Omitted by callers that never read the
-    // rollup or the location breakdown; given, `false` means the read itself
-    // failed, so open ml and the location list are not known -- not 0, not [].
+    // G15: omitted = never read; false = read failed, so not 0 or [].
     reads?: { rollup?: boolean; locations?: boolean },
   ): Record<string, any> {
     const rollupFailed = reads?.rollup === false;
@@ -166,7 +164,6 @@ export class InventoryService {
       lotLiveQty: rollup?.live_qty ?? undefined,
       lotLocationCount: rollup?.live_location_count ?? undefined,
       // Phase 2 (2c) by-the-glass: total open-bottle ml across live lots.
-      // A failed rollup read is not an empty open bottle: undefined, not 0.
       openMl: rollupFailed ? undefined : (rollup?.open_ml ?? 0),
       // Phase 2 (2d/2e): velocity / days-of-cover / reorder / ABC / dead-stock.
       velocityPerDay: analytics?.velocity_per_day ?? undefined,
@@ -177,10 +174,7 @@ export class InventoryService {
       deadStock: analytics?.dead_stock ?? false,
       daysSinceSale: analytics?.days_since_sale ?? undefined,
       // Phase 2 multi-location: per-location live quantities ([{locationId, qty, wac}]).
-      // A failed breakdown read is not "in no location": undefined, not [].
       locations: locationsFailed ? undefined : (locations ?? []),
-      // Additive, like analyticsReadable: present only when the caller read
-      // that side, so an omitted flag never claims a read that did not happen.
       ...(reads?.rollup !== undefined ? { rollupReadable: reads.rollup } : {}),
       ...(reads?.locations !== undefined
         ? { locationsReadable: reads.locations }
@@ -188,10 +182,7 @@ export class InventoryService {
     };
   }
 
-  /**
-   * Phase 2: per-inventory WAC / on-hand / location spread derived from inventory_lots.
-   * `ok: false` is a failed read, a returned `error` included (G15).
-   */
+  /** Phase 2: per-inventory WAC / on-hand / location spread. `ok: false` = failed read (G15). */
   private async fetchLotRollup(
     restaurantId: string,
   ): Promise<{ ok: boolean; data: Map<string, any> }> {
@@ -213,7 +204,7 @@ export class InventoryService {
     }
   }
 
-  /** Every page: PostgREST stops an unranged select at max_rows (1000). */
+  /** PostgREST caps an unranged select at max_rows (1000). */
   private async readEveryPage(build: () => any): Promise<any[]> {
     const PAGE = 1000;
     const rows: any[] = [];

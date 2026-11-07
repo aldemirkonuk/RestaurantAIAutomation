@@ -117,13 +117,12 @@ export interface InvRow {
   /** stock × WAC; null when either is unknown. */
   value: number | null;
   lastCountedAt: string | null;
-  /** False when the gateway's lot-rollup read failed (G15): openMl is then null, never 0. */
+  /** False: rollup read failed (G15), openMl null, never 0. */
   rollupReadable: boolean;
-  /** Null when not read: the rollup failed, or the row carried no figure. */
   openMl: number | null;
-  /** False when the gateway's location-breakdown read failed (G15): zones is then null, never []. */
+  /** False: breakdown read failed (G15), zones null, never []. */
   locationsReadable: boolean;
-  /** Null when the row carried no lot list at all, or the breakdown could not be read. */
+  /** Null when the row carried no lot list at all, or the breakdown failed. */
   zones: ZoneQty[] | null;
   providerId: string | null;
   providerName: string | null;
@@ -220,10 +219,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
   // library's own name, carried beside it (inventory.service.ts:95-103).
   const name = text(r.wineName) ?? text(w?.displayName) ?? text(w?.name);
   const library = text(r.libraryName) ?? text(w?.name);
-  // G15: the normaliser fills a missing openMl with 0 and missing locations
-  // with [] (services/api/inventory.ts), so the gateway's flags are what tell
-  // a failed read from an empty one. Absent flags (an older gateway) read as
-  // true, the same rule as analyticsReadable.
+  // G15: the normaliser fills 0 and [], so only the flags tell failed from empty.
   const rollupReadable = r.rollupReadable !== false;
   const locationsReadable = r.locationsReadable !== false;
   const zones = locationsReadable && Array.isArray(r.locations)
@@ -725,7 +721,6 @@ export function useInventoryNextData() {
   // (inventory.service.ts:163,265), so "Dead stock 0" would read a failure as health.
   const paceUnread = (rows ?? []).some((r) => !r.analyticsReadable);
   if (paceUnread) unread.push('the selling pace, so pace, runway and dead stock show —');
-  // G15: the open-bottle and where-it-sits reads ride on the stock read too.
   const openUnread = (rows ?? []).some((r) => !r.rollupReadable);
   const whereUnread = (rows ?? []).some((r) => !r.locationsReadable);
   if (openUnread) unread.push('the open bottles, so open ml says it could not be read');

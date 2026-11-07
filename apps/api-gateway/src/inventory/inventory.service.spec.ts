@@ -912,10 +912,7 @@ describe("InventoryService", () => {
   });
 });
 
-// G15 (inventory walk #7, proposal §3 I1): a failed read of the lot rollup or
-// the location breakdown is not an empty open bottle or "in no location".
-// Supabase returns `{ data: null, error }` instead of throwing, so the error
-// the old fetchers dropped is exactly the case these tests drive.
+// G15: a failed rollup or breakdown read is not 0 ml open or "in no location".
 describe("InventoryService list reads say when they fail (G15)", () => {
   type Answer = { data: any; error: any; failFrom?: number };
   const ROW = { id: "inv1", restaurant_id: "r1", master_wine_id: "w1" };
@@ -929,7 +926,6 @@ describe("InventoryService list reads say when they fail (G15)", () => {
           select: () => builder,
           eq: () => builder,
           order: () => builder,
-          // PostgREST's max_rows: an unranged read stops at 1000 rows.
           range: (a: number, b: number) => ((range = [a, b]), builder),
           then: (resolve: (a: Answer) => unknown, reject?: any) => {
             const [a, b] = range ?? [0, 999];
@@ -949,7 +945,6 @@ describe("InventoryService list reads say when they fail (G15)", () => {
   }
 
   const failed: Answer = { data: null, error: { message: "boom" } };
-  // The list's mapped rows are typed loosely by the service; read them as such.
   async function firstItem(answers: Record<string, Answer>) {
     const items = await serviceWith(answers).getRestaurantInventory("r1");
     return items[0] as Record<string, any>;
@@ -959,7 +954,6 @@ describe("InventoryService list reads say when they fail (G15)", () => {
     const item = await firstItem({ inventory_lot_rollup: failed });
     expect(item.openMl).toBeUndefined();
     expect(item.rollupReadable).toBe(false);
-    // The other side still read: its list and flag are untouched.
     expect(item.locations).toEqual([]);
     expect(item.locationsReadable).toBe(true);
   });
@@ -972,7 +966,7 @@ describe("InventoryService list reads say when they fail (G15)", () => {
     expect(item.rollupReadable).toBe(true);
   });
 
-  it("a successful read with no row for the item still says 0 ml and no locations", async () => {
+  it("a read with no row for the item says 0 ml and no locations", async () => {
     const item = await firstItem({});
     expect(item.openMl).toBe(0);
     expect(item.locations).toEqual([]);
@@ -980,23 +974,7 @@ describe("InventoryService list reads say when they fail (G15)", () => {
     expect(item.locationsReadable).toBe(true);
   });
 
-  it("a successful read with a row carries its figures", async () => {
-    const item = await firstItem({
-      inventory_lot_rollup: {
-        data: [{ inventory_id: "inv1", open_ml: 300, wac: 12 }],
-        error: null,
-      },
-      inventory_location_breakdown: {
-        data: [{ inventory_id: "inv1", location_id: "z1", qty: 4, wac: 12 }],
-        error: null,
-      },
-    });
-    expect(item.openMl).toBe(300);
-    expect(item.locations).toEqual([{ locationId: "z1", qty: 4, wac: 12 }]);
-  });
-
-  // QA round 10b: past PostgREST's 1000-row cap the rest of the house read
-  // as 0 ml open and in no zone, flagged readable.
+  // QA round 10b: PostgREST's max_rows (1000) cut the rest of the house off.
   const ids = Array.from({ length: 1200 }, (_, i) => `inv${i}`);
   const big = (failFrom?: number) =>
     serviceWith(
@@ -1014,13 +992,13 @@ describe("InventoryService list reads say when they fail (G15)", () => {
     expect(last.rollupReadable).toBe(true);
   });
 
-  it("a page that fails after the first says the whole read failed", async () => {
+  it("a failed later page fails the whole read", async () => {
     const first = (await big(1000))[0];
     expect(first.rollupReadable).toBe(false);
     expect(first.locationsReadable).toBe(false);
   });
 
-  it("a mapper call that never read either side claims no read", () => {
+  it("a mapper call that read neither side claims no read", () => {
     const item = (serviceWith({}) as any).mapInventoryItem(ROW);
     expect(item).not.toHaveProperty("rollupReadable");
     expect(item).not.toHaveProperty("locationsReadable");

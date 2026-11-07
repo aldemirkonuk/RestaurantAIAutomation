@@ -54,8 +54,6 @@
     "apps/api-gateway/src/contacts/contacts.service.ts::contact_addresses::addresses": 2,
     "apps/api-gateway/src/database/database.service.ts::user_restaurant_access::ura": 1,
     "apps/api-gateway/src/database/database.service.ts::users::users": 1,
-    "apps/api-gateway/src/inventory/inventory.service.ts::inventory_location_breakdown::data": 1,
-    "apps/api-gateway/src/inventory/inventory.service.ts::inventory_lot_rollup::data": 1,
     "apps/api-gateway/src/inventory/inventory.service.ts::master_wine_library::mw": 3,
     "apps/api-gateway/src/inventory/inventory.service.ts::restaurant_inventory::duplicate": 1,
     "apps/api-gateway/src/inventory/inventory.service.ts::restaurant_inventory::existing": 2,
