@@ -237,13 +237,13 @@ describe("sign-out refuses the device's refresh token too (R11-07)", () => {
 
     // Before sign-out the same token refreshes, so the refusal below is the
     // sign-out's doing and not the harness's.
-    await expect(svc.refreshAccessToken(pair.refreshToken)).resolves.toHaveProperty(
+    await expect(svc.refreshSession(pair.refreshToken)).resolves.toHaveProperty(
       "accessToken",
     );
 
     await svc.logout("u1", pair.accessToken, pair.refreshToken);
 
-    const err = await svc.refreshAccessToken(pair.refreshToken).then(
+    const err = await svc.refreshSession(pair.refreshToken).then(
       () => null,
       (e) => e,
     );
@@ -262,7 +262,7 @@ describe("sign-out refuses the device's refresh token too (R11-07)", () => {
     await svc.logout("u1", undefined, their.refreshToken);
 
     expect(listed.has(their.refreshToken)).toBe(false);
-    await expect(svc.refreshAccessToken(their.refreshToken)).resolves.toHaveProperty(
+    await expect(svc.refreshSession(their.refreshToken)).resolves.toHaveProperty(
       "accessToken",
     );
   });
