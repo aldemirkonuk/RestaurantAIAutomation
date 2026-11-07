@@ -466,6 +466,11 @@ export interface Order {
   recurrenceParentOrderId?: string | null;
   /** The occurrence this child was raised for. Travels with the parent id. */
   recurrenceOccurrenceOn?: string | null;
+  /**
+   * Who placed the order (`procurement_orders.created_by`). null = nobody is
+   * recorded; absent = the route did not read it. ADR 0247.
+   */
+  createdBy?: string | null;
 }
 
 export interface CreateOrderRequest {
