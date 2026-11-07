@@ -117,6 +117,7 @@ interface LineRow {
   price_base_qty?: number | string | null;
   price_base_uom?: string | null;
   line_total?: number | string | null;
+  printed?: unknown;
 }
 
 /** QA 12b D1: the invoice line whose price base a door-count proposal is read
@@ -750,7 +751,7 @@ export class DeliveryStockService {
         .getClient()
         .from("procurement_document_lines")
         .select(
-          "document_id, line_no, inventory_id, qty_bottles, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, description, vendor_sku",
+          "document_id, line_no, inventory_id, qty_bottles, unit_price, uom, pack_size, price_base_qty, price_base_uom, line_total, printed, description, vendor_sku",
         )
         .eq("restaurant_id", restaurantId)
         .in("document_id", allIds)
@@ -778,6 +779,7 @@ export class DeliveryStockService {
           price_base_uom: line.price_base_uom,
           qty_bottles: line.qty_bottles,
           line_total: line.line_total,
+          printed: line.printed,
         });
         const id = line.inventory_id;
         if (!cost.ok) {

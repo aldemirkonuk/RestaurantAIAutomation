@@ -29,10 +29,25 @@ QA round 12b K. `2 bottle @ 264, pack 12, total 528` is self-consistent, so the 
 
 Production was not queried. A lot finalised wrong on `main` whose line is now refused keeps that cost: a refusal leaves a lot as it is (audit D4). Candidates: invoice lines with `uom in ('case','pack','split_case')` or `price_base_qty > 1` whose revaluation reason has no basis suffix. **Closes when** counted and revalued through `revalue_lot`.
 
+## An unmapped unit, or a total that contradicts the price, reached the lot — CLOSED — 2026-11-07
+
+Audit D1 and QA round 9a (1), branch `fix/unknown-unit-is-refused`. The extractor stores an unmapped unit (`kutu`, `ml`) as `each`, so `2 kutu @ 264, pack 12` booked 264; and `24 bottles @ 264` with a printed total of 528 booked 264. The extractor now keeps the unmapped glyph in the line's `printed` (`uom`, `priceBaseUom`) and `perBottleLotCost` refuses it; it also refuses a printed `line_total` that disagrees with per-bottle cost × `qty_bottles`. Claim `AUDIT-816-D1-UNMAPPED-UNIT-AND-TOTAL-REFUSED`. Forks, the session's call under the 2026-11-07 /goal:
+
+1. The glyph goes in the existing `printed` jsonb, only where the model's own transcript left that key out. Rejected: a new column (a migration for one flag); refusing every line with a base and no base unit (no base unit means the line's own, per `lineNetFromPrice`).
+2. An `each` line whose printed unit is not `each` is refused, even when the glyph might mean a piece. Rejected: refusing only listed words.
+3. A contradicting total is refused, not divided by `qty_bottles`: a total can carry a deposit or an allowance. Tolerance max(0.05, 1% of the total). A line with free goods inside `qty_bottles` would be refused too.
+
+Not covered: lines entered or corrected by a person (no `printed` glyph); the door count's unmapped unit becomes `bottle`, but it carries no money (D11).
+
+QA round 10a (3)+(4), same branch. `normalizeUom` now maps the ordinary spellings of a piece and a bottle (`pcs`, `stk`, `btl.`, `şişe` and kin; the list is in the code); `kutu`, `box`, `carton`, `ml`, `cl` stay unmapped and refused. An `each` line whose printed glyph maps to `each` or `bottle` is costed, not refused. The `line_total` check now runs on credit-note rows by magnitude, and a zero total against a non-zero count is refused. Claim `QA-R10A-UNIT-SPELLINGS-AND-CREDIT-TOTAL`. Forks, the session's call under the 2026-11-07 /goal:
+
+4. A credit note is compared by absolute value: per-bottle cost × |count| against |total|. Rejected: skipping signed rows (the 9a gap QA found) and requiring both signs to match (a supplier that prints the count positive and the total negative is common).
+5. A glyph that means one piece counts as `each` and one that means a bottle counts as `bottle`; neither is a case. Rejected: mapping `kutu`/`box`/`carton` to `case` (their size is not on the line).
+
 ## Landed cost is unwired; some per-case prices are invisible — OPEN — 2026-11-07
 
-QA round 8a: nothing imports `landed-cost.ts` (#780/#812), so freight, fees and discounts never reach a lot and its tax stamp is null when a charge is present. A row stored as `bottle`, qty 24, 264, pack 12, with no printed base is now refused unless its `line_total` bears out the bottle reading (QA 10a (2), the session's call: pack > 1 on a bottle/each row makes a bare price ambiguous; rejected: dividing by the pack, guessing from the item's history). An unmapped unit (`kutu`, `ml`) stored as `each` is audit D1, on the stacked branch `fix/unknown-unit-is-refused`.
+QA round 8a: nothing imports `landed-cost.ts` (#780/#812), so freight, fees and discounts never reach a lot and its tax stamp is null when a charge is present. A row stored as `bottle`, qty 24, 264, pack 12, with no printed base is now refused unless its `line_total` bears out the bottle reading (QA 10a (2), the session's call: pack > 1 on a bottle/each row makes a bare price ambiguous; rejected: dividing by the pack, guessing from the item's history).
 
 ## Other readers of the printed `unit_price` were not audited — OPEN — 2026-11-07
 
-The cellar ledger's `inv` CTE (`supabase/migrations/20261223060000_the_cellar_counts_the_door_checked_price.sql`). `procurement.service.ts` verify paths are #787's.
+The cellar ledger's `inv` CTE (`supabase/migrations/20261223060000_the_cellar_counts_the_door_checked_price.sql`) and `vendor-comparison.service.ts:902-913` (QA 9a). `procurement.service.ts` verify paths are #787's.

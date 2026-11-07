@@ -495,6 +495,24 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     expect(posted().map((c) => c.args.p_unit_cost)).toEqual([22]);
   });
 
+  it("D1: 2 kutu @ 264, pack 12, kept as each, stays PROVISIONAL, never 264", async () => {
+    expect(await held(run({ uom: "each", qty: 2, qty_bottles: 2, line_total: 528, printed: { uom: "kutu" } }))).toMatch(/"kutu"/);
+    expect(posted()).toEqual([]);
+  });
+
+  it("QA 9a: 24 bottles @ 264 with a printed total of 528 stays PROVISIONAL, never 264", async () => {
+    expect(await held(run({ uom: "bottle", qty: 24, line_total: 528 }))).toMatch(/totals 528/);
+    expect(posted()).toEqual([]);
+  });
+
+
+  it("QA 10a (3)+(4): `24 pcs @ 22` posts 22; a credit-note row at a case price stays PROVISIONAL", async () => {
+    await run({ uom: "each", pack_size: 1, qty: 24, unit_price: 22, line_total: 528, printed: { uom: "pcs" } });
+    expect(posted()[0].args.p_unit_cost).toBe(22);
+    expect(await held(run({ uom: "bottle", pack_size: 1, qty: -24, qty_bottles: -24, line_total: -528 }))).toMatch(/totals -528/);
+    expect(posted()).toEqual([]);
+  });
+
   it("QA 10a (1): an accepted proposal is read in its line's price base, or refused by name, never posted raw", async () => {
     const accept = (unit_price_proposed: number, line_no: number | null = 1) =>
       (db.answers.delivery_proposals = { data: [{ document_id: line_no ? "inv-1" : null, line_no, unit_price_proposed }], error: null });
