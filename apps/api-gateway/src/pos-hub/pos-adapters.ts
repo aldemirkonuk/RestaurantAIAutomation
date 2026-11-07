@@ -77,6 +77,36 @@ const toastUnitPrice = (s: any, qty: number): number => {
   return total === null || qty === 0 ? 0 : total / qty;
 };
 
+/**
+ * Voids and returns (QA round 5, POS-1). The hub knows one reversal: a check
+ * with `voided: true` returns every line's stock under a key derived from the
+ * sale's (`pos-hub.service.ts`, ADR 0093 D5) and is left out of every sales
+ * read. Until 2026-11-07 only the generic adapter set it, so a Toast, Square
+ * or Clover void kept its stock off the shelf and its money in sales. Each
+ * provider now maps onto that one shape, three ways:
+ *
+ *  1. A whole check voided, cancelled or deleted is the same check id with
+ *     `voided: true` and its lines as rung, so the void's keys are the sale's
+ *     plus `:void` and a re-sent void moves nothing twice.
+ *  2. A line voided before the sale was booked (a Toast selection voided on
+ *     the check) stays at its index with quantity 0: it never sold, so it
+ *     takes no stock and no sales, and the lines after it keep their keys.
+ *  3. A line returned or refunded after the sale (a Square return order's
+ *     return lines, a Clover line marked refunded) is its own voided check,
+ *     `<order>:return:<event>` or `<order>:refund:<line>`, holding only what
+ *     came back. Its stock returns once per POS event id, and its row is
+ *     voided, so it never reads as a sale.
+ */
+const returnCheckId = (orderId: string, kind: string, eventId: string) =>
+  `${orderId}:${kind}:${eventId}`;
+
+/** An instant in ms, or null when the value does not read as one. */
+const instantMs = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const t = typeof v === "number" ? v : Date.parse(String(v));
+  return Number.isFinite(t) ? t : null;
+};
+
 // ---------------------------------------------------------------------------
 // Generic — the canonical shape itself (webhook + import path)
 // ---------------------------------------------------------------------------
@@ -139,33 +169,81 @@ export const squareAdapter: PosAdapter = {
             : [];
     return orders
       .filter((o) => o?.id)
-      .map((o) => ({
-        externalCheckId: String(o.id),
-        openedAt: o.created_at ?? new Date().toISOString(),
-        closedAt:
+      .flatMap((o): CanonicalCheck[] => {
+        const closedAt =
           o.state === "COMPLETED"
             ? (o.closed_at ?? o.updated_at ?? null)
-            : null,
-        tableRef: o.ticket_name ?? null,
-        serverExternalId: o.employee_id ?? null,
-        serverName: null,
-        covers: null,
-        subtotal: cents(o.net_amounts?.total_money?.amount),
-        total: cents(o.total_money?.amount),
-        tip: cents(o.total_tip_money?.amount),
-        items: (o.line_items ?? []).map(
-          (li: any): CanonicalItem => ({
-            name: String(li.name ?? "unknown"),
-            externalItemId: li.catalog_object_id ?? null,
-            category: null,
-            qty: num(li.quantity) ?? 1,
-            // base_price_money is "the base price for a single unit of the
-            // line item" (Square, OrderLineItem).
-            price: cents(li.base_price_money?.amount) ?? 0,
-          }),
-        ),
-        raw: o,
-      }));
+            : null;
+        const sale: CanonicalCheck = {
+          externalCheckId: String(o.id),
+          openedAt: o.created_at ?? new Date().toISOString(),
+          closedAt,
+          // A CANCELED order is a void (way 1). Square never moves a COMPLETED
+          // order to CANCELED, so a cancelled order never closed, never took
+          // stock, and moves none now: it only leaves sales.
+          voided: o.state === "CANCELED",
+          tableRef: o.ticket_name ?? null,
+          serverExternalId: o.employee_id ?? null,
+          serverName: null,
+          covers: null,
+          subtotal: cents(o.net_amounts?.total_money?.amount),
+          total: cents(o.total_money?.amount),
+          tip: cents(o.total_tip_money?.amount),
+          items: (o.line_items ?? []).map(
+            (li: any): CanonicalItem => ({
+              name: String(li.name ?? "unknown"),
+              externalItemId: li.catalog_object_id ?? null,
+              category: null,
+              qty: num(li.quantity) ?? 1,
+              // base_price_money is "the base price for a single unit of the
+              // line item" (Square, OrderLineItem).
+              price: cents(li.base_price_money?.amount) ?? 0,
+            }),
+          ),
+          raw: o,
+        };
+        // Way 3. Square puts an itemized return on a NEW order whose
+        // `returns[]` name the source order and the lines that came back
+        // (developer.squareup.com/docs/orders-api/order-returns-exchanges);
+        // the sale order is not edited. The return order's own money is
+        // already net of the return (its `net_amounts` go negative), so this
+        // order's own check above drops sales, and each return here carries
+        // only stock: no money, voided, keyed by the return's uid.
+        const returns: any[] = Array.isArray(o.returns) ? o.returns : [];
+        const returned = returns
+          .map((r, i): CanonicalCheck | null => {
+            const lines: any[] = Array.isArray(r?.return_line_items)
+              ? r.return_line_items
+              : [];
+            if (lines.length === 0) return null;
+            const eventId = String(r?.uid ?? r?.source_order_id ?? i);
+            return {
+              externalCheckId: returnCheckId(String(o.id), "return", eventId),
+              openedAt: o.created_at ?? new Date().toISOString(),
+              closedAt,
+              voided: true,
+              tableRef: null,
+              serverExternalId: o.employee_id ?? null,
+              serverName: null,
+              covers: null,
+              subtotal: null,
+              total: null,
+              tip: null,
+              items: lines.map(
+                (li: any): CanonicalItem => ({
+                  name: String(li.name ?? "unknown"),
+                  externalItemId: li.catalog_object_id ?? null,
+                  category: null,
+                  qty: num(li.quantity) ?? 1,
+                  price: cents(li.base_price_money?.amount) ?? 0,
+                }),
+              ),
+              raw: r,
+            };
+          })
+          .filter((c): c is CanonicalCheck => c !== null);
+        return [sale, ...returned];
+      });
   },
 };
 
@@ -183,47 +261,96 @@ export const cloverAdapter: PosAdapter = {
         : [];
     return orders
       .filter((o) => o?.id)
-      .map((o) => ({
-        externalCheckId: String(o.id),
-        openedAt: o.createdTime
+      .flatMap((o): CanonicalCheck[] => {
+        const openedAt = o.createdTime
           ? new Date(o.createdTime).toISOString()
-          : new Date().toISOString(),
-        closedAt:
+          : new Date().toISOString();
+        const closedAt =
           o.state === "locked" || o.state === "paid"
             ? o.modifiedTime
               ? new Date(o.modifiedTime).toISOString()
               : null
-            : null,
-        // An order type ("Dine In", "To Go", a house's own "Street Fair") is
-        // not a table. Clover's order object has no table field (its field
-        // list at docs.clover.com/dev/reference/ordercreateorder, read
-        // 2026-10-04); `title` and `note` are free text, and reading either
-        // as a table would be a guess. Which order types are booth or event
-        // checks is the owner's to map once a Clover house connects (ADR
-        // 0302, fork AW24-b: "Wait, then owner maps"), so the channel stays
-        // null and the order type stays in `raw`.
-        tableRef: null,
-        channel: null,
-        serverExternalId: o.employee?.id ?? null,
-        serverName: o.employee?.name ?? null,
-        covers: num(o.customers?.elements?.length),
-        subtotal: null,
-        total: cents(o.total),
-        tip: cents(o.tipAmount),
-        items: (o.lineItems?.elements ?? []).map(
-          (li: any): CanonicalItem => ({
-            name: String(li.name ?? "unknown"),
-            externalItemId: li.item?.id ?? null,
-            category: null,
-            qty: cloverQty(li.unitQty),
-            // `price` is one unit's, before modifiers and discounts.
-            price: cents(li.price) ?? 0,
-          }),
-        ),
-        raw: o,
-      }));
+            : null;
+        // Way 1. Clover's order has no void state; a deleted order carries
+        // `deletedTimestamp` (Order schema, docs.clover.com ordergetorder,
+        // read 2026-11-07). It is the same check, voided.
+        const voided = instantMs(o.deletedTimestamp) !== null;
+        const lineItems: any[] = o.lineItems?.elements ?? [];
+        const sale: CanonicalCheck = {
+          externalCheckId: String(o.id),
+          openedAt,
+          closedAt,
+          voided,
+          // An order type ("Dine In", "To Go", a house's own "Street Fair") is
+          // not a table. Clover's order object has no table field (its field
+          // list at docs.clover.com/dev/reference/ordercreateorder, read
+          // 2026-10-04); `title` and `note` are free text, and reading either
+          // as a table would be a guess. Which order types are booth or event
+          // checks is the owner's to map once a Clover house connects (ADR
+          // 0302, fork AW24-b: "Wait, then owner maps"), so the channel stays
+          // null and the order type stays in `raw`.
+          tableRef: null,
+          channel: null,
+          serverExternalId: o.employee?.id ?? null,
+          serverName: o.employee?.name ?? null,
+          covers: num(o.customers?.elements?.length),
+          subtotal: null,
+          total: cents(o.total),
+          tip: cents(o.tipAmount),
+          items: lineItems.map(cloverLine),
+          raw: o,
+        };
+        // Way 3. A refunded line keeps its place and quantity on the sale
+        // (it sold, and its stock was taken), and is also returned on its own
+        // voided check keyed by the line id: Clover marks a line `refunded`
+        // once (LineItem schema, same page). A deleted order already returns
+        // every line, so its refunded lines are not returned a second time.
+        const refunded = voided
+          ? []
+          : lineItems
+              .filter((li) => li?.refunded === true && li?.id)
+              .map(
+                (li): CanonicalCheck => ({
+                  externalCheckId: returnCheckId(
+                    String(o.id),
+                    "refund",
+                    String(li.id),
+                  ),
+                  openedAt,
+                  closedAt:
+                    instantMs(li.refund?.createdTime) !== null
+                      ? new Date(
+                          instantMs(li.refund?.createdTime) as number,
+                        ).toISOString()
+                      : closedAt,
+                  voided: true,
+                  tableRef: null,
+                  channel: null,
+                  serverExternalId: o.employee?.id ?? null,
+                  serverName: o.employee?.name ?? null,
+                  covers: null,
+                  subtotal: null,
+                  total: null,
+                  tip: null,
+                  items: [cloverLine(li)],
+                  raw: li,
+                }),
+              );
+        return [sale, ...refunded];
+      });
   },
 };
+
+function cloverLine(li: any): CanonicalItem {
+  return {
+    name: String(li.name ?? "unknown"),
+    externalItemId: li.item?.id ?? null,
+    category: null,
+    qty: cloverQty(li.unitQty),
+    // `price` is one unit's, before modifiers and discounts.
+    price: cents(li.price) ?? 0,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Toast — check object (orders API) — bridges the existing ToastModule
@@ -241,32 +368,53 @@ export const toastAdapter: PosAdapter = {
           : [];
     return checks
       .filter((c) => c?.guid)
-      .map((c) => ({
-        externalCheckId: String(c.guid),
-        openedAt: c.openedDate ?? new Date().toISOString(),
-        closedAt: c.closedDate ?? null,
-        tableRef: c.table?.guid ?? c.table?.name ?? null,
-        serverExternalId: c.server?.guid ?? null,
-        serverName: c.server
-          ? [c.server.firstName, c.server.lastName].filter(Boolean).join(" ") ||
-            null
-          : null,
-        covers: num(c.numberOfGuests),
-        subtotal: num(c.amount),
-        total: num(c.totalAmount ?? c.amount),
-        tip: num(c.tipAmount),
-        items: (c.selections ?? []).map((s: any): CanonicalItem => {
-          const qty = num(s.quantity) ?? 1;
-          return {
-            name: String(s.displayName ?? s.itemName ?? "unknown"),
-            externalItemId: s.item?.guid ?? null,
-            category: s.salesCategory?.name ?? null,
-            qty,
-            price: toastUnitPrice(s, qty),
-          };
-        }),
-        raw: c,
-      }));
+      .map((c) => {
+        // Way 1. Toast's Check carries `voided` and `deleted` (a check split
+        // or merged away is deleted, and its lines ring again on the check
+        // they moved to).
+        const voided = c.voided === true || c.deleted === true;
+        const closedMs = instantMs(c.closedDate);
+        return {
+          externalCheckId: String(c.guid),
+          openedAt: c.openedDate ?? new Date().toISOString(),
+          closedAt: c.closedDate ?? null,
+          voided,
+          tableRef: c.table?.guid ?? c.table?.name ?? null,
+          serverExternalId: c.server?.guid ?? null,
+          serverName: c.server
+            ? [c.server.firstName, c.server.lastName]
+                .filter(Boolean)
+                .join(" ") || null
+            : null,
+          covers: num(c.numberOfGuests),
+          subtotal: num(c.amount),
+          total: num(c.totalAmount ?? c.amount),
+          tip: num(c.tipAmount),
+          items: (c.selections ?? []).map((s: any): CanonicalItem => {
+            const rung = num(s.quantity) ?? 1;
+            // Way 2. A selection Toast marks `voided` (Selection schema) stays
+            // on the check. On a check that stands, it never sold: quantity 0.
+            // On a voided check it rides the check's void, so it keeps its
+            // quantity and comes back with the rest, unless it was voided
+            // before the check closed, when it never took stock to return.
+            const voidedBeforeClose =
+              s.voided === true &&
+              (!voided ||
+                (closedMs !== null &&
+                  instantMs(s.voidDate) !== null &&
+                  (instantMs(s.voidDate) as number) < closedMs));
+            const qty = voidedBeforeClose ? 0 : rung;
+            return {
+              name: String(s.displayName ?? s.itemName ?? "unknown"),
+              externalItemId: s.item?.guid ?? null,
+              category: s.salesCategory?.name ?? null,
+              qty,
+              price: toastUnitPrice(s, rung),
+            };
+          }),
+          raw: c,
+        };
+      });
   },
 };
 

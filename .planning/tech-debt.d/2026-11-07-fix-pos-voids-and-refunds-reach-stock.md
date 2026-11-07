@@ -1,0 +1,14 @@
+## Toast, Square and Clover voids and returns now reach stock; four gaps stay open — OPEN — 2026-11-07
+
+Filed by `fix/pos-voids-and-refunds-reach-stock`, the fix for QA round 5's POS-1 BLOCKER (`p4-scratch/sw-walk/qa-report/round5-receiving-pos-dash.md`, "POS-1"). The adapters (`apps/api-gateway/src/pos-hub/pos-adapters.ts`) now map voids and returns onto the one reversal the hub has, `voided: true`, in three ways named in the file's "Voids and returns" block: a whole check voided is the same check voided (Toast `voided`/`deleted`, Square `CANCELED`, Clover `deletedTimestamp`); a Toast selection voided before the sale was booked stays in place at quantity 0; a line returned after the sale is its own voided, money-free check keyed by the POS event (`<order>:return:<return uid>` for a Square return order, `<order>:refund:<line id>` for a Clover line marked `refunded`). Spec: `apps/api-gateway/src/pos-hub/pos-hub.provider-voids.spec.ts`.
+
+**Session's calls under the 2026-11-07 /goal.** (1) An itemized return or refunded line returns its stock, as the lane asked; rejected: treat a refund as consumed (wine drunk, stock stays), which is truer for a corked bottle and wrong for a mis-ring. (2) A refunded Clover line stays sold on its order and is returned on its own check, so the sale's key and the return's key cancel; rejected: zeroing it on the order, which adds phantom stock when the first send already shows it refunded.
+
+**What is still not true.**
+
+- **Per-line sales still count a returned Square or refunded Clover line.** The return's row is voided, so its lines are not read; the sale's lines stay at full quantity. Square's net sales drop (the return order's `net_amounts` is negative and is stored as `subtotal`); Clover's do not, since its `subtotal` is null and `total` is not known to fall on a refund. Closing it needs a refund amount or a negative line on `CanonicalCheck` (POS-10).
+- **Toast refunds are not mapped.** `Selection.refundDetails` gives amounts and no quantity, so no stock can be returned from it, and whether `Check.amount` already nets a refund was not established.
+- **A Toast selection voided on a reopened check after its sale was booked** stays depleted: it reads as quantity 0, which moves nothing. Returning it safely needs a line-level void the hub applies only when the sale's key was booked, which is POS-4's guard.
+- **A void or return the hub never saw the sale for adds stock** (POS-4, unchanged), and a glass returned this way still comes back as a whole bottle (B19, OD-67; lane `fix/a-void-gives-back-what-was-poured` owns that).
+
+**What closes it.** POS-10's refund field and POS-4's sale-key guard, each in its own slice.
