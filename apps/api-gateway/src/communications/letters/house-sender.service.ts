@@ -195,6 +195,26 @@ export interface HouseSenderIdentity {
   conversation: HouseConversationState;
 }
 
+/**
+ * A total order over a house's grants: earliest `connected_at` first, ties
+ * (and rows with no timestamp, which sort last) broken by the lower `id`.
+ */
+function byOldestGrant(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>,
+): number {
+  const at = (r: Record<string, unknown>): number => {
+    const t = Date.parse(String(r.connected_at ?? ""));
+    return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+  };
+  const ta = at(a);
+  const tb = at(b);
+  if (ta !== tb) return ta < tb ? -1 : 1;
+  const ia = String(a.id ?? "");
+  const ib = String(b.id ?? "");
+  return ia < ib ? -1 : ia > ib ? 1 : 0;
+}
+
 @Injectable()
 export class HouseSenderService {
   private readonly logger = new Logger(HouseSenderService.name);
@@ -275,18 +295,26 @@ export class HouseSenderService {
     const { data, error } = await this.db.client
       .from("integration_oauth_connections")
       .select(
-        "id, user_id, integration_id, provider, account_email, scopes, restaurant_id, revoked_at",
+        "id, user_id, integration_id, provider, account_email, scopes, restaurant_id, revoked_at, connected_at",
       )
       .eq("restaurant_id", restaurantId)
       .eq("provider", "google")
-      .is("revoked_at", null);
+      .is("revoked_at", null)
+      .order("connected_at", { ascending: true })
+      .order("id", { ascending: true });
 
     const rows = error
       ? []
       : ((data ?? []) as unknown as Record<string, unknown>[]);
     const scopesOf = (r: Record<string, unknown>): string[] =>
       Array.isArray(r.scopes) ? (r.scopes as string[]) : [];
-    const withSend = rows.filter((r) => scopesOf(r).includes(GMAIL_SEND_SCOPE));
+    // Oldest grant first, then lowest id. The ORDER BY above asks the database
+    // for the same thing, but the choice below must not depend on the database
+    // (or a stub) honouring it: without a total order, which member's mailbox a
+    // letter leaves from would follow PostgREST row order, which is unspecified.
+    const withSend = rows
+      .filter((r) => scopesOf(r).includes(GMAIL_SEND_SCOPE))
+      .sort(byOldestGrant);
     const readConsented: boolean | "unknown" = error
       ? "unknown"
       : rows.some((r) => scopesOf(r).includes(GMAIL_READ_SCOPE));
@@ -382,7 +410,15 @@ export class HouseSenderService {
     }
 
     // Prefer the asking person's own grant, so the letter leaves from the
-    // mailbox they expect; otherwise the house's first live sending grant.
+    // mailbox they expect; otherwise the house's OLDEST live sending grant
+    // (connected_at, then id). Oldest because it is the house's longest-standing
+    // consent and does not move when another member connects; the newest grant
+    // would change the sender every time somebody connects, and refusing when
+    // more than one member could send would halt sending for no reason the
+    // house can fix (proposal F7/G11, decided under the founder's 2026-11-07
+    // /goal). A reconnect keeps its row's connected_at — the upsert in
+    // integrations-oauth.service.ts does not write it — so "oldest" means the
+    // first time that member connected this grant, revocations included.
     const chosen =
       withSend.find((r) => String(r.user_id) === userId) ?? withSend[0];
     const address = (chosen.account_email as string | null) ?? null;
