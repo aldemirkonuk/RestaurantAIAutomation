@@ -28,12 +28,10 @@ import { INTEGRATION_DEFINITIONS } from "./integrations-oauth.constants";
  * all three fail. The same-house, revoked
  * and houseless cases pass both ways.
  *
- * QA round 18 (second describe): the check and the write were two moments, so
- * two houses finishing at once both passed and the later upsert moved the
- * grant; and a grant left in a house the person was removed from blocked them
- * everywhere, with no way to disconnect it. PRE-FIX PROOF: on the R11-05 head
- * (plain upsert, any held grant blocks) the race cases end with the grant in
- * house B and the removed-member cases are refused.
+ * QA round 18 (second describe): a race moved the grant, and a grant left in
+ * a house the person was removed from blocked them everywhere. PRE-FIX PROOF:
+ * on the R11-05 head the race cases end in house B and the removed-member
+ * cases are refused.
  */
 
 const A = "aaaaaaaa-0000-4000-8000-aaaaaaaaaaaa";

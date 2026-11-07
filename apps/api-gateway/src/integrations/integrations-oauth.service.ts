@@ -966,11 +966,8 @@ export class IntegrationsOauthService {
       revoked_at: null,
     };
 
-    // QA round 18: the check above and this write are not one moment. Two
-    // houses finishing at once both pass the check, and a plain upsert let the
-    // later one move the grant. So the write is conditional, in the database:
-    // insert when this person has no row for this integration (a racing
-    // insert waits on the unique key and then does nothing) ...
+    // QA round 18: the check and the write are two moments, so the write is
+    // conditional. Insert when no row exists (a racing insert does nothing) ...
     const { data: inserted, error } = await this.db.client
       .from("integration_oauth_connections")
       .upsert(row, { onConflict: "user_id,integration_id", ignoreDuplicates: true })
@@ -980,10 +977,9 @@ export class IntegrationsOauthService {
     }
     if (Array.isArray(inserted) && inserted.length > 0) return;
 
-    // ... otherwise overwrite the row only while it is this house's, has no
-    // house, or is revoked. Postgres re-checks that filter against a row a
-    // concurrent writer just committed, so a grant another house took a
-    // moment ago matches nothing here and is refused, never moved.
+    // ... else overwrite only a row of this house, of no house, or revoked.
+    // Postgres re-checks the filter against a just-committed row, so a grant
+    // another house took a moment ago matches nothing and is refused.
     const house = params.restaurantId;
     if (house !== null && !/^[0-9A-Za-z-]+$/.test(house)) {
       throw new Error("Failed to store connection: the house id is malformed");
@@ -1009,12 +1005,9 @@ export class IntegrationsOauthService {
   }
 
   /**
-   * Ends a grant left in a house this person no longer works in, the way a
-   * disconnect does locally (tokens cleared, `revoked_at` set), so the
-   * conditional write can take the row for the house they are in now. Only
-   * that house's still-live row is touched; if it changed meanwhile, nothing
-   * is, and the write then refuses. The provider is not called: the person
-   * is granting the same integration again a moment later.
+   * Ends a grant left in a house this person no longer works in, as a local
+   * disconnect does, so the conditional write can take the row. Only that
+   * house's still-live row is touched. The provider is not called.
    */
   private async releaseGrantLeftBehind(
     userId: string,
