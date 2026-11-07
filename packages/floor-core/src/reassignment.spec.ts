@@ -12,7 +12,7 @@ import {
 } from "./index";
 
 // ---------------------------------------------------------------------------
-// 4. Reassignment proposal (founder pick 4) — new in the port
+// The reassignment proposal (founder pick 4), new in the port
 // ---------------------------------------------------------------------------
 
 describe("proposeReassignment", () => {
@@ -94,7 +94,7 @@ describe("proposeReassignment", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. Review fixes (PR2a review, 2026-10-31)
+// OD-259: the readings the pick does not name
 // ---------------------------------------------------------------------------
 
 describe("a waiter listed twice is one candidate", () => {
@@ -140,5 +140,42 @@ describe("OD-259: a load that is not a finite number reads as the heaviest", () 
     expect(proposeReassignment({ tables, candidates: rows, fromWaiterId: "w1" })).toEqual([
       { tableId: "t1", toWaiterId: "w2", reason: "lightest_in_section" },
     ]);
+  });
+});
+
+describe("OD-259: sectionless tables, empty sections and repeated tables", () => {
+  const t = (tableId: string, sectionId: string | null): ReassignTable => ({ tableId, label: tableId, sectionId, seated: false });
+
+  it("a sectionless table with nobody listed says nobody is on shift, not nobody in its section", () => {
+    expect(proposeReassignment({ tables: [t("t1", null)], candidates: [], fromWaiterId: "w1" })).toEqual([
+      { tableId: "t1", toWaiterId: null, reason: "no_one_on_shift" },
+    ]);
+  });
+
+  it('reads an empty-string section as no section, as the checker did', () => {
+    const out = proposeReassignment({
+      tables: [t("t1", "")],
+      candidates: [{ waiterId: "w2", sectionIds: ["A"], load: 0 }],
+      fromWaiterId: "w1",
+    });
+    expect(out).toEqual([{ tableId: "t1", toWaiterId: "w2", reason: "lightest_on_shift" }]);
+  });
+
+  it("proposes a table listed twice once", () => {
+    const out = proposeReassignment({
+      tables: [t("t1", "A"), t("t1", "A")],
+      candidates: [{ waiterId: "w2", sectionIds: ["A"], load: 0 }],
+      fromWaiterId: "w1",
+    });
+    expect(out.map((p) => p.tableId)).toEqual(["t1"]);
+  });
+
+  it("never proposes the waiter who is leaving, even when listed under every section", () => {
+    const out = proposeReassignment({
+      tables: [t("t1", "A"), t("t2", null)],
+      candidates: [{ waiterId: "w1", sectionIds: ["A"], load: 0 }],
+      fromWaiterId: "w1",
+    });
+    expect(out.map((p) => p.toWaiterId)).toEqual([null, null]);
   });
 });

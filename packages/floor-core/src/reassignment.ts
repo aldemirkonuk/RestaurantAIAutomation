@@ -18,14 +18,19 @@
  *   does not decide what a load is.
  *
  * Open as OD-259, the executor's reading under OD-242, not the founder's pick:
- * - a table with no section may go to anyone on the list, as the checker's
- *   manager merge list treats a sectionless table (`lib/floor-merge.ts:144`
- *   at `5958689`);
+ * - a table with no section (null or "") may go to anyone on the list,
+ *   including a waiter whose section list is empty, by analogy with how the
+ *   checker's merge list treats a sectionless table
+ *   (`lib/floor-merge.ts:144` at `5958689`, a truthy test);
  * - a waiter listed more than once is one candidate who works every section
  *   any of their rows names, at the largest load listed (taking the first row
  *   made the proposal depend on input order);
- * - a load that is not a finite number reads as the heaviest, so that waiter
- *   is proposed last and a NaN never wins the comparison by default.
+ * - a load that is not a finite number reads as Infinity: that waiter is
+ *   never proposed while a waiter with a readable load is eligible, and a NaN
+ *   never wins the comparison by default; a finite load is used as given,
+ *   negative or fractional included;
+ * - the placing order and tie-breaks above;
+ * - a table listed twice is proposed once, at its first place in that order.
  */
 
 export interface ReassignTable {
@@ -50,7 +55,9 @@ export type ReassignReason =
   /** The table has no section; lightest load among everyone listed. */
   | "lightest_on_shift"
   /** Nobody else works this section: the manager picks by hand. */
-  | "no_one_in_section";
+  | "no_one_in_section"
+  /** The table has no section and nobody else is listed: by hand. */
+  | "no_one_on_shift";
 
 export interface ReassignProposal {
   tableId: string;
@@ -65,16 +72,19 @@ function byId(a: string, b: string): number {
 export function proposeReassignment(input: {
   tables: readonly ReassignTable[];
   candidates: readonly ReassignCandidate[];
-  /** The waiter leaving, calling out or running late; never proposed. */
+  /** The waiter leaving, calling out or running late; never proposed (an exact id match, no trimming or case folding). */
   fromWaiterId: string;
 }): ReassignProposal[] {
-  // A fixed locale keeps the label order the same on every machine.
-  const tables = [...input.tables].sort((a, b) => {
+  // A fixed locale ("en", numeric) keeps the label order stable across
+  // callers; equal labels fall back to the id, a code-unit compare.
+  const sorted = [...input.tables].sort((a, b) => {
     if (a.seated !== b.seated) return a.seated ? -1 : 1;
     const byLabel = a.label.localeCompare(b.label, "en", { numeric: true });
     if (byLabel !== 0) return byLabel;
     return byId(a.tableId, b.tableId);
   });
+  const seen = new Set<string>();
+  const tables = sorted.filter((t) => !seen.has(t.tableId) && seen.add(t.tableId));
 
   // One entry per waiter: sections unioned, the largest load kept. A load
   // that is not finite is the heaviest (OD-259).
@@ -95,11 +105,17 @@ export function proposeReassignment(input: {
   const pool = [...sections.keys()];
 
   return tables.map((table): ReassignProposal => {
+    // "" is no section, as the checker's truthy test reads it.
+    const section = table.sectionId || null;
     const eligible = pool.filter((id) =>
-      table.sectionId === null ? true : sections.get(id)?.has(table.sectionId) === true,
+      section === null ? true : sections.get(id)?.has(section) === true,
     );
     if (eligible.length === 0) {
-      return { tableId: table.tableId, toWaiterId: null, reason: "no_one_in_section" };
+      return {
+        tableId: table.tableId,
+        toWaiterId: null,
+        reason: section === null ? "no_one_on_shift" : "no_one_in_section",
+      };
     }
     const chosen = eligible.reduce((best, id) => {
       const lb = load.get(best) ?? 0;
@@ -111,7 +127,7 @@ export function proposeReassignment(input: {
     return {
       tableId: table.tableId,
       toWaiterId: chosen,
-      reason: table.sectionId === null ? "lightest_on_shift" : "lightest_in_section",
+      reason: section === null ? "lightest_on_shift" : "lightest_in_section",
     };
   });
 }
