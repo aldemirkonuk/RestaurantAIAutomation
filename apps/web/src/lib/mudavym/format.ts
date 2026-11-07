@@ -97,6 +97,46 @@ export function fmtMoney(
   }
 }
 
+/**
+ * Decimal places a cost PER UNIT needs to stay readable, or `null` when
+ * `fmtMoney`'s places already say it. A lot kept in grams or millilitres costs
+ * a fraction of the currency's smallest coin per unit (0.035 TRY a gram), and
+ * two places read that as 0.04 (QA round 11b, PR #839). Below one whole unit
+ * of the currency the cost keeps four significant digits, never more than the
+ * six places `inventory_lots.unit_cost` stores; one and above it reads exactly
+ * as every other figure of money.
+ */
+export function unitCostPlaces(value: number): number | null {
+  const abs = Math.abs(value);
+  if (!Number.isFinite(abs) || abs === 0 || abs >= 1) return null;
+  return Math.min(6, Math.floor(-Math.log10(abs)) + 4);
+}
+
+/**
+ * A cost per unit (a bottle, a gram, a millilitre) in the house's own
+ * currency: `fmtMoney`, with enough places for a sub-unit cost
+ * (`unitCostPlaces`). $0.035 stays $0.035, $33.333333 still reads $33.33, and
+ * a whole $22 still reads $22.
+ */
+export function fmtUnitMoney(value: number | null | undefined, currency: string | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return EM;
+  const places = unitCostPlaces(value);
+  if (places === null) return fmtMoney(value, currency);
+  const plain = value.toLocaleString('en-GB', { maximumFractionDigits: places });
+  if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) {
+    return `${plain} (currency not recorded)`;
+  }
+  try {
+    return new Intl.NumberFormat('en-GB', {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: places,
+    }).format(value);
+  } catch {
+    return `${plain} ${currency}`;
+  }
+}
+
 /** "closes 14:00, the day before" / "closes 11:00 on the day". */
 export function fmtCutoff(time: string | null, offsetDays: number | null): string {
   if (!time) return EM;
