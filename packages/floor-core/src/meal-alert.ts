@@ -40,7 +40,12 @@ import { minutesSince, seatingFreshness, type FreshnessStatus } from "./freshnes
  *   checker cut on UTF-16 units, turned only C0 controls and DEL into spaces
  *   and printed labels as given;
  * - a seat count, party size or check-in count that is not a positive whole
- *   number prints nothing (the checker printed any number above 0).
+ *   number prints nothing (the checker printed any number above 0);
+ * - a note or label left with no visible character after cleaning (only
+ *   joiners, presentation selectors or blanks) counts as empty: the note is
+ *   null and the label prints "—";
+ * - `durationText` prints "—" for a non-finite minute count, where the
+ *   checker's printed "NaNh".
  */
 
 export type MealCourse = "drinks" | "starters" | "mains" | "dessert" | "other";
@@ -167,16 +172,30 @@ function fixSurrogates(run: string): string {
   return out;
 }
 
-/** Clean as `cleanText`, then cap at MEAL_NOTE_MAX. */
+/**
+ * True when something a person can see is left: not only ZWJ/ZWNJ, the
+ * presentation selectors, whitespace or the Braille blank U+2800.
+ */
+const UNSEEN = new Set([0x200c, 0x200d, 0xfe0e, 0xfe0f, 0x2800]);
+function hasVisible(text: string): boolean {
+  for (const ch of text) {
+    if (!/\s/.test(ch) && !UNSEEN.has(ch.codePointAt(0) as number)) return true;
+  }
+  return false;
+}
+
+/** Clean as `cleanText`, then cap at MEAL_NOTE_MAX; "" when nothing visible is left. */
 export function sanitizeMealNote(raw: string | null | undefined): string {
   if (!raw) return "";
-  return clip(cleanText(raw), MEAL_NOTE_MAX);
+  const text = cleanText(raw);
+  return hasVisible(text) ? clip(text, MEAL_NOTE_MAX) : "";
 }
 
 /** A label cleaned as a note and capped at MEAL_LABEL_MAX. */
 function sanitizeLabel(raw: string | null | undefined): string {
   if (!raw) return "";
-  return clip(cleanText(raw), MEAL_LABEL_MAX);
+  const text = cleanText(raw);
+  return hasVisible(text) ? clip(text, MEAL_LABEL_MAX) : "";
 }
 
 export interface MealBriefInput {

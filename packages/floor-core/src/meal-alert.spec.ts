@@ -83,7 +83,7 @@ describe("parity: buildMealBrief (test-meal-brief.mjs)", () => {
   it("says so when the party has no visit yet", () => {
     const b = buildMealBrief(base({ lastCheckInAt: null, checkInCount: 0 }));
     // Departs from the checker (`scripts/test-meal-brief.mjs:174-178`, which
-    // pinned "idle"): PR3 stores no last_check_in_at column and no seated
+    // pinned "idle"): the port's floor schema stores no last_check_in_at column and no seated
     // visit row, so an unvisited party is measured from its seat time. Seated
     // 38 minutes ago with late at 15 is overdue. ADR 0346 D4 (b): silence is
     // a gap, not health.
@@ -110,7 +110,7 @@ describe("parity: buildMealBrief (test-meal-brief.mjs)", () => {
     expect(b.body.startsWith("“Nut allergy — seat 3” · Party of 3")).toBe(true);
   });
 
-  it("keeps the body inside the notification budget", () => {
+  it("keeps the body inside MEAL_BODY_MAX", () => {
     const b = buildMealBrief(base({ note: "x".repeat(MEAL_NOTE_MAX) }));
     expect(b.body.length).toBeLessThanOrEqual(MEAL_BODY_MAX);
     expect(b.body.endsWith("…")).toBe(true);
@@ -261,6 +261,19 @@ describe("Food-up text is cut on code points and cleaned", () => {
     expect(wide.title.length).toBeLessThanOrEqual(MEAL_TITLE_MAX);
     expect(b.headline).not.toMatch(/[\u200B\u202E\n]/);
     expect(buildMealBrief(base({ tableLabel: "12\u202E\n" })).title).toBe("Food up · Table 12");
+  });
+});
+
+describe("text with nothing visible left", () => {
+  it("a note of joiners and blanks is no note, and such a label prints a dash", () => {
+    expect(sanitizeMealNote("\u200d\u200c\u2800 \ufe0f")).toBe("");
+    const NOW = Date.parse("2026-08-24T20:00:00.000Z");
+    const b = buildMealBrief({
+      tableLabel: "\u200d\u200d", course: "mains", note: "\u200d\u200d\u200d", seats: null, partySize: null,
+      seatedAt: null, lastCheckInAt: null, checkInCount: 0, warnAfterMin: WARN, lateAfterMin: LATE, now: NOW,
+    });
+    expect(b.note).toBeNull();
+    expect(b.title).toBe("Food up · Table —");
   });
 });
 
