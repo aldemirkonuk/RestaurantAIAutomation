@@ -525,6 +525,13 @@ describe('RecipeSheet', () => {
     expect(body.lines.map((l: { qty: number }) => l.qty)).toEqual([45, 30, 30]);
     await waitFor(() => expect(screen.queryByTestId('recipe-restored')).toBeNull());
     expect(leaveWarns()).toBe(false);
+
+    // Typed again after that save, the lines are new, not "from earlier".
+    fireEvent.change(screen.getAllByLabelText('Amount')[0], { target: { value: '46' } });
+    h.put.mockReturnValueOnce(new Promise(() => {}));
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('recipe-restored')).toBeNull();
   });
 
   it('round 19: a kept draft goes back only to the person who typed it', async () => {
