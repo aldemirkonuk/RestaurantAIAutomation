@@ -22,7 +22,11 @@ export type MailPersonKind = "vendor";
  *   the stored row cannot tell those two apart until an intake record exists.
  * - from_house: an outbound letter.
  */
-export type MailDoor = "house_mailbox" | "whatsapp" | "mudavym_mail" | "from_house";
+export type MailDoor =
+  | "house_mailbox"
+  | "whatsapp"
+  | "mudavym_mail"
+  | "from_house";
 
 export interface MailPersonRow {
   /** `vendor:<provider uuid>` — the `with=` value of GET /mail/threads. */

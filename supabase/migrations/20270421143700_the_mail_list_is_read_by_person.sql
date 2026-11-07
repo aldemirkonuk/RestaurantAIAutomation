@@ -93,6 +93,12 @@
 -- A message's time is received_at for inbound and sent_at for outbound, else
 -- created_at. "Today" is the house's day in restaurants.timezone, not UTC.
 --
+-- THREAD KEYS
+-- -----------
+-- thread_key is set on every insert by trg_procurement_conversations_thread_key
+-- (baseline set_conversation_thread_key); a thread is (provider_id,
+-- thread_key), so the same key under two vendors is two threads.
+--
 -- ACCESS
 -- ------
 -- SECURITY INVOKER, EXECUTE for service_role only, the same as
@@ -138,12 +144,16 @@ WITH matched AS (
            COALESCE(CASE WHEN lower(c.direction::text) = 'inbound'
                          THEN c.received_at ELSE c.sent_at END,
                     c.created_at) AS at,
-           (lower(c.direction::text) = 'inbound'
+           -- Both flags are forced to true/false: an outbound row with no
+           -- status and no sent_at would make the bare expression NULL, and
+           -- "ORDER BY visible DESC" sorts NULL first, which would rank an
+           -- unsent draft as the thread's last letter.
+           COALESCE(lower(c.direction::text) = 'inbound'
             OR (lower(c.direction::text) = 'outbound'
                 AND (c.status::text IN ('SENT', 'AUTO_SENT', 'SEND_UNCONFIRMED')
-                     OR (c.status IS NULL AND c.sent_at IS NOT NULL)))) AS visible,
-           (lower(c.direction::text) = 'inbound'
-            AND c.status::text IS DISTINCT FROM 'DELIVERED') AS owes
+                     OR (c.status IS NULL AND c.sent_at IS NOT NULL))), false) AS visible,
+           COALESCE(lower(c.direction::text) = 'inbound'
+            AND c.status::text IS DISTINCT FROM 'DELIVERED', false) AS owes
     FROM public.procurement_conversations c
     WHERE c.restaurant_id = p_restaurant_id
       AND (p_provider_id IS NULL OR c.provider_id = p_provider_id)
@@ -151,68 +161,68 @@ WITH matched AS (
            OR c.status IS NULL
            OR c.status::text NOT IN ('HOUSE_DRAFT', 'HOUSE_CANCELLED'))
 ),
-last_visible AS (
-    SELECT DISTINCT ON (m.provider_id, m.thread_key)
-           m.provider_id, m.thread_key, m.dir, m.owes, m.message_text
+-- One sort per house: each message learns its rank among the thread's
+-- visible letters and the thread's last outbound letter, so nothing below
+-- joins a CTE back onto itself (the planner cannot estimate those joins and
+-- nested-looped them: ~10x slower on a 2,000-row house, measured).
+ranked AS (
+    SELECT m.*,
+           row_number() OVER (PARTITION BY m.provider_id, m.thread_key
+                              ORDER BY m.visible DESC, m.at DESC, m.id DESC) AS vis_rank,
+           max(m.at) FILTER (WHERE m.visible AND m.dir = 'outbound')
+             OVER (PARTITION BY m.provider_id, m.thread_key) AS last_out_at
     FROM matched m
-    WHERE m.visible
-    ORDER BY m.provider_id, m.thread_key, m.at DESC, m.id DESC
-),
-last_out AS (
-    SELECT m.provider_id, m.thread_key, max(m.at) AS last_out_at
-    FROM matched m
-    WHERE m.visible AND m.dir = 'outbound'
-    GROUP BY m.provider_id, m.thread_key
 ),
 per_thread AS (
-    SELECT m.provider_id,
-           m.thread_key,
+    SELECT r.provider_id,
+           r.thread_key,
            count(*) AS message_count,
-           max(m.at) AS last_any_at,
-           max(m.at) FILTER (WHERE m.visible) AS last_visible_at,
-           min(m.at) FILTER (WHERE m.owes
-                             AND (o.last_out_at IS NULL OR m.at > o.last_out_at))
+           max(r.at) AS last_any_at,
+           max(r.at) FILTER (WHERE r.visible) AS last_visible_at,
+           min(r.at) FILTER (WHERE r.owes
+                             AND (r.last_out_at IS NULL OR r.at > r.last_out_at))
              AS unanswered_since,
-           array_agg(DISTINCT lower(m.channel)) FILTER (WHERE m.visible) AS channels,
-           (array_agg(m.order_id ORDER BY m.at DESC, m.id DESC)
-              FILTER (WHERE m.order_id IS NOT NULL))[1] AS order_id,
-           (array_agg(m.order_number_snapshot ORDER BY m.at DESC, m.id DESC)
-              FILTER (WHERE m.order_number_snapshot IS NOT NULL))[1] AS order_number_snapshot,
+           max(r.dir) FILTER (WHERE r.visible AND r.vis_rank = 1) AS last_direction,
+           bool_or(r.owes) FILTER (WHERE r.visible AND r.vis_rank = 1) AS last_owes,
+           max(r.message_text) FILTER (WHERE r.visible AND r.vis_rank = 1) AS last_text,
+           array_agg(DISTINCT lower(r.channel)) FILTER (WHERE r.visible) AS channels,
+           (array_agg(r.order_id ORDER BY r.at DESC, r.id DESC)
+              FILTER (WHERE r.order_id IS NOT NULL))[1] AS order_id,
+           (array_agg(r.order_number_snapshot ORDER BY r.at DESC, r.id DESC)
+              FILTER (WHERE r.order_number_snapshot IS NOT NULL))[1] AS order_number_snapshot,
            -- The first message that names a subject: the header the bridge
            -- stored, else the "Subject: ..." line it writes at the top of
            -- message_text. Headers themselves never leave this function.
-           (array_agg(s.subject ORDER BY m.at ASC, m.id ASC)
+           (array_agg(s.subject ORDER BY r.at ASC, r.id ASC)
               FILTER (WHERE s.subject IS NOT NULL))[1] AS subject
-    FROM matched m
-    LEFT JOIN last_out o
-      ON o.provider_id = m.provider_id AND o.thread_key IS NOT DISTINCT FROM m.thread_key
+    FROM ranked r
     CROSS JOIN LATERAL (
         SELECT COALESCE(
-                 NULLIF(btrim(m.email_headers->>'subject'), ''),
-                 NULLIF(btrim(m.email_headers->>'Subject'), ''),
-                 NULLIF(btrim(substring(left(m.message_text, 2000)
+                 NULLIF(btrim(r.email_headers->>'subject'), ''),
+                 NULLIF(btrim(r.email_headers->>'Subject'), ''),
+                 NULLIF(btrim(substring(left(r.message_text, 2000)
                                         FROM '^\s*[Ss]ubject:[ \t]*([^\r\n]*)')), '')
                ) AS subject
     ) s
-    GROUP BY m.provider_id, m.thread_key, o.last_out_at
+    GROUP BY r.provider_id, r.thread_key
 )
 SELECT t.provider_id,
        t.thread_key,
        t.message_count,
        t.last_any_at,
        t.last_visible_at,
-       lv.dir AS last_direction,
+       t.last_direction,
        -- The newest visible message, its leading "Subject: ..." line removed
        -- and whitespace folded, cut to 160 characters for a one-line preview.
-       CASE WHEN lv.message_text IS NULL THEN NULL
+       CASE WHEN t.last_text IS NULL THEN NULL
             ELSE left(btrim(regexp_replace(
-                   regexp_replace(left(lv.message_text, 4000),
+                   regexp_replace(left(t.last_text, 4000),
                                   '^\s*[Ss]ubject:[^\n]*(\n|$)', ''),
                    '\s+', ' ', 'g')), 160)
        END AS last_line,
        COALESCE(t.channels, ARRAY[]::text[]) AS channels,
-       COALESCE(lv.owes, false) AS waiting,
-       CASE WHEN COALESCE(lv.owes, false) THEN t.unanswered_since END AS waiting_since,
+       COALESCE(t.last_owes, false) AS waiting,
+       CASE WHEN COALESCE(t.last_owes, false) THEN t.unanswered_since END AS waiting_since,
        t.order_id,
        COALESCE(po.order_number::text, t.order_number_snapshot) AS order_number,
        (po.id IS NOT NULL
@@ -221,8 +231,6 @@ SELECT t.provider_id,
        po.created_at AS order_created_at,
        t.subject
 FROM per_thread t
-LEFT JOIN last_visible lv
-  ON lv.provider_id = t.provider_id AND lv.thread_key IS NOT DISTINCT FROM t.thread_key
 LEFT JOIN public.procurement_orders po
   ON po.id = t.order_id AND po.restaurant_id = p_restaurant_id;
 $$;
@@ -464,11 +472,11 @@ COMMENT ON FUNCTION public.mail_inbox_summary(uuid, boolean) IS
   '(the_mail_list_is_read_by_person)';
 
 
--- The thread list asks "this house, this vendor"; the base table only had
--- (restaurant_id) and (provider_id, created_at) separately. Measured on the
--- 2,000-row fixture: see the PR body.
-CREATE INDEX IF NOT EXISTS idx_procurement_conversations_house_vendor
-  ON public.procurement_conversations (restaurant_id, provider_id);
+-- No new index. Measured on a 2,000-row house (PR body): one vendor's rows
+-- are found through the existing idx_procurement_conversations_provider_created
+-- (0.12 ms; 0.26 ms with a trial (restaurant_id, provider_id) index), so a
+-- second index on every write to this table buys nothing. The people list and
+-- the summary read the whole house through idx_conv_restaurant_id either way.
 
 
 -- Only the gateway may call these (see ACCESS above).
