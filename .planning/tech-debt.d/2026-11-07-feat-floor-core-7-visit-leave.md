@@ -1,0 +1,8 @@
+## The short-visit rules' caller owes these — OPEN — 2026-11-07
+
+Found by the ADR 0090 session audit of PR #921 (`packages/floor-core/src/visit-leave.ts`). The rules have no caller yet. These items fall to the floor gateway's leave route and to the screen that opens the confirm.
+
+1. **Check `visit_kind` on the server.** The checker's `leaveTable` (`app/actions.ts:244-253`) took `visitKind` from the client, wrote it to `seatings.meta`, and never re-checked it. So any caller could tag a long seating `quick_leave` and hide it from "Real visits" (`LogsView.tsx:214`). The route recomputes `needsShortVisitConfirm` with the server's clock and stored rows, then refuses or ignores a `quick_leave` that the rule would not have offered.
+2. **Use the server's clock and stored times.** Seat times are read with `new Date`, so an offset-less string shifts by the reader's timezone. Strings like `"1"` also parse as dates. Pass `seated_at` from the database (`timestamptz`) and the server's `now`.
+3. **"No confirm" leaves the leave unclassified.** An unreadable clock or seat time, or a skewed device, leaves the leave without a `visit_kind`, and in the checker such a leave counts as a real visit. The route records a leave that skipped the confirm because of an unreadable input, so a report can tell it apart from a stayed party.
+4. **A seat time ahead of the clock counts as 0 minutes and opens the confirm.** This is the checker's clamp, kept as the executor's reading under OD-242. Freshness reads the same input as late (OD-257, `freshness.ts:63`). When OD-257 is answered, this rule follows it.

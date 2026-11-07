@@ -2,9 +2,13 @@
  * Short-visit leave confirm: dwell < 12m AND honor check-ins < 2.
  *
  * Ported from the Floor Checker's `lib/visit-leave.ts` (frozen at `5958689`)
- * with two changes: `nowMs` is required (no clock is read here), and a `nowMs`
- * that is not a finite number gives no dwell (null) rather than NaN, so the
- * confirm is not opened on a clock nobody can read.
+ * with two changes: `nowMs` is required (no clock is read here; pass the
+ * server's, as `freshness.ts` says), and a `nowMs` or seat time that is not
+ * a readable number gives no dwell (null), not NaN. The checker's confirm
+ * already stayed shut on NaN; only -Infinity opened it. A seat time ahead of
+ * `nowMs` still counts as 0 minutes, as in the checker, so it opens the
+ * confirm: the executor's reading under OD-242, open with OD-257. Seat times
+ * are read with `new Date`, as the checker did; pass ISO strings with a zone.
  */
 
 export const SHORT_VISIT_DWELL_MAX_MIN = 12;

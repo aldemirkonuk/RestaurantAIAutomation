@@ -5,13 +5,15 @@
  * logic into the test file (`scripts/test-attribution.mjs:8`), so they could
  * pass while the app drifted; that is not repeated.
  *
- * Each module's own cases live in `<module>.spec.ts`; the cases here span
- * modules (response time with the score, freshness, the Food-up brief and the
- * short-visit rules). Shared fixtures live in `test-fixtures.ts`.
+ * Each module's own cases live in `<module>.spec.ts` (the short-visit rules in
+ * `visit-leave.spec.ts`); the cases here span modules (response time with the
+ * score, freshness and the Food-up brief). Shared fixtures live in
+ * `test-fixtures.ts`.
  *
  * - Kept: checker behaviour the corrections must not disturb.
- * - Corrections: one test per ADR 0346 D4 decision and founder answer
- *   (2026-10-31). Each fails against the checker's original formula.
+ * - Corrections: ADR 0346 D4 (b) and founder F1 (2026-10-31) here; D4 (c)
+ *   and (e) are pinned in `response-time.spec.ts`. Each fails against the
+ *   checker's original formula.
  * - Review fixes (2026-10-31): the seat time as an anchor, ties at one
  *   millisecond, and inputs that used to fail open (an unreadable time, a
  *   window end or warn minute that is not a finite number).
@@ -20,10 +22,7 @@ import {
   buildMealBrief,
   durationText,
   freshnessOf,
-  honorCheckInCount,
   minutesSince,
-  dwellMinutesSince,
-  needsShortVisitConfirm,
   overdueGapCount,
   responseSamples,
   seatingFreshness,
@@ -58,26 +57,6 @@ describe("kept from the checker", () => {
       now: T0 + 60 * MIN,
     });
     expect(byWaiter.get("W")).toEqual([5]);
-  });
-
-  it("keeps the short-visit confirm: under 12m and under 2 check-ins", () => {
-    const now = T0 + 11 * MIN;
-    expect(needsShortVisitConfirm({ seatedAt: at(0), lastCheckInAt: null, nowMs: now })).toBe(true);
-    expect(
-      needsShortVisitConfirm({ seatedAt: at(0), lastCheckInAt: at(5), checkInCount: 2, nowMs: now }),
-    ).toBe(false);
-    expect(needsShortVisitConfirm({ seatedAt: at(0), lastCheckInAt: null, nowMs: T0 + 12 * MIN })).toBe(
-      false,
-    );
-    expect(honorCheckInCount(at(0), at(0))).toBe(0);
-    expect(honorCheckInCount(at(0), at(3))).toBe(1);
-  });
-
-  it("a clock that is not a number gives no dwell and no confirm, never NaN", () => {
-    for (const nowMs of [NaN, Infinity, -Infinity]) {
-      expect(dwellMinutesSince(at(0), nowMs)).toBeNull();
-      expect(needsShortVisitConfirm({ seatedAt: at(0), lastCheckInAt: null, nowMs })).toBe(false);
-    }
   });
 });
 
