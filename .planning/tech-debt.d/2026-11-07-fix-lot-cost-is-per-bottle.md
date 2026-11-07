@@ -27,7 +27,9 @@ QA round 12b K. `2 bottle @ 264, pack 12, total 528` is self-consistent, so the 
 
 ## Lots already finalised at a printed price stay wrong until re-verified — OPEN — 2026-11-07
 
-Production was not queried and nothing was backfilled. Since QA round 9a (2) (below), a lot is only corrected when someone re-verifies its delivery. **A one-off correction for the existing lots needs the founder's word.** Candidates are invoice lines with `uom in ('case','pack','split_case')` or `price_base_qty > 1` whose revaluation reason has no basis suffix. Two ways to correct them: call `repairPrintedCost` once per VERIFIED delivery, or count and revalue each lot through `revalue_lot`. **Closes when** that correction is run, or declined on the record.
+Production was not queried and nothing was backfilled. Since QA round 9a (2) (below), a lot is only corrected when someone re-verifies its delivery. **A one-off correction for the existing lots needs the founder's word.** Candidates are invoice lines with `uom in ('case','pack','split_case')` or `price_base_qty > 1` whose revaluation reason has no basis suffix. QA round 10a (7), branch `fix/cost-repair-job`: `repair-printed-cost.job.ts` walks every VERIFIED delivery through `repairPrintedCost`. It is a dry run unless `--apply` is passed, and reports each change (booked cost to per-bottle cost) and each flag as JSON. **It has not been run against production; running it is the founder's call.** **Closes when** the job is run with `--apply`, or declined on the record.
+
+1. The repair job is a script, dry run by default. Rejected: an admin endpoint (a write path over every house, reachable from the web). The session's call under the 2026-11-07 /goal.
 
 ## A re-verify kept a lot finalised at the printed price — CLOSED — 2026-11-07
 
