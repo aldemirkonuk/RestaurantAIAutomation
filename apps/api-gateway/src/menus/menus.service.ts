@@ -2164,14 +2164,7 @@ export class MenusService {
     // Auto-satisfy it from the restaurant's actual state instead.
     let menuUploaded = !!data.menu_uploaded;
     if (!menuUploaded) {
-      const { data: activeMenu } = await this.dbService.supabase
-        .from("restaurant_menus")
-        .select("id")
-        .eq("restaurant_id", data.restaurant_id)
-        .eq("status", "active")
-        .maybeSingle();
-
-      if (activeMenu) {
+      if (await this.houseHasAReadMenu(data.restaurant_id)) {
         menuUploaded = true;
         const { error: healErr } = await this.dbService.supabase
           .from("user_onboarding_progress")
@@ -2200,6 +2193,47 @@ export class MenusService {
       // working inventory and a low-stock signal. Vendor/team are optional.
       activated: menuUploaded && thresholdConfigured,
     };
+  }
+
+  /**
+   * The onboarding self-heal's test: does the house hold a menu version that
+   * is not archived and had at least one line read? A version from before
+   * lines were counted (`lines_extracted` NULL) counts only while it is the
+   * active one, as it did before this rule.
+   *
+   * `.limit(1)`, never `.maybeSingle()`: no unique index stops a house holding
+   * two active rows, and maybeSingle answers more than one row with an error.
+   * A failed read throws; it is never taken for "no menu".
+   */
+  private async houseHasAReadMenu(restaurantId: string): Promise<boolean> {
+    const { data: read, error: readErr } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .neq("status", "archived")
+      .gt("lines_extracted", 0)
+      .limit(1);
+    if (readErr) {
+      throw new InternalServerErrorException(
+        `Could not read this house's menus for onboarding: ${readErr.message}`,
+      );
+    }
+    if ((read ?? []).length > 0) return true;
+
+    const { data: uncounted, error: uncountedErr } =
+      await this.dbService.supabase
+        .from("restaurant_menus")
+        .select("id")
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "active")
+        .is("lines_extracted", null)
+        .limit(1);
+    if (uncountedErr) {
+      throw new InternalServerErrorException(
+        `Could not read this house's menus for onboarding: ${uncountedErr.message}`,
+      );
+    }
+    return (uncounted ?? []).length > 0;
   }
 
   async setDefaultThreshold(

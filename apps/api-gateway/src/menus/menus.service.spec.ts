@@ -1387,3 +1387,190 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     expect(list.namesReason).toMatch(/timeout/);
   });
 });
+
+describe("MenusService.getOnboardingProgress — the self-heal reads its own error", () => {
+  // A fake for this block alone, closer to PostgREST than the shared one where
+  // it matters here: `.maybeSingle()` answers MORE than one row with an error
+  // (postgrest-js PGRST116), `gt` is false on NULL as in SQL, `limit` limits.
+  // `readFails[table]` makes every read of that table fail, or only its Nth
+  // read when given `{ message, nth }` (1-based); writes still land.
+  type ReadFail = string | { message: string; nth: number };
+  function onboardingDb(
+    tables: Record<string, Row[]>,
+    readFails: Record<string, ReadFail> = {},
+  ) {
+    const reads: string[] = [];
+    function from(table: string) {
+      const preds: Array<(r: Row) => boolean> = [];
+      let patch: Row | null = null;
+      let cap = Infinity;
+      const rows = () =>
+        (tables[table] || [])
+          .filter((r) => preds.every((p) => p(r)))
+          .slice(0, cap);
+      const read = () => {
+        reads.push(table);
+        const fail = readFails[table];
+        if (!fail) return null;
+        if (typeof fail === "string") return { message: fail };
+        const nth = reads.filter((t) => t === table).length;
+        return nth === fail.nth ? { message: fail.message } : null;
+      };
+      const api: any = {
+        select: () => api,
+        eq: (c: string, v: any) => (preds.push((r) => r[c] === v), api),
+        neq: (c: string, v: any) => (preds.push((r) => r[c] !== v), api),
+        gt: (c: string, v: number) => (
+          preds.push((r) => r[c] != null && r[c] > v),
+          api
+        ),
+        is: (c: string, v: null) => (
+          preds.push((r) => (r[c] ?? null) === v),
+          api
+        ),
+        limit: (n: number) => ((cap = n), api),
+        update: (p: Row) => ((patch = p), api),
+        maybeSingle: async () => {
+          const err = read();
+          if (err) return { data: null, error: err };
+          const found = rows();
+          if (found.length > 1) {
+            return {
+              data: null,
+              error: {
+                code: "PGRST116",
+                message:
+                  "JSON object requested, multiple (or no) rows returned",
+              },
+            };
+          }
+          return { data: found[0] ?? null, error: null };
+        },
+        then(resolve: any) {
+          if (patch) {
+            for (const r of rows()) Object.assign(r, patch);
+            return resolve({ data: null, error: null });
+          }
+          const err = read();
+          resolve(
+            err ? { data: null, error: err } : { data: rows(), error: null },
+          );
+        },
+      };
+      return api;
+    }
+    return { db: { from } as any, reads };
+  }
+
+  function serviceOn(menus: Row[], readFails: Record<string, ReadFail> = {}) {
+    const tables: Record<string, Row[]> = {
+      user_onboarding_progress: [
+        {
+          id: "uop-1",
+          user_id: "invitee-1",
+          restaurant_id: "rest-1",
+          menu_uploaded: false,
+          completed_at: null,
+        },
+      ],
+      restaurant_menus: menus,
+      restaurants: [{ id: "rest-1", threshold_configured: true }],
+    };
+    const { db, reads } = onboardingDb(tables, readFails);
+    const service = new MenusService(
+      { supabase: db } as unknown as DatabaseService,
+      undefined as any,
+      undefined as any,
+      undefined as any,
+    );
+    return { service, tables, reads };
+  }
+
+  const menu = (
+    id: string,
+    status: string,
+    lines: number | null,
+    restaurant_id = "rest-1",
+  ) => ({
+    id,
+    restaurant_id,
+    status,
+    lines_extracted: lines,
+  });
+
+  it("a house holding two active versions reads as uploaded, and the flag is healed", async () => {
+    const { service, tables } = serviceOn([
+      menu("m-1", "active", 12),
+      menu("m-2", "active", 9),
+    ]);
+    const progress = await service.getOnboardingProgress("invitee-1");
+    expect(progress.menu_uploaded).toBe(true);
+    expect(progress.activated).toBe(true);
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(true);
+  });
+
+  it("a draft-only house with lines read reads as uploaded for an invitee", async () => {
+    const { service } = serviceOn([menu("m-1", "draft", 7)]);
+    const progress = await service.getOnboardingProgress("invitee-1");
+    expect(progress.menu_uploaded).toBe(true);
+  });
+
+  it("a draft that read no line does not count, and nothing is written", async () => {
+    const { service, tables } = serviceOn([menu("m-1", "draft", 0)]);
+    const progress = await service.getOnboardingProgress("invitee-1");
+    expect(progress.menu_uploaded).toBe(false);
+    expect(progress.activated).toBe(false);
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
+  });
+
+  it("an archived version with lines does not count, nor another house's menu", async () => {
+    const { service } = serviceOn([
+      menu("m-1", "archived", 30),
+      menu("m-2", "draft", 4, "rest-2"),
+    ]);
+    const progress = await service.getOnboardingProgress("invitee-1");
+    expect(progress.menu_uploaded).toBe(false);
+  });
+
+  it("an active version from before lines were counted still counts", async () => {
+    const { service } = serviceOn([menu("m-1", "active", null)]);
+    const progress = await service.getOnboardingProgress("invitee-1");
+    expect(progress.menu_uploaded).toBe(true);
+  });
+
+  it("a failed read of the house's menus is said, not read as 'not uploaded'", async () => {
+    // Only the first read fails, so a dropped error there is not covered up
+    // by the second read failing too.
+    const { service, tables, reads } = serviceOn([menu("m-1", "active", 12)], {
+      restaurant_menus: { message: "connection reset", nth: 1 },
+    });
+    await expect(service.getOnboardingProgress("invitee-1")).rejects.toThrow(
+      /connection reset/,
+    );
+    expect(reads.filter((t) => t === "restaurant_menus")).toHaveLength(1);
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
+  });
+
+  it("a failed read of the uncounted active versions is said too", async () => {
+    // The first read (versions with lines) succeeds and finds none; only the
+    // second read, for active versions with no count, fails.
+    const { service, tables, reads } = serviceOn([menu("m-1", "draft", 0)], {
+      restaurant_menus: { message: "statement timeout", nth: 2 },
+    });
+    await expect(service.getOnboardingProgress("invitee-1")).rejects.toThrow(
+      /statement timeout/,
+    );
+    expect(reads.filter((t) => t === "restaurant_menus")).toHaveLength(2);
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
+  });
+
+  it("a user whose flag is already set never reads the house's menus", async () => {
+    const { service, tables, reads } = serviceOn([], {
+      restaurant_menus: "must not be read",
+    });
+    tables.user_onboarding_progress[0].menu_uploaded = true;
+    const progress = await service.getOnboardingProgress("invitee-1");
+    expect(progress.menu_uploaded).toBe(true);
+    expect(reads).not.toContain("restaurant_menus");
+  });
+});
