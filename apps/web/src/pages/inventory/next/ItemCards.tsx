@@ -1,0 +1,312 @@
+/**
+ * The item drawer's eight cards (proposal §2 S2 item 2, §4 K1).
+ *
+ * Each card is one figure and one sentence saying where it comes from. A card
+ * whose source could not be read says so and never shows 0 (G15, ADR 0020).
+ * Money is for owners and managers only: for anyone else the Value card is
+ * not drawn and no other card carries a currency figure.
+ *
+ * On hand, value, usage and days of cover come from the list row, the one
+ * source the table already shows (K9). Waste, the count gap and the cost
+ * trend come from GET /inventory/:rid/item/:id/figures.
+ */
+import type { ReactNode } from 'react';
+import type { ItemFigures } from '../../../services/api/inventory';
+import { cellMoney, EM, fmtCount, fmtPace, type HouseCurrency, type InvRow } from './useInventoryNextData';
+import { fmtWhen } from '../../../lib/mudavym/format';
+
+export type CardId = 'onhand' | 'value' | 'usage' | 'cover' | 'cost' | 'waste' | 'gap' | 'inside';
+
+export const CARD_TITLE: Record<CardId, string> = {
+  onhand: 'On hand',
+  value: 'Value',
+  usage: 'Usage a day',
+  cover: 'Days of cover',
+  cost: 'Cost',
+  waste: 'Waste (30 days)',
+  gap: 'Count gap',
+  inside: 'What’s in it',
+};
+
+/** The figures read: still reading, failed as a whole, or answered. */
+export type FiguresLoad =
+  | { status: 'reading' }
+  | { status: 'failed'; reason: string }
+  | { status: 'ready'; data: ItemFigures };
+
+const UNREAD = 'could not be read';
+
+const UNIT_WORDS: Record<string, [string, string]> = {
+  bottle: ['bottle', 'bottles'],
+  case: ['case', 'cases'],
+  keg: ['keg', 'kegs'],
+  pack: ['pack', 'packs'],
+  glass: ['glass', 'glasses'],
+  shot: ['shot', 'shots'],
+};
+
+/**
+ * A quantity in the item's own unit (ADR 0070: stored as whole g, ml or
+ * each). 12400 g reads "12.4 kg"; 1500 ml reads "1.5 l"; each is a count.
+ * A wine row with no unit on it is in bottles.
+ */
+export function fmtQty(n: number, uom: string | null): string {
+  const a = Math.abs(n);
+  switch (uom) {
+    case 'g':
+      return a >= 1000 ? `${fmtCount(n / 1000)} kg` : `${fmtCount(n)} g`;
+    case 'mg':
+      return a >= 1000 ? `${fmtCount(n / 1000)} g` : `${fmtCount(n)} mg`;
+    case 'ml':
+      return a >= 1000 ? `${fmtCount(n / 1000)} l` : `${fmtCount(n)} ml`;
+    case 'each':
+      return fmtCount(n);
+    default: {
+      const [one, many] = UNIT_WORDS[uom ?? 'bottle'] ?? [uom ?? 'bottle', uom ?? 'bottles'];
+      return `${fmtCount(n)} ${a === 1 ? one : many}`;
+    }
+  }
+}
+
+/** A cost is per kg or per l for a weighed or poured good: per g would read 0.01. */
+function perUnit(wac: number, uom: string | null): { amount: number; per: string } {
+  if (uom === 'g') return { amount: wac * 1000, per: 'kg' };
+  if (uom === 'ml') return { amount: wac * 1000, per: 'l' };
+  if (uom === 'each') return { amount: wac, per: 'item' };
+  return { amount: wac, per: UNIT_WORDS[uom ?? 'bottle']?.[0] ?? uom ?? 'bottle' };
+}
+
+/** Usage a day: small paces keep two places (fmtPace), large weighed ones read in kg or l. */
+function usageWords(v: number, uom: string | null): string {
+  if ((uom === 'g' || uom === 'ml') && v >= 1000) return fmtQty(v, uom);
+  if (uom === 'g' || uom === 'ml') return `${fmtPace(v)} ${uom}`;
+  if (uom === 'each') return fmtPace(v);
+  const [one, many] = UNIT_WORDS[uom ?? 'bottle'] ?? [uom ?? 'bottle', uom ?? 'bottles'];
+  return `${fmtPace(v)} ${v === 1 ? one : many}`;
+}
+
+function signed(n: number, uom: string | null): string {
+  if (n === 0) return 'No gap';
+  return `${n > 0 ? '+' : '−'}${fmtQty(Math.abs(n), uom)}`;
+}
+
+/** A small line of what each delivery cost, first to last. Drawn only from read points. */
+export function Sparkline({ points }: { points: number[] }) {
+  if (points.length < 2) return null;
+  const w = 96;
+  const h = 24;
+  const lo = Math.min(...points);
+  const hi = Math.max(...points);
+  const span = hi - lo || 1;
+  const d = points
+    .map((p, i) => `${((i / (points.length - 1)) * w).toFixed(1)},${(h - 2 - ((p - lo) / span) * (h - 4)).toFixed(1)}`)
+    .join(' ');
+  return (
+    <svg className="ivd-spark" width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true" focusable="false">
+      <polyline points={d} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function trendWords(f: ItemFigures['costTrend']): string {
+  if (!f.readable) return `What each delivery cost ${UNREAD}.`;
+  const pts = f.points ?? [];
+  if (pts.length < 2 || f.changePct === null) return 'Not enough receipts to show a change.';
+  const month = new Date(pts[0].receivedAt).toLocaleDateString('en-GB', { month: 'long' });
+  const pct = Math.abs(f.changePct);
+  if (f.changePct === 0) return `Unchanged since ${month}.`;
+  return `${f.changePct > 0 ? 'Up' : 'Down'} ${fmtCount(pct)}% since ${month}.`;
+}
+
+interface CardProps {
+  id: CardId;
+  figure: ReactNode;
+  extra?: ReactNode;
+  source: ReactNode;
+  unread?: boolean;
+  open: CardId | null;
+  onOpen?: (id: CardId) => void;
+}
+
+function Card({ id, figure, extra, source, unread, open, onOpen }: CardProps) {
+  const body = (
+    <>
+      <span className="ivd-card-k">{CARD_TITLE[id]}</span>
+      <span className="ivd-card-v" data-unread={unread ? 'true' : undefined}>
+        {unread ? UNREAD : figure}
+      </span>
+      {extra && !unread ? <span className="ivd-card-x">{extra}</span> : null}
+      <span className="ivd-card-s">{source}</span>
+    </>
+  );
+  if (!onOpen) {
+    return (
+      <div className="ivd-card" data-testid={`ivd-card-${id}`}>
+        {body}
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="ivd-card iv-focus"
+      data-testid={`ivd-card-${id}`}
+      aria-expanded={open === id}
+      aria-controls="ivd-evidence"
+      data-on={open === id}
+      onClick={() => onOpen(id)}
+    >
+      {body}
+    </button>
+  );
+}
+
+export interface ItemCardsProps {
+  row: InvRow;
+  uom: string | null;
+  canManage: boolean;
+  currency: HouseCurrency;
+  figures: FiguresLoad;
+  open: CardId | null;
+  onOpen: (id: CardId) => void;
+}
+
+export default function ItemCards({ row, uom, canManage, currency, figures, open, onOpen }: ItemCardsProps) {
+  const f = figures.status === 'ready' ? figures.data : null;
+  const reading = figures.status === 'reading';
+  const failedWhy = figures.status === 'failed' ? `This item’s figures ${UNREAD} — ${figures.reason}.` : null;
+  const money = (n: number | null) => cellMoney(n, currency);
+  const pace = row.analyticsReadable;
+
+  const onHand =
+    row.stock === null ? null : (
+      <>
+        {fmtQty(row.stock, uom)}
+        {row.openMl !== null && row.openMl > 0 ? <span className="ivd-dim"> + {fmtQty(row.openMl, 'ml')} open</span> : null}
+      </>
+    );
+
+  let cost: ReactNode = EM;
+  let costSource: ReactNode;
+  let costExtra: ReactNode = null;
+  if (!canManage) {
+    cost = 'Not shown';
+    costSource = 'Cost is shown to owners and managers.';
+  } else {
+    if (row.wac !== null) {
+      const u = perUnit(row.wac, uom);
+      cost = `${money(u.amount)} a ${u.per}`;
+    } else {
+      cost = 'No cost yet';
+    }
+    const prov =
+      row.costProvenance === 'invoice' ? 'from invoices' : row.costProvenance === 'estimated' ? 'partly estimated' : null;
+    costSource = `The average cost of what was received${prov ? `, ${prov}` : ''}.`;
+    costExtra = reading ? (
+      'Reading the receipts…'
+    ) : f ? (
+      <>
+        <Sparkline points={(f.costTrend.points ?? []).map((p) => p.unitCost)} />
+        <span>{trendWords(f.costTrend)}</span>
+      </>
+    ) : (
+      `What each delivery cost ${UNREAD}.`
+    );
+  }
+
+  const waste = f?.waste ?? null;
+  const gap = f?.countGap ?? null;
+  // A failed part says so in the house's words; the server's own sentence
+  // for a failure carries the database's message, which is not for a person.
+  const fromFigures = (readable: boolean | undefined, sentence: string | undefined, what: string) =>
+    reading ? 'Reading…' : failedWhy ?? (readable === false ? `The stock ledger did not answer, so ${what} is not shown.` : sentence ?? '');
+
+  return (
+    <div className="ivd-cards" data-testid="ivd-cards">
+      <Card
+        id="onhand"
+        open={open}
+        onOpen={onOpen}
+        unread={row.stock === null}
+        figure={onHand}
+        source="Counted and received stock on the shelf, from the stock ledger."
+      />
+      {canManage ? (
+        <Card
+          id="value"
+          open={open}
+          onOpen={onOpen}
+          unread={row.stock === null}
+          figure={row.value === null ? 'No cost yet' : money(row.value)}
+          source={
+            row.value === null
+              ? 'On hand at the average cost; no received lot of this item has a cost yet.'
+              : 'On hand at the average cost of what was received.'
+          }
+        />
+      ) : null}
+      <Card
+        id="usage"
+        open={open}
+        onOpen={onOpen}
+        unread={!pace}
+        figure={row.velocity === null ? 'Not enough history' : usageWords(row.velocity, uom)}
+        source="Sold over the last 30 days, from the stock ledger."
+      />
+      <Card
+        id="cover"
+        open={open}
+        onOpen={onOpen}
+        unread={!pace}
+        figure={row.runway === null ? 'Not enough history' : `${fmtCount(Math.round(row.runway))} days`}
+        source="On hand divided by usage a day."
+      />
+      <Card id="cost" open={open} onOpen={onOpen} figure={cost} extra={costExtra} source={costSource} />
+      <Card
+        id="waste"
+        open={open}
+        onOpen={onOpen}
+        unread={figures.status === 'failed' || waste?.readable === false}
+        figure={reading ? EM : waste && waste.qty30d !== null ? fmtQty(waste.qty30d, uom) : EM}
+        extra={
+          waste && waste.readable ? (
+            <>
+              given away: {waste.given30d === null ? EM : fmtQty(waste.given30d, uom)}
+              {canManage && waste.value30d !== null ? <> · worth {money(waste.value30d)}</> : null}
+            </>
+          ) : null
+        }
+        source={fromFigures(waste?.readable, waste?.source, 'waste')}
+      />
+      <Card
+        id="gap"
+        open={open}
+        onOpen={onOpen}
+        unread={figures.status === 'failed' || gap?.readable === false}
+        figure={
+          reading ? EM : gap?.last && gap.last.length > 0 ? (gap.last[0].variance === null ? EM : signed(gap.last[0].variance, uom)) : 'Never counted'
+        }
+        extra={
+          gap?.last && gap.last.length > 0 ? (
+            <ol className="ivd-gaps">
+              {gap.last.map((c, i) => (
+                <li key={`${c.countedAt}-${i}`}>
+                  {fmtWhen(c.countedAt)} · {c.variance === null ? EM : signed(c.variance, uom)}
+                  {c.by ? ` · ${c.by}` : ''}
+                  {canManage && c.money !== null ? ` · ${money(c.money)}` : ''}
+                </li>
+              ))}
+            </ol>
+          ) : null
+        }
+        source={fromFigures(gap?.readable, gap?.source, 'the count gap')}
+      />
+      <Card
+        id="inside"
+        open={open}
+        figure="Not recorded"
+        source="Nutrition and allergens are not recorded for this item yet."
+      />
+    </div>
+  );
+}
