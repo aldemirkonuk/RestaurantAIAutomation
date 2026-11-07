@@ -336,14 +336,32 @@ CREATE INDEX IF NOT EXISTS idx_floor_punches_shift
   ON public.floor_punches (shift_id) WHERE shift_id IS NOT NULL;
 
 -- Append-only (ADR 0350 `:78`): a row is written once, its clock-out filled
--- once and its superseded mark set once. Any other change is a new row
--- naming the old one. Deletes come only from a house being deleted whole.
+-- once and its superseded mark set once; the shift link may only go to null.
+-- Any other change is a new row naming the old one. A DELETE is refused
+-- unless the punch's house row is already gone (the house-delete cascade);
+-- TRUNCATE is refused outright. The trigger does not check that a superseded
+-- mark has a correction row naming it, why a shift link goes to null, or that
+-- a Back's resumes_id names the same person's break, resumed once: the
+-- gateway that writes punches owes those. user_id is RESTRICT, so deleting an
+-- account that has punches fails (ADR 0350 `:71` keeps the hours); the
+-- account-delete path owes a check before it tears anything down.
 CREATE OR REPLACE FUNCTION public.floor_punches_append_only()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public, pg_temp
 AS $fn$
 BEGIN
+  IF TG_OP = 'TRUNCATE' THEN
+    RAISE EXCEPTION 'floor_punches is append-only: TRUNCATE refused'
+      USING ERRCODE = 'check_violation';
+  END IF;
+  IF TG_OP = 'DELETE' THEN
+    IF EXISTS (SELECT 1 FROM public.restaurants r WHERE r.id = OLD.restaurant_id) THEN
+      RAISE EXCEPTION 'floor_punches is append-only: punch % is deleted only with its house', OLD.id
+        USING ERRCODE = 'check_violation';
+    END IF;
+    RETURN OLD;
+  END IF;
   IF NEW.id IS DISTINCT FROM OLD.id
      OR NEW.restaurant_id IS DISTINCT FROM OLD.restaurant_id
      OR NEW.user_id IS DISTINCT FROM OLD.user_id
@@ -351,7 +369,8 @@ BEGIN
      OR (NEW.shift_id IS DISTINCT FROM OLD.shift_id AND NEW.shift_id IS NOT NULL)
      OR NEW.clocked_in_at IS DISTINCT FROM OLD.clocked_in_at
      OR NEW.source IS DISTINCT FROM OLD.source
-     OR NEW.created_by IS DISTINCT FROM OLD.created_by
+     -- Who entered it only goes to null (their account deleted; the FK's SET NULL).
+     OR (NEW.created_by IS DISTINCT FROM OLD.created_by AND NEW.created_by IS NOT NULL)
      OR NEW.created_at IS DISTINCT FROM OLD.created_at
      OR NEW.supersedes_id IS DISTINCT FROM OLD.supersedes_id
      OR NEW.resumes_id IS DISTINCT FROM OLD.resumes_id
@@ -370,8 +389,12 @@ REVOKE ALL ON FUNCTION public.floor_punches_append_only() FROM PUBLIC, anon, aut
 
 DROP TRIGGER IF EXISTS trg_floor_punches_append_only ON public.floor_punches;
 CREATE TRIGGER trg_floor_punches_append_only
-  BEFORE UPDATE ON public.floor_punches
+  BEFORE UPDATE OR DELETE ON public.floor_punches
   FOR EACH ROW EXECUTE FUNCTION public.floor_punches_append_only();
+DROP TRIGGER IF EXISTS trg_floor_punches_no_truncate ON public.floor_punches;
+CREATE TRIGGER trg_floor_punches_no_truncate
+  BEFORE TRUNCATE ON public.floor_punches
+  FOR EACH STATEMENT EXECUTE FUNCTION public.floor_punches_append_only();
 
 -- ---------------------------------------------------------------------------
 -- 8. Out tonight: a person's marks only (no run-dry half; OD-242)
@@ -385,7 +408,7 @@ CREATE TABLE IF NOT EXISTS public.floor_out_tonight (
   label TEXT CHECK (label IS NULL OR (btrim(label) <> '' AND char_length(label) <= 80)),
   service_date DATE NOT NULL,
   marked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  marked_by UUID NOT NULL REFERENCES public.users(user_id) ON DELETE RESTRICT,
+  marked_by UUID REFERENCES public.users(user_id) ON DELETE SET NULL,
   back_at TIMESTAMPTZ,
   back_by UUID REFERENCES public.users(user_id) ON DELETE SET NULL,
   CONSTRAINT ck_floor_out_tonight_names_one CHECK ((menu_item_id IS NULL) <> (label IS NULL)),
@@ -425,11 +448,14 @@ CREATE TABLE IF NOT EXISTS public.pos_server_links (
     state <> 'confirmed' OR (user_id IS NOT NULL AND confirmed_at IS NOT NULL)
   )
 );
--- One live link per till name per house.
-CREATE UNIQUE INDEX IF NOT EXISTS uq_pos_server_links_live
-  ON public.pos_server_links (
-    restaurant_id, source, COALESCE(till_server_id, ''), COALESCE(till_server_name_norm, '')
-  ) WHERE state <> 'unlinked';
+-- One live link per till server per house (E4: keyed by the till's id when it
+-- sends one, else by the normalised name).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pos_server_links_live_id
+  ON public.pos_server_links (restaurant_id, source, till_server_id)
+  WHERE state <> 'unlinked' AND till_server_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_pos_server_links_live_name
+  ON public.pos_server_links (restaurant_id, source, till_server_name_norm)
+  WHERE state <> 'unlinked' AND till_server_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_pos_server_links_house
   ON public.pos_server_links (restaurant_id, state);
 

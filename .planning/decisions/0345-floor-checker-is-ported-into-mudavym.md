@@ -272,6 +272,7 @@ The global `TenantGuard` (`app.module.ts:187-188`) reads no role (`apps/api-gate
 
 - One flag ships with a `restaurant_feature_flags` column and an `ACTIVE_FEATURE_FLAGS` entry with its `readBy`, in one change, default off (ADR 0131).
 - The `mudavym_design_arrival` entry is the precedent (`feature-flag-registry.ts:82-92`).
+- [2026-11-07, executor's reading under OD-242, PR #772] The column lands first, with the floor's record migration, and is unread; its `ACTIVE_FEATURE_FLAGS` entry lands with its first reader, because the registry requires a real `readBy` and the Settings PATCH refuses a key not in it. That departs from "in one change" above. The flag cannot be switched on until the entry lands.
 
 ### E8. Routes and install
 

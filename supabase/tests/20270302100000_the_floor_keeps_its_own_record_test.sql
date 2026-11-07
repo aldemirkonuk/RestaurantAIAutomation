@@ -191,6 +191,61 @@ exception when foreign_key_violation then
   insert into _t values ('T16', c like 'floor_punches%', 'delete refused by ' || c);
 end $$;
 
+-- T17: a punch is not deleted or truncated on its own (ADR 0350 :71, :78).
+do $$ declare p uuid; begin
+  insert into public.floor_punches (restaurant_id, user_id, clocked_out_at, clocked_out_reason)
+    values (pg_temp.fx('a'), pg_temp.fx('u1'), now(), 'clock_out') returning id into p;
+  begin
+    delete from public.floor_punches where id = p;
+    insert into _t values ('T17a', false, 'punch deleted while its house stands');
+  exception when check_violation then insert into _t values ('T17a', true, 'punch delete refused');
+  end;
+  begin
+    truncate public.floor_punches;
+    insert into _t values ('T17b', false, 'punches truncated');
+  exception when check_violation then insert into _t values ('T17b', true, 'truncate refused');
+  end;
+end $$;
+
+-- T18: deleting a house whole takes its punches, corrections and Backs with it.
+do $$ declare n int; begin
+  delete from public.restaurants where id = pg_temp.fx('b');
+  select count(*) into n from public.floor_punches where restaurant_id = pg_temp.fx('b');
+  insert into _t values ('T18', n = 0, n || ' punches left after the house delete');
+exception when others then
+  insert into _t values ('T18', false, 'house delete failed: ' || sqlerrm);
+end $$;
+
+-- T19: one live link per till server (E4): by id when the till sends one, else by name.
+do $$ begin
+  insert into public.pos_server_links (restaurant_id, source, till_server_id, till_server_name_norm)
+    values (pg_temp.fx('a'), 'sim', '42', 'ayse');
+  begin
+    insert into public.pos_server_links (restaurant_id, source, till_server_id, till_server_name_norm)
+      values (pg_temp.fx('a'), 'sim', '42', 'ayse k');
+    insert into _t values ('T19a', false, 'second live link for till id 42 accepted');
+  exception when unique_violation then insert into _t values ('T19a', true, 'second live link for one till id refused');
+  end;
+  insert into public.pos_server_links (restaurant_id, source, till_server_name_norm) values (pg_temp.fx('a'), 'sim', 'mehmet');
+  begin
+    insert into public.pos_server_links (restaurant_id, source, till_server_name_norm) values (pg_temp.fx('a'), 'sim', 'mehmet');
+    insert into _t values ('T19b', false, 'second live link for one name accepted');
+  exception when unique_violation then insert into _t values ('T19b', true, 'second live link for one name refused');
+  end;
+end $$;
+
+-- T20: deleting the account of the person who entered a punch keeps the punch.
+do $$ declare u3 uuid := gen_random_uuid(); p uuid; n int; begin
+  insert into public.users (user_id, email, name) values (u3, u3 || '@t.test', 'Three');
+  insert into public.floor_punches (restaurant_id, user_id, created_by, clocked_out_at, clocked_out_reason)
+    values (pg_temp.fx('a'), pg_temp.fx('u1'), u3, now(), 'clock_out') returning id into p;
+  delete from public.users where user_id = u3;
+  select count(*) into n from public.floor_punches where id = p and created_by is null;
+  insert into _t values ('T20', n = 1, 'punch kept, entered-by cleared: ' || n);
+exception when others then
+  insert into _t values ('T20', false, 'creator delete failed: ' || sqlerrm);
+end $$;
+
 -- T12: RLS on every new table, and no client grant left.
 insert into _t
 select 'T12', count(*) = 14 and bool_and(c.relrowsecurity)
