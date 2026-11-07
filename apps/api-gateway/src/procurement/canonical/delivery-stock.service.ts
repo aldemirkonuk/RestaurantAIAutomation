@@ -10,6 +10,7 @@ import {
   PaperHeaderRow,
   PaperLine,
   PaperNote,
+  notHouseMoney,
 } from "./paper-landed-cost";
 
 /**
@@ -999,7 +1000,7 @@ export class DeliveryStockService {
         .getClient()
         .from("procurement_documents")
         .select(
-          "id, doc_number, subtotal, discount_total, freight, fuel_surcharge, split_case_fee, delivery_fee, other_charges, deposit_total, tax, extracted_lines:extracted->lines",
+          "id, doc_number, currency, subtotal, discount_total, freight, fuel_surcharge, split_case_fee, delivery_fee, other_charges, deposit_total, tax, extracted_lines:extracted->lines",
         )
         .eq("restaurant_id", restaurantId)
         .in("id", invoiceIds);
@@ -1011,6 +1012,24 @@ export class DeliveryStockService {
         };
       papers = (heads.data ?? []) as unknown as PaperHeaderRow[];
     }
+    // QA 15 (5): an unreadable house is not "no currency named".
+    let houseCurrency: string | null = null;
+    if (papers.length) {
+      const house = await this.db
+        .getClient()
+        .from("restaurants")
+        .select("currency")
+        .eq("id", restaurantId)
+        .maybeSingle();
+      if (house.error)
+        return {
+          ok: false,
+          status: 500,
+          error: `the currency this house keeps its costs in could not be read: ${house.error.message}`,
+        };
+      houseCurrency = ((house.data ?? null) as { currency?: string | null } | null)?.currency ?? null;
+    }
+    const moneyOfPaper = new Map(papers.map((r) => [r.id, notHouseMoney(r.currency, houseCurrency)]));
 
     const lineByKey = new Map<string, LineRow>();
     const invoiceLines: LineRow[] = [];
@@ -1060,12 +1079,13 @@ export class DeliveryStockService {
       }
     }
 
-    const landed = landDelivery({ papers, lines: fed, booked });
+    const landed = landDelivery({ papers, lines: fed, booked, houseCurrency });
     const refused = landed.refused;
     const held = landed.held;
     for (const [id, p] of [...lineOnly]) {
       const why = held.get(id);
-      if (!why || lineClash.has(id) || refused.has(id)) lineOnly.delete(id);
+      // A line price in another currency is no stand-in either (QA 15 (5)).
+      if (!why || lineClash.has(id) || refused.has(id) || landed.foreign.has(id)) lineOnly.delete(id);
       else
         p.basis = `${p.basis}. The invoice's charges and discount are not in this cost, because its landed cost cannot be said: ${why.replace(/ The lot stays provisional.*$/, "")}`;
     }
@@ -1115,6 +1135,18 @@ export class DeliveryStockService {
             } as const);
       if (id && "printed" in cost && cost.printed != null)
         printed.set(id, (printed.get(id) ?? new Set<number>()).add(cost.printed));
+      // QA 15 (5): a settled price is in its line's money.
+      const foreignWhy = line ? moneyOfPaper.get(line.document_id) : undefined;
+      if (foreignWhy && said > 0) {
+        const reason = `the accepted proposal's price ${said} is on an invoice not in this house's money: ${foreignWhy}`;
+        if (!id) unattachedRefused.push(reason);
+        else {
+          byItem.delete(id);
+          lineOnly.delete(id);
+          held.set(id, `${reason}. The lot stays provisional.`);
+        }
+        continue;
+      }
       if (!cost.ok) {
         if (cost.kind !== "refused") continue;
         const reason = line

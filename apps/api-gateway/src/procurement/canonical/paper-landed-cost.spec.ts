@@ -309,3 +309,38 @@ describe("cents add back to the invoice (QA round 15, finding 3)", () => {
     expect(r.held.get(A)).toMatch(/too many for a cost per bottle to six places/);
   });
 });
+
+describe("a paper not in the house's money is never costed as the house's (QA round 15, finding 5)", () => {
+  const land = (papers: Partial<PaperHeaderRow>[], lines: PaperLine[], house: string | null, a = 10) =>
+    landDelivery({ papers: papers.map((p) => head(p)), lines, booked: new Map([[A, a], [B, 10]]), houseCurrency: house });
+
+  it.each([
+    ["EUR", "TRY", /its invoice is in EUR and this house keeps its costs in TRY; no exchange rate is recorded/],
+    [null, "USD", /does not say what currency it is in, and this house keeps its costs in USD/],
+    ["lira", "TRY", /gives its currency as "lira", which is not a currency code/],
+  ])("a %s paper in a %s house holds every item by name, with no fallback", (paper, house, why) => {
+    const r = land([{ currency: paper, freight: 10 }], two(), house);
+    expect(r.byItem.size).toBe(0);
+    expect(r.held.get(A)).toMatch(why);
+    expect(r.held.get(B)).toMatch(/The lot stays provisional\.$/);
+    expect([...r.foreign].sort()).toEqual([A, B]);
+    expect(r.papers[0].leftOut).toMatch(/^Nothing on it was costed: /);
+  });
+
+  it("a paper in the house's money, any case, costs as before", () => {
+    const r = land([{ currency: "try", freight: 10 }], two(), "TRY");
+    expect([cost(r, A), cost(r, B), r.foreign.size]).toEqual([60.6, 40.4, 0]);
+  });
+
+  it("an item on a USD and a EUR paper is held: currencies are never added", () => {
+    const r = land([{ currency: "USD" }, { id: "inv-2", currency: "EUR" }], [line(), line({ document_id: "inv-2" })], null, 20);
+    expect(cost(r, A)).toBeUndefined();
+    expect(r.held.get(A)).toMatch(/its invoices are in USD and EUR, and costs in different currencies are never added together/);
+  });
+
+  it("a house with no currency named costs the paper in the paper's money, and says so", () => {
+    const r = land([{ currency: "EUR" }], [line()], null);
+    expect(cost(r, A)).toBe(60);
+    expect(r.byItem.get(A)?.basis).toMatch(/Costed in EUR, the invoice's currency: this house has not named the currency it keeps its costs in\./);
+  });
+});

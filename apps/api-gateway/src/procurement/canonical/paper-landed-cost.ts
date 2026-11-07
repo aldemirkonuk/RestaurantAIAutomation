@@ -70,6 +70,8 @@ export interface PaperHeaderRow {
   other_charges?: number | string | null;
   deposit_total?: number | string | null;
   tax?: number | string | null;
+  /** `procurement_documents.currency`: the vendor's money, as the paper says. */
+  currency?: string | null;
   /** `extracted->lines`: the intake snapshot, read only for each line's kind. */
   extracted_lines?: unknown;
 }
@@ -137,6 +139,8 @@ export interface DeliveryLandedCost {
   held: Map<string, string>;
   /** The gatekeeper's own refusal, by item (a re-verify names it). */
   refused: Map<string, string>;
+  /** Held as not in the house's money (QA 15 (5)): no fallback price. */
+  foreign: Set<string>;
   /** `document_id:line_no` of an unattached line paired to the one booked item. */
   paired: Map<string, string>;
   papers: PaperNote[];
@@ -163,6 +167,30 @@ function num(v: unknown): number | null {
 }
 
 const lineKey = (r: PaperLineRow) => `${r.document_id}:${r.line_no}`;
+
+/** An ISO 4217 code as written, or null when absent; "?" when unreadable. */
+export function currencyOf(v: string | null | undefined): string | null {
+  if (v == null || String(v).trim() === "") return null;
+  const c = String(v).trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(c) ? c : "?";
+}
+
+/** QA round 15 (5): why a paper's money is not the house's (null when it is,
+ * or when the house names none). No rate is recorded, so nothing converts. */
+export function notHouseMoney(
+  paperCurrency: string | null | undefined,
+  houseCurrency: string | null | undefined,
+): string | null {
+  const house = currencyOf(houseCurrency);
+  if (!house || house === "?") return null;
+  const money = currencyOf(paperCurrency);
+  if (money === house) return null;
+  if (money == null)
+    return `its invoice does not say what currency it is in, and this house keeps its costs in ${house}`;
+  if (money === "?")
+    return `its invoice gives its currency as "${String(paperCurrency).trim()}", which is not a currency code, and this house keeps its costs in ${house}`;
+  return `its invoice is in ${money} and this house keeps its costs in ${house}; no exchange rate is recorded, so a cost in ${money} is not booked as ${house}`;
+}
 
 function header(row: PaperHeaderRow): LandedCostHeader {
   return {
@@ -426,8 +454,13 @@ export function landDelivery(input: {
   papers: PaperHeaderRow[];
   lines: PaperLine[];
   booked: Map<string, number>;
+  /** `restaurants.currency`; null when the house has not named it. */
+  houseCurrency?: string | null;
 }): DeliveryLandedCost {
   const house = houseTaxForLotCost();
+  const houseMoney = currencyOf(input.houseCurrency);
+  const foreign = new Set<string>();
+  const moneyOf = new Map<string, Set<string>>();
   const byItem = new Map<string, LandedPrice>();
   const held = new Map<string, string>();
   const refused = new Map<string, string>();
@@ -524,6 +557,26 @@ export function landDelivery(input: {
           );
       continue;
     }
+    // QA round 15 (5): a paper not in the house's money holds by name.
+    const money = currencyOf(row.currency);
+    const notHouse = notHouseMoney(row.currency, input.houseCurrency);
+    if (notHouse) {
+      for (const f of mine)
+        if (f.key) {
+          foreign.add(f.key);
+          held.set(f.key, `${notHouse}. The lot stays provisional.`);
+        }
+      papers.push({
+        documentId: docId,
+        docNumber: row.doc_number ?? null,
+        leftOut: `Nothing on it was costed: ${notHouse}.`,
+        taxSaid: "",
+      });
+      continue;
+    }
+    for (const f of mine)
+      if (f.key && money)
+        moneyOf.set(f.key, (moneyOf.get(f.key) ?? new Set<string>()).add(money));
     const result = landedCost({
       header: header(row),
       house,
@@ -566,6 +619,15 @@ export function landDelivery(input: {
       said.set(f.key, [...(said.get(f.key) ?? []), f.said]);
   for (const [key, costed] of linesOf) {
     if (held.has(key)) continue;
+    const monies = [...(moneyOf.get(key) ?? [])];
+    if (monies.length > 1) {
+      foreign.add(key);
+      hold(
+        key,
+        `its invoices are in ${monies.join(" and ")}, and costs in different currencies are never added together. The lot stays provisional.`,
+      );
+      continue;
+    }
     const bottles = costed.reduce((s, l) => s + l.accepted_bottles, 0);
     const value = costed.reduce((s, l) => s + l.accepted_landed_value, 0);
     if (!(bottles > 0)) {
@@ -620,6 +682,9 @@ export function landDelivery(input: {
       stamp == null
         ? `What this cost holds for tax is not stated (cost tax basis: none). ${taxSaid}`
         : `This cost is stamped ${stamp}. ${taxSaid}`,
+      ...((!houseMoney || houseMoney === "?") && monies.length === 1
+        ? [`Costed in ${monies[0]}, the invoice's currency: this house has not named the currency it keeps its costs in.`]
+        : []),
     ].join(" ");
     byItem.set(key, {
       unitCost,
@@ -640,5 +705,5 @@ export function landDelivery(input: {
     });
   }
 
-  return { byItem, held, refused, paired, papers };
+  return { byItem, held, refused, paired, papers, foreign };
 }
