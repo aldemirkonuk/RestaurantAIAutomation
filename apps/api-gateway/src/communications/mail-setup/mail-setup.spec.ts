@@ -6,12 +6,20 @@
  * would show.
  */
 
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { MailSetupService, mailtoFor, mayChangeHouseMail } from "./mail-setup.service";
 import { HouseSenderService } from "../letters/house-sender.service";
 import {
   CHEF,
   G_CHEF,
+  G_DRIVE,
   G_MINE,
+  G_OTHER,
   G_REVOKED,
   HOUSE,
   ME,
@@ -155,3 +163,93 @@ describe("MailSetupService.read", () => {
     expect(failed.testLetter).toEqual({ failed: "Whether the test letter arrived could not be read.", latest: null });
   });
 });
+
+describe("MailSetupService.chooseSender", () => {
+  it("staff may not choose; nothing is written", async () => {
+    const { service, db } = build({});
+    await expect(service.chooseSender(HOUSE, ME, "staff", G_CHEF)).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.writes).toEqual([]);
+  });
+
+  it.each([
+    ["another house's grant", G_OTHER],
+    ["a file-only grant", G_DRIVE],
+    ["a revoked grant", G_REVOKED],
+    ["a grant that does not exist", "c0000000-0000-4000-8000-0000000000ff"],
+  ])("refuses %s in plain words; nothing is written", async (_l, id) => {
+    const { service, db } = build({});
+    await expect(service.chooseSender(HOUSE, ME, "manager", id)).rejects.toThrow(
+      new BadRequestException("That mailbox is not one this house can send from any more. Nothing was changed."),
+    );
+    expect(db.writes).toEqual([]);
+  });
+
+  it("saves the choice for this house, naming who chose", async () => {
+    const { service, db } = build({});
+    await service.chooseSender(HOUSE, ME, "manager", G_CHEF);
+    expect(db.writes).toHaveLength(1);
+    expect(db.writes[0]).toMatchObject({
+      table: "house_mail_sender_choice",
+      op: "upsert",
+      payload: { restaurant_id: HOUSE, connection_id: G_CHEF, chosen_by: ME },
+    });
+  });
+
+  it("null clears this house's choice only", async () => {
+    const { service, db } = build({});
+    await service.chooseSender(HOUSE, ME, "owner", null);
+    expect(db.writes).toEqual([
+      { table: "house_mail_sender_choice", op: "delete", payload: undefined, filters: [["eq", "restaurant_id", HOUSE]] },
+    ]);
+  });
+
+  it("a failed save says nothing was changed", async () => {
+    const { service } = build({ house_mail_sender_choice: { writeErrors: [{ message: "x" }] } });
+    await expect(service.chooseSender(HOUSE, ME, "owner", G_CHEF)).rejects.toThrow(
+      new ServiceUnavailableException("The choice could not be saved. Nothing was changed; try again."),
+    );
+  });
+});
+
+describe("MailSetupService.startTestLetter and makeAddress", () => {
+  it("staff may not start one", async () => {
+    const { service, db, inbound } = build({});
+    await expect(service.startTestLetter(HOUSE, ME, "staff")).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.makeAddress(HOUSE, ME, "staff")).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.writes).toEqual([]);
+    expect(inbound.addressFor).not.toHaveBeenCalled();
+  });
+
+  it("with no inbound domain, says so in plain words", async () => {
+    const { service } = build({}, { domain: null });
+    await expect(service.startTestLetter(HOUSE, ME, "owner")).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("makes the address, then writes one check for this house with a typed code", async () => {
+    const { service, db, inbound } = build({});
+    await service.startTestLetter(HOUSE, ME, "owner");
+    expect(inbound.addressFor).toHaveBeenCalledWith(HOUSE);
+    expect(db.writes).toHaveLength(1);
+    expect(db.writes[0].table).toBe("mail_setup_checks");
+    expect(db.writes[0].payload).toMatchObject({ restaurant_id: HOUSE, address: "r-1a2b3c4d@in.example.test", started_by: ME });
+    expect(db.writes[0].payload.code).toMatch(/^[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}$/);
+  });
+
+  it("draws a new code on a clash, and says it failed on any other error", async () => {
+    const clash = build({ mail_setup_checks: { writeErrors: [{ message: "dup", code: "23505" }, null] } });
+    await clash.service.startTestLetter(HOUSE, ME, "owner");
+    expect(clash.db.writes).toHaveLength(2);
+
+    const broken = build({ mail_setup_checks: { writeErrors: [{ message: "nope", code: "42501" }] } });
+    await expect(broken.service.startTestLetter(HOUSE, ME, "owner")).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(broken.db.writes).toHaveLength(1);
+  });
+
+  it("an address that could not be made says so, and writes no check", async () => {
+    const { service, db } = build({}, { address: null });
+    await expect(service.makeAddress(HOUSE, ME, "owner")).rejects.toBeInstanceOf(ServiceUnavailableException);
+    await expect(service.startTestLetter(HOUSE, ME, "owner")).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(db.writes).toEqual([]);
+  });
+});
+
