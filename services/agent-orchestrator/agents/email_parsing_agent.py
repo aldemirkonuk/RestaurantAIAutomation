@@ -239,6 +239,20 @@ class EmailParsingAgent(BaseAgent):
             )
             return
 
+        # The house the letter was written to, decided by the gateway that
+        # received it and carried on the event (QA round 25, cross-tenant
+        # BLOCKER). Two houses may list one vendor address, so neither the
+        # sender, nor an order, nor `default_restaurant_id` may decide it. An
+        # event with no house is attributed to no house here: the gateway
+        # bridge keeps it for the operator, unattributed.
+        restaurant_id = str(payload.get("restaurant_id") or "").strip()
+        if not restaurant_id:
+            self.logger.warning(
+                "Inbound email carries no house; not attributed "
+                f"(house_resolution={payload.get('house_resolution')!r})"
+            )
+            return
+
         # Step 1: Try thread matching (gmail_thread_id first, then headers)
         matched_order_id = None
         matched_thread_id = None
@@ -248,7 +262,9 @@ class EmailParsingAgent(BaseAgent):
 
         # Step 1a: Match by Gmail thread ID — most reliable since we store it on send
         if gmail_thread_id:
-            match_result = await self._match_by_gmail_thread_id(gmail_thread_id)
+            match_result = await self._match_by_gmail_thread_id(
+                gmail_thread_id, restaurant_id
+            )
             if match_result:
                 matched_order_id = match_result["order_id"]
                 matched_thread_id = match_result["thread_id"]
@@ -261,7 +277,9 @@ class EmailParsingAgent(BaseAgent):
 
         # Step 1b: Fall back to In-Reply-To / References header matching
         if not matched_order_id and (in_reply_to or references):
-            match_result = await self._match_by_headers(in_reply_to, references)
+            match_result = await self._match_by_headers(
+                in_reply_to, references, restaurant_id
+            )
             if match_result:
                 matched_order_id = match_result["order_id"]
                 matched_thread_id = match_result["thread_id"]
@@ -274,7 +292,9 @@ class EmailParsingAgent(BaseAgent):
 
         # Step 2: If no header match, try LLM context matching
         if not matched_order_id:
-            match_result = await self._match_by_context(sender_email, subject, body)
+            match_result = await self._match_by_context(
+                sender_email, subject, body, restaurant_id
+            )
             if match_result:
                 matched_order_id = match_result["order_id"]
                 confidence = match_result["confidence"]
@@ -284,7 +304,7 @@ class EmailParsingAgent(BaseAgent):
                 )
 
         # Step 3: Determine provider
-        provider_id = await self._find_provider_by_email(sender_email)
+        provider_id = await self._find_provider_by_email(sender_email, restaurant_id)
 
         # Step 4: Assign thread_id
         if not matched_thread_id:
@@ -297,9 +317,6 @@ class EmailParsingAgent(BaseAgent):
                     matched_thread_id = str(uuid.uuid4())
             else:
                 matched_thread_id = str(uuid.uuid4())
-
-        # Step 5: Determine restaurant_id from provider or order
-        restaurant_id = await self._get_restaurant_id(matched_order_id, provider_id)
 
         # Step 6: Detect intent
         detected_intent = await self._detect_intent(subject, body)
@@ -411,13 +428,14 @@ class EmailParsingAgent(BaseAgent):
     # ── Header-Based Thread Matching ──────────────────────────────────
 
     async def _match_by_gmail_thread_id(
-        self, gmail_thread_id: str
+        self, gmail_thread_id: str, restaurant_id: str
     ) -> Optional[Dict[str, Any]]:
-        """Match by Gmail thread ID stored on the outbound conversation row"""
+        """Match by Gmail thread ID stored on this house's conversation rows"""
         try:
             result = (
                 await self.db.supabase.table("procurement_conversations")
                 .select("id, order_id, thread_id")
+                .eq("restaurant_id", restaurant_id)
                 .eq("gmail_thread_id", gmail_thread_id)
                 .limit(1)
                 .execute()
@@ -434,9 +452,9 @@ class EmailParsingAgent(BaseAgent):
         return None
 
     async def _match_by_headers(
-        self, in_reply_to: str, references: str
+        self, in_reply_to: str, references: str, restaurant_id: str
     ) -> Optional[Dict[str, Any]]:
-        """Match by In-Reply-To or References headers"""
+        """Match by In-Reply-To or References headers, in this house's rows"""
         # Parse reference IDs
         ref_ids = []
         if in_reply_to:
@@ -453,6 +471,7 @@ class EmailParsingAgent(BaseAgent):
                 result = (
                     await self.db.supabase.table("procurement_conversations")
                     .select("id, order_id, thread_id")
+                    .eq("restaurant_id", restaurant_id)
                     .eq("message_id", ref_id)
                     .limit(1)
                     .execute()
@@ -512,15 +531,17 @@ class EmailParsingAgent(BaseAgent):
             pass
 
     async def _match_by_context(
-        self, sender_email: str, subject: str, body: str
+        self, sender_email: str, subject: str, body: str, restaurant_id: str
     ) -> Optional[Dict[str, Any]]:
-        """Use LLM to match a new email to an existing order by context"""
+        """Use LLM to match a new email to one of this house's open orders"""
         if not self.gemini_model:
             # Fallback: try simple keyword matching
-            return await self._simple_keyword_match(sender_email, subject, body)
+            return await self._simple_keyword_match(
+                sender_email, subject, body, restaurant_id
+            )
 
-        # Load active orders for this sender's provider
-        provider_id = await self._find_provider_by_email(sender_email)
+        # Load this house's active orders with this sender's provider
+        provider_id = await self._find_provider_by_email(sender_email, restaurant_id)
         if not provider_id:
             return None
 
@@ -528,6 +549,7 @@ class EmailParsingAgent(BaseAgent):
             orders_result = (
                 await self.db.supabase.table("procurement_orders")
                 .select("id, wine_name, quantity, status, notes, created_at")
+                .eq("restaurant_id", restaurant_id)
                 .eq("provider_id", provider_id)
                 .in_("status", ["pending", "approved", "ordered", "negotiating"])
                 .order("created_at", desc=True)
@@ -591,13 +613,15 @@ Which order is this email most likely about? Respond with ONLY valid JSON:
 
         except Exception as e:
             self.logger.error(f"LLM context matching failed: {e}")
-            return await self._simple_keyword_match(sender_email, subject, body)
+            return await self._simple_keyword_match(
+                sender_email, subject, body, restaurant_id
+            )
 
     async def _simple_keyword_match(
-        self, sender_email: str, subject: str, body: str
+        self, sender_email: str, subject: str, body: str, restaurant_id: str
     ) -> Optional[Dict[str, Any]]:
-        """Fallback: match by wine name keywords in subject/body"""
-        provider_id = await self._find_provider_by_email(sender_email)
+        """Fallback: match this house's orders by wine name keywords"""
+        provider_id = await self._find_provider_by_email(sender_email, restaurant_id)
         if not provider_id:
             return None
 
@@ -605,6 +629,7 @@ Which order is this email most likely about? Respond with ONLY valid JSON:
             orders = (
                 await self.db.supabase.table("procurement_orders")
                 .select("id, wine_name")
+                .eq("restaurant_id", restaurant_id)
                 .eq("provider_id", provider_id)
                 .in_("status", ["pending", "approved", "ordered", "negotiating"])
                 .execute()
@@ -767,9 +792,16 @@ Respond with ONLY valid JSON:
         """
         return sender_address(from_header)
 
-    async def _find_provider_by_email(self, email: str) -> Optional[str]:
+    async def _find_provider_by_email(
+        self, email: str, restaurant_id: Optional[str]
+    ) -> Optional[str]:
         """
-        Find provider ID by contact email.
+        Find this house's provider ID by contact email.
+
+        QA round 25: both searches are scoped to the house the letter was
+        written to. Two houses may list one address (unique per
+        ``(restaurant_id, lower(contact_email))``), and the unscoped search
+        answered with the first row of any house. No house: no provider.
 
         OD-99: this used to call an RPC named `find_provider_by_email` first.
         No CREATE FUNCTION for it exists anywhere in this repository and
@@ -787,7 +819,8 @@ Respond with ONLY valid JSON:
           1. `contact_email` -- the plain column, matched case-insensitively.
           2. `primary_contact->>email` -- the JSONB the RPC was named for.
         """
-        if not email:
+        restaurant_id = (restaurant_id or "").strip()
+        if not email or not restaurant_id:
             return None
 
         normalized = email.strip().lower()
@@ -796,6 +829,7 @@ Respond with ONLY valid JSON:
             result = (
                 await self.db.supabase.table("providers")
                 .select("id, contact_email")
+                .eq("restaurant_id", restaurant_id)
                 .ilike("contact_email", like_exactly(normalized))
                 .limit(1)
                 .execute()
@@ -809,6 +843,7 @@ Respond with ONLY valid JSON:
             result = (
                 await self.db.supabase.table("providers")
                 .select("id")
+                .eq("restaurant_id", restaurant_id)
                 .eq("primary_contact->>email", normalized)
                 .limit(1)
                 .execute()
@@ -836,26 +871,6 @@ Respond with ONLY valid JSON:
             return None
         except Exception:
             return None
-
-    async def _get_restaurant_id(
-        self, order_id: Optional[str], provider_id: Optional[str]
-    ) -> Optional[str]:
-        """Get restaurant_id from order or provider"""
-        if order_id:
-            try:
-                result = (
-                    await self.db.supabase.table("procurement_orders")
-                    .select("restaurant_id")
-                    .eq("id", order_id)
-                    .limit(1)
-                    .execute()
-                )
-                if result.data:
-                    return result.data[0].get("restaurant_id")
-            except Exception:
-                pass
-        # Fallback to config
-        return self.raw_config.get("default_restaurant_id")
 
     async def _detect_intent(self, subject: str, body: str) -> str:
         """Intent detection with scarcity/urgency awareness"""

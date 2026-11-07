@@ -124,7 +124,7 @@ def _run(agent, from_header, lookups):
     async def no_match(*_a, **_k):
         return None
 
-    async def find_provider(email):
+    async def find_provider(email, _house):
         lookups.append(email)
         raise _Stop()  # the attribution decision is all this test needs
 
@@ -139,6 +139,7 @@ def _run(agent, from_header, lookups):
         "gmail_thread_id": "",
         "in_reply_to": "",
         "references": "",
+        "restaurant_id": "house-A",
     }
     try:
         asyncio.run(agent._process_inbound_email(payload))
@@ -272,8 +273,9 @@ def test_a_wildcard_domain_names_nobody(header):
 def test_a_wildcard_sender_reaches_no_provider_in_either_house(header):
     address = sender_address(header)
     assert address is not None  # it parses; the lookup must still miss
-    found = asyncio.run(_agent_over(TWO_HOUSES)._find_provider_by_email(address))
-    assert found is None
+    for house in ("house-A", "house-B"):
+        agent = _agent_over(TWO_HOUSES)
+        assert asyncio.run(agent._find_provider_by_email(address, house)) is None
 
 
 def test_an_underscore_address_matches_only_itself_and_keeps_its_case():
@@ -289,8 +291,10 @@ def test_an_underscore_address_matches_only_itself_and_keeps_its_case():
             "contact_email": "Ayse_K@BigDist.com",
         },
     ]
-    found = asyncio.run(_agent_over(rows)._find_provider_by_email("ayse_k@bigdist.com"))
-    assert found == "prov-K"
+    agent = _agent_over(rows)
+    find = agent._find_provider_by_email
+    assert asyncio.run(find("ayse_k@bigdist.com", "house-A")) == "prov-K"
+    assert asyncio.run(find("ayse_k@bigdist.com", "house-B")) is None
 
 
 def test_like_exactly_escapes_every_wildcard():
