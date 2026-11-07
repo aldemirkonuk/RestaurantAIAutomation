@@ -27,7 +27,7 @@ import {
   readHouseItemResearch,
   type HouseItemResearchView,
 } from "./house-item-research";
-import { classifyStock } from "../common/stock-status";
+import { summarizeStock } from "../common/stock-status";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -1503,7 +1503,8 @@ export class InventoryService {
       0,
     );
 
-    // ONE definition, from common/stock-status.ts, over the SAME rows.
+    // ONE definition, from common/stock-status.ts, over the SAME rows, and
+    // the same helper the dashboard's inventory card reads (summarizeStock).
     //
     // `criticalCount` was `stock_live === 0` — which is "out of stock", a
     // different question — so it answered 0 for the sim tenant at the exact
@@ -1513,27 +1514,16 @@ export class InventoryService {
     // both from one classification over one array means the three numbers on
     // the page can no longer disagree about the same wine.
     //
-    // OD-161: a wine nobody has counted (`last_counted_at` null; only a count
-    // stamps it) is `unknown`, not zero, unless receipts and sales gave it a
-    // figure. Which uncounted rows have one is decided in SQL, by a live
-    // stock movement (a_received_wine_not_counted_yet_can_run_low), and this
-    // summary does not read the ledger, so an uncounted row is classified
-    // only when the view holds it (below par on received minus sold). Any
-    // other uncounted row stays `unknown`. A failed view read classifies none.
-    const inView = new Set(lowStock.map((item: any) => item.id));
-    const bands = inventory.map((item: any) =>
-      item.last_counted_at != null || inView.has(item.id)
-        ? classifyStock(item.stock_live, item.threshold_min)
-        : ("unknown" as const),
-    );
-    const lowStockCount = bands.filter(
-      (b) => b === "low" || b === "critical",
-    ).length;
-    const criticalCount = bands.filter((b) => b === "critical").length;
-    const atParCount = bands.filter((b) => b === "at_par").length;
-    // A wine whose stock or par we could not read is NOT healthy. Folding it
-    // into the healthy count is how an unreadable row becomes a reassuring one.
-    const unknownCount = bands.filter((b) => b === "unknown").length;
+    // OD-161: a wine nobody has counted is `unknown` unless the view holds it
+    // (receipts and sales put it below par); see `bandOfRow`. A failed view
+    // read classifies no uncounted row.
+    const {
+      lowStockCount,
+      criticalCount,
+      atParCount,
+      unknownCount,
+      healthyCount,
+    } = summarizeStock(inventory, rawLowStock);
 
     // `v_low_stock_items` is still read, and any disagreement with the
     // classification above is REPORTED rather than reconciled silently: the
@@ -1561,7 +1551,7 @@ export class InventoryService {
       // Was `totalItems - lowStockCount`, which counted every unreadable and
       // every at-par row as healthy. Healthy is now a band a row is IN, not
       // the remainder after subtracting the rows we noticed.
-      healthyCount: bands.filter((b) => b === "healthy").length,
+      healthyCount,
       toastMappedCount,
       toastUnmappedCount,
     };

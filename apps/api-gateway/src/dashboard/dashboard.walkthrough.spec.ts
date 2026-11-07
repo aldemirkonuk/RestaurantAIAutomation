@@ -457,15 +457,22 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
     it("counts a never-counted row neither critical nor healthy in the summary", async () => {
       const summaryDb = db as any;
       summaryDb.getRestaurantInventory = jest.fn().mockResolvedValue([
-        { id: "inv-new", stock_live: 0, last_counted_at: null },
+        {
+          id: "inv-new",
+          stock_live: 0,
+          threshold_min: 3,
+          last_counted_at: null,
+        },
         {
           id: "inv-empty",
           stock_live: 0,
+          threshold_min: 3,
           last_counted_at: "2026-11-01T10:00:00Z",
         },
         {
           id: "inv-full",
           stock_live: 9,
+          threshold_min: 3,
           last_counted_at: "2026-11-01T10:00:00Z",
         },
       ]);

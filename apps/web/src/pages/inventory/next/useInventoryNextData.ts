@@ -150,6 +150,20 @@ export function standingOf(stock: number | null, par: number | null): Standing {
   return 'above';
 }
 
+/**
+ * OD-161's one rule for a title on this page: a title the server says nobody
+ * ever counted (`neverCounted`) whose figure is 0 stands `uncounted`, never
+ * Out, because that 0 is either the default of a row nothing moved or receipts
+ * minus sales. Above 0 the figure comes from live lots, which only stock
+ * movements write, so it stands by the figure like any other. The row, the
+ * map tile, the chips, the order and the read sentence all read the standing
+ * this returns, so no two of them can answer differently for one title.
+ */
+export function standingFor(stock: number | null, par: number | null, neverCounted: boolean): Standing {
+  if (neverCounted && stock !== null && stock <= 0) return 'uncounted';
+  return standingOf(stock, par);
+}
+
 /** The map's legend in this page's words: the chips say Out / Below par / Reconcile (INV-W19). */
 export const MAP_WORDS: Record<MapTone, string> = {
   green: 'At or above par',
@@ -162,10 +176,9 @@ export const MAP_WORDS: Record<MapTone, string> = {
 /** A map tile's tint by the same standing the table and chips use. */
 export function mapTone(item: LegacyItem): MapTone {
   if ((item.shadowStock ?? 0) > 0) return 'violet';
-  // Never counted and at 0: that 0 is not a count, so it is not Out (OD-161).
-  // A never-counted tile above 0 is tinted by its figure like any other.
-  if (item.lastCounted === null && (item.liveStock ?? 0) <= 0) return 'neutral';
-  switch (standingOf(item.liveStock ?? null, item.threshold ?? null)) {
+  // Never counted and at 0 is not Out (OD-161): standingFor gives 'uncounted',
+  // which falls to neutral below.
+  switch (standingFor(item.liveStock ?? null, item.threshold ?? null, item.lastCounted === null)) {
     case 'out':
       return 'rose';
     case 'below':
@@ -271,7 +284,7 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     // standing, so it still counts under Below par, in the order and in the
     // read sentence, as the low-stock alert does. A row that did not carry the
     // field at all claims nothing either way and keeps its standing.
-    standing: stock !== null && stock <= 0 && r.lastCountedAt === null ? 'uncounted' : standingOf(stock, par),
+    standing: standingFor(stock, par, r.lastCountedAt === null),
     neverCounted: r.lastCountedAt === null,
     active: typeof r.is_active === 'boolean' ? r.is_active : null,
   };
@@ -286,14 +299,20 @@ export function suggestedToPar(row: InvRow): number | null {
 
 /* ── the order: "Needs you first" ────────────────────────────────────────── */
 
-/** 0 out, 1 below par, 2 everything else. */
-export function severity(row: InvRow): 0 | 1 | 2 {
+/**
+ * 0 out, 1 below par, 2 not counted yet, 3 everything else. A never-counted 0
+ * can be a wine received and sold down to nothing, which the low-stock alert
+ * calls critical, so it is not left under "Everything else" (QA 9c); it is
+ * not under Out either, because nobody counted it.
+ */
+export function severity(row: InvRow): 0 | 1 | 2 | 3 {
   if (row.standing === 'out') return 0;
   if (row.standing === 'below') return 1;
-  return 2;
+  if (row.standing === 'uncounted') return 2;
+  return 3;
 }
 
-export const SEVERITY_GROUP = ['Out', 'Below par', 'Everything else, by runway'] as const;
+export const SEVERITY_GROUP = ['Out', 'Below par', 'Not counted yet', 'Everything else, by runway'] as const;
 
 /**
  * Severity first, then runway ascending, then the name. The legacy sort
@@ -548,9 +567,17 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
   const out = rows.filter((r) => r.standing === 'out').length;
   const below = rows.filter((r) => r.standing === 'below').length;
   const dry = rows.filter(dryTomorrow).length;
+  // A never-counted 0 is neither out nor fine, so it is said in words and the
+  // sentence never claims "Nothing is out or below par" past it (QA 9c).
+  const unc = rows.filter((r) => r.standing === 'uncounted').length;
   const lead = read.length < n ? 'Of the titles read, nothing' : 'Nothing';
   if (read.length === 0) {
     // No stock was read, so nothing can be said to be out or fine.
+  } else if (out === 0 && below === 0 && unc > 0) {
+    const one = unc === 1;
+    let s = `${fmtCount(unc)} ${one ? 'is' : 'are'} not counted yet, so whether ${one ? 'it is' : 'they are'} out is not known until ${one ? 'it is' : 'they are'} counted; ${read.length < n ? 'of the other titles read, none' : 'nothing else'} is out or below par`;
+    if (dry > 0) s += `, but ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow`;
+    parts.push(`${s}.`);
   } else if (out === 0 && below === 0) {
     parts.push(dry === 0 ? `${lead} is out or below par.` : `${lead} is out or below par, but ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow.`);
   } else {
@@ -558,6 +585,7 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
       out === 0
         ? `None is out; ${fmtCount(below)} ${below === 1 ? 'is' : 'are'} below par`
         : `${fmtCount(out)} ${out === 1 ? 'is' : 'are'} out${below > 0 ? `, and ${fmtCount(below)} more ${below === 1 ? 'is' : 'are'} below par` : ''}`;
+    if (unc > 0) s += `; ${fmtCount(unc)} more ${unc === 1 ? 'is' : 'are'} not counted yet`;
     if (dry > 0) s += `; ${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow`;
     parts.push(`${s}.`);
   }

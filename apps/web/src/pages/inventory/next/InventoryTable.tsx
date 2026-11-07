@@ -92,7 +92,7 @@ function zoneCell(row: InvRow, zoneName: (id: string | null) => string, unavaila
 
 export default function InventoryTable(props: InventoryTableProps) {
   const { rows, grouped, openId, onToggle, currency, canManage, advice, onPriceChanged, zoneName } = props;
-  const counts = [0, 0, 0];
+  const counts = [0, 0, 0, 0];
   for (const r of rows) counts[severity(r)] += 1;
   const selecting = props.selected !== undefined && props.onSelect !== undefined;
   const span = COLUMNS.length + (selecting ? 1 : 0);
@@ -181,7 +181,7 @@ export default function InventoryTable(props: InventoryTableProps) {
                   <tr className="iv-group">
                     <td colSpan={span}>
                       {SEVERITY_GROUP[sev]}
-                      {sev < 2 ? <span className="iv-num"> {fmtCount(counts[sev])}</span> : null}
+                      {sev < 3 ? <span className="iv-num"> {fmtCount(counts[sev])}</span> : null}
                     </td>
                   </tr>
                 ) : null}
