@@ -1,4 +1,4 @@
-import { UnauthorizedException } from "@nestjs/common";
+import { ServiceUnavailableException, UnauthorizedException } from "@nestjs/common";
 import * as bcrypt from "bcrypt";
 import { AuthService } from "./auth.service";
 import { asDatabaseService, makeStubDb } from "../team/testing/supabase-stub";
@@ -115,5 +115,70 @@ describe("the emailed sign-in code finds the row by the shared lookup (R11-02)",
     const { mail } = await issue("chef@bistro.com", "CHEF@bistro.com");
     expect(mail.sendEmail).toHaveBeenCalledTimes(1);
     expect((mail.sendEmail.mock.calls[0] as any)[0].to).toEqual(["chef@bistro.com"]);
+  });
+});
+
+describe("reset, sign-in-methods and the Google link find the row by the shared lookup (R11-02)", () => {
+  it("a password reset typed exactly as an unfolded row is stored is filed for that account (read 1)", async () => {
+    const { svc, db } = service([account("owner", "Chef@Bistro.com")]);
+    await expect(svc.requestPasswordReset("Chef@Bistro.com", null)).resolves.toEqual({
+      sent: true,
+    });
+    expect(db.tables.password_resets).toHaveLength(1);
+    expect(db.tables.password_resets[0].user_id).toBe("owner");
+  });
+
+  it("R1: reset mails the stored address", async () => {
+    const { svc, db, mail } = service([account("owner", "Chef@Bistro.com")]);
+    await svc.requestPasswordReset("Chef@Bistro.com", null);
+    expect((mail.sendEmail.mock.calls[0] as any)[0].to).toEqual(["Chef@Bistro.com"]);
+    expect(db.tables.password_resets[0].email).toBe("Chef@Bistro.com");
+  });
+
+  it("R9: a twin's reset does not throttle", async () => {
+    const { svc, db, mail } = service([account("owner", "Chef@Bistro.com"), account("twin", "chef@bistro.com")]);
+    db.tables.password_resets.push({ user_id: "twin", email: "chef@bistro.com", created_at: new Date().toISOString() });
+    await svc.requestPasswordReset("Chef@Bistro.com", null);
+    expect(mail.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("sign-in-methods finds an unfolded row typed exactly (read 1) and reports its password", async () => {
+    const { svc } = service([account("owner", "Chef@Bistro.com")]);
+    const got = await svc.resolveSignInMethods("Chef@Bistro.com");
+    expect(got.methods.map((m: any) => m.id)).toContain("password");
+  });
+
+  it("sign-in-methods on a failed users read is 503, never a described empty account", async () => {
+    const db = makeStubDb({ users: [] }, { "users:select": { message: "connection reset" } });
+    const svc = new AuthService(
+      { sign: () => "tok", signAsync: async () => "tok" } as any,
+      { get: () => undefined } as any,
+      asDatabaseService(db),
+      { isBlacklisted: async () => false, blacklistToken: async () => undefined } as any,
+      { sendEmail: jest.fn() } as any,
+    );
+    await expect(svc.resolveSignInMethods("chef@bistro.com")).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+  });
+
+  it("the Google link on a failed users read is 503 and writes no account", async () => {
+    const db = makeStubDb({ users: [] }, { "users:select": { message: "connection reset" } });
+    const svc = new AuthService(
+      { sign: () => "tok", signAsync: async () => "tok" } as any,
+      { get: () => undefined } as any,
+      asDatabaseService(db),
+      { isBlacklisted: async () => false, blacklistToken: async () => undefined } as any,
+      { sendEmail: jest.fn() } as any,
+    );
+    await expect(
+      svc.findOrCreateOAuthUser({
+        provider: "google",
+        providerId: "g-1",
+        email: "Chef@Bistro.com",
+        name: "Chef",
+      }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(db.tables.users).toHaveLength(0);
   });
 });
