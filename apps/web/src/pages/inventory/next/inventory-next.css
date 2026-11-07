@@ -395,6 +395,7 @@
   color: var(--warn);
 }
 .iv-status[data-standing='unknown'],
+.iv-status[data-standing='uncounted'],
 .iv-status[data-standing='nopar'] {
   color: var(--ink-4);
   font-weight: 500;

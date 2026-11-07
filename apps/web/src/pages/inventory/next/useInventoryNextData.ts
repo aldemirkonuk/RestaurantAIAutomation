@@ -60,9 +60,11 @@ export const EM = '—';
  * Where a title stands against its par. `out` is counted apart from `below`
  * (founder, INV-W4 F-2), and `below` is strictly stock < par (ADR 0129).
  * `nopar` is a par of 0: there is nothing to be below. `unknown` is a stock
- * that was not read.
+ * that was not read. `uncounted` is a title nobody has counted: its stock is
+ * received minus sold (or the default 0 when nothing moved), never a count,
+ * so it is never called Out (OD-161); the stock column still shows the figure.
  */
-export type Standing = 'out' | 'below' | 'at' | 'above' | 'nopar' | 'unknown';
+export type Standing = 'out' | 'below' | 'at' | 'above' | 'nopar' | 'unknown' | 'uncounted';
 
 export interface ZoneQty {
   locationId: string | null;
@@ -145,12 +147,14 @@ export const MAP_WORDS: Record<MapTone, string> = {
   amber: 'Below par',
   rose: 'Out',
   violet: 'Reconcile',
-  neutral: 'Not read, or no par set',
+  neutral: 'Not read, not counted yet, or no par set',
 };
 
 /** A map tile's tint by the same standing the table and chips use. */
 export function mapTone(item: LegacyItem): MapTone {
   if ((item.shadowStock ?? 0) > 0) return 'violet';
+  // Never counted: the figure is receipts and sales, not a count (OD-161).
+  if (item.lastCounted === null) return 'neutral';
   switch (standingOf(item.liveStock ?? null, item.threshold ?? null)) {
     case 'out':
       return 'rose';
@@ -252,7 +256,10 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     zones,
     providerId: text(r.providerId),
     providerName: text(r.providerName),
-    standing: standingOf(stock, par),
+    // OD-161: a title the server says nobody counted (lastCountedAt sent as
+    // null) is "Not counted yet", never Out. A row that did not carry the
+    // field at all claims nothing either way and keeps its standing.
+    standing: stock !== null && r.lastCountedAt === null ? 'uncounted' : standingOf(stock, par),
     active: typeof r.is_active === 'boolean' ? r.is_active : null,
   };
 }

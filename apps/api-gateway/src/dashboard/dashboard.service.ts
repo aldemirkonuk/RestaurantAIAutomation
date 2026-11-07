@@ -629,7 +629,9 @@ export class DashboardService {
       inventory?.reduce((sum, item) => sum + (item.stock_live || 0), 0) || 0;
     const lowStockCount = lowStock?.length || 0;
     // OD-161: a wine nobody has counted is unknown, not zero. It is neither
-    // critical nor healthy here; `v_low_stock_items` already leaves it out.
+    // critical nor healthy here. `v_low_stock_items` holds it only when
+    // receipts and sales gave it a figure below par, and then it counts in
+    // lowStockCount, which is the view's length.
     const counted = (inventory ?? []).filter(
       (item) => item.last_counted_at != null,
     );
@@ -1425,7 +1427,9 @@ export class DashboardService {
         await Promise.allSettled([
           client
             .from("v_low_stock_items")
-            .select("id, stock_live, threshold_min, wine_name, vintage")
+            .select(
+              "id, stock_live, threshold_min, wine_name, vintage, last_counted_at",
+            )
             .eq("restaurant_id", restaurantId),
           client
             .from("procurement_orders")
@@ -1467,7 +1471,12 @@ export class DashboardService {
           type: "low_stock",
           severity: item.stock_live === 0 ? "critical" : "warning",
           title: "Low Stock",
-          message: `${label} — ${bottles(item.stock_live)} left, you keep at least ${item.threshold_min}`,
+          // OD-161: a wine nobody counted is in the view only when receipts
+          // and sales gave it a figure; say whose figure it is.
+          message:
+            item.last_counted_at === null
+              ? `${label} — ${bottles(item.stock_live)} by receipts and sales, not counted yet, you keep at least ${item.threshold_min}`
+              : `${label} — ${bottles(item.stock_live)} left, you keep at least ${item.threshold_min}`,
           actionUrl: `/inventory?highlight=${item.id}`,
           createdAt: new Date().toISOString(),
         });

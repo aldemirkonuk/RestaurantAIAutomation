@@ -56,6 +56,8 @@ function statusWord(row: InvRow): string {
       return dry ? 'Below par · dry tomorrow' : 'Below par';
     case 'unknown':
       return 'Stock not read';
+    case 'uncounted':
+      return 'Not counted yet';
     case 'nopar':
       return dry ? 'Dry tomorrow' : 'No par set';
     default:

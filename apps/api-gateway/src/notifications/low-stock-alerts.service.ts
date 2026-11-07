@@ -150,6 +150,12 @@ interface LowStockRow {
   currentStock: number;
   threshold: number;
   severity: "critical" | "low";
+  /**
+   * OD-161: nobody has counted this wine; `currentStock` is received minus
+   * sold (a_received_wine_not_counted_yet_can_run_low). The alert says so in
+   * words instead of passing a computed figure off as a count.
+   */
+  notCounted?: boolean;
 }
 
 /**
@@ -777,7 +783,11 @@ export class LowStockAlertsService {
     const priority: "critical" | "high" =
       criticalCount > 0 ? "critical" : "high";
     const list = wines
-      .map((w) => `${w.wineName} (${w.currentStock}/${w.threshold})`)
+      .map((w) =>
+        w.notCounted
+          ? `${w.wineName} (${w.currentStock}/${w.threshold}, not counted yet)`
+          : `${w.wineName} (${w.currentStock}/${w.threshold})`,
+      )
       .join(", ");
     // No emoji in a stored title (ADR 0042 / the 2026-09-03 house rule): the
     // inbox draws the register's mark itself, and an emoji written into the
@@ -799,7 +809,9 @@ export class LowStockAlertsService {
         title,
         message:
           wines.length === 1
-            ? `Only ${wines[0].currentStock} bottles remaining (par: ${wines[0].threshold})`
+            ? wines[0].notCounted
+              ? `${wines[0].currentStock} bottles by receipts and sales, not counted yet (par: ${wines[0].threshold})`
+              : `Only ${wines[0].currentStock} bottles remaining (par: ${wines[0].threshold})`
             : `Just crossed below par: ${list}`,
         priority,
         actionUrl: "/inventory?filter=low-stock",
@@ -815,6 +827,7 @@ export class LowStockAlertsService {
             currentStock: w.currentStock,
             threshold: w.threshold,
             severity: w.severity,
+            notCounted: w.notCounted === true,
           })),
         },
       },
@@ -907,6 +920,7 @@ export class LowStockAlertsService {
             currentStock: w.currentStock,
             threshold: w.threshold,
             severity: w.severity,
+            notCounted: w.notCounted === true,
           })),
         },
       },
@@ -1048,6 +1062,7 @@ export class LowStockAlertsService {
       threshold: w.threshold,
       severity: w.severity,
       wineId: w.wineId,
+      notCounted: w.notCounted === true,
     }));
     try {
       await this.gmail.sendLowStockDigest({
@@ -1305,6 +1320,10 @@ export class LowStockAlertsService {
       currentStock,
       threshold,
       severity,
+      // The view's last column (a_received_wine_not_counted_yet_can_run_low).
+      // Strictly null: a view without the column (undefined) only ever held
+      // counted rows.
+      notCounted: raw.last_counted_at === null,
     };
   }
 

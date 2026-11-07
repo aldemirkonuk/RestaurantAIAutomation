@@ -1486,3 +1486,41 @@ describe('the legacy velocity sort and column-header sort (round 4)', () => {
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Needs you first');
   });
 });
+
+describe('A title nobody counted says "Not counted yet", never Out (OD-161)', () => {
+  it('stands a never-counted row apart from Out, and a counted 0 is still Out', () => {
+    const uncounted = toRow({ id: 'u', wineId: null, stockLive: 0, thresholdMin: 3, lastCountedAt: null } as never, null);
+    const received = toRow({ id: 'r', wineId: null, stockLive: 2, thresholdMin: 3, lastCountedAt: null } as never, null);
+    const counted = toRow(
+      { id: 'c', wineId: null, stockLive: 0, thresholdMin: 3, lastCountedAt: '2026-11-01T10:00:00Z' } as never,
+      null,
+    );
+    const silent = toRow({ id: 's', wineId: null, stockLive: 0, thresholdMin: 3 } as never, null);
+    expect([uncounted.standing, received.standing, counted.standing, silent.standing]).toEqual([
+      'uncounted',
+      'uncounted',
+      'out',
+      'out',
+    ]);
+    // The figure is kept: received minus sold is what the stock column shows.
+    expect(received.stock).toBe(2);
+  });
+
+  it('writes "Not counted yet" in the row, with the figure beside it, and no Out', () => {
+    mock.data = data({
+      rows: [row({ id: 'n', name: 'Received Red', stock: 2, par: 3, lastCountedAt: null, standing: 'uncounted' })],
+    });
+    renderPage();
+    const tr = screen.getByTestId('inv-row-n');
+    expect(within(tr).getByText('Not counted yet')).toBeTruthy();
+    expect(tr.querySelector('td[data-label="Live / shadow · par"]')!.textContent).toMatch(/^2/);
+    expect(tr.textContent).not.toMatch(/\bOut\b/);
+  });
+
+  it('tints a never-counted tile as not read, not as Out', () => {
+    const tile = { id: 'm', liveStock: 0, threshold: 3, shadowStock: 0, lastCounted: null } as never;
+    expect(mapTone(tile)).toBe('neutral');
+    expect(mapTone({ ...(tile as object), lastCounted: '2026-11-01T10:00:00Z' } as never)).toBe('rose');
+    expect(MAP_WORDS.neutral).toContain('not counted yet');
+  });
+});
