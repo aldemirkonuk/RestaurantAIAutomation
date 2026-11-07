@@ -15,6 +15,7 @@ import {
   HOUSE_ALREADY_AT_PLACE,
   HOUSE_DETAIL_TOO_LONG,
   HOUSE_NOT_OPENED,
+  HOUSE_OPEN_SIGN_IN_AGAIN,
   HouseWriteError,
   PLACE_ID_TOO_LONG,
   isSharedPlace,
@@ -399,6 +400,7 @@ describe("the sentences (G-L)", () => {
   const sentences = [
     HOUSE_DETAIL_TOO_LONG,
     HOUSE_NOT_OPENED,
+    HOUSE_OPEN_SIGN_IN_AGAIN,
     PLACE_ID_TOO_LONG,
     ...Object.values(CAP).map((cap) => cap.message),
   ];
@@ -420,7 +422,7 @@ describe("the sentences (G-L)", () => {
   ];
 
   it("name no rule, no storage and no other house", () => {
-    expect(sentences).toHaveLength(12);
+    expect(sentences).toHaveLength(13);
     for (const sentence of sentences)
       for (const word of forbidden)
         expect(sentence.toLowerCase()).not.toContain(word);
@@ -686,18 +688,22 @@ describe("createFirstHouse", () => {
     expect(run.deletes).toEqual([]);
   });
 
-  it("says a failed mint plainly and keeps the opened house (E7)", async () => {
+  it("says a failed mint as an open house to sign in to, and keeps it (E7)", async () => {
     const run = makeService();
     (run.svc as any).generateTokens.mockRejectedValue(
       new ServiceUnavailableException("token store is down"),
     );
     const exception = await refusal(run.svc.createFirstHouse("user-1", HOUSE));
-    expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
+    expectPlain(
+      exception,
+      InternalServerErrorException,
+      HOUSE_OPEN_SIGN_IN_AGAIN,
+    );
     expect(JSON.stringify(exception.getResponse())).not.toContain("token");
     expect(run.houseCalls()).toHaveLength(1);
     expect(run.deletes).toEqual([]);
     expect(run.logError).toHaveBeenCalledWith(
-      expect.stringContaining("createFirstHouse (house rest-1 is open)"),
+      "createFirstHouse: house rest-1 is open; the sign-in did not finish: token store is down",
     );
   });
 

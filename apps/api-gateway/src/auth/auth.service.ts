@@ -42,6 +42,7 @@ import { CreateFirstHouseDto } from "./dto/create-first-house.dto";
 import { resolveSignUpTimezone } from "./sign-up-timezone";
 import {
   houseWriteError,
+  HouseOpenedNotSignedIn,
   isSharedPlace,
   PlaceAlreadyAHouse,
   refuseHouseOpening,
@@ -1788,7 +1789,8 @@ export class AuthService {
     // The house is whole by here, membership row included, so generateTokens
     // finds it and names the new house with its owner role (ADR 0164: every
     // mint is membership-checked in one place). A failed mint leaves the house
-    // open and owned: signing in again lands in it.
+    // open and owned, so the person is told to sign in again (which lands in
+    // it), not that the house failed to open: a retry would answer 409.
     try {
       const tokens = await this.generateTokens(
         { ...user, restaurant_id: restaurantId, role: "owner" },
@@ -1799,8 +1801,8 @@ export class AuthService {
       return { ...tokens, restaurantId };
     } catch (error) {
       throw refuseHouseOpening(
-        `createFirstHouse (house ${restaurantId} is open)`,
-        error,
+        "createFirstHouse",
+        new HouseOpenedNotSignedIn(restaurantId, error),
         this.logger,
       );
     }
