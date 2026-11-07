@@ -8,6 +8,7 @@ import {
   ConflictException,
   ForbiddenException,
   InternalServerErrorException,
+  UnprocessableEntityException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
@@ -248,6 +249,13 @@ export interface MenuVersion {
   createdAt: string | null;
 }
 
+/** What `POST /menus/import` says when a read finds no line (422, nothing kept). */
+const EMPTY_READ_REFUSAL: Record<string, string> = {
+  scan: "No line could be read from this file, so no menu was kept. Try a clearer photo or the PDF itself.",
+  csv: "No line could be read from this file, so no menu was kept. Check that each row names a wine.",
+  manual: "No line was given, so no menu was kept.",
+};
+
 const VERSION_SELECT =
   "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, read_warnings, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
 
@@ -468,6 +476,19 @@ export class MenusService {
       items = dto.data.items ?? [];
     }
 
+    // 1b. A read with no line is refused BEFORE anything is written: no source
+    // upload, no draft version, no onboarding mark (QA B-5; ADR 0067, a failed
+    // read is never an empty one). The warnings ride along so the page can say
+    // which pages failed.
+    if (items.length === 0) {
+      throw new UnprocessableEntityException({
+        statusCode: 422,
+        error: "Unprocessable Entity",
+        message: EMPTY_READ_REFUSAL[dto.method] ?? EMPTY_READ_REFUSAL.scan,
+        warnings,
+      });
+    }
+
     // 2. Keep the source, or say why it was not kept.
     const kept =
       sourceBytes && sourceMime
@@ -497,9 +518,10 @@ export class MenusService {
     );
 
     // 7. Mark menu_uploaded for everyone on this restaurant (matches the
-    // restaurant-scoped pattern used by vendor_added / team_member_invited),
-    // only when a line was read: an empty read is kept, not proof (ADR 0213 #17).
-    if (items.length > 0) await this.markMenuUploaded(restaurantId);
+    // restaurant-scoped pattern used by vendor_added / team_member_invited).
+    // Only a read with a line gets here (1b): an empty read is not proof
+    // (ADR 0213 #17).
+    await this.markMenuUploaded(restaurantId);
 
     return {
       menuId: menu.id,

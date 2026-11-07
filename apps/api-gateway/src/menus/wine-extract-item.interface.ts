@@ -51,13 +51,15 @@ export interface WineExtractItem {
 }
 
 /**
- * Two reasons a scan read may hold fewer lines than the file (ADR 0213 #17).
+ * Why a scan read may hold fewer lines than the file (ADR 0213 #17).
  * `truncated`: the reply was cut off and could not be split further;
- * `chunk_failed`: a page range errored. `pages` (1-based) is null when no
- * narrower range is known. Stored on `restaurant_menus.read_warnings`.
- * Not reported here: pages past the 120-page cap, an unparseable reply.
+ * `chunk_failed`: a page range errored;
+ * `page_cap`: pages past the 120-page cap were not sent (`pages` = the dropped range);
+ * `unreadable_reply`: the model answered with something that is not a list of lines.
+ * `pages` (1-based) is null when no narrower range is known. Stored on
+ * `restaurant_menus.read_warnings`.
  */
 export interface MenuReadWarning {
-  kind: "truncated" | "chunk_failed";
+  kind: "truncated" | "chunk_failed" | "page_cap" | "unreadable_reply";
   pages: { first: number; last: number } | null;
 }

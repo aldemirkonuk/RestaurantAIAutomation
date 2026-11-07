@@ -934,22 +934,37 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(true);
   });
 
-  it("a read that found no line is KEPT with its source, but the menu is not marked uploaded", async () => {
+  // QA B-5: a read with no line used to make a "Wine List" draft and answer 200
+  // with itemsExtracted 0. It is refused, and nothing is written.
+  it("a read that found no line is REFUSED with a sentence, and keeps no version, no file and no onboarding mark", async () => {
     const tables: Record<string, Row[]> = {
       ...base(),
       user_onboarding_progress: [{ id: "p-1", restaurant_id: "rest-1", menu_uploaded: false }],
     };
+    const before = tables.restaurant_menus.length;
+    const warnings = [{ kind: "chunk_failed", pages: { first: 1, last: 10 } }];
     const service = makeService(tables, {
       wineSubmissions,
-      scanParser: { parseWithWarnings: async () => ({ items: [], warnings: [] }) },
+      csvParser: new CsvParserService(),
+      scanParser: { parseWithWarnings: async () => ({ items: [], warnings }) },
     });
     const pdf = Buffer.from("%PDF-1.7 fake").toString("base64");
-    const r = await service.importMenu({ method: "scan", data: { imageBase64: pdf }, restaurantId: "rest-1" } as any, "user-1");
-    expect(r.itemsExtracted).toBe(0);
-    const drafts = tables.restaurant_menus.filter((m) => m.status === "draft");
-    expect(drafts).toHaveLength(1);
-    expect(drafts[0]).toMatchObject({ id: r.menuId, lines_extracted: 0, source_mime: "application/pdf" });
-    expect(drafts[0].source_path).toMatch(/^rest-1\/menus\//);
+    const err: any = await service
+      .importMenu({ method: "scan", data: { imageBase64: pdf }, restaurantId: "rest-1" } as any, "user-1")
+      .catch((e: unknown) => e);
+    expect(err?.getStatus?.()).toBe(422);
+    expect(err.getResponse()).toMatchObject({
+      message: "No line could be read from this file, so no menu was kept. Try a clearer photo or the PDF itself.",
+      warnings,
+    });
+    // A CSV with a header and no row, and a manual import with no line, are refused the same way.
+    for (const data of [{ method: "csv", data: { csvContent: "name,price\n" } }, { method: "manual", data: { items: [] } }]) {
+      const e: any = await service.importMenu({ ...data, restaurantId: "rest-1" } as any, "user-1").catch((x: unknown) => x);
+      expect(e?.getStatus?.()).toBe(422);
+      expect(String(e.getResponse().message)).toMatch(/so no menu was kept/);
+    }
+    expect(tables.restaurant_menus).toHaveLength(before);
+    expect(tables.__storage ?? []).toHaveLength(0);
     expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
   });
 

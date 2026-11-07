@@ -149,6 +149,72 @@ describe("parseWithWarnings — names the page ranges that errored or were cut o
     ]);
   });
 
+  it("names the pages past the 120-page cap that were never sent", async () => {
+    const service = readingService();
+    // 125 pages: pre-split into twelve 10-page chunks (1-120); 121-125 dropped.
+    const base64 = await pdfWithPages(125);
+    service.parseOne = jest
+      .fn()
+      .mockResolvedValue({ items: [{ name: "A" }], truncated: false });
+
+    const r = await service.parseWithWarnings(base64, "house");
+
+    expect(service.parseOne).toHaveBeenCalledTimes(12);
+    expect(r.warnings).toEqual([
+      { kind: "page_cap", pages: { first: 121, last: 125 } },
+    ]);
+  });
+
+  it("names the page range whose reply was not a list of lines", async () => {
+    const service = readingService();
+    const base64 = await pdfWithPages(30);
+    service.parseOne = jest
+      .fn()
+      .mockResolvedValueOnce({ items: [{ name: "A" }], truncated: false })
+      .mockResolvedValueOnce({ items: [], truncated: false, unreadable: true })
+      // an empty list is a page with no wine, not an unreadable reply
+      .mockResolvedValueOnce({ items: [], truncated: false, unreadable: false });
+
+    const r = await service.parseWithWarnings(base64, "house");
+
+    expect(r.items.map((i: any) => i.name)).toEqual(["A"]);
+    expect(r.warnings).toEqual([
+      { kind: "unreadable_reply", pages: { first: 11, last: 20 } },
+    ]);
+  });
+
+  it("says a one-shot read's reply was unreadable, with no page range", async () => {
+    const service = readingService();
+    service.parseOne = jest
+      .fn()
+      .mockResolvedValue({ items: [], truncated: false, unreadable: true });
+    const png = Buffer.from("not a pdf").toString("base64");
+
+    await expect(service.parseWithWarnings(png, "house")).resolves.toEqual({
+      items: [],
+      warnings: [{ kind: "unreadable_reply", pages: null }],
+    });
+  });
+
+  it("a model reply that is prose or an object is unreadable; an empty list is not", async () => {
+    const reply = (text: string) =>
+      new ScanParserService(
+        { get: () => "fixture-key" } as unknown as ConfigService,
+        {
+          call: async () => ({ content: [{ text }], stop_reason: "end_turn" }),
+        } as unknown as ModelClientService,
+        { record: () => undefined } as unknown as NfVerdictService,
+      );
+    const png = Buffer.from("not a pdf").toString("base64");
+    const unreadable = [{ kind: "unreadable_reply", pages: null }];
+
+    for (const text of ["Sorry, I cannot read this menu.", '{"wines": []}'])
+      expect((await reply(text).parseWithWarnings(png)).warnings).toEqual(
+        unreadable,
+      );
+    expect((await reply("[]").parseWithWarnings(png)).warnings).toEqual([]);
+  });
+
   it("says a cut-off image read was cut off; parse() still returns only the lines", async () => {
     const service = readingService();
     service.parseOne = jest

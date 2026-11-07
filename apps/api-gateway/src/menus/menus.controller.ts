@@ -57,7 +57,7 @@ export class MenusController {
     summary:
       "Read a menu (scan, CSV or manual) and keep it as its own version, in draft",
     description:
-      "ADR 0193 (menu versions): every read is kept -- the source file, the extracted lines, who read it and when, and the optional cadence tag and date. It does NOT become the current menu or touch the house's prices; an owner or manager chooses that with POST /menu-versions/:menuId/make-current. A scan's AI spend ceiling fails CLOSED: if the spend record cannot be read, the read waits (503) and says why.",
+      "ADR 0193 (menu versions): every read is kept -- the source file, the extracted lines, who read it and when, and the optional cadence tag and date. It does NOT become the current menu or touch the house's prices; an owner or manager chooses that with POST /menu-versions/:menuId/make-current. A scan's AI spend ceiling fails CLOSED: if the spend record cannot be read, the read waits (503) and says why. A read that finds no line is refused (422, with a sentence and the scan's warnings) and nothing is kept.",
   })
   async importMenu(
     @Body() dto: ImportMenuDto,

@@ -29,9 +29,11 @@ import {
   getMenuSourceUrl,
   importMenu,
   listMenuVersions,
+  readWarningSentence,
   type MakeCurrentResult,
   type MenuCadence,
   type MenuImportResult,
+  type MenuReadWarning,
   type MenuVersion,
 } from '../../../services/api/menus';
 import { useAuthStore } from '../../../stores';
@@ -47,6 +49,26 @@ export function reasonOf(err: unknown): string {
   if (typeof m === 'string' && m) return m;
   if (Array.isArray(m) && m.length) return String(m[0]);
   return e?.message || 'no reason was given';
+}
+
+/** The warnings a refused read carried in its body, if any. */
+function warningsOf(err: unknown): MenuReadWarning[] {
+  const w = (err as { response?: { data?: { warnings?: unknown } } })?.response?.data?.warnings;
+  return Array.isArray(w) ? (w as MenuReadWarning[]) : [];
+}
+
+/** One plain sentence per part of the file that was not read (ADR 0213 #17). */
+export function ReadWarnings({ warnings, testId }: { warnings: MenuReadWarning[] | null | undefined; testId: string }) {
+  if (!warnings?.length) return null;
+  return (
+    <ul data-testid={testId} style={{ margin: '6px 0 0', paddingLeft: 18 }}>
+      {warnings.map((w, i) => (
+        <li key={i} className="cl-said">
+          {readWarningSentence(w)}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function day(iso: string | null): string {
@@ -210,9 +232,10 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
       ) : null}
       {read.isError ? (
         <p role="alert" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-read-error">
-          The menu was not read: {reasonOf(read.error)}.
+          The menu was not read: {reasonOf(read.error).replace(/\.$/, '')}.
         </p>
       ) : null}
+      {read.isError ? <ReadWarnings warnings={warningsOf(read.error)} testId="menu-read-error-warnings" /> : null}
       {result ? (
         <div style={{ marginTop: 10 }} data-testid="menu-read-result">
           <p className="cl-said">
@@ -222,6 +245,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
               : ''}
             It is not the current menu, and no price has changed.
           </p>
+          <ReadWarnings warnings={result.warnings} testId="menu-read-warnings" />
           {canManage ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button
@@ -292,6 +316,7 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
       <td className="cl-dim">
         {v.linesExtracted === null ? EM : `${v.linesExtracted} line${v.linesExtracted === 1 ? '' : 's'}`}
         {v.extractedBy?.name ? `, read by ${v.extractedBy.name}` : ''}
+        <ReadWarnings warnings={v.readWarnings} testId="menu-version-warnings" />
       </td>
       <td className="cl-dim">
         {v.source.kept ? (

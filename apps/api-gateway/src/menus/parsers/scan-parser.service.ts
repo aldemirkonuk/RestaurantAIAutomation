@@ -186,6 +186,7 @@ export class ScanParserService {
       const preSplit = await this.splitPdfIfLarge(imageBase64, {
         arrival,
         ranges,
+        warnings,
       });
       if (preSplit.length > 1)
         return this.parseChunks(
@@ -209,17 +210,22 @@ export class ScanParserService {
       throw new ServiceUnavailableException(
         "The menu reading was cut short. Use a clearer or smaller image; no items were imported.",
       );
-    if (!first.truncated) return first.items;
+    if (!first.truncated) {
+      if (first.unreadable) warnings.push({ kind: "unreadable_reply", pages: null });
+      return first.items;
+    }
     if (!isPdf) {
       warnings.push({ kind: "truncated", pages: null });
       return first.items;
     }
 
     const ranges: PageRange[] = [];
+    const retryWarnings: MenuReadWarning[] = [];
     const chunks = await this.splitPdfIfLarge(imageBase64, {
       force: true,
       arrival,
       ranges,
+      warnings: retryWarnings,
     });
     if (chunks.length <= 1) {
       if (arrival)
@@ -238,7 +244,6 @@ export class ScanParserService {
     this.logger.log(
       `Menu truncated on a single request — retrying as ${chunks.length} page-range chunk(s)`,
     );
-    const retryWarnings: MenuReadWarning[] = [];
     const retried = await this.parseChunks(
       chunks,
       restaurantId,
@@ -287,7 +292,7 @@ export class ScanParserService {
     for (let i = 0; i < chunks.length; i++) {
       const pages = ranges[i] ?? null;
       try {
-        const { items, truncated } = await this.parseOne(
+        const { items, truncated, unreadable } = await this.parseOne(
           chunks[i],
           "application/pdf",
           true,
@@ -340,6 +345,7 @@ export class ScanParserService {
           );
         all.push(...items);
         if (truncated) warnings.push({ kind: "truncated", pages });
+        else if (unreadable) warnings.push({ kind: "unreadable_reply", pages });
         this.logger.log(
           `Menu chunk ${i + 1}/${chunks.length}: ${items.length} item(s)` +
             (truncated ? " (still truncated — cannot split further)" : ""),
@@ -410,7 +416,12 @@ export class ScanParserService {
     isPdf: boolean,
     restaurantId?: string,
     arrival = false,
-  ): Promise<{ items: WineExtractItem[]; truncated: boolean }> {
+  ): Promise<{
+    items: WineExtractItem[];
+    truncated: boolean;
+    /** The reply was not a list of lines (an empty list is not this). */
+    unreadable: boolean;
+  }> {
     // OD-59 / P3.0: an unreadable response and a menu page with no wines on it
     // are different outcomes that used to record identically — see
     // ./menu-scan-verdict.ts.
@@ -504,7 +515,10 @@ export class ScanParserService {
           responseChars: content.length,
         }),
       );
-      return { items, truncated };
+      const unreadable =
+        parsed.parseStatus === "unparseable" ||
+        parsed.parseStatus === "parsed_not_array";
+      return { items, truncated, unreadable };
     } catch (error) {
       // Scoped to arrival (codex-audit/C2-adopt.md #8): this used to convert
       // unconditionally, which turned the legacy /menus scan's 503 into a 429
@@ -540,6 +554,8 @@ export class ScanParserService {
       pagesPerChunk?: number;
       arrival?: boolean;
       ranges?: PageRange[];
+      /** Gets a `page_cap` warning when pages past MAX_PAGES are dropped. */
+      warnings?: MenuReadWarning[];
     } = {},
   ): Promise<string[]> {
     // `force` is used on the truncation retry, where page count already
@@ -600,6 +616,12 @@ export class ScanParserService {
         chunks.push(Buffer.from(await out.save()).toString("base64"));
         opts.ranges?.push({ first: start + 1, last: end });
       }
+
+      if (pageCount > MAX_PAGES)
+        opts.warnings?.push({
+          kind: "page_cap",
+          pages: { first: MAX_PAGES + 1, last: pageCount },
+        });
 
       this.logger.log(
         `Menu PDF has ${pageCount} pages — split into ${chunks.length} chunk(s) ` +
