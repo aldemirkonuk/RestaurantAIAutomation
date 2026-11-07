@@ -183,6 +183,20 @@ describe("parseWithWarnings — names the page ranges that errored or were cut o
     ]);
   });
 
+  it("arrival refuses a PDF read with one unreadable range instead of dropping it", async () => {
+    const service = readingService();
+    const base64 = await pdfWithPages(30);
+    service.parseOne = jest
+      .fn()
+      .mockResolvedValueOnce({ items: [{ name: "A" }], truncated: false })
+      .mockResolvedValueOnce({ items: [], truncated: false, unreadable: true })
+      .mockResolvedValueOnce({ items: [{ name: "C" }], truncated: false });
+
+    await expect(service.parse(base64, "house", true)).rejects.toThrow(
+      "Some menu pages could not be read",
+    );
+  });
+
   it("says a one-shot read's reply was unreadable, with no page range", async () => {
     const service = readingService();
     service.parseOne = jest

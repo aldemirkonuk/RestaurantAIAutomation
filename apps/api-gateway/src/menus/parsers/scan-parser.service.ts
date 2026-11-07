@@ -339,7 +339,9 @@ export class ScanParserService {
           }
         }
 
-        if (truncated && arrival)
+        // Arrival keeps no warnings, so a range it could not read is refused,
+        // not dropped (an unreadable reply included).
+        if ((truncated || unreadable) && arrival)
           throw new ServiceUnavailableException(
             "A menu page range was incomplete.",
           );
