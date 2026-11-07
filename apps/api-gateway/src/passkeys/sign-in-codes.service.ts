@@ -202,18 +202,23 @@ export class SignInCodesService {
     if (!email.includes("@") || email.length < 3 || email.length > 320) {
       throw new BadRequestException("Type the email address you sign in with.");
     }
-    const { data: user, error } = await this.db
-      .from("users")
-      .select("user_id, name, email")
-      .eq("email", email)
-      .maybeSingle();
+    // R11-01/R11-02: the shared lookup, so a row held unfolded is found too.
+    // A held twin (`ambiguous`) names nobody: no code is mailed.
+    const { user, error } = await findUserBySignInAddress(
+      () => this.db.from("users").select("user_id, name, email"),
+      emailRaw,
+    );
     if (error) {
       // Not an answer about the address: every address gets this on a failed read.
       throw new InternalServerErrorException(
         "We could not send a code just now. Nothing was sent; try again.",
       );
     }
-    const person = user as { user_id: string; name: string | null } | null;
+    const person = user as {
+      user_id: string;
+      name: string | null;
+      email: string | null;
+    } | null;
     const code = await this.store(
       "sign_in",
       email,
@@ -223,7 +228,11 @@ export class SignInCodesService {
     if (person) {
       // Deliberately not awaited: the response time must not say whether a
       // mail went out. A failed send is logged; the person can ask again.
-      void this.send(email, person.name, code, "sign_in").catch(() => false);
+      // To the address on the account: for a row held unfolded that is not
+      // the folded spelling the code is filed under.
+      void this.send(person.email ?? email, person.name, code, "sign_in").catch(
+        () => false,
+      );
     }
     return {
       sent: true,
