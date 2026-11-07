@@ -326,7 +326,7 @@ export function responseSamples(
       const openEnd = tap === null ? stopMs : Math.min(stopMs, tap);
       const minutes = (openEnd - timeOf(last.createdAt)) / 60_000;
       if (minutes > T) {
-        // A seat with no caretaker: the table's figure only, no waiter's.
+        // A seat with no caretaker: no waiter's figure; the table's, if shown.
         const creditId =
           last.type === "seated" ? facts.caretakerAtSeatId : last.actorId;
         record(facts.tableId ?? last.tableId, creditId, minutes);
