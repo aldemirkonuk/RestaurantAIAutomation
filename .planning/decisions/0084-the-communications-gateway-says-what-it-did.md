@@ -200,6 +200,14 @@ Concretely:
    would later hand the carrier.
 4. **The low-stock alert's broadcast room is derived from the JWT.** A body
    `restaurantId` that disagrees is refused with 400, never silently rewritten.
+
+   **[Item 4 superseded 2026-09-29, `fix/order-approval-and-alert-relays`: `POST
+   /communications/alerts/low-stock` and `/alerts/daily-summary` are CLOSED (they
+   relayed mail and SMS to any address for any member, and nothing called them),
+   with `resolveAlertTenant` and `DailySummaryDto`. The scheduled sender passes each
+   tenant's own id, so no body names a room. Recorded as
+   [ADR 0244](0244-an-order-edit-is-not-a-side-door-and-uncalled-relays-are-closed.md) D4;
+   claim `SEC-2026-09-29-ORDER-PATCH-AND-ALERT-RELAYS`.]**
 5. **The weekly summary's descriptor falls back to a `message_text` preview**
    when a row has no `email_headers.subject`, and the genuinely-empty branch
    logs that the read *succeeded*.

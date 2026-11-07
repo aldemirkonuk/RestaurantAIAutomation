@@ -31,14 +31,12 @@ import { OrchestratorService } from "../common/orchestrator/orchestrator.service
 import { DatabaseService } from "../database/database.service";
 import {
   LowStockAlertDto,
-  DailySummaryDto,
   SendTemplateTestDto,
   MultiChannelResultDto,
   CommunicationResultDto,
   CommunicationStatusDto,
 } from "./dto/communication.dto";
 import { Public } from "../auth/decorators/public.decorator";
-import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NonProductionGuard } from "./guards/non-production.guard";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
@@ -214,97 +212,34 @@ export class CommunicationsController {
   // The sibling raw-email route is NOT deleted: it has a live caller. See the
   // note on `sendEmail` above.
 
-  /**
-   * Send a low stock alert via all channels
-   */
-  @Post("alerts/low-stock")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "Send low stock alert via email, SMS, and websocket",
-  })
-  @ApiResponse({ status: 200, type: MultiChannelResultDto })
-  async sendLowStockAlert(
-    @Body() dto: LowStockAlertDto,
-    @CurrentUser() user: { userId: string; restaurantId?: string },
-  ): Promise<MultiChannelResultDto> {
-    this.logger.log(`Sending low stock alert for: ${dto.wineName}`);
-
-    const recipients = {
-      emails: [dto.recipientEmail],
-      phones: dto.recipientPhone ? [dto.recipientPhone] : undefined,
-    };
-
-    return this.communicationsService.sendLowStockAlert(
-      {
-        wineName: dto.wineName,
-        wineId: dto.wineId,
-        currentStock: dto.currentStock,
-        threshold: dto.threshold,
-        avgDailySales: dto.avgDailySales,
-        recommendedQty: dto.recommendedQty,
-        preferredSupplier: dto.preferredSupplier,
-        estimatedDelivery: dto.estimatedDelivery,
-        // ADR 0084. The tenant is DERIVED, never accepted.
-        //
-        // `payload.restaurantId` is the room this alert is broadcast into
-        // (`communications.service.ts` emits `notification:new` to
-        // `restaurant:${restaurantId}`), so a body-supplied value is a
-        // body-supplied broadcast target: pick another tenant's id and your
-        // chosen title and body appear in their live UI.
-        //
-        // `assertTenantMatch`, which `JwtAuthGuard` runs on every request to
-        // this controller, already refuses a top-level `restaurantId` that
-        // disagrees with the JWT — verified, not assumed
-        // (`common/tenant/assert-tenant-match.ts`, reached from
-        // `auth/guards/jwt-auth.guard.ts`). So this is not the only lock on
-        // the door. It is the one that does not depend on a decorator staying
-        // where it is: derive the room from the token and the body cannot name
-        // it at all, whatever happens to the guard chain above.
-        restaurantId: this.resolveAlertTenant(dto.restaurantId, user),
-      },
-      recipients,
-    );
-  }
-
-  /**
-   * The tenant an alert may be broadcast into: the caller's own, always.
-   *
-   * A body value is permitted only when it agrees with the token — kept so a
-   * disagreement is REFUSED rather than silently rewritten, which would hide
-   * a caller that thinks it is addressing someone else.
-   */
-  private resolveAlertTenant(
-    fromBody: string | undefined,
-    user: { restaurantId?: string } | undefined,
-  ): string | undefined {
-    const fromToken = user?.restaurantId;
-    if (fromBody && fromBody !== fromToken) {
-      throw new BadRequestException(
-        "restaurantId does not match the authenticated tenant",
-      );
-    }
-    return fromToken;
-  }
-
-  /**
-   * Send a daily summary SMS
-   */
-  @Post("alerts/daily-summary")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Send daily summary SMS to manager" })
-  @ApiResponse({ status: 200, type: CommunicationResultDto })
-  async sendDailySummary(
-    @Body() dto: DailySummaryDto,
-  ): Promise<CommunicationResultDto> {
-    this.logger.log(`Sending daily summary to: ${dto.recipientPhone}`);
-
-    return this.communicationsService.sendDailySummary({
-      recipientPhone: dto.recipientPhone,
-      restaurantName: dto.restaurantName,
-      lowStockCount: dto.lowStockCount,
-      pendingOrders: dto.pendingOrders,
-    });
-  }
+  // POST /communications/alerts/low-stock and POST /communications/alerts/
+  // daily-summary were CLOSED 2026-09-29 (ADR 0244 D4, founder ruling; the
+  // posture of ADR 0149 answer 15, "close the uncalled POST senders (internal
+  // only)", and of the SMS route deleted above).
+  //
+  // Each was a relay. Any signed-in member of any role could make the
+  // platform's Plivo number text any phone (`recipientPhone`) and the shared
+  // Gmail mailbox mail any address (`recipientEmail`), with words of their
+  // choosing: `wineName` rode into the email and the SMS, and `restaurantName`
+  // into the daily summary's SMS. No role, no allow-list against the house's
+  // own recipients, no rate limit beyond the global one, and no record.
+  //
+  // Closed rather than guarded because nothing calls them: `git grep` over
+  // apps/web, apps/mobile, packages, services (the orchestrator included, so
+  // no service-key door is owed), supabase, scripts and apps/web/e2e found no
+  // request to either, only the generated design map and ENDPOINTS.md.
+  // Allow-listing recipients would have built a door for nobody.
+  //
+  // What the product actually sends is untouched: `ScheduledTasksService`
+  // calls `CommunicationsService.sendDailySummary` and `.sendLowStockAlert`
+  // per tenant, with recipients resolved from the house's own register
+  // (`recipientsFor` -> `RecipientResolverService`: managers by role and their
+  // notification category; the legacy default house reads MANAGER_EMAIL and
+  // MANAGER_PHONE), and the tenant's
+  // own id as the websocket room — so the in-app `notification:new` low-stock
+  // alert still fires from there. The dev scaffold `test/low-stock-alert`
+  // below stays, behind NonProductionGuard, sending to MANAGER_EMAIL only.
+  // `alert-relays-are-closed.spec.ts` pins the absence.
 
   /**
    * TEST ENDPOINT: Simulate low stock alert scenario — sends to MANAGER_EMAIL recipients only.
