@@ -190,7 +190,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 tone={values[HOUSE_INBOX] === true ? 'grave' : undefined}
                 provenance={{
                   kept: 'restaurant', when: null, whenUnknown: NO_DATE,
-                  readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>communications/inbox/house-inbox.service.ts:339</code>,
+                  readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>communications/inbox/house-inbox.service.ts:341</code>,
                 }}
                 consequence={
                   <>

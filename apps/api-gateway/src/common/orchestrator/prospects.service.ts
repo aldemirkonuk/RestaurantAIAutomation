@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../../database/database.service";
+import { senderDomain } from "../../communications/inbound-headers";
 
 /** A persisted attachment reference stored on a prospect (bytes live in Storage). */
 export interface ProspectAttachmentRef {
@@ -66,13 +67,14 @@ export class ProspectsService {
     private readonly configService: ConfigService,
   ) {}
 
-  /** Bare domain from an email address or `Name <a@b.com>`. */
+  /**
+   * The sender's domain, or "" when there is no single unambiguous one.
+   * Delegates to `inbound-headers.ts senderDomain` (QA round 22, N-1): this
+   * used to take the first `<...>`, so `"x <a@trusted.com>" <b@evil.example>`
+   * read as trusted.com. A bare domain is still accepted as given.
+   */
   domainOf(emailOrDomain: string | null | undefined): string {
-    const s = (emailOrDomain ?? "").toString().trim().toLowerCase();
-    if (!s) return "";
-    const angled = s.match(/<([^>]+)>/);
-    const addr = angled ? angled[1] : s;
-    return addr.includes("@") ? (addr.split("@")[1] ?? "").trim() : addr;
+    return senderDomain(emailOrDomain);
   }
 
   /**
