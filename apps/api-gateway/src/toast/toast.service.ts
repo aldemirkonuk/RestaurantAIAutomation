@@ -647,17 +647,13 @@ export class ToastService {
       try {
         if (unit === "glass") {
           if (isVoid) {
-            // B19: voids reverse glasses as well as bottles.
-            // record_glass_pour has no reversal mode, so a glass void is
-            // booked as a live-stock return of the equivalent glass count —
-            // previously this branch logged a warning and skipped entirely.
-            ({ error: rpcError } = await db.rpc("apply_stock_movement", {
+            // A glass void gives back the ml its sale poured, read from the
+            // sale's own pour_events row (B19 superseded, ADR 0011 amendment
+            // 2026-11-07); no longer a sealed bottle per glass.
+            ({ error: rpcError } = await db.rpc("return_glass_pour", {
               p_inventory_id: inventoryId,
-              p_stock_state: "live",
-              p_delta: qty,
-              p_transaction_type: "return",
-              p_source: "pos",
-              p_reason: `POS void (glass): ${line.name}`,
+              p_sale_key: `toast_sale_${order.guid}_${menuGuid}`,
+              p_pours: qty,
               p_idempotency_key: idem,
               // ADR 0141 — the house this POS line is for. `inventoryId` is
               // resolved from `pos_item_mappings` (or the legacy

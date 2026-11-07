@@ -25,9 +25,8 @@ import { DatabaseService } from "../database/database.service";
  * key, and `stockLive` only moves when a key is new. So the assertions are
  * about the resulting stock level, not about argument shapes.
  *
- * NOT WIDENED: "voiding 5 glasses returns 5 bottles" (decision B19, recorded
- * as wrong in ADR 0011's Consequences and open as OD-67) is untouched. That is
- * a decision to supersede, not a bug to fold into this fix.
+ * B19 (a bottle back per voided glass) was superseded on 2026-11-07 (ADR
+ * 0011 amendment): a glass void calls `return_glass_pour`, same key rule.
  */
 
 type Row = Record<string, any>;
@@ -171,14 +170,11 @@ describe("PosHubService — a void moves stock under its own key (ADR 0093 D5)",
     expect(state.stockLive).toBe(12);
   });
 
-  it("a glass void reverses under its own key too (B19 unchanged, and still wrong)", async () => {
+  it("a glass void returns its sale's pour under its own key (G11)", async () => {
     const { db, state, calls } = makeIdempotentDb(12);
     const service = new PosHubService(db);
 
-    // sale_unit 'glass' pours; the void of that sale goes through
-    // apply_stock_movement, which is decision B19 and returns WHOLE BOTTLES.
-    // OD-67 owns that; this test pins the KEY, and records the wrongness so a
-    // later reader does not mistake it for an oversight.
+    // Under B19 this void was apply_stock_movement(+2): stockLive 14.
     const glassDb: any = (db as any).getClient();
     const originalFrom = glassDb.from.bind(glassDb);
     glassDb.from = (table: string) => {
@@ -201,13 +197,22 @@ describe("PosHubService — a void moves stock under its own key (ADR 0093 D5)",
     };
 
     await service.ingest("r1", "generic_webhook", [check()]);
-    // A pour does not move this mock's bottle count; only the void does.
+    // Neither the pour nor its void moves this mock's bottle count.
     await service.ingest("r1", "generic_webhook", [check({ voided: true })]);
 
-    const movements = calls.filter((c) => c.name === "apply_stock_movement");
-    expect(movements).toHaveLength(1);
-    expect(movements[0].args.p_delta).toBe(2); // B19: 2 glasses → 2 bottles
-    expect(String(movements[0].args.p_idempotency_key)).toMatch(/:void$/);
-    expect(state.stockLive).toBe(14); // 12 + B19's over-return, recorded not fixed
+    expect(calls.filter((c) => c.name === "apply_stock_movement")).toEqual([]);
+    expect(state.stockLive).toBe(12);
+    const [sale] = calls.filter((c) => c.name === "record_glass_pour");
+    const voids = calls.filter((c) => c.name === "return_glass_pour");
+    expect(voids.map((c) => c.args)).toEqual([
+      {
+        p_restaurant_id: "r1",
+        p_inventory_id: "inv-1",
+        p_sale_key: sale.args.p_idempotency_key,
+        p_pours: 2,
+        p_idempotency_key: `${sale.args.p_idempotency_key}:void`,
+        p_occurred_at: expect.any(String),
+      },
+    ]);
   });
 });

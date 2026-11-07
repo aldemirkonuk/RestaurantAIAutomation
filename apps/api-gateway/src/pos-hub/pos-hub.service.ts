@@ -1448,14 +1448,24 @@ export class PosHubService {
             // ADR 0281: dated by the check, not by its arrival.
             p_occurred_at: when.at,
           }));
+        } else if (resolved.mode === "volume") {
+          // A glass void gives back the ml its sale (`idem`) poured; B19 superseded.
+          const { data: back, error } = await db.rpc("return_glass_pour", {
+            p_restaurant_id: restaurantId,
+            p_inventory_id: it.inventory_id,
+            p_sale_key: idem,
+            p_pours: qty,
+            p_idempotency_key: `${idem}:void`,
+            p_occurred_at: when.at,
+          });
+          rpcError = error;
+          if (!error && Number((back as any)?.overflow_ml) > 0) {
+            this.logger.warn(
+              `Void of ${it.name}: ${(back as any).overflow_ml} ml not added back (${(back as any).reason})`,
+            );
+          }
         } else {
-          // Whole-bottle sales, and every void.
-          //
-          // B19 (unchanged, and wrong — see ADR 0011 Consequences): a partial-
-          // volume void returns `qty` WHOLE BOTTLES because record_glass_pour
-          // has no reversal mode. Voiding 5 glasses returns 5 bottles. Left as
-          // it is because B19 is a recorded decision; superseding it is the
-          // founder's call, not this change's.
+          // Whole-bottle sales and whole-bottle voids.
           //
           // ADR 0093 D5 — THE VOID'S KEY IS NOT THE SALE'S KEY.
           //
