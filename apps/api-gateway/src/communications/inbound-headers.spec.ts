@@ -5,6 +5,7 @@
  * first-`<...>` parsers this file's module replaced.
  */
 import {
+  likeExactly,
   addressesIn,
   decodeEncodedWords,
   displayLabel,
@@ -211,6 +212,18 @@ describe("RFC 2047 encoded words (N-2)", () => {
 });
 
 /* ---------- the bridge, end to end over a tiny in-memory supabase ---------- */
+function likeToRegExp(pattern: string): RegExp {
+  let out = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
+    if (ch === "\\" && i + 1 < pattern.length) {
+      out += pattern[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    } else if (ch === "%" || ch === "*") out += ".*";
+    else if (ch === "_") out += ".";
+    else out += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${out}$`, "is");
+}
 type Row = Record<string, any>;
 function bridge(tables: Record<string, Row[]>) {
   const inserts: Array<{ table: string; row: Row }> = [];
@@ -223,12 +236,13 @@ function bridge(tables: Record<string, Row[]>) {
     let lim = Infinity;
     const qb: any = {
       select: () => qb,
-      ilike: (c: string, v: string) => (
-        filters.push(
-          (r) => String(r[c] ?? "").toLowerCase() === v.toLowerCase(),
-        ),
-        qb
-      ),
+      // ILIKE the way PostgREST and Postgres run it (QA round 24): `*` and
+      // `%` match any run, `_` one character, a backslash escapes the next.
+      ilike: (c: string, v: string) => {
+        const re = likeToRegExp(v);
+        filters.push((r) => re.test(String(r[c] ?? "")));
+        return qb;
+      },
       eq: (c: string, v: any) => (filters.push((r) => r[c] === v), qb),
       in: (c: string, v: any[]) => (filters.push((r) => v.includes(r[c])), qb),
       not: () => qb,
@@ -527,5 +541,71 @@ describe("N-1 tail (QA round 22): a From not shaped like one mailbox names nobod
     );
     expect(inserts).toEqual([]);
     expect(events.some((e) => e[0] === "responder")).toBe(false);
+  });
+});
+
+describe("a sender is matched exactly, never as a LIKE pattern (QA round 24)", () => {
+  const OTHER = {
+    id: "prov-B",
+    restaurant_id: "house-B",
+    name: "Other house's vendor",
+    contact_email: "orders@other.example",
+  };
+  const OPEN_B = {
+    ...OPEN,
+    id: "oB",
+    provider_id: "prov-B",
+    restaurant_id: "house-B",
+  };
+
+  it.each(["%@%", "sales@%", "*@*", "x@b%"])(
+    "the parser names nobody for %j (a wildcard in the domain)",
+    (from) => expect(senderAddress(from)).toBeNull(),
+  );
+
+  it("likeExactly escapes every LIKE and PostgREST wildcard", () => {
+    expect(likeExactly("a_b%c*d\\e@x.com")).toBe("a\\_b\\%c\\*d\\\\e@x.com");
+    expect(likeToRegExp(likeExactly("%@%")).test("sales@bigdist.com")).toBe(
+      false,
+    );
+  });
+
+  it.each([
+    "%@%",
+    "<%@%>",
+    "Sales <%@%>",
+    "%@bigdist.com",
+    "_____@bigdist.com",
+    "%@other.example",
+    "______@other.example",
+    "*@other.example",
+    "s%@bigdist.com",
+  ])("From %j reaches no vendor in either house", async (from) => {
+    const { svc, inserts, events } = bridge({
+      providers: [OTHER, VENDOR],
+      procurement_orders: [OPEN_B, OPEN],
+    });
+    await svc.handleInboundEmail(inbound({ from, gmail_message_id: "m-like" }));
+    expect(inserts.filter((i) => i.row.provider_id)).toEqual([]);
+    expect(events.some((e) => e[0] === "responder")).toBe(false);
+  });
+
+  it("an underscore address matches only itself, and a vendor keeps its typed case", async () => {
+    const DECOY = { ...OTHER, contact_email: "aysexk@bigdist.com" };
+    const AYSE = {
+      ...VENDOR,
+      id: "prov-K",
+      contact_email: "Ayse_K@BigDist.com",
+    };
+    const { svc, inserts } = bridge({
+      providers: [DECOY, AYSE],
+      procurement_orders: [{ ...OPEN, provider_id: "prov-K" }],
+    });
+    await svc.handleInboundEmail(
+      inbound({ from: "ayse_k@bigdist.com", gmail_message_id: "m-us" }),
+    );
+    const stored = inserts.filter((i) => i.row.provider_id);
+    expect(stored.length).toBeGreaterThan(0);
+    expect(stored.every((i) => i.row.provider_id === "prov-K")).toBe(true);
   });
 });

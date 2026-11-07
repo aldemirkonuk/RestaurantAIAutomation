@@ -24,6 +24,7 @@ import {
   decodeEncodedWords,
   displayLabel,
   parseSender,
+  likeExactly,
 } from "../../communications/inbound-headers";
 import { createHash, randomUUID } from "crypto";
 import { PromotionExtractorService } from "./promotion-extractor.service";
@@ -688,7 +689,8 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       let providerQuery = this.databaseService.supabase
         .from("providers")
         .select("id, restaurant_id, name")
-        .ilike("contact_email", senderEmail);
+        // Exact, never a pattern: a From of `%@%` must not reach a vendor.
+        .ilike("contact_email", likeExactly(senderEmail));
       if (restaurantIdFromEvent) {
         providerQuery = providerQuery.eq(
           "restaurant_id",
