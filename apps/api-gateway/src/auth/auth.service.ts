@@ -702,6 +702,25 @@ export class AuthService {
   }
 
   /**
+   * The refresh route's way in (R11-07): a refresh token its holder signed out
+   * with mints nothing, then the usual checks run. Kept apart from
+   * refreshAccessToken, whose body ADR 0164's claim pins word for word; the
+   * controller calls only this, and a claim keeps it the one caller.
+   */
+  async refreshSession(refreshToken: string): Promise<RefreshResult> {
+    if (
+      typeof refreshToken === "string" &&
+      (await this.tokenBlacklistService.isBlacklisted(refreshToken))
+    ) {
+      throw new UnauthorizedException({
+        message: "This session was signed out. Sign in again.",
+        code: SESSION_ENDED,
+      });
+    }
+    return this.refreshAccessToken(refreshToken);
+  }
+
+  /**
    * Refresh a session, re-checking membership (ADR 0164, "Membership only";
    * v3.0-TECH-DEBT 44.1r).
    *
@@ -730,14 +749,6 @@ export class AuthService {
       });
     } catch {
       throw new UnauthorizedException("Invalid refresh token");
-    }
-
-    // R11-07: a refresh token its holder signed out with mints nothing.
-    if (await this.tokenBlacklistService.isBlacklisted(refreshToken)) {
-      throw new UnauthorizedException({
-        message: "This session was signed out. Sign in again.",
-        code: SESSION_ENDED,
-      });
     }
 
     const { data: user, error: userError } = await this.databaseService.supabase

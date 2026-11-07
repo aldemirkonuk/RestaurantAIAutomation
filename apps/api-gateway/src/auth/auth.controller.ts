@@ -223,7 +223,7 @@ export class AuthController {
   @Public()
   @Post("refresh")
   async refresh(@Body() body: { refreshToken: string }) {
-    const tokens = await this.authService.refreshAccessToken(body.refreshToken);
+    const tokens = await this.authService.refreshSession(body.refreshToken);
 
     return {
       success: true,
