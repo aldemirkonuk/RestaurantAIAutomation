@@ -646,6 +646,22 @@ describe("DeliveryService", () => {
         expect(res.value.costNote).toMatch(/booked no stock at the door/);
     });
 
+    it("says each provisional item's own reason (QA 7c B1)", async () => {
+      db.answers.deliveries = { data: deliveryRow({ state: "AGREED" }), error: null };
+      db.updateAnswers.deliveries = { data: deliveryRow({ state: "VERIFIED", verified_by: "u1" }), error: null };
+      const spy = jest
+        .spyOn(DeliveryStockService.prototype, "finaliseAtVerified")
+        .mockResolvedValueOnce({
+          ok: true,
+          value: { finalised: [], stillProvisional: [{ inventoryId: "i1", reason: "not per bottle: why" }] },
+        } as never);
+      const res = await service.verify(REST, DEL, "u1");
+      spy.mockRestore();
+      expect(res.ok && res.value.costNote).toBe(
+        "No cost was posted: 1 item(s) stay provisional. Not per bottle: why",
+      );
+    });
+
     it("is idempotent — a second verify returns the first stamp and writes nothing", async () => {
       db.answers.deliveries = {
         data: deliveryRow({

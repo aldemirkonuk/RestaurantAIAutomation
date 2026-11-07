@@ -263,6 +263,8 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
           inventory_id: ITEM,
           qty_bottles: 10,
           unit_price: 142.5,
+          uom: "bottle",
+          pack_size: 1,
           description: "Öküzgözü",
           vendor_sku: null,
         },
@@ -299,6 +301,8 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
           inventory_id: ITEM,
           qty_bottles: 10,
           unit_price: 142.5,
+          uom: "bottle",
+          pack_size: 1,
           description: "Öküzgözü",
           vendor_sku: null,
         },
@@ -437,6 +441,54 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     expect(db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost")).toEqual(
       [],
     );
+  });
+  // QA round 7c B1. Red on origin/main 259feea3f, which posted 264 and 142.
+  const invoiceLine = (over: Record<string, unknown>) => ({
+    document_id: "inv-1", line_no: 1, inventory_id: ITEM, qty: 2, qty_bottles: 24, uom: "case",
+    pack_size: 12, unit_price: 264, price_base_qty: null, price_base_uom: null, line_total: null, ...over,
+  });
+  const run = (...lines: Record<string, unknown>[]) => {
+    db.rpcCalls.length = 0;
+    db.answers.procurement_document_lines = { data: lines.map(invoiceLine), error: null };
+    return service.finaliseAtVerified(REST, DEL, USER);
+  };
+  const posted = () => db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost");
+  const held = async (r: ReturnType<typeof run>) => {
+    const v = await r;
+    return v.ok ? v.value.stillProvisional.map((p) => p.reason).join() : v.error;
+  };
+
+  it("B1: 2 cases @ 264 per case, pack 12, no total, no base (QA 8a), posts 22 a bottle", async () => {
+    const res = await run({});
+    expect(res.ok && res.value.finalised[0].unitCost).toBe(22);
+    expect(posted()[0].args.p_unit_cost).toBe(22);
+    expect(String(posted()[0].args.p_reason)).toMatch(/264 per case of 12 = 22\.0000 per bottle/);
+  });
+
+  it("B1: 12 bottles @ 142 / KS(12) posts 11.83, what a two-place lot cost keeps", async () => {
+    await run({ uom: "bottle", unit_price: 142, price_base_qty: 12 });
+    expect(posted()[0].args.p_unit_cost).toBe(11.83);
+    expect(String(posted()[0].args.p_reason)).toMatch(/11\.8333 per bottle/);
+  });
+
+  it("B1: a case price with no stated pack stays PROVISIONAL by name, never 264 or 0", async () => {
+    expect(await held(run({ pack_size: 1 }))).toMatch(/^the invoice prices this item, but not per bottle: .*how many bottles a case holds/);
+    expect(posted()).toEqual([]);
+  });
+
+  it("B1: the one-item fallback converts an unattached line", async () => {
+    const one = await run({ inventory_id: null });
+    expect(one.ok && one.value.finalised[0].unitCost).toBe(22);
+  });
+
+  it("B1: lines read by line_no; a refusal holds whatever follows, and disagreeing lines are refused", async () => {
+    for (const order of [[{ pack_size: 1 }, { line_no: 2 }], [{ line_no: 2 }, { pack_size: 1 }]])
+      expect(await held(run(...order))).toMatch(/how many bottles a case holds/);
+    expect(db.verbs).toContain("procurement_document_lines.order");
+    expect(await held(run({}, { line_no: 3, unit_price: 240 }))).toMatch(/price it differently \(.*22\.0000.*; .*20\.0000/);
+    expect(posted()).toEqual([]);
+    await run({}, { line_no: 3 });
+    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([22]);
   });
 });
 
