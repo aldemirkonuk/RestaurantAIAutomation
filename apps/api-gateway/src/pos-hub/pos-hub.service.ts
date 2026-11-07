@@ -351,8 +351,15 @@ type MappingIdentity = {
   item_name?: string | null;
 } | null;
 
-/** Lines read per lookup per save. */
+/** Lines one save books (stock writes tried); the rest wait for the next. */
 const REPLAY_LINE_LIMIT = 500;
+/** Open queue rows read per page while a save gathers its item's rows. */
+const REPLAY_PAGE_ROWS = 500;
+/**
+ * Most ids per `.in()` read: 500 made a 17 KB URL, past the 16 KB limit
+ * (QA round 2, U-1). 100, as PR #803 chose for GET /wines?ids=.
+ */
+const REPLAY_IDS_PER_READ = 100;
 
 const emptyPastSales = (): PastSalesCount => ({
   applied: 0,
@@ -2048,50 +2055,50 @@ export class PosHubService {
     if (!externalId && !name) return finishPastSales(out);
 
     // As resolveWine finds a mapping: by item id, or by name without case.
-    const reads: Array<{
-      byName: boolean;
-      read: PromiseLike<{ data: any[] | null; error: any }>;
-    }> = [];
-    const openLines = () => {
-      let q = db
-        .from("pos_unresolved_lines")
-        .select(
-          "id, source, external_check_id, external_item_id, item_name, reason, raw",
-        )
-        .eq("restaurant_id", restaurantId)
-        .eq("resolved", false);
-      if (source !== "*") q = q.eq("source", source);
-      return q;
+    // Every open row, a page at a time keyed on id (QA 8c): a fixed window
+    // of the oldest 500 let rows that cannot replay hide every newer one.
+    const readAll = async (
+      byName: boolean,
+    ): Promise<{ rows: any[]; error: string | null }> => {
+      const all: any[] = [];
+      let after: string | null = null;
+      for (;;) {
+        let q = db
+          .from("pos_unresolved_lines")
+          .select(
+            "id, created_at, source, external_check_id, external_item_id, item_name, reason, qty, raw",
+          )
+          .eq("restaurant_id", restaurantId)
+          .eq("resolved", false);
+        if (source !== "*") q = q.eq("source", source);
+        q = byName
+          ? q.ilike("item_name", escapeLikePattern(name))
+          : q.eq("external_item_id", externalId);
+        if (after !== null) q = q.gt("id", after);
+        const { data, error } = await q
+          .order("id", { ascending: true })
+          .limit(REPLAY_PAGE_ROWS);
+        if (error) return { rows: all, error: error.message };
+        const page = data || [];
+        all.push(...page);
+        if (page.length < REPLAY_PAGE_ROWS) return { rows: all, error: null };
+        after = String(page[page.length - 1].id);
+      }
     };
-    if (externalId)
-      reads.push({
-        byName: false,
-        read: openLines()
-          .eq("external_item_id", externalId)
-          .order("created_at", { ascending: true })
-          .limit(REPLAY_LINE_LIMIT),
-      });
-    if (name)
-      reads.push({
-        byName: true,
-        read: openLines()
-          .ilike("item_name", escapeLikePattern(name))
-          .order("created_at", { ascending: true })
-          .limit(REPLAY_LINE_LIMIT),
-      });
-    const results = await Promise.all(reads.map((r) => r.read));
+    const reads: Array<{ byName: boolean }> = [];
+    if (externalId) reads.push({ byName: false });
+    if (name) reads.push({ byName: true });
+    const results = await Promise.all(reads.map((r) => readAll(r.byName)));
     const rows = new Map<string, any>();
     for (let i = 0; i < results.length; i++) {
       const r = results[i];
       if (r.error) {
         this.logger.error(
-          `pos_unresolved_lines read failed for r=${restaurantId}: ${r.error.message}`,
+          `pos_unresolved_lines read failed for r=${restaurantId}: ${r.error}`,
         );
         return pastSalesUnavailable();
       }
-      const data = r.data || [];
-      if (data.length >= REPLAY_LINE_LIMIT) out.truncated = true;
-      for (const row of data) {
+      for (const row of r.rows) {
         // The name read can over-match (escapeLikePattern): keep only the
         // equality resolveWine itself uses.
         if (
@@ -2105,7 +2112,12 @@ export class PosHubService {
     if (!rows.size) return finishPastSales(out);
 
     const bySource = new Map<string, any[]>();
-    for (const row of rows.values()) {
+    const oldestFirst = [...rows.values()].sort(
+      (a, b) =>
+        String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")) ||
+        String(a.id).localeCompare(String(b.id)),
+    );
+    for (const row of oldestFirst) {
       const list = bySource.get(row.source) ?? [];
       list.push(row);
       bySource.set(row.source, list);
@@ -2125,6 +2137,8 @@ export class PosHubService {
       mappingsBySource.set(lineSource, mappingRead.rows);
     }
 
+    // Lines one save may try to book; a row that cannot replay costs none.
+    const budget = { left: REPLAY_LINE_LIMIT };
     for (const [lineSource, fetched] of bySource) {
       const mappings = mappingsBySource.get(lineSource) ?? [];
       // Only the rows a live sale would now book under the mapping just
@@ -2141,50 +2155,239 @@ export class PosHubService {
           mapping,
         ),
       );
-      // A Toast-door row holds a Toast selection, keyed toast_sale_… on
-      // that door; replayed under the hub's key it could move twice, so it
-      // is left alone. A hub row always carries is_wine.
+      // A hub row always carries is_wine. A Toast-door row holds the Toast
+      // selection and is booked under that door's own key (QA 8c).
       const hubRows = sourceRows.filter(
         (r) => r.raw && r.raw.is_wine === true && r.external_check_id,
       );
-      out.still_waiting += sourceRows.length - hubRows.length;
+      const toastRows =
+        lineSource === "toast"
+          ? sourceRows.filter((r) => !(r.raw && r.raw.is_wine === true))
+          : [];
+      out.still_waiting +=
+        sourceRows.length - hubRows.length - toastRows.length;
+      if (toastRows.length)
+        await this.replayToastDoorRows(
+          restaurantId,
+          toastRows,
+          externalId,
+          mappings,
+          out,
+          budget,
+        );
       if (!hubRows.length) continue;
 
       const checkIds = [
         ...new Set(hubRows.map((r) => String(r.external_check_id))),
       ];
-      const { data: checks, error: checksError } = await db
-        .from("pos_checks")
-        .select("external_check_id, closed_at, voided, items")
-        .eq("restaurant_id", restaurantId)
-        .eq("source", lineSource)
-        .in("external_check_id", checkIds);
-      if (checksError) {
-        out.failed += hubRows.length;
-        this.logger.error(
-          `Replay could not read pos_checks for r=${restaurantId} src=${lineSource}: ${checksError.message}`,
+      // REPLAY_IDS_PER_READ ids per read: 500 in one URL passed 16 KB.
+      for (let i = 0; i < checkIds.length; i += REPLAY_IDS_PER_READ) {
+        if (budget.left <= 0) {
+          out.truncated = true;
+          break;
+        }
+        const ids = checkIds.slice(i, i + REPLAY_IDS_PER_READ);
+        const { data: checks, error: checksError } = await db
+          .from("pos_checks")
+          .select("external_check_id, closed_at, voided, items")
+          .eq("restaurant_id", restaurantId)
+          .eq("source", lineSource)
+          .in("external_check_id", ids);
+        if (checksError) {
+          out.failed += hubRows.filter((r) =>
+            ids.includes(String(r.external_check_id)),
+          ).length;
+          this.logger.error(
+            `Replay could not read pos_checks for r=${restaurantId} src=${lineSource}: ${checksError.message}`,
+          );
+          continue;
+        }
+        const checkById = new Map<string, any>(
+          (checks || []).map((c: any) => [String(c.external_check_id), c]),
         );
-        continue;
-      }
-      const checkById = new Map<string, any>(
-        (checks || []).map((c: any) => [String(c.external_check_id), c]),
-      );
-
-      for (const checkId of checkIds) {
-        const queued = hubRows.filter(
-          (r) => String(r.external_check_id) === checkId,
-        );
-        await this.replayOneCheck(
-          restaurantId,
-          lineSource,
-          checkById.get(checkId) ?? null,
-          queued,
-          mappings,
-          out,
-        );
+        for (let k = 0; k < ids.length; k++) {
+          if (budget.left <= 0) {
+            out.truncated = true;
+            break;
+          }
+          const queued = hubRows.filter(
+            (r) => String(r.external_check_id) === ids[k],
+          );
+          budget.left -= await this.replayOneCheck(
+            restaurantId,
+            lineSource,
+            checkById.get(ids[k]) ?? null,
+            queued,
+            mappings,
+            out,
+          );
+        }
       }
     }
     return finishPastSales(out);
+  }
+
+  /**
+   * Replay Toast-door rows (QA 8c). That door (toast.service.ts
+   * applyOrderSaleEffects) stores no check and books once per (order, menu
+   * item) under `toast_sale_{order}_{menuGuid}`; the replay uses that key and
+   * those RPCs, so it, a second save and a Toast re-send move stock once. As
+   * the door does, it matches by item id and reads no sale unit as a bottle
+   * (B36). The order's `events` stand in for the check: voided is cleared
+   * with no stock, a sale is dated by toast_closed_at (ADR 0281), and no
+   * readable close stays queued.
+   */
+  private async replayToastDoorRows(
+    restaurantId: string,
+    rows: any[],
+    externalId: string,
+    mappings: any[],
+    out: PastSalesCount,
+    budget: { left: number },
+  ): Promise<void> {
+    const db = this.dbService.getClient();
+    // The door matches by guid alone; a name-only match never books live.
+    const own = externalId
+      ? rows.filter((r) => String(r.external_item_id ?? "") === externalId)
+      : [];
+    out.still_waiting += rows.length - own.length;
+    if (!own.length) return;
+    const m = this.findMapping(
+      String(own[0].item_name ?? ""),
+      externalId,
+      mappings,
+    );
+    if (!m?.inventory_id) {
+      if (m?.is_wine === false) {
+        if (await this.clearQueuedLines(restaurantId, own, null))
+          out.cleared_without_stock += own.length;
+        else out.still_waiting += own.length;
+      } else out.still_waiting += own.length;
+      return;
+    }
+    // ADR 0141: record_glass_pour takes no house, so the item is asserted
+    // to be this house's first (the save asserted it too; a read that fails
+    // here makes the whole replay say it could not run).
+    await assertInventoryBelongsToRestaurant(
+      db,
+      restaurantId,
+      m.inventory_id,
+      "replayToastDoorRows",
+      this.logger,
+    );
+    const glass = m.sale_unit === "glass";
+    const orders = [...new Set(own.map((r) => String(r.external_check_id)))];
+    for (let i = 0; i < orders.length; i += REPLAY_IDS_PER_READ) {
+      if (budget.left <= 0) {
+        out.truncated = true;
+        return;
+      }
+      const ids = orders.slice(i, i + REPLAY_IDS_PER_READ);
+      const chunkRows = own.filter((r) =>
+        ids.includes(String(r.external_check_id)),
+      );
+      const keyOf = (r: any) =>
+        `toast_sale_${r.external_check_id}_${r.external_item_id}`;
+      const { data: events, error: eventsError } = await db
+        .from("events")
+        .select("event_type, payload")
+        .eq("restaurant_id", restaurantId)
+        .in("event_type", [
+          "pos_order_closed",
+          "pos_order_paid",
+          "pos_order_voided",
+        ])
+        .in("payload->>toast_order_guid", ids);
+      // A bottle sale's RPC answers a seen key with the old id, so the key
+      // is looked up first to tell a new sale from one already booked.
+      const seen = glass
+        ? { data: [], error: null }
+        : await db
+            .from("inventory_transactions")
+            .select("idempotency_key")
+            .eq("restaurant_id", restaurantId)
+            .in("idempotency_key", chunkRows.map(keyOf));
+      if (eventsError || seen.error) {
+        out.failed += chunkRows.length;
+        this.logger.error(
+          `Replay could not read the Toast orders for r=${restaurantId}: ${(eventsError ?? seen.error)?.message}`,
+        );
+        continue;
+      }
+      const booked = new Set(
+        (seen.data || []).map((t: any) => String(t.idempotency_key)),
+      );
+      const settled: Array<{ row: any; kind: "applied" | "already" | "none" }> =
+        [];
+      for (const r of chunkRows) {
+        const mine = (events || []).filter(
+          (e: any) =>
+            String(e.payload?.toast_order_guid) === String(r.external_check_id),
+        );
+        if (mine.some((e: any) => e.event_type === "pos_order_voided")) {
+          settled.push({ row: r, kind: "none" });
+          continue;
+        }
+        const closedAt = mine.find(
+          (e: any) => e.payload?.toast_closed_at != null,
+        )?.payload?.toast_closed_at;
+        const when = saleInstant(closedAt, Date.now());
+        const qty = Math.max(0, Math.round(Number(r.qty) || 0));
+        if (!mine.length || when.fellBack || qty <= 0) {
+          out.still_waiting++;
+          continue;
+        }
+        budget.left--;
+        const key = keyOf(r);
+        const { data, error } = glass
+          ? await db.rpc("record_glass_pour", {
+              p_inventory_id: m.inventory_id,
+              p_pours: qty,
+              p_pour_ml: null,
+              p_location_id: null,
+              p_source: "pos",
+              p_reason: `POS sale: ${r.item_name}`,
+              p_idempotency_key: key,
+              p_occurred_at: when.at,
+            })
+          : await db.rpc("apply_stock_movement", {
+              p_inventory_id: m.inventory_id,
+              p_stock_state: "live",
+              p_delta: -qty,
+              p_transaction_type: "sale",
+              p_source: "pos",
+              p_reason: `POS sale: ${r.item_name}`,
+              p_idempotency_key: key,
+              p_restaurant_id: restaurantId,
+              p_occurred_at: when.at,
+            });
+        if (error) {
+          out.failed++;
+          this.logger.warn(
+            `Replay of Toast order ${r.external_check_id} failed for r=${restaurantId}: ${error.message}`,
+          );
+          continue;
+        }
+        const already = glass ? data?.idempotent === true : booked.has(key);
+        settled.push({ row: r, kind: already ? "already" : "applied" });
+      }
+      if (!settled.length) continue;
+      const cleared = await this.clearQueuedLines(
+        restaurantId,
+        settled.map((s) => s.row),
+        m.inventory_id,
+      );
+      for (const s of settled) {
+        if (s.kind === "none") {
+          if (cleared) out.cleared_without_stock++;
+          else out.still_waiting++;
+          continue;
+        }
+        if (s.kind === "applied") out.applied++;
+        else out.already_applied++;
+        if (!cleared) out.not_cleared++;
+      }
+    }
   }
 
   /**
@@ -2195,7 +2398,8 @@ export class PosHubService {
    * neighbours do, and a row is cleared only when every one of its own lines
    * moved, had moved already, or needs no stock. Lines are counted, except
    * where no line can be read (no stored check, or a check that dropped the
-   * line): those count their rows.
+   * line): those count their rows. Returns how many lines it tried to book,
+   * which is what a save's REPLAY_LINE_LIMIT counts.
    */
   private async replayOneCheck(
     restaurantId: string,
@@ -2204,10 +2408,10 @@ export class PosHubService {
     queued: any[],
     mappings: any[],
     out: PastSalesCount,
-  ): Promise<void> {
+  ): Promise<number> {
     if (!stored) {
       out.still_waiting += queued.length;
-      return;
+      return 0;
     }
     // A voided check never happened: its line moved nothing on the sale or
     // the void, so clearing it is the whole replay.
@@ -2215,13 +2419,13 @@ export class PosHubService {
       if (await this.clearQueuedLines(restaurantId, queued, null))
         out.cleared_without_stock += queued.length;
       else out.still_waiting += queued.length;
-      return;
+      return 0;
     }
     // ADR 0281: dated by the check's close, never by the replay.
     const when = saleInstant(stored.closed_at, Date.now());
     if (when.fellBack) {
       out.still_waiting += queued.length;
-      return;
+      return 0;
     }
 
     const lines = (Array.isArray(stored.items) ? stored.items : []).map(
@@ -2245,7 +2449,7 @@ export class PosHubService {
     // person rather than being cleared on a guess.
     if (!targets.length) {
       out.still_waiting += queued.length;
-      return;
+      return 0;
     }
 
     type LineOutcome = {
@@ -2392,6 +2596,7 @@ export class PosHubService {
           break;
       }
     }
+    return targets.length;
   }
 
   /**

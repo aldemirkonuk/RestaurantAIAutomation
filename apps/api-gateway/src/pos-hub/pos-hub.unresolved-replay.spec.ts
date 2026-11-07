@@ -43,6 +43,8 @@ function makeDb(
     ],
     restaurant_tables: [],
     wine_consumption_log: [],
+    inventory_transactions: [],
+    events: [],
     pos_catalog_match_proposals: [
       {
         id: "prop-1",
@@ -65,6 +67,13 @@ function makeDb(
 
   const matches = (row: Row, filters: Array<(r: Row) => boolean>) =>
     filters.every((f) => f(row));
+  // PostgREST's `col->>key` reads one key of a json column.
+  const at = (row: Row, col: string) => {
+    const [c, k] = col.split("->>");
+    return k === undefined ? row[c] : (row[c]?.[k] ?? null);
+  };
+  /** Largest `.in()` list sent per table, to pin the chunking. */
+  const widestIn: Record<string, number> = {};
 
   class Query {
     private filters: Array<(r: Row) => boolean> = [];
@@ -73,14 +82,27 @@ function makeDb(
     private conflict: string[] = [];
     private max = Infinity;
     private one = false;
+    private sorts: Array<[string, boolean]> = [];
+    private tooLong = false;
     constructor(private readonly table: string) {}
     select = () => this;
-    order = () => this;
+    order = (col: string, o: { ascending?: boolean } = {}) => (
+      this.sorts.push([col, o.ascending !== false]),
+      this
+    );
     single = () => ((this.one = true), this);
     maybeSingle = this.single;
     limit = (n: number) => ((this.max = n), this);
-    eq = (col: string, val: any) => this.where((r) => r[col] === val);
-    in = (col: string, vals: any[]) => this.where((r) => vals.includes(r[col]));
+    eq = (col: string, val: any) => this.where((r) => at(r, col) === val);
+    gt = (col: string, val: any) =>
+      this.where((r) => String(at(r, col)) > String(val));
+    // A URL past 16 KB is refused (QA round 2, U-1).
+    in = (col: string, vals: any[]) => {
+      widestIn[this.table] = Math.max(widestIn[this.table] ?? 0, vals.length);
+      if (encodeURIComponent(vals.join(",")).length > 16_000)
+        this.tooLong = true;
+      return this.where((r) => vals.includes(at(r, col)));
+    };
     // As the wire behaves: PostgREST turns every `*` into `%` before
     // Postgres reads the pattern, then ILIKE (backslash escapes, `%`, `_`).
     ilike = (col: string, pattern: string) => {
@@ -122,12 +144,17 @@ function makeDb(
     private run(): { data: any; error: any } {
       const rows = tables[this.table];
       if (!rows) return { data: null, error: { message: `no ${this.table}` } };
+      if (this.tooLong)
+        return { data: null, error: { message: "414 URI Too Long" } };
       if (this.op === "insert") {
         const row = { ...this.payload };
         if (this.table === "pos_unresolved_lines") {
           row.id = row.id ?? `q-${nextId++}`;
           row.resolved = false;
           row.reason = row.reason ?? "unmapped";
+          row.created_at =
+            row.created_at ??
+            new Date(Date.UTC(2026, 10, 5) + nextId * 1000).toISOString();
           const dupe = rows.find(
             (r) =>
               !r.resolved &&
@@ -166,6 +193,14 @@ function makeDb(
         return { data: null, error: { message: "connection reset" } };
       const found = rows
         .filter((r) => matches(r, this.filters))
+        .sort((a, b) => {
+          for (const [col, asc] of this.sorts) {
+            const x = String(at(a, col) ?? "");
+            const y = String(at(b, col) ?? "");
+            if (x !== y) return (x < y ? -1 : 1) * (asc ? 1 : -1);
+          }
+          return 0;
+        })
         .slice(0, this.max)
         .map((r) => ({ ...r }));
       if (this.one) return { data: found[0] ?? null, error: null };
@@ -177,16 +212,31 @@ function makeDb(
     from: (table: string) => new Query(table),
     rpc: async (name: string, args: Row) => {
       const key = String(args.p_idempotency_key);
-      // The real early return: a key already seen moves nothing.
-      if (seenKeys.has(key)) return { data: "tx-existing", error: null };
+      // A seen key moves nothing; record_glass_pour says so.
+      if (seenKeys.has(key))
+        return {
+          data:
+            name === "record_glass_pour" ? { idempotent: true } : "tx-existing",
+          error: null,
+        };
       if (opts.failKey?.(key))
         return { data: null, error: { message: "stock write refused" } };
       seenKeys.add(key);
       if (name === "apply_stock_movement") {
         stockMl[args.p_inventory_id] += Number(args.p_delta) * BOTTLE_ML;
+        tables.inventory_transactions.push({
+          restaurant_id: args.p_restaurant_id,
+          idempotency_key: key,
+          transaction_date: args.p_occurred_at,
+        });
       } else if (name === "record_glass_pour") {
+        // COALESCE(p_pour_ml, ri.pour_size_ml, 150), as the function reads it.
+        const inv = tables.restaurant_inventory.find(
+          (r) => r.id === args.p_inventory_id,
+        );
         stockMl[args.p_inventory_id] -=
-          Number(args.p_pours) * Number(args.p_pour_ml);
+          Number(args.p_pours) *
+          Number(args.p_pour_ml ?? inv?.pour_size_ml ?? 150);
       }
       return { data: `tx-${seenKeys.size}`, error: null };
     },
@@ -195,6 +245,7 @@ function makeDb(
     db: { getClient: () => client } as unknown as DatabaseService,
     tables,
     stockMl,
+    widestIn,
     bottles: (id = "inv-merlot") => stockMl[id] / BOTTLE_ML,
   };
 }
@@ -556,5 +607,173 @@ describe("PosHubService — a mapping replays the sales queued before it (POS-2)
     expect(bottles()).toBe(10);
     expect(answered.past_sales).toMatchObject({ applied: 1 });
     expect(open(tables)).toHaveLength(0);
+  });
+});
+
+/** What the Toast door leaves behind for an unmapped line (toast.service.ts). */
+function toastSale(
+  tables: Record<string, Row[]>,
+  order: string,
+  qty: number,
+  over: { voided?: boolean; closedAt?: string | null } = {},
+) {
+  const closedAt =
+    over.closedAt === undefined ? "2026-11-02T20:00:00Z" : over.closedAt;
+  tables.events.push({
+    restaurant_id: HOUSE,
+    event_type: "pos_order_closed",
+    payload: { toast_order_guid: order, toast_closed_at: closedAt },
+  });
+  if (over.voided)
+    tables.events.push({
+      restaurant_id: HOUSE,
+      event_type: "pos_order_voided",
+      payload: { toast_order_guid: order, toast_closed_at: closedAt },
+    });
+  tables.pos_unresolved_lines.push({
+    id: `toast-${order}`,
+    restaurant_id: HOUSE,
+    source: "toast",
+    external_check_id: order,
+    external_item_id: "merlot-1",
+    item_name: "House Merlot",
+    qty,
+    reason: "unmapped",
+    resolved: false,
+    created_at: "2026-11-02T20:00:01Z",
+    raw: { guid: "merlot-1", name: "House Merlot", quantity: qty },
+  });
+}
+
+describe("PosHubService — replay reaches every waiting sale (QA round 8c)", () => {
+  it("replays a Toast-door sale under that door's own key, once", async () => {
+    const { db, tables, bottles } = makeDb();
+    const service = new PosHubService(db);
+    toastSale(tables, "order-1", 2);
+
+    const saved: any = await mapMerlot(service, { source: "toast" });
+
+    expect(bottles()).toBe(10);
+    expect(saved.past_sales).toMatchObject({ applied: 1, still_waiting: 0 });
+    expect(open(tables)).toHaveLength(0);
+    // The door's own key, dated by the order's close.
+    expect(tables.inventory_transactions).toEqual([
+      expect.objectContaining({
+        idempotency_key: "toast_sale_order-1_merlot-1",
+        transaction_date: "2026-11-02T20:00:00.000Z",
+      }),
+    ]);
+
+    // The clearing write was lost: the second save takes nothing twice.
+    for (const r of tables.pos_unresolved_lines) r.resolved = false;
+    const again: any = await mapMerlot(service, { source: "toast" });
+    expect(bottles()).toBe(10);
+    expect(again.past_sales).toMatchObject({ applied: 0, already_applied: 1 });
+  });
+
+  it("pours a Toast-door glass sale at the item's pour size", async () => {
+    const { db, tables, stockMl } = makeDb();
+    const service = new PosHubService(db);
+    toastSale(tables, "order-1", 3);
+
+    const saved: any = await mapMerlot(service, {
+      source: "toast",
+      sale_unit: "glass",
+    });
+
+    expect(stockMl["inv-merlot"]).toBe(12 * BOTTLE_ML - 3 * 150);
+    expect(saved.past_sales.applied).toBe(1);
+  });
+
+  it("clears a voided Toast order without stock, and keeps an order with no close time waiting", async () => {
+    const { db, tables, bottles } = makeDb();
+    const service = new PosHubService(db);
+    toastSale(tables, "order-void", 2, { voided: true });
+    toastSale(tables, "order-open", 1, { closedAt: null });
+
+    const saved: any = await mapMerlot(service, { source: "toast" });
+
+    expect(bottles()).toBe(12);
+    expect(saved.past_sales).toMatchObject({
+      applied: 0,
+      cleared_without_stock: 1,
+      still_waiting: 1,
+    });
+    expect(open(tables).map((r) => r.external_check_id)).toEqual([
+      "order-open",
+    ]);
+  });
+
+  it("500 older rows that cannot replay do not hide the newer ones", async () => {
+    const { db, tables, bottles } = makeDb();
+    const service = new PosHubService(db);
+    // Queued by the hub, but their checks are no longer stored.
+    for (let i = 0; i < 500; i++)
+      tables.pos_unresolved_lines.push({
+        id: `gone-${String(i).padStart(3, "0")}`,
+        restaurant_id: HOUSE,
+        source: "generic_webhook",
+        external_check_id: `gone-${i}`,
+        external_item_id: "merlot-1",
+        item_name: "House Merlot",
+        qty: 1,
+        reason: "unmapped",
+        resolved: false,
+        created_at: "2026-10-01T12:00:00Z",
+        raw: { is_wine: true },
+      });
+    await service.ingest(HOUSE, "generic_webhook", [
+      sale("chk-1", 1),
+      sale("chk-2", 1),
+    ]);
+
+    const saved: any = await mapMerlot(service);
+
+    expect(bottles()).toBe(10);
+    expect(saved.past_sales).toMatchObject({
+      applied: 2,
+      still_waiting: 500,
+      truncated: false,
+    });
+    expect(saved.past_sales.message).not.toMatch(/save the mapping again/);
+  });
+
+  it("books 500 lines per save and says more are waiting until the queue is drained", async () => {
+    const { db, tables, bottles } = makeDb();
+    const service = new PosHubService(db);
+    await service.ingest(
+      HOUSE,
+      "generic_webhook",
+      Array.from({ length: 501 }, (_, i) => sale(`c-${i}`, 1)),
+    );
+
+    const first: any = await mapMerlot(service);
+    expect(first.past_sales).toMatchObject({ applied: 500, truncated: true });
+    expect(first.past_sales.message).toMatch(/save the mapping again/);
+
+    const second: any = await mapMerlot(service);
+    expect(second.past_sales).toMatchObject({ applied: 1, truncated: false });
+    expect(bottles()).toBe(12 - 501);
+    expect(open(tables)).toHaveLength(0);
+  });
+
+  it("reads the stored checks of 450 waiting sales in lists short enough for a URL", async () => {
+    const { db, tables, bottles, widestIn } = makeDb();
+    const service = new PosHubService(db);
+    // Toast and Clover check ids are uuids: 36 characters each.
+    const id = (i: number) =>
+      `0d4c6c1e-8f0b-4c55-9a43-${String(i).padStart(12, "0")}`;
+    await service.ingest(
+      HOUSE,
+      "generic_webhook",
+      Array.from({ length: 450 }, (_, i) => sale(id(i), 1)),
+    );
+
+    const saved: any = await mapMerlot(service);
+
+    expect(saved.past_sales).toMatchObject({ applied: 450, failed: 0 });
+    expect(bottles()).toBe(12 - 450);
+    expect(open(tables)).toHaveLength(0);
+    expect(widestIn.pos_checks).toBeLessThanOrEqual(100);
   });
 });
