@@ -83,6 +83,19 @@ export class FloorStaffController {
     return this.floor.foodAck(floorActorOf(req), id);
   }
 
+  @Post("food-up/:id/delivered")
+  @HttpCode(200)
+  @Roles("owner", "manager", "staff")
+  foodDelivered(@Req() req: any, @Param("id", ParseUUIDPipe) id: string) {
+    return this.floor.foodDelivered(floorActorOf(req), id);
+  }
+
+  @Get("clock")
+  @Roles("owner", "manager", "staff")
+  clock(@Req() req: any) {
+    return this.floor.clockState(floorActorOf(req));
+  }
+
   @Post("clock-in")
   @Roles("owner", "manager", "staff")
   clockIn(@Req() req: any) {

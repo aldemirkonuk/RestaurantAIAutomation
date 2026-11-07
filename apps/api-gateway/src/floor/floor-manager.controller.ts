@@ -24,10 +24,13 @@ import { FloorEnabledGuard } from "./floor-enabled.guard";
 import { floorActorOf } from "./floor-common";
 import { FloorAdminService } from "./floor-admin.service";
 import { FloorBoardService } from "./floor-board.service";
+import { FloorTablesService } from "./floor-tables.service";
 import {
   AssignDto,
   ConfirmLinkDto,
+  CreateTableDto,
   FloorSettingsDto,
+  MergeDto,
   OutTonightDto,
   ReassignApplyDto,
   ReassignProposeDto,
@@ -35,6 +38,7 @@ import {
   SectionDto,
   SectionTablesDto,
   SectionUpdateDto,
+  TablePatchDto,
 } from "./floor.dto";
 
 /**
@@ -42,7 +46,8 @@ import {
  * route (board, report, CSV) and every admin route carries
  * `@Roles("owner", "manager")` on its own (E6). Out tonight's mark and back
  * also admit staff; the service then admits only kitchen or bar leads
- * (Open as OD-242, the executor's reading under OD-242).
+ * (Open as OD-242, the executor's reading under OD-242). Merge and split also
+ * admit staff; the service admits a waiter only for tables they hold.
  */
 @Controller("floor")
 @UseGuards(JwtAuthGuard, RolesGuard, FloorEnabledGuard)
@@ -51,6 +56,7 @@ export class FloorManagerController {
   constructor(
     private readonly board: FloorBoardService,
     private readonly admin: FloorAdminService,
+    private readonly tables: FloorTablesService,
   ) {}
 
   // --------------------------------------------------------------- figures
@@ -178,6 +184,45 @@ export class FloorManagerController {
   @Roles("owner", "manager", "staff")
   backOn(@Req() req: any, @Param("id", ParseUUIDPipe) id: string) {
     return this.admin.backOn(floorActorOf(req), id);
+  }
+
+  // --------------------------------------------------------------- Food-up
+
+  @Get("food-ups")
+  @Roles("owner", "manager")
+  foodUps(@Req() req: any) {
+    return this.board.openFoodUps(floorActorOf(req));
+  }
+
+  // ---------------------------------------------------------------- tables
+
+  @Post("tables")
+  @Roles("owner", "manager")
+  createTable(@Req() req: any, @Body() dto: CreateTableDto) {
+    return this.tables.createTable(floorActorOf(req), dto);
+  }
+
+  @Patch("tables/:id")
+  @Roles("owner", "manager")
+  patchTable(@Req() req: any, @Param("id", ParseUUIDPipe) id: string, @Body() dto: TablePatchDto) {
+    return this.tables.patchTable(floorActorOf(req), id, dto);
+  }
+
+  // ---------------------------------------------------------------- merges
+  // Staff pass the role gate; the service admits a waiter only for tables
+  // they hold, and only neighbours (the checker's canMergeSplit).
+
+  @Post("merges")
+  @Roles("owner", "manager", "staff")
+  merge(@Req() req: any, @Body() dto: MergeDto) {
+    return this.tables.merge(floorActorOf(req), dto.tableIds);
+  }
+
+  @Post("merges/:id/split")
+  @HttpCode(200)
+  @Roles("owner", "manager", "staff")
+  split(@Req() req: any, @Param("id", ParseUUIDPipe) id: string) {
+    return this.tables.split(floorActorOf(req), id);
   }
 
   // ------------------------------------------------------- till-name links
