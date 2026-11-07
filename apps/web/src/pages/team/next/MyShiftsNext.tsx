@@ -12,6 +12,11 @@
  * the week actually answered; otherwise it says the week is not known, and the
  * banner says which of the two happened.
  *
+ * A WEEK STILL BEING BUILT IS NOT SHOWN AS FINAL. The gateway withholds an
+ * unpublished week's shifts from staff (`draftsWithheld`), so an empty day on
+ * such a week says "Not published yet", not "Off". An owner or manager who
+ * lands here sees the shifts, each marked draft.
+ *
  * PAID OR UNPAID (ADR 0215; founder 2026-09-21, "Take all five"). The person
  * asking may say whether the days are paid leave; whoever approves the request
  * decides, and their word replaces this one. Left to the manager, the request
@@ -198,11 +203,25 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
             You have told your manager you have seen this week.
           </p>
         )}
-        {weekKnown && payload?.schedule === null && (
+        {weekKnown && payload?.draftsWithheld ? (
           <p className="tm-quiet" style={{ marginBottom: 14 }}>
-            No schedule has been published for this week yet, so anything below is a draft
-            your manager is still working on.
+            Your manager has not published this week yet, so no shift is shown. That is not
+            a week off. Your shifts appear here once the week is published.
           </p>
+        ) : weekKnown && payload?.published === false ? (
+          <p className="tm-quiet" style={{ marginBottom: 14 }}>
+            This week is not published yet. Shifts marked draft may still change, and your
+            staff do not see them until you publish.
+          </p>
+        ) : (
+          weekKnown &&
+          payload?.published === undefined &&
+          payload?.schedule === null && (
+            <p className="tm-quiet" style={{ marginBottom: 14 }}>
+              No schedule has been published for this week yet, so anything below is a draft
+              your manager is still working on.
+            </p>
+          )
         )}
 
         {askOff.isSuccess && (
@@ -267,7 +286,11 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
                 <div className="tm-day__body">
                   {mine.length === 0 && (
                     <span className="tm-quiet">
-                      {weekKnown ? 'Off' : `${EM} not known`}
+                      {!weekKnown
+                        ? `${EM} not known`
+                        : payload?.draftsWithheld
+                          ? 'Not published yet'
+                          : 'Off'}
                     </span>
                   )}
                   {mine.map((s) => (
@@ -275,7 +298,10 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
                       <span className="tm-chip__t">
                         {fmtTime(s.start_time)}–{fmtTime(s.end_time)}
                       </span>
-                      <span className="tm-chip__m">{s.role ?? s.shift_type}</span>
+                      <span className="tm-chip__m">
+                        {s.role ?? s.shift_type}
+                        {s.draft ? ' · draft' : ''}
+                      </span>
                     </span>
                   ))}
                 </div>
@@ -298,6 +324,7 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
                     {DOW[days.indexOf(s.shift_date)] ?? ''} {dayNum(s.shift_date)} ·{' '}
                     {fmtTime(s.start_time)}–{fmtTime(s.end_time)}
                     {s.role ? ` · ${s.role}` : ''}
+                    {s.draft ? ' · draft' : ''}
                   </span>
                   <button
                     type="button"

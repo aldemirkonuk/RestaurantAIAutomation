@@ -1,9 +1,13 @@
 /**
  * My Shifts never reports a week it does not know as a week off
- * (QA round 4, B1).
+ * (QA round 4, B1 and H2).
  *
- *  - A failed `my-week` read (the gateway now answers one with a 500, not an
- *    empty week) says it failed and offers a retry; no day says "Off".
+ *  - A failed `my-week` read says it failed and offers a retry; no day says
+ *    "Off".
+ *  - An unpublished week, whose shifts the gateway withholds from staff
+ *    (`draftsWithheld`), says "Not published yet" on each day, never "Off".
+ *  - An owner or manager who lands here sees each unpublished shift marked
+ *    draft.
  * The control: a published week with nothing on a day still says "Off".
  */
 
@@ -62,6 +66,48 @@ describe('MyShiftsNext', () => {
     expect(screen.queryByText('Off')).toBeNull();
   });
 
+  it('an unpublished week withheld from staff says "Not published yet", never Off', async () => {
+    api.myWeek = async () => ({
+      member,
+      schedule: null,
+      mine: [],
+      open: [],
+      acknowledged: false,
+      published: false,
+      draftsWithheld: true,
+    });
+    wrap(<MyShiftsNext />);
+    expect(await screen.findAllByText('Not published yet')).toHaveLength(7);
+    expect(screen.queryByText('Off')).toBeNull();
+    expect(screen.getByText(/has not published this week yet/)).toBeTruthy();
+  });
+
+  it('an owner or manager here sees an unpublished shift marked draft', async () => {
+    api.myWeek = async () => ({
+      member,
+      schedule: { id: 's1', week_start: WEEK, status: 'draft' },
+      mine: [
+        {
+          id: 'sh1',
+          shift_date: WEEK,
+          start_time: '09:00',
+          end_time: '17:00',
+          role: 'server',
+          shift_type: 'regular',
+          state: 'scheduled',
+          draft: true,
+        },
+      ],
+      open: [],
+      acknowledged: false,
+      published: false,
+      draftsWithheld: false,
+    });
+    wrap(<MyShiftsNext />);
+    expect(await screen.findByText(/server · draft/)).toBeTruthy();
+    expect(screen.getByText(/Shifts marked draft may still change/)).toBeTruthy();
+  });
+
   it('control: a published week with nothing on a day still says Off', async () => {
     api.myWeek = async () => ({
       member,
@@ -69,6 +115,8 @@ describe('MyShiftsNext', () => {
       mine: [],
       open: [],
       acknowledged: true,
+      published: true,
+      draftsWithheld: false,
     });
     wrap(<MyShiftsNext />);
     expect(await screen.findAllByText('Off')).toHaveLength(7);
