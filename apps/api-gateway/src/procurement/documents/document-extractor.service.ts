@@ -5,6 +5,11 @@ import {
   NfEventRef,
 } from "../../common/model-client/model-client.service";
 import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
+import {
+  formatRefusalSentence,
+  ModelMediaType,
+  sniffPhotoFormat,
+} from "../../common/photo-format";
 import { DOC_TYPES, normalizeUom, toBottles, Uom } from "./document-types";
 import {
   applyTieOut,
@@ -155,34 +160,8 @@ export function stripJsonFence(rawText: string): string {
   return s.trim();
 }
 
-type MediaType =
-  | "image/jpeg"
-  | "image/png"
-  | "image/webp"
-  | "image/gif"
-  | "application/pdf";
-
-/**
- * The model takes JPEG, PNG, GIF and WebP images
- * (https://platform.claude.com/docs/en/build-with-claude/vision#supported-formats)
- * and PDF. Anything else is refused with a sentence, never sent as a guess.
- */
-type PaperFormat = { mediaType: MediaType } | { unreadable: string };
-
-/**
- * ISO-BMFF major brands at bytes 8-11 (after `ftyp` at 4-7). HEIF is an
- * iPhone's default; AVIF is refused too, by its own name (founder /goal
- * 2026-11-07 delegated the call).
- */
-const HEIF_BRANDS = new Set(
-  "heic heix hevc hevx heim heis hevm hevs mif1 msf1".split(" "),
-);
-const AVIF_BRANDS = new Set(["avif", "avis"]);
-
-/** The sentence an unread HEIC/AVIF photo carries into the review queue. */
-export function unreadablePhotoFormat(name: "HEIC" | "AVIF"): string {
-  return `This photo is in ${name} format, which the reader cannot open, so the paper was stored unread. Send it again as a JPEG, or take the photo again.`;
-}
+/** What became of a paper whose format was refused: it is kept, unread. */
+const DOCUMENT_REFUSAL_OUTCOME = "the paper was stored unread";
 
 /**
  * Thrown by `extract()` for a paper refused before any model call; the message
@@ -196,24 +175,6 @@ export class PaperFormatRefusal extends Error {
     super(sentence);
     this.name = "PaperFormatRefusal";
   }
-}
-
-/** The sentence a file in no format the reader opens carries. */
-export const UNREADABLE_FILE_FORMAT =
-  "This file is not a PDF, JPEG, PNG, WebP or GIF, so the reader could not open it and the paper was stored unread. Send it again as a PDF or a JPEG photo.";
-
-/**
- * HEIC or AVIF from the first 12 bytes (16 base64 chars), or null. Not a base64
- * prefix match: the box size in bytes 0-3 varies, which shifts the characters.
- */
-export function isoImageFormat(base64: string): "HEIC" | "AVIF" | null {
-  const head = Buffer.from(base64.slice(0, 16), "base64");
-  if (head.length < 12) return null;
-  if (head.toString("latin1", 4, 8) !== "ftyp") return null;
-  const brand = head.toString("latin1", 8, 12);
-  if (HEIF_BRANDS.has(brand)) return "HEIC";
-  if (AVIF_BRANDS.has(brand)) return "AVIF";
-  return null;
 }
 
 @Injectable()
@@ -249,9 +210,11 @@ export class DocumentExtractorService {
   ): Promise<ParsedDocument> {
     // Before the key guard: refusing a format needs no model, so a paper the
     // reader cannot open is answered the same way with or without a key.
+    // `data` is the payload without any `data:` URL prefix: the model takes
+    // bare base64, and the sniff already looked past the prefix.
     const format = this.detectMediaType(base64, declaredMime);
     if ("unreadable" in format) throw new PaperFormatRefusal(format.unreadable);
-    const { mediaType } = format;
+    const { mediaType, base64: data } = format;
 
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
@@ -264,14 +227,14 @@ export class DocumentExtractorService {
         ? [
             {
               type: "document",
-              source: { type: "base64", media_type: mediaType, data: base64 },
+              source: { type: "base64", media_type: mediaType, data },
             },
             { type: "text", text: "Classify and extract this document." },
           ]
         : [
             {
               type: "image",
-              source: { type: "base64", media_type: mediaType, data: base64 },
+              source: { type: "base64", media_type: mediaType, data },
             },
             { type: "text", text: "Classify and extract this document." },
           ];
@@ -567,40 +530,20 @@ export class DocumentExtractorService {
     return "unknown";
   }
 
+  /** The shared byte sniff (`common/photo-format.ts`), worded for this path. */
   private detectMediaType(
     base64: string,
     declared?: string | null,
-  ): PaperFormat {
-    // HEIC/AVIF bytes first, whatever the label says: a photo that IS HEIC is
-    // unreadable even when an upload path called it image/jpeg.
-    const iso = isoImageFormat(base64);
-    if (iso) return { unreadable: unreadablePhotoFormat(iso) };
-
-    const d = (declared || "").toLowerCase();
-    if (d.includes("pdf")) return { mediaType: "application/pdf" };
-    if (d.includes("png")) return { mediaType: "image/png" };
-    if (d.includes("webp")) return { mediaType: "image/webp" };
-    if (d.includes("gif")) return { mediaType: "image/gif" };
-    if (d.includes("jpeg") || d.includes("jpg"))
-      return { mediaType: "image/jpeg" };
-
-    // Fall back to magic bytes: a declared content-type from an email header is
-    // frequently wrong or absent, and the file itself does not lie.
-    if (base64.startsWith("JVBERi")) return { mediaType: "application/pdf" }; // %PDF
-    if (base64.startsWith("/9j/")) return { mediaType: "image/jpeg" };
-    if (base64.startsWith("iVBORw")) return { mediaType: "image/png" };
-    if (base64.startsWith("UklGR")) return { mediaType: "image/webp" };
-    if (base64.startsWith("R0lGOD")) return { mediaType: "image/gif" };
-
-    // A declared HEIC/HEIF/AVIF whose bytes did not say otherwise is taken at
-    // its word — and is never read as JPEG.
-    if (/hei[cf]/.test(d)) return { unreadable: unreadablePhotoFormat("HEIC") };
-    if (d.includes("avif"))
-      return { unreadable: unreadablePhotoFormat("AVIF") };
-
-    // Was `return "image/jpeg"`: a guess the model rejected, filed under
-    // "the extraction model could not be reached" — the wrong reason.
-    return { unreadable: UNREADABLE_FILE_FORMAT };
+  ): { mediaType: ModelMediaType; base64: string } | { unreadable: string } {
+    const format = sniffPhotoFormat(base64, declared);
+    if ("refused" in format)
+      return {
+        unreadable: formatRefusalSentence(
+          format.refused,
+          DOCUMENT_REFUSAL_OUTCOME,
+        ),
+      };
+    return format;
   }
 }
 

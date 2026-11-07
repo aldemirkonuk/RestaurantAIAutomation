@@ -2,6 +2,9 @@ import { HttpException } from "@nestjs/common";
 import { ScanParserService } from "./scan-parser.service";
 import { ModelSpendCeilingError } from "../../common/model-client/model-client.service";
 
+/** A JPEG head: the shared sniff refuses bytes in no format the model takes. */
+const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]).toString("base64");
+
 function service(): any {
   return new ScanParserService(
     { get: () => "fixture-key" } as any,
@@ -15,14 +18,14 @@ describe("Arrival evidence keeps incomplete reads out of the batch", () => {
     s.parseOne = jest
       .fn()
       .mockResolvedValue({ items: [{ name: "partial" }], truncated: true });
-    await expect(s.parse("image", "house", true)).rejects.toThrow("cut short");
-    await expect(s.parse("image", "house", false)).resolves.toEqual([
+    await expect(s.parse(JPEG, "house", true)).rejects.toThrow("cut short");
+    await expect(s.parse(JPEG, "house", false)).resolves.toEqual([
       { name: "partial" },
     ]);
   });
   it("does not replace a complete smaller retry with a larger incomplete response", async () => {
     const s = service();
-    s.detectMediaType = () => "application/pdf";
+    s.detectMediaType = () => ({ mediaType: "application/pdf", base64: "pdf" });
     s.splitPdfIfLarge = jest
       .fn()
       .mockResolvedValueOnce(["pdf"])

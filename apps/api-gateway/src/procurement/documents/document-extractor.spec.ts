@@ -868,6 +868,26 @@ describe("DocumentExtractorService.extract — formats the reader cannot open", 
     },
   );
 
+  it("sees HEIC behind a data: URL prefix and never calls the model", async () => {
+    const { extractor, call } = harness();
+    await expectRefused(
+      extractor.extract(`data:image/jpeg;base64,${HEIC}`, null),
+      /HEIC format.*stored unread/,
+    );
+    expect(call).toHaveBeenCalledTimes(0);
+  });
+
+  it("sends a prefixed JPEG to the model as bare base64", async () => {
+    const { extractor, call } = harness();
+    await extractor.extract(`data:image/jpeg;base64,${JPEG}`, null);
+    const sent = (call.mock.calls[0] as any)[0].body.messages[0].content[0];
+    expect(sent.source).toEqual({
+      type: "base64",
+      media_type: "image/jpeg",
+      data: JPEG,
+    });
+  });
+
   it("still trusts a declared supported type over the magic bytes", async () => {
     const { extractor, call } = harness();
     await extractor.extract(JPEG, "application/pdf");

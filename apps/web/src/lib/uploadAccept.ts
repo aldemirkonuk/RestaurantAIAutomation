@@ -17,8 +17,19 @@
  *    `isScannable` / `isTabular` below, which fall back to the extension.
  */
 
-/** Raster formats every vision path in the app can decode. */
-export const IMAGE_ACCEPT = 'image/*,.jpg,.jpeg,.png,.webp,.gif,.heic,.heif'
+/**
+ * Raster formats every vision path in the app can decode.
+ *
+ * No `.heic`/`.heif`: the reader cannot open HEIC, and the server refuses it
+ * with a reason (`api-gateway/src/common/photo-format.ts`). Naming it here
+ * hurts on Safari 17+, which then hands over JPEG and PNG picks converted
+ * TO HEIC (developer.apple.com/forums/thread/743049). An iPhone's photo
+ * library is transcoded to JPEG on the way out (zenn.dev/link/comments/
+ * c356d4558e16ad, iOS Safari test; WebKit bug 292350 for the convert-to-the-
+ * first-listed-type rule). A desktop HEIC still reaches the server through
+ * the picker's "All files" escape and gets the refusal sentence.
+ */
+export const IMAGE_ACCEPT = 'image/*,.jpg,.jpeg,.png,.webp,.gif'
 
 /** Anything the scan/OCR pipeline can read: photos and PDFs. */
 export const SCAN_ACCEPT = `${IMAGE_ACCEPT},application/pdf,.pdf`
