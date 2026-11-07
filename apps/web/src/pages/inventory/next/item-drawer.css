@@ -120,3 +120,31 @@ button.ivd-card:hover {
 .ivd-nutrition > .iv-note {
   margin: 0;
 }
+
+.ivd-used {
+  margin-top: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--paper-2);
+}
+.ivd-used-g {
+  margin-top: 8px;
+}
+.ivd-used-h {
+  margin: 0 0 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+.ivd-used-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ivd-used-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--paper-2);
+  font-size: 13px;
+}

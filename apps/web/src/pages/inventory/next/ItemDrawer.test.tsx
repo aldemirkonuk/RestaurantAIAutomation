@@ -9,10 +9,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import type { HouseFields, ItemFigures } from '../../../services/api/inventory';
 
-const api = vi.hoisted(() => ({ figures: vi.fn() }));
+const api = vi.hoisted(() => ({ figures: vi.fn(), usedIn: vi.fn() }));
 vi.mock('../../../services/api/inventory', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   getItemFigures: api.figures,
+  getItemUsedIn: api.usedIn,
 }));
 vi.mock('./RowDropdown', () => ({ default: () => <div data-testid="row-dropdown" /> }));
 
@@ -77,6 +78,8 @@ function open(
 beforeEach(() => {
   api.figures.mockReset();
   api.figures.mockResolvedValue(figures());
+  api.usedIn.mockReset();
+  api.usedIn.mockImplementation(() => new Promise(() => undefined));
 });
 
 describe('the item drawer', () => {
@@ -201,5 +204,14 @@ describe('the item drawer', () => {
     open(row({ kind: null, type: null, bottleSizeMl: 750 }), { house: { kind: 'food', uom: null, displayName: 'Flour' } });
     expect(screen.getByTestId('ivd-head').textContent).toMatch(/^Food · Cave/);
     expect(screen.getByTestId('ivd-head').textContent).not.toContain('ml bottle');
+  });
+  it('says where the item is used could not be read when that read fails, and reads it again on asking', async () => {
+    api.usedIn.mockRejectedValueOnce(new Error('Network Error'));
+    open(row());
+    const used = await screen.findByText(/Where this item is used could not be read/);
+    expect(screen.getByTestId('ivd-used').textContent).not.toContain('Reading where it is used');
+    expect(api.usedIn).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(used).getByRole('button', { name: 'Read again' }));
+    await waitFor(() => expect(api.usedIn).toHaveBeenCalledTimes(2));
   });
 });
