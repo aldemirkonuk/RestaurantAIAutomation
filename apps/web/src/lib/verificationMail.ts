@@ -104,3 +104,41 @@ export function signUpMailSentence(outcome: VerificationMail | null): string | n
   if (outcome === 'unconfirmed') return UNCONFIRMED_SENTENCE
   return null
 }
+
+/** How the code box words a refusal (OB-6), chosen from status and code only. */
+export type CodeRefusal = 'wrong' | 'spent' | 'locked' | 'busy' | 'sign-in' | 'failed'
+
+/**
+ * Read a refused `POST /auth/verify-email { code }` by its status and its
+ * `code`, never its message. A wrong code and an expired one share one
+ * refusal at the gateway (`CODE_REFUSAL`), so they share one here.
+ */
+export function codeRefusal(err: unknown): CodeRefusal {
+  const response = (err as { response?: { status?: number; data?: { code?: string } } })
+    ?.response
+  const status = response?.status
+  const code = response?.data?.code
+  if (code === 'CODE_SPENT') return 'spent'
+  if (code === 'CODE_LOCKED_FOR_THE_DAY') return 'locked'
+  if (code === 'CODE_REFUSED') return 'wrong'
+  if (status === 401 || code === 'SIGN_IN_TO_VERIFY') return 'sign-in'
+  if (status === 429) return 'busy'
+  if (status === 400) return 'wrong'
+  return 'failed'
+}
+
+export const CODE_REFUSAL_SENTENCE: Record<CodeRefusal, string> = {
+  wrong:
+    'That code is not right, or it has expired. Check the newest email from Mudavym, or send a new one.',
+  spent: 'Too many tries for this code. Send a new email and use the code in it.',
+  locked:
+    'Too many wrong codes for this address today. Open the link in the email instead, or try again tomorrow.',
+  busy: 'Too many tries just now. Wait a minute and try again.',
+  'sign-in': 'Your session has ended. Sign in again to finish verifying.',
+  failed: 'The code could not be checked just now. Nothing changed; try again.',
+}
+
+/** Six digits from whatever was typed or pasted: spaces and dashes dropped. */
+export function codeDigits(raw: string): string {
+  return raw.replace(/\D/g, '').slice(0, 6)
+}

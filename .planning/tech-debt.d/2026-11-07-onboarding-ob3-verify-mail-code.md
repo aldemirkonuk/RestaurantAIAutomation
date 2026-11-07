@@ -1,10 +1,12 @@
-## The verify mail's code and send result reach no screen yet — OPEN — 2026-11-07
+## ~~The verify mail's code and send result reach no screen yet~~ — ~~OPEN~~ CLOSED on `fix/onboarding-verify-code-box-and-bounded-mail` — 2026-11-07
 
 Filed by `fix/verify-mail-carries-a-code` (onboarding OB-3; founder /goal 2026-11-07, "Do not ask me any questions I approve you decide them all", so every fork below was the session's call). Proposal: `p4-scratch/sw-walk/onboarding/proposal.md` §3 Phase 1 row OB-3, §4 F3, §5 I15.
 
 **What is true.** The gateway half is built: the verification mail carries a six-digit `verify_email` code beside its link (`verify-email.template.ts`), `POST /auth/register/account` answers `verificationMail: 'sent' | 'not_sent'`, and `POST /auth/verify-email` takes `{ code }` from a signed-in person (`AuthService.verifyEmailWithCode`). The web app does neither: `/verify-email` has no code box, and sign-up ignores `verificationMail`, so a person whose mail was not sent is still told to check their inbox.
 
-**What closes it.** Onboarding OB-6 (web): a code box on `/verify-email` posting `{ code }`, and sign-up words for `not_sent` that offer the resend. (Round 2 B-4 is closed by the round 6 follow-up: a link the gateway refuses, expired or used, now offers "Send me a new link" to a signed-in person on both renderings of `/verify-email`.)
+**What closes it.** Onboarding OB-6 (web): a code box on `/verify-email` posting `{ code }`, and sign-up words for `not_sent` that offer the resend.
+
+[resolved 2026-11-07 on `fix/onboarding-verify-code-box-and-bounded-mail` (stacked on `fix/onboarding-verify-mail-bounded-send`, `fix/onboarding-verify-mail-handoff` and `fix/onboarding-verify-link-runs-in-app`): `/verify-email` has a six-digit code box (signed in, no token) that posts `{ code }`, submits by itself at six digits, and words a refusal from its status and code (`codeRefusal` in `apps/web/src/lib/verificationMail.ts`, reading the `CODE_REFUSED`, `CODE_SPENT` and `CODE_LOCKED_FOR_THE_DAY` tags the bounded-send branch added to `verifyEmailWithCode`). The sign-up words for `not_sent` and `unconfirmed` landed on the hand-off branch; the link that verifies by itself and the in-app finish (`signInWithSession`, then the router) on the link branch. Specs: `VerifyEmail.code.test.tsx`, `verificationMail.test.ts`. Still open: a wrong code and an expired one share one sentence, because the gateway gives them one refusal (`CODE_REFUSAL`) on purpose.] (Round 2 B-4 is closed by the round 6 follow-up: a link the gateway refuses, expired or used, now offers "Send me a new link" to a signed-in person on both renderings of `/verify-email`.)
 
 ## Two other paths still say nothing when the verification mail fails — OPEN — 2026-11-07
 
@@ -23,6 +25,10 @@ Filed by the round 6 follow-up. QA round 6 noted that awaiting the send puts the
 ## The 8 s verification-send bound is unmeasured — OPEN — 2026-11-07
 
 Filed by `fix/onboarding-verify-mail-bounded-send`. `VERIFICATION_SEND_BOUND_MS` is 8 s, the session's call under the /goal; nobody has measured production Gmail's `messages.send` latency, so the bound may cut off sends that would have left (they answer `'unconfirmed'` and usually still arrive) or wait longer than a person will. The first send after a cold start also loads googleapis lazily (`gmail.service.ts`, "blocks the event loop for 60-90s"), which this bound does not shorten for the process, only for the answer. **What closes it:** read the send-latency distribution from production logs (the late-answer lines now say when a send outran the bound) and set the bound from it.
+
+## `/verify-email` does not recheck when the tab comes back — OPEN — 2026-11-07
+
+Filed by `fix/onboarding-verify-code-box-and-bounded-mail`. Proposal §3 OB-6 lists a `visibilitychange` recheck of `/auth/me` (a person who verified in another tab or device comes back to a page that still asks). Not built in this lane; the person still gets through by the code box, the link, or a reload. **What closes it:** on `visibilitychange` to visible, re-read the session and move on when `emailVerified` is true.
 
 ## A verify_email code is a weaker mailbox proof than the link — OPEN — 2026-11-07
 
