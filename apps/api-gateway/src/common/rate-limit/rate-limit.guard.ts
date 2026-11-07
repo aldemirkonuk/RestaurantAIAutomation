@@ -8,11 +8,6 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
-import {
-  PEER_LIMIT_FACTOR,
-  bucketAddress,
-  requestAddresses,
-} from "./client-address";
 
 /**
  * Rate limit configuration
@@ -24,13 +19,6 @@ export interface RateLimitConfig {
   windowSeconds: number;
   /** Key prefix for storage */
   keyPrefix?: string;
-  /**
-   * A body field naming the account the request acts on (`email` on
-   * /auth/login). When set, the account gets its own bucket at `limit`, so
-   * guessing one account's password from many addresses is held to the
-   * route's limit however many addresses are used (QA round 14).
-   */
-  accountField?: string;
 }
 
 /**
@@ -178,35 +166,7 @@ export class RateLimitGuard implements CanActivate {
     const key = this.generateKey(request, config.keyPrefix);
 
     // Check rate limit
-    let result = this.store.check(key, config.limit, config.windowSeconds);
-
-    // R11-10: the key above uses the address the caller may have written
-    // (client-address.ts). A second, looser bucket on the address Railway's
-    // edge saw bounds a caller who invents a fresh one per request; it is
-    // sized for a shared egress (QA round 14). A route that names an account
-    // field also counts the account, whatever address the try came from.
-    if (result.allowed) {
-      const peerKey = this.peerKey(request, config.keyPrefix);
-      if (peerKey) {
-        const peer = this.store.check(
-          peerKey,
-          config.limit * PEER_LIMIT_FACTOR,
-          config.windowSeconds,
-        );
-        if (!peer.allowed) result = peer;
-      }
-    }
-    if (result.allowed) {
-      const accountKey = this.accountKey(request, config);
-      if (accountKey) {
-        const account = this.store.check(
-          accountKey,
-          config.limit,
-          config.windowSeconds,
-        );
-        if (!account.allowed) result = account;
-      }
-    }
+    const result = this.store.check(key, config.limit, config.windowSeconds);
 
     // Set rate limit headers
     const response = context.switchToHttp().getResponse();
@@ -338,45 +298,15 @@ export class RateLimitGuard implements CanActivate {
   }
 
   /**
-   * The caller's address as best known (client-address.ts): behind Vercel the
-   * browser, on a direct call whatever the caller wrote. It used to be the
-   * LEFT-MOST `x-forwarded-for` entry and then `x-real-ip`, both writable.
+   * Get client IP address
    */
   private getClientIp(request: any): string {
-    return bucketAddress(requestAddresses(request).client) || "unknown";
-  }
-
-  /**
-   * The bucket for the address Railway's edge saw, when it differs from the
-   * client key's address; null when they are the same (a direct call with no
-   * forwarded header, or an authenticated key that is not an address).
-   */
-  private peerKey(request: any, prefix?: string): string | null {
-    if (request.user?.userId || request.user?.restaurantId) return null;
-    const addresses = requestAddresses(request);
-    const peer = bucketAddress(addresses.peer);
-    const client = bucketAddress(addresses.client);
-    if (!peer || peer === client) return null;
-    const route = request.route?.path || request.url.split("?")[0];
-    return [prefix, `peer:${peer}`, `route:${route}`]
-      .filter(Boolean)
-      .join(":");
-  }
-
-  /**
-   * The bucket for the account a request names (`accountField`), folded the
-   * way sign-in folds an address (trim, lower case) and capped in length; null
-   * when the route names no field or the body has no usable value.
-   */
-  private accountKey(request: any, config: RateLimitConfig): string | null {
-    if (!config.accountField) return null;
-    const raw = request.body?.[config.accountField];
-    if (typeof raw !== "string") return null;
-    const account = raw.trim().toLowerCase().slice(0, 320);
-    if (!account) return null;
-    const route = request.route?.path || request.url.split("?")[0];
-    return [config.keyPrefix, `account:${account}`, `route:${route}`]
-      .filter(Boolean)
-      .join(":");
+    return (
+      request.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+      request.headers["x-real-ip"] ||
+      request.connection?.remoteAddress ||
+      request.ip ||
+      "unknown"
+    );
   }
 }
