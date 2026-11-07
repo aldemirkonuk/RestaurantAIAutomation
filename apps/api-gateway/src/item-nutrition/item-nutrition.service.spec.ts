@@ -183,7 +183,7 @@ describe("ItemNutritionController", () => {
       assertCanManageRestaurant: jest.fn().mockRejectedValue(new ForbiddenException("managers only")),
     };
     const nutrition = { save: jest.fn() };
-    const ctl = new ItemNutritionController(nutrition as never, organizations as never);
+    const ctl = new ItemNutritionController(nutrition as never, organizations as never, {} as never);
     await expect(
       ctl.save("r-1", "inv-1", { figures: null, allergens: [] } as never, { userId: "u-staff", name: "Can" }),
     ).rejects.toBeInstanceOf(ForbiddenException);

@@ -1,10 +1,12 @@
-import { Body, Controller, ForbiddenException, Get, Param, Put, UseGuards } from "@nestjs/common";
+import { Body, Controller, ForbiddenException, Get, HttpCode, Param, Post, Put, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { ItemNutritionService, type ItemNutrition } from "./item-nutrition.service";
 import { SaveItemNutritionDto } from "./dto/item-nutrition.dto";
+import { LookupItemNutritionDto } from "./dto/nutrition-lookup.dto";
+import { NutritionLookupService, type LookupAnswer } from "./nutrition-lookup.service";
 
 type SessionUser = { userId?: string; name?: string; email?: string };
 
@@ -24,6 +26,7 @@ export class ItemNutritionController {
   constructor(
     private readonly nutrition: ItemNutritionService,
     private readonly organizations: OrganizationsService,
+    private readonly lookups: NutritionLookupService,
   ) {}
 
   /** The one gate on every statement written here. A session naming nobody is refused first. */
@@ -53,5 +56,25 @@ export class ItemNutritionController {
     const userId = await this.assertMayState(user, restaurantId);
     const name = (user?.name ?? user?.email ?? "").trim();
     return this.nutrition.save(restaurantId, itemId, userId, name, dto);
+  }
+
+  /**
+   * Fill a draft from Open Food Facts (by barcode or name) or FoodData
+   * Central (by entry, when its key is set). Saves nothing: the person reads
+   * the draft against the pack and confirms it with PUT. Gated like PUT,
+   * because only those who may state figures need a draft of them.
+   */
+  @Post(":restaurantId/item/:itemId/nutrition/lookup")
+  @HttpCode(200)
+  @ApiOperation({ summary: "Draft one item's nutrition from a public source (never saved)" })
+  @ApiResponse({ status: 502, description: "The source could not be reached; said, never answered as empty" })
+  async lookup(
+    @Param("restaurantId") restaurantId: string,
+    @Param("itemId") itemId: string,
+    @Body() dto: LookupItemNutritionDto,
+    @CurrentUser() user?: SessionUser,
+  ): Promise<LookupAnswer> {
+    await this.assertMayState(user, restaurantId);
+    return this.lookups.lookup(restaurantId, itemId, dto);
   }
 }

@@ -3,6 +3,7 @@ import { AuthModule } from "../auth/auth.module";
 import { OrganizationsModule } from "../organizations/organizations.module";
 import { ItemNutritionController } from "./item-nutrition.controller";
 import { ItemNutritionService } from "./item-nutrition.service";
+import { NutritionLookupService } from "./nutrition-lookup.service";
 
 /**
  * What a good is made of (founder /goal 2026-11-07). Its own module, not a
@@ -12,6 +13,6 @@ import { ItemNutritionService } from "./item-nutrition.service";
 @Module({
   imports: [AuthModule, OrganizationsModule],
   controllers: [ItemNutritionController],
-  providers: [ItemNutritionService],
+  providers: [ItemNutritionService, NutritionLookupService],
 })
 export class ItemNutritionModule {}
