@@ -256,11 +256,12 @@ export function addressesIn(header: string | null | undefined): string[] {
  * The single mailbox a From (or Return-Path / Sender) header names, or null.
  *
  * WHAT THIS TRUSTS (QA round 22, N-1, 2026-11-07). Attribution believes the
- * syntax of the From header and nothing else. It does NOT consult SPF, DKIM,
- * DMARC or ARC: a plain `From: sales@bigdist.com` sent from any server is
- * read as sales@bigdist.com. That gap is recorded in
- * `.planning/tech-debt.d/2026-11-07-fix-mail-sender-fail-closed.md` and in
- * claim MAIL-ATTRIBUTION-IGNORES-AUTHENTICATION. The only consumers of an
+ * syntax of the From header and nothing else; it does not consult SPF, DKIM,
+ * DMARC or ARC. The bridge does, after this (QA round 24): when the receiving
+ * server's own verdict says the letter did not come from the From's domain,
+ * the letter is held, not filed as the vendor's (`sender-authentication.ts`,
+ * `rabbitmq-bridge.service.ts holdLetter`). A vendor that publishes no SPF,
+ * DKIM or DMARC can still be imitated. Other consumers of an
  * authentication result are the responder's `sender_unverified` guardrail (a
  * reply is held for a manager) and the promotion extractor's trust weight. What this function does
  * guarantee is narrower: an address shown in a display name, a comment, a

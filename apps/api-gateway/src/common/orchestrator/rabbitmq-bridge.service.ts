@@ -26,6 +26,7 @@ import {
   parseSender,
   likeExactly,
 } from "../../communications/inbound-headers";
+import { senderUnconfirmed } from "../../communications/sender-authentication";
 import { createHash, randomUUID } from "crypto";
 import { PromotionExtractorService } from "./promotion-extractor.service";
 import { ProspectsService } from "./prospects.service";
@@ -816,6 +817,30 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             `handleInboundEmail: no provider found for ${senderEmail} (not leaded)`,
           );
         }
+        return;
+      }
+
+      // 1b. The receiving server said this letter did not come from the
+      //     vendor's domain (QA round 24, item 2). It is held in this house,
+      //     never filed as the vendor's: a forged invoice must not reach the
+      //     order it names. Verdict: `sender-authentication.ts`.
+      if (
+        senderUnconfirmed(payload.ingress_authentication_results, senderEmail)
+      ) {
+        this.logger.warn(
+          `handleInboundEmail: the receiving server could not confirm ${senderEmail} sent this; held in house ${restaurantId}, not filed under vendor ${provider.id}`,
+        );
+        await this.holdLetter({
+          restaurantId,
+          heldReason: "sender_unconfirmed",
+          senderEmail,
+          senderName: displayLabel(sender),
+          subject,
+          body,
+          attachments,
+          gmailMessageId,
+          gmailThreadId,
+        });
         return;
       }
 
