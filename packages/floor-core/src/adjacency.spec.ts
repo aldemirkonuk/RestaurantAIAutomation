@@ -56,7 +56,7 @@ describe("inferMergeOrientation", () => {
 });
 
 describe("edges", () => {
-  it("a place that is not a finite number is the tray", () => {
+  it("a place that is not a finite number is next to nothing", () => {
     expect(areAdjacent(t("a", NaN, 10), t("b", 12, 10))).toBe(false);
     expect(areAdjacent(t("a", 10, Infinity), t("b", 12, 10))).toBe(false);
     expect(inferMergeOrientation(t("a", NaN, 10), t("b", 12, 10))).toBeNull();
@@ -71,5 +71,8 @@ describe("edges", () => {
     expect(formsAdjacentGroup([t("a", 10, 10), t("a", 10, 10)])).toBe(false);
     // A repeat reached through a real neighbour is still refused.
     expect(formsAdjacentGroup([t("a", 10, 10), t("b", 20, 10), t("a", 10, 10)])).toBe(false);
+    // A table with no id, or an empty one, cannot be told apart from a repeat.
+    expect(formsAdjacentGroup([t("a", 10, 10), { ...t("b", 20, 10), id: undefined }])).toBe(false);
+    expect(formsAdjacentGroup([t("a", 10, 10), t("", 20, 10)])).toBe(false);
   });
 });

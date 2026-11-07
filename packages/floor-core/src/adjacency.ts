@@ -51,17 +51,19 @@ export function areAdjacent(a: AdjTable, b: AdjTable): boolean {
 
 /**
  * Whether the tables form one connected group through neighbours (any
- * connected shape, not only a line). Fewer than two tables is not a group,
- * and neither is a list that names one table id twice.
+ * connected shape, not only a line). Fewer than two tables is not a group;
+ * neither is a list in which a table has no id or an empty one, or names one
+ * id twice.
  *
- * The checker merges exactly two tables (`app/merge-actions.ts:215`), and
- * ADR 0347 `:236` says a floor merge seats two tables. This function also
- * answers for more than two; whether a waiter may merge more than two is
- * not decided, so a caller keeps waiter merges to two until it is.
+ * It sets no upper size. The checker merges exactly two tables (its
+ * `mergeTables(tableAId, tableBId)`, `app/merge-actions.ts:187-194`), and
+ * ADR 0347 `:236` speaks of a floor merge as two tables; how many a waiter
+ * may merge is the caller's rule, not this function's.
  */
 export function formsAdjacentGroup(tables: AdjTable[]): boolean {
   if (tables.length < 2) return false;
-  const ids = tables.map((t) => t.id).filter((id): id is string => !!id);
+  const ids = tables.map((t) => t.id);
+  if (ids.some((id) => !id)) return false;
   if (new Set(ids).size !== ids.length) return false;
   const seen = new Set<number>([0]);
   const queue = [0];
