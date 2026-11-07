@@ -46,6 +46,7 @@ import {
 import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
 import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
 import { RateLimit } from "../common/rate-limit";
+import { clientAddress } from "../common/rate-limit/client-address";
 import { Request } from "express";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
@@ -61,6 +62,10 @@ export class AuthController {
   // Public by DECISION, not by omission (ADR 0096): the caller has no token yet; obtaining one is what this route is for.
   @Public()
   @Post("login")
+  // The /auth/ default (10 a minute per address), plus 10 a minute per
+  // account: an address bucket alone let one password be guessed from as
+  // many addresses as a caller has (QA round 14).
+  @RateLimit({ limit: 10, windowSeconds: 60, accountField: "email" })
   @HttpCode(HttpStatus.OK)
   async login(@Body() credentials: LoginCredentials) {
     this.logger.log(`Login attempt: ${credentials.email}`);
@@ -357,7 +362,12 @@ export class AuthController {
     @Body() body: RequestPasswordResetDto,
     @Req() req: Request,
   ) {
-    await this.authService.requestPasswordReset(body.email, req.ip || null);
+    // `req.ip` is the socket peer: without `trust proxy` that is Railway's
+    // edge, the same for every caller (R11-10).
+    await this.authService.requestPasswordReset(
+      body.email,
+      clientAddress(req),
+    );
     return {
       success: true,
       message:
