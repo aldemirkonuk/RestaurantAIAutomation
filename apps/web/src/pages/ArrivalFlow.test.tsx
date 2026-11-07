@@ -554,7 +554,7 @@ describe('approved arrival flow', () => {
     expect(screen.getByText('1 pencilled')).toBeInTheDocument()
     expect(screen.getByText(/The one ask/)).toBeInTheDocument()
     expect(screen.getByLabelText('Supplier')).toBeInTheDocument()
-    expect(screen.getByText(/Last invoice · later/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Receipts' })).toHaveAttribute('href', '/receipts')
     expect(screen.getByText(/Cellar registers · later/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Open later' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Add this supplier/ })).toBeDisabled()
@@ -563,11 +563,6 @@ describe('approved arrival flow', () => {
     await waitFor(() => expect(addCustomProvider).toHaveBeenCalledWith({ name: 'Suvla' }))
     expect(screen.queryByLabelText('Wines register')).toBeNull()
     expect(screen.queryByRole('checkbox')).toBeNull()
-    const file = new File(['x'], 'suvla-sept.pdf', { type: 'application/pdf' })
-    fireEvent.drop(screen.getByText(/Drop the last invoice here/), {
-      dataTransfer: { files: [file] },
-    })
-    expect(screen.getByText(/Last invoice · kept for later — suvla-sept.pdf/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Open later' }))
     expect(navigate).toHaveBeenCalledWith('/settings?tab=cellar')
   })
