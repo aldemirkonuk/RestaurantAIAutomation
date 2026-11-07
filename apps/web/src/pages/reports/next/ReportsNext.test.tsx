@@ -438,6 +438,7 @@ function base() {
     saveSheet,
     sheetKnown: true,
     sheetUnread: null as string | null,
+    sheetStale: null as string | null,
     refetchAll: vi.fn(),
   };
 }
@@ -1863,6 +1864,18 @@ describe('ReportsNext — the sheet keeps its places', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('ReportsNext — a refresh that fails after a good load', () => {
+  it('keeps the sheet on screen, Arrange open, and says the refresh failed', () => {
+    const stale = 'The sheet could not be refreshed just now; what is shown is the last one that loaded.';
+    hook.current = { ...base(), sheetKnown: true, sheetUnread: null, sheetStale: stale };
+    paint();
+    expect(screen.getByText(stale)).toBeInTheDocument();
+    expect(screen.queryByText(/so the house sheet is shown/)).toBeNull();
+    expect(screen.getByRole('region', { name: 'Through the till' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeEnabled();
   });
 });
 
