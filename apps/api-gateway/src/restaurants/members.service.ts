@@ -11,6 +11,7 @@ import {
   forwardRef,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { likeExactly } from "../communications/inbound-headers";
 import { AccessChangeReceipt, recordAccessChange } from "../team/access-audit";
 import { grantRefusal } from "../auth/role-grant";
 import { stopCalendarLinksOnLeaving } from "../calendar/stop-links-on-leaving";
@@ -595,10 +596,16 @@ export class MembersService {
       throw new ForbiddenException(refusal);
     }
 
+    // `users` is every house's people, so this lookup cannot be scoped to
+    // the house; it is scoped to the one address instead. The address goes
+    // through likeExactly (QA round 25): `@IsEmail()` accepts `_` and `%` in
+    // a local part, and as a raw ilike value `_____@gmail.com` matched any
+    // other house's user whose address had that shape, who was then added
+    // here. ilike, escaped, is a case-insensitive equality.
     const { data: targetUser } = await this.databaseService.supabase
       .from("users")
       .select("user_id")
-      .ilike("email", email.trim())
+      .ilike("email", likeExactly(email.trim()))
       .maybeSingle();
 
     if (!targetUser) {

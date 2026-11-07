@@ -21,9 +21,9 @@ import {
 } from "../common/orchestrator/email-triage";
 import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
 import { InboundEmailController } from "../common/orchestrator/inbound-email.controller";
-import { RabbitMqBridgeService } from "../common/orchestrator/rabbitmq-bridge.service";
 import { ProspectsService } from "../common/orchestrator/prospects.service";
 import { SenderReputationService } from "../common/orchestrator/sender-reputation.service";
+import { bridge, inbound, likeToRegExp } from "./testing/mail-store";
 
 const SPOOF = '"Sales <sales@bigdist.com>" <attacker@evil.example>';
 const SUBJ = "Re: Şubat fiyat listesi çiğköfte";
@@ -212,119 +212,9 @@ describe("RFC 2047 encoded words (N-2)", () => {
 });
 
 /* ---------- the bridge, end to end over a tiny in-memory supabase ---------- */
-function likeToRegExp(pattern: string): RegExp {
-  let out = "";
-  for (let i = 0; i < pattern.length; i++) {
-    const ch = pattern[i];
-    if (ch === "\\" && i + 1 < pattern.length) {
-      out += pattern[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    } else if (ch === "%" || ch === "*") out += ".*";
-    else if (ch === "_") out += ".";
-    else out += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-  return new RegExp(`^${out}$`, "is");
-}
-type Row = Record<string, any>;
-function bridge(tables: Record<string, Row[]>) {
-  const inserts: Array<{ table: string; row: Row }> = [];
-  const from = (table: string) => {
-    const rows = (tables[table] ??= []);
-    const filters: Array<(r: Row) => boolean> = [];
-    let op = "select";
-    let payload: any;
-    let single = false;
-    let lim = Infinity;
-    const qb: any = {
-      select: () => qb,
-      // ILIKE the way PostgREST and Postgres run it (QA round 24): `*` and
-      // `%` match any run, `_` one character, a backslash escapes the next.
-      ilike: (c: string, v: string) => {
-        const re = likeToRegExp(v);
-        filters.push((r) => re.test(String(r[c] ?? "")));
-        return qb;
-      },
-      eq: (c: string, v: any) => (filters.push((r) => r[c] === v), qb),
-      in: (c: string, v: any[]) => (filters.push((r) => v.includes(r[c])), qb),
-      not: () => qb,
-      order: () => qb,
-      limit: (n: number) => ((lim = n), qb),
-      single: () => ((single = true), qb),
-      maybeSingle: () => ((single = true), qb),
-      insert: (p: any) => ((op = "insert"), (payload = p), qb),
-      update: () => ((op = "update"), qb),
-      then: (res: any, rej: any) => {
-        let out: any;
-        if (op === "insert") {
-          const row = { id: `${table}-${rows.length + 1}`, ...payload };
-          rows.push(row);
-          inserts.push({ table, row });
-          out = { data: single ? { id: row.id } : [row], error: null };
-        } else if (op === "update") out = { data: [], error: null };
-        else {
-          const m = rows
-            .filter((r) => filters.every((f) => f(r)))
-            .slice(0, lim);
-          out = { data: single ? (m[0] ?? null) : m, error: null };
-        }
-        return Promise.resolve(out).then(res, rej);
-      },
-    };
-    return qb;
-  };
-  const db = {
-    supabase: {
-      from,
-      storage: { from: () => ({ upload: async () => ({ error: null }) }) },
-    },
-  };
-  const events: any[] = [];
-  const ws: any = new Proxy(
-    {},
-    {
-      get:
-        (_t, k) =>
-        (...a: any[]) =>
-          void events.push([String(k), ...a]),
-    },
-  );
-  const responder: any = {
-    analyzeAndDraftReply: (...a: any[]) =>
-      void events.push(["responder", ...a]),
-    persistManagerNotification: async () => undefined,
-  };
-  const noop: any = new Proxy({}, { get: () => async () => undefined });
-  const prospects: any = {
-    domainOf: (e: string) => e.split("@")[1],
-    captureFromColdEmail: async (a: any) => (
-      events.push(["prospect", a]),
-      { captured: false }
-    ),
-  };
-  const svc: any = new RabbitMqBridgeService(
-    { get: () => undefined } as any,
-    ws,
-    db as any,
-    responder,
-    noop,
-    prospects,
-  );
-  svc.persistAttachments = async () => undefined;
-  svc.persistProspectAttachments = async () => [];
-  return { svc, inserts, events };
-}
-const inbound = (o: Record<string, any>) => ({
-  from: "",
-  subject: "Re: order",
-  body: "ok",
-  attachments: [],
-  gmail_thread_id: "",
-  gmail_message_id: "",
-  message_id_header: "",
-  in_reply_to: "",
-  references: "",
-  headers: {},
-  ...o,
-});
+// `testing/mail-store.ts`. Every letter below is stamped with its receiving
+// house, as every publisher now does (QA round 25); an unstamped letter is
+// held unattributed, which `shared-mailbox-house.spec.ts` covers.
 const VENDOR = {
   id: "prov-A",
   restaurant_id: "house-A",
@@ -346,6 +236,7 @@ describe("RabbitMqBridgeService.handleInboundEmail attribution", () => {
     });
     await svc.handleInboundEmail(
       inbound({
+        restaurant_id: "house-A",
         from: SPOOF,
         gmail_message_id: "mS",
         body: "Please wire the deposit to the new IBAN",
@@ -364,6 +255,7 @@ describe("RabbitMqBridgeService.handleInboundEmail attribution", () => {
     });
     await svc.handleInboundEmail(
       inbound({
+        restaurant_id: "house-A",
         from: SPOOF,
         gmail_message_id: "mP",
         attachments: [
@@ -383,6 +275,7 @@ describe("RabbitMqBridgeService.handleInboundEmail attribution", () => {
     });
     await svc.handleInboundEmail(
       inbound({
+        restaurant_id: "house-A",
         from: '"BigDist Satış" <Sales@BigDist.com>',
         subject: SUBJ_B,
         gmail_message_id: "mV",
@@ -537,7 +430,11 @@ describe("N-1 tail (QA round 22): a From not shaped like one mailbox names nobod
       procurement_orders: [OPEN],
     });
     await svc.handleInboundEmail(
-      inbound({ from: forged, gmail_message_id: "m-tail" }),
+      inbound({
+        restaurant_id: "house-A",
+        from: forged,
+        gmail_message_id: "m-tail",
+      }),
     );
     expect(inserts).toEqual([]);
     expect(events.some((e) => e[0] === "responder")).toBe(false);
@@ -581,13 +478,20 @@ describe("a sender is matched exactly, never as a LIKE pattern (QA round 24)", (
     "*@other.example",
     "s%@bigdist.com",
   ])("From %j reaches no vendor in either house", async (from) => {
-    const { svc, inserts, events } = bridge({
-      providers: [OTHER, VENDOR],
-      procurement_orders: [OPEN_B, OPEN],
-    });
-    await svc.handleInboundEmail(inbound({ from, gmail_message_id: "m-like" }));
-    expect(inserts.filter((i) => i.row.provider_id)).toEqual([]);
-    expect(events.some((e) => e[0] === "responder")).toBe(false);
+    // Stamped with each house in turn: the scope alone would hide the other
+    // house's vendor, so each house's own vendor must be missed by the
+    // escaping, not by the scope.
+    for (const house of ["house-A", "house-B"]) {
+      const { svc, inserts, events } = bridge({
+        providers: [OTHER, VENDOR],
+        procurement_orders: [OPEN_B, OPEN],
+      });
+      await svc.handleInboundEmail(
+        inbound({ restaurant_id: house, from, gmail_message_id: "m-like" }),
+      );
+      expect(inserts.filter((i) => i.row.provider_id)).toEqual([]);
+      expect(events.some((e) => e[0] === "responder")).toBe(false);
+    }
   });
 
   it("an underscore address matches only itself, and a vendor keeps its typed case", async () => {
@@ -602,7 +506,11 @@ describe("a sender is matched exactly, never as a LIKE pattern (QA round 24)", (
       procurement_orders: [{ ...OPEN, provider_id: "prov-K" }],
     });
     await svc.handleInboundEmail(
-      inbound({ from: "ayse_k@bigdist.com", gmail_message_id: "m-us" }),
+      inbound({
+        restaurant_id: "house-A",
+        from: "ayse_k@bigdist.com",
+        gmail_message_id: "m-us",
+      }),
     );
     const stored = inserts.filter((i) => i.row.provider_id);
     expect(stored.length).toBeGreaterThan(0);
