@@ -19,8 +19,20 @@
 --      lot and into the ledger row that created it, so leaving the ledger at
 --      2 places would make the record of a receipt disagree with the lot it
 --      made (0.04 vs 0.035).
---   3. Both lot views round WAC to 6 places instead of 2. Rounding money for
---      display stays where it already is, in the UI (cellMoney).
+--   3. Both lot views round WAC to 6 places instead of 2. Rounding for
+--      display stays in the UI: prices through cellMoney, a cost per unit
+--      through cellUnitCost, which keeps a sub-unit cost's places (0.035 reads
+--      0.035, not 0.04; QA round 11b).
+--
+-- APPLYING (QA round 11b)
+-- -------------------------------------------------------------------------
+-- Changing a column's type rewrites inventory_lots and inventory_transactions
+-- and rebuilds every index on them, under ACCESS EXCLUSIVE, inside this one
+-- transaction: every stock read and write waits, the POS doors included.
+-- Measured locally (Postgres 17, synthetic data): 1,000,000 ledger rows
+-- (342 MB with indexes) and 100,000 lots took 13.6 s. Apply in a quiet window
+-- with `SET lock_timeout` so it fails fast instead of queueing behind a long
+-- reader; the PR body has the steps.
 --
 -- Fourteen digits with six after the point keeps the same eight integer
 -- digits as before, so every value already stored fits unchanged.
