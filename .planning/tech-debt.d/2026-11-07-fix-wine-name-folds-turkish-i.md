@@ -40,8 +40,23 @@ capitals as "weissburgunder"). Not fixed with ı because the right fold is a
 choice (ß → "ss" or "s", ø → "o" or "oe", æ → "ae" or "a") and each moves more
 stored keys; it needs its own probe of the library before it is picked.
 
-Two other normalisers have the dotless-ı gap and were not changed:
-`normalizeIdentityText` in `apps/api-gateway/src/vendor-intel/wine-identity.ts`
-(vendor matching, TypeScript only) and `public.beverage_normalize_text`, which
-must stay in lockstep with `scripts/eval_merge_policies.py` `norm()` and the
-merge-eval corpus (`scripts/check_beverage_identity_parity.py`).
+Wave 3 (2026-11-07): the fold is now one table, `UNDECOMPOSABLE_LETTERS` in
+`apps/api-gateway/src/common/fold-letters.ts`, with an SQL twin
+`public.fold_undecomposable_letters()` (migration `names_share_one_letter_fold`,
+separate so `wine_names_fold_turkish_dotless_i` can ship alone) that both
+`wine_normalize_text` and
+`public.beverage_normalize_text` call (so beverage `identity_key` folds "ı" too,
+and the refresh UPDATE recomputes it through `trg_beverage_identity`), and
+Python copies in `scripts/synth/identity.py`, `scripts/load_enriched_wines.py`
+and `scripts/eval_merge_policies.py` `norm()` (byte parity with
+`beverage_normalize_text`; the merge-eval corpus has no "ı", and the 0a gate
+output is identical before and after). `fold-letters.spec.ts` and
+`scripts/test_fold_letters_mirrors.py` fail when any copy drifts.
+
+Still open on this branch: `normalizeIdentityText` in
+`apps/api-gateway/src/vendor-intel/wine-identity.ts` (vendor matching) keeps the
+gap here; it moves to the shared fold in the stacked PR that follows, together
+with a read of the pre-fold key so stored price observations are not orphaned.
+`services/agent-orchestrator/services/beverage_ontology.py` `normalize_text`
+(token matching only, not an identity key) and the other Python normalisers in
+`services/agent-orchestrator` were not changed.
