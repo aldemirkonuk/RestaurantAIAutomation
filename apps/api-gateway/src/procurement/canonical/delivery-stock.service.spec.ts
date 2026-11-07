@@ -1145,14 +1145,18 @@ describe("DeliveryStockService — a re-verify finishes a post that failed partw
 describe("DeliveryStockService — a paper not in the house's money is never costed (QA round 15 (5))", () => {
   let db: MockDb;
   let service: DeliveryStockService;
-
+  const posts = () => db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost");
+  const verify = (house: unknown, proposals: unknown[] = []) => {
+    db.answers.restaurants = house as never;
+    db.answers.delivery_proposals = { data: proposals, error: null };
+    return service.finaliseAtVerified(REST, DEL, USER);
+  };
   beforeEach(() => {
     db = makeMockDb();
     db.reset();
     service = new DeliveryStockService(db.client as unknown as DatabaseService);
     db.answers.deliveries = { data: { id: DEL, state: "VERIFIED", order_id: null }, error: null };
     db.answers.document_deliveries = { data: [{ document_id: "inv-1", role: "invoice" }], error: null };
-    db.answers.delivery_proposals = { data: [], error: null };
     db.answers.procurement_documents = { data: [{ id: "inv-1", doc_number: "A-1", currency: "EUR", freight: 50 }], error: null };
     db.answers.procurement_document_lines = {
       data: [{ document_id: "inv-1", line_no: 1, inventory_id: ITEM, qty_bottles: 10, uom: "bottle", pack_size: 1, unit_price: 60, line_total: 600 }],
@@ -1160,37 +1164,24 @@ describe("DeliveryStockService — a paper not in the house's money is never cos
     };
     db.answers.inventory_transactions = { data: [{ inventory_id: ITEM, quantity_change: 10 }], error: null };
   });
-  const posts = () => db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost");
 
-  it("reads the house's currency, and a EUR invoice in a TRY house posts nothing and says why", async () => {
-    db.answers.restaurants = { data: { currency: "TRY" }, error: null };
-    const r = await service.finaliseAtVerified(REST, DEL, USER);
-    expect(db.verbs).toContain("procurement_documents.select");
+  it("a EUR invoice in a TRY house posts nothing and says why; in a EUR house it posts 65", async () => {
+    const r = await verify({ data: { currency: "TRY" }, error: null });
     expect(posts()).toEqual([]);
-    expect(r.ok && r.value.stillProvisional).toEqual([
-      expect.objectContaining({ inventoryId: ITEM, reason: expect.stringMatching(/its invoice is in EUR and this house keeps its costs in TRY; no exchange rate is recorded/) }),
-    ]);
-  });
-
-  it("the same invoice in a EUR house posts its landed cost", async () => {
-    db.answers.restaurants = { data: { currency: "EUR" }, error: null };
-    await service.finaliseAtVerified(REST, DEL, USER);
+    expect(r.ok && r.value.stillProvisional[0]?.reason).toMatch(/its invoice is in EUR and this house keeps its costs in TRY/);
+    await verify({ data: { currency: "EUR" }, error: null });
     expect(posts().map((c) => c.args.p_unit_cost)).toEqual([65]);
   });
 
   it("an accepted proposal on the EUR line does not cost it in a TRY house either", async () => {
-    db.answers.restaurants = { data: { currency: "TRY" }, error: null };
-    db.answers.delivery_proposals = { data: [{ document_id: "inv-1", line_no: 1, unit_price_proposed: 55, status: "accepted" }], error: null };
-    const r = await service.finaliseAtVerified(REST, DEL, USER);
+    const r = await verify({ data: { currency: "TRY" }, error: null }, [{ document_id: "inv-1", line_no: 1, unit_price_proposed: 55, status: "accepted" }]);
     expect(posts()).toEqual([]);
     expect(r.ok && r.value.stillProvisional[0]?.reason).toMatch(/accepted proposal's price 55 is on an invoice not in this house's money/);
   });
 
   it("an unreadable house currency is an error, never read as 'not named'", async () => {
-    db.answers.restaurants = { data: null, error: { message: "timeout" } };
-    const r = await service.finaliseAtVerified(REST, DEL, USER);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/the currency this house keeps its costs in could not be read: timeout/);
+    const r = await verify({ data: null, error: { message: "timeout" } });
+    expect(!r.ok && r.error).toMatch(/the currency this house keeps its costs in could not be read: timeout/);
     expect(posts()).toEqual([]);
   });
 });

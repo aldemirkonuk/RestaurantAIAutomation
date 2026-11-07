@@ -139,8 +139,7 @@ export interface DeliveryLandedCost {
   held: Map<string, string>;
   /** The gatekeeper's own refusal, by item (a re-verify names it). */
   refused: Map<string, string>;
-  /** Items held because a paper is not in the house's money (QA round 15
-   * (5)): no line price may stand in for them either. */
+  /** Held as not in the house's money (QA 15 (5)): no fallback price. */
   foreign: Set<string>;
   /** `document_id:line_no` of an unattached line paired to the one booked item. */
   paired: Map<string, string>;
@@ -176,14 +175,8 @@ export function currencyOf(v: string | null | undefined): string | null {
   return /^[A-Z]{3}$/.test(c) ? c : "?";
 }
 
-/**
- * QA round 15 (5): why a paper's money is not the house's, or null when it is
- * (or when the house has not named its currency, so nothing can disagree).
- * A lot's cost is read as the house's own money and no exchange rate is
- * recorded, so a paper in another currency, or one that does not say when the
- * house does, is never costed: it holds by name. Never converted, never
- * silently read as the house's money.
- */
+/** QA round 15 (5): why a paper's money is not the house's (null when it is,
+ * or when the house names none). No rate is recorded, so nothing converts. */
 export function notHouseMoney(
   paperCurrency: string | null | undefined,
   houseCurrency: string | null | undefined,
@@ -461,8 +454,7 @@ export function landDelivery(input: {
   papers: PaperHeaderRow[];
   lines: PaperLine[];
   booked: Map<string, number>;
-  /** `restaurants.currency`, the money a lot's unit_cost is read in; null
-   * when the house has not named it. */
+  /** `restaurants.currency`; null when the house has not named it. */
   houseCurrency?: string | null;
 }): DeliveryLandedCost {
   const house = houseTaxForLotCost();

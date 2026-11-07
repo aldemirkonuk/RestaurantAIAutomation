@@ -1012,8 +1012,7 @@ export class DeliveryStockService {
         };
       papers = (heads.data ?? []) as unknown as PaperHeaderRow[];
     }
-    // QA round 15 (5): the money a lot's cost is read in. An unreadable house is
-    // not read as "no currency named", which would cost a foreign paper as ours.
+    // QA 15 (5): an unreadable house is not "no currency named".
     let houseCurrency: string | null = null;
     if (papers.length) {
       const house = await this.db
@@ -1136,8 +1135,7 @@ export class DeliveryStockService {
             } as const);
       if (id && "printed" in cost && cost.printed != null)
         printed.set(id, (printed.get(id) ?? new Set<number>()).add(cost.printed));
-      // QA round 15 (5): a settled price is in its invoice line's money, so a
-      // line not in the house's money is not costed by a proposal either.
+      // QA 15 (5): a settled price is in its line's money.
       const foreignWhy = line ? moneyOfPaper.get(line.document_id) : undefined;
       if (foreignWhy && said > 0) {
         const reason = `the accepted proposal's price ${said} is on an invoice not in this house's money: ${foreignWhy}`;
