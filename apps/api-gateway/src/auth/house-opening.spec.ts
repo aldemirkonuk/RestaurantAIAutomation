@@ -111,6 +111,7 @@ function makeService(
     single?: Record<string, Result[]>;
     maybeSingle?: Record<string, Result[]>;
     then?: Record<string, Result[]>;
+    rpc?: Record<string, Result[]>;
   } = {},
   { realTokens = false, heldPlace = "" } = {},
 ) {
@@ -119,6 +120,7 @@ function makeService(
   const inserts: { table: string; row: Record<string, unknown> }[] = [];
   const deletes: { table: string; col: string; v: unknown }[] = [];
   const calls: string[] = [];
+  const rpcs: { fn: string; args: Record<string, unknown> }[] = [];
   const singleDefault: Record<string, Result> = {
     organizations: { data: { id: "org-1" }, error: null },
     restaurants: { data: { id: "rest-1" }, error: null },
@@ -214,11 +216,25 @@ function makeService(
     return c;
   };
 
+  // `open_first_house` (OB-2): its arguments are recorded, a held place is
+  // refused as the place index refuses it, and anything else answers the two
+  // new ids unless a queued result says otherwise.
+  const rpc = async (fn: string, args: Record<string, unknown>) => {
+    rpcs.push({ fn, args });
+    calls.push(`rpc:${fn}`);
+    if (heldPlace && args.p_google_place_id === heldPlace)
+      return { data: null, error: PLACE_HELD };
+    return next(queues.rpc, fn, {
+      data: { organization_id: "org-1", restaurant_id: "rest-1" },
+      error: null,
+    });
+  };
+
   const sign = (claims: object) => JSON.stringify(claims);
   const svc = new AuthService(
     { sign, signAsync: async (claims: object) => sign(claims) } as any,
     { get: () => undefined } as any,
-    { supabase: { from: (table: string) => chain(table) } } as any,
+    { supabase: { from: (table: string) => chain(table), rpc } } as any,
     {
       isBlacklisted: async () => false,
       blacklist: async () => undefined,
@@ -241,7 +257,19 @@ function makeService(
 
   const restaurantRows = () =>
     inserts.filter((i) => i.table === "restaurants").map((i) => i.row);
-  return { svc, inserts, deletes, calls, logError, logLog, restaurantRows };
+  /** What createFirstHouse handed `open_first_house`, call by call. */
+  const houseCalls = () =>
+    rpcs.filter((r) => r.fn === "open_first_house").map((r) => r.args);
+  return {
+    svc,
+    inserts,
+    deletes,
+    calls,
+    logError,
+    logLog,
+    restaurantRows,
+    houseCalls,
+  };
 }
 
 /** Another house holds the place HOUSE picks. */
@@ -507,18 +535,18 @@ describe("createFirstHouse", () => {
     const held = makeService({}, HELD);
     const result = await held.svc.createFirstHouse("user-1", HOUSE);
 
-    expect(held.restaurantRows()).toHaveLength(1);
-    const [landed] = held.restaurantRows();
+    expect(held.houseCalls()).toHaveLength(1);
+    const [landed] = held.houseCalls();
     expect(JSON.stringify(landed)).not.toContain("google_place_id");
-    expect(landed.latitude).toBe(HOUSE.latitude);
-    expect(landed.longitude).toBe(HOUSE.longitude);
-    expect(free.restaurantRows()[0].google_place_id).toBe("ChIJ-held");
+    expect(landed.p_latitude).toBe(HOUSE.latitude);
+    expect(landed.p_longitude).toBe(HOUSE.longitude);
+    expect(free.houseCalls()[0].p_google_place_id).toBe("ChIJ-held");
     const {
-      slug: _a,
-      google_place_id: _id,
+      p_slug: _a,
+      p_google_place_id: _id,
       ...freeRow
-    } = sent(free.restaurantRows()[0]);
-    const { slug: _b, ...heldRow } = sent(landed);
+    } = sent(free.houseCalls()[0]);
+    const { p_slug: _b, ...heldRow } = sent(landed);
     expect(heldRow).toEqual(freeRow);
 
     expect(held.deletes).toEqual([]);
@@ -533,20 +561,26 @@ describe("createFirstHouse", () => {
     expect(free.logLog).not.toHaveBeenCalled();
   });
 
-  it("re-inserts without the id when the place is taken after the look-up (E1b)", async () => {
+  it("opens again without the id when the place is taken after the look-up (E1b)", async () => {
     const run = makeService({
-      single: {
-        restaurants: [{ error: PLACE_HELD }, { data: { id: "rest-2" } }],
+      rpc: {
+        open_first_house: [
+          { data: null, error: PLACE_HELD },
+          {
+            data: { organization_id: "org-2", restaurant_id: "rest-2" },
+            error: null,
+          },
+        ],
       },
     });
     const result = await run.svc.createFirstHouse("user-1", HOUSE);
 
-    const [first, second] = run.restaurantRows();
-    expect(run.restaurantRows()).toHaveLength(2);
-    expect(first.google_place_id).toBe("ChIJ-held");
+    const [first, second] = run.houseCalls();
+    expect(run.houseCalls()).toHaveLength(2);
+    expect(first.p_google_place_id).toBe("ChIJ-held");
     expect(JSON.stringify(second)).not.toContain("google_place_id");
-    const { slug: _a, google_place_id: _id, ...kept } = sent(first);
-    const { slug: _b, ...again } = sent(second);
+    const { p_slug: _a, p_google_place_id: _id, ...kept } = sent(first);
+    const { p_slug: _b, ...again } = sent(second);
     expect(again).toEqual(kept);
     expect(result.restaurantId).toBe("rest-2");
     expect(run.deletes).toEqual([]);
@@ -559,10 +593,9 @@ describe("createFirstHouse", () => {
     });
     const exception = await refusal(run.svc.createFirstHouse("user-1", HOUSE));
     expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
-    expect(run.restaurantRows()).toEqual([]);
-    expect(run.deletes).toEqual([
-      { table: "organizations", col: "id", v: "org-1" },
-    ]);
+    expect(run.houseCalls()).toEqual([]);
+    expect(run.inserts).toEqual([]);
+    expect(run.deletes).toEqual([]);
     expect(run.logError).toHaveBeenCalledWith(
       `createFirstHouse rolled back at place look-up: no code ${NO_ANSWER.message}`,
     );
@@ -575,8 +608,8 @@ describe("createFirstHouse", () => {
       googlePlaceId: undefined,
     });
     expect(run.calls).not.toContain("restaurants:select(id):maybeSingle");
-    expect(run.restaurantRows()).toHaveLength(1);
-    expect(JSON.stringify(run.restaurantRows()[0])).not.toContain(
+    expect(run.houseCalls()).toHaveLength(1);
+    expect(JSON.stringify(run.houseCalls()[0])).not.toContain(
       "google_place_id",
     );
     expect(run.logLog).not.toHaveBeenCalled();
@@ -588,11 +621,13 @@ describe("createFirstHouse", () => {
     const freeAnswer = await free.svc.createFirstHouse("user-1", HOUSE);
     const heldAnswer = await held.svc.createFirstHouse("user-1", HOUSE);
 
-    expect(free.restaurantRows()[0].google_place_id).toBe("ChIJ-held");
+    expect(free.houseCalls()[0].p_google_place_id).toBe("ChIJ-held");
     expect(held.calls).toEqual(free.calls);
     expect(free.calls.filter((c) => c.startsWith("restaurants:"))).toEqual([
       "restaurants:select(id):maybeSingle",
-      "restaurants:insert(id):single",
+    ]);
+    expect(free.calls.filter((c) => c === "rpc:open_first_house")).toEqual([
+      "rpc:open_first_house",
     ]);
     expect(JSON.stringify(heldAnswer)).toBe(JSON.stringify(freeAnswer));
     expect(JSON.parse(freeAnswer.accessToken)).toMatchObject({
@@ -604,70 +639,54 @@ describe("createFirstHouse", () => {
 
   it("does not treat another duplicate as a held place (E3)", async () => {
     const run = makeService({
-      single: { restaurants: [{ error: SLUG_TAKEN }] },
+      rpc: { open_first_house: [{ data: null, error: SLUG_TAKEN }] },
     });
     const exception = await refusal(run.svc.createFirstHouse("user-1", HOUSE));
     expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
-    expect(run.restaurantRows()).toHaveLength(1);
-    expect(run.deletes).toEqual([
-      { table: "organizations", col: "id", v: "org-1" },
-    ]);
+    expect(run.houseCalls()).toHaveLength(1);
+    expect(run.deletes).toEqual([]);
   });
 
-  it("rolls back the re-inserted row when a later write fails (E4)", async () => {
+  it("leaves nothing to delete when the opening after a place race fails (E4)", async () => {
     const run = makeService({
-      single: {
-        restaurants: [{ error: PLACE_HELD }, { data: { id: "rest-2" } }],
+      rpc: {
+        open_first_house: [
+          { data: null, error: PLACE_HELD },
+          { data: null, error: NO_ANSWER },
+        ],
       },
-      then: { user_restaurant_access: [{ error: NO_ANSWER }] },
     });
     const exception = await refusal(run.svc.createFirstHouse("user-1", HOUSE));
     expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
-    expect(run.deletes).toEqual([
-      { table: "restaurants", col: "id", v: "rest-2" },
-      { table: "organizations", col: "id", v: "org-1" },
-    ]);
+    expect(run.houseCalls()).toHaveLength(2);
+    expect(run.deletes).toEqual([]);
   });
 
-  it("says the place CHECK as a plain 400 and rolls back (E5)", async () => {
+  it("says the place CHECK as a plain 400 (E5)", async () => {
     const run = makeService({
-      single: { restaurants: [{ error: PLACE_TOO_LONG }] },
+      rpc: { open_first_house: [{ data: null, error: PLACE_TOO_LONG }] },
     });
     const exception = await refusal(run.svc.createFirstHouse("user-1", HOUSE));
     expectPlain(exception, BadRequestException, HOUSE_DETAIL_TOO_LONG);
-    expect(run.deletes).toEqual([
-      { table: "organizations", col: "id", v: "org-1" },
-    ]);
+    expect(run.deletes).toEqual([]);
     expect(run.logError).toHaveBeenCalledWith(
       expect.stringContaining(`23514 ${PLACE_TOO_LONG.message}`),
     );
   });
 
-  it("keeps the code of an early step (E6)", async () => {
+  it("keeps the database's code for any step, and deletes nothing (E6)", async () => {
     const run = makeService({
-      single: { organizations: [{ error: VALUE_TOO_LONG }] },
-    });
-    const exception = await refusal(run.svc.createFirstHouse("user-1", HOUSE));
-    expectPlain(exception, BadRequestException, HOUSE_DETAIL_TOO_LONG);
-    expect(run.deletes).toEqual([]);
-  });
-
-  it("keeps the code of an access row, and rolls both rows back (E6b)", async () => {
-    const run = makeService({
-      then: { user_restaurant_access: [{ error: VALUE_TOO_LONG }] },
+      rpc: { open_first_house: [{ data: null, error: VALUE_TOO_LONG }] },
     });
     const exception = await refusal(run.svc.createFirstHouse("user-1", HOUSE));
     expectPlain(exception, BadRequestException, HOUSE_DETAIL_TOO_LONG);
     expect(run.logError).toHaveBeenCalledWith(
-      `createFirstHouse rolled back at access rows: 22001 ${VALUE_TOO_LONG.message}`,
+      `createFirstHouse rolled back at open_first_house: 22001 ${VALUE_TOO_LONG.message}`,
     );
-    expect(run.deletes).toEqual([
-      { table: "restaurants", col: "id", v: "rest-1" },
-      { table: "organizations", col: "id", v: "org-1" },
-    ]);
+    expect(run.deletes).toEqual([]);
   });
 
-  it("rolls back when the token mint fails, and says so plainly (E7)", async () => {
+  it("says a failed mint plainly and keeps the opened house (E7)", async () => {
     const run = makeService();
     (run.svc as any).generateTokens.mockRejectedValue(
       new ServiceUnavailableException("token store is down"),
@@ -675,10 +694,11 @@ describe("createFirstHouse", () => {
     const exception = await refusal(run.svc.createFirstHouse("user-1", HOUSE));
     expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
     expect(JSON.stringify(exception.getResponse())).not.toContain("token");
-    expect(run.deletes).toEqual([
-      { table: "restaurants", col: "id", v: "rest-1" },
-      { table: "organizations", col: "id", v: "org-1" },
-    ]);
+    expect(run.houseCalls()).toHaveLength(1);
+    expect(run.deletes).toEqual([]);
+    expect(run.logError).toHaveBeenCalledWith(
+      expect.stringContaining("createFirstHouse (house rest-1 is open)"),
+    );
   });
 
   it("keeps the slug inside varchar(100) for the longest name (E8)", async () => {
@@ -687,31 +707,214 @@ describe("createFirstHouse", () => {
       ...HOUSE,
       restaurantName: "a".repeat(249),
     });
-    const slug = run.restaurantRows()[0].slug as string;
+    const slug = run.houseCalls()[0].p_slug as string;
     expect(slug.length).toBeLessThanOrEqual(100);
   });
 
-  it("claims the onboarding row first, so a concurrent second house touches no user row (E9, OPEN-6)", async () => {
+  it("writes through open_first_house only, so a lost onboarding claim touches no user row (E9, OPEN-6)", async () => {
     const won = makeService();
     await won.svc.createFirstHouse("user-1", HOUSE);
-    const order = won.calls.filter((c) => /:(insert|update)/.test(c));
-    expect(order.indexOf("user_onboarding_progress:insert:then")).toBeLessThan(
-      order.indexOf("users:update:then"),
+    expect(won.calls.filter((c) => /:(insert|update|delete)/.test(c))).toEqual(
+      [],
     );
+    expect(won.houseCalls()).toHaveLength(1);
 
     const lost = makeService({
-      then: { user_onboarding_progress: [{ error: ONBOARDING_TAKEN }] },
+      rpc: { open_first_house: [{ data: null, error: ONBOARDING_TAKEN }] },
     });
     const exception = await refusal(lost.svc.createFirstHouse("user-1", HOUSE));
     expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
     expect(lost.calls).not.toContain("users:update:then");
-    expect(lost.inserts.map((i) => i.table)).not.toContain(
+    expect(lost.inserts).toEqual([]);
+    expect(lost.deletes).toEqual([]);
+  });
+});
+
+/**
+ * G16 (onboarding audit) / OB-2 (proposal §3 Phase 1, §4 F14): a tiny
+ * database that keeps rows, so a test can count what an opening left behind
+ * however the gateway writes it. `open_first_house` is modelled as its
+ * migration makes it -- the six writes, all or none; the SQL proof of that
+ * half is supabase/tests/<version>_the_first_house_opens_in_one_transaction_test.sql.
+ * A write named in `fail` is refused as an unreachable database refuses it.
+ */
+function makeHouseDb() {
+  const rows: Record<string, Record<string, unknown>[]> = {
+    users: [
+      {
+        user_id: "user-1",
+        email: "selin@example.com",
+        role: "manager",
+        email_verified: true,
+        restaurant_id: null,
+      },
+    ],
+    organizations: [],
+    restaurants: [],
+    user_onboarding_progress: [],
+    organization_members: [],
+    user_restaurant_access: [],
+  };
+  const fail = { insert: new Set<string>(), delete: new Set<string>() };
+  const refused = { code: "", message: "fetch failed" };
+  let n = 0;
+
+  const chain = (table: string): any => {
+    let verb = "select";
+    let values: Record<string, unknown> = {};
+    const filters: [string, unknown][] = [];
+    const match = (r: Record<string, unknown>) =>
+      filters.every(([col, v]) => r[col] === v);
+    const run = (): Result => {
+      if (verb === "insert") {
+        if (fail.insert.has(table)) return { data: null, error: refused };
+        const row = { id: `${table}-${++n}`, ...values };
+        rows[table].push(row);
+        return { data: row, error: null };
+      }
+      if (verb === "update") {
+        for (const r of rows[table].filter(match)) Object.assign(r, values);
+        return { data: null, error: null };
+      }
+      if (verb === "delete") {
+        if (fail.delete.has(table)) return { data: null, error: refused };
+        rows[table] = rows[table].filter((r) => !match(r));
+        return { data: null, error: null };
+      }
+      return { data: rows[table].filter(match), error: null };
+    };
+    const one = (r: Result) =>
+      Array.isArray(r.data) ? (r.data[0] ?? null) : (r.data ?? null);
+    const c: any = {
+      select: () => c,
+      insert: (v: Record<string, unknown>) => {
+        verb = "insert";
+        values = v;
+        return c;
+      },
+      update: (v: Record<string, unknown>) => {
+        verb = "update";
+        values = v;
+        return c;
+      },
+      delete: () => {
+        verb = "delete";
+        return c;
+      },
+      eq: (col: string, v: unknown) => {
+        filters.push([col, v]);
+        return c;
+      },
+      is: () => c,
+      single: async () => {
+        const r = run();
+        if (r.error) return r;
+        const d = one(r);
+        return d
+          ? { data: d, error: null }
+          : { data: null, error: { code: "PGRST116", message: "no rows" } };
+      },
+      maybeSingle: async () => {
+        const r = run();
+        return { data: one(r), error: r.error ?? null };
+      },
+      then: (
+        resolve: (v: unknown) => unknown,
+        reject?: (e: unknown) => unknown,
+      ) => Promise.resolve(run()).then(resolve, reject),
+    };
+    return c;
+  };
+
+  const rpc = async (fn: string, a: Record<string, unknown>) => {
+    if (fn !== "open_first_house")
+      return { data: null, error: { code: "PGRST202", message: fn } };
+    const steps = [
+      "organizations",
+      "restaurants",
+      "user_onboarding_progress",
+      "organization_members",
       "user_restaurant_access",
-    );
-    expect(lost.deletes).toEqual([
-      { table: "restaurants", col: "id", v: "rest-1" },
-      { table: "organizations", col: "id", v: "org-1" },
-    ]);
+    ];
+    if (steps.some((t) => fail.insert.has(t)))
+      return { data: null, error: refused };
+    const org = { id: `organizations-${++n}`, name: a.p_organization_name };
+    const house = {
+      id: `restaurants-${++n}`,
+      name: a.p_name,
+      organization_id: org.id,
+    };
+    rows.organizations.push(org);
+    rows.restaurants.push(house);
+    rows.user_onboarding_progress.push({
+      user_id: a.p_user_id,
+      restaurant_id: house.id,
+    });
+    rows.organization_members.push({
+      organization_id: org.id,
+      user_id: a.p_user_id,
+      role: "owner",
+    });
+    rows.user_restaurant_access.push({
+      user_id: a.p_user_id,
+      restaurant_id: house.id,
+      role: "owner",
+    });
+    for (const u of rows.users.filter((u) => u.user_id === a.p_user_id))
+      Object.assign(u, { restaurant_id: house.id, role: "owner" });
+    return {
+      data: { organization_id: org.id, restaurant_id: house.id },
+      error: null,
+    };
+  };
+
+  const svc = new AuthService(
+    { sign: () => "t", signAsync: async () => "t" } as any,
+    { get: () => undefined } as any,
+    { supabase: { from: chain, rpc } } as any,
+    {
+      isBlacklisted: async () => false,
+      blacklist: async () => undefined,
+    } as any,
+    { sendOnboardingEmail: async () => undefined } as any,
+  );
+  (svc as any).generateTokens = jest
+    .fn()
+    .mockResolvedValue({ accessToken: "a", refreshToken: "r" });
+  jest.spyOn((svc as any).logger, "error").mockImplementation(() => undefined);
+  jest.spyOn((svc as any).logger, "log").mockImplementation(() => undefined);
+  return { svc, rows: () => rows, fail };
+}
+
+describe("createFirstHouse opens in one transaction (G16, OB-2)", () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it("leaves no organization or house when the access row and the clean-up both fail (t1)", async () => {
+    const db = makeHouseDb();
+    db.fail.insert.add("user_restaurant_access");
+    db.fail.delete.add("restaurants").add("organizations");
+
+    const exception = await refusal(db.svc.createFirstHouse("user-1", HOUSE));
+    expectPlain(exception, InternalServerErrorException, HOUSE_NOT_OPENED);
+    expect(db.rows().organizations).toEqual([]);
+    expect(db.rows().restaurants).toEqual([]);
+    expect(db.rows().users[0].restaurant_id).toBeNull();
+  });
+
+  it("opens the house on the retry instead of answering 409 (t2)", async () => {
+    const db = makeHouseDb();
+    db.fail.insert.add("user_restaurant_access");
+    db.fail.delete.add("restaurants").add("organizations");
+    await refusal(db.svc.createFirstHouse("user-1", HOUSE));
+
+    db.fail.insert.clear();
+    db.fail.delete.clear();
+    const opened = await db.svc.createFirstHouse("user-1", HOUSE);
+
+    expect(db.rows().organizations).toHaveLength(1);
+    expect(db.rows().restaurants).toHaveLength(1);
+    expect(opened.restaurantId).toBe(db.rows().restaurants[0].id);
+    expect(db.rows().users[0].restaurant_id).toBe(opened.restaurantId);
   });
 });
 

@@ -86,6 +86,50 @@ function world(
   });
 }
 
+/**
+ * OB-2: createFirstHouse writes the house through one `open_first_house`
+ * call. This plays it over the stub's tables, its writes in the migration's
+ * order (the SQL test proves the all-or-nothing half on a database).
+ */
+function withOpenFirstHouse(db: StubDb): StubDb {
+  (db.supabase as any).rpc = async (fn: string, a: Row) => {
+    if (fn !== "open_first_house") throw new Error(`unexpected rpc ${fn}`);
+    const org = `org-${a.p_slug}`;
+    const house = `house-${a.p_slug}`;
+    const add = (table: string, row: Row) =>
+      (db.tables[table] ??= []).push(row);
+    add("organizations", {
+      id: org,
+      name: a.p_organization_name,
+      owner_id: a.p_user_id,
+    });
+    add("restaurants", { id: house, name: a.p_name, organization_id: org });
+    add("user_onboarding_progress", {
+      user_id: a.p_user_id,
+      restaurant_id: house,
+    });
+    add("organization_members", {
+      organization_id: org,
+      user_id: a.p_user_id,
+      role: "owner",
+    });
+    add("user_restaurant_access", {
+      user_id: a.p_user_id,
+      restaurant_id: house,
+      role: "owner",
+      invited_via: null,
+      is_active: true,
+    });
+    for (const u of db.tables.users.filter((u) => u.user_id === a.p_user_id))
+      Object.assign(u, { restaurant_id: house, role: "owner" });
+    return {
+      data: { organization_id: org, restaurant_id: house },
+      error: null,
+    };
+  };
+  return db;
+}
+
 const jwt = new JwtService({});
 
 function service(db: StubDb): AuthService {
@@ -652,18 +696,20 @@ describe("account-only signup (ADR 0213) under membership-only sessions", () => 
   });
 
   it("createFirstHouse names the house it just opened, at the owner row it wrote", async () => {
-    const db = world({
-      users: [
-        {
-          user_id: NEW,
-          email: "selin@new.test",
-          name: "Selin",
-          role: "owner",
-          restaurant_id: null,
-          email_verified: true,
-        },
-      ],
-    });
+    const db = withOpenFirstHouse(
+      world({
+        users: [
+          {
+            user_id: NEW,
+            email: "selin@new.test",
+            name: "Selin",
+            role: "owner",
+            restaurant_id: null,
+            email_verified: true,
+          },
+        ],
+      }),
+    );
     const result = await service(db).createFirstHouse(NEW, {
       restaurantName: "Meyhane",
       address: "1 House Street",
