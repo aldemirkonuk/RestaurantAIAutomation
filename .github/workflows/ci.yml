@@ -1176,6 +1176,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # The gateway imports @wineops/floor-core (ADR 0345 E1), whose package
+      # entry is its built dist; nest build and the boot both need it present.
+      - name: Build the floor's workspace package
+        run: pnpm --filter @wineops/floor-core build
+
       - name: Boot the AppModule injector
         run: ./scripts/check_gateway_boots.sh
 

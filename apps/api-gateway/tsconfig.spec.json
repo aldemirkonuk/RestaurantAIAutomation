@@ -2,7 +2,10 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "incremental": false
+    "incremental": false,
+    "paths": {
+      "@wineops/floor-core": ["../../packages/floor-core/src/index.ts"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

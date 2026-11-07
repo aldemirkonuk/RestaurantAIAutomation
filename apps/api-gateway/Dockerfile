@@ -14,6 +14,8 @@ WORKDIR /app
 # Copy monorepo manifests first (maximises Docker layer cache hits)
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api-gateway/package.json ./apps/api-gateway/
+# The floor's pure logic is a workspace package the gateway imports (ADR 0345 E1).
+COPY packages/floor-core/package.json ./packages/floor-core/
 
 # Install only the api-gateway dependency closure (+ hoisted workspace packages)
 RUN pnpm install --frozen-lockfile --filter @wineops/api-gateway...
@@ -22,6 +24,8 @@ RUN pnpm install --frozen-lockfile --filter @wineops/api-gateway...
 FROM deps AS builder
 WORKDIR /app
 
+COPY packages/floor-core ./packages/floor-core/
+RUN pnpm --filter @wineops/floor-core build
 COPY apps/api-gateway ./apps/api-gateway/
 RUN pnpm --filter @wineops/api-gateway build
 
@@ -37,6 +41,9 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/api-gateway/package.json ./apps/api-gateway/
 COPY --from=builder /app/apps/api-gateway/node_modules ./apps/api-gateway/node_modules
 COPY --from=builder /app/apps/api-gateway/dist ./apps/api-gateway/dist
+# apps/api-gateway/node_modules/@wineops/floor-core is a pnpm link to here.
+COPY --from=builder /app/packages/floor-core/package.json ./packages/floor-core/
+COPY --from=builder /app/packages/floor-core/dist ./packages/floor-core/dist
 
 # ── build provenance ──────────────────────────────────────────────────────────
 #

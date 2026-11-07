@@ -80,6 +80,17 @@ export const ACTIVE_FEATURE_FLAGS: ActiveFeatureFlagSpec[] = [
     readBy: "communications/inbox/house-inbox.service.ts:339",
   },
   {
+    key: "floor_checker",
+    // OFF by default: the Floor Checker port (ADR 0345 E7) is dark until a
+    // house is switched on, one house at a time. Every `/floor` route answers
+    // 404 while it is off, and the nudge scanner skips the house. Read fails
+    // closed (floor/floor-flag.ts). The column ships in migration
+    // `the_floor_keeps_its_own_record`, which lands before this entry, for
+    // the 42703 reason given under `mudavym_design_arrival`.
+    defaultValue: false,
+    readBy: "floor/floor-enabled.guard.ts:28",
+  },
+  {
     key: "mudavym_design_arrival",
     // OFF by default: the Arrival book at /get-started (ADR 0113/0143/0144;
     // sketch 121). Held back from LIVE_PAGES so every house keeps today's

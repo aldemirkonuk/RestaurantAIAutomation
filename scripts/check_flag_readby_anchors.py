@@ -63,6 +63,13 @@ GATE_PATTERNS = [
         re.compile(r"house-inbox\.service\.ts$"),
         re.compile(r"isEnabled|enable_house_inbox_read"),
     ),
+    # The floor's switch (ADR 0345 E7). The guard is the branch: a house with
+    # `floor_checker` off gets 404 on every floor route. The fails-closed read
+    # lives in `floor/floor-flag.ts`.
+    (
+        re.compile(r"floor-enabled\.guard\.ts$"),
+        re.compile(r"isFloorCheckerEnabled|floor_checker"),
+    ),
 ]
 
 
