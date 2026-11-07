@@ -313,6 +313,10 @@ export interface DiscountClaim {
   amount: number | null;
   currency: string | null;
   freeShipping: boolean;
+  /** What the amount is off, as the mail said it ("case" / "bottle"); null when it did not say. */
+  amountUnit?: string | null;
+  /** Bottles to the vendor's case, when the mail stated it. */
+  packSize?: number | null;
 }
 
 export function discountOf(dv: Record<string, unknown>): DiscountClaim {
@@ -321,13 +325,21 @@ export function discountOf(dv: Record<string, unknown>): DiscountClaim {
     amount: num(dv.amount),
     currency: typeof dv.currency === 'string' ? dv.currency : null,
     freeShipping: dv.free_shipping === true,
+    amountUnit: typeof dv.amount_unit === 'string' && dv.amount_unit ? dv.amount_unit : null,
+    packSize: num(dv.pack_size),
   };
 }
 
 export function claimSentence(discount: DiscountClaim): string {
   if (discount.percent != null) return `${discount.percent}% off`;
-  if (discount.amount != null)
-    return `${discount.amount}${discount.currency ? ` ${discount.currency}` : ''} off`;
+  if (discount.amount != null) {
+    // "15 USD off per case of 12": the claim says what the amount is off, so
+    // a case discount is never read as money off one bottle.
+    const per = discount.amountUnit
+      ? ` per ${discount.amountUnit}${discount.amountUnit === 'case' && discount.packSize != null ? ` of ${discount.packSize}` : ''}`
+      : '';
+    return `${discount.amount}${discount.currency ? ` ${discount.currency}` : ''} off${per}`;
+  }
   if (discount.freeShipping) return 'free shipping';
   return 'not a price';
 }

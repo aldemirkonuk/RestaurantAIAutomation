@@ -140,6 +140,16 @@ describe('the claim vs the grade', () => {
   it('states the mail\'s claim as a percentage off, never as a grade', () => {
     expect(claimSentence(discountOf({ percent: 12 }))).toBe('12% off');
     expect(claimSentence(discountOf({ amount: 20, currency: 'USD' }))).toBe('20 USD off');
+    // QA round 4, H2: a case discount says it is off a case, never read as off one bottle.
+    expect(claimSentence(discountOf({ amount: 15, currency: 'USD', amount_unit: 'case' }))).toBe(
+      '15 USD off per case',
+    );
+    expect(
+      claimSentence(discountOf({ amount: 15, currency: 'USD', amount_unit: 'case', pack_size: 12 })),
+    ).toBe('15 USD off per case of 12');
+    expect(claimSentence(discountOf({ amount: 2, currency: 'USD', amount_unit: 'bottle' }))).toBe(
+      '2 USD off per bottle',
+    );
     expect(claimSentence(discountOf({}))).toBe('not a price');
   });
 
