@@ -13,6 +13,8 @@
  * unit-test in isolation.
  */
 
+import { senderAddress } from "../../communications/inbound-headers";
+
 export type EmailClass =
   | "negotiation_reply"
   | "order_confirmation"
@@ -66,15 +68,16 @@ function normalizeHeaders(
   return out;
 }
 
-/** Pull the bare email address out of a `From`/`Return-Path` header value. */
+/**
+ * Pull the bare email address out of a `From`/`Return-Path` header value, or
+ * "" when there is no single unambiguous one. Delegates to the shared parser
+ * (`inbound-headers.ts senderAddress`) — QA round 6 N-1: the first `<...>`
+ * used to win, so a display name carrying an address was read as the sender.
+ */
 export function extractEmailAddress(
   fromHeader: string | null | undefined,
 ): string {
-  const s = (fromHeader ?? "").toString();
-  const angled = s.match(/<([^>]+)>/);
-  const raw = (angled ? angled[1] : s).trim().toLowerCase();
-  const bare = raw.match(/[^\s<>]+@[^\s<>]+/);
-  return bare ? bare[0] : "";
+  return senderAddress(fromHeader) ?? "";
 }
 
 const NO_REPLY_LOCALPART =

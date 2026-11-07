@@ -404,7 +404,7 @@ export class HouseLettersService {
     const forProvider = book.filter((e) => e.providerId === dto.providerId);
     if (forProvider.length === 0) {
       throw new UnprocessableEntityException(
-        `That vendor has no address in this house's book, so there is nowhere to send. Add the contact to the vendor first (POST /providers/${dto.providerId}/contacts) — an address typed into a letter is not a vendor record, and the guardrails, the round count and the conversation book all key on the record.`,
+        `That vendor has no address in this house's book, so there is nowhere to send. Add the contact to the vendor first (POST /providers/${dto.providerId}/contacts) — an address typed into a letter is not a vendor record, and the guardrails, the round count and Mail all key on the record.`,
       );
     }
     const match = forProvider.find((e) => sameAddress(e.email, dto.to));
@@ -839,7 +839,7 @@ export class HouseLettersService {
         await this.requests.unclaim(restaurantId, dto.requestId, userId);
       }
       throw new BadRequestException(
-        `The letter was NOT queued and NOT sent — the conversation book refused the row (${error?.message ?? "no row returned"}).`,
+        `The letter was NOT queued and NOT sent — it could not be saved (${error?.message ?? "no row returned"}).`,
       );
     }
 
@@ -866,8 +866,8 @@ export class HouseLettersService {
       sender: identity.address,
       says:
         identity.ceremony === "undo"
-          ? `Queued to leave from ${identity.address} at ${dispatchAt}. It has not been sent. Until then it can be pulled back, and the conversation book shows it as queued, never as sent.`
-          : `Queued to leave from ${identity.address}. It has not been sent yet; the book will say so when it has.`,
+          ? `Queued to leave from ${identity.address} at ${dispatchAt}. It has not been sent. Until then it can be pulled back, and Mail in Communications shows it as queued, never as sent.`
+          : `Queued to leave from ${identity.address}. It has not been sent yet; Mail in Communications will say so when it has.`,
       notices: hits.filter((h) => !h.blocking),
       insightsRecorded: verified.length,
     };
@@ -906,7 +906,7 @@ export class HouseLettersService {
 
     if (error) {
       throw new BadRequestException(
-        `The letter could not be read (${error.message}), so it was NOT cancelled. Check the conversation book before assuming it was stopped.`,
+        `The letter could not be read (${error.message}), so it was NOT cancelled. Open the letter in Mail in Communications before assuming it was stopped.`,
       );
     }
     if (!data) throw new NotFoundException("No such letter in this house.");
@@ -939,7 +939,7 @@ export class HouseLettersService {
       : 0;
     if (due <= Date.now()) {
       throw new ConflictException(
-        "That letter's window has closed and the dispatcher may already hold it, so it was NOT cancelled. The conversation book will say what happened to it.",
+        "That letter's window has closed and the dispatcher may already hold it, so it was NOT cancelled. Mail in Communications will say what happened to it.",
       );
     }
 
@@ -968,7 +968,7 @@ export class HouseLettersService {
     // "pulled back" then would be a claim about a letter that may have gone.
     if (!Array.isArray(cancelled) || cancelled.length === 0) {
       throw new ConflictException(
-        "That letter was claimed by the dispatcher the instant before this reached it, so it was NOT cancelled. The conversation book will say what happened to it.",
+        "That letter was claimed by the dispatcher the instant before this reached it, so it was NOT cancelled. Mail in Communications will say what happened to it.",
       );
     }
 
@@ -1170,7 +1170,7 @@ export class HouseLettersService {
     }
     if (!data) {
       throw new ConflictException(
-        "That draft stopped being a draft before it could be discarded — it may have been sent. The conversation book says what happened to it.",
+        "That draft stopped being a draft before it could be discarded — it may have been sent. Mail in Communications says what happened to it.",
       );
     }
     return {
@@ -1327,7 +1327,7 @@ export class HouseLettersService {
       .single();
     if (error || !data) {
       throw new BadRequestException(
-        `The letter was NOT drafted — the conversation book refused the row (${error?.message ?? "no row returned"}). The claim still records that it was asked for.`,
+        `The letter was NOT drafted — it could not be saved (${error?.message ?? "no row returned"}). The claim still records that it was asked for.`,
       );
     }
     const id = String((data as Record<string, unknown>).id);

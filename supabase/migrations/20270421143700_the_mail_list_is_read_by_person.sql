@@ -10,9 +10,12 @@
 -- (conversations.service.ts getStats aggregates a capped read in JS). A house
 -- with 150 vendors could not see the 101st.
 --
--- These four functions are the server read model behind that tab (sw-walk
+-- These functions are the server read model behind that tab (sw-walk
 -- mail proposal, Phase B row L8, narrowed to the store that exists today):
 --
+--   mail_letter_rows     every row a house's Mail tab reads, with its time
+--                        and whether it is a letter: the one place a row's
+--                        "visible", "owes" and time are worked out.
 --   mail_thread_states   one row per (vendor, thread_key): the single place
 --                        "visible", "waiting" and "open" are defined, so the
 --                        list, the thread rows and the header can never
@@ -22,6 +25,8 @@
 --   mail_inbox_summary   the header numbers and per-door "last letter stored",
 --                        counted here with count(*), never in JS over a capped
 --                        read.
+--   mail_thread_letters  one page of ONE vendor's letters under one thread
+--                        key, in the order they happened, keyset-paged.
 --
 -- ONLY VENDORS
 -- ------------
@@ -92,12 +97,19 @@
 -- ----
 -- A message's time is received_at for inbound and sent_at for outbound, else
 -- created_at. "Today" is the house's day in restaurants.timezone, not UTC.
+-- A thread reads in that time too, never in created_at order: a mailbox
+-- backfill stores old letters after new ones, and created_at order then reads
+-- a thread backwards (QA round 18 on PR #895, finding 2).
 --
 -- THREAD KEYS
 -- -----------
 -- thread_key is set on every insert by trg_procurement_conversations_thread_key
 -- (baseline set_conversation_thread_key); a thread is (provider_id,
--- thread_key), so the same key under two vendors is two threads.
+-- thread_key), so the same key under two vendors is two threads — one Gmail
+-- thread the house mailbox wrote to two vendors (a `gm:` key), or one group
+-- mail (a `mid:` key). That holds in every function here, the thread page
+-- included: a page asked for by key alone belongs to the vendor of the
+-- thread's first letter, and never mixes in another vendor's letters.
 --
 -- ACCESS
 -- ------
@@ -105,6 +117,110 @@
 -- list_conversation_threads: the withholding flag is caller-supplied, so a
 -- client able to call these could pass false. CREATE FUNCTION gives EXECUTE to
 -- PUBLIC by default, so it is revoked explicitly below.
+
+CREATE OR REPLACE FUNCTION public.mail_letter_rows(
+  p_restaurant_id uuid,
+  p_withhold_house_letters boolean DEFAULT true,
+  p_provider_id uuid DEFAULT NULL::uuid
+) RETURNS TABLE(
+  id uuid,
+  provider_id uuid,
+  thread_key text,
+  order_id uuid,
+  order_number_snapshot text,
+  dir text,
+  channel text,
+  message_text text,
+  email_headers jsonb,
+  status text,
+  ai_generated boolean,
+  sent_at timestamp with time zone,
+  received_at timestamp with time zone,
+  created_at timestamp with time zone,
+  raw_deleted_at timestamp with time zone,
+  mirrored_by_grant_id uuid,
+  at timestamp with time zone,
+  visible boolean,
+  owes boolean,
+  automatic boolean,
+  duplicate boolean
+)
+    LANGUAGE sql STABLE SECURITY INVOKER
+    SET search_path = ''
+    AS $$
+WITH base AS (
+SELECT c.id,
+       c.provider_id,
+       c.thread_key,
+       c.order_id,
+       c.order_number_snapshot,
+       lower(c.direction::text) AS dir,
+       c.channel::text AS channel,
+       c.message_text,
+       c.email_headers,
+       c.status::text AS status,
+       c.ai_generated,
+       c.sent_at,
+       c.received_at,
+       c.created_at,
+       c.raw_deleted_at,
+       c.mirrored_by_grant_id,
+       COALESCE(CASE WHEN lower(c.direction::text) = 'inbound'
+                     THEN c.received_at ELSE c.sent_at END,
+                c.created_at) AS at,
+       -- Both flags are forced to true/false: an outbound row with no
+       -- status and no sent_at would make the bare expression NULL, and
+       -- "ORDER BY visible DESC" sorts NULL first, which would rank an
+       -- unsent draft as the thread's last letter.
+       COALESCE(lower(c.direction::text) = 'inbound'
+        OR (lower(c.direction::text) = 'outbound'
+            AND (c.status::text IN ('SENT', 'AUTO_SENT', 'SEND_UNCONFIRMED')
+                 OR (c.status IS NULL AND c.sent_at IS NOT NULL))), false) AS sent_or_in,
+       -- A letter that was set aside (DISCARDED) arrived, but owes no answer.
+       COALESCE(lower(c.direction::text) = 'inbound'
+        AND c.status::text IS DISTINCT FROM 'DELIVERED'
+        AND c.status::text IS DISTINCT FROM 'DISCARDED', false) AS owes_raw,
+       -- Mail a machine wrote: an auto-reply or out-of-office (the bridge's
+       -- transport.autoSubmitted, from Auto-Submitted / X-Autoreply), or a
+       -- bounce from a mail server (mailer-daemon@ / postmaster@). It stays on
+       -- the thread, named as automatic, but is not a letter: it is never
+       -- counted, never the last line and never makes anyone "waiting".
+       COALESCE(lower(c.direction::text) = 'inbound'
+        AND ((c.email_headers->'transport'->>'autoSubmitted') = 'true'
+             OR (c.email_headers->>'from') ~* '(^|[<\s"''])(mailer-daemon|postmaster)@'), false) AS automatic,
+       -- The same letter delivered twice (both doors, or a redelivery) has one
+       -- Message-ID: the first row stored is the letter, the rest are copies.
+       COALESCE(lower(c.direction::text) = 'inbound'
+        AND NULLIF(btrim(c.message_id::text), '') IS NOT NULL
+        AND row_number() OVER (PARTITION BY c.provider_id, lower(btrim(c.message_id::text)),
+                                            (lower(c.direction::text) = 'inbound'
+                                             AND NULLIF(btrim(c.message_id::text), '') IS NOT NULL)
+                               ORDER BY c.created_at ASC, c.id ASC) > 1, false) AS duplicate
+FROM public.procurement_conversations c
+WHERE c.restaurant_id = p_restaurant_id
+  AND (p_provider_id IS NULL OR c.provider_id = p_provider_id)
+  AND (p_withhold_house_letters IS NOT TRUE
+       OR c.status IS NULL
+       OR c.status::text NOT IN ('HOUSE_DRAFT', 'HOUSE_CANCELLED'))
+)
+SELECT r.id, r.provider_id, r.thread_key, r.order_id, r.order_number_snapshot, r.dir,
+       r.channel, r.message_text, r.email_headers, r.status, r.ai_generated,
+       r.sent_at, r.received_at, r.created_at, r.raw_deleted_at, r.mirrored_by_grant_id,
+       r.at,
+       r.sent_or_in AND NOT r.automatic AND NOT r.duplicate,
+       r.owes_raw AND NOT r.automatic AND NOT r.duplicate,
+       r.automatic,
+       r.duplicate
+FROM base r;
+$$;
+
+COMMENT ON FUNCTION public.mail_letter_rows(uuid, boolean, uuid) IS
+  'Every procurement_conversations row of a house (of one vendor, when named) the Mail tab '
+  'reads, with its time, the visible/owes flags, and whether it is automatic mail (an '
+  'auto-reply or a bounce) or a second copy of a letter already stored (same Message-ID); '
+  'neither is ever visible or owed. Withheld rows are removed first. The one definition '
+  'the other mail functions share (the_mail_list_is_read_by_person).';
+
 
 CREATE OR REPLACE FUNCTION public.mail_thread_states(
   p_restaurant_id uuid,
@@ -131,35 +247,23 @@ CREATE OR REPLACE FUNCTION public.mail_thread_states(
     SET search_path = ''
     AS $$
 WITH matched AS (
-    SELECT c.id,
-           c.provider_id,
-           c.thread_key,
-           c.order_id,
-           c.order_number_snapshot,
-           c.channel::text AS channel,
-           c.message_text,
-           c.email_headers,
-           c.status::text AS status,
-           lower(c.direction::text) AS dir,
-           COALESCE(CASE WHEN lower(c.direction::text) = 'inbound'
-                         THEN c.received_at ELSE c.sent_at END,
-                    c.created_at) AS at,
-           -- Both flags are forced to true/false: an outbound row with no
-           -- status and no sent_at would make the bare expression NULL, and
-           -- "ORDER BY visible DESC" sorts NULL first, which would rank an
-           -- unsent draft as the thread's last letter.
-           COALESCE(lower(c.direction::text) = 'inbound'
-            OR (lower(c.direction::text) = 'outbound'
-                AND (c.status::text IN ('SENT', 'AUTO_SENT', 'SEND_UNCONFIRMED')
-                     OR (c.status IS NULL AND c.sent_at IS NOT NULL))), false) AS visible,
-           COALESCE(lower(c.direction::text) = 'inbound'
-            AND c.status::text IS DISTINCT FROM 'DELIVERED', false) AS owes
-    FROM public.procurement_conversations c
-    WHERE c.restaurant_id = p_restaurant_id
-      AND (p_provider_id IS NULL OR c.provider_id = p_provider_id)
-      AND (p_withhold_house_letters IS NOT TRUE
-           OR c.status IS NULL
-           OR c.status::text NOT IN ('HOUSE_DRAFT', 'HOUSE_CANCELLED'))
+    SELECT l.id,
+           l.provider_id,
+           l.thread_key,
+           l.order_id,
+           l.order_number_snapshot,
+           l.channel,
+           l.message_text,
+           l.email_headers,
+           l.status,
+           l.dir,
+           l.at,
+           l.visible,
+           l.owes,
+           l.automatic
+    FROM public.mail_letter_rows(p_restaurant_id, p_withhold_house_letters, p_provider_id) l
+    -- A second copy of a letter is not part of any thread.
+    WHERE NOT l.duplicate
 ),
 -- One sort per house: each message learns its rank among the thread's
 -- visible letters and the thread's last outbound letter, so nothing below
@@ -176,7 +280,8 @@ ranked AS (
 per_thread AS (
     SELECT r.provider_id,
            r.thread_key,
-           count(*) AS message_count,
+           -- Letters only: automatic mail (a bounce, an auto-reply) is not one.
+           count(*) FILTER (WHERE NOT r.automatic) AS message_count,
            max(r.at) AS last_any_at,
            max(r.at) FILTER (WHERE r.visible) AS last_visible_at,
            min(r.at) FILTER (WHERE r.owes
@@ -261,7 +366,8 @@ CREATE OR REPLACE FUNCTION public.list_mail_people(
   open_threads integer,
   channels text[],
   newest_open_order_id uuid,
-  newest_open_order_number text
+  newest_open_order_number text,
+  unsent_status text
 )
     LANGUAGE sql STABLE SECURITY INVOKER
     SET search_path = ''
@@ -272,6 +378,22 @@ WITH t AS (
     -- A person is on the list once a letter has passed between them and the
     -- house. A draft-only thread is reachable under the person, never a row.
     WHERE last_visible_at IS NOT NULL
+),
+-- The house's newest letter to each vendor that has NOT left: queued in its
+-- undo window, being sent, scheduled, failed, refused, or pulled back. A
+-- vendor whose only letter is one of these stays on the list (QA round 16,
+-- HARM 1: a first letter still queued made its vendor vanish, and with it the
+-- only way to pull the letter back). Drafts are not here: they are not sent
+-- and were never meant to be.
+unsent AS (
+    SELECT DISTINCT ON (l.provider_id)
+           l.provider_id, l.at, l.status, l.channel, l.message_text
+    FROM public.mail_letter_rows(p_restaurant_id, p_withhold_house_letters, NULL) l
+    WHERE l.dir = 'outbound'
+      AND l.status IN ('HOUSE_QUEUED', 'SENDING', 'AUTO_SENDING', 'SCHEDULED',
+                       'AUTO_SEND_SCHEDULED', 'HOUSE_FAILED', 'SEND_REFUSED',
+                       'RELAY_REFUSED', 'HOUSE_CANCELLED', 'CANCELLED')
+    ORDER BY l.provider_id, l.at DESC, l.id DESC
 ),
 newest AS (
     SELECT DISTINCT ON (t.provider_id)
@@ -300,13 +422,44 @@ person AS (
     GROUP BY t.provider_id
 ),
 keyed AS (
+    -- People with letters: placed by their newest letter. An unsent letter
+    -- newer than that is named, but never moves them up the list.
     SELECT ('vendor:' || p.provider_id::text) COLLATE "C" AS key,
-           p.*,
+           p.provider_id,
            n.last_visible_at AS last_at,
            n.last_line,
-           n.last_direction
+           n.last_direction,
+           p.waiting,
+           p.waiting_since,
+           p.open_threads,
+           p.channels,
+           p.newest_open_order_id,
+           p.newest_open_order_number,
+           CASE WHEN u.at > n.last_visible_at THEN u.status END AS unsent_status
     FROM person p
     JOIN newest n ON n.provider_id = p.provider_id
+    LEFT JOIN unsent u ON u.provider_id = p.provider_id
+    UNION ALL
+    -- People with only an unsent letter: placed by that letter, never waiting.
+    SELECT ('vendor:' || u.provider_id::text) COLLATE "C",
+           u.provider_id,
+           u.at,
+           CASE WHEN u.message_text IS NULL THEN NULL
+                ELSE left(btrim(regexp_replace(
+                       regexp_replace(left(u.message_text, 4000),
+                                      '^\s*[Ss]ubject:[^\n]*(\n|$)', ''),
+                       '\s+', ' ', 'g')), 160)
+           END,
+           'outbound',
+           false,
+           NULL::timestamptz,
+           0,
+           ARRAY[lower(u.channel)]::text[],
+           NULL::uuid,
+           NULL::text,
+           u.status
+    FROM unsent u
+    WHERE NOT EXISTS (SELECT 1 FROM person p WHERE p.provider_id = u.provider_id)
 )
 SELECT k.key::text,
        'vendor'::text AS kind,
@@ -320,7 +473,8 @@ SELECT k.key::text,
        k.open_threads,
        k.channels,
        k.newest_open_order_id,
-       k.newest_open_order_number
+       k.newest_open_order_number,
+       k.unsent_status
 FROM keyed k
 LEFT JOIN public.providers pr ON pr.id = k.provider_id
 WHERE (p_waiting_only IS NOT TRUE OR k.waiting)
@@ -333,7 +487,8 @@ $$;
 
 COMMENT ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer) IS
   'One page of the people a house has mail with, newest letter first, keyset-paged by '
-  '(last_at desc, key). Vendors only until non-vendor mail is stored. '
+  '(last_at desc, key); a vendor whose only letter has not left (queued, failed, refused, '
+  'pulled back) is listed with unsent_status. Vendors only until non-vendor mail is stored. '
   '(the_mail_list_is_read_by_person)';
 
 
@@ -430,25 +585,16 @@ BEGIN
       FROM public.mail_thread_states(p_restaurant_id, p_withhold_house_letters, NULL) s
   ),
   letters AS (
-      SELECT lower(c.direction::text) AS dir,
-             c.channel::text AS channel,
-             c.mirrored_by_grant_id,
-             COALESCE(CASE WHEN lower(c.direction::text) = 'inbound'
-                           THEN c.received_at ELSE c.sent_at END,
-                      c.created_at) AS at,
-             (lower(c.direction::text) = 'outbound'
-              AND (c.status::text IN ('SENT', 'AUTO_SENT', 'SEND_UNCONFIRMED')
-                   OR (c.status IS NULL AND c.sent_at IS NOT NULL))) AS left_house
-      FROM public.procurement_conversations c
-      WHERE c.restaurant_id = p_restaurant_id
-        AND (p_withhold_house_letters IS NOT TRUE
-             OR c.status IS NULL
-             OR c.status::text NOT IN ('HOUSE_DRAFT', 'HOUSE_CANCELLED'))
+      SELECT l.dir, l.channel, l.mirrored_by_grant_id, l.at, l.visible, l.automatic, l.duplicate
+      FROM public.mail_letter_rows(p_restaurant_id, p_withhold_house_letters, NULL) l
   ),
   counted AS (
-      SELECT (count(*) FILTER (WHERE l.dir = 'inbound'
+      -- "In today" counts letters: a second copy of one letter, a bounce and
+      -- an auto-reply are not letters (QA round 16, M-5). The door times below
+      -- still see every stored row: they say the door is working.
+      SELECT (count(*) FILTER (WHERE l.dir = 'inbound' AND l.visible
                                  AND l.at >= v_day_start AND l.at < v_day_end))::integer AS in_today,
-             (count(*) FILTER (WHERE l.left_house
+             (count(*) FILTER (WHERE l.dir = 'outbound' AND l.visible
                                  AND l.at >= v_day_start AND l.at < v_day_end))::integer AS out_today,
              max(l.at) FILTER (WHERE l.dir = 'inbound' AND l.mirrored_by_grant_id IS NOT NULL)
                AS house_mailbox_last_at,
@@ -472,6 +618,119 @@ COMMENT ON FUNCTION public.mail_inbox_summary(uuid, boolean) IS
   '(the_mail_list_is_read_by_person)';
 
 
+CREATE OR REPLACE FUNCTION public.mail_thread_letters(
+  p_restaurant_id uuid,
+  p_thread_key text,
+  p_provider_id uuid DEFAULT NULL::uuid,
+  p_withhold_house_letters boolean DEFAULT true,
+  p_before_at timestamp with time zone DEFAULT NULL::timestamp with time zone,
+  p_before_id uuid DEFAULT NULL::uuid,
+  p_limit integer DEFAULT 51
+) RETURNS TABLE(
+  id uuid,
+  provider_id uuid,
+  provider_name text,
+  direction text,
+  channel text,
+  message_text text,
+  ai_generated boolean,
+  status text,
+  sent_at timestamp with time zone,
+  received_at timestamp with time zone,
+  created_at timestamp with time zone,
+  at timestamp with time zone,
+  raw_deleted_at timestamp with time zone,
+  mirrored_by_grant_id uuid,
+  thread_subject text,
+  order_id uuid,
+  order_number text,
+  order_status text,
+  automatic boolean
+)
+    LANGUAGE sql STABLE SECURITY INVOKER
+    SET search_path = ''
+    AS $$
+-- Whose page this is: the vendor named, else the vendor of the thread's first
+-- letter (by time, then id, so the same link always opens the same person).
+WITH owner AS (
+    SELECT COALESCE(p_provider_id, (
+             SELECT c.provider_id
+             FROM public.procurement_conversations c
+             WHERE c.restaurant_id = p_restaurant_id
+               AND c.thread_key = p_thread_key
+               AND (p_withhold_house_letters IS NOT TRUE
+                    OR c.status IS NULL
+                    OR c.status::text NOT IN ('HOUSE_DRAFT', 'HOUSE_CANCELLED'))
+             ORDER BY COALESCE(CASE WHEN lower(c.direction::text) = 'inbound'
+                                    THEN c.received_at ELSE c.sent_at END,
+                               c.created_at) ASC,
+                      c.id ASC
+             LIMIT 1)) AS provider_id
+),
+mine AS (
+    SELECT l.*
+    FROM owner o
+    CROSS JOIN LATERAL public.mail_letter_rows(p_restaurant_id, p_withhold_house_letters, o.provider_id) l
+    WHERE o.provider_id IS NOT NULL
+      AND l.thread_key = p_thread_key
+      AND NOT l.duplicate
+),
+-- The thread's subject is its first letter's that names one; its order is the
+-- newest letter's that names one. Headers themselves never leave.
+head AS (
+    SELECT (array_agg(s.subject ORDER BY m.at ASC, m.id ASC)
+              FILTER (WHERE s.subject IS NOT NULL))[1] AS subject,
+           (array_agg(m.order_id ORDER BY m.at DESC, m.id DESC)
+              FILTER (WHERE m.order_id IS NOT NULL))[1] AS order_id,
+           (array_agg(m.order_number_snapshot ORDER BY m.at DESC, m.id DESC)
+              FILTER (WHERE m.order_id IS NOT NULL))[1] AS order_number_snapshot
+    FROM mine m
+    CROSS JOIN LATERAL (
+        SELECT COALESCE(
+                 NULLIF(btrim(m.email_headers->>'subject'), ''),
+                 NULLIF(btrim(m.email_headers->>'Subject'), ''),
+                 NULLIF(btrim(substring(left(m.message_text, 2000)
+                                        FROM '^\s*[Ss]ubject:[ \t]*([^\r\n]*)')), '')
+               ) AS subject
+    ) s
+)
+SELECT m.id,
+       m.provider_id,
+       pr.name::text,
+       m.dir,
+       m.channel,
+       m.message_text,
+       m.ai_generated,
+       m.status,
+       m.sent_at,
+       m.received_at,
+       m.created_at,
+       m.at,
+       m.raw_deleted_at,
+       m.mirrored_by_grant_id,
+       h.subject,
+       h.order_id,
+       COALESCE(po.order_number::text, h.order_number_snapshot),
+       po.status::text,
+       m.automatic
+FROM mine m
+CROSS JOIN head h
+LEFT JOIN public.providers pr ON pr.id = m.provider_id
+LEFT JOIN public.procurement_orders po
+  ON po.id = h.order_id AND po.restaurant_id = p_restaurant_id
+WHERE p_before_at IS NULL
+   OR m.at < p_before_at
+   OR (m.at = p_before_at AND m.id < p_before_id)
+ORDER BY m.at DESC, m.id DESC
+LIMIT greatest(1, least(COALESCE(p_limit, 51), 501));
+$$;
+
+COMMENT ON FUNCTION public.mail_thread_letters(uuid, text, uuid, boolean, timestamp with time zone, uuid, integer) IS
+  'One page of one vendor''s letters under one thread key, newest first by the letter''s own '
+  'time, keyset-paged by (at desc, id desc). With no vendor named, the vendor of the thread''s '
+  'first letter. Never two vendors. (the_mail_list_is_read_by_person)';
+
+
 -- No new index. Measured on a 2,000-row house (PR body): one vendor's rows
 -- are found through the existing idx_procurement_conversations_provider_created
 -- (0.12 ms; 0.26 ms with a trial (restaurant_id, provider_id) index), so a
@@ -480,6 +739,8 @@ COMMENT ON FUNCTION public.mail_inbox_summary(uuid, boolean) IS
 
 
 -- Only the gateway may call these (see ACCESS above).
+REVOKE ALL ON FUNCTION public.mail_letter_rows(uuid, boolean, uuid)
+  FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.mail_thread_states(uuid, boolean, uuid)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer)
@@ -488,8 +749,12 @@ REVOKE ALL ON FUNCTION public.list_mail_threads(uuid, uuid, boolean, timestamp w
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.mail_inbox_summary(uuid, boolean)
   FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.mail_thread_letters(uuid, text, uuid, boolean, timestamp with time zone, uuid, integer)
+  FROM PUBLIC, anon, authenticated;
 
+GRANT EXECUTE ON FUNCTION public.mail_letter_rows(uuid, boolean, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_thread_states(uuid, boolean, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.list_mail_threads(uuid, uuid, boolean, timestamp with time zone, text, integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_inbox_summary(uuid, boolean) TO service_role;
+GRANT EXECUTE ON FUNCTION public.mail_thread_letters(uuid, text, uuid, boolean, timestamp with time zone, uuid, integer) TO service_role;
