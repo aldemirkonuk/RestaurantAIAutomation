@@ -60,9 +60,12 @@ export const EM = '—';
  * Where a title stands against its par. `out` is counted apart from `below`
  * (founder, INV-W4 F-2), and `below` is strictly stock < par (ADR 0129).
  * `nopar` is a par of 0: there is nothing to be below. `unknown` is a stock
- * that was not read. `uncounted` is a title nobody has counted: its stock is
- * received minus sold (or the default 0 when nothing moved), never a count,
- * so it is never called Out (OD-161); the stock column still shows the figure.
+ * that was not read. `uncounted` is a title nobody has counted whose figure
+ * is 0: that 0 is either the default of a row nothing moved or receipts minus
+ * sales, never a count, so it is never called Out (OD-161). A never-counted
+ * title with a figure above 0 keeps its below / at / above standing (the
+ * figure comes from its live lots, which only stock movements write) and the
+ * row says "not counted yet" beside it (`neverCounted`).
  */
 export type Standing = 'out' | 'below' | 'at' | 'above' | 'nopar' | 'unknown' | 'uncounted';
 
@@ -126,6 +129,12 @@ export interface InvRow {
   providerName: string | null;
   standing: Standing;
   /**
+   * True when the server said nobody ever counted this title (lastCountedAt
+   * sent as null). Absent or false claims nothing. The status word adds
+   * "not counted yet" beside a below / at / above / no-par standing (OD-161).
+   */
+  neverCounted?: boolean;
+  /**
    * The row's is_active as the server sent it; null when it did not say. The
    * normaliser's camel `isActive` defaults to true, so it is not read here.
    */
@@ -153,8 +162,9 @@ export const MAP_WORDS: Record<MapTone, string> = {
 /** A map tile's tint by the same standing the table and chips use. */
 export function mapTone(item: LegacyItem): MapTone {
   if ((item.shadowStock ?? 0) > 0) return 'violet';
-  // Never counted: the figure is receipts and sales, not a count (OD-161).
-  if (item.lastCounted === null) return 'neutral';
+  // Never counted and at 0: that 0 is not a count, so it is not Out (OD-161).
+  // A never-counted tile above 0 is tinted by its figure like any other.
+  if (item.lastCounted === null && (item.liveStock ?? 0) <= 0) return 'neutral';
   switch (standingOf(item.liveStock ?? null, item.threshold ?? null)) {
     case 'out':
       return 'rose';
@@ -257,9 +267,12 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     providerId: text(r.providerId),
     providerName: text(r.providerName),
     // OD-161: a title the server says nobody counted (lastCountedAt sent as
-    // null) is "Not counted yet", never Out. A row that did not carry the
+    // null) at 0 is "Not counted yet", never Out. Above 0 it keeps its
+    // standing, so it still counts under Below par, in the order and in the
+    // read sentence, as the low-stock alert does. A row that did not carry the
     // field at all claims nothing either way and keeps its standing.
-    standing: stock !== null && r.lastCountedAt === null ? 'uncounted' : standingOf(stock, par),
+    standing: stock !== null && stock <= 0 && r.lastCountedAt === null ? 'uncounted' : standingOf(stock, par),
+    neverCounted: r.lastCountedAt === null,
     active: typeof r.is_active === 'boolean' ? r.is_active : null,
   };
 }

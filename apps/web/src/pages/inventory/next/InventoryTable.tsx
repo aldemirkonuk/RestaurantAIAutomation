@@ -48,6 +48,14 @@ const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day':
 
 /** The status word, never a colour alone. */
 function statusWord(row: InvRow): string {
+  const word = standingWord(row);
+  // A figure nobody counted is receipts minus sales; say so beside it (OD-161).
+  return row.neverCounted && row.standing !== 'uncounted' && row.standing !== 'unknown' && row.standing !== 'out'
+    ? `${word} · not counted yet`
+    : word;
+}
+
+function standingWord(row: InvRow): string {
   const dry = row.runway !== null && row.runway < 1.5;
   switch (row.standing) {
     case 'out':
