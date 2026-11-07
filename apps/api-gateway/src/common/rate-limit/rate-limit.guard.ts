@@ -10,9 +10,16 @@ import { Reflector } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
 import {
   PEER_LIMIT_FACTOR,
+  UNTRUSTED_PEER_FACTOR,
   bucketAddress,
   requestAddresses,
 } from "./client-address";
+import {
+  accountDigest,
+  foldAccount,
+  readSignInDevice,
+  signInDeviceSecret,
+} from "./sign-in-device";
 
 /**
  * Rate limit configuration
@@ -196,16 +203,28 @@ export class RateLimitGuard implements CanActivate {
         if (!peer.allowed) result = peer;
       }
     }
-    if (result.allowed) {
-      const accountKey = this.accountKey(request, config);
-      if (accountKey) {
-        const account = this.store.check(
-          accountKey,
-          config.limit,
-          config.windowSeconds,
-        );
-        if (!account.allowed) result = account;
+    // Untrusted: a tighter peer bucket too; then the account bucket.
+    const account = this.accountScope(request, config);
+    if (result.allowed && account) {
+      if (!account.deviceId) {
+        const untrustedPeerKey = this.peerKey(request, config.keyPrefix, "untrusted");
+        if (untrustedPeerKey) {
+          const peer = this.store.check(
+            untrustedPeerKey,
+            config.limit * UNTRUSTED_PEER_FACTOR,
+            config.windowSeconds,
+          );
+          if (!peer.allowed) result = peer;
+        }
       }
+    }
+    if (result.allowed && account?.key) {
+      const counted = this.store.check(
+        account.key,
+        config.limit,
+        config.windowSeconds,
+      );
+      if (!counted.allowed) result = counted;
     }
 
     // Set rate limit headers
@@ -351,32 +370,48 @@ export class RateLimitGuard implements CanActivate {
    * client key's address; null when they are the same (a direct call with no
    * forwarded header, or an authenticated key that is not an address).
    */
-  private peerKey(request: any, prefix?: string): string | null {
+  private peerKey(
+    request: any,
+    prefix?: string,
+    scope?: string,
+  ): string | null {
     if (request.user?.userId || request.user?.restaurantId) return null;
     const addresses = requestAddresses(request);
     const peer = bucketAddress(addresses.peer);
     const client = bucketAddress(addresses.client);
     if (!peer || peer === client) return null;
     const route = request.route?.path || request.url.split("?")[0];
-    return [prefix, `peer:${peer}`, `route:${route}`]
+    return [prefix, `peer:${peer}`, scope, `route:${route}`]
       .filter(Boolean)
       .join(":");
   }
 
-  /**
-   * The bucket for the account a request names (`accountField`), folded the
-   * way sign-in folds an address (trim, lower case) and capped in length; null
-   * when the route names no field or the body has no usable value.
-   */
-  private accountKey(request: any, config: RateLimitConfig): string | null {
+  /** The account bucket (`accountField`): the known device's own, else the shared untrusted one. */
+  private accountScope(
+    request: any,
+    config: RateLimitConfig,
+  ): { key: string | null; deviceId: string | null } | null {
     if (!config.accountField) return null;
     const raw = request.body?.[config.accountField];
-    if (typeof raw !== "string") return null;
-    const account = raw.trim().toLowerCase().slice(0, 320);
-    if (!account) return null;
+    const folded = typeof raw === "string" ? foldAccount(raw) : "";
+    if (!folded) return { key: null, deviceId: null };
+    const secret = signInDeviceSecret(this.configService?.get?.("JWT_SECRET"));
+    const deviceId = readSignInDevice(
+      secret,
+      request.body?.signInDevice,
+      folded,
+    );
     const route = request.route?.path || request.url.split("?")[0];
-    return [config.keyPrefix, `account:${account}`, `route:${route}`]
-      .filter(Boolean)
-      .join(":");
+    const digest = accountDigest(folded);
+    return {
+      key: [
+        config.keyPrefix,
+        `account:${digest}:${deviceId ? `device:${deviceId}` : "untrusted"}`,
+        `route:${route}`,
+      ]
+        .filter(Boolean)
+        .join(":"),
+      deviceId,
+    };
   }
 }
