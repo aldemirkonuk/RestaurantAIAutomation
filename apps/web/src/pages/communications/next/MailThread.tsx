@@ -126,6 +126,7 @@ function Letter({ m, vendor, facts }: { m: MailMessage; vendor: string; facts: L
 
 export function MailThread({
   threadKey,
+  withKey = null,
   onBack,
   backLabel,
   onOpenPerson,
@@ -135,6 +136,8 @@ export function MailThread({
   bookFacts,
 }: {
   threadKey: string;
+  /** The person the thread was opened from (`?with=`); null reads by key alone. */
+  withKey?: string | null;
   onBack: () => void;
   backLabel: string;
   onOpenPerson: (key: string) => void;
@@ -145,7 +148,7 @@ export function MailThread({
   onOpenReply: (orderId: string) => void;
   bookFacts?: ReadonlyMap<string, LetterFacts>;
 }) {
-  const q = useMailThread(threadKey);
+  const q = useMailThread(threadKey, withKey);
   const pages = q.data?.pages ?? [];
   const head = pages[0] ?? null;
   // Pages are held newest-first; the reader joins them oldest-first.
