@@ -12,6 +12,24 @@ const MONEY_HIDDEN: Record<Exclude<MoneyView, "shown">, string> = {
   unread: "Your role in this house could not be read, so money is not shown.",
 };
 
+/**
+ * The cost trend is not shown, for anyone. No table keeps what each delivery
+ * finally cost: `inventory_lots` deletes a lot once it is used up
+ * (apply_stock_movement, a_pos_sale_is_dated_by_its_check) and transfer_stock
+ * inserts a moved lot dated the day of the move; the ledger's `purchase` row
+ * is written at the door with no cost (receiving.service) and is never
+ * restated when finalise_delivery_cost / revalue_lot settle the lot's price.
+ * Same shape as a shown trend so the drawer needs no change; `points: null`
+ * with the reason, never a trend built from whichever lots survived.
+ */
+const COST_TREND_NOT_KEPT = {
+  readable: true,
+  points: null,
+  changePct: null,
+  source:
+    "What each delivery cost is not shown yet: no record here keeps a delivery's final price once its stock is used up or moved.",
+} as const;
+
 const num = (v: unknown): number | null =>
   v === null || v === undefined ? null : Number(v);
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -137,47 +155,6 @@ export class ItemFiguresService {
       countGap = { readable: true, last, source: parts.filter(Boolean).join(" ") };
     }
 
-    return { waste, countGap, costTrend: await this.costTrend(restaurantId, itemId, view, now) };
-  }
-
-  /** What each receipt cost, last 90 days, sample lots excluded (as the WAC excludes them). */
-  private async costTrend(restaurantId: string, itemId: string, view: MoneyView, now: Date) {
-    if (view !== "shown") {
-      return { readable: true, points: null, changePct: null, source: MONEY_HIDDEN[view].replace("Money is", "Cost is") };
-    }
-    const lots = await this.db.supabase
-      .from("inventory_lots")
-      .select("received_at, unit_cost")
-      .eq("inventory_id", itemId)
-      .eq("restaurant_id", restaurantId)
-      .not("unit_cost", "is", null)
-      .neq("cost_provenance", "sample")
-      .gte("received_at", new Date(now.getTime() - 90 * DAY).toISOString())
-      .order("received_at", { ascending: true });
-    if (lots.error) {
-      return {
-        readable: false,
-        points: null,
-        changePct: null,
-        source: `What each delivery cost could not be read (${lots.error.message}).`,
-      };
-    }
-    const points = ((lots.data ?? []) as Array<Record<string, any>>).map((r) => ({
-      receivedAt: r.received_at as string,
-      unitCost: Number(r.unit_cost),
-    }));
-    const first = points[0]?.unitCost;
-    const last = points[points.length - 1]?.unitCost;
-    const changePct =
-      points.length >= 2 && first > 0 ? Math.round(((last - first) / first) * 1000) / 10 : null;
-    return {
-      readable: true,
-      points,
-      changePct,
-      source:
-        points.length < 2
-          ? "Not enough receipts in the last 90 days to show a change."
-          : "What each delivery cost per unit in the last 90 days, first to last.",
-    };
+    return { waste, countGap, costTrend: COST_TREND_NOT_KEPT };
   }
 }

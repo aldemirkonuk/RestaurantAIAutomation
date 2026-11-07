@@ -56,7 +56,7 @@ export class ItemDetailController {
   }
 
   @Get(":restaurantId/item/:itemId/figures")
-  @ApiOperation({ summary: "One item's waste vs given, count gap and cost trend" })
+  @ApiOperation({ summary: "One item's waste vs given and count gap; the cost trend is not shown yet" })
   async figures(
     @Param("restaurantId") restaurantId: string,
     @Param("itemId") itemId: string,
