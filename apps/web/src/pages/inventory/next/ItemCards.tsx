@@ -154,7 +154,7 @@ function Card({ id, figure, extra, source, unread, open, onOpen }: CardProps) {
       className="ivd-card iv-focus"
       data-testid={`ivd-card-${id}`}
       aria-expanded={open === id}
-      aria-controls="ivd-evidence"
+      aria-controls={open === id ? 'ivd-evidence' : undefined}
       data-on={open === id}
       onClick={() => onOpen(id)}
     >
@@ -306,6 +306,7 @@ export default function ItemCards({ row, uom, canManage, currency, figures, open
       <Card
         id="inside"
         open={open}
+        onOpen={onOpen}
         figure="Not recorded"
         source="Nutrition and allergens are not recorded for this item yet."
       />
