@@ -733,6 +733,23 @@ describe("DeliveryStockService — VERIFIED posts the landed cost (lane 1.4)", (
     );
   });
 
+  it("(b) a header discount of 50 lands 57.00 and 38.00", async () => {
+    await land({ discount_total: 50 }, two, both);
+    expect(costs()).toEqual({ [ITEM]: 57, [ITEM2]: 38 });
+  });
+
+  it("(c) a deposit total and a line deposit are never cost", async () => {
+    const res = await land(
+      { deposit_total: 30 },
+      [bottles({ deposit: 5, line_total: 605 }), two[1]],
+      both,
+    );
+    expect(costs()).toEqual({ [ITEM]: 60, [ITEM2]: 40 });
+    expect(res.ok && res.value.papers?.[0].leftOut).toMatch(
+      /Not cost: a deposit of 30\.00, line deposits of 5\.00/,
+    );
+  });
+
   it("(d) two lines of one item that price differently are pooled by value, 12 @ 10 + 6 @ 13 → 11.00 (base: refused)", async () => {
     const res = await land({}, [at(12, 10), at(6, 13, { line_no: 2 })], {
       [ITEM]: 18,
@@ -741,10 +758,76 @@ describe("DeliveryStockService — VERIFIED posts the landed cost (lane 1.4)", (
     expect(costs()).toEqual({ [ITEM]: 11 });
   });
 
+  it("(e) 12 paid @ 10 and a free line of 1 posts 9.23 (120 / 13), and a retry posts the same", async () => {
+    const lines = [at(12, 10), at(1, 0, { line_no: 2 })];
+    await land({}, lines, { [ITEM]: 13 });
+    expect(costs()).toEqual({ [ITEM]: 9.23 });
+    await land({}, lines, { [ITEM]: 13 });
+    expect(costs()).toEqual({ [ITEM]: 9.23 });
+  });
+
+  it("(e2) free goods inside a paid line dilute it: 12 listed, 1 free, total 110 → 9.17", async () => {
+    await land(
+      {},
+      [
+        bottles({
+          qty_bottles: 12,
+          free_goods_qty: 1,
+          unit_price: 10,
+          line_total: 110,
+        }),
+      ],
+      { [ITEM]: 12 },
+    );
+    expect(costs()).toEqual({ [ITEM]: 9.17 });
+  });
+
+  it("(f) 2 KS @ 264, pack 12 still costs 22.00 a bottle (#816)", async () => {
+    await land(
+      {},
+      [
+        bottles({
+          qty_bottles: 24,
+          uom: "case",
+          pack_size: 12,
+          unit_price: 264,
+          line_total: 528,
+        }),
+      ],
+      { [ITEM]: 24 },
+    );
+    expect(costs()).toEqual({ [ITEM]: 22 });
+  });
+
   it("(g) 12 listed @ 22 and 10 booked at the door costs 22.00, not 26.40 (F2)", async () => {
     const res = await land({}, [at(12, 22)], { [ITEM]: 10 });
     expect(costs()).toEqual({ [ITEM]: 22 });
     expect(res.ok && res.value.finalised[0].landed?.acceptedBottles).toBe(10);
+  });
+
+  it("(g2) bottles booked beyond the paper take the same cost, and the basis says how many", async () => {
+    const res = await land({}, [at(12, 22)], { [ITEM]: 14 });
+    expect(costs()).toEqual({ [ITEM]: 22 });
+    expect(res.ok && res.value.finalised[0].basis).toMatch(
+      /booked 2 bottles more than the invoice lists/,
+    );
+  });
+
+  it("(h) an item over two lines that the door counted short stays provisional and says why", async () => {
+    const res = await land({}, [at(12, 10), at(6, 13, { line_no: 2 })], {
+      [ITEM]: 15,
+    });
+    expect(posted()).toEqual([]);
+    expect(res.ok && res.value.stillProvisional[0].reason).toMatch(
+      /counted 15 bottles .* list 18 across 2 lines, and which line was short is not known/,
+    );
+  });
+
+  it("(j) a single unattached line still pairs with the single booked item", async () => {
+    await land({ freight: 12 }, [at(12, 10, { inventory_id: null })], {
+      [ITEM]: 12,
+    });
+    expect(costs()).toEqual({ [ITEM]: 11 });
   });
 
   it("(k) an accepted proposal still wins, and carries no share of the paper", async () => {
@@ -765,6 +848,41 @@ describe("DeliveryStockService — VERIFIED posts the landed cost (lane 1.4)", (
     expect(settled?.landed).toBeUndefined();
   });
 
+  it("a refused line on a paper with freight leaves every item on it provisional", async () => {
+    const res = await land(
+      { freight: 100 },
+      [bottles({ uom: "case", pack_size: 1, unit_price: 264 }), two[1]],
+      both,
+    );
+    expect(posted()).toEqual([]);
+    const why = res.ok ? res.value.stillProvisional : [];
+    expect(why.find((p) => p.inventoryId === ITEM)?.reason).toMatch(
+      /not per bottle: .*how many bottles a case holds/,
+    );
+    expect(why.find((p) => p.inventoryId === ITEM2)?.reason).toMatch(
+      /Line 1 could not be priced, so this paper's charges and discount cannot be shared out/,
+    );
+  });
+
+  it("a refused line on a paper with no charge leaves the other items final", async () => {
+    await land(
+      {},
+      [bottles({ uom: "case", pack_size: 1, unit_price: 264 }), two[1]],
+      both,
+    );
+    expect(costs()).toEqual({ [ITEM2]: 40 });
+  });
+
+  it("a discount larger than the stock and charges, or a negative charge, costs nothing final", async () => {
+    for (const head of [{ discount_total: 2000 }, { freight: -10 }]) {
+      const res = await land(head, two, both);
+      expect(posted()).toEqual([]);
+      expect(
+        res.ok && res.value.stillProvisional.map((p) => p.reason).join(),
+      ).toMatch(/discount of 2000\.00 is more than|freight is negative/);
+    }
+  });
+
   it("an invoice whose header cannot be read is not read as one with no charges (ADR 0020)", async () => {
     db.answers.procurement_documents = {
       data: null,
@@ -781,6 +899,18 @@ describe("DeliveryStockService — VERIFIED posts the landed cost (lane 1.4)", (
       /could not be read for their charges and discount: connection reset/,
     );
     expect(posted()).toEqual([]);
+  });
+
+  it("a deposit line on the paper is never stock and never shares the freight", async () => {
+    const res = await land(
+      { freight: 100, extracted_lines: [{ lineNo: 3, lineKind: "deposit" }] },
+      [...two, at(1, 180, { line_no: 3, inventory_id: null })],
+      both,
+    );
+    expect(costs()).toEqual({ [ITEM]: 66, [ITEM2]: 44 });
+    expect(res.ok && res.value.papers?.[0].leftOut).toMatch(
+      /line 3, a deposit of 180\.00/,
+    );
   });
 });
 
