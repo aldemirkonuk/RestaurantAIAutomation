@@ -25,11 +25,18 @@
  * list standing in for "could not read".
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { InboundAddressService } from "../../common/orchestrator/inbound-address.service";
 import { GMAIL_SEND_SCOPE, HouseSenderService } from "../letters/house-sender.service";
-import { testSubject } from "./test-letter";
+import { newTestCode, testSubject } from "./test-letter";
 
 const OWNER_MANAGER = new Set(["owner", "manager"]);
 
@@ -80,6 +87,9 @@ export interface MailSetupView {
   };
 }
 
+const NO_CHANGE_WORDS =
+  "Only an owner or a manager of this house can change how its mail is set up.";
+
 /** The words in the body of the test letter. Plain, and says what it is for. */
 const TEST_BODY =
   "This is a test letter to check that mail reaches Mudavym. You can send it as it is.";
@@ -109,6 +119,134 @@ export class MailSetupService {
       this.readTestLetter(restaurantId),
     ]);
     return { canChange: mayChangeHouseMail(role), senders, arrival, testLetter };
+  }
+
+  /**
+   * Point the house's letters at one of its own sending grants, or (null)
+   * clear the choice and go back to the plain rule.
+   */
+  async chooseSender(
+    restaurantId: string,
+    userId: string,
+    role: string | null | undefined,
+    connectionId: string | null,
+  ): Promise<MailSetupView> {
+    if (!mayChangeHouseMail(role)) throw new ForbiddenException(NO_CHANGE_WORDS);
+
+    if (connectionId === null) {
+      const { error } = await this.db.client
+        .from("house_mail_sender_choice")
+        .delete()
+        .eq("restaurant_id", restaurantId);
+      if (error) {
+        this.logger.error(`Clearing the sender choice failed for ${restaurantId}: ${error.message}`);
+        throw new ServiceUnavailableException(
+          "The choice could not be cleared. Nothing was changed; try again.",
+        );
+      }
+      return this.read(restaurantId, userId, role);
+    }
+
+    // Only a live Google grant of THIS house that may send. The table's own
+    // trigger refuses another house's grant too; this is the plain-words door.
+    const { data, error } = await this.db.client
+      .from("integration_oauth_connections")
+      .select("id, scopes")
+      .eq("id", connectionId)
+      .eq("restaurant_id", restaurantId)
+      .eq("provider", "google")
+      .is("revoked_at", null)
+      .maybeSingle();
+    if (error) {
+      this.logger.error(`Reading grant ${connectionId} failed for ${restaurantId}: ${error.message}`);
+      throw new ServiceUnavailableException(
+        "The mailbox could not be checked. Nothing was changed; try again.",
+      );
+    }
+    const scopes = Array.isArray((data as any)?.scopes) ? ((data as any).scopes as string[]) : [];
+    if (!data || !scopes.includes(GMAIL_SEND_SCOPE)) {
+      throw new BadRequestException(
+        "That mailbox is not one this house can send from any more. Nothing was changed.",
+      );
+    }
+
+    const { error: writeError } = await this.db.client
+      .from("house_mail_sender_choice")
+      .upsert(
+        {
+          restaurant_id: restaurantId,
+          connection_id: connectionId,
+          chosen_by: userId,
+          chosen_at: new Date().toISOString(),
+        },
+        { onConflict: "restaurant_id" },
+      );
+    if (writeError) {
+      this.logger.error(`Saving the sender choice failed for ${restaurantId}: ${writeError.message}`);
+      throw new ServiceUnavailableException(
+        "The choice could not be saved. Nothing was changed; try again.",
+      );
+    }
+    return this.read(restaurantId, userId, role);
+  }
+
+  /** Make the house's Mudavym address, if it has none yet. */
+  async makeAddress(
+    restaurantId: string,
+    userId: string,
+    role: string | null | undefined,
+  ): Promise<MailSetupView> {
+    if (!mayChangeHouseMail(role)) throw new ForbiddenException(NO_CHANGE_WORDS);
+    await this.provisionedAddress(restaurantId);
+    return this.read(restaurantId, userId, role);
+  }
+
+  /**
+   * Start a test letter: a fresh code and the `mailto:` that carries it. No
+   * mail leaves Mudavym here — the owner sends it, from any mailbox, the way
+   * a vendor would (see test-letter.ts).
+   */
+  async startTestLetter(
+    restaurantId: string,
+    userId: string,
+    role: string | null | undefined,
+  ): Promise<MailSetupView> {
+    if (!mayChangeHouseMail(role)) throw new ForbiddenException(NO_CHANGE_WORDS);
+    const address = await this.provisionedAddress(restaurantId);
+
+    // A code is unique only inside one house; a clash is one in 10^12 and is
+    // simply drawn again.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { error } = await this.db.client.from("mail_setup_checks").insert({
+        restaurant_id: restaurantId,
+        code: newTestCode(),
+        address,
+        started_by: userId,
+      });
+      if (!error) return this.read(restaurantId, userId, role);
+      if ((error as any).code !== "23505") {
+        this.logger.error(`Starting a test letter failed for ${restaurantId}: ${error.message}`);
+        break;
+      }
+    }
+    throw new ServiceUnavailableException(
+      "The test letter could not be started. Nothing was changed; try again.",
+    );
+  }
+
+  private async provisionedAddress(restaurantId: string): Promise<string> {
+    if (!this.inboundAddress.domain()) {
+      throw new ConflictException(
+        "Mudavym cannot receive mail for houses yet, so there is no address to make. Your own connected mailbox still works.",
+      );
+    }
+    const address = await this.inboundAddress.addressFor(restaurantId);
+    if (!address) {
+      throw new ServiceUnavailableException(
+        "The house's Mudavym address could not be made. Nothing was changed; try again.",
+      );
+    }
+    return address;
   }
 
   private async readSenders(

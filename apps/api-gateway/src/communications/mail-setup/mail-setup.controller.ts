@@ -12,12 +12,20 @@
  * mailbox; this only hands them the address and the code.
  */
 
-import { Controller, Get, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Put, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { IsOptional, IsUUID } from "class-validator";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { houseActor, type TokenUser } from "../letters/house-letters.actor";
 import { MailSetupService } from "./mail-setup.service";
+
+export class ChooseMailSenderDto {
+  /** A sending grant of this house, or null to clear the choice. */
+  @IsOptional()
+  @IsUUID()
+  connectionId!: string | null;
+}
 
 @ApiTags("Communications")
 @UseGuards(JwtAuthGuard)
@@ -36,5 +44,38 @@ export class MailSetupController {
   ) {
     const { userId, restaurantId } = houseActor(user);
     return this.setup.read(restaurantId, userId, role);
+  }
+
+  @Put("sender")
+  @ApiOperation({ summary: "Choose which of the house's connected mailboxes its letters leave from (owner or manager)" })
+  async chooseSender(
+    @CurrentUser() user: TokenUser,
+    @CurrentUser("role") role: string | null,
+    @Body() body: ChooseMailSenderDto,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.setup.chooseSender(restaurantId, userId, role, body?.connectionId ?? null);
+  }
+
+  @Post("address")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Make the house's Mudavym address if it has none (owner or manager)" })
+  async makeAddress(
+    @CurrentUser() user: TokenUser,
+    @CurrentUser("role") role: string | null,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.setup.makeAddress(restaurantId, userId, role);
+  }
+
+  @Post("test-letter")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Start a test letter: a code and a mailto the owner sends themselves (owner or manager)" })
+  async startTestLetter(
+    @CurrentUser() user: TokenUser,
+    @CurrentUser("role") role: string | null,
+  ) {
+    const { userId, restaurantId } = houseActor(user);
+    return this.setup.startTestLetter(restaurantId, userId, role);
   }
 }
