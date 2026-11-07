@@ -79,6 +79,57 @@ export function normalizeEmail(raw: unknown): string {
   return raw.trim().toLowerCase();
 }
 
+export interface SignInAddressMatch<T> {
+  /** The one account the address names, or null. */
+  user: T | null;
+  /** A failed read: never an answer about the address. */
+  error: { message: string } | null;
+  /**
+   * More than one account holds this address under the fold (held twins).
+   * Always false until the SQL-fold read exists; callers already honour it.
+   */
+  ambiguous: boolean;
+}
+
+/**
+ * The account a typed sign-in address names (QA rounds 11 and 13: R11-01,
+ * R11-02). Every door that looks an account up by address goes through here,
+ * so sign-in, registration's "already registered" and the dev bypass agree on
+ * which row an address means.
+ *
+ * Two reads, the second only when the first found nothing:
+ *  1. the address exactly as typed, trimmed -- only when that differs from the
+ *     folded spelling. A row stored unfolded keeps answering to the spelling
+ *     its owner always used, ahead of a lower-case twin someone else holds;
+ *  2. the folded spelling (`normalizeEmail`) -- every row written since
+ *     registration folded.
+ *
+ * `usersRead` is the caller's own `from("users").select("<literal columns>")`,
+ * built fresh for each read: the column list stays a literal at the call site,
+ * where check_read_columns_exist.py can read it.
+ */
+export async function findUserBySignInAddress<T = any>(
+  usersRead: () => any,
+  typed: unknown,
+): Promise<SignInAddressMatch<T>> {
+  const none: SignInAddressMatch<T> = { user: null, error: null, ambiguous: false };
+  const folded = normalizeEmail(typed);
+  if (!folded) return none;
+  const asTyped = (typed as string).trim();
+
+  const byAddress = async (address: string) => {
+    const { data, error } = await usersRead().eq("email", address).maybeSingle();
+    return { user: (data ?? null) as T | null, error: error ?? null };
+  };
+
+  if (asTyped !== folded) {
+    const exact = await byAddress(asTyped);
+    if (exact.error || exact.user) return { ...exact, ambiguous: false };
+  }
+  const plain = await byAddress(folded);
+  return { ...plain, ambiguous: false };
+}
+
 interface CodeRow {
   id: string;
   email: string;

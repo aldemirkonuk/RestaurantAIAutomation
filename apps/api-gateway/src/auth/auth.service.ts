@@ -65,7 +65,10 @@ import {
   newInviteEmailSecret,
   unprovenPasswordHasLapsed,
 } from "./unproven-address";
-import { normalizeEmail } from "../passkeys/sign-in-codes.service";
+import {
+  findUserBySignInAddress,
+  normalizeEmail,
+} from "../passkeys/sign-in-codes.service";
 import {
   ORG_ROW_INSERT_ONLY,
   orgRoleForHouseGrant,
@@ -385,13 +388,16 @@ export class AuthService {
 
   /**
    * Validate user credentials
+   *
+   * QA rounds 11 and 13 (R11-02): the address is looked up the way every other
+   * door looks it up (`findUserBySignInAddress`), so `Chef@Bistro.com` typed
+   * for the row registration now stores as `chef@bistro.com` signs in.
    */
   async validateUser(email: string, password: string): Promise<any> {
-    const { data: user, error } = await this.databaseService.supabase
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .single();
+    const { user, error } = await findUserBySignInAddress<any>(
+      () => this.databaseService.supabase.from("users").select("*"),
+      email,
+    );
 
     if (error || !user) {
       throw new UnauthorizedException("Invalid credentials");
@@ -632,11 +638,10 @@ export class AuthService {
       throw new UnauthorizedException("DEV_AUTH_BYPASS_EMAIL is not set");
     }
 
-    const { data: user, error } = await this.databaseService.supabase
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .maybeSingle();
+    const { user, error } = await findUserBySignInAddress<any>(
+      () => this.databaseService.supabase.from("users").select("*"),
+      email,
+    );
 
     if (error || !user) {
       throw new UnauthorizedException(
@@ -1610,7 +1615,9 @@ export class AuthService {
    */
   async registerAccount(dto: RegisterAccountDto): Promise<TokenPair> {
     const email = dto.email.toLowerCase().trim();
-    if (await this.emailAlreadyRegistered(email)) {
+    // The address as typed: the shared lookup folds it itself, and JS
+    // toLowerCase would hide a held non-ASCII row from the SQL fold.
+    if (await this.emailAlreadyRegistered(dto.email)) {
       throw new BadRequestException("Email already registered");
     }
 
@@ -1651,7 +1658,7 @@ export class AuthService {
   async registerAccountWithGoogle(googleToken: string): Promise<TokenPair> {
     const googleUser = await this.verifyGoogleToken(googleToken);
     const email = googleUser.email.toLowerCase().trim();
-    if (await this.emailAlreadyRegistered(email)) {
+    if (await this.emailAlreadyRegistered(googleUser.email)) {
       throw new ConflictException(
         "An account already uses this email. Sign in instead.",
       );
@@ -1846,6 +1853,12 @@ export class AuthService {
    * User starts with email_verified: false and must verify email.
    */
   async registerRestaurant(dto: RegisterRestaurantDto): Promise<TokenPair> {
+    // Folded the way every door that looks an account up folds it (reset,
+    // emailed code, Google, /sign-in-methods). Stored as typed, an owner who
+    // registered as Chef@Bistro.com could never be found again (QA R11-01).
+    const email = normalizeEmail(dto.email);
+    // Checked as typed: the shared lookup folds it, and also finds a row the
+    // fold migration held under a spelling normalizeEmail would not produce.
     if (await this.emailAlreadyRegistered(dto.email)) {
       throw new BadRequestException("Email already registered");
     }
@@ -1956,7 +1969,7 @@ export class AuthService {
       const { data: user, error: userErr } = await this.databaseService.supabase
         .from("users")
         .insert({
-          email: dto.email,
+          email,
           password_hash: passwordHash,
           name: dto.name,
           restaurant_id: restaurantId,
@@ -2015,7 +2028,7 @@ export class AuthService {
       // here it has been assigned from the created row and the throw on
       // failure means it cannot be null. Asserting that rather than widening
       // the callee, which would let a genuinely-null id through elsewhere.
-      this.queueEmailVerification(userId as string, dto.email).catch((err) =>
+      this.queueEmailVerification(userId as string, email).catch((err) =>
         this.logger.warn(
           `queueEmailVerification failed (non-fatal): ${err.message}`,
         ),
@@ -2023,7 +2036,7 @@ export class AuthService {
 
       this.gmailService
         .sendOnboardingEmail({
-          to: dto.email,
+          to: email,
           ownerName: dto.name,
           restaurantName: dto.restaurantName,
           restaurantCity: dto.city,
@@ -3773,22 +3786,25 @@ export class AuthService {
    * Returns true if email exists, false otherwise.
    */
   async checkEmailExists(email: string): Promise<boolean> {
-    return this.emailAlreadyRegistered(email.toLowerCase().trim());
+    return this.emailAlreadyRegistered(email);
   }
 
   /** A failed users read is not "email is free". */
+  /**
+   * Through the shared lookup, so an address a held row answers to under the
+   * SQL fold (R11-01) is taken: registration never writes a new case-twin.
+   */
   private async emailAlreadyRegistered(email: string): Promise<boolean> {
-    const { data: existing, error } = await this.databaseService.supabase
-      .from("users")
-      .select("email")
-      .eq("email", email)
-      .maybeSingle();
+    const { user, error, ambiguous } = await findUserBySignInAddress(
+      () => this.databaseService.supabase.from("users").select("email"),
+      email,
+    );
     if (error) {
       throw new InternalServerErrorException(
         "Could not check whether that email is already registered",
       );
     }
-    return !!existing;
+    return ambiguous || !!user;
   }
 
   /** Build profile payload for GET/PATCH /auth/me */
