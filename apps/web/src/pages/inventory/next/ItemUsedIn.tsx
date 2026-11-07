@@ -7,13 +7,25 @@
  * usage. A group whose read failed says so; it is never drawn as empty (ADR
  * 0067). No menu page links a line to an item yet, so the unlinked group says
  * what it is and offers no "Link this".
+ *
+ * An empty group is said as "None" under the server's own sentence for it,
+ * which names the state (no current menu, not a catalogue drink); the drawer
+ * never sums the groups into "not used anywhere". Dish recipes are not read
+ * by this page at all (recipe lines live on the recipe-engine stack), so that
+ * line says whether a recipe uses the item is not known here, never "no".
  */
 import type { ItemMenuLine, ItemUsedIn as UsedIn, ItemUsedInGroup } from '../../../services/api/inventory';
 import { cellMoney, type HouseCurrency } from './useInventoryNextData';
 
 export type UsedInLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: UsedIn };
 
-const RECIPES_NOTE = 'Recipes are not recorded yet, so no dish recipe is shown here.';
+export const RECIPES_UNKNOWN =
+  'Dish recipes are not read on this page yet, so whether a recipe uses this item is not known here.';
+
+/** A recipe quantity as a person writes it: 0.30000000000000004 reads 0.3, 29.5735295625 reads 29.57. */
+export function fmtRecipeQty(n: number): string {
+  return n.toLocaleString('en-GB', { maximumFractionDigits: 2 });
+}
 
 function Group<T>({
   title,
@@ -21,12 +33,15 @@ function Group<T>({
   note,
   line,
   testid,
+  hideWhenEmpty,
 }: {
   title: string;
   group: ItemUsedInGroup<T>;
   note?: string;
-  line: (l: T) => { key: string; text: string; side?: string };
+  line: (l: T, i: number) => { key: string; text: string; side?: string };
   testid: string;
+  /** Only the "named, not linked" group: nothing to link is nothing to say. */
+  hideWhenEmpty?: boolean;
 }) {
   if (!group.readable || group.lines === null) {
     return (
@@ -36,14 +51,25 @@ function Group<T>({
       </section>
     );
   }
-  if (group.lines.length === 0) return null;
+  if (group.lines.length === 0) {
+    if (hideWhenEmpty) return null;
+    return (
+      <section className="ivd-used-g" data-testid={testid}>
+        <h4 className="ivd-used-h">{title}</h4>
+        <p className="iv-said" data-testid={`${testid}-none`}>
+          None.
+        </p>
+        <p className="iv-note">{group.source}</p>
+      </section>
+    );
+  }
   return (
     <section className="ivd-used-g" data-testid={testid}>
       <h4 className="ivd-used-h">{title}</h4>
       {note ? <p className="iv-note">{note}</p> : null}
       <ul className="ivd-used-list">
-        {group.lines.map((l) => {
-          const v = line(l);
+        {group.lines.map((l, i) => {
+          const v = line(l, i);
           return (
             <li key={v.key}>
               <span>{v.text}</span>
@@ -95,23 +121,18 @@ export default function ItemUsedIn({
     );
   } else {
     const { soldAs, inCocktails, namedNotLinked } = load.data;
-    const all = [soldAs, inCocktails, namedNotLinked];
-    const nothing = all.every((g) => g.readable && g.lines !== null && g.lines.length === 0);
-    body = nothing ? (
-      <p className="iv-said" data-testid="ivd-used-none">
-        Not on the menu or in a recipe yet.
-      </p>
-    ) : (
+    body = (
       <>
         <Group title="Sold as" testid="ivd-used-sold" group={soldAs} line={menu} />
         <Group
           title="In these cocktails"
           testid="ivd-used-cocktails"
           group={inCocktails}
-          line={(c) => ({
-            key: `${c.cocktailId}-${c.quantity ?? ''}-${c.unit ?? ''}`,
+          // One cocktail may name the item twice (two lines): the key is the line, not the cocktail.
+          line={(c, i) => ({
+            key: `${c.cocktailId}-${i}`,
             text: c.name,
-            side: c.quantity !== null ? `${c.quantity}${c.unit ? ` ${c.unit}` : ''}` : undefined,
+            side: c.quantity !== null ? `${fmtRecipeQty(c.quantity)}${c.unit ? ` ${c.unit}` : ''}` : undefined,
           })}
         />
         <Group
@@ -120,6 +141,7 @@ export default function ItemUsedIn({
           group={namedNotLinked}
           note="These lines carry this item’s name but no link to it, so they are not counted in usage."
           line={menu}
+          hideWhenEmpty
         />
       </>
     );
@@ -131,7 +153,10 @@ export default function ItemUsedIn({
         Used in
       </h3>
       {body}
-      <p className="iv-note">{RECIPES_NOTE}</p>
+      <section className="ivd-used-g" data-testid="ivd-used-recipes">
+        <h4 className="ivd-used-h">In dish recipes</h4>
+        <p className="iv-note">{RECIPES_UNKNOWN}</p>
+      </section>
     </section>
   );
 }
