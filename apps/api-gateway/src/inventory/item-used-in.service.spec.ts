@@ -83,6 +83,18 @@ describe("ItemUsedInService (proposal I4/I11)", () => {
     expect(out.inCocktails).toMatchObject({ readable: true, lines: [] });
   });
 
+  it("a house whose only menu is a draft says it has no current menu, and never reads its lines", async () => {
+    const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: null, master_wine_id: null });
+    db.tables.restaurant_menus = [{ id: "menu-draft", restaurant_id: H, status: "draft" }];
+    db.tables.menu_items = [line("l-draft", "Unx", { menu_id: "menu-draft", inventory_item_id: I })];
+    db.failures.menu_items = "a draft menu's lines must not be read";
+    const out = await svc.usedIn(H, I);
+    for (const group of [out.soldAs, out.namedNotLinked]) {
+      expect(group).toMatchObject({ readable: true, lines: [] });
+      expect(group.source).toMatch(/has no current menu/);
+    }
+  });
+
   it("an item of another house is not found", async () => {
     const { svc } = seed({ kind: "food", display_name: "Un", beverage_id: null, master_wine_id: null });
     await expect(svc.usedIn("house-2", I)).rejects.toMatchObject({ status: 404 });
