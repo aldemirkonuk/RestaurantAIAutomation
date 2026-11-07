@@ -168,7 +168,7 @@ export const STATEMENTS: readonly DataTermStatement[] = [
       "cache), Railway (the servers) and Vercel (the web app and its /api relay). " +
       "A check in Mudavym's build fails whenever its code can send to a host this list does not name.",
     evidence: [
-      ".planning/foundation/EXTERNAL_CONNECTIONS.md:34-68",
+      ".planning/foundation/EXTERNAL_CONNECTIONS.md:34-70",
       "scripts/check_data_terms_name_every_host.py",
       "vercel.json:8-12",
     ],
@@ -381,6 +381,20 @@ export const SUBPROCESSORS: readonly Subprocessor[] = [
     host: "api.weather.gov",
     what: "the house's map point (to four decimal places), for its local forecast",
     when: "houses in the United States",
+    masked: false,
+  },
+  {
+    name: "Open Food Facts",
+    host: "world.openfoodfacts.org",
+    what: "an inventory item's barcode, or the name typed for it, to fill in what is in it",
+    when: "only when someone asks to look an item up; nothing is kept until the house confirms",
+    masked: false,
+  },
+  {
+    name: "USDA FoodData Central",
+    host: "api.nal.usda.gov",
+    what: "the name typed for a raw ingredient, to fill in what is in it",
+    when: "only when someone asks to look an item up, and only when Mudavym has a key for it",
     masked: false,
   },
   {
