@@ -96,6 +96,16 @@ function toEvent(row: Record<string, unknown>): DeliveryEvent {
   };
 }
 
+/**
+ * What a RE-VERIFY did to the cost (QA 10a). `repaired` lots had been booked at
+ * the invoice's printed price and now carry one bottle's cost; a `flagged` lot
+ * kept its cost, and `reason` is the gateway's own sentence for why.
+ */
+export interface CostRepair {
+  repaired: { inventoryId: string; unitCost: number; bottlesFinalised: number }[];
+  flagged: { inventoryId: string; kind: 'refused' | 'line_changed'; reason: string }[];
+}
+
 export interface DoorCountLine {
   lineNo: number;
   description?: string;
@@ -246,6 +256,8 @@ export const deliveriesApi = {
       }[];
       stillProvisional: { inventoryId: string; reason: string }[];
     } | null;
+    /** A re-verify's cost check (QA 10a): absent on a first verify. */
+    repair?: CostRepair | null;
     delivery: Record<string, unknown>;
   }> {
     const { data } = await apiClient.post(

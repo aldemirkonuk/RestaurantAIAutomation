@@ -77,10 +77,11 @@ import {
   printedVintageOf,
   sourceSentence,
 } from '../../../components/documents'
+import { costNoticeOf } from '../../../components/documents/canonical-format'
 import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
-import { deliveriesApi, type ProposalBody } from '../../../services/api/deliveries'
+import { deliveriesApi, type CostRepair, type ProposalBody } from '../../../services/api/deliveries'
 import './canonical-document.css'
 
 type Tab = 'sheet' | 'door'
@@ -131,6 +132,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   /** The gateway's words when a GATE or a proposal refused, kept apart from a
    *  correction's error so one does not overwrite the other on screen. */
   const [deliveryError, setDeliveryError] = useState<string | null>(null)
+  // QA 10a (5): what a re-verify did to the cost, kept so it reaches the screen.
+  const [costRepair, setCostRepair] = useState<CostRepair | null>(null)
 
   /**
    * Every key below names the house (ADR 0051). The gateway scopes these reads
@@ -283,8 +286,11 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   const deliveryWrite = async (fn: () => Promise<unknown>) => {
     setWriting(true)
     setDeliveryError(null)
+    setCostRepair(null)
     try {
-      await fn()
+      const result = await fn()
+      const repair = costNoticeOf(result) as CostRepair | null
+      if (repair) setCostRepair(repair)
       await Promise.all([q.refetch(), eventQ.refetch(), proposalsQ.refetch()])
     } catch (err) {
       setDeliveryError(messageFrom(err))
@@ -558,6 +564,11 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               onVerify={() =>
                 deliveryWrite(() => deliveriesApi.verify(soleDelivery.deliveryId))
               }
+              onRecheck={() =>
+                deliveryWrite(() => deliveriesApi.verify(soleDelivery.deliveryId))
+              }
+              repair={costRepair}
+              currency={doc.layer1.currency.value}
             />
           ) : (
             <p data-testid="gates-unavailable" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>

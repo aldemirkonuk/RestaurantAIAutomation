@@ -34,6 +34,13 @@ QA round 10a (1)+(6), same branch. An accepted proposal's raw price now counts a
 
 4. A lot whose line was edited after it was costed is FLAGGED, not revalued. Rejected: revaluing from the current line; the lot does not say whether its line changed or a person revalued it, and a re-verify is not a second verification (ADR 0103).
 
+## A re-verify's correction was invisible on the page — CLOSED — 2026-11-07
+
+QA round 10a (5), branch `fix/reverify-cost-notice`. `verify` now returns the repair itself (`repaired`, `flagged`); a VERIFIED delivery shows a "Check the cost again" button, and the page states the result in a `role="status"` notice: "Cost corrected", "Refused" with its reason, "Not corrected" for an edited line, or "nothing needed correcting". Turkish or English by the canonical-format fork. QA round 12b: a FIRST verify that leaves a lot provisional now shows each reason the same way (`costNoticeOf`); before, the page discarded the response. Claim `QA-R10A-REVERIFY-NOTICE`. Forks, the session's call:
+
+1. The notice is built on the page from the structured repair; `costNote` keeps its sentence for other callers. Rejected: rendering `costNote` (English only, not structured).
+2. A re-check button on a VERIFIED delivery, because the page had no way to re-verify one. Rejected: no button (the notice could never show).
+
 ## An unmapped unit, or a total that contradicts the price, reached the lot — CLOSED — 2026-11-07
 
 Audit D1 and QA round 9a (1), branch `fix/unknown-unit-is-refused`. The extractor stores an unmapped unit (`kutu`, `ml`) as `each`, so `2 kutu @ 264, pack 12` booked 264; and `24 bottles @ 264` with a printed total of 528 booked 264. The extractor now keeps the unmapped glyph in the line's `printed` (`uom`, `priceBaseUom`) and `perBottleLotCost` refuses it; it also refuses a printed `line_total` that disagrees with per-bottle cost × `qty_bottles`. Claim `AUDIT-816-D1-UNMAPPED-UNIT-AND-TOTAL-REFUSED`. Forks, the session's call under the 2026-11-07 /goal:

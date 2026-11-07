@@ -22,8 +22,8 @@
  * rather than absorb it.
  */
 
-import type { DeliveryEvent } from '../../services/api/deliveries'
-import { MONO, SERIF, fmtStamp } from './canonical-format'
+import type { CostRepair, DeliveryEvent } from '../../services/api/deliveries'
+import { MONO, SERIF, costRepairSentences, fmtStamp } from './canonical-format'
 
 export interface DeliveryGatesProps {
   delivery: DeliveryEvent
@@ -32,6 +32,15 @@ export interface DeliveryGatesProps {
   busy?: boolean
   /** The gateway's own words when it refused. Never paraphrased. */
   error?: string | null
+  /**
+   * QA 10a (5): run verify again on a VERIFIED delivery. The gateway does not
+   * verify twice; it re-checks a cost booked at the printed price.
+   */
+  onRecheck?: () => Promise<void>
+  /** What the last re-check did to the cost; rendered, never discarded. */
+  repair?: CostRepair | null
+  /** With `delivery.jurisdiction`, picks Turkish or English (canonical-format). */
+  currency?: string | null
 }
 
 const AGREE_RULES: Record<string, string> = {
@@ -47,7 +56,12 @@ export function DeliveryGates({
   onVerify,
   busy,
   error,
+  onRecheck,
+  repair,
+  currency,
 }: DeliveryGatesProps) {
+  const turkish =
+    delivery.jurisdiction === 'TR' || (delivery.jurisdiction !== 'US-CA' && currency === 'TRY')
   const agreed = !!delivery.agreedAt
   const verified = !!delivery.verifiedAt
   const lapsed = delivery.state === 'LAPSED' || delivery.state === 'LAPSED_AMENDED'
@@ -168,6 +182,29 @@ export function DeliveryGates({
             >
               {busy ? 'Recording…' : 'I received these goods'}
             </button>
+          )}
+          {verified && onRecheck && (
+            <button
+              type="button"
+              data-testid="recheck-cost-button"
+              className="cd-no-print"
+              disabled={busy}
+              onClick={() => void onRecheck()}
+              style={primary}
+            >
+              {busy
+                ? turkish ? 'Denetleniyor…' : 'Checking…'
+                : turkish ? 'Maliyeti yeniden denetle' : 'Check the cost again'}
+            </button>
+          )}
+          {repair && (
+            <div data-testid="cost-repair-notice" role="status" style={{ marginTop: 5 }}>
+              {costRepairSentences(repair, delivery.jurisdiction, currency).map((line) => (
+                <p key={line} style={{ margin: '2px 0 0', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}>
+                  {line}
+                </p>
+              ))}
+            </div>
           )}
         </div>
       </div>

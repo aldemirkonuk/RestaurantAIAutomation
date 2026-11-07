@@ -4,7 +4,7 @@ import { NotificationsService } from "../../notifications/notifications.service"
 import { DeliveryClockService } from "./delivery-clock.service";
 import { ReadResult } from "./canonical-document.service";
 import { matchLines, MatchableLine } from "../documents/line-matcher";
-import { DeliveryStockService, CostReceipt } from "./delivery-stock.service";
+import { DeliveryStockService, CostReceipt, CostRepair } from "./delivery-stock.service";
 
 /**
  * DeliveryService — the delivery's own doors (ADR 0103 D1/D3/D5/D6/D7, A2, A4, A6).
@@ -888,6 +888,8 @@ export class DeliveryService {
       alreadyVerified: boolean;
       cost: CostReceipt | null;
       costNote: string;
+      /** A re-verify's cost check (QA 10a (5)); absent on a first verify. */
+      repair?: Pick<CostRepair, "repaired" | "flagged"> | null;
     }>
   > {
     if (!userId)
@@ -920,9 +922,11 @@ export class DeliveryService {
           costNote += ` ${repaired.length} item(s) had been booked at the invoice's printed price and now cost what one bottle costs.`;
         for (const f of flagged) costNote += ` Item ${f.inventoryId}: ${f.reason}`;
       }
+      // QA 10a (5): the repair itself, so the screen can say what changed.
+      const repair = fix.ok ? { repaired: fix.value.repaired, flagged: fix.value.flagged } : null;
       return {
         ok: true,
-        value: { delivery, alreadyVerified: true, cost: null, costNote },
+        value: { delivery, alreadyVerified: true, cost: null, costNote, repair },
       };
     }
 
