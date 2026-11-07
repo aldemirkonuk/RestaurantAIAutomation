@@ -425,8 +425,9 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
       "restaurant_inventory",
     ])("getAlerts fails when the %s read is refused", async (table) => {
       db.getClient.mockReturnValue(makeClient({}, { [table]: "refused" }));
+      // Read whole (ADR 0292): the refusal names the read, never a part list.
       await expect(service.getAlerts("r1")).rejects.toThrow(
-        /read failed: refused/,
+        /could not be read whole: .*refused/,
       );
     });
   });

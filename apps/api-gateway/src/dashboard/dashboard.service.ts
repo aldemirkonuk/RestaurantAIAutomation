@@ -1176,22 +1176,34 @@ export class DashboardService {
     const client = this.dbService.getClient();
 
     try {
+      // Each read is whole or refuses (ADR 0292; QA round 15 H2): an
+      // unpaged select stopped at 1000 rows, so a 2,500-wine cellar said
+      // "1000 wines, 1000 low" beside a card that said 2,500.
       const [inventoryResult, lowStockResult, ordersResult, zoneResult] =
         await Promise.allSettled([
-          client
-            .from("restaurant_inventory")
-            .select("id, stock_live, bottle_size_ml")
-            .eq("restaurant_id", restaurantId)
-            .is("deleted_at", null)
-            .eq("is_active", true),
-          client
-            .from("v_low_stock_items")
-            .select("id")
-            .eq("restaurant_id", restaurantId),
-          client
-            .from("procurement_orders")
-            .select("id, status, total_cost, final_price, bottles_total, quantity, delivered_at")
-            .eq("restaurant_id", restaurantId),
+          readWholeWindow<any>("The cellar for the stats", () =>
+            client
+              .from("restaurant_inventory")
+              .select("id, stock_live, bottle_size_ml", { count: "exact" })
+              .eq("restaurant_id", restaurantId)
+              .is("deleted_at", null)
+              .eq("is_active", true),
+          ),
+          readWholeWindow<any>("The low-stock wines for the stats", () =>
+            client
+              .from("v_low_stock_items")
+              .select("id", { count: "exact" })
+              .eq("restaurant_id", restaurantId),
+          ),
+          readWholeWindow<any>("The orders for the stats", () =>
+            client
+              .from("procurement_orders")
+              .select(
+                "id, status, total_cost, final_price, bottles_total, quantity, delivered_at",
+                { count: "exact" },
+              )
+              .eq("restaurant_id", restaurantId),
+          ),
           this.houseZone(client, restaurantId),
         ]);
 
@@ -1201,9 +1213,9 @@ export class DashboardService {
       // call, and the page shows its em dash for "unknown". A
       // `wine_consumption_log` read used to ride along here and feed nothing;
       // it is gone (DASH-W8).
-      const inventory = rowsOrThrow(inventoryResult, "restaurant_inventory");
-      const lowStock = rowsOrThrow(lowStockResult, "v_low_stock_items");
-      const orders = rowsOrThrow(ordersResult, "procurement_orders");
+      const inventory = valueOrThrow(inventoryResult);
+      const lowStock = valueOrThrow(lowStockResult);
+      const orders = valueOrThrow(ordersResult);
       const zone = valueOrThrow(zoneResult);
       const totalWines = inventory.length;
       const totalBottles = inventory.reduce(
@@ -1421,39 +1433,51 @@ export class DashboardService {
     const alerts: AlertDto[] = [];
 
     try {
+      // Whole or refused, as getStats (ADR 0292; QA round 15 H2): the list
+      // held the first 1000 low wines and never said it stopped.
       const [lowStockResult, overdueResult, inventoryResult] =
         await Promise.allSettled([
-          client
-            .from("v_low_stock_items")
-            .select(
-              "id, stock_live, threshold_min, wine_name, vintage, last_counted_at",
-            )
-            .eq("restaurant_id", restaurantId),
-          client
-            .from("procurement_orders")
-            .select("id, status, expected_delivery_date, created_at")
-            .eq("restaurant_id", restaurantId)
-            .in("status", ORDER_OUTSTANDING_STATUSES),
-          client
-            .from("restaurant_inventory")
-            .select(
-              "id, display_name, wine_name, stock_live, updated_at, master_wine_library(name, vintage)",
-            )
-            .eq("restaurant_id", restaurantId)
-            .is("deleted_at", null)
-            .eq("is_active", true)
-            .eq("stock_live", 0)
-            // OD-161: a wine nobody has counted is unknown, not out of stock.
-            // `last_counted_at` is stamped only by a count; the low-stock view
-            // applies the same test.
-            .not("last_counted_at", "is", null),
+          readWholeWindow<any>("The low-stock wines for the alerts", () =>
+            client
+              .from("v_low_stock_items")
+              .select(
+                "id, stock_live, threshold_min, wine_name, vintage, last_counted_at",
+                { count: "exact" },
+              )
+              .eq("restaurant_id", restaurantId),
+          ),
+          readWholeWindow<any>("The open orders for the alerts", () =>
+            client
+              .from("procurement_orders")
+              .select("id, status, expected_delivery_date, created_at", {
+                count: "exact",
+              })
+              .eq("restaurant_id", restaurantId)
+              .in("status", ORDER_OUTSTANDING_STATUSES),
+          ),
+          readWholeWindow<any>("The empty wines for the alerts", () =>
+            client
+              .from("restaurant_inventory")
+              .select(
+                "id, display_name, wine_name, stock_live, updated_at, master_wine_library(name, vintage)",
+                { count: "exact" },
+              )
+              .eq("restaurant_id", restaurantId)
+              .is("deleted_at", null)
+              .eq("is_active", true)
+              .eq("stock_live", 0)
+              // OD-161: a wine nobody has counted is unknown, not out of
+              // stock. `last_counted_at` is stamped only by a count; the
+              // low-stock view applies the same test.
+              .not("last_counted_at", "is", null),
+          ),
         ]);
 
       // The cellar is the active, undeleted wines — the rule
       // `v_low_stock_items` already applies (DASH-W10). A failed read fails
       // the call: an empty alert list would read as "nothing is wrong"
       // (DASH-W11, as DASH-W3 for stats and Lately).
-      const lowStock = rowsOrThrow(lowStockResult, "v_low_stock_items");
+      const lowStock = valueOrThrow(lowStockResult);
       // Alerts name the wine as Lately does and never fall back to its id
       // (DASH-W7). The view carries the library's name and vintage, not the
       // house's display name; no house renames a wine today (production,
@@ -1486,7 +1510,7 @@ export class DashboardService {
         });
       }
 
-      const overdue = rowsOrThrow(overdueResult, "procurement_orders");
+      const overdue = valueOrThrow(overdueResult);
       const now = new Date();
       for (const order of overdue) {
         if (
@@ -1505,7 +1529,7 @@ export class DashboardService {
         }
       }
 
-      const outOfStock = rowsOrThrow(inventoryResult, "restaurant_inventory");
+      const outOfStock = valueOrThrow(inventoryResult);
       for (const item of outOfStock) {
         if (!lowStock.find((ls) => ls.id === item.id)) {
           alerts.push({
