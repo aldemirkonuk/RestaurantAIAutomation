@@ -59,11 +59,9 @@ same table. Keys stored under the old rule cannot be recomputed in SQL
 (`vendor_price_observations` keeps no producer column; "kavakl dere" in
 `beverage_identities` may be a real space), so readers also ask for the
 pre-fold key, read-side only: `assertIdentity` (no second row for a bottle
-asserted before the fold). The comparison ladder and both outlier-prior reads
-still ask for the folded hash only; until the stacked
-fix/vendor-ladder-reads-prefold-hash lands, sightings stored before the fold
-drop out of the ladder and thin the outlier group (fewer priors judge nothing,
-the safe direction).
+asserted before the fold), the comparison ladder (`loadObservations`), and
+both outlier-prior reads (`priorUnitPricesInClass`, the page extractor's
+`loadPriorUnitPrices`, which counts a pre-fold sighting under the new hash).
 NOT covered: `IdentityService.suggest` blocks on the folded
 `producer_normalised` only, so an identity asserted before the fold is not
 suggested for a subject with "ı" (its tokens "kavakl"/"dere" would not score
