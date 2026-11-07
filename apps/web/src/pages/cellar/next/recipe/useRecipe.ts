@@ -3,12 +3,20 @@
  *
  * Keys are tenant-first, as `useCellarNextData.ts` keys the cellar's own reads
  * (`['cellar', 'register', activeRestaurantId, …]`), so a house switch never
- * shows the previous house's shelf:
+ * shows the previous house's recipe or shelf:
+ *   ['recipes', activeRestaurantId, cocktailId]              the drink's recipe
+ *   ['recipes', activeRestaurantId, cocktailId, 'versions']  its saved versions
  *   ['recipes', 'shelf', activeRestaurantId, search]         the shelf picker
  */
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { recipesApi } from '../../../../services/api/recipes';
+import { settingsApi } from '../../../../services/api/settings';
+import { managesHouse } from '../../../communications/next/cm-format';
+import { fmtMoney } from '../../../receipts/next/rc2-format';
+
+export const recipeKey = (rid: string | null | undefined, cocktailId: string) =>
+  ['recipes', rid ?? null, cocktailId] as const;
 
 /** The gateway's own sentence when it sent one, else the error's message. */
 export function reason(e: unknown): string | null {
@@ -16,6 +24,36 @@ export function reason(e: unknown): string | null {
   const said = (e as { response?: { data?: { message?: unknown } } }).response?.data?.message;
   if (typeof said === 'string' && said.trim()) return said.trim();
   return e instanceof Error ? e.message : 'no reason given';
+}
+
+/**
+ * The drink's recipe. `data` stays the last good read when a later re-read
+ * fails, and `error` then says so; the sheet decides how to show both.
+ */
+export function useRecipe(cocktailId: string) {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: recipeKey(activeRestaurantId, cocktailId),
+    enabled: Boolean(activeRestaurantId && cocktailId),
+    queryFn: () => recipesApi.get(activeRestaurantId as string, cocktailId),
+  });
+  return {
+    data: q.data ?? null,
+    loading: q.isLoading,
+    fetching: q.isFetching,
+    error: q.isError ? reason(q.error) : null,
+    refetch: q.refetch,
+  };
+}
+
+export function useRecipeVersions(cocktailId: string, enabled: boolean) {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: [...recipeKey(activeRestaurantId, cocktailId), 'versions'],
+    enabled: enabled && Boolean(activeRestaurantId && cocktailId),
+    queryFn: () => recipesApi.versions(activeRestaurantId as string, cocktailId),
+  });
+  return { data: q.data ?? null, loading: q.isLoading && enabled, error: q.isError ? reason(q.error) : null };
 }
 
 export function useShelf(search: string, enabled: boolean) {
@@ -27,4 +65,41 @@ export function useShelf(search: string, enabled: boolean) {
     staleTime: 30_000,
   });
   return { data: q.data ?? null, loading: q.isLoading && enabled, error: q.isError ? reason(q.error) : null };
+}
+
+/**
+ * Who may change a recipe, and so who sees its money: an owner or manager of
+ * THIS house. Read exactly as
+ * /communications reads it (`managesHouse`, COMMS-W31): the role in the
+ * session's house first, the account's role only while no house is active,
+ * and a missing role counts as staff. The gateway refuses the write anyway;
+ * this only keeps a control off the screen that would be refused.
+ */
+export function useCanEditRecipe(): boolean {
+  const { activeRole, user } = useAuth();
+  return managesHouse(activeRole, user?.role);
+}
+
+/**
+ * The house's money, said the way /receipts says it (`fmtMoney`: ₺ for lira,
+ * the code where a sign is shared). The cellar's own `money()`
+ * (`cellar-format.ts`, the `money` function) prints a bare `$` for every
+ * house, which is wrong for a house in lira, so the sheet does not use it.
+ */
+export function useHouseMoney() {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: ['settings', 'currency', activeRestaurantId ?? null],
+    enabled: Boolean(activeRestaurantId),
+    queryFn: () => settingsApi.houseCurrency(),
+    staleTime: 5 * 60_000,
+  });
+  const unread = q.isError || (q.data !== undefined && q.data.readable === false);
+  const code = q.data?.readable ? q.data.code : null;
+  return (n: number | null | undefined): string => {
+    if (n == null || !Number.isFinite(n)) return '—';
+    if (q.isLoading) return '…';
+    if (unread) return `${n.toFixed(2)} (the house's money could not be read)`;
+    return fmtMoney(n, code);
+  };
 }
