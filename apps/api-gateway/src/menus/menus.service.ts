@@ -12,6 +12,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
 import { ScanParserService } from "./parsers/scan-parser.service";
+import { decodeUploadBase64, sniffUploadMedia, stripDataUrlPrefix } from "./parsers/upload-base64";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
@@ -263,12 +264,8 @@ export const LINE_SELECT =
 
 /** The kinds of file a menu read keeps, sniffed from the bytes, never trusted from a name. */
 function sniffMime(bytes: Buffer): { mime: string; ext: string } {
-  if (bytes.subarray(0, 4).toString("latin1") === "%PDF") return { mime: "application/pdf", ext: "pdf" };
-  if (bytes[0] === 0x89 && bytes.subarray(1, 4).toString("latin1") === "PNG") return { mime: "image/png", ext: "png" };
-  if (bytes[0] === 0xff && bytes[1] === 0xd8) return { mime: "image/jpeg", ext: "jpg" };
-  if (bytes.subarray(0, 4).toString("latin1") === "RIFF" && bytes.subarray(8, 12).toString("latin1") === "WEBP")
-    return { mime: "image/webp", ext: "webp" };
-  if (bytes.subarray(0, 3).toString("latin1") === "GIF") return { mime: "image/gif", ext: "gif" };
+  const media = sniffUploadMedia(bytes);
+  if (media) return { mime: media.mime, ext: media.ext };
   if (bytes[0] === 0x50 && bytes[1] === 0x4b)
     return { mime: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ext: "xlsx" };
   return { mime: "application/octet-stream", ext: "bin" };
@@ -444,13 +441,16 @@ export class MenusService {
     let sourceBytes: Buffer | null = null;
     let sourceMime: { mime: string; ext: string } | null = null;
     if (dto.method === "scan") {
-      items = await this.scanParser.parse(dto.data.imageBase64!, restaurantId);
-      sourceBytes = Buffer.from(dto.data.imageBase64!, "base64");
+      // One decode for the read and the kept file, so both are the same bytes.
+      const upload = decodeUploadBase64(dto.data.imageBase64!);
+      items = await this.scanParser.parse(upload.base64, restaurantId);
+      sourceBytes = upload.bytes;
       sourceMime = sniffMime(sourceBytes);
     } else if (dto.method === "csv") {
       if (dto.data.fileBase64) {
-        items = await this.csvParser.parseExcel(dto.data.fileBase64);
-        sourceBytes = Buffer.from(dto.data.fileBase64, "base64");
+        const upload = decodeUploadBase64(dto.data.fileBase64);
+        items = await this.csvParser.parseExcel(upload.base64);
+        sourceBytes = upload.bytes;
         sourceMime = sniffMime(sourceBytes);
       } else {
         items = this.csvParser.parse(dto.data.csvContent!);
@@ -504,9 +504,9 @@ export class MenusService {
   ): Promise<WineExtractItem[]> {
     const items =
       method === "scan"
-        ? await this.scanParser.parse(content, restaurantId, true)
+        ? await this.scanParser.parse(stripDataUrlPrefix(content), restaurantId, true)
         : binary
-          ? await this.csvParser.parseExcel(content)
+          ? await this.csvParser.parseExcel(stripDataUrlPrefix(content))
           : this.csvParser.parse(content);
     if (!items.length)
       throw new BadRequestException(

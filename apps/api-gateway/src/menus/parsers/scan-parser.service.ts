@@ -16,6 +16,11 @@ import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
 import { PARSE_YIELD_BASIS } from "../../common/model-client/verdict-bases";
 import { menuScanVerdict } from "./menu-scan-verdict";
 import {
+  readableMenuMediaOrRefuse,
+  stripDataUrlPrefix,
+  type ReadableMenuMedia,
+} from "./upload-base64";
+import {
   MENU_CATEGORY_VOCABULARY,
   WineExtractItem,
 } from "../wine-extract-item.interface";
@@ -148,15 +153,18 @@ export class ScanParserService {
     restaurantId?: string,
     arrival = false,
   ): Promise<WineExtractItem[]> {
+    // A data-URL prefix is removed before anything reads the bytes, and the
+    // media type comes from the decoded leading bytes (./upload-base64.ts).
+    // A kind the reader cannot open is refused here, before the key check.
+    imageBase64 = stripDataUrlPrefix(imageBase64);
+    const mediaType = this.detectMediaType(imageBase64);
+
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
       throw new ServiceUnavailableException(
         "Anthropic API key not configured — set ANTHROPIC_API_KEY",
       );
     }
-
-    // Infer image media type from base64 prefix bytes
-    const mediaType = this.detectMediaType(imageBase64);
 
     const isPdf = mediaType === "application/pdf";
 
@@ -549,19 +557,17 @@ export class ScanParserService {
     }
   }
 
-  private detectMediaType(
-    base64: string,
-  ):
-    | "image/jpeg"
-    | "image/png"
-    | "image/webp"
-    | "image/gif"
-    | "application/pdf" {
-    if (base64.startsWith("JVBERi0")) return "application/pdf";
-    if (base64.startsWith("/9j/")) return "image/jpeg";
-    if (base64.startsWith("iVBORw")) return "image/png";
-    if (base64.startsWith("UklGR")) return "image/webp";
-    return "image/jpeg"; // safe default
+  /**
+   * The type sent with the image, from its decoded leading bytes. HEIC, HEIF,
+   * AVIF, TIFF and BMP are refused (415) before the billed call. Bytes that
+   * match no known kind are still sent as image/jpeg, as before this change
+   * (tech-debt.d/2026-11-07-fix-menu-photo-bytes-read-as-sent.md).
+   */
+  private detectMediaType(base64: string): ReadableMenuMedia {
+    // 96 base64 characters are 72 bytes, a multiple of 4 so no partial quantum
+    // is decoded: an ISO-BMFF ftyp box's major brand and first 14 compatible brands.
+    const head = Buffer.from(base64.slice(0, 96), "base64");
+    return readableMenuMediaOrRefuse(head) ?? "image/jpeg";
   }
 
   private parseJsonResponse(text: string): WineExtractItem[] {
