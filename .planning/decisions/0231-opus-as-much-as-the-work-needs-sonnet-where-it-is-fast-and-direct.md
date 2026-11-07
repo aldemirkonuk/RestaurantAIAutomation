@@ -109,6 +109,56 @@ records it):
 > - **The founder's words.** In chat on 2026-09-29, verbatim: *"combine couple branches into one big merge at the same time? don't care how much it takes but gets the job done in one go"*. To the scope question, the option label *"All still-open PRs (Recommended)"*; to the cap question, the option label *"Waive for the batch (Recommended)"*. Relayed to the merging session by the coordinator of session a493af02.
 > - **Scope.** The file count only. The ADR 0090 audit still judges every file of every constituent, one constituent at a time; gate-owned files in the batch still need the founder's own sign-off before merge. The cap stands for every later PR.
 
+> **[2026-09-30, a fifth waiver, founder's words — the two-round fix cap, PR #538 round 3]**
+> - **What it covers.** PR #538 (`fix/order-approval-and-alert-relays`, ADR 0244), one third fix round after its second. The v3 security review reproduced a third door: the dedup fold rewrote the order line, including fees, unit pair, currency, unit prices and SKU, with no role check and no audit row past PENDING. The round gates the line like the header.
+> - **The founder's words.** In chat on 2026-09-30, session 9512567d, verbatim: *"Third round: gate the line (Recommended)"*, the option label of his AskUserQuestion answer. ADR 0244 D2 quotes the option text.
+> - **Scope.** It waives the "Fix: Opus, at most 2 rounds" line once, for this round of this PR, and sets no precedent.
+
+> **[2026-09-30, a sixth waiver, founder's words — the two-round fix cap, PR #537 text round]**
+> - **What it covers.** PR #537 (`fix/tenant-guard-and-cross-house-runs`, ADR 0243), one third fix round after its second. The round is text only: wording changes to what the reviewers measured, with no code change beyond comments, two test titles, and the one claim verify string that pins a title. A full re-audit follows.
+> - **The founder's words.** In chat on 2026-09-30, session 9512567d, verbatim: *"Waive once, text-only round (Recommended)"*, the option label of his answer.
+> - **Scope.** It waives the round cap once, for this PR, and sets no precedent. This bracket was first written into #537 itself. It moved here because any edit to this file puts a PR under the founder's own merge, and the founder chose to release #537 from that (2026-10-01, *"Re-cite and release (Recommended)"*).
+
+> **[2026-09-30, a seventh waiver, founder's words — the fix-round cap, PR #538 round 4]**
+> - **What it covers.** PR #538, a fourth round after the round-3 review. The correctness reviewer BLOCKed because the residual line race was understated: confirm-deal and the vendor's acceptance lose their price, and an approval landing in the window carries a staff fold's line changes. It also found carry-forward test gaps. The round is disclosure and tests only, with no service code. The one-transaction fix (an RPC) is the next PR.
+> - **The founder's words.** In chat on 2026-09-30, session 9512567d, verbatim: *"Disclose + pin tests; RPC next (Recommended)"*, the option label of his answer. ADR 0244 D2 quotes the option text.
+> - **Scope.** Once, for this round of this PR. It sets no precedent.
+
+> **[2026-09-30, an eighth waiver, founder's words — the fix-round cap, PR #538 round 5]**
+> - **What it covers.** PR #538 again. The final ruling after round 4 found an older approval-limit gap. `approveOrder` checks the seal and the rules, then writes APPROVED with an UPDATE filtered only on house and id, so a fold landing in between is approved at a total that was never checked. #538's own record overclaimed around it. The round is wording only: it records the gap, and states that one transaction does not close it.
+> - **The founder's words.** In chat on 2026-09-30, session 9512567d, verbatim: *"Record it now, close it next PR (Recommended)"*, the option label of his answer.
+> - **Scope.** Once, for this round of this PR. It sets no precedent.
+
+> **[2026-10-01, a ninth waiver, founder's words — the fix-round cap, PR #538 round 6]**
+> - **What it covers.** PR #538 again. The round-5 review reproduced a staff path through the recurring-order schedule: a staff member can edit a manager's schedule, and the 08:00 job then folds that edit into an open order as the manager. The review also found that round-5 sentences claimed more than approval actually checks. The round is wording only. A separate PR (#550, ADR 0246) gates schedule edits.
+> - **The founder's words.** In chat on 2026-10-01, session 9512567d, verbatim: *"Wording now + separate gate PR (Recommended)"*. To the follow-on question, *"Managers and owners only (Recommended)"*.
+> - **Scope.** Once, for this round of this PR. It sets no precedent.
+
+> **[2026-10-01, a tenth waiver, founder's words — the fix-round cap, PR #538 round 7]**
+> - **What it covers.** PR #538 again. Each wording round since round 3 was blocked because the ADR listed the ways a staff merge can slip into the approve step, and the next review found one more. The round is wording only. The list becomes one bounded sentence, followed by measured examples introduced with "including".
+> - **The founder's words.** In chat on 2026-10-01, session 9512567d, verbatim: *"Round 7: stop listing cases (Recommended)"*.
+> - **Scope.** Once, for this round of this PR. It sets no precedent.
+
+> **[2026-10-01, an eleventh waiver, founder's words — the fix-round cap, PR #550 round 3]**
+> - **What it covers.** PR #550 (ADR 0246), which gates recurring-schedule edits on a manager or an owner. After its second round, the planner found that ADR 0246 understates the shared role helper's fallback. When the access-register read errors, the helper reads the old `users.role` column. That column says 'owner' for a staff member who made an account before joining the house. The round is wording only: it names who the fallback lets in, corrects the cost the ADR gives for it, and fixes one citation. Closing the fallback is a separate PR.
+> - **The founder's words.** In chat on 2026-10-01, session 9512567d, verbatim: *"Waive once, text-only (Recommended)"*. To the follow-on question on the fallback itself, *"Next PR: error means no role (Recommended)"*.
+> - **A second commit, same round.** Before any reviewer read round 3, the planner found ADR 0246's sentence that every caller who is not an owner or a manager gets 403. That sentence is broader than the helper, which also admits a legacy role behind an inactive access row and an expired manager row. Asked whether to add the fix to round 3, the founder chose, verbatim, *"Fold into round 3 (Recommended)"*. The commit narrows that sentence and adds the two paths to ADR 0246's open items. It is still wording only.
+> - **Scope.** Once, for this round of this PR. It sets no precedent.
+
+> **[2026-10-01, a file-cap exception, founder's words — the 15-file cap, PR #561]**
+> - **What it covers.** PR #561 (ADR 0248) changes the shared role helper so that an access-register read that errors, or a row that is not live, gives no role. PRs #550 and #558 describe and pin today's fallback, and #550 has a test, with a claim pinning its title, that expects a legacy manager to pass when the access read fails. The founder chose to land #547, #538, #550 and #558 first and #561 last. #561's rebase then flips #550's test and its claim pin, which takes #561 to 16 files. A separate docs PR corrects the fallback sentences in ADRs 0246 and 0247 and their claim texts.
+> - **The founder's words.** In chat on 2026-10-01, session 9512567d, verbatim: *"#561 last + docs PR (Recommended)"*. The option it picked read: "Merge #547, #538, #550 and #558 first. Then #561 rebases and flips #550's test and claim pin, which makes 16 files: one over the 15 cap, allowed once. A small docs PR corrects the fallback sentences in ADRs 0246 and 0247 and the claim texts. #561 and the docs PR each get a full review. No waived rounds on #550 or #558."
+> - **Raised to 17, same day.** The founder later chose to let a person always leave a house and delete their account, whatever their access row's dates. The only spec that drives those routes end to end was new to #561, so the rebase would take it to 17 files. Asked to choose between keeping those route tests at 17 files and moving them to service-level tests at 16, the founder chose, verbatim, *"Allow 17, keep route tests (Recommended)"*.
+> - **Scope.** Once, for PR #561 at 17 files. It sets no precedent.
+
+> **[2026-10-01, a thirteenth waiver, founder's words — the fix-round cap, PR #562 round 3]**
+> - **What it covers.** PR #562 rewrites the cancel control's false "reload" role message and two report messages with the same promise. After its second round, one reviewer found that the claim text says its check catches the old phrase split across joined string literals, but the check joins only single-quoted literals. A double-quoted or template-literal split passes. Three lower sentences were also broader than the code. The round extends the check so it joins those forms too, mutation-tests it, and rewords the three sentences.
+> - **The founder's words.** In chat on 2026-10-01, session 9512567d, verbatim: *"Waive once: make the check match (Recommended)"*.
+> - **Scope.** Once, for this round of this PR. It sets no precedent.
+
+> **[2026-10-01, where these waivers are recorded — the founder's routing]**
+> - Asked how PRs whose decision records quoted his waivers should be routed, the founder chose, verbatim, *"Move waivers to #547 (Recommended)"*. Every fix-round waiver is recorded here. The other records carry only a pointer to this file.
+
 **3. Where Sonnet gets the emphasis** (item 86's *"fast, and direct"* work Sonnet is
 *"highly capable of"*): verification runs and check suites, mechanical edits to a spec,
 branch updates and merges of `main`, posting PRs and comments, the plan-scoped audit
