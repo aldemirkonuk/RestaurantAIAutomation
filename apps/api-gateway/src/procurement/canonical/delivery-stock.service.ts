@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
-import { perBottleLotCost } from "./lot-unit-cost";
+import { LotUnitCost, perBottleLotCost } from "./lot-unit-cost";
 import {
   LandedBlock,
   landDelivery,
@@ -129,7 +129,60 @@ interface LineRow {
   price_base_qty?: number | string | null;
   price_base_uom?: string | null;
   line_total?: number | string | null;
+  allowance?: number | string | null;
+  deposit?: number | string | null;
   printed?: unknown;
+}
+
+const positiveOrZero = (v: unknown): number => {
+  const n = v == null || v === "" ? NaN : Number(v);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+};
+
+/**
+ * One invoice line's per-bottle price, cross-checked against its printed total
+ * as landedCost will read that total (lane 1.4 audit follow-up).
+ *
+ * The gatekeeper reads `line_total` as the line before anything comes off. A
+ * total printed AFTER the line's own allowance (iskonto), or with the line's
+ * deposit inside it, is the same price — `reconcileLineValue` takes each out
+ * exactly once — yet it missed the gatekeeper's 1% tolerance and was held as
+ * "the price's unit is not what the line says", holding every other item on a
+ * paper with charges too. So the gatekeeper is asked about every reading the
+ * reconcile accepts: as printed, with the allowance put back, with the deposit
+ * taken out, or both. A total that matches none of them is still refused
+ * (24 bottles @ 264 printed as 528), and landedCost re-checks the reading it
+ * uses at its own, tighter tolerance.
+ */
+function perBottleOfLine(line: LineRow): LotUnitCost {
+  const asPrinted = (line_total: number | string | null | undefined) =>
+    perBottleLotCost({
+      unit_price: line.unit_price,
+      uom: line.uom,
+      pack_size: line.pack_size,
+      price_base_qty: line.price_base_qty,
+      price_base_uom: line.price_base_uom,
+      // The PAID bottles: a free bottle inside the line has no price.
+      qty_bottles: paidBottles(line),
+      line_total,
+      printed: line.printed,
+    });
+  const first = asPrinted(line.line_total);
+  const total = Number(line.line_total);
+  const allowance = positiveOrZero(line.allowance);
+  const deposit = positiveOrZero(line.deposit);
+  if (first.ok || line.line_total == null || !Number.isFinite(total))
+    return first;
+  const readings: number[] = [];
+  if (allowance > 0) readings.push(total + allowance);
+  if (deposit > 0) readings.push(total - deposit);
+  if (allowance > 0 && deposit > 0) readings.push(total + allowance - deposit);
+  for (const reading of readings) {
+    if (!(reading > 0)) continue;
+    const cost = asPrinted(reading);
+    if (cost.ok) return cost;
+  }
+  return first;
 }
 
 interface AgreedPrice {
@@ -876,17 +929,7 @@ export class DeliveryStockService {
         // the proposal lookup and never read as a price.
         if (!invoiceSet.has(line.document_id)) continue;
         // QA 7c B1: `unit_price` is as PRINTED, per its price base.
-        const cost = perBottleLotCost({
-          unit_price: line.unit_price,
-          uom: line.uom,
-          pack_size: line.pack_size,
-          price_base_qty: line.price_base_qty,
-          price_base_uom: line.price_base_uom,
-          // The PAID bottles: a free bottle inside the line has no price.
-          qty_bottles: paidBottles(line),
-          line_total: line.line_total,
-          printed: line.printed,
-        });
+        const cost = perBottleOfLine(line);
         const id = line.inventory_id;
         // A printed price that IS the per-bottle cost was never a wrong unit.
         if (

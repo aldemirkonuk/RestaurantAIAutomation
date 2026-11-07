@@ -4,6 +4,8 @@ Filed by `fix/delivery-path-uses-landed-cost` (cost-math proposal lane 1.4; each
 
 **What is true.** At VERIFIED, `DeliveryStockService.agreedPrices` reads each invoice's header money columns and line kinds and hands every line to `landDelivery` (`canonical/paper-landed-cost.ts`). That function runs `landedCost` (`procurement/landed-cost.ts`, unedited) once per paper and pools each item as Σ accepted landed value ÷ Σ accepted bottles, with accepted bottles taken from what the door booked. Pinned by `claims.d/fix-delivery-path-uses-landed-cost.jsonl` and by the "VERIFIED posts the landed cost (lane 1.4)" block in `delivery-stock.service.spec.ts`.
 
+**Audit follow-up.** The gatekeeper's 1% total cross-check (`lot-unit-cost.ts`) read every printed total as the line before anything came off, so a total printed after its allowance (iskonto) or with its line deposit inside it was held as a misread unit before `reconcileLineValue` could net it, and with charges on the paper it held every other item too. `perBottleOfLine` now asks the gatekeeper about each reading the reconcile accepts and keeps the refusal only when none matches; specs (c2)-(c4). Fixtures are synthetic.
+
 This closes the freight/fee/discount half of "Landed cost is unwired" (`2026-11-07-fix-lot-cost-is-per-bottle.md:43`) **for the delivery path only**. The other half — a per-case price stored as `bottle` with no base and no total — is unchanged. It also wires "The landed-cost rule is unwired" (`2026-11-07-feat-landed-cost-one-rule.md:1`) into the delivery path; `verifyReceipt` still costs its own way.
 
 Still open:
