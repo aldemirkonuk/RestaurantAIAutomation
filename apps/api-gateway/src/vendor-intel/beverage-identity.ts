@@ -247,6 +247,82 @@ export function identityKeyBeforeFold(input: IdentityInput): string | null {
   return now.ok && buildIdentityKey(now) === key ? null : key;
 }
 
+/**
+ * Whether `stored` could be the pre-fold form of `folded`: some of its "i"s
+ * were "ı" and became spaces, collapsed and trimmed ("kavaklidere" ->
+ * "kavakl dere", "isik" -> "s k"). Every choice is tried, memoised.
+ */
+export function couldBeBeforeFold(folded: string, stored: string): boolean {
+  if (folded === stored) return true;
+  // a, b: next char of folded / stored; pending: a space is owed.
+  const seen = new Set<string>();
+  const walk = (a: number, b: number, pending: boolean): boolean => {
+    if (a === folded.length) return b === stored.length; // trailing space trims
+    const memo = `${a},${b},${pending ? 1 : 0}`;
+    if (seen.has(memo)) return false;
+    seen.add(memo);
+    const c = folded[a];
+    const options = c === "i" ? ["i", " "] : [c];
+    for (const out of options) {
+      if (out === " ") {
+        if (walk(a + 1, b, b > 0)) return true;
+        continue;
+      }
+      let at = b;
+      if (pending) {
+        if (stored[at] !== " ") continue;
+        at += 1;
+      }
+      if (stored[at] === out && walk(a + 1, at + 1, false)) return true;
+    }
+    return false;
+  };
+  return walk(0, 0, false);
+}
+
+/** LIKE prefilter for pre-fold forms (runs of "i"/space become "%"); null when it would not narrow. */
+export function likePatternBeforeFold(folded: string): string | null {
+  if (!folded.includes("i")) return null;
+  const pattern = folded.replace(/[i ]+/g, "%");
+  return /[^%]/.test(pattern) ? pattern : null;
+}
+
+export interface StoredIdentityRow {
+  producer_normalised: string;
+  name_normalised: string;
+  vintage_text: string;
+  size_ml: number | null;
+  pack: number | null;
+  display_label: string;
+}
+
+/**
+ * Whether a row stored before the dotless-ı fold is this bottle: same vintage,
+ * size and pack; producer and name are pre-fold forms of these; and the typed
+ * display label folds to this one, which keeps "Domaine Al" and a real space
+ * ("Kavakl Dere") from passing for "Domaine Ali" and "Kavaklidere".
+ */
+export function storedRowIsBeforeFold(
+  subject: IdentityInput,
+  reading: IdentityParts,
+  row: StoredIdentityRow,
+): boolean {
+  if (row.vintage_text !== reading.vintageText) return false;
+  const size = row.size_ml === null ? null : Number(row.size_ml);
+  const pack = row.pack === null ? null : Number(row.pack);
+  if (size !== reading.sizeMl || pack !== reading.pack) return false;
+  if (!couldBeBeforeFold(reading.producerNormalised, row.producer_normalised)) {
+    return false;
+  }
+  if (!couldBeBeforeFold(reading.nameNormalised, row.name_normalised)) {
+    return false;
+  }
+  return (
+    normalizeIdentityText(row.display_label) ===
+    normalizeIdentityText(identityDisplayLabel(subject, reading))
+  );
+}
+
 /** How a person should see this identity. */
 export function identityDisplayLabel(
   input: IdentityInput,

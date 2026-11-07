@@ -108,3 +108,8 @@ pre-fold sightings leave the 30-day window (`REJUDGE_WINDOW_DAYS`, the sweep's
 `services/agent-orchestrator/services/beverage_ontology.py` `normalize_text`
 (token matching only, not an identity key) and the other Python normalisers in
 `services/agent-orchestrator` were not changed.
+
+QA round 10c F1: re-asserting a pre-fold "ı" identity in ASCII or capitals
+wrote a second row. `assertIdentity` now also takes the oldest row that
+`storedRowIsBeforeFold` accepts (LIKE prefilter, 200 cap: past it is a missed
+match, never a wrong one); the session's calls: oldest wins, the cap.
