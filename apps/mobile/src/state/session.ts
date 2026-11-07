@@ -6,12 +6,16 @@ import { API_URL } from "@/config";
 import {
   EMAIL_INDEX_KEY,
   LAST_HOUSE_KEY,
+  SIGN_IN_DEVICES_KEY,
+  foldEmail,
   forget,
   hintFor,
   indexEmail,
   parseEmailIndex,
   parseMemory,
+  parseSignInDevices,
   remember,
+  withSignInDevice,
   type EmailIndex,
   type HouseMemory,
 } from "@/auth/houseChoice";
@@ -159,6 +163,27 @@ async function readEmailIndex(): Promise<EmailIndex> {
   }
 }
 
+async function readSignInDevices(): Promise<Record<string, string>> {
+  try {
+    return parseSignInDevices(await SecureStore.getItemAsync(SIGN_IN_DEVICES_KEY));
+  } catch {
+    return {};
+  }
+}
+
+async function rememberSignInDevice(email: string, token: unknown): Promise<void> {
+  if (typeof token !== "string" || !token) return;
+  try {
+    const all = await readSignInDevices();
+    await SecureStore.setItemAsync(
+      SIGN_IN_DEVICES_KEY,
+      JSON.stringify(withSignInDevice(all, email, token)),
+    );
+  } catch {
+    /* the next sign-in just sends none and shares the untrusted bucket */
+  }
+}
+
 async function writeEmailIndex(index: EmailIndex): Promise<void> {
   try {
     await SecureStore.setItemAsync(EMAIL_INDEX_KEY, JSON.stringify(index));
@@ -228,8 +253,16 @@ export const useSession = create<SessionState>((set, get) => ({
     // Today tab then sends them to the chooser (ADR 0164). Only the entry for
     // the email being submitted is ever sent, never any other account this
     // phone remembers (parity fix, round 3, 2026-09-19; item 8 on the web).
-    const [mem, index] = await Promise.all([readMemory(), readEmailIndex()]);
+    const [mem, index, devices] = await Promise.all([
+      readMemory(),
+      readEmailIndex(),
+      readSignInDevices(),
+    ]);
     const hint = hintFor(mem, index, email);
+    // The known-device token this phone was given at its last sign-in for THIS
+    // email: it earns the phone its own rate-limit bucket (QA round 19). Kept
+    // across sign-out; never sent for another email.
+    const signInDevice = devices[foldEmail(email)];
     const res = await fetch(`${API_URL}/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -237,6 +270,7 @@ export const useSession = create<SessionState>((set, get) => ({
         email,
         password,
         lastHouses: hint ? [hint] : [],
+        ...(signInDevice ? { signInDevice } : {}),
       }),
     });
     if (!res.ok) {
@@ -245,7 +279,8 @@ export const useSession = create<SessionState>((set, get) => ({
         body?.message ?? "Sign-in failed. Check your email and password.",
       );
     }
-    const { accessToken, refreshToken } = await res.json();
+    const { accessToken, refreshToken, signInDevice: issued } = await res.json();
+    await rememberSignInDevice(email, issued);
     const current = () => get().generation;
     if (!(await persistTokens(current, generation, accessToken, refreshToken))) return;
     const user = await fetchMe(accessToken);
