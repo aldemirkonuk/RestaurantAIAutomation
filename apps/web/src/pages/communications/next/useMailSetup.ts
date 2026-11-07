@@ -37,7 +37,12 @@ export interface MailSetupView {
   canChange: boolean;
   senders: { failed: string | null; choices: MailSenderChoice[]; chosenConnectionId: string | null };
   arrival: { domainReady: boolean; address: string | null; failed: string | null };
-  testLetter: { failed: string | null; latest: MailTestLetter | null };
+  testLetter: {
+    failed: string | null;
+    latest: MailTestLetter | null;
+    /** The newest test letter that arrived, whichever check it answered (QA round 26, #974). */
+    lastArrival?: { code: string; arrivedAt: string; arrivedFrom: string | null } | null;
+  };
 }
 
 /** A test letter is waited on, and the page re-reads, for this long after it was started. */

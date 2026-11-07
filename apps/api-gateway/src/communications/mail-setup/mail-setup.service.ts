@@ -84,6 +84,12 @@ export interface MailSetupView {
   testLetter: {
     failed: string | null;
     latest: MailTestLetter | null;
+    /**
+     * The newest arrival of ANY of this house's checks (QA round 26, #974): a
+     * check started earlier can land after a newer one was started, and that
+     * still proves mail reaches the house. Null when none has arrived.
+     */
+    lastArrival: { code: string; arrivedAt: string; arrivedFrom: string | null } | null;
   };
 }
 
@@ -362,20 +368,35 @@ export class MailSetupService {
   }
 
   private async readTestLetter(restaurantId: string): Promise<MailSetupView["testLetter"]> {
-    const failed = { failed: "Whether the test letter arrived could not be read.", latest: null };
+    const failed = { failed: "Whether the test letter arrived could not be read.", latest: null, lastArrival: null };
     try {
-      const { data, error } = await this.db.client
-        .from("mail_setup_checks")
-        .select("code, address, started_at, arrived_at, arrived_from")
-        .eq("restaurant_id", restaurantId)
-        .order("started_at", { ascending: false })
-        .limit(1);
-      if (error) {
-        this.logger.error(`Test letter could not be read for ${restaurantId}: ${error.message}`);
+      const [newest, arrived] = await Promise.all([
+        this.db.client
+          .from("mail_setup_checks")
+          .select("code, address, started_at, arrived_at, arrived_from")
+          .eq("restaurant_id", restaurantId)
+          .order("started_at", { ascending: false })
+          .limit(1),
+        this.db.client
+          .from("mail_setup_checks")
+          .select("code, arrived_at, arrived_from")
+          .eq("restaurant_id", restaurantId)
+          .not("arrived_at", "is", null)
+          .order("arrived_at", { ascending: false })
+          .limit(1),
+      ]);
+      if (newest.error || arrived.error) {
+        this.logger.error(
+          `Test letter could not be read for ${restaurantId}: ${(newest.error ?? arrived.error)!.message}`,
+        );
         return failed;
       }
-      const r = ((data ?? []) as Record<string, any>[])[0];
-      if (!r) return { failed: null, latest: null };
+      const a = ((arrived.data ?? []) as Record<string, any>[])[0];
+      const lastArrival = a?.arrived_at
+        ? { code: String(a.code), arrivedAt: String(a.arrived_at), arrivedFrom: a.arrived_from ? String(a.arrived_from) : null }
+        : null;
+      const r = ((newest.data ?? []) as Record<string, any>[])[0];
+      if (!r) return { failed: null, latest: null, lastArrival };
       const subject = testSubject(String(r.code));
       return {
         failed: null,
@@ -388,10 +409,12 @@ export class MailSetupService {
           arrivedAt: r.arrived_at ? String(r.arrived_at) : null,
           arrivedFrom: r.arrived_from ? String(r.arrived_from) : null,
         },
+        lastArrival,
       };
     } catch (e: any) {
       this.logger.error(`Test letter could not be read for ${restaurantId}: ${e?.message}`);
       return failed;
     }
   }
+
 }

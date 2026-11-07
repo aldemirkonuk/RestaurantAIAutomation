@@ -494,6 +494,36 @@ describe('the setup path', () => {
     );
   });
 
+  it('an earlier test letter that arrived also makes the line connected', async () => {
+    // QA round 26, #974 defect 2: the newest check is still open, an older
+    // one landed. The address is proved either way.
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, granted: false } });
+    routes['/mail/summary'] = () => ({
+      ...SUMMARY,
+      doors: { houseMailbox: { lastStoredAt: null }, whatsapp: { lastStoredAt: null }, mudavymMail: { lastStoredAt: null } },
+    });
+    routes['/communications/mail-setup'] = () => ({
+      ...SETUP,
+      testLetter: {
+        failed: null,
+        latest: {
+          code: 'BBBB-BBBB',
+          subject: 'Mudavym test letter BBBB-BBBB',
+          address: 'bodega@in.mudavym.com',
+          mailto: 'mailto:bodega@in.mudavym.com',
+          startedAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+          arrivedAt: null,
+          arrivedFrom: null,
+        },
+        lastArrival: { code: 'AAAA-AAAA', arrivedAt: new Date(Date.now() - 2 * 60_000).toISOString(), arrivedFrom: 'me@gmail.test' },
+      },
+    });
+    mount();
+    await waitFor(() =>
+      expect(screen.getByTestId('mail-status')).toHaveTextContent(/^Connected · the test letter arrived 2 min ago$/),
+    );
+  });
+
   it('an empty list offers the setup', async () => {
     routes['/mail/people'] = () => ({ people: [], next: null, storedKinds: ['vendor'] });
     mount();
