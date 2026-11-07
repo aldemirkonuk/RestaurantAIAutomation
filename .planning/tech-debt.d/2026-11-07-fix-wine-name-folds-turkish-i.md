@@ -3,7 +3,14 @@
 Branch `fix/wine-name-folds-turkish-i` (QA round 1, B-1) makes
 `public.wine_normalize_text` and its three mirrors fold Turkish dotless "ı"
 (U+0131) to "i", so "Kavaklıdere" and "KAVAKLIDERE" now produce one key. The
-migration `wine_names_fold_turkish_dotless_i` replaces the function only. It does **not** recompute stored keys, on purpose:
+migration `wine_names_fold_turkish_dotless_i` replaces the function and
+refreshes `normalized_name` / `normalized_producer` on `master_wine_library`
+and `beverages` for every row whose name or producer holds an "ı" (non-unique
+columns; the UPDATE does not fire `trg_sync_signature_hash`). Without that
+refresh a re-import of a stored Turkish wine would match nothing and create a
+duplicate (PGlite: "Yakut / Kavaklıdere" returned no candidate: producer
+similarity under the 0.70 floor, 0.6 by the audit's measure; with it, confidence 100). It does **not**
+recompute `signature_hash`, on purpose:
 
 - `master_wine_library.signature_hash` carries a UNIQUE index. A recomputed hash
   can land on another row's hash; that collision is the duplicate this fixes
@@ -11,9 +18,9 @@ migration `wine_names_fold_turkish_dotless_i` replaces the function only. It doe
 - The same hash is copied into `master_wine_library_submissions.signature_hash`,
   `restaurant_wine_roster.signature_hash` and `menu_changes.wine_signature_hash`,
   so a library-only backfill would split those from the library.
-- `master_wine_library.normalized_name` / `normalized_producer` and
-  `beverages.normalized_name` / `normalized_producer` are trigger-synced and
-  refresh only when an identity column is next written.
+- Until the hash is repaired, an exact re-import reaches the stored row
+  through the normalized-name leg of `match_library_wine`, not the signature
+  leg, so it still links; what stays stale is the hash itself.
 
 How many rows this touches is **not measured** (this branch may not query
 production). The next step, by whoever is allowed to read production:

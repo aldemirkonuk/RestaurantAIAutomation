@@ -143,6 +143,30 @@ describe("WineSubmissionsService normalization contract", () => {
       expect(sql).toMatch(/'\u0131',\s*'i'/);
     });
 
+    it("refreshes the stored normalised names in the migration that changes the rule", () => {
+      // Changing the function alone leaves rows stored under the old rule:
+      // "Kavakl\u0131dere" stays "kavakl dere", a re-import normalises to
+      // "kavaklidere", producer similarity drops to 0.6 and match_library_wine
+      // returns nothing -- so the import creates the duplicate the fold is
+      // meant to stop (PGlite run, 2026-11-07). The same migration must
+      // recompute normalized_name / normalized_producer on both tables that
+      // store wine_normalize_text output.
+      const dir = path.join(__dirname, "../../../../supabase/migrations");
+      const sql = fs.readFileSync(
+        path.join(dir, "20270311100000_wine_names_fold_turkish_dotless_i.sql"),
+        "utf8",
+      );
+      for (const table of ["master_wine_library", "beverages"]) {
+        expect(sql).toMatch(
+          new RegExp(
+            `UPDATE public\\.${table}\\s+` +
+              "SET normalized_name\\s*=\\s*public\\.wine_normalize_text\\(name\\),\\s*" +
+              "normalized_producer\\s*=\\s*public\\.wine_normalize_text\\(producer\\)",
+          ),
+        );
+      }
+    });
+
     it("leaves a bare trade word alone", () => {
       // Dom Pérignon is a wine, not a Domaine. Expanding a period-less "Dom"
       // would invent a producer that does not exist — which is why every
