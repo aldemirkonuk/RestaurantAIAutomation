@@ -162,10 +162,8 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
       if (estimate.suggestedQty != null) {
         // Never commits — only fills the field (decision E46).
         setQty(String(estimate.suggestedQty))
-        toast.info(
-          `Photo suggests ${estimate.suggestedQty}`,
-          `Confidence: ${estimate.confidence}. Review before submitting.`,
-        )
+        // No confidence word to staff (ADR 0104).
+        toast.info(`Photo suggests ${estimate.suggestedQty}`, 'Review before submitting.')
       } else {
         toast.error('No confident count from photo', estimate.note)
       }
