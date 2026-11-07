@@ -121,6 +121,137 @@ export function repeatsTheLatestConfirmation(
   return latestCounted === confirmedBottles;
 }
 
+/**
+ * A REPEATED FULL VERIFICATION WRITES NOTHING NEW (QA round 1, H-1,
+ * 2026-11-07). `POST /procurement/orders/:id/verify-receipt` had no repeat
+ * guard on its match path: a retry after a timeout, a second tab or a second
+ * person verifying the same delivery wrote a second `reconciled` event, a
+ * second `price_history` row and a second vendor credit claim for the same
+ * money. The stock correction alone was already once-only (its
+ * `receipt-verify:<order>:<item>` idempotency key).
+ *
+ * A repeat is proven, never assumed: each fact below must already say what
+ * this verification would write — the order was verified, the latest
+ * `reconciled` event states the same accepted, rejected and invoiced bottles,
+ * the order holds the same verdict, invoice price, override reason, refusal
+ * reason and discrepancy summary, any typed note is already on the order, and
+ * the ledger already holds the accepted count (`ledgerDelta === 0`). When an
+ * invoice was stated, the latest `receipt_verified` price-history row for the
+ * order must exist and already carry the currency this call would write and
+ * the day its paper dates it by (the invoice's issue date when one is read,
+ * the first check's day otherwise), and the paper must have been readable.
+ *
+ * Three inputs are never called a repeat, because nothing compared here
+ * records them: `allocatedCharges` (the invoice's freight and fees), an
+ * adjustment on any item other than the ordered line (an unlisted extra,
+ * booked by its own `receipt-verify:<order>:<item>` key), and a paper read
+ * that failed. Such a payload runs as before; the credit claim it would
+ * duplicate is refused by the database (`uq_pc_order_match_reason`), and an
+ * extra already booked keeps its key.
+ *
+ * NOT COMPARED, and so not protected: which invoice document and line the
+ * price's register sighting names. An invoice attached after the first
+ * verification whose issue date falls on that verification's own day changes
+ * only that name, and a repeat leaves the earlier sighting naming no paper.
+ * Anything unproven runs the full verification: missing a repeat costs a
+ * duplicate history line, swallowing a correction costs the correction.
+ */
+export function repeatsTheLatestVerification(args: {
+  order: {
+    match_verified_at?: string | null;
+    match_status?: string | null;
+    invoice_unit_price?: number | string | null;
+    price_override_reason?: string | null;
+    rejected_reason?: string | null;
+    discrepancy_notes?: string | null;
+    delivery_notes?: string | null;
+  };
+  latest:
+    | {
+        counted_qty_bottles?: number | string | null;
+        rejected_qty_bottles?: number | string | null;
+        invoice_qty_bottles?: number | string | null;
+      }
+    | null
+    | undefined;
+  verdict: string;
+  summary: string;
+  discrepancy: boolean;
+  ledgerDelta: number;
+  acceptedBottles: number;
+  rejectedBottles: number;
+  invoiceBottles: number | null;
+  invoiceUnitPrice: number | null;
+  priceOverrideReason: string | null;
+  rejectedReason: string | null;
+  allocatedCharges: number | null | undefined;
+  /** Adjustments on items other than the ordered line (unlisted extras). */
+  unlistedAdjustments: number;
+  note: string | null | undefined;
+  /**
+   * Present exactly when an invoice was stated, so a price-history row is
+   * what this verification would write. `recorded` is the order's latest
+   * `receipt_verified` row (null when none); `currency` and `effectiveDate`
+   * are what this call would put on it, dated by the first check's time.
+   */
+  price?: {
+    recorded:
+      | { currency?: string | null; effective_date?: string | null }
+      | null
+      | undefined;
+    currency: string | null;
+    effectiveDate: string | null;
+    paperUnread: boolean;
+  } | null;
+}): boolean {
+  const { order, latest } = args;
+  if (!order.match_verified_at || !latest) return false;
+  if ((args.allocatedCharges ?? 0) !== 0) return false;
+  if (args.unlistedAdjustments !== 0) return false;
+  if (args.price) {
+    const { recorded } = args.price;
+    if (!recorded || args.price.paperUnread) return false;
+    if ((recorded.currency ?? null) !== args.price.currency) return false;
+    if (
+      args.price.effectiveDate === null ||
+      String(recorded.effective_date ?? "").slice(0, 10) !==
+        args.price.effectiveDate
+    )
+      return false;
+  }
+  if (args.ledgerDelta !== 0) return false;
+
+  const num = (v: number | string | null | undefined): number | null =>
+    v == null ? null : Number(v);
+  const sameNumber = (
+    a: number | string | null | undefined,
+    b: number | null,
+  ): boolean => {
+    const x = num(a);
+    if (x !== null && !Number.isFinite(x)) return false;
+    return x === b;
+  };
+
+  if (!sameNumber(latest.counted_qty_bottles, args.acceptedBottles)) return false;
+  if (!sameNumber(latest.rejected_qty_bottles, args.rejectedBottles)) return false;
+  if (!sameNumber(latest.invoice_qty_bottles, args.invoiceBottles)) return false;
+  if (!sameNumber(order.invoice_unit_price, args.invoiceUnitPrice)) return false;
+  if ((order.match_status ?? null) !== args.verdict) return false;
+  if ((order.price_override_reason ?? null) !== args.priceOverrideReason)
+    return false;
+  if ((order.rejected_reason ?? null) !== args.rejectedReason) return false;
+
+  const notes = order.discrepancy_notes ?? null;
+  if (args.discrepancy ? !(notes ?? "").startsWith(args.summary) : notes !== null)
+    return false;
+
+  const typed = (args.note ?? "").trim();
+  if (typed !== "" && !(order.delivery_notes ?? "").trim().endsWith(typed))
+    return false;
+
+  return true;
+}
+
 /** The `reason` code when a caller tries to type a received count onto an order. */
 export const RECEIVED_IS_NOT_TYPED_IN = "received_is_the_ledger";
 

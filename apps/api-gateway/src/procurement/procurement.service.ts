@@ -70,6 +70,7 @@ import {
   RECEIVED_IS_NOT_TYPED_IN,
   RECEIVED_IS_THE_LEDGER,
   repeatsTheLatestConfirmation,
+  repeatsTheLatestVerification,
   shelfUnreadable,
   type ShelfReceived,
 } from "./shelf-received";
@@ -6512,6 +6513,125 @@ export class ProcurementService {
       throw new UnprocessableEntityException(
         `${match.summary} Accept the price difference with a reason, or correct the invoice price.`,
       );
+    }
+
+    // A REPEATED VERIFICATION WRITES NOTHING NEW (QA round 1, H-1). A retry
+    // after a timeout, a second tab or a second person verifying the same
+    // delivery used to write a second `reconciled` event, price-history row
+    // and vendor credit claim. Before anything is written, an order that was
+    // already verified is checked against what that verification recorded
+    // (`repeatsTheLatestVerification`); a proven repeat returns the order as
+    // the first verification left it. Only an already-verified order pays for
+    // the read, and a failed read refuses rather than guesses, like the
+    // one-tap path below. The credit claim is also held once at the database
+    // (`uq_pc_order_match_reason`), which is what covers two submits racing.
+    if (match && bottles && (orderRow as any).match_verified_at) {
+      const { data: priorRows, error: priorError } =
+        await this.databaseService.supabase
+          .from("procurement_receipt_events")
+          .select("counted_qty_bottles, rejected_qty_bottles, invoice_qty_bottles")
+          .eq("restaurant_id", restaurantId)
+          .eq("order_id", orderId)
+          .eq("stage", "reconciled")
+          .order("occurred_at", { ascending: false })
+          .limit(1);
+      if (priorError) {
+        throw new InternalServerErrorException(
+          `Whether this order was already verified could not be checked ` +
+            `(${priorError.message}), so nothing was changed. Try again.`,
+        );
+      }
+      // The price fact (H-1 audit, 2026-11-07). With an invoice stated, a
+      // verification also writes a price-history row and a register sighting
+      // carrying the invoice's currency and dated by its paper. A repeat must
+      // find that row already saying both, or a currency typed wrong the first
+      // time could never be corrected by verifying again. The paper is read
+      // as it stands now and dated by the FIRST check's time, so an invoice
+      // attached since, with its own issue date, reads as a correction.
+      let price: Parameters<typeof repeatsTheLatestVerification>[0]["price"] =
+        null;
+      if (hasInvoice) {
+        const { data: priceRows, error: priceError } =
+          await this.databaseService.supabase
+            .from("price_history")
+            .select("currency, effective_date")
+            .eq("restaurant_id", restaurantId)
+            .eq("order_id", orderId)
+            .eq("source", "receipt_verified")
+            .order("created_at", { ascending: false })
+            .limit(1);
+        if (priceError) {
+          throw new InternalServerErrorException(
+            `Whether this order was already verified could not be checked ` +
+              `(${priceError.message}), so nothing was changed. Try again.`,
+          );
+        }
+        const paper = await this.receiptPaperFor(
+          restaurantId,
+          orderId,
+          agreedLine.id,
+        );
+        const dating = dateReceiptSighting({
+          verifiedAt: (orderRow as any).match_verified_at,
+          paper,
+          issueDateCorrection: paper.issueDateCorrection,
+          readFailure: paper.readFailure,
+        });
+        price = {
+          recorded: priceRows?.[0] ?? null,
+          currency: priceCurrency(
+            invoiceCurrencyClaim(body.invoiceCurrency, `order ${orderId}`),
+          ).code,
+          effectiveDate: dating.effectiveDate,
+          paperUnread: paper.readFailure != null,
+        };
+      }
+      const orderedItem: string | null = (orderRow as any).inventory_id ?? null;
+      if (
+        repeatsTheLatestVerification({
+          order: orderRow as any,
+          latest: priorRows?.[0] ?? null,
+          verdict: match.verdict,
+          summary: match.summary,
+          discrepancy: isDiscrepancy(match.verdict),
+          ledgerDelta: match.ledgerDelta,
+          acceptedBottles: bottles.acceptedQty,
+          rejectedBottles: bottles.rejectedQty,
+          invoiceBottles: hasInvoice ? bottles.invoiceQty : null,
+          invoiceUnitPrice: body.invoiceUnitPrice ?? null,
+          priceOverrideReason: body.priceOverrideReason ?? null,
+          rejectedReason: body.rejectedReason ?? null,
+          allocatedCharges: body.allocatedCharges,
+          unlistedAdjustments: adjustments.filter(
+            (a) => a.inventoryId !== orderedItem,
+          ).length,
+          note: body.note,
+          price,
+        })
+      ) {
+        const { data: current, error: currentError } =
+          await this.databaseService.supabase
+            .from("procurement_orders")
+            .select("*, inventory:inventory_id(wine_name)")
+            .eq("restaurant_id", restaurantId)
+            .eq("id", orderId)
+            .single();
+        if (currentError || !current) {
+          throw new InternalServerErrorException(
+            "This delivery was already verified with these same counts, so nothing was changed, " +
+              "but the order could not be read back. Refresh to see it.",
+          );
+        }
+        this.logger.log(
+          `Receipt verification for order ${orderId} repeats the one already recorded; nothing written.`,
+        );
+        const row = current as any;
+        return this.mapOrderRow({
+          ...row,
+          wine_name:
+            row.inventory?.wine_name || row.inventory?.wine?.name || null,
+        });
+      }
     }
 
     // THE VERIFICATION IS AN EVENT ROW (ADR 0192 amendment, founder answer 8,
