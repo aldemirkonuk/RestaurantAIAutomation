@@ -28,6 +28,7 @@ import {
   tokenHouse,
 } from "../lib/houseMemory";
 import { doRefresh } from "../lib/sessionRefresh";
+import { noteSignUpMail } from "../lib/verificationMail";
 import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
@@ -871,9 +872,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         setError(null);
         setLoading(true);
-        await establishSession(
-          await api.post("/api/v1/auth/register/account", data),
-        );
+        const response = await api.post("/api/v1/auth/register/account", data);
+        // What became of the verification mail (onboarding OB-6), kept for
+        // /verify-email, where Register.tsx sends the new account next: a
+        // send that did not leave, or did not confirm, is said there in words
+        // and never as "check your inbox".
+        noteSignUpMail(response.data?.verificationMail);
+        await establishSession(response);
       } catch (err: any) {
         const message = err.response?.data?.message || "Registration failed";
         setError(message);

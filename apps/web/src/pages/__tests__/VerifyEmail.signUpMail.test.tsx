@@ -1,0 +1,125 @@
+import { beforeEach, afterEach, expect, it, vi, describe } from 'vitest'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+
+/**
+ * Onboarding OB-6 (founder /goal 2026-11-07; proposal §3 OB-6): the sign-up's
+ * mail outcome reaches /verify-email. `registerAccount` keeps the gateway's
+ * `verificationMail` under `mudavym:verification-mail`; the page reads it
+ * once, clears it, and says what became of the send. A resend the mailer did
+ * not confirm in time is said as such, never as sent.
+ */
+const h = vi.hoisted(() => ({
+  post: vi.fn(),
+  toastSuccess: vi.fn(),
+  auth: {
+    user: { email: 'owner@house.test', emailVerified: false } as null | {
+      email: string
+      emailVerified: boolean
+    },
+    loading: false,
+    logout: vi.fn(),
+    signInWithSession: vi.fn(),
+  },
+}))
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => h.auth }))
+vi.mock('../../services/api/client', () => ({
+  apiClient: { get: vi.fn(), post: h.post },
+  getErrorMessage: (err: { response?: { data?: { message?: string } } }) =>
+    err?.response?.data?.message ?? 'Request failed. Try again.',
+}))
+vi.mock('../../services/api/menus', () => ({ getOnboardingProgress: vi.fn() }))
+vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: h.toastSuccess } }))
+import { VerifyEmail } from '../VerifyEmail'
+
+function mount() {
+  return render(
+    <MemoryRouter initialEntries={['/verify-email']}>
+      <Routes>
+        <Route path="/verify-email" element={<VerifyEmail />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+const KEY = 'mudavym:verification-mail'
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.stubEnv('VITE_MUDAVYM_PUBLIC', '')
+  localStorage.clear()
+  sessionStorage.clear()
+  localStorage.setItem('mudavym.design.public', 'true')
+  h.auth.user = { email: 'owner@house.test', emailVerified: false }
+  h.auth.loading = false
+})
+afterEach(() => {
+  cleanup()
+  vi.unstubAllEnvs()
+})
+
+describe("the sign-up's mail outcome", () => {
+  it("t5: 'not_sent' says it could not send, with the resend button right there", () => {
+    sessionStorage.setItem(KEY, 'not_sent')
+    mount()
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'We could not send the verification email',
+    )
+    expect(
+      screen.getByRole('button', { name: 'Resend verification email' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Open the verification link in your inbox/),
+    ).not.toBeInTheDocument()
+    // Read once: the key is gone after the page has shown it.
+    expect(sessionStorage.getItem(KEY)).toBeNull()
+  })
+
+  it("t6: 'unconfirmed' says the mail may still arrive", () => {
+    sessionStorage.setItem(KEY, 'unconfirmed')
+    mount()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Sending is taking longer than usual. The email may still arrive',
+    )
+  })
+
+  it("'sent' keeps today's words", () => {
+    sessionStorage.setItem(KEY, 'sent')
+    mount()
+    expect(
+      screen.getByText(/Open the verification link in your inbox/),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('storage that throws still renders the page', () => {
+    const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+    try {
+      mount()
+      expect(
+        screen.getByRole('button', { name: 'Resend verification email' }),
+      ).toBeInTheDocument()
+    } finally {
+      get.mockRestore()
+      remove.mockRestore()
+    }
+  })
+
+  it('a resend the mailer did not confirm is said as such, never as sent', async () => {
+    h.post.mockResolvedValueOnce({
+      data: { success: true, sent: false, verificationMail: 'unconfirmed' },
+    })
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Resend verification email' }))
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'The email may still arrive',
+    )
+    expect(h.toastSuccess).not.toHaveBeenCalled()
+    expect(screen.queryByText(/was sent at/)).not.toBeInTheDocument()
+  })
+})

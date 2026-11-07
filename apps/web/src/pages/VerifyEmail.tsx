@@ -1,6 +1,6 @@
 import { PublicShell } from '../components/mudavym/PublicShell'
 import { usePublicDesign } from '../lib/mudavym/publicDesign'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useSearchParams, Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { Mail, CheckCircle, Loader2, AlertCircle } from 'lucide-react'
@@ -11,7 +11,10 @@ import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { storeSession } from '../lib/houseMemory'
 import {
+  clearSignUpMail,
+  readSignUpMail,
   resendOutcome,
+  signUpMailSentence,
   verificationMailSentence,
   type VerificationResendAnswer,
 } from '../lib/verificationMail'
@@ -42,6 +45,13 @@ export function VerifyEmail() {
   const [error, setError] = useState<string | null>(null)
   const [lastResent, setLastResent] = useState<Date | null>(null)
   const [refusal, setRefusal] = useState<'sign-in' | 'other-account' | null>(null)
+  // OB-6: what the sign-up's send came to, kept by `registerAccount` across
+  // the one navigation here. Read once and cleared, so a reload shows the
+  // page's usual words.
+  const [signUpMail, setSignUpMail] = useState(() => readSignUpMail())
+  useEffect(() => clearSignUpMail(), [])
+  // A resend whose send had not answered in time (OB-6): said, never an error.
+  const [mailNote, setMailNote] = useState<string | null>(null)
 
   const token = searchParams.get('token')
   // Back to this very link after signing in (Login honours `redirect`).
@@ -155,6 +165,14 @@ export function VerifyEmail() {
         setError(verificationMailSentence('not_sent'))
         return
       }
+      setSignUpMail(null)
+      // OB-6: the mailer had not answered in time. It may still leave, so it
+      // is said as such: not an error, and not "sent".
+      if (outcome === 'unconfirmed') {
+        setMailNote(verificationMailSentence('unconfirmed'))
+        return
+      }
+      setMailNote(null)
       setLastResent(new Date())
       toast.success(verificationMailSentence('sent', user?.email))
     } catch (err: unknown) {
@@ -165,6 +183,8 @@ export function VerifyEmail() {
       setResending(false)
     }
   }
+
+  const signUpSentence = signUpMailSentence(signUpMail)
 
   if (publicDesign) {
     return (
@@ -199,6 +219,11 @@ export function VerifyEmail() {
               {error && (
                 <p className="mdv-alert" role="alert">
                   {error}
+                </p>
+              )}
+              {mailNote && (
+                <p className="mdv-note" role="status">
+                  {mailNote}
                 </p>
               )}
               {token ? (
@@ -237,10 +262,23 @@ export function VerifyEmail() {
                       Account: <strong>{user.email}</strong>
                     </p>
                   )}
-                  <p>
-                    Open the verification link in your inbox. If it is missing,
-                    check your spam folder.
-                  </p>
+                  {signUpMail === 'not_sent' ? (
+                    <p className="mdv-alert" role="alert">
+                      {signUpSentence}
+                    </p>
+                  ) : (
+                    <>
+                      {signUpMail === 'unconfirmed' && (
+                        <p className="mdv-note" role="status">
+                          {signUpSentence}
+                        </p>
+                      )}
+                      <p>
+                        Open the verification link in your inbox. If it is
+                        missing, check your spam folder.
+                      </p>
+                    </>
+                  )}
                   {user ? (
                     <button
                       className="mdv-btn mdv-btn--seal"
@@ -290,9 +328,13 @@ export function VerifyEmail() {
     <AuthShell
       title="Check Your Email"
       subtitle={
-        user?.email
-          ? `We sent a verification link to ${user.email}`
-          : 'We sent a verification link to your inbox'
+        signUpMail === 'not_sent'
+          ? 'We could not send the verification email'
+          : signUpMail === 'unconfirmed'
+            ? 'Sending the verification email is taking longer than usual'
+            : user?.email
+              ? `We sent a verification link to ${user.email}`
+              : 'We sent a verification link to your inbox'
       }
     >
       <AuthCard>
@@ -310,6 +352,12 @@ export function VerifyEmail() {
             />
             <p className="text-sm text-red-700">{error}</p>
           </div>
+        )}
+
+        {mailNote && (
+          <p role="status" className="mb-4 text-sm text-gray-600 text-center">
+            {mailNote}
+          </p>
         )}
 
         <div className="space-y-3 my-6">
@@ -376,6 +424,18 @@ export function VerifyEmail() {
           </div>
         ) : (
           <div className="space-y-4">
+            {signUpSentence && (
+              <p
+                role={signUpMail === 'not_sent' ? 'alert' : 'status'}
+                className={
+                  signUpMail === 'not_sent'
+                    ? 'p-3 bg-red-50 border border-red-100 rounded-xl text-sm text-red-700'
+                    : 'text-sm text-gray-600 text-center'
+                }
+              >
+                {signUpSentence}
+              </p>
+            )}
             <p className="text-sm text-gray-600 text-center">
               Didn&apos;t receive the email? Check your spam folder or resend
               below.
