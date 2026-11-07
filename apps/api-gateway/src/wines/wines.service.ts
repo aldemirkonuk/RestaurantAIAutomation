@@ -16,7 +16,6 @@ import {
   WineMetaQueryDto,
   WineSuggestionsQueryDto,
   SimilarWinesQueryDto,
-  WINE_IDS_MAX,
 } from "./dto/wines.dto";
 
 const ML_PER_OZ = 29.5735;
@@ -497,11 +496,6 @@ export class WinesService {
         .split(",")
         .map((id) => id.trim())
         .filter(Boolean);
-      if (ids.length > WINE_IDS_MAX) {
-        throw new BadRequestException(
-          `Ask for at most ${WINE_IDS_MAX} wines at once; this asked for ${ids.length}.`,
-        );
-      }
       if (ids.length) {
         supa = supa.in("id", ids);
       }

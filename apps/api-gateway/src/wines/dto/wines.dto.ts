@@ -27,15 +27,6 @@ export const WINE_SEARCH_MAX_LENGTH = 200;
  */
 export const WINE_SEARCH_MAX_LIMIT = 500;
 
-/**
- * Most ids one GET /wines?ids= may name. A longer list is refused, not served
- * in part: past PostgREST's 1,000-row cap an `.in("id", ids)` answers with the
- * first thousand and says nothing, and the URL itself overflows the 16 KB
- * header limit at about 420 ids (QA round 2, U-1). The web client asks in
- * chunks of this size (services/api/wines.ts WINE_IDS_PER_REQUEST).
- */
-export const WINE_IDS_MAX = 100;
-
 export class GetWinesQueryDto {
   @IsOptional()
   @IsString()
