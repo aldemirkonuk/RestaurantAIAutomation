@@ -1,12 +1,7 @@
 import { Logger } from "@nestjs/common";
 import { InventoryService } from "./inventory.service";
 
-/**
- * QA round 15 H3 on #874: fetchAnalytics was unpaged, so with 1200 titles the
- * last 200 had no pace or runway while `analyticsReadable` said the join was
- * read. A fake PostgREST: eq filters, order, gt keyset, limit, range, exact
- * count, the 1000-row cap, and one failing request per table.
- */
+/** QA round 15 H3: unpaged, 200 of 1200 titles had no pace. Fake PostgREST with the 1000 cap. */
 function fakePg(tables: Record<string, any[]>, fail = "") {
   const asked: Record<string, number> = {};
   const from = (table: string) => {
