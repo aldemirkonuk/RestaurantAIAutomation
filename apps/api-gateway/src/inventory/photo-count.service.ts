@@ -18,11 +18,23 @@ const COUNT_PROMPT =
   "a bin, from a single photo. Count only intact, visibly full-or-partial " +
   "units of the item described. Return ONLY a JSON " +
   'object, no surrounding text: {"suggestedQty": <integer or null>, ' +
-  '"confidence": "low"|"medium"|"high", "note": "<one short sentence>"}. ' +
+  '"confidence": "low"|"medium"|"high", "note": "<one short plain sentence ' +
+  'on what the photo shows, with no word about confidence or certainty>"}. ' +
   'Set suggestedQty to null and confidence to "low" if the photo does not ' +
   "clearly show countable units (e.g. too blurry, wrong item, empty shelf " +
   "with none of the item). Never guess wildly — a null with a clear note is better " +
   "than a confident wrong number.";
+
+/**
+ * The note when the model wrote none and gave no count, in the house's
+ * language: plain words, no confidence (ADR 0104), and not a repeat of the
+ * page's own "The photo gave no count." A count with no note says nothing.
+ */
+export const NO_COUNT_NOTE = {
+  en: "Type the count, or take the photo again closer and in good light.",
+  tr: "Sayıyı yazın ya da fotoğrafı daha yakından ve iyi ışıkta yeniden çekin.",
+} as const;
+export type NoteLanguage = keyof typeof NO_COUNT_NOTE;
 
 /** One clause, so it reads inside the sheet's "The photo could not be read — …". */
 export const UNREADABLE_PHOTO =
@@ -81,6 +93,7 @@ export class PhotoCountService {
     itemName: string,
     restaurantId?: string,
     eventRef?: NfEventRef,
+    lang: NoteLanguage = "en",
   ): Promise<PhotoCountEstimate> {
     // Refused before the key check, so no model call is spent on it.
     const mediaType = sniffPhotoMediaType(imageBase64);
@@ -115,7 +128,7 @@ export class PhotoCountService {
                 },
                 {
                   type: "text",
-                  text: `${COUNT_PROMPT}\n\nItem being counted: "${itemName}".`,
+                  text: `${COUNT_PROMPT} Write the note in ${lang === "tr" ? "Turkish" : "English"}.\n\nItem being counted: "${itemName}".`,
                 },
               ],
             },
@@ -133,7 +146,7 @@ export class PhotoCountService {
       });
 
       const content: string = payload?.content?.[0]?.text ?? "";
-      const { estimate, parsed } = this.parseResponseGraded(content);
+      const { estimate, parsed } = this.parseResponseGraded(content, lang);
       if (eventRef) {
         this.nfVerdicts.record(
           eventRef,
@@ -154,10 +167,6 @@ export class PhotoCountService {
     }
   }
 
-  private parseResponse(text: string): PhotoCountEstimate {
-    return this.parseResponseGraded(text).estimate;
-  }
-
   /**
    * The same parse, plus whether the response parsed at all.
    *
@@ -165,7 +174,7 @@ export class PhotoCountService {
    * both produce `suggestedQty: null` with the same note, and they are
    * different outcomes — one is the prompt working, the other is a wasted call.
    */
-  private parseResponseGraded(text: string): {
+  private parseResponseGraded(text: string, lang: NoteLanguage): {
     estimate: PhotoCountEstimate;
     parsed: boolean;
   } {
@@ -189,7 +198,9 @@ export class PhotoCountService {
           note:
             typeof parsed.note === "string" && parsed.note
               ? parsed.note
-              : "Could not read a confident count from this photo.",
+              : suggestedQty === null
+                ? NO_COUNT_NOTE[lang]
+                : "",
         },
         parsed: true,
       };
@@ -201,7 +212,7 @@ export class PhotoCountService {
         estimate: {
           suggestedQty: null,
           confidence: "low",
-          note: "Could not read a confident count from this photo.",
+          note: NO_COUNT_NOTE[lang],
         },
         parsed: false,
       };

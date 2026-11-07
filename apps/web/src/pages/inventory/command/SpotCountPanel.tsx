@@ -165,7 +165,8 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
         // No confidence word to staff (ADR 0104).
         toast.info(`Photo suggests ${estimate.suggestedQty}`, 'Review before submitting.')
       } else {
-        toast.error('The photo gave no count', estimate.note)
+        // The note is said once, beside the photo, not again in the toast.
+        toast.error('The photo gave no count')
       }
     } catch (e: any) {
       toast.error('Photo estimate failed', e?.response?.data?.message || e?.message)

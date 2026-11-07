@@ -151,13 +151,11 @@ export function CountSheet({ row, onClose }: SheetProps) {
       const base64 = await photoToJpegBase64(file);
       const estimate = await estimateCountFromPhoto(row.id, base64);
       if (estimate.suggestedQty !== null) setQty(String(estimate.suggestedQty));
-      setPhoto({
-        busy: false,
-        note:
-          estimate.suggestedQty !== null
-            ? `The photo suggests ${fmtCount(estimate.suggestedQty)}. It only fills the field — check it before you seal. ${estimate.note}`
-            : `The photo gave no count. ${estimate.note}`,
-      });
+      const said =
+        estimate.suggestedQty !== null
+          ? `The photo suggests ${fmtCount(estimate.suggestedQty)}. It only fills the field — check it before you seal.`
+          : 'The photo gave no count.';
+      setPhoto({ busy: false, note: estimate.note ? `${said} ${estimate.note}` : said });
     } catch (e) {
       setPhoto({ busy: false, note: `The photo could not be read — ${failureReason(e)}. Type the count instead.` });
     }
