@@ -110,8 +110,18 @@ describe('the bars-and-line drawing', () => {
     expect(container.querySelectorAll('.recharts-yAxis').length).toBe(2);
     expect(container.querySelector('.recharts-yAxis.yAxis.recharts-yAxis')).not.toBeNull();
     expect(
-      screen.getByText(/Bars: Mean per day, in bottles\/day, on the left scale\. Line: Days seen, in days, on the right scale\./),
+      screen.getByText(/Bars: Mean per day \(bottles\/day\), on the left scale\. Line: Days seen \(days\), on the right scale\./),
     ).toBeInTheDocument();
+  });
+
+  it('does not repeat a unit that only echoes the measure’s name', () => {
+    const echo = series({
+      measureLabel: 'Taken',
+      unit: 'taken',
+      measures: [{ key: 'checks', label: 'Checks', unit: 'checks', format: n, values: [1, 2, null, 1, 3] }],
+    });
+    render(<ComboPlot series={echo} />);
+    expect(screen.getByText('Bars: Taken, on the left scale. Line: Checks, on the right scale.')).toBeInTheDocument();
   });
 
   it('shares one axis when the unit is the same', () => {

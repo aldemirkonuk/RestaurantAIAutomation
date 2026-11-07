@@ -398,6 +398,16 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
 }
 
 /**
+ * A measure named for the caption: "Label (unit)", and just "Label" when the
+ * unit only repeats the label ("Checks" in checks, "Taken" in taken), which
+ * would read as "Checks, in checks".
+ */
+function named(m: { label: string; unit: string }): string {
+  const same = m.unit.trim().toLowerCase() === m.label.trim().toLowerCase();
+  return same ? m.label : `${m.label} (${m.unit})`;
+}
+
+/**
  * Bars for one measure and a line for another, on the same points — see
  * `rp-combo.ts` for the three rules (one axis per unit, a gap is a gap, the
  * picker never names a measure twice).
@@ -428,7 +438,7 @@ export function ComboPlot({
   const { bars, line, split, rows } = plan;
   const shared = split ? null : bars.unit;
   const words = split
-    ? `Bars: ${bars.label}, in ${bars.unit}, on the left scale. Line: ${line.label}, in ${line.unit}, on the right scale.`
+    ? `Bars: ${named(bars)}, on the left scale. Line: ${named(line)}, on the right scale.`
     : `Bars: ${bars.label}. Line: ${line.label}. Both are in ${bars.unit}, so they share one scale.`;
   return (
     <>
