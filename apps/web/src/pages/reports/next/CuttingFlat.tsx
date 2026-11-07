@@ -16,8 +16,13 @@
  *  4. **Outside ADR 0112's three shapes and two widths** (`components/mudavym/
  *     Sheet.tsx`, the `wide` note), as the founder's /goal allows when cited.
  *     It keeps the house overlay contract — modal, named by its title, focus in
- *     and back to the opener, Tab held, Escape out, the counted scroll lock —
- *     and it does not move, so reduced motion has nothing to remove.
+ *     and back to the opener, Tab held, the counted scroll lock, and a place on
+ *     the shared overlay stack (`openStack`) so Escape closes only the topmost
+ *     overlay — and it does not move, so reduced motion has nothing to remove.
+ *  5. **The page's shortcuts stay behind it.** ⌘K / Ctrl-K is the page's
+ *     window-level palette key (ReportsNext.tsx); while this view is up it is
+ *     stopped at `document`, which the bubble reaches before `window`, so the
+ *     palette never opens unseen underneath (audit 2026-11-07).
  */
 
 import {
@@ -32,7 +37,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft } from 'lucide-react';
-import { lockBodyScroll } from '@/components/mudavym/overlayState';
+import { lockBodyScroll, openStack } from '@/components/mudavym/overlayState';
 import { readGroundFromDom, type MudavymGround } from '@/lib/mudavym/shellGround';
 import { GRAPH_LABEL, type GraphType } from './rp-sheet';
 import './reports-flat.css';
@@ -90,12 +95,23 @@ export default function CuttingFlat({
     setGround(readGroundFromDom(anchorRef.current));
   }, [anchorRef]);
 
-  // Focus in, the house's counted scroll lock, Escape out.
+  // Focus in, the house's counted scroll lock, a place on the overlay stack,
+  // Escape out when on top, and the page's ⌘K held back.
   useEffect(() => {
     backRef.current?.focus();
     const release = lockBodyScroll();
+    openStack.push(titleId);
     const onKey = (e: globalThis.KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        // `document` runs before `window` in the bubble phase, so the page's
+        // window-level palette listener never hears this press.
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // Only the topmost overlay acts (openStack, overlayState.ts).
+      if (openStack[openStack.length - 1] !== titleId) return;
       e.preventDefault();
       closeRef.current();
     };
@@ -109,9 +125,11 @@ export default function CuttingFlat({
     return () => {
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('focusin', onFocusIn);
+      const idx = openStack.lastIndexOf(titleId);
+      if (idx !== -1) openStack.splice(idx, 1);
       release();
     };
-  }, []);
+  }, [titleId]);
 
   /** Tab and Shift+Tab wrap inside the dialog. */
   const holdTab = (e: KeyboardEvent<HTMLDivElement>) => {

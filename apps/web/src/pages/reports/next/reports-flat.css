@@ -1,7 +1,8 @@
 /* A cutting laid flat (CuttingFlat.tsx) and its opener. .mudavym tokens only
    (ADR 0042); the dialog carries `.mudavym`, so both grounds resolve. */
 
-/* The opener: ink, never the seal (ADR 0042); 28px on a phone. */
+/* The opener: ink, never the seal (ADR 0042); 28px on a phone. The caption
+   ink --ink-4, not --ink-3, which OD-112 keeps decorative-only. */
 .rp-flat-open {
   display: inline-grid;
   place-items: center;
@@ -11,7 +12,7 @@
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  color: var(--ink-3);
+  color: var(--ink-4);
   cursor: pointer;
   align-self: center;
 }

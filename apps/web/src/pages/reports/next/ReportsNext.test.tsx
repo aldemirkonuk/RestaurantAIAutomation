@@ -816,6 +816,45 @@ describe('ReportsNext — the palette never fabricates', () => {
   });
 });
 
+describe('ReportsNext — a cutting laid flat keeps the page behind it', () => {
+  // Audit 2026-11-07 on PR #843: with the flat view up, ⌘K opened "Ask the
+  // book" underneath it, unseen, and one Escape then closed both overlays.
+  const layFlat = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Show Through the till full screen' }));
+    return screen.getByRole('dialog', { name: 'Through the till' });
+  };
+
+  it('⌘K and Ctrl-K never open the palette under the flat view', () => {
+    paint();
+    layFlat();
+    // Asserted after EACH press: the page's key toggles, so two presses
+    // reaching it would open and shut the palette and read as a pass.
+    fireEvent.keyDown(document.activeElement as Element, { key: 'k', metaKey: true });
+    expect(screen.queryByRole('dialog', { name: 'Ask the book' })).toBeNull();
+    fireEvent.keyDown(document.activeElement as Element, { key: 'K', ctrlKey: true });
+    expect(screen.queryByRole('dialog', { name: 'Ask the book' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Through the till' })).toBeInTheDocument();
+  });
+
+  it('⌘K works again once the flat view is closed', () => {
+    paint();
+    const flat = layFlat();
+    fireEvent.click(within(flat).getByRole('button', { name: 'Back to the sheet' }));
+    expect(screen.queryByRole('dialog', { name: 'Through the till' })).toBeNull();
+    fireEvent.keyDown(document.body, { key: 'k', metaKey: true });
+    expect(screen.getByRole('dialog', { name: 'Ask the book' })).toBeInTheDocument();
+  });
+
+  it('one Escape closes only the topmost overlay', () => {
+    paint();
+    fireEvent.click(screen.getByText('Ask the book ⌘K'));
+    layFlat();
+    fireEvent.keyDown(document.activeElement as Element, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Through the till' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Ask the book' })).toBeInTheDocument();
+  });
+});
+
 describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
   it('prints an em dash for a COGS the server withheld, never $0', () => {
     hook.current = withRegister(

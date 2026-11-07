@@ -329,7 +329,7 @@ export default function Cutting({
                 title={flatLabel}
                 onClick={openFlat}
               >
-                <Maximize2 size={14} strokeWidth={1.6} color="var(--ink-3)" aria-hidden />
+                <Maximize2 size={14} strokeWidth={1.6} aria-hidden />
               </button>
             )}
           </div>
