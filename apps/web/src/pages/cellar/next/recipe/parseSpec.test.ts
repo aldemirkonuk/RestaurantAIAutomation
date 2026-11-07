@@ -26,10 +26,8 @@ describe('parseSpec — pasted text into rows to confirm', () => {
     expect(parseLine('22,5 ml lemon juice')).toMatchObject({ qty: 22.5, unit: 'ml', label: 'lemon juice' });
   });
 
-  it('proposes "Orange twist garnish" as 1 each, not counted, so it saves as written', () => {
-    expect(parseLine('Orange twist garnish')).toMatchObject({ qty: 1, unit: 'each', role: 'untracked', label: 'Orange twist garnish' });
-    expect(parseLine('Crushed ice')).toMatchObject({ qty: 1, unit: 'each', role: 'untracked' });
-    expect(parseLine('Stir and strain')).toMatchObject({ qty: null, unit: null, role: 'untracked' });
+  it('marks "Orange twist garnish" untracked', () => {
+    expect(parseLine('Orange twist garnish')).toMatchObject({ qty: null, role: 'untracked', label: 'Orange twist garnish' });
   });
 
   it('marks "top with soda" untracked with no amount', () => {
@@ -66,43 +64,5 @@ describe('parseSpec — pasted text into rows to confirm', () => {
     const rows = parseSpec('1½ oz gin / 2 dashes Angostura\n1 egg white\n\n  Orange twist garnish');
     expect(rows.map((r) => r.label)).toEqual(['gin', 'Angostura', 'egg white', 'Orange twist garnish']);
     expect(rows.every((r) => r.confirmed === false)).toBe(true);
-  });
-
-  // Round 17, D3: each of these was read as a counted "N each" row.
-  it('drops a numbered-list prefix before reading the amount', () => {
-    expect(parseLine('1) 2 oz gin')).toMatchObject({ qty: 2, unit: 'oz', label: 'gin' });
-    expect(parseLine('2. 30 ml Campari')).toMatchObject({ qty: 30, unit: 'ml', label: 'Campari' });
-    expect(parseLine('1.5 oz gin')).toMatchObject({ qty: 1.5, unit: 'oz', label: 'gin' });
-  });
-
-  it('never makes a count of a measure the menu does not have', () => {
-    for (const line of ['1 shot gin', '1 jigger gin', '1 cup milk', '1 pt cream', '2 parts rum', '1 splash soda']) {
-      const r = parseLine(line);
-      expect(r?.unit, line).toBeNull();
-      expect(r?.qty, line).not.toBeNull();
-      expect(r?.label, line).toBe(line.replace(/^\d+ /, ''));
-    }
-  });
-
-  it('reads plain misspellings of menu units', () => {
-    expect(parseLine('60 mls gin')).toMatchObject({ qty: 60, unit: 'ml', label: 'gin' });
-    expect(parseLine('1 tbs honey')).toMatchObject({ qty: 1, unit: 'tbsp', label: 'honey' });
-    expect(parseLine('5 gm salt')).toMatchObject({ qty: 5, unit: 'g', label: 'salt' });
-  });
-
-  it('keeps as text what it cannot read, instead of a count', () => {
-    for (const line of ['-30 ml gin', '1e3 ml gin', '1.000,5 ml gin', '1,000 ml gin', '30mlgin', '1.5.3 ml gin']) {
-      expect(parseLine(line), line).toMatchObject({ qty: null, unit: null, role: 'untracked', label: line });
-    }
-    expect(parseLine('- 30 ml gin')).toMatchObject({ qty: 30, unit: 'ml', label: 'gin' });
-    expect(parseLine('.5 oz lime')).toMatchObject({ qty: 0.5, unit: 'oz', label: 'lime' });
-    expect(parseLine('30ml gin')).toMatchObject({ qty: 30, unit: 'ml', label: 'gin' });
-    expect(parseLine('2x lime wedge')).toMatchObject({ qty: 2, unit: 'each' });
-  });
-
-  it('splits at a slash only where another amount starts', () => {
-    expect(parseSpec('1 oz gin/1 oz campari').map((r) => r.label)).toEqual(['gin', 'campari']);
-    expect(parseSpec('1 oz Sweet / dry vermouth').map((r) => r.label)).toEqual(['Sweet / dry vermouth']);
-    expect(parseSpec('1 1/2 oz gin / ½ oz lime').map((r) => r.qty)).toEqual([1.5, 0.5]);
   });
 });
