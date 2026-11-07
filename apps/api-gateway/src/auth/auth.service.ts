@@ -3626,21 +3626,17 @@ export class AuthService {
   }) {
     const { provider, email } = params;
 
-    // Looked up like every other door (findUserBySignInAddress). `users.email`
-    // is UNIQUE and case-sensitive, so a mixed-case stored address against
-    // Google's lower-cased claim used to miss and fall through to the create
-    // branch — the same defect wearing a different hat. A row the backfill
-    // held unfolded (R11-01) is found by the SQL fold. A failed read is not
-    // "no account".
-    const { user, error: userReadError } = await findUserBySignInAddress<any>(
-      () => this.databaseService.supabase.from("users").select("*"),
-      email,
-    );
-    if (userReadError) {
-      throw new ServiceUnavailableException(
-        "We could not check your account just now. Nothing was changed; try again.",
-      );
-    }
+    // Normalised like every other lookup (checkEmailExists, resolveSignInMethods).
+    // `users.email` is UNIQUE and case-sensitive, so a mixed-case stored address
+    // against Google's lower-cased claim used to miss and fall through to the
+    // create branch — the same defect wearing a different hat.
+    const normalizedEmail = email.toLowerCase().trim();
+
+    const { data: user } = await this.databaseService.supabase
+      .from("users")
+      .select("*")
+      .eq("email", normalizedEmail)
+      .single();
 
     if (!user) {
       this.logger.warn(
@@ -3987,22 +3983,11 @@ export class AuthService {
   ): Promise<{ sent: true }> {
     const normalizedEmail = email.trim().toLowerCase();
 
-    // The shared lookup (R11-01): a row held unfolded is found too. A failed
-    // read answers like an unknown address -- the response must not differ.
-    const { user, error: userReadError } = await findUserBySignInAddress<{
-      user_id: string;
-      name: string;
-      email: string;
-    }>(
-      () => this.databaseService.supabase.from("users").select("user_id, name, email"),
-      email,
-    );
-    if (userReadError) {
-      this.logger.error(
-        `Password reset could not read the account: ${userReadError.message}`,
-      );
-      return { sent: true };
-    }
+    const { data: user } = await this.databaseService.supabase
+      .from("users")
+      .select("user_id, name, email")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
 
     // Always return the same shape. Do not throw NotFound here — that is
     // exactly the timing/branching oracle enumeration relies on.
@@ -4319,18 +4304,11 @@ export class AuthService {
     const normalizedEmail = email.trim().toLowerCase();
     const declared = sortForDisplay([...IDENTITY_PROVIDERS]);
 
-    const { user, error: userReadError } = await findUserBySignInAddress<{
-      user_id: string;
-      password_hash: string | null;
-    }>(
-      () => this.databaseService.supabase.from("users").select("user_id, password_hash"),
-      email,
-    );
-    if (userReadError) {
-      throw new ServiceUnavailableException(
-        "We could not check that address just now. Try again.",
-      );
-    }
+    const { data: user } = await this.databaseService.supabase
+      .from("users")
+      .select("user_id, password_hash")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
 
     if (!user) {
       return {
