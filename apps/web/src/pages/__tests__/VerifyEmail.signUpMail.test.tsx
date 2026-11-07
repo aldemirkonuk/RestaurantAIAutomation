@@ -5,8 +5,9 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom'
 /**
  * Onboarding OB-6 (founder /goal 2026-11-07; proposal §3 OB-6): the sign-up's
  * mail outcome reaches /verify-email. `registerAccount` keeps the gateway's
- * `verificationMail` under `mudavym:verification-mail`; the page reads it
- * once, clears it, and says what became of the send. A resend the mailer did
+ * `verificationMail` under `mudavym:verification-mail`; the page seeds one
+ * mail state from it, a resend writes its answer back, and the key is cleared
+ * at sign-out and once the address is verified. A resend the mailer did
  * not confirm in time is said as such, never as sent.
  */
 const h = vi.hoisted(() => ({
@@ -206,5 +207,23 @@ describe("the sign-up's mail outcome", () => {
     first.unmount()
     mount()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('a verified link clears the note, so it never returns for this account', async () => {
+    sessionStorage.setItem(KEY, 'not_sent')
+    h.post.mockResolvedValueOnce({
+      data: { accessToken: 'x.e30.sig', refreshToken: 'r' },
+    })
+    render(
+      <MemoryRouter initialEntries={['/verify-email?token=t1']}>
+        <Routes>
+          <Route path="/verify-email" element={<VerifyEmail />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    // Signed in, the link verifies by itself (F3, this PR): no click.
+    await vi.waitFor(() => expect(h.toastSuccess).toHaveBeenCalled())
+    expect(h.auth.signInWithSession).toHaveBeenCalled()
+    expect(sessionStorage.getItem(KEY)).toBeNull()
   })
 })

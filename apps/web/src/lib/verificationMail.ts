@@ -84,7 +84,7 @@ export function readSignUpMail(): VerificationMail | null {
   }
 }
 
-/** Forget the kept outcome once it has been shown. Never throws. */
+/** Forget the kept outcome: at sign-out and once verified. Never throws. */
 export function clearSignUpMail(): void {
   try {
     window.sessionStorage.removeItem(VERIFICATION_MAIL_KEY)

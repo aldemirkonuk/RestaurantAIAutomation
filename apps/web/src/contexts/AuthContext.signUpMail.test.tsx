@@ -33,6 +33,7 @@ vi.mock("axios", () => ({
 }));
 
 import { AuthProvider, useAuth, type AuthContextType } from "./AuthContext";
+import { readSignUpMail } from "../lib/verificationMail";
 
 const U = "11111111-1111-4111-8111-111111111111";
 const KEY = "mudavym:verification-mail";
@@ -120,5 +121,24 @@ describe("registerAccount hands the mail outcome to /verify-email (OB-6)", () =>
       await auth().registerAccount(ACCOUNT as never);
     });
     expect(sessionStorage.getItem(KEY)).toBeNull();
+  });
+
+  it("forgets the note at sign-out, so the next account on this tab sees none", async () => {
+    gatewayAnswers("not_sent");
+    const auth = await mount();
+    await act(async () => {
+      await auth().registerAccount(ACCOUNT as never);
+    });
+    expect(sessionStorage.getItem(KEY)).toBe("not_sent");
+    await act(async () => {
+      await auth().logout();
+    });
+    expect(sessionStorage.getItem(KEY)).toBeNull();
+    // Another person signs in on the same tab: /verify-email seeds its one
+    // mail state from readSignUpMail(), and there is nothing to read.
+    await act(async () => {
+      await auth().login("other@house.test", "their own password");
+    });
+    expect(readSignUpMail()).toBeNull();
   });
 });

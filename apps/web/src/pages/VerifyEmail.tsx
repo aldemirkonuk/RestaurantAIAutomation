@@ -12,6 +12,7 @@ import { apiClient, getErrorMessage } from '../services/api/client'
 import { tokenHouse } from '../lib/houseMemory'
 import {
   CODE_REFUSAL_SENTENCE,
+  clearSignUpMail,
   codeDigits,
   codeRefusal,
   noteSignUpMail,
@@ -96,6 +97,9 @@ export function VerifyEmail() {
       setSessionReadFailed(true)
       return
     }
+    // Verified: the sign-up's mail note (OB-6) has nothing left to say, and
+    // must not come back if this account ever has to verify again.
+    clearSignUpMail()
     // A session in no house goes to the chooser (ADR 0164): it shows a
     // membership waiting to be accepted (ADR 0229 fork 13), and sends an
     // account-only signup (ADR 0213) with nothing waiting on to
