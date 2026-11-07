@@ -1,0 +1,135 @@
+import { BadRequestException } from "@nestjs/common";
+import { CsvParserService } from "./csv-parser.service";
+
+const parser = () => new CsvParserService();
+
+describe("CsvParserService.parse: Turkish and EU spreadsheets", () => {
+  it("reads an Excel-TR semicolon file with Turkish headers and decimal-comma prices", () => {
+    const csv =
+      "\uFEFFŞarap Adı;Üretici;Yıl;Bölge;Üzüm;Kadeh Fiyatı (TL);Şişe Fiyatı\r\n" +
+      "Kalecik Karası;Kavaklıdere;2021;Ankara;Kalecik Karası;145,50;1.250,00\r\n" +
+      "Öküzgözü;Turasan;2020;Elazığ;Öküzgözü;;890\r\n";
+    const items = parser().parse(csv);
+    expect(items).toEqual([
+      {
+        name: "Kalecik Karası",
+        producer: "Kavaklıdere",
+        vintage: "2021",
+        region: "Ankara",
+        grape_variety: "Kalecik Karası",
+        by_glass_price: 145.5,
+        bottle_price: 1250,
+        raw_text:
+          "Kalecik Karası;Kavaklıdere;2021;Ankara;Kalecik Karası;145,50;1.250,00",
+      },
+      expect.objectContaining({ name: "Öküzgözü", bottle_price: 890 }),
+    ]);
+  });
+
+  it("reads a tab file with 'Bottle Price' and 'By Glass'", () => {
+    const tab = parser().parse(
+      "Name\tBottle Price\tBy Glass\nRioja\t120\t18.50\n",
+    );
+    expect(tab).toEqual([
+      {
+        name: "Rioja",
+        bottle_price: 120,
+        by_glass_price: 18.5,
+        raw_text: "Rioja\t120\t18.50",
+      },
+    ]);
+  });
+
+  it("keeps RFC 4180 quoting: a delimiter, a doubled quote and a line break inside a cell", () => {
+    const csv =
+      "Name;Producer;Bottle\r\n" +
+      '"Château ""Le Pin""; Pomerol";"Ets. Thienpont\r\nBordeaux";"2.400,00"\r\n' +
+      "Sancerre;Vacheron;65\r\n";
+    const items = parser().parse(csv);
+    expect(items[0].name).toBe('Château "Le Pin"; Pomerol');
+    expect(items[0].producer).toBe("Ets. Thienpont\r\nBordeaux");
+    expect(items[0].bottle_price).toBe(2400);
+    expect(items[1]).toMatchObject({
+      name: "Sancerre",
+      producer: "Vacheron",
+      bottle_price: 65,
+    });
+    expect(items).toHaveLength(2);
+  });
+
+  it("gives a price with two readings NO amount, keeps the row, and says which cell", () => {
+    const report = parser().read(
+      "Name;Şişe Fiyatı;Kadeh\nBoğazkere;1.250;1,250\n",
+    );
+    expect(report.items).toEqual([
+      { name: "Boğazkere", raw_text: "Boğazkere;1.250;1,250" },
+    ]);
+    expect(report.issues).toEqual([
+      { row: 2, reason: "two_readings", field: "bottle_price", raw: "1.250" },
+      { row: 2, reason: "two_readings", field: "by_glass_price", raw: "1,250" },
+    ]);
+  });
+
+  it("reads `₺450` as 450 and keeps the symbol in the raw row", () => {
+    const [item] = parser().parse("Name,Bottle\nRakı,₺450\n");
+    expect(item.bottle_price).toBe(450);
+    expect(item.raw_text).toBe("Rakı,₺450");
+  });
+
+  it("returns row-level issues, counting rows across a quoted line break", () => {
+    // A bare Fiyat (price) column is not read: its field is not decided.
+    expect(parser().read('Name;Fiyat\n"Two\nlines";10\n;45\n')).toEqual({
+      items: [{ name: "Two\nlines", raw_text: '"Two\nlines";10' }],
+      issues: [{ row: 4, reason: "no_name" }],
+    });
+    expect(parser().read("Cost;Supplier\n12;Metro\n")).toEqual({
+      items: [],
+      issues: [{ row: 1, reason: "no_name_column" }],
+    });
+  });
+});
+
+describe("CsvParserService.parseExcel", () => {
+  const xlsx = async (rows: unknown[][]): Promise<string> => {
+    const ExcelJS = await import("exceljs");
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet("Menu");
+    rows.forEach((r) => ws.addRow(r));
+    return Buffer.from(await wb.xlsx.writeBuffer()).toString("base64");
+  };
+
+  it("refuses an old .xls workbook in words, not with an empty read", async () => {
+    const ole2 = Buffer.concat([
+      Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+      Buffer.alloc(504),
+    ]).toString("base64");
+    const read = parser().parseExcel(ole2);
+    await expect(read).rejects.toBeInstanceOf(BadRequestException);
+    await expect(read).rejects.toThrow(/older Excel file \(\.xls\)/);
+  });
+
+  it("maps Turkish headers, takes a stored number as is, reads a text price, and sets the raw row", async () => {
+    const items = await parser().parseExcel(
+      await xlsx([
+        ["Şarap", "Üretici", "Şişe Fiyatı", "Kadeh Fiyatı"],
+        ["Narince", "Kayra", 1.125, "145,50"],
+        ["Emir", "Kocabağ", "1.250", 90],
+      ]),
+    );
+    expect(items).toEqual([
+      {
+        name: "Narince",
+        producer: "Kayra",
+        bottle_price: 1.125,
+        by_glass_price: 145.5,
+        raw_text: "Narince,Kayra,1.125,145,50",
+      },
+      {
+        name: "Emir",
+        producer: "Kocabağ",
+        by_glass_price: 90,
+        raw_text: "Emir,Kocabağ,1.250,90",
+      },
+    ]);
+  });
+});

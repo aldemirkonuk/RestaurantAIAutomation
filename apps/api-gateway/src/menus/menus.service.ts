@@ -11,6 +11,7 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
+import { readMenuPrice } from "./parsers/menu-price";
 import { ScanParserService } from "./parsers/scan-parser.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
@@ -254,7 +255,7 @@ const VERSION_SELECT =
  * `lineForViewer` (menu-line-view.ts) can say `kitchen_line`; it leaves this
  * read only when the caller's view allows it (`MenuVersionsController.one`,
  * for a role that sees money and suppliers). A CSV line is the whole row
- * (csv-parser.service.ts:55), cost and supplier cells included, and no header
+ * (csv-parser.service.ts, `raw_text`), cost and supplier cells included, and no header
  * is kept to tell them apart. Other paths still carry the same text: the
  * import's reply and the kept source file (tech-debt.d, this branch's entries).
  */
@@ -821,15 +822,17 @@ export class MenusService {
 
     const oldValue = (menuItem as Record<string, unknown>)[dto.fieldName];
     const isPrice = PRICE_FIELDS.has(dto.fieldName);
-    const newValueTyped: string | number = isPrice
-      ? parseFloat(dto.newValue.replace(/[^0-9.]/g, ""))
-      : dto.newValue;
-
-    if (isPrice && Number.isNaN(newValueTyped as number)) {
+    // Read as a spreadsheet price is (menu-price.ts): `45,50` is 45.50, and
+    // `1.250`, which reads two ways, is refused rather than guessed.
+    const price = isPrice ? readMenuPrice(dto.newValue) : null;
+    if (price && price.amount === null) {
       throw new BadRequestException(
-        `Invalid numeric value for ${dto.fieldName}`,
+        price.reason === "two_readings"
+          ? `"${price.raw}" reads two ways. Write 1250, 1.250,00 or 1,250.00.`
+          : `Invalid numeric value for ${dto.fieldName}`,
       );
     }
+    const newValueTyped: string | number = price ? price.amount! : dto.newValue;
 
     const { error: updateErr } = await this.dbService.supabase
       .from("menu_items")
