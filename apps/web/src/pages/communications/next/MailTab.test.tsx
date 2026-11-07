@@ -275,7 +275,11 @@ describe("a person's threads (spec b)", () => {
 describe('the status line', () => {
   const status = () => screen.findByTestId('mail-status');
 
+  // A recent read of the mailbox: the 1 h old letter came in through a way in that is open now.
+  const READING = () => ({ ...SENDER, reader: { ...SENDER.reader, lastReadAt: new Date(Date.now() - 60_000).toISOString() } });
+
   it('connected, with when the last letter came', async () => {
+    routes['/communications/letters/sender'] = READING;
     mount();
     await waitFor(async () => expect(await status()).toHaveTextContent('Connected · last letter 1 h ago'));
     expect(screen.getByTestId('mail-status')).toHaveAttribute('data-state', 'connected');
@@ -409,6 +413,10 @@ describe('the setup path', () => {
   };
   beforeEach(() => {
     routes['/communications/mail-setup'] = () => SETUP;
+    routes['/communications/letters/sender'] = () => ({
+      ...SENDER,
+      reader: { ...SENDER.reader, lastReadAt: new Date(Date.now() - 60_000).toISOString() },
+    });
   });
 
   it('"Mail setup" opens ?setup=1 with the tab\'s own status line, and browser Back returns to the list', async () => {
@@ -444,6 +452,46 @@ describe('the setup path', () => {
     await screen.findAllByTestId('mail-person');
     await waitFor(() => expect(screen.getByTestId('mail-status')).toHaveAttribute('data-state', 'connected'));
     expect(screen.queryByTestId('status-setup')).toBeNull();
+  });
+
+  // QA round 26, #977: an address alone is not mail arriving; the test letter is.
+  it('an address with nothing arrived is not connected, and offers the setup', async () => {
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, granted: false } });
+    routes['/mail/summary'] = () => ({
+      ...SUMMARY,
+      doors: { houseMailbox: { lastStoredAt: null }, whatsapp: { lastStoredAt: null }, mudavymMail: { lastStoredAt: null } },
+    });
+    mount();
+    await waitFor(() => expect(screen.getByTestId('mail-status')).toHaveTextContent(/^Address made, no letter yet$/));
+    expect(screen.getByTestId('mail-status')).toHaveAttribute('data-state', 'unproven');
+    expect(screen.getByTestId('status-setup')).toBeInTheDocument();
+  });
+
+  it('the arrived test letter makes the line connected', async () => {
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, granted: false } });
+    routes['/mail/summary'] = () => ({
+      ...SUMMARY,
+      doors: { houseMailbox: { lastStoredAt: null }, whatsapp: { lastStoredAt: null }, mudavymMail: { lastStoredAt: null } },
+    });
+    routes['/communications/mail-setup'] = () => ({
+      ...SETUP,
+      testLetter: {
+        failed: null,
+        latest: {
+          code: 'K7QM-2RZD',
+          subject: 'Mudavym test letter K7QM-2RZD',
+          address: 'bodega@in.mudavym.com',
+          mailto: 'mailto:bodega@in.mudavym.com',
+          startedAt: new Date(Date.now() - 6 * 60_000).toISOString(),
+          arrivedAt: new Date(Date.now() - 3 * 60_000).toISOString(),
+          arrivedFrom: 'me@gmail.test',
+        },
+      },
+    });
+    mount();
+    await waitFor(() =>
+      expect(screen.getByTestId('mail-status')).toHaveTextContent(/^Connected · the test letter arrived 3 min ago$/),
+    );
   });
 
   it('an empty list offers the setup', async () => {

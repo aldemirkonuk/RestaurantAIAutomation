@@ -261,7 +261,15 @@ export function unrecordedDoorStatus(): DoorStatus {
   };
 }
 
-export type MailStatusState = 'checking' | 'connected' | 'switched_off' | 'needs_attention' | 'not_connected' | 'unknown';
+export type MailStatusState =
+  | 'checking'
+  | 'connected'
+  | 'reading'
+  | 'unproven'
+  | 'switched_off'
+  | 'needs_attention'
+  | 'not_connected'
+  | 'unknown';
 
 export interface MailStatus {
   state: MailStatusState;
@@ -270,10 +278,35 @@ export interface MailStatus {
 }
 
 /**
+ * Whether the house's test letter reached its Mudavym address, from GET
+ * /communications/mail-setup. `checking` while that read is out; `failed`
+ * when it failed or could not say.
+ */
+export type TestArrival =
+  | { state: 'known'; arrivedAt: string | null }
+  | { state: 'checking' }
+  | { state: 'failed' };
+
+const NO_TEST: TestArrival = { state: 'known', arrivedAt: null };
+
+function newest(...ts: Array<number | null>): number | null {
+  const known = ts.filter((t): t is number => t !== null);
+  return known.length ? Math.max(...known) : null;
+}
+
+/**
  * The one status line of the Mail tab and the setup page (founder /goal
  * 2026-11-07: "check if the email comes"): "Connected · last letter 4 min
- * ago", or "Not connected". The house is connected when its mailbox is read
- * OR it has a Mudavym address — either way a vendor's letter can arrive.
+ * ago", or "Not connected".
+ *
+ * CONNECTED ONLY ON EVIDENCE (QA round 26, #977). "Connected" is said only
+ * when a letter is known to have come in through a way in that is open now:
+ * a letter stored from the house mailbox while it is being read, a letter
+ * stored at the house's Mudavym address, or the house's test letter arriving
+ * there. An address row on its own is not mail arriving: it is "Address made,
+ * no letter yet". A mailbox whose read failed, could not be checked or is
+ * switched off proves nothing about today, so its old letters are said with
+ * their time and never as "Connected".
  *
  * "Not connected" is said only when both are known to be absent; it is never
  * softened to "cannot tell" (QA round 16, finding 4). What could not be read
@@ -282,32 +315,65 @@ export interface MailStatus {
 export function mailStatusLine(
   reader: MailboxReader | null,
   summary: MailSummary | null,
-  opts: { readerFailed: boolean; summaryFailed: boolean; now: number },
+  opts: { readerFailed: boolean; summaryFailed: boolean; now: number; test?: TestArrival },
 ): MailStatus {
   const mailbox = houseMailboxStatus(reader, { readFailed: opts.readerFailed, now: opts.now });
-  const hasAddress = Boolean(summary?.address.address);
+  const test = opts.test ?? NO_TEST;
+  const address = summary?.address.address ?? null;
+  const ago = (t: number) => shortSpan(opts.now - t);
 
   if (mailbox.state === 'failing') {
     return { state: 'needs_attention', words: `Needs attention · ${mailbox.words}`, tone: 'alarm' };
   }
 
-  if (mailbox.state === 'reading' || mailbox.state === 'behind' || (mailbox.state === 'cannot_tell' && reader?.granted === true) || hasAddress) {
-    let words: string;
-    if (!summary) {
-      words = opts.summaryFailed ? 'Connected · when the last letter came could not be read' : 'Connected';
-    } else {
-      const times = [summary.doors.houseMailbox.lastStoredAt, summary.doors.mudavymMail.lastStoredAt]
-        .map(at)
-        .filter((t): t is number => t !== null);
-      words = times.length
-        ? `Connected · last letter ${shortSpan(opts.now - Math.max(...times))} ago`
-        : 'Connected · no letter yet';
-    }
-    if (mailbox.state === 'behind' && reader?.lastReadAt) {
-      const last = at(reader.lastReadAt) ?? opts.now;
-      return { state: 'connected', words: `${words} · your mailbox was last read ${shortSpan(opts.now - last)} ago`, tone: 'warn' };
-    }
-    return { state: 'connected', words, tone: 'ink' };
+  const mailboxOpen = mailbox.state === 'reading' || mailbox.state === 'behind';
+  const lastInMailbox = at(summary?.doors.houseMailbox.lastStoredAt);
+  const lastAtAddress = address ? at(summary?.doors.mudavymMail.lastStoredAt) : null;
+  // The test letter proves the address on its own: it reached it.
+  const testArrived = test.state === 'known' ? at(test.arrivedAt) : null;
+  const proof = newest(mailboxOpen ? lastInMailbox : null, lastAtAddress, testArrived);
+
+  // What the mailbox adds when it is not the proof, in a clause.
+  const lastRead = at(reader?.lastReadAt);
+  const mailboxNote =
+    mailbox.state === 'behind' && lastRead !== null
+      ? `your mailbox was last read ${ago(lastRead)} ago`
+      : mailbox.state === 'switched_off'
+        ? 'reading your mailbox is switched off'
+        : mailbox.state === 'cannot_tell' && reader?.granted === true && !opts.readerFailed
+          ? 'no read of your mailbox is recorded yet'
+          : mailbox.state === 'cannot_tell' && (opts.readerFailed || reader !== null)
+            ? 'whether your mailbox is read could not be checked'
+            : null;
+
+  if (proof !== null) {
+    const lead =
+      testArrived === proof && proof !== newest(mailboxOpen ? lastInMailbox : null, lastAtAddress)
+        ? `Connected · the test letter arrived ${ago(proof)} ago`
+        : `Connected · last letter ${ago(proof)} ago`;
+    return mailboxNote
+      ? { state: 'connected', words: `${lead} · ${mailboxNote}`, tone: 'warn' }
+      : { state: 'connected', words: lead, tone: 'ink' };
+  }
+
+  const readerOut = !reader && !opts.readerFailed;
+  const summaryOut = !summary && !opts.summaryFailed;
+  if (readerOut || summaryOut || (address && test.state === 'checking')) {
+    return { state: 'checking', words: 'Checking the mail connection…', tone: 'ink' };
+  }
+
+  if (mailboxOpen) {
+    const tail = summary ? 'no letter yet' : 'when the last letter came could not be read';
+    return mailbox.state === 'behind' && mailboxNote
+      ? { state: 'reading', words: `Reading your mailbox · ${tail} · ${mailboxNote}`, tone: 'warn' }
+      : { state: 'reading', words: `Reading your mailbox · ${tail}`, tone: 'ink' };
+  }
+
+  if (address) {
+    const parts = [test.state === 'failed' ? 'Address made, no letter stored yet' : 'Address made, no letter yet'];
+    if (lastInMailbox !== null) parts.push(`the last letter came to your mailbox ${ago(lastInMailbox)} ago`);
+    if (mailboxNote) parts.push(mailboxNote);
+    return { state: 'unproven', words: parts.join(' · '), tone: 'warn' };
   }
 
   if (mailbox.state === 'switched_off') {
@@ -315,20 +381,18 @@ export function mailStatusLine(
   }
 
   const mailboxKnownOff = mailbox.state === 'not_connected';
-  const addressKnownOff = summary !== null && !hasAddress;
-  if (mailboxKnownOff && addressKnownOff) {
+  if (mailboxKnownOff && summary !== null) {
     return { state: 'not_connected', words: 'Not connected', tone: 'warn' };
   }
-
-  const stillReading = (!reader && !opts.readerFailed) || (!summary && !opts.summaryFailed);
-  if (stillReading) return { state: 'checking', words: 'Checking the mail connection…', tone: 'ink' };
-
   if (mailboxKnownOff) {
     return {
       state: 'unknown',
       words: "Your mailbox is not connected · whether the house's Mudavym address works could not be read",
       tone: 'alarm',
     };
+  }
+  if (reader?.granted === true && !opts.readerFailed && summary !== null) {
+    return { state: 'unknown', words: 'Your mailbox is connected, but no read of it is recorded yet', tone: 'warn' };
   }
   return { state: 'unknown', words: 'Whether mail is connected could not be read', tone: 'alarm' };
 }
