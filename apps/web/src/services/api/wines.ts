@@ -50,15 +50,37 @@ export async function getWineById(wineId: string): Promise<Wine | null> {
 }
 
 /**
- * Get wines by IDs
+ * Most wine ids one GET /wines?ids= carries. Must stay at or under the
+ * gateway's `WINE_IDS_MAX` (wines.dto.ts), which refuses a longer list.
+ *
+ * Every id went in one URL, so at about 420 ids (37 characters each, about
+ * 15.5 KB) the request passed Node's 16 KB header limit and the whole library
+ * join failed; names, vintages and grapes went missing from /inventory for a
+ * house holding 500 wines (QA round 2, U-1). 100 ids is about 3.7 KB, well
+ * under any proxy's limit, and 100 rows is far under PostgREST's 1,000-row cap.
+ */
+export const WINE_IDS_PER_REQUEST = 100;
+
+/**
+ * Get wines by IDs, in requests of at most `WINE_IDS_PER_REQUEST` ids.
+ *
+ * The chunks are read one after another, and any chunk that fails fails the
+ * whole read: a library join with a third of its wines missing would render as
+ * wines with no name, which is a failed read shown as an empty one (ADR 0020).
  */
 export async function getWinesByIds(wineIds: string[]): Promise<Wine[]> {
-  if (wineIds.length === 0) return [];
+  const unique = Array.from(new Set(wineIds.filter(Boolean)));
+  if (unique.length === 0) return [];
 
-  const response = await apiClient.get<Wine[]>(WINES_PATH, {
-    params: { ids: wineIds.join(',') },
-  });
-  return response.data;
+  const wines: Wine[] = [];
+  for (let i = 0; i < unique.length; i += WINE_IDS_PER_REQUEST) {
+    const chunk = unique.slice(i, i + WINE_IDS_PER_REQUEST);
+    const response = await apiClient.get<Wine[]>(WINES_PATH, {
+      params: { ids: chunk.join(',') },
+    });
+    wines.push(...response.data);
+  }
+  return wines;
 }
 
 /**
