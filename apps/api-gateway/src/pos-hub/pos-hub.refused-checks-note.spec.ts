@@ -66,6 +66,7 @@ import {
 import * as noteModule from "./refused-checks-note";
 import { DatabaseService } from "../database/database.service";
 import { NotificationsService } from "../notifications/notifications.service";
+import { ExpoPushService } from "../push/expo-push.service";
 import type { AreaRoutingService } from "../areas/area-routing.service";
 import { makeStubDb } from "../team/testing/supabase-stub";
 
@@ -2274,6 +2275,13 @@ function realFunnel(
         (r) => r.user_id,
       ),
   };
+  // The real push service, so the funnel's own push gate (push/push-gate.ts)
+  // runs over the same rows; only the device read and Expo's HTTP are replaced.
+  const expo = new ExpoPushService(database as never);
+  (expo as any).sendToUsers = async (ids: string[], message: Row) => {
+    pushes.push({ ids, message });
+    return { outcome: "accepted_by_service", tokens: ids.length, detail: "" };
+  };
   const notifications = new NotificationsService(
     {
       server: {
@@ -2285,10 +2293,7 @@ function realFunnel(
     { get: () => undefined } as never,
     database as never,
     undefined,
-    {
-      sendToUsers: async (ids: string[], message: Row) =>
-        void pushes.push({ ids, message }),
-    } as never,
+    expo,
   );
   return { db, notifications, pushes, pings };
 }
