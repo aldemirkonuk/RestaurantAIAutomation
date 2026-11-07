@@ -563,6 +563,55 @@ export async function fetchHouseItemResearch(): Promise<HouseItemResearch[]> {
 
 // ==================== Export all functions ====================
 
+// ── The item drawer's reads (gateway item-detail.controller.ts) ─────────────
+
+/**
+ * The house's own fields on a list row: its kind, its unit and the name it
+ * gave a good the library does not hold (migration
+ * 20260903171000_the_house_item_is_the_ledgers_key). Snake or camel, as sent.
+ */
+export interface HouseFields {
+  kind: string | null;
+  uom: string | null;
+  displayName: string | null;
+}
+
+export function houseFieldsOf(item: unknown): HouseFields {
+  const r = (item ?? {}) as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v : null);
+  return { kind: str(r.kind), uom: str(r.uom), displayName: str(r.displayName) ?? str(r.display_name) };
+}
+
+/** GET /inventory/:rid/item/:id/figures. Money fields are null for anyone but an owner or manager. */
+export interface ItemFigures {
+  waste: { readable: boolean; qty30d: number | null; given30d: number | null; value30d: number | null; source: string };
+  countGap: {
+    readable: boolean;
+    last: Array<{
+      countedAt: string;
+      expected: number | null;
+      counted: number | null;
+      variance: number | null;
+      by: string | null;
+      money: number | null;
+    }> | null;
+    source: string;
+  };
+  costTrend: { readable: boolean; points: Array<{ receivedAt: string; unitCost: number }> | null; changePct: number | null; source: string };
+}
+
+/** Under `inventory`, so every inventory write rereads them too. */
+export const inventoryItemKeys = {
+  figures: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'figures'] as const,
+};
+
+export async function getItemFigures(itemId: string, restaurantId?: string): Promise<ItemFigures> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.get<ItemFigures>(`${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/figures`);
+  return response.data;
+}
+
 export const inventoryApi = {
   getInventory,
   createInventoryItem,
