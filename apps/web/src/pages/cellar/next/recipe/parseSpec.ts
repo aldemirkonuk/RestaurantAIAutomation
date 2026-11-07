@@ -19,6 +19,14 @@
  * kept as text, not read as a count; "1,000" and "1.000" could be a thousand
  * or one, so they are kept as text too. A garnish or ice line with no amount is
  * proposed as 1 each, not counted, so it can be saved as written.
+ *
+ * A word after the amount that looks like a mistyped unit ("30 mll gin",
+ * "1 dasher bitters", "30 mlgin") is not read as a count either (round 19):
+ * the row keeps the amount, gets no unit, and carries a flag naming the word,
+ * shown before the rows are used. "Looks like" is one edit away from a unit
+ * word of two letters or more, or a word that starts with ml, oz, tsp, tbsp,
+ * kg or bsp. Every other word is the start of the label, as "2 limes" is. A
+ * measure off the menu ("1 shot gin") is flagged the same way.
  */
 
 import type { RecipeUnit } from './units';
@@ -31,6 +39,8 @@ export interface ProposedLine {
   label: string;
   role: LineRole;
   confirmed: false;
+  /** Why the row has an amount but no unit, said before it is used; null when nothing was doubted. */
+  flag: string | null;
 }
 
 const VULGAR: Record<string, number> = {
@@ -56,7 +66,30 @@ const UNIT_WORDS: Record<string, RecipeUnit> = {
 };
 
 /** Measures a bar uses that are not on the menu: the amount is kept, the unit is left to pick. */
-const OFF_MENU = /^(?:shots?|jiggers?|cups?|pints?|pt|parts?|splash(?:es)?|drops?|pinch(?:es)?|scoops?|glass(?:es)?)\b\.?\s*/i;
+const OFF_MENU = /^(shots?|jiggers?|cups?|pints?|pt|parts?|splash(?:es)?|drops?|pinch(?:es)?|scoops?|glass(?:es)?)\b\.?\s*/i;
+/** A word run on from a unit no ingredient starts with: "mlgin", "ozrum". */
+const GLUED_UNIT = /^(?:ml|oz|tsp|tbsp|kg|bsp)[a-z]/i;
+/** Unit words a typo is measured against: two letters or more, and not the count words. */
+const TYPO_TARGETS = Object.keys(UNIT_WORDS).filter((k) => k.length >= 2 && k !== 'each');
+
+/** True when a and b are at most one insert, delete, change or swap of neighbours apart. */
+function oneEditApart(a: string, b: string): boolean {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  if (i === a.length && i === b.length) return true;
+  const ra = a.slice(i + 1), rb = b.slice(i + 1);
+  return ra === rb || a.slice(i) === rb || ra === b.slice(i)
+    || (a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2));
+}
+
+/** "mll", "dasher", "mlgin": a word that reads as a unit typed wrong. */
+export function unitTypo(word: string): boolean {
+  const w = word.toLowerCase();
+  if (w.length < 2 || UNIT_WORDS[w]) return false;
+  if (GLUED_UNIT.test(w)) return true;
+  return TYPO_TARGETS.some((k) => oneEditApart(w, k));
+}
 /** "1)" or "2." at the start of a numbered list, before the amount. */
 const NUMBERED = /^\d{1,2}[.)]\s+(?=\S)/;
 /** 1,000 or 1.000: a thousand in one country, one in another. Not guessed. */
@@ -119,9 +152,9 @@ export function parseLine(line: string): ProposedLine | null {
     const label = tidy(text);
     // A garnish or ice with no amount is written as one, not counted, so it saves as written.
     if (GARNISH.test(text) || ICE_OR_WATER.test(label)) {
-      return { qty: 1, unit: 'each', label, role: 'untracked', confirmed: false };
+      return { qty: 1, unit: 'each', label, role: 'untracked', confirmed: false, flag: null };
     }
-    return { qty: null, unit: null, label, role: 'untracked', confirmed: false };
+    return { qty: null, unit: null, label, role: 'untracked', confirmed: false, flag: null };
   };
   const m = LEAD.exec(text);
   if (!m) return asText();
@@ -131,23 +164,33 @@ export function parseLine(line: string): ProposedLine | null {
   const unitWord = m[3]?.toLowerCase();
   let unit: RecipeUnit | null = unitWord ? UNIT_WORDS[unitWord] ?? null : null;
   const rest = m[4] ?? '';
-  // "1e3 ml", "30mlgin": the number runs into a word that is not a unit.
-  if (unit === null && gap === '' && /^[a-z]/i.test(rest)) return asText();
+  // "1e3 ml", "30mlgin", "1:1 syrup": the number runs on into something that is not a unit.
+  if (unit === null && gap === '' && rest !== '') return asText();
+  // "1 . 2 oz gin": what follows the amount is not a word, so the amount is not one.
+  if (unit === null && rest !== '' && !/^[\p{L}"'(]/u.test(rest)) return asText();
   let label = tidy(rest);
   if (!label) {
     // "2 dashes" with nothing after: the amount names nothing, keep the text.
-    return { qty: null, unit: null, label: tidy(text), role: 'untracked', confirmed: false };
+    return { qty: null, unit: null, label: tidy(text), role: 'untracked', confirmed: false, flag: null };
   }
-  if (unit === null && OFF_MENU.test(label)) {
+  const offMenu = unit === null ? OFF_MENU.exec(label) : null;
+  if (offMenu) {
     // "1 shot gin": a measure the menu does not have. Keep it in the label, pick the unit.
-    return { qty, unit: null, label, role: roleOf(text, label, qty), confirmed: false };
+    const flag = `"${offMenu[1]}" is not on the unit menu. Pick the unit.`;
+    return { qty, unit: null, label, role: roleOf(text, label, qty), confirmed: false, flag };
+  }
+  const word = unit === null ? /^[a-z]+/i.exec(label)?.[0] : undefined;
+  if (word && unitTypo(word)) {
+    // "30 mll gin": a unit typed wrong is never guessed, and never read as a count.
+    const flag = `"${word}" is not a unit I know. Pick the unit.`;
+    return { qty, unit: null, label, role: roleOf(text, label, qty), confirmed: false, flag };
   }
   if (unit === null) {
     // A count with no unit word ("2 egg whites", "1 lime") is a count.
     unit = 'each';
     for (const [re, to] of SINGULAR) label = label.replace(re, to);
   }
-  return { qty, unit, label, role: roleOf(text, label, qty), confirmed: false };
+  return { qty, unit, label, role: roleOf(text, label, qty), confirmed: false, flag: null };
 }
 
 /** Pasted text → proposed rows, one per line or per slash before an amount. Nothing is saved. */

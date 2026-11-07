@@ -5,12 +5,12 @@
  * proposals: every one arrives unconfirmed.
  */
 import { describe, expect, it } from 'vitest';
-import { parseLine, parseSpec, readAmount } from './parseSpec';
+import { parseLine, parseSpec, readAmount, unitTypo } from './parseSpec';
 
 describe('parseSpec — pasted text into rows to confirm', () => {
   it('reads "1½ oz gin" as 1.5 oz gin', () => {
     expect(parseLine('1½ oz gin')).toEqual({
-      qty: 1.5, unit: 'oz', label: 'gin', role: 'stocked', confirmed: false,
+      qty: 1.5, unit: 'oz', label: 'gin', role: 'stocked', confirmed: false, flag: null,
     });
   });
 
@@ -104,5 +104,43 @@ describe('parseSpec — pasted text into rows to confirm', () => {
     expect(parseSpec('1 oz gin/1 oz campari').map((r) => r.label)).toEqual(['gin', 'campari']);
     expect(parseSpec('1 oz Sweet / dry vermouth').map((r) => r.label)).toEqual(['Sweet / dry vermouth']);
     expect(parseSpec('1 1/2 oz gin / ½ oz lime').map((r) => r.qty)).toEqual([1.5, 0.5]);
+  });
+  // Round 19: a unit typed wrong was read as a count ("30 mll gin" became 30 each).
+  it('keeps the amount of a mistyped unit, leaves the unit to pick, and flags the word', () => {
+    expect(parseLine('30 mll gin')).toEqual({
+      qty: 30, unit: null, label: 'mll gin', role: 'stocked', confirmed: false,
+      flag: '"mll" is not a unit I know. Pick the unit.',
+    });
+    expect(parseLine('1 dasher bitters')).toMatchObject({ qty: 1, unit: null, flag: '"dasher" is not a unit I know. Pick the unit.' });
+    expect(parseLine('30 mlgin')).toMatchObject({ qty: 30, unit: null, flag: '"mlgin" is not a unit I know. Pick the unit.' });
+    for (const line of ['2 ozz rum', '1 tspn sugar', '15 lm lime', '1 teaspon salt', '20 mililiters syrup', '3 dashs Angostura', '5 grm salt', '2 dahs bitters', '1 zo rum']) {
+      const r = parseLine(line);
+      expect(r?.unit, line).toBeNull();
+      expect(r?.qty, line).not.toBeNull();
+      expect(r?.flag, line).toMatch(/is not a unit I know/);
+    }
+  });
+
+  it('flags a measure off the menu by name', () => {
+    expect(parseLine('1 shot gin')?.flag).toBe('"shot" is not on the unit menu. Pick the unit.');
+  });
+
+  it('still counts what a bar counts, with no flag', () => {
+    const counted = [
+      '2 limes', '1 lime', '12 mint leaves', '3 cherries', '2 olives', '1 egg white', '2 strawberries', '1 sugar cube',
+      '2 cloves', '1 peach', '1 orange', '3 raspberries', '2 basil leaves', '1 cucumber slice', '4 coffee beans',
+      '2 cardamom pods', '1 banana', '2 pineapple chunks', '1 star anise', '1 grapefruit', '1 lemon', '2 kiwis', '1 mango',
+    ];
+    for (const line of counted) expect(parseLine(line), line).toMatchObject({ unit: 'each', flag: null });
+    expect(parseLine('30 ml gin')?.flag).toBeNull();
+    // One-letter units (l, g, x) are not typo targets, or every two-letter word would be one.
+    expect(unitTypo('xo')).toBe(false);
+  });
+
+  it('keeps as text an amount followed by something that is not a word', () => {
+    for (const line of ['1:1 syrup 15 ml', '1 . 2 oz gin', '2-3 dashes bitters', '30çay şurubu']) {
+      expect(parseLine(line), line).toMatchObject({ qty: null, unit: null, role: 'untracked', label: line });
+    }
+    expect(parseLine("2 'Old Tom' gin")).toMatchObject({ qty: 2, unit: 'each' });
   });
 });
