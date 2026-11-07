@@ -72,7 +72,14 @@ function mount(props: Partial<Parameters<typeof MailSetup>[0]> = {}) {
   render(
     <MemoryRouter initialEntries={['/communications?tab=mail&setup=1']}>
       <QueryClientProvider client={qc}>
-        <MailSetup status={CONNECTED} sender={SENDER} senderFailed={false} onBack={onBack} {...props} />
+        <MailSetup
+          status={CONNECTED}
+          sender={SENDER}
+          senderFailed={false}
+          conversationWords={null}
+          onBack={onBack}
+          {...props}
+        />
         <Where />
       </QueryClientProvider>
     </MemoryRouter>,
@@ -212,6 +219,76 @@ describe('which address letters leave from', () => {
     const err = await screen.findByTestId('setup-save-failed');
     expect(err.textContent).toBe('That mailbox cannot send for this house any more. Nothing was changed.');
     expect(err.textContent).not.toMatch(/UUID|400/);
+  });
+
+  it('with no choice stored, Save pins the mailbox that is sending now (QA round 26, #980)', async () => {
+    answer(view());
+    api.put.mockResolvedValue({ data: view() });
+    mount();
+    const save = (await screen.findByRole('button', { name: 'Save' })) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith('/communications/mail-setup/sender', { connectionId: MINE }),
+    );
+  });
+
+  it("with no choice stored and a colleague's mailbox sending, Save stays off: it is not yours to pin", async () => {
+    answer(view({ senders: { ...chefSending().senders, chosenConnectionId: null } }));
+    mount();
+    const save = (await screen.findByRole('button', { name: 'Save' })) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+  });
+
+  it('after a save, says "Saved." in a polite live region that was there before it spoke', async () => {
+    answer(chefSending());
+    api.put.mockResolvedValue({ data: view() });
+    mount();
+    const region = (await screen.findByTestId('setup-saved'));
+    expect(region.textContent).toBe('');
+    fireEvent.click(screen.getAllByRole('radio')[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByTestId('setup-saved').textContent).toBe('Saved.'));
+    expect(screen.getByTestId('setup-saved')).toBe(region);
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('a refused save does not say "Saved."', async () => {
+    answer(chefSending());
+    api.put.mockRejectedValue(fail(400));
+    mount();
+    fireEvent.click((await screen.findAllByRole('radio'))[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await screen.findByTestId('setup-save-failed');
+    expect(screen.getByTestId('setup-saved').textContent).toBe('');
+  });
+
+  it("says where a vendor's replies go, in the sentence the intake sheet uses", async () => {
+    answer(view());
+    const words = "Letters leave from me@house.test; replies still arrive through notifications@mudavym.com.";
+    mount({ conversationWords: words });
+    expect((await screen.findByTestId('setup-conversation-words')).textContent).toBe(words);
+  });
+
+  it('says nothing about replies when the tab has no sentence, and invents none', async () => {
+    answer(view());
+    mount({ conversationWords: null });
+    await screen.findByTestId('setup-sender-line');
+    expect(screen.queryByTestId('setup-conversation-words')).toBeNull();
+  });
+
+  it("a failed read of the house's chosen mailbox says so, never 'no mailbox is chosen'", async () => {
+    answer(
+      view({
+        senders: { failed: "The house's chosen mailbox could not be read.", chosenConnectionId: null, choices: [] },
+      }),
+    );
+    mount();
+    expect((await screen.findByTestId('setup-senders-unread')).textContent).toMatch(
+      /^The house's chosen mailbox could not be read\./,
+    );
+    expect(screen.queryByText(/No mailbox is chosen/)).toBeNull();
   });
 
   it('staff see the same list, read-only, with no Save', async () => {
