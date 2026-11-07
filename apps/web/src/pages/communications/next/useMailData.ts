@@ -121,12 +121,14 @@ export interface SenderWithReader extends SenderIdentity {
   reader?: MailboxReader & { lastRun?: unknown };
 }
 
-export function useMailSender() {
+/** `poll`: re-read every 30 s while the Mail tab is shown (QA round 16, finding 6). */
+export function useMailSender(poll = false) {
   const house = useHouse();
   return useQuery<SenderWithReader>({
     queryKey: ['house-letter-sender', house],
     queryFn: async () => (await apiClient.get<SenderWithReader>('/communications/letters/sender')).data,
     enabled: Boolean(house),
     staleTime: 60_000,
+    refetchInterval: poll ? MAIL_POLL_MS : false,
   });
 }

@@ -261,23 +261,6 @@ export function unrecordedDoorStatus(): DoorStatus {
   };
 }
 
-/**
- * The one line under the header that opens the intake sheet. Kept for the
- * tab until it reads mailStatusLine (the next change in this stack).
- */
-export function intakeLine(status: DoorStatus, reader: MailboxReader | null, now: number): string {
-  if (status.state === 'reading' && reader?.lastReadAt) {
-    const last = at(reader.lastReadAt);
-    return `Your mailbox was read ${shortSpan(now - (last ?? now))} ago`;
-  }
-  if (status.state === 'behind' && reader?.lastReadAt) {
-    const last = at(reader.lastReadAt) ?? now;
-    return `Your mailbox is behind by ${Math.floor((now - last) / MIN)} min`;
-  }
-  if (status.state === 'switched_off') return 'Your mailbox is connected, but not being read';
-  return 'Mail arrival: cannot tell yet';
-}
-
 export type MailStatusState = 'checking' | 'connected' | 'switched_off' | 'needs_attention' | 'not_connected' | 'unknown';
 
 export interface MailStatus {

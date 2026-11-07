@@ -2,21 +2,24 @@
  * The Mail tab of /communications (founder /goal 2026-11-07: "a little tab as
  * mail inside /communication to access all the convos with people"; sw-walk
  * mail proposal §2.1-2.3, Phase C L9 narrowed). A people page, so it stays
- * simple: one sentence of who is waiting, one row per person, their threads,
- * then the thread. The only dense surface is the intake sheet behind the one
- * line under the header.
+ * simple: one sentence of who is waiting, one status line ("Connected · last
+ * letter 4 min ago" or "Not connected"), one row per person, their threads,
+ * then the thread. The only dense surface is the intake sheet behind the
+ * status line.
  *
  * The address is the state (proposal F11): `?with=vendor:<id>` opens a
  * person's threads and `?thread=<thread_key>` opens a thread, so a refresh, a
- * shared link and Back all keep it. Opening one replaces the address in
- * place, as an opened draft does (COMMS-W35).
+ * shared link and Back all keep it. Opening one pushes a history entry, so
+ * the browser's Back steps thread → person → everyone and stays on
+ * /communications (QA round 16, N2). The in-app Back steps that history, or
+ * replaces the address on a link opened cold, so it never leaves the page.
  *
  * Only vendor mail is stored (`storedKinds`), so there are no Team, Guests or
  * Strangers chips; a quiet line says what the list does not cover (F5).
  */
 
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, MessageCircle } from 'lucide-react';
 import { useAuth } from '../../../contexts/AuthContext';
 import { EM, MONO, SANS, failedReadWords, fmtWhen, managesHouse } from './cm-format';
@@ -26,9 +29,8 @@ import {
   channelWords,
   emptyListWords,
   headerSentence,
-  houseMailboxStatus,
-  intakeLine,
   lastWriterWords,
+  mailStatusLine,
   storedKindsLine,
   todayLine,
   type MailboxReader,
@@ -311,28 +313,38 @@ export function MailTab({
   const [params, setParams] = useSearchParams();
   const [waitingOnly, setWaitingOnly] = useState(false);
   const [sheet, setSheet] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
   const summaryQ = useMailSummary(true);
-  const senderQ = useMailSender();
+  const senderQ = useMailSender(true);
   const now = Date.now();
 
   const summary = summaryQ.data ?? null;
   const reader: MailboxReader | null = senderQ.data?.reader ?? null;
-  const doorStatus = houseMailboxStatus(reader, { readFailed: senderQ.isError, now });
+  // A reply with no reader is as unread as a failed one (QA S5b).
+  const readerFailed = senderQ.isError || (senderQ.data !== undefined && !senderQ.data.reader);
+  const status = mailStatusLine(reader, summary, { readerFailed, summaryFailed: summaryQ.isError, now });
   const withKey = params.get('with');
   const threadKey = params.get('thread');
 
-  // The address is the state; opening replaces it in place (COMMS-W35).
-  const go = (set: Record<string, string | null>) => {
+  // The address is the state; opening pushes an entry the tab marks as its own.
+  const go = (set: Record<string, string | null>, how: 'push' | 'replace' = 'push') => {
     const next = new URLSearchParams(params);
     next.set('tab', 'mail');
     for (const [k, v] of Object.entries(set)) {
       if (v === null) next.delete(k);
       else next.set(k, v);
     }
-    setParams(next, { replace: true });
+    setParams(next, how === 'push' ? { state: { mail: true } } : { replace: true });
+  };
+  // In-app Back: step the history the tab pushed; a link opened cold has no
+  // such entry behind it, so replace the address instead of leaving the page.
+  const back = (set: Record<string, string | null>) => {
+    if ((location.state as { mail?: boolean } | null)?.mail) navigate(-1);
+    else go(set, 'replace');
   };
 
-  const tone = doorStatus.tone === 'warn' ? 'var(--warn, #96601A)' : doorStatus.tone === 'alarm' ? 'var(--alarm, #A33A2B)' : 'var(--ink-2, #4F473C)';
+  const tone = status.tone === 'warn' ? 'var(--warn, #96601A)' : status.tone === 'alarm' ? 'var(--alarm, #A33A2B)' : 'var(--ink-2, #4F473C)';
 
   return (
     <div className="grid gap-4" data-testid="mail-tab" style={{ fontFamily: SANS }}>
@@ -347,21 +359,26 @@ export function MailTab({
         <p data-testid="mail-today" style={{ margin: 0, fontSize: 12.5, color: 'var(--ink-2, #4F473C)' }}>
           {todayLine(summary)}
         </p>
-        <button
-          type="button"
-          data-testid="intake-line"
-          onClick={() => setSheet(true)}
-          style={{ ...LINK_BUTTON, justifySelf: 'start', fontWeight: 500, color: tone, textDecoration: 'underline', textUnderlineOffset: 3 }}
-        >
-          {intakeLine(doorStatus, reader, now)} · doors and addresses
-        </button>
+        <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1" style={{ margin: 0 }}>
+          <span data-testid="mail-status" data-state={status.state} role="status" style={{ fontSize: 12.5, fontWeight: 500, color: tone }}>
+            {status.words}
+          </span>
+          <button
+            type="button"
+            data-testid="intake-line"
+            onClick={() => setSheet(true)}
+            style={{ ...LINK_BUTTON, fontWeight: 500, textDecoration: 'underline', textUnderlineOffset: 3 }}
+          >
+            How mail reaches the house
+          </button>
+        </p>
       </header>
 
       {threadKey ? (
         <MailThread
           threadKey={threadKey}
           backLabel={withKey ? 'Back to their threads' : 'Back to everyone'}
-          onBack={() => go({ thread: null })}
+          onBack={() => back({ thread: null })}
           onOpenPerson={(key) => go({ with: key, thread: null })}
           canReply={canReply}
           draftedOrderIds={draftedOrderIds}
@@ -371,7 +388,7 @@ export function MailTab({
       ) : withKey ? (
         <PersonThreads
           withKey={withKey}
-          onBack={() => go({ with: null })}
+          onBack={() => back({ with: null })}
           onOpenThread={(key) => go({ thread: key })}
         />
       ) : (
@@ -399,9 +416,9 @@ export function MailTab({
         summary={summary}
         summaryFailed={summaryQ.isError}
         reader={reader}
-        readerFailed={senderQ.isError}
-        senderAddress={senderQ.data?.address ?? null}
-        senderWords={senderQ.data?.words ?? null}
+        readerFailed={readerFailed}
+        sender={senderQ.data ?? null}
+        senderFailed={senderQ.isError}
         conversationWords={senderQ.data?.conversation?.words ?? null}
         now={now}
       />

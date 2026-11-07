@@ -11,7 +11,6 @@ import {
   emptyListWords,
   headerSentence,
   houseMailboxStatus,
-  intakeLine,
   lastStoredWords,
   lastWriterWords,
   letterAt,
@@ -130,7 +129,6 @@ describe('the house mailbox door', () => {
   it('is reading when the last read is recent', () => {
     const st = houseMailboxStatus(reader(), { readFailed: false, now: NOW });
     expect(st).toMatchObject({ state: 'reading', words: 'Reading. Last read 3 min ago.', tone: 'seal' });
-    expect(intakeLine(st, reader(), NOW)).toBe('Your mailbox was read 3 min ago');
   });
 
   it('is behind past the reading window, said as a span (hours, not 180 min)', () => {
@@ -172,9 +170,7 @@ describe('the house mailbox door', () => {
 
   it('is switched off when connected but not enabled', () => {
     const r = reader({ enabled: false });
-    const st = houseMailboxStatus(r, { readFailed: false, now: NOW });
-    expect(st.state).toBe('switched_off');
-    expect(intakeLine(st, r, NOW)).toBe('Your mailbox is connected, but not being read');
+    expect(houseMailboxStatus(r, { readFailed: false, now: NOW }).state).toBe('switched_off');
   });
 
   it('cannot tell when no read was ever recorded, or the grants or the reader could not be read', () => {
