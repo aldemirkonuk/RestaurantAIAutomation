@@ -194,6 +194,45 @@ describe("promo-extract (deterministic, no LLM)", () => {
       expect(p.ended).toBe(true);
     });
 
+    it('a stated year in "June 30, 2027" is kept: the offer runs into next year', () => {
+      const p = extractPromotion("Offer", "Offer valid through June 30, 2027. 10% off", READ)!;
+      expect(p.valid_until).toBe("2027-06-30");
+      expect(p.ended).toBe(false);
+    });
+
+    it('"valid until May 31, 2027" is May 2027, not May 2026', () => {
+      const p = extractPromotion("Offer", "15% off Rioja, valid until May 31, 2027", READ)!;
+      expect(p.valid_until).toBe("2027-05-31");
+      expect(p.ended).toBe(false);
+    });
+
+    it('a stated year in "Nov 6, 2026" read on Nov 7 ended yesterday', () => {
+      const p = extractPromotion("Offer", "10% off, offer ends Nov 6, 2026.", READ)!;
+      expect(p.valid_until).toBe("2026-11-06");
+      expect(p.ended).toBe(true);
+    });
+
+    it("a passed date with no validity cue does not end a live offer", () => {
+      const p = extractPromotion(
+        "Special offer",
+        "Special offer: 20% off all Barolo. Harvest finished Sept 3",
+        READ,
+      )!;
+      expect(p.discount_pct).toBe(20);
+      expect(p.valid_until).toBeNull();
+      expect(p.ended).toBe(false);
+    });
+
+    it("a cue-less scan passes over a passed date to a later one", () => {
+      const p = extractPromotion(
+        "Tasting",
+        "20% off Barolo. Harvest finished Sept 3; tasting on Nov 20",
+        READ,
+      )!;
+      expect(p.valid_until).toBe("2026-11-20");
+      expect(p.ended).toBe(false);
+    });
+
     it('"Market 12 cases" is not March 12', () => {
       const p = extractPromotion("By the case", "Market 12 cases of Rioja at $15 off per case.", READ)!;
       expect(p.valid_until).toBeNull();
@@ -224,6 +263,25 @@ describe("promo-extract (deterministic, no LLM)", () => {
       const p = extractPromotion("Deal", "$2 off each bottle of Chablis, 6-bottle case.", NOW)!;
       expect(p.amount_unit).toBe("bottle");
       expect(p.pack_size).toBe(6);
+    });
+
+    it.each([
+      ["$15 off any case of Rioja.", null],
+      ["$15 off case orders this month.", null],
+      ["$15 off per mixed case.", null],
+      ["$15 off each 12-bottle case.", 12],
+      ["$15 off your case of Rioja.", null],
+      ["Case special: $15 off Rioja this month.", null],
+    ])('a case named in "%s" makes the amount per case', (body, pack) => {
+      const p = extractPromotion("By the case", body, NOW)!;
+      expect(p.discount_amount).toBe(15);
+      expect(p.amount_unit).toBe("case");
+      expect(p.pack_size).toBe(pack);
+    });
+
+    it('"$2 off any bottle" is per bottle', () => {
+      const p = extractPromotion("Deal", "$2 off any bottle of Chablis.", NOW)!;
+      expect(p.amount_unit).toBe("bottle");
     });
 
     it("an amount with no unit says none, and keeps its old dedup signature", () => {
