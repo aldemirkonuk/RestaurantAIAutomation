@@ -50,6 +50,7 @@ function makeService(opts: {
       order: () => b,
       limit: () => b,
       in: () => b,
+      like: () => b,
       upsert: (payload: any) => {
         rec.inserts.push({ table, payload });
         return Promise.resolve({ data: null, error: null });

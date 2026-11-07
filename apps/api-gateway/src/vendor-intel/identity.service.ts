@@ -49,9 +49,11 @@ import {
   buildIdentityKey,
   identityDisplayLabel,
   identityKeyBeforeFold,
+  likePatternBeforeFold,
   normaliseGtin,
   parseLwin,
   readIdentity,
+  storedRowIsBeforeFold,
 } from "./beverage-identity";
 import {
   LWIN_ATTRIBUTION,
@@ -400,6 +402,39 @@ export class IdentityService {
         .select("id, standing, curation_state")
         .eq("identity_key", keyBeforeFold)
         .maybeSingle();
+    }
+    // An ASCII or caps spelling has no "ı" to rebuild the pre-fold key from
+    // (QA round 10c, F1): read the rows that could be its pre-fold form and
+    // take the oldest that storedRowIsBeforeFold accepts. Past the limit is a
+    // missed match (a second row, as before this fix), never a wrong one.
+    if (!existing.error && !existing.data) {
+      const producerLike = likePatternBeforeFold(reading.producerNormalised);
+      const nameLike = likePatternBeforeFold(reading.nameNormalised);
+      if (producerLike || nameLike) {
+        const candidates = await this.databaseService.supabase
+          .from("beverage_identities")
+          .select(
+            "id, standing, curation_state, identity_key, producer_normalised, name_normalised, vintage_text, size_ml, pack, display_label, created_at",
+          )
+          .eq("vintage_text", reading.vintageText)
+          .like("producer_normalised", producerLike ?? reading.producerNormalised)
+          .like("name_normalised", nameLike ?? reading.nameNormalised)
+          .order("created_at", { ascending: true })
+          .limit(200);
+        if (candidates.error) {
+          throw new BadRequestException(
+            `The identity register could not be read (${candidates.error.message}). Nothing was written.`,
+          );
+        } else {
+          const match = ((candidates.data ?? []) as any[]).find((row) =>
+            storedRowIsBeforeFold(params.subject, reading, row),
+          );
+          if (match) {
+            existingKey = match.identity_key;
+            existing = { ...existing, data: match, error: null };
+          }
+        }
+      }
     }
     if (existing.error) {
       throw new BadRequestException(
