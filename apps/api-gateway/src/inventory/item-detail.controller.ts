@@ -1,23 +1,28 @@
 import {
+  Body,
   Controller,
   Get,
   HttpException,
   HttpStatus,
   Param,
+  Post,
   UseGuards,
 } from "@nestjs/common";
-import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { ItemUsedInService } from "./item-used-in.service";
 import { ItemFiguresService, MoneyView } from "./item-figures.service";
+import { HouseItemService } from "./house-item.service";
+import { CreateHouseItemDto } from "./dto/house-item.dto";
 
 /** Registered by InventoryModule beside this controller. */
-export const ITEM_DETAIL_PROVIDERS = [ItemUsedInService, ItemFiguresService];
+export const ITEM_DETAIL_PROVIDERS = [ItemUsedInService, ItemFiguresService, HouseItemService];
 
 /**
- * The /inventory item drawer's reads (proposal §3 I4/I10/I11). :restaurantId is scoped
+ * The /inventory item drawer's reads (proposal §3 I4/I10/I11) and "carry
+ * this" for a good the wine library does not hold. :restaurantId is scoped
  * by the global TenantGuard; :itemId by the house filter in readHouseItem.
  */
 @ApiTags("inventory")
@@ -27,6 +32,7 @@ export class ItemDetailController {
   constructor(
     private readonly usedInService: ItemUsedInService,
     private readonly figuresService: ItemFiguresService,
+    private readonly houseItems: HouseItemService,
     private readonly organizations: OrganizationsService,
   ) {}
 
@@ -69,6 +75,22 @@ export class ItemDetailController {
       if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "This item's figures could not be read",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
+  @Post(":restaurantId/house-items")
+  @ApiOperation({ summary: "Carry a food or other good the wine library does not hold" })
+  @ApiResponse({ status: 201, description: "Carried" })
+  @ApiResponse({ status: 409, description: "This house already carries it" })
+  async carry(@Param("restaurantId") restaurantId: string, @Body() dto: CreateHouseItemDto) {
+    try {
+      return await this.houseItems.carry(restaurantId, dto);
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        error.message || "The item could not be added",
         HttpStatus.INTERNAL_SERVER_ERROR,
       );
     }
