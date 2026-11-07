@@ -32,7 +32,6 @@ Security:
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -52,6 +51,14 @@ from services.override_service import (
     _apply_override_to_submission,
     _maybe_promote_submission,
     check_and_update_trust,
+)
+from services.library_promotion import (
+    ALREADY_IN_LIBRARY,
+    OUTCOME_WORDS,
+    PROMOTED,
+    build_library_row,
+    insert_library_row,
+    parse_vintage,
 )
 
 logger = logging.getLogger(__name__)
@@ -931,7 +938,8 @@ def promote_to_library(
     POST /api/v1/studio/promote — promote a submission to master_wine_library (D-09, D-06).
     T-15-03: only developer/review_admin can promote.
     T-15-04: data read from server-side submission, client only sends submission_id.
-    T-15-05: promoted_by + promoted_at provide audit trail.
+    T-15-05: who promoted is in the server log below; master_wine_library has
+             no promoted_by/promoted_at columns (the insert used to send them).
     """
     supabase = _get_supabase()
     if not supabase:
@@ -967,16 +975,6 @@ def promote_to_library(
     wine_name = _get_field("wine_name")
     producer = _get_field("producer")
     vintage_raw = _get_field("vintage")
-    price_bottle_raw = _get_field("price_bottle")
-    price_glass_raw = _get_field("price_glass")
-    region = _get_field("region")
-    country = _get_field("country")
-    grape_variety = _get_field("grape_variety")
-    primary_type = _get_field("primary_type")
-    color = _get_field("color")
-    sweetness_level = _get_field("sweetness_level")
-    tasting_notes = _get_field("tasting_notes")
-    description = _get_field("description")
 
     # Validate minimum required data
     if not wine_name or not str(wine_name).strip():
@@ -984,21 +982,8 @@ def promote_to_library(
             status_code=422, detail="Submission has no wine_name — cannot promote"
         )
 
-    # Parse numeric fields
-    try:
-        vintage = int(vintage_raw) if vintage_raw else None
-    except (ValueError, TypeError):
-        vintage = None
-
-    try:
-        price = float(price_bottle_raw) if price_bottle_raw else 0.0
-    except (ValueError, TypeError):
-        price = 0.0
-
-    try:
-        price_glass = float(price_glass_raw) if price_glass_raw else None
-    except (ValueError, TypeError):
-        price_glass = None
+    # vintage is an integer column: a year or NULL ("NV" is NULL, never a 500).
+    vintage = parse_vintage(vintage_raw)
 
     # Step 3: dedup check — name + vintage + producer (case-insensitive)
     name_lower = str(wine_name).strip().lower()
@@ -1027,84 +1012,45 @@ def promote_to_library(
         logger.error("promote_to_library: dedup check failed: %s", exc)
         raise HTTPException(status_code=503, detail="Dedup check failed")
 
-    # Step 4: build insert payload
-    insert_payload: dict = {
-        "id": str(uuid.uuid4()),
-        "name": str(wine_name).strip(),
-        "producer": producer,
-        "vintage": vintage,
-        "price": price,
-        "price_glass": price_glass,
-        "region": region,
-        "country": country,
-        "grape_variety": grape_variety,
-        "primary_type": primary_type or color,
-        "color": color,
-        "sweetness_level": sweetness_level,
-        "tasting_notes": tasting_notes,
-        "description": description,
-        "bottle_size_ml": 750,
-        "source": "studio_promotion",
-        "submission_id": body.submission_id,
-    }
-
-    # Add audit fields — gracefully skip if columns don't exist
+    # Step 4: build the row from the table's real columns only. Until
+    # 2026-11-07 this sent price, price_glass, color, sweetness_level,
+    # tasting_notes, description, submission_id, promoted_by and promoted_at --
+    # none of them columns -- and no wine_id, which is NOT NULL; its retry only
+    # stripped three of them, so every manual promote answered 503 (QA round 5,
+    # B-1). Per-column decisions: services/library_promotion.py.
+    insert_payload = build_library_row(
+        _get_field, submission, source="studio_promotion"
+    )
+    # bottle_size_ml stays the column's own default (750); a stated size is
+    # QA BG-13's open question, not this fix's.
     promoted_by = user.get("sub")
-    promoted_at = datetime.now(timezone.utc).isoformat()
-    insert_payload["promoted_by"] = promoted_by
-    insert_payload["promoted_at"] = promoted_at
 
-    # Step 5: insert into master_wine_library
-    try:
-        insert_resp = (
-            supabase.table("master_wine_library").insert(insert_payload).execute()
+    # Step 5: insert into master_wine_library. The unique signature index, not
+    # the name pre-check above, decides a duplicate: it answers 409 like the
+    # pre-check does.
+    outcome, new_id = insert_library_row(supabase, insert_payload)
+    if outcome == ALREADY_IN_LIBRARY:
+        raise HTTPException(status_code=409, detail=OUTCOME_WORDS[ALREADY_IN_LIBRARY])
+    if outcome != PROMOTED:
+        raise HTTPException(
+            status_code=503,
+            detail="The wine could not be added to the wine library. Nothing was added.",
         )
-        new_id = insert_resp.data[0]["id"] if insert_resp.data else insert_payload["id"]
-    except Exception as exc:
-        err_str = str(exc)
-        # If insert fails due to unknown columns (promoted_by/promoted_at/submission_id), retry without them
-        if any(
-            col in err_str for col in ("promoted_by", "promoted_at", "submission_id")
-        ):
-            logger.warning(
-                "promote_to_library: retrying insert without audit columns: %s", exc
-            )
-            for col in ("promoted_by", "promoted_at", "submission_id"):
-                insert_payload.pop(col, None)
-            try:
-                insert_resp = (
-                    supabase.table("master_wine_library")
-                    .insert(insert_payload)
-                    .execute()
-                )
-                new_id = (
-                    insert_resp.data[0]["id"]
-                    if insert_resp.data
-                    else insert_payload["id"]
-                )
-            except Exception as exc2:
-                logger.error("promote_to_library: insert failed on retry: %s", exc2)
-                raise HTTPException(
-                    status_code=503, detail="Failed to insert into master_wine_library"
-                )
-        else:
-            logger.error("promote_to_library: insert failed: %s", exc)
-            raise HTTPException(
-                status_code=503, detail="Failed to insert into master_wine_library"
-            )
 
-    # Step 6: mark submission as promoted (non-fatal if column missing)
+    # Step 6: link the submission to its library row (non-fatal: the wine is
+    # already in the library). matched_master_id is the link the rest of the
+    # product reads; the old promoted_to_library flag was never a column.
     try:
         supabase.table("master_wine_library_submissions").update(
-            {"promoted_to_library": True}
+            {"matched_master_id": new_id}
         ).eq("id", body.submission_id).execute()
     except Exception as exc:
         logger.warning(
-            "promote_to_library: could not update promoted_to_library flag (non-fatal): %s",
+            "promote_to_library: could not link submission to its library row (non-fatal): %s",
             exc,
         )
 
-    # new_id is not wrapped: it is the master_wine_library uuid PK, server-generated.
+    # new_id is not wrapped: it is the master_wine_library uuid PK this server generated.
     logger.info(
         "promote_to_library: promoted submission %s → wine %s by %s",
         sanitize_for_log(body.submission_id),
