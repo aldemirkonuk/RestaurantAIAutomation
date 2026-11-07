@@ -68,7 +68,8 @@
  * gap; D8's "the live cover or else the waiter" (`:92`) is said of alerts,
  * and these facts carry no live cover. So credit follows the visit, not the
  * Seat tap: a closed greeting gap goes to the first visitor, who may be the
- * person who seated; an open one counts for the table only.
+ * person who seated; an open one past T goes to no waiter's figure, only to
+ * the table's (when the table is not hidden).
  *
  * Handoff rule (Hybrid attribution, kept): when the waiter who closes a gap is
  * different from the waiter on the previous anchor, credit the **previous**
