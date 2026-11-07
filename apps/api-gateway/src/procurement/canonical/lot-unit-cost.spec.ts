@@ -1,5 +1,5 @@
 // QA round 7c B1: the rule itself. The seam tests are in delivery-stock.service.spec.ts.
-import { LotCostLine, perBottleLotCost, toLotCostPrecision } from "./lot-unit-cost";
+import { LotCostLine, perBottleLotCost, proposalPerBottle, toLotCostPrecision } from "./lot-unit-cost";
 
 const line = (over: Partial<LotCostLine> = {}): LotCostLine => ({
   unit_price: 264, uom: "case", pack_size: 12, price_base_qty: null, price_base_uom: null, ...over,
@@ -60,6 +60,41 @@ describe("perBottleLotCost", () => {
     // Totals that agree, to the cent, pass.
     expect(cost({ qty_bottles: 24, line_total: "528.00" })).toBe(22);
     expect(cost({ uom: "bottle", unit_price: 142, price_base_qty: 12, qty_bottles: 12, line_total: 142 })).toBe(11.8333);
+  });
+
+  it("QA 10a (2): a bare price on a bottle row whose bottles come in cases is decided by its total, or refused", () => {
+    const row = { uom: "bottle", pack_size: 12, qty_bottles: 24 };
+    expect(refusal(row)).toMatch(/bottles that come 12 to a case and prints 264 .* a bottle's price or a case's is not known/);
+    expect(refusal({ ...row, uom: "each" })).toMatch(/eachs that come 12/);
+    // A total that contradicts the bottle reading is refused by the QA 9a check.
+    expect(refusal({ ...row, line_total: 528 })).toMatch(/totals 528/);
+    expect(refusal({ ...row, line_total: 528, qty_bottles: null })).toMatch(/not known/);
+    // The total bears the bottle reading out (a credit note's signs too), or the paper printed its base.
+    expect(cost({ ...row, line_total: 6336 })).toBe(264);
+    expect(cost({ ...row, line_total: -6336, qty_bottles: -24 })).toBe(264);
+    expect(cost({ ...row, price_base_uom: "bottle" })).toBe(264);
+    expect(cost({ ...row, pack_size: 1 })).toBe(264);
+  });
+
+  it("QA 10a (3)+(4): a piece or bottle glyph on an each line costs; a credit note's total is checked by magnitude", () => {
+    for (const uom of ["pcs", "btl.", "Stk", "şişe"])
+      expect(cost({ uom: "each", pack_size: 1, unit_price: 22, qty_bottles: 24, line_total: 528, printed: { uom } })).toBe(22);
+    expect(refusal({ uom: "each", pack_size: 1, printed: { uom: "kutu" } })).toMatch(/"kutu"/);
+    // Credit note filed as an invoice: count and total negative, price positive.
+    expect(refusal({ uom: "bottle", pack_size: 1, qty_bottles: -24, line_total: -528 })).toMatch(/totals -528 for -24 counted, but 264\.0000 each makes -6336/);
+    expect(refusal({ uom: "bottle", pack_size: 1, qty_bottles: 24, line_total: -528 })).toMatch(/totals -528/);
+    expect(cost({ qty_bottles: -24, line_total: -528 })).toBe(22);
+    expect(refusal({ uom: "bottle", pack_size: 1, qty_bottles: 24, line_total: 0 })).toMatch(/totals 0 for 24/);
+  });
+
+  it("QA 12b C: a proposal is read in the base its line's own facts settle, total included", () => {
+    const row = line({ uom: "bottle", pack_size: 12, qty_bottles: 24, line_total: 6336 });
+    const r = proposalPerBottle(250, row);
+    expect(r.ok && [r.unitCost, r.basis]).toEqual([250, "invoice price 250 per bottle; booked as-is"]);
+    expect(proposalPerBottle(240, line()).ok && (proposalPerBottle(240, line()) as { unitCost: number }).unitCost).toBe(20);
+    expect(proposalPerBottle(250, { ...row, line_total: null })).toMatchObject({ kind: "refused", reason: expect.stringMatching(/prints 264 for one/) });
+    expect(proposalPerBottle(240, line({ unit_price: null })).ok).toBe(true);
+    expect(proposalPerBottle(0, line())).toEqual({ ok: false, kind: "no_price" });
   });
 
   it("rounds half away from zero, as Postgres numeric does", () => {

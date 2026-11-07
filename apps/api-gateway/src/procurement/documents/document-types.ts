@@ -164,13 +164,27 @@ export function normalizeUom(raw?: string | null): Uom | null {
     // `ı` (U+0131, dotless i) has no decomposition, so the pass above cannot
     // reach it. Folded explicitly rather than left to fall through as null.
     .replace(/ı/g, "i")
-    .replace(/[\s_-]+/g, "");
+    // `btl.`, `St.`, `bottle(s)`: an abbreviation's dot and a plural's `(s)`
+    // say nothing about the unit (QA 10a (3)).
+    .replace(/\((?:s|es|e)\)$/, "")
+    .replace(/[\s_.-]+/g, "");
   switch (s) {
     case "bottle":
     case "bottles":
     case "btl":
     case "bt":
     case "sise": // TR `şişe`, folded to `sise` by the pass above.
+    case "siseler":
+    case "bouteille": // FR
+    case "bouteilles":
+    case "botella": // ES
+    case "botellas":
+    case "bottiglia": // IT
+    case "bottiglie":
+    case "flasche": // DE
+    case "flaschen":
+    case "fles": // NL
+    case "flessen":
       return "bottle";
     case "case":
     case "cases":
@@ -196,6 +210,16 @@ export function normalizeUom(raw?: string | null): Uom | null {
     case "unit":
     case "units":
     case "adet": // TR, a countable piece. NOT `bottle` — see the header note.
+    case "ad": // TR, `Ad.` / `AD`, the abbreviation of `adet`.
+    case "c62": // UN/ECE Rec 20 "one", what a UBL-TR e-Fatura prints for `adet`.
+    case "h87": // UN/ECE Rec 20 "piece".
+    case "pcs": // EN piece(s), like `adet` a count, not a container (QA 10a (3)).
+    case "pc":
+    case "piece":
+    case "pieces":
+    case "stk": // DE/NL/Nordic Stück / stuk / styk.
+    case "st":
+    case "stuck": // DE `Stück`, folded by the pass above.
       return "each";
     case "liter":
     case "liters":
@@ -203,6 +227,7 @@ export function normalizeUom(raw?: string | null): Uom | null {
     case "litres":
     case "l":
     case "lt":
+    case "ltr": // UN/ECE Rec 20 `LTR`, as a UBL-TR e-Fatura prints it.
       return "liter";
     default:
       return null;

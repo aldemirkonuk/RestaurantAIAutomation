@@ -277,7 +277,10 @@ export class ProposeDto {
   @IsNumber()
   qtyProposedBottles?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      "A counter to the line's printed unit price, so IN THAT LINE'S PRICE BASE (per case on a case line). Verification converts it to one bottle as it does the printed price; a price on no line has no unit and is not costed (QA 10a).",
+  })
   @IsOptional()
   @IsNumber()
   unitPriceProposed?: number;
