@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  CODE_REFUSAL_SENTENCE,
   VERIFICATION_MAIL_KEY,
+  codeDigits,
+  codeRefusal,
   noteSignUpMail,
   readSignUpMail,
   resendOutcome,
@@ -74,5 +77,32 @@ describe('the sign-up hand-off', () => {
     })
     expect(() => noteSignUpMail('sent')).not.toThrow()
     expect(readSignUpMail()).toBeNull()
+  })
+})
+
+describe('codeRefusal', () => {
+  const err = (status: number, code?: string, message = 'server prose') => ({
+    response: { status, data: { code, message } },
+  })
+  it('words a refusal from its status and code only', () => {
+    expect(codeRefusal(err(400, 'CODE_REFUSED'))).toBe('wrong')
+    expect(codeRefusal(err(400))).toBe('wrong')
+    expect(codeRefusal(err(400, 'CODE_SPENT'))).toBe('spent')
+    expect(codeRefusal(err(429, 'CODE_LOCKED_FOR_THE_DAY'))).toBe('locked')
+    expect(codeRefusal(err(429))).toBe('busy')
+    expect(codeRefusal(err(401, 'SIGN_IN_TO_VERIFY'))).toBe('sign-in')
+    expect(codeRefusal(err(503))).toBe('failed')
+    expect(codeRefusal(new Error('network'))).toBe('failed')
+    for (const sentence of Object.values(CODE_REFUSAL_SENTENCE)) {
+      expect(sentence).not.toMatch(/server prose/)
+    }
+  })
+})
+
+describe('codeDigits', () => {
+  it('drops spaces and dashes and keeps six digits', () => {
+    expect(codeDigits(' 123-456 ')).toBe('123456')
+    expect(codeDigits('12 34')).toBe('1234')
+    expect(codeDigits('1234567')).toBe('123456')
   })
 })

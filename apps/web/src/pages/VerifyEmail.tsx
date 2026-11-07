@@ -11,12 +11,16 @@ import { getOnboardingProgress } from '../services/api/menus'
 import { apiClient, getErrorMessage } from '../services/api/client'
 import { tokenHouse } from '../lib/houseMemory'
 import {
+  CODE_REFUSAL_SENTENCE,
   clearSignUpMail,
+  codeDigits,
+  codeRefusal,
   noteSignUpMail,
   readSignUpMail,
   resendOutcome,
   signUpMailSentence,
   verificationMailSentence,
+  type CodeRefusal,
   type VerificationResendAnswer,
 } from '../lib/verificationMail'
 
@@ -48,6 +52,11 @@ export function VerifyEmail() {
   const [error, setError] = useState<string | null>(null)
   const [lastResent, setLastResent] = useState<Date | null>(null)
   const [refusal, setRefusal] = useState<'sign-in' | 'other-account' | null>(null)
+  // OB-6: the code box (F3: "the tab that signed up takes the code").
+  const [code, setCode] = useState('')
+  const [codeBusy, setCodeBusy] = useState(false)
+  const [codeRefused, setCodeRefused] = useState<CodeRefusal | null>(null)
+  const codeInFlight = useRef(false)
   const verifyInFlight = useRef(false)
   // OB-6: what became of the latest verification mail, one state for the
   // whole page. The sign-up's send is kept in session storage by
@@ -143,6 +152,33 @@ export function VerifyEmail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, loading, user])
 
+  /** POST the six digits; never twice at once, never fewer than six. */
+  const submitCode = async (digits: string) => {
+    if (digits.length !== 6 || codeInFlight.current) return
+    codeInFlight.current = true
+    setCodeBusy(true)
+    setCodeRefused(null)
+    setError(null)
+    try {
+      const { data } = await apiClient.post<SessionPair>('/auth/verify-email', {
+        code: digits,
+      })
+      await finishVerified(data)
+    } catch (err: unknown) {
+      setCodeRefused(codeRefusal(err))
+    } finally {
+      codeInFlight.current = false
+      setCodeBusy(false)
+    }
+  }
+
+  const onCodeChange = (raw: string) => {
+    const digits = codeDigits(raw)
+    setCode(digits)
+    // Typing the sixth digit, or pasting all six, submits by itself.
+    if (digits.length === 6) void submitCode(digits)
+  }
+
   const retrySession = () => {
     if (verifiedPair.current) void finishVerified(verifiedPair.current)
   }
@@ -221,7 +257,80 @@ export function VerifyEmail() {
     }
   }
 
+  // The code box: signed in, no link in the URL, not yet verified (F3). A
+  // signed-out person keeps today's sign-in path and sees no box.
+  const canTypeCode = !token && !loading && Boolean(user) && user?.emailVerified !== true
   const mailTrouble = mailState === 'not_sent' || mailState === 'unconfirmed'
+
+  const codeBox = canTypeCode ? (
+    <form
+      data-testid="verify-code-box"
+      className={publicDesign ? 'mdv-pub__stack' : 'space-y-3'}
+      onSubmit={(e) => {
+        e.preventDefault()
+        void submitCode(code)
+      }}
+    >
+      <label
+        htmlFor="verify-email-code"
+        className={publicDesign ? undefined : 'block text-sm font-medium text-gray-700'}
+      >
+        Code from the email
+      </label>
+      <input
+        id="verify-email-code"
+        name="code"
+        type="text"
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        placeholder="123456"
+        value={code}
+        onChange={(e) => onCodeChange(e.target.value)}
+        disabled={codeBusy}
+        className={
+          publicDesign
+            ? 'block w-full px-3 py-3 rounded-xl border border-paper-2 bg-paper-0 text-inkm-1 placeholder:text-inkm-3 tracking-[0.3em] focus:outline-none disabled:opacity-60'
+            : 'block w-full px-3 py-3 rounded-xl border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 tracking-[0.3em] focus:outline-none focus:border-wine-600 focus:ring-4 focus:ring-wine-600/10 disabled:opacity-60'
+        }
+      />
+      {codeRefused && (
+        <p
+          role="alert"
+          className={publicDesign ? 'mdv-alert' : 'text-sm text-red-700'}
+          data-testid="verify-code-refusal"
+        >
+          {CODE_REFUSAL_SENTENCE[codeRefused]}
+        </p>
+      )}
+      {codeRefused === 'sign-in' && (
+        <Link
+          className={publicDesign ? 'mdv-link' : 'text-sm text-wine-600 font-semibold'}
+          to="/login?redirect=%2Fverify-email"
+        >
+          Sign in again
+        </Link>
+      )}
+      {publicDesign ? (
+        <button
+          type="submit"
+          className="mdv-btn"
+          disabled={codeBusy || code.length !== 6}
+        >
+          {codeBusy ? 'Checking…' : 'Verify with this code'}
+        </button>
+      ) : (
+        <Button
+          type="submit"
+          variant="outline"
+          className="w-full"
+          size="lg"
+          disabled={codeBusy || code.length !== 6}
+        >
+          {codeBusy ? 'Checking...' : 'Verify with this code'}
+        </Button>
+      )}
+    </form>
+  ) : null
 
   if (publicDesign) {
     return (
@@ -318,10 +427,12 @@ export function VerifyEmail() {
                   )}
                   {mailState !== 'not_sent' && (
                     <p>
-                      Open the verification link in your inbox. If it is
-                      missing, check your spam folder.
+                      Open the verification link in your inbox, or type the
+                      code from the email. If it is missing, check your spam
+                      folder.
                     </p>
                   )}
+                  {codeBox}
                   {user ? (
                     <button
                       className="mdv-btn mdv-btn--seal"
@@ -492,6 +603,7 @@ export function VerifyEmail() {
           </div>
         ) : (
           <div className="space-y-4">
+            {codeBox}
             {mailState !== 'not_sent' && (
               <p className="text-sm text-gray-600 text-center">
                 Didn&apos;t receive the email? Check your spam folder or resend
