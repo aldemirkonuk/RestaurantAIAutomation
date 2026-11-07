@@ -714,8 +714,19 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
   const ownTreated = costedRows.filter((r) => r.own != null).map((r) => r.l);
   const asPrinted = costedRows.filter((r) => r.own == null).map((r) => r.l);
   const shareOnly = ownTreated.filter((l) => l.cost_tax_basis == null);
-  const takenOut = costedLines.reduce((s, l) => s + (l.tax_taken_out ?? 0), 0);
-  const inCost = costedLines.reduce((s, l) => s + (l.tax_in_cost ?? 0), 0);
+  // Once lines are costed, the charges and the discount are shared out in
+  // full, so their tax (less the discount's) is in the paper's tax too.
+  const shared = costedLines.length > 0 && (charges > 0 || D > 0);
+  const headerTax = (k: "tax_taken_out" | "tax_in_cost") =>
+    shared && chargesT.ok && discountT.ok
+      ? (chargesT[k] ?? 0) - (discountT[k] ?? 0)
+      : 0;
+  const takenOut =
+    costedLines.reduce((s, l) => s + (l.tax_taken_out ?? 0), 0) +
+    headerTax("tax_taken_out");
+  const inCost =
+    costedLines.reduce((s, l) => s + (l.tax_in_cost ?? 0), 0) +
+    headerTax("tax_in_cost");
   const taxSaid: string[] = [];
   if (reclaim.reclaims === true) {
     if (takenOut > 0.005) {
@@ -759,6 +770,9 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
   const printsTax = header.tax != null && header.tax !== 0;
   const carriesTax =
     printsTax ||
+    ((charges > 0 || D > 0) &&
+      header.charges_vat_rate_percent != null &&
+      header.charges_vat_rate_percent !== 0) ||
     lines.some(
       (l) =>
         l.stocked !== false &&

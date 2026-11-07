@@ -388,6 +388,80 @@ describe("landedCost: tax follows the line's basis and the house's reclaim (ADR 
     expect(open(r.lines[0]).unresolved).toBe(
       "The paper prints tax of 20.00, but its lines' rates come to 18.00, so no line's cost can be final.",
     );
+    expect(r.tax_said).toBe(
+      "The paper's tax could not be treated, since none of its lines could be costed.",
+    );
+    // The audit's probe: tax 25 on a 100.00 line at 20 % excluded.
+    const probe = cost(
+      { tax: 25 },
+      [
+        line({
+          line_total: 100,
+          unit_price: 100 / 12,
+          price_tax_basis: "excludes_tax",
+          vat_rate_percent: 20,
+        }),
+      ],
+      RECLAIMS,
+    );
+    expect(open(probe.lines[0]).unresolved).toContain(
+      "The paper prints tax of 25.00, but its lines' rates come to 20.00",
+    );
+    expect(probe.tax_said).toBe(
+      "The paper's tax could not be treated, since none of its lines could be costed.",
+    );
+  });
+
+  it("the tax on freight that the paper states is counted in what tax_said reports (audit, #815)", () => {
+    const keeps = cost(
+      {
+        freight: 10,
+        charges_tax_basis: "excludes_tax",
+        charges_vat_rate_percent: 20,
+      },
+      [
+        line({
+          line_total: 100,
+          unit_price: 100 / 12,
+          price_tax_basis: "excludes_tax",
+          vat_rate_percent: 20,
+        }),
+      ],
+      DOES_NOT_RECLAIM,
+    );
+    expect(costed(keeps.lines[0]).landed_value).toBeCloseTo(132, 6);
+    expect(keeps.tax_said).toBe(
+      "Tax of 22.00 is in cost, since the house does not reclaim it.",
+    );
+    const reclaims = cost(
+      {
+        freight: 12,
+        charges_tax_basis: "includes_tax",
+        charges_vat_rate_percent: 20,
+        tax: 22,
+      },
+      [line({ price_tax_basis: "includes_tax", vat_rate_percent: 20 })],
+      RECLAIMS,
+    );
+    expect(costed(reclaims.lines[0]).landed_value).toBeCloseTo(110, 6);
+    expect(reclaims.tax_said).toBe(
+      "Tax of 22.00 printed inside the prices is taken out of cost, since the house reclaims it.",
+    );
+    // Only the freight carries a rate, and no line can be costed.
+    const untreated = cost(
+      {
+        freight: 10,
+        discount_total: 500,
+        charges_tax_basis: "excludes_tax",
+        charges_vat_rate_percent: 20,
+      },
+      [line({ vat_rate_percent: 0 })],
+      RECLAIMS,
+    );
+    open(untreated.lines[0]);
+    expect(untreated.tax_said).toBe(
+      "The paper's tax could not be treated, since none of its lines could be costed.",
+    );
   });
 
   it("freight printed with KDV inside is shared before tax for a house that reclaims", () => {
