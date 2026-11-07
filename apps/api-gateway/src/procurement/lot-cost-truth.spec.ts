@@ -499,7 +499,10 @@ function makeDb(orderOverrides: Record<string, any> = {}) {
       };
       return q;
     },
+    // The order's verification lease (H-1, round 5) is free in this fixture.
     rpc: async (name: string, args: Record<string, any>) => {
+      if (name === "take_receipt_verification_lease")
+        return { data: "taken", error: null };
       calls.rpc.push({ name, args });
       return { data: null, error: null };
     },
@@ -606,7 +609,10 @@ function makeSelectScopedDb(orderOverrides: Record<string, any> = {}) {
       };
       return q;
     },
+    // The order's verification lease (H-1, round 5) is free in this fixture.
     rpc: async (name: string, args: Record<string, any>) => {
+      if (name === "take_receipt_verification_lease")
+        return { data: "taken", error: null };
       calls.rpc.push({ name, args });
       return { data: null, error: null };
     },

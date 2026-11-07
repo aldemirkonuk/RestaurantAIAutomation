@@ -236,7 +236,11 @@ function makeDb(opts: {
       };
       return q;
     },
-    rpc: async () => ({ data: null, error: null }),
+    // The order's verification lease (H-1, round 5) is free in this fixture.
+    rpc: async (name: string) => ({
+      data: name === "take_receipt_verification_lease" ? "taken" : null,
+      error: null,
+    }),
     storage: { from: () => ({}) },
   };
 
