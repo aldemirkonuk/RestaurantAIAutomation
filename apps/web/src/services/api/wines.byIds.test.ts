@@ -3,7 +3,7 @@
  * URL. At about 420 ids (37 characters each) the request passed Node's 16 KB
  * header limit, the library join failed, and /inventory lost the names,
  * vintages and grapes of a house holding 500 wines. It now asks in chunks of
- * `WINE_IDS_PER_REQUEST`, the gateway's own ceiling, and one failed chunk
+ * `WINE_IDS_PER_REQUEST` (at or under the gateway's `WINE_IDS_MAX`), and one failed chunk
  * fails the read rather than leaving a third of the wines nameless.
  */
 

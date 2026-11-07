@@ -29,12 +29,20 @@ export const WINE_SEARCH_MAX_LIMIT = 500;
 
 /**
  * Most ids one GET /wines?ids= may name. A longer list is refused, not served
- * in part: past PostgREST's 1,000-row cap an `.in("id", ids)` answers with the
- * first thousand and says nothing, and the URL itself overflows the 16 KB
- * header limit at about 420 ids (QA round 2, U-1). The web client asks in
- * chunks of this size (services/api/wines.ts WINE_IDS_PER_REQUEST).
+ * in part: past PostgREST's 1,000-row cap (supabase/config.toml max_rows) an
+ * `.in("id", ids)` answers with the first thousand and says nothing (QA round
+ * 2, U-1). At or under this many ids the answer cannot be cut, since each id
+ * matches at most one row, so this is the real no-partial bound and no lower.
+ *
+ * It is deliberately looser than the web client's chunk
+ * (services/api/wines.ts WINE_IDS_PER_REQUEST, 100). A browser tab still
+ * running a bundle from before the chunking sends every id in one URL; with
+ * this at 100 such a tab got a 400 for a house of 101 to about 420 wines until
+ * it was reloaded, a list main served whole. Past about 420 ids the URL
+ * overflows the 16 KB header limit before it reaches this check, exactly as on
+ * main.
  */
-export const WINE_IDS_MAX = 100;
+export const WINE_IDS_MAX = 1000;
 
 export class GetWinesQueryDto {
   @IsOptional()
