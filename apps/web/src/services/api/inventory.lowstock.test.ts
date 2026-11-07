@@ -102,3 +102,12 @@ describe('normalizeInventoryItem is idempotent and lets camelCase win', () => {
     expect(wine.stockLive).toBe(0)
   })
 })
+
+describe('normalizeInventoryItem keeps a failed read unknown (G15)', () => {
+  it('undefined, not 0 and []', () => {
+    const wine = normalizeInventoryItem({ ...viewRow, rollupReadable: false, locationsReadable: false } as never)
+    expect(wine.openMl).toBeUndefined()
+    expect(wine.locations).toBeUndefined()
+    expect(normalizeInventoryItem(viewRow).openMl).toBe(0)
+  })
+})
