@@ -46,6 +46,7 @@ vi.mock('./useCellarNextData', () => {
 });
 
 import CocktailRegister from './CocktailRegister';
+import { forgetDrafts } from './recipe/drafts';
 
 function line(label: string, qty: number, id: string): RecipeLine {
   return {
@@ -67,6 +68,8 @@ function recipe(id: string, name: string, versionId: string | null, lines: Recip
 }
 
 beforeEach(() => {
+  // Unsaved drafts live for the session (recipe/drafts.ts); each case starts with none.
+  forgetDrafts();
   h.get.mockReset();
   h.put.mockReset();
   h.get.mockImplementation(async (url: string) => {
@@ -124,5 +127,28 @@ describe('CocktailRegister with the real recipe sheet', () => {
     expect(screen.queryAllByLabelText('Amount')).toHaveLength(0);
     expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
     expect(h.put).not.toHaveBeenCalled();
+  });
+
+  it('round 19: back on the first drink, its unsaved lines are there and said as unsaved', async () => {
+    h.recipes = {
+      [CA]: recipe(CA, 'Negroni', VA, [line('gin', 30, 'g1'), line('Campari', 30, 'c1'), line('vermouth', 30, 'v1')]),
+      [CB]: recipe(CB, 'Margarita', VB, [line('tequila', 50, 't1')]),
+    };
+    mount();
+    open('Negroni');
+    await screen.findByRole('region', { name: 'Recipe for Negroni' });
+    await waitFor(() => expect(amounts()).toHaveLength(3));
+    fireEvent.change(amounts()[0], { target: { value: '45' } });
+    open('Margarita');
+    await screen.findByRole('region', { name: 'Recipe for Margarita' });
+    open('Negroni');
+    await screen.findByRole('region', { name: 'Recipe for Negroni' });
+    await waitFor(() => expect(amounts()).toHaveLength(3));
+    expect(amounts()[0].value).toBe('45');
+    expect(screen.getByTestId('recipe-restored')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    expect(h.put.mock.calls[0][0]).toBe(`/recipes/${RID}/cocktails/${CA}`);
+    expect(h.put.mock.calls[0][1].expectedVersionId).toBe(VA);
   });
 });
