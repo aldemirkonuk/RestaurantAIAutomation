@@ -9,7 +9,11 @@ import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
 import { WinesService } from "./wines.service";
 import { WinesController } from "./wines.controller";
-import { GetWinesQueryDto, WineSuggestionsQueryDto } from "./dto/wines.dto";
+import {
+  GetWinesQueryDto,
+  WINE_IDS_MAX,
+  WineSuggestionsQueryDto,
+} from "./dto/wines.dto";
 
 /**
  * GET /wines?search= and GET /wines/suggestions?text= built a PostgREST `or`
@@ -196,6 +200,49 @@ describe("a failed library read is a clean 503, never a raw 500", () => {
       .searchWines({ ids: "not-a-uuid" } as GetWinesQueryDto)
       .catch((e) => e);
     expect(failure).toBeInstanceOf(BadRequestException);
+  });
+
+  it("searchWines refuses more than WINE_IDS_MAX ids before reading, instead of serving a part (U-1)", async () => {
+    const { service, calls } = recordingClient();
+    const ids = Array.from(
+      { length: WINE_IDS_MAX + 1 },
+      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    );
+    const failure = await service
+      .searchWines({ ids: ids.join(",") } as GetWinesQueryDto)
+      .catch((e) => e);
+    expect(failure).toBeInstanceOf(BadRequestException);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("searchWines still serves a stale bundle's single list of 420 ids in one read (deploy skew)", async () => {
+    // A tab running the web bundle from before the chunking sends every id in
+    // one URL. Main served 101 to about 420 ids whole; refusing them would fail
+    // the /inventory library join until the tab is reloaded.
+    const { service, calls } = recordingClient();
+    const ids = Array.from(
+      { length: 420 },
+      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    );
+    const answer = await service
+      .searchWines({ ids: ids.join(",") } as GetWinesQueryDto)
+      .catch((e) => e);
+    expect(answer).not.toBeInstanceOf(BadRequestException);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("WINE_IDS_MAX is PostgREST's 1,000-row cap, the bound past which an ids read can come back cut", () => {
+    expect(WINE_IDS_MAX).toBe(1000);
+  });
+
+  it("searchWines serves exactly WINE_IDS_MAX ids in one read", async () => {
+    const { service, calls } = recordingClient();
+    const ids = Array.from(
+      { length: WINE_IDS_MAX },
+      (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    );
+    await service.searchWines({ ids: ids.join(",") } as GetWinesQueryDto);
+    expect(calls).toHaveLength(1);
   });
 
   it("getWineSuggestions maps a database error to ServiceUnavailableException", async () => {
