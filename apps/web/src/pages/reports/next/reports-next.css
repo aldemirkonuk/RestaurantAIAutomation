@@ -52,6 +52,30 @@
   opacity: 1;
 }
 
+/* ── the sheet below 768 px: it flows ──────────────────────────────────────
+   One full-width cutting under another, in the desktop sheet's order, and
+   nothing moves (`SHEET_FLOW_BELOW` in rp-sheet.ts). A twelve-column ruling
+   over a one-column sheet would promise a square it cannot keep, and a grip
+   would offer a move the sheet refuses — so neither is drawn. Removing the
+   grip with `display: none` also takes it out of the tab order. */
+.rp-sheet[data-flow='true']::before,
+.rp-sheet[data-flow='true'] .rp-grip {
+  display: none;
+}
+.rp-sheet[data-flow='true'][data-arranging='true'] .rp-cut {
+  cursor: default;
+}
+/* A table or heat map wider than a phone scrolls inside its cutting, never
+   the page: the body is the scroller, and nothing in it may set the width. */
+.rp-sheet[data-flow='true'] .rp-cut__body {
+  min-width: 0;
+  overscroll-behavior: contain;
+}
+.rp-sheet[data-flow='true'] .rp-table-wrap,
+.rp-sheet[data-flow='true'] .rp-heat-wrap {
+  max-width: 100%;
+}
+
 /* ── a cutting ─────────────────────────────────────────────────────────────
    `--rp-tuck` is set on .rp-sheet from the `tuck` token in lib/mudavym/
    motion.ts, so the curve that runs here IS the token's sampled spring rather

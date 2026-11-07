@@ -37,7 +37,16 @@
  * a place the reader can see.
  */
 
-import { useCallback, useLayoutEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from 'react';
 import {
   Responsive,
   WidthProvider,
@@ -50,6 +59,8 @@ import { colsForWidth, slotRect } from './rp-arrange';
 import {
   SHEET_BREAKPOINTS,
   SHEET_BREAKPOINT_COLS,
+  SHEET_COLS,
+  SHEET_FLOW_MIN_H,
   SHEET_MARGIN,
   SHEET_MIN_H,
   SHEET_MIN_W,
@@ -79,11 +90,53 @@ export interface SheetProps {
   containerRef?: (el: HTMLDivElement | null) => void;
   /** Where a keyboard-held cutting started. Drawn as an outline, not a child. */
   ghost?: Slot | null;
+  /** Told when the sheet starts or stops flowing (container under 768 px). */
+  onFlowChange?: (flowing: boolean) => void;
 }
 
-export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: SheetProps) {
+/**
+ * The phone sheet: every cutting full width, in (y, x, id) order, built FROM
+ * the twelve-column sheet and static — a way of showing it, never a second
+ * sheet that could be saved.
+ */
+function flowLayout(cuttings: SheetCutting[], cols: number): LayoutItem[] {
+  const order = [...cuttings].sort(
+    (a, b) =>
+      a.slot.y - b.slot.y || a.slot.x - b.slot.x || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  );
+  let y = 0;
+  return order.map((c) => {
+    const h = Math.max(c.slot.h, SHEET_FLOW_MIN_H);
+    const item: LayoutItem = { i: c.id, x: 0, y, w: cols, h, minW: cols, minH: h, static: true };
+    y += h;
+    return item;
+  });
+}
+
+export function Sheet({ cuttings, arranging, onMove, containerRef, ghost, onFlowChange }: SheetProps) {
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [ghostBox, setGhostBox] = useState<CSSProperties | null>(null);
+
+  /* The ruling the grid is in, as react-grid-layout last reported it — a ref,
+     so `onDragStop` reads the drag that just ended. WidthProvider starts at
+     1280 px, so it starts at twelve. */
+  const colsRef = useRef<number>(SHEET_COLS);
+  const [flowing, setFlowing] = useState(false);
+
+  const onWidthChange = useCallback(
+    (width: number, _margin: readonly [number, number], cols: number) => {
+      // Width 0 is "not laid out yet" (or jsdom), not a phone — the same rule
+      // `colsForWidth` keeps for the keyboard.
+      const ruled = width > 0 ? cols : SHEET_COLS;
+      colsRef.current = ruled;
+      setFlowing(ruled !== SHEET_COLS);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    onFlowChange?.(flowing);
+  }, [flowing, onFlowChange]);
 
   const layouts = useMemo((): ResponsiveLayouts => {
     const lg: LayoutItem[] = cuttings.map((c) => ({
@@ -93,12 +146,21 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
       minH: SHEET_MIN_H,
       static: !arranging,
     }));
-    return { lg, md: lg, sm: lg, xs: lg, xxs: lg };
+    return {
+      lg,
+      md: lg,
+      sm: lg,
+      xs: flowLayout(cuttings, SHEET_BREAKPOINT_COLS.xs),
+      xxs: flowLayout(cuttings, SHEET_BREAKPOINT_COLS.xxs),
+    };
   }, [cuttings, arranging]);
 
   const handleChange = useCallback(
     (next: readonly LayoutItem[]) => {
       if (!arranging) return;
+      // Nothing done at a column count other than twelve writes a slot: those
+      // coordinates belong to a ruling the sheet is not saved in.
+      if (colsRef.current !== SHEET_COLS) return;
       const slots: Partial<Record<AnalysisId, Slot>> = {};
       for (const l of next) slots[l.i as AnalysisId] = { x: l.x, y: l.y, w: l.w, h: l.h };
       onMove(slots);
@@ -138,6 +200,7 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
       ref={attach}
       className="rp-sheet"
       data-arranging={arranging}
+      data-flow={flowing}
       style={{ ['--rp-tuck' as keyof CSSProperties]: `${tuck.ms}ms ${tuck.easing}` } as CSSProperties}
     >
       {ghostBox && <div className="rp-ghost" style={ghostBox} aria-hidden />}
@@ -150,9 +213,10 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
         margin={SHEET_MARGIN}
         containerPadding={[0, 0]}
         compactType="vertical"
-        isDraggable={arranging}
-        isResizable={arranging}
+        isDraggable={arranging && !flowing}
+        isResizable={arranging && !flowing}
         draggableCancel={DRAG_CANCEL}
+        onWidthChange={onWidthChange}
         onDragStop={handleChange}
         onResizeStop={handleChange}
       >

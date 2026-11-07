@@ -20,8 +20,9 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { act, render } from '@testing-library/react';
+import type { ReactElement, ReactNode } from 'react';
+import { getBreakpointFromWidth, getColsFromBreakpoint } from 'react-grid-layout/core';
 
 /** The props `Sheet` last handed the grid. */
 const grid = vi.hoisted(() => ({
@@ -29,7 +30,15 @@ const grid = vi.hoisted(() => ({
     isDraggable?: boolean;
     isResizable?: boolean;
     draggableCancel?: string;
-    layouts?: { lg: Array<{ i: string; static?: boolean; minW?: number; minH?: number }> };
+    breakpoints?: Record<string, number>;
+    cols?: Record<string, number>;
+    margin?: [number, number];
+    layouts?: Record<
+      string,
+      Array<{ i: string; x: number; y: number; w: number; h: number; static?: boolean; minW?: number; minH?: number }>
+    >;
+    onBreakpointChange?: (bp: string, cols: number) => void;
+    onWidthChange?: (w: number, m: [number, number], cols: number, p: [number, number] | null) => void;
     onDragStop?: (l: ReadonlyArray<{ i: string; x: number; y: number; w: number; h: number }>) => void;
     onResizeStop?: (l: ReadonlyArray<{ i: string; x: number; y: number; w: number; h: number }>) => void;
     children?: ReactNode;
@@ -53,8 +62,26 @@ const cuttings = [
 
 function paint(arranging: boolean) {
   const onMove = vi.fn();
-  render(<Sheet cuttings={cuttings} arranging={arranging} onMove={onMove} />);
-  return { onMove, props: grid.props as NonNullable<typeof grid.props> };
+  const view = render(<Sheet cuttings={cuttings} arranging={arranging} onMove={onMove} />);
+  return { onMove, props: grid.props as NonNullable<typeof grid.props>, view };
+}
+
+/** The props the grid holds NOW — re-read after anything that re-renders. */
+const live = () => grid.props as NonNullable<typeof grid.props>;
+
+/**
+ * Do what react-grid-layout does when measured at `width`, with its OWN
+ * breakpoint functions and `Sheet`'s props. Returns the column count.
+ */
+function resizeTo(width: number): number {
+  const p = live();
+  const bp = getBreakpointFromWidth(p.breakpoints as never, width);
+  const cols = getColsFromBreakpoint(bp, p.cols as never);
+  act(() => {
+    p.onBreakpointChange?.(bp, cols);
+    p.onWidthChange?.(width, p.margin ?? [14, 14], cols, [0, 0]);
+  });
+  return cols;
 }
 
 describe('Sheet — the drag-to-rearrange canvas', () => {
@@ -112,5 +139,117 @@ describe('Sheet — the drag-to-rearrange canvas', () => {
   it('gives every cutting a floor, so a resize cannot crush one to nothing', () => {
     const { props } = paint(true);
     expect(props.layouts?.lg.every((l) => (l.minW ?? 0) >= 3 && (l.minH ?? 0) >= 3)).toBe(true);
+  });
+});
+
+/**
+ * "No bugs when switched places": below 768 px nothing writes a slot, because
+ * a 4- or 2-column coordinate saved over the desktop sheet swapped cuttings.
+ */
+describe('Sheet — one ruling, whatever the width', () => {
+  it('drops a drag or a resize that finishes on a phone-width sheet', () => {
+    const { onMove } = paint(true);
+    expect(resizeTo(500)).toBe(4);
+    // What react-grid-layout hands back at xs: four-column coordinates.
+    live().onDragStop?.([
+      { i: 'till', x: 0, y: 0, w: 4, h: 9 },
+      { i: 'ledger', x: 0, y: 9, w: 4, h: 9 },
+    ]);
+    live().onResizeStop?.([
+      { i: 'till', x: 0, y: 0, w: 2, h: 12 },
+      { i: 'ledger', x: 0, y: 12, w: 4, h: 9 },
+    ]);
+    expect(onMove).toHaveBeenCalledTimes(0);
+  });
+
+  it('is neither draggable nor resizable while it flows, and says so on the sheet', () => {
+    const { view } = paint(true);
+    resizeTo(500);
+    expect(live().isDraggable).toBe(false);
+    expect(live().isResizable).toBe(false);
+    const sheet = view.container.querySelector('.rp-sheet') as HTMLElement;
+    expect(sheet).toHaveAttribute('data-flow', 'true');
+    resizeTo(1280);
+    expect(live().isDraggable).toBe(true);
+    expect(sheet).toHaveAttribute('data-flow', 'false');
+  });
+
+  it('lays the phone sheet out as one full-width column in the desktop sheet’s order', () => {
+    const onMove = vi.fn();
+    render(
+      <Sheet
+        arranging
+        onMove={onMove}
+        cuttings={[
+          { id: 'ledger', slot: { x: 6, y: 0, w: 6, h: 4 }, body: <p>b</p> },
+          { id: 'week', slot: { x: 0, y: 9, w: 12, h: 9 }, body: <p>c</p> },
+          { id: 'till', slot: { x: 0, y: 0, w: 6, h: 9 }, body: <p>a</p> },
+        ]}
+      />,
+    );
+    const { layouts, cols } = live();
+    for (const bp of ['xs', 'xxs'] as const) {
+      const flow = layouts![bp];
+      // Sorted by the desktop (y, x): till (0,0), ledger (0,6), week (9,0).
+      expect(flow.map((l) => l.i)).toEqual(['till', 'ledger', 'week']);
+      for (const l of flow) {
+        expect(l.x).toBe(0);
+        expect(l.w).toBe(cols![bp]);
+        expect(l.static).toBe(true);
+        // A floor of about 300 px: ceil((300 + 14) / (34 + 14)) rows.
+        expect(l.h).toBeGreaterThanOrEqual(7);
+      }
+      // Stacked, each under the one before — no two share a row.
+      expect(flow[1].y).toBe(flow[0].y + flow[0].h);
+      expect(flow[2].y).toBe(flow[1].y + flow[1].h);
+    }
+    // The desktop sheet is handed over untouched.
+    expect(layouts!.lg.find((l) => l.i === 'ledger')).toMatchObject({ x: 6, y: 0, w: 6, h: 4 });
+  });
+
+  it('keeps twelve columns at 900 px, where a desktop with the sidebar open measures', () => {
+    const { onMove } = paint(true);
+    expect(resizeTo(900)).toBe(12);
+    expect(live().isDraggable).toBe(true);
+    live().onDragStop?.([
+      { i: 'till', x: 7, y: 0, w: 5, h: 9 },
+      { i: 'ledger', x: 0, y: 0, w: 7, h: 9 },
+    ]);
+    expect(onMove).toHaveBeenCalledWith({
+      till: { x: 7, y: 0, w: 5, h: 9 },
+      ledger: { x: 0, y: 0, w: 7, h: 9 },
+    });
+  });
+
+  it('starts flowing below 768 px and not at it', () => {
+    paint(true);
+    expect(resizeTo(768)).toBe(12);
+    expect(resizeTo(767)).toBe(4);
+  });
+
+  it('treats a width of 0 (not laid out yet) as the twelve-column sheet', () => {
+    const { onMove } = paint(true);
+    resizeTo(0);
+    live().onDragStop?.([{ i: 'till', x: 1, y: 0, w: 5, h: 9 }]);
+    expect(onMove).toHaveBeenCalledTimes(1);
+  });
+
+  it('keys every cutting by its id, so a change of subject moves nobody else', () => {
+    const onMove = vi.fn();
+    const view = render(<Sheet cuttings={cuttings} arranging onMove={onMove} />);
+    const before = live().layouts!.lg.find((l) => l.i === 'ledger');
+    // "Show instead": till's square of paper now carries the room.
+    view.rerender(
+      <Sheet
+        arranging
+        onMove={onMove}
+        cuttings={[{ ...cuttings[0], id: 'seats' }, cuttings[1]]}
+      />,
+    );
+    const p = live();
+    expect(p.layouts!.lg.find((l) => l.i === 'ledger')).toEqual(before);
+    expect(p.layouts!.lg.find((l) => l.i === 'seats')).toMatchObject({ x: 0, y: 0, w: 5, h: 9 });
+    const keys = (p.children as ReactElement[]).map((c) => c.key);
+    expect(keys).toEqual(['seats', 'ledger']);
   });
 });
