@@ -36,7 +36,7 @@ vi.mock('../../../../services/api/client', () => ({
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => h.auth }));
 
 import RecipeSheet, { LEGACY_NOTE, NEWER_SENTENCE, RESTORED_SENTENCE, SET_ASIDE_SENTENCE, STALE_SENTENCE } from './RecipeSheet';
-import { forgetDrafts } from './drafts';
+import { draftKey, forgetDrafts, keepDraft } from './drafts';
 
 function line(over: Partial<RecipeLine>): RecipeLine {
   return {
@@ -165,6 +165,15 @@ function mountSwitchable(first: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const wrap = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
   return render(<RecipeSheet cocktailId={first} />, { wrapper: wrap });
+}
+
+/** Asks the leave warning what it sets: the legacy returnValue older Chrome and Edge need. */
+function leaveReturnValue(): unknown {
+  const ev = new Event('beforeunload', { cancelable: true });
+  let got: unknown;
+  Object.defineProperty(ev, 'returnValue', { configurable: true, get: () => got, set: (v) => { got = v; } });
+  window.dispatchEvent(ev);
+  return got;
 }
 
 describe('RecipeSheet', () => {
@@ -671,6 +680,118 @@ describe('RecipeSheet', () => {
     rerender(<RecipeSheet cocktailId={CID2} />);
     await screen.findByRole('region', { name: 'Recipe for Margarita' });
     expect(leaveWarns()).toBe(true);
+  });
+
+  it('QA round 21: a loaded 1.125 oz line (and the other 3-decimal amounts) saves with no edit', async () => {
+    const values = [1.125, 1.375, 2.125, 3.333, 15.625, 999.999];
+    const n = negroni();
+    serve({
+      ...n,
+      current: {
+        ...n.current!,
+        lines: values.map((q, i) => ({ ...linked(`spirit${i}`, 1, GIN), id: `l${i}`, qtyEntered: q, unitCode: 'oz' })),
+      },
+    });
+    h.put.mockResolvedValue({ data: { versionId: V5, version: 5, lines: [] } });
+    mount();
+    await waitFor(() => expect(screen.getAllByLabelText('Amount')).toHaveLength(values.length));
+    expect(amount(0)).toBe('1.125');
+    const save = screen.getByRole('button', { name: /^save$/i });
+    expect(save).toBeEnabled();
+    expect(screen.queryByText(/could be/)).toBeNull();
+    fireEvent.click(save);
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    expect(h.put.mock.calls[0][1].lines.map((l: { qty: number }) => l.qty)).toEqual(values);
+  });
+
+  it('QA round 21: the same amount typed by hand is still refused, and a loaded one stops being exempt once edited', async () => {
+    const n = negroni();
+    serve({ ...n, current: { ...n.current!, lines: [{ ...linked('gin', 30, GIN), qtyEntered: 1.125, unitCode: 'oz' }] } });
+    mount();
+    const box = (await screen.findAllByLabelText('Amount'))[0];
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled();
+    fireEvent.change(box, { target: { value: '1.12' } });
+    fireEvent.change(box, { target: { value: '1.125' } });
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    expect(screen.getByText('Line 1 (gin): 1.125 could be 1125 or 1.125. Type it without the separator.')).toBeInTheDocument();
+  });
+
+  it('QA round 21: a save that finishes after the sheet was left clears the draft (no warning, no banner)', async () => {
+    serve(negroni());
+    let finish: (v: unknown) => void = () => {};
+    h.put.mockReturnValueOnce(new Promise((r) => { finish = r; }));
+    const view = mount();
+    fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
+    expect(leaveWarns()).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    view.unmount();
+    expect(leaveWarns()).toBe(true); // still unsaved while the answer is out
+    await act(async () => {
+      finish({ data: { versionId: V5, version: 5, lines: [] } });
+    });
+    await waitFor(() => expect(leaveWarns()).toBe(false));
+    mount();
+    await waitFor(() => expect(screen.getAllByLabelText('Amount')).toHaveLength(3));
+    expect(screen.queryByTestId('recipe-restored')).toBeNull();
+  });
+
+  it('QA round 21: a refused save after the sheet was left keeps the draft', async () => {
+    serve(negroni());
+    let fail: (e: unknown) => void = () => {};
+    h.put.mockReturnValueOnce(new Promise((_, rej) => { fail = rej; }));
+    const view = mount();
+    fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    view.unmount();
+    await act(async () => {
+      fail(Object.assign(new Error('conflict'), { response: { status: 409 } }));
+    });
+    expect(leaveWarns()).toBe(true);
+  });
+
+  it('QA round 21: the draft key names the person, the house and the drink', () => {
+    const base = draftKey('u1', RID, CID);
+    expect(draftKey('u2', RID, CID)).not.toBe(base);
+    expect(draftKey('u1', '99999999-9999-4999-8999-999999999999', CID)).not.toBe(base);
+    expect(draftKey('u1', RID, CID2)).not.toBe(base);
+  });
+
+  it('QA round 21: a draft kept in one house is not handed to the same person in another', async () => {
+    const OTHER = '99999999-9999-4999-8999-999999999999';
+    const row = {
+      key: 'x1', role: 'stocked' as const, inventoryId: GIN, itemName: 'gin', itemKind: 'spirit', label: 'gin',
+      qtyText: '77', unit: 'ml' as const, saved: null,
+    };
+    keepDraft(draftKey('u1', OTHER, CID), { rows: [row], openedFrom: V4, dirty: true, setAside: null });
+    serve(negroni());
+    mount();
+    await waitFor(() => expect(screen.getAllByLabelText('Amount')).toHaveLength(3));
+    expect(amount(0)).toBe('30');
+    expect(screen.queryByTestId('recipe-restored')).toBeNull();
+  });
+
+  it('QA round 21: staff never take or write a draft', async () => {
+    h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { userId: 'u9', role: 'staff' } };
+    const row = {
+      key: 'x1', role: 'stocked' as const, inventoryId: GIN, itemName: 'gin', itemKind: 'spirit', label: 'gin',
+      qtyText: '77', unit: 'ml' as const, saved: null,
+    };
+    keepDraft(draftKey('u9', RID, CID), { rows: [row], openedFrom: V4, dirty: true, setAside: null });
+    serve(negroni());
+    const { container } = mount();
+    await screen.findAllByTestId('recipe-line');
+    expect(container.textContent).toContain('30 ml');
+    expect(container.textContent).not.toContain('77 ml');
+    expect(screen.queryByTestId('recipe-restored')).toBeNull();
+  });
+
+  it('QA round 21: the leave warning sets returnValue as well as cancelling, for older Chrome and Edge', async () => {
+    serve(negroni());
+    mount();
+    fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
+    expect(leaveReturnValue()).toBeTruthy();
   });
 
   it('round 19: set-aside lines can be thrown away, and then leaving no longer warns', async () => {
