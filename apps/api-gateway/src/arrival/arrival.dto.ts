@@ -6,7 +6,6 @@ import {
   IsIn,
   IsInt,
   IsObject,
-  IsBoolean,
   IsOptional,
   IsString,
   IsUUID,
@@ -61,10 +60,4 @@ export class BatchRevisionDto {
 export class EvidenceDto {
   @IsUUID() documentId!: string;
   @IsOptional() @IsUUID() providerId?: string;
-}
-
-export class MenuEvidenceDto {
-  @IsIn(["scan", "csv"]) method!: "scan" | "csv";
-  @IsString() @MaxLength(14000000) content!: string;
-  @IsOptional() @IsBoolean() binary?: boolean;
 }

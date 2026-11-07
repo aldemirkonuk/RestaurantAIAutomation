@@ -29,7 +29,7 @@ import {
   sameValue,
   validateConfiguration,
 } from "./arrival-contract";
-import { ProposeBatchDto, MenuEvidenceDto } from "./arrival.dto";
+import { ProposeBatchDto } from "./arrival.dto";
 
 export interface ArrivalActor {
   userId: string;
@@ -520,7 +520,7 @@ export class ArrivalService {
     const inputs = dto.rows.map(validateConfiguration);
     if (inputs.some((row) => row.target === "menu_item"))
       throw new BadRequestException(
-        "Menu proposals must come from the menu evidence reader.",
+        "Menu lines cannot be proposed here. Type them, or upload the menu.",
       );
     if (new Set(inputs.map(rowKey)).size !== inputs.length)
       throw new BadRequestException(
@@ -608,27 +608,6 @@ export class ArrivalService {
         "Read this batch before adding more than five hundred entries.",
       );
     return this.saveBatch(actor, batch, { rows: combined });
-  }
-
-  async menuEvidence(actor: ArrivalActor, dto: MenuEvidenceDto) {
-    await this.manage(actor);
-    const items = await this.menus.previewArrivalMenu(
-      dto.method,
-      dto.content,
-      actor.restaurantId,
-      dto.binary,
-    );
-    return this.append(
-      actor,
-      items.map((value) =>
-        validateConfiguration({
-          target: "menu_item",
-          field: randomUUID(),
-          value,
-        }),
-      ),
-      "menu",
-    );
   }
 
   async evidence(actor: ArrivalActor, documentId: string, providerId?: string) {

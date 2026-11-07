@@ -16,7 +16,6 @@ import {
 } from "../common/rate-limit/authed-rate-limit.guard";
 import { ArrivalService, ArrivalActor } from "./arrival.service";
 import {
-  MenuEvidenceDto,
   BatchRevisionDto,
   ConfigurationInputDto,
   EvidenceDto,
@@ -53,27 +52,6 @@ export class ArrivalController {
   })
   propose(@CurrentUser() user: ArrivalActor, @Body() dto: ProposeBatchDto) {
     return this.arrival.propose(user, dto);
-  }
-  @Post("menu-evidence")
-  @AuthedRateLimit(
-    {
-      limit: 5,
-      windowSeconds: 60,
-      scope: "user",
-      message: "Give the menu reader a moment before adding more evidence.",
-    },
-    {
-      limit: 50,
-      windowSeconds: 3600,
-      scope: "restaurant",
-      message: "This house has read many menus this hour. Try again later.",
-    },
-  )
-  menuEvidence(
-    @CurrentUser() user: ArrivalActor,
-    @Body() dto: MenuEvidenceDto,
-  ) {
-    return this.arrival.menuEvidence(user, dto);
   }
   @Post("evidence") evidence(
     @CurrentUser() user: ArrivalActor,

@@ -500,4 +500,17 @@ describe("Arrival's configuration boundary", () => {
       "already been sealed",
     );
   });
+  it("refuses a proposed menu line and points at typing or the menu upload", async () => {
+    const service: any = Object.create(ArrivalService.prototype);
+    service.manage = jest.fn().mockResolvedValue(undefined);
+    await expect(
+      service.propose(actor, {
+        provenance: "spoken",
+        rows: [{ target: "menu_item", field: "one", value: { name: "Wine" } }],
+      }),
+    ).rejects.toThrow(
+      "Menu lines cannot be proposed here. Type them, or upload the menu.",
+    );
+    expect(service.manage).toHaveBeenCalledWith(actor);
+  });
 });
