@@ -63,10 +63,12 @@
  * check-in is the last anchor carries the open gap up to the caretaker's last
  * tap. A caretaker whose last tap comes before the last anchor adds no open
  * gap: no time was shown on the floor. Facts listed twice for one seating:
- * the last row wins. With no caretaker at seat time (`:64` names only one who
- * goes absent after seating), the greeting gap never falls to whoever tapped
- * Seat: a closed one goes to the waiter whose visit closed it, and an open
- * one counts for the table only.
+ * the last row wins. With no caretaker at seat time (none assigned, cleared as
+ * absent, or a deleted user), `:64` says only who must not get the greeting
+ * gap; D8's "the live cover or else the waiter" (`:91`) is said of alerts,
+ * and these facts carry no live cover. So the gap never falls to whoever
+ * tapped Seat: a closed one goes to the waiter whose visit closed it, and an
+ * open one counts for the table only.
  *
  * Handoff rule (Hybrid attribution, kept): when the waiter who closes a gap is
  * different from the waiter on the previous anchor, credit the **previous**
