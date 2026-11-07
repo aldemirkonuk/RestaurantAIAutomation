@@ -19,7 +19,6 @@ function makeDb(viewRows: any[]) {
       or: () => c,
       is: () => c,
       in: () => c,
-      // readWholeWindow's paging steps (the view is read whole, ADR 0292).
       order: () => c,
       gt: () => c,
       limit: () => c,

@@ -40,11 +40,7 @@ export class DatabaseService implements OnModuleInit {
   }
 
   // Helper methods for common operations
-  /**
-   * The titles the house holds: active, not deleted (QA round 12 R1; an
-   * IN_TRANSIT title stays listed, `canRunLow` stops it reading low). Read
-   * whole (ADR 0292): an unpaged select stopped at 1000 rows (R6).
-   */
+  /** Active, undeleted titles (QA R1), read whole past 1000 rows (ADR 0292, R6). */
   async getRestaurantInventory(restaurantId: string) {
     return readWholeWindow<any>("The house's inventory", () =>
       this.supabase

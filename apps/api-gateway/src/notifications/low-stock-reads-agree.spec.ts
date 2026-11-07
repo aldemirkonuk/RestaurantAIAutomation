@@ -1,9 +1,8 @@
 /**
- * QA round 12 on #842 (round12-pr-retest-lowstock.md): R1 the card and the
- * summary counted IN_TRANSIT and deleted rows the view leaves out (10/8 vs
- * 8/6); R5 a failed view read reset every alert state; R6 the 1000-row cap.
- * HOUSE is QA's 15-state PGlite fixture, cut to the columns read; `inView` is
- * what v_low_stock_items returned there.
+ * QA rounds 12 and 15: R1 the card and summary counted rows the view leaves
+ * out (IN_TRANSIT, deleted, HD a house beer); R5 a failed view read reset the
+ * alert states; R6 the 1000-row cap. HOUSE is QA's PGlite fixture; `inView`
+ * is what v_low_stock_items returned there.
  */
 import { Logger } from "@nestjs/common";
 import { DashboardService } from "../dashboard/dashboard.service";
@@ -31,6 +30,7 @@ const HOUSE: any[][] = [
   ["AT", 3, 3, true, true, false, "LIVE", false],
   ["IT", 1, 3, true, true, false, "IN_TRANSIT", false],
   ["DL", 1, 3, true, true, true, "LIVE", false],
+  ["HD", 1, 3, true, true, false, "LIVE", false],
 ];
 
 function row(
@@ -51,6 +51,7 @@ function row(
     is_active: active,
     deleted_at: deleted ? COUNTED : null,
     inventory_state: state,
+    master_wine_id: id === "HD" ? null : `mw-${id}`,
     wine_name: `Wine ${id}`,
     vintage: 2019,
   };
@@ -63,7 +64,7 @@ const view = HOUSE.filter((h) => h[7]).map(([k, s, p, c]) => row(k, s, p, c));
 
 type Tables = Record<string, any[]>;
 
-/** PostgREST enough for these reads: filters, order, keyset, count, the 1000-row cap, failures. */
+/** A fake PostgREST: filters, keyset, count, the 1000-row cap, failures. */
 function fakePg(tables: Tables, fail: Set<string> = new Set()) {
   const from = (table: string): any => {
     const where: ((r: any) => boolean)[] = [];
@@ -173,6 +174,7 @@ describe("low stock: every read agrees with v_low_stock_items (QA round 12)", ()
       await new InventoryService(db as any).getRestaurantInventory(R)
     ).map((r: any) => r.id);
     expect(listed).toContain("IT");
+    expect(listed).toContain("HD");
     expect(listed).not.toContain("DL");
     expect(listed).not.toContain("AR");
   });

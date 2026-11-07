@@ -99,15 +99,16 @@ export interface StockRow {
   is_active?: boolean | null;
   deleted_at?: string | null;
   inventory_state?: string | null;
+  master_wine_id?: string | null;
 }
 
 /**
- * The row tests of `v_low_stock_items` (a_received_wine_not_counted_yet_can_run_low.sql:78-80),
- * less the stock and known-figure tests `bandOfRow` asks itself. QA round 12
- * R1: without them the card and the summary said 10 low where the view said 8.
- * NULL is out, as in SQL; `undefined` is a column the reader did not select.
+ * The row tests of `v_low_stock_items` (a_received_wine_not_counted_yet_can_run_low.sql:75-80)
+ * bar the stock ones, so the card counts what alerts (QA R1; round 15: its JOIN
+ * drops a house beer with no library row). NULL is out; `undefined` unselected.
  */
 export function canRunLow(row: StockRow): boolean {
+  if (row.master_wine_id === null) return false;
   if (row.is_active === false || row.is_active === null) return false;
   if (row.deleted_at != null) return false;
   if (row.inventory_state === undefined) return true;
