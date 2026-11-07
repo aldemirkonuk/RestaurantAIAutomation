@@ -342,6 +342,7 @@ export default function CocktailRegister({
                             </button>
                           </span>
                         </div>
+                        {/* The sheet keys its own draft by drink (RecipeSheet's default export), so typed lines never cross drinks. */}
                         <RecipeSheet cocktailId={c.id} />
                       </>
                     );
