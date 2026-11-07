@@ -32,6 +32,8 @@ import { HouseLettersCron } from "./letters/house-letters.cron";
 import { HouseSenderService } from "./letters/house-sender.service";
 import { HouseInboxService } from "./inbox/house-inbox.service";
 import { HouseInboxCron } from "./inbox/house-inbox.cron";
+import { MailSetupController } from "./mail-setup/mail-setup.controller";
+import { MailSetupService } from "./mail-setup/mail-setup.service";
 import { RelayEmailController } from "./relay/relay-email.controller";
 import { RelayEmailService } from "./relay/relay-email.service";
 import { RelayEmailCron } from "./relay/relay-email.cron";
@@ -65,6 +67,8 @@ import { OrganizationsService } from "../organizations/organizations.service";
     HouseLettersController,
     // ADR 0149 #19 — POST /communications/email, two locked doors.
     RelayEmailController,
+    // Founder /goal 2026-11-07 — the house's mail setup page.
+    MailSetupController,
   ],
   providers: [
     GmailService,
@@ -127,6 +131,9 @@ import { OrganizationsService } from "../organizations/organizations.service";
      */
     HouseInboxService,
     HouseInboxCron,
+    // Founder /goal 2026-11-07 — which mailbox sends, the Mudavym address, the
+    // test letter. InboundAddressService comes from OrchestratorModule above.
+    MailSetupService,
     /**
      * ADR 0149 #19 — the relay's doors and rules. `OrganizationsService` is
      * provided from its class for `resolveRestaurantRole`, the one
