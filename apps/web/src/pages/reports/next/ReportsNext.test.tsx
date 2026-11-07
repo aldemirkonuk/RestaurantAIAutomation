@@ -1886,4 +1886,25 @@ describe('ReportsNext — bars and a line on one cutting', () => {
       within(screen.getByRole('region', { name: 'The week’s shape' })).getByText(/Line: Days seen/),
     ).toBeInTheDocument();
   });
+
+  it('R-7: a swap grows the square to the new subject’s declared size, never smaller', () => {
+    paint();
+    arrange();
+    // The writing desk lies in a 12 x 3 strip; the goals desk is declared 7 x 11.
+    const desk = screen.getByRole('region', { name: 'The writing desk' });
+    fireEvent.change(within(desk).getByLabelText('Show instead of The writing desk'), {
+      target: { value: 'seats' },
+    });
+    fireEvent.click(screen.getByText('Rule it off'));
+    const saved = saveSheet.mock.calls[0][0] as {
+      cuttings: Array<{ id: string; slot: { x: number; y: number; w: number; h: number } }>;
+    };
+    const seats = saved.cuttings.find((c) => c.id === 'seats');
+    expect(seats?.slot).toMatchObject({
+      x: 0,
+      y: DEFAULT_SLOTS.writing.y,
+      w: DEFAULT_SLOTS.writing.w, // the reader's wider square is kept
+      h: DEFAULT_SLOTS.seats.h, // the strip grew to the room's height
+    });
+  });
 });

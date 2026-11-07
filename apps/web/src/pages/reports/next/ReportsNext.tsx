@@ -67,6 +67,7 @@ import {
   HOUSE_LAYOUT_NOTE,
   HOUSE_LAYOUT_TITLE,
   packSlots,
+  swapSlot,
   type AnalysisId,
   type Cutting as SheetSlotCutting,
   type GraphType,
@@ -248,9 +249,10 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     [edit],
   );
 
-  /** Change of subject, same square of paper: the slot is kept, the drawing
+  /** Change of subject, same square of paper: the position is kept, the drawing
    *  resets to the new analysis's own default because the old one may not be
-   *  true of the new data. */
+   *  true of the new data, and the square grows to the new analysis's declared
+   *  size if it is smaller (`swapSlot`) so the new subject is not crushed. */
   const onSwap = useCallback(
     (from: AnalysisId, to: AnalysisId) =>
       edit((d) =>
@@ -258,7 +260,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
           ? d
           : {
               cuttings: d.cuttings.map((c) =>
-                c.id === from ? { id: to, slot: c.slot, graph: defaultGraph(to) } : c,
+                c.id === from ? { id: to, slot: swapSlot(c.slot, to), graph: defaultGraph(to) } : c,
               ),
             },
       ),
