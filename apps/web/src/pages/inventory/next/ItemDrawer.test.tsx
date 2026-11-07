@@ -106,6 +106,14 @@ describe('the item drawer', () => {
     expect(screen.getByTestId('ivd-card-waste').textContent).toContain('could not be read');
   });
 
+  it('says why there is no cost trend when the server keeps none, not "too few receipts"', async () => {
+    const why = "What each delivery cost is not shown yet: no record here keeps a delivery's final price.";
+    api.figures.mockResolvedValue(figures({ costTrend: { readable: true, points: null, changePct: null, source: why } }));
+    open(row());
+    await waitFor(() => expect(screen.getByTestId('ivd-card-cost').textContent).toContain(why));
+    expect(screen.getByTestId('ivd-card-cost').textContent).not.toContain('Not enough receipts');
+  });
+
   it('(c) staff see no currency and no Value card', async () => {
     api.figures.mockResolvedValue(
       figures({
