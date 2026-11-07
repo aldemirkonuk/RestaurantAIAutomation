@@ -162,6 +162,62 @@ type MediaType =
   | "image/gif"
   | "application/pdf";
 
+/**
+ * The only image types the model accepts: JPEG, PNG, GIF and WebP
+ * (https://platform.claude.com/docs/en/build-with-claude/vision#supported-formats),
+ * plus PDF in a `document` block. Anything else is answered here, unread,
+ * with a sentence a person can act on — never sent on under a guessed label.
+ */
+type PaperFormat = { mediaType: MediaType } | { unreadable: string };
+
+/**
+ * ISO-BMFF image brands, read from bytes 8-11 when bytes 4-7 say `ftyp`.
+ * The HEIF family is what an iPhone saves by default (`heic`, plus the
+ * sequence, multi-layer and generic `mif1`/`msf1` brands); `avif`/`avis` are
+ * the AV1 cousins. Both families are refused, each by its own name: AVIF is
+ * no more readable to the model than HEIC, and labelling it JPEG is the same
+ * defect (founder /goal 2026-11-07 delegated this call).
+ */
+const HEIF_BRANDS = new Set([
+  "heic",
+  "heix",
+  "hevc",
+  "hevx",
+  "heim",
+  "heis",
+  "hevm",
+  "hevs",
+  "mif1",
+  "msf1",
+]);
+const AVIF_BRANDS = new Set(["avif", "avis"]);
+
+/** The sentence an unread HEIC/AVIF photo carries into the review queue. */
+export function unreadablePhotoFormat(name: "HEIC" | "AVIF"): string {
+  return `This photo is in ${name} format, which the reader cannot open, so the paper was stored unread. Send it again as a JPEG, or take the photo again.`;
+}
+
+/** The sentence a file in no format the reader opens carries. */
+export const UNREADABLE_FILE_FORMAT =
+  "This file is not a PDF, JPEG, PNG, WebP or GIF, so the reader could not open it and the paper was stored unread. Send it again as a PDF or a JPEG photo.";
+
+/**
+ * HEIC or AVIF from the file's own first 12 bytes, or null.
+ *
+ * A base64 prefix match cannot see this: the box size in bytes 0-3 varies, so
+ * the `ftyp` marker at offset 4 lands on different base64 characters from one
+ * photo to the next. Sixteen base64 characters decode to exactly 12 bytes.
+ */
+export function isoImageFormat(base64: string): "HEIC" | "AVIF" | null {
+  const head = Buffer.from(base64.slice(0, 16), "base64");
+  if (head.length < 12) return null;
+  if (head.toString("latin1", 4, 8) !== "ftyp") return null;
+  const brand = head.toString("latin1", 8, 12);
+  if (HEIF_BRANDS.has(brand)) return "HEIC";
+  if (AVIF_BRANDS.has(brand)) return "AVIF";
+  return null;
+}
+
 @Injectable()
 export class DocumentExtractorService {
   private readonly logger = new Logger(DocumentExtractorService.name);
@@ -193,10 +249,14 @@ export class DocumentExtractorService {
     declaredMime?: string | null,
     restaurantId?: string | null,
   ): Promise<ParsedDocument> {
+    // Before the key guard: refusing a format needs no model, so a paper the
+    // reader cannot open is answered the same way with or without a key.
+    const format = this.detectMediaType(base64, declaredMime);
+    if ("unreadable" in format) return unreadDocument(format.unreadable);
+    const { mediaType } = format;
+
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
-
-    const mediaType = this.detectMediaType(base64, declaredMime);
 
     // PDFs go in a `document` block and images in an `image` block. Sending a
     // PDF as an image is rejected outright, which would silently route every
@@ -509,23 +569,87 @@ export class DocumentExtractorService {
     return "unknown";
   }
 
-  private detectMediaType(base64: string, declared?: string | null): MediaType {
+  private detectMediaType(
+    base64: string,
+    declared?: string | null,
+  ): PaperFormat {
+    // HEIC/AVIF bytes first, whatever the label says: a photo that IS HEIC is
+    // unreadable even when an upload path called it image/jpeg.
+    const iso = isoImageFormat(base64);
+    if (iso) return { unreadable: unreadablePhotoFormat(iso) };
+
     const d = (declared || "").toLowerCase();
-    if (d.includes("pdf")) return "application/pdf";
-    if (d.includes("png")) return "image/png";
-    if (d.includes("webp")) return "image/webp";
-    if (d.includes("gif")) return "image/gif";
-    if (d.includes("jpeg") || d.includes("jpg")) return "image/jpeg";
+    if (d.includes("pdf")) return { mediaType: "application/pdf" };
+    if (d.includes("png")) return { mediaType: "image/png" };
+    if (d.includes("webp")) return { mediaType: "image/webp" };
+    if (d.includes("gif")) return { mediaType: "image/gif" };
+    if (d.includes("jpeg") || d.includes("jpg"))
+      return { mediaType: "image/jpeg" };
 
     // Fall back to magic bytes: a declared content-type from an email header is
     // frequently wrong or absent, and the file itself does not lie.
-    if (base64.startsWith("JVBERi")) return "application/pdf"; // %PDF
-    if (base64.startsWith("/9j/")) return "image/jpeg";
-    if (base64.startsWith("iVBORw")) return "image/png";
-    if (base64.startsWith("UklGR")) return "image/webp";
-    if (base64.startsWith("R0lGOD")) return "image/gif";
-    return "image/jpeg";
+    if (base64.startsWith("JVBERi")) return { mediaType: "application/pdf" }; // %PDF
+    if (base64.startsWith("/9j/")) return { mediaType: "image/jpeg" };
+    if (base64.startsWith("iVBORw")) return { mediaType: "image/png" };
+    if (base64.startsWith("UklGR")) return { mediaType: "image/webp" };
+    if (base64.startsWith("R0lGOD")) return { mediaType: "image/gif" };
+
+    // A declared HEIC/HEIF/AVIF whose bytes did not say otherwise is taken at
+    // its word — and is never read as JPEG.
+    if (/hei[cf]/.test(d)) return { unreadable: unreadablePhotoFormat("HEIC") };
+    if (d.includes("avif"))
+      return { unreadable: unreadablePhotoFormat("AVIF") };
+
+    // This was `return "image/jpeg"`: a silent guess that sent every
+    // unrecognised file to the model labelled JPEG, where the request is
+    // rejected and the intake files the paper under "the extraction model
+    // could not be reached" — the wrong reason. Unread, with the right one.
+    return { unreadable: UNREADABLE_FILE_FORMAT };
   }
+}
+
+/**
+ * A paper the reader refused before any model call: every field null, the
+ * reason as its one warning, and no model named — none ran (ADR 0059: NULL is
+ * honest for an unreadable document). The intake still stores the bytes, and
+ * the warning puts the row in `needs_review` with the reason in `notes`.
+ */
+function unreadDocument(reason: string): ParsedDocument {
+  return {
+    docType: "unknown",
+    docNumber: null,
+    docDate: null,
+    referencesDocNumber: null,
+    poNumber: null,
+    vendorName: null,
+    vendorAccount: null,
+    vendorTaxId: null,
+    vendorTaxOffice: null,
+    vendorAddress: null,
+    vendorCountry: null,
+    buyerName: null,
+    buyerTaxId: null,
+    // Empty, never a guessed code: nothing was read.
+    currency: "",
+    subtotal: null,
+    freight: null,
+    fuelSurcharge: null,
+    splitCaseFee: null,
+    deliveryFee: null,
+    depositTotal: null,
+    tax: null,
+    otherCharges: null,
+    discountTotal: null,
+    total: null,
+    lines: [],
+    computedLinesTotal: null,
+    tieOutDelta: null,
+    tiesOut: null,
+    confidence: 0,
+    warnings: [reason],
+    extractionModel: null,
+    eventId: null,
+  };
 }
 
 /** Number or null. Rejects NaN and strips currency noise the prompt asked not to send. */
