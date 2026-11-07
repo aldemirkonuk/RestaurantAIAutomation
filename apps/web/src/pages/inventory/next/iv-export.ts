@@ -5,6 +5,10 @@
  * import cycle (InventoryNext → InventoryTable → RowDropdown).
  *
  * A figure that was not read is left blank in the file, never written as 0.
+ * The one exception is cost: when the cost read failed the cost cells say
+ * "could not be read" (the words the page's cells use), so a blank in a cost
+ * column only ever means the house has no cost for the title. Numbers stay
+ * numbers, so the column still parses; only the unread cell is text.
  * Legacy's valuation wrote 0 for a missing count (InventoryCommandPage.tsx
  * valuationColumns); that is the one deliberate difference.
  */
@@ -15,6 +19,19 @@ import { fmtCount, typeLabel, type InvRow } from './useInventoryNextData';
 
 export function blank(v: number | null): number | string {
   return v === null ? '' : v;
+}
+
+/** The words the /inventory cells show for a cost that could not be read. */
+export const COST_NOT_READ = 'could not be read';
+
+/** WAC cell: the number, blank for no cost on record, the marker when the cost read failed. */
+export function wacCell(r: InvRow): number | string {
+  return r.rollupReadable ? blank(r.wac) : COST_NOT_READ;
+}
+
+/** Value-at-cost cell: two-decimal figure, blank when it cannot be worked out, the marker when the cost read failed. */
+export function valueCell(r: InvRow): string {
+  return r.rollupReadable ? (r.value === null ? '' : r.value.toFixed(2)) : COST_NOT_READ;
 }
 
 /** A name on one line: a newline inside it would split it into two rows on paste. */
@@ -58,10 +75,10 @@ export function valuationColumns(currencyCode: string | null): TableExportColumn
     { header: 'Par', value: (r) => blank(r.par) },
     { header: 'Velocity/day', value: (r) => (r.velocity === null ? '' : r.velocity.toFixed(2)) },
     { header: 'Runway d', value: (r) => (r.runway === null ? '' : Math.round(r.runway)) },
-    { header: 'WAC', value: (r) => blank(r.wac) },
+    { header: 'WAC', value: wacCell },
     { header: 'Your bottle price', value: (r) => blank(r.bottle) },
     { header: 'Your glass price', value: (r) => blank(r.glass) },
-    { header: 'Value at cost', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
+    { header: 'Value at cost', value: valueCell },
     { header: 'Currency', value: () => currencyCode ?? '' },
   ];
 }

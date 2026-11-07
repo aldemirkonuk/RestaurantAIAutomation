@@ -48,7 +48,7 @@ import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import InventoryTable from './InventoryTable';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
-import { blank, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
+import { blank, daysSinceCountedCell, oneLine, runExport, today, valuationColumns, valueCell, wacCell } from './iv-export';
 import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
@@ -545,8 +545,8 @@ export default function InventoryNext() {
         { header: 'Last counted', value: (r) => r.lastCountedAt ?? '' },
         { header: 'Velocity/day', value: (r) => (r.velocity === null ? '' : r.velocity.toFixed(2)) },
         { header: 'Runway d', value: (r) => (r.runway === null ? '' : Math.round(r.runway)) },
-        { header: 'WAC', value: (r) => blank(r.wac) },
-        { header: 'Value', value: (r) => (r.value === null ? '' : r.value.toFixed(2)) },
+        { header: 'WAC', value: wacCell },
+        { header: 'Value', value: valueCell },
         { header: 'Observation', value: (r) => countObservation(r) },
       ],
       `inventory-count-${today()}`,
@@ -956,7 +956,7 @@ export default function InventoryNext() {
               </div>
               <p className="iv-note">
                 Exports are CSV of the titles listed above. A figure that could not be read is left blank in the file,
-                never written as 0.
+                never written as 0; a cost that could not be read says so in its cell.
               </p>
             </section>
 
