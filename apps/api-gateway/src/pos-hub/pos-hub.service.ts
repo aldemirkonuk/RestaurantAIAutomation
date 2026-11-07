@@ -407,9 +407,27 @@ const pastSalesUnavailable = (): PastSalesReplay => ({
     "The mapping is saved, but its earlier sales could not be read or replayed. Save it again to finish; no sale is taken twice.",
 });
 
-/** An ILIKE pattern that matches `s` exactly, case aside. */
+/**
+ * A PostgREST `ilike` pattern for `s` that matches it, case aside, and never
+ * matches less. It can match MORE: PostgREST reads every `*` in a like
+ * pattern as `%` before Postgres sees it, and no escape survives that, so a
+ * `*` is sent as `_` (any one character). The caller re-checks equality.
+ */
 function escapeLikePattern(s: string): string {
-  return s.replace(/[\\%_]/g, (c) => `\\${c}`);
+  return s.replace(/[\\%_]/g, (c) => `\\${c}`).replace(/\*/g, "_");
+}
+
+/**
+ * Whether `found` (a pos_item_mappings row resolveWine would use) is the
+ * mapping just saved: the columns of its unique key, the house aside.
+ */
+function sameMapping(found: any | null, saved: MappingIdentity): boolean {
+  if (!found || !saved) return false;
+  return (
+    String(found.external_item_id ?? "") ===
+      String(saved.external_item_id ?? "") &&
+    String(found.item_name ?? "") === String(saved.item_name ?? "")
+  );
 }
 
 /**
@@ -1344,6 +1362,26 @@ export class PosHubService {
    * mapping yet, so they get queued in pos_unresolved_lines instead of
    * vanishing — it never has enough information to resolve a stock target.
    */
+  private findMapping(
+    name: string,
+    externalItemId: string | null | undefined,
+    mappings: any[],
+  ): any | null {
+    const lower = (name || "").toLowerCase();
+    const byId = externalItemId
+      ? mappings.find(
+          (m) => m.external_item_id && m.external_item_id === externalItemId,
+        )
+      : null;
+    return (
+      byId ??
+      mappings.find(
+        (m) => m.item_name && lower === String(m.item_name).toLowerCase(),
+      ) ??
+      null
+    );
+  }
+
   private resolveWine(
     name: string,
     externalItemId: string | null | undefined,
@@ -1357,16 +1395,7 @@ export class PosHubService {
     saleVolumeMl: number | null;
   } {
     const lower = (name || "").toLowerCase();
-    const byId = externalItemId
-      ? mappings.find(
-          (m) => m.external_item_id && m.external_item_id === externalItemId,
-        )
-      : null;
-    const byName =
-      byId ??
-      mappings.find(
-        (m) => m.item_name && lower === String(m.item_name).toLowerCase(),
-      );
+    const byName = this.findMapping(name, externalItemId, mappings);
     if (byName) {
       return {
         isWine: byName.is_wine === true,
@@ -2019,7 +2048,10 @@ export class PosHubService {
     if (!externalId && !name) return finishPastSales(out);
 
     // As resolveWine finds a mapping: by item id, or by name without case.
-    const reads: Array<PromiseLike<{ data: any[] | null; error: any }>> = [];
+    const reads: Array<{
+      byName: boolean;
+      read: PromiseLike<{ data: any[] | null; error: any }>;
+    }> = [];
     const openLines = () => {
       let q = db
         .from("pos_unresolved_lines")
@@ -2032,22 +2064,25 @@ export class PosHubService {
       return q;
     };
     if (externalId)
-      reads.push(
-        openLines()
+      reads.push({
+        byName: false,
+        read: openLines()
           .eq("external_item_id", externalId)
           .order("created_at", { ascending: true })
           .limit(REPLAY_LINE_LIMIT),
-      );
+      });
     if (name)
-      reads.push(
-        openLines()
+      reads.push({
+        byName: true,
+        read: openLines()
           .ilike("item_name", escapeLikePattern(name))
           .order("created_at", { ascending: true })
           .limit(REPLAY_LINE_LIMIT),
-      );
-    const results = await Promise.all(reads);
+      });
+    const results = await Promise.all(reads.map((r) => r.read));
     const rows = new Map<string, any>();
-    for (const r of results) {
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
       if (r.error) {
         this.logger.error(
           `pos_unresolved_lines read failed for r=${restaurantId}: ${r.error.message}`,
@@ -2056,7 +2091,16 @@ export class PosHubService {
       }
       const data = r.data || [];
       if (data.length >= REPLAY_LINE_LIMIT) out.truncated = true;
-      for (const row of data) rows.set(String(row.id), row);
+      for (const row of data) {
+        // The name read can over-match (escapeLikePattern): keep only the
+        // equality resolveWine itself uses.
+        if (
+          reads[i].byName &&
+          String(row.item_name ?? "").toLowerCase() !== name.toLowerCase()
+        )
+          continue;
+        rows.set(String(row.id), row);
+      }
     }
     if (!rows.size) return finishPastSales(out);
 
@@ -2067,7 +2111,36 @@ export class PosHubService {
       bySource.set(row.source, list);
     }
 
-    for (const [lineSource, sourceRows] of bySource) {
+    // Every mapping read comes first: without one, which rows belong to this
+    // mapping is unknown, so nothing is replayed and the reply says so.
+    const mappingsBySource = new Map<string, any[]>();
+    for (const lineSource of bySource.keys()) {
+      const mappingRead = await this.loadItemMappings(restaurantId, lineSource);
+      if (mappingRead.error) {
+        this.logger.error(
+          `Replay could not read the mappings for r=${restaurantId} src=${lineSource}: ${mappingRead.error}`,
+        );
+        return pastSalesUnavailable();
+      }
+      mappingsBySource.set(lineSource, mappingRead.rows);
+    }
+
+    for (const [lineSource, fetched] of bySource) {
+      const mappings = mappingsBySource.get(lineSource) ?? [];
+      // Only the rows a live sale would now book under the mapping just
+      // saved. A till often names its glass and its bottle SKU alike; the
+      // name read returns both, and the other SKU's row answers to its own
+      // mapping, not this one.
+      const sourceRows = fetched.filter((r) =>
+        sameMapping(
+          this.findMapping(
+            String(r.item_name ?? ""),
+            r.external_item_id ?? null,
+            mappings,
+          ),
+          mapping,
+        ),
+      );
       // A Toast-door row holds a Toast selection, keyed toast_sale_… on
       // that door; replayed under the hub's key it could move twice, so it
       // is left alone. A hub row always carries is_wine.
@@ -2077,14 +2150,6 @@ export class PosHubService {
       out.still_waiting += sourceRows.length - hubRows.length;
       if (!hubRows.length) continue;
 
-      const mappingRead = await this.loadItemMappings(restaurantId, lineSource);
-      if (mappingRead.error) {
-        out.failed += hubRows.length;
-        this.logger.error(
-          `Replay could not read the mappings for r=${restaurantId} src=${lineSource}: ${mappingRead.error}`,
-        );
-        continue;
-      }
       const checkIds = [
         ...new Set(hubRows.map((r) => String(r.external_check_id))),
       ];
@@ -2114,7 +2179,7 @@ export class PosHubService {
           lineSource,
           checkById.get(checkId) ?? null,
           queued,
-          mappingRead.rows,
+          mappings,
           out,
         );
       }
@@ -2122,7 +2187,16 @@ export class PosHubService {
     return finishPastSales(out);
   }
 
-  /** One stored check's share of a replay; counts its outcome into `out`. */
+  /**
+   * One stored check's share of a replay; counts its outcome into `out`.
+   *
+   * Outcomes are per line, then per queue row: each queued line is replayed
+   * on its own, so a line that moves counts as applied whatever its
+   * neighbours do, and a row is cleared only when every one of its own lines
+   * moved, had moved already, or needs no stock. Lines are counted, except
+   * where no line can be read (no stored check, or a check that dropped the
+   * line): those count their rows.
+   */
   private async replayOneCheck(
     restaurantId: string,
     source: string,
@@ -2150,51 +2224,38 @@ export class PosHubService {
       return;
     }
 
-    const isQueued = (line: any) =>
-      queued.some(
-        (r) =>
-          (r.external_item_id ?? null) === (line?.external_item_id ?? null) &&
-          String(r.item_name) === String(line?.name),
-      );
-    let targets = 0;
-    let inventoryId: string | null = null;
-    const items = (Array.isArray(stored.items) ? stored.items : []).map(
-      (line: any) => {
-        const base = {
-          name: String(line?.name ?? ""),
-          external_item_id: line?.external_item_id ?? null,
-          qty: Number(line?.qty) || 0,
-          price: Number(line?.price) || 0,
-        };
-        // Every other line keeps its position (its key) and moves nothing.
-        if (!isQueued(line))
-          return {
-            ...base,
-            is_wine: false,
-            inventory_id: null,
-            sale_unit: null,
-            sale_volume_ml: null,
-          };
-        targets++;
-        const m = this.resolveWine(base.name, base.external_item_id, mappings);
-        inventoryId = inventoryId ?? m.inventoryId;
-        return {
-          ...base,
-          is_wine: m.isWine,
-          inventory_id: m.inventoryId,
-          sale_unit: m.saleUnit,
-          sale_volume_ml: m.saleVolumeMl,
-        };
-      },
+    const lines = (Array.isArray(stored.items) ? stored.items : []).map(
+      (line: any) => ({
+        name: String(line?.name ?? ""),
+        external_item_id: line?.external_item_id ?? null,
+        qty: Number(line?.qty) || 0,
+        price: Number(line?.price) || 0,
+      }),
     );
+    const rowsOf = (line: { name: string; external_item_id: string | null }) =>
+      queued.filter(
+        (r) =>
+          (r.external_item_id ?? null) === line.external_item_id &&
+          String(r.item_name) === line.name,
+      );
+    const targets = lines
+      .map((line: any, i: number) => i)
+      .filter((i: number) => rowsOf(lines[i]).length > 0);
     // The till re-sent the check without the line: it stays queued for a
     // person rather than being cleared on a guess.
-    if (!targets) {
+    if (!targets.length) {
       out.still_waiting += queued.length;
       return;
     }
 
-    const report = new StockReport();
+    type LineOutcome = {
+      kind: "applied" | "already" | "none" | "requeued" | "failed";
+      /** Set when kind is "requeued": the question the line waits on now. */
+      reason?: "unmapped" | "no_sale_volume";
+      /** What the line resolved to; recorded on the row it settles. */
+      inventoryId: string | null;
+    };
+    const outcomes = new Map<number, LineOutcome>();
     const check = {
       externalCheckId: String(stored.external_check_id),
       openedAt: "",
@@ -2202,61 +2263,135 @@ export class PosHubService {
       voided: false,
       items: [],
     } as CanonicalCheck;
-    try {
-      await this.applyStockEffects(
-        restaurantId,
-        source,
-        check,
-        items,
-        report,
-        when,
+
+    for (const lineNo of targets) {
+      const m = this.resolveWine(
+        lines[lineNo].name,
+        lines[lineNo].external_item_id,
+        mappings,
       );
-    } catch (err: any) {
-      out.failed += queued.length;
-      this.logger.warn(
-        `Replay of check ${check.externalCheckId} threw for r=${restaurantId}: ${err?.message}`,
+      // Every other line keeps its position (its key) and moves nothing.
+      const items = lines.map((line: any, i: number) =>
+        i === lineNo
+          ? {
+              ...line,
+              is_wine: m.isWine,
+              inventory_id: m.inventoryId,
+              sale_unit: m.saleUnit,
+              sale_volume_ml: m.saleVolumeMl,
+            }
+          : {
+              ...line,
+              is_wine: false,
+              inventory_id: null,
+              sale_unit: null,
+              sale_volume_ml: null,
+            },
       );
-      return;
+      const report = new StockReport();
+      try {
+        await this.applyStockEffects(
+          restaurantId,
+          source,
+          check,
+          items,
+          report,
+          when,
+        );
+      } catch (err: any) {
+        outcomes.set(lineNo, { kind: "failed", inventoryId: null });
+        this.logger.warn(
+          `Replay of check ${check.externalCheckId} line ${lineNo} threw for r=${restaurantId}: ${err?.message}`,
+        );
+        continue;
+      }
+      const t = report.tally;
+      const inventoryId = m.inventoryId;
+      if (t.failed > 0) {
+        // Keyed: the next save finishes it, moving nothing twice.
+        outcomes.set(lineNo, { kind: "failed", inventoryId });
+        this.logger.warn(
+          `Replay of check ${check.externalCheckId} for r=${restaurantId}: ${report.errorLines().join("; ")}`,
+        );
+      } else if (t.queued.no_sale_volume > 0)
+        outcomes.set(lineNo, {
+          kind: "requeued",
+          reason: "no_sale_volume",
+          inventoryId,
+        });
+      else if (t.queued.unmapped > 0)
+        outcomes.set(lineNo, {
+          kind: "requeued",
+          reason: "unmapped",
+          inventoryId,
+        });
+      else if (t.booked > 0)
+        outcomes.set(lineNo, { kind: "applied", inventoryId });
+      else if (t.alreadyBooked > 0)
+        outcomes.set(lineNo, { kind: "already", inventoryId });
+      // Mapped as not stock, or a quantity that rounds to nothing.
+      else outcomes.set(lineNo, { kind: "none", inventoryId });
     }
 
-    const t = report.tally;
-    if (t.failed > 0) {
-      // All keyed: the next save finishes it, moving nothing twice.
-      out.failed += queued.length;
-      this.logger.warn(
-        `Replay of check ${check.externalCheckId} for r=${restaurantId}: ${report.errorLines().join("; ")}`,
-      );
-      return;
+    // A row is settled when none of its own lines is still refused under
+    // the row's own question or failed. A row whose question was answered
+    // (`unmapped`, now asking `no_sale_volume`) is settled too: the line
+    // waits on the narrower row the replay just queued.
+    const settled = new Map<string | null, any[]>();
+    const rowLines = new Map<string, number[]>();
+    for (const row of queued) {
+      const own = targets.filter((i: number) => rowsOf(lines[i]).includes(row));
+      rowLines.set(String(row.id), own);
+      if (!own.length) continue;
+      const open = own.some((i: number) => {
+        const o = outcomes.get(i)!;
+        return (
+          o.kind === "failed" ||
+          (o.kind === "requeued" && o.reason === (row.reason ?? "unmapped"))
+        );
+      });
+      if (open) continue;
+      const inventoryId =
+        own
+          .map((i: number) => outcomes.get(i)!.inventoryId)
+          .find((id: string | null) => id != null) ?? null;
+      settled.set(inventoryId, [...(settled.get(inventoryId) ?? []), row]);
     }
-    const requeued = new Set<string>();
-    if (t.queued.unmapped > 0) requeued.add("unmapped");
-    if (t.queued.no_sale_volume > 0) requeued.add("no_sale_volume");
-    if (requeued.size) {
-      // Still refused: a row whose question was answered (`unmapped`, now
-      // `no_sale_volume`) is cleared; the open question's row stays.
-      const answered = queued.filter(
-        (r) => !requeued.has(String(r.reason ?? "unmapped")),
-      );
-      if (answered.length)
-        await this.clearQueuedLines(restaurantId, answered, inventoryId);
-      out.still_waiting += queued.length;
-      return;
+    const clearedRows = new Set<string>();
+    for (const [inventoryId, rows] of settled) {
+      if (await this.clearQueuedLines(restaurantId, rows, inventoryId))
+        for (const r of rows) clearedRows.add(String(r.id));
     }
-    const cleared = await this.clearQueuedLines(
-      restaurantId,
-      queued,
-      inventoryId,
-    );
-    if (t.booked + t.alreadyBooked > 0) {
-      // The stock moved and is keyed, so it counts as applied even when the
-      // queue row could not be cleared.
-      out.applied += t.booked;
-      out.already_applied += t.alreadyBooked;
-      if (!cleared) out.not_cleared += queued.length;
-    } else if (cleared) {
-      // Mapped as not stock, or a quantity that rounds to nothing.
-      out.cleared_without_stock += queued.length;
-    } else out.still_waiting += queued.length;
+    // A row with no line on the check stays for a person, as above.
+    for (const row of queued)
+      if (!rowLines.get(String(row.id))!.length) out.still_waiting++;
+
+    for (const lineNo of targets) {
+      const o = outcomes.get(lineNo)!;
+      const rowsCleared = rowsOf(lines[lineNo]).every((r) =>
+        clearedRows.has(String(r.id)),
+      );
+      switch (o.kind) {
+        case "applied":
+        case "already":
+          // The stock moved and is keyed, so it counts as applied even when
+          // its queue row could not be cleared.
+          if (o.kind === "applied") out.applied++;
+          else out.already_applied++;
+          if (!rowsCleared) out.not_cleared++;
+          break;
+        case "none":
+          if (rowsCleared) out.cleared_without_stock++;
+          else out.still_waiting++;
+          break;
+        case "requeued":
+          out.still_waiting++;
+          break;
+        case "failed":
+          out.failed++;
+          break;
+      }
+    }
   }
 
   /**
