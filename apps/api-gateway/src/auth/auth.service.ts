@@ -8,6 +8,8 @@ import {
   NotFoundException,
   ServiceUnavailableException,
   InternalServerErrorException,
+  HttpException,
+  HttpStatus,
   Logger,
   Optional,
   forwardRef,
@@ -67,6 +69,8 @@ import {
 } from "./unproven-address";
 import {
   CODE_REFUSAL,
+  CODE_SPENT,
+  DAILY_LOCK,
   SignInCodesService,
   normalizeEmail,
 } from "../passkeys/sign-in-codes.service";
@@ -255,10 +259,21 @@ export interface SignInResult extends TokenPair {
 /**
  * Whether the verification mail left (onboarding OB-3; proposal §5 I15, "A
  * failed send is said to the person"). 'sent' only when `sendEmail` said
- * success; everything else -- a refused send, an unstored link, a throw -- is
- * 'not_sent'. It is not a delivery receipt: 'sent' means the provider took it.
+ * success; a refused send, an unstored link or a throw is 'not_sent'. A send
+ * still unanswered after `VERIFICATION_SEND_BOUND_MS` is 'unconfirmed' (OB-6):
+ * it may still leave, so it is never called 'not_sent', and never 'sent'.
+ * It is not a delivery receipt: 'sent' means the provider took it.
  */
-export type VerificationMail = "sent" | "not_sent";
+export type VerificationMail = "sent" | "not_sent" | "unconfirmed";
+
+/**
+ * How long sign-up and resend wait on the mailer before answering
+ * 'unconfirmed' (onboarding OB-6). `GmailService` bounds only its OAuth token
+ * fetch; its `messages.send` has no bound, so a hung Gmail call held "Create
+ * account" open forever. 8 s is the session's call under the 2026-11-07
+ * /goal and is NOT measured against production Gmail.
+ */
+export const VERIFICATION_SEND_BOUND_MS = 8_000;
 
 /**
  * What a resend answers: the same `verificationMail` sign-up answers, read
@@ -273,6 +288,35 @@ export interface VerificationResend {
 
 function resendAnswer(verificationMail: VerificationMail): VerificationResend {
   return { sent: verificationMail === "sent", verificationMail };
+}
+
+/**
+ * A verify_email code's refusal, with a `code` the page words it by (OB-6:
+ * words come from status and code, never the prose). `SignInCodesService`
+ * gives a wrong code and a spent one the same 400 with different sentences,
+ * so they are told apart here by the service's own constants. A wrong code
+ * and an expired one share one refusal on purpose (`CODE_REFUSAL`), so they
+ * share one code. Anything else passes through unchanged.
+ */
+function codedCodeRefusal(err: unknown): unknown {
+  if (!(err instanceof HttpException)) return err;
+  const status = err.getStatus();
+  if (status === HttpStatus.BAD_REQUEST && err.message === CODE_SPENT) {
+    return new BadRequestException({ message: CODE_SPENT, code: "CODE_SPENT" });
+  }
+  if (status === HttpStatus.BAD_REQUEST && err.message === CODE_REFUSAL) {
+    return new BadRequestException({
+      message: CODE_REFUSAL,
+      code: "CODE_REFUSED",
+    });
+  }
+  if (status === HttpStatus.TOO_MANY_REQUESTS && err.message === DAILY_LOCK) {
+    return new HttpException(
+      { message: DAILY_LOCK, code: "CODE_LOCKED_FOR_THE_DAY" },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+  }
+  return err;
 }
 
 export type InvitationEmailOutcome =
@@ -2136,14 +2180,16 @@ export class AuthService {
     email: string,
   ): Promise<VerificationMail> {
     try {
-      const { data: verif } = await this.databaseService.supabase
-        .from("email_verifications")
-        .insert({ user_id: userId, email })
-        .select("token")
-        .single();
-      if (!verif) {
+      const { data: verif, error: linkError } =
+        await this.databaseService.supabase
+          .from("email_verifications")
+          .insert({ user_id: userId, email })
+          .select("token")
+          .single();
+      if (linkError || !verif) {
         this.logger.warn(
-          `Verification email not sent to ${email}: the link could not be stored`,
+          `Verification email not sent to ${email}: the link could not be stored` +
+            (linkError ? ` (${linkError.message})` : ""),
         );
         return "not_sent";
       }
@@ -2165,11 +2211,43 @@ export class AuthService {
       const verifyUrl = `${frontendUrl}/verify-email?token=${verif.token}`;
 
       // Always call sendEmail() — it handles lazy-init and falls back to mock if OAuth unconfigured
-      const result = await this.gmailService.sendEmail({
+      const send = this.gmailService.sendEmail({
         to: [email],
         subject: VERIFY_EMAIL_SUBJECT,
         html: verifyEmailTemplate({ code, verifyUrl }),
       });
+      // Bounded (onboarding OB-6): the caller answers a person waiting on a
+      // button, and Gmail's messages.send has no timeout of its own. A send
+      // still open at the bound is 'unconfirmed' -- it may yet leave -- and its
+      // eventual answer is still logged.
+      let bound: ReturnType<typeof setTimeout> | undefined;
+      const settled = await Promise.race([
+        send.then((answer) => ({ answer })),
+        new Promise<null>((resolve) => {
+          bound = setTimeout(() => resolve(null), VERIFICATION_SEND_BOUND_MS);
+        }),
+      ]).finally(() => clearTimeout(bound));
+      if (settled === null) {
+        this.logger.warn(
+          `Verification email to ${email} unconfirmed: the mailer had not answered after ${VERIFICATION_SEND_BOUND_MS} ms`,
+        );
+        send.then(
+          (late) =>
+            late.success
+              ? this.logger.log(
+                  `Verification email to ${email} left after the bound (id: ${late.messageId})`,
+                )
+              : this.logger.warn(
+                  `Verification email to ${email} refused after the bound: ${late.error}`,
+                ),
+          (err) =>
+            this.logger.error(
+              `Verification email to ${email} failed after the bound: ${(err as Error)?.message}`,
+            ),
+        );
+        return "unconfirmed";
+      }
+      const result = settled.answer;
 
       if (!result.success) {
         this.logger.warn(
@@ -3461,8 +3539,16 @@ export class AuthService {
         code: "SIGN_IN_TO_VERIFY",
       });
     }
-    const proved = await this.verifyCodes.verifyEmailCode(callerUserId, code);
-    const user = await this.verifyEmailProvedByLink(callerUserId, proved);
+    let user: any;
+    try {
+      const proved = await this.verifyCodes.verifyEmailCode(
+        callerUserId,
+        code,
+      );
+      user = await this.verifyEmailProvedByLink(callerUserId, proved);
+    } catch (err) {
+      throw codedCodeRefusal(err);
+    }
 
     // The link in the same mail now has nothing left to prove. Best effort:
     // the account is verified either way, and a later click is answered
