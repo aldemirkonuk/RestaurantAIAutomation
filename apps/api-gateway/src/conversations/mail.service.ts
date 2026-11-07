@@ -122,6 +122,8 @@ export class MailService {
           channels: Array.isArray(r.channels) ? r.channels : [],
           newestOpenOrderId: r.newest_open_order_id ?? null,
           newestOpenOrderNumber: r.newest_open_order_number ?? null,
+          unsentStatus:
+            typeof r.unsent_status === "string" ? r.unsent_status : null,
         }),
       ),
       next:
@@ -292,6 +294,7 @@ export class MailService {
             createdAt: m.created_at,
             rawDeletedAt: m.raw_deleted_at ?? null,
             door: mailDoorOf(m),
+            automatic: m.automatic === true,
           }),
         ),
       before:

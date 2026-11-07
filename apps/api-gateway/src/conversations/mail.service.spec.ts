@@ -102,10 +102,40 @@ function person(i: number) {
     channels: ["email"],
     newest_open_order_id: null,
     newest_open_order_number: null,
+    unsent_status: null,
   };
 }
 
 describe("listPeople", () => {
+  it("keeps a vendor whose only letter has not left, and names its state (HARM 1)", async () => {
+    resolve = () => ({
+      data: [
+        {
+          ...person(4),
+          last_line: "Please send 6 cases",
+          last_direction: "outbound",
+          waiting: false,
+          waiting_since: null,
+          open_threads: 0,
+          unsent_status: "HOUSE_QUEUED",
+        },
+        person(5),
+      ],
+      error: null,
+    });
+    const page = await service().listPeople(HOUSE, "owner", {});
+    expect(page.people.map((p) => p.unsentStatus)).toEqual([
+      "HOUSE_QUEUED",
+      null,
+    ]);
+    expect(page.people[0]).toMatchObject({
+      waiting: false,
+      lastDirection: "outbound",
+      lastLine: "Please send 6 cases",
+    });
+  });
+
+
   it("a malformed cursor never reaches the database", async () => {
     await expect(
       service().listPeople(HOUSE, "owner", { after: "%%%" }),
@@ -321,6 +351,15 @@ describe("getThread", () => {
       "first written",
       "answered",
     ]);
+  });
+
+  it("names automatic mail (a bounce, an auto-reply) so it is never read as a letter (M-5)", async () => {
+    resolve = threadResolver([
+      { ...letter(0), automatic: true, message_text: "Delivery failed" },
+      letter(1),
+    ]);
+    const page = await service().getThread(HOUSE, "owner", { key: "t-1" });
+    expect(page.messages.map((m) => m.automatic)).toEqual([false, true]);
   });
 
   it("never answers with email headers, Gmail ids or message ids", async () => {
