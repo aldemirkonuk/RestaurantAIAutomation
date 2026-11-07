@@ -75,7 +75,10 @@ export class McpServerController {
       );
     }
 
-    const gate = this.credentials.consume(credential.id);
+    // Every message in a batch is a call and is counted as one. One token per
+    // POST let a single body carry thousands of calls past a 60-call window.
+    const messages = Array.isArray(body) ? body : [body];
+    const gate = this.credentials.consume(credential.id, messages.length);
     // Deliberately NOT `X-RateLimit-*`. The global `RateLimitGuard` has already
     // written that trio for its own IP-keyed budget, and overwriting only its
     // `Remaining` would leave a client reading one limiter's ceiling against
@@ -97,17 +100,22 @@ export class McpServerController {
         detail: McpCredentialsService.describeLimiter(),
         durationMs: 0,
       });
+      const batchNote =
+        messages.length > 1
+          ? messages.length > RATE_LIMIT_PER_MINUTE
+            ? ` This request carried ${messages.length} calls, more than the window ever holds; send them in smaller requests. None of them ran.`
+            : ` This request carried ${messages.length} calls and ${gate.remaining} are left in the window. None of them ran.`
+          : "";
       return {
         jsonrpc: "2.0",
         id: idOf(body),
         error: {
           code: RPC_INVALID_REQUEST,
-          message: `Too many calls on this key. ${McpCredentialsService.describeLimiter()}`,
+          message: `Too many calls on this key. ${McpCredentialsService.describeLimiter()}${batchNote}`,
         },
       };
     }
 
-    const messages = Array.isArray(body) ? body : [body];
     const responses: JsonRpcResponse[] = [];
 
     for (const raw of messages) {
