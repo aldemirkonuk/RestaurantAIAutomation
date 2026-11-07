@@ -1,16 +1,19 @@
 /**
  * The intake health sheet (proposal §2.5) — the one dense, technical surface
- * of the Mail tab. One row per door: its status, its last read and the last
- * letter it stored; then which address letters leave from and where vendors
- * write back; then the house's Mudavym address with a copy act.
+ * of the Mail tab. One row per way mail comes in: its status, its last read
+ * and the last letter it stored; then which address letters leave from and
+ * where vendors write back; then the house's Mudavym address with a copy act.
+ * Every sentence is in the house's words: no "door", no "inbound domain", no
+ * raw error (QA round 16, finding 3).
  *
  * Honesty rules:
  * - only the house mailbox keeps a record of its reads, so only it can be
  *   "reading" or "behind"; every other door is "cannot tell" until a durable
  *   cursor exists (proposal L3) — a stored letter is not proof a door is open;
- * - "held at a door" is not recorded yet, and says so (never 0);
- * - no Mudavym address is ever invented: an unset inbound domain, or a house
- *   with no address, is said in words with nothing to copy.
+ * - letters held before reaching the house are not recorded yet, and the
+ *   line says so (never 0);
+ * - no address is ever invented: a Mudavym address that cannot exist yet is
+ *   said in words with nothing to copy, and so is an unread sender (QA M13).
  */
 
 import { useState, type CSSProperties, type ReactNode } from 'react';
@@ -20,10 +23,12 @@ import { EM, MONO, SANS } from './cm-format';
 import {
   houseMailboxStatus,
   lastStoredWords,
+  senderLine,
   unrecordedDoorStatus,
   type DoorStatus,
   type MailboxReader,
   type MailSummary,
+  type SenderLineInput,
 } from './mail-format';
 
 const FULL: readonly Detent[] = ['full'];
@@ -99,8 +104,8 @@ export function IntakeHealthSheet({
   summaryFailed,
   reader,
   readerFailed,
-  senderAddress,
-  senderWords,
+  sender,
+  senderFailed,
   conversationWords,
   now,
 }: {
@@ -110,8 +115,9 @@ export function IntakeHealthSheet({
   summaryFailed: boolean;
   reader: MailboxReader | null;
   readerFailed: boolean;
-  senderAddress: string | null;
-  senderWords: string | null;
+  /** The sender read; null while it is read or when it failed (`senderFailed`). */
+  sender: SenderLineInput | null;
+  senderFailed: boolean;
   conversationWords: string | null;
   now: number;
 }) {
@@ -145,10 +151,10 @@ export function IntakeHealthSheet({
       <div className="grid gap-5" style={{ fontFamily: SANS, padding: '4px 16px 24px' }}>
         {summaryFailed && !known && (
           <p role="alert" style={{ margin: 0, fontSize: 12, color: 'var(--alarm-deep, #8C3322)' }}>
-            The doors' last letters could not be read, so they show {EM}. That does not mean nothing arrived.
+            When the last letters came could not be read, so they show {EM}. That does not mean nothing arrived.
           </p>
         )}
-        <Section title="Doors">
+        <Section title="Where mail comes in">
           <Door
             testId="door-house-mailbox"
             name="Your mailbox"
@@ -171,15 +177,13 @@ export function IntakeHealthSheet({
             lastStored={lastStoredWords(summary?.doors.whatsapp.lastStoredAt, known, now)}
           />
           <p data-testid="held-at-door" style={{ ...CELL, margin: '6px 0 0' }}>
-            Held at a door: {summary?.heldAtDoor == null ? `${EM} not recorded yet.` : summary.heldAtDoor}
+            Letters held before reaching the house: {summary?.heldAtDoor == null ? `${EM} not recorded yet.` : summary.heldAtDoor}
           </p>
         </Section>
 
-        <Section title="Which address">
+        <Section title="Which address letters leave from">
           <p style={{ ...CELL, margin: 0 }} data-testid="sender-address">
-            {senderAddress
-              ? `Letters leave from ${senderAddress}.`
-              : senderWords ?? 'Which address letters leave from could not be read.'}
+            {senderLine(sender, { failed: senderFailed })}
           </p>
           {conversationWords && (
             <p style={{ ...CELL, margin: '4px 0 0' }} data-testid="conversation-words">
@@ -195,7 +199,7 @@ export function IntakeHealthSheet({
             </p>
           ) : !address.configured ? (
             <p style={{ ...CELL, margin: 0 }} data-testid="mudavym-address">
-              No Mudavym address yet: the inbound mail domain is not set up.
+              No Mudavym address yet: Mudavym cannot receive mail for houses yet, so there is no address to give vendors.
             </p>
           ) : !address.address ? (
             <p style={{ ...CELL, margin: 0 }} data-testid="mudavym-address">

@@ -6,9 +6,9 @@
  * MailTab.thread.test.tsx.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 
 const api = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('../../../services/api/client', () => ({ apiClient: api }));
@@ -108,14 +108,27 @@ function Where() {
   return <output data-testid="where">{l.pathname + l.search}</output>;
 }
 
-function mount(at = '/communications?tab=mail', props: Partial<Parameters<typeof MailTab>[0]> = {}) {
+/** The browser's own Back button: one step back in history, nothing else. */
+function BrowserBack() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" data-testid="browser-back" onClick={() => navigate(-1)}>
+      browser back
+    </button>
+  );
+}
+
+/** `at` may be a history: the last entry is the one shown. */
+function mount(at: string | string[] = '/communications?tab=mail', props: Partial<Parameters<typeof MailTab>[0]> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const onOpenReply = vi.fn();
+  const entries = Array.isArray(at) ? at : [at];
   render(
-    <MemoryRouter initialEntries={[at]}>
+    <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
       <QueryClientProvider client={qc}>
         <MailTab draftedOrderIds={new Set<string>()} onOpenReply={onOpenReply} {...props} />
         <Where />
+        <BrowserBack />
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -194,7 +207,7 @@ describe('the list', () => {
     );
   });
 
-  it('opening a person replaces the address with ?with=', async () => {
+  it('opening a person puts ?with= in the address', async () => {
     mount();
     fireEvent.click((await screen.findAllByTestId('mail-person'))[0]);
     expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail&with=vendor%3Ap1');
@@ -204,7 +217,7 @@ describe('the list', () => {
   it('a failed summary is an em dash and words, never 0', async () => {
     routes['/mail/summary'] = fail503;
     mount();
-    const header = await screen.findByText(/could not be read/);
+    const header = await screen.findByText(/Who is waiting on you could not be read/);
     expect(header).toHaveTextContent(
       '— Who is waiting on you could not be read (The mail could not be read). That does not mean no one is.',
     );
@@ -255,5 +268,104 @@ describe("a person's threads (spec b)", () => {
     routes['/mail/threads'] = () => ({ person: null, threads: [], next: null });
     mount('/communications?tab=mail&with=vendor%3Anobody');
     expect(await screen.findByTestId('threads-missing')).toHaveTextContent('This house has no mail with that person.');
+  });
+});
+
+// The founder's ask (2026-11-07): one line says whether mail is connected.
+describe('the status line', () => {
+  const status = () => screen.findByTestId('mail-status');
+
+  it('connected, with when the last letter came', async () => {
+    mount();
+    await waitFor(async () => expect(await status()).toHaveTextContent('Connected · last letter 1 h ago'));
+    expect(screen.getByTestId('mail-status')).toHaveAttribute('data-state', 'connected');
+  });
+
+  // QA round 16, finding 4: never "cannot tell" for a house known not connected.
+  it('not connected says "Not connected"', async () => {
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: { ...SENDER.reader, granted: false } });
+    routes['/mail/summary'] = () => ({ ...SUMMARY, address: { configured: true, address: null } });
+    mount();
+    await waitFor(async () => expect(await status()).toHaveTextContent(/^Not connected$/));
+  });
+
+  it('a failed last read needs attention, in words, never the raw error', async () => {
+    routes['/communications/letters/sender'] = () => ({
+      ...SENDER,
+      reader: { ...SENDER.reader, lastError: 'invalid_grant: Token has been expired or revoked.' },
+    });
+    mount();
+    await waitFor(async () =>
+      expect(await status()).toHaveTextContent(
+        'Needs attention · Google no longer lets Mudavym read your mailbox. Connect it again in Connections.',
+      ),
+    );
+    expect(document.body.textContent).not.toMatch(/invalid_grant|Token has been/);
+  });
+
+  it('a failed sender read with no address says it could not be read', async () => {
+    routes['/communications/letters/sender'] = fail503;
+    routes['/mail/summary'] = () => ({ ...SUMMARY, address: { configured: true, address: null } });
+    mount();
+    await waitFor(async () => expect(await status()).toHaveTextContent('Whether mail is connected could not be read'));
+  });
+
+  // QA S5b: a sender reply with no reader must not say "checking" forever.
+  it('a sender reply with no reader is not read, never "checking"', async () => {
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, reader: undefined });
+    routes['/mail/summary'] = () => ({ ...SUMMARY, address: { configured: true, address: null } });
+    mount();
+    await waitFor(async () => expect(await status()).toHaveAttribute('data-state', 'unknown'));
+  });
+
+  // QA round 16, finding 6: the reader is re-read while the tab is shown.
+  it('the reader is read again every 30 seconds', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mount();
+      await waitFor(() => expect(calls('/communications/letters/sender')).toHaveLength(1));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      await waitFor(() => expect(calls('/communications/letters/sender').length).toBeGreaterThanOrEqual(2));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// QA round 16, N2: browser Back used to leave /communications.
+describe('Back', () => {
+  it("browser Back steps thread → person → everyone and stays on /communications", async () => {
+    routes['/mail/threads'] = (p) => ({
+      person: { key: p.with, kind: 'vendor', name: 'Vendor 1' },
+      threads: [
+        { key: 'gm:abc', subject: 'Standing order', messageCount: 1, lastAt: '2026-11-06T09:00:00Z', lastDirection: 'inbound', waiting: false, orderId: null, orderNumber: null },
+      ],
+      next: null,
+    });
+    mount(['/orders', '/communications?tab=mail']);
+    fireEvent.click((await screen.findAllByTestId('mail-person'))[0]);
+    fireEvent.click(await screen.findByTestId('mail-thread-row'));
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail&with=vendor%3Ap1&thread=gm%3Aabc');
+    fireEvent.click(screen.getByTestId('browser-back'));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail&with=vendor%3Ap1$/);
+    fireEvent.click(screen.getByTestId('browser-back'));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail$/);
+  });
+
+  it('the in-app Back steps the same history, so it piles up no entries', async () => {
+    mount(['/orders', '/communications?tab=mail']);
+    fireEvent.click((await screen.findAllByTestId('mail-person'))[0]);
+    fireEvent.click(await screen.findByRole('button', { name: '← Everyone' }));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail$/);
+    fireEvent.click(screen.getByTestId('browser-back'));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/orders$/);
+  });
+
+  it('the in-app Back on a link opened cold stays on the page', async () => {
+    mount(['/orders', '/communications?tab=mail&with=vendor%3Ap1']);
+    fireEvent.click(await screen.findByRole('button', { name: '← Everyone' }));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail$/);
   });
 });

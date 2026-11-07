@@ -247,8 +247,8 @@ describe('the intake sheet', () => {
     return screen.findByTestId('door-house-mailbox');
   };
 
-  // Spec (e): a door with no durable record of its reads says "cannot tell".
-  it('a door with no record of its reads cannot tell; never "reading"', async () => {
+  // Spec (e): a way in with no durable record of its reads says "cannot tell".
+  it('a way in with no record of its reads cannot tell; never "reading"', async () => {
     mount();
     await open();
     for (const id of ['door-mudavym', 'door-whatsapp']) {
@@ -257,8 +257,8 @@ describe('the intake sheet', () => {
     }
     // The house mailbox has no recorded read in this fixture, so it cannot tell either.
     expect(screen.getByTestId('door-house-mailbox')).toHaveAttribute('data-state', 'cannot_tell');
-    expect(screen.getByTestId('intake-line')).toHaveTextContent('Mail arrival: cannot tell yet');
-    expect(screen.getByTestId('held-at-door')).toHaveTextContent(/^Held at a door: — not recorded yet\.$/);
+    expect(screen.getByTestId('mail-status')).toHaveTextContent('Connected · last letter 1 h ago');
+    expect(screen.getByTestId('held-at-door')).toHaveTextContent(/^Letters held before reaching the house: — not recorded yet\.$/);
     expect(screen.getByTestId('sender-address')).toHaveTextContent('Letters leave from siparis@mail.mudavym.com.');
   });
 
@@ -291,8 +291,78 @@ describe('the intake sheet', () => {
     mount();
     await open();
     const addr = screen.getByTestId('mudavym-address');
-    expect(addr).toHaveTextContent('No Mudavym address yet: the inbound mail domain is not set up');
+    expect(addr).toHaveTextContent(
+      'No Mudavym address yet: Mudavym cannot receive mail for houses yet, so there is no address to give vendors.',
+    );
     expect(screen.queryByRole('button', { name: 'Copy' })).toBeNull();
+  });
+
+  // QA round 16, M11: a failed copy says so; it never says "Copied."
+  it('a copy that fails says so and never says "Copied."', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('NotAllowedError'));
+    Object.assign(navigator, { clipboard: { writeText } });
+    mount();
+    await open();
+    const addr = screen.getByTestId('mudavym-address');
+    fireEvent.click(within(addr).getByRole('button', { name: 'Copy' }));
+    expect(await within(addr).findByText('It could not be copied; select it and copy it by hand.')).toBeInTheDocument();
+    expect(within(addr).queryByText('Copied.')).toBeNull();
+  });
+
+  // QA round 16, M13: which address letters leave from is never invented.
+  it('a failed sender read says it could not be read, and names no address', async () => {
+    routes['/communications/letters/sender'] = () => {
+      throw Object.assign(new Error('Request failed with status code 503'), { isAxiosError: true, response: { status: 503 } });
+    };
+    mount();
+    await open();
+    await waitFor(() =>
+      expect(screen.getByTestId('sender-address')).toHaveTextContent(/^Which address letters leave from could not be read\.$/),
+    );
+    expect(screen.getByTestId('sender-address').textContent).not.toMatch(/leave from \S+@|your mailbox/);
+  });
+
+  it('an unknown sender says it could not be read, even with server words', async () => {
+    routes['/communications/letters/sender'] = () => ({ ...SENDER, kind: 'unknown', address: null, words: 'Letters leave from your mailbox.' });
+    mount();
+    await open();
+    await waitFor(() =>
+      expect(screen.getByTestId('sender-address')).toHaveTextContent(/^Which address letters leave from could not be read\.$/),
+    );
+  });
+
+  // QA round 16, finding 3: no "door", no "inbound domain", no raw error anywhere on the sheet.
+  it('the sheet carries no jargon and no raw error', async () => {
+    routes['/communications/letters/sender'] = () => ({
+      ...SENDER,
+      reader: { ...SENDER.reader, lastError: 'HTTP 401 from gmail.googleapis.com/users/me/history' },
+    });
+    routes['/mail/summary'] = () => ({ ...SUMMARY, address: { configured: false, address: null } });
+    mount();
+    await open();
+    await waitFor(() => expect(screen.getByTestId('door-house-mailbox')).toHaveAttribute('data-state', 'failing'));
+    // Text node by text node, so a heading cannot hide by running into its neighbour.
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const texts: string[] = [];
+    while (walker.nextNode()) texts.push(walker.currentNode.textContent ?? '');
+    expect(texts.join(' ')).not.toMatch(/\bdoors?\b|inbound|HTTP|googleapis|invalid_grant|\b401\b/i);
+  });
+});
+
+// QA round 16, M4: a failed thread read says so; it never reads "Reading…" forever.
+describe('a thread that could not be read', () => {
+  it('says it could not be read, and that it is not empty', async () => {
+    routes['/mail/thread'] = () => {
+      throw Object.assign(new Error('Request failed with status code 503'), {
+        isAxiosError: true,
+        response: { status: 503, data: { message: 'The mail could not be read.' } },
+      });
+    };
+    mount('/communications?tab=mail&thread=gm%3Aabc');
+    expect(await screen.findByTestId('thread-unread')).toHaveTextContent(
+      'This thread could not be read (The mail could not be read). That does not mean it is empty.',
+    );
+    expect(screen.queryByText('Reading the thread…')).toBeNull();
   });
 });
 
