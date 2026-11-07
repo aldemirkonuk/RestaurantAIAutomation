@@ -69,5 +69,7 @@ describe("edges", () => {
 
   it("a group naming one table twice is not a group of neighbours", () => {
     expect(formsAdjacentGroup([t("a", 10, 10), t("a", 10, 10)])).toBe(false);
+    // A repeat reached through a real neighbour is still refused.
+    expect(formsAdjacentGroup([t("a", 10, 10), t("b", 20, 10), t("a", 10, 10)])).toBe(false);
   });
 });

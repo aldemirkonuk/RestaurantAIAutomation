@@ -1,11 +1,13 @@
 /**
  * Which tables a waiter may push together (ADR 0345 E1: the checker's
- * `lib/adjacency.ts` at `5958689`, ported). Positions are plan units 0..100
- * (ADR 0347 D6, `:114`); a table with no place, or a place that is not a
- * finite number (the tray, D5), is next to nothing. The checker's distances,
- * section rule and orientation are kept as they were; new here are null
- * places and `formsAdjacentGroup`. The checker's `nextMergeOrientation` and
- * `adjacentPairs` are not ported: nothing in the port calls them.
+ * `lib/adjacency.ts` at `5958689`, ported). Positions are meant as plan
+ * units 0..100 (ADR 0347 D6, `:114`); this file does not check that range
+ * (the narrowing is owed, `0347:184`). A table with no place (the tray, D5)
+ * is next to nothing, and so is one whose place is not a finite number. The
+ * checker's distances, section rule and orientation are kept as they were;
+ * new here are null places and `formsAdjacentGroup`. The checker's
+ * `nextMergeOrientation`, `adjacentPairs` and `adjacencyFusePairs` are not
+ * ported: nothing in the port calls them yet.
  *
  * Managers may merge any tables of one section and need none of this; a
  * waiter's merge needs the tables to be neighbours.
@@ -48,12 +50,19 @@ export function areAdjacent(a: AdjTable, b: AdjTable): boolean {
 }
 
 /**
- * Whether every table is reachable from the first through neighbours: the
- * checker merges a pair at a time, so a group of more is one chain of pairs.
- * Fewer than two tables is not a group.
+ * Whether the tables form one connected group through neighbours (any
+ * connected shape, not only a line). Fewer than two tables is not a group,
+ * and neither is a list that names one table id twice.
+ *
+ * The checker merges exactly two tables (`app/merge-actions.ts:215`), and
+ * ADR 0347 `:236` says a floor merge seats two tables. This function also
+ * answers for more than two; whether a waiter may merge more than two is
+ * not decided, so a caller keeps waiter merges to two until it is.
  */
 export function formsAdjacentGroup(tables: AdjTable[]): boolean {
   if (tables.length < 2) return false;
+  const ids = tables.map((t) => t.id).filter((id): id is string => !!id);
+  if (new Set(ids).size !== ids.length) return false;
   const seen = new Set<number>([0]);
   const queue = [0];
   while (queue.length) {
