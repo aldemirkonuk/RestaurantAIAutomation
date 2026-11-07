@@ -1,0 +1,146 @@
+/**
+ * The response shapes of GET /mail/* — the server read model behind the
+ * /communications Mail tab (founder /goal 2026-11-07; sw-walk mail proposal,
+ * Phase B L8, narrowed to the store that exists today).
+ *
+ * These names are a contract with the web lane (feat/comms-mail-tab). Adding a
+ * field is safe; renaming or removing one breaks that lane.
+ *
+ * Every time is the ISO string Postgres returned, untouched: a cursor built
+ * from it keeps microseconds, which a JS Date would drop, so a page boundary
+ * between two letters in the same millisecond still holds.
+ */
+
+/** Only vendor mail is stored today (procurement_conversations). */
+export type MailPersonKind = "vendor";
+
+/**
+ * Which door a letter came in by, or that the house sent it.
+ * - house_mailbox: read from a person's own mailbox under their grant.
+ * - whatsapp: the house's WhatsApp line.
+ * - mudavym_mail: Mudavym's shared mailbox OR the house's Mudavym address —
+ *   the stored row cannot tell those two apart until an intake record exists.
+ * - from_house: an outbound letter.
+ */
+export type MailDoor = "house_mailbox" | "whatsapp" | "mudavym_mail" | "from_house";
+
+export interface MailPersonRow {
+  /** `vendor:<provider uuid>` — the `with=` value of GET /mail/threads. */
+  key: string;
+  kind: MailPersonKind;
+  providerId: string;
+  name: string | null;
+  /** The newest letter that passed between the house and this person. */
+  lastAt: string;
+  /** Its first ~160 characters, without its "Subject:" line. Never a draft. */
+  lastLine: string | null;
+  lastDirection: "inbound" | "outbound" | null;
+  /** The house owes this person a reply on at least one thread. */
+  waiting: boolean;
+  /** Since when, on the oldest waiting thread. Null when not waiting. */
+  waitingSince: string | null;
+  /** Threads that are waiting or whose order is not closed. */
+  openThreads: number;
+  channels: string[];
+  newestOpenOrderId: string | null;
+  newestOpenOrderNumber: string | null;
+}
+
+export interface MailPeoplePage {
+  people: MailPersonRow[];
+  /** Pass as `after=` for the next page; null on the last page. */
+  next: string | null;
+  /**
+   * The kinds of person whose mail is stored. Team, guest and stranger mail
+   * is not stored yet, so the UI must not imply an empty list covers them.
+   */
+  storedKinds: MailPersonKind[];
+}
+
+export interface MailPersonRef {
+  key: string;
+  kind: MailPersonKind;
+  providerId: string;
+  name: string | null;
+}
+
+export interface MailThreadRow {
+  /** The `key=` value of GET /mail/thread. */
+  key: string;
+  subject: string | null;
+  messageCount: number;
+  lastAt: string;
+  lastDirection: "inbound" | "outbound" | null;
+  waiting: boolean;
+  orderId: string | null;
+  orderNumber: string | null;
+}
+
+export interface MailThreadsPage {
+  /** Null when `with=` names nobody this house has mail with. */
+  person: MailPersonRef | null;
+  threads: MailThreadRow[];
+  next: string | null;
+}
+
+export interface MailMessage {
+  id: string;
+  direction: "inbound" | "outbound";
+  channel: string;
+  /** The letter's text without its leading "Subject:" line. */
+  text: string;
+  aiGenerated: boolean;
+  status: string | null;
+  sentAt: string | null;
+  receivedAt: string | null;
+  createdAt: string;
+  /** Set when the original was removed under the retention rule; facts stay. */
+  rawDeletedAt: string | null;
+  door: MailDoor;
+}
+
+export interface MailOrderRef {
+  id: string;
+  number: string | null;
+  status: string | null;
+}
+
+export interface MailThreadPage {
+  key: string;
+  subject: string | null;
+  person: MailPersonRef | null;
+  order: MailOrderRef | null;
+  /** Oldest to newest within the page; at most 50. */
+  messages: MailMessage[];
+  /** Pass as `before=` for the older page; null when this page is the oldest. */
+  before: string | null;
+}
+
+export interface MailDoorState {
+  /** The last letter stored from this door; null when none ever was. */
+  lastStoredAt: string | null;
+}
+
+export interface MailSummary {
+  waitingPeople: number;
+  oldestWaitAt: string | null;
+  /** Letters in and out on the house's own day (restaurants.timezone). */
+  inToday: number;
+  outToday: number;
+  /**
+   * Letters held at a door. Always null today: no intake record exists until
+   * the durable intake store (proposal L2), so it cannot be told — never 0.
+   */
+  heldAtDoor: null;
+  doors: {
+    houseMailbox: MailDoorState;
+    whatsapp: MailDoorState;
+    mudavymMail: MailDoorState;
+  };
+  address: {
+    /** INBOUND_EMAIL_DOMAIN is set on this deployment. */
+    configured: boolean;
+    /** The house's active Mudavym address, if one was ever made. Never made here. */
+    address: string | null;
+  };
+}
