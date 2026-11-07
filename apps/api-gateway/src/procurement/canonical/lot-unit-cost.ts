@@ -1,26 +1,13 @@
 /**
- * An invoice line's printed price, as the cost of ONE bottle on the shelf.
+ * An invoice line's printed price as the cost of ONE bottle (QA round 7c B1:
+ * `2 cases @ 264 / case, pack 12` booked 264 a bottle, not 22).
  *
- * QA round 7c B1 (2026-11-07): `finaliseAtVerified` posted `unit_price` — the
- * price AS PRINTED, per the line's own price base — as the lot's per-bottle
- * cost, so `2 cases @ 264 / case, pack 12` booked 264 a bottle (22 is right)
- * and `142,00 / KS(12)` booked 142 (11.8333 is right).
- *
- * The rule, in the vocabulary of `lineNetFromPrice` and PR #780's
- * `landed-cost.ts`: the price is FOR `price_base_qty` (BT-149) of
- * `price_base_uom` (BT-150); no base means "per one `uom`", no base unit means
- * the line's own `uom`. Per bottle = unit_price ÷ toBottles(base, baseUom,
- * pack_size), through the tree's one bottle-equivalent conversion.
- *
- * It REFUSES rather than guessing, with the reason, so the lot stays
- * provisional by name: a packed price unit whose `pack_size` is unstated (the
- * column's DEFAULT 1 means "the paper did not say"), an unknown unit, a bad
- * base, a keg or litre against any other unit. A keg priced per keg on a keg
- * line passes through: `toBottles` leaves that line's count in kegs, so the
- * cost is per the unit the lot counts, as on `main`.
- *
- * Not here: freight, fees, deposits, allowances, free goods — landed cost is
- * PR #780 and its wiring follow-up.
+ * In `lineNetFromPrice`'s terms: the price is for `price_base_qty` (BT-149) of
+ * `price_base_uom` (BT-150), by default one of the line's own `uom`; per
+ * bottle = price ÷ toBottles(base, baseUom, pack_size). It refuses by name
+ * rather than guess: an unstated pack (the column's DEFAULT 1), an unknown
+ * unit, a bad base, a keg or litre against another unit. A keg priced per keg
+ * passes through, as on `main`. Landed cost is #780's, not this file's.
  */
 
 import {
@@ -39,16 +26,10 @@ export interface LotCostLine {
   price_base_uom: string | null | undefined;
 }
 
+/** `unitCost` is `perBottle` at the column's precision, and what is posted. */
 export type LotUnitCost =
-  /**
-   * `perBottle` is exact to four places; `unitCost` is that figure at the
-   * precision `inventory_lots.unit_cost` keeps (see `toLotCostPrecision`) and
-   * is what the RPC is sent; `basis` says how it was reached, in words.
-   */
   | { ok: true; perBottle: number; unitCost: number; basis: string }
-  /** The line prints no usable price. Not a refusal: there is nothing to convert. */
   | { ok: false; kind: "no_price" }
-  /** There is a price, but nothing on the line says what one bottle of it costs. */
   | { ok: false; kind: "refused"; reason: string };
 
 /** Units where one of them holds `pack_size` bottles. Mirrors `agreed-price.ts`. */
@@ -83,7 +64,7 @@ export function perBottleLotCost(line: LotCostLine): LotUnitCost {
     return {
       ok: false,
       kind: "refused",
-      reason: `the invoice line's unit reads ${JSON.stringify(line.uom ?? null)}, which is not a unit this house counts in, so its price of ${price} cannot be turned into a price per bottle`,
+      reason: `the invoice line's unit reads ${JSON.stringify(line.uom ?? null)}, which is not a unit this house counts in`,
     };
 
   const rawBase = line.price_base_qty;
@@ -114,34 +95,28 @@ export function perBottleLotCost(line: LotCostLine): LotUnitCost {
 
   // Only a price per a packed unit needs the pack.
   const pack = asNumber(line.pack_size);
+  const per = `${base === 1 ? "" : `${base} `}${words(baseUom)}${base === 1 ? "" : "s"}`;
   if (MULTIPLYING.has(baseUom) && (pack == null || pack <= 1))
     return {
       ok: false,
       kind: "refused",
-      reason: `the invoice line prices ${price} per ${base === 1 ? "" : `${base} `}${words(baseUom)}${base === 1 ? "" : "s"} but does not state how many bottles a ${words(baseUom)} holds, so the price of one bottle is not known`,
+      reason: `the invoice line prices ${price} per ${per} but does not state how many bottles a ${words(baseUom)} holds, so the price of one bottle is not known`,
     };
 
   const bottlesPriced = toBottles(base, baseUom, pack ?? 1);
   const perBottle = four(price / bottlesPriced);
   if (!Number.isFinite(perBottle) || perBottle <= 0)
-    return {
-      ok: false,
-      kind: "refused",
-      reason: `the invoice line's price of ${price} for ${bottlesPriced} bottles does not resolve to a price per bottle`,
-    };
+    return { ok: false, kind: "refused", reason: `${price} for ${bottlesPriced} bottles is not a price per bottle` };
 
   const unitCost = toLotCostPrecision(perBottle);
   if (!(unitCost > 0))
     return {
       ok: false,
       kind: "refused",
-      reason: `the invoice line's price per bottle of ${perBottle} rounds to ${unitCost.toFixed(2)} at the two places a lot's cost is kept, and a lot is never booked at a cost of nothing`,
+      reason: `a price per bottle of ${perBottle} rounds to ${unitCost.toFixed(2)}, and a lot is never booked at a cost of nothing`,
     };
 
-  const priced =
-    MULTIPLYING.has(baseUom)
-      ? `${base === 1 ? "" : `${base} `}${words(baseUom)}${base === 1 ? "" : "s"} of ${pack}`
-      : `${base === 1 ? "" : `${base} `}${words(baseUom)}${base === 1 ? "" : "s"}`;
+  const priced = MULTIPLYING.has(baseUom) ? `${per} of ${pack}` : per;
   const basis =
     bottlesPriced === 1
       ? `invoice price ${price} per ${priced}; booked as-is`
@@ -149,12 +124,8 @@ export function perBottleLotCost(line: LotCostLine): LotUnitCost {
   return { ok: true, perBottle, unitCost, basis };
 }
 
-/**
- * What `inventory_lots.unit_cost numeric(10,2)` keeps, rounded half away from
- * zero as Postgres does. Sending 11.8333 would store 11.83 and defeat
- * `finalise_delivery_cost`'s `IS NOT DISTINCT FROM` idempotency on every
- * re-verify. The exact figure goes in the reason; widening is QA H1.
- */
+/** What `unit_cost numeric(10,2)` keeps, half away from zero: posting 11.8333
+ * would defeat `finalise_delivery_cost`'s idempotency. Widening is QA H1. */
 export function toLotCostPrecision(perBottle: number): number {
   return Number(`${Math.round(Number(`${perBottle}e2`))}e-2`);
 }

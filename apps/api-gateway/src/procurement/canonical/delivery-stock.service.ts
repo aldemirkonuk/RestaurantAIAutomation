@@ -90,7 +90,6 @@ export interface FinalisedItem {
   lotsFinalised: number;
   bottlesFinalised: number;
   source: "accepted_proposal" | "invoice_line";
-  /** How the invoice's printed price became this per-bottle cost (QA 7c B1). */
   basis?: string;
 }
 
@@ -113,7 +112,6 @@ interface LineRow {
   unit_price: number | string | null;
   description: string | null;
   vendor_sku: string | null;
-  /** The price's unit (QA 7c B1); only `agreedPrices` selects these. */
   uom?: string | null;
   pack_size?: number | string | null;
   price_base_qty?: number | string | null;
@@ -121,7 +119,6 @@ interface LineRow {
 }
 
 interface AgreedPrice {
-  /** Per bottle, at the precision `inventory_lots.unit_cost` keeps. */
   unitCost: number;
   provenance: "invoice" | "manual";
   source: "accepted_proposal" | "invoice_line";
@@ -419,7 +416,6 @@ export class DeliveryStockService {
       if (!price && items.length === 1 && priced.value.unattached.length === 1)
         price = priced.value.unattached[0];
       if (!price) {
-        // A printed price whose unit could not be resolved says so.
         const refused =
           priced.value.refused.get(inventoryId) ??
           (items.length === 1 &&
@@ -430,7 +426,7 @@ export class DeliveryStockService {
         stillProvisional.push({
           inventoryId,
           reason: refused
-            ? `the invoice prices this item, but not per bottle: ${refused}. The lot stays provisional: a cost converted on a guess is not a final cost.`
+            ? `the invoice prices this item, but not per bottle: ${refused}. The lot stays provisional.`
             : "no agreed price reaches this item — the invoice line does not name it and no accepted proposal covers it. The lot stays provisional: a cost nobody agreed is not a final cost.",
         });
         continue;
@@ -689,9 +685,7 @@ export class DeliveryStockService {
     StockResult<{
       byItem: Map<string, AgreedPrice>;
       unattached: AgreedPrice[];
-      /** Items whose invoice price could not be put per bottle, with why. */
       refused: Map<string, string>;
-      /** The same, for priced invoice lines that name no item. */
       unattachedRefused: string[];
     }>
   > {
@@ -743,7 +737,9 @@ export class DeliveryStockService {
           "document_id, line_no, inventory_id, qty_bottles, unit_price, uom, pack_size, price_base_qty, price_base_uom, description, vendor_sku",
         )
         .eq("restaurant_id", restaurantId)
-        .in("document_id", allIds);
+        .in("document_id", allIds)
+        .order("document_id")
+        .order("line_no");
       if (read.error)
         return {
           ok: false,
@@ -756,7 +752,7 @@ export class DeliveryStockService {
         // count carries no money at all (ADR 0104 D11), so it is indexed for
         // the proposal lookup and never read as a price.
         if (!invoiceSet.has(line.document_id)) continue;
-        // QA 7c B1: `unit_price` is as PRINTED, per its own price base.
+        // QA 7c B1: `unit_price` is as PRINTED, per its price base.
         const cost = perBottleLotCost({
           unit_price: line.unit_price,
           uom: line.uom,
@@ -764,13 +760,12 @@ export class DeliveryStockService {
           price_base_qty: line.price_base_qty,
           price_base_uom: line.price_base_uom,
         });
+        const id = line.inventory_id;
         if (!cost.ok) {
+          // A refusal on any line of an item holds, whatever line comes after.
           if (cost.kind === "refused") {
-            // Last line decides, as for prices: no earlier cost kept on a guess.
-            if (line.inventory_id) {
-              byItem.delete(line.inventory_id);
-              refused.set(line.inventory_id, cost.reason);
-            } else unattachedRefused.push(cost.reason);
+            if (!id) unattachedRefused.push(cost.reason);
+            else if (!refused.has(id)) refused.set(id, cost.reason);
           }
           continue;
         }
@@ -780,12 +775,18 @@ export class DeliveryStockService {
           source: "invoice_line",
           basis: cost.basis,
         };
-        if (line.inventory_id) {
-          byItem.set(line.inventory_id, agreed);
-          refused.delete(line.inventory_id);
-        } else unattached.push(agreed);
+        if (!id) unattached.push(agreed);
+        else {
+          // Two lines of one item that disagree per bottle: neither is picked.
+          const prior = byItem.get(id);
+          if (prior && prior.unitCost !== agreed.unitCost && !refused.has(id))
+            refused.set(id, `two invoice lines price it differently (${prior.basis}; ${agreed.basis})`);
+          byItem.set(id, agreed);
+        }
       }
     }
+    // Before the proposals: a price both sides settled still wins.
+    for (const id of refused.keys()) byItem.delete(id);
 
     const props = await this.db
       .getClient()
