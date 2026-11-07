@@ -640,36 +640,85 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
   if (depositTotal > 0) leftOut.push(`a deposit of ${m(depositTotal)}`);
   if (lineDeposits > 0) leftOut.push(`line deposits of ${m(lineDeposits)}`);
 
-  // What happened to the tax, said from what was done, never from the basis
+  // What happened to the tax, said from what was done to each line's OWN
+  // price, never from the pooled stamp: a line whose own tax was treated but
+  // whose share of the charges or discount holds tax that is not known was
+  // not "costed as printed". Said from what was done, never from the basis
   // alone: a price with tax inside keeps it in cost for a house that does not
   // reclaim, so "tax is not cost" would be false there.
-  const costedLines = out.filter((l): l is CostedLine => l.status === "costed");
+  const costedRows = out.flatMap((l, i) => {
+    const x = steps[i];
+    return l.status === "costed" && x.kind === "value"
+      ? [{ l, own: x.tax.stamp }]
+      : [];
+  });
+  const costedLines = costedRows.map((r) => r.l);
+  const ownTreated = costedRows.filter((r) => r.own != null).map((r) => r.l);
+  const asPrinted = costedRows.filter((r) => r.own == null).map((r) => r.l);
+  const shareOnly = ownTreated.filter((l) => l.cost_tax_basis == null);
   const takenOut = costedLines.reduce((s, l) => s + (l.tax_taken_out ?? 0), 0);
   const inCost = costedLines.reduce((s, l) => s + (l.tax_in_cost ?? 0), 0);
-  const unstamped = costedLines.filter((l) => l.cost_tax_basis == null);
-  const stamped = costedLines.filter((l) => l.cost_tax_basis != null);
   const taxSaid: string[] = [];
-  if (reclaim.reclaims === true && stamped.length > 0) {
-    taxSaid.push(
-      takenOut > 0.005
-        ? `Tax of ${m(takenOut)} printed inside the prices is taken out of cost, since the house reclaims it.`
-        : `Cost is before tax, since the house reclaims it.`,
-    );
+  if (reclaim.reclaims === true) {
+    if (takenOut > 0.005) {
+      taxSaid.push(
+        `Tax of ${m(takenOut)} printed inside the prices is taken out of cost, since the house reclaims it.`,
+      );
+    } else if (ownTreated.length > 0) {
+      const n = ownTreated.length;
+      taxSaid.push(
+        n === costedLines.length && shareOnly.length === 0
+          ? `Cost is before tax, since the house reclaims it.`
+          : `The price${n === 1 ? "" : "s"} of ${plural(n, "line")} ${n === 1 ? "is" : "are"} costed before tax, since the house reclaims it.`,
+      );
+    }
   }
-  if (reclaim.reclaims === false && stamped.length > 0) {
+  if (reclaim.reclaims === false) {
     if (inCost > 0.005)
       taxSaid.push(
         `Tax of ${m(inCost)} is in cost, since the house does not reclaim it.`,
       );
-    if (stamped.some((l) => l.tax_in_cost == null))
+    if (ownTreated.some((l) => l.tax_in_cost == null))
       taxSaid.push(
         `Tax printed inside the prices stays in cost, since the house does not reclaim it.`,
       );
   }
-  if (unstamped.length > 0) {
-    const one = unstamped.length === 1;
+  if (asPrinted.length > 0) {
+    const one = asPrinted.length === 1;
     taxSaid.push(
-      `${plural(unstamped.length, "line")} ${one ? "is" : "are"} costed as printed, and what ${one ? "its" : "their"} cost holds is not stated, since ${reclaim.reclaims == null ? reclaim.why : "the paper does not say enough about the tax on its lines, charges or discount"}.`,
+      `${plural(asPrinted.length, "line")} ${one ? "is" : "are"} costed as printed, and what ${one ? "its" : "their"} cost holds is not stated, since ${reclaim.reclaims == null ? reclaim.why : `the paper does not say enough about the tax in ${one ? "its price" : "their prices"}`}.`,
+    );
+  }
+  if (shareOnly.length > 0) {
+    const one = shareOnly.length === 1;
+    taxSaid.push(
+      `${plural(shareOnly.length, "line")} ${one ? "carries" : "carry"} a share of the paper's charges or discount whose tax is not known, so what ${one ? "its" : "their"} cost holds is not stated.`,
+    );
+  }
+  // Lines that could not be costed had nothing done to their tax; saying the
+  // paper carries none would contradict their own unresolved sentence.
+  const opened = out.filter((l) => l.status === "unresolved").length;
+  const printsTax = header.tax != null && header.tax !== 0;
+  const carriesTax =
+    printsTax ||
+    lines.some(
+      (l) =>
+        l.stocked !== false &&
+        l.vat_rate_percent != null &&
+        l.vat_rate_percent !== 0,
+    );
+  if (carriesTax && opened > 0) {
+    taxSaid.push(
+      costedLines.length === 0
+        ? `The paper's tax could not be treated, since none of its lines could be costed.`
+        : `${plural(opened, "line")} could not be costed, so the tax on ${opened === 1 ? "it" : "them"} is not treated.`,
+    );
+  }
+  if (carriesTax && taxSaid.length === 0) {
+    taxSaid.push(
+      printsTax
+        ? `The paper prints tax${isNum(header.tax) ? ` of ${m(header.tax)}` : ""}, but none of its costed lines carries it, so it is not treated.`
+        : `No tax is in the cost of this paper's lines.`,
     );
   }
 
