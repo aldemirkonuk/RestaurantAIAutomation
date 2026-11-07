@@ -552,7 +552,9 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
   }
 
   const priced = rows.filter((r) => r.value !== null);
-  if (priced.length === 0) {
+  if (priced.length === 0 && rows.some((r) => !r.rollupReadable)) {
+    parts.push('The costs could not be read, so the value at cost could not be read either.');
+  } else if (priced.length === 0) {
     parts.push('No title has a cost on the books yet, so the value at cost reads —, not 0.');
   } else {
     const total = priced.reduce((sum, r) => sum + (r.value ?? 0), 0);
@@ -723,7 +725,7 @@ export function useInventoryNextData() {
   if (paceUnread) unread.push('the selling pace, so pace, runway and dead stock show —');
   const openUnread = (rows ?? []).some((r) => !r.rollupReadable);
   const whereUnread = (rows ?? []).some((r) => !r.locationsReadable);
-  if (openUnread) unread.push('the open bottles, so open ml says it could not be read');
+  if (openUnread) unread.push('the open bottles and costs, so open ml, cost, value and margin say they could not be read');
   if (whereUnread) unread.push('where each title sits, so its zones say they could not be read');
   if (wines.isError) unread.push('the wine library, so type shows —, the type filter is off, and grapes are left out of details and search');
   if (storage.locationsUnavailable) unread.push('the storage locations, so zones show — and the zone filter is off');

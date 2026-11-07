@@ -216,6 +216,22 @@ describe('InventoryCommandPage — a failed read is an error, not an empty succe
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('failed rollup and location reads say could not be read (G15)', async () => {
+    routeGets({
+      'inventory-low-stock': [],
+      'inventory-summary': { totalWines: 1, totalValue: 0 },
+      'inventory-list': [
+        { id: 'row-1', wineId: 'wine-1', wineName: 'Barolo', stockLive: 6, thresholdMin: 2, price: 40, rollupReadable: false, locationsReadable: false },
+      ],
+    });
+    mount();
+    const valueCard = (await screen.findByText('Value on hand')).closest('div')?.parentElement as HTMLElement;
+    await waitFor(() => expect(within(valueCard).getByText('could not be read')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByText('could not be read').length).toBeGreaterThanOrEqual(3));
+    expect(screen.queryByText('Assign')).not.toBeInTheDocument();
+    expect(screen.queryByText('$240')).not.toBeInTheDocument();
+  });
+
   it('a price-advice answer without its shape is said on the row, and the page still renders (ADR 0193)', async () => {
     routeGets({
       'inventory-list': [

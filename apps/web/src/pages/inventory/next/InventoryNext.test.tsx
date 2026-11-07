@@ -829,6 +829,17 @@ describe('a side read that did not answer is named, never read as health (INV-W2
     expect(s).toContain('This page does not read a market price yet, so the market reads unknown, not zero.');
     expect(s).not.toContain('No title has a market price');
   });
+
+  // QA round 10b: a failed rollup read is not "no cost on the books".
+  it('says the value at cost could not be read when the costs were not read', () => {
+    mock.data = data({ rows: [row({ rollupReadable: false, wac: null, value: null })] });
+    renderPage();
+    const tr = screen.getByTestId('inventory-table').querySelector('tbody tr:not(.iv-group)') as HTMLElement;
+    expect(tr.querySelector('td[data-label="Value at cost"]')!.textContent).toBe('could not be read');
+    const s = readSentence([row({ rollupReadable: false, wac: null, value: null })], { state: 'recorded', code: 'EUR' }, true);
+    expect(s).toContain('The costs could not be read');
+    expect(s).not.toContain('No title has a cost');
+  });
 });
 
 describe('counts read with grouped digits, as money does (INV-W33)', () => {
