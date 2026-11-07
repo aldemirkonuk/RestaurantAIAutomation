@@ -5,7 +5,7 @@
 import {
   CHARGE_FIELDS,
   CostedLine,
-  HouseTaxBasis,
+  HouseTax,
   LandedCostHeader,
   LandedCostLineInput,
   UnresolvedLine,
@@ -24,6 +24,16 @@ const NO_HEADER: LandedCostHeader = {
   tax: null,
 };
 
+const UNSET: HouseTax = { tax_basis: "unset", reclaims_input_tax: null };
+const RECLAIMS: HouseTax = {
+  tax_basis: "prices_include_tax",
+  reclaims_input_tax: true,
+};
+const DOES_NOT_RECLAIM: HouseTax = {
+  tax_basis: "prices_include_tax",
+  reclaims_input_tax: false,
+};
+
 const line = (o: Partial<LandedCostLineInput> = {}): LandedCostLineInput => ({
   line_no: 1,
   qty: 12,
@@ -34,6 +44,8 @@ const line = (o: Partial<LandedCostLineInput> = {}): LandedCostLineInput => ({
   line_total: 120,
   allowance: null,
   deposit: null,
+  price_tax_basis: null,
+  vat_rate_percent: null,
   listed_bottles: 12,
   accepted_bottles: 12,
   ...o,
@@ -42,8 +54,8 @@ const line = (o: Partial<LandedCostLineInput> = {}): LandedCostLineInput => ({
 const cost = (
   h: Partial<LandedCostHeader>,
   lines: LandedCostLineInput[],
-  tax_basis: HouseTaxBasis = "unset",
-) => landedCost({ header: { ...NO_HEADER, ...h }, lines, tax_basis });
+  house: HouseTax = UNSET,
+) => landedCost({ header: { ...NO_HEADER, ...h }, lines, house });
 
 // Two lines worth 600 (12 @ 50) and 400 (10 @ 40).
 const sixFour = () => [
@@ -174,15 +186,19 @@ describe("landedCost: the reconcile step", () => {
   });
 });
 
-describe("landedCost: deposits and tax are never value (F14)", () => {
-  it("deposit_total, a line deposit and tax never reach any value", () => {
+describe("landedCost: deposits are never value (F14)", () => {
+  it("deposit_total and a line deposit never reach any value; a reclaimed tax added outside the price does not either", () => {
+    const taxed = {
+      price_tax_basis: "excludes_tax" as const,
+      vat_rate_percent: 20,
+    };
     const r = cost(
       { deposit_total: 30, tax: 48 },
       [
-        line({ deposit: 6, line_total: 126 }), // the total folds in its deposit
-        line({ line_no: 2, deposit: 6, line_total: 120 }), // printed beside it
+        line({ deposit: 6, line_total: 126, ...taxed }), // the total folds in its deposit
+        line({ line_no: 2, deposit: 6, line_total: 120, ...taxed }), // printed beside it
       ],
-      "prices_exclude_kdv",
+      RECLAIMS,
     );
     for (const l of r.lines.map(costed)) {
       expect(l.net_line_value).toBeCloseTo(120, 6);
@@ -190,10 +206,11 @@ describe("landedCost: deposits and tax are never value (F14)", () => {
       expect(l.landed_cost_per_bottle).toBeCloseTo(10, 6);
     }
     expect(r.charges_total).toBe(0);
-    expect(r.left_out).toContain(
-      "a deposit of 30.00, line deposits of 12.00, tax of 48.00",
+    expect(r.left_out).toBe(
+      "Not cost: a deposit of 30.00, line deposits of 12.00. Deposits come back.",
     );
-    expect(r.tax_basis).toBe("prices_exclude_kdv");
+    expect(r.tax_said).toBe("Cost is before tax, since the house reclaims it.");
+    expect(r.house).toBe(RECLAIMS);
   });
 
   it("a 7161 deposit filed on deposit_total stays out of cost (pinned to deposit_total)", () => {
@@ -251,6 +268,153 @@ describe("landedCost: bottles", () => {
     const r = cost({}, [line({ accepted_bottles: 13 })]);
     expect(open(r.lines[0]).unresolved).toContain(
       "have no price on this paper",
+    );
+  });
+});
+
+describe("landedCost: tax follows the line's basis and the house's reclaim (ADR 0359 C3)", () => {
+  // The same 10 bottles, printed two ways: 10 at 11.80 with 18 % KDV inside,
+  // or 10 at 10.00 with 18 % KDV added on the paper. Header tax 18 either way.
+  const inside = () =>
+    line({
+      qty: 10,
+      unit_price: 11.8,
+      line_total: 118,
+      listed_bottles: 10,
+      accepted_bottles: 10,
+      price_tax_basis: "includes_tax",
+      vat_rate_percent: 18,
+    });
+  const outside = () =>
+    line({
+      qty: 10,
+      unit_price: 10,
+      line_total: 100,
+      listed_bottles: 10,
+      accepted_bottles: 10,
+      price_tax_basis: "excludes_tax",
+      vat_rate_percent: 18,
+    });
+
+  it("KDV printed inside the price is taken out for a house that reclaims it: 10.00 a bottle, stamped net (QA round 4, #780)", () => {
+    const r = cost({ tax: 18 }, [inside()], RECLAIMS);
+    const a = costed(r.lines[0]);
+    expect(a.net_line_value).toBeCloseTo(118, 6);
+    expect(a.cost_value).toBeCloseTo(100, 6);
+    expect(a.tax_taken_out).toBeCloseTo(18, 6);
+    expect(a.landed_cost_per_bottle).toBeCloseTo(10, 6);
+    expect(a.cost_tax_basis).toBe("net");
+    expect(a.basis).toContain(
+      "the 18.00 of tax inside its price is taken out, since the house reclaims it",
+    );
+    expect(r.tax_said).toBe(
+      "Tax of 18.00 printed inside the prices is taken out of cost, since the house reclaims it.",
+    );
+    // The false sentence QA found: nothing may say the tax was simply "not cost".
+    expect(r.left_out).not.toContain("tax");
+  });
+
+  it("KDV printed outside the price gives the same 10.00 a bottle for a house that reclaims it", () => {
+    const r = cost({ tax: 18 }, [outside()], RECLAIMS);
+    const a = costed(r.lines[0]);
+    expect(a.cost_value).toBeCloseTo(100, 6);
+    expect(a.tax_taken_out).toBeCloseTo(0, 6);
+    expect(a.landed_cost_per_bottle).toBeCloseTo(10, 6);
+    expect(a.cost_tax_basis).toBe("net");
+    expect(r.tax_said).toBe("Cost is before tax, since the house reclaims it.");
+  });
+
+  it("a house that does not reclaim keeps the KDV in cost either way: 11.80 a bottle, stamped gross_cost", () => {
+    for (const l of [inside(), outside()]) {
+      const r = cost({ tax: 18 }, [l], DOES_NOT_RECLAIM);
+      const a = costed(r.lines[0]);
+      expect(a.cost_value).toBeCloseTo(118, 6);
+      expect(a.tax_in_cost).toBeCloseTo(18, 6);
+      expect(a.landed_cost_per_bottle).toBeCloseTo(11.8, 6);
+      expect(a.cost_tax_basis).toBe("gross_cost");
+      expect(r.tax_said).toBe(
+        "Tax of 18.00 is in cost, since the house does not reclaim it.",
+      );
+    }
+  });
+
+  it("a house that does not charge VAT cannot reclaim it, whatever its reclaim answer says", () => {
+    const a = costed(
+      cost({ tax: 18 }, [inside()], {
+        tax_basis: "not_vat_charging",
+        reclaims_input_tax: true,
+      }).lines[0],
+    );
+    expect(a.landed_cost_per_bottle).toBeCloseTo(11.8, 6);
+    expect(a.cost_tax_basis).toBe("gross_cost");
+  });
+
+  it("a house with no answer costs as printed and its stamp is null, with the reason", () => {
+    const unset = cost({ tax: 18 }, [inside()], UNSET);
+    expect(costed(unset.lines[0]).landed_cost_per_bottle).toBeCloseTo(11.8, 6);
+    expect(costed(unset.lines[0]).cost_tax_basis).toBeNull();
+    expect(unset.tax_said).toContain("the house has not set its tax basis");
+    const noReclaimAnswer = cost({ tax: 18 }, [outside()], {
+      tax_basis: "prices_include_tax",
+      reclaims_input_tax: null,
+    });
+    expect(costed(noReclaimAnswer.lines[0]).cost_value).toBeCloseTo(100, 6);
+    expect(costed(noReclaimAnswer.lines[0]).cost_tax_basis).toBeNull();
+    expect(noReclaimAnswer.tax_said).toContain(
+      "has not said whether it reclaims the tax it pays",
+    );
+  });
+
+  it("a reclaiming house's line with no rate, or no basis, is costed as printed and not stamped net", () => {
+    const noRate = costed(
+      cost({}, [{ ...inside(), vat_rate_percent: null }], RECLAIMS).lines[0],
+    );
+    expect(noRate.cost_value).toBeCloseTo(118, 6);
+    expect(noRate.cost_tax_basis).toBeNull();
+    expect(noRate.basis).toContain("the paper prints no tax rate for it");
+    const noBasis = costed(
+      cost({}, [{ ...inside(), price_tax_basis: null }], RECLAIMS).lines[0],
+    );
+    expect(noBasis.cost_tax_basis).toBeNull();
+    expect(noBasis.basis).toContain(
+      "the paper does not say whether its price includes tax",
+    );
+  });
+
+  it("a line that carries a share of freight whose tax the paper does not state is not stamped", () => {
+    const r = cost({ freight: 10 }, [outside()], RECLAIMS);
+    const a = costed(r.lines[0]);
+    expect(a.landed_value).toBeCloseTo(110, 6);
+    expect(a.cost_tax_basis).toBeNull();
+    expect(r.tax_said).toContain(
+      "the paper does not say enough about the tax on its lines, charges or discount",
+    );
+  });
+
+  it("an item whose lines do not agree on what their cost holds is stamped null", () => {
+    const r = cost(
+      {},
+      [
+        { ...outside(), item_key: "wine-a" },
+        {
+          ...outside(),
+          line_no: 2,
+          item_key: "wine-a",
+          vat_rate_percent: null,
+        },
+      ],
+      DOES_NOT_RECLAIM,
+    );
+    expect(costed(r.lines[0]).cost_tax_basis).toBe("gross_cost");
+    expect(costed(r.lines[1]).cost_tax_basis).toBeNull();
+    const item = r.items[0];
+    expect(item.status === "costed" && item.cost_tax_basis).toBeNull();
+  });
+
+  it("a tax rate that is not a rate is unresolved", () => {
+    const r = cost({}, [{ ...inside(), vat_rate_percent: 118 }], RECLAIMS);
+    expect(open(r.lines[0]).unresolved).toContain(
+      "prints a tax rate that is not a rate",
     );
   });
 });
