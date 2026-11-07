@@ -41,7 +41,17 @@ country, region, grape_variety) LIKE '%ı%';` before, and
 `SELECT * FROM wine_signature_refold_review WHERE resolved_at IS NULL;` after.
 Provisional (venue-scoped) rows were not seeded in the PGlite proof; the
 migration takes their hash from `v_signature_drift`, which applies the venue
-formula, but that path is unexercised. Nobody resolves the review rows yet.
+formula, but that path is unexercised.
+
+QA round 10c: the body is now `public.refold_wine_signatures_dotless_i()`
+(owner only), called once by the migration and run by the behavioural test
+`supabase/tests/20270405100000_wine_signatures_refold_dotless_i_test.sql`
+(CI does not run supabase/tests; run by hand through pgtest). The Kavaklıdere
+/ KAVAKLIDERE Yakut pair stays two rows by design (test T1): the capitals row
+already holds the folded hash. The session's call: held for review, not
+merged (ADR 0124). The reader of the review table is the stacked PR on this
+one; no screen shows it. Still open, F2: a roster row kept on its old hash
+joins no live library row once its library row has moved.
 
 ## Other letters NFD cannot fold are still split — OPEN — 2026-11-07
 

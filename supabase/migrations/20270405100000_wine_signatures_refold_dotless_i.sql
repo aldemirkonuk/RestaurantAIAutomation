@@ -86,11 +86,23 @@ COMMENT ON TABLE public.wine_signature_refold_review IS
   'decision (merge_library_wines), never an UPDATE. Set resolved_at when '
   'decided. RLS on, service_role only.';
 
-DO $refold$
+-- The refold is a function, called once below, so a test can seed stale rows
+-- and run the very code this migration runs (supabase/tests/20270405100000_
+-- wine_signatures_refold_dotless_i_test.sql) rather than grep its text. It
+-- returns how many library rows moved. Re-running it is safe for the same
+-- reasons the migration is (IDEMPOTENT above). Owner only: nothing in the app
+-- calls it, and a re-key is not a house's or a browser's to start.
+CREATE OR REPLACE FUNCTION public.refold_wine_signatures_dotless_i()
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = public, pg_temp
+AS $refold$
 DECLARE
   r        record;
   v_holder uuid;
   v_moved  integer;
+  v_total  integer := 0;
 BEGIN
   LOOP
     v_moved := 0;
@@ -145,6 +157,7 @@ BEGIN
 
       v_moved := v_moved + 1;
     END LOOP;
+    v_total := v_total + v_moved;
     EXIT WHEN v_moved = 0;
   END LOOP;
 
@@ -163,5 +176,18 @@ BEGIN
     AND concat_ws(' ', m.producer, m.name, m.country, m.region,
                   m.grape_variety) LIKE '%ı%'
   ON CONFLICT ON CONSTRAINT wine_signature_refold_review_once DO NOTHING;
+
+  RETURN v_total;
 END
 $refold$;
+
+REVOKE ALL ON FUNCTION public.refold_wine_signatures_dotless_i()
+  FROM PUBLIC, anon, authenticated;
+
+COMMENT ON FUNCTION public.refold_wine_signatures_dotless_i() IS
+  'Moves each live master_wine_library row whose identity fields hold a dotless '
+  'i to its folded signature hash, with its submission, menu_changes and roster '
+  'copies; holds back (wine_signature_refold_review) any row whose folded hash '
+  'another row holds. Merges nothing. Returns the library rows moved. Owner only.';
+
+SELECT public.refold_wine_signatures_dotless_i();
