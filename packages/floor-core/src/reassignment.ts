@@ -28,9 +28,12 @@
  * - a load that is not a finite number reads as Infinity: that waiter is
  *   never proposed while a waiter with a readable load is eligible, and a NaN
  *   never wins the comparison by default; a finite load is used as given,
- *   negative or fractional included;
+ *   negative or fractional included; when every eligible load is
+ *   unreadable, Infinity + 1 is Infinity, so those tables all go to the
+ *   lowest id instead of spreading;
  * - the placing order and tie-breaks above;
- * - a table listed twice is proposed once, at its first place in that order.
+ * - a table listed twice is proposed once; its first row in that order wins
+ *   (a seated row before an unseated one).
  */
 
 export interface ReassignTable {

@@ -170,6 +170,39 @@ describe("OD-259: sectionless tables, empty sections and repeated tables", () =>
     expect(out.map((p) => p.tableId)).toEqual(["t1"]);
   });
 
+  it("gives a sectionless table to a waiter who works no section", () => {
+    const out = proposeReassignment({
+      tables: [t("t1", null)],
+      candidates: [{ waiterId: "w2", sectionIds: [], load: 0 }],
+      fromWaiterId: "w1",
+    });
+    expect(out).toEqual([{ tableId: "t1", toWaiterId: "w2", reason: "lightest_on_shift" }]);
+  });
+
+  it("keeps the seated row when one table is listed twice with different rows", () => {
+    const out = proposeReassignment({
+      tables: [t("t1", "B"), { ...t("t1", "A"), seated: true }],
+      candidates: [
+        { waiterId: "w2", sectionIds: ["A"], load: 0 },
+        { waiterId: "w3", sectionIds: ["B"], load: 0 },
+      ],
+      fromWaiterId: "w1",
+    });
+    expect(out).toEqual([{ tableId: "t1", toWaiterId: "w2", reason: "lightest_in_section" }]);
+  });
+
+  it("piles every table onto the lowest id when no eligible load is readable", () => {
+    const out = proposeReassignment({
+      tables: [t("t1", null), t("t2", null)],
+      candidates: [
+        { waiterId: "w3", sectionIds: [], load: NaN },
+        { waiterId: "w2", sectionIds: [], load: Infinity },
+      ],
+      fromWaiterId: "w1",
+    });
+    expect(out.map((p) => p.toWaiterId)).toEqual(["w2", "w2"]);
+  });
+
   it("never proposes the waiter who is leaving, even when listed under every section", () => {
     const out = proposeReassignment({
       tables: [t("t1", "A"), t("t2", null)],
