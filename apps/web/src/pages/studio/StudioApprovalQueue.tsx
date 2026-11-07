@@ -7,7 +7,7 @@ import { QueueItem } from './queue/QueueRow'
 import { Badge } from '../../components/ui/badge'
 import { EmptyState } from '../../components/ui/empty-state'
 import { Skeleton } from '../../components/ui/loading-skeleton'
-import { studioRequest, studioJsonRequest, studioErrorMessage } from './studioApi'
+import { studioRequest, studioJsonRequest, studioErrorMessage, libraryNotice, type LibraryReport } from './studioApi'
 
 // Orchestrator, not the gateway — a relative /api/v1/studio/* path resolves to the
 // NestJS gateway, which has no studio module, so both of these 404'd. See studioApi.ts.
@@ -16,7 +16,10 @@ function fetchQueue(): Promise<{ queue: QueueItem[]; total: number }> {
 }
 
 function decideOverride(id: string, decision: 'approved' | 'rejected', note?: string) {
-  return studioJsonRequest(`/api/v1/studio/queue/${encodeURIComponent(id)}`, 'PATCH', { decision, note })
+  return studioJsonRequest<LibraryReport>(`/api/v1/studio/queue/${encodeURIComponent(id)}`, 'PATCH', {
+    decision,
+    note,
+  })
 }
 
 export default function StudioApprovalQueue() {
@@ -30,9 +33,13 @@ export default function StudioApprovalQueue() {
   const mutation = useMutation({
     mutationFn: ({ id, decision, note }: { id: string; decision: 'approved' | 'rejected'; note?: string }) =>
       decideOverride(id, decision, note),
-    onSuccess: (_, { decision }) => {
+    onSuccess: (data, { decision }) => {
       queryClient.invalidateQueries({ queryKey: ['studio-queue'] })
       toast.success(decision === 'approved' ? 'Override approved' : 'Override rejected')
+      // An approval can complete a wine; whether it reached the library is said
+      // separately, and a failure is never folded into "approved".
+      const notice = libraryNotice(data)
+      if (notice) toast[notice.tone](notice.title, { description: notice.description })
     },
     // studioJsonRequest throws on any non-2xx, so this is the only path a failed
     // decision can take — the success toast above cannot fire for a 404/403.
