@@ -84,7 +84,9 @@ function Senders({
                   name="house-sender"
                   value={c.connectionId}
                   checked={current === c.connectionId}
-                  disabled={!view.canChange || choose.isPending}
+                  // Only the person who connected a mailbox may make it the
+                  // house's (QA round 26, #973); the server refuses it too.
+                  disabled={!view.canChange || choose.isPending || !c.mine}
                   onChange={() => setPicked(c.connectionId)}
                 />
                 <span>
@@ -94,6 +96,12 @@ function Senders({
               </label>
             ))}
           </fieldset>
+          {view.canChange && choices.some((c) => !c.mine) && (
+            <p data-testid="setup-sender-own-only" style={QUIET}>
+              You can choose only a mailbox you connected yourself. A colleague&rsquo;s mailbox is chosen by that
+              colleague, here.
+            </p>
+          )}
           {view.canChange ? (
             <span className="flex flex-wrap items-center gap-3">
               <button type="submit" style={ACT} disabled={!picked || picked === chosenConnectionId || choose.isPending}>
