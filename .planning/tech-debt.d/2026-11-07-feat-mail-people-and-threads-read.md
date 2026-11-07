@@ -20,9 +20,11 @@ Filed by `feat/mail-people-and-threads-read`, the top of a four-PR stack: `feat/
 
 **What is true.** `GET /mail/summary` always answers `heldAtDoor: null`, never 0. Nothing records a letter that was received but not yet stored, so the count is unknown rather than zero (ADR 0020). **What closes it.** The durable intake store (proposal L2).
 
-## The SQL proof of the Mail read functions is not committed — OPEN — 2026-11-07
+## The SQL proof of the Mail read functions is not committed — RESOLVED — 2026-11-07
 
 **What is true.** The proof ran in a scratch transaction against a Postgres built from every migration. It covered paging with ties, waiting, withholding, house scope, the house-local day, counts on 2,000 rows, doors, a missing house and grants, and its output is in PR body #1 of the stack. It is not committed under `supabase/tests`, because a new file there needs a line in `scripts/sql_outside_migrations.txt`, which open PRs #674 and #687 own. **What closes it.** Once either merges, commit the proof as a `supabase/tests` file and strike claim `MAIL-SQL-PROOF-NOT-YET-COMMITTED` (open), which fails the build as soon as that file lands.
+
+**Resolved by fix/mail-thread-with-person (#895).** The thread proof is committed as `supabase/tests/20270421143700_the_mail_list_is_read_by_person_test.sql` and listed in `scripts/sql_outside_migrations.txt` (appended at the end; #674 and #687 append too, so whichever merges second resolves a one-line conflict). The claim is struck (resolved). The 2,000-row counts and house-day checks of the first scratch proof are still only in PR body #1.
 
 ## GET /conversations/stats/overview counts in JS over a read PostgREST caps — OPEN — 2026-11-07
 
