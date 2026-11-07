@@ -1512,8 +1512,14 @@ export class InventoryService {
     // (`v_low_stock_items`) whose predicate the chip did not share. Counting
     // both from one classification over one array means the three numbers on
     // the page can no longer disagree about the same wine.
+    //
+    // OD-161: a wine nobody has counted (`last_counted_at` null; only a count
+    // stamps it) is `unknown`, not zero. `v_low_stock_items` leaves the same
+    // rows out, so they do not set off the disagreement warning below.
     const bands = inventory.map((item: any) =>
-      classifyStock(item.stock_live, item.threshold_min),
+      item.last_counted_at == null
+        ? ("unknown" as const)
+        : classifyStock(item.stock_live, item.threshold_min),
     );
     const lowStockCount = bands.filter(
       (b) => b === "low" || b === "critical",

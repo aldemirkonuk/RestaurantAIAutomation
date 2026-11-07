@@ -430,4 +430,59 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
       );
     });
   });
+
+  // OD-161 (rule half): a wine nobody has counted is unknown, not zero.
+  // `v_low_stock_items` leaves it out (migration an_uncounted_wine_is_not_low_stock,
+  // proved in supabase/tests); these are the dashboard reads that do not go
+  // through the view.
+  describe("OD-161 — a wine nobody has counted is not out of stock", () => {
+    it("asks the out-of-stock read for counted rows only", async () => {
+      const client = makeClient({ restaurants: CHICAGO });
+      db.getClient.mockReturnValue(client);
+
+      await service.getAlerts("r1");
+
+      const outOfStockRead = (
+        client.filters["restaurant_inventory"] ?? []
+      ).find((asked) =>
+        asked.some(
+          (f: any[]) => f[0] === "eq" && f[1] === "stock_live" && f[2] === 0,
+        ),
+      );
+      expect(outOfStockRead).toEqual(
+        expect.arrayContaining([["not", "last_counted_at", "is", null]]),
+      );
+    });
+
+    it("counts a never-counted row neither critical nor healthy in the summary", async () => {
+      const summaryDb = db as any;
+      summaryDb.getRestaurantInventory = jest.fn().mockResolvedValue([
+        { id: "inv-new", stock_live: 0, last_counted_at: null },
+        {
+          id: "inv-empty",
+          stock_live: 0,
+          last_counted_at: "2026-11-01T10:00:00Z",
+        },
+        {
+          id: "inv-full",
+          stock_live: 9,
+          last_counted_at: "2026-11-01T10:00:00Z",
+        },
+      ]);
+      // The view, after the migration: only the counted empty row.
+      summaryDb.getLowStockItems = jest
+        .fn()
+        .mockResolvedValue([{ id: "inv-empty" }]);
+
+      const summary = await (service as any).getInventorySummary("r1");
+
+      expect(summary).toEqual({
+        totalItems: 3,
+        totalBottles: 9,
+        lowStockCount: 1,
+        criticalCount: 1,
+        healthyCount: 1,
+      });
+    });
+  });
 });
