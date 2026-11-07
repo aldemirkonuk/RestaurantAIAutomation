@@ -1,5 +1,7 @@
 import { createHash } from "crypto";
 
+import { foldUndecomposableLetters } from "../common/fold-letters";
+
 /**
  * The master-library dedup key: one wine, one hash, one place it is defined.
  *
@@ -85,26 +87,6 @@ const DIACRITICS = new RegExp(
 );
 
 /**
- * Letters NFD cannot reach, folded to the letter a capitalised spelling gives.
- *
- * Turkish dotless "ı" (U+0131) has no decomposition, so the diacritic strip
- * leaves it alone and the alphanumeric pass turned it into a space:
- * "Kavaklıdere" became "kavakl dere" while the invoice's "KAVAKLIDERE" became
- * "kavaklidere" -- one wine, two signature hashes. Menus print mixed case and
- * invoices print capitals, so every Turkish name with an "ı" split this way.
- * The rest of the Turkish alphabet already folds: "İ" is I + U+0307, and
- * "ş ğ ç ö ü" are base letter + combining mark, all removed by DIACRITICS.
- *
- * Applied after the diacritic strip and before lowercasing, which is the order
- * public.wine_normalize_text() uses; "ı" has no other case form to miss.
- *
- * Mirrored exactly by public.wine_normalize_text; the spec fails on drift.
- */
-const UNDECOMPOSABLE: ReadonlyArray<readonly [RegExp, string]> = [
-  [/\u0131/g, "i"], // ı LATIN SMALL LETTER DOTLESS I
-];
-
-/**
  * Trade abbreviations a menu prints, expanded to the word they stand for.
  *
  * Measured before this existed: of 27 library producers beginning with an
@@ -157,11 +139,12 @@ const ABBREVIATIONS: ReadonlyArray<readonly [RegExp, string]> = [
  */
 export function normalizeSignatureText(value?: string | null): string {
   if (!value) return "";
-  let s = value.normalize("NFD").replace(DIACRITICS, "");
-  for (const [pattern, letter] of UNDECOMPOSABLE) {
-    s = s.replace(pattern, letter);
-  }
-  s = s.toLowerCase();
+  // Letters NFD cannot reach (Turkish dotless "ı") fold after the strip and
+  // before lowercasing, as public.wine_normalize_text() does. One table for
+  // TypeScript, SQL and Python: common/fold-letters.ts.
+  let s = foldUndecomposableLetters(
+    value.normalize("NFD").replace(DIACRITICS, ""),
+  ).toLowerCase();
   for (const [pattern, expansion] of ABBREVIATIONS) {
     s = s.replace(pattern, expansion);
   }
