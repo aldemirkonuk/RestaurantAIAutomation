@@ -2197,43 +2197,30 @@ export class MenusService {
 
   /**
    * The onboarding self-heal's test: does the house hold a menu version that
-   * is not archived and had at least one line read? A version from before
-   * lines were counted (`lines_extracted` NULL) counts only while it is the
-   * active one, as it did before this rule.
+   * is not archived and has at least one live line (a `menu_items` row that
+   * is not discarded)? The lines are counted where they live, whatever put
+   * them there -- a read, a CSV, or lines typed in during review -- never
+   * from `lines_extracted`, which is written once when a version is read and
+   * is not moved by `addMenuItem` or `discardMenuItem`.
    *
-   * `.limit(1)`, never `.maybeSingle()`: no unique index stops a house holding
-   * two active rows, and maybeSingle answers more than one row with an error.
-   * A failed read throws; it is never taken for "no menu".
+   * One read, `.limit(1)`, never `.maybeSingle()`: no unique index stops a
+   * house holding two active rows, and maybeSingle answers more than one row
+   * with an error. A failed read throws; it is never taken for "no menu".
    */
   private async houseHasAReadMenu(restaurantId: string): Promise<boolean> {
-    const { data: read, error: readErr } = await this.dbService.supabase
-      .from("restaurant_menus")
-      .select("id")
+    const { data: lines, error } = await this.dbService.supabase
+      .from("menu_items")
+      .select("id, restaurant_menus!inner(status)")
       .eq("restaurant_id", restaurantId)
-      .neq("status", "archived")
-      .gt("lines_extracted", 0)
+      .neq("status", "discarded")
+      .neq("restaurant_menus.status", "archived")
       .limit(1);
-    if (readErr) {
+    if (error) {
       throw new InternalServerErrorException(
-        `Could not read this house's menus for onboarding: ${readErr.message}`,
+        `Could not read this house's menus for onboarding: ${error.message}`,
       );
     }
-    if ((read ?? []).length > 0) return true;
-
-    const { data: uncounted, error: uncountedErr } =
-      await this.dbService.supabase
-        .from("restaurant_menus")
-        .select("id")
-        .eq("restaurant_id", restaurantId)
-        .eq("status", "active")
-        .is("lines_extracted", null)
-        .limit(1);
-    if (uncountedErr) {
-      throw new InternalServerErrorException(
-        `Could not read this house's menus for onboarding: ${uncountedErr.message}`,
-      );
-    }
-    return (uncounted ?? []).length > 0;
+    return (lines ?? []).length > 0;
   }
 
   async setDefaultThreshold(
