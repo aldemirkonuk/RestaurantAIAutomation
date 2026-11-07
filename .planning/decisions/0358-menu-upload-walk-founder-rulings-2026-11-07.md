@@ -1,16 +1,14 @@
 # 0358 — Menu upload walk: founder rulings 2026-11-07
 
-- **Status:** F1–F4 Locked 2026-11-07, the founder's own picks. D1–D9 are **Proposed**:
-  each is the proposal's recommended option, drafted under his delegation of the same day,
-  but his next instruction to this dispatch was *"ask questions again"*, so each goes back to
-  him and binds nothing until he answers. No other ADR is amended by D1–D9.
+- **Status:** F1–F4 Locked 2026-11-07, the founder's own picks. D1–D9 **Locked 2026-11-07**
+  as the session's calls under his later /goal of the same day, *"Do not ask me any questions I approve you decide them all"*, which supersedes his
+  earlier *"ask questions again"*. D5 and D7 amend ADR 0193 (see Consequences).
 - **Date:** 2026-11-07
-- **Decider:** Aldemir (founder) for F1–F4. D1–D9 await his answer.
+- **Decider:** Aldemir (founder) for F1–F4; the walk session under his delegated /goal for D1–D9.
 - **Keywords:** menu upload, Phase 1A, background read, Scan a menu, scanMenuImage,
   multi-file, re-upload, retire, held price, never counted, gold set, serving formats, F-696
 - **Links:** [[0193-a-house-price-follows-its-menu-and-its-manager-and-advice-aims-at-its-own-margin]]
-  (not amended: D5 would amend item 7, and D7 F5, round-2 Q4, L13 and L15, only once he
-  confirms them);
+  (D5 amends item 7; D7 amends F5, round-2 Q4, L13 and L15 — brackets land with steps 2b and 3e);
   [[0314-the-add-wine-photo-path-invents-no-wine]] (its "real scanner" clauses superseded by F3);
   [[0179-unmounted-python-http-is-deleted-not-mounted]]; [[0020-no-fabricated-answers]];
   [[0213-get-started-is-account-then-house-then-first-proof]];
@@ -97,66 +95,64 @@ version, and making it current goes through the existing plan, which lists what 
 what is not on the new file (L12, display). The re-upload half (a resend reopening the
 version, a per-wine Retire) rests on D5 and D6 and stays open until he answers them.
 
-### Proposed calls — put back to the founder
+### Delegated calls — locked under the /goal
 
-His delegation, 2026-11-07, as relayed: *"I trust you you decide them all"*. His next
-instruction to this dispatch, as relayed: *"ask questions again"*. Each call below is the
-proposal's recommended option, drafted under the delegation and **Proposed** until he
-answers it; none binds a lane, and none amends another ADR.
+His delegation, 2026-11-07: *"I trust you you decide them all"*. He then said *"ask questions
+again"*, and later the same day set a /goal: *"Do not ask me any questions I approve you decide them all"*. The /goal is the latest word, so each
+call below — the proposal's recommended option, after an adversarial verify pass — is
+**Locked** as the session's call and binds the lanes that build it. He may reopen any of them.
 
 **D1 (MU-1). A wine nobody has counted reads "Not counted yet" in words on the dashboard,
-with a nudge to count.** Proposed, not decided. ADR 0020: a surface with no
+with a nudge to count.** Locked (delegated). ADR 0020: a surface with no
 data says so. Builds on F1's 1l (the rule). Rejected: (b) simply absent from alerts, which
 costs nothing but loses the "count these" nudge.
 
 **D2 (MU-3). Any member of a house may import a menu; discarding a line and opening the kept
-source file are owner/manager only.** Proposed, not decided. A draft touches
+source file are owner/manager only.** Locked (delegated). A draft touches
 no price (ADR 0193 item 7), so capture stays open where it is harmless; discard and source
 close the two exposures the audit's M10 verdict names. Built in step 1j, with staff not
 shown `rawText` in the import reply. Rejected: (a) owner/manager for all three, which stops
 staff photographing a menu; (c) as today, any member can mint a link to a costed spreadsheet
 and discard current-menu lines.
 
-**D3 (MU-4). Menu import gets no dedicated rate rule; the default bucket stays.** Proposed, not decided. His words in ADR 0193 round 3, *"so never refuse a menu read"*,
+**D3 (MU-4). Menu import gets no dedicated rate rule; the default bucket stays.** Locked (delegated). His words in ADR 0193 round 3, *"so never refuse a menu read"*,
 are broad and no abuse is measured. Rejected: (b) a per-user rule with a worded 429 and
 (c) a per-house daily ceiling, both of which answer some reads with a refusal.
 
 **D4 (MU-9). An ambiguous price (`1.250`, `1,250`) is never resolved from the house's
-currency; a person picks.** Proposed, not decided. ADR 0020 forbids invented
+currency; a person picks.** Locked (delegated). ADR 0020 forbids invented
 numbers; 1b already gives such a string no amount. Revisit when the gold set (D8) measures
 how often it bites. Consequence: step 1m is not built. Rejected: (b) resolve by house
 currency with a pencil reason, and (c) the same plus a magnitude check; both are guesses.
 
 **D5 (MU-11). Re-sending identical bytes reopens the existing version, with a "read again"
-act that does make a new row.** Proposed, not decided. **If confirmed, it
-would amend ADR 0193 item 7**: a resend of identical bytes would not be a new read; "read
+act that does make a new row.** Locked (delegated). **It amends ADR 0193 item 7**: a resend of identical bytes would not be a new read; "read
 again" would be. Built in step 2b
 (per-file sha256). Rejected: (b) every send a new billed read and row, with the UI naming the
 earlier send.
 
 **D6 (MU-12). The re-upload plan offers a per-wine *Retire* act for wines not on the new
-file.** Proposed, not decided. Explicit, never preselected; it removes the
+file.** Locked (delegated). Explicit, never preselected; it removes the
 wine from the current menu's carried set and leaves locks and inventory alone, so L12
 ("Silence changes nothing") and L16 ("Only a person ends a lock") hold. The act's own ADR is
 owed with step 2d. Rejected: (b) display only, at no cost, which lists departed wines but offers
 no act on them.
 
 **D7 (MU-6). A line with an unread or two-way price (or no source box) is held: not carried
-until a person decides it, and there is no "approve all".** Proposed, not decided. **If confirmed, it would amend ADR 0193 F5, round-2 Q4, L13 and L15**, which stand as
-written until then: it needs a new `price_flag`
+until a person decides it, and there is no "approve all".** Locked (delegated). **It amends ADR 0193 F5, round-2 Q4, L13 and L15**: it needs a new `price_flag`
 value, an L15 sentence naming held lines, and the make-current fingerprint covering them.
 Built in step 3e, whose amendment states which blank-price lines count as unread (F5's blank
 that keeps a known price, Q4's never-priced blank); this record does not decide that. Rejected: (a) as today (flagged with reasons and carried, the Keep switches
 as the only brake); (c) every line confirmed, which is slow and invites rubber-stamping.
 
-**D8 (MU-7). The accuracy gate starts on public menus.** Proposed, not decided. The source PDFs are restored to a stated place, labelled truth goes in
+**D8 (MU-7). The accuracy gate starts on public menus.** Locked (delegated). The source PDFs are restored to a stated place, labelled truth goes in
 `datasets/menu_corpus/gold/`, and a nightly run spends on live model reads. The per-run cost
 is not measured for the pinned model; step 3a states the measured cost before the workflow
 is enabled. The proposal's preferred option, adding consented customer menus, needs consent
 only the founder can obtain; it becomes the answer when he has it, with consent wording and a
 stated retention. Rejected: (c) no gate, which leaves regressions for owners to find.
 
-**D9 (MU-8). Serving formats are offers per line in a child table.** Proposed, not decided. Each offer carries label, volume, raw price, amount and currency; glass and
+**D9 (MU-8). Serving formats are offers per line in a child table.** Locked (delegated). Each offer carries label, volume, raw price, amount and currency; glass and
 bottle carry into the house price as today; others are stored and shown; a different printed
 currency is a pencil reason, never converted; a glass volume reaches `pour_size_ml` only on a
 person's confirmation (ADR 0193 round-2 Q3). Covers beer, whiskey and carafes without
@@ -167,17 +163,16 @@ effective-dated price, which reopens ADR 0193's price versions and locks.
 ## Consequences
 
 - Phase 1A proceeds as eight lanes (F1). Of Phase 1B: 1d-ii is dropped (F2); 1h ships as the
-  interim before 2a (F3); 1k follows F3 after 2a. Steps resting on a Proposed call wait for
-  his answer: 1m (D4), 1j (D2, D3), 1e (1l, D1's look and the decision on PR #656), and the
-  D5/D6/D7/D8/D9 parts of 2b, 2d, 3a, 3e and Phase 4.
+  interim before 2a (F3); 1k follows F3 after 2a. With D1–D9 locked: 1m is not built (D4);
+  1j builds D2 and leaves the rate bucket as is (D3); 1e still waits on PR #656; 2b, 2d, 3a,
+  3e and Phase 4 build D5, D6, D8, D7 and D9.
 - No OPEN-DECISIONS rows are filed for MU-1, 3, 4, 6, 7, 8, 9, 11, 12 or F-696's re-upload
-  half: the Proposed section above is where they wait, and a register row shifts later line
-  citations. MU-2, 5 and 10 are decided by F3, F2 and F4.
-- ADR 0193 carries no bracket from this record. If he confirms D5 or D7, the bracket goes on
-  the line it amends (item 7; F5, round-2 Q4, L13, L15) in the same change.
+  half: they are decided here, and a register row would shift later line citations. MU-2, 5 and 10 are decided by F3, F2 and F4.
+- ADR 0193 gets its brackets (item 7 from D5; F5, round-2 Q4, L13, L15 from D7) in the same
+  change as the step that builds each — 2b and 3e — so the bracket never precedes the code.
 - Records still owed, each with the step that builds it: the background-read runner's
-  technical ADR (2c); the PDF rasteriser placement ADR (3c); and, only if D6 and D7 are
-  confirmed, the Retire act's ADR (2d) and the `price_flag` value with ADR 0193 wording (3e).
+  technical ADR (2c); the PDF rasteriser placement ADR (3c); the Retire act's ADR (2d); and
+  the `price_flag` value with ADR 0193 wording (3e).
 
 ## Review trail
 
@@ -185,3 +180,4 @@ effective-dated price, which reopens ADR 0193's price versions and locks.
 |---|---|---|
 | 2026-11-07 | docs lane of the menu-upload Phase 1A dispatch | Created; ADR 0314 and ADR 0193 bracketed in place |
 | 2026-11-07 | independent audit of the docs lane, then the docs lane | Audit: D1–D9 rested on a relayed delegation while his latest word was *"ask questions again"*. D1–D9 moved to Proposed; ADR 0193's brackets removed; quotes marked as relayed |
+| 2026-11-07 | the walk session, under the founder's /goal | D1–D9 Locked as the session's calls: the /goal (*"Do not ask me any questions I approve you decide them all"*) is later than *"ask questions again"*. ADR 0193 brackets deferred to steps 2b/3e |

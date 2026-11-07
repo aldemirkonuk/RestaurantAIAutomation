@@ -13,7 +13,7 @@ repoints the buttons under ADR 0358 F3. The claim row `ADR-0358-SCAN-A-MENU-REPO
 (`claims.d/docs-menu-upload-rulings-2026-11-07.jsonl`) counts imports and calls only, so these
 comments do not keep it open.
 
-## D1–D9 wait on the founder's answers — OPEN — 2026-11-07
+## D1–D9 wait on the founder's answers — RESOLVED 2026-11-07 — the founder's /goal ("Do not ask me any questions I approve you decide them all") delegated them; ADR 0358 locks D1–D9, claim `ADR-0358-DELEGATED-CALLS-LOCKED` replaces the Proposed row. ADR 0193 brackets land with steps 2b/3e.
 
 ADR 0358's nine delegated calls (MU-1, 3, 4, 6, 7, 8, 9, 11, 12) are recorded as Proposed:
 after the delegation, his latest instruction to the dispatch was *"ask questions again"*, and
