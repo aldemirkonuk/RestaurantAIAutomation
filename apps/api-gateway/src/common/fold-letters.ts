@@ -10,8 +10,9 @@
  * "kavaklidere" -- one wine, two keys (QA round 1, B-1).
  *
  * One table, applied after the diacritic strip and before lowercasing, by
- * the TypeScript normaliser that keys a library wine, normalizeSignatureText
- * (wines/wine-signature.ts). The SQL twin is public.fold_undecomposable_letters(), called by
+ * the TypeScript normalisers that key a library wine, normalizeSignatureText
+ * (wines/wine-signature.ts), and a vendor sighting or bottle identity,
+ * normalizeIdentityText (vendor-intel/wine-identity.ts). The SQL twin is public.fold_undecomposable_letters(), called by
  * wine_normalize_text() and beverage_normalize_text(). The Python mirrors are
  * listed in MIRRORS in fold-letters.spec.ts, which reads every one of them and
  * fails when any drifts from this table.

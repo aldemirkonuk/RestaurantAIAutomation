@@ -1,4 +1,8 @@
-import { normalizeIdentityText, wineDisplayLabel } from "./wine-identity";
+import {
+  normalizeIdentityText,
+  normalizeIdentityTextBeforeFold,
+  wineDisplayLabel,
+} from "./wine-identity";
 
 /**
  * What a bottle IS, as a key several sources can agree on — the pure half.
@@ -113,11 +117,14 @@ const MAX_VINTAGE = 2100;
  * into "the bottle does not have one", which is this repo's standing fault in
  * one line.
  */
-export function readIdentity(input: IdentityInput): IdentityReading {
-  const producerNormalised = normalizeIdentityText(
+export function readIdentity(
+  input: IdentityInput,
+  normalize: (value?: string | null) => string = normalizeIdentityText,
+): IdentityReading {
+  const producerNormalised = normalize(
     typeof input.producer === "string" ? input.producer : null,
   );
-  const nameNormalised = normalizeIdentityText(
+  const nameNormalised = normalize(
     typeof input.name === "string" ? input.name : null,
   );
 
@@ -220,6 +227,24 @@ export function buildIdentityKey(parts: IdentityParts): string {
     parts.sizeMl === null ? "size?" : String(parts.sizeMl),
     parts.pack === null ? "pack?" : String(parts.pack),
   ].join("|");
+}
+
+/**
+ * The key this bottle was asserted under before the dotless-ı fold, or null
+ * when it is the same as `buildIdentityKey(readIdentity(input))` or the
+ * pre-fold reading refuses.
+ *
+ * READ-SIDE ONLY: a lookup key, never one to write. beverage_identities rows
+ * asserted before the fold hold "kavakl dere" in producer_normalised, and that
+ * cannot be refolded in SQL ("kavakl dere" may be a real space). Looking the
+ * old key up stops a second assertion of the same bottle making a second row.
+ */
+export function identityKeyBeforeFold(input: IdentityInput): string | null {
+  const now = readIdentity(input);
+  const before = readIdentity(input, normalizeIdentityTextBeforeFold);
+  if (!before.ok) return null;
+  const key = buildIdentityKey(before);
+  return now.ok && buildIdentityKey(now) === key ? null : key;
 }
 
 /** How a person should see this identity. */

@@ -48,6 +48,7 @@ import {
   IdentityInput,
   buildIdentityKey,
   identityDisplayLabel,
+  identityKeyBeforeFold,
   normaliseGtin,
   parseLwin,
   readIdentity,
@@ -382,11 +383,24 @@ export class IdentityService {
     }
     const identityKey = buildIdentityKey(reading);
 
-    const existing = await this.databaseService.supabase
+    let existing = await this.databaseService.supabase
       .from("beverage_identities")
       .select("id, standing, curation_state")
       .eq("identity_key", identityKey)
       .maybeSingle();
+    // A bottle asserted before the dotless-ı fold sits under its old key
+    // ("kavakl dere|..."). Looking that up too returns the row that exists
+    // rather than inserting the same bottle a second time (QA round 5, #785).
+    let existingKey = identityKey;
+    const keyBeforeFold = identityKeyBeforeFold(params.subject);
+    if (!existing.error && !existing.data && keyBeforeFold) {
+      existingKey = keyBeforeFold;
+      existing = await this.databaseService.supabase
+        .from("beverage_identities")
+        .select("id, standing, curation_state")
+        .eq("identity_key", keyBeforeFold)
+        .maybeSingle();
+    }
     if (existing.error) {
       throw new BadRequestException(
         `The identity register could not be read (${existing.error.message}). Nothing was written.`,
@@ -399,7 +413,7 @@ export class IdentityService {
       const row = existing.data as any;
       return {
         id: row.id,
-        identityKey,
+        identityKey: existingKey,
         created: false,
         standing: row.standing ?? "source",
         curationState: row.curation_state ?? "none",

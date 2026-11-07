@@ -53,10 +53,22 @@ and `scripts/eval_merge_policies.py` `norm()` (byte parity with
 output is identical before and after). `fold-letters.spec.ts` and
 `scripts/test_fold_letters_mirrors.py` fail when any copy drifts.
 
-Still open on this branch: `normalizeIdentityText` in
-`apps/api-gateway/src/vendor-intel/wine-identity.ts` (vendor matching) keeps the
-gap here; it moves to the shared fold in the stacked PR that follows, together
-with a read of the pre-fold key so stored price observations are not orphaned.
+Vendor matching (fix/vendor-identity-folds-turkish-i, stacked): `normalizeIdentityText`
+in `apps/api-gateway/src/vendor-intel/wine-identity.ts` now folds through the
+same table. Keys stored under the old rule cannot be recomputed in SQL
+(`vendor_price_observations` keeps no producer column; "kavakl dere" in
+`beverage_identities` may be a real space), so readers also ask for the
+pre-fold key, read-side only: `assertIdentity` (no second row for a bottle
+asserted before the fold). The comparison ladder and both outlier-prior reads
+still ask for the folded hash only; until the stacked
+fix/vendor-ladder-reads-prefold-hash lands, sightings stored before the fold
+drop out of the ladder and thin the outlier group (fewer priors judge nothing,
+the safe direction).
+NOT covered: `IdentityService.suggest` blocks on the folded
+`producer_normalised` only, so an identity asserted before the fold is not
+suggested for a subject with "ı" (its tokens "kavakl"/"dere" would not score
+anyway); the stored observation hashes and identity keys stay on the old rule
+until a person or a later backfill re-keys them.
 `services/agent-orchestrator/services/beverage_ontology.py` `normalize_text`
 (token matching only, not an identity key) and the other Python normalisers in
 `services/agent-orchestrator` were not changed.

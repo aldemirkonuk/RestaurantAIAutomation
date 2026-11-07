@@ -1,7 +1,11 @@
+import { createHash } from "crypto";
+
 import {
   buildWineIdentity,
   hashWineIdentity,
+  hashWineIdentityBeforeFold,
   normalizeIdentityText,
+  normalizeIdentityTextBeforeFold,
   wineDisplayLabel,
 } from "./wine-identity";
 
@@ -159,5 +163,55 @@ describe("wineDisplayLabel", () => {
 
   it("returns null when there is nothing to show", () => {
     expect(wineDisplayLabel({})).toBeNull();
+  });
+});
+
+describe("the dotless-ı fold (QA round 5, #785)", () => {
+  const sha = (s: string) => createHash("sha256").update(s).digest("hex");
+
+  it("keys a page's Kavaklıdere and a price list's KAVAKLIDERE together", () => {
+    expect(normalizeIdentityText("Kavaklıdere")).toBe("kavaklidere");
+    expect(normalizeIdentityText("Kalecik Karası")).toBe(
+      normalizeIdentityText("KALECIK KARASI"),
+    );
+    expect(
+      hashWineIdentity({
+        producer: "Kavaklıdere",
+        name: "Yakut",
+        vintage: 2019,
+      }),
+    ).toBe(
+      hashWineIdentity({
+        producer: "KAVAKLIDERE",
+        name: "YAKUT",
+        vintage: 2019,
+      }),
+    );
+  });
+
+  it("still knows the key a row was stored under before the fold", () => {
+    expect(normalizeIdentityTextBeforeFold("Kavaklıdere")).toBe("kavakl dere");
+    expect(
+      hashWineIdentityBeforeFold({
+        producer: "Kavaklıdere",
+        name: "Yakut",
+        vintage: 2019,
+      }),
+    ).toBe(sha("kavakl dere|yakut|2019"));
+  });
+
+  it("has no pre-fold key when the fold changes nothing", () => {
+    // Capitals, and names with no ı, hashed the same under both rules: a
+    // second lookup key for them would be the same key twice.
+    expect(
+      hashWineIdentityBeforeFold({ producer: "KAVAKLIDERE", name: "YAKUT" }),
+    ).toBeNull();
+    expect(
+      hashWineIdentityBeforeFold({ producer: "Krug", name: "Grande Cuvee" }),
+    ).toBeNull();
+  });
+
+  it("has no pre-fold key when the old rule left no name", () => {
+    expect(hashWineIdentityBeforeFold({ producer: "X", name: "ı" })).toBeNull();
   });
 });
