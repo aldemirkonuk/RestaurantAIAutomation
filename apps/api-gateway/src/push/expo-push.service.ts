@@ -1,5 +1,13 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readHouseZone } from "../common/house-day";
+import {
+  heldSentence,
+  pushHoldFor,
+  pushPreferenceFromRow,
+  type PushHold,
+  type PushPreference,
+} from "./push-gate";
 
 export interface ExpoPushPayload {
   title: string;
@@ -40,6 +48,16 @@ export interface PushOutcome {
   /** Registered devices the payload was handed to. 0 for every other outcome. */
   tokens: number;
   /** The sentence a surface prints. Never a bare code. */
+  detail: string;
+}
+
+/** `pushGate`'s answer: who may be pushed, who was held back and why. */
+export interface PushGateResult {
+  send: string[];
+  held: Record<PushHold, string[]>;
+  /** Why the settings could not be judged (and so were not), else null. */
+  unjudged: string | null;
+  /** The sentence a surface prints: who was held, and anything unjudged. */
   detail: string;
 }
 
@@ -169,6 +187,69 @@ export class ExpoPushService {
         detail: `The push attempt threw (${e?.message}), so what reached anybody is unknown.`,
       };
     }
+  }
+
+  /**
+   * Which of these members of ONE house their own settings let a phone push
+   * reach right now: push switched off holds every push; inside their quiet
+   * hours on the house's clock, everything below critical is held —
+   * `push-gate.ts` holds the rule and why. The caller pushes `send` with
+   * `sendToUsers`, so there is still one way a push leaves this service.
+   *
+   * A preferences read that fails, or a house clock that cannot be read,
+   * lets the push through and SAYS so in `unjudged` (ADR 0281 fork 1, "Push
+   * anyway", applied funnel-wide — see `push-gate.ts`).
+   */
+  async pushGate(
+    restaurantId: string,
+    userIds: string[],
+    opts: { critical?: boolean; now?: Date } = {},
+  ): Promise<PushGateResult> {
+    const held: Record<PushHold, string[]> = { push_off: [], quiet_hours: [] };
+    if (!userIds.length) return { send: [], held, unjudged: null, detail: "" };
+
+    const client = this.databaseService.supabase;
+    let unjudged: string | null = null;
+    const prefs = new Map<string, PushPreference>();
+    const { data, error } = await client
+      .from("notification_preferences")
+      // A literal, so scripts/check_read_columns_exist.py can check each one.
+      .select("user_id, push_enabled, quiet_hours_enabled, quiet_hours_start, quiet_hours_end")
+      .eq("restaurant_id", restaurantId)
+      .in("user_id", userIds);
+    if (error) {
+      unjudged = `Push preferences could not be read (${error.message}), so everyone addressed was pushed, as before they were read.`;
+      this.logger.warn(`PUSH_PREFERENCES_UNREAD restaurant=${restaurantId} — ${unjudged}`);
+    } else {
+      for (const row of (data ?? []) as any[])
+        prefs.set(String(row.user_id), pushPreferenceFromRow(row));
+    }
+
+    // The house clock is read only when somebody's answer depends on it.
+    let zone: string | null = null;
+    if (!opts.critical && [...prefs.values()].some((p) => p.pushEnabled && p.quiet.enabled)) {
+      let why: string | null = null;
+      try {
+        zone = (await readHouseZone(client, restaurantId)).zone;
+        if (zone === null) why = "this house's time zone is not set";
+      } catch (e: any) {
+        why = `this house's time zone could not be read (${e?.message})`;
+      }
+      if (why) {
+        unjudged = `Quiet hours were not judged because ${why}, so people with quiet hours on were pushed.`;
+        this.logger.warn(`PUSH_QUIET_HOURS_UNJUDGED restaurant=${restaurantId} — ${unjudged}`);
+      }
+    }
+
+    const now = opts.now ?? new Date();
+    const send: string[] = [];
+    for (const id of userIds) {
+      const hold = pushHoldFor(prefs.get(id), now, zone, opts.critical === true);
+      if (hold) held[hold].push(id);
+      else send.push(id);
+    }
+    const detail = [heldSentence(held), unjudged ?? ""].filter(Boolean).join(" ");
+    return { send, held, unjudged, detail };
   }
 
   /**
