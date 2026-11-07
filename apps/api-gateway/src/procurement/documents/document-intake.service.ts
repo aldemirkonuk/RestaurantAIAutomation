@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import { DatabaseService } from "../../database/database.service";
 import {
   DocumentExtractorService,
+  PaperFormatRefusal,
   stripJsonFence,
 } from "./document-extractor.service";
 import { normalizeUom, SourceChannel, toBottles } from "./document-types";
@@ -731,6 +732,11 @@ export class DocumentIntakeService {
         ? { ...ruled, warnings: [...ruled.warnings, ...failures] }
         : ruled;
     } catch (err: any) {
+      // A format the reader refused (HEIC, AVIF, unknown bytes) is not a
+      // failure to reach the model, and it must not pass through the currency
+      // rules either: they would file a paper nobody read in the house's money.
+      if (err instanceof PaperFormatRefusal)
+        return this.unreadable(err.message);
       /**
        * ADR 0104 D6 — "when extraction runs and FAILS, the template degrades to
        * original + header fields + an explicit NOT EXTRACTED banner".

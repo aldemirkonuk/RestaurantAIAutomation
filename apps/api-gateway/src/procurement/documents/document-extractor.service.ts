@@ -163,33 +163,20 @@ type MediaType =
   | "application/pdf";
 
 /**
- * The only image types the model accepts: JPEG, PNG, GIF and WebP
- * (https://platform.claude.com/docs/en/build-with-claude/vision#supported-formats),
- * plus PDF in a `document` block. Anything else is answered here, unread,
- * with a sentence a person can act on — never sent on under a guessed label.
+ * The model takes JPEG, PNG, GIF and WebP images
+ * (https://platform.claude.com/docs/en/build-with-claude/vision#supported-formats)
+ * and PDF. Anything else is refused with a sentence, never sent as a guess.
  */
 type PaperFormat = { mediaType: MediaType } | { unreadable: string };
 
 /**
- * ISO-BMFF image brands, read from bytes 8-11 when bytes 4-7 say `ftyp`.
- * The HEIF family is what an iPhone saves by default (`heic`, plus the
- * sequence, multi-layer and generic `mif1`/`msf1` brands); `avif`/`avis` are
- * the AV1 cousins. Both families are refused, each by its own name: AVIF is
- * no more readable to the model than HEIC, and labelling it JPEG is the same
- * defect (founder /goal 2026-11-07 delegated this call).
+ * ISO-BMFF major brands at bytes 8-11 (after `ftyp` at 4-7). HEIF is an
+ * iPhone's default; AVIF is refused too, by its own name (founder /goal
+ * 2026-11-07 delegated the call).
  */
-const HEIF_BRANDS = new Set([
-  "heic",
-  "heix",
-  "hevc",
-  "hevx",
-  "heim",
-  "heis",
-  "hevm",
-  "hevs",
-  "mif1",
-  "msf1",
-]);
+const HEIF_BRANDS = new Set(
+  "heic heix hevc hevx heim heis hevm hevs mif1 msf1".split(" "),
+);
 const AVIF_BRANDS = new Set(["avif", "avis"]);
 
 /** The sentence an unread HEIC/AVIF photo carries into the review queue. */
@@ -197,16 +184,27 @@ export function unreadablePhotoFormat(name: "HEIC" | "AVIF"): string {
   return `This photo is in ${name} format, which the reader cannot open, so the paper was stored unread. Send it again as a JPEG, or take the photo again.`;
 }
 
+/**
+ * Thrown by `extract()` for a paper refused before any model call; the message
+ * is the sentence a person reads. A throw, not an unread document: the intake
+ * runs every returned document through `applyCurrencyRules`, which would file
+ * a paper nobody read in the house's money. The intake catches this and
+ * returns its own `unreadable()` before the rules run.
+ */
+export class PaperFormatRefusal extends Error {
+  constructor(sentence: string) {
+    super(sentence);
+    this.name = "PaperFormatRefusal";
+  }
+}
+
 /** The sentence a file in no format the reader opens carries. */
 export const UNREADABLE_FILE_FORMAT =
   "This file is not a PDF, JPEG, PNG, WebP or GIF, so the reader could not open it and the paper was stored unread. Send it again as a PDF or a JPEG photo.";
 
 /**
- * HEIC or AVIF from the file's own first 12 bytes, or null.
- *
- * A base64 prefix match cannot see this: the box size in bytes 0-3 varies, so
- * the `ftyp` marker at offset 4 lands on different base64 characters from one
- * photo to the next. Sixteen base64 characters decode to exactly 12 bytes.
+ * HEIC or AVIF from the first 12 bytes (16 base64 chars), or null. Not a base64
+ * prefix match: the box size in bytes 0-3 varies, which shifts the characters.
  */
 export function isoImageFormat(base64: string): "HEIC" | "AVIF" | null {
   const head = Buffer.from(base64.slice(0, 16), "base64");
@@ -241,7 +239,7 @@ export class DocumentExtractorService {
 
   /**
    * Read a document image or PDF into a ParsedDocument.
-   * Throws only on transport failure; a document it cannot understand comes back
+   * Throws on transport failure or a refused format; a document it cannot understand comes back
    * as docType "unknown" with warnings, because a human can still act on that.
    */
   async extract(
@@ -252,7 +250,7 @@ export class DocumentExtractorService {
     // Before the key guard: refusing a format needs no model, so a paper the
     // reader cannot open is answered the same way with or without a key.
     const format = this.detectMediaType(base64, declaredMime);
-    if ("unreadable" in format) return unreadDocument(format.unreadable);
+    if ("unreadable" in format) throw new PaperFormatRefusal(format.unreadable);
     const { mediaType } = format;
 
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
@@ -600,56 +598,10 @@ export class DocumentExtractorService {
     if (d.includes("avif"))
       return { unreadable: unreadablePhotoFormat("AVIF") };
 
-    // This was `return "image/jpeg"`: a silent guess that sent every
-    // unrecognised file to the model labelled JPEG, where the request is
-    // rejected and the intake files the paper under "the extraction model
-    // could not be reached" — the wrong reason. Unread, with the right one.
+    // Was `return "image/jpeg"`: a guess the model rejected, filed under
+    // "the extraction model could not be reached" — the wrong reason.
     return { unreadable: UNREADABLE_FILE_FORMAT };
   }
-}
-
-/**
- * A paper the reader refused before any model call: every field null, the
- * reason as its one warning, and no model named — none ran (ADR 0059: NULL is
- * honest for an unreadable document). The intake still stores the bytes, and
- * the warning puts the row in `needs_review` with the reason in `notes`.
- */
-function unreadDocument(reason: string): ParsedDocument {
-  return {
-    docType: "unknown",
-    docNumber: null,
-    docDate: null,
-    referencesDocNumber: null,
-    poNumber: null,
-    vendorName: null,
-    vendorAccount: null,
-    vendorTaxId: null,
-    vendorTaxOffice: null,
-    vendorAddress: null,
-    vendorCountry: null,
-    buyerName: null,
-    buyerTaxId: null,
-    // Empty, never a guessed code: nothing was read.
-    currency: "",
-    subtotal: null,
-    freight: null,
-    fuelSurcharge: null,
-    splitCaseFee: null,
-    deliveryFee: null,
-    depositTotal: null,
-    tax: null,
-    otherCharges: null,
-    discountTotal: null,
-    total: null,
-    lines: [],
-    computedLinesTotal: null,
-    tieOutDelta: null,
-    tiesOut: null,
-    confidence: 0,
-    warnings: [reason],
-    extractionModel: null,
-    eventId: null,
-  };
 }
 
 /** Number or null. Rejects NaN and strips currency noise the prompt asked not to send. */

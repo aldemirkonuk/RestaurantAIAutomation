@@ -754,3 +754,73 @@ describe("DocumentIntakeService — an EDI 832 catalogue's currency", () => {
     expect(doc.currency).toBe("EUR");
   });
 });
+
+/*
+ * receipts-1.6 audit, 2026-11-07: a refused HEIC photo must not pass through
+ * `applyCurrencyRules`, which would file it in the house's currency. Real
+ * extractor and route(); the model client fails the test if called.
+ */
+describe("DocumentIntakeService — a HEIC photo reaches storage unread", () => {
+  const heic = Buffer.concat([
+    Buffer.from([0, 0, 0, 0x18]),
+    Buffer.from("ftypheic", "latin1"),
+    Buffer.from([0, 0, 0, 0]),
+    Buffer.from("mif1miaf", "latin1"),
+    Buffer.alloc(32, 0xab),
+  ]);
+
+  function build() {
+    const call = jest.fn(async () => {
+      throw new Error("the model must not be called for a refused format");
+    });
+    const extractor = new DocumentExtractorService(
+      {
+        get: (k: string) =>
+          k === "ANTHROPIC_API_KEY" ? "test-key" : undefined,
+      } as any,
+      { call } as any,
+      { record: jest.fn() } as any,
+    );
+    const service = new DocumentIntakeService(
+      { getClient: () => ({}) } as any,
+      extractor,
+      {} as any,
+      {} as any,
+    );
+    jest
+      .spyOn(service as any, "houseCurrency")
+      .mockResolvedValue({ code: "TRY", failure: null });
+    jest.spyOn(service as any, "matchedOrderCurrency").mockResolvedValue({
+      code: null,
+      matched: false,
+      label: null,
+      failure: null,
+    });
+    return { service, call };
+  }
+
+  it("keeps currency empty and carries the HEIC sentence as its only warning", async () => {
+    const { service, call } = build();
+    const doc = await (service as any).route(
+      {
+        restaurantId: "rest-1",
+        source: "photo",
+        filename: "IMG_0412.HEIC",
+        mimeType: "image/heic",
+      },
+      heic,
+    );
+
+    expect(call).not.toHaveBeenCalled();
+    expect(doc.docType).toBe("unknown");
+    expect(doc.total).toBeNull();
+    expect(doc.lines).toEqual([]);
+    expect(doc.currency).toBe("");
+    expect(doc.currencyFiledFrom).toBeUndefined();
+    expect(doc.warnings).toHaveLength(1);
+    expect(doc.warnings[0]).toMatch(
+      /^This photo is in HEIC format, which the reader cannot open, so the paper was stored unread\./,
+    );
+    expect(doc.warnings[0]).not.toMatch(/could not be reached/);
+  });
+});
