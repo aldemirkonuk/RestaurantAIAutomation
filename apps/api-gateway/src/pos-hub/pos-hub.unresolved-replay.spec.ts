@@ -18,7 +18,9 @@ const HOUSE = "house-a";
 const OTHER_HOUSE = "house-b";
 const BOTTLE_ML = 750;
 
-function makeDb(opts: { failQueueRead?: boolean } = {}) {
+function makeDb(
+  opts: { failQueueRead?: boolean; failKey?: (key: string) => boolean } = {},
+) {
   const tables: Record<string, Row[]> = {
     pos_unresolved_lines: [],
     pos_checks: [],
@@ -79,9 +81,21 @@ function makeDb(opts: { failQueueRead?: boolean } = {}) {
     limit = (n: number) => ((this.max = n), this);
     eq = (col: string, val: any) => this.where((r) => r[col] === val);
     in = (col: string, vals: any[]) => this.where((r) => vals.includes(r[col]));
+    // As the wire behaves: PostgREST turns every `*` into `%` before
+    // Postgres reads the pattern, then ILIKE (backslash escapes, `%`, `_`).
     ilike = (col: string, pattern: string) => {
-      const exact = pattern.replace(/\\(.)/g, "$1").toLowerCase();
-      return this.where((r) => String(r[col] ?? "").toLowerCase() === exact);
+      const sql = pattern.replace(/\*/g, "%");
+      let re = "";
+      for (let i = 0; i < sql.length; i++) {
+        const c = sql[i];
+        if (c === "\\" && i + 1 < sql.length)
+          re += sql[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        else if (c === "%") re += "[\\s\\S]*";
+        else if (c === "_") re += "[\\s\\S]";
+        else re += c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+      const like = new RegExp(`^${re}$`, "i");
+      return this.where((r) => like.test(String(r[col] ?? "")));
     };
     update = (patch: Row) => this.set("update", patch);
     insert = (row: Row) => this.set("insert", row);
@@ -165,6 +179,8 @@ function makeDb(opts: { failQueueRead?: boolean } = {}) {
       const key = String(args.p_idempotency_key);
       // The real early return: a key already seen moves nothing.
       if (seenKeys.has(key)) return { data: "tx-existing", error: null };
+      if (opts.failKey?.(key))
+        return { data: null, error: { message: "stock write refused" } };
       seenKeys.add(key);
       if (name === "apply_stock_movement") {
         stockMl[args.p_inventory_id] += Number(args.p_delta) * BOTTLE_ML;
@@ -354,6 +370,138 @@ describe("PosHubService — a mapping replays the sales queued before it (POS-2)
     expect(stockMl["inv-merlot"]).toBe(12 * BOTTLE_ML - 3 * 150);
     expect(open(tables)).toHaveLength(0);
     expect(second.past_sales.applied).toBe(1);
+  });
+
+  it("a check holding the glass and the bottle SKU under one name books only the bottle's line, and says so", async () => {
+    const { db, tables, bottles } = makeDb();
+    const service = new PosHubService(db);
+    // The glass SKU was mapped earlier, still without a pour size.
+    await mapMerlot(service, { external_item_id: "merlot-g", sale_unit: null });
+    await service.ingest(HOUSE, "generic_webhook", [
+      sale("chk-1", 1, {
+        items: [
+          {
+            name: "House Merlot",
+            externalItemId: "merlot-g",
+            qty: 1,
+            price: 12,
+          },
+          {
+            name: "House Merlot",
+            externalItemId: "merlot-1",
+            qty: 2,
+            price: 60,
+          },
+        ],
+      }),
+    ]);
+    expect(bottles()).toBe(12);
+
+    const saved: any = await mapMerlot(service);
+
+    expect(bottles()).toBe(10);
+    expect(saved.past_sales).toMatchObject({
+      applied: 1,
+      still_waiting: 0,
+      failed: 0,
+    });
+    expect(saved.past_sales.message).toBe(
+      "1 past sale of this item came off stock.",
+    );
+    // The glass waits on its own mapping's question; the bottle is settled.
+    expect(open(tables).map((r) => r.external_item_id)).toEqual(["merlot-g"]);
+  });
+
+  it("clears the bottle SKU's row when the glass SKU, mapped with no shelf, shares its name", async () => {
+    const { db, tables, bottles } = makeDb();
+    const service = new PosHubService(db);
+    await mapMerlot(service, {
+      external_item_id: "merlot-g",
+      inventory_id: null,
+      sale_unit: null,
+    });
+    await service.ingest(HOUSE, "generic_webhook", [
+      sale("chk-1", 1, {
+        items: [
+          {
+            name: "House Merlot",
+            externalItemId: "merlot-g",
+            qty: 1,
+            price: 12,
+          },
+          {
+            name: "House Merlot",
+            externalItemId: "merlot-1",
+            qty: 2,
+            price: 60,
+          },
+        ],
+      }),
+    ]);
+
+    const saved: any = await mapMerlot(service);
+    expect(bottles()).toBe(10);
+    expect(saved.past_sales).toMatchObject({ applied: 1, still_waiting: 0 });
+    expect(open(tables).map((r) => r.external_item_id)).toEqual(["merlot-g"]);
+
+    // Saving again finds nothing of this item left to take.
+    const again: any = await mapMerlot(service);
+    expect(bottles()).toBe(10);
+    expect(again.past_sales.message).toBe(
+      "No past sales of this item were waiting.",
+    );
+  });
+
+  it("counts a line that moved as applied when its neighbour's stock write fails, and keeps the row for the retry", async () => {
+    const { db, tables, bottles } = makeDb({
+      failKey: (k) => k.endsWith(":merlot-1:2"),
+    });
+    const service = new PosHubService(db);
+    await service.ingest(HOUSE, "generic_webhook", [
+      sale("chk-1", 1, {
+        items: [
+          {
+            name: "House Merlot",
+            externalItemId: "merlot-1",
+            qty: 1,
+            price: 60,
+          },
+          { name: "Ribeye", externalItemId: "food-1", qty: 1, price: 40 },
+          {
+            name: "House Merlot",
+            externalItemId: "merlot-1",
+            qty: 2,
+            price: 60,
+          },
+        ],
+      }),
+    ]);
+
+    const saved: any = await mapMerlot(service);
+
+    expect(bottles()).toBe(11);
+    expect(saved.past_sales).toMatchObject({ applied: 1, failed: 1 });
+    expect(open(tables)).toHaveLength(1);
+  });
+
+  it("a name with a `*` in it replays only its own item's sales", async () => {
+    const { db, tables, bottles } = makeDb();
+    const service = new PosHubService(db);
+    await service.ingest(HOUSE, "generic_webhook", [sale("chk-1", 2)]);
+
+    const saved: any = await service.upsertItemMapping(HOUSE, {
+      source: "*",
+      item_name: "House *",
+      is_wine: true,
+      inventory_id: "inv-merlot",
+      sale_unit: "bottle",
+    });
+
+    expect(bottles()).toBe(12);
+    expect(saved.past_sales.message).toBe(
+      "No past sales of this item were waiting.",
+    );
+    expect(open(tables)).toHaveLength(1);
   });
 
   it("a queue it cannot read says so, and the mapping is still saved", async () => {
