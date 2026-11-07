@@ -111,12 +111,10 @@ describe('the setup page itself', () => {
   });
 
   it('a failed read says it failed and that it does not mean nothing is set up', async () => {
-    api.get.mockRejectedValue(fail(503, 'The mail setup could not be read.'));
+    api.get.mockRejectedValue(fail(503, 'upstream connect error or disconnect/reset before headers'));
     mount();
     const alert = await screen.findByTestId('setup-unread');
-    expect(alert.textContent).toBe(
-      'The mail setup could not be read (The mail setup could not be read). That does not mean nothing is set up.',
-    );
+    expect(alert.textContent).toBe('The mail setup could not be read. That does not mean nothing is set up.');
     expect(alert.textContent).not.toMatch(/503|status code/);
     expect(screen.queryByText('Which address letters leave from')).toBeNull();
   });
@@ -203,16 +201,17 @@ describe('which address letters leave from', () => {
     );
   });
 
-  it("a refused save shows the server's words, not a status code", async () => {
+  it("a refused save says it in the page's own words, never the server's or a status code", async () => {
+    // QA round 26, #980 defect 3: whatever the server put in `message` was
+    // printed as it came, so a validation or provider string reached the owner.
     answer(chefSending());
-    api.put.mockRejectedValue(
-      fail(400, 'That mailbox is not one this house can send from any more. Nothing was changed.'),
-    );
+    api.put.mockRejectedValue(fail(400, 'connectionId must be a UUID'));
     mount();
     fireEvent.click((await screen.findAllByRole('radio'))[0]);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     const err = await screen.findByTestId('setup-save-failed');
-    expect(err.textContent).toBe('That mailbox is not one this house can send from any more. Nothing was changed.');
+    expect(err.textContent).toBe('That mailbox cannot send for this house any more. Nothing was changed.');
+    expect(err.textContent).not.toMatch(/UUID|400/);
   });
 
   it('staff see the same list, read-only, with no Save', async () => {
