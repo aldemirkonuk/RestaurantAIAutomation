@@ -311,8 +311,8 @@ describe("cents add back to the invoice (QA round 15, finding 3)", () => {
 });
 
 describe("a paper not in the house's money is never costed as the house's (QA round 15, finding 5)", () => {
-  const land = (papers: Partial<PaperHeaderRow>[], lines: PaperLine[], house: string | null) =>
-    landDelivery({ papers: papers.map((p) => head(p)), lines, booked: new Map([[A, 10], [B, 10]]), houseCurrency: house });
+  const land = (papers: Partial<PaperHeaderRow>[], lines: PaperLine[], house: string | null, a = 10) =>
+    landDelivery({ papers: papers.map((p) => head(p)), lines, booked: new Map([[A, a], [B, 10]]), houseCurrency: house });
 
   it.each([
     ["EUR", "TRY", /its invoice is in EUR and this house keeps its costs in TRY; no exchange rate is recorded/],
@@ -327,13 +327,13 @@ describe("a paper not in the house's money is never costed as the house's (QA ro
     expect(r.papers[0].leftOut).toMatch(/^Nothing on it was costed: /);
   });
 
-  it("a paper in the house's money, in any case, costs as before", () => {
+  it("a paper in the house's money, any case, costs as before", () => {
     const r = land([{ currency: "try", freight: 10 }], two(), "TRY");
     expect([cost(r, A), cost(r, B), r.foreign.size]).toEqual([60.6, 40.4, 0]);
   });
 
   it("an item on a USD and a EUR paper is held: currencies are never added", () => {
-    const r = land([{ currency: "USD" }, { id: "inv-2", currency: "EUR" }], [line(), line({ document_id: "inv-2" })], null);
+    const r = land([{ currency: "USD" }, { id: "inv-2", currency: "EUR" }], [line(), line({ document_id: "inv-2" })], null, 20);
     expect(cost(r, A)).toBeUndefined();
     expect(r.held.get(A)).toMatch(/its invoices are in USD and EUR, and costs in different currencies are never added together/);
   });
