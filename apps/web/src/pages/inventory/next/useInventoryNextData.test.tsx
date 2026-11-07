@@ -31,6 +31,7 @@ vi.mock('../../../contexts/AuthContext', () => ({
 }));
 vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
   useInventory: () => ({ data: m.items, isError: false, refetch: m.listRefetch }),
+  useLowStockItems: () => ({ data: [], isError: false, isPending: false, refetch: vi.fn() }),
 }));
 vi.mock('../../../hooks/queries/useWineQueries', () => ({
   useWinesByIds: () => ({

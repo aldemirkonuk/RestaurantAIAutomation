@@ -227,13 +227,20 @@ export default function InventoryNext() {
   }, []);
 
   // A chip whose count could not be read cannot hold the list (INV-W29).
-  const activeChip: ChipId = chip === 'dead' && data.paceUnread ? 'all' : chip;
+  // The same for the alert list (QA 9c): until it is read, the alerts' link
+  // shows every title rather than an empty list that would read as none.
+  const alerted = data.alerted ?? null;
+  const activeChip: ChipId =
+    (chip === 'dead' && data.paceUnread) || (chip === 'alerts' && alerted === null) ? 'all' : chip;
   const chipCounts = useMemo(() => {
     const now = Date.now();
     const m = new Map<ChipId, number>();
-    for (const c of CHIPS) m.set(c.id, (rows ?? []).filter((r) => chipMatch(r, c.id, now)).length);
+    for (const c of CHIPS) {
+      if (c.id === 'alerts' && alerted === null) continue;
+      m.set(c.id, (rows ?? []).filter((r) => chipMatch(r, c.id, now, alerted)).length);
+    }
     return m;
-  }, [rows]);
+  }, [rows, alerted]);
   const chipCount = (id: ChipId) => {
     const k = chipCounts.get(id);
     return k === undefined ? EM : fmtCount(k);
@@ -271,11 +278,11 @@ export default function InventoryNext() {
     const zn = (id: string | null) => (id === null ? 'Unassigned' : (locs.list.find((l) => l.id === id)?.name ?? null));
     return sortRows(
       rows.filter(
-        (r) => chipMatch(r, activeChip, now) && inZone(r, zone) && ofType(r, type) && matchesSearch(r, query, zn),
+        (r) => chipMatch(r, activeChip, now, alerted) && inZone(r, zone) && ofType(r, type) && matchesSearch(r, query, zn),
       ),
       sort,
     );
-  }, [rows, activeChip, zone, type, query, sort, locs.list]);
+  }, [rows, activeChip, zone, type, query, sort, locs.list, alerted]);
 
   // ── Row selection, ported from the legacy page (NEW-064, InventoryCommandPage.tsx:507-531).
   // Keyed by restaurant_inventory id. A house switch or a filter change empties
@@ -696,6 +703,16 @@ export default function InventoryNext() {
                     className="iv-chip"
                     disabled
                     title="Whether a title is dead stock could not be read: the selling pace did not answer"
+                  >
+                    {c.label} <span className="iv-num">{EM}</span>
+                  </button>
+                ) : c.id === 'alerts' && alerted === null ? (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="iv-chip"
+                    disabled
+                    title="Which titles the low-stock alerts name has not been read"
                   >
                     {c.label} <span className="iv-num">{EM}</span>
                   </button>

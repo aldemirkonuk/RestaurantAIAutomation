@@ -29,7 +29,7 @@
 import { useEffect, useMemo } from 'react';
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useInventory } from '../../../hooks/queries/useInventoryQueries';
+import { useInventory, useLowStockItems } from '../../../hooks/queries/useInventoryQueries';
 import { useWinesByIds } from '../../../hooks/queries/useWineQueries';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useStorageLocations, type StorageLocation } from '../../../hooks/useStorageLocations';
@@ -412,12 +412,13 @@ export function matchesSearch(row: InvRow, query: string, zoneName: (id: string 
 
 /* ── chips ───────────────────────────────────────────────────────────────── */
 
-export type ChipId = 'all' | 'out' | 'below' | 'reconcile' | 'count' | 'dead' | 'price';
+export type ChipId = 'all' | 'out' | 'below' | 'alerts' | 'reconcile' | 'count' | 'dead' | 'price';
 
 export const CHIPS: { id: ChipId; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'out', label: 'Out' },
   { id: 'below', label: 'Below par' },
+  { id: 'alerts', label: 'Low-stock alerts' },
   { id: 'reconcile', label: 'Reconcile' },
   { id: 'count', label: 'Count due' },
   { id: 'dead', label: 'Dead stock' },
@@ -435,8 +436,19 @@ export function countDue(row: InvRow, now = Date.now()): boolean {
  * Whether a row belongs under a chip. `price` matches nothing: a price signal
  * needs a market figure and none is read (`retail_price_avg` is not selected,
  * database.service.ts:42-53), so its count is the dash, never 0.
+ *
+ * `alerts` is the server's own list, not a rule re-derived here: the ids
+ * `v_low_stock_items` holds, which are the wines the low-stock alerts and the
+ * dashboard are about (QA round 9c: the alerts' `?filter=low-stock` link
+ * landed on an unfiltered page). `alerted` null is a list not read, which
+ * matches nothing; the page shows its count as the dash.
  */
-export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean {
+export function chipMatch(
+  row: InvRow,
+  chip: ChipId,
+  now = Date.now(),
+  alerted: ReadonlySet<string> | null = null,
+): boolean {
   switch (chip) {
     case 'all':
       return true;
@@ -444,6 +456,8 @@ export function chipMatch(row: InvRow, chip: ChipId, now = Date.now()): boolean 
       return row.standing === 'out';
     case 'below':
       return row.standing === 'below';
+    case 'alerts':
+      return alerted?.has(row.id) ?? false;
     case 'reconcile':
       return row.shadow !== null && row.shadow > 0;
     case 'count':
@@ -663,6 +677,13 @@ export function useInventoryNextData() {
     [items, winesById],
   );
 
+  // The wines the low-stock alerts are about, as the server holds them.
+  const lowQ = useLowStockItems();
+  const alerted = useMemo<ReadonlySet<string> | null>(
+    () => (lowQ.data ? new Set(lowQ.data.map((i) => i.id)) : null),
+    [lowQ.data],
+  );
+
   const currencyQ = useQuery({
     queryKey: ['settings', 'currency'],
     queryFn: () => settingsApi.houseCurrency(),
@@ -764,6 +785,7 @@ export function useInventoryNextData() {
   if (storage.locationsUnavailable) unread.push('the storage locations, so zones show — and the zone filter is off');
   if (currency.state === 'unreadable') unread.push('the house’s currency');
   if (advice.status === 'error') unread.push('the price advice');
+  if (lowQ.isError) unread.push('the low-stock alert list, so its chip shows —');
   if (invoicesQ.isError) unread.push('the invoices waiting for a match');
   if (deliveriesQ.isError) unread.push('the delivered lines waiting for their item');
   // A read still in flight is not an answer either: until the library answers,
@@ -778,6 +800,7 @@ export function useInventoryNextData() {
   // else it never runs, so it is not "still reading".
   if (canManage && advice.status === 'loading') pending.push('the price advice');
   if (invoicesQ.isPending) pending.push('the invoices waiting for a match');
+  if (rid !== null && lowQ.isPending) pending.push('the low-stock alert list');
   if (deliveriesQ.isPending) pending.push('the delivered lines waiting for their item');
   const rereadUnread = () => {
     if (paceUnread) void list.refetch();
@@ -785,6 +808,7 @@ export function useInventoryNextData() {
     if (storage.locationsUnavailable) void queryClient.invalidateQueries({ queryKey: ['storageLocations', rid] });
     if (currency.state === 'unreadable') void currencyQ.refetch();
     if (advice.status === 'error') void adviceQ.refetch();
+    if (lowQ.isError) void lowQ.refetch();
     if (invoicesQ.isError) void invoicesQ.refetch();
     if (deliveriesQ.isError) void deliveriesQ.refetch();
   };
@@ -812,6 +836,8 @@ export function useInventoryNextData() {
     libraryAnswered,
     /** The selling-pace join failed for this read: pace, runway and dead stock are unread, not zero (INV-W29). */
     paceUnread,
+    /** Ids of the wines the low-stock alerts name; null until read, or when the read failed. */
+    alerted,
     currency,
     locations: {
       list: storage.locations as StorageLocation[],

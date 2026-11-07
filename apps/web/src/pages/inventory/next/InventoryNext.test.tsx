@@ -1040,6 +1040,36 @@ describe('INV-W38 — the view is the URL', () => {
     expect(screen.getByTestId('deliveries-to-name')).toBeTruthy();
   });
 
+  // QA 9c item 4: the low-stock alerts link to /inventory?filter=low-stock.
+  it('lands the alerts\' ?filter=low-stock link on the wines the alerts name, and folds it into chip', () => {
+    expect(readView(new URLSearchParams('filter=low-stock')).chip).toBe('alerts');
+    expect(readView(new URLSearchParams('chip=out&filter=low-stock')).chip).toBe('out');
+    expect(writeView(new URLSearchParams('filter=low-stock'), { ...IV_DEFAULT, chip: 'alerts' }).toString()).toBe('chip=alerts');
+
+    mock.data = data({ rows: two(), alerted: new Set(['b']) });
+    const seen = renderAt('/inventory?filter=low-stock');
+    expect(screen.queryByTestId('inv-row-a')).toBeNull();
+    expect(screen.getByTestId('inv-row-b')).toBeTruthy();
+    const chip = screen.getByRole('button', { name: /Low-stock alerts/ });
+    expect(chip.getAttribute('aria-pressed')).toBe('true');
+    expect(chip.textContent).toContain('1');
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    expect(new URLSearchParams(seen.search).get('chip')).toBe('alerts');
+    expect(new URLSearchParams(seen.search).has('filter')).toBe(false);
+  });
+
+  it('shows every title, and the chip\'s count as the dash, while the alert list is unread', () => {
+    mock.data = data({ rows: two(), alerted: null });
+    renderAt('/inventory?filter=low-stock');
+    expect(screen.getByTestId('inv-row-a')).toBeTruthy();
+    expect(screen.getByTestId('inv-row-b')).toBeTruthy();
+    const chip = screen.getByRole('button', { name: /Low-stock alerts/ }) as HTMLButtonElement;
+    expect(chip.disabled).toBe(true);
+    expect(chip.textContent).toContain('—');
+    expect(chipMatch(two()[0], 'alerts', Date.now(), null)).toBe(false);
+    expect(chipMatch(two()[0], 'alerts', Date.now(), new Set(['a']))).toBe(true);
+  });
+
   it('sends the older ?verify= link to Receiving, on that order', () => {
     mock.data = data({ rows: two() });
     const seen = renderAt('/inventory?verify=o%2F7');
