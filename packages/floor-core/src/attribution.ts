@@ -8,21 +8,26 @@
  *   historical credit.
  *
  * Ported from the Floor Checker's `lib/attribution.ts` (frozen at
- * `5958689`; ADR 0346 `:113`, Proposed, built under OD-242). The 50% line is
- * the checker's (`lib/attribution.ts:63`). Two changes:
+ * `5958689`). Shipping it is the founder's ADR 0346 D1 (`:41`); the 50% rule
+ * is what the checker computes (`:113`, `lib/attribution.ts:63`). ADR 0346 is
+ * Proposed; built under OD-242. Where the port differs:
  *
- * - `nowMs` is required (no clock is read here), and a `nowMs` that is not a
- *   finite number reads as unreadable: an open seating then scores nothing
- *   and an open interval is skipped, rather than an open interval reaching
- *   to the end of a closed seating.
- * - Overlapping intervals are merged before they are summed. The checker
- *   summed them; its only guard is one active row per table
+ * - `nowMs` is required (no clock is read here). A `nowMs` that is not a
+ *   finite number reads as unreadable, so an open interval is skipped and an
+ *   open seating scores nothing. That keeps the checker's behaviour, which
+ *   skipped any non-finite interval end explicitly.
+ * - Overlapping intervals are merged before they are summed, so covered means
+ *   the union ADR 0346 `:113` describes. The checker summed them; its only
+ *   guard is one active row per table
  *   (`supabase/migrations/0001_init.sql:79-80`), which does not stop closed
  *   intervals from overlapping. The port's floor schema (its migration is
- *   not on main yet) lets one waiter hold a table both directly and through
- *   a section; summing those would count the same minutes twice and could
- *   cross the 50% line.
+ *   not on main yet) lets one waiter hold a table directly and through a
+ *   section at once; summing those would count the same minutes twice and
+ *   could cross the 50% line.
  *
+ * Times are ISO strings with a zone; a zone-less string is read in the
+ * runtime's zone. An empty `leftAt` or `endAt` reads as still open, as in the
+ * checker.
  * The intervals passed in are one waiter's; the caller filters by waiter.
  */
 
@@ -56,7 +61,7 @@ export function assignmentOverlapMs(
     const a0 = new Date(iv.startAt).getTime();
     const a1 = iv.endAt ? new Date(iv.endAt).getTime() : now;
     // An unreadable start or end is NaN, so `hi > lo` is false and the
-    // interval is skipped (a spec pins it).
+    // interval is skipped (specs pin both).
     const lo = Math.max(s0, a0);
     const hi = Math.min(s1, a1);
     if (hi > lo) clipped.push([lo, hi]);

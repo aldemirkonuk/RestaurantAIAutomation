@@ -2,7 +2,7 @@
  * @wineops/floor-core — coverage attribution (who covered a seating).
  *
  * Every spec here imports the real code. The checker's own scripts copied the
- * logic into the test file (`scripts/test-attribution.mjs:8`), so they could
+ * logic into the test file (`scripts/test-attribution.mjs:116-128`), so they could
  * pass while the app drifted; that is not repeated.
  */
 import {
@@ -45,6 +45,28 @@ describe("parity: coverage overlap ≥50% (test-attribution.mjs)", () => {
 // ---------------------------------------------------------------------------
 
 describe("coverage counts time covered twice once", () => {
+  it("an interval inside another adds nothing, in either input order", () => {
+    const outer: AssignmentInterval = { tableId: "t1", startAt: at(0), endAt: at(50) };
+    const inner: AssignmentInterval = { tableId: "t1", startAt: at(10), endAt: at(20) };
+    for (const ivs of [[outer, inner], [inner, outer]]) {
+      expect(assignmentOverlapMs(at(0), at(100), ivs, "t1", T0 + 100 * MIN)).toBe(50 * MIN);
+    }
+  });
+
+  it("merges intervals given out of order", () => {
+    const ivs: AssignmentInterval[] = [
+      { tableId: "t1", startAt: at(70), endAt: at(90) },
+      { tableId: "t1", startAt: at(0), endAt: at(30) },
+      { tableId: "t1", startAt: at(20), endAt: at(50) },
+    ];
+    expect(assignmentOverlapMs(at(0), at(100), ivs, "t1", T0 + 100 * MIN)).toBe(70 * MIN);
+  });
+
+  it("skips an interval whose end is unreadable", () => {
+    const ivs: AssignmentInterval[] = [{ tableId: "t1", startAt: at(0), endAt: "bad" }];
+    expect(assignmentOverlapMs(at(0), at(100), ivs, "t1", T0 + 100 * MIN)).toBe(0);
+  });
+
   it("two identical 40-of-100-minute intervals are 40 minutes, not covered", () => {
     const seated = at(0);
     const left = at(100);
