@@ -1,6 +1,6 @@
 # 0357 — Letter Bench v4 is the house mail terminal
 
-- **Status:** Proposed (the founder's four answers of 2026-11-02 are recorded below; the storage fork is still open)
+- **Status:** Proposed (the founder's five answers of 2026-11-02 are recorded below; only the template-migration fork is open, and no build step waits on it)
 - **Date:** 2026-11-02
 - **Decider:** Aldemir (founder)
 - **Keywords:** communications, letter bench, designs, blocks, filed, inbox, endpoints, rollout
@@ -29,6 +29,12 @@ Web: `/communications` is `PageGate page="communications"` over `CommunicationsN
 3. **Staff see designs, filed letters and the inbox read-only.** Enforced by gateway roles.
    The "Viewing as" switch is not shipped; the page shows the caller's real role.
 4. **Ask Mudavym is in scope now.**
+5. **Storage: new tables.** Designs live in `letter_designs` (draft blocks, look, purpose,
+   name) and `letter_design_versions` (published snapshots). `communication_templates` is
+   not extended: it stays flat (`subject` + plain `body`) and keeps serving old sends.
+   Rejected: adding blocks to `communication_templates`. It would put block JSON and
+   versioning on a table that five send paths read as plain text, so every one of them
+   would have to learn to ignore or render blocks.
 
 ## Endpoint map
 
@@ -68,9 +74,8 @@ Web: `/communications` is `PageGate page="communications"` over `CommunicationsN
 
 ## Open (the founder's call)
 
-- **Storage.** New `letter_designs` + versions tables, versus adding blocks to
-  `communication_templates`. Recommended: new tables; leave flat templates for old sends.
-- **Template migration.** What happens to the existing flat templates is not decided here.
+- **Template migration.** Whether and how the existing flat templates become designs is not
+  decided here. Build step 2 does not touch them, so nothing waits on it.
 
 ## Review trail
 
@@ -78,3 +83,4 @@ Web: `/communications` is `PageGate page="communications"` over `CommunicationsN
 |---|---|---|
 | 2026-11-02 | — | Drafted from two agent inventories; nothing built |
 | 2026-11-02 | founder | Rollout: keep ADR 0131 |
+| 2026-11-02 | founder | Storage: new `letter_designs` + `letter_design_versions` tables |
