@@ -31,6 +31,8 @@ describe("the curve (ADR 0346 D4, unchanged)", () => {
     expect(visitScore(2 * WARN, WARN)).toBeCloseTo(50);
     expect(visitScore(3 * WARN, WARN)).toBeCloseTo(25);
     expect(latenessLambda(0)).toBeCloseTo(Math.LN2);
+    expect(latenessLambda(Infinity)).toBeNaN();
+    expect(latenessLambda(-Infinity)).toBeNaN();
     expect(waiterPerformanceScore([WARN, 2 * WARN], WARN)).toBe(75);
   });
 });
@@ -92,6 +94,9 @@ describe("OD-256: a gap that is not finite reads late; an unreadable house minut
   it("uses a finite late setting ≤ 0 as set, as OD-256 records", () => {
     expect(overdueGapCount([0, 5], 0)).toBe(2);
     expect(onTimePct([0, 5], WARN)).toBe(100);
+    expect(onTimePct([7], 10)).toBe(100);
+    expect(overdueGapCount([7], 5)).toBe(1);
+    expect(freshnessOf(7, 10, 5)).toBe("late");
   });
 });
 

@@ -31,8 +31,9 @@ function unreadable(minutes: number): boolean {
   return !Number.isFinite(minutes);
 }
 
-/** λ: severity doubles every T minutes past threshold (NaN for a non-finite minute). */
+/** λ: severity doubles every T minutes past threshold; NaN for a minute that is not finite. */
 export function latenessLambda(warnAfterMin: number): number {
+  if (unreadable(warnAfterMin)) return NaN;
   const T = Math.max(1, warnAfterMin);
   return Math.LN2 / T;
 }
