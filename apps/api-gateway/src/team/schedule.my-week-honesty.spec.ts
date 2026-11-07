@@ -264,6 +264,34 @@ describe("B2: the credential and time-off files fail closed", () => {
     await expect(refused).rejects.toThrow(/team settings/);
   });
 
+  // The manager's week (QA round 9b follow-up): a failed schedule read came
+  // back as `schedule: null` (unpublished, never drafted) and a failed
+  // receipts read as `receipts: []` (nobody has confirmed).
+  it.each([
+    ["schedules:select", /drafted or published/],
+    ["schedule_receipts:select", /who has confirmed/],
+  ])("getWeek refuses when %s fails", async (key, words) => {
+    const db = seed({ [key]: { message: "timeout" } });
+    const refused = service(db).getWeek(MANAGER, RID, LIVE_WEEK);
+    await expect(refused).rejects.toBeInstanceOf(InternalServerErrorException);
+    await expect(refused).rejects.toThrow(words);
+  });
+
+  it("control: a readable week carries its schedule and receipts", async () => {
+    const db = seed();
+    db.tables.schedule_receipts.push({
+      id: "r1",
+      schedule_id: "s-live",
+      member_id: "m-staff",
+      seen_at: "2026-09-13T10:00:00Z",
+    });
+    const week = await service(db).getWeek(MANAGER, RID, LIVE_WEEK);
+    expect(week.schedule).toMatchObject({ id: "s-live" });
+    expect(week.receipts).toEqual([
+      expect.objectContaining({ member_id: "m-staff" }),
+    ]);
+  });
+
   it("control: no settings row is still the defaults, marked unconfigured", async () => {
     const db = seed();
     const settings = await team(db).getSettings(MANAGER, RID);
