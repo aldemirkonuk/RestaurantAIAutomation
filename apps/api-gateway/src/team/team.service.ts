@@ -2482,11 +2482,25 @@ export class TeamService {
   async getSettings(userId: string, restaurantId: string): Promise<any> {
     const { role } = await this.assertAccess(userId, restaurantId);
     const mayChange = this.labourSettingsMayChange(role);
-    const { data } = await this.sb
+    const { data, error } = await this.sb
       .from("team_settings")
       .select("*")
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
+    // A failed read is not "never configured" (QA round 4, B2, third read):
+    // the defaults below would be handed out as the house's settings, and
+    // `getWeek` would cost the week against them. No row is defaults; an
+    // error is a refusal.
+    if (error) {
+      this.logger.error(
+        `getSettings: could not read the team settings of ${restaurantId}: ` +
+          error.message,
+      );
+      throw new InternalServerErrorException(
+        "Could not read the team settings, so they are not shown. " +
+          "What the house chose is unknown, not the defaults.",
+      );
+    }
     /*
      * `wage_visible` is RETIRED (ADR 0215) and is not returned: a flag a caller
      * could still read would read as the rule. Who sees money is a role, and

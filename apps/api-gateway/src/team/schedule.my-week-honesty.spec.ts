@@ -244,4 +244,32 @@ describe("B2: the credential and time-off files fail closed", () => {
     );
     await expect(team(db).listTimeOff(STAFF, RID)).resolves.toHaveLength(1);
   });
+
+  // The third B2 read (QA round 9b): a failed settings read came back as the
+  // feature defaults marked `configured: false`, i.e. "never chosen".
+  it.each([
+    [MANAGER, "manager"],
+    [STAFF, "staff"],
+  ])("getSettings refuses a failed read (%s)", async (who) => {
+    const db = seed({ "team_settings:select": { message: "timeout" } });
+    await expect(team(db).getSettings(who, RID)).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+  });
+
+  it("getWeek refuses when the settings it costs against cannot be read", async () => {
+    const db = seed({ "team_settings:select": { message: "timeout" } });
+    const refused = service(db).getWeek(MANAGER, RID, LIVE_WEEK);
+    await expect(refused).rejects.toBeInstanceOf(InternalServerErrorException);
+    await expect(refused).rejects.toThrow(/team settings/);
+  });
+
+  it("control: no settings row is still the defaults, marked unconfigured", async () => {
+    const db = seed();
+    const settings = await team(db).getSettings(MANAGER, RID);
+    expect(settings.configured).toBe(false);
+    expect(settings.labor_target_pct).toBeNull();
+    const week = await service(db).getWeek(MANAGER, RID, LIVE_WEEK);
+    expect(week.settings.configured).toBe(false);
+  });
 });
