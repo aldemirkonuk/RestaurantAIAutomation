@@ -6192,8 +6192,134 @@ export class ProcurementService {
    *    exactly the old behavior (apply deltas, complete the order).
    *  - Match payload: quantities/prices are reconciled, the order completes or stays open
    *    as PARTIALLY_RECEIVED with a backorder, and any discrepancy alerts the manager.
+   *
+   * ONE VERIFICATION AT A TIME PER ORDER (QA round 5 on H-1, 2026-11-07). The
+   * repeat guard below reads what an earlier verification recorded, so two
+   * submits that RACE both read "never verified" and both write an event, a
+   * price-history row and an order update. The whole verification therefore
+   * runs under the order's lease (`take_receipt_verification_lease`, migration
+   * `one_receipt_verification_at_a_time`): a second submit waits for the first
+   * to finish, then reads the order it left — so the guard sees it — and only
+   * after waiting `receiptLeaseWait` without the lease coming free is it
+   * refused, in words, with nothing changed — words that do not promise the
+   * other verification landed, because a crashed holder strands the lease too.
    */
   async verifyReceipt(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    body: VerifyReceiptDto,
+  ): Promise<OrderResponseDto> {
+    const token = await this.takeReceiptVerificationLease(restaurantId, orderId);
+    try {
+      return await this.verifyReceiptHoldingTheLease(
+        restaurantId,
+        orderId,
+        userId,
+        body,
+      );
+    } finally {
+      await this.releaseReceiptVerificationLease(restaurantId, orderId, token);
+    }
+  }
+
+  /**
+   * How long a verification holds its order, and how long a second one waits
+   * for it. The lease outlives any verification this path makes (some twenty
+   * round trips) by a wide margin, and is what a crashed gateway strands the
+   * order for. The wait is short enough that the person on the second tab
+   * gets an answer before giving up on the page. Overridable in specs.
+   */
+  receiptLeaseWait = { leaseSeconds: 90, attempts: 12, intervalMs: 500 };
+
+  private async takeReceiptVerificationLease(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<string> {
+    const token = randomUUID();
+    const { leaseSeconds, attempts, intervalMs } = this.receiptLeaseWait;
+    for (let attempt = 0; ; attempt++) {
+      const { data, error } = await this.databaseService.supabase.rpc(
+        "take_receipt_verification_lease",
+        {
+          p_restaurant_id: restaurantId,
+          p_order_id: orderId,
+          p_token: token,
+          p_seconds: leaseSeconds,
+        },
+      );
+      if (error) {
+        throw new InternalServerErrorException(
+          `Whether someone else is verifying this delivery right now could not be checked ` +
+            `(${error.message}), so nothing was changed. Try again.`,
+        );
+      }
+      if (data === "taken") return token;
+      if (data === "no_order") throw new NotFoundException(`Order ${orderId} not found`);
+      if (data !== "busy") {
+        throw new InternalServerErrorException(
+          `Whether someone else is verifying this delivery right now could not be checked ` +
+            `(the database answered ${JSON.stringify(data)}), so nothing was changed. Try again.`,
+        );
+      }
+      if (attempt >= attempts) {
+        // A busy lease does NOT prove another verification is landing (audit of
+        // #820, 2026-11-07). The holder may still be running, may be about to
+        // fail, or may be a gateway that crashed mid-verification and stranded
+        // the lease until it lapses (`leaseSeconds`). So the words claim only
+        // what is known: nothing was changed here, and the order is free again
+        // within a minute or two.
+        //
+        // Still a 409, not a retryable 429/503 (the session's call under the
+        // 2026-11-07 /goal). The mobile outbox replays any 5xx or 429 blind,
+        // with no person looking: a queued verification replayed after a
+        // colleague's has landed would land as a correction over their count.
+        // A person who refreshes first sees what is there and decides. The
+        // cost is one manual retry after a crash, which these words name.
+        throw new ConflictException({
+          reason: "receipt_verification_in_progress",
+          message:
+            "Another verification of this delivery is still running, or one was interrupted, " +
+            "so nothing was changed. Refresh in a minute or two: if it landed you will see what " +
+            "was recorded, and if not, verify again.",
+        });
+      }
+      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+    }
+  }
+
+  /**
+   * Give the lease back, by its own token, so a lease a slow verification
+   * lost to a lapse is never deleted under its new holder. A failed delete is
+   * logged, not thrown: the verification itself has already landed or failed
+   * on its own terms, and the lease lapses by itself.
+   */
+  private async releaseReceiptVerificationLease(
+    restaurantId: string,
+    orderId: string,
+    token: string,
+  ): Promise<void> {
+    try {
+      const { error } = await this.databaseService.supabase
+        .from("receipt_verification_leases")
+        .delete()
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("token", token);
+      if (error)
+        this.logger.warn(
+          `The verification lease on order ${orderId} could not be released (${error.message}); ` +
+            `it lapses by itself in ${this.receiptLeaseWait.leaseSeconds} seconds.`,
+        );
+    } catch (err: any) {
+      this.logger.warn(
+        `The verification lease on order ${orderId} could not be released (${err?.message}); ` +
+          `it lapses by itself in ${this.receiptLeaseWait.leaseSeconds} seconds.`,
+      );
+    }
+  }
+
+  private async verifyReceiptHoldingTheLease(
     restaurantId: string,
     orderId: string,
     userId: string,
@@ -6523,8 +6649,10 @@ export class ProcurementService {
     // (`repeatsTheLatestVerification`); a proven repeat returns the order as
     // the first verification left it. Only an already-verified order pays for
     // the read, and a failed read refuses rather than guesses, like the
-    // one-tap path below. The credit claim is also held once at the database
-    // (`uq_pc_order_match_reason`), which is what covers two submits racing.
+    // one-tap path below. Two submits racing are serialized by the order's
+    // lease (`verifyReceipt`), so the second one reads what the first left;
+    // the credit claim is also held once at the database
+    // (`uq_pc_order_match_reason`), for a payload this guard cannot prove.
     if (match && bottles && (orderRow as any).match_verified_at) {
       const { data: priorRows, error: priorError } =
         await this.databaseService.supabase

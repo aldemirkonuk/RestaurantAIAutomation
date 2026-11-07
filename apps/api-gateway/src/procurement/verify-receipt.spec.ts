@@ -145,6 +145,8 @@ interface Calls {
   receiptEvents: Row[];
   /** `house_item_research` inserts: research queued for a wine the library lacks (ADR 0192, third amendment). */
   researchInserts: Row[];
+  /** `take_receipt_verification_lease` calls and what each was answered (kept out of `rpc`). */
+  leaseTakes: { args: Row; answer: string }[];
 }
 
 /**
@@ -193,6 +195,16 @@ function makeDb(opts: {
   latestReceiptPrice?: Row | null;
   /** Documents linked to the order (the invoice a price is read from). */
   documents?: Row[];
+  /**
+   * The state writes land: the order row read back carries every update
+   * applied so far, and the ledger every `apply_stock_movement` delta on the
+   * ordered item. What two verifications racing on ONE db actually meet.
+   */
+  live?: boolean;
+  /** Someone else holds the order's verification lease for the whole test. */
+  leaseHeldElsewhere?: boolean;
+  /** The lease RPC fails with this. */
+  leaseError?: { message: string } | null;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -203,7 +215,12 @@ function makeDb(opts: {
     priceHistoryInserts: [],
     receiptEvents: [],
     researchInserts: [],
+    leaseTakes: [],
   };
+  const leases = new Map<string, string>();
+  if (opts.leaseHeldElsewhere) leases.set(ORDER, "someone-else");
+  let liveOrder: Row | null = opts.orderRow ?? null;
+  let liveBooked = opts.bookedBottles ?? 10;
   const owned = new Set(opts.ownedInventoryIds ?? [OWN_INVENTORY]);
 
   const supabase: any = {
@@ -212,7 +229,24 @@ function makeDb(opts: {
       let selectedColumns = "";
       const filters: Record<string, any> = {};
 
+      let payloadRow: Row = {};
       const settle = (shape: "one" | "many"): Row => {
+        if (table === "receipt_verification_leases" && op === "delete") {
+          if (leases.get(filters.order_id) === filters.token)
+            leases.delete(filters.order_id);
+          return { data: null, error: null };
+        }
+        if (table === "procurement_orders" && opts.live) {
+          if (op === "update")
+            liveOrder = {
+              ...(liveOrder ?? {}),
+              ...calls.orderUpdates[calls.orderUpdates.length - 1],
+            };
+          return {
+            data: { ...liveOrder, inventory: { wine_name: "Barolo Riserva" } },
+            error: null,
+          };
+        }
         if (table === "procurement_orders") {
           if (op === "update") {
             if (opts.updateError)
@@ -237,7 +271,9 @@ function makeDb(opts: {
                 data: [
                   {
                     id: "movement-1",
-                    quantity_change: opts.bookedBottles ?? 10,
+                    quantity_change: opts.live
+                      ? liveBooked
+                      : (opts.bookedBottles ?? 10),
                   },
                 ],
                 error: null,
@@ -324,6 +360,7 @@ function makeDb(opts: {
         limit: () => q,
         insert(payload: Row) {
           op = "insert";
+          payloadRow = payload;
           if (table === "procurement_credits")
             calls.creditInserts.push(payload);
           if (table === "inventory_events") calls.eventInserts.push(payload);
@@ -354,7 +391,20 @@ function makeDb(opts: {
       return q;
     },
     rpc: async (name: string, args: Row) => {
+      if (name === "take_receipt_verification_lease") {
+        if (opts.leaseError) return { data: null, error: opts.leaseError };
+        const answer = leases.has(args.p_order_id) ? "busy" : "taken";
+        if (answer === "taken") leases.set(args.p_order_id, args.p_token);
+        calls.leaseTakes.push({ args, answer });
+        return { data: answer, error: null };
+      }
       calls.rpc.push({ name, args });
+      if (
+        opts.live &&
+        name === "apply_stock_movement" &&
+        args.p_inventory_id === liveOrder?.inventory_id
+      )
+        liveBooked += args.p_delta ?? 0;
       return { data: null, error: null };
     },
     storage: { from: () => ({}) },
@@ -366,7 +416,7 @@ function makeDb(opts: {
     client: supabase,
   } as unknown as DatabaseService;
 
-  return { db, calls };
+  return { db, calls, leases };
 }
 
 const events = {
@@ -1730,5 +1780,111 @@ describe("verifyReceipt — a repeated verification writes nothing new (H-1)", (
     expect(calls.receiptEvents).toEqual([]);
     expect(calls.creditInserts).toEqual([]);
     expect(calls.orderUpdates).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// QA round 5 on H-1 (2026-11-07): two verifications racing write once
+// ---------------------------------------------------------------------------
+describe("verifyReceipt — one verification at a time (H-1, round 5)", () => {
+  const payload = {
+    note: "Two bottles arrived cracked.",
+    invoiceQuantity: 10,
+    invoiceUnitPrice: 40,
+    invoiceCurrency: "USD",
+    acceptedQuantity: 8,
+    rejectedQuantity: 2,
+    rejectedReason: "cracked",
+  };
+  const quick = { leaseSeconds: 90, attempts: 50, intervalMs: 1 };
+
+  it("two verifications racing on a never-verified order write once", async () => {
+    const { db, calls, leases } = makeDb({
+      orderRow: deliveredOrder,
+      bookedBottles: 10,
+      live: true,
+    });
+    const svc = service(db);
+    svc.receiptLeaseWait = quick;
+
+    const [a, b] = await Promise.all([
+      svc.verifyReceipt(REST, ORDER, USER, payload as any),
+      svc.verifyReceipt(REST, ORDER, USER, payload as any),
+    ]);
+
+    expect(calls.receiptEvents).toHaveLength(1);
+    expect(calls.priceHistoryInserts).toHaveLength(1);
+    expect(calls.creditInserts).toHaveLength(1);
+    expect(calls.orderUpdates).toHaveLength(1);
+    expect(
+      calls.rpc.filter((c) => c.name === "apply_stock_movement"),
+    ).toHaveLength(1);
+    // The second one waited for the first, then answered with what it left.
+    expect(calls.leaseTakes.map((t) => t.answer)).toContain("busy");
+    expect(a.id).toBe(ORDER);
+    expect(b.id).toBe(ORDER);
+    // Both gave the lease back.
+    expect(leases.size).toBe(0);
+  });
+
+  it("a verification that cannot get the order's lease is refused in words and writes nothing", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      bookedBottles: 10,
+      leaseHeldElsewhere: true,
+    });
+    const svc = service(db);
+    svc.receiptLeaseWait = { leaseSeconds: 90, attempts: 2, intervalMs: 1 };
+
+    await expect(
+      svc.verifyReceipt(REST, ORDER, USER, payload as any),
+    ).rejects.toThrow(/Another verification of this delivery is still running, or one was interrupted, so nothing was changed/);
+    expect(calls.leaseTakes).toHaveLength(3);
+    expect(calls.receiptEvents).toEqual([]);
+    expect(calls.creditInserts).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.rpc).toEqual([]);
+  });
+
+  it("a busy lease never promises that another verification landed (a crashed holder strands it too)", async () => {
+    const { db } = makeDb({
+      orderRow: deliveredOrder,
+      bookedBottles: 10,
+      leaseHeldElsewhere: true,
+    });
+    const svc = service(db);
+    svc.receiptLeaseWait = { leaseSeconds: 90, attempts: 0, intervalMs: 1 };
+
+    const refusal: any = await svc
+      .verifyReceipt(REST, ORDER, USER, payload as any)
+      .catch((e) => e);
+    // Still a 409: the outbox must not replay it blind over a colleague's count.
+    expect(refusal.getStatus()).toBe(409);
+    const words = String(refusal.getResponse().message);
+    expect(words).not.toMatch(/what they recorded|someone else is verifying/i);
+    expect(words).toMatch(/if not, verify again/);
+  });
+
+  it("a lease that cannot be checked refuses rather than verifying unguarded", async () => {
+    const { db, calls } = makeDb({
+      orderRow: deliveredOrder,
+      leaseError: { message: "connection reset" },
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, payload as any),
+    ).rejects.toThrow(/could not be checked \(connection reset\), so nothing was changed/);
+    expect(calls.receiptEvents).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
+  });
+
+  it("a failed verification still gives the lease back", async () => {
+    const { db, leases } = makeDb({
+      orderRow: deliveredOrder,
+      receiptEventError: { message: "insert refused" },
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, payload as any),
+    ).rejects.toThrow(/could not be recorded/);
+    expect(leases.size).toBe(0);
   });
 });
