@@ -191,8 +191,15 @@ export function RegisterBody<T>({
  * a figure computed from WAC on 2 rows in 72. Reprinting it verbatim is the
  * only version of this line that cannot go stale.
  */
-export function Working({ lines }: { lines: Array<string | null | undefined> }) {
-  const [open, setOpen] = useState(false);
+export function Working({
+  lines,
+  defaultOpen = false,
+}: {
+  lines: Array<string | null | undefined>;
+  /** Open on first paint. The flat view starts open: it has the room. */
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   const real = lines.filter((l): l is string => !!l && l.trim() !== '');
   if (real.length === 0) return null;
   return (
@@ -213,8 +220,10 @@ export function Working({ lines }: { lines: Array<string | null | undefined> }) 
       >
         <div>
           <ul style={{ margin: '4px 0 0', padding: '0 0 0 14px', display: 'grid', gap: 3 }}>
-            {real.map((l) => (
-              <li key={l} className="rp-cap">
+            {/* Keyed by position AND text: a server can return the same
+                sentence twice, and a text-only key collapsed the pair into one. */}
+            {real.map((l, i) => (
+              <li key={`${i}:${l}`} className="rp-cap">
                 {l}
               </li>
             ))}
