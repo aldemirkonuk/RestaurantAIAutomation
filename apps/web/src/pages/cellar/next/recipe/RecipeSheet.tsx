@@ -70,6 +70,10 @@ export const SET_ASIDE_SENTENCE =
   'Your lines are set aside. Put them back to work on them again; saving them then replaces the version shown.';
 /** The most one line holds, in the unit typed. Matches the gateway (recipes.service.ts MAX_LINE_QTY). */
 export const MAX_LINE_QTY = 100_000;
+/** The most lines one recipe holds. Matches the gateway (dto/recipes.dto.ts ArrayMaxSize(40)). */
+export const MAX_LINES = 40;
+const tooMany = (n: number) =>
+  `That is ${n} lines; a recipe holds at most ${MAX_LINES}. Remove ${n - MAX_LINES} before saving.`;
 
 let seq = 0;
 const nextKey = () => `r${++seq}`;
@@ -187,6 +191,7 @@ function refusal(e: unknown): string | null {
 /** Why Save is off, naming the first line that stops it. */
 export function whyBlocked(rows: DraftRow[]): string | null {
   if (rows.length === 0) return 'Add at least one ingredient.';
+  if (rows.length > MAX_LINES) return tooMany(rows.length);
   const named = (i: number) => {
     const n = rowName(rows[i]);
     return n === 'this line' ? `Line ${i + 1}` : `Line ${i + 1} (${n})`;
@@ -411,8 +416,13 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       {canEdit && proposed ? (
         <div className="cl-rcp-proposed" data-testid="recipe-proposed">
           <p className="cl-note" style={{ marginTop: 0 }}>{proposed.note}</p>
+          {lines.length + proposed.lines.length > MAX_LINES ? (
+            <p className="cl-note" role="alert" data-testid="recipe-too-many">
+              {tooMany(lines.length + proposed.lines.length)} Shorten the paste first.
+            </p>
+          ) : null}
           <ol className="cl-rcp-lines">
-            {proposed.lines.map((p, i) => (
+            {proposed.lines.slice(0, MAX_LINES).map((p, i) => (
               <li key={i} className="cl-rcp-line" data-role={p.role}>
                 <div className="cl-rcp-read">
                   <span className="cl-num cl-rcp-amt">{p.qty != null ? `${qtyText(p.qty)} ${p.unit ?? ''}`.trim() : ''}</span>
@@ -424,10 +434,12 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
               </li>
             ))}
           </ol>
+          {proposed.lines.length > MAX_LINES ? <p className="cl-note">…and {proposed.lines.length - MAX_LINES} more not shown.</p> : null}
           <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
             <button
               type="button"
               className="cl-btn cl-focus"
+              disabled={lines.length + proposed.lines.length > MAX_LINES}
               onClick={() => {
                 edit((rs) => [...rs, ...proposed.lines.map(fromProposal)]);
                 setProposed(null);
