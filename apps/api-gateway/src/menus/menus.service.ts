@@ -461,19 +461,24 @@ export class MenusService {
       items = dto.data.items ?? [];
     }
 
-    // 2. Keep the source, or say why it was not kept.
+    // 2. Resolve against the wine library BEFORE anything is written: a
+    // failed resolution throws here, with no version row and no source upload.
+    const resolved = await this.resolveLibrary(items, restaurantId);
+
+    // 3. Keep the source, or say why it was not kept.
     const kept =
       sourceBytes && sourceMime
         ? await this.keepSource(restaurantId, sourceBytes, sourceMime)
         : null;
 
-    // 3. A new version, in draft: kept whether or not it is ever made current.
+    // 4. A new version, in draft: kept whether or not it is ever made current.
     const menu = await this.createVersion(restaurantId, userId, dto, items, kept, menuDate);
 
-    // 4-6: resolve against the wine library, insert menu_items, and create the
-    // governance submission trail. NOT current, so no inventory or price.
-    const reviewItems = await this.resolveAndPersistItems(
-      items,
+    // 5-6: insert menu_items and create the governance submission trail. NOT
+    // current, so no inventory or price. A failed line write removes the
+    // version it was writing into (`persistIntoNewVersion`).
+    const reviewItems = await this.persistIntoNewVersion(
+      resolved,
       restaurantId,
       menu.id,
       userId,
@@ -527,6 +532,8 @@ export class MenusService {
     method: "scan" | "csv" | "manual",
   ) {
     const dto = { restaurantId, method, data: { items } } as ImportMenuDto;
+    // Same order as `importMenu`: the library first, then the version.
+    const resolved = await this.resolveLibrary(items, restaurantId);
     const menu = await this.createVersion(
       restaurantId,
       userId,
@@ -535,8 +542,8 @@ export class MenusService {
       null,
       null,
     );
-    const reviewItems = await this.resolveAndPersistItems(
-      items,
+    const reviewItems = await this.persistIntoNewVersion(
+      resolved,
       restaurantId,
       menu.id,
       userId,
@@ -621,6 +628,40 @@ export class MenusService {
       );
     }
     return data as { id: string };
+  }
+
+  /**
+   * Writes the lines of a version this request just created. If that write
+   * throws, the version row is deleted (its `menu_items` go with it, ON DELETE
+   * CASCADE) and the error is rethrown, so a failed line write leaves no
+   * empty draft. The source file is not deleted: it is content-addressed
+   * (`<house>/menus/<sha256>.<ext>`), so another version may name the same
+   * object. If the delete itself fails, the error says the draft remains.
+   */
+  private async persistIntoNewVersion(
+    resolved: ResolvedItem[],
+    restaurantId: string,
+    menuId: string,
+    userId: string,
+    method: "scan" | "csv" | "manual",
+    current: boolean,
+  ): Promise<MenuImportReviewItem[]> {
+    try {
+      return await this.persistItems(resolved, restaurantId, menuId, userId, method, current);
+    } catch (err: any) {
+      const { error } = await this.dbService.supabase
+        .from("restaurant_menus")
+        .delete()
+        .eq("id", menuId)
+        .eq("restaurant_id", restaurantId);
+      if (error) {
+        this.logger.error(`Could not remove menu version ${menuId} after a failed line write: ${error.message}`);
+        throw new InternalServerErrorException(
+          `The menu's lines could not be saved (${err?.message ?? "unknown error"}), and the empty draft version ${menuId} could not be removed: ${error.message}`,
+        );
+      }
+      throw err;
+    }
   }
 
   /**
@@ -1638,6 +1679,15 @@ export class MenusService {
     // versions); a kept menu's lines wait for `makeCurrent`.
     current: boolean,
   ): Promise<MenuImportReviewItem[]> {
+    const resolved = await this.resolveLibrary(items, restaurantId);
+    return this.persistItems(resolved, restaurantId, menuId, userId, method, current);
+  }
+
+  /** Every line resolved against the wine library; writes no menu row. */
+  private async resolveLibrary(
+    items: WineExtractItem[],
+    restaurantId: string,
+  ): Promise<ResolvedItem[]> {
     if (items.length === 0) return [];
 
     // Resolve every item against master_wine_library BEFORE inserting
@@ -1656,7 +1706,6 @@ export class MenusService {
     // import could report success while linking nothing; if the single call
     // covering every wine fails, the import genuinely cannot proceed and should
     // say so rather than write a menu of unlinked items.
-    let resolved: ResolvedItem[];
     try {
       const results = await this.wineSubmissions.resolveLibraryWinesBatch(
         items.map((item) => ({
@@ -1679,7 +1728,7 @@ export class MenusService {
         // whose menu this is.
         restaurantId,
       );
-      resolved = items.map((item, idx) => ({
+      return items.map((item, idx) => ({
         item,
         masterWineId: results[idx]?.masterWineId ?? null,
         matched: results[idx]?.matched ?? false,
@@ -1692,6 +1741,18 @@ export class MenusService {
         `Menu import failed during library resolution: ${err.message}`,
       );
     }
+  }
+
+  /** Inserts already-resolved lines into `menuId`; if `current`, also seeds the house's inventory and prices. */
+  private async persistItems(
+    resolved: ResolvedItem[],
+    restaurantId: string,
+    menuId: string,
+    userId: string,
+    method: "scan" | "csv" | "manual",
+    current: boolean,
+  ): Promise<MenuImportReviewItem[]> {
+    if (resolved.length === 0) return [];
 
     // Unlinked items are the ones a manager has to fix by hand, so say how
     // many there are rather than leaving it to be discovered in the UI.
