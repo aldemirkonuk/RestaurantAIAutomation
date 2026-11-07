@@ -128,3 +128,59 @@ export function overdueGapCount(gapMinutes: number[], lateAfterMin: number): num
   if (gapMinutes.length === 0 || unreadable(lateAfterMin)) return null;
   return gapMinutes.filter((t) => unreadable(t) || t >= lateAfterMin).length;
 }
+
+/** Optional severity cap (≈ 2^5 − 1 when overdue by 5·T). */
+export const SEVERITY_CAP = 31;
+
+/**
+ * Lateness severity (impact / penalty). Flat at 0 until T, then exponential.
+ * severity(t) = 0                         if t ≤ T
+ * severity(t) = min(cap, exp(λ(t−T)) − 1) if t > T
+ * severity    = cap                       if t is not finite (OD-256)
+ * severity    = null                      if the warn minute is not finite
+ * `cap = Infinity` leaves severity uncapped; a NaN or negative cap is
+ * `SEVERITY_CAP`, so severity is never NaN. A cap of 0 flattens severity to
+ * 0: the cap is a caller's argument, not a house setting.
+ */
+export function latenessSeverity(
+  gapMin: number,
+  warnAfterMin: number,
+  cap: number = SEVERITY_CAP,
+): number | null {
+  if (unreadable(warnAfterMin)) return null;
+  const limit = Number.isNaN(cap) || cap < 0 ? SEVERITY_CAP : cap;
+  if (unreadable(gapMin)) return limit;
+  const T = Math.max(1, warnAfterMin);
+  if (!(gapMin > T)) return 0;
+  return Math.min(limit, Math.exp(latenessLambda(T) * (gapMin - T)) - 1);
+}
+
+export type ScoreOrder = "best_first" | "worst_first";
+
+/**
+ * F3, the founder's "No, sort only" (ADR 0346 `:75`, `:198`): order rows by
+ * score; the result carries no rank, "#1", medal or "bottom" field, and none
+ * may be derived from the position until a load-adjusted fit exists
+ * (Proposed ADR 0346 D5, ADR 0272).
+ *
+ * Open as OD-258, the executor's reading under OD-242, not the founder's pick:
+ * rows with no score (null, or a score that is not finite) go last in either
+ * order; ties break on `id`, ascending. Returns a new array.
+ */
+export function sortByScore<T extends { id: string; score: number | null }>(
+  rows: readonly T[],
+  order: ScoreOrder = "best_first",
+): T[] {
+  const sign = order === "best_first" ? -1 : 1;
+  const byId = (a: T, b: T) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const finite = (s: number | null) => (s !== null && Number.isFinite(s) ? s : null);
+  return [...rows].sort((a, b) => {
+    const sa = finite(a.score);
+    const sb = finite(b.score);
+    if (sa === null || sb === null) {
+      if (sa === sb) return byId(a, b);
+      return sa === null ? 1 : -1;
+    }
+    return sa !== sb ? sign * (sa - sb) : byId(a, b);
+  });
+}
