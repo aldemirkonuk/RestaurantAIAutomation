@@ -11,8 +11,9 @@
  *   `:197`): the 90/80 cuts stay, the words describe the visits, not the
  *   person.
  * - D4 (d): `onTimePct` uses the score's own boundary, t ≤ T.
- * - `latenessSeverity` and `sortByScore` (the checker's view sort) follow
- *   OD-256 and OD-258; see each below.
+ * - `latenessSeverity` is the checker's (`lib/waiter-score.ts:49`) with
+ *   OD-256's readings; `sortByScore` is new, replacing the view's own sort
+ *   (`WaiterPerformanceView.tsx:34`) under OD-258. See each below.
  * `onTimePct` and `overdueGapCount` are lifted from the checker's report
  * (`lib/reports.ts:181-186`, `:353`) so the boundary lives in one place.
  *
