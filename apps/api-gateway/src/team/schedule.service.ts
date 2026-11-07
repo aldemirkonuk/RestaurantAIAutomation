@@ -235,8 +235,14 @@ export class ScheduleService {
    * now gets a shift only when the schedule it belongs to is published,
    * decided here on the server, per shift, from the shift's own
    * `schedule_id` (a range that straddles two weeks is judged week by week).
-   * A shift with no schedule row is not published. An owner or manager still
-   * sees every shift, each marked `draft` when its week is not published.
+   * A shift whose `schedule_id` is null is judged by the schedules row of the
+   * week its `shift_date` falls in: `release_leaving_shifts` (and so a call-out
+   * of its rest) writes a null id when the cut rest of a shift lands in a week
+   * that had no schedules row yet, and nothing attaches it later. Hiding it
+   * would show that person's real shift as a day off once the week is
+   * published. Only when that week has no row, or its row is a draft, is the
+   * shift unpublished. An owner or manager still sees every shift, each
+   * marked `draft` when its week is not published.
    */
   async getMyWeek(userId: string, restaurantId: string, weekStart: string) {
     const { role } = await this.team.assertAccess(userId, restaurantId);
@@ -298,8 +304,35 @@ export class ScheduleService {
         if (r.status === "published") published.add(r.id);
       }
     }
+    // A shift with no schedule_id belongs to the week of its shift_date.
+    const publishedWeeks = new Set<string>();
+    if (weekSchedule?.status === "published")
+      publishedWeeks.add(weekSchedule.week_start);
+    const loneWeeks = Array.from(
+      new Set(
+        (shifts ?? [])
+          .filter((s: any) => !s.schedule_id)
+          .map((s: any) => mondayOf(s.shift_date as string)),
+      ),
+    ).filter((w) => w !== weekSchedule?.week_start);
+    if (loneWeeks.length > 0) {
+      const { data: rows, error: weeksErr } = await this.sb
+        .from("schedules")
+        .select("id, week_start, status")
+        .eq("restaurant_id", restaurantId)
+        .in("week_start", loneWeeks);
+      if (weeksErr) refuse("whether this week is published", weeksErr);
+      for (const r of (rows ?? []) as Array<{
+        week_start: string;
+        status: string;
+      }>) {
+        if (r.status === "published") publishedWeeks.add(r.week_start);
+      }
+    }
     const isPublished = (s: any) =>
-      !!s.schedule_id && published.has(s.schedule_id);
+      s.schedule_id
+        ? published.has(s.schedule_id)
+        : publishedWeeks.has(mondayOf(s.shift_date as string));
 
     // Staff must never see labor cost. Strip it from every row.
     const strip = (s: any) => {

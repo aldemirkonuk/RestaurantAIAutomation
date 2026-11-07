@@ -202,14 +202,58 @@ describe("H2: staff see only a published week", () => {
     expect(week.open.map((s: any) => s.id)).toEqual(["sh-live-open"]);
   });
 
-  it("treats a shift with no schedule row as unpublished", async () => {
-    const db = seed();
-    db.tables.shifts.push({
-      ...shift("sh-orphan", null as any, "m-staff", LIVE_WEEK, "scheduled"),
+  // A null schedule_id is real: release_leaving_shifts writes one when the
+  // cut rest of a shift lands in a week that had no schedules row yet (a
+  // Sunday 22:00-02:00 shift cut by a removal), a hand-over gives that rest
+  // to a named person, and a call-out copies the null on. Such a shift is
+  // judged by the week its shift_date falls in.
+  function lone(id: string, memberId: string | null, date: string) {
+    return {
+      ...shift(id, null as any, memberId, date, memberId ? "scheduled" : "open"),
       schedule_id: null,
-    });
+    };
+  }
+
+  it("shows staff a shift with no schedule_id once the week of its date is published", async () => {
+    const db = seed();
+    db.tables.shifts.push(
+      lone("sh-rest-mine", "m-staff", LIVE_WEEK),
+      lone("sh-rest-open", null, LIVE_WEEK),
+    );
     const week = await service(db).getMyWeek(STAFF, RID, LIVE_WEEK);
-    expect(week.mine.map((s: any) => s.id)).toEqual(["sh-live-mine"]);
+    expect(week.mine.map((s: any) => s.id)).toEqual([
+      "sh-live-mine",
+      "sh-rest-mine",
+    ]);
+    expect(week.open.map((s: any) => s.id)).toContain("sh-rest-open");
+    expect(week.mine.find((s: any) => s.id === "sh-rest-mine").draft).toBe(
+      false,
+    );
+  });
+
+  it("reads the week of a lone shift's date even when the range asked for starts mid-week", async () => {
+    // "2026-09-09" is a Wednesday: it has no schedules row of its own, so the
+    // lone Monday shift's week (LIVE_WEEK) must be looked up by its date.
+    const db = seed();
+    db.tables.shifts.push(lone("sh-rest-mine", "m-staff", LIVE_WEEK));
+    const week = await service(db).getMyWeek(STAFF, RID, "2026-09-09");
+    expect(week.mine.map((s: any) => s.id)).toEqual([
+      "sh-live-mine",
+      "sh-rest-mine",
+    ]);
+  });
+
+  it("hides a shift with no schedule_id while the week of its date is a draft or has no row", async () => {
+    const db = seed();
+    db.tables.shifts.push(
+      lone("sh-rest-draft", "m-staff", DRAFT_WEEK),
+      lone("sh-rest-nowhere", "m-staff", "2026-09-21"),
+    );
+    const draft = await service(db).getMyWeek(STAFF, RID, DRAFT_WEEK);
+    expect(draft.mine).toEqual([]);
+    const nowhere = await service(db).getMyWeek(STAFF, RID, "2026-09-21");
+    expect(nowhere.mine).toEqual([]);
+    expect(nowhere.draftsWithheld).toBe(true);
   });
 
   it("refuses rather than guess when whether the week is published cannot be read", async () => {
