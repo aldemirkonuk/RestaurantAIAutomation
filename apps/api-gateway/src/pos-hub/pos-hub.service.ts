@@ -351,15 +351,32 @@ type MappingIdentity = {
   item_name?: string | null;
 } | null;
 
-/** Lines one save books (stock writes tried); the rest wait for the next. */
+/**
+ * Lines one save books: a line whose stock moved, or had moved already. A
+ * line refused (a stock write that failed, a sale still waiting on a pour
+ * size) books nothing and uses none of it (QA round 11b); the rest wait for
+ * the next save.
+ */
 const REPLAY_LINE_LIMIT = 500;
+/**
+ * Lines one save tries, booked or not: what bounds a save's work when the
+ * rows ahead keep failing or keep waiting (QA round 11b).
+ */
+const REPLAY_TRY_LIMIT = 2000;
 /** Open queue rows read per page while a save gathers its item's rows. */
 const REPLAY_PAGE_ROWS = 500;
+/** Most open queue rows one read gathers; past it the save says more wait. */
+const REPLAY_SCAN_ROWS = 5000;
 /**
  * Most ids per `.in()` read: 500 made a 17 KB URL, past the 16 KB limit
  * (QA round 2, U-1). 100, as PR #803 chose for GET /wines?ids=.
  */
 const REPLAY_IDS_PER_READ = 100;
+
+/** What one save has left: lines to book, and lines to try (QA round 11b). */
+type ReplayBudget = { left: number; tries: number };
+const spent = (b: ReplayBudget) => b.left <= 0 || b.tries <= 0;
+const NOTHING_TRIED = { tried: 0, booked: 0 } as const;
 
 const emptyPastSales = (): PastSalesCount => ({
   applied: 0,
@@ -2059,7 +2076,7 @@ export class PosHubService {
     // of the oldest 500 let rows that cannot replay hide every newer one.
     const readAll = async (
       byName: boolean,
-    ): Promise<{ rows: any[]; error: string | null }> => {
+    ): Promise<{ rows: any[]; error: string | null; capped: boolean }> => {
       const all: any[] = [];
       let after: string | null = null;
       for (;;) {
@@ -2078,10 +2095,14 @@ export class PosHubService {
         const { data, error } = await q
           .order("id", { ascending: true })
           .limit(REPLAY_PAGE_ROWS);
-        if (error) return { rows: all, error: error.message };
+        if (error) return { rows: all, error: error.message, capped: false };
         const page = data || [];
         all.push(...page);
-        if (page.length < REPLAY_PAGE_ROWS) return { rows: all, error: null };
+        if (page.length < REPLAY_PAGE_ROWS)
+          return { rows: all, error: null, capped: false };
+        // Bounded (QA round 11b): rows past it wait for a later save.
+        if (all.length >= REPLAY_SCAN_ROWS)
+          return { rows: all, error: null, capped: true };
         after = String(page[page.length - 1].id);
       }
     };
@@ -2092,6 +2113,7 @@ export class PosHubService {
     const rows = new Map<string, any>();
     for (let i = 0; i < results.length; i++) {
       const r = results[i];
+      if (r.capped) out.truncated = true;
       if (r.error) {
         this.logger.error(
           `pos_unresolved_lines read failed for r=${restaurantId}: ${r.error}`,
@@ -2137,8 +2159,13 @@ export class PosHubService {
       mappingsBySource.set(lineSource, mappingRead.rows);
     }
 
-    // Lines one save may try to book; a row that cannot replay costs none.
-    const budget = { left: REPLAY_LINE_LIMIT };
+    // `left`: lines one save may book; only a line whose stock moved, or had
+    // moved, uses it. `tries`: lines it may try at all (QA round 11b). A row
+    // that cannot replay (no stored check, no close) uses neither.
+    const budget: ReplayBudget = {
+      left: REPLAY_LINE_LIMIT,
+      tries: REPLAY_TRY_LIMIT,
+    };
     for (const [lineSource, fetched] of bySource) {
       const mappings = mappingsBySource.get(lineSource) ?? [];
       // Only the rows a live sale would now book under the mapping just
@@ -2182,7 +2209,7 @@ export class PosHubService {
       ];
       // REPLAY_IDS_PER_READ ids per read: 500 in one URL passed 16 KB.
       for (let i = 0; i < checkIds.length; i += REPLAY_IDS_PER_READ) {
-        if (budget.left <= 0) {
+        if (spent(budget)) {
           out.truncated = true;
           break;
         }
@@ -2206,14 +2233,14 @@ export class PosHubService {
           (checks || []).map((c: any) => [String(c.external_check_id), c]),
         );
         for (let k = 0; k < ids.length; k++) {
-          if (budget.left <= 0) {
+          if (spent(budget)) {
             out.truncated = true;
             break;
           }
           const queued = hubRows.filter(
             (r) => String(r.external_check_id) === ids[k],
           );
-          budget.left -= await this.replayOneCheck(
+          const used = await this.replayOneCheck(
             restaurantId,
             lineSource,
             checkById.get(ids[k]) ?? null,
@@ -2221,6 +2248,8 @@ export class PosHubService {
             mappings,
             out,
           );
+          budget.tries -= used.tried;
+          budget.left -= used.booked;
         }
       }
     }
@@ -2243,7 +2272,7 @@ export class PosHubService {
     externalId: string,
     mappings: any[],
     out: PastSalesCount,
-    budget: { left: number },
+    budget: ReplayBudget,
   ): Promise<void> {
     const db = this.dbService.getClient();
     // The door matches by guid alone; a name-only match never books live.
@@ -2278,7 +2307,7 @@ export class PosHubService {
     const glass = m.sale_unit === "glass";
     const orders = [...new Set(own.map((r) => String(r.external_check_id)))];
     for (let i = 0; i < orders.length; i += REPLAY_IDS_PER_READ) {
-      if (budget.left <= 0) {
+      if (spent(budget)) {
         out.truncated = true;
         return;
       }
@@ -2319,7 +2348,15 @@ export class PosHubService {
       );
       const settled: Array<{ row: any; kind: "applied" | "already" | "none" }> =
         [];
+      // Checked per row, so a chunk never runs past either limit; what has
+      // settled is still cleared below.
+      let stopped = false;
       for (const r of chunkRows) {
+        if (spent(budget)) {
+          out.truncated = true;
+          stopped = true;
+          break;
+        }
         const mine = (events || []).filter(
           (e: any) =>
             String(e.payload?.toast_order_guid) === String(r.external_check_id),
@@ -2337,7 +2374,7 @@ export class PosHubService {
           out.still_waiting++;
           continue;
         }
-        budget.left--;
+        budget.tries--;
         const key = keyOf(r);
         const { data, error } = glass
           ? await db.rpc("record_glass_pour", {
@@ -2369,24 +2406,27 @@ export class PosHubService {
           continue;
         }
         const already = glass ? data?.idempotent === true : booked.has(key);
+        budget.left--;
         settled.push({ row: r, kind: already ? "already" : "applied" });
       }
-      if (!settled.length) continue;
-      const cleared = await this.clearQueuedLines(
-        restaurantId,
-        settled.map((s) => s.row),
-        m.inventory_id,
-      );
-      for (const s of settled) {
-        if (s.kind === "none") {
-          if (cleared) out.cleared_without_stock++;
-          else out.still_waiting++;
-          continue;
+      if (settled.length) {
+        const cleared = await this.clearQueuedLines(
+          restaurantId,
+          settled.map((s) => s.row),
+          m.inventory_id,
+        );
+        for (const s of settled) {
+          if (s.kind === "none") {
+            if (cleared) out.cleared_without_stock++;
+            else out.still_waiting++;
+            continue;
+          }
+          if (s.kind === "applied") out.applied++;
+          else out.already_applied++;
+          if (!cleared) out.not_cleared++;
         }
-        if (s.kind === "applied") out.applied++;
-        else out.already_applied++;
-        if (!cleared) out.not_cleared++;
       }
+      if (stopped) return;
     }
   }
 
@@ -2398,8 +2438,10 @@ export class PosHubService {
    * neighbours do, and a row is cleared only when every one of its own lines
    * moved, had moved already, or needs no stock. Lines are counted, except
    * where no line can be read (no stored check, or a check that dropped the
-   * line): those count their rows. Returns how many lines it tried to book,
-   * which is what a save's REPLAY_LINE_LIMIT counts.
+   * line): those count their rows. Returns the lines it tried (what
+   * REPLAY_TRY_LIMIT counts) and the lines whose stock moved or had moved
+   * (what REPLAY_LINE_LIMIT counts); a failed or requeued line is tried, not
+   * booked (QA round 11b).
    */
   private async replayOneCheck(
     restaurantId: string,
@@ -2408,10 +2450,10 @@ export class PosHubService {
     queued: any[],
     mappings: any[],
     out: PastSalesCount,
-  ): Promise<number> {
+  ): Promise<{ tried: number; booked: number }> {
     if (!stored) {
       out.still_waiting += queued.length;
-      return 0;
+      return NOTHING_TRIED;
     }
     // A voided check never happened: its line moved nothing on the sale or
     // the void, so clearing it is the whole replay.
@@ -2419,13 +2461,13 @@ export class PosHubService {
       if (await this.clearQueuedLines(restaurantId, queued, null))
         out.cleared_without_stock += queued.length;
       else out.still_waiting += queued.length;
-      return 0;
+      return NOTHING_TRIED;
     }
     // ADR 0281: dated by the check's close, never by the replay.
     const when = saleInstant(stored.closed_at, Date.now());
     if (when.fellBack) {
       out.still_waiting += queued.length;
-      return 0;
+      return NOTHING_TRIED;
     }
 
     const lines = (Array.isArray(stored.items) ? stored.items : []).map(
@@ -2449,7 +2491,7 @@ export class PosHubService {
     // person rather than being cleared on a guess.
     if (!targets.length) {
       out.still_waiting += queued.length;
-      return 0;
+      return NOTHING_TRIED;
     }
 
     type LineOutcome = {
@@ -2596,7 +2638,11 @@ export class PosHubService {
           break;
       }
     }
-    return targets.length;
+    const booked = targets.filter((i: number) => {
+      const kind = outcomes.get(i)!.kind;
+      return kind === "applied" || kind === "already";
+    }).length;
+    return { tried: targets.length, booked };
   }
 
   /**
