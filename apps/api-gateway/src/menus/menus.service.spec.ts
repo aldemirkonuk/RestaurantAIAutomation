@@ -878,6 +878,19 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(tables.menu_items.every((l) => l.menu_id === r.menuId)).toBe(true);
   });
 
+  it("a price the file read left blank is SAID on the reply, row by row, not only dropped", async () => {
+    const service = makeService(base(), { wineSubmissions, csvParser: new CsvParserService() });
+    const r = await service.importMenu(
+      { method: "csv", data: { csvContent: "name;bottle_price\nOpus One;1.250\n;90\n" }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    expect(r.itemsExtracted).toBe(1);
+    expect(r.notes).toEqual([
+      { row: 2, reason: "two_readings", field: "bottle_price", raw: "1.250" },
+      { row: 3, reason: "no_name" },
+    ]);
+  });
+
   it("a source that could not be stored is SAID on the version, and the read is still kept", async () => {
     const tables: Record<string, Row[]> = { ...base(), __storageFails: ["bucket unavailable"] as any };
     const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });

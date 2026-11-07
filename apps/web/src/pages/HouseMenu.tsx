@@ -7,6 +7,7 @@ import {
   type MenuImportReviewItem,
 } from '../services/api/menus'
 import { isKitchenLine, lineNeedsPencil, lineSourceCrop, readProof } from '../lib/firstProof'
+import { MenuReadNotes } from '../components/onboarding/MenuReadNotes'
 
 const sectionOrder = [
   'wine',
@@ -97,6 +98,7 @@ export default function HouseMenu() {
           <BrandMark size={24} alt="Mudavym" />
           <h1 className="mt-8 font-serif text-4xl">We couldn&apos;t read this file.</h1>
           <p className="mt-4 text-[#6d685f]">Nothing was set. Try a clearer photo or a PDF of the drinks list.</p>
+          <MenuReadNotes notes={proof.notes} className="mt-4 text-sm text-[#6d685f]" />
           <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
             Try another menu
           </button>
@@ -171,6 +173,7 @@ export default function HouseMenu() {
           <p><strong className="block font-serif text-3xl">{items.length - pencilled}</strong><span className="text-xs uppercase tracking-wider">set</span></p>
           <p><strong className="block font-serif text-3xl">{pencilled}</strong><span className="text-xs uppercase tracking-wider">pencilled</span></p>
         </div>
+        <MenuReadNotes notes={proof.notes} className="mt-4 text-sm text-[#6d685f]" />
 
         <div className="mt-12 space-y-12">
           {grouped.map(([category, rows]) => (

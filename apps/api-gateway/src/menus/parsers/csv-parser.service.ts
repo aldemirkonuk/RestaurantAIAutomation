@@ -37,12 +37,23 @@ const DELIMITERS = [",", ";", "\t"] as const;
 export interface CsvRowIssue {
   /** 1-based; the header is row 1. */
   row: number;
-  reason: "no_name" | "no_name_column" | Exclude<MenuPriceReason, "empty">;
+  reason:
+    | "no_name"
+    | "no_name_column"
+    /** A bare `Price` / `Fiyat` header: bottle or glass is not decided, so it is not read. */
+    | "price_column_not_read"
+    /** A spreadsheet error value (`#N/A`, `#REF!`) where a value was expected. */
+    | "cell_error"
+    | Exclude<MenuPriceReason, "empty">;
   field?: keyof WineExtractItem;
   raw?: string;
 }
 
 type Cell = string | number;
+/** An Excel error value (`#N/A`, `#REF!`, …), kept apart so it is noted, never read as text. */
+type CellError = { error: string };
+
+const BARE_PRICE_HEADERS = new Set(["price", "fiyat", "fiyati"]);
 type Rec = { cells: string[]; raw: string; row: number };
 
 function headerKey(header: string): string {
@@ -142,11 +153,11 @@ export class CsvParserService {
     if (records.length < 2) return { items: [], issues: [] };
 
     const fieldMap = this.fieldMap(records[0].cells);
-    const issues: CsvRowIssue[] = [];
+    const issues = this.headerIssues(records[0].cells, records[0].row);
     if (!fieldMap.includes("name"))
       return {
         items: [],
-        issues: [{ row: records[0].row, reason: "no_name_column" }],
+        issues: [...issues, { row: records[0].row, reason: "no_name_column" }],
       };
 
     const items: WineExtractItem[] = [];
@@ -162,6 +173,13 @@ export class CsvParserService {
 
   /** An .xlsx workbook, base64. An .xls or a non-workbook is refused in words, not read as empty. */
   async parseExcel(base64: string): Promise<WineExtractItem[]> {
+    return (await this.readExcel(base64)).items;
+  }
+
+  /** `parseExcel`, plus every row it could not take whole and why. */
+  async readExcel(
+    base64: string,
+  ): Promise<{ items: WineExtractItem[]; issues: CsvRowIssue[] }> {
     const ExcelJS = await import("exceljs");
     const buffer = Buffer.from(base64, "base64");
     if (buffer.subarray(0, OLE2_MAGIC.length).equals(OLE2_MAGIC)) {
@@ -181,31 +199,48 @@ export class CsvParserService {
     }
 
     const worksheet = workbook.worksheets[0];
-    if (!worksheet || worksheet.rowCount < 2) return [];
+    if (!worksheet || worksheet.rowCount < 2) return { items: [], issues: [] };
 
     const headerRow = worksheet.getRow(1);
     const headers: string[] = [];
     headerRow.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-      headers[colNumber - 1] = String(this.cellValue(cell.value));
+      const v = this.cellValue(cell.value);
+      headers[colNumber - 1] = typeof v === "object" ? "" : String(v);
     });
     const fieldMap = this.fieldMap(headers);
-    if (!fieldMap.includes("name")) return [];
+    const issues = this.headerIssues(headers, 1);
+    if (!fieldMap.includes("name"))
+      return {
+        items: [],
+        issues: [...issues, { row: 1, reason: "no_name_column" }],
+      };
 
     const items: WineExtractItem[] = [];
     worksheet.eachRow((row, rowNumber) => {
       if (rowNumber === 1) return; // header row
       const cols: Cell[] = [];
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-        cols[colNumber - 1] = this.cellValue(cell.value);
+        const v = this.cellValue(cell.value);
+        if (typeof v !== "object") return void (cols[colNumber - 1] = v);
+        // An error is left empty and said, for a column that is read.
+        cols[colNumber - 1] = "";
+        const field = fieldMap[colNumber - 1];
+        if (field)
+          issues.push({
+            row: rowNumber,
+            reason: "cell_error",
+            field,
+            raw: v.error,
+          });
       });
-      const item = this.buildItem(fieldMap, cols, rowNumber, []);
+      const item = this.buildItem(fieldMap, cols, rowNumber, issues);
       if (item) {
         item.raw_text = cols.join(",");
         items.push(item);
       }
     });
 
-    return items;
+    return { items, issues };
   }
 
   private fieldMap(headers: string[]): Array<keyof WineExtractItem | null> {
@@ -215,17 +250,38 @@ export class CsvParserService {
     );
   }
 
-  /** A cell's number stays a number: a stored number has one reading. */
-  private cellValue(value: unknown): Cell {
+  /** A bare price header names no field (bottle or glass), so it is said, not read. */
+  private headerIssues(headers: string[], row: number): CsvRowIssue[] {
+    return headers
+      .filter((h) => BARE_PRICE_HEADERS.has(headerKey(h ?? "")))
+      .map((h) => ({
+        row,
+        reason: "price_column_not_read" as const,
+        raw: h.trim(),
+      }));
+  }
+
+  /**
+   * One ExcelJS cell value as read. A stored number stays a number (one
+   * reading); rich text is its joined plain text; a formula is its cached
+   * result (none cached: empty); an error value comes back as `{ error }`
+   * for the caller to note. No object is ever stringified ("[object Object]").
+   */
+  private cellValue(value: unknown): Cell | CellError {
     if (value === null || value === undefined) return "";
     if (typeof value === "number") return value;
-    if (typeof value === "object") {
-      // A formula cell carries `result`; rich text and hyperlinks `text`.
-      const v = value as Record<string, unknown>;
-      if ("result" in v) return this.cellValue(v.result);
-      if ("text" in v) return String(v.text ?? "");
-    }
-    return String(value);
+    if (value instanceof Date) return value.toISOString().slice(0, 10);
+    if (typeof value !== "object") return String(value);
+    const v = value as Record<string, unknown>;
+    if (typeof v.error === "string") return { error: v.error };
+    if (Array.isArray(v.richText))
+      return v.richText
+        .map((r: { text?: unknown }) => String(r?.text ?? ""))
+        .join("");
+    if ("formula" in v || "sharedFormula" in v || "result" in v)
+      return this.cellValue(v.result);
+    if ("text" in v) return this.cellValue(v.text); // hyperlink
+    return "";
   }
 
   private buildItem(

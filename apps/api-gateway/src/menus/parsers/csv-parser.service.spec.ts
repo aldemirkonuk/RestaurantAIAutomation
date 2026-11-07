@@ -77,15 +77,28 @@ describe("CsvParserService.parse: Turkish and EU spreadsheets", () => {
   });
 
   it("returns row-level issues, counting rows across a quoted line break", () => {
-    // A bare Fiyat (price) column is not read: its field is not decided.
+    // A bare Fiyat (price) column is not read: its field is not decided, and that is said.
     expect(parser().read('Name;Fiyat\n"Two\nlines";10\n;45\n')).toEqual({
       items: [{ name: "Two\nlines", raw_text: '"Two\nlines";10' }],
-      issues: [{ row: 4, reason: "no_name" }],
+      issues: [
+        { row: 1, reason: "price_column_not_read", raw: "Fiyat" },
+        { row: 4, reason: "no_name" },
+      ],
     });
     expect(parser().read("Cost;Supplier\n12;Metro\n")).toEqual({
       items: [],
       issues: [{ row: 1, reason: "no_name_column" }],
     });
+  });
+});
+
+describe("CsvParserService.read: notes", () => {
+  it("says a bare Price / Fiyat column is not read, and does not guess bottle or glass", () => {
+    const { items, issues } = parser().read("Ad;Fiyat (TL)\nNarince;450\n");
+    expect(items).toEqual([{ name: "Narince", raw_text: "Narince;450" }]);
+    expect(issues).toEqual([
+      { row: 1, reason: "price_column_not_read", raw: "Fiyat (TL)" },
+    ]);
   });
 });
 
@@ -106,6 +119,29 @@ describe("CsvParserService.parseExcel", () => {
     const read = parser().parseExcel(ole2);
     await expect(read).rejects.toBeInstanceOf(BadRequestException);
     await expect(read).rejects.toThrow(/older Excel file \(\.xls\)/);
+  });
+
+  it("reads rich text as its plain text, a formula as its cached result, and an error cell as empty with a note", async () => {
+    const { items, issues } = await parser().readExcel(
+      await xlsx([
+        [{ richText: [{ text: "Şarap " }, { text: "Adı", font: { bold: true } }] }, "Şişe Fiyatı", "Kadeh Fiyatı"],
+        [
+          { richText: [{ text: "Kalecik ", font: { bold: true } }, { text: "Karası" }] },
+          { formula: "60+60", result: 120 },
+          { formula: "VLOOKUP(A2,X:Y,2,0)", result: { error: "#N/A" } },
+        ],
+        ["Emir", { error: "#REF!" }, 90],
+      ]),
+    );
+    expect(items).toEqual([
+      { name: "Kalecik Karası", bottle_price: 120, raw_text: "Kalecik Karası,120," },
+      { name: "Emir", by_glass_price: 90, raw_text: "Emir,,90" },
+    ]);
+    expect(JSON.stringify(items)).not.toContain("[object Object]");
+    expect(issues).toEqual([
+      { row: 2, reason: "cell_error", field: "by_glass_price", raw: "#N/A" },
+      { row: 3, reason: "cell_error", field: "bottle_price", raw: "#REF!" },
+    ]);
   });
 
   it("maps Turkish headers, takes a stored number as is, reads a text price, and sets the raw row", async () => {

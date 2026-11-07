@@ -10,7 +10,10 @@ import {
   InternalServerErrorException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { CsvParserService } from "./parsers/csv-parser.service";
+import {
+  CsvParserService,
+  type CsvRowIssue,
+} from "./parsers/csv-parser.service";
 import { readMenuPrice } from "./parsers/menu-price";
 import { ScanParserService } from "./parsers/scan-parser.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
@@ -433,6 +436,8 @@ export class MenusService {
     submissionsCreated: number;
     items: MenuImportReviewItem[];
     source: { kept: boolean; failure: string | null };
+    /** Rows a file read could not take whole, and why (a price left blank, a line with no name). */
+    notes: CsvRowIssue[];
   }> {
     const { restaurantId } = dto;
     // Checked before the billed read: a date that is not on the calendar
@@ -442,6 +447,7 @@ export class MenusService {
     // 1. Parse input → WineExtractItem[]. A scan is the billed read; its spend
     // ceiling fails CLOSED (scan-parser.service.ts, ADR 0163 Q22).
     let items: WineExtractItem[];
+    let notes: CsvRowIssue[] = [];
     let sourceBytes: Buffer | null = null;
     let sourceMime: { mime: string; ext: string } | null = null;
     if (dto.method === "scan") {
@@ -450,11 +456,13 @@ export class MenusService {
       sourceMime = sniffMime(sourceBytes);
     } else if (dto.method === "csv") {
       if (dto.data.fileBase64) {
-        items = await this.csvParser.parseExcel(dto.data.fileBase64);
+        ({ items, issues: notes } = await this.csvParser.readExcel(
+          dto.data.fileBase64,
+        ));
         sourceBytes = Buffer.from(dto.data.fileBase64, "base64");
         sourceMime = sniffMime(sourceBytes);
       } else {
-        items = this.csvParser.parse(dto.data.csvContent!);
+        ({ items, issues: notes } = this.csvParser.read(dto.data.csvContent!));
         sourceBytes = Buffer.from(dto.data.csvContent!, "utf8");
         sourceMime = { mime: "text/csv", ext: "csv" };
       }
@@ -493,6 +501,7 @@ export class MenusService {
       submissionsCreated: reviewItems.filter((r) => r.submissionId).length,
       items: reviewItems,
       source: { kept: !!kept?.path, failure: kept?.failure ?? null },
+      notes,
     };
   }
 
