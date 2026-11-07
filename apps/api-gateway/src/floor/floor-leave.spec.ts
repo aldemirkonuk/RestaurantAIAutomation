@@ -1,10 +1,13 @@
 import "reflect-metadata";
+import { BadRequestException } from "@nestjs/common";
+import { MEAL_NOTE_MAX } from "@wineops/floor-core";
 import { FloorService } from "./floor.service";
 import type { FloorActor } from "./floor-common";
 
 /**
- * Leave is classified on the server (stored seat time, server clock). A
- * scripted PostgREST stand-in answers reads and records writes.
+ * Leave is classified on the server (stored seat time, server clock), and the
+ * Food-up note is validated before it is stored. A scripted PostgREST
+ * stand-in answers reads and records writes.
  */
 type Call = { table: string; op: string; payload?: any; terminal?: string };
 
@@ -80,3 +83,19 @@ describe("Leave: the kind is the server's", () => {
   });
 });
 
+describe("Food up: the note is validated before it is stored", () => {
+  it("refuses a note that is not text or is too long, before anything is read", async () => {
+    const f = fakeDb(ago(5));
+    await expect(svc(f.db).foodUp(staff, "t1", "mains", 42, NOW)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(svc(f.db).foodUp(staff, "t1", "mains", "x".repeat(MEAL_NOTE_MAX + 1), NOW)).rejects.toBeInstanceOf(BadRequestException);
+    expect(f.calls).toHaveLength(0);
+  });
+
+  it("stores the cleaned note, and an invisible-only note as none", async () => {
+    const f = fakeDb(ago(5));
+    await svc(f.db).foodUp(staff, "t1", "mains", "  no onions  ", NOW);
+    await svc(f.db).foodUp(staff, "t1", "mains", "​​", NOW);
+    const notes = f.calls.filter((c) => c.table === "floor_events" && c.op === "insert").map((c) => c.payload.meta.note);
+    expect(notes).toEqual(["no onions", null]);
+  });
+});

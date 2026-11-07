@@ -9,6 +9,7 @@
  * change is announced to `restaurant:<id>` as a word only (E2).
  */
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -17,12 +18,17 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import {
+  DEFAULT_MEAL_COURSE,
+  MEAL_NOTE_MAX,
   STATUS_LABEL,
   dwellMinutesSince,
+  isMealCourse,
   needsShortVisitConfirm,
+  sanitizeMealNote,
   seatingFreshness,
 } from "@wineops/floor-core";
 import { DatabaseService } from "../database/database.service";
+import { houseMembersInRoles } from "../common/tenant/live-membership";
 import { NotificationsService } from "../notifications/notifications.service";
 import { WebsocketGateway, type FloorWord } from "../websocket/websocket.gateway";
 import {
@@ -30,9 +36,11 @@ import {
   isManagerRole,
   isUniqueViolation,
   readFloorHouse,
+  requireServiceDate,
   serviceDateOf,
 } from "./floor-common";
 import { readHolders } from "./floor-holders";
+import { pushTo, staffCopy } from "./floor-push";
 
 /**
  * A short-stay confirm opened just under 12 minutes and tapped just after
@@ -371,6 +379,104 @@ export class FloorService {
     return { seatingId: s.id, left: true, quickLeave: quick };
   }
 
+  // -------------------------------------------------------------------------
+  // Food up
+  // -------------------------------------------------------------------------
+
+  /**
+   * Any staff member raises Food-up for a table (pick 2). The table's holder
+   * (or, when on break, their cover) gets a staff push: house, table, "Food up"
+   * — the brief and the pass's note stay on signed-in screens (ADR 0352).
+   */
+  async foodUp(a: FloorActor, tableId: string, course: unknown, note: unknown, now = Date.now()) {
+    // The pass's note is validated before it is stored: a string of at most
+    // MEAL_NOTE_MAX characters, cleaned by floor-core. It is never sent in a
+    // push, and no brief title, body or priority is either (ADR 0352).
+    if (note !== undefined && note !== null && typeof note !== "string") {
+      throw new BadRequestException("The note must be text.");
+    }
+    if (typeof note === "string" && note.trim().length > MEAL_NOTE_MAX) {
+      throw new BadRequestException(`The note can be at most ${MEAL_NOTE_MAX} characters.`);
+    }
+    const table = await this.tableOf(a.restaurantId, tableId);
+    const house = await readFloorHouse(this.sb, a.restaurantId);
+    const meta = {
+      course: isMealCourse(course) ? course : DEFAULT_MEAL_COURSE,
+      note: sanitizeMealNote(typeof note === "string" ? note : null) || null,
+    };
+    const { data: seating } = await this.sb
+      .from("floor_seatings")
+      .select("id")
+      .eq("restaurant_id", a.restaurantId)
+      .eq("table_id", tableId)
+      .is("left_at", null)
+      .maybeSingle();
+    const { data, error } = await this.sb
+      .from("floor_events")
+      .insert({
+        restaurant_id: a.restaurantId,
+        kind: "food_up",
+        table_id: tableId,
+        seating_id: (seating as { id: string } | null)?.id ?? null,
+        actor_id: a.userId,
+        meta,
+      })
+      .select("id")
+      .single();
+    if (error || !data) throw new InternalServerErrorException("Food up could not be written.");
+    this.word(a.restaurantId, tableId, "food_up");
+
+    let pushed: { sentTo: number; notSent: number; reason: string | null };
+    try {
+      const holders = await readHolders(this.sb, a.restaurantId, serviceDateOf(house.zone, now));
+      const held = holders.byTable.get(tableId) ?? [];
+      const audience = await this.audienceFor(a.restaurantId, held);
+      let sentTo = 0;
+      for (const userId of audience) {
+        const r = await pushTo(
+          this.notifications,
+          userId,
+          staffCopy({
+            restaurantId: a.restaurantId,
+            houseName: house.name,
+            tableId,
+            tableLabel: table.label,
+            word: "Food up",
+            lateAfterMin: house.lateAfterMin,
+          }),
+          house.lateAfterMin,
+        );
+        if (r.sent > 0) sentTo++;
+      }
+      pushed = {
+        sentTo,
+        notSent: audience.length - sentTo,
+        reason: audience.length === 0 ? "nobody_holds_this_table" : null,
+      };
+    } catch (e) {
+      // The meal run is recorded; the push failed and says so. The scanner's
+      // next tick climbs an unsent, unacknowledged Food-up (ADR 0352).
+      pushed = { sentTo: 0, notSent: 0, reason: `read_failed: ${(e as Error)?.message}` };
+    }
+    return { foodUpId: data.id, tableId, pushed };
+  }
+
+  async foodAck(a: FloorActor, foodUpId: string) {
+    const { data, error } = await this.sb
+      .from("floor_events")
+      .select("id, table_id, seating_id")
+      .eq("id", foodUpId)
+      .eq("restaurant_id", a.restaurantId)
+      .eq("kind", "food_up")
+      .maybeSingle();
+    if (error) throw new InternalServerErrorException("The Food up could not be read.");
+    if (!data) throw new NotFoundException("No such Food up in this house.");
+    const ev = data as { id: string; table_id: string | null; seating_id: string | null };
+    await this.event(a, "food_ack", { tableId: ev.table_id, seatingId: ev.seating_id, meta: { food_up_id: ev.id } });
+    this.word(a.restaurantId, ev.table_id, "food_ack");
+    return { foodUpId: ev.id, acknowledged: true };
+  }
+
   /**
    * The covers of people now on break: the cover named on each holder's latest
    * `on_break` with no `back` after it. Open as OD-236, the executor's reading
@@ -380,6 +486,21 @@ export class FloorService {
   async coversFor(restaurantId: string, holders: string[]): Promise<string[]> {
     const onBreak = await this.breakState(restaurantId, holders);
     return [...new Set([...onBreak.values()].filter((c): c is string => Boolean(c)))];
+  }
+
+  /**
+   * Who a table's alert goes to: each holder who is not on break, and the
+   * named cover of each holder who is. A holder on break with no cover named
+   * drops out (the scanner then climbs to the manager step). Open as OD-236.
+   */
+  async audienceFor(restaurantId: string, holders: string[]): Promise<string[]> {
+    const onBreak = await this.breakState(restaurantId, holders);
+    const out = new Set<string>();
+    for (const h of holders) {
+      if (!onBreak.has(h)) out.add(h);
+      else if (onBreak.get(h)) out.add(onBreak.get(h)!);
+    }
+    return [...out];
   }
 
   /** Holders now on break → the cover they named (null when none). */
@@ -403,5 +524,142 @@ export class FloorService {
       if (e.kind === "on_break") onBreak.set(e.actor_id, typeof cover === "string" ? cover : null);
     }
     return onBreak;
+  }
+
+  // -------------------------------------------------------------------------
+  // Punches (ADR 0350): shown beside the plan; no punch prices a shift.
+  // -------------------------------------------------------------------------
+
+  private async openPunch(a: FloorActor) {
+    const { data, error } = await this.sb
+      .from("floor_punches")
+      .select("id, clocked_in_at")
+      .eq("restaurant_id", a.restaurantId)
+      .eq("user_id", a.userId)
+      .is("clocked_out_at", null)
+      .is("superseded_at", null)
+      .maybeSingle();
+    if (error) throw new InternalServerErrorException("Your punch could not be read.");
+    return data as { id: string; clocked_in_at: string } | null;
+  }
+
+  async clockIn(a: FloorActor, kind: "clock_in" | "back" = "clock_in") {
+    const { data, error } = await this.sb
+      .from("floor_punches")
+      // shift_id is left NULL: which plan row a punch sits beside is read when a
+      // view opens, by person and time (ADR 0350 › Where a punch is shown).
+      .insert({ restaurant_id: a.restaurantId, user_id: a.userId, source: "floor", created_by: a.userId })
+      .select("id, clocked_in_at")
+      .single();
+    if (isUniqueViolation(error)) throw new ConflictException("You are already clocked in.");
+    if (error || !data) throw new InternalServerErrorException("The punch could not be written.");
+    await this.event(a, kind, { subjectUserId: a.userId, meta: { punch_id: data.id } });
+    return { punchId: data.id, clockedInAt: data.clocked_in_at };
+  }
+
+  async clockOut(a: FloorActor, reason: "clock_out" | "break" = "clock_out", coverUserId: string | null = null) {
+    const open = await this.openPunch(a);
+    if (!open) throw new ConflictException("You are not clocked in.");
+    const at = new Date().toISOString();
+    const { error } = await this.sb
+      .from("floor_punches")
+      .update({ clocked_out_at: at, clocked_out_reason: reason })
+      .eq("id", open.id)
+      .eq("restaurant_id", a.restaurantId);
+    if (error) throw new InternalServerErrorException("The punch could not be closed.");
+    if (reason === "break") {
+      await this.event(a, "on_break", {
+        subjectUserId: a.userId,
+        meta: { punch_id: open.id, cover_user_id: coverUserId },
+      });
+    } else {
+      await this.event(a, "clock_out", { subjectUserId: a.userId, meta: { punch_id: open.id } });
+    }
+    return { punchId: open.id, clockedOutAt: at, reason };
+  }
+
+  /** On break names a cover who must be a live staff-or-above member of this house. */
+  async onBreak(a: FloorActor, coverUserId: string | null) {
+    if (coverUserId) {
+      let members: string[];
+      try {
+        members = await houseMembersInRoles(this.sb, a.restaurantId, ["owner", "manager", "staff"]);
+      } catch {
+        throw new InternalServerErrorException("The cover could not be checked.");
+      }
+      if (!members.includes(coverUserId)) {
+        throw new ForbiddenException("The cover is not a member of this house.");
+      }
+    }
+    return this.clockOut(a, "break", coverUserId);
+  }
+
+  async back(a: FloorActor) {
+    return this.clockIn(a, "back");
+  }
+
+  // -------------------------------------------------------------------------
+  // Reads
+  // -------------------------------------------------------------------------
+
+  async outTonight(a: FloorActor, now = Date.now()) {
+    const house = await readFloorHouse(this.sb, a.restaurantId);
+    const date = requireServiceDate(house.zone, now);
+    const { data, error } = await this.sb
+      .from("floor_out_tonight")
+      .select("id, menu_item_id, label, marked_at")
+      .eq("restaurant_id", a.restaurantId)
+      .eq("service_date", date)
+      .is("back_at", null)
+      .order("marked_at", { ascending: true });
+    if (error) throw new InternalServerErrorException("Out tonight could not be read.");
+    const rows = (data ?? []) as Array<{ id: string; menu_item_id: string | null; label: string | null }>;
+    const itemIds = rows.map((r) => r.menu_item_id).filter((x): x is string => Boolean(x));
+    const names = new Map<string, string>();
+    if (itemIds.length > 0) {
+      const items = await this.sb
+        .from("menu_items")
+        .select("id, name")
+        .eq("restaurant_id", a.restaurantId)
+        .in("id", itemIds);
+      if (items.error) throw new InternalServerErrorException("Out tonight could not be read.");
+      for (const i of (items.data ?? []) as Array<{ id: string; name: string }>) names.set(i.id, i.name);
+    }
+    return {
+      serviceDate: date,
+      items: rows.map((r) => ({
+        id: r.id,
+        menuItemId: r.menu_item_id,
+        name: r.label ?? (r.menu_item_id ? names.get(r.menu_item_id) ?? null : null),
+      })),
+    };
+  }
+
+  /** The person's own manager notes (team_notes addressed to their roster rows in this house). */
+  async myNotes(a: FloorActor) {
+    const { data: members, error: mErr } = await this.sb
+      .from("team_members")
+      .select("id")
+      .eq("restaurant_id", a.restaurantId)
+      .eq("user_id", a.userId);
+    if (mErr) throw new InternalServerErrorException("Your notes could not be read.");
+    const ids = ((members ?? []) as Array<{ id: string }>).map((m) => m.id);
+    if (ids.length === 0) return { notes: [] };
+    const { data, error } = await this.sb
+      .from("team_note_recipients")
+      .select("id, opened_at, note:team_notes(id, body, week_start, created_at, restaurant_id)")
+      .in("member_id", ids);
+    if (error) throw new InternalServerErrorException("Your notes could not be read.");
+    const notes = ((data ?? []) as Array<any>)
+      .filter((r) => r.note && r.note.restaurant_id === a.restaurantId)
+      .map((r) => ({
+        noteId: r.note.id,
+        body: r.note.body,
+        weekStart: r.note.week_start,
+        sentAt: r.note.created_at,
+        openedAt: r.opened_at,
+      }))
+      .sort((x, y) => (x.sentAt < y.sentAt ? 1 : -1));
+    return { notes };
   }
 }
