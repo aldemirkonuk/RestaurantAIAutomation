@@ -141,6 +141,56 @@ do $$ begin
   end;
 end $$;
 
+-- T14: a punch is append-only (ADR 0350 :78).
+do $$ declare p uuid; begin
+  insert into public.floor_punches (restaurant_id, user_id) values (pg_temp.fx('b'), pg_temp.fx('u2')) returning id into p;
+  insert into _fx values ('p14', p);
+  begin
+    update public.floor_punches set clocked_in_at = clocked_in_at - interval '1 hour' where id = p;
+    insert into _t values ('T14a', false, 'clocked_in_at rewritten');
+  exception when check_violation then insert into _t values ('T14a', true, 'clocked_in_at change refused');
+  end;
+  update public.floor_punches set clocked_out_at = now(), clocked_out_reason = 'break' where id = p;
+  begin
+    update public.floor_punches set clocked_out_at = clocked_out_at + interval '1 minute' where id = p;
+    insert into _t values ('T14b', false, 'clock-out rewritten');
+  exception when check_violation then insert into _t values ('T14b', true, 'second clock-out refused, first accepted');
+  end;
+  update public.floor_punches set superseded_at = now() where id = p;
+  begin
+    update public.floor_punches set superseded_at = null where id = p;
+    insert into _t values ('T14c', false, 'superseded mark cleared');
+  exception when check_violation then insert into _t values ('T14c', true, 'superseded mark set once');
+  end;
+end $$;
+
+-- T15: a correction and a Back name a punch of their own house only.
+do $$ begin
+  begin
+    insert into public.floor_punches (restaurant_id, user_id, supersedes_id, clocked_out_at, clocked_out_reason)
+      values (pg_temp.fx('a'), pg_temp.fx('u2'), pg_temp.fx('p14'), now(), 'clock_out');
+    insert into _t values ('T15a', false, 'cross-house correction accepted');
+  exception when foreign_key_violation then insert into _t values ('T15a', true, 'cross-house correction refused');
+  end;
+  begin
+    insert into public.floor_punches (restaurant_id, user_id, resumes_id, clocked_out_at, clocked_out_reason)
+      values (pg_temp.fx('a'), pg_temp.fx('u2'), pg_temp.fx('p14'), now(), 'clock_out');
+    insert into _t values ('T15b', false, 'cross-house Back accepted');
+  exception when foreign_key_violation then insert into _t values ('T15b', true, 'cross-house Back refused');
+  end;
+  insert into public.floor_punches (restaurant_id, user_id, resumes_id) values (pg_temp.fx('b'), pg_temp.fx('u2'), pg_temp.fx('p14'));
+  insert into _t values ('T15c', true, 'same-house Back accepted');
+end $$;
+
+-- T16: a person with punches cannot be hard-deleted under them (ADR 0350 :71).
+do $$ declare c text; begin
+  delete from public.users where user_id = pg_temp.fx('u2');
+  insert into _t values ('T16', false, 'person deleted with punches');
+exception when foreign_key_violation then
+  get stacked diagnostics c = constraint_name;
+  insert into _t values ('T16', c like 'floor_punches%', 'delete refused by ' || c);
+end $$;
+
 -- T12: RLS on every new table, and no client grant left.
 insert into _t
 select 'T12', count(*) = 14 and bool_and(c.relrowsecurity)

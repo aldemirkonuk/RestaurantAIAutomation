@@ -297,7 +297,9 @@ CREATE INDEX IF NOT EXISTS idx_floor_merge_members_house
 CREATE TABLE IF NOT EXISTS public.floor_punches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   restaurant_id UUID NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL REFERENCES public.users(user_id) ON DELETE CASCADE,
+  -- RESTRICT, not CASCADE: ADR 0350 keeps every punch until counsel answers
+  -- (`0350:71`), so a person with punches cannot be hard-deleted under them.
+  user_id UUID NOT NULL REFERENCES public.users(user_id) ON DELETE RESTRICT,
   -- The planned shift it was punched against, when one was found; a punch
   -- with no planned shift is kept (pick 10).
   shift_id UUID,
@@ -308,8 +310,17 @@ CREATE TABLE IF NOT EXISTS public.floor_punches (
   created_by UUID REFERENCES public.users(user_id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   -- A correction writes a new row naming the one it replaces (ADR 0350).
-  supersedes_id UUID REFERENCES public.floor_punches(id) ON DELETE SET NULL,
+  supersedes_id UUID,
   superseded_at TIMESTAMPTZ,
+  -- A *Back* names the break it resumes (ADR 0350 `:78`): the punch closed
+  -- with clocked_out_reason 'break'.
+  resumes_id UUID,
+  CONSTRAINT uq_floor_punches_id_restaurant UNIQUE (id, restaurant_id),
+  -- Both links stay inside the house, like every other key here (E5).
+  CONSTRAINT fk_floor_punches_supersedes FOREIGN KEY (supersedes_id, restaurant_id)
+    REFERENCES public.floor_punches (id, restaurant_id),
+  CONSTRAINT fk_floor_punches_resumes FOREIGN KEY (resumes_id, restaurant_id)
+    REFERENCES public.floor_punches (id, restaurant_id),
   CONSTRAINT ck_floor_punches_out_pair CHECK ((clocked_out_at IS NULL) = (clocked_out_reason IS NULL)),
   CONSTRAINT ck_floor_punches_order CHECK (clocked_out_at IS NULL OR clocked_out_at >= clocked_in_at),
   CONSTRAINT fk_floor_punches_shift FOREIGN KEY (shift_id, restaurant_id)
@@ -323,6 +334,44 @@ CREATE INDEX IF NOT EXISTS idx_floor_punches_house_time
   ON public.floor_punches (restaurant_id, clocked_in_at DESC);
 CREATE INDEX IF NOT EXISTS idx_floor_punches_shift
   ON public.floor_punches (shift_id) WHERE shift_id IS NOT NULL;
+
+-- Append-only (ADR 0350 `:78`): a row is written once, its clock-out filled
+-- once and its superseded mark set once. Any other change is a new row
+-- naming the old one. Deletes come only from a house being deleted whole.
+CREATE OR REPLACE FUNCTION public.floor_punches_append_only()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $fn$
+BEGIN
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.restaurant_id IS DISTINCT FROM OLD.restaurant_id
+     OR NEW.user_id IS DISTINCT FROM OLD.user_id
+     -- The shift link only ever goes to null (a deleted shift, `:78`).
+     OR (NEW.shift_id IS DISTINCT FROM OLD.shift_id AND NEW.shift_id IS NOT NULL)
+     OR NEW.clocked_in_at IS DISTINCT FROM OLD.clocked_in_at
+     OR NEW.source IS DISTINCT FROM OLD.source
+     OR NEW.created_by IS DISTINCT FROM OLD.created_by
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     OR NEW.supersedes_id IS DISTINCT FROM OLD.supersedes_id
+     OR NEW.resumes_id IS DISTINCT FROM OLD.resumes_id
+     OR (OLD.clocked_out_at IS NOT NULL AND (NEW.clocked_out_at IS DISTINCT FROM OLD.clocked_out_at
+                                             OR NEW.clocked_out_reason IS DISTINCT FROM OLD.clocked_out_reason))
+     OR (OLD.superseded_at IS NOT NULL AND NEW.superseded_at IS DISTINCT FROM OLD.superseded_at)
+  THEN
+    RAISE EXCEPTION 'floor_punches is append-only: write a correction row naming punch %', OLD.id
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.floor_punches_append_only() FROM PUBLIC, anon, authenticated;
+
+DROP TRIGGER IF EXISTS trg_floor_punches_append_only ON public.floor_punches;
+CREATE TRIGGER trg_floor_punches_append_only
+  BEFORE UPDATE ON public.floor_punches
+  FOR EACH ROW EXECUTE FUNCTION public.floor_punches_append_only();
 
 -- ---------------------------------------------------------------------------
 -- 8. Out tonight: a person's marks only (no run-dry half; OD-242)
