@@ -6,10 +6,9 @@
  * else by runway — and each group is headed with its count; any other sort
  * is one list.
  *
- * A row is 48px and opens in place, like the orders ledger row: the whole
- * row is the hit area, and the title is a real button so the keyboard can
- * reach it (Enter or Space opens it; the dropdown sits in the next table
- * row, spanning every column).
+ * A row is 48px and opens the item drawer (ItemDrawer.tsx): the whole row
+ * is the hit area, and the title is a real button so the keyboard can reach
+ * it (Enter or Space opens it).
  *
  * "Your price" reuses the legacy page's HousePriceCell for owners and
  * managers (it is where a price is changed, ADR 0193); everyone else reads
@@ -17,7 +16,7 @@
  */
 import { Fragment } from 'react';
 import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
-import RowDropdown, { type RowDropdownProps } from './RowDropdown';
+import type { RowDropdownProps } from './RowDropdown';
 import { cellMoney, EM, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
 
@@ -265,23 +264,6 @@ export default function InventoryTable(props: InventoryTableProps) {
                     {statusWord(row)}
                   </td>
                 </tr>
-                {open ? (
-                  <tr className="iv-openrow">
-                    <td colSpan={span}>
-                      <RowDropdown
-                        row={row}
-                        canManage={canManage}
-                        currency={currency}
-                        zoneName={zoneName}
-                        locations={props.locations}
-                        locationsUnavailable={props.locationsUnavailable}
-                        providers={props.providers}
-                        providersError={props.providersError}
-                        restaurantId={props.restaurantId}
-                      />
-                    </td>
-                  </tr>
-                ) : null}
               </Fragment>
             );
           })}

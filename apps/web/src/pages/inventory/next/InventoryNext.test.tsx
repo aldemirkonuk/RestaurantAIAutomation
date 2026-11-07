@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import { fmtPace, MAP_WORDS, mapTone, sold30 } from './useInventoryNextData';
@@ -84,6 +84,7 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   createInventoryItem: ported.create,
   fetchHouseItemResearch: research.fetch,
+  getItemFigures: vi.fn(() => new Promise(() => undefined)),
 }));
 vi.mock('./RowDropdown', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -961,11 +962,13 @@ describe('a title no zone holds reads "none on hand" or "Unassigned" (INV-W34)',
 
 describe('INV-W38 — the view is the URL', () => {
   function renderAt(url: string) {
-    const seen: { path: string; search: string } = { path: '', search: '' };
+    const seen = { path: '', search: '', back: () => undefined as void };
     function Probe() {
       const loc = useLocation();
+      const nav = useNavigate();
       seen.path = loc.pathname;
       seen.search = loc.search;
+      seen.back = () => nav(-1);
       return null;
     }
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1002,6 +1005,19 @@ describe('INV-W38 — the view is the URL', () => {
     expect(new URLSearchParams(seen.search).get('q')).toBe('istanbul');
     expect(new URLSearchParams(seen.search).has('wine')).toBe(false);
     expect(new URLSearchParams(seen.search).get('open')).toBe('b');
+  });
+
+  it('(e) a row click opens the item drawer, not a row in place; Back closes it', async () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory');
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    expect(new URLSearchParams(seen.search).get('open')).toBe('b');
+    expect(screen.getByTestId('ivd-cards')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Istanbul White' })).toBeTruthy();
+    expect(screen.queryByTestId('row-dropdown')).toBeNull();
+    act(() => seen.back());
+    expect(screen.queryByTestId('ivd-cards')).toBeNull();
+    expect(new URLSearchParams(seen.search).has('open')).toBe(false);
   });
 
   it('opens the title a ?highlight= link names, by row id or by wine id', () => {
