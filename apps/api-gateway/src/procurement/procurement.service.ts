@@ -5763,43 +5763,211 @@ export class ProcurementService {
     userId: string,
     match: MatchResult,
     order?: { provider_id?: string | null; currency?: string | null } | null,
+    /** Whether the verification stated an invoice unit price — so a claim it
+     * does not raise means "nothing owed", not "owed but unpriced". */
+    priced = true,
+    /** False on the one retry after a unique index refused the raise. */
+    retry = true,
   ): Promise<void> {
     try {
       const claim = draftClaimFromMatch(match);
-      if (!claim) return;
-
-      const insertRow: Record<string, unknown> = {
-        restaurant_id: restaurantId,
-        order_id: orderId,
-        provider_id: order?.provider_id ?? null,
-        reason: claim.reason,
-        summary: claim.summary,
-        claimed_amount: claim.claimedAmount,
-        // True only when the vendor's own packing slip proves the overbill.
-        // Worth knowing which claims are winnable before spending a call.
-        self_evidenced: claim.selfEvidenced,
-        state: "open",
-        opened_by: userId,
-        // Snapshot: the order can be corrected later, and the claim must still
-        // be able to say what it was based on when it was raised.
-        evidence: match as unknown as Record<string, unknown>,
+      const supabase = this.databaseService.supabase;
+      // An open claim this read did not see (unreadable, or a verification
+      // that passed this one) is refused by `uq_pc_order_one_open_claim`:
+      // read again once and restate it, never a second open claim (QA 9c).
+      const raise = async () => {
+        const held = await this.insertOrderCreditClaim(restaurantId, orderId, userId, claim!, match, order);
+        if (held && retry)
+          await this.openCreditClaim(restaurantId, orderId, userId, match, order, priced, false);
+        else if (held)
+          this.logger.warn(
+            `openCreditClaim left order ${orderId}'s claims as they were: ` +
+              (held === "open"
+                ? `its open claim could not be read to restate it`
+                : `the ${claim!.reason} claim is already with the vendor`) +
+              `, and this verification would claim ${claim!.claimedAmount}.`,
+          );
       };
-      if (order?.currency) insertRow.currency = order.currency;
 
-      const { error } = await this.databaseService.supabase
+      // A CORRECTION REPLACES THE CLAIM IT CORRECTS (audit of #821,
+      // 2026-11-07; the session's call under the 2026-11-07 /goal). A
+      // verification reaching here is never a repeat (the guard returned
+      // first), so it is the house's current count, and this writer's open
+      // claims for the order were drafted from an earlier one:
+      //  - the corrected claim restates ONE (the row with its reason, else the
+      //    oldest): reason, amount, summary, evidence. Never a second claim.
+      //  - the others, or all of them when nothing is owed, are set aside as
+      //    `written_off` with a note: counted in no figure (`recoveryStats`),
+      //    free the index, keep the evidence. (A `withdrawn` state would need
+      //    a migration and both apps; left as a follow-up.)
+      //  - only `open` is touched: a claim with the vendor is a person's call.
+      //  - no invoice (`unmatched`) or no invoice price does not prove nothing
+      //    is owed, so the open claim is left as it was.
+      const { data: openRows, error: openReadError } = await supabase
         .from("procurement_credits")
-        .insert(insertRow);
-
-      // 23505 = a claim for this line and reason is already open. Re-running the
-      // match must not manufacture a second claim for money already being
-      // chased — that would double-count recovery and embarrass the restaurant.
-      if (error && error.code !== "23505")
+        .select("id, reason")
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .is("document_id", null)
+        .is("document_line_id", null)
+        .neq("reason", "never_arrived")
+        .eq("state", "open")
+        .order("opened_at", { ascending: true });
+      if (openReadError) {
+        // Never read as "no claims": nothing is restated or set aside.
         this.logger.warn(
-          `openCreditClaim failed for order ${orderId}: ${error.message}`,
+          `openCreditClaim could not read the open claims for order ${orderId}, so none was ` +
+            `restated or set aside: ${openReadError.message}`,
+        );
+        if (claim) await raise();
+        return;
+      }
+      const open = (openRows ?? []) as { id: string; reason: string }[];
+
+      if (!claim) {
+        if (open.length === 0) return;
+        const unpriced = match.creditDue && match.creditAmount == null && !priced;
+        if (match.verdict === "unmatched" || unpriced) {
+          this.logger.warn(
+            `openCreditClaim left ${open.length} open claim(s) for order ${orderId} as they were: ` +
+              `the corrected verification ${match.verdict === "unmatched" ? "had no invoice to compare" : "states no invoice price"}, ` +
+              `so it cannot say nothing is owed.`,
+          );
+          return;
+        }
+        await this.setAsideOrderCreditClaims(
+          restaurantId,
+          orderId,
+          userId,
+          open.map((r) => r.id),
+          "A corrected count of this delivery found nothing owed.",
+        );
+        return;
+      }
+
+      const kept = open.find((r) => r.reason === claim.reason) ?? open[0];
+      if (!kept) {
+        await raise();
+        return;
+      }
+      const superseded = open.filter((r) => r.id !== kept.id).map((r) => r.id);
+      if (superseded.length > 0)
+        await this.setAsideOrderCreditClaims(
+          restaurantId,
+          orderId,
+          userId,
+          superseded,
+          `A corrected count of this delivery replaced it with one ${claim.reason} claim.`,
+        );
+
+      const { data: restated, error: restateError } = await supabase
+        .from("procurement_credits")
+        .update({
+          reason: claim.reason,
+          summary: claim.summary,
+          claimed_amount: claim.claimedAmount,
+          self_evidenced: claim.selfEvidenced,
+          evidence: match as unknown as Record<string, unknown>,
+        })
+        .eq("restaurant_id", restaurantId)
+        .eq("order_id", orderId)
+        .eq("id", kept.id)
+        .eq("state", "open")
+        .select("id");
+      if (restateError?.code === "23505") {
+        // The new reason is already held by a claim with the vendor: theirs
+        // stands, and the open draft of the earlier count is set aside.
+        await this.setAsideOrderCreditClaims(
+          restaurantId,
+          orderId,
+          userId,
+          [kept.id],
+          `A corrected count of this delivery claims ${claim.reason}, which is already with the vendor.`,
+        );
+      } else if (restateError)
+        this.logger.warn(
+          `openCreditClaim could not restate the open ${kept.reason} claim for order ${orderId} ` +
+            `as ${claim.reason} ${claim.claimedAmount}: ${restateError.message}`,
+        );
+      else if (!restated || restated.length === 0)
+        this.logger.warn(
+          `openCreditClaim left claim ${kept.id} for order ${orderId} as it was: it left \`open\` ` +
+            `before the correction (${claim.reason} ${claim.claimedAmount}) reached it.`,
         );
     } catch (err: any) {
       this.logger.warn(`openCreditClaim threw for ${orderId}: ${err?.message}`);
     }
+  }
+
+  /** Raise one order-level claim; on a 23505, which index held it. */
+  private async insertOrderCreditClaim(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    claim: NonNullable<ReturnType<typeof draftClaimFromMatch>>,
+    match: MatchResult,
+    order?: { provider_id?: string | null; currency?: string | null } | null,
+  ): Promise<"open" | "reason" | null> {
+    const insertRow: Record<string, unknown> = {
+      restaurant_id: restaurantId,
+      order_id: orderId,
+      provider_id: order?.provider_id ?? null,
+      reason: claim.reason,
+      summary: claim.summary,
+      claimed_amount: claim.claimedAmount,
+      // True only when the vendor's own packing slip proves the overbill.
+      // Worth knowing which claims are winnable before spending a call.
+      self_evidenced: claim.selfEvidenced,
+      state: "open",
+      opened_by: userId,
+      // Snapshot: the order can be corrected later, and the claim must still
+      // be able to say what it was based on when it was raised.
+      evidence: match as unknown as Record<string, unknown>,
+    };
+    if (order?.currency) insertRow.currency = order.currency;
+
+    const { error } = await this.databaseService.supabase
+      .from("procurement_credits")
+      .insert(insertRow);
+
+    // 23505: an open claim holds the order (`uq_pc_order_one_open_claim`),
+    // or one with the vendor holds the reason (`uq_pc_order_match_reason`) —
+    // a second claim for money already being chased would double-count.
+    if (error?.code === "23505")
+      return /uq_pc_order_one_open_claim/.test(error.message ?? "") ? "open" : "reason";
+    if (error)
+      this.logger.warn(
+        `openCreditClaim failed for order ${orderId}: ${error.message}`,
+      );
+    return null;
+  }
+
+  /** Set aside superseded open claims; scoped to `open`, never under the vendor. */
+  private async setAsideOrderCreditClaims(
+    restaurantId: string,
+    orderId: string,
+    userId: string,
+    ids: string[],
+    why: string,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const { error } = await this.databaseService.supabase
+      .from("procurement_credits")
+      .update({
+        state: "written_off",
+        notes: `Set aside ${now.slice(0, 10)}: ${why} Nothing had been sent to the vendor.`,
+        settled_at: now,
+        settled_by: userId,
+      })
+      .eq("restaurant_id", restaurantId)
+      .eq("order_id", orderId)
+      .in("id", ids)
+      .eq("state", "open");
+    if (error)
+      this.logger.warn(
+        `openCreditClaim could not set aside ${ids.length} superseded open claim(s) for order ` +
+          `${orderId}: ${error.message}`,
+      );
   }
 
   /**
@@ -6401,6 +6569,29 @@ export class ProcurementService {
 
     if (fetchError || !orderRow) {
       throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    // A CLOSED ORDER THAT KEPT NOTHING IS NOT VERIFIED (QA round 1, H-1, the
+    // half QA round 5 found unaddressed). A cancelled, rejected or failed order
+    // has left every spend total and delivery count (`order-transitions.ts`),
+    // and nothing reopens one. Verifying it would book stock, open a vendor
+    // claim and stamp a verdict on an order the books say never happened.
+    // Refused before anything is read or written. COMPLETED is closed too, but
+    // its goods arrived, and re-verifying it is how a count is corrected.
+    const closedWords: Record<string, string> = {
+      [ProcurementOrderStatus.CANCELLED]: "was cancelled",
+      [ProcurementOrderStatus.REJECTED]: "was rejected",
+      [ProcurementOrderStatus.FAILED]: "failed",
+    };
+    const closed = closedWords[String((orderRow as any).status ?? "")];
+    if (closed) {
+      throw new UnprocessableEntityException({
+        reason: "receipt_verification_order_closed",
+        status: (orderRow as any).status,
+        message:
+          `This order ${closed}, so its delivery cannot be verified and nothing was changed. ` +
+          "If the delivery did arrive, receive it on a new order.",
+      });
     }
 
     /*
@@ -7069,6 +7260,7 @@ export class ProcurementService {
         userId,
         match,
         orderRow as { provider_id?: string | null; currency?: string | null },
+        matchInput.invoiceUnitPrice != null,
       );
 
     const { data, error } = await this.databaseService.supabase

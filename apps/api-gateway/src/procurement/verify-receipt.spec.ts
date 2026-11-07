@@ -147,6 +147,8 @@ interface Calls {
   researchInserts: Row[];
   /** `take_receipt_verification_lease` calls and what each was answered (kept out of `rpc`). */
   leaseTakes: { args: Row; answer: string }[];
+  /** `procurement_credits` updates (a correction restating a held claim), with their filters. */
+  creditUpdates: { payload: Row; filters: Row }[];
 }
 
 /**
@@ -205,6 +207,14 @@ function makeDb(opts: {
   leaseHeldElsewhere?: boolean;
   /** The lease RPC fails with this. */
   leaseError?: { message: string } | null;
+  /** Live order-level claims; `uq_pc_order_match_reason` refuses a second per reason. */
+  credits?: Row[];
+  /** The read of the order's open claims fails with this ... */
+  creditsReadError?: { message: string } | null;
+  /** ... this many times (default: every time). */
+  creditsReadFailures?: number;
+  /** Apply `uq_pc_order_one_open_claim`: one open order-level claim per order. */
+  oneOpenClaim?: boolean;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -216,6 +226,7 @@ function makeDb(opts: {
     receiptEvents: [],
     researchInserts: [],
     leaseTakes: [],
+    creditUpdates: [],
   };
   const leases = new Map<string, string>();
   if (opts.leaseHeldElsewhere) leases.set(ORDER, "someone-else");
@@ -228,6 +239,8 @@ function makeDb(opts: {
       let op: "select" | "insert" | "update" | "delete" = "select";
       let selectedColumns = "";
       const filters: Record<string, any> = {};
+      const notFilters: Record<string, any> = {};
+      const inFilters: Record<string, any[]> = {};
 
       let payloadRow: Row = {};
       const settle = (shape: "one" | "many"): Row => {
@@ -235,6 +248,67 @@ function makeDb(opts: {
           if (leases.get(filters.order_id) === filters.token)
             leases.delete(filters.order_id);
           return { data: null, error: null };
+        }
+        if (table === "procurement_credits" && opts.credits) {
+          const rows = opts.credits;
+          const clash = (reason: unknown, except?: unknown) =>
+            rows.some(
+              (r) => r.reason === reason && r.state !== "written_off" && r.id !== except,
+            );
+          const unique = {
+            data: null,
+            error: { code: "23505", message: "uq_pc_order_match_reason" },
+          };
+          if (op === "select") {
+            if (opts.creditsReadError && (opts.creditsReadFailures ?? Infinity) > 0) {
+              opts.creditsReadFailures = (opts.creditsReadFailures ?? Infinity) - 1;
+              return { data: null, error: opts.creditsReadError };
+            }
+            return {
+              data: rows
+                .filter((r) => r.order_id === filters.order_id)
+                .filter((r) => r.reason !== notFilters.reason)
+                .filter((r) => filters.state === undefined || r.state === filters.state)
+                .map((r) => ({ id: r.id, reason: r.reason })),
+              error: null,
+            };
+          }
+          if (op === "insert") {
+            if (clash(payloadRow.reason)) return unique;
+            if (
+              opts.oneOpenClaim &&
+              rows.some(
+                (r) => r.state === "open" && r.reason !== "never_arrived" && r.order_id === payloadRow.order_id,
+              )
+            )
+              return {
+                data: null,
+                error: {
+                  code: "23505",
+                  message: 'duplicate key value violates unique constraint "uq_pc_order_one_open_claim"',
+                },
+              };
+            rows.push({ id: `claim-${rows.length + 1}`, ...payloadRow });
+            return { data: null, error: null };
+          }
+          if (op === "update") {
+            const hits = rows.filter(
+              (r) =>
+                r.restaurant_id === filters.restaurant_id &&
+                r.order_id === filters.order_id &&
+                (filters.id === undefined || r.id === filters.id) &&
+                (inFilters.id === undefined || inFilters.id.includes(r.id)) &&
+                (filters.state === undefined || r.state === filters.state),
+            );
+            const patch = calls.creditUpdates[calls.creditUpdates.length - 1].payload;
+            if (
+              patch.reason !== undefined &&
+              hits.some((h) => clash(patch.reason, h.id))
+            )
+              return unique;
+            for (const h of hits) Object.assign(h, patch);
+            return { data: hits.map((h) => ({ id: h.id })), error: null };
+          }
         }
         if (table === "procurement_orders" && opts.live) {
           if (op === "update")
@@ -350,9 +424,15 @@ function makeDb(opts: {
           filters[col] = value;
           return q;
         },
-        neq: () => q,
+        neq(col: string, value: any) {
+          notFilters[col] = value;
+          return q;
+        },
         not: () => q,
-        in: () => q,
+        in(col: string, values: any[]) {
+          inFilters[col] = values;
+          return q;
+        },
         is: () => q,
         gt: () => q,
         order: () => q,
@@ -377,6 +457,8 @@ function makeDb(opts: {
           if (table === "procurement_orders") calls.orderUpdates.push(payload);
           if (table === "restaurant_inventory")
             calls.inventoryUpdates.push(payload);
+          if (table === "procurement_credits")
+            calls.creditUpdates.push({ payload, filters });
           return q;
         },
         delete: () => {
@@ -1784,9 +1866,10 @@ describe("verifyReceipt — a repeated verification writes nothing new (H-1)", (
 });
 
 // ---------------------------------------------------------------------------
-// QA round 5 on H-1 (2026-11-07): two verifications racing write once
+// QA round 5 on H-1 (2026-11-07): racing verifications, a corrected claim, a
+// closed order
 // ---------------------------------------------------------------------------
-describe("verifyReceipt — one verification at a time (H-1, round 5)", () => {
+describe("verifyReceipt — one verification at a time, corrections restate the claim (H-1, round 5)", () => {
   const payload = {
     note: "Two bottles arrived cracked.",
     invoiceQuantity: 10,
@@ -1886,5 +1969,302 @@ describe("verifyReceipt — one verification at a time (H-1, round 5)", () => {
       service(db).verifyReceipt(REST, ORDER, USER, payload as any),
     ).rejects.toThrow(/could not be recorded/);
     expect(leases.size).toBe(0);
+  });
+
+  async function verifiedOnce() {
+    const first = makeDb({ orderRow: deliveredOrder, bookedBottles: 10 });
+    await service(first.db).verifyReceipt(REST, ORDER, USER, payload as any);
+    const movement = first.calls.rpc.find((c) => c.name === "apply_stock_movement");
+    expect(first.calls.creditInserts).toHaveLength(1);
+    return {
+      claim: first.calls.creditInserts[0],
+      after: {
+        orderRow: { ...deliveredOrder, ...first.calls.orderUpdates[0] },
+        bookedBottles: 10 + (movement?.args.p_delta ?? 0),
+        latestReconciledEvent: first.calls.receiptEvents[0],
+        latestReceiptPrice: first.calls.priceHistoryInserts[0] ?? null,
+      },
+    };
+  }
+
+  /** The claim the first verification raised, now on the ledger as `state`. */
+  const onLedger = (claim: Row, state = "open"): Row => ({
+    id: "claim-1",
+    ...claim,
+    state,
+  });
+  /** What a verification of `body` claims on an order nobody has claimed against. */
+  async function claimedFresh(body: Row): Promise<Row | null> {
+    const { db, calls } = makeDb({ orderRow: deliveredOrder, bookedBottles: 10 });
+    await service(db).verifyReceipt(REST, ORDER, USER, body as any);
+    return calls.creditInserts[0] ?? null;
+  }
+  const live = (rows: Row[]) => rows.filter((r) => r.state !== "written_off");
+
+  it("a correction restates the open claim to the corrected amount instead of leaving the old one", async () => {
+    const { claim, after } = await verifiedOnce();
+    expect(Number(claim.claimed_amount)).toBe(80);
+    const credits = [onLedger(claim)];
+    const { db, calls } = makeDb({ ...after, credits });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...payload,
+      acceptedQuantity: 7,
+      rejectedQuantity: 3,
+    } as any);
+
+    // Never a second claim ...
+    expect(calls.creditInserts).toEqual([]);
+    expect(credits).toHaveLength(1);
+    // ... and the open one now says the corrected money, scoped to this house,
+    // this order, this row and `open`.
+    expect(Number(credits[0].claimed_amount)).toBe(120);
+    expect(credits[0].state).toBe("open");
+    expect(calls.creditUpdates).toHaveLength(1);
+    expect(calls.creditUpdates[0].filters).toMatchObject({
+      restaurant_id: REST,
+      order_id: ORDER,
+      id: "claim-1",
+      state: "open",
+    });
+  });
+
+  it("a correction that changes the reason restates the one open claim to the new reason and amount", async () => {
+    const { claim, after } = await verifiedOnce();
+    expect(claim.reason).toBe("damaged");
+    // "2 refused as cracked" corrected to "2 never shipped": 8 accepted, none
+    // refused, against the same invoice for 10.
+    const corrected = {
+      ...payload,
+      note: "Only 8 came off the truck.",
+      acceptedQuantity: 8,
+      rejectedQuantity: 0,
+      rejectedReason: undefined,
+    };
+    const expected = await claimedFresh(corrected);
+    expect(expected).not.toBeNull();
+    expect(expected?.reason).not.toBe("damaged");
+    const credits = [onLedger(claim)];
+    const { db, calls } = makeDb({ ...after, credits });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, corrected as any);
+
+    expect(calls.creditInserts).toEqual([]);
+    expect(credits).toHaveLength(1);
+    expect(live(credits)).toHaveLength(1);
+    expect(credits[0]).toMatchObject({
+      id: "claim-1",
+      state: "open",
+      reason: expected!.reason,
+      claimed_amount: expected!.claimed_amount,
+      summary: expected!.summary,
+    });
+  });
+
+  it("a correction down to nothing owed sets the open claim aside instead of leaving it at the old amount", async () => {
+    const { claim, after } = await verifiedOnce();
+    const credits = [onLedger(claim)];
+    const { db, calls } = makeDb({ ...after, credits });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...payload,
+      note: "All 10 were fine after all.",
+      acceptedQuantity: 10,
+      rejectedQuantity: 0,
+      rejectedReason: undefined,
+    } as any);
+
+    expect(calls.creditInserts).toEqual([]);
+    expect(live(credits)).toEqual([]);
+    expect(credits[0].state).toBe("written_off");
+    expect(credits[0].notes).toMatch(/corrected count of this delivery found nothing owed/);
+    expect(credits[0].settled_by).toBe(USER);
+    expect(calls.creditUpdates[0].filters).toMatchObject({
+      restaurant_id: REST,
+      order_id: ORDER,
+      state: "open",
+    });
+  });
+
+  it("a correction that states no invoice price leaves the open claim as it was (owed, not proven nothing)", async () => {
+    const { claim, after } = await verifiedOnce();
+    const credits = [onLedger(claim)];
+    const { db, calls } = makeDb({ ...after, credits });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...payload,
+      invoiceUnitPrice: undefined,
+      acceptedQuantity: 7,
+      rejectedQuantity: 3,
+    } as any);
+
+    expect(calls.creditUpdates).toEqual([]);
+    expect(credits[0]).toMatchObject({ state: "open", claimed_amount: claim.claimed_amount });
+  });
+
+  it("a claim already with the vendor is not restated under them, and no second one is opened beside it", async () => {
+    const { claim, after } = await verifiedOnce();
+    const credits = [onLedger(claim, "requested")];
+    const { db, calls } = makeDb({ ...after, credits });
+
+    const order = await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...payload,
+      acceptedQuantity: 7,
+      rejectedQuantity: 3,
+    } as any);
+
+    // The read is scoped to `open`, so the requested claim is not restated;
+    // the insert for its reason is refused by the index. The verification
+    // itself still lands.
+    expect(calls.creditUpdates).toEqual([]);
+    expect(credits).toHaveLength(1);
+    expect(credits[0]).toMatchObject({ state: "requested", claimed_amount: claim.claimed_amount });
+    expect(calls.orderUpdates).toHaveLength(1);
+    expect(order.id).toBe(ORDER);
+  });
+
+  it("an open claim superseded by a reason the vendor already holds is set aside, and theirs is untouched", async () => {
+    const { claim, after } = await verifiedOnce();
+    const corrected = {
+      ...payload,
+      acceptedQuantity: 8,
+      rejectedQuantity: 0,
+      rejectedReason: undefined,
+    };
+    const expected = await claimedFresh(corrected);
+    const withVendor = {
+      id: "claim-0",
+      restaurant_id: REST,
+      order_id: ORDER,
+      reason: expected!.reason,
+      claimed_amount: 80,
+      state: "requested",
+    };
+    const credits = [withVendor, onLedger(claim)];
+    const { db, calls } = makeDb({ ...after, credits });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, corrected as any);
+
+    expect(calls.creditInserts).toEqual([]);
+    expect(credits.find((r) => r.id === "claim-0")).toMatchObject({ state: "requested", claimed_amount: 80 });
+    expect(credits.find((r) => r.id === "claim-1")).toMatchObject({ state: "written_off", reason: "damaged" });
+    expect(live(credits)).toHaveLength(1);
+  });
+
+  it("when the open claims cannot be read, nothing is restated or set aside", async () => {
+    const { claim, after } = await verifiedOnce();
+    const credits = [onLedger(claim)];
+    const { db, calls } = makeDb({
+      ...after,
+      credits,
+      creditsReadError: { message: "connection reset" },
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...payload,
+      acceptedQuantity: 10,
+      rejectedQuantity: 0,
+      rejectedReason: undefined,
+    } as any);
+
+    expect(calls.creditUpdates).toEqual([]);
+    expect(credits[0]).toMatchObject({ state: "open", claimed_amount: claim.claimed_amount });
+  });
+
+  // QA round 9c: the one open claim per order is the database's rule
+  // (`uq_pc_order_one_open_claim`); a raise that meets it restates instead.
+  const shortCount = {
+    ...payload,
+    note: "Only 8 came off the truck.",
+    acceptedQuantity: 8,
+    rejectedQuantity: 0,
+    rejectedReason: undefined,
+  };
+
+  it("a verdict-changing correction that could not see the open claim restates it once the index refuses a second", async () => {
+    const { claim, after } = await verifiedOnce();
+    const expected = await claimedFresh(shortCount);
+    const credits = [onLedger(claim)];
+    const { db, calls } = makeDb({
+      ...after,
+      credits,
+      oneOpenClaim: true,
+      creditsReadError: { message: "connection reset" },
+      creditsReadFailures: 1,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, shortCount as any);
+
+    expect(credits).toHaveLength(1);
+    expect(credits[0]).toMatchObject({
+      id: "claim-1",
+      state: "open",
+      reason: expected!.reason,
+      claimed_amount: expected!.claimed_amount,
+    });
+    expect(calls.creditInserts).toHaveLength(1);
+  });
+
+  it("when the open claims stay unreadable, the refused raise is tried once more and no second claim stands", async () => {
+    const { claim, after } = await verifiedOnce();
+    const credits = [onLedger(claim)];
+    const { db, calls } = makeDb({
+      ...after,
+      credits,
+      oneOpenClaim: true,
+      creditsReadError: { message: "connection reset" },
+    });
+
+    const svc = service(db);
+    const warn = jest.spyOn((svc as any).logger, "warn").mockImplementation(() => undefined);
+    await svc.verifyReceipt(REST, ORDER, USER, shortCount as any);
+
+    expect(warn.mock.calls.flat().join("\n")).toMatch(/its open claim could not be read to restate it/);
+    expect(credits).toEqual([onLedger(claim)]);
+    expect(calls.creditInserts).toHaveLength(2);
+    expect(calls.creditUpdates).toEqual([]);
+    expect(calls.orderUpdates).toHaveLength(1);
+  });
+
+  it.each([
+    ["CANCELLED", /This order was cancelled, so its delivery cannot be verified and nothing was changed/],
+    ["REJECTED", /This order was rejected, so its delivery cannot be verified/],
+    ["FAILED", /This order failed, so its delivery cannot be verified/],
+  ])("a %s order is refused in words and nothing is written", async (status, words) => {
+    const { db, calls, leases } = makeDb({
+      orderRow: { ...deliveredOrder, status },
+      bookedBottles: 10,
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, payload as any),
+    ).rejects.toThrow(words);
+    // The one-tap shape is refused the same way.
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any),
+    ).rejects.toThrow(words);
+    // In words for any order, not only wine (scope: all beverages, then foods).
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, payload as any),
+    ).rejects.toThrow(/If the delivery did arrive, receive it on a new order\./);
+    expect(calls.receiptEvents).toEqual([]);
+    expect(calls.creditInserts).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.priceHistoryInserts).toEqual([]);
+    expect(calls.rpc).toEqual([]);
+    expect(leases.size).toBe(0);
+  });
+
+  it("a COMPLETED order can still be re-verified (that is how a count is corrected)", async () => {
+    const { after } = await verifiedOnce();
+    const { db, calls } = makeDb({
+      ...after,
+      orderRow: { ...after.orderRow, status: "COMPLETED" },
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...payload,
+      acceptedQuantity: 7,
+      rejectedQuantity: 3,
+    } as any);
+    expect(calls.receiptEvents).toHaveLength(1);
   });
 });
