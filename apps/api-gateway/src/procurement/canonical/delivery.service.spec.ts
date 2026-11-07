@@ -702,7 +702,7 @@ describe("DeliveryService", () => {
       const flagged = [{ inventoryId: "i2", kind: "refused", reason: "why" }];
       const spy = jest.spyOn(DeliveryStockService.prototype, "repairPrintedCost").mockResolvedValueOnce({
         ok: true,
-        value: { repaired: [{ inventoryId: "i1", unitCost: 22 }], flagged },
+        value: { repaired: [{ inventoryId: "i1", unitCost: 22 }], flagged, changes: [] },
       } as never);
       const res = await service.verify(REST, DEL, "u1");
       spy.mockRestore();
