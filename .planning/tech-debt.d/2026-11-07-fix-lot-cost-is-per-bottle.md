@@ -25,9 +25,23 @@ QA round 12b (D1, C), same branch. A proposal keyed to the door count, which pri
 
 QA round 12b K. `2 bottle @ 264, pack 12, total 528` is self-consistent, so the total check passes and 264 is booked a bottle. No fact on the line can tell it from two real bottles. **Closes when** the door count's bottles are compared with the invoice line's (24 counted against 2 invoiced), or the founder declines it.
 
-## Lots already finalised at a printed price stay wrong — OPEN — 2026-11-07
+## Lots already finalised at a printed price stay wrong until re-verified — OPEN — 2026-11-07
 
-Production was not queried. A lot finalised wrong on `main` whose line is now refused keeps that cost: a refusal leaves a lot as it is (audit D4). Candidates: invoice lines with `uom in ('case','pack','split_case')` or `price_base_qty > 1` whose revaluation reason has no basis suffix. **Closes when** counted and revalued through `revalue_lot`.
+Production was not queried and nothing was backfilled. Since QA round 9a (2) (below), a lot is only corrected when someone re-verifies its delivery. **A one-off correction for the existing lots needs the founder's word.** Candidates are invoice lines with `uom in ('case','pack','split_case')` or `price_base_qty > 1` whose revaluation reason has no basis suffix. Two ways to correct them: call `repairPrintedCost` once per VERIFIED delivery, or count and revalue each lot through `revalue_lot`. **Closes when** that correction is run, or declined on the record.
+
+## A re-verify kept a lot finalised at the printed price — CLOSED — 2026-11-07
+
+QA round 9a (2), branch `fix/reverify-repairs-printed-cost`. `verify()` on an already VERIFIED delivery (`delivery.service.ts`, the `verified_at` branch) now calls `DeliveryStockService.repairPrintedCost`. Claim `QA-R9A-2-REVERIFY-REPAIRS-PRINTED-COST`. Forks, the session's call under the 2026-11-07 /goal:
+
+1. A lot is "booked at the printed price" when it is a final, live lot and its `unit_cost` equals a printed `unit_price` of its item, rounded to cents, and is not the per-bottle cost. Any other cost is taken as a person's revaluation and left alone. Rejected: re-posting every final lot, because `finalise_delivery_cost` would overwrite manual revaluations. A hand revaluation that happens to equal the printed price would be repaired too.
+2. When the line now resolves, `finalise_delivery_cost` re-posts the per-bottle cost, with a reason naming the printed price.
+3. When the line now refuses, the lot keeps its cost and the reason goes into `costNote` as `Item <id>: …`. Rejected: setting the lot back to provisional, which needs a new RPC and a migration. The web still renders `costNote` as one sentence.
+
+Not covered: unattached lines, meaning the one-item fallback. Their price is not keyed by item, so they are neither repaired nor flagged.
+
+QA round 10a (1)+(6), same branch. An accepted proposal's raw price now counts as printed, so a lot an earlier build booked at it is repaired. A final `invoice` lot whose cost is not a printed price and no longer matches its line is flagged `line_changed` with the current per-bottle cost; nothing is posted. Each flag carries a `kind`. Claim `QA-R10A-REVERIFY-PROPOSAL-AND-EDITED-LINE`. Forks, the session's call:
+
+4. A lot whose line was edited after it was costed is FLAGGED, not revalued. Rejected: revaluing from the current line; the lot does not say whether its line changed or a person revalued it, and a re-verify is not a second verification (ADR 0103).
 
 ## An unmapped unit, or a total that contradicts the price, reached the lot — CLOSED — 2026-11-07
 

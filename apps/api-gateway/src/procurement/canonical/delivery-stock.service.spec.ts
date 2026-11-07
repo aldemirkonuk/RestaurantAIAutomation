@@ -505,6 +505,57 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     expect(posted()).toEqual([]);
   });
 
+  // QA round 9a (2): a re-verify repairs what an earlier verify booked at 264.
+  const lot = (unit_cost: number, cost_state = "final") => ({ inventory_id: ITEM, unit_cost, cost_state, qty: 24 });
+  const repair = (lots: Record<string, unknown>[], ...lines: Record<string, unknown>[]) => {
+    db.rpcCalls.length = 0;
+    db.answers.inventory_lots = { data: lots, error: null };
+    db.answers.procurement_document_lines = { data: lines.map(invoiceLine), error: null };
+    return service.repairPrintedCost(REST, DEL, USER);
+  };
+
+  it("QA 9a: a re-verify revalues a lot finalised at the printed 264 to 22, and only that lot", async () => {
+    const r = await repair([lot(264)], {});
+    expect(r.ok && r.value.repaired.map((x) => x.unitCost)).toEqual([22]);
+    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([22]);
+    expect(String(posted()[0].args.p_reason)).toMatch(/re-verified: the printed 264 was booked/);
+    for (const other of [lot(21.5), lot(22), lot(264, "provisional")]) {
+      await repair([other], {});
+      expect(posted()).toEqual([]);
+    }
+  });
+
+  it("QA 9a: a lot at the printed price whose line now refuses keeps it, and the reason is returned", async () => {
+    const r = await repair([lot(264)], { pack_size: 1 });
+    expect(posted()).toEqual([]);
+    expect(r.ok && r.value.flagged.map((f) => f.reason).join()).toMatch(/finalised at the printed price 264.*how many bottles a case holds/);
+  });
+
+  it("QA 10a (1): a re-verify corrects a lot an earlier build booked at the raw proposed 240, or flags it", async () => {
+    db.answers.delivery_proposals = { data: [{ document_id: "inv-1", line_no: 1, unit_price_proposed: 240 }], error: null };
+    const r = await repair([lot(240)], {});
+    expect(r.ok && r.value.repaired.map((x) => x.source)).toEqual(["accepted_proposal"]);
+    expect(posted()[0].args).toMatchObject({ p_unit_cost: 20, p_cost_provenance: "manual" });
+    const kept = await repair([lot(240)], { pack_size: 1 });
+    expect(posted()).toEqual([]);
+    expect(kept.ok && kept.value.flagged[0]).toMatchObject({ kind: "refused" });
+    db.answers.delivery_proposals = { data: [], error: null };
+  });
+
+  it("QA 10a (6): a lot whose line was edited after it was costed is flagged, never revalued", async () => {
+    const invoiced = (unit_cost: number) => ({ ...lot(unit_cost), cost_provenance: "invoice" });
+    // Costed at 22 from `264 per case of 12`; the line now says 360 a case.
+    const r = await repair([invoiced(22)], { unit_price: 360 });
+    expect(posted()).toEqual([]);
+    expect(r.ok && r.value.flagged).toEqual([
+      expect.objectContaining({ inventoryId: ITEM, kind: "line_changed", reason: expect.stringMatching(/costed at 22 a bottle, but its invoice line now makes 30 a bottle/) }),
+    ]);
+    // A hand revaluation (`manual`) and a lot that still matches are left alone.
+    for (const quiet of [{ ...lot(25), cost_provenance: "manual" }, invoiced(22)]) {
+      const q = await repair([quiet], {});
+      expect(q.ok && q.value.flagged).toEqual([]);
+    }
+  });
 
   it("QA 10a (3)+(4): `24 pcs @ 22` posts 22; a credit-note row at a case price stays PROVISIONAL", async () => {
     await run({ uom: "each", pack_size: 1, qty: 24, unit_price: 22, line_total: 528, printed: { uom: "pcs" } });

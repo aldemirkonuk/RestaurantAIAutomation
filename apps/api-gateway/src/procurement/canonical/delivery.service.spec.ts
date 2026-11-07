@@ -684,6 +684,19 @@ describe("DeliveryService", () => {
       ).toEqual([]);
     });
 
+    it("a re-verify reports a printed-price lot it corrected or could not (QA 9a)", async () => {
+      db.answers.deliveries = { data: deliveryRow({ state: "VERIFIED", verified_at: "2026-08-15T11:00:00Z" }), error: null };
+      const spy = jest.spyOn(DeliveryStockService.prototype, "repairPrintedCost").mockResolvedValueOnce({
+        ok: true,
+        value: { repaired: [{ inventoryId: "i1" }], flagged: [{ inventoryId: "i2", reason: "its lot was finalised at 264: why" }] },
+      } as never);
+      const res = await service.verify(REST, DEL, "u1");
+      spy.mockRestore();
+      expect(res.ok && res.value.costNote).toBe(
+        "This delivery was already verified; its cost was posted then and is not posted twice. 1 item(s) had been booked at the invoice's printed price and now cost what one bottle costs. Item i2: its lot was finalised at 264: why",
+      );
+    });
+
     it("is a 404 for another tenant's delivery", async () => {
       db.answers.deliveries = { data: null, error: null };
       const res = await service.verify("rest-2", DEL, "u1");

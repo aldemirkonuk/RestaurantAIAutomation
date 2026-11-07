@@ -905,20 +905,26 @@ export class DeliveryService {
     const delivery = found.value;
 
     // A RE-VERIFY IS NOT A SECOND VERIFICATION. The stamp that exists is the
-    // one returned; the cost is not re-posted, because `finalise_delivery_cost`
-    // has already settled these lots and a second pass would write a
-    // revaluation row for a correction nobody made.
-    if (delivery.verified_at)
+    // one returned and the cost is not re-posted, with one exception (QA 9a):
+    // a lot finalised at the invoice's PRINTED price (QA 7c B1) is corrected,
+    // or, when its line is now refused, named as wrong instead of kept quietly.
+    if (delivery.verified_at) {
+      const fix = await this.stock.repairPrintedCost(restaurantId, deliveryId, userId);
+      let costNote = "This delivery was already verified; its cost was posted then and is not posted twice.";
+      if (!fix.ok) {
+        this.logger.error(`delivery ${deliveryId} re-verify could not repair its cost: ${fix.error}`);
+        costNote += ` A cost booked at the printed price could not be checked: ${fix.error}`;
+      } else {
+        const { repaired, flagged } = fix.value;
+        if (repaired.length)
+          costNote += ` ${repaired.length} item(s) had been booked at the invoice's printed price and now cost what one bottle costs.`;
+        for (const f of flagged) costNote += ` Item ${f.inventoryId}: ${f.reason}`;
+      }
       return {
         ok: true,
-        value: {
-          delivery,
-          alreadyVerified: true,
-          cost: null,
-          costNote:
-            "This delivery was already verified; its cost was posted then and is not posted twice.",
-        },
+        value: { delivery, alreadyVerified: true, cost: null, costNote },
       };
+    }
 
     if (delivery.state !== "AGREED")
       return {
