@@ -263,6 +263,8 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
           inventory_id: ITEM,
           qty_bottles: 10,
           unit_price: 142.5,
+          uom: "bottle",
+          pack_size: 1,
           description: "Öküzgözü",
           vendor_sku: null,
         },
@@ -299,6 +301,8 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
           inventory_id: ITEM,
           qty_bottles: 10,
           unit_price: 142.5,
+          uom: "bottle",
+          pack_size: 1,
           description: "Öküzgözü",
           vendor_sku: null,
         },
@@ -437,6 +441,75 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     expect(db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost")).toEqual(
       [],
     );
+  });
+  // QA round 7c B1. FAILING-FIRST: all four are red on origin/main 259feea3f,
+  // which posted the printed 264 and 142 as per-bottle costs.
+  const invoiceLine = (over: Record<string, unknown>) => ({
+    document_id: "inv-1",
+    line_no: 1,
+    inventory_id: ITEM,
+    qty_bottles: 24,
+    uom: "case",
+    pack_size: 12,
+    unit_price: 264,
+    price_base_qty: null,
+    price_base_uom: null,
+    ...over,
+  });
+  const posted = () =>
+    db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost");
+
+  it("B1: 2 cases @ 264 per case, pack 12, posts 22 a bottle", async () => {
+    db.answers.procurement_document_lines = {
+      data: [invoiceLine({})],
+      error: null,
+    };
+    const res = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(res.ok && res.value.finalised[0].unitCost).toBe(22);
+    expect(posted()[0].args.p_unit_cost).toBe(22);
+    // Re-derivable from the revaluation row's reason.
+    expect(String(posted()[0].args.p_reason)).toMatch(/264 per case of 12 = 22\.0000 per bottle/);
+  });
+
+  it("B1: 12 bottles @ 142 / KS(12) posts 11.83, what a two-place lot cost keeps", async () => {
+    db.answers.procurement_document_lines = {
+      data: [invoiceLine({ uom: "bottle", unit_price: 142, price_base_qty: 12 })],
+      error: null,
+    };
+    await service.finaliseAtVerified(REST, DEL, USER);
+    expect(posted()[0].args.p_unit_cost).toBe(11.83);
+    expect(String(posted()[0].args.p_reason)).toMatch(/11\.8333 per bottle/);
+  });
+
+  it("B1: a case price with no stated pack stays PROVISIONAL by name, never 264 or 0", async () => {
+    db.answers.procurement_document_lines = {
+      data: [invoiceLine({ pack_size: 1 })],
+      error: null,
+    };
+    const res = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(res.ok && res.value.stillProvisional).toEqual([
+      {
+        inventoryId: ITEM,
+        reason: expect.stringMatching(/not per bottle: .*how many bottles a case holds/),
+      },
+    ]);
+    expect(posted()).toEqual([]);
+  });
+
+  it("B1: the one-item fallback converts an unattached line; a later unreadable line unprices the item", async () => {
+    db.answers.procurement_document_lines = {
+      data: [invoiceLine({ inventory_id: null })],
+      error: null,
+    };
+    const one = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(one.ok && one.value.finalised[0].unitCost).toBe(22);
+
+    db.answers.procurement_document_lines = {
+      data: [invoiceLine({}), invoiceLine({ line_no: 2, pack_size: 1 })],
+      error: null,
+    };
+    const two = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(two.ok && two.value.finalised).toEqual([]);
   });
 });
 
