@@ -21,7 +21,7 @@
 import type { ReactElement } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render as rtlRender, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 /**
  * The manager view now renders IntegrationReturnNotice unconditionally too
@@ -1430,14 +1430,29 @@ describe('a manager may see, not approve', () => {
 });
 
 describe('the sender identity', () => {
-  it('says the address is the deployment’s and the control is not available', () => {
-    render(<ConnectionsNext />);
+  it('says the address is the deployment’s, and leads to choosing the house’s own mailbox', () => {
+    rtlRender(
+      <MemoryRouter initialEntries={['/connections']}>
+        <ConnectionsNext />
+        <Where />
+      </MemoryRouter>,
+    );
 
     expect(screen.getByText(/shared, not yours/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /use our own address/i })).toBeDisabled();
     expect(screen.getByText(/no per-restaurant sender exists/i)).toBeInTheDocument();
+    // The mail setup page is where the house picks which of its own connected
+    // mailboxes its letters leave from (founder /goal 2026-11-07).
+    const go = screen.getByRole('button', { name: "Send from the house's own mailbox" });
+    expect(go).toBeEnabled();
+    fireEvent.click(go);
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail&setup=1');
   });
 });
+
+function Where() {
+  const l = useLocation();
+  return <output data-testid="where">{l.pathname + l.search}</output>;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    THE COLLAPSE, 2026-09-04 — what arrived here when `/profile` and `/settings`

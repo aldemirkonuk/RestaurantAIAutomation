@@ -84,6 +84,7 @@ import { IntegrationReturnNotice } from '../../authorize-integration/Integration
  */
 
 import { useEffect, useId, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 // The one write this page makes to a text sender: a manager ending the house's
 // use of it (ADR 0114 — the attachment is the house's, and a manager may stop
 // it). Declaring one is still disabled and still carries the server's reason.
@@ -168,6 +169,7 @@ export const REGISTER_ANCHORS = [
 
 export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   const d = useConnectionsNextData();
+  const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
 
   /**
@@ -583,7 +585,14 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               lastLabel="Last sent"
               last={null}
               lastDetail="No per-letter send record is kept against this address, so what it last sent is not on this row."
-              controls={[{ label: 'Use our own address', disabled: true }]}
+              // The house's own connected mailbox can carry its letters
+              // instead; the choice lives on the mail setup page.
+              controls={[
+                {
+                  label: "Send from the house's own mailbox",
+                  onClick: () => navigate('/communications?tab=mail&setup=1'),
+                },
+              ]}
               stopNote={plainReason(
                 d.sender.data?.perHouse.reason,
                 'No per-restaurant sender exists yet.',

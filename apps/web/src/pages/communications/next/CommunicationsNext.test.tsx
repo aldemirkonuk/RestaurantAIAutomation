@@ -1022,7 +1022,7 @@ describe('Mail and Letters', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail');
   });
 
-  it.each([['?tab=mail'], ['?with=vendor%3Ap1'], ['?thread=gm%3Aabc']])('%s opens on Mail', (q) => {
+  it.each([['?tab=mail'], ['?with=vendor%3Ap1'], ['?thread=gm%3Aabc'], ['?setup=1']])('%s opens on Mail', (q) => {
     at(`/communications${q}`);
     expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
     expect(tabs()[0]).toHaveAttribute('aria-current', 'page');
@@ -1084,8 +1084,8 @@ describe('Mail and Letters', () => {
     expect(tabs()[0]).toHaveTextContent('Mail · 3');
   });
 
-  it('Letters leaves the person and thread behind', () => {
-    at('/communications?tab=mail&with=vendor%3Ap1&thread=gm%3Aabc');
+  it('Letters leaves the person, thread and mail setup behind', () => {
+    at('/communications?tab=mail&with=vendor%3Ap1&thread=gm%3Aabc&setup=1');
     fireEvent.click(tabs()[1]);
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications$/);
     expect(screen.getByText('Replies · 30 days')).toBeInTheDocument();
