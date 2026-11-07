@@ -1179,6 +1179,17 @@ describe("DeliveryStockService — a paper not in the house's money is never cos
     expect(r.ok && r.value.stillProvisional[0]?.reason).toMatch(/accepted proposal's price 55 is on an invoice not in this house's money/);
   });
 
+  it("QA round 19 (1): a house with no currency named posts nothing, the line-only and proposal fallbacks included, and says why", async () => {
+    for (const house of [{ data: { currency: null }, error: null }, { data: { currency: "tl" }, error: null }]) {
+      db.rpcCalls.length = 0;
+      const plain = await verify(house);
+      const offered = await verify(house, [{ document_id: "inv-1", line_no: 1, unit_price_proposed: 55, status: "accepted" }]);
+      expect(posts()).toEqual([]);
+      for (const r of [plain, offered])
+        expect(r.ok && r.value.stillProvisional[0]?.reason).toMatch(/this house( has not named the currency it keeps its costs in|'s currency is recorded as "tl", which is not a currency code)/);
+    }
+  });
+
   it("an unreadable house currency is an error, never read as 'not named'", async () => {
     const r = await verify({ data: null, error: { message: "timeout" } });
     expect(!r.ok && r.error).toMatch(/the currency this house keeps its costs in could not be read: timeout/);

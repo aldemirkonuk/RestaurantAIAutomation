@@ -85,7 +85,18 @@ export function makeMockDb(): MockDb {
         return state.insertAnswers[table] ?? { data: null, error: null };
       if (verb === "update")
         return state.updateAnswers[table] ?? { data: null, error: null };
-      return state.answers[table] ?? { data: null, error: null };
+      // Fixtures live in a USD house reading USD papers unless they say
+      // otherwise (QA round 19 (1): an unnamed house currency costs nothing).
+      if (table === "restaurants" && !state.answers[table])
+        return { data: { currency: "USD" }, error: null };
+      const read = state.answers[table] ?? { data: null, error: null };
+      if (table !== "procurement_documents" || !Array.isArray(read.data)) return read;
+      return {
+        ...read,
+        data: (read.data as Record<string, unknown>[]).map((r) =>
+          r && typeof r === "object" && !("currency" in r) ? { ...r, currency: "USD" } : r,
+        ),
+      };
     };
 
     for (const v of [

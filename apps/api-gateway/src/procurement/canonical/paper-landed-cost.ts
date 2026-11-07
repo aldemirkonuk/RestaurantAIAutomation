@@ -29,6 +29,7 @@
  * Tax: see `houseTaxForLotCost`.
  */
 
+import { currencyCode } from "../../common/iso-4217";
 import { normalizeUom, toBottles, UOMS } from "../documents/document-types";
 import { LineKind } from "../documents/parsed-document";
 import {
@@ -168,21 +169,26 @@ function num(v: unknown): number | null {
 
 const lineKey = (r: PaperLineRow) => `${r.document_id}:${r.line_no}`;
 
-/** An ISO 4217 code as written, or null when absent; "?" when unreadable. */
+/** An active ISO 4217 code (membership, not shape: `common/iso-4217`), null
+ * when absent, "?" when written but not a currency ("TL", "US$", "ZZZ"). */
 export function currencyOf(v: string | null | undefined): string | null {
   if (v == null || String(v).trim() === "") return null;
-  const c = String(v).trim().toUpperCase();
-  return /^[A-Z]{3}$/.test(c) ? c : "?";
+  return currencyCode(String(v)) ?? "?";
 }
 
-/** QA round 15 (5): why a paper's money is not the house's (null when it is,
- * or when the house names none). No rate is recorded, so nothing converts. */
+/** QA rounds 15 (5) and 19: why a paper is not costed in the house's money,
+ * or null when it is. No rate is recorded, so nothing converts; and a house
+ * that has not named its money (restaurants.currency NULL, or not a code) has
+ * no money to cost in, so every paper waits for it in words. */
 export function notHouseMoney(
   paperCurrency: string | null | undefined,
   houseCurrency: string | null | undefined,
 ): string | null {
   const house = currencyOf(houseCurrency);
-  if (!house || house === "?") return null;
+  if (!house)
+    return "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again";
+  if (house === "?")
+    return `this house's currency is recorded as "${String(houseCurrency).trim()}", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again`;
   const money = currencyOf(paperCurrency);
   if (money === house) return null;
   if (money == null)
@@ -458,7 +464,6 @@ export function landDelivery(input: {
   houseCurrency?: string | null;
 }): DeliveryLandedCost {
   const house = houseTaxForLotCost();
-  const houseMoney = currencyOf(input.houseCurrency);
   const foreign = new Set<string>();
   const moneyOf = new Map<string, Set<string>>();
   const byItem = new Map<string, LandedPrice>();
@@ -682,9 +687,6 @@ export function landDelivery(input: {
       stamp == null
         ? `What this cost holds for tax is not stated (cost tax basis: none). ${taxSaid}`
         : `This cost is stamped ${stamp}. ${taxSaid}`,
-      ...((!houseMoney || houseMoney === "?") && monies.length === 1
-        ? [`Costed in ${monies[0]}, the invoice's currency: this house has not named the currency it keeps its costs in.`]
-        : []),
     ].join(" ");
     byItem.set(key, {
       unitCost,

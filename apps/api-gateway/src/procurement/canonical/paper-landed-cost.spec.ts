@@ -48,6 +48,7 @@ function line(over: Partial<PaperLineRow> = {}): PaperLine {
 const head = (over: Partial<PaperHeaderRow> = {}): PaperHeaderRow => ({
   id: "inv-1",
   doc_number: "A-1",
+  currency: "USD",
   ...over,
 });
 const run = (
@@ -59,6 +60,7 @@ const run = (
     papers: [head(h)],
     lines,
     booked: new Map(Object.entries(booked)),
+    houseCurrency: "USD",
   });
 const cost = (r: ReturnType<typeof run>, id: string) =>
   r.byItem.get(id)?.unitCost;
@@ -221,6 +223,7 @@ describe("landDelivery", () => {
         [A, 10],
         [B, 10],
       ]),
+      houseCurrency: "USD",
     });
     expect(r.byItem.size).toBe(0);
     expect(r.held.get(A)).toMatch(
@@ -241,6 +244,7 @@ describe("landDelivery", () => {
         }),
       ],
       booked: new Map([[A, 20]]),
+      houseCurrency: "USD",
     });
     // (100 + 10 + 120) / 20 = 11.50
     expect(cost(r, A)).toBe(11.5);
@@ -332,15 +336,23 @@ describe("a paper not in the house's money is never costed as the house's (QA ro
     expect([cost(r, A), cost(r, B), r.foreign.size]).toEqual([60.6, 40.4, 0]);
   });
 
-  it("an item on a USD and a EUR paper is held: currencies are never added", () => {
-    const r = land([{ currency: "USD" }, { id: "inv-2", currency: "EUR" }], [line(), line({ document_id: "inv-2" })], null, 20);
+  it("an item on a USD and a EUR paper in a USD house is held: currencies are never added", () => {
+    const r = land([{ currency: "USD" }, { id: "inv-2", currency: "EUR" }], [line(), line({ document_id: "inv-2" })], "USD", 20);
     expect(cost(r, A)).toBeUndefined();
-    expect(r.held.get(A)).toMatch(/its invoices are in USD and EUR, and costs in different currencies are never added together/);
+    expect(r.held.get(A)).toMatch(/its invoice is in EUR and this house keeps its costs in USD/);
   });
 
-  it("a house with no currency named costs the paper in the paper's money, and says so", () => {
-    const r = land([{ currency: "EUR" }], [line()], null);
-    expect(cost(r, A)).toBe(60);
-    expect(r.byItem.get(A)?.basis).toMatch(/Costed in EUR, the invoice's currency: this house has not named the currency it keeps its costs in\./);
+  // QA round 19 (1): an unnamed or unreadable house currency costs nothing.
+  it.each([
+    ["EUR", null, /this house has not named the currency it keeps its costs in, so no invoice is costed in it yet/],
+    [null, null, /this house has not named the currency/],
+    ["TRY", "tl", /this house's currency is recorded as "tl", which is not a currency code/],
+    ["ZZZ", "ZZZ", /this house's currency is recorded as "ZZZ", which is not a currency code/],
+    ["TL", "TRY", /gives its currency as "TL", which is not a currency code/],
+  ])("a %s paper in a %s house is held in words, never costed", (paper, house, why) => {
+    const r = land([{ currency: paper }], [line()], house);
+    expect(r.byItem.size).toBe(0);
+    expect(r.held.get(A)).toMatch(why);
+    expect(r.papers[0].leftOut).toMatch(/^Nothing on it was costed: /);
   });
 });
