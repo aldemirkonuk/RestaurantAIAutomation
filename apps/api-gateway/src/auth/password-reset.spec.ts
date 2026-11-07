@@ -13,6 +13,12 @@ import { BadRequestException } from "@nestjs/common";
  * exception) is enough to leak account existence to a scripted probe.
  */
 
+/**
+ * The reset mail is sent off the request's clock (QA round 11, R11-04), so a
+ * spec that counts mails lets the detached send run first.
+ */
+const flushMail = () => new Promise((r) => setImmediate(r));
+
 interface TableConfig {
   users?: { data: any; error?: any };
   passwordResetsSelect?: { data: any; error?: any };
@@ -122,6 +128,7 @@ describe("AuthService#requestPasswordReset — enumeration safety", () => {
     });
 
     const result = await svc.requestPasswordReset("ada@x.com", "1.2.3.4");
+    await flushMail();
 
     expect(result).toEqual({ sent: true });
     expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
@@ -154,6 +161,7 @@ describe("AuthService#requestPasswordReset — enumeration safety", () => {
     );
 
     await svc.requestPasswordReset("ada@x.com", "1.2.3.4");
+    await flushMail();
 
     expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
     const html = (gmail.sendEmail as jest.Mock).mock.calls[0][0].html as string;
@@ -170,6 +178,7 @@ describe("AuthService#requestPasswordReset — enumeration safety", () => {
     });
 
     const result = await svc.requestPasswordReset("nobody@x.com", "1.2.3.4");
+    await flushMail();
 
     expect(result).toEqual({ sent: true });
     expect(gmail.sendEmail).not.toHaveBeenCalled();
@@ -186,6 +195,7 @@ describe("AuthService#requestPasswordReset — enumeration safety", () => {
     });
 
     const result = await svc.requestPasswordReset("ada@x.com", "1.2.3.4");
+    await flushMail();
 
     expect(result).toEqual({ sent: true });
     expect(gmail.sendEmail).not.toHaveBeenCalled();
@@ -205,6 +215,7 @@ describe("AuthService#requestPasswordReset — enumeration safety", () => {
     });
 
     const result = await svc.requestPasswordReset("ada@x.com", "1.2.3.4");
+    await flushMail();
 
     expect(result).toEqual({ sent: true });
     expect(gmail.sendEmail).not.toHaveBeenCalled();
@@ -225,6 +236,7 @@ describe("AuthService#requestPasswordReset — enumeration safety", () => {
     });
 
     const result = await svc.requestPasswordReset("ada@x.com", "1.2.3.4");
+    await flushMail();
 
     expect(result).toEqual({ sent: true });
     expect(gmail.sendEmail).toHaveBeenCalledTimes(1);
@@ -236,6 +248,7 @@ describe("AuthService#requestPasswordReset — enumeration safety", () => {
     });
 
     await svc.requestPasswordReset("  Ada@X.COM  ", "1.2.3.4");
+    await flushMail();
 
     // Prove the lookup path ran (from("users") called) rather than asserting
     // on a specific eq() call, since eq() is a shared stub across chains.

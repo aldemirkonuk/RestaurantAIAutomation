@@ -66,6 +66,7 @@ import {
   unprovenPasswordHasLapsed,
 } from "./unproven-address";
 import { normalizeEmail } from "../passkeys/sign-in-codes.service";
+import { isFreshSignIn, STEP_UP_REQUIRED } from "../passkeys/passkeys.service";
 import {
   ORG_ROW_INSERT_ONLY,
   orgRoleForHouseGrant,
@@ -731,6 +732,14 @@ export class AuthService {
       throw new UnauthorizedException("Invalid refresh token");
     }
 
+    // R11-07: a refresh token its holder signed out with mints nothing.
+    if (await this.tokenBlacklistService.isBlacklisted(refreshToken)) {
+      throw new UnauthorizedException({
+        message: "This session was signed out. Sign in again.",
+        code: SESSION_ENDED,
+      });
+    }
+
     const { data: user, error: userError } = await this.databaseService.supabase
       .from("users")
       .select("*")
@@ -813,8 +822,22 @@ export class AuthService {
 
   /**
    * Logout (invalidate tokens)
+   *
+   * QA round 11, R11-07: only the 15-minute access token was refused after a
+   * sign-out; the 7-day refresh token on the same device went on minting
+   * pairs. The refresh token this device holds is now refused too, until it
+   * would have expired. It is checked against the refresh secret and must
+   * belong to the person signing out, so a caller cannot use this route to
+   * end somebody else's session. What this does NOT end: refresh tokens
+   * minted earlier on the device (every refresh issues a new one) or copied
+   * off it, and open sockets -- ending those needs a server-side session
+   * record, which is the founder's call (see the PR).
    */
-  async logout(userId: string, accessToken?: string): Promise<void> {
+  async logout(
+    userId: string,
+    accessToken?: string,
+    refreshToken?: unknown,
+  ): Promise<void> {
     if (accessToken) {
       const decoded = this.jwtService.decode(accessToken) as {
         exp?: number;
@@ -822,6 +845,22 @@ export class AuthService {
       if (decoded?.exp) {
         const expiresAt = new Date(decoded.exp * 1000);
         await this.tokenBlacklistService.blacklistToken(accessToken, expiresAt);
+      }
+    }
+    if (typeof refreshToken === "string" && refreshToken.length > 0) {
+      let payload: { sub?: string; exp?: number } | null = null;
+      try {
+        payload = this.jwtService.verify(refreshToken, {
+          secret: this.jwtRefreshSecret,
+        });
+      } catch {
+        payload = null; // expired or not ours: nothing to end
+      }
+      if (payload?.sub === userId && typeof payload.exp === "number") {
+        await this.tokenBlacklistService.blacklistToken(
+          refreshToken,
+          new Date(payload.exp * 1000),
+        );
       }
     }
     this.logger.log(`User logged out: ${userId}`);
@@ -3903,6 +3942,18 @@ export class AuthService {
       if (!valid) {
         throw new UnauthorizedException("Current password is incorrect");
       }
+    } else if (!isFreshSignIn(session.authTime)) {
+      // QA round 11, R11-08: with no password to prove, ADDING one asked for
+      // nothing but a live access token -- a stolen one bought a durable
+      // email+password sign-in that outlived it. The passkey enrolment gate
+      // (passkeys.service.ts assertProvedItIsYou, founder 2026-09-25 item 29)
+      // applies: a sign-in in the last ten minutes, else sign in again. 403,
+      // never 401, so the web does not refresh and retry it silently.
+      throw new ForbiddenException({
+        code: STEP_UP_REQUIRED,
+        message:
+          "You signed in more than ten minutes ago. Sign in again, then add your password. Nothing was changed.",
+      });
     }
 
     const passwordHash = await bcrypt.hash(newPassword, this.SALT_ROUNDS);
@@ -4031,24 +4082,37 @@ export class AuthService {
       "https://mudavym.com";
     const resetUrl = `${frontendUrl}/reset-password?token=${reset.token}`;
 
+    // Not awaited (QA round 11, R11-04): the send took ~300 ms that an
+    // unknown address never spent, so the response time said whether the
+    // account exists -- what the doc comment above says it must not. The
+    // emailed sign-in code already sends this way (sign-in-codes.service.ts).
+    void this.sendPasswordResetMail(normalizedEmail, user.name, resetUrl);
+
+    return { sent: true };
+  }
+
+  /** The reset mail, sent off the request's clock; failures are logged only. */
+  private async sendPasswordResetMail(
+    to: string,
+    name: string,
+    resetUrl: string,
+  ): Promise<void> {
     try {
       const { passwordResetEmailTemplate } =
         await import("../communications/email-templates");
       const result = await this.gmailService.sendEmail({
-        to: [normalizedEmail],
+        to: [to],
         subject: "Reset your Mudavym password",
-        html: passwordResetEmailTemplate({ name: user.name, resetUrl }),
+        html: passwordResetEmailTemplate({ name, resetUrl }),
       });
       if (!result.success) {
         this.logger.warn(
-          `Password reset email not delivered to ${normalizedEmail}: ${result.error}`,
+          `Password reset email not delivered to ${to}: ${result.error}`,
         );
       }
     } catch (err) {
       this.logger.error(`Failed to send password reset email: ${err.message}`);
     }
-
-    return { sent: true };
   }
 
   /**

@@ -116,7 +116,11 @@ function makeAuthService(userRow: Row) {
       ),
     } as any,
     { supabase: { from } } as any,
-    { blacklistToken: jest.fn() } as any,
+    // refreshAccessToken asks whether the refresh token was signed out (R11-07).
+    {
+      blacklistToken: jest.fn(),
+      isBlacklisted: jest.fn().mockResolvedValue(false),
+    } as any,
     {} as any,
   );
 
