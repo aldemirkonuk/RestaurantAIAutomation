@@ -6,9 +6,22 @@
  * offers the graph.
  */
 
-import { describe, expect, it } from 'vitest';
+import { cloneElement, type ReactElement } from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import { seats, service, restock } from './rp-registers-house';
+import { week } from './rp-registers-trade';
 import { planCombo } from './rp-combo';
+import { ComboPlot } from './rp-plot';
+
+vi.mock('recharts', async () => {
+  const actual = await vi.importActual<typeof import('recharts')>('recharts');
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children }: { children: ReactElement }) =>
+      cloneElement(children, { width: 640, height: 320 } as never),
+  };
+});
 
 const ctx = { days: 90 };
 
@@ -76,5 +89,38 @@ describe('seats, service and restock offer bars and a line', () => {
     expect(ms[0].values).toEqual([4, null]);
     const plan = planCombo(view.cats!, undefined);
     expect(plan?.rows.map((r) => r.line)).toEqual([4, null]);
+  });
+});
+
+describe('what the combination says and leaves blank', () => {
+  it('a weekday seen once has no spread: a gap in the line, a dash in the table, never 0', () => {
+    const raw = {
+      weekdayProfile: [
+        { day: 'Mon', mean: 3, stdev: null, n: 1 },
+        { day: 'Tue', mean: 4, stdev: 1.2, n: 5 },
+      ],
+    };
+    const view = week.view(week.select(raw) as never, ctx);
+    const spread = view.cats?.measures?.find((m) => m.key === 'spread');
+    expect(spread?.values).toEqual([null, 1.2]);
+    expect(view.table?.rows[0].cells[2]).toBe('—');
+  });
+
+  it('the room reads "Taken", then "Average check (per check)", without echoing a unit', () => {
+    const view = seats.view(seats.select(SEATS) as never, ctx);
+    render(<ComboPlot series={view.cats!} pick={{ bars: 'checks', line: 'avg' }} />);
+    expect(
+      screen.getByText('Bars: Checks, on the left scale. Line: Average check (per check), on the right scale.'),
+    ).toBeInTheDocument();
+  });
+
+  it('the reorder list names the risk in words, not "in chance of running out"', () => {
+    const view = restock.view(restock.select(RESTOCK) as never, ctx);
+    render(<ComboPlot series={view.cats!} />);
+    expect(
+      screen.getByText(
+        'Bars: Stockout risk (chance of running out before the delivery), on the left scale. Line: Days of cover (days), on the right scale.',
+      ),
+    ).toBeInTheDocument();
   });
 });

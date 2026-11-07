@@ -373,7 +373,7 @@ const pacing = analysis<PacingRegister>({
 /* ───────────────────────────────────────────────── 4. the week's shape ── */
 
 export interface WeekRegister {
-  weekdayProfile: Array<{ day: string; mean: number; stdev: number; n: number }>;
+  weekdayProfile: Array<{ day: string; mean: number; stdev: number | null; n: number }>;
   bestDay: string | null;
   worstDay: string | null;
   /** Since 2026-09-03: true when an extreme is shared and both are withheld. */
@@ -397,7 +397,8 @@ const week = analysis<WeekRegister>({
       weekdayProfile: arr(d.weekdayProfile).map((p) => ({
         day: str(p.day),
         mean: num(p.mean) ?? 0,
-        stdev: num(p.stdev) ?? 0,
+        // Null stays null: one observation has no sample spread (not zero).
+        stdev: num(p.stdev),
         n: num(p.n) ?? 0,
       })),
       bestDay: (d.bestDay ?? null) as string | null,
@@ -470,7 +471,9 @@ const week = analysis<WeekRegister>({
             label: 'Spread',
             unit: 'bottles/day',
             format: (v) => figure(v),
-            values: w.weekdayProfile.map((d) => (d.n > 0 ? Number(d.stdev.toFixed(2)) : null)),
+            values: w.weekdayProfile.map((d) =>
+              d.n > 0 && d.stdev != null ? Number(d.stdev.toFixed(2)) : null,
+            ),
           },
           {
             key: 'seen',
