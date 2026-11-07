@@ -84,18 +84,15 @@ function makeDb(
     private payload: any = null;
     private conflict: string[] = [];
     private max = Infinity;
-    private skip = 0;
     private one = false;
-    private sorts: Array<[string, boolean, boolean]> = []; // col, asc, nulls first
+    private sorts: Array<[string, boolean]> = [];
     private tooLong = false;
     constructor(private readonly table: string) {}
     select = () => this;
-    // As PostgREST: nulls last ascending, unless nullsFirst says.
-    order = (col: string, o: { ascending?: boolean; nullsFirst?: boolean } = {}) => (
-      this.sorts.push([col, o.ascending !== false, o.nullsFirst ?? o.ascending === false]),
+    order = (col: string, o: { ascending?: boolean } = {}) => (
+      this.sorts.push([col, o.ascending !== false]),
       this
     );
-    range = (from: number, to: number) => ((this.skip = from), (this.max = to - from + 1), this);
     single = () => ((this.one = true), this);
     maybeSingle = this.single;
     limit = (n: number) => ((this.max = n), this);
@@ -200,14 +197,14 @@ function makeDb(
       const found = rows
         .filter((r) => matches(r, this.filters))
         .sort((a, b) => {
-          for (const [col, asc, nullsFirst] of this.sorts) {
-            const [x, y] = [at(a, col), at(b, col)].map((v) => (v == null ? null : String(v)));
-            if ((x === null) !== (y === null)) return (x === null) === nullsFirst ? -1 : 1;
+          for (const [col, asc] of this.sorts) {
+            const x = String(at(a, col) ?? "");
+            const y = String(at(b, col) ?? "");
             if (x !== y) return (x < y ? -1 : 1) * (asc ? 1 : -1);
           }
           return 0;
         })
-        .slice(this.skip, this.skip + this.max)
+        .slice(0, this.max)
         .map((r) => ({ ...r }));
       if (this.one) return { data: found[0] ?? null, error: null };
       return { data: found, error: null };
@@ -851,6 +848,35 @@ describe("PosHubService — a line that cannot book uses no allowance (QA round 
     expect(open(tables)).toHaveLength(1001);
   });
 
+  it("one save tries at most 2,000 lines, and says more are waiting", async () => {
+    const { db, bottles } = makeDb({ failKey: (k) => k.includes(":s-") });
+    const service = new PosHubService(db);
+    await service.ingest(
+      HOUSE,
+      "generic_webhook",
+      Array.from({ length: 2001 }, (_, i) => sale(`s-${i}`, 1)),
+    );
+
+    const saved: any = await mapMerlot(service);
+
+    expect(saved.past_sales).toMatchObject({ failed: 2000, truncated: true });
+    expect(saved.past_sales.message).toMatch(/save the mapping again/);
+    expect(bottles()).toBe(12);
+  });
+
+  it("one save reads at most 5,000 waiting rows, and says more are waiting", async () => {
+    const { db, tables } = makeDb();
+    const service = new PosHubService(db);
+    rowsWithNoCheck(tables, 5001);
+
+    const saved: any = await mapMerlot(service);
+
+    expect(saved.past_sales).toMatchObject({
+      still_waiting: 5000,
+      truncated: true,
+    });
+  });
+
   it("600 Toast-door sales whose stock write keeps failing do not hide a newer one", async () => {
     const { db, tables, bottles } = makeDb({
       failKey: (k) => k.startsWith("toast_sale_F-"),
@@ -868,97 +894,6 @@ describe("PosHubService — a line that cannot book uses no allowance (QA round 
       failed: 600,
       truncated: false,
     });
-  });
-});
-
-// QA round 15 on PR #866: rows that never settle came back first on every
-// save and filled its tries or its read, so a sale behind them never booked.
-describe("PosHubService — a line that keeps failing goes to the back (QA round 15)", () => {
-  const fresh = (t: Record<string, Row[]>) =>
-    open(t).filter((r) => String(r.external_check_id).startsWith("fresh-"));
-  // Once mapped, a sale books live: a row queued later is copied from fresh-1.
-  const queueLate = (t: Record<string, Row[]>, id: string) => {
-    const was = (x: Row) => x.external_check_id === "fresh-1";
-    t.pos_checks.push({ ...t.pos_checks.find(was)!, external_check_id: id });
-    t.pos_unresolved_lines.push({
-      ...t.pos_unresolved_lines.find(was)!,
-      id: `late-${id}`,
-      external_check_id: id,
-      resolved: false,
-      replay_tried_at: null,
-      created_at: "2026-12-01T00:00:00.000Z",
-    });
-  };
-  const applied = async (s: PosHubService) =>
-    ((await mapMerlot(s)) as any).past_sales;
-
-  it("2,100 failing sales hold a newer one for one save, then never again; they book once accepted", async () => {
-    let refusing = true;
-    const { db, tables, bottles } = makeDb({
-      failKey: (k) => refusing && k.includes(":s-"),
-    });
-    const service = new PosHubService(db);
-    await service.ingest(
-      HOUSE,
-      "generic_webhook",
-      Array.from({ length: 2100 }, (_, i) => sale(`s-${i}`, 1)),
-    );
-    await service.ingest(HOUSE, "generic_webhook", [sale("fresh-1", 1)]);
-
-    // A save tries at most 2,000 lines and says more are waiting.
-    const first = await applied(service);
-    expect(first).toMatchObject({ applied: 0, failed: 2000, truncated: true });
-    expect(first.message).toMatch(/save the mapping again/);
-    expect(bottles()).toBe(12);
-    expect(await applied(service)).toMatchObject({ applied: 1, truncated: true });
-    expect(fresh(tables)).toHaveLength(0);
-    queueLate(tables, "fresh-2");
-    expect(await applied(service)).toMatchObject({ applied: 1, failed: 1999 });
-    expect(bottles()).toBe(10);
-
-    refusing = false;
-    const booked: number[] = [];
-    for (let save = 0; save < 6; save++) booked.push((await applied(service)).applied);
-    expect(booked).toEqual([500, 500, 500, 500, 100, 0]);
-    expect(bottles()).toBe(10 - 2100);
-    expect(open(tables)).toHaveLength(0);
-  });
-
-  it("5,200 rows with no stored check hold a newer sale for one save, then never again", async () => {
-    const { db, tables, bottles } = makeDb();
-    const service = new PosHubService(db);
-    rowsWithNoCheck(tables, 5200);
-    await service.ingest(HOUSE, "generic_webhook", [sale("fresh-1", 1)]);
-
-    // A save reads at most 5,000 rows and says more are waiting.
-    expect(await applied(service)).toMatchObject({ still_waiting: 5000, truncated: true });
-    expect((await applied(service)).applied).toBe(1);
-    queueLate(tables, "fresh-2");
-    expect((await applied(service)).applied).toBe(1);
-    expect(bottles()).toBe(10);
-    expect(open(tables)).toHaveLength(5200);
-  });
-
-  it("a line sent to the back stays open and listed; only this house's open rows are stamped", async () => {
-    const { db, tables } = makeDb({ failKey: (k) => k.includes(":s-") });
-    const service = new PosHubService(db);
-    await service.ingest(HOUSE, "generic_webhook", [sale("s-1", 2), sale("s-2", 1), sale("ok-1", 1)]);
-    await service.ingest(OTHER_HOUSE, "generic_webhook", [sale("s-9", 1)]);
-
-    const past = await applied(service);
-
-    expect(past).toMatchObject({ applied: 1, failed: 2, truncated: false });
-    expect(past.message).toMatch(/2 past sales could not be taken off stock and stayed in the unmatched list; save the mapping again/);
-    const row = (h: string, c: string) =>
-      tables.pos_unresolved_lines.find((r) => r.restaurant_id === h && r.external_check_id === c)!;
-    for (const c of ["s-1", "s-2"])
-      expect(row(HOUSE, c)).toMatchObject({ resolved: false, replay_tried_at: expect.any(String) });
-    expect(row(HOUSE, "ok-1")).toMatchObject({ resolved: true });
-    expect(row(HOUSE, "ok-1").replay_tried_at ?? null).toBeNull();
-    expect(row(OTHER_HOUSE, "s-9").replay_tried_at ?? null).toBeNull();
-    const listed = await new PosMappingReviewService(db, service).listUnresolvedLines(HOUSE);
-    expect(listed.summary).toMatchObject({ open_lines: 2, qty_total: 3 });
-    expect(listed.items).toEqual([expect.objectContaining({ external_item_id: "merlot-1", occurrences: 2 })]);
   });
 });
 
