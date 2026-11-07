@@ -119,11 +119,11 @@ describe('how mail arrives', () => {
 
   it('an address that could not be made says why', async () => {
     answer(view({ arrival: { domainReady: true, address: null, failed: null } }));
-    api.post.mockRejectedValue(fail(503, "The house's Mudavym address could not be made. Nothing was changed; try again."));
+    api.post.mockRejectedValue(fail(500, 'Internal server error'));
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Make the address' }));
     expect((await screen.findByTestId('setup-make-failed')).textContent).toBe(
-      "The house's Mudavym address could not be made. Nothing was changed; try again.",
+      "The house's Mudavym address could not be made; try again.",
     );
   });
 
@@ -234,11 +234,11 @@ describe('the test letter', () => {
 
   it('a test letter that could not be started says why', async () => {
     answer(view());
-    api.post.mockRejectedValue(fail(503, 'The test letter could not be started. Nothing was changed; try again.'));
+    api.post.mockRejectedValue(fail(503, 'invalid_grant: Token has been expired or revoked.'));
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Send a test letter' }));
     expect((await screen.findByTestId('setup-test-failed')).textContent).toBe(
-      'The test letter could not be started. Nothing was changed; try again.',
+      'The test letter could not be started; try again.',
     );
   });
 

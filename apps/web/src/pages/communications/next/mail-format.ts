@@ -551,3 +551,41 @@ export function channelWords(channel: string): string {
   if (c === 'email') return 'mail';
   return c;
 }
+
+/** What the mail setup page was doing when it failed. */
+export type SetupAct = 'read' | 'choose' | 'address' | 'test';
+
+const NOT_READY = 'Mudavym cannot receive mail for houses yet, so there is no address';
+const STILL_WORKS = 'Your own connected mailbox still works.';
+
+/**
+ * A failure on the mail setup page, in the page's own words (QA round 26,
+ * #980 defect 3). The server's `message` is never printed: whatever it held —
+ * a validation string, a crash's "Internal server error", a provider's
+ * "invalid_grant: …" — reached the owner as it came. The page reads only the
+ * status, and says every case it can meet in a sentence written here.
+ */
+export function setupFailWords(err: unknown, act: SetupAct): string {
+  const status = (err as { response?: { status?: unknown } } | null)?.response?.status;
+  const answered = typeof status === 'number';
+  if (act === 'read') {
+    return answered
+      ? 'The mail setup could not be read. That does not mean nothing is set up.'
+      : 'The mail setup could not be read: no answer. Check the connection. That does not mean nothing is set up.';
+  }
+  if (!answered) return 'No answer. Check the connection, then try again.';
+  if (act === 'choose') {
+    if (status === 400) return 'That mailbox cannot send for this house any more. Nothing was changed.';
+    if (status === 403)
+      return 'You cannot choose that mailbox. Only an owner or a manager can change this, and only to a mailbox they connected themselves. Nothing was changed.';
+    return 'The choice could not be saved; try again.';
+  }
+  if (act === 'address') {
+    if (status === 409) return `${NOT_READY} to make. ${STILL_WORKS}`;
+    if (status === 403) return 'Only an owner or a manager of this house can make its address.';
+    return "The house's Mudavym address could not be made; try again.";
+  }
+  if (status === 409) return `${NOT_READY} to send a test letter to. ${STILL_WORKS}`;
+  if (status === 403) return 'Only an owner or a manager of this house can send a test letter.';
+  return 'The test letter could not be started; try again.';
+}

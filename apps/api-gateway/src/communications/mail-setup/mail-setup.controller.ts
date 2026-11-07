@@ -12,20 +12,27 @@
  * mailbox; this only hands them the address and the code.
  */
 
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, Put, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, HttpCode, HttpStatus, Post, Put, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
-import { IsOptional, IsUUID } from "class-validator";
+import { IsUUID, ValidateIf } from "class-validator";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { houseActor, type TokenUser } from "../letters/house-letters.actor";
 import { MailSetupService } from "./mail-setup.service";
 
 export class ChooseMailSenderDto {
-  /** A sending grant of this house, or null to clear the choice. */
-  @IsOptional()
+  /**
+   * A sending grant of this house, or null to clear the choice. The key must
+   * be present: `{}` used to pass and clear the house's choice (QA round 26,
+   * #976), so only an explicit null clears.
+   */
+  @ValidateIf((o: ChooseMailSenderDto) => o.connectionId !== null)
   @IsUUID()
   connectionId!: string | null;
 }
+
+const SAY_WHICH_MAILBOX =
+  "Say which mailbox the house's letters leave from, or that none is chosen. Nothing was changed.";
 
 @ApiTags("Communications")
 @UseGuards(JwtAuthGuard)
@@ -54,7 +61,11 @@ export class MailSetupController {
     @Body() body: ChooseMailSenderDto,
   ) {
     const { userId, restaurantId } = houseActor(user);
-    return this.setup.chooseSender(restaurantId, userId, role, body?.connectionId ?? null);
+    // A missing key is never read as "clear" — the pipe refuses it, and this
+    // refuses it again where the pipe is not in front (QA round 26, #976).
+    const connectionId = body?.connectionId;
+    if (connectionId === undefined) throw new BadRequestException(SAY_WHICH_MAILBOX);
+    return this.setup.chooseSender(restaurantId, userId, role, connectionId);
   }
 
   @Post("address")

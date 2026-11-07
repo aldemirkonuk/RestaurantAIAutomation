@@ -18,6 +18,7 @@ import {
   mailStatusLine,
   mailTabLabel,
   readErrorWords,
+  setupFailWords,
   senderLine,
   READING_WITHIN_MIN,
   spanWords,
@@ -477,5 +478,60 @@ describe('the sender line', () => {
   it('no sender is said plainly; a read still out says checking', () => {
     expect(senderLine({ kind: 'none', address: null }, { failed: false })).toBe('No address is set up yet for letters to leave from.');
     expect(senderLine(null, { failed: false })).toBe('Checking which address letters leave from…');
+  });
+});
+
+describe('the setup page says failures in its own words (QA round 26, #980 defect 3)', () => {
+  const said = (status: number, message: string) =>
+    Object.assign(new Error(`Request failed with status code ${status}`), {
+      isAxiosError: true,
+      response: { status, data: { message } },
+    });
+  const offline = Object.assign(new Error('Network Error'), { isAxiosError: true, code: 'ERR_NETWORK' });
+
+  it('never prints what the server put in its message', () => {
+    for (const act of ['read', 'choose', 'address', 'test'] as const) {
+      for (const [status, raw] of [
+        [500, 'Internal server error'],
+        [400, 'connectionId must be a UUID'],
+        [503, 'invalid_grant: Token has been expired or revoked.'],
+        [418, 'PGRST116 JSON object requested, multiple (or no) rows returned'],
+      ] as const) {
+        const words = setupFailWords(said(status, raw), act);
+        expect(words).not.toContain(raw);
+        expect(words).not.toMatch(/\b\d{3}\b|status code|invalid_grant|UUID|PGRST/);
+        expect(words).toMatch(/[.]$/);
+      }
+    }
+  });
+
+  it('says each refusal the page can meet in words of its own', () => {
+    expect(setupFailWords(said(400, 'x'), 'choose')).toBe(
+      'That mailbox cannot send for this house any more. Nothing was changed.',
+    );
+    expect(setupFailWords(said(403, 'x'), 'choose')).toBe(
+      'You cannot choose that mailbox. Only an owner or a manager can change this, and only to a mailbox they connected themselves. Nothing was changed.',
+    );
+    expect(setupFailWords(said(503, 'x'), 'choose')).toBe('The choice could not be saved; try again.');
+    expect(setupFailWords(said(409, 'x'), 'address')).toBe(
+      'Mudavym cannot receive mail for houses yet, so there is no address to make. Your own connected mailbox still works.',
+    );
+    expect(setupFailWords(said(409, 'x'), 'test')).toBe(
+      'Mudavym cannot receive mail for houses yet, so there is no address to send a test letter to. Your own connected mailbox still works.',
+    );
+    expect(setupFailWords(said(403, 'x'), 'address')).toBe('Only an owner or a manager of this house can make its address.');
+    expect(setupFailWords(said(403, 'x'), 'test')).toBe('Only an owner or a manager of this house can send a test letter.');
+    expect(setupFailWords(said(500, 'x'), 'address')).toBe("The house's Mudavym address could not be made; try again.");
+    expect(setupFailWords(said(500, 'x'), 'test')).toBe('The test letter could not be started; try again.');
+    expect(setupFailWords(said(503, 'x'), 'read')).toBe(
+      'The mail setup could not be read. That does not mean nothing is set up.',
+    );
+  });
+
+  it('no answer at all says to check the connection', () => {
+    expect(setupFailWords(offline, 'choose')).toBe('No answer. Check the connection, then try again.');
+    expect(setupFailWords(offline, 'read')).toBe(
+      'The mail setup could not be read: no answer. Check the connection. That does not mean nothing is set up.',
+    );
   });
 });
