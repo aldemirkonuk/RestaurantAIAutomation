@@ -144,6 +144,8 @@ const INVENTORY_SELECT =
   "id, wine_name, sale_type, menu_price_current, menu_price_glass, last_purchase_price, bottle_size_ml, pour_size_ml, pour_size_confirmed_by, pour_size_confirmed_at, master_wine_library(name, bottle_size_ml)";
 
 const ROLLUP_SELECT = "inventory_id, live_qty, wac, has_invoice_cost, wac_qty";
+/** The cost agreed at delivery (final, not invoiced): the rollup does not carry it. */
+const AGREED_SELECT = "inventory_id, has_agreed_cost, agreed_wac";
 
 function n(v: unknown): number | null {
   if (v === null || v === undefined) return null;
@@ -172,7 +174,7 @@ export class MarginAdviceService {
   /** Every active wine's advice. A failed read throws; it is never an empty list. */
   async adviseHouse(restaurantId: string): Promise<HouseAdvice> {
     const client = this.databaseService.client;
-    const [targets, inv, rollup, lockRead] = await Promise.all([
+    const [targets, inv, rollup, agreed, lockRead] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
       client
         .from("restaurant_inventory")
@@ -180,6 +182,7 @@ export class MarginAdviceService {
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
       client.from("inventory_lot_rollup").select(ROLLUP_SELECT).eq("restaurant_id", restaurantId),
+      client.from("inventory_lot_agreed_cost").select(AGREED_SELECT).eq("restaurant_id", restaurantId),
       readOpenLocks(client, restaurantId),
     ]);
     if (targets.error !== null) {
@@ -199,11 +202,22 @@ export class MarginAdviceService {
         `The recorded costs could not be read, so no advice was computed: ${rollup.error.message}`,
       );
     }
+    if (agreed.error) {
+      // Same reason: an unread agreed cost would make a wine whose cost was
+      // settled at delivery read as "no recorded cost".
+      throw new InternalServerErrorException(
+        `The costs agreed at delivery could not be read, so no advice was computed: ${agreed.error.message}`,
+      );
+    }
 
     const t: HouseTerms = { ...targetsFrom(targets.row), pourMl: confirmedPourFrom(targets.row) };
     const lots = new Map<string, Record<string, unknown>>();
     for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>) {
       lots.set(String(r.inventory_id), r);
+    }
+    for (const r of (agreed.data ?? []) as Array<Record<string, unknown>>) {
+      const id = String(r.inventory_id);
+      lots.set(id, { ...lots.get(id), ...r });
     }
 
     // A failed lock read is said (locks.readable false), never taken for "no
@@ -327,7 +341,7 @@ export class MarginAdviceService {
     pricingAnalysisId: string;
   }> {
     const client = this.databaseService.client;
-    const [targets, inv, rollup] = await Promise.all([
+    const [targets, inv, rollup, agreed] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
       client
         .from("restaurant_inventory")
@@ -338,6 +352,12 @@ export class MarginAdviceService {
       client
         .from("inventory_lot_rollup")
         .select(ROLLUP_SELECT)
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", inventoryId)
+        .maybeSingle(),
+      client
+        .from("inventory_lot_agreed_cost")
+        .select(AGREED_SELECT)
         .eq("restaurant_id", restaurantId)
         .eq("inventory_id", inventoryId)
         .maybeSingle(),
@@ -354,6 +374,10 @@ export class MarginAdviceService {
     if (rollup.error)
       throw new InternalServerErrorException(
         `The recorded cost could not be read; nothing was changed. ${rollup.error.message}`,
+      );
+    if (agreed.error)
+      throw new InternalServerErrorException(
+        `The cost agreed at delivery could not be read; nothing was changed. ${agreed.error.message}`,
       );
 
     // L7: a locked kind cannot be accepted. Checked BEFORE anything is
@@ -372,7 +396,9 @@ export class MarginAdviceService {
     const t: HouseTerms = { ...targetsFrom(targets.row), pourMl: confirmedPourFrom(targets.row) };
     const wine = this.adviseWine(
       inv.data as unknown as InventoryPriceRow,
-      (rollup.data as Record<string, unknown> | null) ?? null,
+      rollup.data || agreed.data
+        ? { ...(rollup.data as Record<string, unknown> | null), ...(agreed.data as Record<string, unknown> | null) }
+        : null,
       t,
     );
     const advice = kind === "bottle" ? wine.bottle : wine.glass;

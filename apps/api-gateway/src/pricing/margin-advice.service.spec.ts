@@ -21,6 +21,9 @@ interface FakeOpts {
   inventoryError?: { message: string } | null;
   rollup?: Row[];
   rollupError?: { message: string } | null;
+  /** inventory_lot_agreed_cost rows: a cost settled at delivery. */
+  agreed?: Row[];
+  agreedError?: { message: string } | null;
   /** house_price_locks rows (ADR 0193 round 3). */
   locks?: Row[];
   locksError?: { message: string } | null;
@@ -61,6 +64,13 @@ function fakeClient(o: FakeOpts) {
         if (o.rollupError) return { data: null, error: o.rollupError };
         return {
           data: (o.rollup ?? []).filter((r) => filters.every(([c, v]) => r[c] === v || c === "restaurant_id")),
+          error: null,
+        };
+      }
+      if (table === "inventory_lot_agreed_cost") {
+        if (o.agreedError) return { data: null, error: o.agreedError };
+        return {
+          data: (o.agreed ?? []).filter((r) => filters.every(([c, v]) => r[c] === v || c === "restaurant_id")),
           error: null,
         };
       }
@@ -238,6 +248,56 @@ describe("MarginAdviceService.adviseHouse", () => {
 
   it("a failed cost read is an error -- not every wine silently 'no recorded cost'", async () => {
     const { svc } = service({ house: HOUSE_SET, inventory: [WINE_A], rollupError: { message: "view down" } });
+    await expect(svc.adviseHouse("rest-1")).rejects.toBeInstanceOf(InternalServerErrorException);
+  });
+
+  it("a wine whose only cost is an agreed lot is costed as agreed_lot_wac", async () => {
+    const { svc } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A, WINE_NO_COST],
+      rollup: ROLLUP,
+      agreed: [{ inventory_id: "inv-b", has_agreed_cost: true, agreed_wac: "20.000000" }],
+    });
+    const out = await svc.adviseHouse("rest-1");
+    const b = out.wines.find((w) => w.inventoryId === "inv-b")!;
+    expect(b.costBasis).toBe("agreed_lot_wac");
+    expect(b.bottle!.state).not.toBe("no_cost");
+    // an invoiced wine is still reported as invoiced
+    expect(out.wines.find((w) => w.inventoryId === "inv-a")!.costBasis).toBe("invoice_lot_wac");
+  });
+
+  it("accepting a price reads the agreed cost too: an agreed-only wine can be accepted at its cost", async () => {
+    const { svc, rpcs } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_NO_COST],
+      agreed: [{ inventory_id: "inv-b", has_agreed_cost: true, agreed_wac: "20.000000" }],
+    });
+    const r = await svc.accept("rest-1", "inv-b", "bottle", 57.14, "user-9");
+    expect(r).toMatchObject({ outcome: "changed", price: 57.14 });
+    expect(rpcs[0][1]).toMatchObject({ p_unit_cost: 20 });
+  });
+
+  it("accepting a price with an unreadable agreed cost changes nothing", async () => {
+    const { svc, inserts, rpcs } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A],
+      rollup: ROLLUP,
+      agreedError: { message: "view down" },
+    });
+    await expect(svc.accept("rest-1", "inv-a", "bottle", 57.14, "user-9")).rejects.toBeInstanceOf(
+      InternalServerErrorException,
+    );
+    expect(inserts).toHaveLength(0);
+    expect(rpcs).toHaveLength(0);
+  });
+
+  it("a failed agreed-cost read is an error -- not 'no recorded cost'", async () => {
+    const { svc } = service({
+      house: HOUSE_SET,
+      inventory: [WINE_A],
+      rollup: ROLLUP,
+      agreedError: { message: "view down" },
+    });
     await expect(svc.adviseHouse("rest-1")).rejects.toBeInstanceOf(InternalServerErrorException);
   });
 

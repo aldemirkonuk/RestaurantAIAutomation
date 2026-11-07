@@ -1,5 +1,5 @@
 
-## Analytics loaders do not yet read the agreed lot cost — OPEN — 2026-11-07
+## Analytics loaders do not yet read the agreed lot cost — ~~OPEN~~ CLOSED 2026-11-07 by `fix/analytics-reads-agreed-lot-cost` (claim `ANALYTICS-READS-AGREED-LOT-COST`; the three loaders named below now read the view) — 2026-11-07
 
 Filed by `fix/recipe-reads-agreed-lot-cost` (QA round 15, finding 2).
 
@@ -8,3 +8,5 @@ Filed by `fix/recipe-reads-agreed-lot-cost` (QA round 15, finding 2).
 **What closes it.** Each loader joins `inventory_lot_agreed_cost` by `inventory_id` and spreads `has_agreed_cost` / `agreed_wac` onto the lot row it hands `resolveUnitCost`. Claim `RECIPE-READS-AGREED-LOT-COST` covers the resolver half only.
 
 Also: `inventory_lots.unit_cost` is still `numeric(10,2)` on this branch, so a landed cost's six places are not yet stored; the view keeps six places in the average and will keep them once the column widens.
+
+**Still not wired** (named by the closing PR): `inventory.service.ts:185` and `price-locks.service.ts:234` do not read the view, and `recipeCost` still has no non-spec caller.
