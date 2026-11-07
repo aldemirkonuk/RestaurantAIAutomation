@@ -982,7 +982,7 @@ describe("a firing is read on the house's clock (QA round 4 H4)", () => {
     // Sunday 27 September, 21:00 in New York = Monday 28 September 01:00Z.
     jest.setSystemTime(Date.parse("2026-09-28T01:00:00.000Z"));
     try {
-      const run = async (zone: string | null | Error) => {
+      const run = async (zone: string | null | Error, dismissed: string[] = []) => {
         const db = {
           supabase: {
             from: () => ({
@@ -1000,7 +1000,15 @@ describe("a firing is read on the house's clock (QA round 4 H4)", () => {
         const gen: any = new InsightGeneratorService(
           db as any,
           {} as any,
-          { readState: async () => ({ book: stateBookFrom([], Date.now()), readable: true }) } as any,
+          {
+            readState: async () => ({
+              book: stateBookFrom(
+                dismissed.map((k) => ({ ruleKey: k, status: "dismissed", reason: "disagree", snoozeUntil: null })),
+                Date.now(),
+              ),
+              readable: true,
+            }),
+          } as any,
         );
         gen.loadBundle = async () => ({
           availability: new Set(),
@@ -1031,6 +1039,20 @@ describe("a firing is read on the house's clock (QA round 4 H4)", () => {
       const unread = await run(new Error("boom"));
       expect(unread.insights[0].periodKey).toBe("fire:week:2026-W40");
       expect(unread.suppressionsReadable).toBe(false);
+
+      // QA round 10b (#826): the keys the catalogue dismisses with are the
+      // ones the insight carries. They must name the house week too, or a
+      // dismissal made on Sunday evening in New York never matches and the
+      // insight comes straight back.
+      const again = await run("America/New_York", [ny.insights[0].suppression.key]);
+      expect(again.insights).toHaveLength(0);
+      expect(again.suppressed).toBe(1);
+      expect(ny.insights[0].suppression.key).toContain("fire:week:2026-W39");
+      expect(ny.insights[0].suppression.keys.insight).toBe(ny.insights[0].suppression.key);
+      // A house with no zone keeps its UTC key, and that key still holds.
+      expect(unset.insights[0].suppression.key).toContain("fire:week:2026-W40");
+      const unsetAgain = await run(null, [unset.insights[0].suppression.key]);
+      expect(unsetAgain.insights).toHaveLength(0);
     } finally {
       jest.setSystemTime(NY_EVENING);
     }

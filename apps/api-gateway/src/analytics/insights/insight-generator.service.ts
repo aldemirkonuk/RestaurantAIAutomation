@@ -427,11 +427,27 @@ export class InsightGeneratorService {
       firingZoneRead = false;
       this.logger.warn(`FIRING_ZONE_UNREAD restaurant=${restaurantId}: ${err?.message}`);
     }
+    // The keys an act must write (`suppression`) are rebuilt from the re-keyed
+    // period: `record` built them on the UTC week, so in the hours the two
+    // weeks differ (Sunday evening in the US, Monday morning in Antalya) a
+    // dismissal written with the old key never matched the house-week period
+    // and the item came straight back (QA round 10b, #826).
     if (firingZone) {
       const firedAt = new Date();
       for (const i of insights)
-        if (isFiringGrain(i.periodKey))
+        if (isFiringGrain(i.periodKey)) {
           i.periodKey = firingGrain("week", onHouseClock(firedAt, firingZone));
+          const target = {
+            ruleId: insightRuleId(i.candidateKey),
+            subject: i.subject,
+            periodKey: i.periodKey,
+          };
+          i.suppression = {
+            key: buildSuppressionKey(target, "insight"),
+            scope: effectiveScope(target, "insight"),
+            keys: suppressionKeys(target),
+          };
+        }
     }
 
     if (opts.categories?.length) {
