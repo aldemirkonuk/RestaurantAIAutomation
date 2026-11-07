@@ -2549,7 +2549,7 @@ export class AuthService {
           .from("team_members")
           .select("id, invite_id, user_id")
           .eq("restaurant_id", params.restaurantId)
-          .ilike("email", params.email)
+          .in("email", teamEmailSpellings(params.email))
           .maybeSingle();
         if (existing) {
           if (!existing.user_id) {
@@ -2617,7 +2617,7 @@ export class AuthService {
           .from("team_members")
           .select("id")
           .eq("restaurant_id", params.restaurantId)
-          .ilike("email", params.email)
+          .in("email", teamEmailSpellings(params.email))
           .maybeSingle();
         if (byEmail) memberId = byEmail.id;
       }
@@ -4736,4 +4736,14 @@ export class AuthService {
 
     this.logger.log(`Account deleted: ${userId}`);
   }
+}
+
+/**
+ * QA round 23: team rows matched by `ilike` read `_` and `%` in an address as
+ * wildcards, so john_smith@ claimed john.smith@'s row. Exact match only: the
+ * folded spelling, or the one typed. A row stored in another case is not
+ * matched and the join makes a new row, never someone else's.
+ */
+function teamEmailSpellings(email: string): string[] {
+  return [...new Set([normalizeEmail(email), email])];
 }
