@@ -144,6 +144,7 @@ const ROUTES = [
   ["/people", "list_mail_people"],
   [`/threads?with=vendor:${VENDOR}`, "list_mail_threads"],
   ["/summary", "mail_inbox_summary"],
+  ["/thread?key=t-1", "mail_thread_letters"],
 ] as const;
 
 describe("the house comes from the token and nowhere else", () => {
@@ -159,14 +160,38 @@ describe("the house comes from the token and nowhere else", () => {
     },
   );
 
-  it("/thread scopes every read to the token's house", async () => {
+  it("/thread is one read, of the token's house only", async () => {
     const res = await get(`/thread?key=t-1&restaurantId=${HOUSE_B}`);
     expect(res.status).toBe(200);
-    expect(reads.length).toBeGreaterThan(0);
-    for (const r of reads) {
-      expect(r.calls).toContainEqual(["eq", ["restaurant_id", HOUSE_A]]);
-    }
+    expect(reads.map((r) => `${r.kind}:${r.name}`)).toEqual([
+      "rpc:mail_thread_letters",
+    ]);
+    expect(reads[0].payload).toMatchObject({
+      p_restaurant_id: HOUSE_A,
+      p_thread_key: "t-1",
+      p_provider_id: null,
+    });
     expect(JSON.stringify(reads)).not.toContain(HOUSE_B);
+  });
+
+  it("/thread?with= names that person to the read as well", async () => {
+    const res = await get(`/thread?key=gm%3Ashared&with=vendor%3A${VENDOR}`);
+    expect(res.status).toBe(200);
+    expect(reads).toHaveLength(1);
+    expect(reads[0].payload).toMatchObject({
+      p_restaurant_id: HOUSE_A,
+      p_thread_key: "gm:shared",
+      p_provider_id: VENDOR,
+    });
+  });
+
+  it("/thread with a repeated `with` is an empty page, not a crash", async () => {
+    const res = await get(
+      `/thread?key=t-1&with=vendor%3A${VENDOR}&with=vendor%3A${VENDOR}`,
+    );
+    expect(res.status).toBe(200);
+    expect(res.body.messages).toEqual([]);
+    expect(reads).toHaveLength(0);
   });
 
   it.each(["/people", "/threads?with=x", "/thread?key=t-1", "/summary"])(
@@ -204,13 +229,6 @@ describe("the role is enforced in the service, not by a decorator", () => {
       expect(
         reads.find((r) => r.name === rpc)!.payload.p_withhold_house_letters,
       ).toBe(withhold);
-    }
-    reads = [];
-    await get("/thread?key=t-1", { role });
-    for (const r of reads) {
-      expect(r.calls.filter(([m]) => m === "or")).toHaveLength(
-        withhold ? 2 : 0,
-      );
     }
   });
 });
