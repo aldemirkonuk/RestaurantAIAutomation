@@ -492,6 +492,7 @@ PACKAGES: dict[str, tuple[str, str]] = {
             "js:@nestjs/schedule",
             "js:@nestjs/swagger",
             "js:@nestjs/websockets",
+            "js:@wineops/floor-core",
             "js:bcrypt",
             "js:class-transformer",
             "js:class-validator",
