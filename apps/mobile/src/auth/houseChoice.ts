@@ -19,6 +19,49 @@ export const LAST_HOUSE_KEY = "mudavym.lastHouse.v1";
  * `LAST_HOUSE_KEY`: kept across sign-out, a hash of the email only. */
 export const EMAIL_INDEX_KEY = "mudavym.lastHouse.emailIndex.v1";
 
+/**
+ * Known-device tokens for the login rate limit (QA round 19, #906): a JSON map
+ * of folded email to the `signInDevice` a password login returned. A device
+ * credential for rate limiting only, never a session, so sign-out keeps it.
+ */
+export const SIGN_IN_DEVICES_KEY = "mudavym.signInDevices";
+const SIGN_IN_DEVICES_KEPT = 5;
+
+/** Folded the way the gateway folds an account (NFKC, no zero-width, trim, lower-case). */
+export function foldEmail(email: string): string {
+  return email
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+export function parseSignInDevices(raw: string | null): Record<string, string> {
+  try {
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === "string") out[k] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** The map with this email's token set as the newest, at most five kept. */
+export function withSignInDevice(
+  all: Record<string, string>,
+  email: string,
+  token: string,
+): Record<string, string> {
+  const next = { ...all };
+  delete next[foldEmail(email)];
+  next[foldEmail(email)] = token;
+  return Object.fromEntries(Object.entries(next).slice(-SIGN_IN_DEVICES_KEPT));
+}
+
 export interface HouseUse {
   houseId: string;
   usedAt: number;
