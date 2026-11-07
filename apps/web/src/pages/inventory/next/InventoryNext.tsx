@@ -292,6 +292,11 @@ export default function InventoryNext() {
       return own === 'food' || own === 'supply' ? own : 'drink';
     };
   }, [data.rawItems]);
+  // Each good's own unit (g, ml, each, bottle…): totals and cells never add one to another.
+  const uomOf = useMemo(() => {
+    const u = new Map(data.rawItems.map((i) => [i.id, houseFieldsOf(i).uom]));
+    return (r: InvRow): string | null => u.get(r.id) ?? null;
+  }, [data.rawItems]);
   const carriesGoods = kind !== '' || (rows ?? []).some((r) => goodOf(r) !== 'drink');
   const visible = useMemo(() => {
     if (!rows) return [];
@@ -709,7 +714,7 @@ export default function InventoryNext() {
           /* ── the book ───────────────────────────────────────────────── */
           <>
             <p className="iv-read" data-testid="inventory-read-sentence">
-              {readSentence(rows, data.currency, !locs.unavailable)}
+              {readSentence(rows, data.currency, !locs.unavailable, uomOf)}
             </p>
             {data.stale ? (
               <p className="iv-note" role="status">
@@ -943,6 +948,7 @@ export default function InventoryNext() {
                 onSelect={toggleSelect}
                 onSelectAll={selectAllVisible}
                 rows={visible}
+                uomOf={uomOf}
                 libraryUnread={!data.libraryAnswered}
                 grouped={sort === 'needs'}
                 sort={sort}

@@ -504,14 +504,57 @@ export function dryTomorrow(row: InvRow): boolean {
   return row.standing !== 'out' && row.runway !== null && row.runway < 1.5;
 }
 
+const TOTAL_WORDS: Record<string, [string, string]> = {
+  bottle: ['bottle', 'bottles'],
+  case: ['case', 'cases'],
+  keg: ['keg', 'kegs'],
+  pack: ['pack', 'packs'],
+  glass: ['glass', 'glasses'],
+  shot: ['shot', 'shots'],
+  each: ['item', 'items'],
+};
+
+/** One total in its own unit: grams read in kg and millilitres in l from 1,000 up. */
+function totalWords(n: number, uom: string): string {
+  if (uom === 'g') return n >= 1000 ? `${fmtCount(n / 1000)} kg` : `${fmtCount(n)} g`;
+  if (uom === 'ml') return n >= 1000 ? `${fmtCount(n / 1000)} l` : `${fmtCount(n)} ml`;
+  const [one, many] = TOTAL_WORDS[uom] ?? [uom, uom];
+  return plural(n, one, many);
+}
+
+/**
+ * What is on hand, added up within one unit only (ADR 0070 keeps each good in
+ * its own g, ml or count): 10 bottles and 12,400 g of flour read "10 bottles
+ * and 12.4 kg", never "12,410 bottles". A row with no unit is a bottle.
+ */
+export function onHandByUnit(rows: InvRow[], uomOf: (r: InvRow) => string | null): string {
+  const sums = new Map<string, number>();
+  for (const r of rows) {
+    if (r.stock === null) continue;
+    const u = uomOf(r) ?? 'bottle';
+    sums.set(u, (sums.get(u) ?? 0) + Math.max(0, r.stock));
+  }
+  if (sums.size === 0) sums.set('bottle', 0);
+  // Bottles lead, as the page always has; the other units follow as first met.
+  const units = [...sums.keys()].sort((a, b) => (a === b ? 0 : a === 'bottle' ? -1 : b === 'bottle' ? 1 : 0));
+  const words = units.map((u) => totalWords(sums.get(u)!, u));
+  return words.length <= 1 ? words.join('') : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`;
+}
+
 /**
  * The one read sentence at the top (no KPI tiles). Every number in it is a
  * count of what was read; what was not read is named, never folded into a 0.
+ * `uomOf` names each row's own unit, so no total adds grams to bottles.
  */
-export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReadable: boolean): string {
+export function readSentence(
+  rows: InvRow[],
+  currency: HouseCurrency,
+  zonesReadable: boolean,
+  uomOf: (r: InvRow) => string | null = () => null,
+): string {
   const n = rows.length;
   const read = rows.filter((r) => r.stock !== null);
-  const bottles = read.reduce((sum, r) => sum + Math.max(0, r.stock ?? 0), 0);
+  const onHand = onHandByUnit(read, uomOf);
   const zoneIds = new Set<string>();
   for (const r of rows) for (const z of r.zones ?? []) if (z.locationId !== null && z.qty > 0) zoneIds.add(z.locationId);
   const parts: string[] = [];
@@ -520,8 +563,8 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
     read.length === 0
       ? `${plural(n, 'title', 'titles')}; no title's stock could be read, so the bottle count is unknown`
       : read.length < n
-        ? `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
-        : `${plural(n, 'title', 'titles')}, ${plural(bottles, 'bottle', 'bottles')}`;
+        ? `${plural(n, 'title', 'titles')}, ${onHand} on the ${fmtCount(read.length)} whose stock was read (${fmtCount(n - read.length)} could not be read)`
+        : `${plural(n, 'title', 'titles')}, ${onHand}`;
   if (zonesReadable && zoneIds.size > 0) first += ` across ${plural(zoneIds.size, 'zone', 'zones')}`;
   parts.push(`${first}.`);
 

@@ -321,6 +321,24 @@ describe('unknown is never zero', () => {
     expect(tr.querySelector('td[data-label="Your price"]')!.textContent).toBe('— · —');
   });
 
+  it('adds stock up within one unit only, bottles first, never grams into bottles', () => {
+    const uom = (r: InvRow) => ({ f: 'g', o: 'ml', e: 'each' } as Record<string, string>)[r.id] ?? null;
+    const rowsMixed = [
+      row({ id: 'a', stock: 10 }),
+      row({ id: 'f', stock: 12400 }),
+      row({ id: 'o', stock: 750 }),
+      row({ id: 'e', stock: 3 }),
+    ];
+    const s = readSentence(rowsMixed, { state: 'recorded', code: 'EUR' }, false, uom);
+    expect(s).toContain('4 titles, 10 bottles, 12.4 kg, 750 ml and 3 items.');
+    expect(readSentence([row({ id: 'f', stock: 400 })], { state: 'recorded', code: 'EUR' }, false, uom)).toContain('1 title, 400 g.');
+    expect(readSentence([row({ id: 'a', stock: 1 })], { state: 'recorded', code: 'EUR' }, false, uom)).toContain('1 title, 1 bottle.');
+    // Bottles lead even when a food is the first row read.
+    expect(readSentence([row({ id: 'f', stock: 2000 }), row({ id: 'a', stock: 3 })], { state: 'recorded', code: 'EUR' }, false, uom)).toContain(
+      '2 titles, 3 bottles and 2 kg.',
+    );
+  });
+
   it('never says "0 bottles" when no stock was read', () => {
     const s = readSentence(
       [row({ stock: null, value: null, standing: 'unknown' }), row({ id: 'b', stock: null, value: null, standing: 'unknown' })],
@@ -1077,6 +1095,23 @@ describe('INV-W38 — the view is the URL', () => {
     mock.data = data({ rows: two(), canManage: false });
     renderAt('/inventory');
     expect(screen.queryByRole('button', { name: 'Carry a food or supply' })).toBeNull();
+  });
+
+  it('keeps each good in its own unit: the read sentence and the stock cell never add grams to bottles', () => {
+    mock.data = data({
+      rows: [
+        row({ id: 'a', name: 'Ankara Red', stock: 10, shadow: 10, par: 6 }),
+        row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null, stock: 12400, shadow: 12400, par: 5000 }),
+      ],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+    });
+    renderAt('/inventory');
+    const said = screen.getByTestId('inventory-read-sentence').textContent ?? '';
+    expect(said).toContain('2 titles, 10 bottles and 12.4 kg');
+    expect(said).not.toContain('12,410');
+    const live = (id: string) => screen.getByTestId(`inv-row-${id}`).querySelector('td[data-label="Live / shadow · par"]')!.textContent;
+    expect(live('f')).toContain('12.4 kg / 12.4 kg · 5 kg');
+    expect(live('a')).toContain('10 / 10 · 6');
   });
 
   const closeDrawer = () => fireEvent.click(document.querySelector('.iv-drawer .mdv-ovl__close') as HTMLElement);
