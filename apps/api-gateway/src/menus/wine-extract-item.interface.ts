@@ -49,3 +49,15 @@ export interface WineExtractItem {
   bottle_price?: number;
   raw_text?: string; // original text line from scan/csv
 }
+
+/**
+ * Two reasons a scan read may hold fewer lines than the file (ADR 0213 #17).
+ * `truncated`: the reply was cut off and could not be split further;
+ * `chunk_failed`: a page range errored. `pages` (1-based) is null when no
+ * narrower range is known. Stored on `restaurant_menus.read_warnings`.
+ * Not reported here: pages past the 120-page cap, an unparseable reply.
+ */
+export interface MenuReadWarning {
+  kind: "truncated" | "chunk_failed";
+  pages: { first: number; last: number } | null;
+}

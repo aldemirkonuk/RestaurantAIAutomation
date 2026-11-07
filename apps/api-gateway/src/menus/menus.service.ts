@@ -17,7 +17,7 @@ import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
-import { WineExtractItem } from "./wine-extract-item.interface";
+import { MenuReadWarning, WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
 import { lineForViewer, type LineView } from "./menu-line-view";
 import {
@@ -237,6 +237,8 @@ export interface MenuVersion {
   sourceMethod: "scan" | "csv" | "manual" | null;
   source: { kept: boolean; mime: string | null; bytes: number | null; failure: string | null };
   linesExtracted: number | null;
+  /** null = read before this was recorded. */
+  readWarnings: MenuReadWarning[] | null;
   extractedAt: string | null;
   extractedBy: { userId: string; name: string | null } | null;
   madeCurrentAt: string | null;
@@ -247,7 +249,7 @@ export interface MenuVersion {
 }
 
 const VERSION_SELECT =
-  "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
+  "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, read_warnings, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
 
 /**
  * The columns every line read asks for. `raw_extracted_text` is read so
@@ -432,6 +434,7 @@ export class MenusService {
     submissionsCreated: number;
     items: MenuImportReviewItem[];
     source: { kept: boolean; failure: string | null };
+    warnings: MenuReadWarning[];
   }> {
     const { restaurantId } = dto;
     // Checked before the billed read: a date that is not on the calendar
@@ -441,10 +444,14 @@ export class MenusService {
     // 1. Parse input → WineExtractItem[]. A scan is the billed read; its spend
     // ceiling fails CLOSED (scan-parser.service.ts, ADR 0163 Q22).
     let items: WineExtractItem[];
+    let warnings: MenuReadWarning[] = [];
     let sourceBytes: Buffer | null = null;
     let sourceMime: { mime: string; ext: string } | null = null;
     if (dto.method === "scan") {
-      items = await this.scanParser.parse(dto.data.imageBase64!, restaurantId);
+      ({ items, warnings } = await this.scanParser.parseWithWarnings(
+        dto.data.imageBase64!,
+        restaurantId,
+      ));
       sourceBytes = Buffer.from(dto.data.imageBase64!, "base64");
       sourceMime = sniffMime(sourceBytes);
     } else if (dto.method === "csv") {
@@ -468,7 +475,15 @@ export class MenusService {
         : null;
 
     // 3. A new version, in draft: kept whether or not it is ever made current.
-    const menu = await this.createVersion(restaurantId, userId, dto, items, kept, menuDate);
+    const menu = await this.createVersion(
+      restaurantId,
+      userId,
+      dto,
+      items,
+      warnings,
+      kept,
+      menuDate,
+    );
 
     // 4-6: resolve against the wine library, insert menu_items, and create the
     // governance submission trail. NOT current, so no inventory or price.
@@ -482,8 +497,9 @@ export class MenusService {
     );
 
     // 7. Mark menu_uploaded for everyone on this restaurant (matches the
-    // restaurant-scoped pattern used by vendor_added / team_member_invited).
-    await this.markMenuUploaded(restaurantId);
+    // restaurant-scoped pattern used by vendor_added / team_member_invited),
+    // only when a line was read: an empty read is kept, not proof (ADR 0213 #17).
+    if (items.length > 0) await this.markMenuUploaded(restaurantId);
 
     return {
       menuId: menu.id,
@@ -492,6 +508,7 @@ export class MenusService {
       submissionsCreated: reviewItems.filter((r) => r.submissionId).length,
       items: reviewItems,
       source: { kept: !!kept?.path, failure: kept?.failure ?? null },
+      warnings,
     };
   }
 
@@ -532,6 +549,7 @@ export class MenusService {
       userId,
       dto,
       items,
+      [], // arrival refuses a partial read
       null,
       null,
     );
@@ -589,6 +607,7 @@ export class MenusService {
     userId: string,
     dto: ImportMenuDto,
     items: WineExtractItem[],
+    warnings: MenuReadWarning[],
     kept: { path: string | null; sha256: string; mime: string; bytes: number; failure: string | null } | null,
     menuDate: { date: string; precision: "day" | "month" } | null,
   ): Promise<{ id: string }> {
@@ -609,6 +628,7 @@ export class MenusService {
         source_bytes: kept?.bytes ?? null,
         source_failure: kept?.failure ?? null,
         extraction: items,
+        read_warnings: warnings,
         lines_extracted: items.length,
         extracted_by: userId,
         extracted_at: new Date().toISOString(),
@@ -1600,6 +1620,7 @@ export class MenusService {
         failure: r.source_failure ?? null,
       },
       linesExtracted: num(r.lines_extracted),
+      readWarnings: Array.isArray(r.read_warnings) ? r.read_warnings : null,
       extractedAt: r.extracted_at ?? null,
       extractedBy: who(r.extracted_by),
       madeCurrentAt: r.made_current_at ?? null,

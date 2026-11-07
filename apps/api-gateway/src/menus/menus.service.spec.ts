@@ -843,6 +843,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
       extracted_by: "user-1",
     });
     expect(version.extraction).toEqual([expect.objectContaining({ name: "Opus One" })]);
+    expect([r.warnings, version.read_warnings]).toEqual([[], []]);
     expect(version.source_path).toMatch(/^rest-1\/menus\/[0-9a-f]{64}\.csv$/);
     expect(tables.__storage[0]).toMatchObject({ bucket: "vendor-attachments", path: version.source_path });
     // The house's current menu is untouched, and no price moved.
@@ -867,7 +868,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
 
   it("a date that is not on the calendar is refused BEFORE the billed read", async () => {
     const parse = jest.fn();
-    const service = makeService(base(), { wineSubmissions, scanParser: { parse } });
+    const service = makeService(base(), { wineSubmissions, scanParser: { parse, parseWithWarnings: parse } });
     await expect(
       service.importMenu(
         { method: "scan", data: { imageBase64: "JVBERi0=" }, restaurantId: "rest-1", menuDate: "2026-02-30" } as any,
@@ -882,7 +883,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const service = makeService(tables, {
       wineSubmissions,
       scanParser: {
-        parse: async () => {
+        parseWithWarnings: async () => {
           throw new MenuReadWaitingException("This restaurant's AI spend record could not be read, so the menu read is waiting");
         },
       },
@@ -898,13 +899,58 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const tables: Record<string, Row[]> = base();
     const service = makeService(tables, {
       wineSubmissions,
-      scanParser: { parse: async () => [{ name: "Opus One", bottle_price: 62 }] },
+      scanParser: {
+        parseWithWarnings: async () => ({ items: [{ name: "Opus One", bottle_price: 62 }], warnings: [] }),
+      },
     });
     const pdf = Buffer.from("%PDF-1.7 fake").toString("base64");
     const r = await service.importMenu({ method: "scan", data: { imageBase64: pdf }, restaurantId: "rest-1" } as any, "user-1");
     const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
     expect(version).toMatchObject({ source_method: "scan", source_mime: "application/pdf" });
     expect(version.source_path).toMatch(/^rest-1\/menus\/[0-9a-f]{64}\.pdf$/);
+  });
+
+  // Proposal-menu step 1c: ADR 0213 #17 and ADR 0193 item 7.
+  it("a partial scan keeps WHICH pages it could not read, on the version and in the reply", async () => {
+    const tables: Record<string, Row[]> = {
+      ...base(),
+      user_onboarding_progress: [{ id: "p-1", restaurant_id: "rest-1", menu_uploaded: false }],
+    };
+    const warnings = [{ kind: "chunk_failed", pages: { first: 11, last: 20 } }];
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async () => ({ items: [{ name: "Opus One", bottle_price: 62 }], warnings }),
+      },
+    });
+    const pdf = Buffer.from("%PDF-1.7 fake").toString("base64");
+    const r = await service.importMenu({ method: "scan", data: { imageBase64: pdf }, restaurantId: "rest-1" } as any, "user-1");
+    expect(r.warnings).toEqual(warnings);
+    const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
+    expect(version.read_warnings).toEqual(warnings);
+    expect(version.extraction).toEqual([{ name: "Opus One", bottle_price: 62 }]);
+    const listed = await service.listVersions("rest-1");
+    expect(listed.versions.find((v) => v.menuId === r.menuId)!.readWarnings).toEqual(warnings);
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(true);
+  });
+
+  it("a read that found no line is KEPT with its source, but the menu is not marked uploaded", async () => {
+    const tables: Record<string, Row[]> = {
+      ...base(),
+      user_onboarding_progress: [{ id: "p-1", restaurant_id: "rest-1", menu_uploaded: false }],
+    };
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: { parseWithWarnings: async () => ({ items: [], warnings: [] }) },
+    });
+    const pdf = Buffer.from("%PDF-1.7 fake").toString("base64");
+    const r = await service.importMenu({ method: "scan", data: { imageBase64: pdf }, restaurantId: "rest-1" } as any, "user-1");
+    expect(r.itemsExtracted).toBe(0);
+    const drafts = tables.restaurant_menus.filter((m) => m.status === "draft");
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]).toMatchObject({ id: r.menuId, lines_extracted: 0, source_mime: "application/pdf" });
+    expect(drafts[0].source_path).toMatch(/^rest-1\/menus\//);
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
   });
 
   describe("makeCurrent — the person's choice, then the menu's prices reach the house", () => {
@@ -932,7 +978,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
         wineSubmissions,
         rpcCalls: calls,
         rpc: makeCurrentRpc(tables),
-        scanParser: { parse: async () => lines },
+        scanParser: { parseWithWarnings: async () => ({ items: lines, warnings: [] }) },
       });
       const read = await service.importMenu(
         { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
