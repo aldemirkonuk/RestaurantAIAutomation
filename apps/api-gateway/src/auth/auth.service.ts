@@ -42,6 +42,7 @@ import { CreateFirstHouseDto } from "./dto/create-first-house.dto";
 import { resolveSignUpTimezone } from "./sign-up-timezone";
 import {
   houseWriteError,
+  HouseOpenedNotSignedIn,
   isSharedPlace,
   PlaceAlreadyAHouse,
   refuseHouseOpening,
@@ -1567,11 +1568,11 @@ export class AuthService {
    * `isSharedPlace` reads) is inserted once more without the id; only a race
    * reaches that. Only the server log says the place was held.
    *
-   * `insert` is the writer's own `.from("restaurants").insert({...})`, kept
-   * inline there so the capture-contract guard reads its columns; it is called
-   * with the place id to write, or undefined. The look-up and both inserts
-   * select `id` only: nothing reads the place id back (claim
-   * F006-NO-ROUTE-READS-THE-PLACE-ID).
+   * `insert` is createFirstHouse's own `open_first_house` call, kept inline
+   * there (OB-2: the house's rows are written in one transaction); it is
+   * called with the place id to write, or undefined. The look-up selects `id`
+   * only and the call answers only the two new ids: nothing reads the place
+   * id back (claim F006-NO-ROUTE-READS-THE-PLACE-ID).
    */
   private async insertHouseRow(
     placeId: string | undefined,
@@ -1703,6 +1704,13 @@ export class AuthService {
    * Creates the verified owner's first house and returns a tenant-scoped token.
    * It refuses accounts that already own a house so retries cannot create
    * duplicate tenants.
+   *
+   * Every value is computed and checked here (the slug, the place id and its
+   * look-up, the coordinates, the zone, the currency, the 409 rule); the
+   * writes are one call to `open_first_house`, which does them in one
+   * transaction (onboarding proposal §3 OB-2, §4 F14; audit G16). A refused
+   * write leaves no row behind, so there is nothing to delete and a retry
+   * opens the house instead of answering 409.
    */
   async createFirstHouse(
     userId: string,
@@ -1722,122 +1730,81 @@ export class AuthService {
     if (user.restaurant_id)
       throw new ConflictException("This account already has a house");
 
-    let orgId: string | null = null;
-    let restaurantId: string | null = null;
+    let restaurantId: string;
     try {
-      const { data: org, error: orgError } = await this.databaseService.supabase
-        .from("organizations")
-        .insert({ name: `${dto.restaurantName} Group`, owner_id: userId })
-        .select()
-        .single();
-      if (orgError || !org)
-        throw houseWriteError(
-          "organization",
-          orgError,
-          "organization was not created",
-        );
-      orgId = org.id;
-
       const baseSlug = slugBase(dto.restaurantName);
       const coords = this.coordinateColumns(dto);
-      const insertRow = (google_place_id: string | undefined) =>
-        this.databaseService.supabase
-          .from("restaurants")
-          .insert({
-            name: dto.restaurantName,
-            slug: `${baseSlug}-${crypto.randomBytes(3).toString("hex")}`,
-            email: dto.restaurantEmail ?? user.email,
-            address: { street: dto.address },
-            city: dto.city,
-            country: dto.country,
-            state_province: dto.stateProvince,
-            postal_code: dto.postalCode,
-            neighborhood: dto.neighborhood,
-            phone: dto.restaurantPhone,
+      // One transaction: the organization, the house, the onboarding claim
+      // (its UNIQUE(user_id) still stops a concurrent second first house
+      // before `users` is touched, F-006 OPEN-6 option b), the membership,
+      // the access row and the users row. The database's own error comes
+      // back, so a held place still reads as `isSharedPlace`.
+      const openHouse = async (
+        googlePlaceId: string | undefined,
+      ): Promise<HouseRowAnswer> => {
+        const { data, error } = await this.databaseService.supabase.rpc(
+          "open_first_house",
+          {
+            p_user_id: userId,
+            p_organization_name: `${dto.restaurantName} Group`,
+            p_name: dto.restaurantName,
+            p_slug: `${baseSlug}-${crypto.randomBytes(3).toString("hex")}`,
+            p_email: dto.restaurantEmail ?? user.email,
+            p_address: { street: dto.address },
+            p_city: dto.city,
+            p_country: dto.country,
+            p_state_province: dto.stateProvince,
+            p_postal_code: dto.postalCode,
+            p_neighborhood: dto.neighborhood,
+            p_phone: dto.restaurantPhone,
             // Item 62 (2026-09-27): the browser's zone, validated against
             // Intl, or nothing — never a caller-typed string trusted as-is.
             // See sign-up-timezone.ts.
-            timezone: resolveSignUpTimezone(dto.timezone),
-            currency: dto.currency ?? null,
-            organization_id: orgId,
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-            google_place_id,
-          })
-          .select("id")
-          .single();
-      const { data: restaurant, error: restaurantError } =
-        await this.insertHouseRow(coords.google_place_id, insertRow);
-      if (restaurantError || !restaurant)
-        throw houseWriteError(
-          "restaurant",
-          restaurantError,
-          "restaurant was not created",
+            p_timezone: resolveSignUpTimezone(dto.timezone),
+            p_currency: dto.currency ?? null,
+            p_latitude: coords.latitude,
+            p_longitude: coords.longitude,
+            p_google_place_id: googlePlaceId,
+          },
         );
-      restaurantId = restaurant.id;
-
-      // The onboarding row goes first and on its own: its UNIQUE(user_id) is
-      // what stops a second, concurrent first house by the same account
-      // before either touches `users` (F-006 OPEN-6, option b). A rolled-back
-      // house takes the row with it (ON DELETE CASCADE), so a retry is free.
-      const claim = await this.databaseService.supabase
-        .from("user_onboarding_progress")
-        .insert({ user_id: userId, restaurant_id: restaurantId });
-      if (claim.error)
+        const opened = (data as { restaurant_id?: string } | null)
+          ?.restaurant_id;
+        return { data: opened ? { id: opened } : null, error };
+      };
+      const { data: house, error: houseError } = await this.insertHouseRow(
+        coords.google_place_id,
+        openHouse,
+      );
+      if (houseError || !house)
         throw houseWriteError(
-          "onboarding row",
-          claim.error,
-          "the onboarding row was not written",
+          "open_first_house",
+          houseError,
+          "the house was not opened",
         );
+      restaurantId = house.id;
+    } catch (error) {
+      throw refuseHouseOpening("createFirstHouse", error, this.logger);
+    }
 
-      const writes = await Promise.all([
-        this.databaseService.supabase.from("organization_members").insert({
-          organization_id: orgId,
-          user_id: userId,
-          role: "owner",
-        }),
-        this.databaseService.supabase.from("user_restaurant_access").insert({
-          user_id: userId,
-          restaurant_id: restaurantId,
-          role: "owner",
-          invited_via: null,
-          is_active: true,
-        }),
-        this.databaseService.supabase
-          .from("users")
-          .update({ restaurant_id: restaurantId, role: "owner" })
-          .eq("user_id", userId),
-      ]);
-      const failed = writes.find((write) => write.error);
-      if (failed?.error)
-        throw houseWriteError(
-          "access rows",
-          failed.error,
-          "an access row was not written",
-        );
-
-      // The membership row above is written before this mint, so
-      // generateTokens finds it and names the new house with its owner role
-      // (ADR 0164: every mint is membership-checked in one place).
+    // The house is whole by here, membership row included, so generateTokens
+    // finds it and names the new house with its owner role (ADR 0164: every
+    // mint is membership-checked in one place). A failed mint leaves the house
+    // open and owned, so the person is told to sign in again (which lands in
+    // it), not that the house failed to open: a retry would answer 409.
+    try {
       const tokens = await this.generateTokens(
         { ...user, restaurant_id: restaurantId, role: "owner" },
         false,
         restaurantId,
         authTime,
       );
-      return { ...tokens, restaurantId: restaurantId as string };
+      return { ...tokens, restaurantId };
     } catch (error) {
-      if (restaurantId)
-        await this.databaseService.supabase
-          .from("restaurants")
-          .delete()
-          .eq("id", restaurantId);
-      if (orgId)
-        await this.databaseService.supabase
-          .from("organizations")
-          .delete()
-          .eq("id", orgId);
-      throw refuseHouseOpening("createFirstHouse", error, this.logger);
+      throw refuseHouseOpening(
+        "createFirstHouse",
+        new HouseOpenedNotSignedIn(restaurantId, error),
+        this.logger,
+      );
     }
   }
 

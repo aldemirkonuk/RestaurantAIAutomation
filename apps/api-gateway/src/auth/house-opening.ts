@@ -74,6 +74,20 @@ export class PlaceAlreadyAHouse extends Error {
   }
 }
 
+/**
+ * createFirstHouse's token mint failed after `open_first_house` committed: the
+ * house is open and owned, so the person is told to sign in again (which lands
+ * in it), never "could not open" and "try again" (a retry answers 409).
+ */
+export class HouseOpenedNotSignedIn extends Error {
+  constructor(
+    readonly restaurantId: string,
+    readonly reason: unknown,
+  ) {
+    super(`house ${restaurantId} is open; the sign-in did not finish`);
+  }
+}
+
 export const HOUSE_ALREADY_AT_PLACE =
   "A house is already open at this place, so this one was not registered. If it is yours, sign in instead.";
 
@@ -81,6 +95,8 @@ export const HOUSE_DETAIL_TOO_LONG =
   "Could not open the house: one of its details is too long to keep. Shorten it and try again.";
 export const HOUSE_NOT_OPENED =
   "Could not open the house. Something went wrong on our side; try again in a moment.";
+export const HOUSE_OPEN_SIGN_IN_AGAIN =
+  "Your house is open, but signing you in to it did not finish. Sign in again to enter it.";
 
 /**
  * The one refusal both openings send. The raw code and message go to the
@@ -96,6 +112,14 @@ export function refuseHouseOpening(
   if (error instanceof PlaceAlreadyAHouse) {
     logger.error(`${where} refused: the place is already a house (F-006).`);
     return new ConflictException(HOUSE_ALREADY_AT_PLACE);
+  }
+  if (error instanceof HouseOpenedNotSignedIn) {
+    const why =
+      error.reason instanceof Error
+        ? error.reason.message
+        : String(error.reason);
+    logger.error(`${where}: ${error.message}: ${why}`);
+    return new InternalServerErrorException(HOUSE_OPEN_SIGN_IN_AGAIN);
   }
   const step = error instanceof HouseWriteError ? error.step : "a later step";
   const code = error instanceof HouseWriteError ? error.code : "";

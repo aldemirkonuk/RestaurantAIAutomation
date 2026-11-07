@@ -121,6 +121,14 @@ function makeFirstHouseService() {
         return chain(table, { data: { id: "rest-1" }, error: null });
       return chain(table, { data: null, error: null });
     },
+    // OB-2: the house's rows are written by one `open_first_house` call.
+    rpc: async (fn: string, payload: Record<string, unknown>) => {
+      inserts.push({ table: `rpc:${fn}`, payload });
+      return {
+        data: { organization_id: "org-1", restaurant_id: "rest-1" },
+        error: null,
+      };
+    },
   };
 
   const svc = new AuthService(
@@ -143,6 +151,10 @@ function makeFirstHouseService() {
 
 const restaurantPayload = (inserts: Insert[]) =>
   inserts.find((i) => i.table === "restaurants")?.payload ?? {};
+
+/** What createFirstHouse handed `open_first_house` (OB-2). */
+const firstHousePayload = (inserts: Insert[]) =>
+  inserts.find((i) => i.table === "rpc:open_first_house")?.payload ?? {};
 
 const BASE: RegisterRestaurantDto = {
   name: "Aldemir",
@@ -240,7 +252,7 @@ describe("createFirstHouse — the house's timezone (item 62)", () => {
       timezone: "Europe/Istanbul",
     });
 
-    expect(restaurantPayload(inserts).timezone).toBe("Europe/Istanbul");
+    expect(firstHousePayload(inserts).p_timezone).toBe("Europe/Istanbul");
   });
 
   it("writes NULL for an invalid zone rather than storing the caller's string as-is", async () => {
@@ -251,7 +263,7 @@ describe("createFirstHouse — the house's timezone (item 62)", () => {
       timezone: "not a real zone",
     });
 
-    expect(restaurantPayload(inserts).timezone).toBeNull();
+    expect(firstHousePayload(inserts).p_timezone).toBeNull();
   });
 
   it("writes NULL when no zone arrived at all", async () => {
@@ -259,6 +271,6 @@ describe("createFirstHouse — the house's timezone (item 62)", () => {
 
     await svc.createFirstHouse("user-1", { ...FIRST_HOUSE_BASE });
 
-    expect(restaurantPayload(inserts).timezone).toBeNull();
+    expect(firstHousePayload(inserts).p_timezone).toBeNull();
   });
 });
