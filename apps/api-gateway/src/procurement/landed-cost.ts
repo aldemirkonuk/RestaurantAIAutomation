@@ -51,8 +51,12 @@ export interface LandedCostHeader {
   delivery_fee: number | null;
   other_charges: number | null;
   deposit_total: number | null;
-  /** The tax the paper prints (BT-110). Never added as cost. */
+  /** The tax the paper prints (BT-110). Cross-checked, never added as cost. */
   tax: number | null;
+  /** Whether the charges and the discount above are printed with tax inside. Null: the paper does not say. */
+  charges_tax_basis: PrintedTaxBasis | null;
+  /** The tax rate on the charges and the discount, a percentage. Null: not printed. */
+  charges_vat_rate_percent: number | null;
 }
 
 /** One `procurement_document_lines` row (baseline, around line 4391) plus the door's count. */
@@ -449,10 +453,27 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
   }
   const D = isNum(discount) && discount > 0 ? discount : 0;
 
-  // The paper's charges and discount are shared as printed: what tax they
-  // hold is not read yet, so a line that carries a share is not stamped.
-  const C = charges;
-  const Dc = D;
+  // The charges and the discount are tax-treated like a line (ADR 0359 C3).
+  const chargesT = treatTax(
+    charges,
+    header.charges_tax_basis,
+    header.charges_vat_rate_percent,
+    reclaim,
+    "The paper's charges",
+  );
+  const discountT = treatTax(
+    D,
+    header.charges_tax_basis,
+    header.charges_vat_rate_percent,
+    reclaim,
+    "The paper's discount",
+  );
+  if (!paperProblem && (charges > 0 || D > 0)) {
+    if (!chargesT.ok) paperProblem = chargesT.sentence;
+    else if (!discountT.ok) paperProblem = discountT.sentence;
+  }
+  const C = chargesT.ok ? chargesT.cost : charges;
+  const Dc = discountT.ok ? discountT.cost : D;
 
   // Step 1: each line on its own, then its tax.
   type Step =
@@ -502,9 +523,44 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
     return { line, kind: "value", net: r.net, how: r.how, tax: t };
   });
 
+  // The tax the paper prints must agree with its lines' rates, when every
+  // line's tax can be worked out; otherwise the rates or the basis are wrong.
   const valueSteps = steps.filter(
     (x): x is Extract<Step, { kind: "value" }> => x.kind === "value",
   );
+  const lineTax = (
+    amount: number,
+    basis: PrintedTaxBasis | null,
+    rate: number | null,
+  ) => {
+    if (rate === 0) return 0;
+    if (rate == null || basis == null) return null;
+    const rr = rate / 100;
+    return basis === "includes_tax" ? amount - amount / (1 + rr) : amount * rr;
+  };
+  if (
+    !paperProblem &&
+    isNum(header.tax) &&
+    steps.length > 0 &&
+    steps.every((x) => x.kind === "value")
+  ) {
+    const parts = valueSteps.map((x) =>
+      lineTax(x.net, x.line.price_tax_basis, x.line.vat_rate_percent),
+    );
+    if (charges > 0 || D > 0) {
+      const rate = header.charges_vat_rate_percent;
+      const basis = header.charges_tax_basis;
+      const c = lineTax(charges, basis, rate);
+      const d = lineTax(D, basis, rate);
+      parts.push(c == null || d == null ? null : c - d);
+    }
+    if (parts.every((p) => p != null)) {
+      const worked = (parts as number[]).reduce((s, p) => s + p, 0);
+      if (Math.abs(worked - header.tax) > 0.01 * (parts.length + 1)) {
+        paperProblem = `The paper prints tax of ${m(header.tax)}, but its lines' rates come to ${m(worked)}, so no line's cost can be final.`;
+      }
+    }
+  }
 
   // Step 2: share the paper's charges and discount by the lines' cost value (F3).
   const base = valueSteps.reduce((s, x) => s + x.tax.cost, 0);
@@ -518,8 +574,9 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
   } else if (!shareProblem && Dc > base + C) {
     shareProblem = `This paper's discount of ${m(D)} is more than its stock and charges, so no line's cost is final.`;
   }
-  // Unknown until the charges' tax is read: a line carrying a share is null.
-  const headerStamps: CostTaxBasis[] = [null];
+  const headerStamps: CostTaxBasis[] = [];
+  if (charges > 0 && chargesT.ok) headerStamps.push(chargesT.stamp);
+  if (D > 0 && discountT.ok) headerStamps.push(discountT.stamp);
 
   const out: LandedLine[] = steps.map((x): LandedLine => {
     const item_key = x.line.item_key ?? null;
@@ -556,14 +613,15 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
         `It is free goods: its bottles add no value and dilute the item's cost.`,
       );
     else said.push(`For cost, ${x.tax.said}: ${m(cost_value)}.`);
+    const headerSaid = (t: TaxTreated) => (t.ok ? `; ${t.said}` : "");
     if (charge_share > 0) {
       said.push(
-        `It carries ${m(charge_share)} of the paper's ${chargeNames.join(", ")}, shared by line value.`,
+        `It carries ${m(charge_share)} of the paper's ${chargeNames.join(", ")}, shared by line value${headerSaid(chargesT)}.`,
       );
     }
     if (discount_share < 0) {
       said.push(
-        `It carries ${m(-discount_share)} of the paper's discount, shared by line value.`,
+        `It carries ${m(-discount_share)} of the paper's discount, shared by line value${headerSaid(discountT)}.`,
       );
     }
     if ((x.line.deposit ?? 0) > 0)
@@ -640,36 +698,99 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
   if (depositTotal > 0) leftOut.push(`a deposit of ${m(depositTotal)}`);
   if (lineDeposits > 0) leftOut.push(`line deposits of ${m(lineDeposits)}`);
 
-  // What happened to the tax, said from what was done, never from the basis
+  // What happened to the tax, said from what was done to each line's OWN
+  // price, never from the pooled stamp: a line whose own tax was treated but
+  // whose share of the charges or discount holds tax that is not known was
+  // not "costed as printed". Said from what was done, never from the basis
   // alone: a price with tax inside keeps it in cost for a house that does not
   // reclaim, so "tax is not cost" would be false there.
-  const costedLines = out.filter((l): l is CostedLine => l.status === "costed");
-  const takenOut = costedLines.reduce((s, l) => s + (l.tax_taken_out ?? 0), 0);
-  const inCost = costedLines.reduce((s, l) => s + (l.tax_in_cost ?? 0), 0);
-  const unstamped = costedLines.filter((l) => l.cost_tax_basis == null);
-  const stamped = costedLines.filter((l) => l.cost_tax_basis != null);
+  const costedRows = out.flatMap((l, i) => {
+    const x = steps[i];
+    return l.status === "costed" && x.kind === "value"
+      ? [{ l, own: x.tax.stamp }]
+      : [];
+  });
+  const costedLines = costedRows.map((r) => r.l);
+  const ownTreated = costedRows.filter((r) => r.own != null).map((r) => r.l);
+  const asPrinted = costedRows.filter((r) => r.own == null).map((r) => r.l);
+  const shareOnly = ownTreated.filter((l) => l.cost_tax_basis == null);
+  // Once lines are costed, the charges and the discount are shared out in
+  // full, so their tax (less the discount's) is in the paper's tax too.
+  const shared = costedLines.length > 0 && (charges > 0 || D > 0);
+  const headerTax = (k: "tax_taken_out" | "tax_in_cost") =>
+    shared && chargesT.ok && discountT.ok
+      ? (chargesT[k] ?? 0) - (discountT[k] ?? 0)
+      : 0;
+  const takenOut =
+    costedLines.reduce((s, l) => s + (l.tax_taken_out ?? 0), 0) +
+    headerTax("tax_taken_out");
+  const inCost =
+    costedLines.reduce((s, l) => s + (l.tax_in_cost ?? 0), 0) +
+    headerTax("tax_in_cost");
   const taxSaid: string[] = [];
-  if (reclaim.reclaims === true && stamped.length > 0) {
-    taxSaid.push(
-      takenOut > 0.005
-        ? `Tax of ${m(takenOut)} printed inside the prices is taken out of cost, since the house reclaims it.`
-        : `Cost is before tax, since the house reclaims it.`,
-    );
+  if (reclaim.reclaims === true) {
+    if (takenOut > 0.005) {
+      taxSaid.push(
+        `Tax of ${m(takenOut)} printed inside the prices is taken out of cost, since the house reclaims it.`,
+      );
+    } else if (ownTreated.length > 0) {
+      const n = ownTreated.length;
+      taxSaid.push(
+        n === costedLines.length && shareOnly.length === 0
+          ? `Cost is before tax, since the house reclaims it.`
+          : `The price${n === 1 ? "" : "s"} of ${plural(n, "line")} ${n === 1 ? "is" : "are"} costed before tax, since the house reclaims it.`,
+      );
+    }
   }
-  if (reclaim.reclaims === false && stamped.length > 0) {
+  if (reclaim.reclaims === false) {
     if (inCost > 0.005)
       taxSaid.push(
         `Tax of ${m(inCost)} is in cost, since the house does not reclaim it.`,
       );
-    if (stamped.some((l) => l.tax_in_cost == null))
+    if (ownTreated.some((l) => l.tax_in_cost == null))
       taxSaid.push(
         `Tax printed inside the prices stays in cost, since the house does not reclaim it.`,
       );
   }
-  if (unstamped.length > 0) {
-    const one = unstamped.length === 1;
+  if (asPrinted.length > 0) {
+    const one = asPrinted.length === 1;
     taxSaid.push(
-      `${plural(unstamped.length, "line")} ${one ? "is" : "are"} costed as printed, and what ${one ? "its" : "their"} cost holds is not stated, since ${reclaim.reclaims == null ? reclaim.why : "the paper does not say enough about the tax on its lines, charges or discount"}.`,
+      `${plural(asPrinted.length, "line")} ${one ? "is" : "are"} costed as printed, and what ${one ? "its" : "their"} cost holds is not stated, since ${reclaim.reclaims == null ? reclaim.why : `the paper does not say enough about the tax in ${one ? "its price" : "their prices"}`}.`,
+    );
+  }
+  if (shareOnly.length > 0) {
+    const one = shareOnly.length === 1;
+    taxSaid.push(
+      `${plural(shareOnly.length, "line")} ${one ? "carries" : "carry"} a share of the paper's charges or discount whose tax is not known, so what ${one ? "its" : "their"} cost holds is not stated.`,
+    );
+  }
+  // Lines that could not be costed had nothing done to their tax; saying the
+  // paper carries none would contradict their own unresolved sentence.
+  const opened = out.filter((l) => l.status === "unresolved").length;
+  const printsTax = header.tax != null && header.tax !== 0;
+  const carriesTax =
+    printsTax ||
+    ((charges > 0 || D > 0) &&
+      header.charges_vat_rate_percent != null &&
+      header.charges_vat_rate_percent !== 0) ||
+    lines.some(
+      (l) =>
+        l.stocked !== false &&
+        l.vat_rate_percent != null &&
+        l.vat_rate_percent !== 0,
+    );
+  if (carriesTax && opened > 0) {
+    taxSaid.push(
+      costedLines.length === 0
+        ? `The paper's tax could not be treated, since none of its lines could be costed.`
+        : `${plural(opened, "line")} could not be costed, so the tax on ${opened === 1 ? "it" : "them"} is not treated.`,
+    );
+  }
+  if (carriesTax && taxSaid.length === 0) {
+    taxSaid.push(
+      printsTax
+        ? `The paper prints tax${isNum(header.tax) ? ` of ${m(header.tax)}` : ""}, but none of its costed lines carries it, so it is not treated.`
+        : `No tax is in the cost of this paper's lines.`,
     );
   }
 

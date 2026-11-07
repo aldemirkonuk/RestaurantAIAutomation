@@ -10,7 +10,7 @@ Filed by `feat/landed-cost-one-rule` (cost-math proposal lane 1.2; the session's
 - The rounding tolerance (0.01 + 0.00005 per unit) was chosen, not measured on papers.
 - Where intake files a 7161 deposit is untraced. The spec shows `deposit_total` stays out of cost and the same amount on `other_charges` would be cost; the module cannot tell them apart.
 - Tax follows ADR 0359 C3 (PR #784, Proposed): the inputs are not columns yet. `reclaims_input_tax` waits on lane 3.5a; `procurement_document_lines` (baseline:4377) keeps no tax basis or rate, and nothing writes the canonical BT-152 `vatRate` (`canonical/canonical-types.ts:183`) to it.
-- The charges' and discount's tax is not read (a line carrying a share is stamped null), and the printed `tax` is not checked against the lines' rates: stacked follow-up `feat/landed-cost-paper-tax`.
+- One tax basis and one rate cover all the paper's charges and its discount, so freight and delivery at different rates cannot be stated. The printed `tax` is checked against the lines' rates only when every line is stock and costed.
 - Nothing rounds a cost to `inventory_lots.unit_cost` `numeric(10,2)` (QA round 4, #780 item 2).
 - A fully rejected line keeps its freight share (QA round 4, #780 item 3); who bears freight on returned goods is not recorded.
 
