@@ -4,14 +4,22 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Optional,
   Post,
   Req,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import type { Request } from "express";
 import { AuthService } from "../auth/auth.service";
 import { Public } from "../auth/decorators/public.decorator";
 import { RateLimit } from "../common/rate-limit";
+import {
+  foldAccount,
+  issueSignInDevice,
+  readSignInDevice,
+  signInDeviceSecret,
+} from "../common/rate-limit/sign-in-device";
 import {
   EmailCodeRequestDto,
   EmailCodeVerifyDto,
@@ -42,6 +50,7 @@ export class SignInController {
     private readonly passkeys: PasskeysService,
     private readonly codes: SignInCodesService,
     private readonly auth: AuthService,
+    @Optional() private readonly config?: ConfigService,
   ) {}
 
   @Post("passkey/options")
@@ -116,6 +125,18 @@ export class SignInController {
       dto.email,
       dto.lastHouses,
     );
-    return { success: true, ...tokens };
+    // QA round 21: a new device refused by the untrusted login buckets gets
+    // in here, and leaves known -- the code proved the mailbox, so the device
+    // is issued the same token a password login gives (auth.controller.ts).
+    const secret = signInDeviceSecret(
+      this.config?.get<string>("JWT_SECRET") ?? process.env.JWT_SECRET,
+    );
+    const folded = foldAccount(dto.email);
+    const signInDevice = issueSignInDevice(
+      secret,
+      folded,
+      readSignInDevice(secret, dto.signInDevice, folded) ?? undefined,
+    );
+    return { success: true, ...tokens, signInDevice };
   }
 }

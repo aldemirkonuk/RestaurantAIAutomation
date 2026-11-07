@@ -74,7 +74,7 @@ function signInNote(refusal: Refusal, message: string): { pause: boolean; title:
     return {
       pause: true,
       title: 'Too many tries — wait a moment.',
-      detail: 'This connection has made too many sign-in attempts. Try again in a few minutes.',
+      detail: 'Password sign-in is paused for a few minutes after too many tries. To get in now, email yourself a sign-in code below.',
     }
   }
   return { pause: false, title: 'Sign-in didn’t go through.', detail: message }

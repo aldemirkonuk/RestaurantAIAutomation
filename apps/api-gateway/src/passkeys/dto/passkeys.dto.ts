@@ -65,6 +65,15 @@ export class EmailCodeVerifyDto {
   })
   @IsOptional()
   lastHouses?: unknown;
+
+  @ApiPropertyOptional({
+    description:
+      "The known-device token this device holds for THIS email (rate limit only; never a session). A valid one keeps its device id.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  signInDevice?: string;
 }
 
 export class FinishPasskeyRegistrationDto {
