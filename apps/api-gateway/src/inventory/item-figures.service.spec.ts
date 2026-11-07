@@ -40,8 +40,7 @@ describe("ItemFiguresService (proposal K1-K10)", () => {
     const { waste, countGap, costTrend } = await svc.figures(H, I, "shown", NOW);
     expect(waste).toMatchObject({ readable: true, qty30d: 2, given30d: 1, value30d: 22 });
     expect(countGap.last![0]).toMatchObject({ expected: 10, counted: 8, variance: -2, by: "Ayşe", money: -20 });
-    expect(costTrend).toMatchObject({ readable: true, changePct: 20 });
-    expect(costTrend.points!.map((p) => p.unitCost)).toEqual([10, 12]);
+    expect(costTrend).toMatchObject({ readable: true, points: null, changePct: null });
   });
 
   it("(d) a staff caller gets no money figure", async () => {
@@ -49,14 +48,19 @@ describe("ItemFiguresService (proposal K1-K10)", () => {
     const { waste, countGap, costTrend } = await svc.figures(H, I, "staff", NOW);
     expect(waste).toMatchObject({ qty30d: 2, given30d: 1, value30d: null });
     expect(countGap.last!.every((c) => c.money === null)).toBe(true);
-    expect(costTrend).toMatchObject({ readable: true, points: null, source: "Cost is shown to owners and managers." });
+    expect(costTrend).toMatchObject({ readable: true, points: null, changePct: null });
   });
 
-  it("(e) a failed lots read is unreadable, not an empty trend", async () => {
+  it("(e) the cost trend is not built from surviving lots: a moved lot and a used-up delivery change nothing", async () => {
     const { db, svc } = seed();
-    db.failures.inventory_lots = "timeout";
+    // transfer_stock re-inserts a moved lot dated today with the old cost; the
+    // 60-day delivery above stands for one that has since sold out and gone.
+    db.tables.inventory_lots!.push({ inventory_id: I, restaurant_id: H, received_at: ago(0), unit_cost: 10, cost_provenance: "invoice" });
+    db.tables.inventory_lots!.splice(0, 1);
+    db.failures.inventory_lots = "the cost trend must not read inventory_lots";
     const { costTrend } = await svc.figures(H, I, "shown", NOW);
-    expect(costTrend).toMatchObject({ readable: false, points: null, changePct: null });
+    expect(costTrend).toMatchObject({ readable: true, points: null, changePct: null });
+    expect(costTrend.source).toMatch(/not shown yet/);
   });
 
   it("a failed ledger read is null, never 0; no counts says never counted", async () => {
