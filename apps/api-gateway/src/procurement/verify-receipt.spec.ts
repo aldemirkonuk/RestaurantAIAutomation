@@ -147,6 +147,8 @@ interface Calls {
   researchInserts: Row[];
   /** `take_receipt_verification_lease` calls and what each was answered (kept out of `rpc`). */
   leaseTakes: { args: Row; answer: string }[];
+  /** `procurement_credits` updates (a correction restating a held claim), with their filters. */
+  creditUpdates: { payload: Row; filters: Row }[];
 }
 
 /**
@@ -205,6 +207,12 @@ function makeDb(opts: {
   leaseHeldElsewhere?: boolean;
   /** The lease RPC fails with this. */
   leaseError?: { message: string } | null;
+  /**
+   * A claim already held for this order: an insert with its reason is refused
+   * 23505 (`uq_pc_order_match_reason`), and an update matches it only when its
+   * `reason` and `state` filters do.
+   */
+  heldClaim?: Row | null;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -216,6 +224,7 @@ function makeDb(opts: {
     receiptEvents: [],
     researchInserts: [],
     leaseTakes: [],
+    creditUpdates: [],
   };
   const leases = new Map<string, string>();
   if (opts.leaseHeldElsewhere) leases.set(ORDER, "someone-else");
@@ -235,6 +244,19 @@ function makeDb(opts: {
           if (leases.get(filters.order_id) === filters.token)
             leases.delete(filters.order_id);
           return { data: null, error: null };
+        }
+        if (table === "procurement_credits" && opts.heldClaim) {
+          if (op === "insert" && payloadRow.reason === opts.heldClaim.reason)
+            return {
+              data: null,
+              error: { code: "23505", message: "uq_pc_order_match_reason" },
+            };
+          if (op === "update") {
+            const hit =
+              filters.reason === opts.heldClaim.reason &&
+              filters.state === opts.heldClaim.state;
+            return { data: hit ? [{ id: opts.heldClaim.id }] : [], error: null };
+          }
         }
         if (table === "procurement_orders" && opts.live) {
           if (op === "update")
@@ -377,6 +399,8 @@ function makeDb(opts: {
           if (table === "procurement_orders") calls.orderUpdates.push(payload);
           if (table === "restaurant_inventory")
             calls.inventoryUpdates.push(payload);
+          if (table === "procurement_credits")
+            calls.creditUpdates.push({ payload, filters });
           return q;
         },
         delete: () => {
@@ -1784,9 +1808,10 @@ describe("verifyReceipt — a repeated verification writes nothing new (H-1)", (
 });
 
 // ---------------------------------------------------------------------------
-// QA round 5 on H-1 (2026-11-07): two verifications racing write once
+// QA round 5 on H-1 (2026-11-07): racing verifications, a corrected claim, a
+// closed order
 // ---------------------------------------------------------------------------
-describe("verifyReceipt — one verification at a time (H-1, round 5)", () => {
+describe("verifyReceipt — one verification at a time, corrections restate the claim (H-1, round 5)", () => {
   const payload = {
     note: "Two bottles arrived cracked.",
     invoiceQuantity: 10,
@@ -1867,5 +1892,107 @@ describe("verifyReceipt — one verification at a time (H-1, round 5)", () => {
       service(db).verifyReceipt(REST, ORDER, USER, payload as any),
     ).rejects.toThrow(/could not be recorded/);
     expect(leases.size).toBe(0);
+  });
+
+  async function verifiedOnce() {
+    const first = makeDb({ orderRow: deliveredOrder, bookedBottles: 10 });
+    await service(first.db).verifyReceipt(REST, ORDER, USER, payload as any);
+    const movement = first.calls.rpc.find((c) => c.name === "apply_stock_movement");
+    expect(first.calls.creditInserts).toHaveLength(1);
+    return {
+      claim: first.calls.creditInserts[0],
+      after: {
+        orderRow: { ...deliveredOrder, ...first.calls.orderUpdates[0] },
+        bookedBottles: 10 + (movement?.args.p_delta ?? 0),
+        latestReconciledEvent: first.calls.receiptEvents[0],
+        latestReceiptPrice: first.calls.priceHistoryInserts[0] ?? null,
+      },
+    };
+  }
+
+  it("a correction restates the open claim to the corrected amount instead of leaving the old one", async () => {
+    const { claim, after } = await verifiedOnce();
+    expect(Number(claim.claimed_amount)).toBe(80);
+    const { db, calls } = makeDb({
+      ...after,
+      heldClaim: { id: "claim-1", reason: claim.reason, state: "open" },
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...payload,
+      acceptedQuantity: 7,
+      rejectedQuantity: 3,
+    } as any);
+
+    // The insert is refused by the index (never a second claim) ...
+    expect(calls.creditInserts).toHaveLength(1);
+    // ... and the held open claim now says the corrected money.
+    expect(calls.creditUpdates).toHaveLength(1);
+    expect(Number(calls.creditUpdates[0].payload.claimed_amount)).toBe(120);
+    expect(calls.creditUpdates[0].filters).toMatchObject({
+      restaurant_id: REST,
+      order_id: ORDER,
+      reason: claim.reason,
+      state: "open",
+    });
+  });
+
+  it("a claim already with the vendor is not restated under them", async () => {
+    const { claim, after } = await verifiedOnce();
+    const { db, calls } = makeDb({
+      ...after,
+      heldClaim: { id: "claim-1", reason: claim.reason, state: "requested" },
+    });
+
+    const order = await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...payload,
+      acceptedQuantity: 7,
+      rejectedQuantity: 3,
+    } as any);
+
+    // The update is scoped to `open`, so it matched nothing; the verification
+    // itself still lands.
+    expect(calls.creditUpdates).toHaveLength(1);
+    expect(calls.creditUpdates[0].filters.state).toBe("open");
+    expect(calls.orderUpdates).toHaveLength(1);
+    expect(order.id).toBe(ORDER);
+  });
+
+  it.each([
+    ["CANCELLED", /This order was cancelled, so its delivery cannot be verified and nothing was changed/],
+    ["REJECTED", /This order was rejected, so its delivery cannot be verified/],
+    ["FAILED", /This order failed, so its delivery cannot be verified/],
+  ])("a %s order is refused in words and nothing is written", async (status, words) => {
+    const { db, calls, leases } = makeDb({
+      orderRow: { ...deliveredOrder, status },
+      bookedBottles: 10,
+    });
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, payload as any),
+    ).rejects.toThrow(words);
+    // The one-tap shape is refused the same way.
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, { adjustments: [] } as any),
+    ).rejects.toThrow(words);
+    expect(calls.receiptEvents).toEqual([]);
+    expect(calls.creditInserts).toEqual([]);
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.priceHistoryInserts).toEqual([]);
+    expect(calls.rpc).toEqual([]);
+    expect(leases.size).toBe(0);
+  });
+
+  it("a COMPLETED order can still be re-verified (that is how a count is corrected)", async () => {
+    const { after } = await verifiedOnce();
+    const { db, calls } = makeDb({
+      ...after,
+      orderRow: { ...after.orderRow, status: "COMPLETED" },
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...payload,
+      acceptedQuantity: 7,
+      rejectedQuantity: 3,
+    } as any);
+    expect(calls.receiptEvents).toHaveLength(1);
   });
 });

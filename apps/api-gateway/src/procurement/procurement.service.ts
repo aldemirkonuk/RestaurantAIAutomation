@@ -5790,10 +5790,47 @@ export class ProcurementService {
         .from("procurement_credits")
         .insert(insertRow);
 
-      // 23505 = a claim for this line and reason is already open. Re-running the
-      // match must not manufacture a second claim for money already being
-      // chased — that would double-count recovery and embarrass the restaurant.
-      if (error && error.code !== "23505")
+      // 23505 = a claim for this order and reason is already held
+      // (`uq_pc_order_match_reason`). Re-running the match must not
+      // manufacture a second claim for money already being chased — that would
+      // double-count recovery and embarrass the restaurant.
+      //
+      // A CORRECTION RESTATES THE HELD CLAIM (QA round 5 on H-1, 2026-11-07).
+      // A re-verification that reaches here is not a repeat (the guard in
+      // `verifyReceipt` returned before any write for those), so its amount is
+      // the corrected one: 8 accepted / 2 refused at $40 claimed $80, and a
+      // correction to 7 / 3 must claim $120, not leave $80 standing. Only a
+      // claim still `open` is restated — one already requested from or
+      // answered by the vendor carries the figure the vendor was given, and
+      // changing it under them is a person's call, so it is left and logged.
+      if (error?.code === "23505") {
+        const { data: restated, error: restateError } =
+          await this.databaseService.supabase
+            .from("procurement_credits")
+            .update({
+              summary: claim.summary,
+              claimed_amount: claim.claimedAmount,
+              self_evidenced: claim.selfEvidenced,
+              evidence: match as unknown as Record<string, unknown>,
+            })
+            .eq("restaurant_id", restaurantId)
+            .eq("order_id", orderId)
+            .eq("reason", claim.reason)
+            .is("document_id", null)
+            .is("document_line_id", null)
+            .eq("state", "open")
+            .select("id");
+        if (restateError)
+          this.logger.warn(
+            `openCreditClaim could not restate the open ${claim.reason} claim for order ${orderId} ` +
+              `to ${claim.claimedAmount}: ${restateError.message}`,
+          );
+        else if (!restated || restated.length === 0)
+          this.logger.warn(
+            `openCreditClaim left the ${claim.reason} claim for order ${orderId} as it was: it is ` +
+              `already with the vendor, and this verification would claim ${claim.claimedAmount}.`,
+          );
+      } else if (error)
         this.logger.warn(
           `openCreditClaim failed for order ${orderId}: ${error.message}`,
         );
@@ -6386,6 +6423,29 @@ export class ProcurementService {
 
     if (fetchError || !orderRow) {
       throw new NotFoundException(`Order ${orderId} not found`);
+    }
+
+    // A CLOSED ORDER THAT KEPT NOTHING IS NOT VERIFIED (QA round 1, H-1, the
+    // half QA round 5 found unaddressed). A cancelled, rejected or failed order
+    // has left every spend total and delivery count (`order-transitions.ts`),
+    // and nothing reopens one. Verifying it would book stock, open a vendor
+    // claim and stamp a verdict on an order the books say never happened.
+    // Refused before anything is read or written. COMPLETED is closed too, but
+    // its goods arrived, and re-verifying it is how a count is corrected.
+    const closedWords: Record<string, string> = {
+      [ProcurementOrderStatus.CANCELLED]: "was cancelled",
+      [ProcurementOrderStatus.REJECTED]: "was rejected",
+      [ProcurementOrderStatus.FAILED]: "failed",
+    };
+    const closed = closedWords[String((orderRow as any).status ?? "")];
+    if (closed) {
+      throw new UnprocessableEntityException({
+        reason: "receipt_verification_order_closed",
+        status: (orderRow as any).status,
+        message:
+          `This order ${closed}, so its delivery cannot be verified and nothing was changed. ` +
+          "If the wine did arrive, receive it on a new order.",
+      });
     }
 
     /*
