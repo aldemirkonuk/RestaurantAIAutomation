@@ -732,7 +732,7 @@ describe("DeliveryService", () => {
       const res = await service.verify(REST, DEL, "u1");
       spy.mockRestore();
       expect(res.ok && res.value.costNote).toBe(
-        "This delivery was already verified; its cost was posted then and is not posted twice. 1 item(s) had been booked at the invoice's printed price and now cost what one bottle costs. Item i2: its lot was finalised at 264: why",
+        "This delivery was already verified; its cost was posted then and is not posted twice. 1 item(s) had been booked at the invoice's printed price and now carry their landed cost per bottle: the price of one bottle with its share of the invoice's charges and discount. Item i2: its lot was finalised at 264: why",
       );
     });
 

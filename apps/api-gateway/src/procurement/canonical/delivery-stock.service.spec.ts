@@ -750,6 +750,47 @@ describe("DeliveryStockService — VERIFIED posts the landed cost (lane 1.4)", (
     );
   });
 
+  it("(c2) a total printed after its allowance lands the reconciled cost with freight, and the other item stays final", async () => {
+    // 10 @ 60 less an allowance of 50 printed as 550: far outside the
+    // gatekeeper's 1% of the gross 600, yet the same price.
+    const res = await land(
+      { freight: 100 },
+      [bottles({ allowance: 50, line_total: 550 }), two[1]],
+      both,
+    );
+    // Net 550 and 400 share the 100 freight by value: 57.89 and 42.11.
+    expect(costs()).toEqual({ [ITEM]: 60.79, [ITEM2]: 44.21 });
+    expect(res.ok && res.value.stillProvisional).toEqual([]);
+    const first = res.ok
+      ? res.value.finalised.find((f) => f.inventoryId === ITEM)
+      : undefined;
+    expect(first?.landed?.netLineValue).toBe(550);
+  });
+
+  it("(c3) a line deposit above 1% inside the total is never cost", async () => {
+    const res = await land(
+      {},
+      [at(10, 10, { deposit: 10, line_total: 110 }), two[1]],
+      both,
+    );
+    expect(costs()).toEqual({ [ITEM]: 10, [ITEM2]: 40 });
+    expect(res.ok && res.value.stillProvisional).toEqual([]);
+  });
+
+  it("(c4) a total that matches no reading of its allowance is still refused", async () => {
+    // 10 @ 60 with an allowance of 50 printed as 700: neither 600 nor 550.
+    const res = await land(
+      {},
+      [bottles({ allowance: 50, line_total: 700 }), two[1]],
+      both,
+    );
+    expect(costs()).toEqual({ [ITEM2]: 40 });
+    const why = res.ok ? res.value.stillProvisional : [];
+    expect(why.find((p) => p.inventoryId === ITEM)?.reason).toMatch(
+      /the price's unit is not what the line says/,
+    );
+  });
+
   it("(d) two lines of one item that price differently are pooled by value, 12 @ 10 + 6 @ 13 → 11.00 (base: refused)", async () => {
     const res = await land({}, [at(12, 10), at(6, 13, { line_no: 2 })], {
       [ITEM]: 18,

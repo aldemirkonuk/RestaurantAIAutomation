@@ -917,7 +917,7 @@ export class DeliveryService {
       } else {
         const { repaired, flagged } = fix.value;
         if (repaired.length)
-          costNote += ` ${repaired.length} item(s) had been booked at the invoice's printed price and now cost what one bottle costs.`;
+          costNote += ` ${repaired.length} item(s) had been booked at the invoice's printed price and now carry their landed cost per bottle: the price of one bottle with its share of the invoice's charges and discount.`;
         for (const f of flagged) costNote += ` Item ${f.inventoryId}: ${f.reason}`;
       }
       return {
