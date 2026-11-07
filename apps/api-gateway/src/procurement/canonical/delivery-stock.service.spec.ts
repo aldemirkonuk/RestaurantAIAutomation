@@ -248,6 +248,11 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
       error: null,
     };
     db.answers.delivery_proposals = { data: [], error: null };
+    // The invoice's header: no charge, no discount (lane 1.4 reads it).
+    db.answers.procurement_documents = {
+      data: [{ id: "inv-1", doc_number: "A-1" }],
+      error: null,
+    };
     db.rpcAnswers.finalise_delivery_cost = {
       data: { lots_matched: 1, lots_finalised: 1, bottles_finalised: 10 },
       error: null,
@@ -485,12 +490,18 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     expect(one.ok && one.value.finalised[0].unitCost).toBe(22);
   });
 
-  it("B1: lines read by line_no; a refusal holds whatever follows, and disagreeing lines are refused", async () => {
+  // Lane 1.4 replaced this test's third clause: two lines of one item that
+  // price differently (22 and 20 a bottle) were refused here by #838; they are
+  // POOLED by value now, pinned in the landed-cost block below (case d).
+  it("B1: lines read by line_no; a refusal holds whatever follows", async () => {
     for (const order of [[{ pack_size: 1 }, { line_no: 2 }], [{ line_no: 2 }, { pack_size: 1 }]])
       expect(await held(run(...order))).toMatch(/how many bottles a case holds/);
     expect(db.verbs).toContain("procurement_document_lines.order");
-    expect(await held(run({}, { line_no: 3, unit_price: 240 }))).toMatch(/price it differently \(.*22\.0000.*; .*20\.0000/);
     expect(posted()).toEqual([]);
+    db.answers.inventory_transactions = {
+      data: [{ inventory_id: ITEM, quantity_change: 48 }],
+      error: null,
+    };
     await run({}, { line_no: 3 });
     expect(posted().map((c) => c.args.p_unit_cost)).toEqual([22]);
   });
@@ -542,13 +553,31 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     db.answers.delivery_proposals = { data: [], error: null };
   });
 
+  it("QA 15 (2): a lot at the case price on a paper whose landed cost is held is repaired to the line's per-bottle cost", async () => {
+    // 24 bottles at 264 a case of 12, freight 40, and a second line nobody
+    // priced: the paper's charges cannot be shared, so the landed cost is held.
+    db.answers.procurement_documents = { data: [{ id: "inv-1", doc_number: "A-1", freight: 40 }], error: null };
+    const other = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+    db.answers.inventory_transactions = {
+      data: [{ inventory_id: ITEM, quantity_change: 24 }, { inventory_id: other, quantity_change: 6 }],
+      error: null,
+    };
+    const r = await repair([lot(264)], {}, { line_no: 2, inventory_id: other, unit_price: null, qty_bottles: 6, uom: "bottle", pack_size: 1 });
+    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([22]);
+    expect(r.ok && r.value.repaired[0].basis).toMatch(/charges and discount are not in this cost/);
+    // The line itself refuses: nothing posts, and the flag says why.
+    const kept = await repair([lot(264)], { pack_size: 1 }, { line_no: 2, inventory_id: other, unit_price: null, qty_bottles: 6, uom: "bottle", pack_size: 1 });
+    expect(posted()).toEqual([]);
+    expect(kept.ok && kept.value.flagged.map((f) => f.kind)).toEqual(["refused"]);
+  });
+
   it("QA 10a (6): a lot whose line was edited after it was costed is flagged, never revalued", async () => {
     const invoiced = (unit_cost: number) => ({ ...lot(unit_cost), cost_provenance: "invoice" });
     // Costed at 22 from `264 per case of 12`; the line now says 360 a case.
     const r = await repair([invoiced(22)], { unit_price: 360 });
     expect(posted()).toEqual([]);
     expect(r.ok && r.value.flagged).toEqual([
-      expect.objectContaining({ inventoryId: ITEM, kind: "line_changed", reason: expect.stringMatching(/costed at 22 a bottle, but its invoice line now makes 30 a bottle/) }),
+      expect.objectContaining({ inventoryId: ITEM, kind: "line_changed", reason: expect.stringMatching(/costed at 22 a bottle, but its invoice now makes 30 a bottle/) }),
     ]);
     // A hand revaluation (`manual`) and a lot that still matches are left alone.
     for (const quiet of [{ ...lot(25), cost_provenance: "manual" }, invoiced(22)]) {
@@ -602,6 +631,156 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     expect(posted()).toEqual([]);
     await run({ uom: "bottle", qty: 24, line_total: 6336 });
     expect(posted()[0].args.p_unit_cost).toBe(264);
+  });
+});
+
+// Cost-math lane 1.4: VERIFIED posts the LANDED cost. Fixtures are SYNTHETIC.
+describe("DeliveryStockService — VERIFIED posts the landed cost (lane 1.4)", () => {
+  const ITEM2 = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+  let db: MockDb;
+  let service: DeliveryStockService;
+
+  beforeEach(() => {
+    db = makeMockDb();
+    db.reset();
+    service = new DeliveryStockService(db.client as unknown as DatabaseService);
+    db.answers.deliveries = {
+      data: { id: DEL, state: "AGREED", order_id: null },
+      error: null,
+    };
+    db.answers.document_deliveries = {
+      data: [{ document_id: "inv-1", role: "invoice" }],
+      error: null,
+    };
+    db.answers.delivery_proposals = { data: [], error: null };
+    db.rpcAnswers.finalise_delivery_cost = {
+      data: { lots_matched: 1, lots_finalised: 1, bottles_finalised: 10 },
+      error: null,
+    };
+  });
+
+  const bottles = (over: Record<string, unknown> = {}) => ({
+    document_id: "inv-1",
+    line_no: 1,
+    inventory_id: ITEM,
+    qty_bottles: 10,
+    uom: "bottle",
+    pack_size: 1,
+    unit_price: 60,
+    line_total: 600,
+    ...over,
+  });
+  const at = (n: number, price: number, over: Record<string, unknown> = {}) =>
+    bottles({
+      qty_bottles: n,
+      unit_price: price,
+      line_total: n * price,
+      ...over,
+    });
+  const land = (
+    head: Record<string, unknown>,
+    lines: Record<string, unknown>[],
+    booked: Record<string, number>,
+  ) => {
+    db.rpcCalls.length = 0;
+    db.answers.procurement_documents = {
+      data: [{ id: "inv-1", doc_number: "A-1", ...head }],
+      error: null,
+    };
+    db.answers.procurement_document_lines = { data: lines, error: null };
+    db.answers.inventory_transactions = {
+      data: Object.entries(booked).map(([inventory_id, quantity_change]) => ({
+        inventory_id,
+        quantity_change,
+      })),
+      error: null,
+    };
+    return service.finaliseAtVerified(REST, DEL, USER);
+  };
+  const posted = () =>
+    db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost");
+  const costs = () =>
+    Object.fromEntries(
+      posted().map((c) => [c.args.p_inventory_id, c.args.p_unit_cost]),
+    );
+  const two = [
+    bottles(),
+    bottles({
+      line_no: 2,
+      inventory_id: ITEM2,
+      unit_price: 40,
+      line_total: 400,
+    }),
+  ];
+  const both = { [ITEM]: 10, [ITEM2]: 10 };
+
+  it("(a)+(i) freight 100 on lines 600 and 400 lands 66.00 and 44.00, stamped null (base: 60 and 40)", async () => {
+    const res = await land({ freight: 100 }, two, both);
+    expect(costs()).toEqual({ [ITEM]: 66, [ITEM2]: 44 });
+    const first = res.ok
+      ? res.value.finalised.find((f) => f.inventoryId === ITEM)
+      : undefined;
+    expect(first?.landed).toMatchObject({
+      netLineValue: 600,
+      chargeShare: 60,
+      discountShare: 0,
+      acceptedBottles: 10,
+    });
+    // (i) costed as printed, stamped null, and the reason reaches p_reason.
+    expect(first?.landed?.costTaxBasis).toBeNull();
+    expect(String(posted()[0].args.p_reason)).toMatch(
+      /carries 60\.00 of the paper's freight.*cost tax basis: none\).*the house has not set its tax basis/,
+    );
+  });
+
+  it("(d) two lines of one item that price differently are pooled by value, 12 @ 10 + 6 @ 13 → 11.00 (base: refused)", async () => {
+    const res = await land({}, [at(12, 10), at(6, 13, { line_no: 2 })], {
+      [ITEM]: 18,
+    });
+    expect(res.ok && res.value.stillProvisional).toEqual([]);
+    expect(costs()).toEqual({ [ITEM]: 11 });
+  });
+
+  it("(g) 12 listed @ 22 and 10 booked at the door costs 22.00, not 26.40 (F2)", async () => {
+    const res = await land({}, [at(12, 22)], { [ITEM]: 10 });
+    expect(costs()).toEqual({ [ITEM]: 22 });
+    expect(res.ok && res.value.finalised[0].landed?.acceptedBottles).toBe(10);
+  });
+
+  it("(k) an accepted proposal still wins, and carries no share of the paper", async () => {
+    db.answers.delivery_proposals = {
+      data: [{ document_id: "inv-1", line_no: 1, unit_price_proposed: 55 }],
+      error: null,
+    };
+    const res = await land({ freight: 100 }, two, both);
+    expect(costs()).toEqual({ [ITEM]: 55, [ITEM2]: 44 });
+    const settled = res.ok
+      ? res.value.finalised.find((f) => f.inventoryId === ITEM)
+      : undefined;
+    expect(settled).toMatchObject({
+      provenance: "manual",
+      source: "accepted_proposal",
+    });
+    expect(settled?.basis).toMatch(/carries no share of the invoice's charges/);
+    expect(settled?.landed).toBeUndefined();
+  });
+
+  it("an invoice whose header cannot be read is not read as one with no charges (ADR 0020)", async () => {
+    db.answers.procurement_documents = {
+      data: null,
+      error: { message: "connection reset" },
+    };
+    db.answers.procurement_document_lines = { data: two, error: null };
+    db.answers.inventory_transactions = {
+      data: [{ inventory_id: ITEM, quantity_change: 10 }],
+      error: null,
+    };
+    const res = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(res.ok).toBe(false);
+    expect(!res.ok && res.error).toMatch(
+      /could not be read for their charges and discount: connection reset/,
+    );
+    expect(posted()).toEqual([]);
   });
 });
 
