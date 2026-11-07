@@ -90,7 +90,14 @@ export function SecurityRegister({ data }: { data: ProfileNextData }) {
       setConfirm('');
       setPasswordMsg({ tone: 'done', text: 'Password updated. Every other session on Mudavym was signed out; this one stays signed in.' });
     } catch (e) {
-      setPasswordMsg({ tone: 'error', text: `Not changed — ${String((e as Error).message)}` });
+      // The gateway's own sentence, not axios's "status code 403": adding a
+      // first password asks for a sign-in in the last ten minutes (QA round
+      // 11, R11-08) and says so.
+      const said = (e as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+      setPasswordMsg({
+        tone: 'error',
+        text: `Not changed — ${typeof said === 'string' && said ? said : String((e as Error).message)}`,
+      });
     } finally {
       setSavingPassword(false);
     }
