@@ -69,6 +69,26 @@ class PromoteRequest(BaseModel):
     submission_id: str
 
 
+def _library_outcome(supabase, submission_id: str, caller: str) -> dict:
+    """What happened to the wine after an applied override, for the response.
+
+    ``library`` is one of library_promotion's outcomes; ``library_detail`` is
+    the sentence the contributor reads, present whenever there is something to
+    say. A failure is SAID, never folded into the override's success (ADR 0020).
+    """
+    from services.library_promotion import FAILED, OUTCOME_WORDS
+
+    try:
+        outcome = _maybe_promote_submission(supabase, submission_id)
+    except Exception as exc:  # it does not raise; this is belt and braces
+        logger.error("%s: _maybe_promote_submission raised: %s", caller, exc)
+        outcome = FAILED
+    result = {"library": outcome}
+    if outcome in OUTCOME_WORDS:
+        result["library_detail"] = OUTCOME_WORDS[outcome]
+    return result
+
+
 # --- POST /sessions ---
 @studio_router.post("/sessions")
 def create_session(
@@ -289,11 +309,14 @@ def submit_override(
                 "detail": "Override recorded, but promotion failed. See server logs.",
             }
 
-        # T-14-08: attempt library promotion — non-fatal if it fails
-        try:
-            _maybe_promote_submission(supabase, body.submission_id)
-        except Exception as exc:
-            logger.error("submit_override: _maybe_promote_submission failed: %s", exc)
+        # T-14-08: attempt library promotion. The override stands either way,
+        # but the contributor is told what happened to the wine: "auto_promoted"
+        # names the OVERRIDE's status, never the library's (QA round 5, B-1).
+        return {
+            "status": promotion_status,
+            "override_id": override_id,
+            **_library_outcome(supabase, body.submission_id, "submit_override"),
+        }
 
     return {"status": promotion_status, "override_id": override_id}
 
@@ -474,11 +497,10 @@ def decide_override(
         except Exception as exc:
             logger.error("decide_override: apply failed: %s", exc)
 
-        # T-14-08: attempt library promotion — non-fatal if it fails
-        try:
-            _maybe_promote_submission(supabase, ov["submission_id"])
-        except Exception as exc:
-            logger.error("decide_override: _maybe_promote_submission failed: %s", exc)
+        # T-14-08: attempt library promotion — non-fatal, but reported.
+        library = _library_outcome(supabase, ov["submission_id"], "decide_override")
+    else:
+        library = {}
 
     # D-12: update trust counter for certified_contributors
     from config.settings import get_settings
@@ -494,7 +516,7 @@ def decide_override(
         except Exception as exc:
             logger.warning("decide_override: trust update failed (non-fatal): %s", exc)
 
-    return {"decision": body.decision, "override_id": override_id}
+    return {"decision": body.decision, "override_id": override_id, **library}
 
 
 # --- POST /invite ---
