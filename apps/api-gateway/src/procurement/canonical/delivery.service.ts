@@ -909,8 +909,17 @@ export class DeliveryService {
     // a lot finalised at the invoice's PRINTED price (QA 7c B1) is corrected,
     // or, when its line is now refused, named as wrong instead of kept quietly.
     if (delivery.verified_at) {
+      // QA round 15 (4): a post that failed partway at the first verify is
+      // finished here, for the lots still provisional, and only once.
+      const finish = await this.stock.finishProvisional(restaurantId, deliveryId, userId);
       const fix = await this.stock.repairPrintedCost(restaurantId, deliveryId, userId);
-      let costNote = "This delivery was already verified; its cost was posted then and is not posted twice.";
+      let costNote = "This delivery was already verified; a cost already posted is not posted twice.";
+      if (!finish.ok) {
+        this.logger.error(`delivery ${deliveryId} re-verify could not finish its cost: ${finish.error}`);
+        costNote += ` The cost of the items still provisional could not be posted: ${finish.error}`;
+      } else if (finish.value.finalised.length) {
+        costNote += ` Cost posted now for ${finish.value.finalised.length} item(s) whose cost had not posted at the first verify.`;
+      }
       if (!fix.ok) {
         this.logger.error(`delivery ${deliveryId} re-verify could not repair its cost: ${fix.error}`);
         costNote += ` A cost booked at the printed price could not be checked: ${fix.error}`;
@@ -965,7 +974,8 @@ export class DeliveryService {
     //
     // A COST FAILURE DOES NOT UN-VERIFY THE DELIVERY. A named person asserted
     // receipt and that assertion is durable; the lots simply stay provisional,
-    // the sentence says so, and posting is safe to retry. Reporting the
+    // the sentence says so, and a re-verify posts the items still provisional
+    // (finishProvisional, QA round 15 (4)). Reporting the
     // verification as failed would send them to press it again on a delivery
     // that is already verified.
     const cost = await this.stock.finaliseAtVerified(

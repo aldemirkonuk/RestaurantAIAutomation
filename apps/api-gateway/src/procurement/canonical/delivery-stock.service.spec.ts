@@ -571,6 +571,16 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     expect(kept.ok && kept.value.flagged.map((f) => f.kind)).toEqual(["refused"]);
   });
 
+  it("QA 15 (5): a lot at the case price on a EUR invoice in a TRY house is flagged, never repaired to a EUR per-bottle price", async () => {
+    db.answers.procurement_documents = { data: [{ id: "inv-1", doc_number: "A-1", currency: "EUR" }], error: null };
+    db.answers.restaurants = { data: { currency: "TRY" }, error: null };
+    const r = await repair([lot(264)], {});
+    expect(posted()).toEqual([]);
+    expect(r.ok && r.value.flagged).toEqual([
+      expect.objectContaining({ inventoryId: ITEM, kind: "refused", reason: expect.stringMatching(/its invoice is in EUR and this house keeps its costs in TRY/) }),
+    ]);
+  });
+
   it("QA 10a (6): a lot whose line was edited after it was costed is flagged, never revalued", async () => {
     const invoiced = (unit_cost: number) => ({ ...lot(unit_cost), cost_provenance: "invoice" });
     // Costed at 22 from `264 per case of 12`; the line now says 360 a case.
@@ -1025,5 +1035,162 @@ describe("A5 — the two legacy paths are no longer second writers", () => {
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.value).toEqual({ booked: false, deliveryIds: [] });
+  });
+});
+
+describe("DeliveryStockService — a re-verify finishes a post that failed partway (QA round 15 (4))", () => {
+  const B = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+  let db: MockDb;
+  let service: DeliveryStockService;
+  let failOn: string | null;
+
+  beforeEach(() => {
+    db = makeMockDb();
+    db.reset();
+    failOn = null;
+    const real = db.client.getClient;
+    db.client.getClient = () => ({
+      ...real(),
+      rpc: async (fn: string, args: Record<string, unknown>) => {
+        db.rpcCalls.push({ fn, args });
+        if (fn === "finalise_delivery_cost" && args.p_inventory_id === failOn)
+          return { data: null, error: { message: "connection reset" } };
+        return { data: { lots_matched: 1, lots_finalised: 1, bottles_finalised: 10 }, error: null };
+      },
+    });
+    service = new DeliveryStockService(db.client as unknown as DatabaseService);
+    db.answers.deliveries = { data: { id: DEL, state: "VERIFIED", order_id: null }, error: null };
+    db.answers.document_deliveries = { data: [{ document_id: "inv-1", role: "invoice" }], error: null };
+    db.answers.delivery_proposals = { data: [], error: null };
+    db.answers.procurement_documents = { data: [{ id: "inv-1", doc_number: "A-1", freight: 50 }], error: null };
+    const line = (o: Record<string, unknown>) => ({
+      document_id: "inv-1", line_no: 1, inventory_id: ITEM, qty_bottles: 10, uom: "bottle",
+      pack_size: 1, unit_price: 60, line_total: 600, ...o,
+    });
+    db.answers.procurement_document_lines = {
+      data: [line({}), line({ line_no: 2, inventory_id: B, unit_price: 40, line_total: 400 })],
+      error: null,
+    };
+    db.answers.inventory_transactions = {
+      data: [{ inventory_id: ITEM, quantity_change: 10 }, { inventory_id: B, quantity_change: 10 }],
+      error: null,
+    };
+  });
+  const posts = () => db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost");
+
+  it("B's post fails, the re-verify posts B once at its landed cost and leaves A alone; a second re-verify posts nothing", async () => {
+    failOn = B;
+    const first = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(first.ok).toBe(false);
+    if (!first.ok) expect(first.error).toMatch(/verifying the delivery again posts the cost of every item still provisional, once/);
+    // 50 freight over 600 + 400: A 30.00 (63 a bottle), B 20.00 (42 a bottle).
+    expect(posts().map((c) => [c.args.p_inventory_id, c.args.p_unit_cost])).toEqual([[ITEM, 63], [B, 42]]);
+
+    // A is final at 63; B is still provisional.
+    failOn = null;
+    db.rpcCalls.length = 0;
+    db.answers.inventory_lots = {
+      data: [
+        { inventory_id: ITEM, cost_state: "final", qty: 10 },
+        { inventory_id: B, cost_state: "provisional", qty: 10 },
+      ],
+      error: null,
+    };
+    const retry = await service.finishProvisional(REST, DEL, USER);
+    expect(retry.ok && retry.value.finalised.map((f) => [f.inventoryId, f.unitCost])).toEqual([[B, 42]]);
+    expect(posts().map((c) => [c.args.p_inventory_id, c.args.p_unit_cost])).toEqual([[B, 42]]);
+
+    // Both final now: nothing is posted again.
+    db.rpcCalls.length = 0;
+    db.answers.inventory_lots = {
+      data: [
+        { inventory_id: ITEM, cost_state: "final", qty: 10 },
+        { inventory_id: B, cost_state: "final", qty: 10 },
+      ],
+      error: null,
+    };
+    const again = await service.finishProvisional(REST, DEL, USER);
+    expect(again.ok && again.value.finalised).toEqual([]);
+    expect(posts()).toEqual([]);
+  });
+
+  it("a lot revalued by hand after the verify is final, so the re-verify does not overwrite it", async () => {
+    db.answers.inventory_lots = {
+      data: [
+        { inventory_id: ITEM, cost_state: "final", qty: 10 },
+        { inventory_id: B, cost_state: "final", qty: 10 },
+      ],
+      error: null,
+    };
+    const res = await service.finishProvisional(REST, DEL, USER);
+    expect(res.ok && res.value.finalised).toEqual([]);
+    expect(posts()).toEqual([]);
+  });
+
+  it("a sold-out provisional lot (qty 0) is not posted; finalise_delivery_cost would match no lot", async () => {
+    db.answers.inventory_lots = { data: [{ inventory_id: B, cost_state: "provisional", qty: 0 }], error: null };
+    const res = await service.finishProvisional(REST, DEL, USER);
+    expect(res.ok && res.value.finalised).toEqual([]);
+    expect(posts()).toEqual([]);
+  });
+
+  it("an unreadable lot list is an error, never 'nothing left to post'", async () => {
+    db.answers.inventory_lots = { data: null, error: { message: "connection reset" } };
+    const res = await service.finishProvisional(REST, DEL, USER);
+    expect(res.ok).toBe(false);
+    expect(posts()).toEqual([]);
+  });
+});
+
+describe("DeliveryStockService — a paper not in the house's money is never costed (QA round 15 (5))", () => {
+  let db: MockDb;
+  let service: DeliveryStockService;
+
+  beforeEach(() => {
+    db = makeMockDb();
+    db.reset();
+    service = new DeliveryStockService(db.client as unknown as DatabaseService);
+    db.answers.deliveries = { data: { id: DEL, state: "VERIFIED", order_id: null }, error: null };
+    db.answers.document_deliveries = { data: [{ document_id: "inv-1", role: "invoice" }], error: null };
+    db.answers.delivery_proposals = { data: [], error: null };
+    db.answers.procurement_documents = { data: [{ id: "inv-1", doc_number: "A-1", currency: "EUR", freight: 50 }], error: null };
+    db.answers.procurement_document_lines = {
+      data: [{ document_id: "inv-1", line_no: 1, inventory_id: ITEM, qty_bottles: 10, uom: "bottle", pack_size: 1, unit_price: 60, line_total: 600 }],
+      error: null,
+    };
+    db.answers.inventory_transactions = { data: [{ inventory_id: ITEM, quantity_change: 10 }], error: null };
+  });
+  const posts = () => db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost");
+
+  it("reads the house's currency, and a EUR invoice in a TRY house posts nothing and says why", async () => {
+    db.answers.restaurants = { data: { currency: "TRY" }, error: null };
+    const r = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(db.verbs).toContain("procurement_documents.select");
+    expect(posts()).toEqual([]);
+    expect(r.ok && r.value.stillProvisional).toEqual([
+      expect.objectContaining({ inventoryId: ITEM, reason: expect.stringMatching(/its invoice is in EUR and this house keeps its costs in TRY; no exchange rate is recorded/) }),
+    ]);
+  });
+
+  it("the same invoice in a EUR house posts its landed cost", async () => {
+    db.answers.restaurants = { data: { currency: "EUR" }, error: null };
+    await service.finaliseAtVerified(REST, DEL, USER);
+    expect(posts().map((c) => c.args.p_unit_cost)).toEqual([65]);
+  });
+
+  it("an accepted proposal on the EUR line does not cost it in a TRY house either", async () => {
+    db.answers.restaurants = { data: { currency: "TRY" }, error: null };
+    db.answers.delivery_proposals = { data: [{ document_id: "inv-1", line_no: 1, unit_price_proposed: 55, status: "accepted" }], error: null };
+    const r = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(posts()).toEqual([]);
+    expect(r.ok && r.value.stillProvisional[0]?.reason).toMatch(/accepted proposal's price 55 is on an invoice not in this house's money/);
+  });
+
+  it("an unreadable house currency is an error, never read as 'not named'", async () => {
+    db.answers.restaurants = { data: null, error: { message: "timeout" } };
+    const r = await service.finaliseAtVerified(REST, DEL, USER);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toMatch(/the currency this house keeps its costs in could not be read: timeout/);
+    expect(posts()).toEqual([]);
   });
 });

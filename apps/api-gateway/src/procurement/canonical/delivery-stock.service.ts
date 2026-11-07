@@ -10,6 +10,7 @@ import {
   PaperHeaderRow,
   PaperLine,
   PaperNote,
+  notHouseMoney,
 } from "./paper-landed-cost";
 
 /**
@@ -488,6 +489,7 @@ export class DeliveryStockService {
     restaurantId: string,
     deliveryId: string,
     userId: string | null,
+    only?: ReadonlySet<string>,
   ): Promise<StockResult<CostReceipt>> {
     const delivery = await this.deliveryFor(restaurantId, deliveryId);
     if (!delivery.ok) return delivery;
@@ -512,6 +514,10 @@ export class DeliveryStockService {
     const stillProvisional: { inventoryId: string; reason: string }[] = [];
 
     for (const [inventoryId] of items) {
+      // `only`: a re-verify finishing a post that failed partway (QA round 15
+      // (4)) posts the items whose lots are still provisional and no other.
+      // The pairing rules below still see every booked item.
+      if (only && !only.has(inventoryId)) continue;
       let price = priced.value.byItem.get(inventoryId) ?? null;
       // ONE item, ONE priced line: the pairing is not ambiguous, so it is not a
       // guess. Any other shape is left alone rather than matched by description.
@@ -539,7 +545,7 @@ export class DeliveryStockService {
         return {
           ok: false,
           status: 503,
-          error: `the delivery is VERIFIED but its cost could not be posted for item ${inventoryId}: ${posted.error}. The stock is correct and the lot stays provisional; this is safe to retry.`,
+          error: `the delivery is VERIFIED but its cost could not be posted for item ${inventoryId}: ${posted.error}. The stock is correct and the lot stays provisional; verifying the delivery again posts the cost of every item still provisional, once.`,
         };
       finalised.push(posted.value);
     }
@@ -553,6 +559,42 @@ export class DeliveryStockService {
         papers: priced.value.papers,
       },
     };
+  }
+
+  /**
+   * QA round 15 (4): a RE-VERIFY finishes a VERIFIED post that failed partway.
+   * Only items with a live lot of this delivery still `provisional` are posted,
+   * through the same finalise_delivery_cost, which skips a lot already final at
+   * that cost (so two retries post once). A FINAL lot is never touched here: a
+   * hand revaluation, or a line edited after the cost posted (ADR 0103, QA 10a
+   * (6)), is repairPrintedCost's to judge, not this method's.
+   */
+  async finishProvisional(
+    restaurantId: string,
+    deliveryId: string,
+    userId: string | null,
+  ): Promise<StockResult<CostReceipt>> {
+    const delivery = await this.deliveryFor(restaurantId, deliveryId);
+    if (!delivery.ok) return delivery;
+    const lots = await this.db
+      .getClient()
+      .from("inventory_lots")
+      .select("inventory_id, cost_state, qty")
+      .eq("restaurant_id", restaurantId)
+      .eq("delivery_id", deliveryId)
+      .eq("stock_state", "live")
+      .eq("cost_state", "provisional");
+    if (lots.error)
+      return { ok: false, status: 500, error: `the lots of delivery ${deliveryId} could not be read: ${lots.error.message}` };
+    type Lot = { inventory_id: string | null; cost_state: string; qty: number };
+    const open = new Set(
+      ((lots.data ?? []) as Lot[])
+        .filter((l) => l.cost_state === "provisional" && Number(l.qty) > 0 && l.inventory_id)
+        .map((l) => l.inventory_id as string),
+    );
+    if (!open.size)
+      return { ok: true, value: { deliveryId, finalised: [], stillProvisional: [] } };
+    return this.finaliseAtVerified(restaurantId, deliveryId, userId, open);
   }
 
   /**
@@ -958,7 +1000,7 @@ export class DeliveryStockService {
         .getClient()
         .from("procurement_documents")
         .select(
-          "id, doc_number, subtotal, discount_total, freight, fuel_surcharge, split_case_fee, delivery_fee, other_charges, deposit_total, tax, extracted_lines:extracted->lines",
+          "id, doc_number, currency, subtotal, discount_total, freight, fuel_surcharge, split_case_fee, delivery_fee, other_charges, deposit_total, tax, extracted_lines:extracted->lines",
         )
         .eq("restaurant_id", restaurantId)
         .in("id", invoiceIds);
@@ -970,6 +1012,25 @@ export class DeliveryStockService {
         };
       papers = (heads.data ?? []) as unknown as PaperHeaderRow[];
     }
+    // QA round 15 (5): the money a lot's cost is read in. An unreadable house is
+    // not read as "no currency named", which would cost a foreign paper as ours.
+    let houseCurrency: string | null = null;
+    if (papers.length) {
+      const house = await this.db
+        .getClient()
+        .from("restaurants")
+        .select("currency")
+        .eq("id", restaurantId)
+        .maybeSingle();
+      if (house.error)
+        return {
+          ok: false,
+          status: 500,
+          error: `the currency this house keeps its costs in could not be read: ${house.error.message}`,
+        };
+      houseCurrency = ((house.data ?? null) as { currency?: string | null } | null)?.currency ?? null;
+    }
+    const moneyOfPaper = new Map(papers.map((r) => [r.id, notHouseMoney(r.currency, houseCurrency)]));
 
     const lineByKey = new Map<string, LineRow>();
     const invoiceLines: LineRow[] = [];
@@ -1019,12 +1080,13 @@ export class DeliveryStockService {
       }
     }
 
-    const landed = landDelivery({ papers, lines: fed, booked });
+    const landed = landDelivery({ papers, lines: fed, booked, houseCurrency });
     const refused = landed.refused;
     const held = landed.held;
     for (const [id, p] of [...lineOnly]) {
       const why = held.get(id);
-      if (!why || lineClash.has(id) || refused.has(id)) lineOnly.delete(id);
+      // A line price in another currency is no stand-in either (QA 15 (5)).
+      if (!why || lineClash.has(id) || refused.has(id) || landed.foreign.has(id)) lineOnly.delete(id);
       else
         p.basis = `${p.basis}. The invoice's charges and discount are not in this cost, because its landed cost cannot be said: ${why.replace(/ The lot stays provisional.*$/, "")}`;
     }
@@ -1074,6 +1136,19 @@ export class DeliveryStockService {
             } as const);
       if (id && "printed" in cost && cost.printed != null)
         printed.set(id, (printed.get(id) ?? new Set<number>()).add(cost.printed));
+      // QA round 15 (5): a settled price is in its invoice line's money, so a
+      // line not in the house's money is not costed by a proposal either.
+      const foreignWhy = line ? moneyOfPaper.get(line.document_id) : undefined;
+      if (foreignWhy && said > 0) {
+        const reason = `the accepted proposal's price ${said} is on an invoice not in this house's money: ${foreignWhy}`;
+        if (!id) unattachedRefused.push(reason);
+        else {
+          byItem.delete(id);
+          lineOnly.delete(id);
+          held.set(id, `${reason}. The lot stays provisional.`);
+        }
+        continue;
+      }
       if (!cost.ok) {
         if (cost.kind !== "refused") continue;
         const reason = line
