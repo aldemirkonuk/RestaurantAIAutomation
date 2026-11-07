@@ -680,7 +680,22 @@ export async function fetchObservationSources(providerId: string): Promise<Obser
  * reads it, and returns its id. An upload the door refuses, or one that comes
  * back with no id, is an error here: a price is never recorded as "with this
  * paper" when the paper did not arrive.
+ *
+ * Same for a paper whose number is already on file under this vendor: the
+ * door then stores nothing and answers with the EARLIER paper's id, named in
+ * `duplicateOf`. That id is a different file from the one attached, so it is
+ * refused here as `PaperAlreadyOnFileError`; the form says which paper holds
+ * the number and lets the person choose to record against it (QA on PR #775).
  */
+export class PaperAlreadyOnFileError extends Error {
+  constructor(readonly earlier: { documentId: string; docNumber: string }) {
+    super(
+      `This vendor's paper ${earlier.docNumber ? `no. ${earlier.docNumber}` : 'with this number'} is already on file, so your copy was not stored and the price was not recorded.`,
+    )
+    this.name = 'PaperAlreadyOnFileError'
+  }
+}
+
 export async function attachPaper(params: {
   contentBase64: string
   filename: string
@@ -691,6 +706,13 @@ export async function attachPaper(params: {
   const documentId = typeof data?.documentId === 'string' ? data.documentId : null
   if (!documentId) {
     throw new Error('The paper was not stored, so the price was not recorded with it. Try attaching it again.')
+  }
+  const earlier = data?.duplicateOf
+  if (earlier && typeof earlier.documentId === 'string' && earlier.documentId === documentId) {
+    throw new PaperAlreadyOnFileError({
+      documentId: earlier.documentId,
+      docNumber: typeof earlier.docNumber === 'string' ? earlier.docNumber : '',
+    })
   }
   return { documentId, duplicate: data?.duplicate === true }
 }

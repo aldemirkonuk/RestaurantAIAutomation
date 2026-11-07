@@ -205,6 +205,44 @@ describe('RecordPriceForm — fork 6(a): the paper, the message and the person (
     expect(mutate).not.toHaveBeenCalled()
   })
 
+  describe('a paper whose number is already on file under this vendor (QA on PR #775)', () => {
+    const EARLIER = '77777777-7777-4777-8777-777777777777'
+
+    async function attachCollidingPaper() {
+      const { PaperAlreadyOnFileError } = await vi.importActual<typeof import('../../../services/api/vendorIntel')>(
+        '../../../services/api/vendorIntel',
+      )
+      attachPaper.mockRejectedValue(new PaperAlreadyOnFileError({ documentId: EARLIER, docNumber: 'A-17' }))
+      mock.providers = [{ id: 'prov-1', name: 'Empire Merchants' }]
+      mock.sources = { data: { messages: [], contacts: [] }, isLoading: false, isError: false, error: null }
+      render(<RecordPriceForm open onClose={vi.fn()} wineId="wine-1" productName="Chablis" />)
+      fillAll()
+      fireEvent.change(screen.getByLabelText(/Attach the paper/), {
+        target: { files: [new File(['%PDF-1.4'], 'inv.pdf', { type: 'application/pdf' })] },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /record this price/i }))
+      await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/no\. A-17 is already on file/))
+    }
+
+    it('records nothing on its own and says the copy was not stored', async () => {
+      await attachCollidingPaper()
+      expect(screen.getByRole('alert')).toHaveTextContent(/your copy was not stored/)
+      expect(mutate).not.toHaveBeenCalled()
+    })
+
+    it('records against the paper on file only when the person picks it', async () => {
+      await attachCollidingPaper()
+      fireEvent.click(screen.getByRole('button', { name: /record it with paper no\. A-17 already on file/i }))
+      expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ documentId: EARLIER }), expect.anything())
+    })
+
+    it('records with no paper when the person picks that', async () => {
+      await attachCollidingPaper()
+      fireEvent.click(screen.getByRole('button', { name: /record it without a paper/i }))
+      expect(mutate).toHaveBeenCalledWith(expect.objectContaining({ documentId: undefined }), expect.anything())
+    })
+  })
+
   it("offers this house's messages and contacts only once the vendor is one of its rows, and sends the picks", () => {
     render(<RecordPriceForm open onClose={vi.fn()} wineId="wine-1" productName="Chablis" />)
     fillAll('Someone Not On File')
