@@ -49,6 +49,19 @@ describe("perBottleLotCost", () => {
     expect(refusal({ uom: "bottle", unit_price: 0.04, price_base_qty: 12 })).toMatch(/cost of nothing/);
   });
 
+  it("QA 10a (2): a bare price on a bottle row whose bottles come in cases is decided by its total, or refused", () => {
+    const row = { uom: "bottle", pack_size: 12, qty_bottles: 24 };
+    expect(refusal(row)).toMatch(/bottles that come 12 to a case and prints 264 .* a bottle's price or a case's is not known/);
+    expect(refusal({ ...row, uom: "each", line_total: 0 })).toMatch(/eachs that come 12/);
+    expect(refusal({ ...row, line_total: 528 })).toMatch(/not known/);
+    expect(refusal({ ...row, line_total: 528, qty_bottles: null })).toMatch(/not known/);
+    // The total bears the bottle reading out (a credit note's signs too), or the paper printed its base.
+    expect(cost({ ...row, line_total: 6336 })).toBe(264);
+    expect(cost({ ...row, line_total: -6336, qty_bottles: -24 })).toBe(264);
+    expect(cost({ ...row, price_base_uom: "bottle" })).toBe(264);
+    expect(cost({ ...row, pack_size: 1 })).toBe(264);
+  });
+
   it("rounds half away from zero, as Postgres numeric does", () => {
     expect([1.005, 11.8333, 11.835, 22].map(toLotCostPrecision)).toEqual([1.01, 11.83, 11.84, 22]);
   });

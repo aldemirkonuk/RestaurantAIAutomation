@@ -24,6 +24,9 @@ export interface LotCostLine {
   pack_size: number | string | null | undefined;
   price_base_qty: number | string | null | undefined;
   price_base_uom: string | null | undefined;
+  /** What the line counted and printed as its total, to decide a bare bottle price. */
+  qty_bottles?: number | string | null;
+  line_total?: number | string | null;
 }
 
 /** `unitCost` is `perBottle` at the column's precision, and what is posted. */
@@ -115,6 +118,22 @@ export function perBottleLotCost(line: LotCostLine): LotUnitCost {
       kind: "refused",
       reason: `a price per bottle of ${perBottle} rounds to ${unitCost.toFixed(2)}, and a lot is never booked at a cost of nothing`,
     };
+
+  // QA 10a (2): `24 bottle @ 264, pack 12` with no base reads 264 a bottle,
+  // and is as likely a case's price. Only a printed per-bottle base, or a
+  // total that bears the bottle reading out, decides it; otherwise refused.
+  const statedBase = (rawBaseUom != null && rawBaseUom !== "") || (rawBase != null && rawBase !== "");
+  if ((uom === "bottle" || uom === "each") && bottlesPriced === 1 && !statedBase && pack != null && pack > 1) {
+    const total = asNumber(line.line_total);
+    const counted = asNumber(line.qty_bottles);
+    const borne = total != null && counted != null && counted !== 0 && Math.abs(Math.abs(perBottle * counted) - Math.abs(total)) <= Math.max(0.05, Math.abs(total) * 0.01);
+    if (!borne)
+      return {
+        ok: false,
+        kind: "refused",
+        reason: `the invoice line counts ${words(uom)}s that come ${pack} to a case and prints ${price} for one, with no line total that settles it, so whether ${price} is a bottle's price or a case's is not known`,
+      };
+  }
 
   const priced = MULTIPLYING.has(baseUom) ? `${per} of ${pack}` : per;
   const basis =
