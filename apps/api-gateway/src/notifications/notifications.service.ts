@@ -1119,11 +1119,20 @@ export class NotificationsService {
     return data?.length || 0;
   }
 
-  async deleteAllRead(userId: string): Promise<number> {
+  /**
+   * The caller's read notifications IN ONE HOUSE. `restaurantId` is required
+   * (QA round 4 B3, 2026-11-07): filtered on the user alone, an owner of two
+   * venues clearing venue A's read alerts erased venue B's too, with no undo.
+   * `markAllAsRead` was already house-scoped; this now matches it.
+   */
+  async deleteAllRead(userId: string, restaurantId: string): Promise<number> {
+    if (!restaurantId)
+      throw new Error("deleteAllRead needs the house it clears");
     const { data, error } = await this.databaseService.supabase
       .from("notifications")
       .delete()
       .eq("user_id", userId)
+      .eq("restaurant_id", restaurantId)
       .eq("status", "read")
       .select("id");
 

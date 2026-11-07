@@ -218,6 +218,14 @@ export class DeleteAllReadQueryDto {
   @IsOptional()
   @IsUUID()
   userId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Refused unless it names the caller's own house: the token decides it",
+  })
+  @IsUUID()
+  @IsOptional()
+  restaurantId?: string;
 }
 
 // ============================================================================
