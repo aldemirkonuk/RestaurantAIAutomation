@@ -54,6 +54,7 @@ import { BillingModule } from "./billing/billing.module";
 import { RestaurantsModule } from "./restaurants/restaurants.module";
 import { TeamModule } from "./team/team.module";
 import { HouseAreasModule } from "./areas/house-areas.module";
+import { FloorModule } from "./floor/floor.module";
 import { VendorCatalogueModule } from "./vendor-catalogue/vendor-catalogue.module";
 import { DistributorDiscoveryModule } from "./distributor-discovery/distributor-discovery.module";
 import { MenusModule } from "./menus/menus.module";
@@ -148,6 +149,7 @@ import { HouseModule } from "./house/house.module";
     RestaurantsModule, // Per-restaurant membership (URA roster + invites)
     TeamModule, // Team ops: schedules, shifts, coverage, labor, certs, performance
     HouseAreasModule, // Areas, lead marks and Away dates (ADR 0218)
+    FloorModule, // The floor: waiter's phone, manager's view, nudge scanner; dark behind floor_checker (ADR 0345)
     VendorCatalogueModule, // Admin-curated vendor catalogue with search/detail endpoints
     DistributorDiscoveryModule, // Territory-gated distributor map search (geo + portfolio facets)
     MenusModule, // Menu import (scan/CSV/manual) + onboarding progress
