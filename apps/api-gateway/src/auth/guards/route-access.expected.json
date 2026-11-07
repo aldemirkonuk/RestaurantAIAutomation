@@ -417,6 +417,87 @@
     "admin",
     "null"
   ],
+  "GET /pos-hub/providers (PosHubController.getProviders)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "GET /pos-hub/status/:restaurantId (PosHubController.getStatus)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /pos-hub/webhook/:provider/:restaurantId (PosHubController.webhook)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /pos-hub/import/:restaurantId (PosHubController.importChecks)": [
+    "owner",
+    "manager"
+  ],
+  "GET /pos-hub/mappings/:restaurantId (PosHubController.listMappings)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /pos-hub/mappings/:restaurantId (PosHubController.upsertMapping)": [
+    "owner",
+    "manager"
+  ],
+  "GET /pos-hub/mappings/:restaurantId/sale-unit-review (PosHubController.saleUnitReview)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /pos-hub/mappings/:restaurantId/sale-unit (PosHubController.setSaleUnitBatch)": [
+    "owner",
+    "manager"
+  ],
+  "POST /pos-hub/mappings/:restaurantId/:mappingId/sale-unit (PosHubController.setSaleUnit)": [
+    "owner",
+    "manager"
+  ],
+  "POST /pos-hub/catalog-match/:restaurantId (PosHubController.catalogMatch)": [
+    "owner",
+    "manager"
+  ],
+  "GET /pos-hub/catalog-match/:restaurantId/proposals (PosHubController.listProposals)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
+  "POST /pos-hub/catalog-match/:restaurantId/proposals/approve (PosHubController.approveProposals)": [
+    "owner",
+    "manager"
+  ],
+  "POST /pos-hub/catalog-match/:restaurantId/proposals/:proposalId/approve (PosHubController.approveProposal)": [
+    "owner",
+    "manager"
+  ],
+  "POST /pos-hub/catalog-match/:restaurantId/proposals/:proposalId/reject (PosHubController.rejectProposal)": [
+    "owner",
+    "manager"
+  ],
+  "GET /pos-hub/unresolved/:restaurantId (PosHubController.listUnresolved)": [
+    "owner",
+    "manager",
+    "staff",
+    "admin",
+    "null"
+  ],
   "GET /price-index/status (PriceIndexController.status)": [
     "owner",
     "manager"

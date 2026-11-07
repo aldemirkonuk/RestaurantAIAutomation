@@ -806,9 +806,15 @@ export default function InventoryNext() {
             ) : posOpen > 0 ? (
               <p className="iv-note" data-testid="inv-pos-queue">
                 {fmtCount(posOpen)} POS {posOpen === 1 ? 'line rang up and moved' : 'lines rang up and moved'} no stock.{' '}
-                <button type="button" className="iv-linkish iv-focus" onClick={() => setPanel('pos')}>
-                  Map them
-                </button>
+                {/* R11-06: mapping a POS button decides what a sale takes off the
+                    shelf, so the server takes it from an owner or a manager. */}
+                {data.canManage ? (
+                  <button type="button" className="iv-linkish iv-focus" onClick={() => setPanel('pos')}>
+                    Map them
+                  </button>
+                ) : (
+                  'An owner or a manager maps them.'
+                )}
               </p>
             ) : null}
             {/* The insights rail: the legacy page's only mount
@@ -935,9 +941,11 @@ export default function InventoryNext() {
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('locations')}>
                   Storage locations
                 </button>
-                <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('pos')}>
-                  Map POS buttons
-                </button>
+                {data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('pos')}>
+                    Map POS buttons
+                  </button>
+                ) : null}
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('receipt')}>
                   A delivery without an order
                 </button>
