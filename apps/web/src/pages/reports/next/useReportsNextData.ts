@@ -28,7 +28,7 @@
  * those nulls, and the cuttings render them as em dashes.
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useQueries, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { apiClient } from '@/services/api/client';
@@ -238,6 +238,13 @@ export interface ReportsNextData {
    * while the read is simply in flight, and once it has answered.
    */
   sheetUnread: string | null;
+  /**
+   * Set when a refetch failed AFTER a good load: the last good sheet stays on
+   * screen under its own label and Arrange stays open, and this says the
+   * refresh failed (ADR 0020). Never set on a cold-load failure — that is
+   * `sheetUnread`.
+   */
+  sheetStale: string | null;
   refetchAll: () => void;
 }
 
@@ -271,11 +278,23 @@ export function useReportsNextData(
   // `error` first: a failed read leaves `{}` behind, which would otherwise look
   // like a perfectly good answer of "no sheet saved" (GroundChoiceSync.tsx
   // reads the same three in the same order).
-  const sheetKnown = userId !== null && !prefsError && !prefsPlaceholder;
+  const answeredCleanly = userId !== null && !prefsError && !prefsPlaceholder;
+  // A good answer, once had, stays the reader's sheet: a later background
+  // refetch that fails keeps the last good data (React Query retains it) and
+  // sets `error`, but the sheet on screen is still theirs (or the house's, if
+  // that is what they saved) and is safe to arrange. Only a failure BEFORE any
+  // good answer leaves the house sheet standing in for theirs.
+  const hadGoodAnswerFor = useRef<string | null>(null);
+  if (answeredCleanly) hadGoodAnswerFor.current = userId;
+  const hadGoodAnswer = userId !== null && hadGoodAnswerFor.current === userId;
+  const sheetKnown = answeredCleanly || (hadGoodAnswer && !prefsPlaceholder);
+  const sheetStale = hadGoodAnswer && prefsError
+    ? 'The sheet could not be refreshed just now; what is shown is the last one that loaded.'
+    : null;
   const sheetUnread =
     userId === null
       ? 'No one is signed in, so there is no arrangement of yours to read: the house sheet is shown, and arranging is off.'
-      : prefsError
+      : prefsError && !hadGoodAnswer
         ? `Your own arrangement of this sheet could not be read (${
             failureOf(prefsError)?.message ?? 'the request failed'
           }), so the house sheet is shown. Arranging is off until it can be read.`
@@ -389,6 +408,7 @@ export function useReportsNextData(
     saveSheet,
     sheetKnown,
     sheetUnread,
+    sheetStale,
     refetchAll,
   };
 }
