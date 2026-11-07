@@ -331,6 +331,74 @@ describe("McpServerService — tenancy", () => {
     expect(cellar.read).not.toHaveBeenCalled();
   });
 
+  it("refuses the day-book to a key without logs:read, as logs.timeline does (QA round 5 H-2)", async () => {
+    const { service, readers } = build();
+    const inventoryOnly = credential({ scopes: ["inventory:read"] });
+
+    const answer = await service.handle(
+      {
+        jsonrpc: "2.0",
+        id: 8,
+        method: "resources/read",
+        params: { uri: `mudavym://day-book/${HOUSE_A}` },
+      },
+      inventoryOnly,
+    );
+
+    const error = (answer as { error: { message: string } }).error;
+    expect(error.message).toContain("does not hold the scope `logs:read`");
+    expect(readers.timelineRead).not.toHaveBeenCalled();
+  });
+
+  it("refuses the cellar book to a key without inventory:read", async () => {
+    const { service, cellar } = build();
+    const answer = await service.handle(
+      {
+        jsonrpc: "2.0",
+        id: 9,
+        method: "resources/read",
+        params: { uri: `mudavym://cellar/${HOUSE_A}` },
+      },
+      credential({ scopes: ["logs:read"] }),
+    );
+
+    const error = (answer as { error: { message: string } }).error;
+    expect(error.message).toContain("does not hold the scope `inventory:read`");
+    expect(cellar.read).not.toHaveBeenCalled();
+  });
+
+  it("still reads a resource whose scope the key holds", async () => {
+    const { service, cellar } = build();
+    cellar.read.mockResolvedValue({ registers: [] });
+    const answer = await service.handle(
+      {
+        jsonrpc: "2.0",
+        id: 10,
+        method: "resources/read",
+        params: { uri: `mudavym://cellar/${HOUSE_A}` },
+      },
+      credential({ scopes: ["inventory:read"] }),
+    );
+
+    expect(cellar.read).toHaveBeenCalledWith(HOUSE_A);
+    type Read = { result: { contents: { uri: string }[] } };
+    const contents = (answer as Read).result.contents;
+    expect(contents[0].uri).toBe(`mudavym://cellar/${HOUSE_A}`);
+  });
+
+  it("hides from resources/list what the key's scopes do not cover", async () => {
+    const { service } = build();
+    const answer = await service.handle(
+      { jsonrpc: "2.0", id: 11, method: "resources/list" },
+      credential({ scopes: ["inventory:read"] }),
+    );
+    type Listed = { result: { resources: { uri: string; scope?: unknown }[] } };
+    const uris = (answer as Listed).result.resources;
+    expect(uris.map((r) => r.uri)).toEqual([`mudavym://cellar/${HOUSE_A}`]);
+    // The gating scope is internal; it is not part of the MCP resource shape.
+    expect(uris[0]).not.toHaveProperty("scope");
+  });
+
   it("lists only this house's resources", async () => {
     const { service } = build();
     const answer = await service.handle(

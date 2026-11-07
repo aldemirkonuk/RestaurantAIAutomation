@@ -143,6 +143,30 @@ describe("McpCredentialsService — the per-credential limiter", () => {
     expect(credentials.consume("key-b").allowed).toBe(true);
   });
 
+  it("counts every call in a batch, so one POST cannot carry thousands past the window", () => {
+    const { service: database } = db({ data: null, error: null });
+    const credentials = new McpCredentialsService(database);
+
+    // QA round 5 BG-4: 5,000 pings in one body all ran against a 60/min window.
+    expect(credentials.consume("key-a", 5000).allowed).toBe(false);
+    // Refused whole, and it spent nothing: the full window is still there.
+    const full = credentials.consume("key-a", RATE_LIMIT_PER_MINUTE);
+    expect(full.allowed).toBe(true);
+    expect(full.remaining).toBe(0);
+    expect(credentials.consume("key-a").allowed).toBe(false);
+  });
+
+  it("refuses a batch bigger than what is left without spending what is left", () => {
+    const { service: database } = db({ data: null, error: null });
+    const credentials = new McpCredentialsService(database);
+
+    expect(credentials.consume("key-a", 50).remaining).toBe(10);
+    const refused = credentials.consume("key-a", 11);
+    expect(refused.allowed).toBe(false);
+    expect(refused.remaining).toBe(10);
+    expect(credentials.consume("key-a", 10).allowed).toBe(true);
+  });
+
   it("says out loud that the count is per process, not per cluster", () => {
     expect(McpCredentialsService.describeLimiter()).toContain("in this");
     expect(McpCredentialsService.describeLimiter()).toContain("replicas");

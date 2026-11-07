@@ -315,6 +315,11 @@ construction and the fourth is inherited and stated on the wire:
    **CLOSED (2026-09-06):** 60/60s **per credential**, in-process, on
    `X-Mcp-RateLimit-*` headers kept distinct from the global guard's. The multi-replica
    caveat is said on the wire by `describeLimiter()` rather than assumed away.
+   **REOPENED and closed again (2026-11-07):** the window counted HTTP requests, and the
+   controller then ran every message of a JSON-RPC batch — one POST of 5,000 `ping`s all
+   ran against the 60-call window (QA round 5 BG-4). It now charges one call per message
+   (`McpCredentialsService.consume(id, cost)`); a batch that does not fit what is left is
+   refused whole, runs nothing and spends nothing, so a batch larger than 60 never runs.
 3. **Read postures are not always the write postures.** `getLocation` enforces org
    membership only (`organizations/organizations.service.ts:123-153`), so a staff token
    reads the billing email; an MCP tool would inherit that.
@@ -405,6 +410,13 @@ be served from the deployed image at all** — `.planning/` is not copied into i
 (`apps/api-gateway/Dockerfile:39` takes `apps/api-gateway/dist` only), so they would work
 locally and 404 in production. Serving them needs a decision about shipping the vault, not
 a handler.
+
+**Each resource is gated by the scope its tool needs (2026-11-07).** The house check held
+from the start; the scope check did not — a key holding only `inventory:read` read the
+whole day-book that `logs.timeline` refuses it (QA round 5 H-2). Now the day-book needs
+`logs:read` and the cellar book `inventory:read` (it is read beside `inventory.low_stock`
+in `walk-the-cellar`); `resources/list` hides what the key cannot read, and a direct
+`resources/read` is refused with the scope it lacks, before any read runs.
 
 **Prompts: all five are served**, and every one of them was rewritten to end in a *read*.
 `chase-the-short-delivery` says "drafts a chase reply" above; the served text stops at the
