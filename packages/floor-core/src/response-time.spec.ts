@@ -214,9 +214,13 @@ describe("the branches the port adds", () => {
     expect(out.byTable.get("t1")).toEqual([30]);
   });
 
-  it("credits that gap to whoever seated when no caretaker is known", () => {
-    const out = responseSamples([], opts({ seatedBy: "M", caretakerAtSeatId: null, leftAt: at(30) }));
-    expect(out.byWaiter.get("M")).toEqual([30]);
+  it("never credits the greeting gap to whoever seated when no caretaker is known (D4 c)", () => {
+    const open = responseSamples([], opts({ seatedBy: "M", caretakerAtSeatId: null, leftAt: at(30) }));
+    expect(open.byWaiter.size).toBe(0);
+    expect(open.byTable.get("t1")).toEqual([30]);
+    const closed = responseSamples([ev("check_in", "X", 12)], opts({ seatedBy: "M", caretakerAtSeatId: null, leftAt: at(12) }));
+    expect(closed.byWaiter.get("X")).toEqual([12]);
+    expect(closed.byWaiter.has("M")).toBe(false);
   });
 
   it("counts an open gap only when it exceeds T, and T is at least one minute", () => {

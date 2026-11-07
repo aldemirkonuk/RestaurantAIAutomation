@@ -47,9 +47,13 @@
  * Not built here, and owed by the caller or a later part:
  *
  * - D8's absence rule inside D4 (c) (ADR 0346 `:64`). The caller passes a
- *   `caretakerAtSeatId` already cleared of anyone absent or no longer a
- *   member at seat time; splitting the greeting gap when the caretaker goes
- *   absent before the first visit waits for the absence records (OD-236).
+ *   `caretakerAtSeatId` already cleared to null for anyone known absent
+ *   (ADR 0351 `:23`) or no longer a member at seat time; splitting the
+ *   greeting gap when the caretaker goes absent before the first visit waits
+ *   for the absence flags owed with the alert scanner (ADR 0351 `:29`).
+ *   With no caretaker, the greeting gap never falls to whoever tapped Seat:
+ *   a closed one goes to the waiter whose visit closed it, and an open one
+ *   counts for the table only.
  * - *Not closed* "beside its caretaker" (`:63`): this returns seating ids, and
  *   the caller joins each to its caretaker.
  * - Paid undone (ADR 0353 `:43`): `paidAt` is the seating's Paid as it stands
@@ -300,9 +304,10 @@ export function responseSamples(
       const minutes = (timeOf(curr.createdAt) - timeOf(prev.createdAt)) / 60_000;
 
       // D4 (c): the greeting gap goes to the caretaker at seat time.
+      // With facts and no caretaker, the first visitor (never the seater).
       const creditId =
-        prev.type === "seated" && facts?.caretakerAtSeatId
-          ? facts.caretakerAtSeatId
+        prev.type === "seated" && facts
+          ? facts.caretakerAtSeatId ?? curr.actorId
           : gapCreditActorId(prev.actorId, curr.actorId);
       record(curr.tableId, creditId, minutes);
     }
@@ -316,10 +321,9 @@ export function responseSamples(
       const openEnd = tap === null ? stopMs : Math.min(stopMs, tap);
       const minutes = (openEnd - timeOf(last.createdAt)) / 60_000;
       if (minutes > T) {
+        // A seat with no caretaker: the table's figure only, never the seater.
         const creditId =
-          last.type === "seated"
-            ? facts.caretakerAtSeatId ?? last.actorId
-            : last.actorId;
+          last.type === "seated" ? facts.caretakerAtSeatId : last.actorId;
         record(facts.tableId ?? last.tableId, creditId, minutes);
       }
     }
