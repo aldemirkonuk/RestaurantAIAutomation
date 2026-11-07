@@ -13,3 +13,11 @@ Filed with the entry above; read-only trace the proposal's §6 left open.
 **What is true.** `apps/api-gateway/src/inventory/inventory.service.ts:91-95` computes `glassesPerBottle` (override, else `floor(bottle ml / pour ml)`, pour defaulting to the house's `default_pour_ml` or 150) and only serialises it (`:137`). No gateway or `services/` path multiplies it by a price. The baseline view `inventory_volume_details` (`supabase/migrations/20260805000000_baseline_from_production.sql:3617`) derives the same count and volumes, no money, and nothing in `apps/` or `services/` reads the view. The one money derivation is the web's `costPerGlass` (`apps/web/src/utils/volumeUtils.ts:86`), owned by lane `recipes-a4`.
 
 **What closes it.** Nothing in this lane; lane A4 settles `costPerGlass`.
+
+## The /dev-sandbox sale toast totals on the library price — NOTE — 2026-11-07
+
+Filed by the audit follow-up on the same branch.
+
+**What is true.** `apps/web/src/pages/DevSandbox.tsx` (route `/dev-sandbox`, owner and manager) showed a simulated sale's total as library price × quantity × 3. It now shows library price × quantity, the same figure the simulated sale records as `totalRevenue`. That figure is still the library wine's `price`, not a price this house set; the page is a manual test bench and writes nothing a guest pays. The guard row `RECIPES-A5-NO-INVENTED-MENU-PRICE` now refuses any cost or price multiplied by 3 under `apps/web/src`.
+
+**What closes it.** The sandbox reads the house's own price (`menuPriceBottle`), or the page is retired.
