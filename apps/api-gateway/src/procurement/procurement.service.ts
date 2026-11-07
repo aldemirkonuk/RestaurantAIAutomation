@@ -6201,7 +6201,8 @@ export class ProcurementService {
    * `one_receipt_verification_at_a_time`): a second submit waits for the first
    * to finish, then reads the order it left — so the guard sees it — and only
    * after waiting `receiptLeaseWait` without the lease coming free is it
-   * refused, in words, with nothing changed.
+   * refused, in words, with nothing changed — words that do not promise the
+   * other verification landed, because a crashed holder strands the lease too.
    */
   async verifyReceipt(
     restaurantId: string,
@@ -6262,11 +6263,25 @@ export class ProcurementService {
         );
       }
       if (attempt >= attempts) {
+        // A busy lease does NOT prove another verification is landing (audit of
+        // #820, 2026-11-07). The holder may still be running, may be about to
+        // fail, or may be a gateway that crashed mid-verification and stranded
+        // the lease until it lapses (`leaseSeconds`). So the words claim only
+        // what is known: nothing was changed here, and the order is free again
+        // within a minute or two.
+        //
+        // Still a 409, not a retryable 429/503 (the session's call under the
+        // 2026-11-07 /goal). The mobile outbox replays any 5xx or 429 blind,
+        // with no person looking: a queued verification replayed after a
+        // colleague's has landed would land as a correction over their count.
+        // A person who refreshes first sees what is there and decides. The
+        // cost is one manual retry after a crash, which these words name.
         throw new ConflictException({
           reason: "receipt_verification_in_progress",
           message:
-            "Someone else is verifying this delivery right now, so nothing was changed. " +
-            "Refresh in a minute to see what they recorded, and correct it then if it is wrong.",
+            "Another verification of this delivery is still running, or one was interrupted, " +
+            "so nothing was changed. Refresh in a minute or two: if it landed you will see what " +
+            "was recorded, and if not, verify again.",
         });
       }
       await new Promise((resolve) => setTimeout(resolve, intervalMs));

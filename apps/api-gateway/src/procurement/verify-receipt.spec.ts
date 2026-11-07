@@ -1838,12 +1838,31 @@ describe("verifyReceipt — one verification at a time (H-1, round 5)", () => {
 
     await expect(
       svc.verifyReceipt(REST, ORDER, USER, payload as any),
-    ).rejects.toThrow(/Someone else is verifying this delivery right now, so nothing was changed/);
+    ).rejects.toThrow(/Another verification of this delivery is still running, or one was interrupted, so nothing was changed/);
     expect(calls.leaseTakes).toHaveLength(3);
     expect(calls.receiptEvents).toEqual([]);
     expect(calls.creditInserts).toEqual([]);
     expect(calls.orderUpdates).toEqual([]);
     expect(calls.rpc).toEqual([]);
+  });
+
+  it("a busy lease never promises that another verification landed (a crashed holder strands it too)", async () => {
+    const { db } = makeDb({
+      orderRow: deliveredOrder,
+      bookedBottles: 10,
+      leaseHeldElsewhere: true,
+    });
+    const svc = service(db);
+    svc.receiptLeaseWait = { leaseSeconds: 90, attempts: 0, intervalMs: 1 };
+
+    const refusal: any = await svc
+      .verifyReceipt(REST, ORDER, USER, payload as any)
+      .catch((e) => e);
+    // Still a 409: the outbox must not replay it blind over a colleague's count.
+    expect(refusal.getStatus()).toBe(409);
+    const words = String(refusal.getResponse().message);
+    expect(words).not.toMatch(/what they recorded|someone else is verifying/i);
+    expect(words).toMatch(/if not, verify again/);
   });
 
   it("a lease that cannot be checked refuses rather than verifying unguarded", async () => {
