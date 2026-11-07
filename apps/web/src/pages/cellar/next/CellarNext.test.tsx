@@ -75,6 +75,11 @@ const mock = vi.hoisted(() => ({
   } as Record<string, unknown>,
 }));
 
+// The recipe sheet has its own suite (recipe/RecipeSheet.test.tsx); here it
+// is only asserted to be mounted on the opened cocktail.
+vi.mock('./recipe/RecipeSheet', () => ({
+  default: ({ cocktailId }: { cocktailId: string }) => <div data-testid="recipe-sheet-mounted">{cocktailId}</div>,
+}));
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useCellarNextData: () => mock.current,
@@ -1318,11 +1323,8 @@ describe('CellarNext — the registers that are not wines', () => {
     expect(screen.getByText(/55 unattributed reference cocktails/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('Negroni'));
-    // The recipe half is no longer "never" — it is unwritten, and writable.
-    expect(screen.getByTestId('recipe-empty')).toHaveTextContent(
-      /empty because the extraction pass over the scanned menus never ran/,
-    );
-    expect(screen.getByRole('button', { name: /Write the recipe/ })).toBeEnabled();
+    // The opened cocktail carries its recipe sheet.
+    expect(screen.getByTestId('recipe-sheet-mounted')).toHaveTextContent('c1');
   });
 
   it('retiring a cocktail takes two presses and never carries the seal', async () => {
