@@ -911,6 +911,7 @@ textarea.cl-field {
 }
 .cl-rcp-link[data-linked='true'] svg { color: var(--seal); }
 .cl-rcp-link[data-linked='false'] { color: var(--warn); }
+.cl-rcp-flag { color: var(--warn); }
 .cl-rcp-note { margin: 6px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--ink-3); }
 .cl-rcp-note-warn {
   padding: 4px 8px;
