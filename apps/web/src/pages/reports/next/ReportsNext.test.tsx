@@ -44,7 +44,7 @@ const decode = (id: 'goals' | 'bench', raw: unknown) => CATALOGUE[id].select(raw
 
 const hook = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 /** What the page last asked the data layer to READ — the draft included. */
-const asked = vi.hoisted(() => ({ showing: undefined as unknown }));
+const asked = vi.hoisted(() => ({ showing: undefined as unknown, place: undefined as unknown }));
 
 vi.mock('./useReportsNextData', async () => {
   const actual = await vi.importActual<typeof import('./useReportsNextData')>(
@@ -54,6 +54,7 @@ vi.mock('./useReportsNextData', async () => {
     ...actual,
     useReportsNextData: (...args: unknown[]) => {
       asked.showing = args[2];
+      asked.place = args[3];
       return hook.current;
     },
   };
@@ -1806,6 +1807,45 @@ describe('ReportsNext — the sheet keeps its places', () => {
     await act(async () => land());
     expect(screen.getByText('Ruled off.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeEnabled();
+  });
+
+  it('holds "Put it on the sheet" while the save is in flight, and places the cutting once it has landed', async () => {
+    let land: () => void = () => {};
+    saveSheet.mockImplementationOnce(() => new Promise<void>((r) => (land = r)));
+    // Wire the stub desk to the page's real placer, as the hook does.
+    deskStub.place.mockImplementation((c: unknown) =>
+      (asked.place as (c: unknown) => void)(c),
+    );
+    deskStub.proposal = {
+      goalId: 'g1',
+      goalName: 'Lift wine revenue',
+      cutting: { id: 'seats', graph: 'bars', days: null },
+      why: null,
+      refusal: null,
+    };
+    const { container } = paint();
+    arrange();
+    fireEvent.click(within(region('The reading')).getByText('Take off'));
+    fireEvent.click(screen.getByText('Rule it off'));
+    const put = within(region('Goals')).getByRole('button', { name: 'Put it on the sheet' });
+    expect(put).toBeDisabled();
+    expect(within(region('Goals')).getByText('Ruling off…')).toBeInTheDocument();
+    fireEvent.click(put);
+    expect(deskStub.place).not.toHaveBeenCalled();
+    await act(async () => land());
+    expect(saveSheet).toHaveBeenCalledTimes(1);
+
+    // After the save, the same button works and the cutting is on the draft.
+    expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+    arrange();
+    const again = within(region('Goals')).getByRole('button', { name: 'Put it on the sheet' });
+    expect(again).toBeEnabled();
+    fireEvent.click(again);
+    expect(deskStub.place).toHaveBeenCalledWith({ id: 'seats', graph: 'bars', days: null });
+    expect(container.querySelector('.rp-sheet')).toHaveAttribute('data-arranging', 'true');
+    await ruleItOff();
+    const saved = saveSheet.mock.calls[1][0] as { cuttings: Array<{ id: string }> };
+    expect(saved.cuttings.some((c) => c.id === 'seats')).toBe(true);
   });
 
   it('says a failed save failed, and keeps both the draft and the arranging', async () => {

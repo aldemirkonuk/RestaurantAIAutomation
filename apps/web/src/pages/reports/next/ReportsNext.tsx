@@ -353,6 +353,9 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       // cutting is drawn until the sheet is known; when it could not be read,
       // the page already says arranging is off.
       if (!data.sheetKnown) return;
+      // The paper is held still while the sheet is being saved; the desk's
+      // button is disabled then, and this keeps any other caller honest.
+      if (saving) return;
       if (cut.days !== null) setTillDays(cut.days);
       setDraft((d) => {
         const base = d ?? { cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) };
@@ -370,13 +373,13 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       });
       setArranging(true);
     },
-    [data.sheet, data.sheetKnown],
+    [data.sheet, data.sheetKnown, saving],
   );
   placeRef.current = placeProposed;
 
   const ctx = useMemo(
-    () => ({ days: tillDays, goals: data.goalsDesk }),
-    [data.goalsDesk, tillDays],
+    () => ({ days: tillDays, goals: { ...data.goalsDesk, placeBlocked: saving } }),
+    [data.goalsDesk, tillDays, saving],
   );
 
   const cuttings: SheetCutting[] = view.cuttings.map((c) => ({
