@@ -131,11 +131,11 @@ describe("founder F3 (2026-10-31): sort only, no rank", () => {
 
   it("OD-258: no score (null, NaN, Infinity) goes last in both orders; ties by id", () => {
     const rows = [
+      { id: "f", score: 70 },
       { id: "b", score: NaN },
       { id: "c", score: 70 },
       { id: "a", score: Infinity },
       { id: "d", score: null },
-      { id: "f", score: 70 },
       { id: "e", score: 90 },
     ];
     expect(sortByScore(rows).map((r) => r.id)).toEqual(["e", "c", "f", "a", "b", "d"]);
