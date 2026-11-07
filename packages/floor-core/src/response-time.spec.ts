@@ -49,7 +49,7 @@ describe("parity: handoff gap attribution (test-attribution.mjs)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Corrections — each fails against the checker's original formula
+// 2. Corrections — each fails against the checker's original formula
 // ---------------------------------------------------------------------------
 
 describe("ADR 0346 D4 (c) / founder F1: the greeting gap is the table's waiter's", () => {
@@ -172,6 +172,11 @@ describe("ADR 0346 :63 (D4 b): the open gap's terminators", () => {
     expect(run({ paidAt: at(90), leftAt: at(30) }).byWaiter.get("W")).toEqual([5, 25]);
   });
 
+  it("ends at Paid or leave when either comes before the last tap", () => {
+    expect(run({ paidAt: at(20), caretakerLastTapAt: at(200) }).byWaiter.get("W")).toEqual([5, 15]);
+    expect(run({ leftAt: at(25), caretakerLastTapAt: at(200) }).byWaiter.get("W")).toEqual([5, 20]);
+  });
+
   it("a last tap before the last visit adds no open gap", () => {
     expect(run({ caretakerLastTapAt: at(3), leftAt: at(300) }).byWaiter.get("W")).toEqual([5]);
   });
@@ -192,5 +197,89 @@ describe("ADR 0346 :63 (D4 b): the open gap's terminators", () => {
     expect(out.byWaiter.get("W")).toEqual([5, 55]);
     expect(run({ leftAt: at(30) }).seatingsNotClosed).toEqual([]);
     expect(run({ paidAt: at(9000) }).seatingsNotClosed).toEqual(["s1"]);
+  });
+});
+
+describe("the branches the port adds", () => {
+  const opts = (over: Partial<SeatingFacts> = {}, now = 600) => ({
+    seatings: [facts(over)],
+    warnAfterMin: WARN,
+    now: T0 + now * MIN,
+  });
+
+  it("keeps a closed gap over 120 minutes (the checker dropped it)", () => {
+    const events = [ev("seated", "W", 0), ev("check_in", "W", 150)];
+    expect(responseSamples(events, opts({ leftAt: at(150) })).byWaiter.get("W")).toEqual([150]);
+  });
+
+  it("scores a party seated and never visited, to the caretaker at seat time", () => {
+    const out = responseSamples([], opts({ seatedBy: "M", caretakerAtSeatId: "W", leftAt: at(30) }));
+    expect(out.byWaiter.get("W")).toEqual([30]);
+    expect(out.byWaiter.has("M")).toBe(false);
+    expect(out.byTable.get("t1")).toEqual([30]);
+  });
+
+  it("with no caretaker, credits the greeting gap for the visit, not the Seat tap (D4 c)", () => {
+    const open = responseSamples([], opts({ seatedBy: "M", caretakerAtSeatId: null, leftAt: at(30) }));
+    expect(open.byWaiter.size).toBe(0);
+    expect(open.byTable.get("t1")).toEqual([30]);
+    const closed = responseSamples([ev("check_in", "X", 12)], opts({ seatedBy: "M", caretakerAtSeatId: null, leftAt: at(12) }));
+    expect(closed.byWaiter.get("X")).toEqual([12]);
+    expect(closed.byWaiter.has("M")).toBe(false);
+    const selfSeated = responseSamples([ev("check_in", "M", 12)], opts({ seatedBy: "M", caretakerAtSeatId: null, leftAt: at(12) }));
+    expect(selfSeated.byWaiter.get("M")).toEqual([12]);
+  });
+
+  it("counts an open gap only when it exceeds T, and T is at least one minute", () => {
+    expect(responseSamples([], opts({ leftAt: at(WARN) })).byWaiter.has("W")).toBe(false);
+    expect(responseSamples([], opts({ leftAt: at(WARN + 1) })).byWaiter.get("W")).toEqual([WARN + 1]);
+    const zero = (leftAt: string) =>
+      responseSamples([], { seatings: [facts({ leftAt })], warnAfterMin: 0, now: T0 + 600 * MIN });
+    expect(zero(at(1)).byWaiter.has("W")).toBe(false);
+    expect(zero(at(2)).byWaiter.get("W")).toEqual([2]);
+  });
+
+  it("lists a seating whose seat time is unreadable and that has no seated event", () => {
+    const out = responseSamples([], opts({ seatedAt: "bad", leftAt: at(30) }));
+    expect(out.seatingsWithoutAnchor).toEqual(["s1"]);
+    expect(out.byWaiter.size).toBe(0);
+  });
+
+  it("refuses a window end or warn minute that is not finite", () => {
+    expect(() => responseSamples([], { seatings: [], warnAfterMin: WARN, now: NaN })).toThrow(RangeError);
+    expect(() => responseSamples([], { seatings: [], warnAfterMin: Infinity, now: T0 })).toThrow(RangeError);
+  });
+
+  it("leaves out an event whose time is unreadable, so an unreadable seated row cannot hide the seat time", () => {
+    const events = [ev("seated", "W", 0, { createdAt: "bad" }), ev("check_in", "W", 5, { createdAt: "bad" }), ev("check_in", "W", 8)];
+    const out = responseSamples(events, opts({ leftAt: at(8) }));
+    expect(out.byWaiter.get("W")).toEqual([8]);
+    expect(out.seatingsWithoutAnchor).toEqual([]);
+  });
+
+  it("orders same-millisecond events the same whatever the input order", () => {
+    const events = [ev("check_in", "X", 5), ev("check_in", "W", 5), ev("seated", "W", 5), ev("check_in", "W", 9)];
+    const a = responseSamples(events, opts({ leftAt: at(9) }));
+    const b = responseSamples([...events].reverse(), opts({ leftAt: at(9) }));
+    expect(a.byWaiter).toEqual(b.byWaiter);
+    expect(a.byWaiter.get("W")).toEqual([0, 0]);
+    expect(a.byWaiter.get("X")).toEqual([4]);
+  });
+
+  it("does not list a seating without facts as not closed", () => {
+    const out = responseSamples([ev("seated", "W", 0), ev("check_in", "W", 5)], {
+      seatings: [],
+      warnAfterMin: WARN,
+      now: T0 + 60 * MIN,
+    });
+    expect(out.seatingsNotClosed).toEqual([]);
+    expect(out.seatingsWithoutFacts).toEqual(["s1"]);
+  });
+
+  it("credits the open gap after a colleague's visit to that colleague, bounded by the caretaker's last tap", () => {
+    const events = [ev("seated", "W", 0), ev("check_in", "X", 5)];
+    const out = responseSamples(events, opts({ caretakerLastTapAt: at(40), leftAt: at(300) }));
+    expect(out.byWaiter.get("W")).toEqual([5]);
+    expect(out.byWaiter.get("X")).toEqual([35]);
   });
 });
