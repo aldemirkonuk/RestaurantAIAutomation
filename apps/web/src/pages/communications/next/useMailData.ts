@@ -27,7 +27,7 @@ import type {
 
 export const MAIL_POLL_MS = 30_000;
 
-function useHouse(): string {
+export function useHouse(): string {
   const { user, activeRestaurantId } = useAuth();
   return activeRestaurantId ?? user?.restaurantId ?? '';
 }
