@@ -1,7 +1,7 @@
 # 0314 — The add-wine photo path invents no wine
 
 - **Status:** Locked 2026-10-03, by the founder. This branch had one fork: what the
-  "Single Wine Label Scan" button becomes. The founder answered *"Delete it"*.
+  "Single Wine Label Scan" button becomes. The founder answered *"Delete it"*. **[Partly SUPERSEDED 2026-11-07 by [ADR 0358](0358-menu-upload-walk-founder-rulings-2026-11-07.md) F3: a photo goes to the menu reader, not `MenuScannerFlow`; the rest stands.]**
 - **Date:** 2026-10-03
 - **Number:** written as 0271 on 2026-10-03, uncommitted. Renumbered to 0314 on 2026-10-08, before its first push. 0271 is below main's newest number (0306 on 2026-10-08), so landing it would put the record out of order; no other ADR holds 0271 (only this one's own backup ref, `backup/local-2026-10-08/addwine`). `check_adr_numbers_unique.py` gave 0313 as the next free number, but another lane already held 0313 (then uncommitted in its worktree; pushed since on `feat/w25-order-request-renderer`, PR #674).
 - **Decider:** Aldemir (founder)
@@ -23,7 +23,7 @@
 
 `/inventory` mounts the add sheet: `App.tsx:370` → `pages/inventory/command/InventoryCommandPage.tsx:1667` →
 `AddWineToInventoryModal`. Its Photo tab had two buttons. "Open Camera / Upload Image"
-opens `MenuScannerFlow`, the real scanner. "Single Wine Label Scan" opened `AddWineModal`
+opens `MenuScannerFlow`, the real scanner. [CORRECTED 2026-11-07, ADR 0358: it posts to `/api/v1/scan/menu`, which the orchestrator's `main.py` never mounts, so it always answers "No wines detected"; not checked here.] "Single Wine Label Scan" opened `AddWineModal`
 (imported at `AddWineToInventoryModal.tsx:21` on `8c673db4b`). That modal had no detection
 backend. Two defects followed, both measured on `8c673db4b`.
 
@@ -53,7 +53,7 @@ display only: a person was shown a wine nobody read, and the add then failed sil
 1. **Delete the single-label path** (chosen). Remove `AddWineModal.tsx`, both buttons that
    opened it ("Single Wine Label Scan", "Scan Another Wine"), `handlePhotoWineDetected` with
    its defaults, the `detectedWine` state, the "Wine Detected Successfully!" pane and the
-   "AI Detected" badge. The Photo tab keeps the real scanner. This follows ADR 0020's
+   "AI Detected" badge. The Photo tab keeps the real scanner. **[SUPERSEDED 2026-11-07 by ADR 0358 F3: the Photo tab's photo goes to the menu reader.]** This follows ADR 0020's
    *"deleted, not labelled"* and leaves no dead end. [The "Single Wine" card that opens this sheet (`AddWineSelectionModal.tsx:88-91`) still promises "Scan one wine label at a time"; its Photo tab now opens only the Menu Scanner, whose own copy disagrees on the detector (the sheet's info box `:436-439` says YOLOv8, `MenuScannerFlow.tsx:47-50` says RF-DETR). Whether that scanner reads a lone bottle label well was not checked. The card copy is pre-existing and listed under Out of scope.]
 2. **Keep it, and say detection is unavailable.** This was the brief as written: the mock
    goes, a photo returns "not available", and the result screen renders nulls as "Not
@@ -66,7 +66,7 @@ display only: a person was shown a wine nobody read, and the add then failed sil
 ## Decision
 
 **The add sheet builds no wine from a photo. It adds only a library wine, by its real id.
-A photo goes to the real scanner.** With no builder left, the sheet itself fills no missing field. [The Search tab still *shows* values the shared mapper `mapApiWineToUiWine` fills in — type coerced to red, "Unknown, Unknown" for region and country (`AddWineToInventoryModal.tsx:380-384`), and `$0/bottle` (`:388`, from the mapper's `price: … : 0`). They are display only and never reach the save payload; they are the mapper's defect, listed under Out of scope.]
+A photo goes to the real scanner.** **[SUPERSEDED 2026-11-07 by ADR 0358 F3: a photo goes to the menu reader (`POST /menus/import`) and lands as a draft on `/menu`.]** With no builder left, the sheet itself fills no missing field. [The Search tab still *shows* values the shared mapper `mapApiWineToUiWine` fills in — type coerced to red, "Unknown, Unknown" for region and country (`AddWineToInventoryModal.tsx:380-384`), and `$0/bottle` (`:388`, from the mapper's `price: … : 0`). They are display only and never reach the save payload; they are the mapper's defect, listed under Out of scope.]
 
 ## Consequences
 
