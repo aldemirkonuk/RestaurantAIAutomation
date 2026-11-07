@@ -143,11 +143,18 @@ function flatten(list: Parsed[]): Parsed[] {
   return out;
 }
 
-/** The header with quoted strings and (comments) removed — only syntax left. */
-function syntaxOnly(value: string): string {
+/**
+ * The header with quoted strings reduced to `"` and (comments) to a space —
+ * only syntax left —
+ * and whether it is simple enough to believe: every quote and comment closed,
+ * and no comment nested in another (`addressparser` does not nest them, so a
+ * nested comment is a shape the two readings of the header disagree on).
+ */
+function scan(value: string): { syntax: string; simple: boolean } {
   let out = "";
   let quoted = false;
   let depth = 0;
+  let nested = false;
   for (let i = 0; i < value.length; i++) {
     const ch = value[i];
     if (ch === "\\" && (quoted || depth > 0)) {
@@ -158,14 +165,56 @@ function syntaxOnly(value: string): string {
       if (ch === '"') quoted = false;
       continue;
     }
-    if (ch === "(") depth += 1;
-    else if (ch === ")" && depth > 0) depth -= 1;
+    if (ch === "(") {
+      // A comment reads as one space, so it cannot glue two tokens together.
+      if (depth === 0) out += " ";
+      depth += 1;
+      if (depth > 1) nested = true;
+    } else if (ch === ")" && depth > 0) depth -= 1;
     else if (depth === 0) {
+      // A quoted string leaves one `"` behind: its text is hidden, but an
+      // addr-spec next to it (`"a b"x@y.com`, `<"x"@y.com>`) no longer looks
+      // like a clean address.
       if (ch === '"') quoted = true;
-      else out += ch;
+      out += ch;
     }
   }
-  return out;
+  return { syntax: out, simple: !quoted && depth === 0 && !nested };
+}
+
+/** RFC 5322 folding: CRLF (or a bare LF) followed by white space. */
+const FOLD = /\r?\n(?=[ \t])/g;
+/** Any C0 control except TAB, and DEL — left after unfolding, it is injection. */
+const CONTROL = /[\u0000-\u0008\u000A-\u001F\u007F]/;
+
+/**
+ * The address a header's syntax (quotes and comments removed) holds when it
+ * has the shape of exactly one mailbox — `addr-spec` alone, or
+ * `[display-name] <addr-spec>` with nothing after the `>` and no `@` in the
+ * name — lower-cased; otherwise null. QA round 22 (N-1 tail):
+ * each of these used to resolve to the address an attacker chose to show —
+ *
+ *   `<sales@bigdist.com> attacker@evil.example`   angle, then a bare address
+ *   `undisclosed: sales@bigdist.com;`              group syntax (also `:` of
+ *                                                  a source route or an
+ *                                                  injected header name)
+ *   `a@x.com, b@y.com` / `a@x.com,`                a list, or a broken one
+ */
+function singleMailboxShape(syntax: string): string | null {
+  if (/[:;,]/.test(syntax)) return null;
+  const lt = syntax.split("<").length - 1;
+  const gt = syntax.split(">").length - 1;
+  let address: string;
+  if (lt === 0 && gt === 0) address = syntax.trim();
+  else {
+    if (lt !== 1 || gt !== 1) return null;
+    const open = syntax.indexOf("<");
+    const close = syntax.indexOf(">");
+    if (close < open || syntax.slice(0, open).includes("@")) return null;
+    if (syntax.slice(close + 1).trim() !== "") return null;
+    address = syntax.slice(open + 1, close).trim();
+  }
+  return ADDR_SPEC.test(address) ? address.toLowerCase() : null;
 }
 
 function parse(value: string): Parsed[] {
@@ -204,20 +253,40 @@ export function addressesIn(header: string | null | undefined): string[] {
 /**
  * The single mailbox a From (or Return-Path / Sender) header names, or null.
  *
- * Null — attribute to nobody — when the header holds no valid address, more
- * than one distinct mailbox, or more angle-addrs outside quotes and comments
- * than the parser found mailboxes: `Sales <sales@bigdist.com>
- * <attacker@evil.example>` is not valid syntax, and which of its two
- * addresses a mail client shows is anyone's guess, so neither is believed.
+ * WHAT THIS TRUSTS (QA round 22, N-1, 2026-11-07). Attribution believes the
+ * syntax of the From header and nothing else. It does NOT consult SPF, DKIM,
+ * DMARC or ARC: a plain `From: sales@bigdist.com` sent from any server is
+ * read as sales@bigdist.com. That gap is recorded in
+ * `.planning/tech-debt.d/2026-11-07-fix-mail-sender-fail-closed.md` and in
+ * claim MAIL-ATTRIBUTION-IGNORES-AUTHENTICATION. The only consumers of an
+ * authentication result are the responder's `sender_unverified` guardrail (a
+ * reply is held for a manager) and the promotion extractor's trust weight. What this function does
+ * guarantee is narrower: an address shown in a display name, a comment, a
+ * group, a second angle, a trailing bare address or an injected line never
+ * becomes the sender.
+ *
+ * Null — attribute to nobody — when the header, after RFC 5322 unfolding,
+ * still holds a control character (CR, LF, NUL ...), has an unclosed quote or
+ * comment or a nested comment, is not shaped like exactly one mailbox
+ * (`singleMailboxShape`), the parser's address differs from the one that
+ * shape holds, holds no valid address, more than one distinct mailbox, or more
+ * angle-addrs outside quotes and comments than the parser found mailboxes:
+ * `Sales <sales@bigdist.com> <attacker@evil.example>` is not valid syntax,
+ * and which of its two addresses a mail client shows is anyone's guess, so
+ * neither is believed.
  */
 export function parseSender(header: string | null | undefined): Mailbox | null {
-  const value = (header ?? "").toString().trim();
-  if (!value) return null;
+  const value = (header ?? "").toString().replace(FOLD, "").trim();
+  if (!value || CONTROL.test(value)) return null;
+  const { syntax, simple } = scan(value);
+  const shaped = simple ? singleMailboxShape(syntax) : null;
+  if (!shaped) return null;
   const parsed = parse(value);
-  const angles = (syntaxOnly(value).match(/</g) ?? []).length;
+  const angles = (syntax.match(/</g) ?? []).length;
   if (angles > parsed.length) return null;
   const list = parseAddressList(value);
-  return list.length === 1 ? list[0] : null;
+  // Two independent readings of the header must name the same address.
+  return list.length === 1 && list[0].address === shaped ? list[0] : null;
 }
 
 /** The sender's addr-spec, lower-cased, or null — see `parseSender`. */
@@ -225,6 +294,25 @@ export function senderAddress(
   header: string | null | undefined,
 ): string | null {
   return parseSender(header)?.address ?? null;
+}
+
+const BARE_DOMAIN = /^[^\s@<>()",;:]+\.[^\s@<>()",;:]+$/;
+
+/**
+ * The domain a sender belongs to, or "". A header or an address goes through
+ * `parseSender` (so `"x <a@trusted.com>" <b@evil.example>` is evil.example,
+ * never trusted.com); a bare domain such as `bigdist.com` — what a manager
+ * types to trust a sender — is returned as given. Used by the prospect and
+ * sender-reputation readers, which used to take the first `<...>`.
+ */
+export function senderDomain(emailOrDomain: string | null | undefined): string {
+  const s = (emailOrDomain ?? "").toString().trim().toLowerCase();
+  if (!s) return "";
+  if (!s.includes("@") && !s.includes("<")) {
+    return BARE_DOMAIN.test(s) ? s : "";
+  }
+  const address = senderAddress(s);
+  return address ? address.slice(address.lastIndexOf("@") + 1) : "";
 }
 
 /**

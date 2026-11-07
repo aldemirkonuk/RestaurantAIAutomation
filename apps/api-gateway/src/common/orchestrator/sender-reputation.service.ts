@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
+import { senderDomain } from "../../communications/inbound-headers";
 
 export type ReputationSignal = "injection" | "spam" | "bounce";
 
@@ -19,13 +20,14 @@ export class SenderReputationService {
 
   constructor(private readonly databaseService: DatabaseService) {}
 
-  /** Bare domain from an email address, `Name <a@b.com>`, or an already-bare domain. */
+  /**
+   * The sender's domain, or "" when there is no single unambiguous one.
+   * Delegates to `inbound-headers.ts senderDomain` (QA round 22, N-1): this
+   * used to take the first `<...>`, so `"x <a@trusted.com>" <b@evil.example>`
+   * read as trusted.com. A bare domain is still accepted as given.
+   */
   domainOf(emailOrDomain: string | null | undefined): string {
-    const s = (emailOrDomain ?? "").toString().trim().toLowerCase();
-    if (!s) return "";
-    const angled = s.match(/<([^>]+)>/);
-    const addr = angled ? angled[1] : s;
-    return addr.includes("@") ? (addr.split("@")[1] ?? "").trim() : addr;
+    return senderDomain(emailOrDomain);
   }
 
   /** True only when the domain is explicitly trusted AND not suspended. */

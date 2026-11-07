@@ -11,8 +11,9 @@ import {
   parseAddressList,
   parseSender,
   senderAddress,
+  senderDomain,
 } from "./inbound-headers";
-import { addressInFromHeader, headerValue } from "./gmail-mime";
+import { addressInFromHeader, fromHeader, headerValue } from "./gmail-mime";
 import {
   deriveTransportSignals,
   extractEmailAddress,
@@ -20,6 +21,8 @@ import {
 import { InboundAddressService } from "../common/orchestrator/inbound-address.service";
 import { InboundEmailController } from "../common/orchestrator/inbound-email.controller";
 import { RabbitMqBridgeService } from "../common/orchestrator/rabbitmq-bridge.service";
+import { ProspectsService } from "../common/orchestrator/prospects.service";
+import { SenderReputationService } from "../common/orchestrator/sender-reputation.service";
 
 const SPOOF = '"Sales <sales@bigdist.com>" <attacker@evil.example>';
 const SUBJ = "Re: Şubat fiyat listesi çiğköfte";
@@ -381,5 +384,148 @@ describe("RabbitMqBridgeService.handleInboundEmail attribution", () => {
     const title = events.find((e) => e[0] === "emitRestaurantNotification")?.[2]
       ?.title;
     expect(title).toContain("Şubat");
+  });
+});
+
+/* ---------- QA round 22: the N-1 tail ---------- */
+// The same table as services/agent-orchestrator/tests/
+// test_email_sender_attribution.py, so the gateway and the Python agent cannot
+// disagree on a shape. [label, From header, expected address or null]
+const B64 = (t: string) =>
+  `=?UTF-8?B?${Buffer.from(t, "utf8").toString("base64")}?=`;
+const TAIL: Array<[string, string, string | null]> = [
+  ["quoted display name", SPOOF, "attacker@evil.example"],
+  [
+    "comment carries vendor",
+    '"x" <attacker@evil.example> (sales@bigdist.com)',
+    "attacker@evil.example",
+  ],
+  [
+    "comment with angle",
+    "Sales (<sales@bigdist.com>) <attacker@evil.example>",
+    "attacker@evil.example",
+  ],
+  ["nested comment", "attacker@evil.example (a (b <sales@bigdist.com>))", null],
+  [
+    "RFC 2047 name decoding to an angle",
+    `${B64("Sales <sales@bigdist.com>")} <attacker@evil.example>`,
+    "attacker@evil.example",
+  ],
+  [
+    "escaped quote in name",
+    '"Sales\\" <sales@bigdist.com>" <attacker@evil.example>',
+    "attacker@evil.example",
+  ],
+  [
+    "address as display name",
+    "sales@bigdist.com <attacker@evil.example>",
+    null,
+  ],
+  ["angle then bare", "<sales@bigdist.com> attacker@evil.example", null],
+  ["two angles", "Sales <sales@bigdist.com> <attacker@evil.example>", null],
+  ["two mailboxes", "sales@bigdist.com, attacker@evil.example", null],
+  [
+    "two mailboxes, attacker first",
+    "attacker@evil.example, sales@bigdist.com",
+    null,
+  ],
+  [
+    "unterminated quote",
+    '"Sales <sales@bigdist.com> <attacker@evil.example>',
+    null,
+  ],
+  ["quoted local part", '"sales@bigdist.com"@evil.example', null],
+  ["quoted local part, angled", 'X <"sales@bigdist.com"@evil.example>', null],
+  ["source route", "<@evil.example:sales@bigdist.com>", null],
+  ["group carrying vendor", "undisclosed: sales@bigdist.com;", null],
+  ["group carrying attacker", "Vendors: attacker@evil.example;", null],
+  ["CRLF injection", "Sales\r\nFrom: sales@bigdist.com", null],
+  [
+    "CRLF injection after a real address",
+    "attacker@evil.example\r\nFrom: sales@bigdist.com",
+    null,
+  ],
+  ["folded injection", "Sales\r\n From: sales@bigdist.com", null],
+  ["NUL injection", "attacker@evil.example\u0000<sales@bigdist.com>", null],
+  ["two bare addresses", "attacker@evil.example sales@bigdist.com", null],
+  ["empty", "", null],
+  ["display only", "Sales Team", null],
+  ["bare", "john@x.com", "john@x.com"],
+  ["upper case", "SALES@BigDist.com", "sales@bigdist.com"],
+  ["quoted name with comma", '"Doe, John" <John@X.com>', "john@x.com"],
+  ["angle with trailing comment", "<a@x.com> (Ahmet)", "a@x.com"],
+  [
+    "unicode name and domain",
+    "Ahmet Yılmaz <ahmet@vendör.com>",
+    "ahmet@vendör.com",
+  ],
+  ["folded between name and angle", "Ahmet\r\n <ahmet@x.com>", "ahmet@x.com"],
+];
+
+describe("N-1 tail (QA round 22): a From not shaped like one mailbox names nobody", () => {
+  it.each(TAIL)("%s", (_label, header, want) => {
+    expect(senderAddress(header)).toBe(want);
+    expect(addressInFromHeader(header)).toBe(want);
+    expect(extractEmailAddress(header)).toBe(want ?? "");
+  });
+
+  it("the prospect and reputation readers take the parsed sender's domain", () => {
+    const prospects = new ProspectsService(
+      {} as any,
+      { get: () => undefined } as any,
+    );
+    const reputation = new SenderReputationService({} as any);
+    for (const domainOf of [
+      (v: string) => prospects.domainOf(v),
+      (v: string) => reputation.domainOf(v),
+      senderDomain,
+    ]) {
+      expect(domainOf('"x <a@trusted.com>" <b@evil.example>')).toBe(
+        "evil.example",
+      );
+      expect(domainOf("<sales@bigdist.com> attacker@evil.example")).toBe("");
+      expect(domainOf("undisclosed: sales@bigdist.com;")).toBe("");
+      expect(domainOf("Sales <Sales@BigDist.com>")).toBe("bigdist.com");
+      expect(domainOf("sales@bigdist.com")).toBe("bigdist.com");
+      expect(domainOf("BigDist.com")).toBe("bigdist.com");
+      expect(domainOf("not a domain")).toBe("");
+      expect(domainOf(null)).toBe("");
+    }
+  });
+
+  it("two From headers name nobody, whichever comes first", () => {
+    const two = [
+      { name: "From", value: "attacker@evil.example" },
+      { name: "from", value: "sales@bigdist.com" },
+    ];
+    expect(senderAddress(fromHeader(two))).toBeNull();
+    expect(senderAddress(fromHeader([...two].reverse()))).toBeNull();
+    expect(senderAddress(fromHeader([two[1]]))).toBe("sales@bigdist.com");
+    const c: any = new InboundEmailController(
+      { get: () => undefined } as any,
+      {} as any,
+      {} as any,
+    );
+    const n = c.normalizePayload({
+      Headers: two.map((h) => ({ Name: h.name, Value: h.value })),
+    });
+    expect(senderAddress(n.from)).toBeNull();
+  });
+
+  it.each([
+    "<sales@bigdist.com> attacker@evil.example",
+    "undisclosed: sales@bigdist.com;",
+    "attacker@evil.example\r\nFrom: sales@bigdist.com",
+    "attacker@evil.example\u0000<sales@bigdist.com>",
+  ])("nothing is stored against the vendor for %j", async (forged) => {
+    const { svc, inserts, events } = bridge({
+      providers: [VENDOR],
+      procurement_orders: [OPEN],
+    });
+    await svc.handleInboundEmail(
+      inbound({ from: forged, gmail_message_id: "m-tail" }),
+    );
+    expect(inserts).toEqual([]);
+    expect(events.some((e) => e[0] === "responder")).toBe(false);
   });
 });
