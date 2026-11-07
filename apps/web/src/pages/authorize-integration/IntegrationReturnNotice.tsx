@@ -11,6 +11,7 @@ const REASONS: Record<string, string> = {
   invalid_callback: 'The provider return did not match this permission.',
   invalid_browser_origin: 'The original app address is no longer configured.',
   exchange_failed: 'The connection outcome could not be established. Check the connection below before starting again.',
+  connected_in_another_house: 'This is already connected in another of your houses, and a connection lives in one house at a time. Disconnect it there first, then connect it here.',
 }
 
 /** Query parameters trigger a status read; they are not proof of a connection. */

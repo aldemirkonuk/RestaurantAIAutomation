@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
@@ -58,11 +59,29 @@ const HEX_256_PATTERN = /^[a-f0-9]{64}$/;
  * READ is not a refusal: three causes, three reasons on the return URL.
  */
 class ConsentMembershipRefusal extends Error {
-  constructor(readonly reason: "membership_refused" | "membership_unreadable") {
+  constructor(
+    readonly reason:
+      | "membership_refused"
+      | "membership_unreadable"
+      | "connected_in_another_house",
+  ) {
     super(reason);
     this.name = "ConsentMembershipRefusal";
   }
 }
+
+/**
+ * QA round 11, R11-05. `integration_oauth_connections` is UNIQUE (user_id,
+ * integration_id), so one person's grant for one integration lives in ONE
+ * house. Connecting it again while standing in another house used to upsert
+ * over the row and move it there: the first house's list went empty and its
+ * mail archive stopped with "belongs to another restaurant". The second house
+ * is now refused, before any provider flow opens and again at the write.
+ * Letting one person hold a grant per house is a schema change (the unique
+ * key), recorded as the founder's call, not made here.
+ */
+export const GRANT_HELD_IN_ANOTHER_HOUSE =
+  "This is already connected in another of your houses, and a connection lives in one house at a time. Disconnect it there first, then connect it here. Nothing was changed.";
 
 /** Refresh a little early so a call never races the expiry boundary. */
 const EXPIRY_SKEW_MS = 60 * 1000;
@@ -306,6 +325,17 @@ export class IntegrationsOauthService {
       );
     }
     const frontendOrigin = this.consentFrontendOrigin(consent.frontendOrigin);
+
+    // R11-05: before a receipt is filed or a provider flow opens.
+    if (
+      await this.grantHeldInAnotherHouse(
+        params.userId,
+        params.integrationId,
+        params.restaurantId,
+      )
+    ) {
+      throw new ConflictException(GRANT_HELD_IN_ANOTHER_HOUSE);
+    }
 
     // The receipt is filed BEFORE the state row: a provider flow must never be
     // open for a consent the house has no record of.
@@ -609,6 +639,18 @@ export class IntegrationsOauthService {
       // trip can outlast a revocation, and nothing is stored for a person who
       // no longer works in the house.
       await this.assertConsentMembership(stateRow.user_id, stateRow.restaurant_id);
+      // R11-05, before the code is exchanged: a grant made in another house
+      // after this flow opened (a second tab) is caught here, so no token is
+      // minted that would only be thrown away at the write.
+      if (
+        await this.grantHeldInAnotherHouse(
+          stateRow.user_id,
+          stateRow.integration_id,
+          stateRow.restaurant_id,
+        )
+      ) {
+        throw new ConsentMembershipRefusal("connected_in_another_house");
+      }
       const verifier = this.crypto.decrypt(stateRow.pkce_verifier_encrypted);
       const tokens = await this.exchangeCode(definition, payload.code, verifier);
       if (!tokens.access_token) throw new Error("No access token returned");
@@ -862,6 +904,18 @@ export class IntegrationsOauthService {
   }) {
     const { tokens, definition } = params;
 
+    // R11-05, again at the write: a flow opened before the other house's
+    // grant was made, or in a second tab, must not move it either.
+    if (
+      await this.grantHeldInAnotherHouse(
+        params.userId,
+        definition.id,
+        params.restaurantId,
+      )
+    ) {
+      throw new ConsentMembershipRefusal("connected_in_another_house");
+    }
+
     // Google's authorize call sets include_granted_scopes=true (needed so a
     // second integration on the same Google account does not re-prompt for
     // scopes the person already granted the first one). That means
@@ -914,6 +968,34 @@ export class IntegrationsOauthService {
     if (error) {
       throw new Error(`Failed to store connection: ${error.message}`);
     }
+  }
+
+  /**
+   * Whether this person's live grant for this integration is recorded in a
+   * house other than `restaurantId` (R11-05). A revoked row, or a legacy row
+   * with no house, is not held anywhere. An unreadable answer refuses: a
+   * guess here either moves a house's grant or blocks a connect for nothing.
+   */
+  private async grantHeldInAnotherHouse(
+    userId: string,
+    integrationId: string,
+    restaurantId: string | null,
+  ): Promise<boolean> {
+    const { data, error } = await this.db.client
+      .from("integration_oauth_connections")
+      .select("restaurant_id")
+      .eq("user_id", userId)
+      .eq("integration_id", integrationId)
+      .is("revoked_at", null)
+      .maybeSingle();
+    if (error) {
+      throw new ServiceUnavailableException(
+        "Your existing connections could not be read. Nothing was started; try again.",
+      );
+    }
+    const heldIn =
+      (data as { restaurant_id?: string | null } | null)?.restaurant_id ?? null;
+    return heldIn !== null && heldIn !== restaurantId;
   }
 
   private async storedRefreshToken(
