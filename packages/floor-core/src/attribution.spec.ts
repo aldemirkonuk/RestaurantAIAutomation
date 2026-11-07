@@ -41,7 +41,7 @@ describe("parity: coverage overlap ≥50% (test-attribution.mjs)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. Review fixes (PR2a review, 2026-10-31)
+// 2. Where the port differs from the checker
 // ---------------------------------------------------------------------------
 
 describe("coverage counts time covered twice once", () => {
@@ -96,5 +96,17 @@ describe("the 50% line and unreadable times", () => {
 
   it("another table's interval does not count", () => {
     expect(assignmentOverlapMs(at(0), at(100), [{ tableId: "t2", startAt: at(0), endAt: at(100) }], "t1", T0)).toBe(0);
+  });
+});
+
+describe("a now that is not a finite number reads as unreadable", () => {
+  const iv = (startAt: string, endAt: string | null) => ({ tableId: "t1", startAt, endAt });
+  it.each([Infinity, -Infinity, NaN])("%s: an open interval is skipped, an open seating scores nothing", (now) => {
+    const closed = ["2026-11-01T19:00:00Z", "2026-11-01T20:00:00Z"] as const;
+    expect(assignmentOverlapMs(closed[0], closed[1], [iv("2026-11-01T19:00:00Z", null)], "t1", now)).toBe(0);
+    expect(seatingCoveredByWaiter(closed[0], closed[1], "t1", [iv("2026-11-01T19:00:00Z", null)], now)).toBe(false);
+    expect(seatingCoveredByWaiter(closed[0], null, "t1", [iv("2026-11-01T19:00:00Z", null)], now)).toBe(false);
+    // A closed interval on a closed seating needs no clock.
+    expect(seatingCoveredByWaiter(closed[0], closed[1], "t1", [iv(closed[0], closed[1])], now)).toBe(true);
   });
 });

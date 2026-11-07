@@ -8,14 +8,22 @@
  *   historical credit.
  *
  * Ported from the Floor Checker's `lib/attribution.ts` (frozen at
- * `5958689`), except that `nowMs` is required (no clock is read here) and
- * overlapping intervals are merged before they are summed. The checker could
- * sum them because one index allowed one active assignment per table. The
- * port's assignment table (its migration is not on main yet) refuses
- * overlapping primaries and overlapping covers of one primary, but a waiter
- * covering their own assignment can still hold two overlapping intervals;
- * summing those would count the same minutes twice and could cross the 50%
- * line. The 50% line itself is the checker's (`lib/attribution.ts:63`).
+ * `5958689`; ADR 0346 `:113`, Proposed, built under OD-242). The 50% line is
+ * the checker's (`lib/attribution.ts:63`). Two changes:
+ *
+ * - `nowMs` is required (no clock is read here), and a `nowMs` that is not a
+ *   finite number reads as unreadable: an open seating then scores nothing
+ *   and an open interval is skipped, rather than an open interval reaching
+ *   to the end of a closed seating.
+ * - Overlapping intervals are merged before they are summed. The checker
+ *   summed them; its only guard is one active row per table
+ *   (`supabase/migrations/0001_init.sql:79-80`), which does not stop closed
+ *   intervals from overlapping. The port's floor schema (its migration is
+ *   not on main yet) lets one waiter hold a table both directly and through
+ *   a section; summing those would count the same minutes twice and could
+ *   cross the 50% line.
+ *
+ * The intervals passed in are one waiter's; the caller filters by waiter.
  */
 
 export type AssignmentInterval = {
@@ -37,15 +45,16 @@ export function assignmentOverlapMs(
   tableId: string,
   nowMs: number,
 ): number {
+  const now = Number.isFinite(nowMs) ? nowMs : NaN;
   const s0 = new Date(seatedAt).getTime();
-  const s1 = leftAt ? new Date(leftAt).getTime() : nowMs;
+  const s1 = leftAt ? new Date(leftAt).getTime() : now;
   if (!Number.isFinite(s0) || !Number.isFinite(s1) || s1 <= s0) return 0;
 
   const clipped: [number, number][] = [];
   for (const iv of intervals) {
     if (iv.tableId !== tableId) continue;
     const a0 = new Date(iv.startAt).getTime();
-    const a1 = iv.endAt ? new Date(iv.endAt).getTime() : nowMs;
+    const a1 = iv.endAt ? new Date(iv.endAt).getTime() : now;
     // An unreadable start or end is NaN, so `hi > lo` is false and the
     // interval is skipped (a spec pins it).
     const lo = Math.max(s0, a0);
@@ -85,6 +94,7 @@ export function seatingCoveredByWaiter(
 ): boolean {
   const s0 = new Date(seatedAt).getTime();
   const s1 = leftAt ? new Date(leftAt).getTime() : nowMs;
+  // A non-finite now makes `duration` non-finite here, so it needs no guard.
   const duration = s1 - s0;
   if (!Number.isFinite(duration) || duration <= 0) return false;
   const overlap = assignmentOverlapMs(
