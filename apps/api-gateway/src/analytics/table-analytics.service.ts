@@ -56,7 +56,13 @@ export class TableAnalyticsService {
     const row = {
       restaurant_id: restaurantId,
       label: String(table.label ?? "").trim(),
-      seats: Number(table.seats) || 2,
+      // ADR 0347 D4 (E9): a seat count nobody gave is NULL, never 2. The
+      // upsert itself stays (Open as OD-253, the executor's reading under
+      // OD-242); only the guess is gone.
+      seats:
+        Number.isInteger(Number(table.seats)) && Number(table.seats) > 0
+          ? Number(table.seats)
+          : null,
       zone: table.zone ?? null,
       is_outdoor: Boolean(table.is_outdoor),
       distance_to_kitchen_m: table.distance_to_kitchen_m ?? null,
