@@ -24,17 +24,22 @@
  *
  * A drink with lines in the old recipe box and nothing saved here yet shows
  * those lines to everyone, as they were written: the recipe exists, and a
- * bartender mixes from it.
+ * bartender mixes from it. An editor also gets them read through the paste
+ * parser as proposed rows, which become lines only when they are used.
+ *
+ * A pasted spec is only ever proposed (F17): nothing becomes a line until
+ * "Use these lines", and nothing is saved until Save.
  *
  * A failed save says it failed, and that sentence is true: the gateway saves a
  * version in one transaction, so a refused save left the recipe as it was.
  * Only a request that never got an answer is said as unknown.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, History, Plus, RotateCcw, Save } from 'lucide-react';
+import { AlertTriangle, ClipboardPaste, History, Plus, RotateCcw, Save } from 'lucide-react';
 import { getErrorStatus } from '../../../../services/api/client';
 import type { CocktailRecipe, RecipeLine, SaveRecipeBody } from '../../../../services/api/recipes';
 import LineRow, { LineRowRead, rowName, type DraftRow } from './LineRow';
+import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { qtyText, readQty } from './units';
 import {
   useCanEditRecipe,
@@ -69,6 +74,31 @@ function fromServer(l: RecipeLine): DraftRow {
     unit: (l.unitCode as DraftRow['unit']) ?? '',
     saved: { status: l.status, costPerServe: l.costPerServe, costBasis: l.costBasis },
   };
+}
+
+function fromProposal(p: ProposedLine): DraftRow {
+  return {
+    key: nextKey(),
+    role: p.role,
+    inventoryId: null,
+    itemName: null,
+    itemKind: null,
+    label: p.label,
+    qtyText: qtyText(p.qty),
+    unit: p.unit ?? '',
+    saved: null,
+  };
+}
+
+type Proposed = { from: 'legacy' | 'paste'; lines: ProposedLine[]; note: string };
+
+/** The old recipe box's rows, read through the same parser as a paste. */
+function legacyProposal(d: CocktailRecipe): Proposed | null {
+  if (d.current || !d.legacyLines.length) return null;
+  const lines = d.legacyLines
+    .map((l) => parseLine([l.quantity ?? '', l.unit ?? '', l.label ?? ''].join(' ').trim()))
+    .filter((x): x is ProposedLine => x !== null);
+  return lines.length ? { from: 'legacy', lines, note: LEGACY_NOTE } : null;
 }
 
 function count(n: number, one: string, many: string) {
@@ -151,6 +181,9 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
   const [dirty, setDirty] = useState(false);
   const [said, setSaid] = useState<Said | null>(null);
   const [showVersions, setShowVersions] = useState(false);
+  const [proposed, setProposed] = useState<Proposed | null>(null);
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
   const seededFrom = useRef<string | null | undefined>(undefined);
 
   const data = recipe.data;
@@ -162,6 +195,9 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
     setOpenedFrom(v);
     setRows((d.current?.lines ?? []).map(fromServer));
     setDirty(false);
+    // A pasted spec still being looked at survives a re-seed; the old box's
+    // rows are re-read from what the server now says.
+    setProposed((p) => (p?.from === 'paste' ? p : legacyProposal(d)));
   }, []);
 
   // Seed from the server on first read, and again when a new version arrives
@@ -260,7 +296,7 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
   const footer = (() => {
     if (!data.current && lines.length === 0) {
       if (hasLegacy) return null;
-      return canEdit ? 'No recipe yet. Add what goes in it.' : 'No recipe yet.';
+      return canEdit ? 'No recipe yet. Add what goes in it, or paste a spec.' : 'No recipe yet.';
     }
     if (!money || !data.cost || !data.current) return null;
     if (data.cost.complete && data.cost.perServe != null) {
@@ -310,12 +346,80 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
         </ol>
       ) : null}
 
-      {hasLegacy ? <LegacyLines data={data} /> : null}
+      {hasLegacy && !(canEdit && proposed?.from === 'legacy') ? <LegacyLines data={data} /> : null}
 
       {footer ? (
         <p className="cl-rcp-foot" data-testid="recipe-footer" data-complete={data.cost?.complete ? 'true' : 'false'}>
           {footer}
         </p>
+      ) : null}
+
+      {canEdit && proposed ? (
+        <div className="cl-rcp-proposed" data-testid="recipe-proposed">
+          <p className="cl-note" style={{ marginTop: 0 }}>{proposed.note}</p>
+          <ol className="cl-rcp-lines">
+            {proposed.lines.map((p, i) => (
+              <li key={i} className="cl-rcp-line" data-role={p.role}>
+                <div className="cl-rcp-read">
+                  <span className="cl-num cl-rcp-amt">{p.qty != null ? `${qtyText(p.qty)} ${p.unit ?? ''}`.trim() : ''}</span>
+                  <span>
+                    {p.label}
+                    {p.role === 'untracked' ? <span className="cl-dim"> · not counted</span> : null}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              onClick={() => {
+                edit((rs) => [...rs, ...proposed.lines.map(fromProposal)]);
+                setProposed(null);
+                setPasteText('');
+                setPasteOpen(false);
+              }}
+            >
+              Use these lines
+            </button>
+            <button type="button" className="cl-btn cl-focus" onClick={() => setProposed(null)}>
+              Discard
+            </button>
+          </span>
+        </div>
+      ) : null}
+
+      {canEdit && pasteOpen && !proposed ? (
+        <div className="cl-rcp-paste">
+          <label htmlFor={`rcp-paste-${cocktailId}`} className="cl-note" style={{ display: 'block', marginTop: 0 }}>
+            Paste a spec, one ingredient per line
+          </label>
+          <textarea
+            id={`rcp-paste-${cocktailId}`}
+            className="cl-field cl-focus"
+            rows={4}
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+            placeholder={'1½ oz gin\n2 dashes Angostura\n1 egg white\nOrange twist garnish'}
+            style={{ width: '100%', height: 'auto', padding: 8, lineHeight: 1.5 }}
+          />
+          <span style={{ display: 'inline-flex', gap: 6, marginTop: 6 }}>
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              disabled={parseSpec(pasteText).length === 0}
+              onClick={() =>
+                setProposed({ from: 'paste', lines: parseSpec(pasteText), note: 'Check these before you use them. Nothing is saved yet.' })
+              }
+            >
+              Read it
+            </button>
+            <button type="button" className="cl-btn cl-focus" onClick={() => { setPasteOpen(false); setPasteText(''); }}>
+              Close
+            </button>
+          </span>
+        </div>
       ) : null}
 
       {canEdit ? (
@@ -333,6 +437,12 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
             <Plus size={13} aria-hidden />
             Add an ingredient
           </button>
+          {!pasteOpen && !proposed ? (
+            <button type="button" className="cl-btn cl-focus" onClick={() => setPasteOpen(true)}>
+              <ClipboardPaste size={13} aria-hidden />
+              Paste a spec
+            </button>
+          ) : null}
           <button
             type="button"
             className="cl-btn cl-focus cl-rcp-save"
