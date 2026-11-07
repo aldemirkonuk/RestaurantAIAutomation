@@ -98,9 +98,28 @@ describe("B1 — the alert funnel's phone leg follows each person's settings", (
     );
   });
 
-  it("reads the window on the HOUSE's clock: 2pm in New York is 19:00Z and not quiet", async () => {
+  it("pushes at 2pm in New York (19:00Z), outside the window", async () => {
     const db = seed([{ user_id: GM, restaurant_id: HOUSE, ...QUIET }]);
     const { svc, tokens } = build(db, TWO_PM_NY);
+    await svc.persistForRestaurant(HOUSE, ALERT);
+    expect(tokens).toEqual([
+      ["ExponentPushToken[cook]", "ExponentPushToken[gm]"],
+    ]);
+  });
+
+  // The two cases above agree on both clocks (07:00Z is inside 22:00-08:00 in
+  // UTC too, 19:00Z is outside it), so neither proves the funnel hands the
+  // gate the HOUSE's zone. These two instants are where the clocks disagree.
+  it("holds at 07:30 in New York, which is 12:30Z and outside the window in UTC", async () => {
+    const db = seed([{ user_id: GM, restaurant_id: HOUSE, ...QUIET }]);
+    const { svc, tokens } = build(db, new Date("2026-11-08T12:30:00Z"));
+    await svc.persistForRestaurant(HOUSE, ALERT);
+    expect(tokens).toEqual([["ExponentPushToken[cook]"]]);
+  });
+
+  it("pushes at 18:00 in New York, which is 23:00Z and inside the window in UTC", async () => {
+    const db = seed([{ user_id: GM, restaurant_id: HOUSE, ...QUIET }]);
+    const { svc, tokens } = build(db, new Date("2026-11-08T23:00:00Z"));
     await svc.persistForRestaurant(HOUSE, ALERT);
     expect(tokens).toEqual([
       ["ExponentPushToken[cook]", "ExponentPushToken[gm]"],
