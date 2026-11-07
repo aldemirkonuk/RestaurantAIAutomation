@@ -403,16 +403,10 @@ export class IdentityService {
         .eq("identity_key", keyBeforeFold)
         .maybeSingle();
     }
-    // The same bottle asserted before the fold with "ı" and now in ASCII or
-    // capitals ("Kavaklidere", "KAVAKLIDERE") has no "ı" to rebuild the old key
-    // from (QA round 10c, F1). The register is asked for every row whose parts
-    // could be a pre-fold spelling of these, and a row is taken only when
-    // storedRowIsBeforeFold says it is this bottle. Oldest first, so rows
-    // written before the fold come ahead of any written after it, and two
-    // pre-fold rows of one bottle resolve to the oldest, as the signature
-    // refold (#832) does. The limit can still cut a qualifying row when more
-    // than 200 older rows share the pattern; that is a missed match (a second
-    // row, the behaviour before this fix), never a wrong one.
+    // An ASCII or caps spelling has no "ı" to rebuild the pre-fold key from
+    // (QA round 10c, F1): read the rows that could be its pre-fold form and
+    // take the oldest that storedRowIsBeforeFold accepts. Past the limit is a
+    // missed match (a second row, as before this fix), never a wrong one.
     if (!existing.error && !existing.data) {
       const producerLike = likePatternBeforeFold(reading.producerNormalised);
       const nameLike = likePatternBeforeFold(reading.nameNormalised);

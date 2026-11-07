@@ -248,20 +248,13 @@ export function identityKeyBeforeFold(input: IdentityInput): string | null {
 }
 
 /**
- * Whether `stored` is what the pre-fold normaliser could have made of a text
- * the folded normaliser makes into `folded`.
- *
- * Before the fold, "ı" became a space and the spaces collapsed and trimmed; after
- * it, "ı" becomes "i". So a stored pre-fold part is the folded part with some
- * of its "i"s turned into spaces, collapsed and trimmed: "kavaklidere" ->
- * "kavakl dere", "isik" -> "s k". Which "i"s were "ı" is not known from an
- * ASCII or all-caps spelling, so every choice is tried, in O(n^2) rather than
- * 2^n. Pure; a lookup test only, never a key to write.
+ * Whether `stored` could be the pre-fold form of `folded`: some of its "i"s
+ * were "ı" and became spaces, collapsed and trimmed ("kavaklidere" ->
+ * "kavakl dere", "isik" -> "s k"). Every choice is tried, memoised.
  */
 export function couldBeBeforeFold(folded: string, stored: string): boolean {
   if (folded === stored) return true;
-  // walk(a, b, pending): a = next char of `folded`, b = next char of `stored`
-  // to match, pending = a space is owed before the next letter (collapsed).
+  // a, b: next char of folded / stored; pending: a space is owed.
   const seen = new Set<string>();
   const walk = (a: number, b: number, pending: boolean): boolean => {
     if (a === folded.length) return b === stored.length; // trailing space trims
@@ -272,7 +265,6 @@ export function couldBeBeforeFold(folded: string, stored: string): boolean {
     const options = c === "i" ? ["i", " "] : [c];
     for (const out of options) {
       if (out === " ") {
-        // A leading space trims away; any other space is owed, once.
         if (walk(a + 1, b, b > 0)) return true;
         continue;
       }
@@ -288,19 +280,13 @@ export function couldBeBeforeFold(folded: string, stored: string): boolean {
   return walk(0, 0, false);
 }
 
-/**
- * A SQL LIKE pattern every pre-fold spelling of a folded part matches: each run
- * of "i" and space becomes "%". A prefilter only; `couldBeBeforeFold` decides.
- * Null when the part has no "i" (the fold changed nothing) or nothing but "i"s
- * and spaces (the pattern would match every row).
- */
+/** LIKE prefilter for pre-fold forms (runs of "i"/space become "%"); null when it would not narrow. */
 export function likePatternBeforeFold(folded: string): string | null {
   if (!folded.includes("i")) return null;
   const pattern = folded.replace(/[i ]+/g, "%");
   return /[^%]/.test(pattern) ? pattern : null;
 }
 
-/** The register row fields a pre-fold match is judged on. */
 export interface StoredIdentityRow {
   producer_normalised: string;
   name_normalised: string;
@@ -311,15 +297,10 @@ export interface StoredIdentityRow {
 }
 
 /**
- * Whether a register row asserted before the dotless-ı fold is the bottle this
- * folded reading describes, whatever "i"/"I"/"ı" spelling either side used.
- *
- * Three things must hold. Vintage, size and pack are the same. Producer and name
- * are each a possible pre-fold image of the folded part (`couldBeBeforeFold`).
- * And the row's own display label, which kept the letters as typed, folds to
- * the label this assertion would write: that is what stops "Domaine Al" being
- * taken for "Domaine Ali" (an image too, the trailing "i" trimmed) and a
- * producer with a real space in it being taken for one that had an "ı" there.
+ * Whether a row stored before the dotless-ı fold is this bottle: same vintage,
+ * size and pack; producer and name are pre-fold forms of these; and the typed
+ * display label folds to this one, which keeps "Domaine Al" and a real space
+ * ("Kavakl Dere") from passing for "Domaine Ali" and "Kavaklidere".
  */
 export function storedRowIsBeforeFold(
   subject: IdentityInput,
