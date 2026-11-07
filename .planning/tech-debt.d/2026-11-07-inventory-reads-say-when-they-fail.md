@@ -10,6 +10,6 @@ Filed by `fix/inventory-reads-say-when-they-fail` (inventory walk #7, lane I1, g
 
 Filed with the entry above.
 
-**What is true.** `mapInventoryItem` keeps returning `openMl: 0` and `locations: []` when its caller never read the rollup or the breakdown. That covers the plain item reads that call it with a row alone, and the create, reactivate and update paths, which read the rollup but not the breakdown. Those responses now omit `rollupReadable` and `locationsReadable` instead of claiming a read that did not happen, but the `0` and `[]` they carry are still defaults, not reads.
+**What is true.** `mapInventoryItem` keeps returning `openMl: 0` and `locations: []` for whichever side its caller never read. The four calls that pass a row alone (`inventory.service.ts`, `return this.mapInventoryItem(data)` and its `data ? … : null` forms) read neither side, so they send both defaults and omit both `rollupReadable` and `locationsReadable`. The create, reactivate and update paths read the rollup but not the breakdown: their `openMl` is a real read and they carry `rollupReadable`, but their `locations: []` is a default and they omit `locationsReadable`. An omitted flag never claims a read that did not happen, but the `0` and `[]` sent under it are still defaults, not reads.
 
 **What closes it.** Those callers read what they report, or report the two fields as absent. Lane I3 (`fix/count-returns-its-own-item`, G16) rewrites the count path's whole-house rollup read; lane I4 owns the create path. Both are sequenced after this one in proposal §3.
