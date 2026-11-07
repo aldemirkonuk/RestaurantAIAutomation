@@ -107,4 +107,114 @@ DO $$ BEGIN
     'public.mail_letter_rows(uuid, boolean, uuid)', 'EXECUTE'), 'T9b helper not granted to anon');
 END $$;
 
+-- ── Letters are counted once, and only letters (QA round 16, M-5) ──────────
+-- House H3 (its own, so the counts are exact), timezone UTC, all "today":
+--   V3: one vendor letter delivered twice (same Message-ID, both doors),
+--       then a bounce from mailer-daemon, then an auto-reply.
+--   V6: one inbound letter the triage set aside (DISCARDED).
+INSERT INTO public.restaurants (id, name, timezone)
+VALUES ('33333333-3333-4333-8333-333333333333', 'Test house', 'UTC');
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, direction, channel, message_text, status, thread_key, message_id, received_at, created_at, email_headers) VALUES
+  ('d3000000-0000-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333', 'c0000000-0000-4000-8000-000000000003',
+   'inbound', 'email', 'Our prices', 'RECEIVED', 'mid:v3', '<abc@v3.example>', now() - interval '3 seconds', now() - interval '3 seconds', '{"from":"Sales <sales@v3.example>"}'),
+  ('d3000000-0000-4000-8000-000000000002', '33333333-3333-4333-8333-333333333333', 'c0000000-0000-4000-8000-000000000003',
+   'inbound', 'email', 'Our prices', 'RECEIVED', 'mid:v3', ' <ABC@v3.example> ', now() - interval '3 seconds', now() - interval '2 seconds', '{"from":"Sales <sales@v3.example>"}'),
+  ('d3000000-0000-4000-8000-000000000003', '33333333-3333-4333-8333-333333333333', 'c0000000-0000-4000-8000-000000000003',
+   'inbound', 'email', 'Delivery Status Notification (Failure)', 'RECEIVED', 'mid:v3', '<bounce@mx.example>', now() - interval '1 second', now() - interval '1 second', '{"from":"Mail Delivery Subsystem <MAILER-DAEMON@mx.example>"}'),
+  ('d3000000-0000-4000-8000-000000000004', '33333333-3333-4333-8333-333333333333', 'c0000000-0000-4000-8000-000000000003',
+   'inbound', 'email', 'I am out of the office', 'RECEIVED', 'mid:v3', '<ooo@v3.example>', now(), now(), '{"from":"sales@v3.example","transport":{"autoSubmitted":true}}'),
+  ('d6000000-0000-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333', 'c0000000-0000-4000-8000-000000000006',
+   'inbound', 'email', 'Win a cruise', 'DISCARDED', 'mid:v6', '<spam@v6.example>', now() - interval '5 seconds', now() - interval '5 seconds', '{"from":"x@v6.example"}');
+UPDATE public.procurement_conversations SET discard_reason = 'not a vendor letter'
+ WHERE id = 'd6000000-0000-4000-8000-000000000001';
+
+-- M1: one letter delivered twice is one letter in the thread list and page.
+DO $$ DECLARE n bigint; ids uuid[]; BEGIN
+  SELECT message_count INTO n FROM public.mail_thread_states('33333333-3333-4333-8333-333333333333', true, NULL)
+   WHERE thread_key = 'mid:v3';
+  PERFORM pg_temp.ok(n = 1, 'M1 a second copy and automatic mail are not counted as letters');
+  SELECT array_agg(id ORDER BY id) INTO ids FROM public.mail_thread_letters('33333333-3333-4333-8333-333333333333', 'mid:v3');
+  PERFORM pg_temp.ok(ids = ARRAY['d3000000-0000-4000-8000-000000000001'::uuid, 'd3000000-0000-4000-8000-000000000003'::uuid,
+                                 'd3000000-0000-4000-8000-000000000004'::uuid],
+                     'M1b the page shows the letter once, the first copy stored');
+END $$;
+
+-- M2: the bounce and the auto-reply stay on the page, named automatic.
+DO $$ DECLARE a uuid[]; BEGIN
+  SELECT array_agg(id ORDER BY id) INTO a FROM public.mail_thread_letters('33333333-3333-4333-8333-333333333333', 'mid:v3')
+   WHERE automatic;
+  PERFORM pg_temp.ok(a = ARRAY['d3000000-0000-4000-8000-000000000003'::uuid, 'd3000000-0000-4000-8000-000000000004'::uuid],
+                     'M2 a bounce and an auto-reply are automatic');
+END $$;
+
+-- M3: the person's last line is the vendor's letter, not the auto-reply,
+-- and an auto-reply never makes the house owe an answer by itself.
+DO $$ DECLARE r record; BEGIN
+  SELECT * INTO r FROM public.list_mail_people('33333333-3333-4333-8333-333333333333', true)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000003';
+  PERFORM pg_temp.ok(r.last_line = 'Our prices', 'M3 last line is the letter, not automatic mail');
+  PERFORM pg_temp.ok(r.waiting, 'M3b the vendor''s real letter still waits for an answer');
+END $$;
+
+-- M4: a letter that was set aside owes no answer.
+DO $$ DECLARE w boolean; BEGIN
+  SELECT waiting INTO w FROM public.list_mail_people('33333333-3333-4333-8333-333333333333', true)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000006';
+  PERFORM pg_temp.ok(w IS FALSE, 'M4 a DISCARDED letter is not waiting');
+END $$;
+
+-- M5: the header counts letters in today: V3's letter once and V6's, never
+-- the second copy, the bounce or the auto-reply.
+DO $$ DECLARE s record; BEGIN
+  SELECT * INTO s FROM public.mail_inbox_summary('33333333-3333-4333-8333-333333333333', true);
+  PERFORM pg_temp.ok(s.in_today = 2, 'M5 in_today counts letters, once each (got ' || s.in_today || ')');
+  PERFORM pg_temp.ok(s.waiting_people = 1, 'M5b one person waiting (got ' || s.waiting_people || ')');
+END $$;
+
+-- ── A vendor whose only letter has not left stays listed (QA round 16, HARM 1)
+--   V4: one letter queued in its undo window, nothing else.
+--   V5: one letter pulled back (HOUSE_CANCELLED: withheld from staff).
+--   V3: a letter queued after its replies.
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, direction, channel, message_text, status, thread_key, created_at, scheduled_send_at) VALUES
+  ('d4000000-0000-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333', 'c0000000-0000-4000-8000-000000000004',
+   'outbound', 'email', E'Subject: First order\nPlease send 6 cases', 'HOUSE_QUEUED', 'q:v4', now() - interval '1 minute', now() + interval '1 minute'),
+  ('d5000000-0000-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333', 'c0000000-0000-4000-8000-000000000005',
+   'outbound', 'email', 'Pulled back', 'HOUSE_CANCELLED', 'q:v5', now() - interval '2 minutes', NULL),
+  ('d3000000-0000-4000-8000-000000000009', '33333333-3333-4333-8333-333333333333', 'c0000000-0000-4000-8000-000000000003',
+   'outbound', 'email', 'Thank you, ordering', 'HOUSE_QUEUED', 'mid:v3', now() + interval '1 second', now() + interval '1 minute');
+
+DO $$ DECLARE r record; BEGIN
+  SELECT * INTO r FROM public.list_mail_people('33333333-3333-4333-8333-333333333333', true)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000004';
+  PERFORM pg_temp.ok(r.provider_id IS NOT NULL, 'H1 a vendor with only a queued letter is listed');
+  PERFORM pg_temp.ok(r.unsent_status = 'HOUSE_QUEUED', 'H1b its state is named');
+  PERFORM pg_temp.ok(r.waiting IS FALSE AND r.last_direction = 'outbound', 'H1c never waiting');
+  PERFORM pg_temp.ok(r.last_line = 'Please send 6 cases', 'H1d its line, Subject removed');
+END $$;
+
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM public.list_mail_people('33333333-3333-4333-8333-333333333333', true)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000005';
+  PERFORM pg_temp.ok(n = 0, 'H2 a pulled-back letter stays withheld from staff');
+  SELECT count(*) INTO n FROM public.list_mail_people('33333333-3333-4333-8333-333333333333', false)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000005' AND unsent_status = 'HOUSE_CANCELLED';
+  PERFORM pg_temp.ok(n = 1, 'H2b the owner sees the vendor, pulled back');
+END $$;
+
+DO $$ DECLARE r record; BEGIN
+  SELECT * INTO r FROM public.list_mail_people('33333333-3333-4333-8333-333333333333', true)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000003';
+  PERFORM pg_temp.ok(r.unsent_status = 'HOUSE_QUEUED', 'H3 a queued letter after the replies is named');
+  PERFORM pg_temp.ok(r.last_line = 'Our prices', 'H3b but the list line stays the last letter that passed');
+END $$;
+
+-- H4: waiting-only never lists an unsent-only vendor; the waiting page is a page.
+DO $$ DECLARE n int; BEGIN
+  SELECT count(*) INTO n FROM public.list_mail_people('33333333-3333-4333-8333-333333333333', true, true)
+   WHERE provider_id = 'c0000000-0000-4000-8000-000000000004';
+  PERFORM pg_temp.ok(n = 0, 'H4 waiting-only leaves out unsent-only vendors');
+END $$;
+
 rollback;
