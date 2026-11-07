@@ -9,8 +9,8 @@
  * `nextMergeOrientation`, `adjacentPairs` and `adjacencyFusePairs` are not
  * ported: nothing in the port calls them yet.
  *
- * Managers may merge any tables of one section and need none of this; a
- * waiter's merge needs the tables to be neighbours.
+ * In the checker, managers merge any unmerged same-section pair without
+ * this check (`merge-actions.ts:183`); a waiter's pair must be neighbours.
  */
 
 /** Max centre gap along the shared axis (plan units). */
