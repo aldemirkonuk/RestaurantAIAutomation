@@ -163,7 +163,7 @@ export class PosHubController {
   @ApiOperation({
     summary: "Create/update a POS item mapping",
     description:
-      "Body: { source?, external_item_id?, item_name?, is_wine, master_wine_id?, inventory_id?, category? }. source '*' applies across providers.",
+      "Body: { source?, external_item_id?, item_name?, is_wine, master_wine_id?, inventory_id?, category? }. source '*' applies across providers. Replies with the saved row plus `past_sales`: the item's queued pos_unresolved_lines replayed through the live depletion path (keyed, never twice), counted, with a `message`.",
   })
   async upsertMapping(
     @Param("restaurantId") restaurantId: string,
