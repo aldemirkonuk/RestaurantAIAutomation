@@ -34,14 +34,35 @@
  * terminators ADR 0346 `:63` already attributes to the executor.
  *
  * The seat time is an anchor (ADR 0346 D4 b). The port's floor schema (its
- * migration is not on main yet) stores it only as `floor_seatings.seated_at`;
- * `floor_visits` has no seated row. So a
+ * migration is not on main yet) keeps it on `floor_seatings.seated_at`; its
+ * `floor_events` audit trail also logs a `seated` row, but `floor_visits`,
+ * where visit anchors come from, has none. So a
  * seating's facts carry `seatedAt`, and when its events hold no "seated" event
  * the anchor is made from `seatedAt` / `seatedBy`. A seating with facts and no
  * events at all (seated, never visited) is still scored. At one millisecond, a
  * seated anchor sorts before a check-in, then events sort by actor id, then by
  * table id, so the order in which a caller lists same-millisecond events
  * never changes a seating's samples.
+ *
+ * Not built here, and owed by the caller or a later part:
+ *
+ * - D8's absence rule inside D4 (c) (ADR 0346 `:64`). The caller passes a
+ *   `caretakerAtSeatId` already cleared of anyone absent or no longer a
+ *   member at seat time; splitting the greeting gap when the caretaker goes
+ *   absent before the first visit waits for the absence records (OD-236).
+ * - *Not closed* "beside its caretaker" (`:63`): this returns seating ids, and
+ *   the caller joins each to its caretaker.
+ * - Paid undone (ADR 0353 `:43`): `paidAt` is the seating's Paid as it stands
+ *   at the call, so an undone Paid is passed as null.
+ *
+ * Executor's readings under OD-242, inside the terminators `:63` attributes
+ * to the executor: the open gap is credited by the handoff rule (the last
+ * anchor's actor, or the caretaker at seat time when that anchor is the seat
+ * itself), while the caretaker's last tap bounds it; so a colleague whose
+ * check-in is the last anchor carries the open gap up to the caretaker's last
+ * tap. A caretaker whose last tap comes before the last anchor adds no open
+ * gap: no time was shown on the floor. Facts listed twice for one seating:
+ * the last row wins.
  *
  * Handoff rule (Hybrid attribution, kept): when the waiter who closes a gap is
  * different from the waiter on the previous anchor, credit the **previous**
