@@ -1,7 +1,8 @@
 -- restaurant_menus.read_warnings (proposal-menu step 1c, ADR 0213 #17).
--- A scan whose page range errored, or whose reply was cut off, said so only in
--- the server log. This column holds those two kinds and nothing else: pages
--- past the 120-page cap and an unparseable model reply are not recorded here.
+-- A scan whose page range errored, whose reply was cut off, whose pages past
+-- the 120-page cap were never sent, or whose model reply was not a list of
+-- lines said so only in the server log. This column holds those four kinds.
+-- The kinds are not a CHECK: the gateway type `MenuReadWarning` names them.
 -- `extraction` keeps its shape (lines as read). Nullable, no default, no
 -- backfill. Ships before the gateway change that writes and selects it.
 
@@ -9,7 +10,7 @@ ALTER TABLE public.restaurant_menus
   ADD COLUMN IF NOT EXISTS read_warnings JSONB;
 
 COMMENT ON COLUMN public.restaurant_menus.read_warnings IS
-  '[{kind: truncated | chunk_failed, pages: {first, last} | null}]. [] = no page range errored and no reply was cut off; it does not cover pages past the 120-page cap or an unparseable reply. NULL = read before this column.';
+  '[{kind: truncated | chunk_failed | page_cap | unreadable_reply, pages: {first, last} | null}]. page_cap names the pages past the 120-page cap that were not sent. [] = none of the four happened. NULL = read before this column.';
 
 DO $$
 BEGIN
