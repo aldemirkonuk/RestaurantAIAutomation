@@ -49,6 +49,19 @@ describe("perBottleLotCost", () => {
     expect(refusal({ uom: "bottle", unit_price: 0.04, price_base_qty: 12 })).toMatch(/cost of nothing/);
   });
 
+  it("refuses an unmapped unit kept as each, and a line total that contradicts the price (D1, QA 9a)", () => {
+    const kutu = { uom: "each", qty_bottles: 2, line_total: 528, printed: { uom: "kutu" } };
+    expect(refusal(kutu)).toMatch(/prints its unit as "kutu"/);
+    expect(cost({ ...kutu, printed: { uom: "adet" } })).toBe(264);
+    expect(refusal({ price_base_qty: 12, printed: { priceBaseUom: "magnum" } })).toMatch(/per "magnum"/);
+    // 24 bottles @ 264 cannot total 528: the price was per case.
+    for (const pack_size of [12, 1])
+      expect(refusal({ uom: "bottle", pack_size, qty_bottles: 24, line_total: 528 })).toMatch(/totals 528 for 24 counted, but 264\.0000 each makes 6336/);
+    // Totals that agree, to the cent, pass.
+    expect(cost({ qty_bottles: 24, line_total: "528.00" })).toBe(22);
+    expect(cost({ uom: "bottle", unit_price: 142, price_base_qty: 12, qty_bottles: 12, line_total: 142 })).toBe(11.8333);
+  });
+
   it("rounds half away from zero, as Postgres numeric does", () => {
     expect([1.005, 11.8333, 11.835, 22].map(toLotCostPrecision)).toEqual([1.01, 11.83, 11.84, 22]);
   });

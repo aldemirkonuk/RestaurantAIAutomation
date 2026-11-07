@@ -490,6 +490,17 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     await run({}, { line_no: 3 });
     expect(posted().map((c) => c.args.p_unit_cost)).toEqual([22]);
   });
+
+  it("D1: 2 kutu @ 264, pack 12, kept as each, stays PROVISIONAL, never 264", async () => {
+    expect(await held(run({ uom: "each", qty: 2, qty_bottles: 2, line_total: 528, printed: { uom: "kutu" } }))).toMatch(/"kutu"/);
+    expect(posted()).toEqual([]);
+  });
+
+  it("QA 9a: 24 bottles @ 264 with a printed total of 528 stays PROVISIONAL, never 264", async () => {
+    expect(await held(run({ uom: "bottle", qty: 24, line_total: 528 }))).toMatch(/totals 528/);
+    expect(posted()).toEqual([]);
+  });
+
 });
 
 describe("DeliveryStockService — a rejected delivery gives the bottles back", () => {

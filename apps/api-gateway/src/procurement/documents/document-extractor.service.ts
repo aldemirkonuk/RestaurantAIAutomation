@@ -363,6 +363,15 @@ export class DocumentExtractorService {
               `Line ${i + 1}: unrecognised price base unit "${rawBaseUom}" — the printed price basis was not applied.`,
             );
 
+          // Audit D1: an unmapped unit is kept as `each` for the count, so its
+          // glyph is kept on the line, or "2 kutu @ 264" would cost 264 a
+          // bottle. Only filled where the model's own transcript left it out.
+          const kept = spreadPrinted(l?.printed, droppedPrintedKeys).printed;
+          const printed: Record<string, string> = kept ?? Object.create(null);
+          if (rawUom && !uom && !printed.uom) printed.uom = rawUom;
+          if (rawBaseUom && !priceBaseUom && !printed.priceBaseUom)
+            printed.priceBaseUom = rawBaseUom;
+
           // What the line IS. An unrecognised label falls back to the
           // description sniff rather than to a confident `goods`: a CRV row
           // filed as wine is refundable money inside cost of goods.
@@ -396,7 +405,7 @@ export class DocumentExtractorService {
             // the `line_net_amount` 360-against-180 failure of 2026-09-04.
             deposit: lineKind === "deposit" ? null : num(l?.deposit),
             lineKind,
-            ...spreadPrinted(l?.printed, droppedPrintedKeys),
+            ...(Object.keys(printed).length ? { printed } : {}),
             poNumber: str(parsed.poNumber),
           };
         })

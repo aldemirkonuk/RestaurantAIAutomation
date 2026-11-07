@@ -305,6 +305,16 @@ describe("DocumentExtractorService — printed price base (BT-149/BT-150)", () =
     );
     expect(d.lines[0].priceBaseUom).toBeNull();
     expect(d.warnings.join(" ")).toMatch(/magnum/);
+    // Audit D1: the glyph stays on the line, so the cost seam can refuse it.
+    expect(d.lines[0].printed?.priceBaseUom).toBe("magnum");
+  });
+
+  it("keeps an unmapped unit's glyph beside the `each` it counts as (audit D1)", () => {
+    const line = { qty: 2, uom: "kutu", packSize: 12, unitPrice: 264, lineTotal: 528 };
+    const d = svc.normalize(json({ docType: "invoice", lines: [line, { ...line, printed: { uom: "KUTU" } }] }), "test");
+    expect(d.lines.map((l) => [l.uom, l.printed?.uom])).toEqual([["each", "kutu"], ["each", "KUTU"]]);
+    // A unit that maps keeps no invented glyph.
+    expect(svc.normalize(json({ docType: "invoice", lines: [{ ...line, uom: "case" }] }), "test").lines[0].printed).toBeUndefined();
   });
 });
 

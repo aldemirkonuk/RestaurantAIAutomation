@@ -12,6 +12,7 @@
 
 import {
   comparableUnits,
+  normalizeUom,
   toBottles,
   Uom,
   UOMS,
@@ -24,6 +25,11 @@ export interface LotCostLine {
   pack_size: number | string | null | undefined;
   price_base_qty: number | string | null | undefined;
   price_base_uom: string | null | undefined;
+  /** For the line-total cross-check (QA 9a); absent means not checked. */
+  qty_bottles?: number | string | null;
+  line_total?: number | string | null;
+  /** The paper's own glyphs; `uom` / `priceBaseUom` keep a unit we could not map. */
+  printed?: unknown;
 }
 
 /** `unitCost` is `perBottle` at the column's precision, and what is posted. */
@@ -52,12 +58,25 @@ function asNumber(v: unknown): number | null {
 }
 
 const words = (u: Uom) => u.replace("_", " ");
+const refuse = (reason: string): LotUnitCost => ({ ok: false, kind: "refused", reason });
+function printedUnit(p: unknown, key: string): string | null {
+  const v = p && typeof p === "object" ? (p as Record<string, unknown>)[key] : null;
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
 const four = (n: number) => Math.round(n * 10000) / 10000;
 
 export function perBottleLotCost(line: LotCostLine): LotUnitCost {
   const price = asNumber(line.unit_price);
   // Skipped before this existed, and still: not a price anybody agreed.
   if (price == null || price <= 0) return { ok: false, kind: "no_price" };
+  // Audit D1: the extractor keeps an unmapped unit as `each` and its glyph in
+  // `printed`. "kutu" stored as `each` is not one bottle; neither guess holds.
+  const said = printedUnit(line.printed, "uom");
+  if (said && line.uom === "each" && normalizeUom(said) !== "each")
+    return refuse(`the invoice prints its unit as "${said}", which this house does not count in, so what one bottle costs is not known`);
+  const saidBase = printedUnit(line.printed, "priceBaseUom");
+  if (saidBase && !line.price_base_uom && !normalizeUom(saidBase))
+    return refuse(`the invoice prices per "${saidBase}", which this house does not count in, so what one bottle costs is not known`);
 
   const uom = asUom(line.uom);
   if (!uom)
@@ -121,6 +140,16 @@ export function perBottleLotCost(line: LotCostLine): LotUnitCost {
     bottlesPriced === 1
       ? `invoice price ${price} per ${priced}; booked as-is`
       : `invoice price ${price} per ${priced} = ${perBottle.toFixed(4)} per ${baseUom === "keg" || baseUom === "liter" ? baseUom : "bottle"}`;
+  // QA 9a: a printed line total that contradicts the per-bottle cost means the
+  // price's unit was misread (24 bottles @ 264 printed as 528). Refused, not
+  // re-derived from the total, which may carry a deposit or an allowance.
+  const total = asNumber(line.line_total);
+  const counted = asNumber(line.qty_bottles);
+  if (total != null && total > 0 && counted != null && counted > 0) {
+    const implied = four(perBottle * counted);
+    if (Math.abs(implied - total) > Math.max(0.05, total * 0.01))
+      return refuse(`the invoice line totals ${total} for ${counted} counted, but ${perBottle.toFixed(4)} each makes ${implied}, so the price's unit is not what the line says`);
+  }
   return { ok: true, perBottle, unitCost, basis };
 }
 
