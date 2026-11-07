@@ -176,18 +176,13 @@ function parseValidUntil(
   const iso = (y: number, m: number, d: number) =>
     `${y.toString().padStart(4, "0")}-${(m + 1).toString().padStart(2, "0")}-${d.toString().padStart(2, "0")}`;
 
-  // With no validity cue the whole mail is scanned, and a date in it may be
-  // anything: "Harvest finished Sept 3", "our tasting on Oct 20". Such a date
-  // that has passed says nothing about when the offer ends, so it is passed
-  // over — reading it as the end date filed a live offer as ended and silenced
-  // it. Only a date named by a cue ("valid through", "ends", ...) can end one.
+  // Cue-less, a passed date ("Harvest finished Sept 3") is not the offer's
+  // end and is skipped: only a cued date can end an offer.
   const today = isoDay(now);
   const usable = (date: string) => raw != null || date >= today;
 
-  // Month DD[, YYYY] (e.g. "July 31", "Jul 31st", "Sept. 3", "June 30, 2027").
-  // The word must be a month name or its abbreviation: "Market 12 cases" is
-  // not March 12. A stated year is kept; only a year-less date takes the year
-  // nearest the day the mail is read.
+  // Month DD[, YYYY] ("Jul 31st", "Sept. 3", "June 30, 2027"); a stated year
+  // is kept. A month name only: "Market 12 cases" is not March 12.
   const md = /\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?\b/gi;
   const src = raw ?? t;
   for (let m = md.exec(src); m; m = md.exec(src)) {
@@ -284,11 +279,7 @@ function discountPercent(rawText: string): number | null {
 
 /* ── what an amount off is taken from ──────────────────────────────────────── */
 
-/**
- * The unit right after the amount: "per case", "a case", "/cs", "on each
- * bottle", "any case", "per mixed case", "each 12-bottle case", or a bare
- * "off case orders".
- */
+/** "per case", "/cs", "on each bottle", "any case", "per mixed case", "each 12-bottle case", "off case orders" → unit. */
 function amountUnitAfter(after: string): "case" | "bottle" | null {
   const m =
     /^\s*(?:off|discount)?\s*(?:\/\s*|(?:on\s+)?(?:per|a|an|each|every|any|your|the|all)\s+|on\s+)?(?:(?:mixed|full|straight|whole|\d{1,2}[-\s]?(?:bottles?|btls?|bt|pack|pk))\s+)?(cases?|cs|bottles?|btls?|bt)\b/i.exec(
@@ -299,11 +290,8 @@ function amountUnitAfter(after: string): "case" | "bottle" | null {
 }
 
 /**
- * When no unit stands right after the amount but its sentence names a case
- * ("Case special: $15 off Rioja", "$15 off when you take a case"), the amount
- * is read as per case. A case amount read as a bottle's took $15 off a $20
- * bottle; read as a case's, the grader divides it by the stated bottle count
- * or refuses it. Erring this way can only make the offer look smaller.
+ * No unit after the amount, but its sentence names a case → per case. The
+ * grader then divides or refuses, which can only make the offer look smaller.
  */
 function sentenceNamesCase(rawText: string, start: number, end: number): boolean {
   const from = Math.max(
@@ -401,8 +389,7 @@ export function extractPromotion(
   const promo_code = codeM ? codeM[1] : null;
 
   const { iso: valid_until, raw: valid_text } = parseValidUntil(rawText, now);
-  // Only a date the mail named as the offer's end can end it; parseValidUntil
-  // already passes over a cue-less date that has gone by.
+  // Only a date the mail named as the offer's end can end it.
   const ended =
     valid_until != null && valid_text != null && valid_until < isoDay(now);
 
