@@ -130,6 +130,34 @@ describe('first-paint bundle (2026-11-07 bundle QA, H1)', () => {
     expect(reached).toEqual([]);
   });
 
+  // A route chunk carries every package its page reaches by static import, so
+  // checking main.tsx alone said nothing about what a stranger downloads on
+  // /login or /register. On 2026-11-07 every sign-in page imported
+  // `components/ui`, whose `@wineops/ui` barrel re-exports the Tremor charts:
+  // /login fetched about 585 KB of gzipped JS, both chart chunks included.
+  // The phone-number packages are Register's own, so they are allowed there.
+  const CHART_PACKAGES = ['recharts', '@tremor/react'];
+  const PUBLIC_PAGES = [
+    'pages/landing/Landing.tsx',
+    'pages/Login.tsx',
+    'pages/Register.tsx',
+    'pages/ForgotPassword.tsx',
+    'pages/ResetPassword.tsx',
+    'pages/VerifyEmail.tsx',
+    'pages/InviteLanding.tsx',
+  ];
+
+  it.each(PUBLIC_PAGES)('%s reaches no chart package by static import', (page) => {
+    const entry = join(SRC, page);
+    expect(existsSync(entry), `${page} exists`).toBe(true);
+    const pageGraph = walk(entry);
+    expect(pageGraph.packages.has('react'), 'the walker read the page').toBe(true);
+    const reached = CHART_PACKAGES.filter((p) => pageGraph.packages.has(p)).map(
+      (p) => `${p} (imported by ${rel(pageGraph.packages.get(p)!)})`,
+    );
+    expect(reached).toEqual([]);
+  });
+
   it('vite.config.ts pins no chart package to an eagerly loaded manual chunk', () => {
     const config = readFileSync(join(SRC, '..', 'vite.config.ts'), 'utf8');
     const block = config.match(/manualChunks:\s*\{([\s\S]*?)\n\s*\}/);
