@@ -24,7 +24,7 @@ import {
   hasStatus,
 } from "../procurement/order-status";
 import { houseFrame } from "../common/house-frame";
-import { summarizeStock } from "../common/stock-status";
+import { alertBandOfViewRow, summarizeStock } from "../common/stock-status";
 import {
   localDateIn,
   localMidnight,
@@ -1459,6 +1459,12 @@ export class DashboardService {
       // house's display name; no house renames a wine today (production,
       // 2026-10-01: 0 of 183 rows differ).
       for (const item of lowStock) {
+        // One rule with the inbox: the alert service files this same view row
+        // through `alertBandOfViewRow`, so a counted 2 of 5 is critical in
+        // both places (QA 9c). A row the rule does not call low is not
+        // alerted here either.
+        const band = alertBandOfViewRow(item);
+        if (band === null) continue;
         const label =
           wineLabel({
             wine_name: item.wine_name,
@@ -1467,7 +1473,7 @@ export class DashboardService {
         alerts.push({
           id: `low-stock-${item.id}`,
           type: "low_stock",
-          severity: item.stock_live === 0 ? "critical" : "warning",
+          severity: band === "critical" ? "critical" : "warning",
           title: "Low Stock",
           // OD-161: a wine nobody counted is in the view only when receipts
           // and sales gave it a figure; say whose figure it is.

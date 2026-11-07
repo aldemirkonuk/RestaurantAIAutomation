@@ -121,6 +121,26 @@ export function bandOfRow(
 }
 
 /**
+ * The alert band of a row `v_low_stock_items` returned: `critical` or `low`,
+ * or null when the row is not below par after all (the view's predicate and
+ * this module having drifted). The view holds a never-counted wine only when
+ * receipts and sales put it below par, so every row it returns is in view by
+ * construction. The alert service (notifications/low-stock-alerts.service.ts)
+ * and the dashboard's alert list both ask this, so a counted 2 of 5 is
+ * critical in the inbox and on the dashboard alike; the dashboard used to call
+ * only `stock_live === 0` critical, and read the same wine as a warning
+ * (QA round 9c).
+ */
+export function alertBandOfViewRow(row: StockRow): "critical" | "low" | null {
+  return alertBandOf(bandOfRow(row, new Set([row.id])));
+}
+
+/** A band as an alert reads it: `critical`, `low`, or null (not alerted). */
+export function alertBandOf(band: StockBand): "critical" | "low" | null {
+  return band === "critical" || band === "low" ? band : null;
+}
+
+/**
  * The stock counts every summary shows (GET /inventory/summary and the
  * dashboard's inventory card), from ONE classification over ONE array. QA
  * round 9c found the dashboard counting `stock_live === 0` over counted rows
