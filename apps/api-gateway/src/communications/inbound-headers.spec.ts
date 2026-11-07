@@ -8,6 +8,7 @@ import {
   addressesIn,
   decodeEncodedWords,
   displayLabel,
+  ilikeExactly,
   parseAddressList,
   parseSender,
   senderAddress,
@@ -92,6 +93,18 @@ describe("sender: the parsed addr-spec, never a display name", () => {
       from: '"noreply@x.com" <ahmet@vendor.com>',
     });
     expect(t.noReplyFrom).toBe(false);
+  });
+});
+
+describe("the provider lookup matches the sender exactly (audit follow-up, PR 951)", () => {
+  it("a wildcard sender is parsed as written, then escaped for the lookup", () => {
+    expect(senderAddress("<%@%>")).toBe("%@%");
+    expect(ilikeExactly("%@%")).toBe("\\%@\\%");
+    expect(ilikeExactly("a_b*c\\d@x.com")).toBe("a\\_b\\*c\\\\d@x.com");
+    expect(likeMatches("sales@bigdist.com", ilikeExactly("%@%"))).toBe(false);
+    expect(
+      likeMatches("Sales@BigDist.com", ilikeExactly("sales@bigdist.com")),
+    ).toBe(true);
   });
 });
 
@@ -209,6 +222,19 @@ describe("RFC 2047 encoded words (N-2)", () => {
 
 /* ---------- the bridge, end to end over a tiny in-memory supabase ---------- */
 type Row = Record<string, any>;
+function likeMatches(value: string, pattern: string): boolean {
+  const p = pattern.replace(/\*/g, "%");
+  let re = "";
+  for (let i = 0; i < p.length; i++) {
+    const ch = p[i];
+    if (ch === "\\" && i + 1 < p.length) {
+      re += p[++i].replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    } else if (ch === "%") re += "[\\s\\S]*";
+    else if (ch === "_") re += "[\\s\\S]";
+    else re += ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${re}$`, "i").test(value);
+}
 function bridge(tables: Record<string, Row[]>) {
   const inserts: Array<{ table: string; row: Row }> = [];
   const from = (table: string) => {
@@ -220,10 +246,10 @@ function bridge(tables: Record<string, Row[]>) {
     let lim = Infinity;
     const qb: any = {
       select: () => qb,
+      // Postgres ILIKE as PostgREST runs it: `*` is read as `%` first, then
+      // `%` is any run, `_` any one character, `\` escapes the next one.
       ilike: (c: string, v: string) => (
-        filters.push(
-          (r) => String(r[c] ?? "").toLowerCase() === v.toLowerCase(),
-        ),
+        filters.push((r) => likeMatches(String(r[c] ?? ""), v)),
         qb
       ),
       eq: (c: string, v: any) => (filters.push((r) => r[c] === v), qb),
@@ -357,6 +383,43 @@ describe("RabbitMqBridgeService.handleInboundEmail attribution", () => {
     const capture = events.find((e) => e[0] === "prospect")?.[1];
     expect(capture.senderEmail).toBe("attacker@evil.example");
     expect(capture.senderName).toBeNull();
+  });
+
+  // Audit follow-up on PR 951: `%`, `_` and `*` are legal in an addr-spec, and
+  // the provider lookup is an ILIKE. Raw, `<%@%>` matched the house's first
+  // vendor without knowing any address.
+  it.each(["<%@%>", "%@bigdist.com", "x@%", "<_____@bigdist.com>", "<*@*>"])(
+    "a From of %s matches no vendor and reaches no negotiation",
+    async (from) => {
+      const { svc, inserts, events } = bridge({
+        providers: [VENDOR],
+        procurement_orders: [OPEN],
+      });
+      await svc.handleInboundEmail(
+        inbound({ from, gmail_message_id: "mW", body: "New bank details" }),
+      );
+      expect(
+        inserts.filter((i) => i.table === "procurement_conversations"),
+      ).toEqual([]);
+      expect(events.some((e) => e[0] === "responder")).toBe(false);
+    },
+  );
+
+  it("an underscore in a real address matches only that address", async () => {
+    const { svc, inserts } = bridge({
+      providers: [
+        { ...VENDOR, id: "prov-decoy", contact_email: "ayseXk@bigdist.com" },
+        { ...VENDOR, id: "prov-A", contact_email: "Ayse_K@bigdist.com" },
+      ],
+      procurement_orders: [OPEN],
+    });
+    await svc.handleInboundEmail(
+      inbound({ from: "Ayse <ayse_k@bigdist.com>", gmail_message_id: "mU" }),
+    );
+    const rows = inserts
+      .filter((i) => i.table === "procurement_conversations")
+      .map((i) => i.row);
+    expect(rows.map((r) => r.provider_id)).toEqual(["prov-A"]);
   });
 
   it("the real vendor still attributes, and its encoded subject is stored decoded", async () => {
