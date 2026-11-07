@@ -65,7 +65,7 @@
  * gap: no time was shown on the floor. Facts listed twice for one seating:
  * the last row wins. With no caretaker at seat time (none assigned, cleared as
  * absent, or a deleted user), `:64` says only who must not get the greeting
- * gap; D8's "the live cover or else the waiter" (`:91`) is said of alerts,
+ * gap; D8's "the live cover or else the waiter" (`:92`) is said of alerts,
  * and these facts carry no live cover. So the gap never falls to whoever
  * tapped Seat: a closed one goes to the waiter whose visit closed it, and an
  * open one counts for the table only.
@@ -102,6 +102,8 @@ export interface SeatingFacts {
    * The waiter caring for the table when the party was seated (D4 c). The
    * checker's seated event carries whoever tapped Seat (`app/actions.ts:233`),
    * which may be a manager; the caretaker is the assigned waiter (`:222`).
+   * Pass null, never "", for no caretaker: "" drops the gap from every
+   * waiter's figure, the first visitor's included.
    */
   caretakerAtSeatId: string | null;
   /** Paid, by tap or the till's auto-Paid (D4 e). Unreadable or after `now`: absent. */
