@@ -46,6 +46,7 @@ import { AuthContext } from '../../../contexts/AuthContext';
 import { apiClient } from '../../../services/api/client';
 import { stripePublishableKey } from '../../../components/mudavym/stripe-js';
 import { readError } from './cx-format';
+import { mailSetupKey, type MailSetupView } from '../../communications/next/useMailSetup';
 import {
   connectMyCalendar,
   getMyCalendarLink,
@@ -593,6 +594,19 @@ export function useConnectionsNextData() {
     },
     enabled: on,
     staleTime: 300_000,
+  });
+
+  /* read 3d — which of the house's own mailboxes its letters leave from: the
+     mail setup page's own read, under the same cache entry, so a choice saved
+     there is what the sender row here says (audit follow-up on #981: the row
+     used to say "Cannot be changed by this house" beside the button that
+     changes it). */
+  const mailSetupQ = useQuery({
+    queryKey: mailSetupKey(rid ?? ''),
+    queryFn: async (): Promise<MailSetupView> =>
+      (await apiClient.get<MailSetupView>('/communications/mail-setup')).data,
+    enabled: on,
+    staleTime: 60_000,
   });
 
   /* read 3c — whether vendor-mail reading still has a live grant. Separate
@@ -1306,6 +1320,8 @@ export function useConnectionsNextData() {
     provider: toRegister(providerQ),
     payments: toRegister(paymentsQ),
     sender: toRegister(senderQ),
+    /** Which connected mailbox the house chose to send from (the mail setup page). */
+    mailSetup: toRegister(mailSetupQ),
     /** Receive-half grant status — see MailReaderStatusVM. */
     mailReader: toRegister(mailReaderQ),
     textSenders: toRegister(textQ),

@@ -368,6 +368,36 @@ describe('Back', () => {
     fireEvent.click(await screen.findByRole('button', { name: '← Everyone' }));
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail$/);
   });
+
+  // Audit follow-up: "← Everyone" used to step history, and after the
+  // thread's person link the entry behind was the thread, not everyone.
+  it('"← Everyone" after the thread\'s person link goes to everyone, not back to the thread', async () => {
+    routes['/mail/threads'] = (p) => ({
+      person: { key: p.with, kind: 'vendor', name: 'Bodega Álvaro' },
+      threads: [
+        { key: 'gm:abc', subject: 'Standing order', messageCount: 1, lastAt: '2026-11-06T09:00:00Z', lastDirection: 'inbound', waiting: false, orderId: null, orderNumber: null },
+      ],
+      next: null,
+    });
+    mount(['/orders', '/communications?tab=mail']);
+    fireEvent.click((await screen.findAllByTestId('mail-person'))[0]);
+    fireEvent.click(await screen.findByTestId('mail-thread-row'));
+    fireEvent.click(await screen.findByRole('button', { name: 'Bodega Álvaro' }));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail&with=vendor%3Ap1$/);
+    fireEvent.click(await screen.findByRole('button', { name: '← Everyone' }));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail$/);
+    expect(await screen.findAllByTestId('mail-person')).toHaveLength(2);
+  });
+
+  it('"← Everyone" after a cold thread link\'s person link goes to everyone and stays on the page', async () => {
+    mount(['/orders', '/communications?tab=mail&thread=gm%3Aabc']);
+    fireEvent.click(await screen.findByRole('button', { name: 'Bodega Álvaro' }));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail&with=vendor%3Ap1$/);
+    fireEvent.click(await screen.findByRole('button', { name: '← Everyone' }));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail$/);
+    fireEvent.click(screen.getByTestId('browser-back'));
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail&thread=gm%3Aabc$/);
+  });
 });
 
 describe('the setup path', () => {
