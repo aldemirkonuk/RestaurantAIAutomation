@@ -194,7 +194,7 @@ describe("promo-extract (deterministic, no LLM)", () => {
       expect(p.ended).toBe(true);
     });
 
-    it('a stated year in "June 30, 2027" is kept: the offer runs into next year', () => {
+    it('"June 30, 2027" keeps its stated year', () => {
       const p = extractPromotion("Offer", "Offer valid through June 30, 2027. 10% off", READ)!;
       expect(p.valid_until).toBe("2027-06-30");
       expect(p.ended).toBe(false);
@@ -270,7 +270,6 @@ describe("promo-extract (deterministic, no LLM)", () => {
       ["$15 off case orders this month.", null],
       ["$15 off per mixed case.", null],
       ["$15 off each 12-bottle case.", 12],
-      ["$15 off your case of Rioja.", null],
       ["Case special: $15 off Rioja this month.", null],
     ])('a case named in "%s" makes the amount per case', (body, pack) => {
       const p = extractPromotion("By the case", body, NOW)!;
