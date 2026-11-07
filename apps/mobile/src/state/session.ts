@@ -325,19 +325,32 @@ export const useSession = create<SessionState>((set, get) => ({
     });
     clearPersistedQueries();
     useFeedLocal.setState({ hidden: {}, clearedThisSession: 0 });
-    // Best-effort server logout; local teardown always wins.
-    if (token) {
-      fetch(`${API_URL}/auth/logout`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-      }).catch(() => {});
-    }
-    await onTokenQueue(() =>
-      Promise.all([
+    // Best-effort server logout; local teardown always wins. The device's
+    // refresh token is read BEFORE storage is cleared and sent in the body so
+    // the gateway ends this device's 7-day session, not just the 15-minute
+    // access token (QA round 18, R11-07). A failed read sends no body.
+    await onTokenQueue(async () => {
+      let refreshToken: string | null = null;
+      try {
+        refreshToken = await SecureStore.getItemAsync(REFRESH_KEY);
+      } catch {
+        refreshToken = null;
+      }
+      if (token) {
+        fetch(`${API_URL}/auth/logout`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(refreshToken ? { refreshToken } : {}),
+        }).catch(() => {});
+      }
+      await Promise.all([
         SecureStore.deleteItemAsync(ACCESS_KEY),
         SecureStore.deleteItemAsync(REFRESH_KEY),
-      ]),
-    );
+      ]);
+    });
   },
 
   setAccessToken: (token) => {
