@@ -488,6 +488,7 @@ export class DeliveryStockService {
     restaurantId: string,
     deliveryId: string,
     userId: string | null,
+    only?: ReadonlySet<string>,
   ): Promise<StockResult<CostReceipt>> {
     const delivery = await this.deliveryFor(restaurantId, deliveryId);
     if (!delivery.ok) return delivery;
@@ -512,6 +513,10 @@ export class DeliveryStockService {
     const stillProvisional: { inventoryId: string; reason: string }[] = [];
 
     for (const [inventoryId] of items) {
+      // `only`: a re-verify finishing a post that failed partway (QA round 15
+      // (4)) posts the items whose lots are still provisional and no other.
+      // The pairing rules below still see every booked item.
+      if (only && !only.has(inventoryId)) continue;
       let price = priced.value.byItem.get(inventoryId) ?? null;
       // ONE item, ONE priced line: the pairing is not ambiguous, so it is not a
       // guess. Any other shape is left alone rather than matched by description.
@@ -539,7 +544,7 @@ export class DeliveryStockService {
         return {
           ok: false,
           status: 503,
-          error: `the delivery is VERIFIED but its cost could not be posted for item ${inventoryId}: ${posted.error}. The stock is correct and the lot stays provisional; this is safe to retry.`,
+          error: `the delivery is VERIFIED but its cost could not be posted for item ${inventoryId}: ${posted.error}. The stock is correct and the lot stays provisional; verifying the delivery again posts the cost of every item still provisional, once.`,
         };
       finalised.push(posted.value);
     }
@@ -553,6 +558,42 @@ export class DeliveryStockService {
         papers: priced.value.papers,
       },
     };
+  }
+
+  /**
+   * QA round 15 (4): a RE-VERIFY finishes a VERIFIED post that failed partway.
+   * Only items with a live lot of this delivery still `provisional` are posted,
+   * through the same finalise_delivery_cost, which skips a lot already final at
+   * that cost (so two retries post once). A FINAL lot is never touched here: a
+   * hand revaluation, or a line edited after the cost posted (ADR 0103, QA 10a
+   * (6)), is repairPrintedCost's to judge, not this method's.
+   */
+  async finishProvisional(
+    restaurantId: string,
+    deliveryId: string,
+    userId: string | null,
+  ): Promise<StockResult<CostReceipt>> {
+    const delivery = await this.deliveryFor(restaurantId, deliveryId);
+    if (!delivery.ok) return delivery;
+    const lots = await this.db
+      .getClient()
+      .from("inventory_lots")
+      .select("inventory_id, cost_state, qty")
+      .eq("restaurant_id", restaurantId)
+      .eq("delivery_id", deliveryId)
+      .eq("stock_state", "live")
+      .eq("cost_state", "provisional");
+    if (lots.error)
+      return { ok: false, status: 500, error: `the lots of delivery ${deliveryId} could not be read: ${lots.error.message}` };
+    type Lot = { inventory_id: string | null; cost_state: string; qty: number };
+    const open = new Set(
+      ((lots.data ?? []) as Lot[])
+        .filter((l) => l.cost_state === "provisional" && Number(l.qty) > 0 && l.inventory_id)
+        .map((l) => l.inventory_id as string),
+    );
+    if (!open.size)
+      return { ok: true, value: { deliveryId, finalised: [], stillProvisional: [] } };
+    return this.finaliseAtVerified(restaurantId, deliveryId, userId, open);
   }
 
   /**
