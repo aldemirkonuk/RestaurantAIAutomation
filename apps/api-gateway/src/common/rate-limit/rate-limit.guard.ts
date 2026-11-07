@@ -8,7 +8,11 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
-import { PEER_LIMIT_FACTOR, requestAddresses } from "./client-address";
+import {
+  PEER_LIMIT_FACTOR,
+  bucketAddress,
+  requestAddresses,
+} from "./client-address";
 
 /**
  * Rate limit configuration
@@ -20,6 +24,13 @@ export interface RateLimitConfig {
   windowSeconds: number;
   /** Key prefix for storage */
   keyPrefix?: string;
+  /**
+   * A body field naming the account the request acts on (`email` on
+   * /auth/login). When set, the account gets its own bucket at `limit`, so
+   * guessing one account's password from many addresses is held to the
+   * route's limit however many addresses are used (QA round 14).
+   */
+  accountField?: string;
 }
 
 /**
@@ -171,7 +182,9 @@ export class RateLimitGuard implements CanActivate {
 
     // R11-10: the key above uses the address the caller may have written
     // (client-address.ts). A second, looser bucket on the address Railway's
-    // edge saw bounds a caller who invents a fresh one per request.
+    // edge saw bounds a caller who invents a fresh one per request; it is
+    // sized for a shared egress (QA round 14). A route that names an account
+    // field also counts the account, whatever address the try came from.
     if (result.allowed) {
       const peerKey = this.peerKey(request, config.keyPrefix);
       if (peerKey) {
@@ -181,6 +194,17 @@ export class RateLimitGuard implements CanActivate {
           config.windowSeconds,
         );
         if (!peer.allowed) result = peer;
+      }
+    }
+    if (result.allowed) {
+      const accountKey = this.accountKey(request, config);
+      if (accountKey) {
+        const account = this.store.check(
+          accountKey,
+          config.limit,
+          config.windowSeconds,
+        );
+        if (!account.allowed) result = account;
       }
     }
 
@@ -319,7 +343,7 @@ export class RateLimitGuard implements CanActivate {
    * LEFT-MOST `x-forwarded-for` entry and then `x-real-ip`, both writable.
    */
   private getClientIp(request: any): string {
-    return requestAddresses(request).client || "unknown";
+    return bucketAddress(requestAddresses(request).client) || "unknown";
   }
 
   /**
@@ -329,10 +353,29 @@ export class RateLimitGuard implements CanActivate {
    */
   private peerKey(request: any, prefix?: string): string | null {
     if (request.user?.userId || request.user?.restaurantId) return null;
-    const { peer, client } = requestAddresses(request);
+    const addresses = requestAddresses(request);
+    const peer = bucketAddress(addresses.peer);
+    const client = bucketAddress(addresses.client);
     if (!peer || peer === client) return null;
     const route = request.route?.path || request.url.split("?")[0];
     return [prefix, `peer:${peer}`, `route:${route}`]
+      .filter(Boolean)
+      .join(":");
+  }
+
+  /**
+   * The bucket for the account a request names (`accountField`), folded the
+   * way sign-in folds an address (trim, lower case) and capped in length; null
+   * when the route names no field or the body has no usable value.
+   */
+  private accountKey(request: any, config: RateLimitConfig): string | null {
+    if (!config.accountField) return null;
+    const raw = request.body?.[config.accountField];
+    if (typeof raw !== "string") return null;
+    const account = raw.trim().toLowerCase().slice(0, 320);
+    if (!account) return null;
+    const route = request.route?.path || request.url.split("?")[0];
+    return [config.keyPrefix, `account:${account}`, `route:${route}`]
       .filter(Boolean)
       .join(":");
   }

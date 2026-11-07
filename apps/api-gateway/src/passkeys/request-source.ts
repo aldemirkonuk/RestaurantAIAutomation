@@ -1,5 +1,8 @@
 import type { Request } from "express";
-import { clientAddress } from "../common/rate-limit/client-address";
+import {
+  bucketAddress,
+  clientAddress,
+} from "../common/rate-limit/client-address";
 
 /**
  * The caller's address, for the per-source limit on emailed codes (ADR 0229).
@@ -10,8 +13,9 @@ import { clientAddress } from "../common/rate-limit/client-address";
  * and nothing more. What bounds an inventive one is the global
  * `RateLimitGuard`'s bucket on the edge-seen address (R11-10), and the
  * per-address and per-code limits kept in the database. The value is hashed
- * before it is stored.
+ * before it is stored. An IPv6 address is counted as its /64 (QA round 14), so
+ * rotating inside one allocation is one source.
  */
 export function requestSource(req: Request): string | null {
-  return clientAddress(req);
+  return bucketAddress(clientAddress(req));
 }

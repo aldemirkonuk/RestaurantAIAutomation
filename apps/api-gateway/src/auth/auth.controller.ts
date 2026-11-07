@@ -62,6 +62,10 @@ export class AuthController {
   // Public by DECISION, not by omission (ADR 0096): the caller has no token yet; obtaining one is what this route is for.
   @Public()
   @Post("login")
+  // The /auth/ default (10 a minute per address), plus 10 a minute per
+  // account: an address bucket alone let one password be guessed from as
+  // many addresses as a caller has (QA round 14).
+  @RateLimit({ limit: 10, windowSeconds: 60, accountField: "email" })
   @HttpCode(HttpStatus.OK)
   async login(@Body() credentials: LoginCredentials) {
     this.logger.log(`Login attempt: ${credentials.email}`);

@@ -8,6 +8,7 @@ import {
 import { Request } from "express";
 import {
   PEER_LIMIT_FACTOR,
+  bucketAddress,
   requestAddresses,
 } from "../../common/rate-limit/client-address";
 
@@ -43,7 +44,10 @@ export class PasswordResetThrottleGuard implements CanActivate {
     const req = context.switchToHttp().getRequest<Request>();
     // R11-10: `client` may be caller-written on a direct call, so the address
     // Railway's edge saw (`peer`) gets its own, looser bucket as well.
-    const { client, peer } = requestAddresses(req);
+    // QA round 14: an IPv6 address counts as its /64.
+    const addresses = requestAddresses(req);
+    const client = bucketAddress(addresses.client);
+    const peer = bucketAddress(addresses.peer);
     const now = Date.now();
 
     const windowStart = now - PasswordResetThrottleGuard.WINDOW_MS;
