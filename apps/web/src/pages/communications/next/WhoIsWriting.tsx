@@ -22,7 +22,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../../contexts/AuthContext';
 import type { ProspectDto, SenderReputationDto } from '../../../hooks/queries/usePromotionsQueries';
-import { MONO, SANS, failedReadWords, fmtAsOf, managesHouse, readAgainFailed } from './cm-format';
+import { EM, MONO, SANS, failedReadWords, fmtAsOf, managesHouse, readAgainFailed } from './cm-format';
 import { AddVendorPanel, BTN_PRIMARY, BTN_QUIET, TrustPanel } from './SenderActs';
 import {
   fmtCount,
@@ -31,6 +31,8 @@ import {
   readFailureSentence,
   senderState,
   strangerChips,
+  strangerName,
+  heldNote,
   whoIsWritingSummary,
   writeFailureSentence,
 } from './senders-format';
@@ -276,7 +278,7 @@ function Strangers({
 
   const onPutAway = async (p: ProspectDto) => {
     setActFailure(null);
-    const name = p.sender_name || p.domain;
+    const name = strangerName(p);
     try {
       const r = await putAway.mutateAsync(p.id);
       if (r?.dismissed === false) throw new Error('it was not put away');
@@ -341,13 +343,13 @@ function Strangers({
         <div style={{ borderTop: '1px solid var(--paper-2, #EAE4D8)' }}>
           {data.map((p) => {
             const elsewhere = !!p.restaurant_id && !!activeRestaurantId && p.restaurant_id !== activeRestaurantId;
-            const name = p.sender_name || p.domain;
+            const name = strangerName(p);
             return (
               <div key={p.id} style={ROW}>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontFamily: SANS, fontSize: 13, fontWeight: 600, color: 'var(--ink-1, #211C16)', overflowWrap: 'anywhere' }}>{name}</span>
                   <span style={{ fontFamily: MONO, fontSize: 10.5, color: 'var(--ink-4, #665D50)', overflowWrap: 'anywhere', minWidth: 0 }}>
-                    {p.sender_email ? `<${p.sender_email}>` : p.domain} · {fmtDay(p.last_seen_at ?? p.first_seen_at)}
+                    {p.sender_email ? `<${p.sender_email}>` : p.domain || EM} · {fmtDay(p.last_seen_at ?? p.first_seen_at)}
                   </span>
                 </div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '5px 0' }}>
@@ -357,11 +359,14 @@ function Strangers({
                   ))}
                 </div>
                 {p.subject && <p style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '0 0 6px' }}>{p.subject}</p>}
+                {heldNote(p) && <Quiet>{heldNote(p)}</Quiet>}
                 {elsewhere ? (
                   <Quiet>Belongs to another house — switch to it to add or put it away.</Quiet>
                 ) : (
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     {/* COMMS-W31: adding a vendor is an owner's or manager's; staff learned that only after filling the ask. */}
+                    {/* QA round 24: a held letter is never added as a vendor (the gateway refuses it too). */}
+                    {!p.held_reason && (
                     <button
                       type="button"
                       style={manages ? BTN_PRIMARY : { ...BTN_PRIMARY, opacity: 0.5, cursor: 'not-allowed' }}
@@ -372,10 +377,11 @@ function Strangers({
                     >
                       Add as a vendor…
                     </button>
+                    )}
                     <button type="button" style={BTN_QUIET} disabled={busy} aria-label={`Put ${name} away`} onClick={() => onPutAway(p)}>
                       Put away
                     </button>
-                    {!manages && (
+                    {!manages && !p.held_reason && (
                       <span id={`add-why-${p.id}`} style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4, #665D50)' }}>
                         Only an owner or manager can add a vendor.
                       </span>

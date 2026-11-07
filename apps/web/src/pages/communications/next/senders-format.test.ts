@@ -8,6 +8,8 @@ import {
   readFailureSentence,
   senderState,
   strangerChips,
+  strangerName,
+  heldNote,
   whoIsWritingSummary,
   writeFailureSentence,
 } from './senders-format';
@@ -90,6 +92,32 @@ describe('strangerChips', () => {
   });
   it('no recorded reason is plain vendor outreach', () => {
     expect(strangerChips(stranger())).toEqual(['vendor outreach']);
+  });
+});
+
+describe('a held letter (QA round 24)', () => {
+  it('an unconfirmed letter says whose it could not be confirmed as, and never "vendor outreach"', () => {
+    const p = stranger({ held_reason: 'sender_unconfirmed', capture_reason: 'sender_unconfirmed', sender_name: null });
+    expect(strangerChips(p)).toEqual(['could not confirm it came from sales@tuscandirect.co']);
+    expect(heldNote(p)).toMatch(/^Not filed with any vendor\. Check with them another way/);
+  });
+  it('an unreadable sender says so, and the row still has a name', () => {
+    const p = stranger({ held_reason: 'sender_unreadable', capture_reason: 'sender_unreadable', sender_email: null, sender_name: null, domain: '' });
+    expect(strangerChips(p)).toEqual(['could not read who sent it']);
+    expect(strangerName(p)).toBe('no sender named');
+    expect(heldNote(p)).toBe('Not filed with any vendor.');
+  });
+  it('the raw From is the name of an unreadable letter when the bridge kept one', () => {
+    expect(strangerName(stranger({ sender_name: 'a@x.example, b@y.example', sender_email: null, domain: '' }))).toBe('a@x.example, b@y.example');
+  });
+  it('a stranger is not a held letter', () => {
+    expect(heldNote(stranger())).toBeNull();
+    expect(strangerName(stranger())).toBe('Tuscan Direct Imports');
+  });
+  it('held attachments are still counted', () => {
+    expect(
+      strangerChips(stranger({ held_reason: 'sender_unconfirmed', attachments: [{ filename: 'i.pdf', mime_type: null, size_bytes: null }] })),
+    ).toEqual(['could not confirm it came from sales@tuscandirect.co', '1 attachment']);
   });
 });
 

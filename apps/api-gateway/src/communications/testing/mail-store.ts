@@ -142,6 +142,10 @@ export function bridge(tables: Record<string, Row[]>, failing: string[] = []) {
       events.push(["hold", a]),
       { captured: true, isTriage: true }
     ),
+    holdLetter: async (a: any) => (
+      events.push(["held", a]),
+      { captured: true, isNew: true, isTriage: a.restaurantId === null }
+    ),
   };
   const svc: any = new RabbitMqBridgeService(
     { get: () => undefined } as any,
