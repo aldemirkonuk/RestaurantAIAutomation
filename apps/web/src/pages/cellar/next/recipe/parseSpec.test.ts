@@ -5,7 +5,7 @@
  * proposals: every one arrives unconfirmed.
  */
 import { describe, expect, it } from 'vitest';
-import { parseLine, parseSpec, readAmount } from './parseSpec';
+import { parseLine, parseSpec, readAmount, unitTypo } from './parseSpec';
 
 describe('parseSpec — pasted text into rows to confirm', () => {
   it('reads "1½ oz gin" as 1.5 oz gin', () => {
@@ -113,7 +113,7 @@ describe('parseSpec — pasted text into rows to confirm', () => {
     });
     expect(parseLine('1 dasher bitters')).toMatchObject({ qty: 1, unit: null, flag: '"dasher" is not a unit I know. Pick the unit.' });
     expect(parseLine('30 mlgin')).toMatchObject({ qty: 30, unit: null, flag: '"mlgin" is not a unit I know. Pick the unit.' });
-    for (const line of ['2 ozz rum', '1 tspn sugar', '15 lm lime', '1 teaspon salt', '20 mililiters syrup', '3 dashs Angostura', '5 grm salt']) {
+    for (const line of ['2 ozz rum', '1 tspn sugar', '15 lm lime', '1 teaspon salt', '20 mililiters syrup', '3 dashs Angostura', '5 grm salt', '2 dahs bitters', '1 zo rum']) {
       const r = parseLine(line);
       expect(r?.unit, line).toBeNull();
       expect(r?.qty, line).not.toBeNull();
@@ -133,10 +133,12 @@ describe('parseSpec — pasted text into rows to confirm', () => {
     ];
     for (const line of counted) expect(parseLine(line), line).toMatchObject({ unit: 'each', flag: null });
     expect(parseLine('30 ml gin')?.flag).toBeNull();
+    // One-letter units (l, g, x) are not typo targets, or every two-letter word would be one.
+    expect(unitTypo('xo')).toBe(false);
   });
 
   it('keeps as text an amount followed by something that is not a word', () => {
-    for (const line of ['1:1 syrup 15 ml', '1 . 2 oz gin', '2-3 dashes bitters']) {
+    for (const line of ['1:1 syrup 15 ml', '1 . 2 oz gin', '2-3 dashes bitters', '30çay şurubu']) {
       expect(parseLine(line), line).toMatchObject({ qty: null, unit: null, role: 'untracked', label: line });
     }
     expect(parseLine("2 'Old Tom' gin")).toMatchObject({ qty: 2, unit: 'each' });
