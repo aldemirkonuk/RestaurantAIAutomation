@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import {
   BadRequestException,
   ConflictException,
@@ -905,6 +906,28 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
     expect(version).toMatchObject({ source_method: "scan", source_mime: "application/pdf" });
     expect(version.source_path).toMatch(/^rest-1\/menus\/[0-9a-f]{64}\.pdf$/);
+  });
+
+  it("a scan sent as a data: URL keeps the bare photo as .jpg, the same file as the photo sent bare", async () => {
+    // /get-started's drop zone sends FileReader.readAsDataURL's string as is.
+    const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01]);
+    const bare = jpeg.toString("base64");
+    const sha = createHash("sha256").update(jpeg).digest("hex");
+    const kept: Array<{ path: string; bytes: number; contentType: string }> = [];
+    for (const imageBase64 of [`data:image/jpeg;base64,${bare}`, bare]) {
+      const tables: Record<string, Row[]> = base();
+      const service = makeService(tables, {
+        wineSubmissions,
+        scanParser: { parse: async () => [{ name: "Opus One", bottle_price: 62 }] },
+      });
+      const r = await service.importMenu({ method: "scan", data: { imageBase64 }, restaurantId: "rest-1" } as any, "user-1");
+      expect(r.source).toEqual({ kept: true, failure: null });
+      const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
+      expect(version).toMatchObject({ source_method: "scan", source_mime: "image/jpeg" });
+      kept.push((tables as any).__storage[0]);
+    }
+    expect(kept[0]).toMatchObject({ path: `rest-1/menus/${sha}.jpg`, bytes: jpeg.length, contentType: "image/jpeg" });
+    expect(kept[1]).toEqual(kept[0]);
   });
 
   describe("makeCurrent — the person's choice, then the menu's prices reach the house", () => {

@@ -24,7 +24,7 @@ Filed from the founder's /receipts walk-through of 2026-10-01 (session R3, branc
 - There is no paste and no drop anywhere in the web app.
 - The e-invoice number (ETTN) is kept nowhere, so the same invoice arriving as a PDF and as a photo is kept twice (dedupe is by file hash only).
 - Pictures carried inside an email's text are skipped: only parts with an `attachmentId` are read (`communications/gmail-mime.ts:70-73`). Not picked by the founder, so this stays a gap.
-- A HEIC photo is sent to the reader labelled `image/jpeg`: the type guess falls through to jpeg (`procurement/documents/document-extractor.service.ts:527`).
+- ~~A HEIC photo is sent to the reader labelled `image/jpeg`: the type guess falls through to jpeg (`procurement/documents/document-extractor.service.ts:527`).~~ [Server half closed 2026-11-07 by `fix/photo-arrives-readable`: a HEIC/HEIF or AVIF photo is stored unread with its reason and never sent to the model (`claims.d/fix-photo-arrives-readable.jsonl:1`). The door-side conversion to JPEG is still open: `2026-11-07-receipts-1.6-heic-server.md`.]
 
 **Papers the house issues (RECEIPTS-W45, the founder: "Both").**
 - The reader does not detect which way a paper runs. A service invoice the house issued lands in the vendor queue.

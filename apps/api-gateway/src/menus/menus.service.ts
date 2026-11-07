@@ -12,6 +12,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
 import { ScanParserService } from "./parsers/scan-parser.service";
+import { stripDataUrl } from "../common/photo-format";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
@@ -445,7 +446,11 @@ export class MenusService {
     let sourceMime: { mime: string; ext: string } | null = null;
     if (dto.method === "scan") {
       items = await this.scanParser.parse(dto.data.imageBase64!, restaurantId);
-      sourceBytes = Buffer.from(dto.data.imageBase64!, "base64");
+      // The /get-started drop zone sends readAsDataURL's string, prefix and
+      // all. Buffer.from(…, "base64") does not refuse the prefix; it decodes
+      // it into garbage bytes ahead of the photo, so the kept file would be
+      // corrupt, sniffed as .bin, and hashed unlike the same photo sent bare.
+      sourceBytes = Buffer.from(stripDataUrl(dto.data.imageBase64!).base64, "base64");
       sourceMime = sniffMime(sourceBytes);
     } else if (dto.method === "csv") {
       if (dto.data.fileBase64) {

@@ -5,6 +5,11 @@ import {
   NfEventRef,
 } from "../../common/model-client/model-client.service";
 import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
+import {
+  formatRefusalSentence,
+  ModelMediaType,
+  sniffPhotoFormat,
+} from "../../common/photo-format";
 import { DOC_TYPES, normalizeUom, toBottles, Uom } from "./document-types";
 import {
   applyTieOut,
@@ -155,12 +160,22 @@ export function stripJsonFence(rawText: string): string {
   return s.trim();
 }
 
-type MediaType =
-  | "image/jpeg"
-  | "image/png"
-  | "image/webp"
-  | "image/gif"
-  | "application/pdf";
+/** What became of a paper whose format was refused: it is kept, unread. */
+const DOCUMENT_REFUSAL_OUTCOME = "the paper was stored unread";
+
+/**
+ * Thrown by `extract()` for a paper refused before any model call; the message
+ * is the sentence a person reads. A throw, not an unread document: the intake
+ * runs every returned document through `applyCurrencyRules`, which would file
+ * a paper nobody read in the house's money. The intake catches this and
+ * returns its own `unreadable()` before the rules run.
+ */
+export class PaperFormatRefusal extends Error {
+  constructor(sentence: string) {
+    super(sentence);
+    this.name = "PaperFormatRefusal";
+  }
+}
 
 @Injectable()
 export class DocumentExtractorService {
@@ -185,7 +200,7 @@ export class DocumentExtractorService {
 
   /**
    * Read a document image or PDF into a ParsedDocument.
-   * Throws only on transport failure; a document it cannot understand comes back
+   * Throws on transport failure or a refused format; a document it cannot understand comes back
    * as docType "unknown" with warnings, because a human can still act on that.
    */
   async extract(
@@ -193,10 +208,16 @@ export class DocumentExtractorService {
     declaredMime?: string | null,
     restaurantId?: string | null,
   ): Promise<ParsedDocument> {
+    // Before the key guard: refusing a format needs no model, so a paper the
+    // reader cannot open is answered the same way with or without a key.
+    // `data` is the payload without any `data:` URL prefix: the model takes
+    // bare base64, and the sniff already looked past the prefix.
+    const format = this.detectMediaType(base64, declaredMime);
+    if ("unreadable" in format) throw new PaperFormatRefusal(format.unreadable);
+    const { mediaType, base64: data } = format;
+
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured");
-
-    const mediaType = this.detectMediaType(base64, declaredMime);
 
     // PDFs go in a `document` block and images in an `image` block. Sending a
     // PDF as an image is rejected outright, which would silently route every
@@ -206,14 +227,14 @@ export class DocumentExtractorService {
         ? [
             {
               type: "document",
-              source: { type: "base64", media_type: mediaType, data: base64 },
+              source: { type: "base64", media_type: mediaType, data },
             },
             { type: "text", text: "Classify and extract this document." },
           ]
         : [
             {
               type: "image",
-              source: { type: "base64", media_type: mediaType, data: base64 },
+              source: { type: "base64", media_type: mediaType, data },
             },
             { type: "text", text: "Classify and extract this document." },
           ];
@@ -509,22 +530,20 @@ export class DocumentExtractorService {
     return "unknown";
   }
 
-  private detectMediaType(base64: string, declared?: string | null): MediaType {
-    const d = (declared || "").toLowerCase();
-    if (d.includes("pdf")) return "application/pdf";
-    if (d.includes("png")) return "image/png";
-    if (d.includes("webp")) return "image/webp";
-    if (d.includes("gif")) return "image/gif";
-    if (d.includes("jpeg") || d.includes("jpg")) return "image/jpeg";
-
-    // Fall back to magic bytes: a declared content-type from an email header is
-    // frequently wrong or absent, and the file itself does not lie.
-    if (base64.startsWith("JVBERi")) return "application/pdf"; // %PDF
-    if (base64.startsWith("/9j/")) return "image/jpeg";
-    if (base64.startsWith("iVBORw")) return "image/png";
-    if (base64.startsWith("UklGR")) return "image/webp";
-    if (base64.startsWith("R0lGOD")) return "image/gif";
-    return "image/jpeg";
+  /** The shared byte sniff (`common/photo-format.ts`), worded for this path. */
+  private detectMediaType(
+    base64: string,
+    declared?: string | null,
+  ): { mediaType: ModelMediaType; base64: string } | { unreadable: string } {
+    const format = sniffPhotoFormat(base64, declared);
+    if ("refused" in format)
+      return {
+        unreadable: formatRefusalSentence(
+          format.refused,
+          DOCUMENT_REFUSAL_OUTCOME,
+        ),
+      };
+    return format;
   }
 }
 

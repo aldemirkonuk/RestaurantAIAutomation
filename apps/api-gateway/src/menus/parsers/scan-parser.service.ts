@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   HttpException,
   HttpStatus,
@@ -14,6 +15,11 @@ import {
 } from "../../common/model-client/model-client.service";
 import { NfVerdictService } from "../../common/model-client/nf-verdict.service";
 import { PARSE_YIELD_BASIS } from "../../common/model-client/verdict-bases";
+import {
+  formatRefusalSentence,
+  ModelMediaType,
+  sniffPhotoFormat,
+} from "../../common/photo-format";
 import { menuScanVerdict } from "./menu-scan-verdict";
 import {
   MENU_CATEGORY_VOCABULARY,
@@ -148,15 +154,16 @@ export class ScanParserService {
     restaurantId?: string,
     arrival = false,
   ): Promise<WineExtractItem[]> {
+    // Before the key guard, as in the document intake: refusing a format needs
+    // no model. `base64` is the payload without any `data:` URL prefix.
+    const { mediaType, base64 } = this.detectMediaType(imageBase64);
+
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
       throw new ServiceUnavailableException(
         "Anthropic API key not configured — set ANTHROPIC_API_KEY",
       );
     }
-
-    // Infer image media type from base64 prefix bytes
-    const mediaType = this.detectMediaType(imageBase64);
 
     const isPdf = mediaType === "application/pdf";
 
@@ -168,13 +175,13 @@ export class ScanParserService {
     // dense short menu and zero on everything else, without guessing a
     // density threshold the corpus would immediately violate.
     if (isPdf) {
-      const preSplit = await this.splitPdfIfLarge(imageBase64, { arrival });
+      const preSplit = await this.splitPdfIfLarge(base64, { arrival });
       if (preSplit.length > 1)
         return this.parseChunks(preSplit, restaurantId, 0, arrival);
     }
 
     const first = await this.parseOne(
-      imageBase64,
+      base64,
       mediaType,
       isPdf,
       restaurantId,
@@ -186,7 +193,7 @@ export class ScanParserService {
       );
     if (!first.truncated || !isPdf) return first.items;
 
-    const chunks = await this.splitPdfIfLarge(imageBase64, {
+    const chunks = await this.splitPdfIfLarge(base64, {
       force: true,
       arrival,
     });
@@ -549,19 +556,23 @@ export class ScanParserService {
     }
   }
 
-  private detectMediaType(
-    base64: string,
-  ):
-    | "image/jpeg"
-    | "image/png"
-    | "image/webp"
-    | "image/gif"
-    | "application/pdf" {
-    if (base64.startsWith("JVBERi0")) return "application/pdf";
-    if (base64.startsWith("/9j/")) return "image/jpeg";
-    if (base64.startsWith("iVBORw")) return "image/png";
-    if (base64.startsWith("UklGR")) return "image/webp";
-    return "image/jpeg"; // safe default
+  /**
+   * The shared byte sniff (`common/photo-format.ts`) the document intake uses.
+   * Was a prefix match that fell back to `image/jpeg` ("safe default"), so a
+   * HEIC menu photo went to the model labelled JPEG and its rejection read as
+   * the service being down. A refused format is the sender's to fix: a 400
+   * with the reason, before any billed call and before anything is kept.
+   */
+  private detectMediaType(payload: string): {
+    mediaType: ModelMediaType;
+    base64: string;
+  } {
+    const format = sniffPhotoFormat(payload);
+    if ("refused" in format)
+      throw new BadRequestException(
+        formatRefusalSentence(format.refused, "nothing was imported"),
+      );
+    return format;
   }
 
   private parseJsonResponse(text: string): WineExtractItem[] {

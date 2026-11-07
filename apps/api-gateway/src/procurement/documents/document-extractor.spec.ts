@@ -1,6 +1,7 @@
 import { ConfigService } from "@nestjs/config";
 import {
   DocumentExtractorService,
+  PaperFormatRefusal,
   settledEventId,
   stripJsonFence,
 } from "./document-extractor.service";
@@ -723,5 +724,182 @@ describe("the contract carries what the paper prints (findings 3, 4, 6, 7)", () 
     expect(doc.computedLinesTotal).toBe(1704);
     expect(doc.tieOutDelta).toBe(0);
     expect(doc.tiesOut).toBe(true);
+  });
+});
+
+/**
+ * Row 1.6 (proposal-receipt.md §3): a HEIC photo went to the model labelled
+ * JPEG. Fixtures are real ISO-BMFF `ftyp` head bytes, not a base64 prefix.
+ */
+describe("DocumentExtractorService.extract — formats the reader cannot open", () => {
+  const MODEL_REPLY = {
+    content: [{ type: "text", text: JSON.stringify(INVOICE) }],
+  };
+
+  function harness(apiKey: string | null = "test-key") {
+    const call = jest.fn(async (opts: any) => {
+      opts.nf?.eventRef?.settle("evt-test");
+      return MODEL_REPLY;
+    });
+    const extractor = new DocumentExtractorService(
+      {
+        get: (k: string) =>
+          k === "ANTHROPIC_API_KEY" ? (apiKey ?? undefined) : undefined,
+      } as unknown as ConfigService,
+      { call } as any,
+      { record: jest.fn() } as any,
+    );
+    return { extractor, call };
+  }
+
+  /** An `ftyp` box head: 4-byte size, `ftyp`, major brand, minor version, then padding. */
+  const ftyp = (brand: string, size = 0x18) =>
+    Buffer.concat([
+      Buffer.from([0, 0, 0, size]),
+      Buffer.from("ftyp" + brand, "latin1"),
+      Buffer.from([0, 0, 0, 0]),
+      Buffer.from("mif1miaf", "latin1"),
+      Buffer.alloc(32, 0xab),
+    ]).toString("base64");
+
+  const HEIC = ftyp("heic");
+  const b64 = (bytes: number[]) =>
+    Buffer.concat([Buffer.from(bytes), Buffer.alloc(32, 0x11)]).toString(
+      "base64",
+    );
+  const JPEG = b64([0xff, 0xd8, 0xff, 0xe0]);
+  const PNG = b64([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const PDF = Buffer.from("%PDF-1.7\n%\xe2\xe3\n", "latin1").toString("base64");
+
+  /** A refusal is a typed throw; the intake stores the paper unread. */
+  async function expectRefused(p: Promise<unknown>, pattern: RegExp) {
+    const err = await p.then(
+      () => null,
+      (e: unknown) => e,
+    );
+    expect(err).toBeInstanceOf(PaperFormatRefusal);
+    expect((err as Error).message).toMatch(pattern);
+  }
+
+  it("stores a HEIC photo unread with its reason and never calls the model", async () => {
+    const { extractor, call } = harness();
+    await expectRefused(
+      extractor.extract(HEIC, null),
+      /HEIC format.*stored unread.*JPEG.*take the photo again/,
+    );
+    expect(call).toHaveBeenCalledTimes(0);
+  });
+
+  it("sees HEIC whatever the box size, which a base64 prefix match cannot", async () => {
+    const { extractor, call } = harness();
+    for (const size of [0x18, 0x1c, 0x20, 0x2c]) {
+      await expectRefused(
+        extractor.extract(ftyp("heic", size), null),
+        /HEIC format/,
+      );
+    }
+    expect(call).toHaveBeenCalledTimes(0);
+  });
+
+  it.each(["heix", "hevc", "heim", "heis", "mif1", "msf1"])(
+    "treats the HEIF brand %s as HEIC",
+    async (brand) => {
+      const { extractor, call } = harness();
+      await expectRefused(extractor.extract(ftyp(brand), null), /HEIC format/);
+      expect(call).toHaveBeenCalledTimes(0);
+    },
+  );
+
+  it("names an AVIF photo as AVIF, unread, without a model call", async () => {
+    const { extractor, call } = harness();
+    await expectRefused(extractor.extract(ftyp("avif"), null), /AVIF format/);
+    expect(call).toHaveBeenCalledTimes(0);
+  });
+
+  it.each(["image/heic", "image/jpeg"])(
+    "refuses HEIC bytes declared %s",
+    async (mime) => {
+      const { extractor, call } = harness();
+      await expectRefused(extractor.extract(HEIC, mime), /HEIC format/);
+      expect(call).toHaveBeenCalledTimes(0);
+    },
+  );
+
+  it("takes a declared image/heif at its word when the bytes say nothing", async () => {
+    const { extractor, call } = harness();
+    const unknownBytes = b64([0x01, 0x02, 0x03, 0x04]);
+    await expectRefused(
+      extractor.extract(unknownBytes, "image/heif"),
+      /HEIC format/,
+    );
+    expect(call).toHaveBeenCalledTimes(0);
+  });
+
+  it("refuses without a model key too, because refusing needs no model", async () => {
+    const { extractor, call } = harness(null);
+    await expectRefused(extractor.extract(HEIC, null), /HEIC format/);
+    expect(call).toHaveBeenCalledTimes(0);
+  });
+
+  it("stores unrecognised bytes unread with a reason instead of guessing JPEG", async () => {
+    const { extractor, call } = harness();
+    await expectRefused(
+      extractor.extract(b64([0x01, 0x02, 0x03, 0x04]), null),
+      /not a PDF, JPEG, PNG, WebP or GIF.*stored unread/,
+    );
+    expect(call).toHaveBeenCalledTimes(0);
+  });
+
+  it.each([
+    ["JPEG", JPEG, "image", "image/jpeg"],
+    ["PNG", PNG, "image", "image/png"],
+    ["PDF", PDF, "document", "application/pdf"],
+  ])(
+    "still sends %s bytes to the model with its own type",
+    async (_name, bytes, block, mediaType) => {
+      const { extractor, call } = harness();
+      const d = await extractor.extract(bytes, null);
+      expect(call).toHaveBeenCalledTimes(1);
+      const sent = (call.mock.calls[0] as any)[0].body.messages[0].content[0];
+      expect(sent.type).toBe(block);
+      expect(sent.source.media_type).toBe(mediaType);
+      expect(d.docType).toBe("invoice");
+      expect(d.eventId).toBe("evt-test");
+    },
+  );
+
+  it("sees HEIC behind a data: URL prefix and never calls the model", async () => {
+    const { extractor, call } = harness();
+    await expectRefused(
+      extractor.extract(`data:image/jpeg;base64,${HEIC}`, null),
+      /HEIC format.*stored unread/,
+    );
+    expect(call).toHaveBeenCalledTimes(0);
+  });
+
+  it("sends a prefixed JPEG to the model as bare base64", async () => {
+    const { extractor, call } = harness();
+    await extractor.extract(`data:image/jpeg;base64,${JPEG}`, null);
+    const sent = (call.mock.calls[0] as any)[0].body.messages[0].content[0];
+    expect(sent.source).toEqual({
+      type: "base64",
+      media_type: "image/jpeg",
+      data: JPEG,
+    });
+  });
+
+  it("still trusts a declared supported type over the magic bytes", async () => {
+    const { extractor, call } = harness();
+    await extractor.extract(JPEG, "application/pdf");
+    const sent = (call.mock.calls[0] as any)[0].body.messages[0].content[0];
+    expect(sent.source.media_type).toBe("application/pdf");
+  });
+
+  it("still throws on a readable paper when no model key is configured", async () => {
+    const { extractor, call } = harness(null);
+    await expect(extractor.extract(JPEG, null)).rejects.toThrow(
+      /ANTHROPIC_API_KEY/,
+    );
+    expect(call).toHaveBeenCalledTimes(0);
   });
 });
