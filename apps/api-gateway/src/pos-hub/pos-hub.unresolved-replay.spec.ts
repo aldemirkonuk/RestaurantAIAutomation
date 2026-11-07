@@ -2,6 +2,9 @@ import { PosHubService } from "./pos-hub.service";
 import { CatalogMatcherService } from "./catalog-matcher.service";
 import { PosMappingReviewService } from "./pos-mapping-review.service";
 import { DatabaseService } from "../database/database.service";
+import { ToastService } from "../toast/toast.service";
+import * as fs from "fs";
+import * as path from "path";
 
 /**
  * POS-2 (QA round 5): the unresolved-line queue was write-only, so mapping an
@@ -777,3 +780,207 @@ describe("PosHubService — replay reaches every waiting sale (QA round 8c)", ()
     expect(widestIn.pos_checks).toBeLessThanOrEqual(100);
   });
 });
+
+/** `n` hub rows whose checks are no longer stored: each costs a read only. */
+function rowsWithNoCheck(tables: Record<string, Row[]>, n: number) {
+  for (let i = 0; i < n; i++)
+    tables.pos_unresolved_lines.push({
+      id: `gone-${String(i).padStart(5, "0")}`,
+      restaurant_id: HOUSE,
+      source: "generic_webhook",
+      external_check_id: `gone-${i}`,
+      external_item_id: "merlot-1",
+      item_name: "House Merlot",
+      qty: 1,
+      reason: "unmapped",
+      resolved: false,
+      created_at: "2026-10-01T12:00:00Z",
+      raw: { is_wine: true },
+    });
+}
+
+describe("PosHubService — a line that cannot book uses no allowance (QA round 11b)", () => {
+  it("1000 sales whose stock write keeps failing do not hide a newer one", async () => {
+    // The hub's line key holds the check id: `:s-` is every old check.
+    const { db, tables, bottles } = makeDb({ failKey: (k) => k.includes(":s-") });
+    const service = new PosHubService(db);
+    await service.ingest(
+      HOUSE,
+      "generic_webhook",
+      Array.from({ length: 1000 }, (_, i) => sale(`s-${i}`, 1)),
+    );
+    await service.ingest(HOUSE, "generic_webhook", [sale("fresh-1", 1)]);
+
+    const saved: any = await mapMerlot(service);
+
+    expect(bottles()).toBe(11);
+    expect(saved.past_sales).toMatchObject({
+      applied: 1,
+      failed: 1000,
+      truncated: false,
+    });
+    expect(open(tables).some((r) => r.external_check_id === "fresh-1")).toBe(
+      false,
+    );
+  });
+
+  it("sales waiting on a pour size never say more are waiting behind them", async () => {
+    const { db, tables, stockMl } = makeDb();
+    tables.restaurant_inventory[0].pour_size_ml = null;
+    const service = new PosHubService(db);
+    await service.ingest(
+      HOUSE,
+      "generic_webhook",
+      Array.from({ length: 1000 }, (_, i) => sale(`g-${i}`, 1)),
+    );
+    await service.ingest(HOUSE, "generic_webhook", [sale("fresh-1", 1)]);
+
+    for (let save = 0; save < 2; save++) {
+      const saved: any = await mapMerlot(service, { sale_unit: "glass" });
+      expect(saved.past_sales).toMatchObject({
+        applied: 0,
+        still_waiting: 1001,
+        truncated: false,
+      });
+      expect(saved.past_sales.message).not.toMatch(/save the mapping again/);
+    }
+    expect(stockMl["inv-merlot"]).toBe(12 * BOTTLE_ML);
+    expect(open(tables)).toHaveLength(1001);
+  });
+
+  it("one save tries at most 2,000 lines, and says more are waiting", async () => {
+    const { db, bottles } = makeDb({ failKey: (k) => k.includes(":s-") });
+    const service = new PosHubService(db);
+    await service.ingest(
+      HOUSE,
+      "generic_webhook",
+      Array.from({ length: 2001 }, (_, i) => sale(`s-${i}`, 1)),
+    );
+
+    const saved: any = await mapMerlot(service);
+
+    expect(saved.past_sales).toMatchObject({ failed: 2000, truncated: true });
+    expect(saved.past_sales.message).toMatch(/save the mapping again/);
+    expect(bottles()).toBe(12);
+  });
+
+  it("one save reads at most 5,000 waiting rows, and says more are waiting", async () => {
+    const { db, tables } = makeDb();
+    const service = new PosHubService(db);
+    rowsWithNoCheck(tables, 5001);
+
+    const saved: any = await mapMerlot(service);
+
+    expect(saved.past_sales).toMatchObject({
+      still_waiting: 5000,
+      truncated: true,
+    });
+  });
+
+  it("600 Toast-door sales whose stock write keeps failing do not hide a newer one", async () => {
+    const { db, tables, bottles } = makeDb({
+      failKey: (k) => k.startsWith("toast_sale_F-"),
+    });
+    const service = new PosHubService(db);
+    for (let i = 0; i < 600; i++)
+      toastSale(tables, `F-${String(i).padStart(3, "0")}`, 1);
+    toastSale(tables, "G-fresh", 1);
+
+    const saved: any = await mapMerlot(service, { source: "toast" });
+
+    expect(bottles()).toBe(11);
+    expect(saved.past_sales).toMatchObject({
+      applied: 1,
+      failed: 600,
+      truncated: false,
+    });
+  });
+});
+
+/**
+ * QA round 11b, D3. A Toast order still waiting behind the allowance when the
+ * till voids it: on this stack the door books the void as `+qty`
+ * (`toast.service.ts`, `applyOrderSaleEffects`) although its sale was never
+ * booked, so stock rises by a bottle nobody sold. PR #805 makes every void
+ * call `return_glass_pour(p_sale_key => toast_sale_...)`, which gives back
+ * only what that sale booked and refuses (P0002) when it booked nothing.
+ * Skipped until #805 is on this branch; it runs, and must pass, once the Toast
+ * door's void calls `return_glass_pour`.
+ */
+const voidGivesBackOnlyWhatWasBooked = fs
+  .readFileSync(path.join(__dirname, "../toast/toast.service.ts"), "utf8")
+  .includes("return_glass_pour");
+
+describe("PosHubService — a void after the mapping gives back only what was booked (QA round 11b)", () => {
+  (voidGivesBackOnlyWhatWasBooked ? it : it.skip)(
+    "a void of an order still waiting behind the allowance adds no stock (needs PR #805)",
+    async () => {
+      const { db, tables, bottles } = makeDb();
+      const client: any = (db as any).getClient();
+      // return_glass_pour as #805 defines it: back only what the sale key
+      // booked, once; P0002 when the sale booked nothing.
+      const booked = new Map<string, number>();
+      const rpc = client.rpc;
+      client.rpc = async (name: string, args: Row) => {
+        if (name === "return_glass_pour") {
+          const took = booked.get(String(args.p_sale_key));
+          if (!took)
+            return { data: null, error: { code: "P0002", message: "no sale" } };
+          booked.delete(String(args.p_sale_key));
+          return rpc("apply_stock_movement", {
+            ...args,
+            p_delta: Math.min(took, Number(args.p_pours)),
+            p_stock_state: "live",
+          });
+        }
+        const res = await rpc(name, args);
+        if (!res.error && Number(args.p_delta) < 0)
+          booked.set(String(args.p_idempotency_key), -Number(args.p_delta));
+        return res;
+      };
+      const hub = new PosHubService(db);
+      const toast = new ToastService(
+        { get: (_k: string, d: any) => d } as any,
+        {} as any,
+        { supabase: client, getClient: () => client } as any,
+      );
+      const order = (o: string, type: string) => ({
+        eventType: type,
+        eventId: `e-${type}-${o}`,
+        order: {
+          guid: o,
+          items: [{ guid: "merlot-1", name: "House Merlot", quantity: 1, unitPrice: 60 }],
+        },
+      });
+      for (let i = 0; i < 501; i++) {
+        const o = `W-${String(i).padStart(3, "0")}`;
+        await (toast as any).applyOrderSaleEffects(HOUSE, order(o, "order.closed"));
+        tables.events.push({
+          restaurant_id: HOUSE,
+          event_type: "pos_order_closed",
+          payload: { toast_order_guid: o, toast_closed_at: "2026-11-02T20:00:00Z" },
+        });
+      }
+      const first: any = await mapMerlot(hub, { source: "toast" });
+      expect(first.past_sales).toMatchObject({ applied: 500, truncated: true });
+      const waiting = open(tables).map((r) => r.external_check_id);
+      expect(waiting).toHaveLength(1);
+
+      // The till voids the waiting order after the mapping exists.
+      await (toast as any).applyOrderSaleEffects(
+        HOUSE,
+        order(waiting[0], "order.voided"),
+      );
+      tables.events.push({
+        restaurant_id: HOUSE,
+        event_type: "pos_order_voided",
+        payload: { toast_order_guid: waiting[0], toast_closed_at: "2026-11-02T20:00:00Z" },
+      });
+      await mapMerlot(hub, { source: "toast" });
+
+      expect(bottles()).toBe(12 - 500);
+      expect(open(tables)).toHaveLength(0);
+    },
+  );
+});
+
