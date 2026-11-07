@@ -4013,8 +4013,10 @@ export class AuthService {
    * whether the email matches an account — enumeration resistance is the
    * point. The only branch that differs is entirely internal: no row is
    * inserted and no email is sent for an unknown address, but the caller
-   * cannot observe that from the response or the response time (the lookup
-   * runs either way).
+   * cannot observe that from the response or the response time: the answer is
+   * returned before any database round trip, and everything that depends on
+   * the account (lookup, cooldown read, insert, mail) runs in the background
+   * in requestPasswordResetInBackground (QA round 18, R11-04).
    *
    * Per-email throttling lives here as a DB timestamp check, same pattern as
    * resendVerification() above. Per-IP throttling is a separate, coarser
@@ -4029,6 +4031,23 @@ export class AuthService {
   ): Promise<{ sent: true }> {
     const normalizedEmail = email.trim().toLowerCase();
 
+    void this.requestPasswordResetInBackground(
+      normalizedEmail,
+      requestIp,
+    ).catch((err) =>
+      this.logger.error(
+        `Password reset request failed for ${normalizedEmail}: ${err?.message}`,
+      ),
+    );
+
+    return { sent: true };
+  }
+
+  /** The account-dependent part of requestPasswordReset, off the request's clock. */
+  private async requestPasswordResetInBackground(
+    normalizedEmail: string,
+    requestIp: string | null,
+  ): Promise<void> {
     const { data: user } = await this.databaseService.supabase
       .from("users")
       .select("user_id, name, email")
@@ -4041,7 +4060,7 @@ export class AuthService {
       this.logger.log(
         `Password reset requested for unknown email (no-op): ${normalizedEmail}`,
       );
-      return { sent: true };
+      return;
     }
 
     const { data: recent } = await this.databaseService.supabase
@@ -4063,7 +4082,7 @@ export class AuthService {
         this.logger.log(
           `Password reset re-requested within cooldown for ${normalizedEmail} — suppressing duplicate email`,
         );
-        return { sent: true };
+        return;
       }
     }
 
@@ -4083,7 +4102,7 @@ export class AuthService {
         `Failed to create password reset row for ${normalizedEmail}: ${insertErr?.message}`,
       );
       // Do not leak the failure to the caller — same reasoning as above.
-      return { sent: true };
+      return;
     }
 
     // FRONTEND_URL is a comma-separated CORS allow-list; canonicalOrigin()
@@ -4098,8 +4117,6 @@ export class AuthService {
     // account exists -- what the doc comment above says it must not. The
     // emailed sign-in code already sends this way (sign-in-codes.service.ts).
     void this.sendPasswordResetMail(normalizedEmail, user.name, resetUrl);
-
-    return { sent: true };
   }
 
   /** The reset mail, sent off the request's clock; failures are logged only. */

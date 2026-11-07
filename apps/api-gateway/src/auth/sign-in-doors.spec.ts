@@ -98,6 +98,59 @@ describe("password-reset request does not wait for the mail (R11-04)", () => {
   });
 });
 
+describe("password-reset request answers before any database round trip (QA round 18)", () => {
+  const flush = async () => {
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+  };
+
+  /** A query builder whose every call chains and whose await never settles. */
+  const neverResolves: any = new Proxy(() => undefined, {
+    get: (_t, key) => (key === "then" ? () => undefined : neverResolves),
+    apply: () => neverResolves,
+  });
+
+  it("resolves for a known and an unknown address although no query ever answers", async () => {
+    const { svc } = service([member()]);
+    (svc as any).databaseService = { supabase: { from: () => neverResolves } };
+
+    const answers = await Promise.race([
+      Promise.all([
+        svc.requestPasswordReset("chef@bistro.com", "203.0.113.5"),
+        svc.requestPasswordReset("nobody@bistro.com", "203.0.113.5"),
+      ]),
+      new Promise((r) => setTimeout(() => r("hung"), 250)),
+    ]);
+
+    expect(answers).toEqual([{ sent: true }, { sent: true }]);
+  });
+
+  it("still inserts the row and sends the mail for a known address, and neither for an unknown one", async () => {
+    const { db, svc, mail } = service([member()]);
+
+    await svc.requestPasswordReset("nobody@bistro.com", "203.0.113.5");
+    await flush();
+    expect(db.tables.password_resets).toHaveLength(0);
+    expect(mail.sendEmail).not.toHaveBeenCalled();
+
+    await svc.requestPasswordReset("chef@bistro.com", "203.0.113.5");
+    await flush();
+    expect(db.tables.password_resets).toHaveLength(1);
+    expect(mail.sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("a request inside the cooldown gets no second row and no second mail", async () => {
+    const { db, svc, mail } = service([member()]);
+
+    await svc.requestPasswordReset("chef@bistro.com", "203.0.113.5");
+    await flush();
+    await svc.requestPasswordReset("chef@bistro.com", "203.0.113.5");
+    await flush();
+
+    expect(db.tables.password_resets).toHaveLength(1);
+    expect(mail.sendEmail).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("adding a first password needs a recent sign-in (R11-08)", () => {
   it("refuses a token signed in more than ten minutes ago, and changes nothing", async () => {
     const { db, svc } = service([member({ password_hash: null })]);
