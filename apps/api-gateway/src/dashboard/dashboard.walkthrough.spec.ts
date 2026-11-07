@@ -2,6 +2,7 @@ import { Test, TestingModule } from "@nestjs/testing";
 import { DashboardService, eventSentence } from "./dashboard.service";
 import { DatabaseService } from "../database/database.service";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
+import { calendarForRole } from "./amounts-for-role";
 
 /**
  * The founder's dashboard walk-through, 2026-10-01 (dashboard.md §14):
@@ -59,17 +60,99 @@ function makeClient(
         (selects[table] ??= []).push(cols);
         return builder;
       });
+      // A row that carries a `restaurant_id` comes back only when the read
+      // asked for that house, as Postgres would; one asked for no house comes
+      // back whatever its house. A fixture row from another house is how a
+      // test sees a read that lost its tenant filter (PR #579 audit note 4).
+      const inHouse = (row: any) =>
+        !row ||
+        typeof row !== "object" ||
+        !("restaurant_id" in row) ||
+        asked
+          .filter((a) => a[0] === "eq" && a[1] === "restaurant_id")
+          .every((a) => a[2] === row.restaurant_id);
       builder.then = (resolve: any, reject: any) =>
         Promise.resolve(
           errorsByTable[table]
             ? { data: null, error: { message: errorsByTable[table] } }
-            : { data: rowsByTable[table] ?? [], error: null },
+            : { data: (rowsByTable[table] ?? []).filter(inHouse), error: null },
         ).then(resolve, reject);
       return builder;
     }),
   };
   return client;
 }
+
+/**
+ * A PostgREST stand-in that pages as the server does: `max_rows` 1,000 caps
+ * every answer, `order("id")` sorts, `gt("id")` moves the cursor, `limit`
+ * cuts, and `{ count: "exact" }` reports the rows past the cursor. `lie`
+ * makes a table's count claim rows it never serves. Filters other than the
+ * cursor pass through.
+ */
+function pagedClient(
+  rowsByTable: Record<string, any[]>,
+  lie: Record<string, number> = {},
+) {
+  return {
+    from: jest.fn((table: string) => {
+      const builder: any = {};
+      let counted = false;
+      let after: string | null = null;
+      let cap = 1000;
+      let ordered = false;
+      for (const m of [
+        "eq",
+        "neq",
+        "gte",
+        "lt",
+        "lte",
+        "is",
+        "in",
+        "or",
+        "not",
+      ])
+        builder[m] = () => builder;
+      builder.select = (_cols: string, opts?: { count?: string }) => {
+        counted = opts?.count === "exact";
+        return builder;
+      };
+      builder.order = (col: string) => {
+        ordered = col === "id";
+        return builder;
+      };
+      builder.gt = (col: string, v: string) => {
+        if (col === "id") after = v;
+        return builder;
+      };
+      builder.limit = (n: number) => {
+        cap = Math.min(cap, n);
+        return builder;
+      };
+      builder.then = (resolve: any, reject: any) => {
+        let rows = [...(rowsByTable[table] ?? [])];
+        if (ordered)
+          rows.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+        if (after !== null) rows = rows.filter((r) => r.id > after!);
+        const count = counted
+          ? rows.length + (after === null ? (lie[table] ?? 0) : 0)
+          : null;
+        return Promise.resolve({
+          data: rows.slice(0, cap),
+          error: null,
+          count,
+        }).then(resolve, reject);
+      };
+      return builder;
+    }),
+  };
+}
+
+const many = (n: number, row: (i: number) => Record<string, unknown>) =>
+  Array.from({ length: n }, (_, i) => ({
+    id: `x-${String(i).padStart(6, "0")}`,
+    ...row(i),
+  }));
 
 const CHICAGO = [{ timezone: "America/Chicago" }];
 
@@ -317,7 +400,11 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
         }),
       ).toEqual({ title: "Chablis", description: "3 → 1 bottle" });
       expect(
-        eventSentence("inventory_change", { type: "add", wineName: "Barolo", quantity: 6 }),
+        eventSentence("inventory_change", {
+          type: "add",
+          wineName: "Barolo",
+          quantity: 6,
+        }),
       ).toEqual({ title: "Barolo", description: "added, 6 bottles" });
       // An add with no count (PR #579 review): "added", never "added, ".
       expect(
@@ -429,5 +516,230 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
         /read failed: refused/,
       );
     });
+  });
+  // PR #579 audit note 2 (DASH-G2's size half): the stat cards read every
+  // row or refuse; past PostgREST's 1,000 they printed a slice as the total.
+  describe("the stat cards read whole or refuse (ADR 0292)", () => {
+    const TODAY_DELIVERY = {
+      status: ProcurementOrderStatus.DELIVERED,
+      total_cost: 1,
+      final_price: null,
+      bottles_total: 1,
+      quantity: 1,
+      delivered_at: "2026-10-01T18:00:00Z",
+    };
+
+    it("counts past 1,000 rows on all three reads", async () => {
+      db.getClient.mockReturnValue(
+        pagedClient({
+          restaurants: CHICAGO,
+          restaurant_inventory: many(1500, () => ({
+            stock_live: 1,
+            bottle_size_ml: 750,
+          })),
+          v_low_stock_items: many(1200, () => ({})),
+          procurement_orders: many(1100, () => TODAY_DELIVERY),
+        }),
+      );
+      const stats: any = await service.getStats("r1");
+      expect(stats.totalWines).toBe(1500);
+      expect(stats.totalBottles).toBe(1500);
+      expect(stats.lowStockItems).toBe(1200);
+      expect(stats.todayDeliveries).toBe(1100);
+      expect(stats.todayProcurementSpend).toBe(1100);
+    });
+
+    it.each([
+      "restaurant_inventory",
+      "v_low_stock_items",
+      "procurement_orders",
+    ])("refuses rather than counting part of %s", async (table) => {
+      db.getClient.mockReturnValue(
+        pagedClient(
+          {
+            restaurants: CHICAGO,
+            restaurant_inventory: many(3, () => ({ stock_live: 1 })),
+            v_low_stock_items: many(3, () => ({})),
+            procurement_orders: many(3, () => TODAY_DELIVERY),
+          },
+          { [table]: 5 },
+        ),
+      );
+      await expect(service.getStats("r1")).rejects.toThrow(
+        /could not be read whole/,
+      );
+    });
+  });
+
+  // PR #579 audit note 4: a read that loses its house filter fails a test.
+  describe("each read stays in the caller's house", () => {
+    it("files only this house's calendar events and deliveries on the month", async () => {
+      db.getClient.mockReturnValue(
+        makeClient({
+          restaurants: CHICAGO,
+          calendar_events: [
+            {
+              id: "ev-mine",
+              restaurant_id: "r1",
+              title: "Ours",
+              event_type: "tasting",
+              event_date: "2026-09-05",
+              event_time: null,
+            },
+            {
+              id: "ev-theirs",
+              restaurant_id: "r2",
+              title: "Theirs",
+              event_type: "tasting",
+              event_date: "2026-09-06",
+              event_time: null,
+            },
+          ],
+          procurement_orders: [
+            { ...SEPTEMBER_DELIVERY, restaurant_id: "r1" },
+            {
+              ...SEPTEMBER_DELIVERY,
+              id: "o-theirs",
+              restaurant_id: "r2",
+              total_cost: 999,
+            },
+          ],
+        }),
+      );
+      const month: any = await service.getCalendarRevenue("r1", 2026, 9);
+      const day = (d: string) => month.daily.find((x: any) => x.date === d);
+      expect(day("2026-09-05").events.map((e: any) => e.title)).toEqual([
+        "Ours",
+      ]);
+      expect(day("2026-09-06").events).toEqual([]);
+      expect(day("2026-09-15").procurement_spend).toBe(100);
+      expect(day("2026-09-15").order_count).toBe(1);
+      expect(month.monthly_procurement_spend).toBe(100);
+    });
+
+    it("tells Lately only this house's events", async () => {
+      db.getClient.mockReturnValue(
+        makeClient({
+          events: [
+            {
+              id: "e-mine",
+              restaurant_id: "r1",
+              event_type: "provider_change",
+              payload: { type: "added", providerName: "Our Vendor" },
+              created_at: "2026-09-30T17:00:00Z",
+            },
+            {
+              id: "e-theirs",
+              restaurant_id: "r2",
+              event_type: "provider_change",
+              payload: { type: "added", providerName: "Their Vendor" },
+              created_at: "2026-09-30T18:00:00Z",
+            },
+          ],
+        }),
+      );
+      const items = await service.getActivity("r1");
+      expect(items.map((a) => a.description)).toEqual(["Our Vendor"]);
+    });
+  });
+
+  // PR #579 audit note 3: the summary's notices floor, tested at the service.
+  // The controller refuses a caller with no role first, so this floor is not
+  // reachable through the route today; it holds for any other caller.
+  describe("the dashboard summary reads no notices without a user", () => {
+    it.each([[undefined], [null], [""], ["   "]])(
+      "reads none for user %p, never the house's",
+      async (userId) => {
+        const client = makeClient({
+          notifications: [
+            {
+              id: "n-owner",
+              user_id: "u-owner",
+              restaurant_id: "r1",
+              read_at: null,
+            },
+          ],
+        });
+        db.getClient.mockReturnValue(client);
+        const summary: any = await service.getDashboardSummary(
+          "r1",
+          userId as any,
+        );
+        expect(summary.notifications).toEqual({ recent: [], unreadCount: 0 });
+        expect(client.from).not.toHaveBeenCalledWith("notifications");
+      },
+    );
+  });
+
+  // PR #579 audit note 5: the month's sales have a second barrier. Even a
+  // ledger that arrived WITH sales leaves the gateway without them for a role
+  // that does not see sales.
+  describe("calendarForRole withholds sales as well as amounts", () => {
+    const withSales = () => ({
+      daily: [
+        {
+          date: "2026-10-01",
+          procurement_spend: 40,
+          bottles_sold: 2,
+          order_count: 1,
+          net_sales: 900,
+          checks: 12,
+          net_checks: 11,
+          events: [],
+        },
+      ],
+      monthly_procurement_spend: 40,
+      monthly_bottles: 2,
+      monthly_net_sales: 900,
+      monthly_checks: 12,
+      monthly_net_checks: 11,
+      monthly_days_counted: 1,
+      monthly_days_begun: 1,
+      pos_connected: true,
+      sales_withheld: false,
+    });
+
+    it.each([["staff"], ["server"], [null], [undefined], ["__proto__"]])(
+      "nulls every sales figure for %p",
+      (role) => {
+        const out: any = calendarForRole(withSales(), role as any);
+        expect(out.daily[0]).toMatchObject({
+          net_sales: null,
+          checks: null,
+          net_checks: null,
+          bottles_sold: 2,
+          order_count: 1,
+        });
+        expect(out).toMatchObject({
+          monthly_net_sales: null,
+          monthly_checks: null,
+          monthly_net_checks: null,
+          monthly_days_counted: null,
+          monthly_days_begun: null,
+          pos_connected: null,
+          sales_withheld: true,
+          amounts: "withheld",
+        });
+      },
+    );
+
+    it.each([["owner"], ["manager"], ["Admin"]])(
+      "keeps the sales for %s",
+      (role) => {
+        const out: any = calendarForRole(withSales(), role);
+        expect(out.daily[0]).toMatchObject({
+          net_sales: 900,
+          checks: 12,
+          net_checks: 11,
+        });
+        expect(out).toMatchObject({
+          monthly_net_sales: 900,
+          monthly_checks: 12,
+          pos_connected: true,
+          sales_withheld: false,
+          amounts: "shown",
+        });
+      },
+    );
   });
 });

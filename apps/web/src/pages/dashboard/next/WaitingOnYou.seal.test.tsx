@@ -77,10 +77,12 @@ function order(over: Partial<Order> = {}): Order {
   } as Order;
 }
 
+// The page passes `seesAmounts` explicitly (DashboardNext.tsx); these cases are
+// the money-seeing role's, so they say so rather than lean on a default.
 function mount(pending: Order[] | null | undefined, onChanged = vi.fn(), restaurantId?: string) {
   return render(
     <MemoryRouter>
-      <WaitingOnYou pending={pending} onChanged={onChanged} restaurantId={restaurantId} />
+      <WaitingOnYou pending={pending} onChanged={onChanged} restaurantId={restaurantId} seesAmounts />
     </MemoryRouter>,
   );
 }
@@ -255,6 +257,19 @@ describe('the states that are not an approval', () => {
     expect(screen.queryByText('$0')).not.toBeInTheDocument();
     openRow();
     expect(screen.getByRole('button', { name: /Hold to approve · \$2,000/i })).toBeInTheDocument();
+  });
+
+  // PR #579 audit note 6: a caller that leaves `seesAmounts` out draws no
+  // money: the prop fails closed.
+  it('draws no money when the caller does not say the role sees it', () => {
+    render(
+      <MemoryRouter>
+        <WaitingOnYou pending={[order()]} onChanged={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByText('$2,000')).not.toBeInTheDocument();
+    openRow();
+    expect(screen.getByRole('button', { name: /^Hold to approve$/i })).toBeInTheDocument();
   });
 
   it('says nothing about money the route did not carry', () => {

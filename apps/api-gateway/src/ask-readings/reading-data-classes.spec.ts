@@ -79,6 +79,21 @@ describe("ROLE_POLICY: one table, and the fallback row is the least privileged",
     expect(policyFor("owner")).toBe(ROLE_POLICY.owner);
   });
 
+  // PR #579 audit note 7: the alias lookup reads own keys only. A role named
+  // after an Object.prototype member used to resolve to that member, and
+  // policyFor then threw a TypeError instead of failing closed.
+  // The role is lower-cased first, so only the all-lower-case members
+  // ("__proto__", "constructor") were reachable.
+  it.each(["__proto__", "constructor", " __PROTO__ ", "Constructor"])(
+    "reads %p as an unknown role: the fallback row, never a TypeError",
+    (role) => {
+      expect(policyRoleFor(role)).toBe(ROLE_POLICY_FALLBACK);
+      expect(policyFor(role)).toBe(ROLE_POLICY[ROLE_POLICY_FALLBACK]);
+      expect(failureDetailFor(role)).toBe(FAILURE_DETAIL[ROLE_POLICY_FALLBACK]);
+      expect(policyFor(role).sees).not.toContain("money");
+    },
+  );
+
   it("rolesSeeing: a class set staff do not see leaves owner and manager", () => {
     expect(rolesSeeing(["stock"])).toEqual(["owner", "manager", "staff"]);
     expect(rolesSeeing(["stock", "money"])).toEqual(["owner", "manager"]);
