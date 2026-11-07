@@ -3,6 +3,10 @@ import { ConfigService } from "@nestjs/config";
 import { randomBytes } from "crypto";
 import { DatabaseService } from "../../database/database.service";
 import { addressesIn } from "../../communications/inbound-headers";
+import {
+  recordTestLetterArrival,
+  testCodeIn,
+} from "../../communications/mail-setup/test-letter";
 
 /**
  * InboundAddressService — Phase 1 dedicated-domain inbound addressing.
@@ -133,5 +137,31 @@ export class InboundAddressService {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * A house's "send a test letter" check (founder /goal 2026-11-07). True when
+   * this letter's subject carries a code that one of THIS house's open checks
+   * started, and the check is now marked arrived. False when the subject has
+   * no code or no open check of this house matches, so the letter goes on
+   * down the normal path and nothing is lost.
+   *
+   * Unlike the rest of this service a failed write is NOT swallowed: it throws,
+   * so the webhook answers 503 and the provider retries, instead of telling
+   * the owner "not arrived yet" about a letter that did arrive.
+   */
+  async noteTestLetter(
+    restaurantId: string,
+    subject: string,
+    from: string,
+  ): Promise<boolean> {
+    const code = testCodeIn(subject);
+    if (!code || !restaurantId) return false;
+    return recordTestLetterArrival(
+      this.databaseService.supabase,
+      restaurantId,
+      code,
+      from,
+    );
   }
 }
