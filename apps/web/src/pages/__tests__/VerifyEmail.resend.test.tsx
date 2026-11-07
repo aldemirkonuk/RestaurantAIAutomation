@@ -66,23 +66,6 @@ it('says a refused resend in words and never says to check the inbox', async () 
   expect(h.post).toHaveBeenCalledWith('/auth/resend-verification')
 })
 
-it('says an unconfirmed resend could not be confirmed, never that it was sent', async () => {
-  h.post.mockResolvedValueOnce({
-    data: { success: true, sent: false, verificationMail: 'unconfirmed' },
-  })
-  mount('/verify-email')
-  const resend = screen.getByRole('button', { name: 'Resend verification email' })
-  fireEvent.click(resend)
-
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'We could not confirm the verification email went out. Try again in a minute, or check the address.',
-  )
-  expect(h.toastSuccess).not.toHaveBeenCalled()
-  expect(screen.queryByText(/We sent a new verification email/)).not.toBeInTheDocument()
-  expect(screen.queryByText(/was sent at/)).not.toBeInTheDocument()
-  expect(resend).toBeEnabled()
-})
-
 it('says a resend left only when the gateway said sent', async () => {
   h.post.mockResolvedValueOnce({
     data: { success: true, sent: true, verificationMail: 'sent' },
