@@ -962,23 +962,25 @@ describe('a title no zone holds reads "none on hand" or "Unassigned" (INV-W34)',
 });
 
 describe('INV-W38 — the view is the URL', () => {
-  function renderAt(url: string) {
-    const seen = { path: '', search: '', back: () => undefined as void };
+  function renderAt(url: string, before: string[] = []) {
+    const seen = { path: '', search: '', back: () => undefined as void, replace: (_to: string) => undefined as void };
     function Probe() {
       const loc = useLocation();
       const nav = useNavigate();
       seen.path = loc.pathname;
       seen.search = loc.search;
       seen.back = () => nav(-1);
+      seen.replace = (to: string) => nav(to, { replace: true });
       return null;
     }
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={[url]}>
+        <MemoryRouter initialEntries={[...before, url]} initialIndex={before.length}>
           <Routes>
             <Route path="/inventory" element={<InventoryNext />} />
             <Route path="/receiving" element={<div data-testid="receiving" />} />
+            <Route path="/home" element={<div data-testid="home" />} />
           </Routes>
           <Probe />
         </MemoryRouter>
@@ -1037,6 +1039,94 @@ describe('INV-W38 — the view is the URL', () => {
     mock.data = data({ rows: two() });
     renderAt('/inventory');
     expect(screen.queryByTestId('inventory-kinds')).toBeNull();
+  });
+
+  it('lists a supply under Supplies, never under Drinks', () => {
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 's', wineId: null, name: 'Napkins', type: null, kind: null })],
+      rawItems: [{ id: 's', kind: 'supply', uom: 'each', display_name: 'Napkins' }],
+    });
+    renderAt('/inventory');
+    const kinds = screen.getByTestId('inventory-kinds');
+    fireEvent.click(within(kinds).getByRole('button', { name: 'Drinks' }));
+    expect(screen.queryByTestId('inv-row-s')).toBeNull();
+    expect(screen.getByTestId('inv-row-a')).toBeTruthy();
+    fireEvent.click(within(kinds).getByRole('button', { name: 'Supplies' }));
+    expect(screen.getByTestId('inv-row-s')).toBeTruthy();
+    expect(screen.queryByTestId('inv-row-a')).toBeNull();
+  });
+
+  it('ignores a ?kind= the page does not know, and lists every good', () => {
+    expect(readView(new URLSearchParams('kind=bogus')).kind).toBe('');
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+    });
+    renderAt('/inventory?kind=bogus');
+    expect(screen.getByTestId('inv-row-a')).toBeTruthy();
+    expect(screen.getByTestId('inv-row-f')).toBeTruthy();
+  });
+
+  it('offers Carry to an owner or manager', () => {
+    mock.data = data({ rows: two(), canManage: true });
+    renderAt('/inventory');
+    expect(screen.getByRole('button', { name: 'Carry a food or supply' })).toBeTruthy();
+  });
+
+  it('offers no Carry to staff', () => {
+    mock.data = data({ rows: two(), canManage: false });
+    renderAt('/inventory');
+    expect(screen.queryByRole('button', { name: 'Carry a food or supply' })).toBeNull();
+  });
+
+  const closeDrawer = () => fireEvent.click(document.querySelector('.iv-drawer .mdv-ovl__close') as HTMLElement);
+
+  it('(f) Close on a row opened here steps back, so the next Back leaves the page', () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory', ['/home']);
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    expect(screen.getByTestId('ivd-cards')).toBeTruthy();
+    closeDrawer();
+    expect(screen.queryByTestId('ivd-cards')).toBeNull();
+    expect(seen.path).toBe('/inventory');
+    expect(new URLSearchParams(seen.search).has('open')).toBe(false);
+    // Close popped the entry the row pushed: one Back now leaves /inventory.
+    act(() => seen.back());
+    expect(seen.path).toBe('/home');
+  });
+
+  it('(g) Close on a drawer a link opened closes in place and never leaves the page', () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory?open=b', ['/home']);
+    expect(screen.getByRole('heading', { name: 'Istanbul White' })).toBeTruthy();
+    closeDrawer();
+    expect(screen.queryByTestId('ivd-cards')).toBeNull();
+    expect(seen.path).toBe('/inventory');
+    expect(new URLSearchParams(seen.search).has('open')).toBe(false);
+  });
+
+  it('(g2) after Back closes a row, a drawer a link then opens still closes in place', () => {
+    mock.data = data({ rows: two() });
+    const seen = renderAt('/inventory', ['/home']);
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    act(() => seen.back());
+    expect(screen.queryByTestId('ivd-cards')).toBeNull();
+    act(() => seen.replace('/inventory?open=a'));
+    expect(screen.getByRole('heading', { name: 'Ankara Red' })).toBeTruthy();
+    closeDrawer();
+    expect(seen.path).toBe('/inventory');
+    expect(screen.queryByTestId('ivd-cards')).toBeNull();
+  });
+
+  it('(h) a drawer opened on another item starts fresh, with no detail card left open', () => {
+    mock.data = data({ rows: two() });
+    renderAt('/inventory');
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    fireEvent.click(screen.getByTestId('ivd-card-gap'));
+    expect(screen.getByTestId('ivd-evidence')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('inv-row-a').querySelector('button[aria-expanded]')!);
+    expect(screen.getByRole('heading', { name: 'Ankara Red' })).toBeTruthy();
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
   });
 
   it('opens the title a ?highlight= link names, by row id or by wine id', () => {

@@ -86,6 +86,18 @@ const menuLine = (r: Record<string, any>): MenuLine => ({
   bottlePrice: money(r.bottle_price),
 });
 
+/**
+ * No active menu is a named state, not an empty menu (ADR 0193,
+ * menus/current-menu-lines.ts): every menu that is read lands as a draft until
+ * it is made current, so "no line" here says nothing about this item.
+ */
+const NO_CURRENT_MENU: Group<never> = {
+  readable: true,
+  lines: [],
+  source:
+    "This house has no current menu, so no line is on it. A menu that was read but never made current is not counted.",
+};
+
 const failed = <T>(what: string, message: string): Group<T> => ({
   readable: false,
   lines: null,
@@ -142,8 +154,8 @@ export class ItemUsedInService {
     menusError?: string,
   ): Promise<Group<MenuLine>> {
     if (menuIds === null) return failed("The house's current menu", menusError ?? "");
+    if (menuIds.length === 0) return NO_CURRENT_MENU;
     const source = "Lines on the house's current menu linked to this item.";
-    if (menuIds.length === 0) return { readable: true, lines: [], source };
     let q = client
       .from("menu_items")
       .select(LINE_COLS)
@@ -182,10 +194,11 @@ export class ItemUsedInService {
     sold: MenuLine[] | null,
   ): Promise<Group<MenuLine>> {
     if (menuIds === null) return failed("The house's current menu", menusError ?? "");
+    if (menuIds.length === 0) return NO_CURRENT_MENU;
     const source =
       "Lines on the current menu with this item's name and no link to any item. Not counted until linked.";
     const want = item.displayName ? foldName(item.displayName) : "";
-    if (menuIds.length === 0 || !want) return { readable: true, lines: [], source };
+    if (!want) return { readable: true, lines: [], source };
     const taken = new Set((sold ?? []).map((l) => l.menuItemId));
     const lines: MenuLine[] = [];
     let after: string | null = null;

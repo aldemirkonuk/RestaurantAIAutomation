@@ -71,4 +71,18 @@ describe('Carry this', () => {
     expect((screen.getByRole('button', { name: 'Carry this' }) as HTMLButtonElement).disabled).toBe(true);
     expect(api.carry).not.toHaveBeenCalled();
   });
+  it('takes a par only as a whole number of the unit: a decimal or a negative adds nothing', () => {
+    open();
+    fireEvent.change(nameField(), { target: { value: 'Un' } });
+    const par = screen.getByLabelText(/Par/);
+    const button = () => screen.getByRole('button', { name: 'Carry this' }) as HTMLButtonElement;
+    for (const bad of ['1.5', '-2']) {
+      fireEvent.change(par, { target: { value: bad } });
+      expect(button().disabled).toBe(true);
+      expect(screen.getByText('A par is a whole number, or leave it empty.')).toBeTruthy();
+    }
+    fireEvent.change(par, { target: { value: '500' } });
+    expect(button().disabled).toBe(false);
+    expect(api.carry).not.toHaveBeenCalled();
+  });
 });
