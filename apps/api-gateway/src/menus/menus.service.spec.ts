@@ -10,6 +10,7 @@ import { MEMBER_LINE_KEYS, seesRawLine } from "./menu-line-view";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
 import { MenuReadWaitingException } from "./parsers/scan-parser.service";
+import { createHash } from "crypto";
 
 /**
  * getMenu — SimPOS testbed plan decision 39. The menus module had no read
@@ -905,6 +906,33 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
     expect(version).toMatchObject({ source_method: "scan", source_mime: "application/pdf" });
     expect(version.source_path).toMatch(/^rest-1\/menus\/[0-9a-f]{64}\.pdf$/);
+  });
+
+  it("a dropped photo sent as a data URL is read and kept as the decoded file, not the prefix's letters (gap M6)", async () => {
+    const tables: Record<string, Row[]> = base();
+    const parse = jest.fn(async () => [{ name: "Opus One", bottle_price: 62 }]);
+    const service = makeService(tables, { wineSubmissions, scanParser: { parse } });
+    const photo = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 3)]);
+    const bare = photo.toString("base64");
+    const r = await service.importMenu(
+      { method: "scan", data: { imageBase64: `data:image/png;base64,${bare}` }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    // The model is given the bare base64 ...
+    expect(parse).toHaveBeenCalledWith(bare, "rest-1");
+    // ... and the kept file is those same bytes: its content address is their sha256.
+    const sha = createHash("sha256").update(photo).digest("hex");
+    const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
+    expect(version).toMatchObject({ source_mime: "image/png", source_path: `rest-1/menus/${sha}.png` });
+    expect(tables.__storage[0]).toMatchObject({ path: `rest-1/menus/${sha}.png`, bytes: photo.length, contentType: "image/png" });
+  });
+
+  it("Arrival's menu evidence hands the parser bare base64 when a data URL arrives", async () => {
+    const parse = jest.fn(async () => [{ name: "Opus One", bottle_price: 62 }]);
+    const service = makeService(base(), { wineSubmissions, scanParser: { parse } });
+    const bare = Buffer.from("%PDF-1.7 menu").toString("base64");
+    await service.previewArrivalMenu("scan", `data:application/pdf;base64,${bare}`, "rest-1");
+    expect(parse).toHaveBeenCalledWith(bare, "rest-1", true);
   });
 
   describe("makeCurrent — the person's choice, then the menu's prices reach the house", () => {
