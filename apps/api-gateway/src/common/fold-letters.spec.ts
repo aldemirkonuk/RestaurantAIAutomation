@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 
+import { normalizeIdentityText } from "../vendor-intel/wine-identity";
 import { normalizeSignatureText } from "../wines/wine-signature";
 import {
   UNDECOMPOSABLE_LETTERS,
@@ -44,15 +45,17 @@ describe("foldUndecomposableLetters", () => {
     expect(foldUndecomposableLetters("")).toBe("");
   });
 
-  it.each(UNDECOMPOSABLE_LETTERS.map(([l, f]) => [l, f]))(
-    "is applied by the library normaliser to %j",
-    (letter, fold) => {
-      expect(normalizeSignatureText(`x${letter}y`)).toBe(`x${fold}y`);
-      expect(normalizeSignatureText(`X${letter.toUpperCase()}Y`)).toBe(
-        normalizeSignatureText(`x${letter}y`),
-      );
-    },
-  );
+  it.each(
+    UNDECOMPOSABLE_LETTERS.flatMap(([l, f]) => [
+      ["normalizeSignatureText", normalizeSignatureText, l, f] as const,
+      ["normalizeIdentityText", normalizeIdentityText, l, f] as const,
+    ]),
+  )("%s applies the table", (_name, normalize, letter, fold) => {
+    expect(normalize(`x${letter}y`)).toBe(`x${fold}y`);
+    expect(normalize(`X${letter.toUpperCase()}Y`)).toBe(
+      normalize(`x${letter}y`),
+    );
+  });
 });
 
 describe("the SQL twin public.fold_undecomposable_letters", () => {
