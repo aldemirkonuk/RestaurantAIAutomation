@@ -14,9 +14,15 @@ Filed with the entry above; narrowed the same day by the round 6 follow-up (QA `
 
 **What closes it.** Each remaining caller returns the `VerificationMail` it gets, and its screen says it. The sign-up screen (`Register.tsx`) also still ignores `verificationMail` (OB-6, entry above).
 
-## Sign-up and resend now wait on the mailer with no timeout — OPEN — 2026-11-07
+## ~~Sign-up and resend now wait on the mailer with no timeout~~ — ~~OPEN~~ CLOSED on `fix/onboarding-verify-mail-bounded-send` — 2026-11-07
 
 Filed by the round 6 follow-up. QA round 6 noted that awaiting the send puts the mail call inside sign-up's latency and that no timeout was seen on that path. The resend path always awaited it. Neither was measured; `GmailService.sendEmail` was not read for a timeout in this lane. **What closes it:** measure the mailer's worst case and bound it, with a timed-out send answered as its own outcome (it may still have left), never as `not_sent`.
+
+[resolved 2026-11-07 on `fix/onboarding-verify-mail-bounded-send`: `queueEmailVerification` races `sendEmail` against `VERIFICATION_SEND_BOUND_MS` (8 s) and answers `'unconfirmed'` for a send still open at the bound; the late answer is still logged; a resend answers `{ sent: false, verificationMail: 'unconfirmed' }`. Proof: `verification-mail-timeout.spec.ts`. `gmail.service.ts` bounds only its OAuth token fetch (10 s); `messages.send` has none. The measuring half stays open below.]
+
+## The 8 s verification-send bound is unmeasured — OPEN — 2026-11-07
+
+Filed by `fix/onboarding-verify-mail-bounded-send`. `VERIFICATION_SEND_BOUND_MS` is 8 s, the session's call under the /goal; nobody has measured production Gmail's `messages.send` latency, so the bound may cut off sends that would have left (they answer `'unconfirmed'` and usually still arrive) or wait longer than a person will. The first send after a cold start also loads googleapis lazily (`gmail.service.ts`, "blocks the event loop for 60-90s"), which this bound does not shorten for the process, only for the answer. **What closes it:** read the send-latency distribution from production logs (the late-answer lines now say when a send outran the bound) and set the bound from it.
 
 ## A verify_email code is a weaker mailbox proof than the link — OPEN — 2026-11-07
 
@@ -35,5 +41,6 @@ Filed with the entry above.
 - **A resend spends the address's code budget.** Every path through `queueEmailVerification` (sign-up, resend, and the two other callers) now issues a `verify_email` code, and `MAX_CODES_PER_EMAIL_PER_HOUR` (5) counts it with sign-in and step-up codes for the same address. Resend allows one a minute (`auth.controller.ts`, `resendVerification`), so five resends in an hour leave no sign-in code for that address until the hour passes; the mail still goes, with the link and without a code (`auth.service.ts`, the `issueForEmailVerification` catch). The public sign-in route can already exhaust the same budget, so this adds no new lockout class. What closes it: a separate per-address budget for `verify_email`, decided with the tighter-budget entry above.
 - **Messages say "link".** The 503 and 400 answers `verifyEmailProvedByLink` gives (it is shared by both proofs) say "verification link" even when the proof was a code.
 - **The opt-in Gmail e2e still sends its own payload.** `communications/tests/register-verification-email.e2e.spec.ts` builds a link-only body by hand instead of rendering `verifyEmailTemplate`. It sends real mail and is opt-in, so it was not touched or run.
+- **The controller's resend comment names two outcomes.** `auth.controller.ts`'s `resendVerification` comment still says `'sent' | 'not_sent'`; since `fix/onboarding-verify-mail-bounded-send` the answer can also be `'unconfirmed'`. That lane was not given the controller file.
 - **Production mail is unverified.** Nothing here proves the production sender works. The proposal's §6 already lists this.
 - **ADR 0174's paper value.** The sheet uses `--paper-0` (`#fffdf8`, ADR 0104 D9's sheet) on `--paper-1`. ADR 0174 left that value open, and this session chose it under the /goal. The other account mails (reset, invite, step-up code) still use `baseTemplate`'s wine banner.

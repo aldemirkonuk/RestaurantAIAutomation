@@ -151,8 +151,8 @@ export function VerifyEmail() {
       // Said from what the mailer answered (round 2 B-5, round 6 #789): a
       // refused send is an inline error in words, never "check your inbox".
       const outcome = resendOutcome(data)
-      if (outcome === 'not_sent') {
-        setError(verificationMailSentence('not_sent'))
+      if (outcome !== 'sent') {
+        setError(verificationMailSentence(outcome))
         return
       }
       setLastResent(new Date())
