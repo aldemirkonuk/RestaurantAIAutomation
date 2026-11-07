@@ -172,6 +172,11 @@ describe("ADR 0346 :63 (D4 b): the open gap's terminators", () => {
     expect(run({ paidAt: at(90), leftAt: at(30) }).byWaiter.get("W")).toEqual([5, 25]);
   });
 
+  it("ends at Paid or leave when either comes before the last tap", () => {
+    expect(run({ paidAt: at(20), caretakerLastTapAt: at(200) }).byWaiter.get("W")).toEqual([5, 15]);
+    expect(run({ leftAt: at(25), caretakerLastTapAt: at(200) }).byWaiter.get("W")).toEqual([5, 20]);
+  });
+
   it("a last tap before the last visit adds no open gap", () => {
     expect(run({ caretakerLastTapAt: at(3), leftAt: at(300) }).byWaiter.get("W")).toEqual([5]);
   });

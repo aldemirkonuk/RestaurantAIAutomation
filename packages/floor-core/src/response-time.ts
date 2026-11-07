@@ -51,9 +51,6 @@
  *   (ADR 0351 `:23`) or no longer a member at seat time; splitting the
  *   greeting gap when the caretaker goes absent before the first visit waits
  *   for the absence flags owed with the alert scanner (ADR 0351 `:29`).
- *   With no caretaker, the greeting gap never falls to whoever tapped Seat:
- *   a closed one goes to the waiter whose visit closed it, and an open one
- *   counts for the table only.
  * - *Not closed* "beside its caretaker" (`:63`): this returns seating ids, and
  *   the caller joins each to its caretaker.
  * - Paid undone (ADR 0353 `:43`): `paidAt` is the seating's Paid as it stands
@@ -66,7 +63,10 @@
  * check-in is the last anchor carries the open gap up to the caretaker's last
  * tap. A caretaker whose last tap comes before the last anchor adds no open
  * gap: no time was shown on the floor. Facts listed twice for one seating:
- * the last row wins.
+ * the last row wins. With no caretaker at seat time (`:64` names only one who
+ * goes absent after seating), the greeting gap never falls to whoever tapped
+ * Seat: a closed one goes to the waiter whose visit closed it, and an open
+ * one counts for the table only.
  *
  * Handoff rule (Hybrid attribution, kept): when the waiter who closes a gap is
  * different from the waiter on the previous anchor, credit the **previous**
