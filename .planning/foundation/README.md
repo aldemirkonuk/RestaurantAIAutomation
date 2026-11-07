@@ -22,7 +22,7 @@ rather than hand-edited (CLAUDE.md §2):
 
 | Doc | Contents |
 |---|---|
-| [`ENDPOINTS.md`](ENDPOINTS.md) | All **448 API endpoints** across 44 modules, with auth status per route |
+| [`ENDPOINTS.md`](ENDPOINTS.md) | Every gateway route, one anchored row each (counts in its header) — generated from [`endpoints/`](endpoints/README.md) by `scripts/endpoints/`; cite `ENDPOINTS.md#<route id>` |
 | [`PAGE_MAP.md`](PAGE_MAP.md) | **51 web routes**, the navigation graph (mermaid), and cold-entry pages |
 | [`EXTERNAL_CONNECTIONS.md`](EXTERNAL_CONNECTIONS.md) | Every third-party host, SDK, and the 80 environment variables |
 

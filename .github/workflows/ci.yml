@@ -1190,6 +1190,27 @@ jobs:
           echo "::notice::AuthModule is not @Global(); a guard resolves in the context of the module declaring the controller."
           echo "::notice::Fix: add AuthModule to that module's imports — see conversations.module.ts for the house pattern."
 
+      # Founder ruling 2026-09-29: ENDPOINTS.md is generated from the controllers
+      # (scripts/endpoints/). Shape strict, lines soft: an added or removed route,
+      # or a changed method, path, guard, flag, access class, role, mount or
+      # input fails; line numbers that merely moved do not. Founder ruling
+      # 2026-09-30 ("Require trace"): no --allow-untraced, so a PR that adds a
+      # route adds its trace.json entry too (ADR 0245). Runs after the boot
+      # step's explanation so a failure here is not reported as a boot failure,
+      # and on !cancelled() so it still reports when the boot step failed.
+      - name: The endpoint reference matches the controllers
+        id: endpoints
+        if: ${{ !cancelled() }}
+        run: node scripts/endpoints/extract_routes.mjs --check && python3 scripts/endpoints/render_endpoints.py --check
+
+      - name: Explain an endpoint-reference failure
+        if: failure() && steps.endpoints.outcome == 'failure'
+        run: |
+          echo "::notice::A controller changed shape, or ENDPOINTS.md was edited by hand. Regenerate, never hand-edit:"
+          echo "::notice::  node scripts/endpoints/extract_routes.mjs && python3 scripts/endpoints/render_endpoints.py"
+          echo "::notice::'route(s) have no trace entry' means a new or renamed route: add its entry to .planning/foundation/endpoints/trace.json (schema in endpoints/README.md), then render_endpoints.py --merge and re-render."
+          echo "::notice::Exit 2 (CANNOT CHECK) means a shape the extractor does not understand: an unclassified guard (GUARD_KINDS), a dynamic path, or an inherited controller. Teach the extractor; do not skip the step."
+
   # Lint and type-check TypeScript/React code
   lint-typescript:
     name: Lint TypeScript
