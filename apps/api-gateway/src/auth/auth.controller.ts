@@ -46,6 +46,7 @@ import {
 import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
 import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
 import { RateLimit } from "../common/rate-limit";
+import { clientAddress } from "../common/rate-limit/client-address";
 import { Request } from "express";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
@@ -357,7 +358,12 @@ export class AuthController {
     @Body() body: RequestPasswordResetDto,
     @Req() req: Request,
   ) {
-    await this.authService.requestPasswordReset(body.email, req.ip || null);
+    // `req.ip` is the socket peer: without `trust proxy` that is Railway's
+    // edge, the same for every caller (R11-10).
+    await this.authService.requestPasswordReset(
+      body.email,
+      clientAddress(req),
+    );
     return {
       success: true,
       message:
