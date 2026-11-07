@@ -71,8 +71,8 @@ describe("the sign-up's mail outcome", () => {
     expect(
       screen.queryByText(/Open the verification link in your inbox/),
     ).not.toBeInTheDocument()
-    // Read once: the key is gone after the page has shown it.
-    expect(sessionStorage.getItem(KEY)).toBeNull()
+    // Kept for the session, so a reload says the same thing.
+    expect(sessionStorage.getItem(KEY)).toBe('not_sent')
   })
 
   it("t6: 'unconfirmed' says the mail may still arrive", () => {
@@ -121,5 +121,90 @@ describe("the sign-up's mail outcome", () => {
     )
     expect(h.toastSuccess).not.toHaveBeenCalled()
     expect(screen.queryByText(/was sent at/)).not.toBeInTheDocument()
+  })
+
+  it('one state: a not_sent resend after an unconfirmed note replaces it, never stacks', async () => {
+    sessionStorage.setItem(KEY, 'unconfirmed')
+    h.post.mockResolvedValueOnce({
+      data: { success: true, sent: false, verificationMail: 'not_sent' },
+    })
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Resend verification email' }))
+    await screen.findByRole('alert')
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.queryByText(/may still arrive/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/Open the verification link in your inbox/),
+    ).not.toBeInTheDocument()
+  })
+
+  it('one state: a not_sent sign-up then a not_sent resend shows one sentence, not two', async () => {
+    sessionStorage.setItem(KEY, 'not_sent')
+    h.post.mockResolvedValueOnce({
+      data: { success: true, sent: false, verificationMail: 'not_sent' },
+    })
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Resend verification email' }))
+    await screen.findByRole('alert')
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.getAllByText(/We could not send the verification email/)).toHaveLength(1)
+  })
+
+  it('one state: a sent resend clears an earlier note', async () => {
+    sessionStorage.setItem(KEY, 'not_sent')
+    h.post.mockResolvedValueOnce({
+      data: { success: true, sent: true, verificationMail: 'sent' },
+    })
+    mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Resend verification email' }))
+    expect(await screen.findByText(/was sent at/)).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('the legacy page does not list "Open the email" steps under a could-not-send note', () => {
+    localStorage.setItem('mudavym.design.public', 'false')
+    sessionStorage.setItem(KEY, 'not_sent')
+    mount()
+    expect(screen.getByRole('alert')).toHaveTextContent('We could not send')
+    expect(screen.getByText('Check Your Email')).toBeInTheDocument()
+    expect(screen.queryByText('Open the email from Mudavym')).not.toBeInTheDocument()
+  })
+
+  it('a reload keeps the not_sent note (sign-up)', () => {
+    sessionStorage.setItem(KEY, 'not_sent')
+    const first = mount()
+    first.unmount()
+    mount()
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'We could not send the verification email',
+    )
+  })
+
+  it('a reload keeps the note a not_sent resend left', async () => {
+    h.post.mockResolvedValueOnce({
+      data: { success: true, sent: false, verificationMail: 'not_sent' },
+    })
+    const first = mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Resend verification email' }))
+    await screen.findByRole('alert')
+    first.unmount()
+    mount()
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'We could not send the verification email',
+    )
+  })
+
+  it('a reload after a sent resend shows the usual words', async () => {
+    sessionStorage.setItem(KEY, 'not_sent')
+    h.post.mockResolvedValueOnce({
+      data: { success: true, sent: true, verificationMail: 'sent' },
+    })
+    const first = mount()
+    fireEvent.click(screen.getByRole('button', { name: 'Resend verification email' }))
+    await screen.findByText(/was sent at/)
+    first.unmount()
+    mount()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
