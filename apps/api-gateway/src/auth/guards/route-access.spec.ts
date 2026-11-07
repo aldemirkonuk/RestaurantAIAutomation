@@ -140,6 +140,11 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // follow-up after PR #617, the way #617 withholds them, not refused here
     // (ADR 0348 §Decision 3; its §Decision 5 names the four role-less writes).
     // Pinned end to end by analytics/analytics-money-needs-a-manager.spec.ts.
+    // The floor's two controllers are new (ADR 0345 E6): every `/floor/me`
+    // route names owner, manager AND staff; every `/floor` figure and admin
+    // route names owner AND manager, except Out tonight's mark and back,
+    // which admit staff and then check the kitchen/bar lead in the service
+    // (OD-242). Pinned per route by floor/floor-roles.spec.ts.
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -151,6 +156,8 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "communications/letters/house-letters.controller.ts",
       "conversations/conversations.controller.ts",
       "distributor-feed/distributor-feed.controller.ts",
+      "floor/floor-manager.controller.ts",
+      "floor/floor-staff.controller.ts",
       "house/house-counter.controller.ts",
       "house/house-day.controller.ts",
       "inventory-ledger/inventory-ledger.controller.ts",

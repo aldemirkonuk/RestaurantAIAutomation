@@ -614,5 +614,161 @@
     "owner",
     "manager",
     "staff"
+  ],
+  "GET /floor/me/notes (FloorStaffController.notes)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "GET /floor/me/out-tonight (FloorStaffController.outTonight)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "GET /floor/me/tables (FloorStaffController.tables)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/me/back (FloorStaffController.back)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/me/clock-in (FloorStaffController.clockIn)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/me/clock-out (FloorStaffController.clockOut)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/me/food-up (FloorStaffController.foodUp)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/me/food-up/:id/ack (FloorStaffController.foodAck)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/me/on-break (FloorStaffController.onBreak)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/me/seat (FloorStaffController.seat)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/me/seatings/:id/leave (FloorStaffController.leave)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/me/seatings/:id/paid (FloorStaffController.paid)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/me/seatings/:id/paid/undo (FloorStaffController.undoPaid)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/me/seatings/:id/visit (FloorStaffController.visit)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/out-tonight (FloorManagerController.markOut)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "POST /floor/out-tonight/:id/back (FloorManagerController.backOn)": [
+    "owner",
+    "manager",
+    "staff"
+  ],
+  "DELETE /floor/assignments/:id (FloorManagerController.release)": [
+    "owner",
+    "manager"
+  ],
+  "DELETE /floor/sections/:id (FloorManagerController.archiveSection)": [
+    "owner",
+    "manager"
+  ],
+  "GET /floor/assignments (FloorManagerController.assignments)": [
+    "owner",
+    "manager"
+  ],
+  "GET /floor/board (FloorManagerController.getBoard)": [
+    "owner",
+    "manager"
+  ],
+  "GET /floor/pos-links (FloorManagerController.posLinks)": [
+    "owner",
+    "manager"
+  ],
+  "GET /floor/report (FloorManagerController.report)": [
+    "owner",
+    "manager"
+  ],
+  "GET /floor/report/seatings.csv (FloorManagerController.seatingsCsv)": [
+    "owner",
+    "manager"
+  ],
+  "GET /floor/report/waiters.csv (FloorManagerController.waitersCsv)": [
+    "owner",
+    "manager"
+  ],
+  "GET /floor/sections (FloorManagerController.sections)": [
+    "owner",
+    "manager"
+  ],
+  "GET /floor/settings (FloorManagerController.settings)": [
+    "owner",
+    "manager"
+  ],
+  "PATCH /floor/sections/:id (FloorManagerController.updateSection)": [
+    "owner",
+    "manager"
+  ],
+  "POST /floor/assignments (FloorManagerController.assign)": [
+    "owner",
+    "manager"
+  ],
+  "POST /floor/pos-links/:id/confirm (FloorManagerController.confirmLink)": [
+    "owner",
+    "manager"
+  ],
+  "POST /floor/pos-links/:id/unlink (FloorManagerController.unlink)": [
+    "owner",
+    "manager"
+  ],
+  "POST /floor/reassign/apply (FloorManagerController.apply)": [
+    "owner",
+    "manager"
+  ],
+  "POST /floor/reassign/propose (FloorManagerController.propose)": [
+    "owner",
+    "manager"
+  ],
+  "POST /floor/sections (FloorManagerController.createSection)": [
+    "owner",
+    "manager"
+  ],
+  "PUT /floor/sections/:id/tables (FloorManagerController.setSectionTables)": [
+    "owner",
+    "manager"
+  ],
+  "PUT /floor/settings (FloorManagerController.saveSettings)": [
+    "owner",
+    "manager"
   ]
 }
