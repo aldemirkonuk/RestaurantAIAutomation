@@ -19,9 +19,12 @@ import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import type { RowDropdownProps } from './RowDropdown';
 import { cellMoney, EM, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
+import { fmtQty } from './ItemCards';
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   rows: InvRow[];
+  /** Each row's own unit (g, ml, each…); absent or null is a bottle, drawn bare as before. */
+  uomOf?: (r: InvRow) => string | null;
   /** The wine library did not answer: a missing type is unknown, not "not recorded" (INV-W28). */
   libraryUnread?: boolean;
   /** Head the rows by severity (the "Needs you first" sort). */
@@ -162,6 +165,9 @@ export default function InventoryTable(props: InventoryTableProps) {
         <tbody>
           {rows.map((row, i) => {
             const sev = severity(row);
+            // A good kept in g, ml or another unit says it (12.4 kg); a bottle stays a bare count.
+            const uom = props.uomOf?.(row) ?? null;
+            const qty = (n: number) => (uom === null || uom === 'bottle' ? fmtCount(n) : fmtQty(n, uom));
             const startsGroup = grouped && (i === 0 || severity(rows[i - 1]) !== sev);
             const open = openId === row.id;
             return (
@@ -224,10 +230,10 @@ export default function InventoryTable(props: InventoryTableProps) {
                   <td data-label="Zone">{zoneCell(row, zoneName, props.locationsUnavailable)}</td>
                   <td data-label="Live / shadow · par" className="iv-r iv-num">
                     <span>
-                      {row.stock === null ? EM : fmtCount(row.stock)}
-                      <span className="iv-dim"> / {row.shadow === null ? EM : fmtCount(row.shadow)}</span>
+                      {row.stock === null ? EM : qty(row.stock)}
+                      <span className="iv-dim"> / {row.shadow === null ? EM : qty(row.shadow)}</span>
                       {' · '}
-                      {row.par === null ? EM : fmtCount(row.par)}
+                      {row.par === null ? EM : qty(row.par)}
                     </span>
                     <ParBar row={row} />
                   </td>
