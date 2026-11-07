@@ -32,7 +32,15 @@
  *
  * A failed save says it failed, and that sentence is true: the gateway saves a
  * version in one transaction, so a refused save left the recipe as it was.
- * Only a request that never got an answer is said as unknown.
+ * Only a request that never got an answer is said as unknown. A save the
+ * gateway refused with a sentence of its own (an amount past what a line
+ * holds) shows that sentence.
+ *
+ * The sheet belongs to one drink. Its draft lives inside a component keyed by
+ * the drink, so opening another drink starts a fresh sheet and an unsaved draft
+ * can never be saved into a different drink (round-17 HARM). Loading the saved
+ * recipe over a draft sets the typed lines aside instead of dropping them, and
+ * "Put my lines back" restores them on top of what was loaded.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ClipboardPaste, History, Plus, RotateCcw, Save } from 'lucide-react';
@@ -58,6 +66,14 @@ export const NEWER_SENTENCE =
   'Someone saved a newer version while you were editing. Your lines stay here; saving them will be refused until you load the saved recipe.';
 export const LEGACY_NOTE = 'Lines from the old recipe box, not saved here yet.';
 const LOAD_FAILED = 'The saved recipe could not be read just now. Your lines stay here.';
+export const SET_ASIDE_SENTENCE =
+  'Your lines are set aside. Put them back to work on them again; saving them then replaces the version shown.';
+/** The most one line holds, in the unit typed. Matches the gateway (recipes.service.ts MAX_LINE_QTY). */
+export const MAX_LINE_QTY = 100_000;
+/** The most lines one recipe holds. Matches the gateway (dto/recipes.dto.ts ArrayMaxSize(40)). */
+export const MAX_LINES = 40;
+const tooMany = (n: number) =>
+  `That is ${n} lines; a recipe holds at most ${MAX_LINES}. Remove ${n - MAX_LINES} before saving.`;
 
 let seq = 0;
 const nextKey = () => `r${++seq}`;
@@ -166,7 +182,42 @@ function Versions({ cocktailId, currentId }: { cocktailId: string; currentId: st
 
 type Said = { tone: 'ok' | 'alarm'; text: string; offerLoad?: boolean };
 
+/** The gateway's own sentence on a refused save, when it sent one. */
+function refusal(e: unknown): string | null {
+  const m = (e as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
+  return typeof m === 'string' && m.trim() ? m.trim() : null;
+}
+
+/** Why Save is off, naming the first line that stops it. */
+export function whyBlocked(rows: DraftRow[]): string | null {
+  if (rows.length === 0) return 'Add at least one ingredient.';
+  if (rows.length > MAX_LINES) return tooMany(rows.length);
+  const named = (i: number) => {
+    const n = rowName(rows[i]);
+    return n === 'this line' ? `Line ${i + 1}` : `Line ${i + 1} (${n})`;
+  };
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const q = readQty(r.qtyText);
+    if (q === null) return `${named(i)} needs an amount above zero.`;
+    if (q > MAX_LINE_QTY) {
+      return `${named(i)} is more than one line can hold. The most is ${MAX_LINE_QTY.toLocaleString('en-US')} ${r.unit || 'of its unit'}.`;
+    }
+    if (r.unit === '') return `${named(i)} needs a unit.`;
+    if (rowName(r) === 'this line') return `${named(i)} needs a name.`;
+  }
+  return null;
+}
+
+/**
+ * One sheet per drink. The key is what keeps a draft typed for one drink out
+ * of another: React drops the inner sheet's state when the drink changes.
+ */
 export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
+  return <Sheet key={cocktailId} cocktailId={cocktailId} />;
+}
+
+function Sheet({ cocktailId }: { cocktailId: string }) {
   const recipe = useRecipe(cocktailId);
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
@@ -184,6 +235,8 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
   const [proposed, setProposed] = useState<Proposed | null>(null);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  // The typed lines a "Load the saved recipe" replaced, kept until put back or saved over.
+  const [setAside, setSetAside] = useState<DraftRow[] | null>(null);
   const seededFrom = useRef<string | null | undefined>(undefined);
 
   const data = recipe.data;
@@ -210,14 +263,7 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
     seed(data);
   }, [data, versionId, dirty, seed]);
 
-  const blocked = useMemo(() => {
-    const r = rows ?? [];
-    if (r.length === 0) return 'Add at least one ingredient.';
-    if (r.some((x) => readQty(x.qtyText) === null)) return 'Every line needs an amount above zero.';
-    if (r.some((x) => x.unit === '')) return 'Every line needs a unit.';
-    if (r.some((x) => !rowName(x) || rowName(x) === 'this line')) return 'Every line needs a name.';
-    return null;
-  }, [rows]);
+  const blocked = useMemo(() => whyBlocked(rows ?? []), [rows]);
 
   if (recipe.loading) return <p className="cl-note" role="status">Reading the recipe…</p>;
   if (!data) {
@@ -247,9 +293,19 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
   const patch = (key: string, p: Partial<DraftRow>) =>
     edit((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
 
+  const putBack = () => {
+    if (!setAside) return;
+    const back = setAside;
+    setSetAside(null);
+    setSaid(null);
+    // Seeded from the loaded version, so a save now replaces it on purpose.
+    edit(() => back);
+  };
+
   const loadSaved = async () => {
     const r = await recipe.refetch();
     if (!r.isError && r.data) {
+      if (dirty && rows && rows.length > 0) setSetAside(rows);
       seed(r.data);
       setSaid(null);
     } else {
@@ -280,13 +336,16 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
       // invalidates will seed the saved lines and their costs.
       setOpenedFrom(out.versionId);
       setDirty(false);
+      setSetAside(null);
       setSaid({
         tone: 'ok',
         text: `Saved. ${count(body.lines.length, 'ingredient', 'ingredients')}, version ${out.version}.`,
       });
     } catch (e) {
       const status = getErrorStatus(e);
+      const theirs = status === 400 ? refusal(e) : null;
       if (status === 409) setSaid({ tone: 'alarm', text: STALE_SENTENCE, offerLoad: true });
+      else if (theirs) setSaid({ tone: 'alarm', text: `${theirs} ${NOT_SAVED_SENTENCE}` });
       else if (status === null && (e as { request?: unknown })?.request) {
         setSaid({ tone: 'alarm', text: UNKNOWN_SENTENCE, offerLoad: true });
       } else setSaid({ tone: 'alarm', text: NOT_SAVED_SENTENCE });
@@ -357,8 +416,13 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
       {canEdit && proposed ? (
         <div className="cl-rcp-proposed" data-testid="recipe-proposed">
           <p className="cl-note" style={{ marginTop: 0 }}>{proposed.note}</p>
+          {lines.length + proposed.lines.length > MAX_LINES ? (
+            <p className="cl-note" role="alert" data-testid="recipe-too-many">
+              {tooMany(lines.length + proposed.lines.length)} Shorten the paste first.
+            </p>
+          ) : null}
           <ol className="cl-rcp-lines">
-            {proposed.lines.map((p, i) => (
+            {proposed.lines.slice(0, MAX_LINES).map((p, i) => (
               <li key={i} className="cl-rcp-line" data-role={p.role}>
                 <div className="cl-rcp-read">
                   <span className="cl-num cl-rcp-amt">{p.qty != null ? `${qtyText(p.qty)} ${p.unit ?? ''}`.trim() : ''}</span>
@@ -370,10 +434,12 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
               </li>
             ))}
           </ol>
+          {proposed.lines.length > MAX_LINES ? <p className="cl-note">…and {proposed.lines.length - MAX_LINES} more not shown.</p> : null}
           <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
             <button
               type="button"
               className="cl-btn cl-focus"
+              disabled={lines.length + proposed.lines.length > MAX_LINES}
               onClick={() => {
                 edit((rs) => [...rs, ...proposed.lines.map(fromProposal)]);
                 setProposed(null);
@@ -482,6 +548,15 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
           <RotateCcw size={13} aria-hidden />
           {recipe.fetching ? 'Reading…' : 'Load the saved recipe'}
         </button>
+      ) : null}
+      {canEdit && setAside ? (
+        <div data-testid="recipe-set-aside" style={{ marginTop: 6 }}>
+          <p className="cl-note" style={{ margin: 0 }}>{SET_ASIDE_SENTENCE}</p>
+          <button type="button" className="cl-btn cl-focus" style={{ marginTop: 6 }} onClick={putBack}>
+            <RotateCcw size={13} aria-hidden />
+            Put my lines back
+          </button>
+        </div>
       ) : null}
 
       {earlier >= 1 ? (
