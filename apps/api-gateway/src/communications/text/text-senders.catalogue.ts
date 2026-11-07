@@ -99,7 +99,7 @@ const WHATSAPP: TextSenderDefinition = {
   revocation:
     "The house removes Mudavym's app from its WhatsApp Business Account in Meta's own Business settings, or a manager revokes the sender here. Either one stops the next send: nothing outbound is attempted without a state of 'connected'.",
   custody:
-    "Meta holds the transport and may \"review, approve, pause and reject any Message Template at any time\". It does not hold the record: every inbound and outbound is written into this house's conversation book before it is rendered anywhere, so a paused number costs the house its next message and never its history.",
+    "Meta holds the transport and may \"review, approve, pause and reject any Message Template at any time\". It does not hold the record: every inbound and outbound is saved in this house's own messages before it is shown anywhere, so a paused number costs the house its next message and never its history.",
   markets: [
     {
       market: "TR",

@@ -13,6 +13,7 @@ import { Public } from "../../auth/decorators/public.decorator";
 import { OrchestratorService } from "./orchestrator.service";
 import { InboundAddressService } from "./inbound-address.service";
 import { htmlToText } from "../../communications/gmail-mime";
+import { decodeEncodedWords } from "../../communications/inbound-headers";
 
 interface NormalizedInbound {
   from: string;
@@ -146,8 +147,11 @@ export class InboundEmailController {
 
     const from: string =
       b.FromFull?.Email || b.From || b.from || headerMap["from"] || "";
-    const subject: string =
-      b.Subject ?? b.subject ?? headerMap["subject"] ?? "";
+    // RFC 2047 words decoded (QA round 6 N-2) — Postmark's `Subject` arrives
+    // decoded, a raw `headers.subject` does not; decoding plain text is a no-op.
+    const subject: string = decodeEncodedWords(
+      b.Subject ?? b.subject ?? headerMap["subject"] ?? "",
+    );
     // [Audit of PR #435 at a229848f3, 2026-09-26: this used to fall back to
     // raw HTML (`b.HtmlBody || b.html`) with no text conversion at all, one
     // flattening step worse than gmail-mime.ts's own bug (see that file's
