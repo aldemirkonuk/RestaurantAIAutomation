@@ -138,6 +138,10 @@ export function bridge(tables: Record<string, Row[]>, failing: string[] = []) {
       events.push(["prospect", a]),
       { captured: false }
     ),
+    holdUnattributed: async (a: any) => (
+      events.push(["hold", a]),
+      { captured: true, isTriage: true }
+    ),
   };
   const svc: any = new RabbitMqBridgeService(
     { get: () => undefined } as any,

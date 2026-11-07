@@ -126,13 +126,20 @@ export class ProspectsService {
      * When null/absent we fall back to resolveAttribution() (DEFAULT/sole restaurant, else triage).
      */
     restaurantId?: string | null;
+    /**
+     * Hold in the unattributed bucket whatever resolveAttribution would say
+     * (`holdUnattributed`): the publisher already found no receiving house.
+     */
+    unattributed?: boolean;
   }): Promise<CaptureResult> {
     const domain = this.domainOf(params.senderEmail);
     if (!domain) return { captured: false };
 
-    const attribution: Attribution = params.restaurantId
-      ? { kind: "attributed", id: params.restaurantId }
-      : await this.resolveAttribution();
+    const attribution: Attribution = params.unattributed
+      ? { kind: "ambiguous" }
+      : params.restaurantId
+        ? { kind: "attributed", id: params.restaurantId }
+        : await this.resolveAttribution();
     if (attribution.kind === "none") {
       // No restaurant exists at all — nothing to attribute to. Loud, not silent.
       this.logger.warn(
@@ -269,6 +276,34 @@ export class ProspectsService {
       );
       return { captured: false };
     }
+  }
+
+  /**
+   * Keep a letter whose event names no receiving house (QA round 25) in the
+   * unattributed bucket: restaurant_id null, operator-only
+   * (`listUnattributed`), deduped by domain like any triage row, with the
+   * Gmail ids kept so the full letter can be found in the mailbox. The
+   * capture reason says why no house was found ("no_house:<why>").
+   */
+  async holdUnattributed(params: {
+    senderEmail: string;
+    senderName?: string | null;
+    subject?: string | null;
+    body?: string | null;
+    hasAttachments?: boolean;
+    attachments?: ProspectAttachmentRef[];
+    gmailMessageId?: string | null;
+    gmailThreadId?: string | null;
+    why: string;
+  }): Promise<CaptureResult> {
+    const { why, ...letter } = params;
+    return this.captureFromColdEmail({
+      ...letter,
+      bodyPreview: letter.body ?? null,
+      captureReason: `no_house:${why}`,
+      restaurantId: null,
+      unattributed: true,
+    });
   }
 
   /** Open prospects (status='new') for the surface, newest outreach first. */

@@ -251,3 +251,39 @@ describe("ProspectsService.promote matches a vendor exactly (QA round 25)", () =
     });
   });
 });
+
+describe("ProspectsService.holdUnattributed (QA round 25)", () => {
+  it("holds a letter with no house, whatever DEFAULT_RESTAURANT_ID or the house count says", async () => {
+    const { memoryDb } =
+      await import("../../communications/testing/mail-store");
+    const db = memoryDb({ restaurants: [{ id: HOUSE }], email_prospects: [] });
+    const svc = new ProspectsService(
+      db as any,
+      {
+        get: (k: string) => (k === "DEFAULT_RESTAURANT_ID" ? HOUSE : undefined),
+      } as any,
+    );
+    const out = await svc.holdUnattributed({
+      senderEmail: "sales@bigdist.com",
+      subject: "Re: order",
+      body: "Plain text, no attachment, not an offer.",
+      gmailMessageId: "m-1",
+      gmailThreadId: "gt-1",
+      why: "vendor_in_many_houses",
+    });
+    expect(out).toMatchObject({
+      captured: true,
+      isTriage: true,
+      restaurantId: null,
+    });
+    expect(db.inserts).toHaveLength(1);
+    expect(db.inserts[0].row).toMatchObject({
+      restaurant_id: null,
+      sender_email: "sales@bigdist.com",
+      subject: "Re: order",
+      capture_reason: "no_house:vendor_in_many_houses",
+      gmail_message_id: "m-1",
+      gmail_thread_id: "gt-1",
+    });
+  });
+});
