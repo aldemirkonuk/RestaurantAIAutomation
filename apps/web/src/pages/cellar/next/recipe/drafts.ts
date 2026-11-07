@@ -33,8 +33,8 @@ export const draftKey = (userId: string | null | undefined, rid: string | null |
 
 function warn(e: BeforeUnloadEvent) {
   e.preventDefault();
-  // Older browsers show the prompt only when returnValue is set.
-  e.returnValue = '';
+  // Older browsers (Chrome and Edge before 119) prompt only when returnValue is set.
+  e.returnValue = true;
 }
 
 let guarding = false;
