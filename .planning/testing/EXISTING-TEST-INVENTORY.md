@@ -12,7 +12,7 @@
 - **`runs?=yes`** only if a named CI job invokes that runner on push ([`ci.yml`](../../.github/workflows/ci.yml): `test-typescript`, `test-python`, `test-e2e`) or schedule ([`e2e-prod.yml`](../../.github/workflows/e2e-prod.yml): `e2e-prod`).
 - **`passes?` default `unknown`** unless this phase has a green local run artifact. **Never claim CI green** from file presence alone.
 - **Do not treat TFND-05 as green CI (H5).** As of 2026-07-27, push CI fails Black on `services/agent-orchestrator/api/studio_routes.py` (recent failing run `30299009969`). Lint gates `test-python` / `test-typescript` — test jobs are not trustworthy until lint is green.
-- **Layer inference:** path + `pytest.ini` markers (`unit`, `integration`, `e2e`, `prod_e2e`). Nest/Vitest default `unit` unless path/name clearly integration (`*.e2e.spec.ts`, reports integration folders). `wave_*.py` → `prod_e2e` + `ci_job=e2e-prod`. Local Playwright → `e2e` + `test-e2e`. `apps/web/e2e/nightly/nightly.spec.ts` notes Wave F / `e2e-prod` (ADR 0135, 2026-09-11 — replaced the retired `prod-smoke.spec.ts`). Waves D, E, G retired 2026-09-12 (ADR 0137) — their rows are removed, not marked absent, since the files no longer exist.
+- **Layer inference:** path + `pytest.ini` markers (`unit`, `integration`, `e2e`, `prod_e2e`). Nest/Vitest default `unit` unless path/name clearly integration (`*.e2e.spec.ts`, reports integration folders). `wave_*.py` → `prod_e2e` + `ci_job=e2e-prod`. Local Playwright → `e2e` + `test-e2e`. `apps/web/e2e/nightly/nightly.spec.ts` notes Wave F / `e2e-prod` (ADR 0135, 2026-09-11 — replaced the retired `prod-smoke.spec.ts`). Waves D, E, G retired 2026-09-12 (ADR 0137) — their rows are removed, not marked absent, since the files no longer exist. `test_invoice_ocr_service.py` retired the same way 2026-11-07 with the service it tested (branch `chore/retire-invoice-ocr-service`; tombstone in ADR 0032).
 - **`test-e2e` (local Playwright on push) ≠ `e2e-prod` (nightly/cloud waves).** Do not conflate them.
 - **T1-eligible evidence excludes `passes?=stale-suspect`** (C3/M1). Rows remain inventoried; scorecard must not count them toward T1.
 - **Group column** uses locked N-shortname slugs only, matching [FUNCTIONALITY-REGISTRY.md](./FUNCTIONALITY-REGISTRY.md) primaries (H1).
@@ -163,7 +163,6 @@
 | 2-catalog | services/agent-orchestrator/tests/test_intelligence_pipeline.py | pytest | unit | test-python | yes | unknown |  |
 | 3-inventory | services/agent-orchestrator/tests/test_inventory_engine_bugs.py | pytest | unit | test-python | yes | unknown | hardening/bugs suite |
 | 3-inventory | services/agent-orchestrator/tests/test_inventory_engine_hardening.py | pytest | unit | test-python | yes | unknown | hardening/bugs suite |
-| 5-procurement | services/agent-orchestrator/tests/test_invoice_ocr_service.py | pytest | unit | test-python | yes | unknown |  |
 | 2-catalog | services/agent-orchestrator/tests/test_menu_diff_service.py | pytest | unit | test-python | yes | unknown |  |
 | 9-notifications | services/agent-orchestrator/tests/test_notification_agent_bugs.py | pytest | unit | test-python | yes | unknown | hardening/bugs suite |
 | 9-notifications | services/agent-orchestrator/tests/test_notification_agent_hardening.py | pytest | unit | test-python | yes | unknown | hardening/bugs suite |
