@@ -6,7 +6,7 @@ import {
   normalizeDescription,
   trigramSimilarity,
 } from "../procurement/documents/line-matcher";
-import { PosHubService } from "./pos-hub.service";
+import { PosHubService, type PastSalesReplay } from "./pos-hub.service";
 
 /**
  * Catalog matcher — SimPOS testbed plan, decisions D32-39.
@@ -82,6 +82,8 @@ export interface CatalogMatchSummary {
     itemName: string;
     inventoryId: string;
     confidence: number;
+    /** What the auto-map did to this item's earlier sales (POS-2). */
+    pastSales?: PastSalesReplay;
   }>;
   proposed: Array<{
     externalItemId: string;
@@ -133,7 +135,7 @@ export class CatalogMatcherService {
       const best = this.matchOne(item, candidates);
 
       if (best && !best.ambiguous && best.confidence >= AUTO_MATCH_THRESHOLD) {
-        await this.posHub.upsertItemMapping(restaurantId, {
+        const saved = await this.posHub.upsertItemMapping(restaurantId, {
           source: salesSourceFor(source),
           external_item_id: item.externalItemId,
           item_name: item.itemName,
@@ -147,6 +149,7 @@ export class CatalogMatcherService {
           itemName: item.itemName,
           inventoryId: best.candidate.inventoryId,
           confidence: best.confidence,
+          pastSales: saved?.past_sales,
         });
         this.logger.log(
           `Auto-mapped ${item.itemName} (${item.externalItemId}) -> inventory ${best.candidate.inventoryId} [${best.method}, ${best.confidence.toFixed(2)}]`,
@@ -437,7 +440,7 @@ export class CatalogMatcherService {
     if (!proposal.candidate_inventory_id)
       throw new Error("Proposal has no candidate inventory item to approve");
 
-    await this.posHub.upsertItemMapping(restaurantId, {
+    const saved = await this.posHub.upsertItemMapping(restaurantId, {
       source: salesSourceFor(proposal.source),
       external_item_id: proposal.external_item_id,
       item_name: proposal.item_name,
@@ -453,7 +456,10 @@ export class CatalogMatcherService {
       .update({ status: "approved", resolved_at: new Date().toISOString() })
       .eq("id", proposalId);
     if (updateError) throw new Error(updateError.message);
-    return { approved: true, proposalId };
+    // POS-2: what approving did to the sales this item rang before it had a
+    // mapping, said in the reply rather than left for the stock count to
+    // show.
+    return { approved: true, proposalId, past_sales: saved.past_sales };
   }
 
   /**
@@ -482,14 +488,23 @@ export class CatalogMatcherService {
       proposal_id: string;
       ok: boolean;
       error?: string;
+      past_sales?: PastSalesReplay;
     }> = [];
     for (const entry of items || []) {
       try {
-        await this.approveProposal(restaurantId, entry.proposal_id, {
-          sale_unit: entry.sale_unit ?? null,
-          sale_volume_ml: entry.sale_volume_ml ?? null,
+        const approved = await this.approveProposal(
+          restaurantId,
+          entry.proposal_id,
+          {
+            sale_unit: entry.sale_unit ?? null,
+            sale_volume_ml: entry.sale_volume_ml ?? null,
+          },
+        );
+        results.push({
+          proposal_id: entry.proposal_id,
+          ok: true,
+          past_sales: approved.past_sales,
         });
-        results.push({ proposal_id: entry.proposal_id, ok: true });
       } catch (e: any) {
         results.push({
           proposal_id: entry.proposal_id,

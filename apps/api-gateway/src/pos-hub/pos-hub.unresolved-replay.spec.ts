@@ -1,4 +1,6 @@
 import { PosHubService } from "./pos-hub.service";
+import { CatalogMatcherService } from "./catalog-matcher.service";
+import { PosMappingReviewService } from "./pos-mapping-review.service";
 import { DatabaseService } from "../database/database.service";
 
 /**
@@ -39,6 +41,18 @@ function makeDb(opts: { failQueueRead?: boolean } = {}) {
     ],
     restaurant_tables: [],
     wine_consumption_log: [],
+    pos_catalog_match_proposals: [
+      {
+        id: "prop-1",
+        restaurant_id: HOUSE,
+        source: "generic_webhook",
+        external_item_id: "merlot-1",
+        item_name: "House Merlot",
+        candidate_inventory_id: "inv-merlot",
+        candidate_master_wine_id: null,
+        status: "pending",
+      },
+    ],
   };
   const stockMl: Record<string, number> = {
     "inv-merlot": 12 * BOTTLE_ML,
@@ -364,5 +378,35 @@ describe("PosHubService — a mapping replays the sales queued before it (POS-2)
     expect(saved.past_sales.message).toBe(
       "No past sales of this item were waiting.",
     );
+  });
+
+  it("approving a catalog proposal replays too, and its reply says so", async () => {
+    const { db, bottles } = makeDb();
+    const service = new PosHubService(db);
+    await service.ingest(HOUSE, "generic_webhook", [sale("chk-1", 2)]);
+
+    const matcher = new CatalogMatcherService(db, service);
+    const one: any = await matcher.approveProposal(HOUSE, "prop-1", {
+      sale_unit: "bottle",
+    });
+
+    expect(bottles()).toBe(10);
+    expect(one.past_sales).toMatchObject({ status: "done", applied: 1 });
+  });
+
+  it("answering a sale unit in the review replays the waiting sales and says how many", async () => {
+    const { db, tables, bottles } = makeDb();
+    const service = new PosHubService(db);
+    await service.ingest(HOUSE, "generic_webhook", [sale("chk-1", 2)]);
+    await mapMerlot(service, { sale_unit: null });
+    expect(bottles()).toBe(12);
+    const mappingId = tables.pos_item_mappings[0].id;
+
+    const review = new PosMappingReviewService(db, service);
+    const answered = await review.setSaleUnit(HOUSE, mappingId, "bottle");
+
+    expect(bottles()).toBe(10);
+    expect(answered.past_sales).toMatchObject({ applied: 1 });
+    expect(open(tables)).toHaveLength(0);
   });
 });
