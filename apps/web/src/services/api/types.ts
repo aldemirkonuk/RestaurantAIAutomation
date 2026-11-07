@@ -82,6 +82,10 @@ export interface InventoryItem {
    * behaviour, never worse than it was).
    */
   analyticsReadable?: boolean;
+  /** False: the lot-rollup read failed, so openMl is unknown, not 0 (G15). Absent = true. */
+  rollupReadable?: boolean;
+  /** False: the location-breakdown read failed, so locations is unknown, not [] (G15). Absent = true. */
+  locationsReadable?: boolean;
   locations?: WineLocationBreakdown[];
 }
 
