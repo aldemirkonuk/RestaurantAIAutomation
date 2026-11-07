@@ -296,7 +296,9 @@ CREATE INDEX IF NOT EXISTS idx_floor_merge_members_house
 
 CREATE TABLE IF NOT EXISTS public.floor_punches (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  restaurant_id UUID NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
+  -- RESTRICT, as the door record's house key is (20261201120000): a house
+  -- with punches cannot be hard-deleted under them either (`0350:71`).
+  restaurant_id UUID NOT NULL REFERENCES public.restaurants(id) ON DELETE RESTRICT,
   -- RESTRICT, not CASCADE: ADR 0350 keeps every punch until counsel answers
   -- (`0350:71`), so a person with punches cannot be hard-deleted under them.
   user_id UUID NOT NULL REFERENCES public.users(user_id) ON DELETE RESTRICT,
@@ -337,9 +339,10 @@ CREATE INDEX IF NOT EXISTS idx_floor_punches_shift
 
 -- Append-only (ADR 0350 `:78`): a row is written once, its clock-out filled
 -- once and its superseded mark set once; the shift link may only go to null.
--- Any other change is a new row naming the old one. A DELETE is refused
--- unless the punch's house row is already gone (the house-delete cascade);
--- TRUNCATE is refused outright. The trigger does not check that a superseded
+-- Any other change is a new row naming the old one. Every DELETE and every
+-- TRUNCATE is refused; with both of its keys RESTRICT, neither a person nor a
+-- house is deleted with punches under it. A role allowed to switch triggers
+-- off (session_replication_role, DISABLE TRIGGER) is not stopped by this. The trigger does not check that a superseded
 -- mark has a correction row naming it, why a shift link goes to null, or that
 -- a Back's resumes_id names the same person's break, resumed once: the
 -- gateway that writes punches owes those. user_id is RESTRICT, so deleting an
@@ -356,11 +359,8 @@ BEGIN
       USING ERRCODE = 'check_violation';
   END IF;
   IF TG_OP = 'DELETE' THEN
-    IF EXISTS (SELECT 1 FROM public.restaurants r WHERE r.id = OLD.restaurant_id) THEN
-      RAISE EXCEPTION 'floor_punches is append-only: punch % is deleted only with its house', OLD.id
-        USING ERRCODE = 'check_violation';
-    END IF;
-    RETURN OLD;
+    RAISE EXCEPTION 'floor_punches is append-only: punch % is kept (ADR 0350)', OLD.id
+      USING ERRCODE = 'check_violation';
   END IF;
   IF NEW.id IS DISTINCT FROM OLD.id
      OR NEW.restaurant_id IS DISTINCT FROM OLD.restaurant_id
@@ -431,8 +431,8 @@ CREATE TABLE IF NOT EXISTS public.pos_server_links (
   -- The till provider (`pos_checks.source` / connection provider).
   source TEXT NOT NULL CHECK (btrim(source) <> ''),
   -- `pos_checks.server_external_id`, else the normalised `server_name`.
-  till_server_id TEXT,
-  till_server_name_norm TEXT,
+  till_server_id TEXT CHECK (till_server_id IS NULL OR btrim(till_server_id) <> ''),
+  till_server_name_norm TEXT CHECK (till_server_name_norm IS NULL OR btrim(till_server_name_norm) <> ''),
   -- The raw words as the till sent them, for display; past checks are never rewritten.
   till_server_name TEXT,
   user_id UUID REFERENCES public.users(user_id) ON DELETE CASCADE,

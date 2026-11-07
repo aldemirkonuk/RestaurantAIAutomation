@@ -10,11 +10,12 @@ Filed by `feat/floor-db-1-record` (PR #772), found by its ADR 0090 correctness r
 
 Filed with the entry above, from the same review and the adversary's.
 
-**What is true.** The append-only trigger on `floor_punches` refuses a rewrite, a DELETE while the house still exists, and TRUNCATE. It does not check the following. This is not a closed list.
+**What is true.** The append-only trigger on `floor_punches` refuses a rewrite, every DELETE and TRUNCATE. Its house key is RESTRICT, so deleting a house that has punches fails too. `scripts/synth/teardown.py` and any other path that hard-deletes a house will fail for a house with punches. That is ADR 0350 `:71` holding, not a bug, but such a path needs its own answer before it meets one. It does not check the following. This is not a closed list.
 - A `superseded_at` mark has a correction row naming the punch.
 - A Back's `resumes_id` names the same person's `break` punch, and that punch is resumed once.
 - `shift_id` goes to null only because its shift was deleted.
-- A `user_id` (on punches, assignments, `pos_server_links` and nudge sends) belongs to the house. ADR 0345 E5 keys only house-owned rows by `(id, restaurant_id)`.
-- Undoing a Paid clears `paid_at` and records the undo in `floor_events`. ADR 0353 keeps only the last undo on the seating.
+- A `user_id` (on punches, assignments, `pos_server_links` and nudge sends) belongs to the house. The migration keys only house-owned rows by `(id, restaurant_id)`, not people.
+- Undoing a Paid clears `paid_at` and records who undid it and when in `floor_events`, as ADR 0353 (`:43`, `:57`) asks. The seating's own `paid_undone_*` columns keep only the last undo.
+- An Out-tonight mark names who marked it. `marked_by` is nullable so that deleting an account is not blocked, so the gateway must set it on every insert.
 
 **What closes it.** The floor module's write paths enforce each rule, each with a spec, in the PR that first writes the table concerned.

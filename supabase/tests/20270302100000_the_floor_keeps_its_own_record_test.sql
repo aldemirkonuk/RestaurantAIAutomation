@@ -207,13 +207,15 @@ do $$ declare p uuid; begin
   end;
 end $$;
 
--- T18: deleting a house whole takes its punches, corrections and Backs with it.
-do $$ declare n int; begin
+-- T18: a house with punches is not hard-deleted under them (ADR 0350 :71).
+do $$ declare c text; begin
   delete from public.restaurants where id = pg_temp.fx('b');
-  select count(*) into n from public.floor_punches where restaurant_id = pg_temp.fx('b');
-  insert into _t values ('T18', n = 0, n || ' punches left after the house delete');
-exception when others then
-  insert into _t values ('T18', false, 'house delete failed: ' || sqlerrm);
+  insert into _t values ('T18', false, 'house deleted with punches');
+exception when foreign_key_violation then
+  get stacked diagnostics c = constraint_name;
+  insert into _t values ('T18', c like 'floor_punches%', 'house delete refused by ' || c);
+when check_violation then
+  insert into _t values ('T18', false, 'house delete cascaded into the punches');
 end $$;
 
 -- T19: one live link per till server (E4): by id when the till sends one, else by name.
@@ -231,6 +233,11 @@ do $$ begin
     insert into public.pos_server_links (restaurant_id, source, till_server_name_norm) values (pg_temp.fx('a'), 'sim', 'mehmet');
     insert into _t values ('T19b', false, 'second live link for one name accepted');
   exception when unique_violation then insert into _t values ('T19b', true, 'second live link for one name refused');
+  end;
+  begin
+    insert into public.pos_server_links (restaurant_id, source, till_server_id) values (pg_temp.fx('a'), 'sim', ' ');
+    insert into _t values ('T19c', false, 'blank till id accepted');
+  exception when check_violation then insert into _t values ('T19c', true, 'blank till id refused');
   end;
 end $$;
 
