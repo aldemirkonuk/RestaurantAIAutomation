@@ -26,9 +26,8 @@ const WORDS: Record<
   }
 > = {
   // /get-started is signed in, and its 409 is about the person's own account,
-  // never a place: a press after one whose answer was lost meets it. It is
-  // said, not stepped past (F-006 OPEN-2, ADR 0265): the account's house may
-  // be one an invite joined, so the page does not move into it on a guess.
+  // never a place. GetStarted steps past it by its entry rule (F8, ADR 0265
+  // OPEN-2); `alreadyOpen` stays for any other caller.
   arrival: {
     refused:
       "We could not open the house with these details. Check the name, the address and the phone number. If you picked the address from the list, try typing it in yourself.",

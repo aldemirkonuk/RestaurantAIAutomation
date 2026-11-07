@@ -75,6 +75,7 @@ The F-006 PR 2 plan (`~/Projects/p4-scratch/f006/plan.md` §0) named five forks.
     - Rejected (b), a gateway session for the owner. It needs a new ownership read that could hand out a session.
     - Rejected (c), always sending the person to /choose-house. It needs the slot-15 file.
     - This leaves scope item 4 ("moves to the menu step") unbuilt, and that is recorded here.
+    - [2026-11-07, `fix/onboarding-finish-setup-resumes-at-the-menu`, fork F8, the founder's /goal of 2026-11-07: **scope item 4 is built.** On a 409, GetStarted re-reads the stored session (`signInWithSession`) and routes by its house and role: owner or no role to the menu step, staff or manager to the desk, no house to /choose-house. An invited person keeps their own role, so no guess (a) and no new session (b). A failed re-read is said, with a /choose-house link. Claim ONB-GET-STARTED-ENTRY-RULE.]
   - **OPEN-4: option (c).** `registerRestaurant` awaits the token mint before either email is sent. A failed mint now rolls the account back, and no mail goes out for an account that no longer exists.
     - Rejected (a), `await` alone. It would mail a dead verify link.
     - Rejected (b), leaving it. It leaves a live account behind a "Nothing was done" answer.
