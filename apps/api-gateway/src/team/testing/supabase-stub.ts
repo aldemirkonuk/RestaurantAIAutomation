@@ -15,6 +15,21 @@
 type Row = Record<string, any>;
 type Filter = { kind: string; column: string; value: any };
 
+/**
+ * PostgREST's `or=(a.eq.x,b.is.null,c.not.is.null)`, for the operators this
+ * stub already knows. Anything else throws, as an unknown filter does.
+ */
+function parseOr(expr: string): Filter[] {
+  return expr.split(",").map((term) => {
+    const m = /^([a-z_][a-z0-9_]*)\.(not\.)?(eq|neq|is)\.(.+)$/i.exec(term.trim());
+    if (!m) throw new Error(`supabase-stub: unhandled or term ${term}`);
+    const [, column, not, op, raw] = m;
+    const value = op === "is" && raw === "null" ? null : raw;
+    if (not && op !== "is") throw new Error(`supabase-stub: unhandled or term ${term}`);
+    return { kind: not ? "notis" : op, column, value };
+  });
+}
+
 export interface RecordedOp {
   table: string;
   op: "select" | "insert" | "update" | "delete" | "upsert";
@@ -68,6 +83,8 @@ function matches(row: Row, filters: Filter[]): boolean {
         return actual <= f.value;
       case "gt":
         return actual > f.value;
+      case "or":
+        return (f.value as Filter[]).some((sub) => matches(row, [sub]));
       case "ilike":
         return (
           typeof actual === "string" &&
@@ -211,6 +228,10 @@ class Builder implements PromiseLike<any> {
     if (operator !== "is")
       throw new Error(`supabase-stub: unhandled .not(${operator})`);
     this.filters.push({ kind: "notis", column, value });
+    return this;
+  }
+  or(expr: string) {
+    this.filters.push({ kind: "or", column: "", value: parseOr(expr) });
     return this;
   }
   gte(column: string, value: any) {
