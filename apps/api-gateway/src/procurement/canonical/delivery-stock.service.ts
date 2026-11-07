@@ -476,16 +476,12 @@ export class DeliveryStockService {
   }
 
   /**
-   * QA round 9a (2): a RE-VERIFY repairs a lot an earlier verify finalised at
-   * the invoice's PRINTED price (B1), or at an accepted proposal's raw price
-   * (QA 10a (1)). Only a final lot whose cost IS such a printed price of its
-   * item, and is not the per-bottle cost, is revalued: a cost a person revalued
-   * by hand is left alone. When the line now refuses, the lot keeps its cost
-   * and the reason is returned, so the screen can say so.
-   *
-   * QA 10a (6): an invoice lot whose cost is not a printed price and no longer
-   * matches its line is FLAGGED, never revalued (ADR 0103: a re-verify is not a
-   * second verification). Lines that name no item are not repaired.
+   * QA 9a (2): a RE-VERIFY revalues a final lot booked at its item's PRINTED
+   * price (B1) or a proposal's raw price (10a (1)), when that is not the
+   * per-bottle cost; a hand revaluation is left alone. A line that now refuses
+   * keeps the cost and returns why. QA 10a (6): an invoice lot that no longer
+   * matches its line is FLAGGED, never revalued (ADR 0103). Lines that name no
+   * item are not repaired.
    */
   async repairPrintedCost(
     restaurantId: string,
@@ -951,7 +947,6 @@ export class DeliveryStockService {
                 ? `an accepted proposal settles a price of ${said} on the door count, which prints no price, and no single invoice line of this item says what unit that price is for`
                 : `an accepted proposal settles a price of ${said} but names no invoice line, so what unit that price is for is not known`,
             } as const);
-      // An earlier build booked the RAW proposed price; a re-verify spots it (10a (1)).
       if (id && "printed" in cost && cost.printed != null)
         printed.set(id, (printed.get(id) ?? new Set<number>()).add(cost.printed));
       if (!cost.ok) {

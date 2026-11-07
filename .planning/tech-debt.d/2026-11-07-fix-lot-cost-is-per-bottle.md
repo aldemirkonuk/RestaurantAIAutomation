@@ -34,7 +34,7 @@ Production was not queried and nothing was backfilled. Since QA round 9a (2) (be
 QA round 9a (2), branch `fix/reverify-repairs-printed-cost`. `verify()` on an already VERIFIED delivery (`delivery.service.ts`, the `verified_at` branch) now calls `DeliveryStockService.repairPrintedCost`. Claim `QA-R9A-2-REVERIFY-REPAIRS-PRINTED-COST`. Forks, the session's call under the 2026-11-07 /goal:
 
 1. A lot is "booked at the printed price" when it is a final, live lot and its `unit_cost` equals a printed `unit_price` of its item, rounded to cents, and is not the per-bottle cost. Any other cost is taken as a person's revaluation and left alone. Rejected: re-posting every final lot, because `finalise_delivery_cost` would overwrite manual revaluations. A hand revaluation that happens to equal the printed price would be repaired too.
-2. When the line now resolves, `finalise_delivery_cost` re-posts the per-bottle cost, with a reason naming the printed price. Since QA 10a (1), an accepted proposal's raw price counts as printed too, so a lot an earlier build booked at it is repaired the same way.
+2. When the line now resolves, `finalise_delivery_cost` re-posts the per-bottle cost, with a reason naming the printed price.
 3. When the line now refuses, the lot keeps its cost and the reason goes into `costNote` as `Item <id>: …`. Rejected: setting the lot back to provisional, which needs a new RPC and a migration. The web still renders `costNote` as one sentence.
 
 Not covered: unattached lines, meaning the one-item fallback. Their price is not keyed by item, so they are neither repaired nor flagged.

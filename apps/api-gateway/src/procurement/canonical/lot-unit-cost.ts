@@ -188,7 +188,7 @@ function basisOf(price: number, priced: string, bottles: number, perBottle: numb
 export function proposalPerBottle(proposed: unknown, line: LotCostLine): LotUnitCost {
   const price = asNumber(proposed);
   const cost = inLineBase(price, line);
-  // `printed`: an earlier build booked the proposal's RAW price; a re-verify spots it (10a (1)).
+  // A re-verify spots a lot booked at the proposal's RAW price (10a (1)).
   return price == null || price <= 0 ? cost : ({ ...cost, printed: toLotCostPrecision(price) } as LotUnitCost);
 }
 
