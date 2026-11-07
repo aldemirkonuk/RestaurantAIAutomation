@@ -19,6 +19,7 @@
  */
 
 import { htmlToText as sharedHtmlToText } from "../common/html/html-to-text";
+import { senderAddress } from "./inbound-headers";
 
 /** Gmail's MIME tree; only the fields these walkers touch. */
 export interface GmailPayloadPart {
@@ -152,20 +153,19 @@ export function htmlToText(html: string): string {
  * The address inside a `From:` header, lowercased — `"Acme Wines"
  * <sales@acme.example>` becomes `sales@acme.example`.
  *
- * The bridge does this inline (`rabbitmq-bridge.service.ts:560-562`) to find the
- * provider. The reader needs the identical answer to decide whether a message
- * is admissible AT ALL, so the two must not be two regexes: an address the
- * reader admitted and the bridge then parsed differently would be a message let
- * through one gate and matched to the wrong vendor at the next.
+ * The bridge finds the provider with the identical answer
+ * (`inbound-headers.ts senderAddress`). The reader needs it to decide whether a
+ * message is admissible AT ALL, so the two must not be two parsers: an address
+ * the reader admitted and the bridge then parsed differently would be a
+ * message let through one gate and matched to the wrong vendor at the next.
  *
- * Returns null rather than a guess when there is no address to find.
+ * Returns null rather than a guess when there is no single, unambiguous
+ * address to find. [QA round 6 N-1, 2026-11-07: this used to take the first
+ * `<...>` in the header, so `"Sales <sales@bigdist.com>"
+ * <attacker@evil.example>` was admitted as the vendor.]
  */
 export function addressInFromHeader(from: string | null | undefined): string | null {
-  const raw = (from ?? "").trim();
-  if (!raw) return null;
-  const angled = /<([^>]+)>/.exec(raw);
-  const candidate = (angled ? angled[1] : raw).trim().toLowerCase();
-  return candidate.includes("@") ? candidate : null;
+  return senderAddress(from);
 }
 
 /** Case-insensitive header lookup over Gmail's `payload.headers` array. */

@@ -108,6 +108,7 @@ import {
   MAX_ATTACHMENT_B64_LEN,
   type GmailPayloadPart,
 } from "../gmail-mime";
+import { decodeEncodedWords } from "../inbound-headers";
 
 /**
  * The scope, the integration id and the switch live in `house-inbox-flag.ts`,
@@ -490,7 +491,7 @@ export class HouseInboxService {
           {
             restaurant_id: restaurantId,
             from,
-            subject: headerValue(headers, "subject"),
+            subject: decodeEncodedWords(headerValue(headers, "subject")),
             body,
             attachments,
             message_id_header: headerValue(headers, "message-id"),

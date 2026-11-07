@@ -34,7 +34,10 @@ export interface MailPersonRow {
   kind: MailPersonKind;
   providerId: string;
   name: string | null;
-  /** The newest letter that passed between the house and this person. */
+  /**
+   * The newest letter that passed between the house and this person; for a
+   * person whose only letter has not left, that letter's time.
+   */
   lastAt: string;
   /** Its first ~160 characters, without its "Subject:" line. Never a draft. */
   lastLine: string | null;
@@ -48,6 +51,14 @@ export interface MailPersonRow {
   channels: string[];
   newestOpenOrderId: string | null;
   newestOpenOrderNumber: string | null;
+  /**
+   * The stored status of the house's newest letter to this person that has
+   * NOT left (queued, sending, scheduled, failed, refused, pulled back), when
+   * it is newer than the last letter that passed — or the only letter there
+   * is. Null otherwise. A person is never dropped from the list for having
+   * only such a letter, so it can still be pulled back (QA round 16, HARM 1).
+   */
+  unsentStatus: string | null;
 }
 
 export interface MailPeoplePage {
@@ -101,6 +112,11 @@ export interface MailMessage {
   /** Set when the original was removed under the retention rule; facts stay. */
   rawDeletedAt: string | null;
   door: MailDoor;
+  /**
+   * Mail a machine wrote — an auto-reply or a bounce. Shown on the thread,
+   * never counted as a letter, never the reason anyone is waiting (M-5).
+   */
+  automatic: boolean;
 }
 
 export interface MailOrderRef {
