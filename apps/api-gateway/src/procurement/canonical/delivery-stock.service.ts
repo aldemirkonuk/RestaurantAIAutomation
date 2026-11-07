@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
-import { perBottleLotCost } from "./lot-unit-cost";
+import { perBottleLotCost, proposalPerBottle } from "./lot-unit-cost";
 
 /**
  * DeliveryStockService — ADR 0103 A1 + A5: stock at the door, cost at VERIFIED.
@@ -132,6 +132,20 @@ interface LineRow {
   price_base_uom?: string | null;
   line_total?: number | string | null;
   printed?: unknown;
+}
+
+/** QA 12b D1: the invoice line whose price base a door-count proposal is read
+ * in — the item's own, else the delivery's only, unattached, invoice line.
+ * Several lines count only when their printed prices settle one base. */
+function baseLine(invoice: LineRow[], id: string | null): LineRow | undefined {
+  const own = id ? invoice.filter((l) => l.inventory_id === id) : [];
+  const lines = own.length ? own : invoice.length === 1 && !invoice[0].inventory_id ? invoice : [];
+  if (lines.length === 1) return lines[0];
+  const bases = new Set(lines.map((l) => {
+    const c = perBottleLotCost(l);
+    return c.ok ? c.bottles : NaN;
+  }));
+  return lines.length && bases.size === 1 && !bases.has(NaN) ? lines[0] : undefined;
 }
 
 interface AgreedPrice {
@@ -462,16 +476,12 @@ export class DeliveryStockService {
   }
 
   /**
-   * QA round 9a (2): a RE-VERIFY repairs a lot an earlier verify finalised at
-   * the invoice's PRINTED price (B1), or at an accepted proposal's raw price
-   * (QA 10a (1)). Only a final lot whose cost IS such a printed price of its
-   * item, and is not the per-bottle cost, is revalued: a cost a person revalued
-   * by hand is left alone. When the line now refuses, the lot keeps its cost
-   * and the reason is returned, so the screen can say so.
-   *
-   * QA 10a (6): an invoice lot whose cost is not a printed price and no longer
-   * matches its line is FLAGGED, never revalued (ADR 0103: a re-verify is not a
-   * second verification). Lines that name no item are not repaired.
+   * QA 9a (2): a RE-VERIFY revalues a final lot booked at its item's PRINTED
+   * price (B1) or a proposal's raw price (10a (1)), when that is not the
+   * per-bottle cost; a hand revaluation is left alone. A line that now refuses
+   * keeps the cost and returns why. QA 10a (6): an invoice lot that no longer
+   * matches its line is FLAGGED, never revalued (ADR 0103). Lines that name no
+   * item are not repaired.
    */
   async repairPrintedCost(
     restaurantId: string,
@@ -832,6 +842,7 @@ export class DeliveryStockService {
     const printed = new Map<string, Set<number>>();
 
     const lineByKey = new Map<string, LineRow>();
+    const invoiceLines: LineRow[] = [];
     const invoiceSet = new Set(invoiceIds);
     if (allIds.length) {
       const read = await this.db
@@ -856,6 +867,7 @@ export class DeliveryStockService {
         // count carries no money at all (ADR 0104 D11), so it is indexed for
         // the proposal lookup and never read as a price.
         if (!invoiceSet.has(line.document_id)) continue;
+        invoiceLines.push(line);
         // QA 7c B1: `unit_price` is as PRINTED, per its price base.
         const cost = perBottleLotCost({
           unit_price: line.unit_price,
@@ -915,25 +927,26 @@ export class DeliveryStockService {
       unit_price_proposed: number | string | null;
     }[]) {
       if (p.unit_price_proposed == null) continue;
-      const line = lineByKey.get(`${p.document_id}:${p.line_no}`);
+      const keyed = lineByKey.get(`${p.document_id}:${p.line_no}`);
+      const id = keyed?.inventory_id ?? null;
+      const said = Number(p.unit_price_proposed);
       // QA 10a (1): a settled price is a counter to its line's printed price,
-      // so it is in that line's price base and goes through the same per-bottle
-      // rule. A proposal on no line has no unit at all, and is refused by name.
+      // so it is in that line's price base. QA 12b D1: a door count prints no
+      // price, so a proposal keyed to it is read in the base of the item's
+      // invoice line (or the delivery's only invoice line); none, or several
+      // that disagree, and it is refused. A proposal on no line has no unit.
+      const line = keyed && !invoiceSet.has(keyed.document_id) ? baseLine(invoiceLines, id) : keyed;
       const cost = line
-        ? perBottleLotCost({
-            unit_price: p.unit_price_proposed,
-            uom: line.uom,
-            pack_size: line.pack_size,
-            price_base_qty: line.price_base_qty,
-            price_base_uom: line.price_base_uom,
-            // The unit glyph still decides; the printed total is for the printed price.
-            printed: line.printed,
-          })
-        : Number(p.unit_price_proposed) > 0
-          ? ({ ok: false, kind: "refused", reason: `an accepted proposal settles a price of ${Number(p.unit_price_proposed)} but names no invoice line, so what unit that price is for is not known` } as const)
-          : ({ ok: false, kind: "no_price" } as const);
-      const id = line?.inventory_id ?? null;
-      // An earlier build booked the RAW proposed price; a re-verify spots it (10a (1)).
+        ? proposalPerBottle(p.unit_price_proposed, line)
+        : !(said > 0)
+          ? ({ ok: false, kind: "no_price" } as const)
+          : ({
+              ok: false,
+              kind: "refused",
+              reason: keyed
+                ? `an accepted proposal settles a price of ${said} on the door count, which prints no price, and no single invoice line of this item says what unit that price is for`
+                : `an accepted proposal settles a price of ${said} but names no invoice line, so what unit that price is for is not known`,
+            } as const);
       if (id && "printed" in cost && cost.printed != null)
         printed.set(id, (printed.get(id) ?? new Set<number>()).add(cost.printed));
       if (!cost.ok) {
