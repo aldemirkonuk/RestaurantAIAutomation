@@ -30,14 +30,15 @@
  *                 SMS goes out inside the quiet window. The rendered copy never
  *                 claimed otherwise; this comment did, by counting :637 as a
  *                 fourth handler (second-pass audit DEFECT 1).
- *   push        → `push_enabled` is written three times and read never.
- *                 Push DELIVERY code does exist in the orchestrator
- *                 (`push_service.send_push_notification`), but the channel
- *                 chooser picks by urgency and `<type>_channels`, its device
- *                 table `push_subscriptions` is absent from production
- *                 (notification_agent.py:31-37) and the gateway has no push
- *                 path at all
- *                 (communications/push-is-not-resolved-here.spec.ts)   PREF DEAD
+ *   push        → apps/api-gateway/src/push/push-gate.ts, applied by
+ *                 `ExpoPushService.sendToHouse` to the alert funnel's phone
+ *                 leg, and team/broadcast-preferences.ts for a crew
+ *                 broadcast.                                                 READ
+ *                 (Was PREF DEAD here until 2026-11-07; the gateway gained an
+ *                 Expo push path in ADR 0121 and the 2026-09-03 grep predates
+ *                 it. QA round 4 B1 found the funnel leg ignored the switch.)
+ *   quiet hours, phone leg → push/push-gate.ts, same rule as the agent's:
+ *                 below critical is dropped inside the window.              READ
  *   categories  → written at notifications.service.ts:1144-1145; no reader in
  *                 any of the four trees                                       DEAD
  *
@@ -118,11 +119,14 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                   onChange={(v) => void saveNotif('sms', { sms: v })} />
               }
             />
-            <Dead
-              label="Push"
-              stored={p.push ? 'stored: on' : 'stored: off'}
-              consequence="Nothing in the product sends a push notification to your phone, and this preference would not be what decided it if something did. Push-sending code exists in the alerting agent, but it chooses its channels by urgency and never consults this switch; the device register it would send to is absent from production; and the gateway has no push path at all."
-              evidence="`push_enabled` has three writers and no reader: notifications.service.ts:189,1142,1193 write it; the channel chooser reads urgency and `<type>_channels` instead (notification_agent.py:1435-1470). The one other hit, core/database.py:1967, copies a `restaurants.push_enabled` onto a manager object nothing then reads. Device table missing per notification_agent.py:31-37; gateway path per apps/api-gateway/src/communications/push-is-not-resolved-here.spec.ts. Grepped 2026-09-03 across all four runtimes."
+            <Row
+              label="Phone door"
+              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>push/push-gate.ts</code> }}
+              consequence="This house’s alerts and your manager’s crew broadcasts reach the Mudavym app on your phone. Off, neither is pushed to you, critical alerts included; your in-app inbox still has them."
+              control={
+                <Toggle label="Push notifications" checked={p.push} busy={writer.busy === 'push'}
+                  onChange={(v) => void saveNotif('push', { push: v })} />
+              }
             />
 
             <div style={{ margin: '20px 0 0' }}><Micro tone="seal">Low stock</Micro></div>
@@ -207,17 +211,18 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                 ...kept,
                 readBy: (
                   <code style={{ fontFamily: MONO }}>
-                    notification_agent.py:1448,1487-1494
+                    push/push-gate.ts · notification_agent.py:1448,1487-1494
                   </code>
                 ),
               }}
               consequence={
                 <>
-                  Honoured by the alerting agent: inside this window it drops every channel for
-                  anything below <strong>critical</strong>, so the alert is suppressed rather than
-                  delayed. Critical still goes out. The gateway’s own scheduled mail — the weekly
-                  report and order reminders — does <strong>not</strong> consult this window and
-                  sends on its own clock.
+                  Read on this house’s clock. Inside this window anything below{' '}
+                  <strong>critical</strong> is dropped rather than delayed: this house’s alerts are
+                  not pushed to your phone, and the alerting agent sends them on no channel. What
+                  lands in your in-app inbox stays there. Critical still goes out. The gateway’s
+                  own scheduled mail — the weekly report and order reminders — does{' '}
+                  <strong>not</strong> consult this window and sends on its own clock.
                 </>
               }
               control={

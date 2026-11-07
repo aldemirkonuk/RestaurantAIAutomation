@@ -755,16 +755,27 @@ describe('SettingsNext — provenance and unknowns', () => {
       })),
     });
     mount('/settings?tab=notifications');
-    // Push: stored, but nothing sends it — no control anywhere for it.
-    expect(screen.queryByRole('switch', { name: /^Push/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/Nothing in the product sends a push notification/i)).toBeInTheDocument();
-    expect(screen.getByText(/push-is-not-resolved-here/)).toBeInTheDocument();
     // Email and SMS are real, so they keep their switches.
     expect(screen.getByRole('switch', { name: /Email notifications/i })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /SMS notifications/i })).toBeInTheDocument();
     // The category that is off is shown as a stored value, not as a switch.
     expect(screen.getAllByText('stored: off').length).toBe(1);
-    expect(screen.getAllByText('stored: on').length).toBeGreaterThanOrEqual(5);
+    // Four categories on; push is no longer a stored-only record (it has a switch).
+    expect(screen.getAllByText('stored: on').length).toBe(4);
+  });
+
+  it('gives push a real switch, because the phone leg now reads it (QA round 4 B1)', () => {
+    // It rendered as a dead record ("Nothing in the product sends a push
+    // notification") while the gateway pushed through Expo and ignored it.
+    // `push/push-gate.ts` reads `push_enabled` now, so the switch is real.
+    mock.current = base({ notif: remote(notifPrefs({ push: true })) });
+    mount('/settings?tab=notifications');
+    expect(screen.queryByText(/Nothing in the product sends a push notification/i)).not.toBeInTheDocument();
+    const toggle = screen.getByRole('switch', { name: /^Push notifications$/i });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(toggle);
+    expect(saveNotif).toHaveBeenCalledWith('push', { push: false });
+    expect(screen.getByText(/critical alerts included/i)).toBeInTheDocument();
   });
 
   it('keeps a real switch on quiet hours, because the alerting agent reads it', () => {
