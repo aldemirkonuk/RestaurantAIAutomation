@@ -1,4 +1,4 @@
-## Stored wine keys computed before the dotless-ı fold are stale — OPEN — 2026-11-07
+## Stored wine keys computed before the dotless-ı fold are stale — PARTLY RESOLVED — 2026-11-07
 
 Branch `fix/wine-name-folds-turkish-i` (QA round 1, B-1) makes
 `public.wine_normalize_text` and its three mirrors fold Turkish dotless "ı"
@@ -22,14 +22,36 @@ recompute `signature_hash`, on purpose:
   through the normalized-name leg of `match_library_wine`, not the signature
   leg, so it still links; what stays stale is the hash itself.
 
-How many rows this touches is **not measured** (this branch may not query
-production). The next step, by whoever is allowed to read production:
+Recompute (stacked `fix/wine-signatures-refold-dotless-i`): the migration
+`wine_signatures_refold_dotless_i` moves each live drifting row with an "ı"
+to its folded hash, oldest first, together with its submissions, menu_changes
+and roster copies. When another row already holds the folded hash it moves
+NEITHER row: the later one keeps its old hash and the pair goes to
+`public.wine_signature_refold_review` (`held_by` = the holder); a roster row
+whose venue already holds the new hash is kept and recorded the same way.
+Each review row is a merge decision (`merge_library_wines`), never an UPDATE.
+Proven in PGlite 0.5.8 (p4-scratch/pglite-probe/f785-wave3-refold-proof.mjs,
+29 checks, second run a no-op); removing the holder check or the roster guard
+fails on the UNIQUE index (23505).
+
+Still open: how many rows it moves or holds in production is **not
+measured** (no production reads from this lane):
 `SELECT count(*) FROM master_wine_library WHERE concat_ws(' ', producer, name,
-country, region, grape_variety) LIKE '%ı%';`, then
-`SELECT * FROM fn_repair_signature_hashes(false);` (reports only, skips
-collisions) once the migration is live; rows needing a merge show as
-`SKIPPED_COLLISION`. Every row with an "ı" also shows in `v_signature_drift`
-until it is repaired or merged.
+country, region, grape_variety) LIKE '%ı%';` before, and
+`SELECT * FROM wine_signature_refold_review WHERE resolved_at IS NULL;` after.
+Provisional (venue-scoped) rows were not seeded in the PGlite proof; the
+migration takes their hash from `v_signature_drift`, which applies the venue
+formula, but that path is unexercised.
+
+QA round 10c: the body is now `public.refold_wine_signatures_dotless_i()`
+(owner only), called once by the migration and run by the behavioural test
+`supabase/tests/20270405100000_wine_signatures_refold_dotless_i_test.sql`
+(CI does not run supabase/tests; run by hand through pgtest). The Kavaklıdere
+/ KAVAKLIDERE Yakut pair stays two rows by design (test T1): the capitals row
+already holds the folded hash. The session's call: held for review, not
+merged (ADR 0124). The reader of the review table is the stacked PR on this
+one; no screen shows it. Still open, F2: a roster row kept on its old hash
+joins no live library row once its library row has moved.
 
 ## Other letters NFD cannot fold are still split — OPEN — 2026-11-07
 
@@ -66,7 +88,23 @@ NOT covered: `IdentityService.suggest` blocks on the folded
 `producer_normalised` only, so an identity asserted before the fold is not
 suggested for a subject with "ı" (its tokens "kavakl"/"dere" would not score
 anyway); the stored observation hashes and identity keys stay on the old rule
-until a person or a later backfill re-keys them.
+until a person or a later backfill re-keys them. Two readers group stored rows
+by `sig:<signature_hash>` with no bottle in hand, so they cannot ask for a
+pre-fold hash (a hash cannot be re-folded, and the row keeps no producer):
+the nightly outlier re-judge (`planRejudge` in
+`apps/api-gateway/src/vendor-intel/outlier-rejudge.ts`) and the below-average
+sweep (`VendorComparisonService.belowTrailingAverage` → `priceBelowAverage` in
+`price-below-average.ts`, which `market-price.producer.ts` reads). For an
+off-catalogue bottle seen as "Kavaklıdere", sightings stored before the fold
+and sightings written after it sit in two groups. The fold itself causes this
+split for a bottle that used to be one group. Each half can fall under
+`MIN_OUTLIER_SAMPLE`, so the re-judge says nothing about it (silence, not a
+false flag). The below-average box can list the bottle twice, or drop it when
+a half falls under the minimum history. The market-price producer acts only on
+`wine:` keys, so a `sig:` split reaches it only as extra `notOurs` items
+competing for the read's ranking cap. The split heals by itself once the
+pre-fold sightings leave the 30-day window (`REJUDGE_WINDOW_DAYS`, the sweep's
+`windowDays ?? 30`); nothing re-keys them sooner.
 `services/agent-orchestrator/services/beverage_ontology.py` `normalize_text`
 (token matching only, not an identity key) and the other Python normalisers in
 `services/agent-orchestrator` were not changed.
