@@ -45,9 +45,17 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
+        // No chart library is named here. A manualChunks entry pulls the
+        // package AND everything it imports into one chunk, and the entry
+        // imports `ui` statically, so the `@tremor/react` that used to sit in
+        // this list carried recharts (~615 KB), lodash and date-fns into the
+        // JS every visitor downloads, landing page included, although only
+        // the Reports page draws a chart (2026-11-07 bundle QA, H1). Left out,
+        // Rollup keeps them with the lazy page that imports them.
+        // `bundle-first-paint.test.ts` pins this.
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
-          ui: ['@tremor/react', 'framer-motion', 'lucide-react'],
+          ui: ['framer-motion', 'lucide-react'],
         },
       },
     },
