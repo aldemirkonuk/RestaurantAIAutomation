@@ -71,6 +71,28 @@ interface ClientMetadata {
   sessionVersion: number | null;
 }
 
+/**
+ * What `restaurant:<id>` may hear about the floor (ADR 0345 E2): a table and a
+ * word. Exported so the floor module types its calls against the same shape.
+ */
+export type FloorWord =
+  | "seated"
+  | "visited"
+  | "paid"
+  | "paid_undone"
+  | "left"
+  | "food_up"
+  | "food_ack"
+  | "assigned"
+  | "released"
+  | "sections_changed"
+  | "out_tonight_changed";
+
+export interface FloorWordPayload {
+  tableId: string | null;
+  word: FloorWord;
+}
+
 /** Server event types */
 interface StockUpdatePayload {
   inventory_id: string;
@@ -644,6 +666,23 @@ export class WebsocketGateway
 
     this.emitToRoom(room, "order:status_changed", payload);
     this.logger.log(`📋 order:status_changed → ${room} (${data.status})`);
+  }
+
+  /**
+   * `floor:changed` to `restaurant:<id>`, which every member's socket joins,
+   * staff included (ADR 0345 E2). It carries WORDS only: a table id and what
+   * happened to it. Never a person's name, a lag in minutes or a score — those
+   * go to owners and managers through `emitToHouseRoles`. The type admits
+   * nothing else, so a caller cannot widen it by accident.
+   */
+  emitFloorWord(restaurantId: string, data: FloorWordPayload): void {
+    const room = `restaurant:${restaurantId}`;
+    const payload: { event: "FloorChanged"; data: FloorWordPayload; timestamp: string } = {
+      event: "FloorChanged",
+      data: { tableId: data.tableId, word: data.word },
+      timestamp: new Date().toISOString(),
+    };
+    this.emitToRoom(room, "floor:changed", payload);
   }
 
   /**

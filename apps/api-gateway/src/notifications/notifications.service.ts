@@ -42,6 +42,23 @@ export interface NotificationPayload {
   actions?: Array<{ action: string; title: string }>;
 }
 
+/** What one person's web-push send did (ADR 0352). `reason` is set only when nothing was sent. */
+export interface WebPushReport {
+  found: number;
+  sent: number;
+  pruned: number;
+  reason:
+    | null
+    | "not_configured"
+    | "read_failed"
+    | "no_device"
+    | "no_usable_subscription"
+    | "all_pruned"
+    | "timed_out"
+    | "all_failed"
+    | "error";
+}
+
 interface PushSubscription {
   endpoint: string;
   keys: {
@@ -203,6 +220,76 @@ export class NotificationsService {
       }
     } catch (err) {
       this.logger.warn(`sendWebPush error: ${err?.message}`);
+    }
+  }
+
+  /**
+   * `sendWebPush`, but it says what happened (ADR 0352 › The alert scanner's
+   * code change). Same device store (`notification_push_devices`), same 404/410
+   * pruning; it adds per-send options and a report, so a floor alert can tell
+   * "sent to a device" from "sent to nobody" and climb past the second.
+   *
+   * `sendWebPush` is left as it is: its callers rely on it never throwing and
+   * never reporting, and changing them is not this change's.
+   *
+   * Sent means the push service accepted it, not that a phone showed it.
+   */
+  async sendWebPushReported(
+    userId: string,
+    payload: NotificationPayload,
+    opts: { ttlSeconds: number; urgency: "high" | "normal"; timeoutMs: number },
+  ): Promise<WebPushReport> {
+    const report: WebPushReport = { found: 0, sent: 0, pruned: 0, reason: null };
+    if (!this.webPush) return { ...report, reason: "not_configured" };
+    try {
+      const { data: devices, error } = await this.databaseService.supabase
+        .from("notification_push_devices")
+        .select("id, endpoint, subscription")
+        .eq("user_id", userId);
+      if (error) return { ...report, reason: "read_failed" };
+      if (!devices || devices.length === 0) {
+        return { ...report, reason: "no_device" };
+      }
+      report.found = devices.length;
+      const body = JSON.stringify({
+        title: payload.title,
+        body: payload.body,
+        data: payload.data,
+        requireInteraction: payload.requireInteraction,
+        actions: payload.actions,
+      });
+      let usable = 0;
+      let timedOut = false;
+      for (const device of devices) {
+        const sub = device.subscription as PushSubscription;
+        if (!sub?.endpoint) continue;
+        usable++;
+        try {
+          await this.webPush.sendNotification(sub, body, {
+            TTL: opts.ttlSeconds,
+            urgency: opts.urgency,
+            timeout: opts.timeoutMs,
+          });
+          report.sent++;
+        } catch (pushErr: any) {
+          if (pushErr?.statusCode === 410 || pushErr?.statusCode === 404) {
+            await this.databaseService.supabase
+              .from("notification_push_devices")
+              .delete()
+              .eq("user_id", userId)
+              .eq("endpoint", device.endpoint);
+            report.pruned++;
+          } else if (/timeout|ETIMEDOUT|ESOCKETTIMEDOUT/i.test(String(pushErr?.message ?? pushErr?.code ?? ""))) {
+            timedOut = true;
+          }
+        }
+      }
+      if (report.sent > 0) return report;
+      if (usable === 0) return { ...report, reason: "no_usable_subscription" };
+      if (report.pruned === usable) return { ...report, reason: "all_pruned" };
+      return { ...report, reason: timedOut ? "timed_out" : "all_failed" };
+    } catch {
+      return { ...report, reason: "error" };
     }
   }
 
