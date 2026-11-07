@@ -171,6 +171,35 @@ function lowStockView(it: InventoryItem) {
   };
 }
 
+type LowStockLine = ReturnType<typeof lowStockView>;
+
+/**
+ * How far a good has run down, as a share of its own minimum. It carries no
+ * unit, so a flour 300 g short and a wine 12 bottles short compare fairly; a
+ * raw shortfall would let six gram goods push an empty wine off the list.
+ * Unknown when the stock or a positive minimum is missing.
+ */
+function shareLeft(it: LowStockLine): number | null {
+  if (it.stock == null || it.min == null || it.min <= 0) return null;
+  return it.stock / it.min;
+}
+
+/** Out of stock first, then the smallest share left, then by name. */
+function byHowLow(a: LowStockLine, b: LowStockLine): number {
+  const outA = a.stock === 0 ? 0 : 1;
+  const outB = b.stock === 0 ? 0 : 1;
+  if (outA !== outB) return outA - outB;
+  const ra = shareLeft(a);
+  const rb = shareLeft(b);
+  if (ra !== rb) {
+    if (ra == null) return 1;
+    if (rb == null) return -1;
+    return ra - rb;
+  }
+  if (a.name == null || b.name == null) return a.name == null ? (b.name == null ? 0 : 1) : -1;
+  return a.name.localeCompare(b.name);
+}
+
 export function LowStockPanel({
   items,
   onRetry,
@@ -179,9 +208,7 @@ export function LowStockPanel({
   /** DASH-W19: reads the list again after a failed read. */
   onRetry?: () => unknown;
 }) {
-  const sorted = (items ?? [])
-    .map(lowStockView)
-    .sort((a, b) => (a.stock ?? 0) - (a.min ?? 0) - ((b.stock ?? 0) - (b.min ?? 0)));
+  const sorted = (items ?? []).map(lowStockView).sort(byHowLow);
 
   return (
     <Panel

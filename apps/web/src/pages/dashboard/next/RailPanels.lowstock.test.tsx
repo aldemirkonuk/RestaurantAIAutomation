@@ -67,6 +67,44 @@ describe('LowStockPanel — every good, in its own unit', () => {
     expect(screen.queryByText(/cellar/i)).toBeNull();
   });
 
+  it('ranks by how far each good has run down, not by a shortfall in mixed units', () => {
+    // Raw shortfall (stock - min) would put Rice (-4000 g) first and push the
+    // empty Barolo (-12 bottles) and the Lager (-23) below the fold.
+    render(
+      <MemoryRouter>
+        <LowStockPanel
+          items={rows([
+            { id: '1', wine_name: 'Rice', stock_live: 1000, threshold_min: 5000, kind: 'food', uom: 'g' },
+            { id: '2', wine_name: 'Milk', stock_live: 900, threshold_min: 2000, kind: 'food', uom: 'ml' },
+            { id: '3', wine_name: 'Olive oil', stock_live: 500, threshold_min: 1000, kind: 'food', uom: 'ml' },
+            { id: '4', wine_name: 'Flour', stock_live: 200, threshold_min: 500, kind: 'food', uom: 'g' },
+            { id: '5', wine_name: 'Sugar', stock_live: 100, threshold_min: 400, kind: 'food', uom: 'g' },
+            { id: '6', wine_name: 'Butter', stock_live: 50, threshold_min: 250, kind: 'food', uom: 'g' },
+            { id: '7', wine_name: 'House Lager', stock_live: 1, threshold_min: 24, kind: 'beer', uom: 'bottle' },
+            { id: '8', wine_name: 'Barolo Cannubi', vintage: 2019, stock_live: 0, threshold_min: 12, kind: 'wine', uom: 'bottle' },
+          ])}
+        />
+      </MemoryRouter>,
+    );
+
+    const shown = screen
+      .getAllByRole('link')
+      .filter((a) => a.getAttribute('href')?.startsWith('/inventory?'))
+      .map((a) => a.textContent);
+    expect(shown).toEqual([
+      'Barolo Cannubi 2019',
+      'House Lager',
+      'Butter',
+      'Rice',
+      'Sugar',
+      'Flour',
+    ]);
+    expect(lineFor('Barolo Cannubi').textContent).toMatch(/0\s*\/ min 12 bottles$/);
+    expect(screen.getByText('and 2 more below minimum')).toBeInTheDocument();
+    expect(screen.queryByText('Milk')).toBeNull();
+    expect(screen.queryByText('Olive oil')).toBeNull();
+  });
+
   it('shows an unknown unit as written rather than calling it bottles', () => {
     expect(unitWord('crate', 4)).toBe('crate');
     expect(unitWord('KG', 2)).toBe('kg');
