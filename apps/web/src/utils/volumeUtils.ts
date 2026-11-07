@@ -6,7 +6,9 @@ const ML_PER_OZ = 29.5735
 
 export const BOTTLE_SIZE_MIN_ML = 50
 export const BOTTLE_SIZE_MAX_ML = 18000
-export const POUR_SIZE_MIN_ML = 30
+// 10 ml lets a 20-25 ml spirit measure through and stops a 1 ml typo; the
+// gateway and the database hold the same 10..500 (call F12).
+export const POUR_SIZE_MIN_ML = 10
 export const POUR_SIZE_MAX_ML = 500
 
 export function isValidBottleSize(ml: number): boolean {
@@ -81,11 +83,6 @@ export function getEffectiveBottleSize(
   libraryBottleSizeMl: number | null | undefined
 ): number {
   return inventoryBottleSizeMl ?? libraryBottleSizeMl ?? 750
-}
-
-export function costPerGlass(bottleCost: number, glassesPerBottle: number): number {
-  if (!glassesPerBottle || glassesPerBottle <= 0) return 0
-  return Math.round((bottleCost / glassesPerBottle) * 100) / 100
 }
 
 export function glassMarginPercent(glassCost: number, glassMenuPrice: number): number {

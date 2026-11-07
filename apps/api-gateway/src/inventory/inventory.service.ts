@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   HttpException,
+  BadRequestException,
   ConflictException,
   HttpStatus,
   Optional,
@@ -28,6 +29,7 @@ import {
   type HouseItemResearchView,
 } from "./house-item-research";
 import { classifyStock } from "../common/stock-status";
+import { POUR_MAX_ML, POUR_MIN_ML } from "../pricing/target-margin.service";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -361,15 +363,28 @@ export class InventoryService {
     performedBy?: string | null,
   ) {
     const client = this.dbService.getClient();
-    // pour_events.idempotency_key is now mandatory (spine repair, decision
-    // A12): a full unique constraint on a nullable column meant every
-    // key-less manual pour after the first collided on a duplicate NULL.
-    // Prefer the caller's key (stable across an offline retry); fall back to
-    // a server-generated one so this endpoint never 500s for a caller that
-    // hasn't been updated to send one yet — it simply loses retry-dedupe.
+    // pour_events.idempotency_key is mandatory (spine repair, decision A12),
+    // and only the CALLER's key survives a retry: a key minted here was new on
+    // every attempt, so a retried pour poured twice (recipes walk G19). A pour
+    // without one is refused before anything moves. Every in-repo caller sends
+    // one (apps/web services/api/inventory.ts recordPour mints it client-side).
     const idempotencyKey =
-      dto.idempotencyKey ??
-      `pour:${inventoryId}:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+      typeof dto.idempotencyKey === "string" ? dto.idempotencyKey.trim() : "";
+    if (!idempotencyKey) {
+      throw new BadRequestException(
+        "A pour needs an idempotencyKey so a retry cannot pour twice. Nothing was poured.",
+      );
+    }
+    // Call F12: a pour is 10 to 500 ml, the house pour's own bounds. 10 lets a
+    // 20-25 ml spirit measure through and stops a 1 ml typo.
+    if (dto.pourMl !== undefined && dto.pourMl !== null) {
+      const ml = dto.pourMl;
+      if (!Number.isInteger(ml) || ml < POUR_MIN_ML || ml > POUR_MAX_ML) {
+        throw new BadRequestException(
+          `A pour is a whole number of ml between ${POUR_MIN_ML} and ${POUR_MAX_ML}; ${String(ml)} is not. Nothing was poured.`,
+        );
+      }
+    }
     // ADR 0141, Correction 2026-09-12. This path takes an inventory id from
     // the URL and hands it to a SQL wrapper that derives the house from the
     // item itself, so without this check a caller could move another

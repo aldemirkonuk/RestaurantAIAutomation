@@ -3,39 +3,27 @@ import { persist } from 'zustand/middleware'
 
 export type MeasurementUnit = 'ml' | 'oz'
 
+/**
+ * How THIS browser writes volumes out. Nothing else lives here: the house's
+ * pour is restaurants.default_pour_ml on the server (recipes walk G13), and
+ * the "Enable recipes" / "Recipe yield unit" switches nothing read are gone
+ * (G15). A browser that stored them under this key keeps the stale keys; the
+ * partialize below never writes them again and nothing reads them.
+ */
 interface RestaurantSettingsStore {
   measurementUnit: MeasurementUnit
-  defaultPourMl: number
-  recipesEnabled: boolean
-  recipeYieldUnit: MeasurementUnit
   setMeasurementUnit: (unit: MeasurementUnit) => void
-  setDefaultPourMl: (ml: number) => void
-  setRecipesEnabled: (enabled: boolean) => void
-  setRecipeYieldUnit: (unit: MeasurementUnit) => void
 }
-
-const DEFAULT_POUR_ML = 150
 
 export const useRestaurantSettingsStore = create<RestaurantSettingsStore>()(
   persist(
     (set) => ({
       measurementUnit: 'ml',
-      defaultPourMl: DEFAULT_POUR_ML,
-      recipesEnabled: false,
-      recipeYieldUnit: 'ml',
       setMeasurementUnit: (unit) => set({ measurementUnit: unit }),
-      setDefaultPourMl: (ml) => set({ defaultPourMl: ml }),
-      setRecipesEnabled: (enabled) => set({ recipesEnabled: enabled }),
-      setRecipeYieldUnit: (unit) => set({ recipeYieldUnit: unit }),
     }),
     {
       name: 'restaurant-settings-storage',
-      partialize: (state) => ({
-        measurementUnit: state.measurementUnit,
-        defaultPourMl: state.defaultPourMl,
-        recipesEnabled: state.recipesEnabled,
-        recipeYieldUnit: state.recipeYieldUnit,
-      }),
+      partialize: (state) => ({ measurementUnit: state.measurementUnit }),
     }
   )
 )
