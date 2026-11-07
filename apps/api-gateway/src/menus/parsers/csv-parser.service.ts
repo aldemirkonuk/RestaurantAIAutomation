@@ -131,7 +131,11 @@ export class CsvParserService {
     items: WineExtractItem[];
     issues: CsvRowIssue[];
   } {
-    const text = (csvContent ?? "").replace(/^\uFEFF/, "");
+    // A string by type, not by trust: the body is user-supplied, and an
+    // object with a forged `.length` must never drive the record loop.
+    const text = (
+      typeof csvContent === "string" ? csvContent : String(csvContent ?? "")
+    ).replace(/^\uFEFF/, "");
     const records = readRecords(text, sniffDelimiter(text)).filter((r) =>
       r.cells.some((c) => c.trim().length > 0),
     );
