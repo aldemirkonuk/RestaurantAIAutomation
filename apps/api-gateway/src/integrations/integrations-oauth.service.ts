@@ -79,6 +79,11 @@ class ConsentMembershipRefusal extends Error {
  * is now refused, before any provider flow opens and again at the write.
  * Letting one person hold a grant per house is a schema change (the unique
  * key), recorded as the founder's call, not made here.
+ *
+ * QA round 18: the write is one conditional statement, so two houses finishing
+ * at once cannot both pass the check and the later one move the grant. A grant
+ * held in a house the person no longer works in is not "held" there: it is
+ * released at the write, so someone removed from a house is not stuck.
  */
 export const GRANT_HELD_IN_ANOTHER_HOUSE =
   "This is already connected in another of your houses, and a connection lives in one house at a time. Disconnect it there first, then connect it here. Nothing was changed.";
@@ -327,13 +332,12 @@ export class IntegrationsOauthService {
     const frontendOrigin = this.consentFrontendOrigin(consent.frontendOrigin);
 
     // R11-05: before a receipt is filed or a provider flow opens.
-    if (
-      await this.grantHeldInAnotherHouse(
-        params.userId,
-        params.integrationId,
-        params.restaurantId,
-      )
-    ) {
+    const elsewhere = await this.liveGrantInAnotherHouse(
+      params.userId,
+      params.integrationId,
+      params.restaurantId,
+    );
+    if (elsewhere && !elsewhere.stale) {
       throw new ConflictException(GRANT_HELD_IN_ANOTHER_HOUSE);
     }
 
@@ -642,13 +646,12 @@ export class IntegrationsOauthService {
       // R11-05, before the code is exchanged: a grant made in another house
       // after this flow opened (a second tab) is caught here, so no token is
       // minted that would only be thrown away at the write.
-      if (
-        await this.grantHeldInAnotherHouse(
-          stateRow.user_id,
-          stateRow.integration_id,
-          stateRow.restaurant_id,
-        )
-      ) {
+      const elsewhere = await this.liveGrantInAnotherHouse(
+        stateRow.user_id,
+        stateRow.integration_id,
+        stateRow.restaurant_id,
+      );
+      if (elsewhere && !elsewhere.stale) {
         throw new ConsentMembershipRefusal("connected_in_another_house");
       }
       const verifier = this.crypto.decrypt(stateRow.pkce_verifier_encrypted);
@@ -905,15 +908,18 @@ export class IntegrationsOauthService {
     const { tokens, definition } = params;
 
     // R11-05, again at the write: a flow opened before the other house's
-    // grant was made, or in a second tab, must not move it either.
-    if (
-      await this.grantHeldInAnotherHouse(
-        params.userId,
-        definition.id,
-        params.restaurantId,
-      )
-    ) {
+    // grant was made, or in a second tab, must not move it either. A grant in
+    // a house this person has left is released first (QA round 18).
+    const elsewhere = await this.liveGrantInAnotherHouse(
+      params.userId,
+      definition.id,
+      params.restaurantId,
+    );
+    if (elsewhere && !elsewhere.stale) {
       throw new ConsentMembershipRefusal("connected_in_another_house");
+    }
+    if (elsewhere) {
+      await this.releaseGrantLeftBehind(params.userId, definition.id, elsewhere.heldIn);
     }
 
     // Google's authorize call sets include_granted_scopes=true (needed so a
@@ -943,44 +949,112 @@ export class IntegrationsOauthService {
       params.account,
     );
 
-    const { error } = await this.db.client
-      .from("integration_oauth_connections")
-      .upsert(
-        {
-          user_id: params.userId,
-          restaurant_id: params.restaurantId,
-          provider: definition.provider,
-          integration_id: definition.id,
-          account_email: params.account,
-          consent_receipt_id: params.consentReceiptId,
-          scopes: grantedScopes,
-          access_token_encrypted: this.crypto.encrypt(tokens.access_token!),
-          refresh_token_encrypted: refreshToken
-            ? this.crypto.encrypt(refreshToken)
-            : null,
-          token_expires_at: expiresAt,
-          updated_at: new Date().toISOString(),
-          revoked_at: null,
-        },
-        { onConflict: "user_id,integration_id" },
-      );
+    const row = {
+      user_id: params.userId,
+      restaurant_id: params.restaurantId,
+      provider: definition.provider,
+      integration_id: definition.id,
+      account_email: params.account,
+      consent_receipt_id: params.consentReceiptId,
+      scopes: grantedScopes,
+      access_token_encrypted: this.crypto.encrypt(tokens.access_token!),
+      refresh_token_encrypted: refreshToken
+        ? this.crypto.encrypt(refreshToken)
+        : null,
+      token_expires_at: expiresAt,
+      updated_at: new Date().toISOString(),
+      revoked_at: null,
+    };
 
+    // QA round 18: the check above and this write are not one moment. Two
+    // houses finishing at once both pass the check, and a plain upsert let the
+    // later one move the grant. So the write is conditional, in the database:
+    // insert when this person has no row for this integration (a racing
+    // insert waits on the unique key and then does nothing) ...
+    const { data: inserted, error } = await this.db.client
+      .from("integration_oauth_connections")
+      .upsert(row, { onConflict: "user_id,integration_id", ignoreDuplicates: true })
+      .select("id");
     if (error) {
       throw new Error(`Failed to store connection: ${error.message}`);
+    }
+    if (Array.isArray(inserted) && inserted.length > 0) return;
+
+    // ... otherwise overwrite the row only while it is this house's, has no
+    // house, or is revoked. Postgres re-checks that filter against a row a
+    // concurrent writer just committed, so a grant another house took a
+    // moment ago matches nothing here and is refused, never moved.
+    const house = params.restaurantId;
+    if (house !== null && !/^[0-9A-Za-z-]+$/.test(house)) {
+      throw new Error("Failed to store connection: the house id is malformed");
+    }
+    const overwritable = [
+      ...(house !== null ? [`restaurant_id.eq.${house}`] : []),
+      "restaurant_id.is.null",
+      "revoked_at.not.is.null",
+    ].join(",");
+    const { data: updated, error: updateError } = await this.db.client
+      .from("integration_oauth_connections")
+      .update(row)
+      .eq("user_id", params.userId)
+      .eq("integration_id", definition.id)
+      .or(overwritable)
+      .select("id");
+    if (updateError) {
+      throw new Error(`Failed to store connection: ${updateError.message}`);
+    }
+    if (!Array.isArray(updated) || updated.length === 0) {
+      throw new ConsentMembershipRefusal("connected_in_another_house");
     }
   }
 
   /**
-   * Whether this person's live grant for this integration is recorded in a
-   * house other than `restaurantId` (R11-05). A revoked row, or a legacy row
-   * with no house, is not held anywhere. An unreadable answer refuses: a
-   * guess here either moves a house's grant or blocks a connect for nothing.
+   * Ends a grant left in a house this person no longer works in, the way a
+   * disconnect does locally (tokens cleared, `revoked_at` set), so the
+   * conditional write can take the row for the house they are in now. Only
+   * that house's still-live row is touched; if it changed meanwhile, nothing
+   * is, and the write then refuses. The provider is not called: the person
+   * is granting the same integration again a moment later.
    */
-  private async grantHeldInAnotherHouse(
+  private async releaseGrantLeftBehind(
+    userId: string,
+    integrationId: string,
+    heldIn: string,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    const { error } = await this.db.client
+      .from("integration_oauth_connections")
+      .update({
+        revoked_at: now,
+        access_token_encrypted: null,
+        refresh_token_encrypted: null,
+        token_expires_at: null,
+        updated_at: now,
+      })
+      .eq("user_id", userId)
+      .eq("integration_id", integrationId)
+      .eq("restaurant_id", heldIn)
+      .is("revoked_at", null);
+    if (error) {
+      throw new ServiceUnavailableException(
+        "Your connection in the house you left could not be ended. Nothing was connected; try again.",
+      );
+    }
+  }
+
+  /**
+   * This person's live grant for this integration when it is recorded in a
+   * house other than `restaurantId` (R11-05), else null. A revoked row, or a
+   * legacy row with no house, is not held anywhere. `stale` says the person
+   * no longer works in that house (QA round 18): such a grant blocks nothing.
+   * An unreadable answer refuses: a guess here either moves a house's grant
+   * or blocks a connect for nothing.
+   */
+  private async liveGrantInAnotherHouse(
     userId: string,
     integrationId: string,
     restaurantId: string | null,
-  ): Promise<boolean> {
+  ): Promise<{ heldIn: string; stale: boolean } | null> {
     const { data, error } = await this.db.client
       .from("integration_oauth_connections")
       .select("restaurant_id")
@@ -995,7 +1069,29 @@ export class IntegrationsOauthService {
     }
     const heldIn =
       (data as { restaurant_id?: string | null } | null)?.restaurant_id ?? null;
-    return heldIn !== null && heldIn !== restaurantId;
+    if (heldIn === null || heldIn === restaurantId) return null;
+
+    const { data: user, error: userError } = await this.db.client
+      .from("users")
+      .select("user_id, restaurant_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (userError) {
+      throw new ServiceUnavailableException(
+        "Your existing connections could not be read. Nothing was started; try again.",
+      );
+    }
+    try {
+      await currentRestaurantRole(
+        this.db.client,
+        { user_id: userId, restaurant_id: (user as { restaurant_id?: string | null } | null)?.restaurant_id ?? null },
+        heldIn,
+      );
+      return { heldIn, stale: false };
+    } catch (err) {
+      if (err instanceof UnauthorizedException) return { heldIn, stale: true };
+      throw err;
+    }
   }
 
   private async storedRefreshToken(
