@@ -281,8 +281,9 @@ export default function InventoryNext() {
         (r) => chipMatch(r, activeChip, now, alerted) && inZone(r, zone) && ofType(r, type) && matchesSearch(r, query, zn),
       ),
       sort,
+      data.locale,
     );
-  }, [rows, activeChip, zone, type, query, sort, locs.list, alerted]);
+  }, [rows, activeChip, zone, type, query, sort, locs.list, alerted, data.locale]);
 
   // ── Row selection, ported from the legacy page (NEW-064, InventoryCommandPage.tsx:507-531).
   // Keyed by restaurant_inventory id. A house switch or a filter change empties

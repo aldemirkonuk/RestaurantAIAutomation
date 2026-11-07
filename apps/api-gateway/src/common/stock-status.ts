@@ -36,7 +36,14 @@
  * three from diverging and will not stop the next two.
  */
 
-export type StockBand = "healthy" | "at_par" | "low" | "critical" | "unknown";
+export type StockBand =
+  | "healthy"
+  | "at_par"
+  | "low"
+  | "critical"
+  | "unknown"
+  /** Below par on a row `v_low_stock_items` leaves out (see `canRunLow`). */
+  | "not_alerted";
 
 /** At or under this fraction of par, a wine is critical rather than merely low. */
 export const CRITICAL_RATIO = 0.5;
@@ -89,6 +96,22 @@ export interface StockRow {
   stock_live?: number | null;
   threshold_min?: number | null;
   last_counted_at?: string | null;
+  is_active?: boolean | null;
+  deleted_at?: string | null;
+  inventory_state?: string | null;
+}
+
+/**
+ * The row tests of `v_low_stock_items` (a_received_wine_not_counted_yet_can_run_low.sql:78-80),
+ * less the stock and known-figure tests `bandOfRow` asks itself. QA round 12
+ * R1: without them the card and the summary said 10 low where the view said 8.
+ * NULL is out, as in SQL; `undefined` is a column the reader did not select.
+ */
+export function canRunLow(row: StockRow): boolean {
+  if (row.is_active === false || row.is_active === null) return false;
+  if (row.deleted_at != null) return false;
+  if (row.inventory_state === undefined) return true;
+  return row.inventory_state !== null && row.inventory_state !== "IN_TRANSIT";
 }
 
 export interface StockSummary {
@@ -117,7 +140,12 @@ export function bandOfRow(
 ): StockBand {
   const counted = row.last_counted_at != null;
   if (!counted && !(inView?.has(row.id) ?? false)) return "unknown";
-  return classifyStock(row.stock_live, row.threshold_min);
+  const band = classifyStock(row.stock_live, row.threshold_min);
+  // No alert fires for a row the view leaves out, so no counter calls it low.
+  if ((band === "low" || band === "critical") && !canRunLow(row)) {
+    return "not_alerted";
+  }
+  return band;
 }
 
 /**

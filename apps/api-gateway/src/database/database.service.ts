@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { readWholeWindow } from "../common/read-whole-window";
 
 @Injectable()
 export class DatabaseService implements OnModuleInit {
@@ -39,27 +40,32 @@ export class DatabaseService implements OnModuleInit {
   }
 
   // Helper methods for common operations
+  /**
+   * The titles the house holds: active, not deleted (QA round 12 R1; an
+   * IN_TRANSIT title stays listed, `canRunLow` stops it reading low). Read
+   * whole (ADR 0292): an unpaged select stopped at 1000 rows (R6).
+   */
   async getRestaurantInventory(restaurantId: string) {
-    const { data, error } = await this.supabase
-      .from("restaurant_inventory")
-      .select(
-        "*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, country, region)",
-      )
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true);
-
-    if (error) throw error;
-    return data;
+    return readWholeWindow<any>("The house's inventory", () =>
+      this.supabase
+        .from("restaurant_inventory")
+        .select(
+          "*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, country, region)",
+          { count: "exact" },
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
+        .is("deleted_at", null),
+    );
   }
 
   async getLowStockItems(restaurantId: string) {
-    const { data, error } = await this.supabase
-      .from("v_low_stock_items")
-      .select("*")
-      .eq("restaurant_id", restaurantId);
-
-    if (error) throw error;
-    return data;
+    return readWholeWindow<any>("The house's low-stock wines", () =>
+      this.supabase
+        .from("v_low_stock_items")
+        .select("*", { count: "exact" })
+        .eq("restaurant_id", restaurantId),
+    );
   }
 
   /**

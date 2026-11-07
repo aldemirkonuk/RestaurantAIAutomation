@@ -8,6 +8,7 @@ import {
 import { Cron } from "@nestjs/schedule";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import {
   CRITICAL_RATIO,
   alertBandOf,
@@ -318,6 +319,9 @@ export class LowStockAlertsService {
       const lowReadStartedAt = new Date().toISOString();
       await this.restateCountedAlerts();
       const byRestaurant = await this.getLowStockByRestaurant();
+      // Unread is not "nothing is low" (ADR 0020; QA round 12 R5): an empty
+      // map reset every state to ok and the next good read re-fired them all.
+      if (byRestaurant === null) return;
       const names = await this.getRestaurantNames([...byRestaurant.keys()]);
       for (const [restaurantId, rows] of byRestaurant) {
         await this.evaluateRestaurant(
@@ -374,7 +378,7 @@ export class LowStockAlertsService {
     try {
       const tick = hourTick(at);
       const byRestaurant = await this.getLowStockByRestaurant();
-      if (byRestaurant.size === 0) return;
+      if (byRestaurant === null || byRestaurant.size === 0) return;
       // Captured once, right after the read `rows` itself comes from — the
       // true "we observed these holds as of here" instant, before ANY
       // restaurant's email send or writes below (PR #486 round-2 audit,
@@ -520,6 +524,7 @@ export class LowStockAlertsService {
   }
   async triggerDailyDigest(): Promise<void> {
     const byRestaurant = await this.getLowStockByRestaurant();
+    if (byRestaurant === null) return;
     const rowsSnapshotAt = new Date().toISOString();
     const names = await this.getRestaurantNames([...byRestaurant.keys()]);
     for (const [restaurantId, rows] of byRestaurant) {
@@ -824,6 +829,8 @@ export class LowStockAlertsService {
       // rounds 3-4 audit).
       const readStartedAt = new Date().toISOString();
       const lowRows = await this.getLowStockForRestaurant(restaurantId);
+      // Unread is not recovered (QA round 12 R5).
+      if (lowRows === null) return;
       const lowById = new Map(lowRows.map((r) => [r.inventoryId, r]));
 
       const nowLow = inventoryIds
@@ -1266,17 +1273,15 @@ export class LowStockAlertsService {
   // DATA HELPERS
   // ==========================================================================
 
-  /** All currently-low wines across every restaurant, grouped by restaurant. */
-  private async getLowStockByRestaurant(): Promise<Map<string, LowStockRow[]>> {
+  /** All currently-low wines grouped by restaurant; null when unread (never an empty map, which says every wine recovered). */
+  private async getLowStockByRestaurant(): Promise<Map<
+    string,
+    LowStockRow[]
+  > | null> {
     const map = new Map<string, LowStockRow[]>();
-    const { data, error } = await this.db.supabase
-      .from("v_low_stock_items")
-      .select("*");
-    if (error) {
-      this.logger.warn(`v_low_stock_items query failed: ${error.message}`);
-      return map;
-    }
-    for (const raw of data || []) {
+    const data = await this.readLowStockView(null);
+    if (data === null) return null;
+    for (const raw of data) {
       const restaurantId = raw.restaurant_id;
       if (!restaurantId) continue;
       const row = this.mapRow(raw);
@@ -1350,20 +1355,33 @@ export class LowStockAlertsService {
     };
   }
 
+  /** One house's view rows, or every house's; null when unread, logged. */
+  private async readLowStockView(
+    restaurantId: string | null,
+  ): Promise<any[] | null> {
+    try {
+      return await readWholeWindow<any>("v_low_stock_items", () => {
+        const q = this.db.supabase
+          .from("v_low_stock_items")
+          .select("*", { count: "exact" });
+        return restaurantId === null ? q : q.eq("restaurant_id", restaurantId);
+      });
+    } catch (e: any) {
+      this.logger.warn(
+        `v_low_stock_items could not be read${restaurantId ? ` for ${restaurantId}` : ""}: ${e?.message} — alert states kept, nothing sent`,
+      );
+      return null;
+    }
+  }
+
   /** Currently-low wines for a single restaurant (used by the real-time path). */
   private async getLowStockForRestaurant(
     restaurantId: string,
-  ): Promise<LowStockRow[]> {
-    const { data, error } = await this.db.supabase
-      .from("v_low_stock_items")
-      .select("*")
-      .eq("restaurant_id", restaurantId);
-    if (error) {
-      this.logger.warn(`v_low_stock_items (single) failed: ${error.message}`);
-      return [];
-    }
+  ): Promise<LowStockRow[] | null> {
+    const data = await this.readLowStockView(restaurantId);
+    if (data === null) return null;
     const rows: LowStockRow[] = [];
-    for (const raw of data || []) {
+    for (const raw of data) {
       const row = this.mapRow(raw);
       if (row) rows.push(row);
     }

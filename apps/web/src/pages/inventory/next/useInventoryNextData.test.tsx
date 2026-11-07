@@ -68,7 +68,7 @@ vi.mock('../../../lib/spotCountOutbox', () => ({
   watchSpotCountOutbox: () => () => undefined,
 }));
 
-import { useInventoryNextData } from './useInventoryNextData';
+import { sortRows, useInventoryNextData } from './useInventoryNextData';
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -224,5 +224,19 @@ describe('useInventoryNextData — side reads that did not answer (INV-W28)', ()
     await waitFor(() => expect(m.docs.mock.calls.length).toBe(before.docs + 1));
     // The delivered lines answered, so they are not read again.
     expect(m.deliveries.mock.calls.length).toBe(before.deliveries);
+  });
+});
+
+describe('QA round 12 R7', () => {
+  it('sorts a Turkish house’s names the Turkish way', async () => {
+    m.currency.mockResolvedValue({ readable: true, code: 'TRY', country: 'Turkey' });
+    m.items = ['İsmail Şarabı', 'Ismet', 'Öküzgözü', 'Okuzgozu IT'].map((wineName, i) => ({
+      id: `i${i}`, restaurantId: 'r1', wineId: `w${i}`, wineName, stockLive: 6, thresholdMin: 3, lastCountedAt: '2026-11-01',
+    }));
+    const { result } = mount();
+    await waitFor(() => expect(result.current.locale).toBeDefined());
+    const order = (sort: 'name' | 'needs') => sortRows(result.current.rows ?? [], sort, result.current.locale).map((r) => r.name);
+    expect(order('name')).toEqual(['Ismet', 'İsmail Şarabı', 'Okuzgozu IT', 'Öküzgözü']);
+    expect(order('needs')).toEqual(['Ismet', 'İsmail Şarabı', 'Okuzgozu IT', 'Öküzgözü']);
   });
 });
