@@ -600,10 +600,43 @@ export interface ItemFigures {
   costTrend: { readable: boolean; points: Array<{ receivedAt: string; unitCost: number }> | null; changePct: number | null; source: string };
 }
 
+/** One group of "Used in": a failed read is `lines: null`, never [] (ADR 0067). */
+export interface ItemUsedInGroup<T> {
+  readable: boolean;
+  lines: T[] | null;
+  source: string;
+}
+
+export interface ItemMenuLine {
+  menuItemId: string;
+  menuId: string;
+  name: string;
+  byGlassPrice: number | null;
+  bottlePrice: number | null;
+  linkedBy?: 'inventory_item_id' | 'wine_library_id';
+}
+
+/** GET /inventory/:rid/item/:id/used-in */
+export interface ItemUsedIn {
+  item: { id: string; kind: string | null; displayName: string | null };
+  soldAs: ItemUsedInGroup<ItemMenuLine>;
+  inCocktails: ItemUsedInGroup<{ cocktailId: string; name: string; quantity: number | null; unit: string | null }>;
+  namedNotLinked: ItemUsedInGroup<ItemMenuLine>;
+  recipes: { recorded: false; note: string };
+}
+
 /** Under `inventory`, so every inventory write rereads them too. */
 export const inventoryItemKeys = {
   figures: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'figures'] as const,
+  usedIn: (restaurantId: string, itemId: string) => ['inventory', 'item', restaurantId, itemId, 'used-in'] as const,
 };
+
+export async function getItemUsedIn(itemId: string, restaurantId?: string): Promise<ItemUsedIn> {
+  const id = restaurantId || getActiveRestaurantId();
+  if (!id) throw new Error('No restaurant ID available');
+  const response = await apiClient.get<ItemUsedIn>(`${INVENTORY_PATH}/${id}/item/${encodeURIComponent(itemId)}/used-in`);
+  return response.data;
+}
 
 export async function getItemFigures(itemId: string, restaurantId?: string): Promise<ItemFigures> {
   const id = restaurantId || getActiveRestaurantId();

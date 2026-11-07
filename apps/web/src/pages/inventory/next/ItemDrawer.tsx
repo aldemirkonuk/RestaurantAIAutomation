@@ -2,18 +2,19 @@
  * The /inventory item drawer (proposal §2 S2, §3 I13, §4 K1-K2): one item in
  * a right-side sheet over the list, the whole screen on a phone. The head says
  * what it is, where it sits and when it was last counted; then eight cards
- * (ItemCards) and the evidence a card opens. The evidence is the row's own
+ * (ItemCards), the evidence a card opens, and where it is used (ItemUsedIn). The evidence is the row's own
  * dropdown, unchanged, with its Count / Write off / Order acts, until each
  * card gets its own panel (I14).
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
-import { getItemFigures, inventoryItemKeys, type HouseFields } from '../../../services/api/inventory';
+import { getItemFigures, getItemUsedIn, inventoryItemKeys, type HouseFields } from '../../../services/api/inventory';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import type { Provider } from '../../../services/api/providers';
 import type { StorageLocation } from '../../../hooks/useStorageLocations';
 import ItemCards, { CARD_TITLE, type CardId, type FiguresLoad } from './ItemCards';
+import ItemUsedIn, { type UsedInLoad } from './ItemUsedIn';
 import RowDropdown from './RowDropdown';
 import { failureReason } from './iv-failure';
 import { noZoneWord, typeLabel, type HouseCurrency, type InvRow } from './useInventoryNextData';
@@ -67,11 +68,19 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const [evidence, setEvidence] = useState<CardId | 'all' | null>(null);
   const id = row?.id ?? '';
 
+  const enabled = row !== null && restaurantId !== null;
   const figuresQ = useQuery({
     queryKey: inventoryItemKeys.figures(restaurantId ?? '', id),
     queryFn: () => getItemFigures(id, restaurantId ?? undefined),
-    enabled: row !== null && restaurantId !== null,
+    enabled,
     staleTime: 30_000,
+    retry: false,
+  });
+  const usedInQ = useQuery({
+    queryKey: inventoryItemKeys.usedIn(restaurantId ?? '', id),
+    queryFn: () => getItemUsedIn(id, restaurantId ?? undefined),
+    enabled,
+    staleTime: 60_000,
     retry: false,
   });
 
@@ -91,6 +100,11 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     : figuresQ.data
       ? { status: 'ready', data: figuresQ.data }
       : { status: 'reading' };
+  const usedIn: UsedInLoad = usedInQ.isError
+    ? { status: 'failed', reason: failureReason(usedInQ.error) }
+    : usedInQ.data
+      ? { status: 'ready', data: usedInQ.data }
+      : { status: 'reading' };
 
   const name = row.name ?? house.displayName ?? 'Unnamed item';
   const held = row.zones?.filter((z) => z.qty > 0) ?? null;
@@ -109,7 +123,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     <Sheet
       open
       onClose={onClose}
-      label={`${name}: its figures and their evidence. Closing writes nothing.`}
+      label={`${name}: its figures, their evidence and where it is used. Closing writes nothing.`}
       eyebrow="Item"
       title={name}
       spine={name}
@@ -156,6 +170,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
           />
         </section>
       ) : null}
+      <ItemUsedIn load={usedIn} canManage={canManage} currency={currency} onRetry={() => void usedInQ.refetch()} />
     </Sheet>
   );
 }

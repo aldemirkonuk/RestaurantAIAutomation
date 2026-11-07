@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({ figures: vi.fn() }));
 vi.mock('../../../services/api/inventory', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   getItemFigures: api.figures,
+  getItemUsedIn: vi.fn(() => new Promise(() => undefined)),
 }));
 vi.mock('./RowDropdown', () => ({ default: () => <div data-testid="row-dropdown" /> }));
 
