@@ -2,7 +2,11 @@ import { UnauthorizedException } from "@nestjs/common";
 import * as bcrypt from "bcrypt";
 import { AuthService } from "./auth.service";
 import { asDatabaseService, makeStubDb } from "../team/testing/supabase-stub";
-import { findUserBySignInAddress } from "../passkeys/sign-in-codes.service";
+import {
+  findUserBySignInAddress,
+  SignInCodesService,
+} from "../passkeys/sign-in-codes.service";
+import { FakeDb } from "../passkeys/testing/passkey-harness";
 
 /**
  * Password sign-in finds the account the way registration now stores it (QA
@@ -85,5 +89,31 @@ describe("findUserBySignInAddress", () => {
     );
     expect(got.user).toBeNull();
     expect(got.error).toEqual({ message: "connection reset" });
+  });
+});
+
+describe("the emailed sign-in code finds the row by the shared lookup (R11-02)", () => {
+  async function issue(stored: string, typed: string) {
+    const db = new FakeDb();
+    db.tables.users.push({ user_id: "owner", name: "Chef", email: stored });
+    const mail = { sendEmail: jest.fn(async () => ({ success: true })) };
+    const codes = new SignInCodesService({ client: db } as any, mail as any);
+    await codes.issueForSignIn(typed, "203.0.113.9");
+    await new Promise((r) => setImmediate(r));
+    return { db, mail };
+  }
+
+  it("a row stored unfolded is found by the address as typed, and the code goes to the stored address", async () => {
+    const { db, mail } = await issue("Chef@Bistro.com", "Chef@Bistro.com");
+    expect(db.tables.sign_in_codes).toHaveLength(1);
+    expect(db.tables.sign_in_codes[0].user_id).toBe("owner");
+    expect(mail.sendEmail).toHaveBeenCalledTimes(1);
+    expect((mail.sendEmail.mock.calls[0] as any)[0].to).toEqual(["Chef@Bistro.com"]);
+  });
+
+  it("a folded row is found typed in another case", async () => {
+    const { mail } = await issue("chef@bistro.com", "CHEF@bistro.com");
+    expect(mail.sendEmail).toHaveBeenCalledTimes(1);
+    expect((mail.sendEmail.mock.calls[0] as any)[0].to).toEqual(["chef@bistro.com"]);
   });
 });
