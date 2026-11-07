@@ -1846,7 +1846,11 @@ export class AuthService {
    * User starts with email_verified: false and must verify email.
    */
   async registerRestaurant(dto: RegisterRestaurantDto): Promise<TokenPair> {
-    if (await this.emailAlreadyRegistered(dto.email)) {
+    // Folded the way every door that looks an account up folds it (reset,
+    // emailed code, Google, /sign-in-methods). Stored as typed, an owner who
+    // registered as Chef@Bistro.com could never be found again (QA R11-01).
+    const email = normalizeEmail(dto.email);
+    if (await this.emailAlreadyRegistered(email)) {
       throw new BadRequestException("Email already registered");
     }
 
@@ -1956,7 +1960,7 @@ export class AuthService {
       const { data: user, error: userErr } = await this.databaseService.supabase
         .from("users")
         .insert({
-          email: dto.email,
+          email,
           password_hash: passwordHash,
           name: dto.name,
           restaurant_id: restaurantId,
@@ -2015,7 +2019,7 @@ export class AuthService {
       // here it has been assigned from the created row and the throw on
       // failure means it cannot be null. Asserting that rather than widening
       // the callee, which would let a genuinely-null id through elsewhere.
-      this.queueEmailVerification(userId as string, dto.email).catch((err) =>
+      this.queueEmailVerification(userId as string, email).catch((err) =>
         this.logger.warn(
           `queueEmailVerification failed (non-fatal): ${err.message}`,
         ),
@@ -2023,7 +2027,7 @@ export class AuthService {
 
       this.gmailService
         .sendOnboardingEmail({
-          to: dto.email,
+          to: email,
           ownerName: dto.name,
           restaurantName: dto.restaurantName,
           restaurantCity: dto.city,
