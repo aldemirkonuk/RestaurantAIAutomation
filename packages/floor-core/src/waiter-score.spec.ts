@@ -59,6 +59,7 @@ describe("founder F2 (2026-10-31): the band describes the visits", () => {
     expect(scoreBand(null)).toBeNull();
     expect(scoreBand(NaN)).toBeNull();
     expect(scoreBandLabel(null)).toBe("—");
+    expect(scoreBandLabel("unknown" as never)).toBe("—");
   });
 });
 

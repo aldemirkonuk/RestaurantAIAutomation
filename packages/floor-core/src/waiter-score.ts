@@ -20,6 +20,8 @@
  *   one table on the board (`seatingFreshness`);
  * - a warn/late house minute that is not finite gives no score (null, "—",
  *   ADR 0051), never a 0 for every waiter at once.
+ * Gaps come from `exactMinutesSince`, which never returns a negative; a
+ * negative gap passed in anyway is read as on time, as the checker read it.
  * The checker's `!(t > T)` tests (`lib/waiter-score.ts:55`, `:68` at
  * `5958689`) read NaN as on time, so `visitScore` gave 100 for a NaN minute.
  */
@@ -60,6 +62,8 @@ export function scoreBandLabel(band: ScoreBand | null): string {
       return "Some late";
     case "many_late":
       return "Many late";
+    default:
+      return "—";
   }
 }
 
