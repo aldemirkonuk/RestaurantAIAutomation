@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
-import { LotUnitCost, perBottleLotCost } from "./lot-unit-cost";
+import { LotUnitCost, perBottleLotCost, proposalPerBottle } from "./lot-unit-cost";
 import {
   LandedBlock,
   landDelivery,
@@ -103,6 +103,20 @@ export interface FinalisedItem {
   landed?: LandedBlock;
 }
 
+/** A lot a re-verify left at its cost, and why (QA 9a / 10a). */
+export interface CostFlag {
+  inventoryId: string;
+  /** `refused`: its line now refuses a cost. `line_changed`: its cost no longer matches its line. */
+  kind: "refused" | "line_changed";
+  reason: string;
+}
+
+/** What `repairPrintedCost` did. */
+export interface CostRepair {
+  repaired: FinalisedItem[];
+  flagged: CostFlag[];
+}
+
 export interface CostReceipt {
   deliveryId: string;
   finalised: FinalisedItem[];
@@ -155,34 +169,49 @@ const positiveOrZero = (v: unknown): number => {
  * uses at its own, tighter tolerance.
  */
 function perBottleOfLine(line: LineRow): LotUnitCost {
-  const asPrinted = (line_total: number | string | null | undefined) =>
-    perBottleLotCost({
-      unit_price: line.unit_price,
-      uom: line.uom,
-      pack_size: line.pack_size,
-      price_base_qty: line.price_base_qty,
-      price_base_uom: line.price_base_uom,
-      // The PAID bottles: a free bottle inside the line has no price.
-      qty_bottles: paidBottles(line),
-      line_total,
-      printed: line.printed,
-    });
-  const first = asPrinted(line.line_total);
+  return perBottleLotCost(readableLine(line));
+}
+
+/** The line with the reading of its printed total the gatekeeper accepts (as
+ * printed, allowance put back, deposit taken out, or both), PAID bottles; the
+ * line as printed when none does. A proposal is read in this line's base. */
+function readableLine(line: LineRow): LineRow {
+  const paid = paidLine(line);
   const total = Number(line.line_total);
+  if (perBottleLotCost(paid).ok || line.line_total == null || !Number.isFinite(total))
+    return paid;
   const allowance = positiveOrZero(line.allowance);
   const deposit = positiveOrZero(line.deposit);
-  if (first.ok || line.line_total == null || !Number.isFinite(total))
-    return first;
   const readings: number[] = [];
   if (allowance > 0) readings.push(total + allowance);
   if (deposit > 0) readings.push(total - deposit);
   if (allowance > 0 && deposit > 0) readings.push(total + allowance - deposit);
   for (const reading of readings) {
     if (!(reading > 0)) continue;
-    const cost = asPrinted(reading);
-    if (cost.ok) return cost;
+    const read = { ...paid, line_total: reading };
+    if (perBottleLotCost(read).ok) return read;
   }
-  return first;
+  return paid;
+}
+
+/** QA 12b D1: the invoice line whose price base a door-count proposal is read
+ * in — the item's own, else the delivery's only, unattached, invoice line.
+ * Several lines count only when their printed prices settle one base. */
+function baseLine(invoice: LineRow[], id: string | null): LineRow | undefined {
+  const own = id ? invoice.filter((l) => l.inventory_id === id) : [];
+  const lines = own.length ? own : invoice.length === 1 && !invoice[0].inventory_id ? invoice : [];
+  if (lines.length === 1) return lines[0];
+  const bases = new Set(lines.map((l) => {
+    const c = perBottleOfLine(l);
+    return c.ok ? c.bottles : NaN;
+  }));
+  return lines.length && bases.size === 1 && !bases.has(NaN) ? lines[0] : undefined;
+}
+
+/** A line as the unit gatekeeper reads it: a free bottle inside it has no
+ * price, so its printed total is checked against the PAID bottles. */
+function paidLine(l: LineRow): LineRow {
+  return { ...l, qty_bottles: paidBottles(l) };
 }
 
 interface AgreedPrice {
@@ -489,9 +518,16 @@ export class DeliveryStockService {
       if (!price && items.length === 1 && priced.value.unattached.length === 1)
         price = priced.value.unattached[0];
       if (!price) {
+        // QA 12b D1, kept through lane 1.4: one item, and the one accepted
+        // proposal on the delivery names no line, so its refusal is this item's.
+        const lone =
+          items.length === 1 && priced.value.unattached.length === 0 && priced.value.unattachedRefused.length === 1
+            ? `the invoice prices this item, but not per bottle: ${priced.value.unattachedRefused[0]}. The lot stays provisional.`
+            : undefined;
         stillProvisional.push({
           inventoryId,
           reason:
+            lone ??
             priced.value.held.get(inventoryId) ??
             "no agreed price reaches this item — the invoice line does not name it and no accepted proposal covers it. The lot stays provisional: a cost nobody agreed is not a final cost.",
         });
@@ -520,24 +556,24 @@ export class DeliveryStockService {
   }
 
   /**
-   * QA round 9a (2): a RE-VERIFY repairs a lot an earlier verify finalised at
-   * the invoice's PRINTED price (B1). Only a final lot whose cost IS a printed
-   * price of its item, and is not the per-bottle cost, is touched: a cost a
-   * person revalued by hand is left alone. When the line now refuses, the lot
-   * keeps its cost and the reason is returned, so the screen can say so.
-   * Lines that name no item are not repaired.
+   * QA 9a (2): a RE-VERIFY revalues a final lot booked at its item's PRINTED
+   * price (B1) or a proposal's raw price (10a (1)), when that is not the
+   * per-bottle cost; a hand revaluation is left alone. A line that now refuses
+   * keeps the cost and returns why. QA 10a (6): an invoice lot that no longer
+   * matches its line is FLAGGED, never revalued (ADR 0103). Lines that name no
+   * item are not repaired.
    */
   async repairPrintedCost(
     restaurantId: string,
     deliveryId: string,
     userId: string | null,
-  ): Promise<StockResult<{ repaired: FinalisedItem[]; flagged: { inventoryId: string; reason: string }[] }>> {
+  ): Promise<StockResult<CostRepair>> {
     const delivery = await this.deliveryFor(restaurantId, deliveryId);
     if (!delivery.ok) return delivery;
     const lots = await this.db
       .getClient()
       .from("inventory_lots")
-      .select("inventory_id, unit_cost, cost_state, qty")
+      .select("inventory_id, unit_cost, cost_state, cost_provenance, qty")
       .eq("delivery_id", deliveryId)
       .eq("stock_state", "live");
     if (lots.error)
@@ -550,34 +586,57 @@ export class DeliveryStockService {
       bookedNow.value,
     );
     if (!priced.ok) return priced;
+    const { byItem, unattached, refused, printed, held, lineOnly } = priced.value;
 
-    const repaired: FinalisedItem[] = [];
-    const flagged: { inventoryId: string; reason: string }[] = [];
+    type Lot = { inventory_id: string; unit_cost: number | string | null; cost_state: string; cost_provenance: string | null; qty: number };
+    const live = ((lots.data ?? []) as Lot[]).filter((l) => Number(l.qty) > 0);
+    // The same single-item pairing `finaliseAtVerified` makes, so a lot it
+    // costed from a line that names no item is not flagged as changed.
+    const sole = new Set(live.map((l) => l.inventory_id)).size === 1 && unattached.length === 1 ? unattached[0] : undefined;
+
+    const out: CostRepair = { repaired: [], flagged: [] };
     const done = new Set<string>();
-    for (const lot of (lots.data ?? []) as { inventory_id: string; unit_cost: number | string | null; cost_state: string; qty: number }[]) {
+    for (const lot of live) {
       const id = lot.inventory_id;
       const booked = Number(lot.unit_cost);
-      if (done.has(id) || lot.cost_state !== "final" || !(Number(lot.qty) > 0)) continue;
-      if (!priced.value.printed.get(id)?.has(booked)) continue;
-      const price = priced.value.byItem.get(id);
+      if (done.has(id) || lot.cost_state !== "final") continue;
+      const price = byItem.get(id) ?? sole;
       if (price?.unitCost === booked) continue;
+      const why = refused.get(id);
+      if (printed.get(id)?.has(booked)) {
+        done.add(id);
+        if (why) {
+          out.flagged.push({ inventoryId: id, kind: "refused", reason: `its lot was finalised at the printed price ${booked}, which is not known to be a cost per bottle: ${why}. It keeps that cost until someone revalues it.` });
+          continue;
+        }
+        // QA 15 (2): when the paper's landed cost cannot be said, the line's own
+        // per-bottle price still beats a final cost that is a case's price.
+        const fix = price ?? lineOnly.get(id);
+        if (!fix) {
+          const waits = held.get(id);
+          if (waits)
+            out.flagged.push({ inventoryId: id, kind: "refused", reason: `its lot was finalised at the printed price ${booked}, and its cost per bottle cannot be said yet: ${waits.replace(/ The lot stays provisional.*$/, "")} It keeps that cost until someone revalues it.` });
+          continue;
+        }
+        if (fix.unitCost === booked) continue;
+        const posted = await this.post(deliveryId, id, fix, userId, `delivery ${deliveryId} re-verified: the printed ${booked} was booked as a bottle's cost (QA 7c B1)`);
+        if (!posted.ok)
+          return { ok: false, status: 503, error: `the cost of item ${id} could not be corrected: ${posted.error}. This is safe to retry.` };
+        out.repaired.push(posted.value);
+        continue;
+      }
+      if (lot.cost_provenance !== "invoice") continue;
       done.add(id);
-      const why = priced.value.refused.get(id);
-      const waits = price ? undefined : priced.value.held.get(id);
-      if (why)
-        flagged.push({ inventoryId: id, reason: `its lot was finalised at the printed price ${booked}, which is not known to be a cost per bottle: ${why}. It keeps that cost until someone revalues it.` });
-      else if (waits)
-        flagged.push({
-          inventoryId: id,
-          reason: `its lot was finalised at the printed price ${booked}, and its landed cost cannot be said yet: ${waits.replace(/ The lot stays provisional.*$/, "")} It keeps that cost until someone revalues it.`,
-        });
-      if (!price || price.source !== "invoice_line") continue;
-      const posted = await this.post(deliveryId, id, price, userId, `delivery ${deliveryId} re-verified: the printed ${booked} was booked as a bottle's cost (QA 7c B1)`);
-      if (!posted.ok)
-        return { ok: false, status: 503, error: `the cost of item ${id} could not be corrected: ${posted.error}. This is safe to retry.` };
-      repaired.push(posted.value);
+      const now = price
+        ? `its invoice now makes ${price.unitCost} a bottle`
+        : why
+          ? `its invoice line now refuses a cost: ${why}`
+          : held.get(id)
+            ? `its landed cost cannot be said now: ${held.get(id)!.replace(/ The lot stays provisional.*$/, "")}`
+            : "no invoice line prices it any more";
+      out.flagged.push({ inventoryId: id, kind: "line_changed", reason: `its lot was costed at ${booked} a bottle, but ${now}. The line was changed after the lot was costed, the lot was costed before the invoice's charges were shared over its bottles, or the lot was revalued by hand; it keeps ${booked} until someone revalues it.` });
     }
-    return { ok: true, value: { repaired, flagged } };
+    return { ok: true, value: out };
   }
 
   /** One `finalise_delivery_cost` call, and its receipt. */
@@ -839,6 +898,10 @@ export class DeliveryStockService {
       refused: Map<string, string>;
       /** Items whose landed cost cannot be said, each with the sentence. */
       held: Map<string, string>;
+      /** Refusals of accepted proposals that name no item (QA 12b D1). */
+      unattachedRefused: string[];
+      /** Each held item's own per-bottle line price: a re-verify's repair only. */
+      lineOnly: Map<string, AgreedPrice>;
       papers: PaperNote[];
       /** Each item's printed prices that are NOT its per-bottle cost (QA 9a). */
       printed: Map<string, Set<number>>;
@@ -881,6 +944,11 @@ export class DeliveryStockService {
     const unattached: AgreedPrice[] = [];
     const printed = new Map<string, Set<number>>();
     const fed: PaperLine[] = [];
+    const unattachedRefused: string[] = [];
+    // Each item's own per-bottle line price, used only to repair a printed
+    // price on a lot already final when its landed cost is held (QA 15 (2)).
+    const lineOnly = new Map<string, AgreedPrice>();
+    const lineClash = new Set<string>();
 
     // Each invoice's money columns: its charges and discount are shared over
     // its lines (F3), so a paper that cannot be read is not read as "none".
@@ -904,6 +972,7 @@ export class DeliveryStockService {
     }
 
     const lineByKey = new Map<string, LineRow>();
+    const invoiceLines: LineRow[] = [];
     const invoiceSet = new Set(invoiceIds);
     if (allIds.length) {
       const read = await this.db
@@ -928,6 +997,7 @@ export class DeliveryStockService {
         // count carries no money at all (ADR 0104 D11), so it is indexed for
         // the proposal lookup and never read as a price.
         if (!invoiceSet.has(line.document_id)) continue;
+        invoiceLines.push(line);
         // QA 7c B1: `unit_price` is as PRINTED, per its price base.
         const cost = perBottleOfLine(line);
         const id = line.inventory_id;
@@ -939,6 +1009,11 @@ export class DeliveryStockService {
           !(cost.ok && cost.unitCost === cost.printed)
         )
           printed.set(id, (printed.get(id) ?? new Set<number>()).add(cost.printed));
+        if (id && cost.ok) {
+          const prior = lineOnly.get(id);
+          if (prior && prior.unitCost !== cost.unitCost) lineClash.add(id);
+          else lineOnly.set(id, { unitCost: cost.unitCost, provenance: "invoice", source: "invoice_line", basis: cost.basis });
+        } else if (id && !cost.ok && cost.kind === "refused") lineClash.add(id);
         // Every line goes to its paper, priced or not (a refusal holds).
         fed.push({ row: line, cost });
       }
@@ -946,6 +1021,13 @@ export class DeliveryStockService {
 
     const landed = landDelivery({ papers, lines: fed, booked });
     const refused = landed.refused;
+    const held = landed.held;
+    for (const [id, p] of [...lineOnly]) {
+      const why = held.get(id);
+      if (!why || lineClash.has(id) || refused.has(id)) lineOnly.delete(id);
+      else
+        p.basis = `${p.basis}. The invoice's charges and discount are not in this cost, because its landed cost cannot be said: ${why.replace(/ The lot stays provisional.*$/, "")}`;
+    }
     for (const [id, p] of landed.byItem)
       byItem.set(id, { ...p, provenance: "invoice", source: "invoice_line" });
     // Before the proposals: a price both sides settled still wins.
@@ -969,21 +1051,58 @@ export class DeliveryStockService {
       unit_price_proposed: number | string | null;
     }[]) {
       if (p.unit_price_proposed == null) continue;
-      const price = Number(p.unit_price_proposed);
-      if (!Number.isFinite(price) || price <= 0) continue;
       const key = `${p.document_id}:${p.line_no}`;
-      const line = lineByKey.get(key);
-      const item = line?.inventory_id ?? landed.paired.get(key) ?? null;
+      const keyed = lineByKey.get(key);
+      const id = keyed?.inventory_id ?? landed.paired.get(key) ?? null;
+      const said = Number(p.unit_price_proposed);
+      // QA 10a (1): a settled price is a counter to its line's printed price,
+      // so it is in that line's price base. QA 12b D1: a door count prints no
+      // price, so a proposal keyed to it is read in the base of the item's
+      // invoice line (or the delivery's only invoice line); none, or several
+      // that disagree, and it is refused. A proposal on no line has no unit.
+      const line = keyed && !invoiceSet.has(keyed.document_id) ? baseLine(invoiceLines, id) : keyed;
+      const cost = line
+        ? proposalPerBottle(p.unit_price_proposed, readableLine(line))
+        : !(said > 0)
+          ? ({ ok: false, kind: "no_price" } as const)
+          : ({
+              ok: false,
+              kind: "refused",
+              reason: keyed
+                ? `an accepted proposal settles a price of ${said} on the door count, which prints no price, and no single invoice line of this item says what unit that price is for`
+                : `an accepted proposal settles a price of ${said} but names no invoice line, so what unit that price is for is not known`,
+            } as const);
+      if (id && "printed" in cost && cost.printed != null)
+        printed.set(id, (printed.get(id) ?? new Set<number>()).add(cost.printed));
+      if (!cost.ok) {
+        if (cost.kind !== "refused") continue;
+        const reason = line
+          ? `the accepted proposal's price ${said} is read in its invoice line's unit, and ${cost.reason}`
+          : cost.reason;
+        if (!id) unattachedRefused.push(reason);
+        else {
+          byItem.delete(id);
+          lineOnly.delete(id);
+          refused.set(id, reason);
+          held.set(id, `the invoice prices this item, but not per bottle: ${reason}. The lot stays provisional.`);
+        }
+        continue;
+      }
       // A settled price is one a person put their name to, so its provenance is
-      // `manual` — calling it `invoice` would claim a document said it.
-      const settled: AgreedPrice = {
-        unitCost: price,
+      // `manual` — calling it `invoice` would claim a document said it. It
+      // carries no share of the invoice's charges or discount.
+      const agreed: AgreedPrice = {
+        unitCost: cost.unitCost,
         provenance: "manual",
         source: "accepted_proposal",
-        basis: `the price both sides settled on; a settled price carries no share of the invoice's charges or discount`,
+        basis: `accepted proposal: ${cost.basis.replace(/^invoice price/, "price")}; a settled price carries no share of the invoice's charges or discount`,
       };
-      if (item) byItem.set(item, settled);
-      else unattached.push(settled);
+      if (id) {
+        byItem.set(id, agreed);
+        refused.delete(id);
+        held.delete(id);
+        lineOnly.delete(id);
+      } else unattached.push(agreed);
     }
 
     return {
@@ -992,7 +1111,9 @@ export class DeliveryStockService {
         byItem,
         unattached,
         refused,
-        held: landed.held,
+        unattachedRefused,
+        held,
+        lineOnly,
         papers: landed.papers,
         printed,
       },
