@@ -47,7 +47,7 @@ A **FREE-first wine menu extraction pipeline** that processes 95% of data at zer
 | Web Crawler | `services/.../web_crawler.py` | 443 | ✅ |
 | Quality Scorer | `services/.../quality_scorer.py` | 317 | ✅ |
 | Label Studio Setup | `docker/label-studio/` | 109 | ✅ |
-| Enhanced Invoice Pipeline | `services/.../invoice_ocr_service.py` | 729 | ✅ |
+| Enhanced Invoice Pipeline | ~~`services/.../invoice_ocr_service.py`~~ | 729 | Retired 2026-11-07 (`chore/retire-invoice-ocr-service`): deleted with its test, no importer; recover from `4e4399c05`, tombstone in ADR 0032 |
 
 **Key Features:**
 - Two-phase crawling: OpenTable discovery → restaurant website extraction

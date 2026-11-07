@@ -1,0 +1,9 @@
+## Leftovers from retiring invoice_ocr_service.py — OPEN — 2026-11-07
+
+Filed by `chore/retire-invoice-ocr-service` (receipts proposal Phase 1A row 1.10, G12 verdict; decided by the session under the founder's /goal 2026-11-07, which delegates every fork). The service and its own test are deleted; tombstone in `../decisions/0032-vault-cleanup-cut-line.md`, recover from `4e4399c05`. These were seen and deliberately not changed here:
+
+- **`easyocr` pin comment is stale.** `services/agent-orchestrator/requirements.txt` still says `easyocr==1.7.1  # OCR for invoice scanning (MVP)`. The pin stays (imported by `services/check_scanner_service.py:12` and `agents/visual_verification_agent.py:122`); only the comment is wrong. Not edited because a changed requirements line re-reports every pre-existing advisory on it (the reason given at `requirements.txt` beside the pillow pin). Closes when that line is next bumped for its own reason.
+- **`surya-ocr` stays.** `services/pdf_extraction_service.py:152` and `:169` import it, and claim ADR-0106 in `CLAIMS.jsonl` (frozen) asserts it is in `requirements.txt`. Nothing to close.
+- **`requirements.prod.txt` cites `requirements.txt:75` for surya-ocr**; the pin is at `:86` on `4e4399c05`. Pre-existing and unchanged by this branch (no line of `requirements.txt` moved).
+- **`.planning/testing/EXISTING-TEST-INVENTORY.md` summary counts are its 2026-07-27 baseline.** The row is removed (the ADR 0137 precedent: removed, not marked absent); the `pytest` and `5-procurement` counts were not re-measured, because they already disagreed with the table before this change (66 `pytest` rows against a count of 65). Closes when someone re-measures the whole inventory.
+- **`IMPLEMENTATION_COMPLETE.md` gives the service 729 lines**; it had 751 when deleted. The row is struck through and cites this branch; the old figure is left as that doc's history.
