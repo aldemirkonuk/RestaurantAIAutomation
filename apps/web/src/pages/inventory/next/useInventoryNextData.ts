@@ -47,6 +47,7 @@ import { fmtMoney } from '../../../lib/mudavym/format';
 import { queryKeys } from '../../../lib/query-keys';
 import { pendingSpotCountCount, watchSpotCountOutbox } from '../../../lib/spotCountOutbox';
 import { num, text } from '../../cellar/next/cellar-format';
+import { houseLocale } from '../../team/next/tm-format';
 import type { MapTone } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import { COUNT_DUE_DAYS } from '../command/bits';
@@ -314,19 +315,29 @@ export function severity(row: InvRow): 0 | 1 | 2 | 3 {
 
 export const SEVERITY_GROUP = ['Out', 'Below par', 'Not counted yet', 'Everything else, by runway'] as const;
 
+const collators = new Map<string, Intl.Collator>();
+
+/** Names in the house's language, not the browser's (QA round 12 R7). */
+export function compareNames(a: string | null, b: string | null, locale?: string): number {
+  const key = locale ?? '';
+  let c = collators.get(key);
+  if (!c) collators.set(key, (c = new Intl.Collator(locale)));
+  return c.compare(a ?? '', b ?? '');
+}
+
 /**
  * Severity first, then runway ascending, then the name. The legacy sort
  * (InventoryCommandPage.tsx:491-495) was runway alone with a null runway last,
  * so a bottle at 0 with no recent sale — whose runway is null — sank to the
  * bottom of the page (dossier E §1).
  */
-export function needsYouFirst(a: InvRow, b: InvRow): number {
+export function needsYouFirst(a: InvRow, b: InvRow, locale?: string): number {
   const s = severity(a) - severity(b);
   if (s !== 0) return s;
   const ra = a.runway ?? Number.POSITIVE_INFINITY;
   const rb = b.runway ?? Number.POSITIVE_INFINITY;
   if (ra !== rb) return ra < rb ? -1 : 1;
-  return (a.name ?? '').localeCompare(b.name ?? '');
+  return compareNames(a.name, b.name, locale);
 }
 
 export type SortId = 'needs' | 'name' | 'value' | 'pace';
@@ -353,23 +364,24 @@ export function sortWords(sort: SortId, rows: InvRow[]): string {
   return `sorted ${SORT_LABEL[sort]}`;
 }
 
-export function sortRows(rows: InvRow[], sort: SortId): InvRow[] {
+export function sortRows(rows: InvRow[], sort: SortId, locale?: string): InvRow[] {
   const out = [...rows];
-  if (sort === 'needs') return out.sort(needsYouFirst);
-  if (sort === 'name') return out.sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
+  const needs = (a: InvRow, b: InvRow) => needsYouFirst(a, b, locale);
+  if (sort === 'needs') return out.sort(needs);
+  if (sort === 'name') return out.sort((a, b) => compareNames(a.name, b.name, locale));
   // The legacy velocity sort (InventoryCommandPage.tsx:96), fastest first; an
   // unread pace sorts after every read one, never as 0.
   if (sort === 'pace')
     return out.sort((a, b) => {
       const va = a.velocity ?? Number.NEGATIVE_INFINITY;
       const vb = b.velocity ?? Number.NEGATIVE_INFINITY;
-      return va === vb ? needsYouFirst(a, b) : vb > va ? 1 : -1;
+      return va === vb ? needs(a, b) : vb > va ? 1 : -1;
     });
   // Value at cost, largest first; an unknown value sorts after every known one.
   return out.sort((a, b) => {
     const va = a.value ?? Number.NEGATIVE_INFINITY;
     const vb = b.value ?? Number.NEGATIVE_INFINITY;
-    return va === vb ? needsYouFirst(a, b) : vb > va ? 1 : -1;
+    return va === vb ? needs(a, b) : vb > va ? 1 : -1;
   });
 }
 
@@ -839,6 +851,7 @@ export function useInventoryNextData() {
     /** Ids of the wines the low-stock alerts name; null until read, or when the read failed. */
     alerted,
     currency,
+    locale: currencyQ.data?.readable ? houseLocale(currencyQ.data.country) : undefined,
     locations: {
       list: storage.locations as StorageLocation[],
       loading: storage.locationsLoading,
