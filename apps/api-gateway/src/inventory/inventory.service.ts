@@ -22,6 +22,7 @@ import {
   type HousePriceResult,
 } from "../pricing/house-menu-price";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
+import { readWholeWindow } from "../common/read-whole-window";
 import {
   enqueueHouseItemResearch,
   readHouseItemResearch,
@@ -261,14 +262,22 @@ export class InventoryService {
     const map = new Map<string, any>();
     try {
       const client = this.dbService.getClient();
-      const { data, error } = await client
-        .from("inventory_analytics")
-        .select(
-          "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
-        )
-        .eq("restaurant_id", restaurantId);
-      if (error) throw error;
-      for (const r of data || []) map.set(r.inventory_id, r);
+      // Read whole on the view's one-row-per-title key, or not at all (QA
+      // round 15 H3): unpaged, rows past 1000 had no pace or runway while
+      // `analyticsReadable` said the join was read.
+      const data = await readWholeWindow<any>(
+        "The house's sales pace",
+        () =>
+          client
+            .from("inventory_analytics")
+            .select(
+              "inventory_id, velocity_per_day, days_of_cover, reorder_point, reorder_suggested, abc_class, dead_stock, days_since_sale",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId),
+        { key: "inventory_id" },
+      );
+      for (const r of data) map.set(r.inventory_id, r);
       return { map, ok: true };
     } catch (err: any) {
       this.logger.warn(`fetchAnalytics failed: ${err?.message}`);
