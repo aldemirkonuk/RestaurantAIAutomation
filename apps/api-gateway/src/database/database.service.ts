@@ -39,17 +39,30 @@ export class DatabaseService implements OnModuleInit {
   }
 
   // Helper methods for common operations
+  /**
+   * Every active title of the house. PostgREST cuts an unranged select at
+   * max_rows (1000), so the read pages with .range() on a stable order. A page
+   * that fails fails the whole read (ADR 0020): never a partial list that
+   * looks complete. restaurant_id scopes every page.
+   */
   async getRestaurantInventory(restaurantId: string) {
-    const { data, error } = await this.supabase
-      .from("restaurant_inventory")
-      .select(
-        "*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, country, region)",
-      )
-      .eq("restaurant_id", restaurantId)
-      .eq("is_active", true);
+    const PAGE = 1000;
+    const rows: any[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await this.supabase
+        .from("restaurant_inventory")
+        .select(
+          "*, master_wine_library(bottle_size_ml, name, producer, vintage, primary_type, grape_variety, country, region)",
+        )
+        .eq("restaurant_id", restaurantId)
+        .eq("is_active", true)
+        .order("id")
+        .range(from, from + PAGE - 1);
 
-    if (error) throw error;
-    return data;
+      if (error) throw error;
+      rows.push(...(data ?? []));
+      if ((data ?? []).length < PAGE) return rows;
+    }
   }
 
   async getLowStockItems(restaurantId: string) {
