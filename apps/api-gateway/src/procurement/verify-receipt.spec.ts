@@ -209,8 +209,12 @@ function makeDb(opts: {
   leaseError?: { message: string } | null;
   /** Live order-level claims; `uq_pc_order_match_reason` refuses a second per reason. */
   credits?: Row[];
-  /** The read of the order's open claims fails with this. */
+  /** The read of the order's open claims fails with this ... */
   creditsReadError?: { message: string } | null;
+  /** ... this many times (default: every time). */
+  creditsReadFailures?: number;
+  /** Apply `uq_pc_order_one_open_claim`: one open order-level claim per order. */
+  oneOpenClaim?: boolean;
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -256,7 +260,10 @@ function makeDb(opts: {
             error: { code: "23505", message: "uq_pc_order_match_reason" },
           };
           if (op === "select") {
-            if (opts.creditsReadError) return { data: null, error: opts.creditsReadError };
+            if (opts.creditsReadError && (opts.creditsReadFailures ?? Infinity) > 0) {
+              opts.creditsReadFailures = (opts.creditsReadFailures ?? Infinity) - 1;
+              return { data: null, error: opts.creditsReadError };
+            }
             return {
               data: rows
                 .filter((r) => r.order_id === filters.order_id)
@@ -268,6 +275,19 @@ function makeDb(opts: {
           }
           if (op === "insert") {
             if (clash(payloadRow.reason)) return unique;
+            if (
+              opts.oneOpenClaim &&
+              rows.some(
+                (r) => r.state === "open" && r.reason !== "never_arrived" && r.order_id === payloadRow.order_id,
+              )
+            )
+              return {
+                data: null,
+                error: {
+                  code: "23505",
+                  message: 'duplicate key value violates unique constraint "uq_pc_order_one_open_claim"',
+                },
+              };
             rows.push({ id: `claim-${rows.length + 1}`, ...payloadRow });
             return { data: null, error: null };
           }
@@ -2149,6 +2169,61 @@ describe("verifyReceipt — one verification at a time, corrections restate the 
 
     expect(calls.creditUpdates).toEqual([]);
     expect(credits[0]).toMatchObject({ state: "open", claimed_amount: claim.claimed_amount });
+  });
+
+  // QA round 9c: the one open claim per order is the database's rule
+  // (`uq_pc_order_one_open_claim`); a raise that meets it restates instead.
+  const shortCount = {
+    ...payload,
+    note: "Only 8 came off the truck.",
+    acceptedQuantity: 8,
+    rejectedQuantity: 0,
+    rejectedReason: undefined,
+  };
+
+  it("a verdict-changing correction that could not see the open claim restates it once the index refuses a second", async () => {
+    const { claim, after } = await verifiedOnce();
+    const expected = await claimedFresh(shortCount);
+    const credits = [onLedger(claim)];
+    const { db, calls } = makeDb({
+      ...after,
+      credits,
+      oneOpenClaim: true,
+      creditsReadError: { message: "connection reset" },
+      creditsReadFailures: 1,
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, shortCount as any);
+
+    expect(credits).toHaveLength(1);
+    expect(credits[0]).toMatchObject({
+      id: "claim-1",
+      state: "open",
+      reason: expected!.reason,
+      claimed_amount: expected!.claimed_amount,
+    });
+    expect(calls.creditInserts).toHaveLength(1);
+  });
+
+  it("when the open claims stay unreadable, the refused raise is tried once more and no second claim stands", async () => {
+    const { claim, after } = await verifiedOnce();
+    const credits = [onLedger(claim)];
+    const { db, calls } = makeDb({
+      ...after,
+      credits,
+      oneOpenClaim: true,
+      creditsReadError: { message: "connection reset" },
+    });
+
+    const svc = service(db);
+    const warn = jest.spyOn((svc as any).logger, "warn").mockImplementation(() => undefined);
+    await svc.verifyReceipt(REST, ORDER, USER, shortCount as any);
+
+    expect(warn.mock.calls.flat().join("\n")).toMatch(/its open claim could not be read to restate it/);
+    expect(credits).toEqual([onLedger(claim)]);
+    expect(calls.creditInserts).toHaveLength(2);
+    expect(calls.creditUpdates).toEqual([]);
+    expect(calls.orderUpdates).toHaveLength(1);
   });
 
   it.each([

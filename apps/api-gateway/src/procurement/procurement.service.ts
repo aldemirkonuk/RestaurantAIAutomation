@@ -5766,10 +5766,28 @@ export class ProcurementService {
     /** Whether the verification stated an invoice unit price — so a claim it
      * does not raise means "nothing owed", not "owed but unpriced". */
     priced = true,
+    /** False on the one retry after a unique index refused the raise. */
+    retry = true,
   ): Promise<void> {
     try {
       const claim = draftClaimFromMatch(match);
       const supabase = this.databaseService.supabase;
+      // An open claim this read did not see (unreadable, or a verification
+      // that passed this one) is refused by `uq_pc_order_one_open_claim`:
+      // read again once and restate it, never a second open claim (QA 9c).
+      const raise = async () => {
+        const held = await this.insertOrderCreditClaim(restaurantId, orderId, userId, claim!, match, order);
+        if (held && retry)
+          await this.openCreditClaim(restaurantId, orderId, userId, match, order, priced, false);
+        else if (held)
+          this.logger.warn(
+            `openCreditClaim left order ${orderId}'s claims as they were: ` +
+              (held === "open"
+                ? `its open claim could not be read to restate it`
+                : `the ${claim!.reason} claim is already with the vendor`) +
+              `, and this verification would claim ${claim!.claimedAmount}.`,
+          );
+      };
 
       // A CORRECTION REPLACES THE CLAIM IT CORRECTS (audit of #821,
       // 2026-11-07; the session's call under the 2026-11-07 /goal). A
@@ -5801,7 +5819,7 @@ export class ProcurementService {
           `openCreditClaim could not read the open claims for order ${orderId}, so none was ` +
             `restated or set aside: ${openReadError.message}`,
         );
-        if (claim) await this.insertOrderCreditClaim(restaurantId, orderId, userId, claim, match, order);
+        if (claim) await raise();
         return;
       }
       const open = (openRows ?? []) as { id: string; reason: string }[];
@@ -5829,7 +5847,7 @@ export class ProcurementService {
 
       const kept = open.find((r) => r.reason === claim.reason) ?? open[0];
       if (!kept) {
-        await this.insertOrderCreditClaim(restaurantId, orderId, userId, claim, match, order);
+        await raise();
         return;
       }
       const superseded = open.filter((r) => r.id !== kept.id).map((r) => r.id);
@@ -5881,7 +5899,7 @@ export class ProcurementService {
     }
   }
 
-  /** Raise one order-level claim; a 23505 means the reason is already claimed. */
+  /** Raise one order-level claim; on a 23505, which index held it. */
   private async insertOrderCreditClaim(
     restaurantId: string,
     orderId: string,
@@ -5889,7 +5907,7 @@ export class ProcurementService {
     claim: NonNullable<ReturnType<typeof draftClaimFromMatch>>,
     match: MatchResult,
     order?: { provider_id?: string | null; currency?: string | null } | null,
-  ): Promise<void> {
+  ): Promise<"open" | "reason" | null> {
     const insertRow: Record<string, unknown> = {
       restaurant_id: restaurantId,
       order_id: orderId,
@@ -5912,19 +5930,16 @@ export class ProcurementService {
       .from("procurement_credits")
       .insert(insertRow);
 
-    // 23505 = a claim for this order and reason is already held
-    // (`uq_pc_order_match_reason`) by one no longer `open` — the open ones
-    // were read and restated above — so it is with the vendor, and a second
-    // claim for money already being chased would double-count recovery.
+    // 23505: an open claim holds the order (`uq_pc_order_one_open_claim`),
+    // or one with the vendor holds the reason (`uq_pc_order_match_reason`) —
+    // a second claim for money already being chased would double-count.
     if (error?.code === "23505")
-      this.logger.warn(
-        `openCreditClaim left the ${claim.reason} claim for order ${orderId} as it was: it is ` +
-          `already with the vendor, and this verification would claim ${claim.claimedAmount}.`,
-      );
-    else if (error)
+      return /uq_pc_order_one_open_claim/.test(error.message ?? "") ? "open" : "reason";
+    if (error)
       this.logger.warn(
         `openCreditClaim failed for order ${orderId}: ${error.message}`,
       );
+    return null;
   }
 
   /** Set aside superseded open claims; scoped to `open`, never under the vendor. */
