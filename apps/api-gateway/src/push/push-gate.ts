@@ -13,9 +13,16 @@
  * THE RULE, in the words the settings page already gives (NotifySection.tsx,
  * "Quiet hours"): inside the window everything below critical is DROPPED, not
  * delayed, and critical still goes out. That is the alerting agent's rule
- * (`notification_agent.py` `_select_channels`) and this gate keeps it, so one
- * window means one thing everywhere it is read. Nothing is lost by the drop:
- * the inbox row is written before the push leg runs.
+ * (`notification_agent.py` `_select_channels`) and this gate keeps it. Nothing
+ * is lost by the drop: the inbox row is written before the push leg runs.
+ *
+ * The RULE is shared; the CLOCK is not. This gate reads the window on the
+ * house's clock (below). The agent's `_is_quiet_hours` reads it on
+ * `datetime.now()`, the server process's clock (`notification_agent.py:1539`),
+ * so for a house outside the server's zone the agent's 22:00-08:00 falls at
+ * other local hours. That divergence is already on record (ADR 0109, "Quiet
+ * hours are evaluated on the restaurant's clock"; 06-pages/calendar.md §9
+ * item 2) and is not closed here.
  *
  * `push_enabled = false` holds EVERY push, critical included: the person
  * switched the phone door off, and the inbox still carries the alert. Only a
