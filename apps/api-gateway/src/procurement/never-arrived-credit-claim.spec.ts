@@ -91,6 +91,14 @@ class CreditsQuery {
     this.filters.push((r) => r[col] !== v);
     return this;
   }
+  /** `.is(col, null)`: an order-level claim has no document or line. */
+  is(col: string, v: unknown) {
+    this.filters.push((r) => (r[col] ?? null) === v);
+    return this;
+  }
+  order() {
+    return this;
+  }
   insert(row: Row) {
     this.insertRow = row;
     return this;
@@ -107,14 +115,18 @@ class CreditsQuery {
   /**
    * Real Supabase query builders are thenable: `await .from(t).insert(row)`
    * with no `.select()` runs the write directly (`openCreditClaim`'s own
-   * shape). `.select()...maybeSingle()`/`.single()` above cover every OTHER
-   * call in this file; this is only reached by that one bare-insert path.
+   * shape), and an awaited read with no `.maybeSingle()` answers every
+   * matching row (`openCreditClaim`'s read of the order's open claims).
    */
-  then<T1 = { data: Row | null; error: Row | null }, T2 = never>(
-    onfulfilled?: ((value: { data: Row | null; error: Row | null }) => T1 | PromiseLike<T1>) | null,
+  then<T1 = { data: Row | Row[] | null; error: Row | null }, T2 = never>(
+    onfulfilled?: ((value: { data: Row | Row[] | null; error: Row | null }) => T1 | PromiseLike<T1>) | null,
     onrejected?: ((reason: unknown) => T2 | PromiseLike<T2>) | null,
   ) {
-    return this.maybeSingle().then(onfulfilled, onrejected);
+    if (this.insertRow) return this.maybeSingle().then(onfulfilled, onrejected);
+    const read: { data: Row[] | null; error: Row | null } = this.db.failCreditsRead
+      ? { data: null, error: { message: this.db.failCreditsRead } }
+      : { data: this.db.credits.filter((r) => this.filters.every((f) => f(r))), error: null };
+    return Promise.resolve(read).then(onfulfilled, onrejected);
   }
   private async doInsert(wantSingle: boolean) {
     if (!this.insertRow) throw new Error("FakeDb: .single()/.maybeSingle() with no prior insert()");
