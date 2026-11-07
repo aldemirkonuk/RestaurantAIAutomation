@@ -141,6 +141,19 @@ function signed(secret: string, payload: Record<string, unknown>): string {
 const A = () => accountDigest(foldAccount(OWNER)).slice(0, 32);
 const HEX = "0123456789abcdef0123456789abcdef";
 
+describe("the code door folds the address (round 23 survivor)", () => {
+  it("a code sign-in typed as Owner@X.com earns the bucket of owner@x.com", async () => {
+    const out: any = await codeController().emailCodeVerify({
+      email: "Owner@X.com",
+      code: "123456",
+    } as any);
+    expect(readSignInDevice(SECRET, out.signInDevice, foldAccount(OWNER))).toMatch(/^[0-9a-f]{32}$/);
+    const guard = newGuard();
+    for (let i = 0; i < 12; i++) await ok(guard, ctx({ email: OWNER }, rot(i)));
+    expect(await ok(guard, ctx({ email: OWNER, signInDevice: out.signInDevice }, rot(50)))).toBe(true);
+  });
+});
+
 describe("device token checks (round 21 survivors)", () => {
   it("m5: a correctly signed token with an odd device id is untrusted", () => {
     const base = { v: 1, a: A(), t: Date.now() };
