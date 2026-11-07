@@ -14,7 +14,10 @@
 --    instead of DELETE. Same signature: ACL, comment, one overload kept.
 -- 4. transfer_stock: a whole lot changes location_id; a part move still splits.
 -- 5. inventory_lot_rollup and inventory_location_breakdown read only lots
---    holding something, so a kept lot reads as a deleted one did.
+--    holding something, so a kept lot reads as a deleted one did. Their WAC
+--    is rounded to 6 places, as migration a_lot_cost_keeps_small_units
+--    rounds it: whichever of the two merges second recreates these views,
+--    and a 2 here would put a per-gram cost back to 0.04 (QA round 11b).
 -- 6. Lots already emptied are marked once, depleted_at = updated_at.
 --
 -- Unchanged: revalue_lot and finalise_delivery_cost loop only qty > 0 lots.
@@ -280,7 +283,7 @@ CREATE OR REPLACE VIEW public.inventory_location_breakdown AS
         CASE
             WHEN (COALESCE(sum(qty) FILTER (WHERE ((unit_cost IS NOT NULL) AND ((cost_provenance)::text <> 'sample'::text))), (0)::bigint) > 0)
             THEN round((sum(((qty)::numeric * unit_cost)) FILTER (WHERE ((unit_cost IS NOT NULL) AND ((cost_provenance)::text <> 'sample'::text)))
-                        / (sum(qty) FILTER (WHERE ((unit_cost IS NOT NULL) AND ((cost_provenance)::text <> 'sample'::text))))::numeric), 2)
+                        / (sum(qty) FILTER (WHERE ((unit_cost IS NOT NULL) AND ((cost_provenance)::text <> 'sample'::text))))::numeric), 6)
             ELSE NULL::numeric
         END AS wac
    FROM public.inventory_lots
@@ -294,7 +297,7 @@ CREATE OR REPLACE VIEW public.inventory_lot_rollup AS
     COALESCE(sum(qty) FILTER (WHERE ((stock_state)::text = 'live'::text)), (0)::bigint) AS live_qty,
     COALESCE(sum(qty) FILTER (WHERE ((stock_state)::text = 'shadow'::text)), (0)::bigint) AS shadow_qty,
         CASE
-            WHEN (COALESCE(sum(qty) FILTER (WHERE (((stock_state)::text = 'live'::text) AND (unit_cost IS NOT NULL) AND ((cost_provenance)::text <> 'sample'::text))), (0)::bigint) > 0) THEN round((sum(((qty)::numeric * unit_cost)) FILTER (WHERE (((stock_state)::text = 'live'::text) AND (unit_cost IS NOT NULL) AND ((cost_provenance)::text <> 'sample'::text))) / (sum(qty) FILTER (WHERE (((stock_state)::text = 'live'::text) AND (unit_cost IS NOT NULL) AND ((cost_provenance)::text <> 'sample'::text))))::numeric), 2)
+            WHEN (COALESCE(sum(qty) FILTER (WHERE (((stock_state)::text = 'live'::text) AND (unit_cost IS NOT NULL) AND ((cost_provenance)::text <> 'sample'::text))), (0)::bigint) > 0) THEN round((sum(((qty)::numeric * unit_cost)) FILTER (WHERE (((stock_state)::text = 'live'::text) AND (unit_cost IS NOT NULL) AND ((cost_provenance)::text <> 'sample'::text))) / (sum(qty) FILTER (WHERE (((stock_state)::text = 'live'::text) AND (unit_cost IS NOT NULL) AND ((cost_provenance)::text <> 'sample'::text))))::numeric), 6)
             ELSE NULL::numeric
         END AS wac,
     bool_or(((cost_provenance)::text = 'invoice'::text)) FILTER (WHERE ((stock_state)::text = 'live'::text)) AS has_invoice_cost,
