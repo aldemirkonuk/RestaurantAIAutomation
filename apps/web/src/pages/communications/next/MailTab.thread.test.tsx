@@ -253,7 +253,7 @@ describe('the intake sheet', () => {
     await open();
     for (const id of ['door-mudavym', 'door-whatsapp']) {
       expect(screen.getByTestId(id)).toHaveAttribute('data-state', 'cannot_tell');
-      expect(screen.getByTestId(`${id}-status`)).toHaveTextContent('Cannot tell: this door keeps no record of its reads yet.');
+      expect(screen.getByTestId(`${id}-status`)).toHaveTextContent('Cannot tell: when this was last checked is not recorded yet.');
     }
     // The house mailbox has no recorded read in this fixture, so it cannot tell either.
     expect(screen.getByTestId('door-house-mailbox')).toHaveAttribute('data-state', 'cannot_tell');
