@@ -1,8 +1,9 @@
 /**
- * The drink's recipe sheet, read (proposal §2a). Main's recipe box
- * (`CocktailRegister.tsx:80-213` at origin/main) showed text a regex split:
- * no line linked to the shelf, nothing cost a serve, and its lines were never
- * versioned. Each case below fails against that box.
+ * The drink's recipe sheet (proposal §2a). Main's recipe box was a textarea a
+ * regex split into unlinked text (`CocktailRegister.tsx:80-213` at
+ * origin/main): it sent no shelf item, costed nothing, never versioned its
+ * lines, and its success line named a table. Each case below fails against
+ * that box.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
@@ -18,15 +19,20 @@ const V5 = '77777777-7777-4777-8777-777777777777';
 
 const h = vi.hoisted(() => ({
   get: vi.fn(),
+  put: vi.fn(),
   auth: {} as Record<string, unknown>,
 }));
 
 vi.mock('../../../../services/api/client', () => ({
-  apiClient: { get: h.get },
+  apiClient: { get: h.get, put: h.put },
+  getErrorStatus: (e: unknown) => {
+    const s = (e as { response?: { status?: unknown } } | null)?.response?.status;
+    return typeof s === 'number' ? s : null;
+  },
 }));
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => h.auth }));
 
-import RecipeSheet, { LEGACY_NOTE } from './RecipeSheet';
+import RecipeSheet, { LEGACY_NOTE, NEWER_SENTENCE, STALE_SENTENCE } from './RecipeSheet';
 
 function line(over: Partial<RecipeLine>): RecipeLine {
   return {
@@ -120,8 +126,11 @@ async function refocus(qc: QueryClient) {
   });
 }
 
+const amount = (i: number) => (screen.getAllByLabelText('Amount')[i] as HTMLInputElement).value;
+
 beforeEach(() => {
   h.get.mockReset();
+  h.put.mockReset();
   versions = [];
   h.auth = { activeRestaurantId: RID, activeRole: 'manager', user: { role: 'manager' } };
 });
@@ -147,6 +156,24 @@ describe('RecipeSheet', () => {
       expect(screen.getByTestId('recipe-footer')).toHaveTextContent("Costs ₺57.00 a serve at today's prices"),
     );
     expect(screen.getByTestId('recipe-footer').textContent).not.toMatch(/%/);
+  });
+
+  it('1. picking a shelf item sends inventoryId in the PUT body', async () => {
+    serve(EMPTY, [{ id: GIN, name: 'Tanqueray gin', kind: 'spirit', uom: 'bottle', bottleSizeMl: 700 }]);
+    h.put.mockResolvedValue({ data: { versionId: 'v1', version: 1, lines: [] } });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /add an ingredient/i }));
+    fireEvent.click(screen.getByRole('button', { name: /link it to your shelf/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Tanqueray gin/ }));
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '30' } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    const [url, body] = h.put.mock.calls[0];
+    expect(url).toBe(`/recipes/${RID}/cocktails/${CID}`);
+    expect(body.expectedVersionId).toBeNull();
+    expect(body.lines).toEqual([
+      { role: 'stocked', inventoryId: GIN, label: 'Tanqueray gin', qty: 30, unit: 'ml' },
+    ]);
   });
 
   it('4. staff read it with no money and no inputs', async () => {
@@ -185,6 +212,79 @@ describe('RecipeSheet', () => {
     expect(screen.queryByTestId('recipe-legacy')).toBeNull();
   });
 
+  it('5a. a refused save says it was not saved', async () => {
+    serve(negroni());
+    h.put.mockRejectedValue(Object.assign(new Error('Request failed with status code 500'), { response: { status: 500 } }));
+    mount();
+    await screen.findAllByTestId('recipe-line');
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Not saved. Your recipe is as it was.');
+  });
+
+  it('5b. a 409 says someone saved first and keeps the typed lines', async () => {
+    serve(negroni());
+    h.put.mockRejectedValue(Object.assign(new Error('conflict'), { response: { status: 409 } }));
+    mount();
+    const amounts = await screen.findAllByLabelText('Amount');
+    fireEvent.change(amounts[0], { target: { value: '45' } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(STALE_SENTENCE);
+    expect(amount(0)).toBe('45');
+    expect(h.put.mock.calls[0][1].expectedVersionId).toBe(V4);
+  });
+
+  it('5c. a colleague’s version arriving mid-edit never replaces the typed lines', async () => {
+    serve(negroni());
+    h.put.mockRejectedValue(Object.assign(new Error('conflict'), { response: { status: 409 } }));
+    const { qc } = mount();
+    fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
+
+    // Tabbing back refetches, and the server now holds version 5.
+    serve(negroniV5());
+    await refocus(qc);
+    expect(await screen.findByTestId('recipe-newer')).toHaveTextContent(NEWER_SENTENCE);
+    expect(screen.getAllByLabelText('Amount')).toHaveLength(3);
+    expect(amount(0)).toBe('45');
+
+    // The save stays pinned to the version the editor opened, so the 409 guard fires.
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(STALE_SENTENCE);
+    expect(h.put.mock.calls[0][1].expectedVersionId).toBe(V4);
+
+    // Another refetch after the 409 still keeps them.
+    await refocus(qc);
+    expect(amount(0)).toBe('45');
+    expect(screen.getAllByLabelText('Amount')).toHaveLength(3);
+
+    // Loading the saved recipe is a button on the sheet, and it shows theirs.
+    fireEvent.click(screen.getByRole('button', { name: 'Load the saved recipe' }));
+    await waitFor(() => expect(screen.getAllByLabelText('Amount')).toHaveLength(1));
+    expect(amount(0)).toBe('50');
+    expect(screen.queryByTestId('recipe-said')).toBeNull();
+    expect(screen.queryByTestId('recipe-newer')).toBeNull();
+  });
+
+  it('5d. a clean sheet takes a colleague’s newer version as it arrives', async () => {
+    serve(negroni());
+    const { qc } = mount();
+    await screen.findAllByLabelText('Amount');
+    serve(negroniV5());
+    await refocus(qc);
+    await waitFor(() => expect(screen.getAllByLabelText('Amount')).toHaveLength(1));
+    expect(screen.queryByTestId('recipe-newer')).toBeNull();
+  });
+
+  it('6. a successful save invalidates the recipe key and says what was saved', async () => {
+    serve(negroni());
+    h.put.mockResolvedValue({ data: { versionId: V5, version: 5, lines: [] } });
+    const { qc } = mount();
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    await screen.findAllByTestId('recipe-line');
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(await screen.findByText('Saved. 3 ingredients, version 5.')).toBeInTheDocument();
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['recipes', RID, CID] });
+  });
+
   it('7. never shows a table name or the word confidence', async () => {
     serve({ ...EMPTY, legacyLines: [{ label: 'whites', quantity: 2, unit: 'egg' }] });
     const { container } = mount();
@@ -210,20 +310,31 @@ describe('RecipeSheet', () => {
     expect(list.textContent).not.toMatch(/9999/);
   });
 
+  it('Save is disabled while a line has no amount above zero', async () => {
+    serve(negroni());
+    mount();
+    const amounts = await screen.findAllByLabelText('Amount');
+    fireEvent.change(amounts[1], { target: { value: '0' } });
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    fireEvent.change(amounts[1], { target: { value: '22,5' } });
+    expect(screen.getByRole('button', { name: /^save$/i })).not.toBeDisabled();
+  });
+
   it('a failed read says it failed', async () => {
     h.get.mockRejectedValue(new Error('boom'));
     mount();
     expect(await screen.findByTestId('recipe-unread')).toHaveTextContent('could not be read');
   });
 
-  it('a failed re-read says so and keeps the last read on the sheet', async () => {
+  it('a failed re-read says so and keeps the typed lines on the sheet', async () => {
     serve(negroni());
     const { qc } = mount();
-    await screen.findAllByTestId('recipe-line');
+    fireEvent.change((await screen.findAllByLabelText('Amount'))[0], { target: { value: '45' } });
     h.get.mockRejectedValue(new Error('Network Error'));
     await refocus(qc);
     expect(await screen.findByTestId('recipe-reread-failed')).toHaveTextContent('could not be read again just now (Network Error)');
     expect(screen.getAllByTestId('recipe-line')).toHaveLength(3);
+    expect(amount(0)).toBe('45');
   });
 
   it('a manager sees the price and each line’s cost; staff see neither', async () => {

@@ -2,9 +2,11 @@
  * The drink's recipe sheet (proposal §2a, gaps G5, G8, G24): a people page.
  *
  * Every role reads the drink's current version: what goes in it, linked to
- * the house's shelf. An owner or manager also sees what it costs a serve.
+ * the house's shelf. An owner or manager also sees what it costs a serve,
+ * links each ingredient to something on the shelf, and saves a new version.
  * Staff read it with no price and no cost: the gateway nulls money for a role
- * that does not see it, and the sheet shows money only to a role that edits.
+ * that does not see it, and the sheet shows money and controls only to a
+ * role that edits.
  *
  * What it says is what the server said. The cost line is the gateway's sum at
  * today's prices (F7) and appears only when every counted line is priced;
@@ -12,22 +14,52 @@
  * There is no pour-cost percentage yet: it waits for the house's tax basis
  * (F8), and a percentage of a price that includes KDV would mislead.
  *
+ * Typed lines are never replaced behind the editor's back. The app refetches
+ * on focus and on mount (App.tsx: staleTime 5s, refetchOnWindowFocus), so a
+ * colleague's save can arrive mid-edit. Once a line is touched the draft is
+ * the editor's: a newer server version is announced, not loaded, and the
+ * save stays pinned to the version the editor opened, so the gateway's 409
+ * guard is what decides. The editor loads the saved recipe with a button on
+ * the sheet, never by reloading the page and losing the draft.
+ *
  * A drink with lines in the old recipe box and nothing saved here yet shows
  * those lines to everyone, as they were written: the recipe exists, and a
  * bartender mixes from it.
+ *
+ * A failed save says it failed, and that sentence is true: the gateway saves a
+ * version in one transaction, so a refused save left the recipe as it was.
+ * Only a request that never got an answer is said as unknown.
  */
-import { AlertTriangle, History } from 'lucide-react';
-import { useState } from 'react';
-import type { CocktailRecipe, RecipeLine } from '../../../../services/api/recipes';
-import { LineRowRead, type DraftRow } from './LineRow';
-import { qtyText } from './units';
-import { useCanEditRecipe, useHouseMoney, useRecipe, useRecipeVersions } from './useRecipe';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, History, Plus, RotateCcw, Save } from 'lucide-react';
+import { getErrorStatus } from '../../../../services/api/client';
+import type { CocktailRecipe, RecipeLine, SaveRecipeBody } from '../../../../services/api/recipes';
+import LineRow, { LineRowRead, rowName, type DraftRow } from './LineRow';
+import { qtyText, readQty } from './units';
+import {
+  useCanEditRecipe,
+  useHouseMoney,
+  useRecipe,
+  useRecipeVersions,
+  useSaveRecipe,
+} from './useRecipe';
 
+export const STALE_SENTENCE =
+  'Someone saved this recipe after you opened it. Nothing was changed. Your lines stay here until you load the saved recipe.';
+export const NOT_SAVED_SENTENCE = 'Not saved. Your recipe is as it was.';
+export const UNKNOWN_SENTENCE =
+  'No answer came back, so this may or may not have saved. Your lines stay here until you load the saved recipe.';
+export const NEWER_SENTENCE =
+  'Someone saved a newer version while you were editing. Your lines stay here; saving them will be refused until you load the saved recipe.';
 export const LEGACY_NOTE = 'Lines from the old recipe box, not saved here yet.';
+const LOAD_FAILED = 'The saved recipe could not be read just now. Your lines stay here.';
+
+let seq = 0;
+const nextKey = () => `r${++seq}`;
 
 function fromServer(l: RecipeLine): DraftRow {
   return {
-    key: l.id,
+    key: l.id || nextKey(),
     role: l.role,
     inventoryId: l.inventoryId,
     itemName: l.itemName,
@@ -102,12 +134,54 @@ function Versions({ cocktailId, currentId }: { cocktailId: string; currentId: st
   );
 }
 
+type Said = { tone: 'ok' | 'alarm'; text: string; offerLoad?: boolean };
+
 export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
   const recipe = useRecipe(cocktailId);
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
+  const save = useSaveRecipe(cocktailId);
+
+  const [rows, setRows] = useState<DraftRow[] | null>(null);
+  // The version the draft was seeded from. A save names it, so a colleague's
+  // later save is refused (409) rather than quietly overwritten.
+  const [openedFrom, setOpenedFrom] = useState<string | null>(null);
+  // Set by the first edit; cleared by a seed. While set, a newer server
+  // version never replaces the draft.
+  const [dirty, setDirty] = useState(false);
+  const [said, setSaid] = useState<Said | null>(null);
   const [showVersions, setShowVersions] = useState(false);
+  const seededFrom = useRef<string | null | undefined>(undefined);
+
   const data = recipe.data;
+  const versionId = data?.current?.versionId ?? null;
+
+  const seed = useCallback((d: CocktailRecipe) => {
+    const v = d.current?.versionId ?? null;
+    seededFrom.current = v;
+    setOpenedFrom(v);
+    setRows((d.current?.lines ?? []).map(fromServer));
+    setDirty(false);
+  }, []);
+
+  // Seed from the server on first read, and again when a new version arrives
+  // while the draft is clean (after this sheet's own save, or a colleague's
+  // save before anything was typed). A dirty draft is never re-seeded.
+  useEffect(() => {
+    if (!data) return;
+    if (seededFrom.current === versionId) return;
+    if (seededFrom.current !== undefined && dirty) return;
+    seed(data);
+  }, [data, versionId, dirty, seed]);
+
+  const blocked = useMemo(() => {
+    const r = rows ?? [];
+    if (r.length === 0) return 'Add at least one ingredient.';
+    if (r.some((x) => readQty(x.qtyText) === null)) return 'Every line needs an amount above zero.';
+    if (r.some((x) => x.unit === '')) return 'Every line needs a unit.';
+    if (r.some((x) => !rowName(x) || rowName(x) === 'this line')) return 'Every line needs a name.';
+    return null;
+  }, [rows]);
 
   if (recipe.loading) return <p className="cl-note" role="status">Reading the recipe…</p>;
   if (!data) {
@@ -120,18 +194,74 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
   }
 
   const c = data.cocktail;
-  const versionId = data.current?.versionId ?? null;
-  const lines = (data.current?.lines ?? []).map(fromServer);
+  const lines = rows ?? [];
   const glass = data.current?.glass ?? c.glass;
   const garnish = data.current?.garnish ?? c.garnish;
   const hasLegacy = !data.current && data.legacyLines.length > 0;
+  const behind = canEdit && dirty && versionId !== openedFrom;
 
   // Money only where the server sent it, and never to a role that cannot edit.
   const money = Boolean(canEdit && (data.cost !== null || c.price !== null));
   const say = money ? (n: number) => sayMoney(n) : null;
 
+  const edit = (next: (rs: DraftRow[]) => DraftRow[]) => {
+    setDirty(true);
+    setRows((rs) => next(rs ?? []));
+  };
+  const patch = (key: string, p: Partial<DraftRow>) =>
+    edit((rs) => rs.map((r) => (r.key === key ? { ...r, ...p } : r)));
+
+  const loadSaved = async () => {
+    const r = await recipe.refetch();
+    if (!r.isError && r.data) {
+      seed(r.data);
+      setSaid(null);
+    } else {
+      setSaid({ tone: 'alarm', text: LOAD_FAILED, offerLoad: true });
+    }
+  };
+
+  const doSave = async () => {
+    if (blocked || save.isPending) return;
+    const body: SaveRecipeBody = {
+      expectedVersionId: openedFrom,
+      yieldServes: data.current?.yieldServes ?? 1,
+      lines: lines.map((r) => ({
+        role: r.role,
+        inventoryId: r.role === 'stocked' ? r.inventoryId : null,
+        label: rowName(r),
+        qty: readQty(r.qtyText) as number,
+        unit: r.unit as string,
+      })),
+    };
+    if (data.current?.method) body.method = data.current.method;
+    if (data.current?.glass) body.glass = data.current.glass;
+    if (data.current?.garnish) body.garnish = data.current.garnish;
+    setSaid(null);
+    try {
+      const out = await save.mutateAsync(body);
+      // The draft is now what the server holds: the re-read that the save
+      // invalidates will seed the saved lines and their costs.
+      setOpenedFrom(out.versionId);
+      setDirty(false);
+      setSaid({
+        tone: 'ok',
+        text: `Saved. ${count(body.lines.length, 'ingredient', 'ingredients')}, version ${out.version}.`,
+      });
+    } catch (e) {
+      const status = getErrorStatus(e);
+      if (status === 409) setSaid({ tone: 'alarm', text: STALE_SENTENCE, offerLoad: true });
+      else if (status === null && (e as { request?: unknown })?.request) {
+        setSaid({ tone: 'alarm', text: UNKNOWN_SENTENCE, offerLoad: true });
+      } else setSaid({ tone: 'alarm', text: NOT_SAVED_SENTENCE });
+    }
+  };
+
   const footer = (() => {
-    if (!data.current && lines.length === 0) return hasLegacy ? null : 'No recipe yet.';
+    if (!data.current && lines.length === 0) {
+      if (hasLegacy) return null;
+      return canEdit ? 'No recipe yet. Add what goes in it.' : 'No recipe yet.';
+    }
     if (!money || !data.cost || !data.current) return null;
     if (data.cost.complete && data.cost.perServe != null) {
       return `Costs ${sayMoney(data.cost.perServe)} a serve at today's prices`;
@@ -141,6 +271,7 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
   })();
 
   const earlier = Math.max(0, data.versionCount - 1);
+  const offerLoad = canEdit && (behind || said?.offerLoad);
 
   return (
     <section className="cl-rcp" data-testid="recipe-sheet" aria-label={`Recipe for ${c.name}`}>
@@ -163,7 +294,19 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
 
       {lines.length > 0 ? (
         <ol className="cl-rcp-lines">
-          {lines.map((r) => <LineRowRead key={r.key} row={r} say={say} />)}
+          {lines.map((r) =>
+            canEdit ? (
+              <LineRow
+                key={r.key}
+                row={r}
+                say={say}
+                onChange={(p) => patch(r.key, p)}
+                onRemove={() => edit((rs) => rs.filter((x) => x.key !== r.key))}
+              />
+            ) : (
+              <LineRowRead key={r.key} row={r} say={null} />
+            ),
+          )}
         </ol>
       ) : null}
 
@@ -173,6 +316,62 @@ export default function RecipeSheet({ cocktailId }: { cocktailId: string }) {
         <p className="cl-rcp-foot" data-testid="recipe-footer" data-complete={data.cost?.complete ? 'true' : 'false'}>
           {footer}
         </p>
+      ) : null}
+
+      {canEdit ? (
+        <div className="cl-rcp-actions">
+          <button
+            type="button"
+            className="cl-btn cl-focus"
+            onClick={() =>
+              edit((rs) => [
+                ...rs,
+                { key: nextKey(), role: 'stocked', inventoryId: null, itemName: null, itemKind: null, label: '', qtyText: '', unit: 'ml', saved: null },
+              ])
+            }
+          >
+            <Plus size={13} aria-hidden />
+            Add an ingredient
+          </button>
+          <button
+            type="button"
+            className="cl-btn cl-focus cl-rcp-save"
+            onClick={() => void doSave()}
+            disabled={Boolean(blocked) || save.isPending}
+            title={blocked ?? undefined}
+          >
+            <Save size={13} aria-hidden />
+            {save.isPending ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      ) : null}
+      {canEdit && blocked && lines.length > 0 ? <p className="cl-note">{blocked}</p> : null}
+
+      {behind && said?.tone !== 'alarm' ? (
+        <p className="cl-rcp-said cl-rcp-said-alarm" role="status" data-testid="recipe-newer">
+          {NEWER_SENTENCE}
+        </p>
+      ) : null}
+      {said ? (
+        <p
+          className={`cl-rcp-said${said.tone === 'alarm' ? ' cl-rcp-said-alarm' : ''}`}
+          role={said.tone === 'alarm' ? 'alert' : 'status'}
+          data-testid="recipe-said"
+        >
+          {said.text}
+        </p>
+      ) : null}
+      {offerLoad ? (
+        <button
+          type="button"
+          className="cl-btn cl-focus"
+          style={{ marginTop: 6 }}
+          onClick={() => void loadSaved()}
+          disabled={recipe.fetching}
+        >
+          <RotateCcw size={13} aria-hidden />
+          {recipe.fetching ? 'Reading…' : 'Load the saved recipe'}
+        </button>
       ) : null}
 
       {earlier >= 1 ? (
