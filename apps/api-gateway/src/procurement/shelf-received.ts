@@ -121,6 +121,95 @@ export function repeatsTheLatestConfirmation(
   return latestCounted === confirmedBottles;
 }
 
+/**
+ * A REPEATED FULL VERIFICATION WRITES NOTHING NEW (QA round 1, H-1,
+ * 2026-11-07). `POST /procurement/orders/:id/verify-receipt` had no repeat
+ * guard on its match path: a retry after a timeout, a second tab or a second
+ * person verifying the same delivery wrote a second `reconciled` event, a
+ * second `price_history` row and a second vendor credit claim for the same
+ * money. The stock correction alone was already once-only (its
+ * `receipt-verify:<order>:<item>` idempotency key).
+ *
+ * A repeat is proven, never assumed: every fact the first verification
+ * RECORDED must already say what this one would write — the order was
+ * verified, the latest `reconciled` event states the same accepted, rejected
+ * and invoiced bottles, the order holds the same verdict, invoice price,
+ * override reason, refusal reason and discrepancy summary, any typed note is
+ * already on the order, and the ledger already holds the accepted count
+ * (`ledgerDelta === 0`). One input is recorded nowhere — `allocatedCharges`,
+ * the invoice's freight and fees — so a payload carrying charges is never
+ * called a repeat: it runs as before, and the credit claim it would duplicate
+ * is refused by the database instead (`uq_pc_order_match_reason`). Anything
+ * unproven runs the full verification: missing a repeat costs a duplicate
+ * history line, swallowing a correction costs the correction.
+ */
+export function repeatsTheLatestVerification(args: {
+  order: {
+    match_verified_at?: string | null;
+    match_status?: string | null;
+    invoice_unit_price?: number | string | null;
+    price_override_reason?: string | null;
+    rejected_reason?: string | null;
+    discrepancy_notes?: string | null;
+    delivery_notes?: string | null;
+  };
+  latest:
+    | {
+        counted_qty_bottles?: number | string | null;
+        rejected_qty_bottles?: number | string | null;
+        invoice_qty_bottles?: number | string | null;
+      }
+    | null
+    | undefined;
+  verdict: string;
+  summary: string;
+  discrepancy: boolean;
+  ledgerDelta: number;
+  acceptedBottles: number;
+  rejectedBottles: number;
+  invoiceBottles: number | null;
+  invoiceUnitPrice: number | null;
+  priceOverrideReason: string | null;
+  rejectedReason: string | null;
+  allocatedCharges: number | null | undefined;
+  note: string | null | undefined;
+}): boolean {
+  const { order, latest } = args;
+  if (!order.match_verified_at || !latest) return false;
+  if ((args.allocatedCharges ?? 0) !== 0) return false;
+  if (args.ledgerDelta !== 0) return false;
+
+  const num = (v: number | string | null | undefined): number | null =>
+    v == null ? null : Number(v);
+  const sameNumber = (
+    a: number | string | null | undefined,
+    b: number | null,
+  ): boolean => {
+    const x = num(a);
+    if (x !== null && !Number.isFinite(x)) return false;
+    return x === b;
+  };
+
+  if (!sameNumber(latest.counted_qty_bottles, args.acceptedBottles)) return false;
+  if (!sameNumber(latest.rejected_qty_bottles, args.rejectedBottles)) return false;
+  if (!sameNumber(latest.invoice_qty_bottles, args.invoiceBottles)) return false;
+  if (!sameNumber(order.invoice_unit_price, args.invoiceUnitPrice)) return false;
+  if ((order.match_status ?? null) !== args.verdict) return false;
+  if ((order.price_override_reason ?? null) !== args.priceOverrideReason)
+    return false;
+  if ((order.rejected_reason ?? null) !== args.rejectedReason) return false;
+
+  const notes = order.discrepancy_notes ?? null;
+  if (args.discrepancy ? !(notes ?? "").startsWith(args.summary) : notes !== null)
+    return false;
+
+  const typed = (args.note ?? "").trim();
+  if (typed !== "" && !(order.delivery_notes ?? "").trim().endsWith(typed))
+    return false;
+
+  return true;
+}
+
 /** The `reason` code when a caller tries to type a received count onto an order. */
 export const RECEIVED_IS_NOT_TYPED_IN = "received_is_the_ledger";
 
