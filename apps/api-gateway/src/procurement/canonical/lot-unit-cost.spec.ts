@@ -29,7 +29,7 @@ const refusal = (over: Partial<LotCostLine>) => {
 
 describe("perBottleLotCost", () => {
   it("converts every arrangement of the printed price base to one bottle", () => {
-    // 2 cases @ 264 / case, pack 12 — no printed base is "per one uom".
+    // 2 cases @ 264 / case, pack 12, no base, no total (QA 8a): pack_size is read.
     expect(cost({})).toBe(22);
     // 12 şişe @ 142,00 / KS(12): a base of 12 bottles, with or without its unit.
     expect(cost({ uom: "bottle", unit_price: 142, price_base_qty: 12, price_base_uom: "bottle" })).toBe(11.8333);

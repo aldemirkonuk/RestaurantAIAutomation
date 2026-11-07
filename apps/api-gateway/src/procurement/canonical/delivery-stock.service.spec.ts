@@ -448,18 +448,21 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     document_id: "inv-1",
     line_no: 1,
     inventory_id: ITEM,
+    qty: 2,
     qty_bottles: 24,
     uom: "case",
     pack_size: 12,
     unit_price: 264,
     price_base_qty: null,
     price_base_uom: null,
+    line_total: null,
     ...over,
   });
   const posted = () =>
     db.rpcCalls.filter((c) => c.fn === "finalise_delivery_cost");
 
-  it("B1: 2 cases @ 264 per case, pack 12, posts 22 a bottle", async () => {
+  // QA round 8a's exact case: no line total, no price base — pack_size is read.
+  it("B1: 2 cases @ 264 per case, pack 12, no total, no base, posts 22 a bottle", async () => {
     db.answers.procurement_document_lines = {
       data: [invoiceLine({})],
       error: null,
