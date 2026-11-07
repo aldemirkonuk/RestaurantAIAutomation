@@ -464,7 +464,7 @@ export class WhatsAppSendService {
       return {
         ...this.refuse(
           "mirror_failed",
-          "This message was NOT sent, because it could not first be written to this house's own conversation book. Nothing was queued. The book holds the record and the provider only carries it, so a message that cannot be recorded is not sent.",
+          "This message was NOT sent, because it could not first be saved in this house's own messages. Nothing was queued. The house keeps the record and the provider only carries it, so a message that cannot be saved is not sent.",
         ),
         guardrails: hits,
         window,
