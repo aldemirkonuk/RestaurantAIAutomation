@@ -78,7 +78,23 @@ NOT covered: `IdentityService.suggest` blocks on the folded
 `producer_normalised` only, so an identity asserted before the fold is not
 suggested for a subject with "ı" (its tokens "kavakl"/"dere" would not score
 anyway); the stored observation hashes and identity keys stay on the old rule
-until a person or a later backfill re-keys them.
+until a person or a later backfill re-keys them. Two readers group stored rows
+by `sig:<signature_hash>` with no bottle in hand, so they cannot ask for a
+pre-fold hash (a hash cannot be re-folded, and the row keeps no producer):
+the nightly outlier re-judge (`planRejudge` in
+`apps/api-gateway/src/vendor-intel/outlier-rejudge.ts`) and the below-average
+sweep (`VendorComparisonService.belowTrailingAverage` → `priceBelowAverage` in
+`price-below-average.ts`, which `market-price.producer.ts` reads). For an
+off-catalogue bottle seen as "Kavaklıdere", sightings stored before the fold
+and sightings written after it sit in two groups. The fold itself causes this
+split for a bottle that used to be one group. Each half can fall under
+`MIN_OUTLIER_SAMPLE`, so the re-judge says nothing about it (silence, not a
+false flag). The below-average box can list the bottle twice, or drop it when
+a half falls under the minimum history. The market-price producer acts only on
+`wine:` keys, so a `sig:` split reaches it only as extra `notOurs` items
+competing for the read's ranking cap. The split heals by itself once the
+pre-fold sightings leave the 30-day window (`REJUDGE_WINDOW_DAYS`, the sweep's
+`windowDays ?? 30`); nothing re-keys them sooner.
 `services/agent-orchestrator/services/beverage_ontology.py` `normalize_text`
 (token matching only, not an identity key) and the other Python normalisers in
 `services/agent-orchestrator` were not changed.
