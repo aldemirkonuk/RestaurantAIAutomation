@@ -16,8 +16,16 @@ import { FakeDb } from "../passkeys/testing/passkey-harness";
  * 'not_sent' -- and its late answer is still logged.
  *
  * Driven through the real `AuthService` and `AuthController` over the
- * in-memory `FakeDb`; only `sendEmail` is a mock.
+ * in-memory `FakeDb`; `sendEmail` and bcrypt are mocks. bcrypt is stubbed
+ * because its real hash runs on the libuv pool: under parallel jest workers it
+ * outran a fixed count of ticks and the send had not been called yet (audit,
+ * 2026-11-07). The wait below is on a wall-clock deadline instead.
  */
+
+jest.mock("bcrypt", () => ({
+  hash: jest.fn().mockResolvedValue("hashed"),
+  compare: jest.fn(),
+}));
 
 const SECRETS: Record<string, string> = {
   JWT_SECRET: "verification-mail-timeout-spec-access-secret",
@@ -63,9 +71,17 @@ function hungSend() {
   return { promise, release: (a: SendAnswer) => release(a) };
 }
 
-/** Let real I/O (bcrypt) and microtasks run until the send has been called. */
+/**
+ * Let microtasks and real I/O run until the send has been called, up to a
+ * wall-clock deadline. `process.hrtime` is not faked, so the deadline is real
+ * time however busy the machine is, never a count of ticks.
+ */
 async function untilSendIsCalled(mail: { sendEmail: jest.Mock }, n = 1) {
-  for (let i = 0; i < 2000 && mail.sendEmail.mock.calls.length < n; i++) {
+  const deadline = process.hrtime.bigint() + 10_000_000_000n;
+  while (
+    mail.sendEmail.mock.calls.length < n &&
+    process.hrtime.bigint() < deadline
+  ) {
     await new Promise((r) => setImmediate(r));
   }
   expect(mail.sendEmail).toHaveBeenCalledTimes(n);

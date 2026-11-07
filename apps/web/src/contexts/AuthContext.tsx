@@ -28,7 +28,7 @@ import {
   tokenHouse,
 } from "../lib/houseMemory";
 import { doRefresh } from "../lib/sessionRefresh";
-import { noteSignUpMail } from "../lib/verificationMail";
+import { clearSignUpMail, noteSignUpMail } from "../lib/verificationMail";
 import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
@@ -1085,6 +1085,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // only ids and times, and it is what lets this person go straight back
       // into their house tomorrow.
       clearHouseEnded();
+      // The sign-up's mail note (OB-6) was this account's: on a shared device
+      // the next person's /verify-email must not say a send of theirs failed.
+      clearSignUpMail();
       // The read cache was this session's: the next person on a shared device
       // must not see it. Cache only — unsent work is ADR 0241's to decide.
       // Bounded: IndexedDB's open has no timeout and has hung on WebKit, and a
