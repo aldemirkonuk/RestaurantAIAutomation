@@ -18,6 +18,51 @@ import {
   IsDateString,
 } from "class-validator";
 
+/**
+ * The body of `POST /inventory/:restaurantId/item/:itemId/pour`. The key is
+ * required (a key the server minted was new on every retry, so a retried pour
+ * poured twice) and a stated pour is 10..500 whole ml (call F12, the house
+ * pour's bounds). InventoryService.recordPour enforces both again for callers
+ * that bypass the pipe.
+ */
+export class RecordPourDto {
+  @ApiProperty({ description: "Stable across a retry of the same pour; a replay pours nothing." })
+  @IsString()
+  @MaxLength(200)
+  idempotencyKey: string;
+
+  @ApiPropertyOptional({ description: "Glasses poured; default 1" })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  pours?: number;
+
+  @ApiPropertyOptional({ description: "ml in one glass, 10..500; omitted = the item's pour, then the house's confirmed pour" })
+  @IsOptional()
+  @IsInt()
+  @Min(10)
+  @Max(500)
+  pourMl?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  locationId?: string | null;
+
+  @ApiPropertyOptional({ description: "Default manual" })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  source?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
+
 /** Provenances accepted by inventory_lots.cost_provenance (see 20260729120000 migration). */
 export const COST_PROVENANCES = [
   "invoice",
@@ -94,10 +139,10 @@ export class CreateInventoryItemDto {
   @IsIn(["bottle", "glass", "both"])
   saleType?: "bottle" | "glass" | "both";
 
-  @ApiPropertyOptional({ description: "Pour size in ml" })
+  @ApiPropertyOptional({ description: "Pour size in ml, 10..500 (call F12)" })
   @IsOptional()
   @IsNumber()
-  @Min(25)
+  @Min(10)
   @Max(500)
   pourSizeMl?: number;
 
@@ -209,10 +254,10 @@ export class UpdateInventoryItemDto {
   @IsOptional()
   wineName?: string;
 
-  @ApiPropertyOptional({ description: "Pour size in ml" })
+  @ApiPropertyOptional({ description: "Pour size in ml, 10..500 (call F12)" })
   @IsOptional()
   @IsNumber()
-  @Min(25)
+  @Min(10)
   @Max(500)
   pourSizeMl?: number;
 
@@ -379,10 +424,10 @@ export class BulkInventoryLineDto {
   @IsIn(["bottle", "glass", "both"])
   saleType?: "bottle" | "glass" | "both";
 
-  @ApiPropertyOptional({ description: "Pour size in ml" })
+  @ApiPropertyOptional({ description: "Pour size in ml, 10..500 (call F12)" })
   @IsOptional()
   @IsNumber()
-  @Min(25)
+  @Min(10)
   @Max(500)
   pourSizeMl?: number;
 

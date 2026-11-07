@@ -28,6 +28,7 @@ import {
   UnmappedToastItemResponseDto,
   CreateAuctionLotRecordDto,
   AuctionLotRecordResponseDto,
+  RecordPourDto,
 } from "./dto/inventory.dto";
 import { AuctionLotRecordsService } from "./auction-lot-records.service";
 
@@ -489,15 +490,7 @@ export class InventoryController {
   async recordPour(
     @Param("restaurantId") restaurantId: string,
     @Param("itemId") itemId: string,
-    @Body()
-    dto: {
-      pours?: number;
-      pourMl?: number | null;
-      locationId?: string | null;
-      source?: string;
-      reason?: string;
-      idempotencyKey?: string | null;
-    },
+    @Body() dto: RecordPourDto,
     @CurrentUser() user?: { userId?: string },
   ) {
     try {

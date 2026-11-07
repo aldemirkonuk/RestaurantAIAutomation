@@ -1,5 +1,5 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { ConflictException, HttpException } from "@nestjs/common";
+import { BadRequestException, ConflictException, HttpException } from "@nestjs/common";
 import { InventoryService } from "./inventory.service";
 import { DatabaseService } from "../database/database.service";
 import { PhotoCountService } from "./photo-count.service";
@@ -632,6 +632,37 @@ describe("InventoryService", () => {
     });
   });
 
+  // Recipes walk G19 / call F12: the caller's key is the only one that
+  // survives a retry, and a stated pour is 10..500 whole ml. Each refusal
+  // comes before the ownership read and the RPC: nothing moves.
+  describe("a manual pour names its key and a real pour", () => {
+    it.each([
+      ["no key", { pours: 1 }],
+      ["a null key", { pours: 1, idempotencyKey: null }],
+      ["a blank key", { pours: 1, idempotencyKey: "  " }],
+      ["a 9 ml pour", { pours: 1, pourMl: 9, idempotencyKey: "k-9" }],
+      ["a 501 ml pour", { pours: 1, pourMl: 501, idempotencyKey: "k-501" }],
+      ["a fractional pour", { pours: 1, pourMl: 12.5, idempotencyKey: "k-12" }],
+    ])("refuses %s with 400 and pours nothing", async (_label, dto) => {
+      await expect(service.recordPour("rest-1", "inv-1", dto as any)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockRpc).not.toHaveBeenCalled();
+      expect(mockMaybeSingle).not.toHaveBeenCalled();
+    });
+
+    it("pours a 20 ml spirit measure with the caller's own key", async () => {
+      mockMaybeSingle.mockResolvedValueOnce({ data: { id: "inv-1" }, error: null });
+      await service
+        .recordPour("rest-1", "inv-1", { pours: 1, pourMl: 20, idempotencyKey: "k-20" })
+        .catch(() => undefined);
+      expect(mockRpc).toHaveBeenCalledWith(
+        "record_glass_pour",
+        expect.objectContaining({ p_pour_ml: 20, p_idempotency_key: "k-20" }),
+      );
+    });
+  });
+
   // ADR 0315, mount-line fix (b). `record_glass_pour` looks a key up alone and
   // answers a replay with the pour it FIRST recorded. A replayed key carrying a
   // different pour must not come back as "recorded".
@@ -767,7 +798,7 @@ describe("InventoryService", () => {
       await service.recordPour(
         "rest-1",
         "inv-1",
-        { pours: 2, source: "manual" },
+        { pours: 2, source: "manual", idempotencyKey: "k-77" },
         "user-77",
       );
 
