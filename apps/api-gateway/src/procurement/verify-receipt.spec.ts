@@ -132,6 +132,7 @@ const ORDER = "44444444-4444-4444-8444-444444444444";
 const USER = "22222222-2222-4222-8222-222222222222";
 const OWN_INVENTORY = "11111111-1111-4111-8111-111111111111";
 const FOREIGN_INVENTORY = "99999999-9999-4999-8999-999999999999";
+const EXTRA_INVENTORY = "66666666-6666-4666-8666-666666666666";
 
 interface Calls {
   orderUpdates: Row[];
@@ -184,6 +185,14 @@ function makeDb(opts: {
   latestReconciledEvent?: Row | null;
   /** The idempotence check's read of the latest `reconciled` event fails with this. */
   latestReconciledReadError?: { message: string } | null;
+  /**
+   * The order's latest `receipt_verified` price-history row, read by the full
+   * verification's repeat guard. `undefined` falls back to the last row this
+   * fixture recorded in `calls.priceHistoryInserts`.
+   */
+  latestReceiptPrice?: Row | null;
+  /** Documents linked to the order (the invoice a price is read from). */
+  documents?: Row[];
 }) {
   const calls: Calls = {
     orderUpdates: [],
@@ -252,6 +261,23 @@ function makeDb(opts: {
               : (calls.receiptEvents[calls.receiptEvents.length - 1] ?? null);
           return { data: latest ? [latest] : [], error: null };
         }
+
+        if (table === "price_history" && op !== "insert") {
+          const latest =
+            opts.latestReceiptPrice !== undefined
+              ? opts.latestReceiptPrice
+              : (calls.priceHistoryInserts[calls.priceHistoryInserts.length - 1] ??
+                null);
+          return { data: latest ? [latest] : [], error: null };
+        }
+
+        if (table === "procurement_document_links")
+          return {
+            data: (opts.documents ?? []).map((d) => ({ document_id: d.id })),
+            error: null,
+          };
+        if (table === "procurement_documents")
+          return { data: opts.documents ?? [], error: null };
 
         if (table === "restaurant_inventory") {
           // The ownership probe: select("id") filtered by restaurant_id + id.
@@ -1533,6 +1559,7 @@ describe("verifyReceipt — a repeated verification writes nothing new (H-1)", (
         orderRow: { ...deliveredOrder, ...first.calls.orderUpdates[0] },
         bookedBottles: 10 + (movement?.args.p_delta ?? 0),
         latestReconciledEvent: first.calls.receiptEvents[0],
+        latestReceiptPrice: first.calls.priceHistoryInserts[0] ?? null,
       },
     };
   }
@@ -1600,6 +1627,78 @@ describe("verifyReceipt — a repeated verification writes nothing new (H-1)", (
     // refuses it at the database, and `openCreditClaim` swallows that 23505.
     expect(calls.receiptEvents).toHaveLength(1);
     expect(calls.orderUpdates).toHaveLength(1);
+  });
+
+  it("a repeat that carries a forgotten extra item still books the extra", async () => {
+    // The web sends unlisted extras as `adjustments` beside the match fields
+    // (ReceivingWorkspace). Same counts plus one extra is not a repeat: the
+    // extra's stock is the correction.
+    const { after } = await verifiedOnce();
+    const { db, calls } = makeDb({
+      ...after,
+      ownedInventoryIds: [OWN_INVENTORY, EXTRA_INVENTORY],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...payload,
+      adjustments: [
+        { inventoryId: EXTRA_INVENTORY, delta: 3, reason: "unlisted item received" },
+      ],
+    } as any);
+
+    const extra = calls.rpc.filter(
+      (c) =>
+        c.name === "apply_stock_movement" &&
+        c.args.p_inventory_id === EXTRA_INVENTORY,
+    );
+    expect(extra).toHaveLength(1);
+    expect(extra[0].args.p_delta).toBe(3);
+  });
+
+  it("a different invoice currency is a correction, not a repeat, and writes the price again", async () => {
+    const { after } = await verifiedOnce();
+    expect((after.orderRow as Row).match_verified_at).toBeTruthy();
+    const { db, calls } = makeDb(after);
+
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      ...payload,
+      invoiceCurrency: "EUR",
+    } as any);
+
+    expect(calls.priceHistoryInserts).toHaveLength(1);
+    expect(calls.priceHistoryInserts[0].currency).toBe("EUR");
+    expect(calls.receiptEvents).toHaveLength(1);
+  });
+
+  it("with no price row on record for the invoice, a repeat is not provable and the price is written", async () => {
+    const { after } = await verifiedOnce();
+    const { db, calls } = makeDb({ ...after, latestReceiptPrice: null });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, payload as any);
+
+    expect(calls.priceHistoryInserts).toHaveLength(1);
+  });
+
+  it("an invoice attached since the first verification, dated another day, is a correction", async () => {
+    const { after } = await verifiedOnce();
+    const { db, calls } = makeDb({
+      ...after,
+      documents: [
+        {
+          id: "doc-invoice-1",
+          doc_type: "invoice",
+          doc_number: "INV-7",
+          doc_date: "2020-01-15",
+          status: "processed",
+          currency: "USD",
+        },
+      ],
+    });
+
+    await service(db).verifyReceipt(REST, ORDER, USER, payload as any);
+
+    expect(calls.priceHistoryInserts).toHaveLength(1);
+    expect(calls.priceHistoryInserts[0].effective_date).toBe("2020-01-15");
   });
 
   it("an order never verified before is not read for a repeat at all", async () => {

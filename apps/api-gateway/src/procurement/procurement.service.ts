@@ -6541,6 +6541,52 @@ export class ProcurementService {
             `(${priorError.message}), so nothing was changed. Try again.`,
         );
       }
+      // The price fact (H-1 audit, 2026-11-07). With an invoice stated, a
+      // verification also writes a price-history row and a register sighting
+      // carrying the invoice's currency and dated by its paper. A repeat must
+      // find that row already saying both, or a currency typed wrong the first
+      // time could never be corrected by verifying again. The paper is read
+      // as it stands now and dated by the FIRST check's time, so an invoice
+      // attached since, with its own issue date, reads as a correction.
+      let price: Parameters<typeof repeatsTheLatestVerification>[0]["price"] =
+        null;
+      if (hasInvoice) {
+        const { data: priceRows, error: priceError } =
+          await this.databaseService.supabase
+            .from("price_history")
+            .select("currency, effective_date")
+            .eq("restaurant_id", restaurantId)
+            .eq("order_id", orderId)
+            .eq("source", "receipt_verified")
+            .order("created_at", { ascending: false })
+            .limit(1);
+        if (priceError) {
+          throw new InternalServerErrorException(
+            `Whether this order was already verified could not be checked ` +
+              `(${priceError.message}), so nothing was changed. Try again.`,
+          );
+        }
+        const paper = await this.receiptPaperFor(
+          restaurantId,
+          orderId,
+          agreedLine.id,
+        );
+        const dating = dateReceiptSighting({
+          verifiedAt: (orderRow as any).match_verified_at,
+          paper,
+          issueDateCorrection: paper.issueDateCorrection,
+          readFailure: paper.readFailure,
+        });
+        price = {
+          recorded: priceRows?.[0] ?? null,
+          currency: priceCurrency(
+            invoiceCurrencyClaim(body.invoiceCurrency, `order ${orderId}`),
+          ).code,
+          effectiveDate: dating.effectiveDate,
+          paperUnread: paper.readFailure != null,
+        };
+      }
+      const orderedItem: string | null = (orderRow as any).inventory_id ?? null;
       if (
         repeatsTheLatestVerification({
           order: orderRow as any,
@@ -6556,7 +6602,11 @@ export class ProcurementService {
           priceOverrideReason: body.priceOverrideReason ?? null,
           rejectedReason: body.rejectedReason ?? null,
           allocatedCharges: body.allocatedCharges,
+          unlistedAdjustments: adjustments.filter(
+            (a) => a.inventoryId !== orderedItem,
+          ).length,
           note: body.note,
+          price,
         })
       ) {
         const { data: current, error: currentError } =

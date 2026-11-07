@@ -130,18 +130,31 @@ export function repeatsTheLatestConfirmation(
  * money. The stock correction alone was already once-only (its
  * `receipt-verify:<order>:<item>` idempotency key).
  *
- * A repeat is proven, never assumed: every fact the first verification
- * RECORDED must already say what this one would write — the order was
- * verified, the latest `reconciled` event states the same accepted, rejected
- * and invoiced bottles, the order holds the same verdict, invoice price,
- * override reason, refusal reason and discrepancy summary, any typed note is
- * already on the order, and the ledger already holds the accepted count
- * (`ledgerDelta === 0`). One input is recorded nowhere — `allocatedCharges`,
- * the invoice's freight and fees — so a payload carrying charges is never
- * called a repeat: it runs as before, and the credit claim it would duplicate
- * is refused by the database instead (`uq_pc_order_match_reason`). Anything
- * unproven runs the full verification: missing a repeat costs a duplicate
- * history line, swallowing a correction costs the correction.
+ * A repeat is proven, never assumed: each fact below must already say what
+ * this verification would write — the order was verified, the latest
+ * `reconciled` event states the same accepted, rejected and invoiced bottles,
+ * the order holds the same verdict, invoice price, override reason, refusal
+ * reason and discrepancy summary, any typed note is already on the order, and
+ * the ledger already holds the accepted count (`ledgerDelta === 0`). When an
+ * invoice was stated, the latest `receipt_verified` price-history row for the
+ * order must exist and already carry the currency this call would write and
+ * the day its paper dates it by (the invoice's issue date when one is read,
+ * the first check's day otherwise), and the paper must have been readable.
+ *
+ * Three inputs are never called a repeat, because nothing compared here
+ * records them: `allocatedCharges` (the invoice's freight and fees), an
+ * adjustment on any item other than the ordered line (an unlisted extra,
+ * booked by its own `receipt-verify:<order>:<item>` key), and a paper read
+ * that failed. Such a payload runs as before; the credit claim it would
+ * duplicate is refused by the database (`uq_pc_order_match_reason`), and an
+ * extra already booked keeps its key.
+ *
+ * NOT COMPARED, and so not protected: which invoice document and line the
+ * price's register sighting names. An invoice attached after the first
+ * verification whose issue date falls on that verification's own day changes
+ * only that name, and a repeat leaves the earlier sighting naming no paper.
+ * Anything unproven runs the full verification: missing a repeat costs a
+ * duplicate history line, swallowing a correction costs the correction.
  */
 export function repeatsTheLatestVerification(args: {
   order: {
@@ -172,11 +185,40 @@ export function repeatsTheLatestVerification(args: {
   priceOverrideReason: string | null;
   rejectedReason: string | null;
   allocatedCharges: number | null | undefined;
+  /** Adjustments on items other than the ordered line (unlisted extras). */
+  unlistedAdjustments: number;
   note: string | null | undefined;
+  /**
+   * Present exactly when an invoice was stated, so a price-history row is
+   * what this verification would write. `recorded` is the order's latest
+   * `receipt_verified` row (null when none); `currency` and `effectiveDate`
+   * are what this call would put on it, dated by the first check's time.
+   */
+  price?: {
+    recorded:
+      | { currency?: string | null; effective_date?: string | null }
+      | null
+      | undefined;
+    currency: string | null;
+    effectiveDate: string | null;
+    paperUnread: boolean;
+  } | null;
 }): boolean {
   const { order, latest } = args;
   if (!order.match_verified_at || !latest) return false;
   if ((args.allocatedCharges ?? 0) !== 0) return false;
+  if (args.unlistedAdjustments !== 0) return false;
+  if (args.price) {
+    const { recorded } = args.price;
+    if (!recorded || args.price.paperUnread) return false;
+    if ((recorded.currency ?? null) !== args.price.currency) return false;
+    if (
+      args.price.effectiveDate === null ||
+      String(recorded.effective_date ?? "").slice(0, 10) !==
+        args.price.effectiveDate
+    )
+      return false;
+  }
   if (args.ledgerDelta !== 0) return false;
 
   const num = (v: number | string | null | undefined): number | null =>
