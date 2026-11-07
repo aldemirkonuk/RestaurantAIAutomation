@@ -143,6 +143,14 @@ export interface OfferDiscount {
   amount: number | null;
   currency: string | null;
   freeShipping: boolean;
+  /**
+   * What `amount` is taken from, as the mail said it: "case" or "bottle".
+   * Null or absent when the mail did not say. A per-case amount is taken from
+   * a bottle price only through `packSize`; without it, never.
+   */
+  amountUnit?: string | null;
+  /** Bottles to the vendor's case, when the mail stated it. */
+  packSize?: number | null;
 }
 
 /**
@@ -416,6 +424,63 @@ function round2(n: number): number {
 
 /* ── the grade ─────────────────────────────────────────────────────────────── */
 
+/** "case", "cases", "cs" → "case"; "bottle", "btl", "bt" → "bottle"; anything else as given. */
+function unitWord(u: string | null | undefined): string | null {
+  if (!u) return null;
+  const w = u.trim().toLowerCase();
+  if (/^(?:cases?|cs)$/.test(w)) return "case";
+  if (/^(?:bottles?|btls?|bt)$/.test(w)) return "bottle";
+  return w;
+}
+
+/**
+ * The mail's amount off, in the baseline's unit. "$15 off per case" is
+ * divided by the case's bottles when the mail stated them, and otherwise is
+ * NOT taken from a bottle price at all — subtracting a case's discount from
+ * one bottle once offered a $12 bottle at $0.00. The reverse (a per-bottle
+ * amount against a case price) is multiplied the same way. An amount whose
+ * unit the mail did not state is read in the baseline's own unit, as before.
+ */
+function amountPerBaselineUnit(
+  discount: OfferDiscount,
+  baselineUnit: string,
+): { amount: number; said: string } | { reason: string } {
+  const amount = discount.amount as number;
+  const money = `${amount} ${discount.currency}`;
+  const from = unitWord(discount.amountUnit);
+  const to = unitWord(baselineUnit);
+  if (!from || from === to) {
+    return { amount, said: from ? `${money} per ${from}` : money };
+  }
+  const pack =
+    discount.packSize != null && Number.isFinite(discount.packSize) && discount.packSize > 0
+      ? discount.packSize
+      : null;
+  if (from === "case" && to === "bottle") {
+    if (pack == null) {
+      return {
+        reason:
+          "the mail's amount is off a case and it does not say how many bottles the case holds, so it cannot be taken from a price per bottle",
+      };
+    }
+    const each = round2(amount / pack);
+    return { amount: each, said: `${money} per case of ${pack} (${each} per bottle)` };
+  }
+  if (from === "bottle" && to === "case") {
+    if (pack == null) {
+      return {
+        reason:
+          "the mail's amount is off a bottle and it does not say how many bottles a case holds, so it cannot be taken from a price per case",
+      };
+    }
+    const whole = round2(amount * pack);
+    return { amount: whole, said: `${money} per bottle (${whole} per case of ${pack})` };
+  }
+  return {
+    reason: `the mail's amount is per ${from}; the price on record is per ${baselineUnit}, and one is not converted into the other here`,
+  };
+}
+
 function offeredFrom(
   baseline: LedgerLine,
   discount: OfferDiscount,
@@ -451,13 +516,21 @@ function offeredFrom(
         reason: `the mail's amount is in ${discount.currency}; the baseline is in ${baseline.currency} — not the same money`,
       };
     }
-    const price = round2(Math.max(0, baseline.price - discount.amount));
+    const per = amountPerBaselineUnit(discount, baseline.unit);
+    if ("reason" in per) return { offered: null, reason: per.reason };
+    if (!(per.amount < baseline.price)) {
+      return {
+        offered: null,
+        reason: `the mail's ${per.amount} ${discount.currency} off is as much as the ${baseline.price} per ${baseline.unit} on record, so it cannot be a discount on that price`,
+      };
+    }
+    const price = round2(baseline.price - per.amount);
     return {
       offered: {
         price,
         unit: baseline.unit,
         currency: baseline.currency,
-        derivation: `${discount.amount} ${discount.currency} off ${baseline.price} per ${baseline.unit}${agreedOnly}`,
+        derivation: `${per.said} off ${baseline.price} per ${baseline.unit}${agreedOnly}`,
       },
       reason: null,
     };

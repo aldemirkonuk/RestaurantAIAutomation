@@ -292,6 +292,10 @@ function discountOf(dv: Record<string, unknown> | null) {
     amount: num(d.amount),
     currency: typeof d.currency === "string" && d.currency ? d.currency : null,
     freeShipping: d.free_shipping === true,
+    // What the amount is off ("case"/"bottle") and the case's bottles, as the
+    // extractor stored them; absent on rows filed before it read them.
+    amountUnit: typeof d.amount_unit === "string" && d.amount_unit ? d.amount_unit : null,
+    packSize: num(d.pack_size),
   };
 }
 

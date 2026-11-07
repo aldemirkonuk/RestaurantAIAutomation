@@ -66,9 +66,12 @@ describe("promo-extract (deterministic, no LLM)", () => {
     expect(p.valid_until).toBe("2026-07-31");
   });
 
-  it("parses a M/D validity date and rolls to next year when past", () => {
+  it("a year-less M/D that has passed stays passed: never pushed a year ahead to look live", () => {
     const p = extractPromotion("Deal", "5% off, offer ends 1/15.", NOW)!;
-    expect(p.valid_until).toBe("2027-01-15"); // Jan 15 already passed in July → next year
+    // Jan 15 is nearer behind July 8 (174 days) than ahead (191), so it is
+    // the January that has gone, and the offer had ended when it was read.
+    expect(p.valid_until).toBe("2026-01-15");
+    expect(p.ended).toBe(true);
   });
 
   it('parses a weekday validity ("ends Friday") to a future ISO date', () => {
@@ -111,5 +114,122 @@ describe("promo-extract (deterministic, no LLM)", () => {
     const a = extractPromotion("x", "15% off cases of 12+ until July 31", NOW)!;
     const b = extractPromotion("y", "15% off cases of 12+ until July 31", NOW)!;
     expect(a.signature).toBe(b.signature);
+  });
+
+  describe("a percentage on a wine's spec sheet is not a discount (QA round 4, H1)", () => {
+    it("a new-arrivals mail quoting ABV carries no discount", () => {
+      const p = extractPromotion(
+        "New arrivals from Barolo",
+        "Our 2019 Barolo 14.5% ABV is just arrived. Stock limited.",
+        NOW,
+      )!;
+      expect(p.promo_type).toBe("new_vintage");
+      expect(p.discount_pct).toBeNull();
+      expect(p.summary).not.toContain("% off");
+    });
+
+    it.each([
+      ["Alc. 13.5% vol, a classic Rioja. New release now in."],
+      ["ABV: 13.5% — new vintage of the Chablis now available."],
+      ["Alcohol 14% | 85% Sangiovese, 15% Merlot. New release."],
+      ["Aged in 40% new French oak, 13% alc. Just arrived."],
+      ["60% Öküzgözü, 40% Boğazkere — the new vintage is in."],
+    ])("%s", (body) => {
+      const p = extractPromotion("From the cellar", body, NOW)!;
+      expect(p.discount_pct).toBeNull();
+    });
+
+    it("a real discount in the same mail is still read, past the ABV", () => {
+      const p = extractPromotion(
+        "New arrivals",
+        "The 2019 Barolo (14.5% ABV) just arrived — 15% off by the case until July 31.",
+        NOW,
+      )!;
+      expect(p.discount_pct).toBe(15);
+    });
+
+    it("a volume discount is not mistaken for a volume-by-alcohol figure", () => {
+      const p = extractPromotion("Volume pricing", "Volume discount 10% on 5+ cases.", NOW)!;
+      expect(p.discount_pct).toBe(10);
+    });
+  });
+
+  describe("an offer that ended before it was read is ended (QA round 4, H3)", () => {
+    const READ = new Date(2026, 10, 7); // 2026-11-07, local
+
+    it('"Offer ends Nov 6" read on Nov 7 ended yesterday, not next November', () => {
+      const p = extractPromotion("Last call", "10% off all Rioja. Offer ends Nov 6.", READ)!;
+      expect(p.valid_until).toBe("2026-11-06");
+      expect(p.ended).toBe(true);
+      expect(p.summary).toContain("ended 2026-11-06");
+    });
+
+    it('"Valid through November 6" the same', () => {
+      const p = extractPromotion("Offer", "15% off, valid through November 6.", READ)!;
+      expect(p.valid_until).toBe("2026-11-06");
+      expect(p.ended).toBe(true);
+    });
+
+    it("a date later this month is open", () => {
+      const p = extractPromotion("Offer", "15% off, valid through November 30.", READ)!;
+      expect(p.valid_until).toBe("2026-11-30");
+      expect(p.ended).toBe(false);
+    });
+
+    it("across the turn of the year: January read in December is next month", () => {
+      const p = extractPromotion("Offer", "15% off until Jan 15.", new Date(2026, 11, 20))!;
+      expect(p.valid_until).toBe("2027-01-15");
+      expect(p.ended).toBe(false);
+    });
+
+    it("across the turn of the year: December 31 read on January 2 ended two days ago", () => {
+      const p = extractPromotion("Offer", "15% off, ends Dec 31.", new Date(2027, 0, 2))!;
+      expect(p.valid_until).toBe("2026-12-31");
+      expect(p.ended).toBe(true);
+    });
+
+    it("a stated year is kept as stated", () => {
+      const p = extractPromotion("Offer", "10% off, offer ends 11/6/2026.", READ)!;
+      expect(p.valid_until).toBe("2026-11-06");
+      expect(p.ended).toBe(true);
+    });
+
+    it('"Market 12 cases" is not March 12', () => {
+      const p = extractPromotion("By the case", "Market 12 cases of Rioja at $15 off per case.", READ)!;
+      expect(p.valid_until).toBeNull();
+      expect(p.ended).toBe(false);
+    });
+  });
+
+  describe("an amount off states what it is off (QA round 4, H2)", () => {
+    it('"$15 off per case" is per case', () => {
+      const p = extractPromotion("By the case", "Rioja at $15 off per case this month.", NOW)!;
+      expect(p.discount_amount).toBe(15);
+      expect(p.amount_unit).toBe("case");
+      expect(p.pack_size).toBeNull();
+      expect(p.summary).toContain("$15 off per case");
+    });
+
+    it("the case's bottle count is kept when the mail states it", () => {
+      const p = extractPromotion(
+        "By the case",
+        "Rioja Reserva 12 x 750ml — save $15 a case through July 31.",
+        NOW,
+      )!;
+      expect(p.amount_unit).toBe("case");
+      expect(p.pack_size).toBe(12);
+    });
+
+    it("a per-bottle amount is per bottle", () => {
+      const p = extractPromotion("Deal", "$2 off each bottle of Chablis, 6-bottle case.", NOW)!;
+      expect(p.amount_unit).toBe("bottle");
+      expect(p.pack_size).toBe(6);
+    });
+
+    it("an amount with no unit says none, and keeps its old dedup signature", () => {
+      const p = extractPromotion("Deal", "$5 off your next order until July 31.", NOW)!;
+      expect(p.amount_unit).toBeNull();
+      expect(p.signature).toBe("seasonal||5|||2026-07-31|");
+    });
   });
 });

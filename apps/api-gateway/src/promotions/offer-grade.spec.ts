@@ -226,6 +226,61 @@ describe("gradeWine — the sentence's arithmetic", () => {
     expect(g.verdict).toBe("beats");
   });
 
+  describe("an amount off a case is never taken from a bottle price (QA round 4, H2)", () => {
+    const usd = (over: Partial<LedgerLine>) => line({ currency: "USD", price: 12, ...over });
+    const perCase = (packSize: number | null) =>
+      offer({
+        discount: { percent: null, amount: 15, currency: "USD", freeShipping: false, amountUnit: "case", packSize },
+      });
+
+    it("$15 off per case, no bottle count stated: no offered price, and the reason says why", () => {
+      const g = grade("Kalecik Karası 2021", perCase(null), [usd({ ref: "price_history:a" })]);
+      expect(g.offered).toBeNull();
+      expect(g.verdict).toBe("not_a_price");
+      expect(g.skipped[0].reason).toContain("does not say how many bottles the case holds");
+    });
+
+    it("$15 off per case of 12 is $1.25 off a $12 bottle, and the derivation shows the division", () => {
+      const ledger = [
+        usd({ ref: "price_history:a" }),
+        usd({ ref: "price_history:b", providerId: "vendor-b", price: 11 }),
+      ];
+      const g = grade("Kalecik Karası 2021", perCase(12), ledger);
+      expect(g.offered?.price).toBe(10.75);
+      expect(g.offered?.unit).toBe("bottle");
+      expect(g.offered?.derivation).toContain("15 USD per case of 12 (1.25 per bottle)");
+      expect(g.verdict).toBe("beats");
+    });
+
+    it("$2 off a bottle, against a case price, is multiplied by the case's bottles", () => {
+      const g = grade(
+        "Kalecik Karası 2021",
+        offer({
+          discount: { percent: null, amount: 2, currency: "USD", freeShipping: false, amountUnit: "bottle", packSize: 6 },
+        }),
+        [usd({ ref: "price_history:a", unit: "case", price: 120 })],
+      );
+      expect(g.offered?.price).toBe(108);
+      expect(g.offered?.unit).toBe("case");
+    });
+
+    it("a per-case amount against a per-case price is taken as it is", () => {
+      const g = grade("Kalecik Karası 2021", perCase(null), [usd({ ref: "price_history:a", unit: "case", price: 140 })]);
+      expect(g.offered?.price).toBe(125);
+    });
+
+    it("an amount as large as the price is not a discount on it: never an offer at $0.00", () => {
+      const g = grade(
+        "Kalecik Karası 2021",
+        offer({ discount: { percent: null, amount: 15, currency: "USD", freeShipping: false } }),
+        [usd({ ref: "price_history:a" })],
+      );
+      expect(g.offered).toBeNull();
+      expect(g.verdict).toBe("not_a_price");
+      expect(g.skipped[0].reason).toContain("cannot be a discount on that price");
+    });
+  });
+
   it("no baseline: the house never bought this wine from this vendor — the most recent house line is the reference", () => {
     const ledger = [
       line({ ref: "price_history:b", providerId: "vendor-b", providerName: "Vendor B", price: 355, date: "2026-03-02" }),
