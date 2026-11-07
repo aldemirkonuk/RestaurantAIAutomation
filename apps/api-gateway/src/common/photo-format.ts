@@ -36,9 +36,10 @@ const HEIF_BRANDS = new Set(
 const AVIF_BRANDS = new Set(["avif", "avis"]);
 
 /**
- * `data:<type>[;param]*;base64,` — what `FileReader.readAsDataURL` writes. The
- * clients strip it today; a payload that still carries it is sniffed past it,
- * so a HEIC behind the prefix is still seen as HEIC.
+ * `data:<type>[;param]*;base64,` — what `FileReader.readAsDataURL` writes. Most
+ * clients strip it, but the /get-started drop zone (`GetStarted.tsx`) sends it
+ * whole; a payload that carries it is sniffed past it, so a HEIC behind the
+ * prefix is still seen as HEIC, and the menu import keeps the bare bytes.
  */
 const DATA_URL_PREFIX = /^data:([^;,]*)(?:;[^;,]*)*;base64,/i;
 
