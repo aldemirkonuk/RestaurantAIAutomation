@@ -1,5 +1,7 @@
 import { Test } from "@nestjs/testing";
 import { createHash } from "crypto";
+import * as fs from "fs";
+import * as path from "path";
 import { DatabaseService } from "../database/database.service";
 import { WineSubmissionsService } from "./wine-submissions.service";
 
@@ -80,6 +82,31 @@ describe("WineSubmissionsService normalization contract", () => {
       ["DOM. CARNEROS", "domaine carneros"],
     ];
 
+    // Turkish. Expected values produced by the body of
+    // 20270311100000_wine_names_fold_turkish_dotless_i run in PGlite
+    // (PostgreSQL 18.3, ctype C.UTF-8) on 2026-11-07, not on the live
+    // database: this branch may not query production. Before that migration
+    // dotless "ı" (U+0131) became a space, so the mixed-case spelling a menu
+    // prints and the capitals an invoice prints keyed as two wines --
+    // "kavakl dere" against "kavaklidere". Each pair below must agree.
+    const turkish: Array<[string, string]> = [
+      ["Kavaklıdere", "kavaklidere"],
+      ["KAVAKLIDERE", "kavaklidere"],
+      ["Kalecik Karası", "kalecik karasi"],
+      ["KALECIK KARASI", "kalecik karasi"],
+      ["İstanbul Şarapları", "istanbul saraplari"],
+      ["ISTANBUL SARAPLARI", "istanbul saraplari"],
+      ["Öküzgözü", "okuzgozu"],
+      ["ÖKÜZGÖZÜ", "okuzgozu"],
+      ["Boğazkere", "bogazkere"],
+      ["BOĞAZKERE", "bogazkere"],
+      ["Çalkarası", "calkarasi"],
+      ["Sevilen Kalecik Karası", "sevilen kalecik karasi"],
+      // The fold runs before abbreviation expansion, as in SQL.
+      ["Dom. Kavaklıdere", "domaine kavaklidere"],
+      ["Ch. Kayra Buzbağ", "chateau kayra buzbag"],
+    ];
+
     it.each(cases)("normalizes %j", (input, expected) => {
       expect(normalize(input)).toBe(expected);
     });
@@ -90,6 +117,31 @@ describe("WineSubmissionsService normalization contract", () => {
         expect(normalize(input)).toBe(expected);
       },
     );
+
+    it.each(turkish)("folds the Turkish letters in %j", (input, expected) => {
+      expect(normalize(input)).toBe(expected);
+    });
+
+    it("has a SQL half whose latest definition folds dotless ı the same way", () => {
+      // The fixtures above pin TypeScript to values the SQL produced once.
+      // They cannot see a later migration that redefines the function from an
+      // older body and drops the fold -- so read whichever migration defines
+      // it last and require the same translate() this side mirrors.
+      const dir = path.join(__dirname, "../../../../supabase/migrations");
+      const latest = fs
+        .readdirSync(dir)
+        .filter((f) => f.endsWith(".sql"))
+        .sort()
+        .filter((f) =>
+          fs
+            .readFileSync(path.join(dir, f), "utf8")
+            .includes("CREATE OR REPLACE FUNCTION public.wine_normalize_text("),
+        )
+        .pop();
+      expect(latest).toBeDefined();
+      const sql = fs.readFileSync(path.join(dir, latest!), "utf8");
+      expect(sql).toMatch(/'\u0131',\s*'i'/);
+    });
 
     it("leaves a bare trade word alone", () => {
       // Dom Pérignon is a wine, not a Domaine. Expanding a period-less "Dom"

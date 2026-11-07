@@ -27,6 +27,11 @@ import unicodedata
 #: SQL lists explicitly. Change both together — the SQL comment says the same.
 _DIACRITICS = re.compile("[̀-ͯ᪰-᫿᷀-᷿︠-︯" "^`¨¯´·¸ʰ-˿ʹ͵ͺ΄΅]")
 
+#: Letters NFD cannot reach, folded after the diacritic strip and before lower(),
+#: as wine_normalize_text() does with translate(): Turkish dotless "ı" has no
+#: decomposition, so without this "Kavaklıdere" and "KAVAKLIDERE" key apart.
+_UNDECOMPOSABLE = str.maketrans({"\u0131": "i"})
+
 #: The abbreviation expansions, in the SQL's order. `\m` in Postgres is "start of
 #: word"; `\b(?=\w)` is the same boundary in Python's `re`.
 _EXPANSIONS: tuple[tuple[re.Pattern[str], str], ...] = tuple(
@@ -54,6 +59,7 @@ def wine_normalize_text(value: str | None) -> str:
     """Mirror of public.wine_normalize_text(text)."""
     s = unicodedata.normalize("NFD", value or "")
     s = _DIACRITICS.sub("", s)
+    s = s.translate(_UNDECOMPOSABLE)
     s = s.lower()
     for pat, rep in _EXPANSIONS:
         s = pat.sub(rep, s)
