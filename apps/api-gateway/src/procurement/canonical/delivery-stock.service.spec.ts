@@ -474,9 +474,9 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     expect(String(posted()[0].args.p_reason)).toMatch(/264 per case of 12 = 22\.0000 per bottle/);
   });
 
-  it("B1: 12 bottles @ 142 / KS(12) posts 11.83, what a two-place lot cost keeps", async () => {
+  it("B1: 12 bottles @ 142 / KS(12) posts 11.8333, the gatekeeper's per-bottle price kept to six places (#839)", async () => {
     await run({ uom: "bottle", unit_price: 142, price_base_qty: 12 });
-    expect(posted()[0].args.p_unit_cost).toBe(11.83);
+    expect(posted()[0].args.p_unit_cost).toBe(11.8333);
     expect(String(posted()[0].args.p_reason)).toMatch(/11\.8333 per bottle/);
   });
 
@@ -758,8 +758,9 @@ describe("DeliveryStockService — VERIFIED posts the landed cost (lane 1.4)", (
       [bottles({ allowance: 50, line_total: 550 }), two[1]],
       both,
     );
-    // Net 550 and 400 share the 100 freight by value: 57.89 and 42.11.
-    expect(costs()).toEqual({ [ITEM]: 60.79, [ITEM2]: 44.21 });
+    // Net 550 and 400 share the 100 freight by value, in whole cents: 57.89
+    // and 42.11, so the two lots add back to 1050.00 (607.89 + 442.11).
+    expect(costs()).toEqual({ [ITEM]: 60.789, [ITEM2]: 44.211 });
     expect(res.ok && res.value.stillProvisional).toEqual([]);
     const first = res.ok
       ? res.value.finalised.find((f) => f.inventoryId === ITEM)
@@ -799,15 +800,15 @@ describe("DeliveryStockService — VERIFIED posts the landed cost (lane 1.4)", (
     expect(costs()).toEqual({ [ITEM]: 11 });
   });
 
-  it("(e) 12 paid @ 10 and a free line of 1 posts 9.23 (120 / 13), and a retry posts the same", async () => {
+  it("(e) 12 paid @ 10 and a free line of 1 posts 9.230769 (120 / 13), and a retry posts the same", async () => {
     const lines = [at(12, 10), at(1, 0, { line_no: 2 })];
     await land({}, lines, { [ITEM]: 13 });
-    expect(costs()).toEqual({ [ITEM]: 9.23 });
+    expect(costs()).toEqual({ [ITEM]: 9.230769 });
     await land({}, lines, { [ITEM]: 13 });
-    expect(costs()).toEqual({ [ITEM]: 9.23 });
+    expect(costs()).toEqual({ [ITEM]: 9.230769 });
   });
 
-  it("(e2) free goods inside a paid line dilute it: 12 listed, 1 free, total 110 → 9.17", async () => {
+  it("(e2) free goods inside a paid line dilute it: 12 listed, 1 free, total 110 → 9.166667", async () => {
     await land(
       {},
       [
@@ -820,7 +821,7 @@ describe("DeliveryStockService — VERIFIED posts the landed cost (lane 1.4)", (
       ],
       { [ITEM]: 12 },
     );
-    expect(costs()).toEqual({ [ITEM]: 9.17 });
+    expect(costs()).toEqual({ [ITEM]: 9.166667 });
   });
 
   it("(f) 2 KS @ 264, pack 12 still costs 22.00 a bottle (#816)", async () => {

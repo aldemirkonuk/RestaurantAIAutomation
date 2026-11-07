@@ -184,6 +184,36 @@ const isNum = (n: unknown): n is number =>
 const plural = (n: number, word: string): string =>
   `${n} ${word}${n === 1 ? "" : "s"}`;
 
+/**
+ * Share `total` (money) over `weights` in whole cents, by largest remainder:
+ * each part gets the floor of its exact share in cents, and the cents still
+ * left go one each to the parts with the largest remainders (ties to the
+ * earlier part). So the parts always add back to `total` rounded to the cent,
+ * and a part never moves more than one cent from its exact share. A charge
+ * shared in floats and rounded per bottle can lose all of itself on a large
+ * cheap line (QA round 15: 4.90 freight over 1000 bottles at 10).
+ */
+export function shareByLargestRemainder(
+  total: number,
+  weights: number[],
+): number[] {
+  const cents = Math.round(total * 100);
+  const sum = weights.reduce((s, w) => s + w, 0);
+  if (!(sum > 0) || cents === 0) return weights.map(() => 0);
+  const exact = weights.map((w) => (cents * w) / sum);
+  const floors = exact.map((e) => Math.floor(e + 1e-9));
+  let left = cents - floors.reduce((s, f) => s + f, 0);
+  const order = exact
+    .map((e, i) => ({ i, r: e - floors[i] }))
+    .sort((a, b) => b.r - a.r || a.i - b.i);
+  for (const { i } of order) {
+    if (left <= 0) break;
+    floors[i] += 1;
+    left -= 1;
+  }
+  return floors.map((c) => c / 100);
+}
+
 type Reconciled =
   | { ok: true; net: number; how: string }
   | { ok: false; sentence: string };
@@ -578,7 +608,13 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
   if (charges > 0 && chargesT.ok) headerStamps.push(chargesT.stamp);
   if (D > 0 && discountT.ok) headerStamps.push(discountT.stamp);
 
-  const out: LandedLine[] = steps.map((x): LandedLine => {
+  // The shares are whole cents that add back to the charges and the discount
+  // exactly (largest remainder), not floats rounded later per bottle.
+  const weights = steps.map((x) => (x.kind === "value" ? x.tax.cost : 0));
+  const chargeCents = shareByLargestRemainder(C, weights);
+  const discountCents = Dc > 0 ? shareByLargestRemainder(Dc, weights) : weights.map(() => 0);
+
+  const out: LandedLine[] = steps.map((x, i): LandedLine => {
     const item_key = x.line.item_key ?? null;
     const line_no = x.line.line_no;
     if (x.kind === "not_stocked")
@@ -594,9 +630,8 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
     }
 
     const cost_value = x.tax.cost;
-    const weight = base > 0 ? cost_value / base : 0;
-    const discount_share = Dc > 0 ? -Dc * weight : 0;
-    const charge_share = C * weight;
+    const discount_share = discountCents[i] > 0 ? -discountCents[i] : 0;
+    const charge_share = chargeCents[i];
     const landed_value = cost_value + discount_share + charge_share;
     const listed = x.line.listed_bottles as number;
     const accepted = x.line.accepted_bottles;

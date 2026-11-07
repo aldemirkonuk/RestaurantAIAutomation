@@ -112,13 +112,13 @@ describe("landDelivery", () => {
     expect(r.refused.size).toBe(0);
   });
 
-  it("(e) a free line dilutes: 120 / 13 = 9.23, the same on every run", () => {
+  it("(e) a free line dilutes: 120 / 13 = 9.230769 to six places, the same on every run", () => {
     const lines = [
       line({ qty_bottles: 12, unit_price: 10, line_total: 120 }),
       line({ line_no: 2, qty_bottles: 1, unit_price: 0, line_total: 0 }),
     ];
-    expect(cost(run({}, lines, { [A]: 13 }), A)).toBe(9.23);
-    expect(cost(run({}, lines, { [A]: 13 }), A)).toBe(9.23);
+    expect(cost(run({}, lines, { [A]: 13 }), A)).toBe(9.230769);
+    expect(cost(run({}, lines, { [A]: 13 }), A)).toBe(9.230769);
   });
 
   it("(g) short bottles stay out of cost: 12 listed @ 22, 10 booked → 22.00", () => {
@@ -245,5 +245,67 @@ describe("landDelivery", () => {
     // (100 + 10 + 120) / 20 = 11.50
     expect(cost(r, A)).toBe(11.5);
     expect(r.papers.map((p) => p.docNumber)).toEqual(["A-1", "B-2"]);
+  });
+});
+
+describe("cents add back to the invoice (QA round 15, finding 3)", () => {
+  const C = "item-c";
+  // What the lots hold once posted: bottles x cost per bottle, to the cent.
+  const lotValue = (r: ReturnType<typeof run>, id: string, bottles: number) =>
+    Math.round((cost(r, id) as number) * bottles * 100) / 100;
+
+  it("three items of 3 @ 10 with 1.00 freight post lots worth 91.00, not 90.99", () => {
+    const r = run(
+      { freight: 1 },
+      [
+        line({ qty_bottles: 3, unit_price: 10, line_total: 30 }),
+        line({ line_no: 2, inventory_id: B, qty_bottles: 3, unit_price: 10, line_total: 30 }),
+        line({ line_no: 3, inventory_id: C, qty_bottles: 3, unit_price: 10, line_total: 30 }),
+      ],
+      { [A]: 3, [B]: 3, [C]: 3 },
+    );
+    const shares = [A, B, C].map((id) => r.byItem.get(id)?.landed.chargeShare);
+    expect(shares).toEqual([0.34, 0.33, 0.33]);
+    expect(cost(r, A)).toBe(10.113333);
+    expect(cost(r, B)).toBe(10.11);
+    const total = [A, B, C].reduce((s, id) => s + lotValue(r, id, 3), 0);
+    expect(Math.round(total * 100) / 100).toBe(91);
+  });
+
+  it("4.90 freight over 1000 bottles at 10 posts 10.0049 a bottle and does not vanish", () => {
+    const r = run(
+      { freight: 4.9 },
+      [line({ qty_bottles: 1000, unit_price: 10, line_total: 10000 })],
+      { [A]: 1000 },
+    );
+    expect(cost(r, A)).toBe(10.0049);
+    expect(lotValue(r, A, 1000)).toBe(10004.9);
+    expect(r.byItem.get(A)?.basis).toMatch(/posted as 10\.0049 a bottle, which adds back to 10004\.90/);
+  });
+
+  it("a 2.00 discount over three equal lines takes 0.67, 0.67, 0.66 and adds back exactly", () => {
+    const r = run(
+      { discount_total: 2 },
+      [
+        line({ qty_bottles: 3, unit_price: 10, line_total: 30 }),
+        line({ line_no: 2, inventory_id: B, qty_bottles: 3, unit_price: 10, line_total: 30 }),
+        line({ line_no: 3, inventory_id: C, qty_bottles: 3, unit_price: 10, line_total: 30 }),
+      ],
+      { [A]: 3, [B]: 3, [C]: 3 },
+    );
+    const d = [A, B, C].map((id) => r.byItem.get(id)?.landed.discountShare);
+    expect(d).toEqual([-0.67, -0.67, -0.66]);
+    const total = [A, B, C].reduce((s, id) => s + lotValue(r, id, 3), 0);
+    expect(Math.round(total * 100) / 100).toBe(88);
+  });
+
+  it("more bottles than six places can carry to the cent stay provisional, by name", () => {
+    const r = run(
+      { freight: 0.01 },
+      [line({ qty_bottles: 30000, unit_price: 1, line_total: 30000 })],
+      { [A]: 30000 },
+    );
+    expect(cost(r, A)).toBeUndefined();
+    expect(r.held.get(A)).toMatch(/too many for a cost per bottle to six places/);
   });
 });

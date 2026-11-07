@@ -10,6 +10,7 @@ import {
   LandedCostLineInput,
   UnresolvedLine,
   landedCost,
+  shareByLargestRemainder,
 } from "./landed-cost";
 
 const NO_HEADER: LandedCostHeader = {
@@ -582,5 +583,21 @@ describe("landedCost: tax follows the line's basis and the house's reclaim (ADR 
     expect(open(r.lines[0]).unresolved).toContain(
       "prints a tax rate that is not a rate",
     );
+  });
+});
+
+describe("shareByLargestRemainder (QA round 15, finding 3)", () => {
+  it("adds back to the total in cents and moves no part more than a cent", () => {
+    expect(shareByLargestRemainder(1, [30, 30, 30])).toEqual([0.34, 0.33, 0.33]);
+    expect(shareByLargestRemainder(4.9, [10000])).toEqual([4.9]);
+    const parts = shareByLargestRemainder(10.07, [3, 7, 11, 13]);
+    expect(Math.round(parts.reduce((s, p) => s + p, 0) * 100)).toBe(1007);
+    parts.forEach((p, i) =>
+      expect(Math.abs(p - (10.07 * [3, 7, 11, 13][i]) / 34)).toBeLessThan(0.01),
+    );
+  });
+  it("gives nothing to a line of no value and nothing out of nothing", () => {
+    expect(shareByLargestRemainder(1, [0, 50, 50])).toEqual([0, 0.5, 0.5]);
+    expect(shareByLargestRemainder(0, [1, 2])).toEqual([0, 0]);
   });
 });
