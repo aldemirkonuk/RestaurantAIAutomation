@@ -191,6 +191,18 @@ describe("OD-259: sectionless tables, empty sections and repeated tables", () =>
     expect(out).toEqual([{ tableId: "t1", toWaiterId: "w2", reason: "lightest_in_section" }]);
   });
 
+  it("does not let input order pick between two rows for one table", () => {
+    const candidates = [
+      { waiterId: "w2", sectionIds: ["A"], load: 0 },
+      { waiterId: "w3", sectionIds: ["B"], load: 0 },
+    ];
+    const rows = [t("t1", "B"), t("t1", "A"), t("t1", null)];
+    const forward = proposeReassignment({ tables: rows, candidates, fromWaiterId: "w1" });
+    const backward = proposeReassignment({ tables: [...rows].reverse(), candidates, fromWaiterId: "w1" });
+    expect(forward).toEqual([{ tableId: "t1", toWaiterId: "w2", reason: "lightest_in_section" }]);
+    expect(backward).toEqual(forward);
+  });
+
   it("piles every table onto the lowest id when no eligible load is readable", () => {
     const out = proposeReassignment({
       tables: [t("t1", null), t("t2", null)],

@@ -33,7 +33,8 @@
  *   lowest id instead of spreading;
  * - the placing order and tie-breaks above;
  * - a table listed twice is proposed once; its first row in that order wins
- *   (a seated row before an unseated one).
+ *   (a seated row before an unseated one, then the lowest section id, a
+ *   sectionless row last), never the input order.
  */
 
 export interface ReassignTable {
@@ -84,7 +85,11 @@ export function proposeReassignment(input: {
     if (a.seated !== b.seated) return a.seated ? -1 : 1;
     const byLabel = a.label.localeCompare(b.label, "en", { numeric: true });
     if (byLabel !== 0) return byLabel;
-    return byId(a.tableId, b.tableId);
+    const byTable = byId(a.tableId, b.tableId);
+    if (byTable !== 0) return byTable;
+    // Two rows for one table: the lowest section wins, sectionless last, so
+    // the input order never decides (OD-259).
+    return byId(a.sectionId || "\uffff", b.sectionId || "\uffff");
   });
   const seen = new Set<string>();
   const tables = sorted.filter((t) => !seen.has(t.tableId) && seen.add(t.tableId));
