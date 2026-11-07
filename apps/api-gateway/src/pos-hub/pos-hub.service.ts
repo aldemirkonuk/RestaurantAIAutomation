@@ -352,15 +352,14 @@ type MappingIdentity = {
 } | null;
 
 /**
- * Lines one save books: a line whose stock moved, or had moved already. A
- * line refused (a stock write that failed, a sale still waiting on a pour
- * size) books nothing and uses none of it (QA round 11b); the rest wait for
- * the next save.
+ * Lines one save books (stock moved, or had moved); a refused line uses none
+ * (QA round 11b). The rest wait for the next save.
  */
 const REPLAY_LINE_LIMIT = 500;
 /**
  * Lines one save tries, booked or not: what bounds a save's work when the
- * rows ahead keep failing or keep waiting (QA round 11b).
+ * rows ahead keep failing or keep waiting (QA round 11b). Checked between
+ * checks, so a save can pass it by one check's lines less one.
  */
 const REPLAY_TRY_LIMIT = 2000;
 /** Open queue rows read per page while a save gathers its item's rows. */
@@ -2072,18 +2071,17 @@ export class PosHubService {
     if (!externalId && !name) return finishPastSales(out);
 
     // As resolveWine finds a mapping: by item id, or by name without case.
-    // Every open row, a page at a time keyed on id (QA 8c): a fixed window
-    // of the oldest 500 let rows that cannot replay hide every newer one.
+    // Every open row in turn, a page at a time (QA 8c, QA round 15): see
+    // sendToTheBack. A fixed order let rows that never settle hide the rest.
     const readAll = async (
       byName: boolean,
     ): Promise<{ rows: any[]; error: string | null; capped: boolean }> => {
       const all: any[] = [];
-      let after: string | null = null;
-      for (;;) {
+      for (let from = 0; ; from += REPLAY_PAGE_ROWS) {
         let q = db
           .from("pos_unresolved_lines")
           .select(
-            "id, created_at, source, external_check_id, external_item_id, item_name, reason, qty, raw",
+            "id, created_at, replay_tried_at, source, external_check_id, external_item_id, item_name, reason, qty, raw",
           )
           .eq("restaurant_id", restaurantId)
           .eq("resolved", false);
@@ -2091,10 +2089,11 @@ export class PosHubService {
         q = byName
           ? q.ilike("item_name", escapeLikePattern(name))
           : q.eq("external_item_id", externalId);
-        if (after !== null) q = q.gt("id", after);
         const { data, error } = await q
+          .order("replay_tried_at", { ascending: true, nullsFirst: true })
+          .order("created_at", { ascending: true })
           .order("id", { ascending: true })
-          .limit(REPLAY_PAGE_ROWS);
+          .range(from, from + REPLAY_PAGE_ROWS - 1);
         if (error) return { rows: all, error: error.message, capped: false };
         const page = data || [];
         all.push(...page);
@@ -2103,7 +2102,6 @@ export class PosHubService {
         // Bounded (QA round 11b): rows past it wait for a later save.
         if (all.length >= REPLAY_SCAN_ROWS)
           return { rows: all, error: null, capped: true };
-        after = String(page[page.length - 1].id);
       }
     };
     const reads: Array<{ byName: boolean }> = [];
@@ -2134,12 +2132,19 @@ export class PosHubService {
     if (!rows.size) return finishPastSales(out);
 
     const bySource = new Map<string, any[]>();
-    const oldestFirst = [...rows.values()].sort(
+    // The read's own order, kept across the two reads (QA round 15).
+    const inTurn = [...rows.values()].sort(
       (a, b) =>
+        Number(a.replay_tried_at != null) - Number(b.replay_tried_at != null) ||
+        String(a.replay_tried_at ?? "").localeCompare(
+          String(b.replay_tried_at ?? ""),
+        ) ||
         String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")) ||
         String(a.id).localeCompare(String(b.id)),
     );
-    for (const row of oldestFirst) {
+    // Every row this save looks at; the ones it leaves open go to the back.
+    const looked = new Set<string>();
+    for (const row of inTurn) {
       const list = bySource.get(row.source) ?? [];
       list.push(row);
       bySource.set(row.source, list);
@@ -2159,9 +2164,7 @@ export class PosHubService {
       mappingsBySource.set(lineSource, mappingRead.rows);
     }
 
-    // `left`: lines one save may book; only a line whose stock moved, or had
-    // moved, uses it. `tries`: lines it may try at all (QA round 11b). A row
-    // that cannot replay (no stored check, no close) uses neither.
+    // A row that cannot replay (no stored check, no close) uses neither.
     const budget: ReplayBudget = {
       left: REPLAY_LINE_LIMIT,
       tries: REPLAY_TRY_LIMIT,
@@ -2193,6 +2196,10 @@ export class PosHubService {
           : [];
       out.still_waiting +=
         sourceRows.length - hubRows.length - toastRows.length;
+      // Looked at here: another mapping's row, or nothing to replay from.
+      const replayable = new Set([...hubRows, ...toastRows]);
+      for (const r of fetched)
+        if (!replayable.has(r)) looked.add(String(r.id));
       if (toastRows.length)
         await this.replayToastDoorRows(
           restaurantId,
@@ -2201,6 +2208,7 @@ export class PosHubService {
           mappings,
           out,
           budget,
+          looked,
         );
       if (!hubRows.length) continue;
 
@@ -2221,9 +2229,11 @@ export class PosHubService {
           .eq("source", lineSource)
           .in("external_check_id", ids);
         if (checksError) {
-          out.failed += hubRows.filter((r) =>
+          const unread = hubRows.filter((r) =>
             ids.includes(String(r.external_check_id)),
-          ).length;
+          );
+          out.failed += unread.length;
+          for (const r of unread) looked.add(String(r.id));
           this.logger.error(
             `Replay could not read pos_checks for r=${restaurantId} src=${lineSource}: ${checksError.message}`,
           );
@@ -2248,12 +2258,40 @@ export class PosHubService {
             mappings,
             out,
           );
+          for (const r of queued) looked.add(String(r.id));
           budget.tries -= used.tried;
           budget.left -= used.booked;
         }
       }
     }
+    await this.sendToTheBack(restaurantId, [...looked]);
     return finishPastSales(out);
+  }
+
+  /**
+   * QA round 15: stamp `replay_tried_at` on the open rows a save looked at.
+   * The next save reads rows no save has looked at first, then the ones
+   * looked at longest ago, so a row that keeps failing goes to the back.
+   * It only orders: a failed stamp moves no stock and loses no row.
+   */
+  private async sendToTheBack(
+    restaurantId: string,
+    ids: string[],
+  ): Promise<void> {
+    const at = new Date().toISOString();
+    const db = this.dbService.getClient();
+    for (let i = 0; i < ids.length; i += REPLAY_IDS_PER_READ) {
+      const { error } = await db
+        .from("pos_unresolved_lines")
+        .update({ replay_tried_at: at })
+        .eq("restaurant_id", restaurantId)
+        .eq("resolved", false)
+        .in("id", ids.slice(i, i + REPLAY_IDS_PER_READ));
+      if (error)
+        this.logger.error(
+          `Could not stamp replay_tried_at on ${ids.length} queued line(s) for r=${restaurantId}: ${error.message}`,
+        );
+    }
   }
 
   /**
@@ -2273,6 +2311,7 @@ export class PosHubService {
     mappings: any[],
     out: PastSalesCount,
     budget: ReplayBudget,
+    looked: Set<string>,
   ): Promise<void> {
     const db = this.dbService.getClient();
     // The door matches by guid alone; a name-only match never books live.
@@ -2280,6 +2319,8 @@ export class PosHubService {
       ? rows.filter((r) => String(r.external_item_id ?? "") === externalId)
       : [];
     out.still_waiting += rows.length - own.length;
+    const isOwn = new Set(own);
+    for (const r of rows) if (!isOwn.has(r)) looked.add(String(r.id));
     if (!own.length) return;
     const m = this.findMapping(
       String(own[0].item_name ?? ""),
@@ -2287,6 +2328,7 @@ export class PosHubService {
       mappings,
     );
     if (!m?.inventory_id) {
+      for (const r of own) looked.add(String(r.id));
       if (m?.is_wine === false) {
         if (await this.clearQueuedLines(restaurantId, own, null))
           out.cleared_without_stock += own.length;
@@ -2338,6 +2380,7 @@ export class PosHubService {
             .in("idempotency_key", chunkRows.map(keyOf));
       if (eventsError || seen.error) {
         out.failed += chunkRows.length;
+        for (const r of chunkRows) looked.add(String(r.id));
         this.logger.error(
           `Replay could not read the Toast orders for r=${restaurantId}: ${(eventsError ?? seen.error)?.message}`,
         );
@@ -2357,6 +2400,7 @@ export class PosHubService {
           stopped = true;
           break;
         }
+        looked.add(String(r.id));
         const mine = (events || []).filter(
           (e: any) =>
             String(e.payload?.toast_order_guid) === String(r.external_check_id),
@@ -2409,22 +2453,24 @@ export class PosHubService {
         budget.left--;
         settled.push({ row: r, kind: already ? "already" : "applied" });
       }
-      if (settled.length) {
-        const cleared = await this.clearQueuedLines(
-          restaurantId,
-          settled.map((s) => s.row),
-          m.inventory_id,
-        );
-        for (const s of settled) {
-          if (s.kind === "none") {
-            if (cleared) out.cleared_without_stock++;
-            else out.still_waiting++;
-            continue;
-          }
-          if (s.kind === "applied") out.applied++;
-          else out.already_applied++;
-          if (!cleared) out.not_cleared++;
+      if (!settled.length) {
+        if (stopped) return;
+        continue;
+      }
+      const cleared = await this.clearQueuedLines(
+        restaurantId,
+        settled.map((s) => s.row),
+        m.inventory_id,
+      );
+      for (const s of settled) {
+        if (s.kind === "none") {
+          if (cleared) out.cleared_without_stock++;
+          else out.still_waiting++;
+          continue;
         }
+        if (s.kind === "applied") out.applied++;
+        else out.already_applied++;
+        if (!cleared) out.not_cleared++;
       }
       if (stopped) return;
     }
@@ -2438,10 +2484,8 @@ export class PosHubService {
    * neighbours do, and a row is cleared only when every one of its own lines
    * moved, had moved already, or needs no stock. Lines are counted, except
    * where no line can be read (no stored check, or a check that dropped the
-   * line): those count their rows. Returns the lines it tried (what
-   * REPLAY_TRY_LIMIT counts) and the lines whose stock moved or had moved
-   * (what REPLAY_LINE_LIMIT counts); a failed or requeued line is tried, not
-   * booked (QA round 11b).
+   * line): those count their rows. Returns the lines it tried and the lines
+   * it booked (QA round 11b): a failed or requeued line is tried, not booked.
    */
   private async replayOneCheck(
     restaurantId: string,
