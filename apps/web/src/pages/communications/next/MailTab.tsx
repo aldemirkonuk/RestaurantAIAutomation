@@ -283,6 +283,13 @@ function People({
   );
 }
 
+/** One address in a form two entries can be compared by, whatever the key order. */
+function sameAddress(p: URLSearchParams): string {
+  const q = new URLSearchParams(p);
+  q.sort();
+  return q.toString();
+}
+
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: string }) {
   return (
     <button
@@ -339,20 +346,29 @@ export function MailTab({
   const threadKey = params.get('thread');
   const setup = params.get('setup') === '1';
 
-  // The address is the state; opening pushes an entry the tab marks as its own.
-  const go = (set: Record<string, string | null>, how: 'push' | 'replace' = 'push') => {
+  const addressWith = (set: Record<string, string | null>) => {
     const next = new URLSearchParams(params);
     next.set('tab', 'mail');
     for (const [k, v] of Object.entries(set)) {
       if (v === null) next.delete(k);
       else next.set(k, v);
     }
-    setParams(next, how === 'push' ? { state: { mail: true } } : { replace: true });
+    return next;
   };
-  // In-app Back: step the history the tab pushed; a link opened cold has no
-  // such entry behind it, so replace the address instead of leaving the page.
+  // The address is the state; opening pushes an entry that remembers the
+  // address it was opened from.
+  const go = (set: Record<string, string | null>, how: 'push' | 'replace' = 'push') => {
+    const next = addressWith(set);
+    setParams(next, how === 'push' ? { state: { mailFrom: sameAddress(addressWith({})) } } : { replace: true });
+  };
+  // In-app Back names a place ("Everyone", "their threads"), so it goes
+  // there. It steps the history only when the entry behind is that very
+  // place, so it piles up no entries; otherwise (a link opened cold, or a
+  // person opened from inside a thread) it replaces the address and never
+  // leaves the page.
   const back = (set: Record<string, string | null>) => {
-    if ((location.state as { mail?: boolean } | null)?.mail) navigate(-1);
+    const from = (location.state as { mailFrom?: string } | null)?.mailFrom;
+    if (from !== undefined && from === sameAddress(addressWith(set))) navigate(-1);
     else go(set, 'replace');
   };
 
