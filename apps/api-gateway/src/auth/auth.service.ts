@@ -2820,6 +2820,33 @@ export class AuthService {
   }
 
   /**
+   * The account a joiner's typed address names, through the shared lookup
+   * (QA r17 gap 1): an exact `.eq` missed a held row typed in another case and
+   * inserted a case-twin. Neither a failed read nor held twins is the
+   * joiner's doing, so the invite is given back before refusing.
+   */
+  private async joinerAccount(
+    typed: string,
+    inviteId: string,
+  ): Promise<{ data: any | null }> {
+    const lookup = await findUserBySignInAddress<any>(
+      () => this.databaseService.supabase.from("users").select("*"),
+      typed,
+    );
+    if (!lookup.error && !lookup.ambiguous) return { data: lookup.user };
+    await this.databaseService.supabase
+      .from("organization_invites")
+      .update({ used_at: null, used_by_email: null })
+      .eq("id", inviteId);
+    if (lookup.error) {
+      throw new ServiceUnavailableException(
+        "Could not check that address. Nothing was done; try again.",
+      );
+    }
+    throw new UnauthorizedException("Invalid credentials");
+  }
+
+  /**
    * Path A: Join via invite code — atomically consumes invite and creates user.
    *
    * A NEW account is verified only when the address typed here is the address
@@ -2897,11 +2924,7 @@ export class AuthService {
       );
     }
 
-    const { data: existingUser } = await this.databaseService.supabase
-      .from("users")
-      .select("*")
-      .eq("email", email)
-      .maybeSingle();
+    const { data: existingUser } = await this.joinerAccount(dto.email, invite.id);
 
     let user: any;
     // Whether the joining account's address is proved right now (fork 13).
