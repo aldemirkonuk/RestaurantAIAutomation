@@ -20,6 +20,7 @@ import { readSnapshot } from "../canonical/from-document-rows";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
 import { readEinvoiceFile } from "./efatura";
+import { normalizeTaxId } from "../vendor-identity/tax-identity";
 // A pure reader, no Nest dependency and no network: the 832 the document door
 // stores and the 832 `distributor-feed` prices are read by ONE parser, so a
 // catalogue cannot be classified one way here and another way there.
@@ -771,7 +772,21 @@ export class DocumentIntakeService {
     const einvoice = readEinvoiceFile(bytes, input.filename, input.mimeType);
     if (einvoice.kind === "refused") return this.unreadable(einvoice.reason);
     if (einvoice.kind === "read") {
-      const failures = [house.failure, order.failure].filter(
+      // WHICH SIDE OF IT IS THIS HOUSE (batch review on PR 1043). An
+      // e-invoice the house ISSUED — a catering sale, its own İADE to a
+      // vendor — is not a purchase. It is kept, with its ETTN so a re-sent
+      // copy is still the same paper, but read into no lines, so nothing on
+      // it can be matched to an order or booked as stock or cost.
+      const side = await this.einvoiceSide(input.restaurantId, einvoice.doc);
+      if (side.issuedByHouse)
+        return {
+          ...this.unreadable(side.issuedByHouse),
+          docNumber: einvoice.doc.docNumber,
+          docDate: einvoice.doc.docDate,
+          ettn: einvoice.doc.ettn,
+          einvoice: einvoice.doc.einvoice,
+        };
+      const failures = [house.failure, order.failure, side.warning].filter(
         (f): f is string => typeof f === "string",
       );
       // A despatch note carries no money, so no currency is filed for it.
@@ -904,6 +919,127 @@ export class DocumentIntakeService {
    * document's warnings — the refusal that follows then says, in the document's
    * own notes, that it may be a failure rather than a fact.
    */
+  /**
+   * Is this house the buyer on the e-invoice, the seller, or can that not be
+   * told? (Batch review on PR 1043: the reader filed the house's own outgoing
+   * e-Fatura as a purchase from "vendor" = the house.)
+   *
+   * Evidence, in order:
+   *   1. The house's own tax number (`restaurants.tax_id_normalized`, ADR 0104
+   *      D15). Seller = house → issued by the house. Buyer = house → a
+   *      purchase. Neither → a warning that it may not be this house's paper.
+   *   2. When the house's number is not on file: the BUYER carries the tax
+   *      number of one of this house's own vendors → the house is not the
+   *      buyer, so this is not a purchase paper. The SELLER being one of its
+   *      vendors → a purchase, nothing to say.
+   *   3. Otherwise a warning that the side could not be checked.
+   *
+   * A failed read is a warning in words, never a silent "it is a purchase",
+   * and never a block: a block on a failed read would turn every e-invoice
+   * away whenever the database blinks.
+   *
+   * The session's call (2026-11-11, under the 2026-11-07 /goal): keep the
+   * house's own paper, unread into lines, with the reason. Rejected: refusing
+   * it (the house may need its own sale on file, and a refusal leaves the
+   * emailed file with no paper to point at); filing it with lines and a
+   * warning (verify and line-matching would still treat the sale's lines as
+   * goods bought).
+   */
+  private async einvoiceSide(
+    restaurantId: string,
+    doc: ParsedDocument,
+  ): Promise<{ issuedByHouse?: string; warning?: string }> {
+    const country = doc.vendorCountry ?? "TR";
+    const seller = normalizeTaxId(doc.vendorTaxId, country);
+    const buyer = normalizeTaxId(doc.buyerTaxId, country);
+    if (!seller.ok && !buyer.ok)
+      return {
+        warning:
+          "The file names no tax number for either party, so it was not checked that this e-invoice was issued to this house.",
+      };
+
+    const house = await this.houseTaxIdentity(restaurantId);
+    if (house.failure)
+      return {
+        warning: `This house's own tax number could not be read (${house.failure}), so it was not checked that this e-invoice was issued to the house.`,
+      };
+    if (house.normalized) {
+      if (seller.ok && seller.identity.normalized === house.normalized)
+        return {
+          issuedByHouse: `This e-invoice was issued BY this house (the seller's tax number ${seller.identity.printed} is the house's own), so it is a sale or a return the house sent, not a purchase. It is kept with this reason, and nothing on it is read into lines to book.`,
+        };
+      if (buyer.ok && buyer.identity.normalized === house.normalized) return {};
+      return {
+        warning: `Neither party on this e-invoice carries this house's tax number (the buyer is ${buyer.ok ? buyer.identity.printed : "not named by tax number"}); check it was sent to this house before it is booked.`,
+      };
+    }
+
+    const known = await this.providerTaxIdentities(
+      restaurantId,
+      [seller, buyer].flatMap((r) => (r.ok ? [r.identity.normalized] : [])),
+    );
+    if (known.failure)
+      return {
+        warning: `This house's vendors could not be read (${known.failure}), so it was not checked that this e-invoice was issued to the house.`,
+      };
+    if (seller.ok && known.ids.has(seller.identity.normalized)) return {};
+    if (buyer.ok && known.ids.has(buyer.identity.normalized))
+      return {
+        issuedByHouse: `The buyer on this e-invoice (tax number ${buyer.identity.printed}) is one of this house's own vendors, so the house did not buy on it: it is a sale or a return, not a purchase. It is kept with this reason, and nothing on it is read into lines to book.`,
+      };
+    return {
+      warning:
+        "This house's own tax number is not on file, and the seller is not one of its vendors yet, so it was not checked that this e-invoice was issued to the house. A sale or a return the house issued itself would read as a purchase; check the buyer before it is booked.",
+    };
+  }
+
+  /** `restaurants.tax_id_normalized`, or the read failure in words. */
+  private async houseTaxIdentity(
+    restaurantId: string,
+  ): Promise<{ normalized: string | null; failure: string | null }> {
+    const { data, error } = await this.db
+      .getClient()
+      .from("restaurants")
+      .select("tax_id_normalized")
+      .eq("id", restaurantId)
+      .maybeSingle();
+    // Before ADR 0104 D15's migration the column does not exist: no number.
+    if (error?.code === "42703" || error?.code === "PGRST204")
+      return { normalized: null, failure: null };
+    if (error) return { normalized: null, failure: error.message };
+    return {
+      normalized:
+        (data as { tax_id_normalized?: string | null } | null)
+          ?.tax_id_normalized ?? null,
+      failure: null,
+    };
+  }
+
+  /** Which of these normalized tax numbers this house's live vendors carry. */
+  private async providerTaxIdentities(
+    restaurantId: string,
+    normalized: string[],
+  ): Promise<{ ids: Set<string>; failure: string | null }> {
+    if (!normalized.length) return { ids: new Set(), failure: null };
+    const { data, error } = await this.db
+      .getClient()
+      .from("providers")
+      .select("tax_id_normalized")
+      .eq("restaurant_id", restaurantId)
+      .in("tax_id_normalized", normalized)
+      .is("deleted_at", null)
+      .limit(10);
+    if (error) return { ids: new Set(), failure: error.message };
+    return {
+      ids: new Set(
+        ((data ?? []) as Array<{ tax_id_normalized: string | null }>)
+          .map((r) => r.tax_id_normalized)
+          .filter((v): v is string => Boolean(v)),
+      ),
+      failure: null,
+    };
+  }
+
   private async houseCurrency(
     restaurantId: string,
   ): Promise<{ code: string | null; failure: string | null }> {
@@ -2401,9 +2537,95 @@ export class DocumentIntakeService {
       if (!wrote) break;
     }
 
+    // Never lets the sweep's own answer fail: it is a second, optional pass.
+    try {
+      await this.requeueUnderTheWiderRule();
+    } catch (e: any) {
+      this.logger.warn(
+        `document intake sweep could not look again at files the old rule turned away: ${e?.message ?? e}`,
+      );
+    }
+
     if (ingested)
       this.logger.log(`document intake sweep filed ${ingested} attachment(s)`);
     return ingested;
+  }
+
+  /**
+   * Put back to `pending` the emailed XML and zip files the narrower rule
+   * called "not a paper" (batch review on PR 1043).
+   *
+   * PR 1040's sweep marked every XML and zip `not_a_document` for good, and
+   * reads `pending` rows only, so widening `isDocumentLike` alone would never
+   * read the e-invoices it had already turned away.
+   *
+   * The session's call (2026-11-11, under the 2026-11-07 /goal): done HERE,
+   * by the code that holds the wider rule, and keyed on the old rule's own
+   * words. Rejected: a migration UPDATE — migrations apply on merge, before
+   * the gateway is rebuilt, so the old sweep (every five minutes) would turn
+   * the same files away again in that window, and nothing would put them
+   * back. Here, a row the old code rejects after this deploy carries the old
+   * words and is picked up on the next run.
+   *
+   * Every row it selects is rewritten (to `pending`, or to the new words
+   * when the wider rule still turns it away), so no row is looked at twice.
+   * A failed read or write is logged and left for the next run; it does not
+   * stop the sweep.
+   */
+  private async requeueUnderTheWiderRule(): Promise<number> {
+    const client = this.db.getClient();
+    const { data, error } = await client
+      .from("conversation_attachments")
+      .select("id, filename, mime_type")
+      .eq("ingest_state", "not_a_document")
+      .eq("last_ingest_reason", NOT_A_DOCUMENT_BEFORE_EINVOICE)
+      .or(
+        "filename.ilike.%.xml,filename.ilike.%.zip,mime_type.ilike.%xml%,mime_type.ilike.%zip%",
+      )
+      .limit(200);
+    if (error) {
+      this.logger.warn(
+        `document intake sweep could not look again at files the old rule turned away: ${error.message}`,
+      );
+      return 0;
+    }
+    let requeued = 0;
+    for (const r of (data ?? []) as Array<{
+      id: string;
+      filename: string | null;
+      mime_type: string | null;
+    }>) {
+      const take = isDocumentLike(r.mime_type, r.filename);
+      const { error: writeError } = await client
+        .from("conversation_attachments")
+        .update(
+          take
+            ? {
+                ingest_state: "pending",
+                ingest_attempts: 0,
+                last_ingest_reason: null,
+                ingested_document_id: null,
+                ingest_decided_at: null,
+              }
+            : { last_ingest_reason: NOT_A_DOCUMENT_REASON },
+        )
+        .eq("id", r.id)
+        .eq("ingest_state", "not_a_document")
+        .eq("last_ingest_reason", NOT_A_DOCUMENT_BEFORE_EINVOICE)
+        .select("id");
+      if (writeError) {
+        this.logger.warn(
+          `document intake sweep could not put attachment ${r.id} back to be read: ${writeError.message}`,
+        );
+        return requeued;
+      }
+      if (take) requeued++;
+    }
+    if (requeued)
+      this.logger.log(
+        `document intake sweep put ${requeued} e-invoice file(s) the old rule turned away back to be read`,
+      );
+    return requeued;
   }
 
   /**
@@ -2433,7 +2655,7 @@ export class DocumentIntakeService {
     if (!isDocumentLike(a.mime_type, a.filename))
       return {
         state: "not_a_document",
-        reason: "Not a PDF, image, e-invoice XML or EDI file.",
+        reason: NOT_A_DOCUMENT_REASON,
         attempts: a.ingest_attempts ?? 0,
       };
     if (a.bytes_deleted_at)
@@ -2481,6 +2703,25 @@ export class DocumentIntakeService {
       );
 
     const buffer = Buffer.from(await file.data.arrayBuffer());
+    // An XML or zip that plainly holds no e-invoice (a zip of photos, an XML
+    // that is not UBL) is not a paper: say so with what it held, rather than
+    // file an unread paper on the review list for every such attachment. The
+    // read is the same pure reader `ingest` uses, so the two cannot disagree.
+    if (
+      isEinvoiceFileName(
+        (a.mime_type ?? "").toLowerCase(),
+        (a.filename ?? "").toLowerCase(),
+      )
+    ) {
+      let pre: ReturnType<typeof readEinvoiceFile> | null = null;
+      try {
+        pre = readEinvoiceFile(buffer, a.filename, a.mime_type);
+      } catch {
+        pre = null; // `ingest` meets the same failure and answers it in words
+      }
+      if (pre?.kind === "refused" && pre.notADocument)
+        return { state: "not_a_document", reason: pre.reason, attempts };
+    }
     // One correlation scope PER ATTACHMENT. `ingest` reaches
     // DocumentExtractorService -> ModelClientService, and a cron has no
     // request to inherit an id from, so without this the NF row for every
@@ -3088,6 +3329,28 @@ interface AttachmentOutcome {
   attempts: number;
 }
 
+/** Named or typed as the e-invoice file: an XML, or a zip that may hold one. */
+function isEinvoiceFileName(mimeLower: string, nameLower: string): boolean {
+  return (
+    nameLower.endsWith(".xml") ||
+    mimeLower === "application/xml" ||
+    mimeLower === "text/xml" ||
+    nameLower.endsWith(".zip") ||
+    mimeLower.includes("zip")
+  );
+}
+
+/**
+ * The words `not_a_document` carried before the sweep took the e-invoice file
+ * (PR 1040's rule). A row still holding them was judged under the narrower
+ * rule; `requeueUnderTheWiderRule` looks at those rows again.
+ */
+export const NOT_A_DOCUMENT_BEFORE_EINVOICE =
+  "Not a PDF, image, e-invoice XML or EDI file.";
+/** The words `not_a_document` carries under the rule that takes XML and zips. */
+export const NOT_A_DOCUMENT_REASON =
+  "Not a PDF, image, e-invoice file (an XML, or a zip holding one) or EDI file.";
+
 export function isDocumentLike(
   mimeType?: string | null,
   filename?: string | null,
@@ -3097,15 +3360,14 @@ export function isDocumentLike(
   if (/logo|signature|banner|icon|footer|header/.test(n)) return false;
   if (m === "application/pdf" || n.endsWith(".pdf")) return true;
   if (/\.(edi|x12|810|856|812)$/.test(n)) return true;
-  // The e-invoice file (proposal-receipt row 3.3): any XML, and a zip only
-  // when its name says it holds an invoice, so a zip of photos is not filed.
-  if (n.endsWith(".xml") || m === "application/xml" || m === "text/xml")
-    return true;
-  if (
-    (n.endsWith(".zip") || m.includes("zip")) &&
-    /fatura|invoice|arsiv|ar[sş]iv|irsaliye|ettn|ubl|efat/.test(n)
-  )
-    return true;
+  // The e-invoice file (proposal-receipt row 3.3): any XML and any zip. A zip
+  // is NOT judged by its name: GİB and the integrators name it after the bare
+  // ETTN or a date as often as "fatura". What is inside decides — the sweep
+  // reads it and records a zip with no e-invoice as `not_a_document` with
+  // what it held (`sweepOne`), and the desk stores it unread with the same
+  // sentence. Rejected (batch review on PR 1043): a name pattern, which
+  // dropped an e-invoice zip named a1b2c3d4-….zip for good.
+  if (isEinvoiceFileName(m, n)) return true;
   if (m.startsWith("image/")) return true;
   if (m.startsWith("text/") && /invoice|packing|credit|statement/.test(n))
     return true;

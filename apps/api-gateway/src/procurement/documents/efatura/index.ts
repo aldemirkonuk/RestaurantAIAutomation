@@ -12,7 +12,18 @@ export const MAX_XML_BYTES = 5 * 1024 * 1024;
 export type EinvoiceRead =
   | { kind: "not_einvoice" }
   | { kind: "read"; doc: ParsedDocument }
-  | { kind: "refused"; reason: string };
+  | {
+      kind: "refused";
+      reason: string;
+      /**
+       * True when the file is plainly NOT an e-invoice (a zip with no UBL
+       * inside, an XML whose root is not a UBL paper), as against an
+       * e-invoice that could not be read (too large, broken, corrupt zip).
+       * The email sweep records the first as `not_a_document` with the
+       * reason; the desk still stores it unread, because a person chose it.
+       */
+      notADocument?: boolean;
+    };
 
 /**
  * Is this file an e-invoice (UBL-TR XML, or a zip holding one), and if so,
@@ -50,6 +61,7 @@ export function readEinvoiceFile(
       return {
         kind: "refused",
         reason: `The zip file holds no e-invoice XML (it holds: ${entries.map((e) => e.name).join(", ") || "nothing"}).`,
+        notADocument: true,
       };
     const first = readXml(xmls[0].bytes);
     if (first.kind !== "read") return first;
@@ -78,6 +90,7 @@ export function readEinvoiceFile(
           kind: "refused",
           reason:
             "The XML file is not an e-invoice (UBL-TR Invoice or DespatchAdvice), so it was stored unread.",
+          notADocument: true,
         }
       : { kind: "not_einvoice" };
   }

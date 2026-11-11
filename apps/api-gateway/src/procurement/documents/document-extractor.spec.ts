@@ -169,7 +169,14 @@ describe("isDocumentLike", () => {
   });
 
   it("rejects unrelated file types", () => {
-    expect(isDocumentLike("application/zip", "archive.zip")).toBe(false);
+    // A zip is no longer judged by its name (PR 1043 review): what is inside
+    // decides, and the sweep records a zip with no e-invoice as not a paper.
+    expect(
+      isDocumentLike(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "prices.xlsx",
+      ),
+    ).toBe(false);
     expect(isDocumentLike("text/calendar", "invite.ics")).toBe(false);
   });
 });
