@@ -109,7 +109,7 @@ describe("registerAccount hands the mail outcome to /verify-email (OB-6)", () =>
       await act(async () => {
         await auth().registerAccount(ACCOUNT as never);
       });
-      expect(sessionStorage.getItem(KEY)).toBe(outcome);
+      expect(sessionStorage.getItem(KEY)).toBe(JSON.stringify({ outcome, email: "new@house.test" }));
     },
   );
 
@@ -129,7 +129,7 @@ describe("registerAccount hands the mail outcome to /verify-email (OB-6)", () =>
     await act(async () => {
       await auth().registerAccount(ACCOUNT as never);
     });
-    expect(sessionStorage.getItem(KEY)).toBe("not_sent");
+    expect(sessionStorage.getItem(KEY)).toBe(JSON.stringify({ outcome: "not_sent", email: "new@house.test" }));
     await act(async () => {
       await auth().logout();
     });
@@ -139,6 +139,6 @@ describe("registerAccount hands the mail outcome to /verify-email (OB-6)", () =>
     await act(async () => {
       await auth().login("other@house.test", "their own password");
     });
-    expect(readSignUpMail()).toBeNull();
+    expect(readSignUpMail("other@house.test")).toBeNull();
   });
 });

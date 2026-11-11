@@ -57,15 +57,25 @@ export function verificationMailSentence(
  */
 export const VERIFICATION_MAIL_KEY = 'mudavym:verification-mail'
 
+/** An address as the note compares it: trimmed and folded. */
+function folded(email: string | null | undefined): string {
+  return (email ?? '').trim().toLowerCase()
+}
+
 /**
- * Keep the sign-up's outcome for the next page. Anything the gateway did not
- * say clears the key, so an earlier sign-up's note is never shown for this one.
- * Storage that throws (private mode, blocked) keeps nothing.
+ * Keep the sign-up's outcome for the next page, tied to the address it was
+ * mailed to (QA r19 on #914: a note kept bare was shown to whichever account
+ * next used the tab). Anything the gateway did not say, or no address, clears
+ * the key, so an earlier sign-up's note is never shown for this one. Storage
+ * that throws (private mode, blocked) keeps nothing.
  */
-export function noteSignUpMail(outcome: unknown): void {
+export function noteSignUpMail(outcome: unknown, email: string | null | undefined): void {
   try {
-    if (isVerificationMail(outcome)) {
-      window.sessionStorage.setItem(VERIFICATION_MAIL_KEY, outcome)
+    if (isVerificationMail(outcome) && folded(email)) {
+      window.sessionStorage.setItem(
+        VERIFICATION_MAIL_KEY,
+        JSON.stringify({ outcome, email: folded(email) }),
+      )
     } else {
       window.sessionStorage.removeItem(VERIFICATION_MAIL_KEY)
     }
@@ -74,11 +84,20 @@ export function noteSignUpMail(outcome: unknown): void {
   }
 }
 
-/** The kept outcome, or null. Never throws. */
-export function readSignUpMail(): VerificationMail | null {
+/**
+ * The kept outcome for `email`, or null: null for another address, for no
+ * address, and for a note kept before it carried one. Never throws.
+ */
+export function readSignUpMail(email: string | null | undefined): VerificationMail | null {
   try {
-    const kept = window.sessionStorage.getItem(VERIFICATION_MAIL_KEY)
-    return isVerificationMail(kept) ? kept : null
+    const want = folded(email)
+    if (!want) return null
+    const kept = JSON.parse(window.sessionStorage.getItem(VERIFICATION_MAIL_KEY) ?? 'null') as {
+      outcome?: unknown
+      email?: unknown
+    } | null
+    if (!kept || kept.email !== want) return null
+    return isVerificationMail(kept.outcome) ? kept.outcome : null
   } catch {
     return null
   }
