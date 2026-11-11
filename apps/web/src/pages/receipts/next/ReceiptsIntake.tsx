@@ -14,9 +14,14 @@
  * The session's call (2026-11-07 /goal): one file per request, in order,
  * rather than all at once. A burst of ten 10 MB uploads is the one way this
  * strip could hurt the gateway, and order keeps each outcome next to its file.
+ *
+ * Files dropped or chosen WHILE a batch is filing join the end of the same
+ * queue and are listed at once as waiting (batch review on PR 1044: they
+ * were discarded with no word). Rejected: refusing the drop with a "try
+ * again" line — the person would have to find the same files a second time.
  */
 
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   documentsApi,
@@ -58,6 +63,7 @@ async function toBase64(file: File): Promise<string> {
 }
 
 export type FileOutcome =
+  | { name: string; kind: 'waiting' }
   | { name: string; kind: 'sending' }
   | { name: string; kind: 'filed'; documentId: string; note: string | null; linkRefused: string[] }
   | { name: string; kind: 'on_file'; documentId: string | null; reason: string; linkRefused: string[] }
@@ -102,9 +108,14 @@ export function ReceiptsIntake(props: {
   const { rid, onOpen } = props;
   const qc = useQueryClient();
   const input = useRef<HTMLInputElement>(null);
-  const [outcomes, setOutcomes] = useState<FileOutcome[]>([]);
+  // Each listed file carries a key, so an outcome lands on ITS row however
+  // many files joined the queue after it.
+  const [outcomes, setOutcomes] = useState<Array<FileOutcome & { key: number }>>([]);
   const [skipped, setSkipped] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const queue = useRef<Array<{ key: number; file: File }>>([]);
+  const draining = useRef(false);
+  const nextKey = useRef(0);
   const [over, setOver] = useState(false);
   const [showArrivals, setShowArrivals] = useState(false);
 
@@ -114,35 +125,56 @@ export function ReceiptsIntake(props: {
     enabled: rid !== null && showArrivals,
   });
 
-  const take = async (files: FileList | File[] | null) => {
-    if (!rid || busy) return;
+  const drain = useCallback(async () => {
+    if (draining.current) return;
+    const settle = (key: number, out: FileOutcome) =>
+      setOutcomes((prev) => prev.map((o) => (o.key === key ? { ...out, key } : o)));
+    draining.current = true;
+    setBusy(true);
+    try {
+      for (let next = queue.current.shift(); next; next = queue.current.shift()) {
+        const { key, file: f } = next;
+        settle(key, { name: f.name, kind: 'sending' });
+        let out: FileOutcome;
+        try {
+          const reply = await documentsApi.upload({
+            contentBase64: await toBase64(f),
+            filename: f.name,
+            mimeType: mimeFor(f),
+          });
+          out = outcomeOf(f.name, reply);
+        } catch (e) {
+          out = { name: f.name, kind: 'refused', reason: failureReason(e) };
+        }
+        settle(key, out);
+      }
+    } finally {
+      draining.current = false;
+      setBusy(false);
+      void qc.invalidateQueries({ queryKey: ['receipts-next'] });
+    }
+  }, [qc]);
+
+  const take = (files: FileList | File[] | null) => {
+    if (!rid) return;
     const { accepted, errors } = validateSelection(files, {
       accept: isDeskFile,
       maxBytes: MAX_UPLOAD_BYTES,
       kindLabel: 'a photo, a PDF or an e-invoice file (.xml or .zip)',
     });
+    // Read the selection before clearing the input, so the same file can be
+    // chosen again and still fire a change.
+    resetFileInput(input.current);
     setSkipped(errors);
     if (!accepted.length) return;
-    setBusy(true);
-    setOutcomes(accepted.map((f) => ({ name: f.name, kind: 'sending' })));
-    for (let i = 0; i < accepted.length; i++) {
-      const f = accepted[i];
-      let out: FileOutcome;
-      try {
-        const reply = await documentsApi.upload({
-          contentBase64: await toBase64(f),
-          filename: f.name,
-          mimeType: mimeFor(f),
-        });
-        out = outcomeOf(f.name, reply);
-      } catch (e) {
-        out = { name: f.name, kind: 'refused', reason: failureReason(e) };
-      }
-      setOutcomes((prev) => prev.map((o, j) => (j === i ? out : o)));
-    }
-    setBusy(false);
-    resetFileInput(input.current);
-    void qc.invalidateQueries({ queryKey: ['receipts-next'] });
+    const joined = accepted.map((file) => ({ key: nextKey.current++, file }));
+    const rows = joined.map(({ key, file }) => ({ key, name: file.name, kind: 'waiting' as const }));
+    // A new batch on an idle strip replaces the last batch's list; a batch
+    // dropped while filing joins the list being filed.
+    const joinsRunningBatch = draining.current;
+    setOutcomes((prev) => (joinsRunningBatch ? [...prev, ...rows] : rows));
+    queue.current.push(...joined);
+    void drain();
   };
 
   if (!rid) return null;
@@ -158,7 +190,7 @@ export function ReceiptsIntake(props: {
         onDrop={(e) => {
           e.preventDefault();
           setOver(false);
-          void take(e.dataTransfer.files);
+          take(e.dataTransfer.files);
         }}
         className="flex flex-wrap items-center gap-3 rounded-xl px-4 py-3"
         style={{
@@ -169,7 +201,6 @@ export function ReceiptsIntake(props: {
         <button
           type="button"
           className="rc-ink"
-          disabled={busy}
           onClick={() => input.current?.click()}
           style={{
             fontFamily: SANS,
@@ -180,11 +211,12 @@ export function ReceiptsIntake(props: {
             border: '1px solid var(--seal, #1A5E6B)',
             background: 'transparent',
             color: 'var(--seal-deep, #14515C)',
-            cursor: busy ? 'default' : 'pointer',
+            cursor: 'pointer',
           }}
         >
-          {busy ? 'Filing…' : 'Add papers'}
+          Add papers
         </button>
+        {busy && <span style={quiet}>Filing… papers added now wait their turn.</span>}
         <span style={quiet}>
           Drop or choose a photo, a PDF, or the e-invoice file (.xml, or the .zip it came in).
         </span>
@@ -194,7 +226,7 @@ export function ReceiptsIntake(props: {
           multiple
           accept={DESK_ACCEPT}
           aria-label="Choose papers to file"
-          onChange={(e) => void take(e.target.files)}
+          onChange={(e) => take(e.target.files)}
           style={{ display: 'none' }}
         />
         <button
@@ -225,10 +257,11 @@ export function ReceiptsIntake(props: {
               {s}
             </li>
           ))}
-          {outcomes.map((o, i) => (
-            <li key={`${o.name}-${i}`} style={{ ...line, padding: '3px 0' }}>
+          {outcomes.map((o) => (
+            <li key={o.key} style={{ ...line, padding: '3px 0' }}>
               <strong style={{ fontWeight: 600 }}>{o.name}</strong>
               {' — '}
+              {o.kind === 'waiting' && 'waiting to be filed'}
               {o.kind === 'sending' && 'filing…'}
               {o.kind === 'refused' && <>not filed: {o.reason}</>}
               {o.kind === 'filed' && (

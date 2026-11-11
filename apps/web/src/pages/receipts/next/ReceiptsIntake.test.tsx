@@ -105,6 +105,45 @@ describe('ReceiptsIntake', () => {
     expect(onOpen).toHaveBeenCalledWith('doc-0');
   });
 
+  it('files dropped while a batch is filing wait their turn, and are filed, never dropped', async () => {
+    let release!: () => void;
+    api.upload
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = () => resolve({ documentId: 'doc-1', duplicate: false, document: null });
+          }),
+      )
+      .mockResolvedValue({ documentId: 'doc-2', duplicate: false, document: null });
+    mount();
+    const zone = screen.getByRole('button', { name: 'Add papers' }).parentElement as HTMLElement;
+    fireEvent.drop(zone, { dataTransfer: { files: [file('first.pdf', 'application/pdf')] } });
+    await waitFor(() => expect(api.upload).toHaveBeenCalledTimes(1));
+    // While the first is still filing, two more arrive.
+    fireEvent.drop(zone, {
+      dataTransfer: { files: [file('second.pdf', 'application/pdf'), file('third.jpg', 'image/jpeg')] },
+    });
+    expect(await screen.findAllByText(/waiting to be filed/)).toHaveLength(2);
+    expect(screen.getByText(/papers added now wait their turn/)).toBeTruthy();
+    release();
+    await waitFor(() => expect(api.upload).toHaveBeenCalledTimes(3));
+    expect(api.upload.mock.calls.map((c) => c[0].filename)).toEqual(['first.pdf', 'second.pdf', 'third.jpg']);
+    await waitFor(() => expect(screen.getAllByText(/filed\./)).toHaveLength(3));
+    expect(screen.queryByText(/waiting to be filed/)).toBeNull();
+  });
+
+  it('a new batch on an idle strip replaces the last list', async () => {
+    api.upload.mockResolvedValue({ documentId: 'doc-1', duplicate: false, document: null });
+    mount();
+    const zone = screen.getByRole('button', { name: 'Add papers' }).parentElement as HTMLElement;
+    fireEvent.drop(zone, { dataTransfer: { files: [file('one.pdf', 'application/pdf')] } });
+    await screen.findByText(/filed\./);
+    await waitFor(() => expect(screen.queryByText(/wait their turn/)).toBeNull());
+    fireEvent.drop(zone, { dataTransfer: { files: [file('two.pdf', 'application/pdf')] } });
+    await screen.findByText('two.pdf');
+    await waitFor(() => expect(screen.queryByText('one.pdf')).toBeNull());
+  });
+
   it('a file it cannot take is named, and nothing is sent for it', async () => {
     mount();
     const zone = screen.getByRole('button', { name: 'Add papers' }).parentElement as HTMLElement;
