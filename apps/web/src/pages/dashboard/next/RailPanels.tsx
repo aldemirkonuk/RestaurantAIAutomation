@@ -128,6 +128,8 @@ interface RawLowStockFields {
    * good, so a flour's 200 is grams, not bottles. Absent on an older view.
    */
   uom?: string | null;
+  /** null: nobody has counted this good (OD-161). Absent on an older view. */
+  last_counted_at?: string | null;
 }
 
 /** restaurant_inventory_uom_check's vocabulary, in the house's words. */
@@ -168,6 +170,8 @@ function lowStockView(it: InventoryItem) {
     stock: it.stockLive ?? raw.stock_live ?? null,
     min,
     unit: unitWord(raw.uom, min),
+    // OD-161: null = never counted (absent is not null).
+    notCounted: raw.last_counted_at === null,
   };
 }
 
@@ -184,8 +188,10 @@ function shareLeft(it: LowStockLine): number | null {
   return it.stock / it.min;
 }
 
-/** Out of stock first, then the smallest share left, then by name. */
+/** Counted goods first; out of stock first, then the smallest share left, then by name. */
 function byHowLow(a: LowStockLine, b: LowStockLine): number {
+  // Uncounted goods are not running low; they go last.
+  if (a.notCounted !== b.notCounted) return a.notCounted ? 1 : -1;
   const outA = a.stock === 0 ? 0 : 1;
   const outB = b.stock === 0 ? 0 : 1;
   if (outA !== outB) return outA - outB;
@@ -255,6 +261,9 @@ export function LowStockPanel({
                   {it.vintage ? <span className="text-inkm-4"> {it.vintage}</span> : null}
                 </span>
               )}
+              {it.notCounted ? (
+                <span className="shrink-0 text-[12px] text-inkm-4">not counted yet</span>
+              ) : (
               <span
                 className="shrink-0 text-[12px]"
                 style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
@@ -267,6 +276,7 @@ export function LowStockPanel({
                   {it.unit ? ` ${it.unit}` : null}
                 </span>
               </span>
+              )}
             </li>
           ))}
           {sorted.length > 6 && (

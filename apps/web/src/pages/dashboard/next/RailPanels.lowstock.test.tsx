@@ -114,3 +114,23 @@ describe('LowStockPanel — every good, in its own unit', () => {
     expect(unitWord('  ', 2)).toBeNull();
   });
 });
+
+describe('LowStockPanel — a good nobody has counted is not running low (OD-161)', () => {
+  it('says "not counted yet" instead of a figure, and ranks it after the counted ones', () => {
+    render(
+      <MemoryRouter>
+        <LowStockPanel
+          items={rows([
+            { id: 'u', wine_name: 'Barolo Cannubi', vintage: null, stock_live: 0, threshold_min: 6, kind: 'wine', uom: 'bottle', last_counted_at: null },
+            { id: 'f', wine_name: 'Flour', vintage: null, stock_live: 200, threshold_min: 500, kind: 'food', uom: 'g', last_counted_at: '2026-11-01T00:00:00Z' },
+          ])}
+        />
+      </MemoryRouter>,
+    );
+    expect(lineFor('Barolo Cannubi').textContent).toMatch(/not counted yet$/);
+    expect(lineFor('Barolo Cannubi').textContent).not.toMatch(/min/);
+    expect(lineFor('Flour').textContent).toMatch(/200\s*\/ min 500 g$/);
+    const lines = screen.getAllByRole('listitem').map((li) => li.textContent ?? '');
+    expect(lines[0]).toMatch(/^Flour/);
+  });
+});

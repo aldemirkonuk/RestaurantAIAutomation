@@ -24,6 +24,7 @@ import {
   hasStatus,
 } from "../procurement/order-status";
 import { houseFrame } from "../common/house-frame";
+import { quantityIn, unitWord } from "../common/goods-words";
 import {
   localDateIn,
   localMidnight,
@@ -1179,7 +1180,7 @@ export class DashboardService {
             .eq("is_active", true),
           client
             .from("v_low_stock_items")
-            .select("id")
+            .select("id, last_counted_at")
             .eq("restaurant_id", restaurantId),
           client
             .from("procurement_orders")
@@ -1208,7 +1209,10 @@ export class DashboardService {
         0,
       );
       const totalVolumeOz = Math.round(totalVolumeMl * 0.033814 * 100) / 100;
-      const lowStockItems = lowStock.length;
+      // OD-161: a row nobody has counted is not low, it is not counted yet.
+      const lowStockItems = lowStock.filter(
+        (r) => r.last_counted_at !== null,
+      ).length;
       const pendingOrders = orders.filter((o) =>
         hasStatus(o.status, ORDER_AWAITING_APPROVAL_STATUSES),
       ).length;
@@ -1311,7 +1315,7 @@ export class DashboardService {
           client
             .from("restaurant_inventory")
             .select(
-              "id, display_name, wine_name, stock_live, updated_at, master_wine_library(name, vintage)",
+              "id, display_name, wine_name, stock_live, updated_at, last_counted_at, master_wine_library(name, vintage)",
             )
             .eq("restaurant_id", restaurantId)
             .is("deleted_at", null)
@@ -1418,7 +1422,9 @@ export class DashboardService {
         await Promise.allSettled([
           client
             .from("v_low_stock_items")
-            .select("id, stock_live, threshold_min, wine_name, vintage")
+            .select(
+              "id, stock_live, threshold_min, wine_name, vintage, uom, last_counted_at",
+            )
             .eq("restaurant_id", restaurantId),
           client
             .from("procurement_orders")
@@ -1451,12 +1457,25 @@ export class DashboardService {
             wine_name: item.wine_name,
             master_wine_library: { vintage: item.vintage },
           }) || UNNAMED_ITEM;
+        // OD-161: never counted; its 0 is a default, not a shortage.
+        if (item.last_counted_at === null) {
+          alerts.push({
+            id: `uncounted-${item.id}`,
+            type: "not_counted",
+            severity: "info",
+            title: "Not counted yet",
+            message: `${label} — not counted yet`,
+            actionUrl: `/inventory?highlight=${item.id}`,
+            createdAt: new Date().toISOString(),
+          });
+          continue;
+        }
         alerts.push({
           id: `low-stock-${item.id}`,
           type: "low_stock",
           severity: item.stock_live === 0 ? "critical" : "warning",
           title: "Low Stock",
-          message: `${label} — ${bottles(item.stock_live)} left, you keep at least ${item.threshold_min}`,
+          message: `${label} — ${quantityIn(item.stock_live, item.uom)} left, you keep at least ${item.threshold_min} ${unitWord(item.uom, item.threshold_min)}`,
           actionUrl: `/inventory?highlight=${item.id}`,
           createdAt: new Date().toISOString(),
         });
@@ -1484,6 +1503,7 @@ export class DashboardService {
       const outOfStock = rowsOrThrow(inventoryResult, "restaurant_inventory");
       for (const item of outOfStock) {
         if (!lowStock.find((ls) => ls.id === item.id)) {
+          if (item.last_counted_at === null) continue;
           alerts.push({
             id: `out-of-stock-${item.id}`,
             type: "out_of_stock",

@@ -11,6 +11,7 @@
 
 import { EMAIL_CONFIG, frontendUrl } from "./template-config";
 import { baseTemplate, tableRow, alertBox } from "./base-template";
+import { goodsNoun, unitWord } from "../../common/goods-words";
 
 export type LowStockSeverity = "critical" | "low";
 
@@ -20,6 +21,8 @@ export interface LowStockDigestWine {
   threshold: number;
   severity: LowStockSeverity;
   wineId?: string;
+  kind?: string | null;
+  uom?: string | null;
   recommendedQty?: number;
 }
 
@@ -38,7 +41,7 @@ function wineTable(title: string, wines: LowStockDigestWine[]): string {
     .map((w) =>
       tableRow(
         w.wineName,
-        `${w.currentStock} / ${w.threshold} bottles${
+        `${w.currentStock} / ${w.threshold} ${unitWord(w.uom, w.threshold)}${
           w.recommendedQty ? ` &middot; reorder ~${w.recommendedQty}` : ""
         }`,
       ),
@@ -51,7 +54,7 @@ function wineTable(title: string, wines: LowStockDigestWine[]): string {
     </h3>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border: 1px solid ${colors.gray[200]}; border-radius: 8px; overflow: hidden;">
       <tr style="background-color: ${colors.gray[50]};">
-        <td style="padding: 10px 15px; color: ${colors.gray[500]}; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Wine</td>
+        <td style="padding: 10px 15px; color: ${colors.gray[500]}; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">${goodsNoun(wines.map((w) => w.kind), 1) === "wine" ? "Wine" : "Good"}</td>
         <td style="padding: 10px 15px; color: ${colors.gray[500]}; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; text-align: right;">Stock / Par</td>
       </tr>
       ${rows}
@@ -69,9 +72,13 @@ export function lowStockDigestTemplate(data: LowStockDigestData): string {
   const total = data.wines.length;
 
   const isInstant = data.mode === "instant";
+  const noun = goodsNoun(
+    data.wines.map((w) => w.kind),
+    total,
+  );
   const heading = isInstant
-    ? `${total} wine${total === 1 ? "" : "s"} just dropped below par`
-    : `${total} wine${total === 1 ? "" : "s"} below par`;
+    ? `${total} ${noun} just dropped below par`
+    : `${total} ${noun} below par`;
 
   const summary = alertBox({
     type: critical.length > 0 ? "danger" : "warning",
@@ -79,7 +86,10 @@ export function lowStockDigestTemplate(data: LowStockDigestData): string {
     message:
       critical.length > 0
         ? `${critical.length} critical &middot; ${low.length} low. Review and reorder to avoid a stockout.`
-        : `${low.length} ${low.length === 1 ? "wine is" : "wines are"} running low. Consider reordering.`,
+        : `${low.length} ${goodsNoun(
+            low.map((w) => w.kind),
+            low.length,
+          )} ${low.length === 1 ? "is" : "are"} running low. Consider reordering.`,
   });
 
   const content = `
