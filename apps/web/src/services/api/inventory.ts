@@ -142,7 +142,7 @@ export async function getItemActivity(
  */
 export async function reconcileItem(
   inventoryId: string,
-  body: { wineId: string; actualCount: number; notes?: string }
+  body: { wineId?: string; actualCount: number; notes?: string }
 ): Promise<unknown> {
   const response = await apiClient.post(
     `/inventory-ledger/inventory/${inventoryId}/reconcile`,

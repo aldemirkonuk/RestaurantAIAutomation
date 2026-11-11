@@ -557,6 +557,29 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     expect(inv.del).toHaveBeenCalledWith('i1');
   });
 
+  it('a good with no library title is removed too: zeroed with no wineId, said in its unit, then soft-deleted', async () => {
+    const m = await menu({
+      uom: 'g',
+      kind: 'food',
+      row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 2250, shadow: 0, openMl: 0 }),
+    });
+    const item = within(m).getByRole('menuitem', { name: 'Remove from inventory' }) as HTMLButtonElement;
+    expect(item.disabled).toBe(false);
+    expect(screen.queryByTestId('remove-blocked')).toBeNull();
+    fireEvent.click(item);
+    const confirm = await screen.findByRole('button', { name: 'Remove item' });
+    expect(screen.getByText(/2\.25 kg live \/ 0 g shadow/)).toBeTruthy();
+    expect(screen.queryByText(/Wine Library/)).toBeNull();
+    await act(async () => {
+      fireEvent.click(confirm);
+    });
+    expect(inv.reconcile).toHaveBeenCalledTimes(1);
+    const body = inv.reconcile.mock.calls[0][1] as Record<string, unknown>;
+    expect(body).toEqual(expect.objectContaining({ actualCount: 0 }));
+    expect('wineId' in body).toBe(false);
+    expect(inv.del).toHaveBeenCalledWith('i1');
+  });
+
   it('Remove waits when a count was not read: the modal would read it as 0 and skip the ledger row', async () => {
     const m = await menu({ row: row({ stock: null }) });
     const item = within(m).getByRole('menuitem', { name: 'Remove from inventory' }) as HTMLButtonElement;
@@ -716,6 +739,14 @@ describe('the rest of the legacy expansion (round 4 census)', () => {
     expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5, notes: 'Shadow reconciled into live' });
     expect(toasts.success.mock.calls[0][0]).toBe('Gravner Ribolla: live set to 5, the shadow bottles counted in.');
     expect(toasts.success.mock.calls[0][0]).not.toMatch(/booked|moved/);
+  });
+
+  it('a good with no library title reconciles its shadow too, and sends no wineId', async () => {
+    const m = await openMore({ row: row({ wineId: null, stock: 3, shadow: 2 }) });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
+    });
+    expect(inv.reconcile).toHaveBeenCalledWith('i1', { actualCount: 5, notes: 'Shadow reconciled into live' });
   });
 
   it('a good kept in grams reconciles in kg, never "bottles"', async () => {

@@ -115,12 +115,13 @@ export type SheetId = 'count' | 'order' | 'writeoff' | 'transfer' | 'pour';
  * The remove modal (shared with the legacy page) reconciles live, shadow and
  * the open bottle to zero before it soft-deletes, and it reads a missing figure
  * as 0. A figure this page did not read would therefore be removed without its
- * ledger row, so the act waits until the book says what is held.
+ * ledger row, so the act waits until the book says what is held. A good with no
+ * library title (flour, napkins) is zeroed and removed the same way: the count
+ * route is keyed on the house item and only logs a wine id.
  */
 export function removeBlocked(row: InvRow): string | null {
   if (row.stock === null || row.shadow === null || row.openMl === null)
     return 'the book did not say how many are held, so it cannot be zeroed first';
-  if (row.wineId === null) return 'this row is not tied to a library title, so its stock cannot be zeroed first';
   return null;
 }
 
@@ -265,9 +266,9 @@ export default function RowDropdown(props: RowDropdownProps) {
   const inBottles = goodUnit.base === 'bottle';
   const say = inBottles ? fmtCount : goodUnit.words;
   const canReconcile =
-    row.stock !== null && row.shadow !== null && row.shadow > 0 && row.wineId !== null && !reconciling && !held;
+    row.stock !== null && row.shadow !== null && row.shadow > 0 && !reconciling && !held;
   const reconcileShadow = async () => {
-    if (!canReconcile || row.stock === null || row.shadow === null || row.wineId === null) return;
+    if (!canReconcile || row.stock === null || row.shadow === null) return;
     const before = { live: row.stock, shadow: row.shadow };
     const total = row.stock + row.shadow;
     const holdIt = (landed: boolean) => {
@@ -278,7 +279,11 @@ export default function RowDropdown(props: RowDropdownProps) {
     setMoreOpen(false);
     setReconciling(true);
     try {
-      await reconcileItem(row.id, { wineId: row.wineId, actualCount: total, notes: 'Shadow reconciled into live' });
+      await reconcileItem(row.id, {
+        ...(row.wineId !== null ? { wineId: row.wineId } : {}),
+        actualCount: total,
+        notes: 'Shadow reconciled into live',
+      });
       holdIt(true);
       toast.success(`${title}: live set to ${say(total)}, the shadow ${inBottles ? 'bottles ' : ''}counted in.`);
       void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
@@ -503,6 +508,7 @@ export default function RowDropdown(props: RowDropdownProps) {
         <RemoveFromInventoryModal
           isOpen
           items={[removeTarget(row)]}
+          say={amountUnit(props.uom).words}
           onClose={() => setRemoving(false)}
           onRemoved={() => {
             setRemoving(false);

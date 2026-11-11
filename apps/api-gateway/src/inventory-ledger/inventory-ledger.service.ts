@@ -700,7 +700,7 @@ export class InventoryLedgerService {
     restaurantId: string,
     userId: string,
     inventoryId: string,
-    wineId: string,
+    wineId: string | undefined,
     actualCount: number,
     notes?: string,
     clientCountId?: string,
