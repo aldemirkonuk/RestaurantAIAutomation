@@ -407,6 +407,46 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
     });
   });
 
+  describe("leftovers: bottles are bottles, a flour is grams", () => {
+    it("the stats count only bottle rows as bottles and volume", async () => {
+      db.getClient.mockReturnValue(
+        makeClient({
+          restaurants: CHICAGO,
+          restaurant_inventory: [
+            { id: "w", stock_live: 4, bottle_size_ml: 750, uom: "bottle" },
+            { id: "f", stock_live: 5000, bottle_size_ml: null, uom: "g" },
+          ],
+        }),
+      );
+      const stats: any = await service.getStats("r1");
+      expect(stats.totalBottles).toBe(4);
+      expect(stats.totalVolumeMl).toBe(3000);
+    });
+
+    it("Lately says a flour is on hand in grams", async () => {
+      db.getClient.mockReturnValue(
+        makeClient({
+          restaurant_inventory: [
+            { id: "f", display_name: "Flour", stock_live: 200, uom: "g", updated_at: "2026-09-12T00:00:00Z" },
+          ],
+        }),
+      );
+      const items = await service.getActivity("r1");
+      expect(items.map((a) => a.description)).toEqual(["200 g on hand"]);
+    });
+
+    it("an uncounted good at 0 that is not in the low list raises no out-of-stock alert", async () => {
+      const client = makeClient({
+        restaurant_inventory: [
+          { id: "u", display_name: "Barolo", stock_live: 0, updated_at: "2026-09-30T10:00:00Z", last_counted_at: null, master_wine_library: null },
+        ],
+      });
+      db.getClient.mockReturnValue(client);
+      expect(await service.getAlerts("r1")).toEqual([]);
+      expect(client.selects.restaurant_inventory[0]).toContain("last_counted_at");
+    });
+  });
+
   describe("DASH-W8 — the stats call reads only what it uses", () => {
     it("does not read wine_consumption_log", async () => {
       const client = makeClient({ restaurants: CHICAGO });

@@ -51,3 +51,9 @@ export function goodsNoun(
   const word = allWine ? "wine" : "good";
   return n === 1 ? word : `${word}s`;
 }
+
+/** True when the row's stock is counted in bottles (no unit: a wines-only row). */
+export function isBottles(uom: string | null | undefined): boolean {
+  const key = (uom ?? "").trim().toLowerCase();
+  return key === "" || key === "bottle";
+}
