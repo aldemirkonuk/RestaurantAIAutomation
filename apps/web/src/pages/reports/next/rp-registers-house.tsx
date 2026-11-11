@@ -12,7 +12,7 @@
 
 import { Link } from 'react-router-dom';
 import { FigureRow } from './rp-plot';
-import { EM, MONO, countOf, figure, moneyIn, num, ratioPct } from './rp-format';
+import { EM, MONO, countOf, figure, moneyIn, num, ratioPct, shortLabels } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 
 /* ────────────────────────────────────────── 6. margin against movement ── */
@@ -91,6 +91,11 @@ const quadrants = analysis<QuadrantRegister>({
     const ranked = [...priced].sort(
       (a, b) => (b.marginPerBottle as number) - (a.marginPerBottle as number),
     );
+    const topWines = ranked.slice(0, 12);
+    const wineLabels = shortLabels(
+      topWines.map((i) => i.name),
+      14,
+    );
     return {
       points: {
         data: priced.map((i) => ({
@@ -106,8 +111,8 @@ const quadrants = analysis<QuadrantRegister>({
         refY: q.medians.marginPerBottle,
       },
       cats: {
-        data: ranked.slice(0, 12).map((i) => ({
-          label: i.name.length > 14 ? `${i.name.slice(0, 13)}…` : i.name,
+        data: topWines.map((i, k) => ({
+          label: wineLabels[k],
           value: i.marginPerBottle,
           full: i.name,
         })),
@@ -599,10 +604,14 @@ const service = analysis<ServiceRegister>({
       };
     }
     const shownServers = s.waiters.slice(0, 14);
+    const serverLabels = shortLabels(
+      shownServers.map((w) => w.name),
+      12,
+    );
     return {
       cats: {
-        data: shownServers.map((w) => ({
-          label: w.name.length > 12 ? `${w.name.slice(0, 11)}…` : w.name,
+        data: shownServers.map((w, k) => ({
+          label: serverLabels[k],
           value: w.revenue,
           full: `${w.name} · ${countOf(w.checks, 'check', 'checks')}`,
         })),
@@ -757,10 +766,15 @@ const restock = analysis<RestockRegister>({
         notes: [],
         basis,
       };
+    const restock = barsKeepingTies(r.reorderList, 14);
+    const restockLabels = shortLabels(
+      restock.map((s) => s.name),
+      12,
+    );
     return {
       cats: {
-        data: barsKeepingTies(r.reorderList, 14).map((s) => ({
-          label: s.name.length > 12 ? `${s.name.slice(0, 11)}…` : s.name,
+        data: restock.map((s, k) => ({
+          label: restockLabels[k],
           value: s.stockoutProbability,
           full: `${s.name} · ${figure(s.onHand)} on hand`,
         })),
