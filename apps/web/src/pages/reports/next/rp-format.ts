@@ -187,6 +187,8 @@ export interface Failure {
   message: string;
   /** 401/403 — understood and refused. */
   forbidden: boolean;
+  /** The gateway's own sentence for the refusal, when it sent one. */
+  said?: string;
   /**
    * Set when the page never sent the request: the register names its readers
    * and the reader is not one of them (`known: true`), or the reader's role at
@@ -199,9 +201,32 @@ export interface Failure {
 
 export function failureOf(error: unknown): Failure | null {
   if (!error) return null;
-  const status = num((error as { response?: { status?: unknown } })?.response?.status);
+  const response = (error as { response?: { status?: unknown; data?: unknown } })?.response;
+  const status = num(response?.status);
   const message = (error as { message?: string })?.message || 'the request failed';
-  return { status, message, forbidden: status === 403 || status === 401 };
+  const said = gatewaySentence(response?.data);
+  return { status, message, forbidden: status === 403 || status === 401, ...(said ? { said } : {}) };
+}
+
+/**
+ * The sentence the gateway refused with, in the house's words. A window that
+ * could not be read whole answers 503 with a sentence (ADR 0292); without this
+ * the page printed the HTTP client's "Request failed with status code 503".
+ * The parenthesised page/SQLSTATE detail is for the log, not for the reader.
+ */
+function gatewaySentence(data: unknown): string | null {
+  const raw = (data as { message?: unknown } | null)?.message;
+  const text = Array.isArray(raw)
+    ? raw.filter((x): x is string => typeof x === 'string').join(' ')
+    : typeof raw === 'string'
+      ? raw
+      : '';
+  // `WholeReadError`: "<what> could not be read whole: <reason> (<detail>).
+  // Nothing is reported from part of it." — the detail goes, the rest stays.
+  const clean = text.replace(/\s\(.*\)(?=\. Nothing is reported from part of it\.$)/s, '').trim();
+  // Nest's own generic words are no better than the status code.
+  if (!clean || /^(internal server error|service unavailable|bad request)$/i.test(clean)) return null;
+  return clean;
 }
 
 /** The register a reader is not sent: no status, because nothing was asked. */
@@ -238,9 +263,12 @@ export function failureLine(register: string, f: Failure): string {
     return f.heldBack.known
       ? `The ${register} is written for ${readersWords(f.heldBack.readers)}. Nothing below is claimed.`
       : `Your role at this restaurant is not known yet, so the ${register} is not read until it is. Nothing below is claimed.`;
-  return f.forbidden
-    ? `Your role cannot read the ${register}. Nothing below is claimed.`
-    : `The ${register} could not be read (${f.message}). Nothing below is claimed.`;
+  if (f.forbidden) return `Your role cannot read the ${register}. Nothing below is claimed.`;
+  if (f.said)
+    return /nothing is reported|nothing below/i.test(f.said)
+      ? `The ${register} could not be read. ${f.said}`
+      : `The ${register} could not be read. ${f.said} Nothing below is claimed.`;
+  return `The ${register} could not be read (${f.message}). Nothing below is claimed.`;
 }
 
 /* ───────────────────────────────────────────── the house serif ─────────── */

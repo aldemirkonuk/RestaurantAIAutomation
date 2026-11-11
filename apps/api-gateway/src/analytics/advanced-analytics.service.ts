@@ -199,27 +199,36 @@ export class AdvancedAnalyticsService {
     return { ...houseFrame(data), read: data ? "read" : "no_record" };
   }
 
+  /**
+   * Purchase orders created OR delivered in the last `sinceDays` days, read
+   * WHOLE or refused (ADR 0292, audit G6).
+   *
+   * The unranged select this replaces stopped at PostgREST's 1,000 rows, and
+   * its error was logged and turned into `[]`, so a failed read printed as "no
+   * delivered purchase order" on /reports: absence reported as health. A
+   * refusal (`WholeReadError`, a 503) now PROPAGATES; the overview's
+   * `allSettled` turns it into a null lens, as for consumption.
+   *
+   * Selected by either date: spend is filed by `delivered_at`, and an order
+   * placed before the window and delivered inside it is spend inside it.
+   *
+   * Schema drift note kept from the old reader: `procurement_orders` has NO
+   * provider_name and NO wine_name column; the vendor label comes from the FK
+   * embed (supabase/migrations/20260805000000_baseline_from_production.sql).
+   */
   private async loadOrders(restaurantId: string, sinceDays = 365) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    // Same schema-drift class as loadInventory above. `procurement_orders` has
-    // NO provider_name and NO wine_name column (see
-    // supabase/migrations/20260805000000_baseline_from_production.sql:4514-4568)
-    // — it carries provider_id → providers(id) and inventory_id →
-    // restaurant_inventory(id). Naming either one 42703s the WHOLE PostgREST
-    // query, and the discarded `error` below turned that into an empty order
-    // list, so getVendorScorecard and getCashflow returned zeroes for every
-    // restaurant, forever. The vendor label comes from the FK embed instead;
-    // wine_name was selected but never read, so it is simply gone.
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("procurement_orders")
-      .select(
-        "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
-      )
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", since);
-    if (error) this.logQueryFailure("procurement_orders", error);
-    return data || [];
+    const client = this.dbService.getClient();
+    return readWholeWindow<any>("The purchase orders in this window", () =>
+      client
+        .from("procurement_orders")
+        .select(
+          "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
+          { count: "exact" },
+        )
+        .eq("restaurant_id", restaurantId)
+        .or(`created_at.gte.${since},delivered_at.gte.${since}`),
+    );
   }
 
   /**
