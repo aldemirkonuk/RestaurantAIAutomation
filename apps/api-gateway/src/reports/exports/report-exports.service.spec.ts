@@ -50,7 +50,6 @@ function build() {
     getInventoryScience: jest.fn(async () => PAYLOADS.restock),
   };
   const advanced = {
-    getOverview: jest.fn(async () => PAYLOADS.bench),
     getCashflow: jest.fn(async () => PAYLOADS.pacing),
     getSeasonality: jest.fn(async () => PAYLOADS.week),
     getMenuEngineering: jest.fn(async () => PAYLOADS.quadrants),
@@ -58,6 +57,7 @@ function build() {
   const goals = {
     getPosRevenueWindow: jest.fn(async () => PAYLOADS.till),
     listGoalsWithProgress: jest.fn(async () => PAYLOADS.goals),
+    listGoals: jest.fn(async () => (PAYLOADS.bench as { goals: unknown[] }).goals),
   };
   const tables = {
     getTablePerformance: jest.fn(async () => PAYLOADS.seats),
