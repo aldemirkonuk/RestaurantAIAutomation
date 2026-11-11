@@ -158,4 +158,10 @@ describe('parseSpec — pasted text into rows to confirm', () => {
     }
     expect(parseLine("2 'Old Tom' gin")).toMatchObject({ qty: 2, unit: 'each' });
   });
+  it('flags an ingredient pasted twice instead of adding it up', () => {
+    const rows = parseSpec('30 ml gin\n15 ml Campari\n30 ml Gin');
+    expect(rows.map((r) => r.qty)).toEqual([30, 15, 30]);
+    expect(rows[0].flag).toBeNull();
+    expect(rows[2].flag).toBe('"Gin" is pasted above too. Leave one out if it was pasted twice.');
+  });
 });

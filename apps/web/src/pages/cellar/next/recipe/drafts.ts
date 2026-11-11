@@ -26,6 +26,8 @@ export type KeptDraft = {
   setAside: DraftRow[] | null;
   /** Serves, glass, garnish and method as the draft has them; null while they are the saved ones. */
   meta?: DraftMeta | null;
+  /** Text typed into the paste box and not used yet. */
+  paste?: string;
 };
 
 export type DraftMeta = { yieldServes: number; glass: string; garnish: string; method: string };
