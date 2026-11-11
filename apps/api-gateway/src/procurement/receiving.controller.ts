@@ -299,29 +299,10 @@ export class ReceivingController {
         driverName: body.driverName ?? null,
         expectedQtyInCountedUom: body.expectedQtyInCountedUom ?? null,
 
-        // ============================================================
-        // TODO(ADR 0059, L3) — NOT YET FORWARDED. DELIBERATE, NOT AN OVERSIGHT.
-        //
-        //     suggestedQtyInCountedUom: body.suggestedQtyInCountedUom ?? null,
-        //     suggestionAccepted: body.suggestionAccepted ?? null,
-        //
-        // The client sends both (DoorNext.tsx `seal()`), the DTO above accepts
-        // and validates both, and the columns exist
-        // (20260901200000_receiving_preserves_the_pair.sql adds
-        // procurement_receipt_events.suggested_qty / .suggestion_accepted).
-        // The only missing link is `DoorReceiptInput` and the insert in
-        // receiving.service.ts, which was owned by a concurrent session when
-        // this landed and could not be edited without a collision.
-        //
-        // UNTIL THAT IS DONE, THE DOOR'S LABEL IS STILL DISCARDED — it now
-        // reaches the gateway and is dropped there instead of in the browser.
-        // That is a shorter fall, not a fix.
-        //
-        // The remaining work is three lines: two fields on `DoorReceiptInput`
-        // and two columns on the `procurement_receipt_events` insert. The test
-        // that proves it is written and skipped in proposal-preservation-deferred.spec.ts, tagged
-        // "ADR 0059 L3" — un-skip it, and it fails until the insert is added.
-        // ============================================================
+        // ADR 0059 L3 (proposal-receipt row 1.9): what the door's paper
+        // reading suggested, and whether the receiver sealed it unchanged.
+        suggestedQtyInCountedUom: body.suggestedQtyInCountedUom ?? null,
+        suggestionAccepted: body.suggestionAccepted ?? null,
       });
     } catch (error) {
       // A refusal keeps its own body. Re-wrapping it flattened the structured

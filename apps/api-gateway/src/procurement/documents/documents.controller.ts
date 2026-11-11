@@ -22,6 +22,7 @@ import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../../auth/decorators/current-user.decorator";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentIntakeService } from "./document-intake.service";
+import { houseIdsFor } from "./house-ids";
 import {
   ApplyExtractionDto,
   CorrectFieldDto,
@@ -895,9 +896,19 @@ export class DocumentsController {
       };
     }
 
+    // Row 1.3 at the door too: the count and the delivery it creates carry a
+    // vendor and an order only when they are this house's.
+    const ids =
+      body.providerId || body.orderId
+        ? await houseIdsFor(this.db.getClient(), user.restaurantId, {
+            providerId: body.providerId ?? null,
+            orderId: body.orderId ?? null,
+          })
+        : { providerId: null, orderId: null, refused: [] as string[] };
+
     const result = await this.intake.recordDoorCount({
       restaurantId: user.restaurantId,
-      providerId: body.providerId ?? null,
+      providerId: ids.providerId,
       countedBy: user.userId,
       countedAt: body.countedAt ?? null,
       lines: body.lines,
@@ -950,8 +961,8 @@ export class DocumentsController {
         user.restaurantId,
         user.userId,
         {
-          orderId: body.orderId ?? null,
-          providerId: body.providerId ?? null,
+          orderId: ids.orderId,
+          providerId: ids.providerId,
           jurisdiction: body.jurisdiction ?? null,
           deliveredAt: body.countedAt ?? null,
           documents: [{ documentId: result.documentId, role: "door_count" }],
@@ -1033,6 +1044,7 @@ export class DocumentsController {
       // 0 = compared, and nothing differed. The two are never the same answer.
       differsOnLines,
       ...(result.storageError ? { storageError: result.storageError } : {}),
+      ...(ids.refused.length ? { linkRefused: ids.refused } : {}),
     };
   }
 
@@ -1059,10 +1071,21 @@ export class DocumentsController {
     if (!buffer.length)
       throw new HttpException("Document is empty", HttpStatus.BAD_REQUEST);
 
+    // Proposal-receipt row 1.3: a vendor or order id from the body is kept
+    // only when it is this house's. A foreign one is dropped and said; the
+    // paper itself is never refused for it (`house-ids.ts`).
+    const ids =
+      body.providerId || body.orderId
+        ? await houseIdsFor(this.db.getClient(), user.restaurantId, {
+            providerId: body.providerId ?? null,
+            orderId: body.orderId ?? null,
+          })
+        : { providerId: null, orderId: null, refused: [] as string[] };
+
     const result = await this.intake.ingest({
       restaurantId: user.restaurantId,
-      providerId: body.providerId ?? null,
-      orderId: body.orderId ?? null,
+      providerId: ids.providerId,
+      orderId: ids.orderId,
       source: body.source ?? "upload",
       buffer,
       filename: body.filename ?? null,
@@ -1119,6 +1142,7 @@ export class DocumentsController {
       ...(result.vendorStampError
         ? { vendorStampError: result.vendorStampError }
         : {}),
+      ...(ids.refused.length ? { linkRefused: ids.refused } : {}),
     };
   }
 
@@ -1285,6 +1309,7 @@ export class DocumentsController {
    */
   private async vendorNamesFor(
     rows: Record<string, unknown>[],
+    restaurantId: string,
   ): Promise<Map<string, string | null>> {
     const providerIds = [
       ...new Set(
@@ -1299,7 +1324,11 @@ export class DocumentsController {
         .getClient()
         .from("providers")
         .select("id, name, company_name")
-        .in("id", providerIds);
+        .in("id", providerIds)
+        // Only this house's vendor rows name a row (row 1.3): a provider id a
+        // paper carries from before the house check never prints another
+        // house's vendor name.
+        .eq("restaurant_id", restaurantId);
       if (error)
         this.logger.warn(
           `List: vendors could not be read (${error.message}); rows name the vendor the paper carried.`,
@@ -1405,7 +1434,10 @@ export class DocumentsController {
      */
     const [verdicts, vendorNames] = await Promise.all([
       this.tieOutsAsRuledNow((data ?? []) as Record<string, unknown>[]),
-      this.vendorNamesFor((data ?? []) as Record<string, unknown>[]),
+      this.vendorNamesFor(
+        (data ?? []) as Record<string, unknown>[],
+        user.restaurantId,
+      ),
     ]);
     const items = (data ?? []).map((row) => ({
       ...(row as Record<string, unknown>),

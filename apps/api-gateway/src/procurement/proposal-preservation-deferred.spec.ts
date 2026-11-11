@@ -6,7 +6,8 @@ import { DatabaseService } from "../database/database.service";
 /**
  * ADR 0059 — L3 and L4, DEFERRED AND FAILING BY DESIGN.
  *
- * Both tests below are `it.skip`, and both FAIL when un-skipped. That is the
+ * L3 IS DONE (2026-11-11, proposal-receipt row 1.9): its two tests run. L4's
+ * test below is still `it.skip`, and it FAILS when un-skipped. That is the
  * point of them: they are the unfinished half of this change, written down as
  * an executable statement rather than a comment someone can read past.
  *
@@ -33,6 +34,18 @@ import { DatabaseService } from "../database/database.service";
 // L3 — the door's paper reading
 // ---------------------------------------------------------------------------
 
+function permissive(): any {
+  const target = () => undefined;
+  return new Proxy(target, {
+    get(_t, prop) {
+      if (prop === "then")
+        return (resolve: (v: unknown) => void) =>
+          resolve({ data: null, error: null });
+      return () => permissive();
+    },
+  });
+}
+
 function makeDb() {
   const eventInserts: any[] = [];
   const client: any = {
@@ -43,6 +56,9 @@ function makeDb() {
         in: () => q,
         order: () => q,
         limit: () => q,
+        // The booked-quantity ledger read (`booked-order-quantity.ts`): no
+        // stock booked on this order yet.
+        range: async () => ({ data: [], error: null }),
         maybeSingle: async () =>
           table === "procurement_orders"
             ? {
@@ -68,7 +84,10 @@ function makeDb() {
           };
           return chain;
         },
-        update: () => ({ eq: () => ({ eq: async () => ({ error: null }) }) }),
+        // Every write after the event (the order's running totals, the
+        // ledger) answers "done, nothing returned": this file is about the
+        // event row, and a chain any length long resolves to no error.
+        update: () => permissive(),
       };
       return q;
     },
@@ -95,7 +114,7 @@ describe("ADR 0059 L3 — the door records whether the paper's reading was accep
    * The columns already exist —
    * supabase/migrations/20260901200000_receiving_preserves_the_pair.sql.
    */
-  it.skip("stores suggested_qty and suggestion_accepted on the receipt event", async () => {
+  it("stores suggested_qty and suggestion_accepted on the receipt event", async () => {
     const { db, eventInserts } = makeDb();
 
     await new ReceivingService(db).recordDoorReceipt({
@@ -118,7 +137,7 @@ describe("ADR 0059 L3 — the door records whether the paper's reading was accep
     });
   });
 
-  it.skip("absence of a suggestion is NULL, never false", async () => {
+  it("absence of a suggestion is NULL, never false", async () => {
     const { db, eventInserts } = makeDb();
 
     await new ReceivingService(db).recordDoorReceipt({
