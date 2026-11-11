@@ -4,6 +4,7 @@
  * nothing; a lookup draft is saved only when the person presses Save.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { AxiosError } from 'axios';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ALLERGENS, type ItemNutrition, type StoredNutrition } from '../../../services/api/inventory';
@@ -186,5 +187,38 @@ describe('checking the figures (#938)', () => {
     fireEvent.change(screen.getByLabelText('Barcode or name'), { target: { value: 'ayran' } });
     fireEvent.click(screen.getByRole('button', { name: 'Look it up' }));
     expect(await screen.findByTestId('ivn-draft')).toBeTruthy();
+  });
+
+  // Contract with the gateway (#1013, 98b8d07e3): a refusal is 400 with
+  // message "<why> Nothing was saved."; a save is 200 with warnings: string[].
+  it('shows the gateway refusal sentence on a 400, as written', async () => {
+    const said = 'Protein, fat, carbohydrate and salt add up to 110 g, which is more than 100 g in 100 g. Check the figures against the pack. Nothing was saved.';
+    api.save.mockRejectedValue(new AxiosError('bad', '400', undefined, undefined, { status: 400, data: { message: said } } as never));
+    const onDone = show(answer(null));
+    type('Protein (g)', '10');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toBe(said);
+    expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('shows the gateway warning after a successful save, and closes on Done', async () => {
+    const warn = 'Energy is 600 kcal, but the protein, fat and carbohydrate come to about 330 kcal. It was saved as stated; check it against the pack.';
+    api.save.mockResolvedValue({ ...answer(stored), warnings: [warn] });
+    const onDone = show(answer(null));
+    type('Protein (g)', '10');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect((await screen.findByTestId('ivn-saved-warning')).textContent).toContain(warn);
+    expect(onDone).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes at once when the save carries no warning', async () => {
+    api.save.mockResolvedValue({ ...answer(stored), warnings: [] });
+    const onDone = show(answer(null));
+    type('Protein (g)', '10');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
   });
 });
