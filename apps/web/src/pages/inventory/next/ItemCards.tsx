@@ -184,6 +184,8 @@ function Card({ id, figure, extra, source, unread, open, onOpen }: CardProps) {
 export interface ItemCardsProps {
   row: InvRow;
   uom: string | null;
+  /** The house item's kind: a food or supply is not drawn down by a sale yet. */
+  kind?: string | null;
   canManage: boolean;
   currency: HouseCurrency;
   figures: FiguresLoad;
@@ -192,7 +194,16 @@ export interface ItemCardsProps {
   onOpen: (id: CardId) => void;
 }
 
-export default function ItemCards({ row, uom, canManage, currency, figures, inside, open, onOpen }: ItemCardsProps) {
+/**
+ * A sale draws down only what the till maps to the good itself (a bottle, a
+ * glass); a food or supply goes into dishes, and no dish recipe links it yet.
+ * So its usage is not "not enough history": it is not measured by sales at all.
+ */
+export const NOT_DRAWN_BY_SALES =
+  'A sale does not draw a food or supply down yet, since no dish recipe links it; counts and write-offs move it.';
+
+export default function ItemCards({ row, uom, kind, canManage, currency, figures, inside, open, onOpen }: ItemCardsProps) {
+  const unsold = (kind === 'food' || kind === 'supply') && (row.velocity === null || row.velocity === 0);
   const f = figures.status === 'ready' ? figures.data : null;
   const reading = figures.status === 'reading';
   const failedWhy = figures.status === 'failed' ? `This item’s figures ${UNREAD} — ${figures.reason}.` : null;
@@ -271,16 +282,16 @@ export default function ItemCards({ row, uom, canManage, currency, figures, insi
         open={open}
         onOpen={onOpen}
         unread={!pace}
-        figure={row.velocity === null ? 'Not enough history' : usageWords(row.velocity, uom)}
-        source="Sold over the last 30 days, from the stock ledger."
+        figure={unsold ? 'Not drawn by sales' : row.velocity === null ? 'Not enough history' : usageWords(row.velocity, uom)}
+        source={unsold ? NOT_DRAWN_BY_SALES : 'Sold over the last 30 days, from the stock ledger.'}
       />
       <Card
         id="cover"
         open={open}
         onOpen={onOpen}
         unread={!pace}
-        figure={row.runway === null ? 'Not enough history' : `${fmtCount(Math.round(row.runway))} days`}
-        source="On hand divided by usage a day."
+        figure={unsold ? 'Not known' : row.runway === null ? 'Not enough history' : `${fmtCount(Math.round(row.runway))} days`}
+        source={unsold ? 'On hand divided by usage a day, and its usage is not measured by sales yet.' : 'On hand divided by usage a day.'}
       />
       <Card id="cost" open={open} onOpen={onOpen} figure={cost} extra={costExtra} source={costSource} />
       <Card

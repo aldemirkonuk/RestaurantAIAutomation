@@ -14,13 +14,31 @@
  * by this page at all (recipe lines live on the recipe-engine stack), so that
  * line says whether a recipe uses the item is not known here, never "no".
  */
+import { Link, useInRouterContext } from 'react-router-dom';
 import type { ItemMenuLine, ItemUsedIn as UsedIn, ItemUsedInGroup } from '../../../services/api/inventory';
 import { cellMoney, type HouseCurrency } from './useInventoryNextData';
 
 export type UsedInLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: UsedIn };
 
 export const RECIPES_UNKNOWN =
-  'Dish recipes are not read on this page yet, so whether a recipe uses this item is not known here.';
+  'No dish carries a recipe yet, so which dishes use this good is not known here. It is never read as none.';
+
+/** Where a drink opens: its own card on /cocktails, with its recipe. */
+export const drinkHref = (cocktailId: string) => `/cocktails?open=${encodeURIComponent(cocktailId)}`;
+
+/** A line that leads somewhere: a router link inside the app, a plain link outside it (tests, a bare mount). */
+function LineLink({ to, children }: { to: string; children: string }) {
+  const routed = useInRouterContext();
+  return routed ? (
+    <Link to={to} className="iv-linkish iv-focus">
+      {children}
+    </Link>
+  ) : (
+    <a href={to} className="iv-linkish iv-focus">
+      {children}
+    </a>
+  );
+}
 
 export const DRINK_RECIPES_UNREAD = 'Which drink recipes use this item could not be read here.';
 
@@ -41,7 +59,7 @@ function Group<T>({
   title: string;
   group: ItemUsedInGroup<T>;
   note?: string;
-  line: (l: T, i: number) => { key: string; text: string; side?: string };
+  line: (l: T, i: number) => { key: string; text: string; side?: string; to?: string };
   testid: string;
   /** Only the "named, not linked" group: nothing to link is nothing to say. */
   hideWhenEmpty?: boolean;
@@ -77,7 +95,7 @@ function Group<T>({
           const v = line(l, i);
           return (
             <li key={v.key}>
-              <span>{v.text}</span>
+              {v.to ? <LineLink to={v.to}>{v.text}</LineLink> : <span>{v.text}</span>}
               {v.side ? <span className="ivd-dim">{v.side}</span> : null}
             </li>
           );
@@ -137,6 +155,7 @@ export default function ItemUsedIn({
           line={(c, i) => ({
             key: `${c.cocktailId}-${i}`,
             text: c.name,
+            to: drinkHref(c.cocktailId),
             side: c.quantity !== null ? `${fmtRecipeQty(c.quantity)}${c.unit ? ` ${c.unit}` : ''}` : undefined,
           })}
         />
@@ -149,6 +168,7 @@ export default function ItemUsedIn({
           line={(d, i) => ({
             key: `${d.cocktailId}-${i}`,
             text: `${d.name} — ${fmtRecipeQty(d.qtyEntered)} ${d.unitCode} (${d.label})`,
+            to: drinkHref(d.cocktailId),
           })}
         />
         <Group

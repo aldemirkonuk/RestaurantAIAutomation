@@ -28,6 +28,7 @@
  */
 
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import RecipeNutrition from '../../inventory/next/RecipeNutrition';
 import {
@@ -236,7 +237,10 @@ export default function CocktailRegister({
   const { create, amend, retire } = useCocktailWrites();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // /cocktails?open=<id> opens that drink: the inventory drawer's "used in"
+  // lines link here, so a good leads to the drink that uses it.
+  const [params] = useSearchParams();
+  const [openId, setOpenId] = useState<string | null>(() => params.get('open'));
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const [query, setQuery] = useState('');

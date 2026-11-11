@@ -16,7 +16,17 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
   getItemUsedIn: api.usedIn,
   getItemNutrition: api.nutrition,
 }));
-vi.mock('./RowDropdown', () => ({ default: () => <div data-testid="row-dropdown" /> }));
+vi.mock('./RowDropdown', () => ({
+  default: (p: { sections?: string[]; actions?: boolean; uom?: string | null; kind?: string | null }) => (
+    <div
+      data-testid="row-dropdown"
+      data-sections={p.sections === undefined ? 'all' : p.sections.join(',')}
+      data-actions={String(p.actions !== false)}
+      data-uom={p.uom ?? ''}
+      data-kind={p.kind ?? ''}
+    />
+  ),
+}));
 
 import ItemDrawer, { type NutritionCardProps } from './ItemDrawer';
 
@@ -158,11 +168,45 @@ describe('the item drawer', () => {
     expect(api.figures).not.toHaveBeenCalled();
   });
 
-  it('opens the evidence under the cards from a card', () => {
+  it('keeps the acts under the cards with no card open, and no evidence panel drawn', () => {
+    open(row(), { house: { kind: 'food', uom: 'g', displayName: 'Un' } });
+    const acts = screen.getAllByTestId('row-dropdown');
+    expect(acts).toHaveLength(1);
+    expect(acts[0].dataset).toMatchObject({ sections: '', actions: 'true', uom: 'g', kind: 'food' });
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+  });
+
+  it('a card opens its own evidence, without a second set of acts', () => {
     open(row());
-    expect(screen.queryByTestId('row-dropdown')).toBeNull();
-    fireEvent.click(screen.getByTestId('ivd-card-gap'));
-    expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown')).toBeTruthy();
+    const opened = (id: string) => {
+      fireEvent.click(screen.getByTestId(`ivd-card-${id}`));
+      const panel = within(screen.getByTestId('ivd-evidence')).queryByTestId('row-dropdown');
+      const sections = panel?.dataset.sections ?? null;
+      if (panel) expect(panel.dataset.actions).toBe('false');
+      fireEvent.click(screen.getByTestId(`ivd-card-${id}`));
+      return sections;
+    };
+    expect(opened('gap')).toBe('where');
+    expect(opened('usage')).toBe('pace');
+    expect(opened('cost')).toBe('cost,paper');
+    expect(opened('onhand')).toBe('where,facts');
+    // "What's in it" opens the nutrition card alone.
+    expect(opened('inside')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'All the evidence' }));
+    expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown').dataset.sections).toBe('facts,where,pace,cost,paper');
+  });
+
+  it('says a food is not drawn down by sales, never "not enough history"', () => {
+    open(row({ velocity: null, runway: null, kind: 'food' }), { house: { kind: 'food', uom: 'g', displayName: 'Un' } });
+    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('Not drawn by sales');
+    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('no dish recipe links it');
+    expect(screen.getByTestId('ivd-card-cover').textContent).toContain('Not known');
+    expect(screen.getByTestId('ivd-card-usage').textContent).not.toContain('Not enough history');
+  });
+
+  it('a wine with no sales yet still says not enough history', () => {
+    open(row({ velocity: null, runway: null }));
+    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('Not enough history');
   });
   it('opens the item detail card, with the NutritionCard slot, from every KPI card', () => {
     open(row());

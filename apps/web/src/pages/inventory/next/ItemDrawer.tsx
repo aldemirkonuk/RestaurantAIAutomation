@@ -2,11 +2,10 @@
  * The /inventory item drawer (proposal §2 S2, §3 I13, §4 K1-K2): one item in
  * a right-side sheet over the list, the whole screen on a phone. The head says
  * what it is, where it sits and when it was last counted; then eight cards
- * (ItemCards) and the detail card any one of them opens. The detail card
- * holds the NutritionCard slot and the evidence; below them is where it is
- * used (ItemUsedIn). The evidence is the row's own
- * dropdown, unchanged, with its Count / Write off / Order acts, until each
- * card gets its own panel (I14).
+ * (ItemCards), the item's acts (Count, Order more, Write off, More) always
+ * under them, and the detail card a card opens: that card's own evidence
+ * (CARD_EVIDENCE) and the NutritionCard slot. Below them is where it is used
+ * (ItemUsedIn).
  */
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -18,7 +17,7 @@ import type { StorageLocation } from '../../../hooks/useStorageLocations';
 import ItemCards, { CARD_TITLE, type CardId, type FiguresLoad, type InsideLoad } from './ItemCards';
 import ItemUsedIn, { type UsedInLoad } from './ItemUsedIn';
 import WhatIsInIt from './NutritionCard';
-import RowDropdown from './RowDropdown';
+import RowDropdown, { type EvidenceSection } from './RowDropdown';
 import { failureReason } from './iv-failure';
 import { noZoneWord, typeLabel, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import './item-drawer.css';
@@ -32,6 +31,24 @@ const KIND_WORDS: Record<string, string> = {
 };
 
 const DRINK_UNITS = new Set(['bottle', 'case', 'keg', 'glass', 'shot']);
+
+/**
+ * What each card's own evidence is. A card opens its panel first and the
+ * nutrition card under it (founder /goal 2026-11-07: a KPI card opens the
+ * good's nutrition card); "What's in it" opens the nutrition card alone, and
+ * "All the evidence" opens every panel.
+ */
+export const CARD_EVIDENCE: Record<CardId | 'all', ReadonlyArray<EvidenceSection>> = {
+  onhand: ['where', 'facts'],
+  value: ['cost', 'paper'],
+  usage: ['pace'],
+  cover: ['pace', 'where'],
+  cost: ['cost', 'paper'],
+  waste: ['where'],
+  gap: ['where'],
+  inside: [],
+  all: ['facts', 'where', 'pace', 'cost', 'paper'],
+};
 
 /** The kind in words: a wine's style, else the house's own kind. */
 export function kindWords(row: InvRow, house: HouseFields): string {
@@ -170,12 +187,28 @@ export default function ItemDrawer(props: ItemDrawerProps) {
       <ItemCards
         row={row}
         uom={house.uom}
+        kind={house.kind ?? row.kind}
         canManage={canManage}
         currency={currency}
         figures={figures}
         inside={inside}
         open={evidence === 'all' ? null : evidence}
         onOpen={toggle}
+      />
+      {/* The acts sit under the cards, always: a count or a write-off never waits on opening a card. */}
+      <RowDropdown
+        row={row}
+        canManage={canManage}
+        currency={currency}
+        zoneName={zoneName}
+        locations={props.locations}
+        locationsUnavailable={props.locationsUnavailable}
+        providers={props.providers}
+        providersError={props.providersError}
+        restaurantId={restaurantId}
+        uom={house.uom}
+        kind={house.kind ?? row.kind}
+        sections={[]}
       />
       <p className="ivd-evbar">
         <button
@@ -185,7 +218,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
           aria-controls={evidence !== null ? 'ivd-evidence' : undefined}
           onClick={() => toggle('all')}
         >
-          {evidence !== null ? 'Hide the evidence' : 'Evidence and actions'}
+          {evidence !== null ? 'Hide the evidence' : 'All the evidence'}
         </button>
       </p>
       {evidence !== null ? (
@@ -195,24 +228,30 @@ export default function ItemDrawer(props: ItemDrawerProps) {
           className="ivd-evidence"
           aria-label={`${name}: detail card`}
           data-testid="ivd-evidence"
+          data-card={evidence}
         >
-          <h3 className="iv-sec">{evidence === 'all' ? 'Evidence and actions' : `${CARD_TITLE[evidence]}: where it comes from`}</h3>
+          <h3 className="iv-sec">{evidence === 'all' ? 'All the evidence' : `${CARD_TITLE[evidence]}: where it comes from`}</h3>
+          {CARD_EVIDENCE[evidence].length > 0 ? (
+            <RowDropdown
+              row={row}
+              canManage={canManage}
+              currency={currency}
+              zoneName={zoneName}
+              locations={props.locations}
+              locationsUnavailable={props.locationsUnavailable}
+              providers={props.providers}
+              providersError={props.providersError}
+              restaurantId={restaurantId}
+              uom={house.uom}
+              kind={house.kind ?? row.kind}
+              sections={CARD_EVIDENCE[evidence]}
+              actions={false}
+            />
+          ) : null}
           <div className="ivd-nutrition" data-slot="NutritionCard" data-testid="ivd-nutrition-slot">
+            {evidence !== 'inside' ? <h4 className="ivd-used-h">{CARD_TITLE.inside}</h4> : null}
             <NutritionCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} />
           </div>
-          <RowDropdown
-            row={row}
-            canManage={canManage}
-            currency={currency}
-            zoneName={zoneName}
-            locations={props.locations}
-            locationsUnavailable={props.locationsUnavailable}
-            providers={props.providers}
-            providersError={props.providersError}
-            restaurantId={restaurantId}
-            uom={house.uom}
-            kind={house.kind ?? row.kind}
-          />
         </section>
       ) : null}
       <ItemUsedIn load={usedIn} canManage={canManage} currency={currency} onRetry={() => void usedInQ.refetch()} />

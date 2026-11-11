@@ -85,7 +85,17 @@ export interface RowDropdownProps {
   uom?: string | null;
   /** The house item's kind: a food or supply is never offered "Record a pour". */
   kind?: string | null;
+  /**
+   * Which evidence panels to draw (the drawer opens only the one a card asks
+   * for). Absent draws all of them, as the row always has.
+   */
+  sections?: ReadonlyArray<EvidenceSection>;
+  /** False draws no act buttons and no sheets (the drawer keeps its acts in one place). */
+  actions?: boolean;
 }
+
+/** The panels the opened row draws: facts and naming, where, pace, cost, paperwork. */
+export type EvidenceSection = 'facts' | 'where' | 'pace' | 'cost' | 'paper';
 
 type SheetId = 'count' | 'order' | 'writeoff' | 'transfer' | 'pour';
 
@@ -179,6 +189,8 @@ export default function RowDropdown(props: RowDropdownProps) {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
   const detail = useRowDetail(row.id);
+  const has = (s: EvidenceSection) => props.sections === undefined || props.sections.includes(s);
+  const acts = props.actions !== false;
   const queryClient = useQueryClient();
   const [removing, setRemoving] = useState(false);
   const [toggling, setToggling] = useState(false);
@@ -294,7 +306,7 @@ export default function RowDropdown(props: RowDropdownProps) {
 
   return (
     <div className="iv-drop" data-testid="row-dropdown" aria-label={`${row.name ?? 'This title'}, opened`}>
-      {head.length > 0 ? (
+      {has('facts') && head.length > 0 ? (
         <dl className="iv-head-facts">
           {head.map((h) => (
             <KV key={h.k} k={h.k}>
@@ -304,16 +316,19 @@ export default function RowDropdown(props: RowDropdownProps) {
         </dl>
       ) : null}
 
-      <NameThisWine inventoryId={row.id} currentName={row.name} restaurantId={props.restaurantId} />
+      {has('facts') ? <NameThisWine inventoryId={row.id} currentName={row.name} restaurantId={props.restaurantId} /> : null}
 
-      <div className="iv-drop-cols">
-        <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} />
-        <HowFastItPours row={row} />
-        <WhatItHasCost row={row} currency={currency} detail={detail} />
-      </div>
+      {has('where') || has('pace') || has('cost') ? (
+        <div className="iv-drop-cols">
+          {has('where') ? <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} /> : null}
+          {has('pace') ? <HowFastItPours row={row} /> : null}
+          {has('cost') ? <WhatItHasCost row={row} currency={currency} detail={detail} /> : null}
+        </div>
+      ) : null}
 
-      <Paperwork detail={detail} currency={currency} providers={props.providers} />
+      {has('paper') ? <Paperwork detail={detail} currency={currency} providers={props.providers} /> : null}
 
+      {acts ? (
       <div className="iv-actions" role="group" aria-label="What to do with this title">
         <button type="button" className="iv-btn iv-focus" onClick={() => setSheet('count')}>
           Record a count
@@ -438,6 +453,7 @@ export default function RowDropdown(props: RowDropdownProps) {
           </div>
         </Popover>
       </div>
+      ) : null}
 
       {sheet === 'count' ? <CountSheet row={row} uom={props.uom} onClose={() => setSheet(null)} /> : null}
       {sheet === 'order' ? (
