@@ -97,16 +97,15 @@ describe("OD-161 — the /inventory summary does not call an uncounted wine low"
     );
   });
 
-  it("keeps every uncounted wine unknown when the view could not be read", async () => {
+  it("refuses, rather than read 0 low, when the view could not be read", async () => {
     const db = {
       getRestaurantInventory: jest.fn().mockResolvedValue([
         { ...NEVER_COUNTED, id: "inv-received", stock_live: 2 },
       ]),
       getLowStockItems: jest.fn().mockResolvedValue(null),
     };
-    const summary = await new InventoryService(db as any).getInventorySummary(
-      "r1",
-    );
-    expect(summary).toMatchObject({ lowStockCount: 0, unknownCount: 1 });
+    await expect(
+      new InventoryService(db as any).getInventorySummary("r1"),
+    ).rejects.toThrow("The low-stock list was not read");
   });
 });

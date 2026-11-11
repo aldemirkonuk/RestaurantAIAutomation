@@ -9,6 +9,12 @@ import { DashboardService } from "../dashboard/dashboard.service";
 import { DatabaseService } from "../database/database.service";
 import { InventoryService } from "../inventory/inventory.service";
 import { LowStockAlertsService } from "./low-stock-alerts.service";
+import {
+  LowStockListUnreadError,
+  alertBandOfViewRow,
+  bandOfRow,
+  summarizeStock,
+} from "../common/stock-status";
 
 const R = "house-1";
 const COUNTED = "2026-11-07T11:28:14.930Z";
@@ -294,5 +300,85 @@ describe("low stock: every read agrees with v_low_stock_items (QA round 12)", ()
     );
     const alerts = new DashboardService(dbOf(pg) as any).getAlerts(R);
     await expect(alerts).rejects.toThrow("could not be read whole");
+  });
+});
+
+/**
+ * Below par, one count (QA 12a R1, wave 5): which rows can run low is the
+ * view's answer alone. Every reader below either reads v_low_stock_items or
+ * asks `bandOfRow` with the view's ids; none re-derives the view's WHERE.
+ */
+describe("below par, one count: the view alone says which rows can run low", () => {
+  beforeEach(() => {
+    for (const level of ["warn", "log", "error"] as const)
+      jest.spyOn(Logger.prototype, level).mockImplementation(() => undefined);
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  /** inbox, dashboard alert list, card, /inventory/summary: [low, critical]. */
+  async function fourCounts(inv: any[], low: any[]) {
+    const pg = fakePg({ restaurant_inventory: inv, v_low_stock_items: low });
+    const db = dbOf(pg);
+    const inbox = (await alertsOf(pg).getLowStockByRestaurant()).get(R);
+    const alerts = (await new DashboardService(db as any).getAlerts(R)).filter(
+      (a) => a.type === "low_stock",
+    );
+    const card = await (
+      new DashboardService(db as any) as any
+    ).getInventorySummary(R);
+    const summary = await new InventoryService(db as any).getInventorySummary(
+      R,
+    );
+    const crit = (xs: any[]) => xs.filter((x) => x.severity === "critical");
+    return {
+      inbox: [inbox.length, crit(inbox).length],
+      alerts: [alerts.length, crit(alerts).length],
+      card: [card.lowStockCount, card.criticalCount],
+      summary: [summary.lowStockCount, summary.criticalCount],
+    };
+  }
+
+  it("a beer and a flour with no wine-library row, held by the view, count low on every surface", async () => {
+    // every_good_can_run_low: the view holds every house good below par.
+    const flour = {
+      ...row("FL", 200, 500, true),
+      master_wine_id: null,
+      kind: "food",
+      uom: "g",
+      wine_name: "Flour",
+    };
+    const beer = inventory.find((r) => r.id === "HD");
+    const counts = await fourCounts(
+      [...inventory, flour],
+      [...view, beer, flour],
+    );
+    // 8/6 as before, plus HD (1 of 3) and FL (200 of 500 g), both critical.
+    expect(counts).toEqual({
+      inbox: [10, 8],
+      alerts: [10, 8],
+      card: [10, 8],
+      summary: [10, 8],
+    });
+  });
+
+  it("a row the view leaves out is never counted low, whatever the row says", async () => {
+    // Counted, active, undeleted, LIVE, a wine, 1 of 3: every row test the
+    // gateway could copy passes, but the view (say a later migration's rule)
+    // does not hold it. No surface may count it.
+    const counts = await fourCounts([...inventory, row("LATER", 1, 3, true)], view);
+    expect(counts).toEqual({
+      inbox: [8, 6],
+      alerts: [8, 6],
+      card: [8, 6],
+      summary: [8, 6],
+    });
+  });
+
+  it("bands a below-par row by view membership alone, and refuses without the view", () => {
+    const it = { id: "x", stock_live: 1, threshold_min: 3, last_counted_at: COUNTED };
+    expect(bandOfRow(it, new Set(["x"]))).toBe("critical");
+    expect(bandOfRow(it, new Set())).toBe("not_alerted");
+    expect(alertBandOfViewRow({ ...it, master_wine_id: null } as any)).toBe("critical");
+    expect(() => summarizeStock([it], null)).toThrow(LowStockListUnreadError);
   });
 });

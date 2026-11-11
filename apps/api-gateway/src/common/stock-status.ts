@@ -42,7 +42,7 @@ export type StockBand =
   | "low"
   | "critical"
   | "unknown"
-  /** Below par on a row `v_low_stock_items` leaves out (see `canRunLow`). */
+  /** Below par by its figures, on a row `v_low_stock_items` does not hold. */
   | "not_alerted";
 
 /** At or under this fraction of par, a wine is critical rather than merely low. */
@@ -96,23 +96,14 @@ export interface StockRow {
   stock_live?: number | null;
   threshold_min?: number | null;
   last_counted_at?: string | null;
-  is_active?: boolean | null;
-  deleted_at?: string | null;
-  inventory_state?: string | null;
-  master_wine_id?: string | null;
 }
 
-/**
- * The row tests of `v_low_stock_items` (a_received_wine_not_counted_yet_can_run_low.sql:75-80)
- * bar the stock ones, so the card counts what alerts (QA R1; round 15: its JOIN
- * drops a house beer with no library row). NULL is out; `undefined` unselected.
- */
-export function canRunLow(row: StockRow): boolean {
-  if (row.master_wine_id === null) return false;
-  if (row.is_active === false || row.is_active === null) return false;
-  if (row.deleted_at != null) return false;
-  if (row.inventory_state === undefined) return true;
-  return row.inventory_state !== null && row.inventory_state !== "IN_TRANSIT";
+/** A summary missing a read refuses rather than count 0 low (QA 12a). */
+export class LowStockListUnreadError extends Error {
+  constructor(what: string) {
+    super(`${what} was not read, so no item can be called low or fine.`);
+    this.name = "LowStockListUnreadError";
+  }
 }
 
 export interface StockSummary {
@@ -132,20 +123,21 @@ export interface StockSummary {
  * (a_received_wine_not_counted_yet_can_run_low): `v_low_stock_items` holds the
  * uncounted rows whose received-minus-sold figure is below par. So an
  * uncounted row is classified only when the view holds it, and is `unknown`
- * otherwise. `inView` is null when the view could not be read; then no
- * uncounted row is classified.
+ * otherwise.
+ *
+ * Which rows can run low is the view's answer alone (QA 12a R1): a copy of
+ * its row tests (`canRunLow`) went stale when every_good_can_run_low widened
+ * it to every good. A below-par row the view does not hold is `not_alerted`.
  */
 export function bandOfRow(
   row: StockRow,
   inView: ReadonlySet<string> | null,
 ): StockBand {
-  const counted = row.last_counted_at != null;
-  if (!counted && !(inView?.has(row.id) ?? false)) return "unknown";
+  const held = inView?.has(row.id) ?? false;
+  if (row.last_counted_at == null && !held) return "unknown";
   const band = classifyStock(row.stock_live, row.threshold_min);
   // No alert fires for a row the view leaves out, so no counter calls it low.
-  if ((band === "low" || band === "critical") && !canRunLow(row)) {
-    return "not_alerted";
-  }
+  if ((band === "low" || band === "critical") && !held) return "not_alerted";
   return band;
 }
 
@@ -182,8 +174,10 @@ export function summarizeStock(
   inventory: readonly StockRow[] | null | undefined,
   lowStock: readonly { id: string }[] | null | undefined,
 ): StockSummary {
-  const inView = lowStock ? new Set(lowStock.map((item) => item.id)) : null;
-  const bands = (inventory ?? []).map((row) => bandOfRow(row, inView));
+  if (inventory == null) throw new LowStockListUnreadError("The house's inventory");
+  if (lowStock == null) throw new LowStockListUnreadError("The low-stock list");
+  const inView = new Set(lowStock.map((item) => item.id));
+  const bands = inventory.map((row) => bandOfRow(row, inView));
   const count = (...want: StockBand[]) =>
     bands.filter((b) => want.includes(b)).length;
   return {

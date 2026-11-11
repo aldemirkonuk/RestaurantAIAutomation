@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { InvRow } from './useInventoryNextData';
+import type { HouseCurrency, InvRow } from './useInventoryNextData';
 import { fmtPace, MAP_WORDS, mapTone, sold30, standingFor } from './useInventoryNextData';
 
 const mock = vi.hoisted(() => ({ data: {} as Record<string, unknown>, mapProps: null as Record<string, unknown> | null }));
@@ -111,7 +111,7 @@ import {
   fold,
   matchesSearch,
   needsYouFirst,
-  readSentence,
+  readSentence as readSentenceWith,
   severity,
   sortRows,
   sortWords,
@@ -158,6 +158,10 @@ function row(over: Partial<InvRow> = {}): InvRow {
   };
 }
 
+/** The sentence over an alert list that names every title, for cases not about the list. */
+const EVERY = { has: () => true } as unknown as ReadonlySet<string>;
+const readSentence = (...a: [InvRow[], HouseCurrency, boolean]) => readSentenceWith(...a, EVERY);
+
 function data(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     state: 'ready',
@@ -194,6 +198,11 @@ function data(over: Record<string, unknown> = {}): Record<string, unknown> {
     unread: [],
     pending: [],
     rereadUnread: vi.fn(),
+    // The server's low-stock list, as the view holds it: every row below par
+    // or out, unless a test names its own list (or null, a list not read).
+    alerted: new Set(
+      ((over.rows ?? []) as InvRow[]).filter((r) => r.standing === 'below' || r.standing === 'out').map((r) => r.id),
+    ),
     ...over,
   };
 }
@@ -1070,6 +1079,37 @@ describe('INV-W38 — the view is the URL', () => {
     expect(chipMatch(two()[0], 'alerts', Date.now(), new Set(['a']))).toBe(true);
   });
 
+  // QA 12a R1: the Below par chip counted a title in transit (and, before
+  // every_good_can_run_low, a house beer) that no alert names.
+  it('counts under Below par only the titles the low-stock list holds, as the alerts do', () => {
+    const shelf = row({ id: 'shelf', name: 'Shelf Red', stock: 1, par: 3, standing: 'below' });
+    const transit = row({ id: 'transit', name: 'Transit Red', stock: 1, par: 3, standing: 'below' });
+    const flour = row({ id: 'flour', name: 'Flour', stock: 200, par: 500, standing: 'below' });
+    mock.data = data({ rows: [shelf, transit, flour], alerted: new Set(['shelf', 'flour']) });
+    renderAt('/inventory');
+    const chips = screen.getByTestId('inventory-chips');
+    expect(within(chips).getByRole('button', { name: /^Below par 2$/ })).toBeTruthy();
+    expect(within(chips).getByRole('button', { name: /^Low-stock alerts 2$/ })).toBeTruthy();
+    expect(screen.getByText(/None is out; 2 are below par/)).toBeTruthy();
+    fireEvent.click(within(chips).getByRole('button', { name: /^Below par 2$/ }));
+    expect(screen.queryByTestId('inv-row-transit')).toBeNull();
+    expect(screen.getByTestId('inv-row-flour')).toBeTruthy();
+  });
+
+  it('never says how many are below par, nor that none are, while the low-stock list is unread', () => {
+    const low = row({ id: 'low', stock: 1, par: 3, standing: 'below' });
+    mock.data = data({ rows: [low], alerted: null });
+    renderAt('/inventory?chip=below');
+    const chip = within(screen.getByTestId('inventory-chips')).getByRole('button', { name: /^Below par/ }) as HTMLButtonElement;
+    expect(chip.disabled).toBe(true);
+    expect(chip.textContent).toContain('—');
+    expect(screen.getByTestId('inv-row-low')).toBeTruthy();
+    const s = readSentenceWith([low], { state: 'recorded', code: 'EUR' }, true, null);
+    expect(s).toContain('None is out; which titles are below par has not been read yet.');
+    expect(s).not.toMatch(/Nothing is out|0 are below par|is below par\b/);
+    expect(chipMatch(low, 'below', Date.now(), null)).toBe(false);
+  });
+
   it('sends the older ?verify= link to Receiving, on that order', () => {
     mock.data = data({ rows: two() });
     const seen = renderAt('/inventory?verify=o%2F7');
@@ -1573,7 +1613,7 @@ describe('A title nobody counted says "Not counted yet", never Out (OD-161)', ()
       null,
     );
     const plenty = row({ id: 'p', name: 'Plenty', stock: 12, par: 6, runway: 12 });
-    expect(chipMatch(received, 'below')).toBe(true);
+    expect(chipMatch(received, 'below', Date.now(), new Set(['r']))).toBe(true);
     expect(severity(received)).toBe(1);
     expect([plenty, received].sort(needsYouFirst).map((r) => r.id)).toEqual(['r', 'p']);
     const s = readSentence([plenty, received], { state: 'recorded', code: 'EUR' }, true);

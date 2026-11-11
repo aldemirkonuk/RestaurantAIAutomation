@@ -445,6 +445,15 @@ export function countDue(row: InvRow, now = Date.now()): boolean {
 }
 
 /**
+ * Below par as the alerts count it: below on the shelf AND held by
+ * `v_low_stock_items` (QA 12a R1: a title in transit is not). `alerted` null
+ * is a list not read, which claims nothing.
+ */
+export function belowParAlerted(row: InvRow, alerted: ReadonlySet<string> | null): boolean {
+  return row.standing === 'below' && alerted !== null && alerted.has(row.id);
+}
+
+/**
  * Whether a row belongs under a chip. `price` matches nothing: a price signal
  * needs a market figure and none is read (`retail_price_avg` is not selected,
  * database.service.ts:42-53), so its count is the dash, never 0.
@@ -467,7 +476,7 @@ export function chipMatch(
     case 'out':
       return row.standing === 'out';
     case 'below':
-      return row.standing === 'below';
+      return belowParAlerted(row, alerted);
     case 'alerts':
       return alerted?.has(row.id) ?? false;
     case 'reconcile':
@@ -573,7 +582,12 @@ export function dryTomorrow(row: InvRow): boolean {
  * The one read sentence at the top (no KPI tiles). Every number in it is a
  * count of what was read; what was not read is named, never folded into a 0.
  */
-export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReadable: boolean): string {
+export function readSentence(
+  rows: InvRow[],
+  currency: HouseCurrency,
+  zonesReadable: boolean,
+  alerted: ReadonlySet<string> | null,
+): string {
   const n = rows.length;
   const read = rows.filter((r) => r.stock !== null);
   const bottles = read.reduce((sum, r) => sum + Math.max(0, r.stock ?? 0), 0);
@@ -591,7 +605,9 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
   parts.push(`${first}.`);
 
   const out = rows.filter((r) => r.standing === 'out').length;
-  const below = rows.filter((r) => r.standing === 'below').length;
+  // The Below par chip's own count; null while the alert list is not read.
+  const belowN = alerted === null ? null : rows.filter((r) => belowParAlerted(r, alerted)).length;
+  const below = belowN ?? 0;
   const dry = rows.filter(dryTomorrow).length;
   // A never-counted 0 is neither out nor fine, so it is said in words and the
   // sentence never claims "Nothing is out or below par" past it (QA 9c).
@@ -599,6 +615,12 @@ export function readSentence(rows: InvRow[], currency: HouseCurrency, zonesReada
   const lead = read.length < n ? 'Of the titles read, nothing' : 'Nothing';
   if (read.length === 0) {
     // No stock was read, so nothing can be said to be out or fine.
+  } else if (belowN === null) {
+    // Without the alert list nothing is called below par, nor fine.
+    const said = [`${out === 0 ? 'None' : fmtCount(out)} ${out <= 1 ? 'is' : 'are'} out`];
+    if (unc > 0) said.push(`${fmtCount(unc)} more ${unc === 1 ? 'is' : 'are'} not counted yet`);
+    if (dry > 0) said.push(`${dry === 1 ? 'one runs' : `${fmtCount(dry)} run`} dry tomorrow`);
+    parts.push(`${said.join('; ')}; which titles are below par has not been read yet.`);
   } else if (out === 0 && below === 0 && unc > 0) {
     const one = unc === 1;
     let s = `${fmtCount(unc)} ${one ? 'is' : 'are'} not counted yet, so whether ${one ? 'it is' : 'they are'} out is not known until ${one ? 'it is' : 'they are'} counted; ${read.length < n ? 'of the other titles read, none' : 'nothing else'} is out or below par`;
