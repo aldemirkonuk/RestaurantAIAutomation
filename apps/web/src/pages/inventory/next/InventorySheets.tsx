@@ -760,6 +760,19 @@ export function OrderSheet({
         </span>
       }
     >
+      {orderUnit === null ? (
+        // A good this sheet cannot order (kept in g, ml, case or pack) gets the
+        // reason and the way to Orders, and no vendor picker or amount box it
+        // could never use (browser walk 2026-11-11: the fields sat above a
+        // refusal, a form that led nowhere).
+        <p className="iv-note" data-testid="iv-order-unit-blocked">
+          {blocked}{' '}
+          <Link to="/orders" className="iv-linkish iv-focus">
+            Go to Orders
+          </Link>
+        </p>
+      ) : (
+      <>
       <p className="iv-said">
         {toPar !== null && row.par !== null
           ? `${fmtCount(toPar)} bring it back to par (${fmtCount(row.par)}).`
@@ -837,6 +850,8 @@ export function OrderSheet({
         ) : null}
       </div>
       {order.isSuccess ? <Placed order={order.data} asked={n} vendorName={vendorName} merged={merged} restaurantId={restaurantId} /> : null}
+      </>
+      )}
     </Sheet>
   );
 }

@@ -133,7 +133,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
 
   if (row === null) {
     return (
-      <Sheet open onClose={onClose} label="This item is not on the list any more. Closing writes nothing." title="Not on the list" spine="Item" wide detents={['full']} className="iv-drawer">
+      <Sheet open onClose={onClose} label="This item is not on the list any more. Closing writes nothing." title="Not on the list" spine="Item" wide detents={['full']} className="iv-drawer" bodyClassName="iv-sheet-body">
         <p className="iv-said" data-testid="ivd-gone">
           This item is not on the list any more. It may have been removed, or the link is from another house.
           Close returns to the list.
@@ -182,6 +182,9 @@ export default function ItemDrawer(props: ItemDrawerProps) {
       wide
       detents={['full']}
       className="iv-drawer"
+      // The body's side gutter: without it the head, the evidence and "Used in"
+      // sat flush on the sheet's edge (browser walk 2026-11-11).
+      bodyClassName="iv-sheet-body"
     >
       <p className="ivd-head" data-testid="ivd-head">
         {head}

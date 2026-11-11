@@ -64,6 +64,15 @@ const UNIT_WORDS: Record<string, [string, string]> = {
 };
 
 /**
+ * A whole g or ml count read in kg or l keeps every gram: 1750 g is "1.75 kg",
+ * and 1755 g is "1.755 kg". fmtCount's one place would print 1750 g as "1.8 kg"
+ * right after the count sheet said "now reads 1.75 kg".
+ */
+function fmtScaled(n: number): string {
+  return n.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+}
+
+/**
  * A quantity in the item's own unit (ADR 0070: stored as whole g, ml or
  * each). 12400 g reads "12.4 kg"; 1500 ml reads "1.5 l"; each is a count.
  * A wine row with no unit on it is in bottles.
@@ -72,11 +81,11 @@ export function fmtQty(n: number, uom: string | null): string {
   const a = Math.abs(n);
   switch (uom) {
     case 'g':
-      return a >= 1000 ? `${fmtCount(n / 1000)} kg` : `${fmtCount(n)} g`;
+      return a >= 1000 ? `${fmtScaled(n / 1000)} kg` : `${fmtCount(n)} g`;
     case 'mg':
-      return a >= 1000 ? `${fmtCount(n / 1000)} g` : `${fmtCount(n)} mg`;
+      return a >= 1000 ? `${fmtScaled(n / 1000)} g` : `${fmtCount(n)} mg`;
     case 'ml':
-      return a >= 1000 ? `${fmtCount(n / 1000)} l` : `${fmtCount(n)} ml`;
+      return a >= 1000 ? `${fmtScaled(n / 1000)} l` : `${fmtCount(n)} ml`;
     case 'each':
       return fmtCount(n);
     default: {
@@ -88,10 +97,12 @@ export function fmtQty(n: number, uom: string | null): string {
 
 /** A cost is per kg or per l for a weighed or poured good: per g would read 0.01. */
 function perUnit(wac: number, uom: string | null): { amount: number; per: string } {
-  if (uom === 'g') return { amount: wac * 1000, per: 'kg' };
-  if (uom === 'ml') return { amount: wac * 1000, per: 'l' };
-  if (uom === 'each') return { amount: wac, per: 'item' };
-  return { amount: wac, per: UNIT_WORDS[uom ?? 'bottle']?.[0] ?? uom ?? 'bottle' };
+  if (uom === 'g') return { amount: wac * 1000, per: 'a kg' };
+  if (uom === 'ml') return { amount: wac * 1000, per: 'a litre' };
+  // "US$0.35 each", never "US$0.35 a item"; "a litre", never "a l".
+  if (uom === 'each') return { amount: wac, per: 'each' };
+  if (uom === 'l') return { amount: wac, per: 'a litre' };
+  return { amount: wac, per: `a ${UNIT_WORDS[uom ?? 'bottle']?.[0] ?? uom ?? 'bottle'}` };
 }
 
 /** Usage a day: small paces keep two places (fmtPace), large weighed ones read in kg or l. */
@@ -231,7 +242,7 @@ export default function ItemCards({ row, uom, kind, canManage, currency, figures
   } else {
     if (row.wac !== null) {
       const u = perUnit(row.wac, uom);
-      cost = `${money(u.amount)} a ${u.per}`;
+      cost = `${money(u.amount)} ${u.per}`;
     } else {
       cost = 'No cost yet';
     }
