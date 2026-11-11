@@ -40,7 +40,15 @@ export interface MatchInput {
   /** From the packing slip / ASN. Null = none in hand, which is common. */
   shippedQty?: number | null
   invoiceQty?: number | null
+  /**
+   * The invoice's price AS PRINTED, in `invoicePriceUom` — absent unit = PER BOTTLE, which is
+   * what this field always meant (founder, 2026-10-02, RECEIPTS-W56; ADR 0119 vocabulary).
+   */
   invoiceUnitPrice?: number | null
+  /** bottle, case, pack, split_case, each. The screen only offers these; the API refuses others. */
+  invoicePriceUom?: string | null
+  /** Bottles in one `invoicePriceUom`; both or neither, like the agreed price's pair. */
+  invoicePricePackSize?: number | null
   acceptedQty: number
   rejectedQty?: number
   /** Agreed free bottles; netted out so a deal stops reading as an overage. */
@@ -68,6 +76,24 @@ export const money = (n: number) => `$${n.toFixed(2)}`
 /** Compare as cents so 22.000000001 still equals 22. */
 const priceEquals = (a: number, b: number) => Math.round(a * 100) === Math.round(b * 100)
 
+/** "a case of 24", "a bottle" — the API engine's `pricePer`, word for word. */
+export function pricePer(uom: string, packSize: number): string {
+  switch (uom) {
+    case 'bottle':
+      return 'a bottle'
+    case 'each':
+      return 'each'
+    case 'case':
+      return `a case of ${packSize}`
+    case 'pack':
+      return `a pack of ${packSize}`
+    case 'split_case':
+      return `a split case of ${packSize}`
+    default:
+      return `a ${uom}`
+  }
+}
+
 export function computeMatch(input: MatchInput): MatchResult {
   const orderedQty = Math.max(0, input.orderedQty ?? 0)
   const acceptedQty = Math.max(0, input.acceptedQty ?? 0)
@@ -84,11 +110,21 @@ export function computeMatch(input: MatchInput): MatchResult {
   const hasInvoice = input.invoiceQty != null
   const invoiceQty = hasInvoice ? Math.max(0, input.invoiceQty as number) : null
   const poUnitPrice = input.poUnitPrice ?? null
-  const invoiceUnitPrice = input.invoiceUnitPrice ?? null
+  // The invoice price in the unit it is printed in, converted to per bottle ONCE — as the API
+  // engine's `readInvoicePrice` does. No unit = per bottle, pack 1.
+  const asPrinted = input.invoiceUnitPrice ?? null
+  const priceStated = asPrinted != null && !!input.invoicePriceUom
+  const priceUom = priceStated ? (input.invoicePriceUom as string) : 'bottle'
+  const pricePack = priceStated ? Math.max(1, input.invoicePricePackSize ?? 1) : 1
+  // PER BOTTLE from here down, like every quantity.
+  const invoiceUnitPrice = asPrinted == null ? null : pricePack === 1 ? asPrinted : asPrinted / pricePack
   const overrideReason = (input.priceOverrideReason ?? '').trim()
 
-  const bothPriced = poUnitPrice != null && invoiceUnitPrice != null
-  const priceVerified = bothPriced && priceEquals(poUnitPrice, invoiceUnitPrice)
+  const bothPriced = poUnitPrice != null && asPrinted != null
+  // Compared to the cent IN THE PRINTED UNIT: the agreed per-bottle figure scaled up to the
+  // invoice's pack. Comparing per-bottle figures would let $43.90 and $44.00 a case of 24 match.
+  const agreedInPrintedUnit = poUnitPrice != null ? poUnitPrice * pricePack : null
+  const priceVerified = bothPriced && priceEquals(agreedInPrintedUnit as number, asPrinted as number)
   const priceMismatch = bothPriced && !priceVerified
   const requiresOverride = priceMismatch && overrideReason.length === 0
 
@@ -137,8 +173,14 @@ export function computeMatch(input: MatchInput): MatchResult {
         )
       case 'overbilled_vs_ship':
         return `Their packing slip says ${shippedQty} but their invoice bills ${invoiceQty} — proven by their own paperwork.`
-      case 'price_variance':
-        return `Billed ${money(invoiceUnitPrice as number)} against an agreed ${money(poUnitPrice as number)}.`
+      case 'price_variance': {
+        const per = pricePer(priceUom, pricePack)
+        return (
+          `Billed ${money(asPrinted as number)} ${per} against an agreed ${money(agreedInPrintedUnit as number)} ${per}` +
+          (pricePack > 1 ? ` (${money(poUnitPrice as number)} a bottle)` : '') +
+          '.'
+        )
+      }
       case 'qty_over':
         return `${billableReceived} arrived but only ${invoiceQty} were billed.`
       case 'qty_short':

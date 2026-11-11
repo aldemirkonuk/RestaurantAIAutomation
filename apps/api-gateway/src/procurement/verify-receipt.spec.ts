@@ -1499,3 +1499,113 @@ describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothi
     expect(calls.orderUpdates).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PRICE AS PRINTED — founder, 2026-10-02, RECEIPTS-W56 (F-103)
+// ---------------------------------------------------------------------------
+
+describe("verifyReceipt — the invoice price is read in the unit it is printed in", () => {
+  /** One case of 24 at an agreed $44.00 the case (ADR 0119 line unit). */
+  const caseOf24Order = {
+    ...deliveredOrder,
+    order_number: "ORD-2026-00056",
+    quantity: 1,
+    bottles_total: 24,
+    unit_type: "case",
+    final_price: 44,
+  };
+  const caseOf24Line = {
+    id: "line-56",
+    unit_type: "case",
+    bottles_per_unit: 24,
+    price_uom: "case",
+    price_pack_size: 24,
+    final_unit_price: 44,
+  };
+  const db56 = () =>
+    makeDb({
+      orderRow: caseOf24Order,
+      orderLineRow: caseOf24Line,
+      bookedBottles: 24,
+    });
+  const body = (extra: Record<string, unknown>) =>
+    ({
+      invoiceQuantity: 24,
+      invoiceUom: "bottle",
+      invoiceCurrency: "USD",
+      acceptedQuantity: 24,
+      countedUom: "bottle",
+      ...extra,
+    }) as any;
+
+  it("matches a case price that names its unit, and writes the per-bottle figure", async () => {
+    const { db, calls } = db56();
+
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      body({ invoiceUnitPrice: 44, invoicePriceUom: "case", invoicePricePackSize: 24 }),
+    );
+
+    expect(calls.orderUpdates[0].match_status).toBe("matched");
+    expect(calls.orderUpdates[0].price_verified).toBe(true);
+    // The column is read PER BOTTLE by the vendor scorecard — never $44.00.
+    expect(calls.orderUpdates[0].invoice_unit_price).toBeCloseTo(44 / 24, 10);
+  });
+
+  it("refuses the same 44 sent with no unit — it means per bottle — against $1.83, naming both units", async () => {
+    const { db, calls } = db56();
+
+    await expect(
+      service(db).verifyReceipt(REST, ORDER, USER, body({ invoiceUnitPrice: 44 })),
+    ).rejects.toThrow(
+      "Billed $44.00 a bottle against an agreed $1.83 a bottle. Accept the price difference with a reason, or correct the invoice price.",
+    );
+    expect(calls.orderUpdates).toEqual([]);
+  });
+
+  it("an overridden case price books a per-bottle cost on the lot and in the price series", async () => {
+    const { db, calls } = db56();
+
+    await service(db).verifyReceipt(
+      REST,
+      ORDER,
+      USER,
+      body({
+        invoiceUnitPrice: 48,
+        invoicePriceUom: "case",
+        invoicePricePackSize: 24,
+        priceOverrideReason: "List price rose, accepted by phone",
+      }),
+    );
+
+    // $48.00 a case of 24 = $2.00 a bottle, landed over 24 accepted.
+    const reval = calls.rpc.find((c) => c.name === "revalue_lot");
+    expect(reval).toBeDefined();
+    expect(reval!.args.p_unit_cost).toBeCloseTo(2, 10);
+    expect(calls.priceHistoryInserts).toHaveLength(1);
+    expect(calls.priceHistoryInserts[0].price).toBeCloseTo(2, 10);
+    expect(calls.priceHistoryInserts[0].notes).toContain(
+      "Invoice price $48.00 a case of 24, read per bottle.",
+    );
+    expect(calls.orderUpdates[0].invoice_unit_price).toBeCloseTo(2, 10);
+    // Accepted by override, so not verified — compared in the case unit.
+    expect(calls.orderUpdates[0].price_verified).toBe(false);
+  });
+
+  it("refuses a keg price on the invoice with a 400 before anything is written", async () => {
+    const { db, calls } = db56();
+
+    await expect(
+      service(db).verifyReceipt(
+        REST,
+        ORDER,
+        USER,
+        body({ invoiceUnitPrice: 44, invoicePriceUom: "keg", invoicePricePackSize: 1 }),
+      ),
+    ).rejects.toThrow(/stated per keg/);
+    expect(calls.orderUpdates).toEqual([]);
+    expect(calls.priceHistoryInserts).toEqual([]);
+  });
+});
