@@ -2514,12 +2514,31 @@ export class DocumentIntakeService {
     return { state: "ingested", documentId: result.documentId, attempts };
   }
 
-  /** Write one attachment's outcome. False when the write failed. */
+  /**
+   * Write one attachment's outcome. False when the write failed.
+   *
+   * THE WRITE ONLY LANDS ON THE ROW AS IT WAS READ: still `pending`, with the
+   * attempt count this run saw. The cron holds no lock, and two gateway
+   * replicas can sweep the same minute; without the guard the run that lost
+   * the race (its `ingest` answers "duplicate" of the paper the other run just
+   * filed FROM THIS SAME FILE) would write "already on file" over "filed", and
+   * a retry write could put a decided row back to `pending`.
+   *
+   * Zero rows matched means another run decided this row first. That is not a
+   * failure of this run, so it carries on; the other run's outcome stands.
+   *
+   * The session's call (2026-11-11, under the 2026-11-07 /goal): an
+   * optimistic guard on the write, not a claim taken before the read.
+   * Rejected: a lease column claimed by `UPDATE … WHERE pending RETURNING`
+   * before downloading (it also stops the second model read, but needs a
+   * lease expiry so a run that dies mid-file does not strand the row, and
+   * that is a migration and a clock for a race one replica never runs).
+   */
   private async recordAttachmentOutcome(
     a: SweepAttachment,
     o: AttachmentOutcome,
   ): Promise<boolean> {
-    const { error } = await this.db
+    const { data, error } = await this.db
       .getClient()
       .from("conversation_attachments")
       .update({
@@ -2529,13 +2548,20 @@ export class DocumentIntakeService {
         last_ingest_reason: o.reason ?? null,
         ingest_decided_at: o.state === "pending" ? null : new Date().toISOString(),
       })
-      .eq("id", a.id);
+      .eq("id", a.id)
+      .eq("ingest_state", "pending")
+      .eq("ingest_attempts", a.ingest_attempts ?? 0)
+      .select("id");
     if (error) {
       this.logger.error(
         `document intake sweep stopped: attachment ${a.id} became ${o.state} but that could not be recorded (${error.message}); stopping so the next run does not read the same files again`,
       );
       return false;
     }
+    if (!data || (Array.isArray(data) && data.length === 0))
+      this.logger.warn(
+        `document intake sweep: attachment ${a.id} was decided by another run while this one read it; this run's outcome (${o.state}) was not written over it`,
+      );
     return true;
   }
 

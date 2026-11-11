@@ -28,8 +28,10 @@ function harness(opts: {
   shaSeen?: Row | null;
   downloadError?: string;
   updateError?: string;
+  /** Another run decided the row first: the guarded write matches nothing. */
+  raced?: boolean;
 }) {
-  const updates: Array<{ id: unknown; patch: Row }> = [];
+  const updates: Array<{ id: unknown; patch: Row; guards: Array<[string, unknown]> }> = [];
   const selects: Array<{ table: string; eqs: Array<[string, unknown]> }> = [];
   const download = jest.fn(async () =>
     opts.downloadError
@@ -43,6 +45,14 @@ function harness(opts: {
       let patch: Row | null = null;
       const chain: any = {
         select: () => {
+          if (patch) {
+            const id = call.eqs.find(([k]) => k === "id")?.[1];
+            updates.push({ id, patch, guards: call.eqs.filter(([k]) => k !== "id") });
+            return Promise.resolve({
+              data: opts.updateError || opts.raced ? [] : [{ id }],
+              error: opts.updateError ? { message: opts.updateError } : null,
+            });
+          }
           selects.push(call);
           return chain;
         },
@@ -52,12 +62,6 @@ function harness(opts: {
         },
         eq: (k: string, v: unknown) => {
           call.eqs.push([k, v]);
-          if (patch) {
-            updates.push({ id: v, patch });
-            return Promise.resolve({
-              error: opts.updateError ? { message: opts.updateError } : null,
-            });
-          }
           return chain;
         },
         order: () => chain,
@@ -103,6 +107,10 @@ describe("row 1.2 — the sweep reads pending attachments only", () => {
     expect(h.updates).toEqual([
       {
         id: "a1",
+        guards: [
+          ["ingest_state", "pending"],
+          ["ingest_attempts", 0],
+        ],
         patch: expect.objectContaining({
           ingest_state: "duplicate",
           ingested_document_id: "earlier-doc",
@@ -177,6 +185,30 @@ describe("row 1.2 — the sweep reads pending attachments only", () => {
       .mockResolvedValue({ documentId: "d", duplicate: true, parsed: null } as never);
     await h.service.sweepUningestedAttachments(2);
     expect(h.download).toHaveBeenCalledTimes(2);
+  });
+
+  it("a row another run decided first is not written over, and the run carries on", async () => {
+    const h = harness({
+      pending: [attachment("a1"), attachment("a2", { ingest_attempts: 1 })],
+      raced: true,
+    });
+    jest
+      .spyOn(h.service, "ingest")
+      .mockResolvedValue({ documentId: "d", duplicate: true, parsed: null } as never);
+    await h.service.sweepUningestedAttachments();
+    // Both rows were tried: a lost race is not a write failure.
+    expect(h.download).toHaveBeenCalledTimes(2);
+    // Each write lands only on the row as this run read it.
+    expect(h.updates.map((u) => u.guards)).toEqual([
+      [
+        ["ingest_state", "pending"],
+        ["ingest_attempts", 0],
+      ],
+      [
+        ["ingest_state", "pending"],
+        ["ingest_attempts", 1],
+      ],
+    ]);
   });
 
   it("an outcome that cannot be written stops the run", async () => {
