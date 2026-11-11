@@ -6,6 +6,7 @@ import { CommunicationsService } from "./communications.service";
 import { CommunicationsController } from "./communications.controller";
 import { ScheduledTasksService } from "./scheduled-tasks.service";
 import { GmailWatchService } from "./gmail-watch.service";
+import { SharedMailboxReaderService } from "./shared-mailbox-reader.service";
 import { RecipientResolverService } from "./recipient-resolver.service";
 import { ScheduledTenantsService } from "./scheduled-tenants.service";
 import { GmailPushAuthService } from "./gmail-push-auth.service";
@@ -72,6 +73,8 @@ import { OrganizationsService } from "../organizations/organizations.service";
     CommunicationsService,
     ScheduledTasksService,
     GmailWatchService,
+    // Gap G2: one reader for the shared mailbox's push, poll and resync.
+    SharedMailboxReaderService,
     RecipientResolverService,
     // ADR 0022 / OD-87 — enumerates which restaurants the crons serve.
     ScheduledTenantsService,
