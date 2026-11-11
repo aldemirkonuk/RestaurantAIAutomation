@@ -29,6 +29,7 @@
 
 import { useState } from 'react';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
+import RecipeNutrition from '../../inventory/next/RecipeNutrition';
 import {
   BOOK_LABEL,
   BOOK_ORDER,
@@ -79,7 +80,7 @@ function Field({
 
 /* ── the recipe: the first writer cocktail_ingredients has ever had ──────── */
 
-function Recipe({ cocktailId }: { cocktailId: string }) {
+export function Recipe({ cocktailId }: { cocktailId: string }) {
   const recipe = useCocktailRecipe(cocktailId);
   const { setRecipe } = useCocktailWrites();
   const [editing, setEditing] = useState(false);
@@ -199,6 +200,17 @@ function Recipe({ cocktailId }: { cocktailId: string }) {
               </li>
             ))}
           </ol>
+          <RecipeNutrition
+            lines={recipe.data!.rows.map((l) => ({
+              name: l.free_text ?? l.freeText ?? 'a line with no name',
+              quantity: l.quantity ?? null,
+              unit: l.unit ?? '',
+              // A recipe line is a sentence, not a link to a stocked good, so there
+              // are no figures to read for it yet: it is unknown, never 0.
+              nutrition: null,
+              allergens: null,
+            }))}
+          />
           <button type="button" className="cl-btn cl-focus" onClick={start} style={{ marginTop: 8 }}>
             <Pencil size={13} aria-hidden />
             Amend the recipe
