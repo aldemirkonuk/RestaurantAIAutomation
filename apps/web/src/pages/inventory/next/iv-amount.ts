@@ -3,8 +3,12 @@
  * book keeps whole g, ml or a count).
  *
  * A kitchen weighs in kilograms and a bar measures in litres, so a good kept in
- * g or ml takes a decimal in kg or l ("2.25" or "2,25" is 2,250 g), or a whole
- * figure with its own small unit ("250 g", "330 ml", "70 cl"). Anything that
+ * g or ml takes a decimal in kg or l ("2.25" or "2,25" is 2,250 g), or a
+ * figure with its unit said ("2 kg", "250 g", "330 ml", "70 cl"). A bare whole
+ * number ("500") is refused and asked about: 500 g of saffron and 500 kg of it
+ * are both whole numbers, and reading one as the other is a thousandfold slip
+ * one hold away from the book. A decimal cannot be grams (the book holds whole
+ * grams), so it is read as kg or l. Zero is zero in any unit. Anything that
  * does not land on a whole g or ml is refused, never rounded: half a gram the
  * book cannot hold would be a quiet change to what was counted. A good kept in
  * bottles, cases, kegs, packs or items takes a whole number, as before.
@@ -23,6 +27,8 @@ export interface AmountUnit {
   hint: string;
   /** The typed text as a whole amount in the book's unit, or null when it is not one. */
   parse: (typed: string) => number | null;
+  /** Why typed text that parse refuses is not read, when there is more to say than "not an amount". */
+  why: (typed: string) => string | null;
   /** An amount in the book's unit, in words: "2.25 kg", "3 bottles". */
   words: (n: number) => string;
 }
@@ -63,8 +69,17 @@ function scaled(intPart: string, frac: string, factor: number): number | null {
 
 const MEASURED = /^(\d{1,9})(?:[.,](\d{1,3}))?\s*([a-zA-Z]*)$/;
 
+/** A bare whole number other than zero ("500"): it does not say whether it is g or kg. */
+function bareWhole(typed: string): number | null {
+  const m = MEASURED.exec(typed.trim());
+  if (!m || m[2] !== undefined || m[3] !== '') return null;
+  const n = Number(m[1]);
+  return n === 0 ? null : n;
+}
+
 function measuredParser(factors: Record<string, number>) {
   return (typed: string): number | null => {
+    if (bareWhole(typed) !== null) return null;
     const m = MEASURED.exec(typed.trim());
     if (!m) return null;
     const factor = factors[m[3].toLowerCase()];
@@ -88,8 +103,12 @@ export function amountUnit(uom: string | null | undefined): AmountUnit {
       base: 'g',
       whole: false,
       fieldUnit: 'kg',
-      hint: 'In kilograms: 2.25 is 2.25 kg. Or type grams, as 250 g.',
+      hint: 'In kilograms with a point, as 2.25 or 0.5; or say the unit, as 2 kg or 250 g.',
       parse: measuredParser({ '': 1000, kg: 1000, g: 1 }),
+      why: (typed) => {
+        const n = bareWhole(typed);
+        return n === null ? null : `Say which: ${fmtCount(n)} g or ${fmtCount(n)} kg.`;
+      },
       words: (n) => exactMeasure(n, 'g', 'kg'),
     };
   }
@@ -98,8 +117,12 @@ export function amountUnit(uom: string | null | undefined): AmountUnit {
       base: 'ml',
       whole: false,
       fieldUnit: 'l',
-      hint: 'In litres: 1.5 is 1.5 l. Or type 70 cl or 330 ml.',
+      hint: 'In litres with a point, as 1.5 or 0.75; or say the unit, as 2 l, 70 cl or 330 ml.',
       parse: measuredParser({ '': 1000, l: 1000, cl: 10, ml: 1 }),
+      why: (typed) => {
+        const n = bareWhole(typed);
+        return n === null ? null : `Say which: ${fmtCount(n)} ml or ${fmtCount(n)} l.`;
+      },
       words: (n) => exactMeasure(n, 'ml', 'l'),
     };
   }
@@ -111,6 +134,7 @@ export function amountUnit(uom: string | null | undefined): AmountUnit {
     fieldUnit: plural,
     hint: `A whole number of ${plural}.`,
     parse: wholeParser,
+    why: () => null,
     words: (n) => (base === 'each' ? `${fmtCount(n)} ${n === 1 ? 'item' : 'items'}` : fmtQty(n, base)),
   };
 }
