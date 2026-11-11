@@ -308,14 +308,10 @@ class EmailParsingAgent(BaseAgent):
         did, only because it was also missing from the orchestrator's registry:
         two defects hiding each other.
 
-        Only one routing key is subscribed, so the payload IS the message.
+        Files nothing: the gateway bridge is the one writer. The pipeline below
+        read ``self.db``, never set; wired, it would file each letter twice.
         """
-        payload = message
-
-        # Our own upstream classifier re-publishes OPERATIONAL mail to this same
-        # key with this flag set. Parsing it here is correct and intended — the
-        # flag exists to stop EmailIntelAgent reprocessing it, not this agent.
-        await self._process_inbound_email(payload)
+        return None
 
     # ── Core Processing ──────────────────────────────────────────────
 
