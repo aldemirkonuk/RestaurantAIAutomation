@@ -111,6 +111,9 @@ describe('LineRow', () => {
   it.each([
     ['size_not_known', 'bottle', 'ml', "No price yet: your shelf doesn't say how much one bottle of gin holds."],
     ['pack_size_not_known', 'case', 'ml', "No price: gin is counted by the case, and your shelf doesn't say what one holds. Link the line to the single bottle you pour from."],
+    ['pack_size_not_known', 'glass', 'oz', "No price: gin is counted by the glass, and your shelf doesn't say what one holds. Link the line to the single bottle you pour from."],
+    ['pack_size_not_known', 'pack', 'g', "No price: gin is counted by the pack, and your shelf doesn't say what one holds. Link the line to something your shelf counts by weight, in g or kg."],
+    ['pack_size_not_known', 'case', 'kg', "No price: gin is counted by the case, and your shelf doesn't say what one holds. Link the line to something your shelf counts by weight, in g or kg."],
     ['unit_mismatch', 'kg', 'ml', 'No price: this line is measured by volume, but gin is counted in kg. Change the unit, or link the item it pours from.'],
     ['unit_mismatch', 'bottle', 'each', 'No price: this line is counted by the piece, but gin is counted by the bottle. Change the unit, or link the item it pours from.'],
     ['unit_mismatch', 'l', 'g', 'No price: this line is weighed, but gin is counted in l. Change the unit, or link the item it pours from.'],
@@ -118,6 +121,19 @@ describe('LineRow', () => {
     const linked = { ...blank, inventoryId: GIN, itemName: 'gin', label: 'gin', itemUom: uom, unit };
     mount(<Harness start={{ ...linked, saved: { status: 'linked', costPerServe: null, costBasis: basis } }} say={(n) => `₺${n}`} />);
     expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
+  it('a line under half a cent is said as under a cent, never as free or as a cent it does not cost', () => {
+    const linked = { ...blank, inventoryId: GIN, itemName: 'gin', label: 'gin' };
+    const say = (n: number) => `₺${n.toFixed(2)}`;
+    const { unmount } = mount(
+      <Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 0, costPerServeExact: 0.004, costBasis: 'lot_wac' } }} say={say} />,
+    );
+    expect(screen.getByText('Under ₺0.01 a serve')).toBeInTheDocument();
+    unmount();
+    // A good that truly costs nothing, or an older gateway with no six-place figure, reads as the cents say.
+    mount(<Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 0, costPerServeExact: 0, costBasis: 'lot_wac' } }} say={say} />);
+    expect(screen.getByText('₺0.00 a serve')).toBeInTheDocument();
   });
 
   it('a line priced from part of the stock says so beside its cost', () => {

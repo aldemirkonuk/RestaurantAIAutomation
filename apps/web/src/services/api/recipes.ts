@@ -31,7 +31,10 @@ export interface RecipeLine {
   qtyBase: number;
   baseUnit: string;
   status: RecipeLineStatus;
-  /** Cents that add up to the total when it is known. */
+  /**
+   * The line's own cost, rounded to the cent on its own: equal costs read the
+   * same, and the lines can be a cent off the total, which is rounded once.
+   */
   costPerServe: number | null;
   /** The same cost at six places. */
   costPerServeExact?: number | null;

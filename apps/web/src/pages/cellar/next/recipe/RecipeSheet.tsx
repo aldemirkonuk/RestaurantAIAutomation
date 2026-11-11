@@ -101,7 +101,7 @@ function fromServer(l: RecipeLine): DraftRow {
     qtyText: qtyText(l.qtyEntered),
     storedQty: l.qtyEntered,
     unit: (l.unitCode as DraftRow['unit']) ?? '',
-    saved: { status: l.status, costPerServe: l.costPerServe, costBasis: l.costBasis },
+    saved: { status: l.status, costPerServe: l.costPerServe, costPerServeExact: l.costPerServeExact ?? null, costBasis: l.costBasis },
   };
 }
 

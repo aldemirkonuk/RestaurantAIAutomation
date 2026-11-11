@@ -34,7 +34,13 @@ export interface DraftRow {
   storedQty?: number | null;
   unit: RecipeUnit | '';
   /** What the server last said about this line; dropped once it is edited. */
-  saved: { status: RecipeLineStatus; costPerServe: number | null; costBasis: string | null } | null;
+  saved: {
+    status: RecipeLineStatus;
+    costPerServe: number | null;
+    /** The same cost at six places, so a line under half a cent is not said as free. */
+    costPerServeExact?: number | null;
+    costBasis: string | null;
+  } | null;
 }
 
 /** The line's amount: the stored number while the box is as loaded, else what was typed. */
@@ -63,6 +69,17 @@ function measuredHow(unit: DraftRow['unit']): string {
 }
 
 /**
+ * A line's cost in words. Each line is rounded to the cent on its own, so a
+ * good that costs 0.004 a serve rounds to 0.00; it is said as under a cent,
+ * never as free and never as a cent it does not cost.
+ */
+function costWords(saved: NonNullable<DraftRow['saved']>, say: (n: number) => string): string {
+  const cents = saved.costPerServe as number;
+  const exact = saved.costPerServeExact;
+  return cents === 0 && exact != null && exact > 0 ? `Under ${say(0.01)}` : say(cents);
+}
+
+/**
  * The sentence under a line an editor is working on, or null. Money sentences
  * only when `say` is given. Staff never get one: nothing in it is theirs to
  * act on (round 17, D7).
@@ -87,18 +104,26 @@ export function rowNote(
   if (!say || !row.saved) return null;
   const basis = row.saved.costBasis;
   if (row.saved.costPerServe != null) {
+    const cost = costWords(row.saved, say);
     return basis === 'invoice_lot_wac_partial'
-      ? { tone: 'ink', text: `${say(row.saved.costPerServe)} a serve, from the bottles that have an invoice; some on hand have none yet.` }
-      : { tone: 'ink', text: `${say(row.saved.costPerServe)} a serve` };
+      ? { tone: 'ink', text: `${cost} a serve, from the bottles that have an invoice; some on hand have none yet.` }
+      : { tone: 'ink', text: `${cost} a serve` };
   }
   const item = row.itemName ?? rowName(row);
   if (basis === 'size_not_known') {
     return { tone: 'warn', text: `No price yet: your shelf doesn't say how much one ${row.itemUom ?? 'bottle'} of ${item} holds.` };
   }
   if (basis === 'pack_size_not_known') {
+    // The gateway names this for a volume line and for a weighed one. A
+    // weighed line has no bottle to pour from: its way to a price is a good
+    // the shelf counts by weight.
+    const fix =
+      row.unit === 'g' || row.unit === 'kg'
+        ? 'Link the line to something your shelf counts by weight, in g or kg.'
+        : 'Link the line to the single bottle you pour from.';
     return {
       tone: 'warn',
-      text: `No price: ${item} is counted ${countedHow(row.itemUom)}, and your shelf doesn't say what one holds. Link the line to the single bottle you pour from.`,
+      text: `No price: ${item} is counted ${countedHow(row.itemUom)}, and your shelf doesn't say what one holds. ${fix}`,
     };
   }
   if (basis === 'unit_mismatch') {
