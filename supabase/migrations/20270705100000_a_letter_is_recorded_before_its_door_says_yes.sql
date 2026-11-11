@@ -67,6 +67,9 @@ revoke all on public.mail_intake from anon, authenticated;
 create table if not exists public.mail_door_cursors (
   door text primary key,
   cursor text null,
+  -- The last read that FINISHED (no error). A resync after Gmail drops the
+  -- cursor starts from here, so a read that failed must never move it: the
+  -- outage window would fall out of the next resync and be skipped.
   last_read_at timestamptz null,
   last_stored_at timestamptz null,
   last_error text null,
@@ -80,6 +83,11 @@ revoke all on public.mail_door_cursors from anon, authenticated;
 -- tick) can finish out of order; the slower one must not rewind the cursor
 -- and make the faster one's letters be read again forever, nor (worse) the
 -- other way round. Gmail historyIds are increasing decimal strings.
+--
+-- `last_read_at` moves only when the read finished (`p_error` is null). A
+-- read that stopped records its error and may still move the cursor past the
+-- letters it did record, but it is not a finished read: the resync floor and
+-- "when did this door last read" both stay at the last one that was.
 create or replace function public.advance_mail_door_cursor(
   p_door text,
   p_cursor text,
@@ -96,7 +104,8 @@ begin
   insert into public.mail_door_cursors as c
     (door, cursor, last_read_at, last_stored_at, last_error, updated_at)
   values
-    (p_door, p_cursor, now(), case when p_stored then now() end, p_error, now())
+    (p_door, p_cursor, case when p_error is null then now() end,
+     case when p_stored then now() end, p_error, now())
   on conflict (door) do update set
     cursor = case
       when excluded.cursor is null then c.cursor
@@ -105,7 +114,7 @@ begin
         and excluded.cursor::numeric < c.cursor::numeric then c.cursor
       else excluded.cursor
     end,
-    last_read_at = now(),
+    last_read_at = case when p_error is null then now() else c.last_read_at end,
     last_stored_at = case when p_stored then now() else c.last_stored_at end,
     last_error = p_error,
     updated_at = now()
