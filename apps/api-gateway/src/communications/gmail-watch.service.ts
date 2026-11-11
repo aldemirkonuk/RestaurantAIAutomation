@@ -8,6 +8,26 @@ import { ConfigService } from "@nestjs/config";
 import { google, gmail_v1 } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import { CacheService } from "../common/cache/cache.service";
+import { DatabaseService } from "../database/database.service";
+
+/** The shared mailbox's row in `mail_door_cursors`. */
+export const SHARED_MAILBOX_DOOR = "shared_mailbox";
+
+/** One `history.list` record and the INBOX messages it added. */
+export interface HistoryEntry {
+  historyId: string;
+  messageIds: string[];
+}
+
+/** Everything added since a cursor, every page read. */
+export interface HistorySince {
+  entries: HistoryEntry[];
+  /** The mailbox's historyId at the time of the read. */
+  latest: string | null;
+  /** True when Gmail no longer has the cursor (404): a resync is owed. */
+  expired: boolean;
+}
+
 
 /**
  * GmailWatchService manages Gmail API push notifications via Google Pub/Sub.
@@ -32,6 +52,7 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly configService: ConfigService,
     private readonly cacheService: CacheService,
+    private readonly database?: DatabaseService,
   ) {}
 
   async onModuleInit() {
@@ -105,8 +126,8 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
   /**
    * Start or renew the Gmail watch subscription
    */
-  async startWatch(): Promise<void> {
-    if (!this.isConfigured) return;
+  async startWatch(): Promise<string | null> {
+    if (!this.isConfigured) return null;
 
     const topicName = this.configService.get<string>("GMAIL_PUBSUB_TOPIC");
     const labelIds = this.configService
@@ -145,6 +166,7 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
       this.logger.log(
         `Gmail Watch started — historyId: ${historyId}, expires: ${expiration ? new Date(Number(expiration)).toISOString() : "unknown"}`,
       );
+      return historyId ? historyId.toString() : null;
     } catch (error) {
       this.logger.error(`Failed to start Gmail watch: ${error}`);
       throw error;
@@ -231,6 +253,122 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * The shared mailbox's cursor, from `mail_door_cursors`. Seeded once from
+   * the legacy Redis key so a deploy does not skip the letters in between.
+   * Throws when the row cannot be read: a reader must not guess a cursor.
+   */
+  async readCursor(): Promise<{
+    cursor: string | null;
+    lastReadAt: string | null;
+  }> {
+    if (!this.database) return { cursor: null, lastReadAt: null };
+    const { data, error } = await this.database.supabase
+      .from("mail_door_cursors")
+      .select("cursor, last_read_at")
+      .eq("door", SHARED_MAILBOX_DOOR)
+      .maybeSingle();
+    if (error) {
+      throw new Error(`the shared mailbox cursor could not be read (${error.message})`);
+    }
+    if (data?.cursor) {
+      return { cursor: data.cursor, lastReadAt: data.last_read_at ?? null };
+    }
+    const legacy = await this.cacheService
+      .get<string>(this.HISTORY_ID_KEY)
+      .catch(() => null);
+    return { cursor: legacy ? String(legacy) : null, lastReadAt: null };
+  }
+
+  /**
+   * Move the cursor forward (never back: `advance_mail_door_cursor`). Also
+   * records that the door read, and whether it stored a letter.
+   */
+  async advanceCursor(
+    historyId: string | null,
+    stored: boolean,
+    error: string | null = null,
+  ): Promise<void> {
+    if (!this.database) return;
+    const { error: rpcError } = await this.database.supabase.rpc(
+      "advance_mail_door_cursor",
+      {
+        p_door: SHARED_MAILBOX_DOOR,
+        p_cursor: historyId,
+        p_stored: stored,
+        p_error: error,
+      },
+    );
+    if (rpcError) {
+      throw new Error(`the shared mailbox cursor could not be saved (${rpcError.message})`);
+    }
+  }
+
+  /**
+   * Every INBOX message added since `sinceHistoryId`, reading every page
+   * (gap G2: one call with no pageToken used to drop everything past the
+   * first page). A 404 says Gmail no longer has the cursor; the caller then
+   * resyncs by date instead of skipping the gap.
+   */
+  async historySince(sinceHistoryId: string): Promise<HistorySince> {
+    if (!this.isConfigured) return { entries: [], latest: null, expired: false };
+    const entries: HistoryEntry[] = [];
+    let latest: string | null = null;
+    let pageToken: string | undefined;
+    try {
+      do {
+        const res = await this.gmail.users.history.list({
+          userId: "me",
+          startHistoryId: sinceHistoryId,
+          historyTypes: ["messageAdded"],
+          labelId: "INBOX",
+          pageToken,
+        });
+        for (const h of res.data.history || []) {
+          const ids = (h.messagesAdded || [])
+            .map((a) => a.message?.id)
+            .filter((id): id is string => !!id);
+          if (h.id) entries.push({ historyId: String(h.id), messageIds: ids });
+        }
+        if (res.data.historyId) latest = String(res.data.historyId);
+        pageToken = res.data.nextPageToken || undefined;
+      } while (pageToken);
+    } catch (error: any) {
+      if (error?.code === 404) {
+        this.logger.warn("Gmail no longer has the stored historyId; a resync by date is owed");
+        return { entries: [], latest: null, expired: true };
+      }
+      throw error;
+    }
+    return { entries, latest, expired: false };
+  }
+
+  /** INBOX message ids received after `afterEpochSeconds`, every page, capped. */
+  async inboxIdsSince(afterEpochSeconds: number, cap = 500): Promise<string[]> {
+    if (!this.isConfigured) return [];
+    const ids: string[] = [];
+    let pageToken: string | undefined;
+    do {
+      const res = await this.gmail.users.messages.list({
+        userId: "me",
+        labelIds: ["INBOX"],
+        q: `after:${Math.floor(afterEpochSeconds)}`,
+        maxResults: 100,
+        pageToken,
+      });
+      for (const m of res.data.messages || []) if (m.id) ids.push(m.id);
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken && ids.length < cap);
+    return ids.slice(0, cap);
+  }
+
+  /** The mailbox's current historyId (`users.getProfile`). */
+  async currentHistoryId(): Promise<string | null> {
+    if (!this.isConfigured) return null;
+    const res = await this.gmail.users.getProfile({ userId: "me" });
+    return res.data.historyId ? String(res.data.historyId) : null;
+  }
+
+  /**
    * Fetch a single attachment's bytes (base64url) by messageId + attachmentId.
    * Returns null if the service isn't configured or the fetch fails.
    */
@@ -270,6 +408,26 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.error(`Failed to get message ${messageId}: ${error}`);
       return null;
+    }
+  }
+
+  /**
+   * One message, full. Null only when Gmail says it is gone (404); any other
+   * failure throws, so a reader stops rather than skip a letter it could not
+   * fetch (gap G2). `getMessage` above keeps its null-on-anything contract.
+   */
+  async fetchMessage(messageId: string): Promise<gmail_v1.Schema$Message | null> {
+    if (!this.isConfigured) return null;
+    try {
+      const response = await this.gmail.users.messages.get({
+        userId: "me",
+        id: messageId,
+        format: "full",
+      });
+      return response.data;
+    } catch (error: any) {
+      if (error?.code === 404) return null;
+      throw error;
     }
   }
 
