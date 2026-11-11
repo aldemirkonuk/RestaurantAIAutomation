@@ -10,6 +10,7 @@
  * Every store lists house B's rows FIRST, so a lookup that is not scoped to
  * the receiving house resolves to house B.
  */
+import { fakeIntake, fakeWatch, reader } from "./testing/shared-mailbox";
 import { CommunicationsController } from "./communications.controller";
 import { receivingHouse } from "./shared-mailbox-house";
 import { bridge, inbound, memoryDb, Row } from "./testing/mail-store";
@@ -343,23 +344,7 @@ describe("the shared-mailbox publishers stamp the receiving house", () => {
     const published: any[] = [];
     const db = memoryDb(tables);
     const messages = [MSG("g1", "gt-A"), MSG("g2", "gt-fresh")];
-    const watch: any = {
-      isReady: () => true,
-      getLastHistoryId: async () => "1",
-      updateHistoryId: async () => undefined,
-      fetchNewMessages: async () => messages,
-      getMessage: async (id: string) => messages.find((m) => m.id === id),
-      startWatch: async () => undefined,
-      gmail: {
-        users: {
-          messages: {
-            list: async () => ({
-              data: { messages: messages.map((m) => ({ id: m.id })) },
-            }),
-          },
-        },
-      },
-    };
+    const { watch } = fakeWatch(messages);
     const c = new CommunicationsController(
       {} as any,
       { getSenderEmail: () => "house@mudavym.example" } as any,
@@ -372,6 +357,7 @@ describe("the shared-mailbox publishers stamp the receiving house", () => {
       { get: () => undefined } as any,
       db as any,
       { verifyPushRequest: async () => true } as any,
+      reader(watch, fakeIntake(published).intake, db),
     );
     return { c, published };
   }

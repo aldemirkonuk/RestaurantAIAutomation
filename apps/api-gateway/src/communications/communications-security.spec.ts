@@ -7,6 +7,8 @@
  *
  * Every assertion below fails against the pre-fix controller.
  */
+import { SharedMailboxReaderService } from "./shared-mailbox-reader.service";
+import { PlatformOperatorGuard } from "../common/orchestrator/platform-operator.service";
 import "reflect-metadata";
 import { NotFoundException, UnauthorizedException } from "@nestjs/common";
 import { GUARDS_METADATA } from "@nestjs/common/constants";
@@ -330,9 +332,11 @@ describe("CommunicationsController.handleGmailWebhook (ADR 0019 D3)", () => {
   const makeController = (verified: boolean) => {
     const gmailWatchService = {
       isReady: jest.fn().mockReturnValue(true),
-      getLastHistoryId: jest.fn().mockResolvedValue("1"),
-      fetchNewMessages: jest.fn().mockResolvedValue([]),
-      updateHistoryId: jest.fn(),
+      readCursor: jest.fn().mockResolvedValue({ cursor: "1", lastReadAt: null }),
+      historySince: jest
+        .fn()
+        .mockResolvedValue({ entries: [], latest: "2", expired: false }),
+      advanceCursor: jest.fn(),
     };
     const orchestratorService = { publishEvent: jest.fn() };
     const gmailPushAuthService = {
@@ -347,6 +351,13 @@ describe("CommunicationsController.handleGmailWebhook (ADR 0019 D3)", () => {
       { get: () => "" } as any,
       {} as any,
       gmailPushAuthService as any,
+      new SharedMailboxReaderService(
+        gmailWatchService as any,
+        { recordAndPublish: orchestratorService.publishEvent } as any,
+        { getSenderEmail: () => "wineops.ai@gmail.com" } as any,
+        { get: () => "" } as any,
+        {} as any,
+      ),
     );
     return {
       controller,
@@ -374,7 +385,7 @@ describe("CommunicationsController.handleGmailWebhook (ADR 0019 D3)", () => {
 
     // The whole point: no inbox fetch, no republish onto email.events.
     expect(gmailWatchService.isReady).not.toHaveBeenCalled();
-    expect(gmailWatchService.fetchNewMessages).not.toHaveBeenCalled();
+    expect(gmailWatchService.historySince).not.toHaveBeenCalled();
     expect(orchestratorService.publishEvent).not.toHaveBeenCalled();
   });
 
@@ -397,7 +408,7 @@ describe("CommunicationsController.handleGmailWebhook (ADR 0019 D3)", () => {
     );
 
     expect(result).toEqual({ status: "processed", messages: 0 });
-    expect(gmailWatchService.fetchNewMessages).toHaveBeenCalledWith("1");
+    expect(gmailWatchService.historySince).toHaveBeenCalledWith("1");
   });
 });
 
@@ -408,5 +419,11 @@ describe("CommunicationsController.forceGmailFetch (ADR 0019 D3)", () => {
 
   it("is not production-gated: operators need it to recover missed replies", () => {
     expect(routeGuards("forceGmailFetch")).not.toContain(NonProductionGuard);
+  });
+
+  // Gap G7 (2026-11-11): it used to answer any signed-in member of any house
+  // and replay the whole deployment's inbox.
+  it("needs a platform operator, not just any signed-in member", () => {
+    expect(routeGuards("forceGmailFetch")).toContain(PlatformOperatorGuard);
   });
 });
