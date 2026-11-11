@@ -12,7 +12,7 @@
 import { Logger } from "@nestjs/common";
 import { DashboardService } from "../dashboard/dashboard.service";
 import { InventoryService } from "../inventory/inventory.service";
-import { summarizeStock } from "./stock-status";
+import { LowStockListUnreadError, summarizeStock } from "./stock-status";
 
 const COUNTED = "2026-11-01T10:00:00Z";
 
@@ -99,13 +99,14 @@ describe("OD-161 — the dashboard and /inventory count the same wines one way",
     );
   });
 
-  it("agrees again when the view could not be read", async () => {
-    const { inv, dash } = await both(ROWS, null);
-    expect(dash.criticalCount).toBe(inv.criticalCount);
-    expect(dash.lowStockCount).toBe(inv.lowStockCount);
-    expect(dash.healthyCount).toBe(inv.healthyCount);
-    // Every never-counted row is unknown without the view.
-    expect(inv.unknownCount).toBe(3);
+  it("both refuse, never 0 low, when the view could not be read", async () => {
+    const db = dbWith(ROWS, null);
+    await expect(
+      new InventoryService(db as any).getInventorySummary("r1"),
+    ).rejects.toThrow(LowStockListUnreadError);
+    await expect(
+      (new DashboardService(db as any) as any).getInventorySummary("r1"),
+    ).rejects.toThrow(LowStockListUnreadError);
   });
 
   it("is one pure helper both summaries read", () => {
@@ -116,7 +117,9 @@ describe("OD-161 — the dashboard and /inventory count the same wines one way",
       unknownCount: 1,
       healthyCount: 1,
     });
-    expect(summarizeStock(null, null)).toEqual({
+    expect(() => summarizeStock(null, VIEW)).toThrow(LowStockListUnreadError);
+    expect(() => summarizeStock(ROWS, null)).toThrow(LowStockListUnreadError);
+    expect(summarizeStock([], [])).toEqual({
       lowStockCount: 0,
       criticalCount: 0,
       atParCount: 0,

@@ -1515,8 +1515,9 @@ export class InventoryService {
     // the page can no longer disagree about the same wine.
     //
     // OD-161: a wine nobody has counted is `unknown` unless the view holds it
-    // (receipts and sales put it below par); see `bandOfRow`. A failed view
-    // read classifies no uncounted row.
+    // (receipts and sales put it below par); see `bandOfRow`. Which rows can
+    // run low is the view's answer alone, and a view not read refuses
+    // (LowStockListUnreadError) rather than count 0 low.
     const {
       lowStockCount,
       criticalCount,

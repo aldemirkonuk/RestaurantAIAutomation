@@ -231,12 +231,14 @@ export default function InventoryNext() {
   // shows every title rather than an empty list that would read as none.
   const alerted = data.alerted ?? null;
   const activeChip: ChipId =
-    (chip === 'dead' && data.paceUnread) || (chip === 'alerts' && alerted === null) ? 'all' : chip;
+    (chip === 'dead' && data.paceUnread) ||
+    (chip === 'below' && alerted === null) ||
+    (chip === 'alerts' && alerted === null) ? 'all' : chip;
   const chipCounts = useMemo(() => {
     const now = Date.now();
     const m = new Map<ChipId, number>();
     for (const c of CHIPS) {
-      if (c.id === 'alerts' && alerted === null) continue;
+      if ((c.id === 'alerts' || c.id === 'below') && alerted === null) continue;
       m.set(c.id, (rows ?? []).filter((r) => chipMatch(r, c.id, now, alerted)).length);
     }
     return m;
@@ -684,7 +686,7 @@ export default function InventoryNext() {
           /* ── the book ───────────────────────────────────────────────── */
           <>
             <p className="iv-read" data-testid="inventory-read-sentence">
-              {readSentence(rows, data.currency, !locs.unavailable)}
+              {readSentence(rows, data.currency, !locs.unavailable, alerted)}
             </p>
             {data.stale ? (
               <p className="iv-note" role="status">
@@ -707,7 +709,7 @@ export default function InventoryNext() {
                   >
                     {c.label} <span className="iv-num">{EM}</span>
                   </button>
-                ) : c.id === 'alerts' && alerted === null ? (
+                ) : (c.id === 'alerts' || c.id === 'below') && alerted === null ? (
                   <button
                     key={c.id}
                     type="button"
