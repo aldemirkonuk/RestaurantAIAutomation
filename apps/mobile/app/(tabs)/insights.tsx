@@ -16,6 +16,7 @@ import {
   useTodayPulse,
 } from "@/api/queries";
 import type { InventoryItem } from "@/api/types";
+import { totalStockValue, totalStockValueText } from "@/lib/stockValue";
 
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL;
 
@@ -60,10 +61,8 @@ export default function InsightsScreen() {
       .slice(0, 5);
     const reorder = items.filter((i) => i.reorderSuggested);
     const dead = items.filter((i) => i.deadStock);
-    const deadValue = dead.reduce(
-      (sum, i) => sum + (i.quantity ?? i.lotLiveQty ?? 0) * (i.wac ?? 0),
-      0,
-    );
+    // A wine with no recorded cost is counted, never summed as $0.
+    const deadValue = totalStockValue(dead);
     const abc = { A: 0, B: 0, C: 0 } as Record<"A" | "B" | "C", number>;
     for (const i of items) {
       if (i.abcClass && abc[i.abcClass] != null) abc[i.abcClass] += 1;
@@ -317,7 +316,7 @@ export default function InsightsScreen() {
             label="Sitting still"
             value={
               analytics.dead.length
-                ? `${analytics.dead.length} wines · ${money(analytics.deadValue)} idle`
+                ? `${analytics.dead.length} wines · ${totalStockValueText(analytics.deadValue, money)} idle`
                 : "None"
             }
           />

@@ -163,3 +163,33 @@ describe('RowExpansion — moving bottles between locations', () => {
     expect(transferStock.mock.calls[0][1].fromLocationId).not.toBeNull()
   })
 })
+
+describe('RowExpansion — an unknown cost is said, never $0 and never the library price', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+    fetchAuctionLotRecords.mockResolvedValue([])
+  })
+
+  function paidLine() {
+    return screen.getByText('You paid (WAC)').nextElementSibling as HTMLElement
+  }
+
+  it('no recorded cost: "cost not known yet", not the library price (42) or $0.00', () => {
+    renderRow({ wac: undefined })
+    expect(paidLine()).toHaveTextContent('cost not known yet')
+    expect(paidLine()).not.toHaveTextContent('$42.00')
+    expect(paidLine()).not.toHaveTextContent('$0.00')
+  })
+
+  it('a library price of 0 is still not a cost', () => {
+    renderRow({ wac: undefined, price: 0 } as Partial<InventoryItem>)
+    expect(paidLine()).toHaveTextContent('cost not known yet')
+  })
+
+  it('a recorded cost is shown as itself', () => {
+    renderRow({ wac: 12.5 })
+    expect(paidLine()).toHaveTextContent('$12.50')
+  })
+})

@@ -477,3 +477,24 @@ describe('InventoryCommandPage — the empty table says which of three facts it 
     expect(screen.queryByText(/match this search/)).not.toBeInTheDocument();
   });
 });
+
+describe('InventoryCommandPage — value on hand never sums an unknown cost as $0', () => {
+  it('counts the wine with no recorded cost instead of adding it as $0, and its row says so', async () => {
+    routeGets({
+      'inventory-low-stock': [],
+      'inventory-summary': { totalWines: 2, totalValue: 0 },
+      'inventory-list': [
+        { id: 'row-1', wineId: 'wine-1', wineName: 'Known cost', stockLive: 6, shadowStock: 0, thresholdMin: 2, wac: 10, costProvenance: 'invoice' },
+        { id: 'row-2', wineId: 'wine-2', wineName: 'No cost yet', stockLive: 4, shadowStock: 0, thresholdMin: 2 },
+      ],
+    });
+
+    mount();
+
+    const label = await screen.findByText('Value on hand');
+    const card = label.closest('div')?.parentElement as HTMLElement;
+    await waitFor(() => expect(card).toHaveTextContent('$60 + 1 wine whose cost is not known yet'));
+    const row = (await screen.findAllByText('No cost yet'))[0].closest('[data-inv-row]') as HTMLElement;
+    expect(row).toHaveTextContent('cost not known yet');
+  });
+});

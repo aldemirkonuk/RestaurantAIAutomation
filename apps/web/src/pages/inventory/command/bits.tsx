@@ -5,6 +5,7 @@
 import { classifyStock } from '../../../lib/inventoryStatus'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
+import { unitCostOf } from './stock-value'
 
 export const fmtMoney = (n?: number | null) =>
   n == null || !Number.isFinite(n) ? '-' : `$${Math.round(n).toLocaleString()}`
@@ -21,7 +22,8 @@ export function runwayDays(item: InventoryItem): number | null {
 }
 
 export function marketDeltaPct(item: InventoryItem): number | null {
-  const paid = item.wac ?? item.price
+  // The recorded cost only: the library's reference price is not what the house paid.
+  const paid = unitCostOf(item)
   if (!paid || !item.marketPrice) return null
   return ((item.marketPrice - paid) / paid) * 100
 }

@@ -64,7 +64,7 @@ export interface InventoryItem {
   minimum_stock?: number;
   unit_price?: number | null;
   wac?: number;
-  costProvenance?: "invoice" | "estimated";
+  costProvenance?: "invoice" | "agreed" | "estimated";
   lotLiveQty?: number;
   openMl?: number;
   // Phase 2d/2e analytics, embedded per item

@@ -78,6 +78,13 @@ import {
   type RowFlag,
 } from "./bits";
 import { RowExpansion } from "./RowExpansion";
+import {
+  COST_NOT_KNOWN,
+  stockValue,
+  stockValueText,
+  totalStockValue,
+  totalStockValueText,
+} from "./stock-value";
 import { HouseItemResearchUnread, NameThisWineHint } from "./NameThisWine";
 // Moved to components/mudavym (founder, 2026-09-22, round 6z, verbatim pick 8:
 // "Queue it; Mudavym + hold (Recommended)") — the card is now built on the
@@ -469,15 +476,20 @@ export function InventoryCommandPage() {
     const items = activeFlag
       ? filteredInventory.filter((i) => rowFlags(i).includes(activeFlag))
       : [...filteredInventory];
-    const val = (i: InventoryItem) =>
-      (i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0));
+    // An unknown cost is not 0: those wines sort after every known value,
+    // in either direction (see the sort call below).
+    const val = (i: InventoryItem) => stockValue(i);
     // Comparator in the key's natural ascending order; sortDir flips it.
     const cmp = (a: InventoryItem, b: InventoryItem) => {
       switch (sort) {
         case "velocity":
           return (a.velocityPerDay ?? 0) - (b.velocityPerDay ?? 0);
-        case "value":
-          return val(a) - val(b);
+        case "value": {
+          const va = val(a);
+          const vb = val(b);
+          if (va == null || vb == null) return 0;
+          return va - vb;
+        }
         case "name":
           return a.name.localeCompare(b.name);
         default: {
@@ -487,7 +499,14 @@ export function InventoryCommandPage() {
         }
       }
     };
-    items.sort((a, b) => (sortDir === "asc" ? cmp(a, b) : -cmp(a, b)));
+    items.sort((a, b) => {
+      if (sort === "value") {
+        const ua = val(a) == null;
+        const ub = val(b) == null;
+        if (ua !== ub) return ua ? 1 : -1;
+      }
+      return sortDir === "asc" ? cmp(a, b) : -cmp(a, b);
+    });
     return items;
   }, [filteredInventory, activeFlag, sort, sortDir]);
 
@@ -585,18 +604,14 @@ export function InventoryCommandPage() {
           return r == null ? "" : Math.round(r);
         },
       },
-      { header: "WAC", value: (i) => i.wac ?? i.price ?? "" },
+      { header: "WAC", value: (i) => i.wac ?? COST_NOT_KNOWN },
       // The house's own prices (ADR 0193), beside -- never instead of -- Market.
       { header: "Your bottle price", value: (i) => i.menuPriceBottle ?? "" },
       { header: "Your glass price", value: (i) => i.menuPriceGlass ?? "" },
       { header: "Market", value: (i) => i.marketPrice ?? "" },
       {
         header: "Value",
-        value: (i) =>
-          (
-            (i.wac ?? i.price ?? 0) *
-            ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
-          ).toFixed(2),
+        value: (i) => stockValueText(stockValue(i), (n) => n.toFixed(2)),
       },
     ],
     [],
@@ -645,14 +660,10 @@ export function InventoryCommandPage() {
           return r == null ? "" : Math.round(r);
         },
       },
-      { header: "WAC", value: (i) => i.wac ?? i.price ?? "" },
+      { header: "WAC", value: (i) => i.wac ?? COST_NOT_KNOWN },
       {
         header: "Value",
-        value: (i) =>
-          (
-            (i.wac ?? i.price ?? 0) *
-            ((i.liveStock ?? 0) + (i.shadowStock ?? 0))
-          ).toFixed(2),
+        value: (i) => stockValueText(stockValue(i), (n) => n.toFixed(2)),
       },
       { header: "Observation", value: (i) => countObservation(i) },
     ],
@@ -846,12 +857,8 @@ export function InventoryCommandPage() {
   }, [menu]);
 
   const kpis = useMemo(() => {
-    const valueOnHand = filteredInventory.reduce(
-      (s, i) =>
-        s +
-        (i.wac ?? i.price ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
-      0,
-    );
+    // Wines whose cost is unknown are counted, never summed as $0.
+    const valueOnHand = totalStockValue(filteredInventory);
     const menuPotential = filteredInventory.reduce(
       (s, i) =>
         s + (i.menuPrice ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
@@ -1053,7 +1060,11 @@ export function InventoryCommandPage() {
         />
         <Kpi
           label="Value on hand"
-          value={figuresUnknown ? UNKNOWN : fmtMoney(kpis.valueOnHand)}
+          value={
+            figuresUnknown
+              ? UNKNOWN
+              : totalStockValueText(kpis.valueOnHand, fmtMoney)
+          }
           sub={
             figuresUnknown
               ? UNKNOWN
@@ -1375,9 +1386,7 @@ export function InventoryCommandPage() {
                   const isFocused = idx === focusedIndex;
                   const run = runwayDays(item);
                   const delta = marketDeltaPct(item);
-                  const value =
-                    (item.wac ?? item.price ?? 0) *
-                    ((item.liveStock ?? 0) + (item.shadowStock ?? 0));
+                  const value = stockValue(item);
                   const loc = locName(item);
                   const status = classifyStock(item.liveStock, item.threshold);
                   return (
@@ -1526,7 +1535,7 @@ export function InventoryCommandPage() {
                             : `${delta > 0 ? "+" : ""}${delta.toFixed(0)}%`}
                         </div>
                         <div className="text-right font-mono text-xs font-semibold text-gray-700">
-                          {fmtMoney(value)}
+                          {stockValueText(value, fmtMoney)}
                         </div>
                         <div>
                           <StatusChip item={item} />

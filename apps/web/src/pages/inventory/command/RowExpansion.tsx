@@ -20,6 +20,7 @@ import type { InventoryItem } from '../useInventoryPage'
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
 import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
 import { ReceiptDepth } from './ReceiptDepth'
+import { stockValueText, unitCostOf } from './stock-value'
 import { SpotCountPanel } from './SpotCountPanel'
 import { NameThisWine } from './NameThisWine'
 
@@ -148,7 +149,8 @@ export function RowExpansion({
 
   const live = item.liveStock ?? 0
   const shadow = item.shadowStock ?? 0
-  const paid = item.wac ?? item.price
+  // The recorded cost only (never the library price, never $0 for unknown).
+  const paid = unitCostOf(item)
   const delta$ = marketDeltaPct(item)
   const counted = daysSinceCounted(item)
   const run = runwayDays(item)
@@ -242,7 +244,7 @@ export function RowExpansion({
           }
         >
           <KV k={`Market avg (${formatVolume(item.bottleSizeMl ?? 750, measurementUnit)})`} v={fmtMoneyExact(item.marketPrice)} />
-          <KV k="You paid (WAC)" v={fmtMoneyExact(paid)} />
+          <KV k="You paid (WAC)" v={stockValueText(paid, fmtMoneyExact)} />
           <KV
             k="Delta"
             v={delta$ == null ? 'n/a' : `${delta$ > 0 ? '+' : ''}${delta$.toFixed(0)}%${delta$ >= 15 ? ', appreciating, hold' : delta$ <= -5 ? ', re-quote vendor' : ''}`}
