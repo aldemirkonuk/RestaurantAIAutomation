@@ -212,6 +212,7 @@ import {
 // no module wiring — so the one rule that decides whether a key names a bottle
 // lives in exactly one place and this file cannot drift from it.
 import { IdentityKeyRow, joinByExactKey } from "../vendor-intel/identity-join";
+import { houseFromName } from "../communications/house-from-name";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -8414,10 +8415,26 @@ export class ProcurementService {
         ? (await this.inboundAddress.addressFor(params.restaurantId)) ||
           undefined
         : undefined;
+    // Gap G3 (mail software, 2026-11-11): the vendor sees the HOUSE's name in
+    // From, not "Mudavym". The letter still leaves from the deployment's
+    // mailbox: sending order mail through a house's own mailbox is held back
+    // until replies to it are read too.
+    //
+    // The session's call under the 2026-11-07 /goal. Rejected for now:
+    // sending order mail from the house's own connected mailbox (ADR 0118
+    // D1). Vendor replies would then land in that mailbox, and Mudavym reads
+    // it only when the house switched reading on and consented; for every
+    // other house the order's replies would vanish from the negotiation. That
+    // send waits for a house whose placement is `whole_conversation_here`
+    // (HouseSenderService.conversation).
+    const fromName = params.restaurantId
+      ? await houseFromName(this.databaseService.supabase, params.restaurantId)
+      : undefined;
     const result = await this.gmailService.sendEmail({
       to: [params.to],
       cc: params.cc && params.cc.length > 0 ? params.cc : undefined,
       subject: params.subject,
+      fromName,
       html: this.applyEmailPlaceholders(
         params.html,
         params.recipientFirstName,

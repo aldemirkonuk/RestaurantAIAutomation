@@ -49,6 +49,7 @@ function build(
     self.select = pass;
     self.eq = pass;
     self.is = pass;
+    self.order = pass;
     self.limit = pass;
     self.maybeSingle = () =>
       Promise.resolve({ data: data?.[0] ?? null, error });

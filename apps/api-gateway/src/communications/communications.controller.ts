@@ -42,6 +42,7 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NonProductionGuard } from "./guards/non-production.guard";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
+import { houseFromName } from "./house-from-name";
 
 @ApiTags("Communications")
 /**
@@ -119,10 +120,17 @@ export class CommunicationsController {
    * nobody's, but one setting shared by every house here.
    *
    * The founder settled the direction on 2026-09-03 — a house gets its own
-   * mailbox, or a Mudavym subdomain — and neither is built: there is no
-   * per-restaurant sender column, no domain, and no DNS. `perHouse.supported`
-   * is therefore `false` with the reason, and the page's control is disabled
-   * carrying that sentence rather than a hopeful one of its own.
+   * mailbox, or a Mudavym subdomain. The own-mailbox half is built: a letter
+   * written in /communications leaves from the mailbox chosen on the mail
+   * setup page (`HouseSenderService`, `GET communications/mail-setup`). Until
+   * 2026-11-11 this route still said `perHouse.supported: false`, "no
+   * per-restaurant sender exists" (gap G12) — false since that shipped.
+   *
+   * What stays on the shared address is ORDER mail (the procurement sender):
+   * it leaves from here, with the house's name in From (gap G3), because its
+   * replies must come back to a mailbox Mudavym always reads. `orderMail`
+   * says that, with the exact name a vendor sees, so a page never implies
+   * every letter leaves from the house's own mailbox.
    */
   @Get("sender-identity")
   @ApiOperation({
@@ -133,13 +141,16 @@ export class CommunicationsController {
     description:
       "`scope: \"deployment\"` means one mailbox shared by every restaurant on this deployment. No credential is returned in any shape.",
   })
-  senderIdentity(): {
+  async senderIdentity(
+    @CurrentUser() user?: { restaurantId?: string },
+  ): Promise<{
     address: string | null;
     scope: "deployment" | "house";
     configuredBy: string;
     resolvedFromProfile: boolean;
     perHouse: { supported: boolean; reason: string };
-  } {
+    orderMail: { address: string; fromName: string; words: string };
+  }> {
     // The RESOLVED address where one exists (Gmail reports the profile's own
     // address at init), falling back to the variable, falling back to the
     // hardcoded default the service itself uses. Three steps, because a page
@@ -148,15 +159,29 @@ export class CommunicationsController {
     const resolved = this.gmailService.getSenderEmail();
     const configured =
       this.configService.get<string>("GMAIL_SENDER_EMAIL") ?? null;
+    const address = resolved || configured || "notifications@mudavym.com";
+    // The name in an order letter's From. A failed or missing read is the
+    // service's own default, said as such, never a guess.
+    const houseName = user?.restaurantId
+      ? await houseFromName(this.databaseService.supabase, user.restaurantId)
+      : undefined;
+    const fromName = houseName ?? "Mudavym";
     return {
-      address: resolved || configured || "notifications@mudavym.com",
+      address,
       scope: "deployment",
       configuredBy: "GMAIL_SENDER_EMAIL",
       resolvedFromProfile: Boolean(resolved),
       perHouse: {
-        supported: false,
+        supported: true,
         reason:
-          "No per-restaurant sender exists: there is no sender column on any table, no verified domain, and no DNS. The direction is decided (a house's own mailbox, or a Mudavym subdomain) and neither is built, so this house's letters leave from the deployment's shared address.",
+          "Letters this house writes in Communications leave from one of its own connected mailboxes, chosen on the mail setup page. Order letters still leave from this shared address, so the vendor's reply comes back to a mailbox Mudavym always reads.",
+      },
+      orderMail: {
+        address,
+        fromName,
+        words: houseName
+          ? `Order letters leave from ${address}, shared by every restaurant here, and a vendor sees them as from "${houseName}".`
+          : `Order letters leave from ${address}, shared by every restaurant here, and a vendor sees them as from "Mudavym": this house's name could not be read.`,
       },
     };
   }
