@@ -4,12 +4,13 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { offsetMinutesOf } from '../../lib/zoneForPlace'
 
-const { navigate, createFirstHouse, patch, placeProps, nextPlace } = vi.hoisted(() => ({
+const { navigate, createFirstHouse, patch, placeProps, nextPlace, browserZone } = vi.hoisted(() => ({
   navigate: vi.fn(),
   createFirstHouse: vi.fn(),
   patch: vi.fn(),
   placeProps: { current: null as Record<string, unknown> | null },
   nextPlace: { current: null as Record<string, unknown> | null },
+  browserZone: { current: 'America/New_York' as string | undefined },
 }))
 
 vi.mock('react-router-dom', async () => {
@@ -29,7 +30,7 @@ vi.mock('../../services/api/client', async (importOriginal) => ({
   apiClient: { patch },
 }))
 vi.mock('../../services/api/menus', () => ({ importMenu: vi.fn() }))
-vi.mock('../../lib/browserTimezone', () => ({ getBrowserTimezone: () => 'America/New_York' }))
+vi.mock('../../lib/browserTimezone', () => ({ getBrowserTimezone: () => browserZone.current }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
 vi.mock('../../lib/googleMaps', () => ({ isMapsConfigured: () => false }))
 vi.mock('../../components/ui/PlacesAutocomplete', () => ({
@@ -43,7 +44,12 @@ vi.mock('../../components/ui/PlacesAutocomplete', () => ({
   },
 }))
 vi.mock('../../components/ui/CountryCombobox', () => ({
-  CountryCombobox: ({ value }: { value: string }) => <span>Country: {value}</span>,
+  CountryCombobox: ({ value, onChange }: { value: string; onChange: (next: string) => void }) => (
+    <label>
+      Country: {value}
+      <input aria-label="Country" value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  ),
 }))
 vi.mock('../../components/onboarding/MenuCsvUpload', () => ({ MenuCsvUpload: () => null }))
 vi.mock('../../components/onboarding/MenuScanUpload', () => ({ MenuScanUpload: () => null }))
@@ -71,6 +77,7 @@ const place = (over: Record<string, unknown>) => ({
 
 beforeEach(() => {
   vi.clearAllMocks()
+  browserZone.current = 'America/New_York'
   sessionStorage.clear()
   createFirstHouse.mockResolvedValue({ detailsLoaded: true })
   patch.mockResolvedValue({})
@@ -130,5 +137,44 @@ describe('GetStarted: the place fills the house', () => {
     await screen.findByRole('heading', { name: 'Your menu' })
     expect(patch).toHaveBeenCalledWith('/auth/me', { name: 'Selin K.' })
     expect(patch.mock.invocationCallOrder[0]).toBeLessThan(createFirstHouse.mock.invocationCallOrder[0])
+  })
+
+  // Fix round (#1055).
+  it('an owner in Bogota opening a US house at the same offset is asked for the clock', async () => {
+    browserZone.current = 'America/Bogota'
+    const ny = offsetMinutesOf('America/New_York')!
+    nextPlace.current = place({ country: 'United States', countryCode: 'US', city: 'New York', utcOffsetMinutes: ny })
+    render(page())
+    fireEvent.click(screen.getByRole('button', { name: 'Pick the place' }))
+    expect(screen.queryByText(/America\/Bogota/)).toBeNull()
+    const select = screen.getByLabelText("The house's clock")
+    expect(select.textContent).toContain('America/New_York')
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    expect((await screen.findByRole('alert')).textContent).toMatch(/Choose the house's clock/)
+    expect(createFirstHouse).not.toHaveBeenCalled()
+  })
+
+  it('a pick with nothing to offer opens the house with no clock', async () => {
+    nextPlace.current = place({ country: 'Nowhere', countryCode: null, utcOffsetMinutes: 7 })
+    render(page())
+    fireEvent.click(screen.getByRole('button', { name: 'Pick the place' }))
+    expect(screen.queryByLabelText("The house's clock")).toBeNull()
+    expect(screen.getByText(/Clock · Not detected\. Set it in Settings › Time zone/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    await screen.findByRole('heading', { name: 'Your menu' })
+    expect(createFirstHouse).toHaveBeenCalledWith(expect.objectContaining({ timezone: undefined }))
+  })
+
+  it('changing the country after a pick drops the earlier place\'s clock', async () => {
+    nextPlace.current = place({})
+    render(page())
+    fireEvent.click(screen.getByRole('button', { name: 'Pick the place' }))
+    expect(screen.getByText(/Europe\/Istanbul \(from the country\)/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'United States' } })
+    expect(screen.queryByText(/Europe\/Istanbul/)).toBeNull()
+    expect(screen.getByText(/America\/New_York \(from this browser\)/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
+    await screen.findByRole('heading', { name: 'Your menu' })
+    expect(createFirstHouse).toHaveBeenCalledWith(expect.objectContaining({ timezone: 'America/New_York', country: 'United States' }))
   })
 })

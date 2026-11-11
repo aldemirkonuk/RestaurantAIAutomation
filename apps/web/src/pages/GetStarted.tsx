@@ -110,7 +110,9 @@ export default function GetStarted() {
   const [postalCode, setPostalCode] = useState('')
   const [restaurantPhone, setRestaurantPhone] = useState('')
   // What the picked place said about itself (OB-7): its country code and its
-  // UTC offset now. Cleared when the address is typed over.
+  // UTC offset now. Cleared when the address is typed over, or when the
+  // country is changed to another one (fix round, #1055): the clock then
+  // follows the country the page shows, never the earlier place's.
   const [placeCountryCode, setPlaceCountryCode] = useState<string | null>(null)
   const [placeOffset, setPlaceOffset] = useState<number | null>(null)
   const [pickedZone, setPickedZone] = useState('')
@@ -145,7 +147,19 @@ export default function GetStarted() {
       }),
     [browserZone, country, placeCountryCode, placeOffset],
   )
-  const timezone = zone.source === 'pick' ? pickedZone || undefined : zone.zone
+  // A pick made for an earlier place or country is not this one's.
+  const pickStands = zone.source === 'pick' && zone.choices.includes(pickedZone)
+  const timezone = zone.source === 'pick' ? (pickStands ? pickedZone : undefined) : zone.zone
+
+  const changeCountry = (next: string) => {
+    setCountry(next)
+    const nextCode = countryCodeFor(next)?.toUpperCase() ?? null
+    if (placeCountryCode && nextCode !== placeCountryCode.toUpperCase()) {
+      setPlaceCountryCode(null)
+      setPlaceOffset(null)
+    }
+    setPickedZone('')
+  }
 
   // Decided once: later step changes are the person's own.
   useEffect(() => {
@@ -227,8 +241,8 @@ export default function GetStarted() {
       setError('Restaurant name and full address are required.')
       return
     }
-    if (zone.source === 'pick' && !pickedZone) {
-      setError("Choose the house's clock: the place's time differs from this browser's.")
+    if (zone.source === 'pick' && !pickStands) {
+      setError("Choose the house's clock: this browser's clock is not the place's.")
       return
     }
     setSaving(true)
@@ -410,16 +424,16 @@ export default function GetStarted() {
             </label>
             <div>
               <span className="text-xs uppercase tracking-wider">Country · required</span>
-              <CountryCombobox id="arrival-country" value={country} onChange={setCountry} />
+              <CountryCombobox id="arrival-country" value={country} onChange={changeCountry} />
             </div>
           </div>
           <div className="border-y border-[#211f1b]/15 py-4 text-sm">
             {zone.source === 'pick' ? (
               <label className="mr-6 inline-flex flex-wrap items-center gap-2">
-                <span>Clock · the place&apos;s time differs from this browser&apos;s. Choose:</span>
+                <span>Clock · this browser&apos;s clock is not the place&apos;s. Choose:</span>
                 <select
                   aria-label="The house's clock"
-                  value={pickedZone}
+                  value={pickStands ? pickedZone : ''}
                   onChange={(event) => setPickedZone(event.target.value)}
                   className="border-b border-[#211f1b]/25 bg-transparent"
                 >
@@ -429,6 +443,8 @@ export default function GetStarted() {
                   ))}
                 </select>
               </label>
+            ) : zone.source === 'none' ? (
+              <span className="mr-6">Clock · Not detected. Set it in Settings › Time zone once the house is open.</span>
             ) : (
               <span className="mr-6">
                 Clock · {timezone ?? 'Not detected'}
