@@ -18,6 +18,7 @@ export const STALE_SAVE = "Someone saved this recipe after you opened it. Nothin
 export const READ_FAILED = "We could not read this recipe just now. Nothing is shown rather than a wrong one.";
 export const SAVE_FAILED = "We could not save this recipe. Nothing was changed.";
 const SHELF_FAILED = "We could not read the shelf just now.";
+export const NOT_THIS_VERSION = "That version is not one of this drink's.";
 export const WHAT_IS_IN_UNREAD =
   "What is in a serve could not be read just now, so nothing about it is shown as known. The recipe and its cost are unaffected.";
 
@@ -115,91 +116,10 @@ export class RecipesService {
     let whatIsIn: WhatIsIn | null = null;
     const versionId = (pointer.data as { version_id?: string } | null)?.version_id;
     if (versionId) {
-      const [version, lines] = await Promise.all([
-        client
-          .from("recipe_versions")
-          .select("id, version, yield_serves, method, glass, garnish, created_at")
-          .eq("id", versionId)
-          .eq("restaurant_id", restaurantId)
-          .maybeSingle(),
-        client
-          .from("recipe_lines")
-          .select("id, position, role, inventory_id, label, qty_entered, unit_code, qty_base, base_unit")
-          .eq("version_id", versionId)
-          .eq("restaurant_id", restaurantId)
-          .order("position", { ascending: true }),
-      ]);
-      if (version.error || !version.data) this.failed("version read", version.error ?? "pointer names no version");
-      if (lines.error) this.failed("line read", lines.error);
-      const rows = (lines.data ?? []) as any[];
-      const ids = [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[];
-
-      const items = new Map<string, any>();
-      const lots = new Map<string, any>();
-      if (ids.length) {
-        // Two literal column lists, so the read-columns guard can check both;
-        // a role without money never reads the price.
-        const itemQuery = money
-          ? client.from("restaurant_inventory").select("id, display_name, kind, uom, bottle_size_ml, last_purchase_price")
-          : client.from("restaurant_inventory").select("id, display_name, kind, uom, bottle_size_ml");
-        const [itemRead, lotRead] = await Promise.all([
-          itemQuery.eq("restaurant_id", restaurantId).in("id", ids),
-          money
-            ? client
-                .from("inventory_lot_rollup")
-                .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
-                .eq("restaurant_id", restaurantId)
-                .in("inventory_id", ids)
-            : Promise.resolve({ data: [], error: null }),
-        ]);
-        if (itemRead.error) this.failed("item read", itemRead.error);
-        if (lotRead.error) this.failed("lot read", lotRead.error);
-        for (const i of (itemRead.data ?? []) as any[]) items.set(i.id, i);
-        for (const l of (lotRead.data ?? []) as any[]) lots.set(l.inventory_id, l);
-      }
-
-      const v = version.data as Record<string, any>;
-      whatIsIn = await this.whatIsIn(restaurantId, ids, rows, Number(v.yield_serves));
-      const priced = recipeCost(
-        rows.map((l) => ({
-          role: l.role,
-          inventoryId: l.inventory_id,
-          qtyBase: Number(l.qty_base),
-          baseUnit: l.base_unit as BaseUnit,
-          item: (l.inventory_id && (items.get(l.inventory_id) as CostItem)) || null,
-          lot: (l.inventory_id && lots.get(l.inventory_id)) || null,
-        })),
-        Number(v.yield_serves),
-      );
-      current = {
-        versionId: v.id,
-        version: v.version,
-        yieldServes: v.yield_serves,
-        method: v.method ?? null,
-        glass: v.glass ?? null,
-        garnish: v.garnish ?? null,
-        createdAt: v.created_at,
-        lines: rows.map((l, i) => {
-          const item = l.inventory_id ? items.get(l.inventory_id) : null;
-          return {
-            id: l.id,
-            position: l.position,
-            role: l.role,
-            inventoryId: l.inventory_id ?? null,
-            label: l.label,
-            itemName: item?.display_name ?? null,
-            itemKind: item?.kind ?? null,
-            qtyEntered: Number(l.qty_entered),
-            unitCode: l.unit_code,
-            qtyBase: Number(l.qty_base),
-            baseUnit: l.base_unit,
-            status: priced.lines[i].status,
-            costPerServe: money ? priced.lines[i].costPerServe : null,
-            costBasis: money ? priced.lines[i].costBasis : null,
-          };
-        }),
-      };
-      if (money) cost = { perServe: priced.perServe, priced: priced.priced, of: priced.of, complete: priced.complete };
+      const body = await this.versionBody(restaurantId, versionId, money, true);
+      current = body.version;
+      cost = body.cost;
+      whatIsIn = body.whatIsIn;
     }
 
     return {
@@ -218,6 +138,143 @@ export class RecipesService {
       versionCount: count.count ?? 0,
       legacyLines,
     };
+  }
+
+  /**
+   * One saved version as the sheet reads it: its lines linked to the house's
+   * items, each line's cost at today's prices, and (for the current version)
+   * what is in a serve. The version is read by its id AND the house, so a
+   * pointer or a path naming another house's version is unreadable, not shown.
+   *
+   * A line linked to an item the house has since archived or deleted keeps
+   * its link and its cost, and says so (`itemGone`, round 17 D9): a save of
+   * that line is refused by the database until it is linked again.
+   */
+  private async versionBody(
+    restaurantId: string,
+    versionId: string,
+    money: boolean,
+    withWhatIsIn: boolean,
+    cocktailId?: string,
+  ): Promise<{ version: Record<string, unknown>; cost: Record<string, unknown> | null; whatIsIn: WhatIsIn | null }> {
+    const client = this.db.getClient();
+    let versionQuery = client
+      .from("recipe_versions")
+      .select("id, version, yield_serves, method, glass, garnish, created_at")
+      .eq("id", versionId)
+      .eq("restaurant_id", restaurantId);
+    if (cocktailId) versionQuery = versionQuery.eq("cocktail_id", cocktailId);
+    const [version, lines] = await Promise.all([
+      versionQuery.maybeSingle(),
+      client
+        .from("recipe_lines")
+        .select("id, position, role, inventory_id, label, qty_entered, unit_code, qty_base, base_unit")
+        .eq("version_id", versionId)
+        .eq("restaurant_id", restaurantId)
+        .order("position", { ascending: true }),
+    ]);
+    if (version.error) this.failed("version read", version.error);
+    if (!version.data) {
+      if (cocktailId) throw new NotFoundException(NOT_THIS_VERSION);
+      this.failed("version read", "pointer names no version");
+    }
+    if (lines.error) this.failed("line read", lines.error);
+    const rows = (lines.data ?? []) as any[];
+    const ids = [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[];
+
+    const items = new Map<string, any>();
+    const lots = new Map<string, any>();
+    if (ids.length) {
+      // Two literal column lists, so the read-columns guard can check both;
+      // a role without money never reads the price.
+      const itemQuery = money
+        ? client
+            .from("restaurant_inventory")
+            .select("id, display_name, kind, uom, bottle_size_ml, last_purchase_price, is_active, deleted_at")
+        : client.from("restaurant_inventory").select("id, display_name, kind, uom, bottle_size_ml, is_active, deleted_at");
+      const [itemRead, lotRead] = await Promise.all([
+        itemQuery.eq("restaurant_id", restaurantId).in("id", ids),
+        money
+          ? client
+              .from("inventory_lot_rollup")
+              .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
+              .eq("restaurant_id", restaurantId)
+              .in("inventory_id", ids)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (itemRead.error) this.failed("item read", itemRead.error);
+      if (lotRead.error) this.failed("lot read", lotRead.error);
+      for (const i of (itemRead.data ?? []) as any[]) items.set(i.id, i);
+      for (const l of (lotRead.data ?? []) as any[]) lots.set(l.inventory_id, l);
+    }
+
+    const v = version.data as Record<string, any>;
+    const whatIsIn = withWhatIsIn ? await this.whatIsIn(restaurantId, ids, rows, Number(v.yield_serves)) : null;
+    const priced = recipeCost(
+      rows.map((l) => ({
+        role: l.role,
+        inventoryId: l.inventory_id,
+        qtyBase: Number(l.qty_base),
+        baseUnit: l.base_unit as BaseUnit,
+        item: (l.inventory_id && (items.get(l.inventory_id) as CostItem)) || null,
+        lot: (l.inventory_id && lots.get(l.inventory_id)) || null,
+      })),
+      Number(v.yield_serves),
+    );
+    const body = {
+      versionId: v.id,
+      version: v.version,
+      yieldServes: v.yield_serves,
+      method: v.method ?? null,
+      glass: v.glass ?? null,
+      garnish: v.garnish ?? null,
+      createdAt: v.created_at,
+      lines: rows.map((l, i) => {
+        const item = l.inventory_id ? items.get(l.inventory_id) : null;
+        return {
+          id: l.id,
+          position: l.position,
+          role: l.role,
+          inventoryId: l.inventory_id ?? null,
+          label: l.label,
+          itemName: item?.display_name ?? null,
+          itemKind: item?.kind ?? null,
+          itemUom: item?.uom ?? null,
+          itemGone: !item ? null : item.deleted_at ? "deleted" : item.is_active === false ? "archived" : null,
+          qtyEntered: Number(l.qty_entered),
+          unitCode: l.unit_code,
+          qtyBase: Number(l.qty_base),
+          baseUnit: l.base_unit,
+          status: priced.lines[i].status,
+          costPerServe: money ? priced.lines[i].costPerServe : null,
+          costPerServeExact: money ? priced.lines[i].costPerServeExact : null,
+          costBasis: money ? priced.lines[i].costBasis : null,
+        };
+      }),
+    };
+    const cost = money
+      ? {
+          perServe: priced.perServe,
+          perServeExact: priced.perServeExact,
+          priced: priced.priced,
+          of: priced.of,
+          complete: priced.complete,
+          partial: priced.partial,
+        }
+      : null;
+    return { version: body, cost, whatIsIn };
+  }
+
+  /**
+   * One earlier version of a drink's recipe, its lines and what it would cost
+   * at today's prices (round 17 D8). Read-only: putting it back is a new save
+   * of its lines, so history is never rewritten.
+   */
+  async readVersion(restaurantId: string, cocktailId: string, versionId: string, role: string | null | undefined) {
+    const money = seesHouseAmounts(role);
+    await this.houseCocktail(restaurantId, cocktailId);
+    const { version, cost } = await this.versionBody(restaurantId, versionId, money, false, cocktailId);
+    return { version, cost };
   }
 
   /**
@@ -277,21 +334,45 @@ export class RecipesService {
 
   async listVersions(restaurantId: string, cocktailId: string) {
     await this.houseCocktail(restaurantId, cocktailId);
-    const { data, error } = await this.db
-      .getClient()
+    const client = this.db.getClient();
+    const { data, error } = await client
       .from("recipe_versions")
       .select("id, version, created_at, author, recipe_lines(count)")
       .eq("cocktail_id", cocktailId)
       .eq("restaurant_id", restaurantId)
       .order("version", { ascending: false });
     if (error) this.failed("version list read", error);
-    return ((data ?? []) as any[]).map((v) => ({
+    const rows = (data ?? []) as any[];
+    const names = await this.authorNames(rows.map((v) => v.author).filter(Boolean));
+    return rows.map((v) => ({
       versionId: v.id,
       version: v.version,
       createdAt: v.created_at,
       author: v.author ?? null,
+      authorName: v.author ? names.get(v.author) ?? null : null,
       lineCount: Number(v.recipe_lines?.[0]?.count ?? 0),
     }));
+  }
+
+  /**
+   * Who saved each version, by name. The ids come from this house's own
+   * versions only. A failed read leaves the names unsaid (null), never a
+   * wrong name; the list itself is still true.
+   */
+  private async authorNames(ids: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const unique = [...new Set(ids)];
+    if (!unique.length) return out;
+    const { data, error } = await this.db.getClient().from("users").select("user_id, name").in("user_id", unique);
+    if (error) {
+      this.logger.error(`recipes: author name read failed: ${error.message}`);
+      return out;
+    }
+    for (const u of (data ?? []) as any[]) {
+      const name = typeof u.name === "string" ? u.name.trim() : "";
+      if (name) out.set(u.user_id, name);
+    }
+    return out;
   }
 
   /**
@@ -305,6 +386,11 @@ export class RecipesService {
       throw new BadRequestException(`A recipe makes at most ${MAX_YIELD_SERVES.toLocaleString("en-US")} serves.`);
     }
     dto.lines.forEach((l, i) => {
+      // JavaScript's trim takes every Unicode space, a no-break space included;
+      // the database's btrim takes only the plain one (round 14).
+      const label = (l.label ?? "").trim();
+      if (!label) throw new BadRequestException(`Ingredient ${i + 1} needs a name.`);
+      l.label = label;
       if (l.qty > MAX_LINE_QTY) {
         throw new BadRequestException(
           `Ingredient ${i + 1} (${l.label}) is more than one line can hold. ` +
