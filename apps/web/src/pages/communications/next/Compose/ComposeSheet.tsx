@@ -609,7 +609,7 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
             )}
             {remaining === 0 && (
               <p style={{ margin: '5px 0 0', fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
-                The window has closed. Whether it left is what the conversation book says, not this
+                The window has closed. Whether it left is what Mail says, not this
                 panel.
               </p>
             )}

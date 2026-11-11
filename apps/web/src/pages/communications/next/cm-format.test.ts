@@ -59,22 +59,22 @@ describe('the banner sentence', () => {
   it('a refresh that failed says when what is on screen is from', () => {
     expect(
       failedReadsSentence([
-        { name: 'the conversation book', stale: true, at: today(20, 43) },
+        { name: 'Mail', stale: true, at: today(20, 43) },
         { name: 'the replies the house has written', stale: true, at: today(20, 44) },
       ]),
     ).toBe(
-      'Part of this page could not be read again just now: the conversation book and the replies the house has written. What you see is as it was at 20:43.',
+      'Part of this page could not be read again just now: Mail and the replies the house has written. What you see is as it was at 20:43.',
     );
   });
   it('a first read that failed does not claim there is nothing', () => {
     expect(
       failedReadsSentence([
-        { name: 'the conversation book', stale: false, at: 0 },
+        { name: 'Mail', stale: false, at: 0 },
         { name: 'the letters waiting for a manager', stale: true, at: today(8, 0) },
         { name: 'the drafted letters', stale: false, at: 0 },
       ]),
     ).toBe(
-      'Part of this page could not be read: the conversation book, the letters waiting for a manager and the drafted letters. What you see is as it was at 08:00. That does not mean there is nothing there.',
+      'Part of this page could not be read: Mail, the letters waiting for a manager and the drafted letters. What you see is as it was at 08:00. That does not mean there is nothing there.',
     );
   });
 });

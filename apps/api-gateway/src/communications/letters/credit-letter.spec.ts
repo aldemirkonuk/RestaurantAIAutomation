@@ -634,7 +634,7 @@ describe("CreditsController drafts on → requested only", () => {
     const { db } = seed();
     const failing = {
       draftForCredit: async () => {
-        throw new Error("The conversation book refused the row.");
+        throw new Error("Mail refused the row.");
       },
     } as unknown as HouseLettersService;
     const c = new CreditsController(db, failing);
@@ -644,7 +644,7 @@ describe("CreditsController drafts on → requested only", () => {
       state: "failed",
       id: null,
       to: null,
-      says: "The conversation book refused the row.",
+      says: "Mail refused the row.",
     });
   });
 

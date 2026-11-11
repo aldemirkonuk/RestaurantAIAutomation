@@ -540,7 +540,7 @@ export class HouseInboxService {
         discarded,
         mirrored,
         cursorAdvancedTo: highWater,
-        says: `Read ${listed} message${listed === 1 ? "" : "s"} matching ${addresses.length} book address${addresses.length === 1 ? "" : "es"}; ${admitted} were from an address in the book and were filed in this house's conversation book, ${discarded} came back from Gmail's own sender matching without being in the book and were discarded unread.`,
+        says: `Read ${listed} message${listed === 1 ? "" : "s"} matching ${addresses.length} book address${addresses.length === 1 ? "" : "es"}; ${admitted} were from an address in the book and were filed in this house's Mail, ${discarded} came back from Gmail's own sender matching without being in the book and were discarded unread.`,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

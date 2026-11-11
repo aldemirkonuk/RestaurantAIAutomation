@@ -122,7 +122,7 @@ export const INTEGRATION_DEFINITIONS: Record<
       doesNotRead:
         "Anything else in your Drive. `drive.file` cannot see a document this app did not create, so there is no list, no search and no read of your own files.",
       landsIn:
-        "Nothing from Drive is copied into Mudavym. The grant is used to WRITE exports out; the connected address is stored on `integration_oauth_connections.account_email`, and the tokens beside it are AES-256-GCM encrypted. If this restaurant chooses to keep its own copy of its vendor mail, THAT is written out through this same grant: every vendor reply mirrored into the restaurant's conversation book - the message body, its headers and any attachment - is written into a `Mudavym mail archive` folder in this Drive as one file per reply. It is off unless a manager or owner turns it on for the restaurant, and the restaurant's own /connections page names whose Drive it goes to.",
+        "Nothing from Drive is copied into Mudavym. The grant is used to WRITE exports out; the connected address is stored on `integration_oauth_connections.account_email`, and the tokens beside it are AES-256-GCM encrypted. If this restaurant chooses to keep its own copy of its vendor mail, THAT is written out through this same grant: every vendor reply mirrored into the restaurant's Mail - the message body, its headers and any attachment - is written into a `Mudavym mail archive` folder in this Drive as one file per reply. It is off unless a manager or owner turns it on for the restaurant, and the restaurant's own /connections page names whose Drive it goes to.",
       visibleTo:
         "You, on /profile. A manager or owner of a restaurant this grant is recorded against sees that it exists and whose it is, and may stop the house using it — they can never read your Drive through it and can never revoke it for you.",
       keptFor:
@@ -183,7 +183,7 @@ export const INTEGRATION_DEFINITIONS: Record<
       doesNotRead:
         "Your mailbox, in every sense — inbox, sent, drafts, labels, filters, settings and contacts. Not even the address it sends from: Gmail stamps that itself, which is why the sender line names the person who consented rather than an address.",
       landsIn:
-        "The letters this house writes, on `procurement_conversations`, alongside the vendor replies already there. The letter is written before it is sent and is readable in this house's conversation book from the moment it is queued.",
+        "The letters this house writes, on `procurement_conversations`, alongside the vendor replies already there. The letter is written before it is sent and is readable in this house's Mail from the moment it is queued.",
       visibleTo:
         "Everyone who works in this restaurant, because a letter to a vendor is the house's record and a second manager must be able to pull one back inside its two-minute window. Nobody outside this restaurant.",
       keptFor:
@@ -229,7 +229,7 @@ export const INTEGRATION_DEFINITIONS: Record<
     label: "Gmail — reading vendor replies only",
     providerLabel: "Google",
     description:
-      "Lets a vendor's reply to this house land in the house's own conversation book, instead of arriving in a mailbox only you can see.",
+      "Lets a vendor's reply to this house land in the house's own Mail, instead of arriving in a mailbox only you can see.",
     scopes: [
       {
         scope: "https://www.googleapis.com/auth/gmail.readonly",
@@ -251,7 +251,7 @@ export const INTEGRATION_DEFINITIONS: Record<
       doesNotRead:
         "Every other message in your mailbox. Mail from an address that is not in the book is never fetched (the from: filter) and, if Gmail's fuzzy sender matching returns one anyway, it is discarded on arrival without its body being stored, logged or shown. Nothing that arrived before you consented is ever read: the cursor starts at the moment the grant is switched on.",
       landsIn:
-        "This restaurant's conversation book — `procurement_conversations` — through the same path a reply to the shared mailbox already takes, so a house-mailbox reply and a shared-mailbox reply are the same kind of row. Attachments land in the private `vendor-attachments` store.",
+        "This restaurant's Mail — `procurement_conversations` — through the same path a reply to the shared mailbox already takes, so a house-mailbox reply and a shared-mailbox reply are the same kind of row. Attachments land in the private `vendor-attachments` store.",
       visibleTo:
         "Everyone who works in this restaurant, which is the point of the grant: a vendor reply stops being private to whoever's inbox it happened to reach. Nobody outside this restaurant, and no other restaurant on this deployment. You can disconnect at any time, and a manager can stop the house using the grant without touching it — either one stops the reading on the next run.",
       keptFor:

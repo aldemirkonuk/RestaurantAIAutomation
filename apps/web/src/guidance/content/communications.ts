@@ -13,7 +13,7 @@ export const communicationsTour: TourDefinition = {
   pageId: 'communications',
   steps: [
     {
-      element: 'section[aria-label="Conversation book"]',
+      element: 'section[aria-label="Mail"]',
       title: 'Read the book',
       description:
         'The latest letters between you and your vendors.',

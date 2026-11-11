@@ -239,7 +239,7 @@ export class WhatsAppInboundService {
       return {
         wamid: message.wamid,
         disposition: "no_sender_for_number",
-        says: `No house on this deployment holds a live WhatsApp credential for business phone number id ${message.phoneNumberId}, so there is no conversation book to write this into. Nothing was stored.`,
+        says: `No house on this deployment holds a live WhatsApp credential for business phone number id ${message.phoneNumberId}, so there is no Mail to write this into. Nothing was stored.`,
       };
     }
 

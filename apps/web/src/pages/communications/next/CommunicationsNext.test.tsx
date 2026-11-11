@@ -422,15 +422,15 @@ describe('CommunicationsNext', () => {
       isError: true,
       errorMessage: 'down',
       failed: { ...noFailures, history: true },
-      failedSources: ['the conversation book'],
+      failedSources: ['Mail'],
     };
     render(<CommunicationsNext />);
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Part of this page could not be read: the conversation book. That does not mean there is nothing there.',
+      'Part of this page could not be read: Mail. That does not mean there is nothing there.',
     );
     // COMMS-W33: the book says its own failure where its rows would be.
     expect(screen.getByTestId('book-unread')).toHaveTextContent(
-      'The conversation book could not be read (down). That does not mean nothing was written.',
+      'Mail could not be read (down). That does not mean nothing was written.',
     );
   });
 
@@ -466,7 +466,7 @@ describe('CommunicationsNext', () => {
     expect(screen.queryByLabelText(/Sent · 30 days: could not be/i)).toBeNull();
   });
 
-  it('the banner names every failed owned source, not only the conversation book', () => {
+  it('the banner names every failed owned source, not only Mail', () => {
     mockData.current = {
       ...base,
       glance: { draftsPending: null, sentLast30: null, repliesLast30: null },
@@ -476,12 +476,12 @@ describe('CommunicationsNext', () => {
       drafts: [],
       draftsKnown: false,
       failed: { history: true, drafts: true },
-      failedSources: ['the conversation book', 'the replies the house has written'],
+      failedSources: ['Mail', 'the replies the house has written'],
     };
     render(<CommunicationsNext />);
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent(
-      'Part of this page could not be read: the conversation book and the replies the house has written. That does not mean there is nothing there.',
+      'Part of this page could not be read: Mail and the replies the house has written. That does not mean there is nothing there.',
     );
     // COMMS-W33: no protocol, no bare dash standing for a word, no "in flight".
     expect(alert.querySelector('span')?.textContent).not.toMatch(/status code|in flight|—/);
@@ -764,10 +764,10 @@ describe('a read that fails after it answered (COMMS-W33)', () => {
     render(<CommunicationsNext />);
     expect(screen.getByLabelText('Sent · 30 days: 9 as it was at 20:43. It could not be read again.')).toHaveTextContent('9');
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Part of this page could not be read again just now: the conversation book. What you see is as it was at 20:43.',
+      'Part of this page could not be read again just now: Mail. What you see is as it was at 20:43.',
     );
     expect(screen.getByTestId('book-unread')).toHaveTextContent(
-      'The conversation book could not be read again (Internal server error). This is as it was at 20:43; there may be more or fewer now.',
+      'Mail could not be read again (Internal server error). This is as it was at 20:43; there may be more or fewer now.',
     );
     expect(screen.getByText('Bodega Álvaro')).toBeInTheDocument();
   });
@@ -1054,7 +1054,7 @@ describe('what the address keeps (COMMS-W35)', () => {
 // its own ink, so the old Dark theme a browser may still keep (`html.dark`,
 // no control left since #576) cannot turn it pale on paper (it
 // measured 1.13:1); the two lists inside "Waiting on you" are a level below
-// it; and the conversation book, the one region a heading list skipped, has
+// it; and Mail, the one region a heading list skipped, has
 // the house's small label.
 describe('the outline and the title’s ink (COMMS-W36)', () => {
   beforeEach(() => {
@@ -1073,8 +1073,8 @@ describe('the outline and the title’s ink (COMMS-W36)', () => {
     // Only its level changed: the line it had as an h2 is kept, so nothing below it moves.
     expect(screen.getByRole('heading', { level: 3, name: 'The house has written · 2 waiting' }).style.lineHeight).toBe('2rem');
     expect(screen.queryByRole('heading', { level: 2, name: /The house has written/ })).toBeNull();
-    const book = screen.getByRole('region', { name: 'Conversation book' });
-    expect(within(book).getByRole('heading', { level: 2, name: 'The conversation book' })).toBe(
+    const book = screen.getByRole('region', { name: 'Mail' });
+    expect(within(book).getByRole('heading', { level: 2, name: 'Mail' })).toBe(
       within(book).getAllByRole('heading')[0],
     );
   });
@@ -1093,7 +1093,7 @@ describe('the tour finds every step (COMMS-W38)', () => {
     const { container } = render(<CommunicationsNext />);
     expect(container.querySelector('section[aria-label="Drafts waiting"]')).toBeNull();
     expect(communicationsTour.steps.map((s) => s.element)).toEqual([
-      'section[aria-label="Conversation book"]',
+      'section[aria-label="Mail"]',
       'section[aria-label="Waiting on you"]',
       '[data-tour="comms-write"]',
       'section[aria-label="Who is writing"]',

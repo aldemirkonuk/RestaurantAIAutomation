@@ -5,7 +5,7 @@
  * figure stays null until its query has actually answered.
  *
  * Sources — the TWO this page owns here (ADR 0083, amended 2026-09-25 and
- * 2026-10-01): useProcurementConversationHistory (the conversation book) and
+ * 2026-10-01): useProcurementConversationHistory (Mail) and
  * the drafts awaiting action.
  *
  * The thread index left on 2026-10-01 (walk-through COMMS-W3, founder:
@@ -89,7 +89,7 @@ export interface CommsFailures {
 
 /** Reader-facing names, in strip order, for the sentence the banner prints. */
 const SOURCE_LABELS: Array<[keyof CommsFailures, string]> = [
-  ['history', 'the conversation book'],
+  ['history', 'Mail'],
   // COMMS-W33: named as the page heads them ("The house has written").
   ['drafts', 'the replies the house has written'],
 ];
