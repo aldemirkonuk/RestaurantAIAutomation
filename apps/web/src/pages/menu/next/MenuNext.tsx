@@ -220,7 +220,8 @@ function AddItemForm({ onAdd, adding, error }: {
 function MenuRow({ line, currency, onDiscard, discarding }: {
   line: MenuLine
   currency: string | null
-  onDiscard: () => void
+  /** Absent for a member who may not discard (ADR 0358 D2: owner or manager only). */
+  onDiscard?: () => void
   discarding: boolean
 }) {
   return (
@@ -241,6 +242,7 @@ function MenuRow({ line, currency, onDiscard, discarding }: {
         ) : null}
       </td>
       <td>
+        {onDiscard ? (
         <button
           type="button"
           className="cl-btn cl-focus"
@@ -251,6 +253,7 @@ function MenuRow({ line, currency, onDiscard, discarding }: {
         >
           {discarding ? 'Discarding…' : 'Discard'}
         </button>
+        ) : null}
       </td>
     </tr>
   );
@@ -353,7 +356,7 @@ export default function MenuNext() {
                         line={line}
                         currency={currency}
                         discarding={discard.isPending && discardingId === line.id}
-                        onDiscard={() => {
+                        onDiscard={!canManage ? undefined : () => {
                           setDiscardingId(line.id);
                           discard.mutate(line.id, { onSettled: () => setDiscardingId(null) });
                         }}

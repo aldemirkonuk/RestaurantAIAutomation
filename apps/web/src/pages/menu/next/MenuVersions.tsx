@@ -89,6 +89,7 @@ export function versionLabel(v: MenuVersion): string {
 
 /** What one kept menu's source is, in words. */
 export function sourceWords(v: MenuVersion): string {
+  // A member who may not open the file (ADR 0358 D2) is still told it was kept.
   if (v.source.kept) return v.source.mime === 'application/pdf' ? 'PDF kept' : v.source.mime?.startsWith('image/') ? 'photo kept' : 'file kept';
   if (v.source.failure) return `source not kept: ${v.source.failure}`;
   if (v.sourceMethod === 'manual') return 'typed in, no file';
@@ -319,7 +320,7 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
         <ReadWarnings warnings={v.readWarnings} testId="menu-version-warnings" />
       </td>
       <td className="cl-dim">
-        {v.source.kept ? (
+        {v.source.kept && canManage ? (
           <button type="button" className="cl-btn cl-focus" onClick={() => void openSource()}>
             Open {v.source.mime === 'application/pdf' ? 'PDF' : v.source.mime?.startsWith('image/') ? 'photo' : 'file'}
           </button>
