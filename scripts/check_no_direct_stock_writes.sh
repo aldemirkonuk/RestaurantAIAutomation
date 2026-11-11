@@ -91,11 +91,8 @@ PATTERN='(^|[^A-Za-z0-9_])(stock_live|shadow_stock)[[:space:]]*:'
 #    placeholder and the real quantity lands via apply_stock_movement in the
 #    same request, as a lot. The projection trigger then sets stock_live to
 #    match. Safe because the written value is always exactly 0.
-#  - `shadow_stock: number` in the InventoryItem TS interface — a type
-#    declaration, not an assignment.
 ALLOWLIST=(
   "apps/api-gateway/src/inventory/inventory.service.ts|stock_live: 0,"
-  "apps/web/src/lib/supabase.ts|shadow_stock: number"
 )
 
 is_allowlisted() {

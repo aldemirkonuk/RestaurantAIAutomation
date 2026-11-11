@@ -77,7 +77,7 @@ export class McpToolReadersService {
         // and saying which of the two it is, is the whole of §7a.
         note:
           rows === 0
-            ? "Nothing is at or under par. This is a measurement: the read completed and returned no rows."
+            ? "Nothing is below par. This is a measurement: the read completed and returned no rows."
             : null,
       },
       provenance: { readAt, rows, source: "InventoryService.getLowStockItems" },
