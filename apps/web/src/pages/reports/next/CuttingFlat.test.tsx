@@ -250,6 +250,8 @@ describe('a cutting laid flat', () => {
     const group = within(dialog).getByRole('group', { name: 'Till window' });
     fireEvent.click(within(group).getByRole('button', { name: '90d' }));
     expect(onDays).toHaveBeenCalledWith(90);
+    fireEvent.click(within(group).getByRole('button', { name: '365d' }));
+    expect(onDays).toHaveBeenCalledWith(365);
   });
 
   it('(g) the working is open in the dialog and closed on the sheet', () => {
