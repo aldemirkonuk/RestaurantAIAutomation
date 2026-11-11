@@ -523,6 +523,17 @@ export interface ServiceRegister extends PosWindow {
   }>;
 }
 
+/**
+ * How well the table-adjusted fit explains the servers' checks, in words
+ * (ADR 0104). `r2` is the server's 0–1 fit; the number stays in the API.
+ */
+export function fitWords(r2: number | null): string {
+  if (r2 == null || !Number.isFinite(r2)) return EM;
+  if (r2 >= 0.5) return 'The tables explain much of it; the ranking holds';
+  if (r2 >= 0.2) return 'The tables explain some of it; read the ranking loosely';
+  return 'The tables explain little; the ranking is rough';
+}
+
 const service = analysis<ServiceRegister>({
   title: 'Who served it',
   register: 'server register',
@@ -561,8 +572,8 @@ const service = analysis<ServiceRegister>({
     const figures = [
       { label: 'Servers with a check', value: figure(s.waiters.length) },
       {
-        label: 'Table-adjusted fit (R²)',
-        value: s.adjusted?.r2 == null ? EM : ratioPct(s.adjusted.r2, 2),
+        label: 'Allowing for the tables',
+        value: fitWords(s.adjusted?.r2 ?? null),
         note: 'Needs 10 checks across at least two tables before a server can be separated from their section',
       },
     ];
