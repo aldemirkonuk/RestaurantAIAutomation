@@ -412,7 +412,11 @@ describe('a good kept in grams, millilitres or items (all goods, foods included)
   it('a good kept in grams is not ordered in bottles from here', () => {
     mount(<OrderSheet row={flour()} uom="g" onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" />);
     expect(document.body.textContent).toContain('This good is kept in grams, and an order from here is placed in bottles, kegs or items');
-    expect(screen.getByRole('button', { name: 'Not ready to place' })).toBeDisabled();
+    // No form it could never use: no vendor picker, no amount box, no hold.
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Hold to place|Not ready to place/ })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Go to Orders' }).getAttribute('href')).toBe('/orders');
   });
 
   it('a good kept as items is ordered as items', async () => {

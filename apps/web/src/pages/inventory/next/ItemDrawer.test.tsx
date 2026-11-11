@@ -161,6 +161,29 @@ describe('the item drawer', () => {
     expect(screen.getByTestId('ivd-head').textContent).not.toContain('ml bottle');
   });
 
+  it('keeps every gram a count wrote: 1750 g reads 1.75 kg, never 1.8 kg', () => {
+    open(row({ wineId: null, name: 'Sugar', type: null, kind: null, stock: 1750, wac: 0.0024 }), { house: { kind: 'food', uom: 'g', displayName: 'Sugar' } });
+    expect(screen.getByTestId('ivd-card-onhand').textContent).toContain('1.75 kg');
+    expect(screen.getByTestId('ivd-card-cost').textContent).toContain('2.40 a kg');
+  });
+
+  it('prices a good kept as items "each", never "a item"', () => {
+    open(row({ wineId: null, name: 'Lemons', type: null, kind: null, stock: 40, wac: 0.35 }), { house: { kind: 'food', uom: 'each', displayName: 'Lemons' } });
+    const cost = screen.getByTestId('ivd-card-cost').textContent ?? '';
+    expect(cost).toContain('0.35 each');
+    expect(cost).not.toContain('a item');
+  });
+
+  it('prices a good kept in litres "a litre"', () => {
+    open(row({ wineId: null, name: 'Oil', type: null, kind: null, stock: 4, wac: 9 }), { house: { kind: 'food', uom: 'l', displayName: 'Oil' } });
+    expect(screen.getByTestId('ivd-card-cost').textContent).toContain('a litre');
+  });
+
+  it('gives the drawer body its side gutter', () => {
+    open(row());
+    expect(screen.getByTestId('ivd-head').closest('.iv-sheet-body')).not.toBeNull();
+  });
+
   it('says an id not on the list is not on the list, and reads nothing', () => {
     open(null);
     expect(screen.getByTestId('ivd-gone')).toBeTruthy();
