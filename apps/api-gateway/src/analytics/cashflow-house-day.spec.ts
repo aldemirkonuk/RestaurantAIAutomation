@@ -3,11 +3,12 @@ import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { AnalyticsService } from "./analytics.service";
 import { AnalyticsController } from "./analytics.controller";
 import { WholeReadError } from "../common/read-whole-window";
+import { houseToday, shiftHouseDay } from "../common/house-day";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 
 /**
- * /reports spend, read whole or refused, and a refusal that keeps its 503
- * (audit G6, G11; ADR 0292).
+ * /reports spend and weekdays, read whole and filed on the house's day
+ * (audit G6, G7, G8, G11, G20; ADR 0292, ADR 0296).
  *
  * The stub pages like PostgREST: an unranged read stops at 1,000 rows, a
  * ranged read honours `order`/`gt("id")`/`limit`, and `count` is the rows
@@ -116,6 +117,68 @@ describe("cashflow reads every purchase order (audit G6)", () => {
     await expect((svc as any).loadDeliveredOrders(RID, 365)).rejects.toBeInstanceOf(
       WholeReadError,
     );
+  });
+
+  it("says how many delivered orders carry no cost", async () => {
+    const out: any = await svcOver(
+      pagingClient({
+        procurement_orders: [delivered(1, day(2)), delivered(2, day(2), null)],
+        restaurants: UTC_HOUSE,
+      }),
+    ).getCashflow(RID);
+    expect(out.basis.uncosted).toBe("1 delivered order carries no cost and adds nothing to spend.");
+  });
+});
+
+describe("cashflow files spend on the house's day (audit G7, G8)", () => {
+  it("an evening delivery in Phoenix is yesterday's spend, not today's UTC day", () => {
+    const zone = "America/Phoenix"; // UTC-7 all year, no daylight saving
+    const yesterday = shiftHouseDay(houseToday(zone), -1);
+    // 20:00 in Phoenix is 03:00 UTC on the next date.
+    const at = new Date(`${yesterday}T20:00:00-07:00`).toISOString();
+    const { dates, values } = (svcOver({}) as any).houseDaily([{ at, value: 40 }], 7, zone);
+    expect(dates[dates.length - 1]).toBe(yesterday);
+    expect(values[values.length - 1]).toBe(40);
+  });
+
+  it("projects on complete weeks: 180 days give 25 whole weeks ending yesterday", async () => {
+    const out: any = await svcOver(
+      pagingClient({
+        procurement_orders: Array.from({ length: 30 }, (_, i) => delivered(i, day(i * 5 + 1))),
+        restaurants: UTC_HOUSE,
+      }),
+    ).getCashflow(RID);
+    expect(out.basis.outflow).toContain("25 complete weeks ending yesterday");
+    expect(out.projectedNext4Weeks).toHaveLength(4);
+  });
+
+  it("a house with no zone states no spend, and still states what is committed", async () => {
+    const open = { ...delivered(9, day(1), 300), delivered_at: null, status: ProcurementOrderStatus.IN_TRANSIT };
+    const out: any = await svcOver(
+      pagingClient({
+        procurement_orders: [delivered(1, day(2)), open],
+        restaurants: [{ id: RID, timezone: null, country: null }],
+      }),
+    ).getCashflow(RID);
+    expect(out).toMatchObject({
+      zoneUnset: true,
+      spendLast30d: null,
+      spendPrev30d: null,
+      projectedNext4Weeks: null,
+      committedOpenOrders: 300,
+      openOrderCount: 1,
+    });
+  });
+
+  it("seasonality with no zone states no weekday, and reads no inventory list", async () => {
+    const client = pagingClient({
+      wine_consumption_log: [],
+      restaurants: [{ id: RID, timezone: null, country: null }],
+    });
+    const from = jest.spyOn(client, "from");
+    const out: any = await svcOver(client).getSeasonality(RID);
+    expect(out).toMatchObject({ zoneUnset: true, weekdayProfile: [], bestDay: null });
+    expect(from.mock.calls.map((c) => c[0])).not.toContain("restaurant_inventory");
   });
 });
 

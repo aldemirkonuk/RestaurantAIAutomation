@@ -314,3 +314,54 @@ describe("an empty POS window is not an absent field (A-040)", () => {
     expect(EXPORT_CUTTINGS.service.write(PAYLOADS.service, { days: null }).say).toBeNull();
   });
 });
+
+/**
+ * Audit G7/G8 (2026-11-11). Spend and weekdays are filed on the house's day
+ * (ADR 0296): a house with no time zone gets no spend and no weekday shape,
+ * and the sheet says why, not "no delivered order" or "no consumption".
+ */
+describe("a house with no time zone is said so on spend and the week (ADR 0296)", () => {
+  const ZONE = /time zone/i;
+
+  it("pacing withholds spend, keeps what is committed, and never says no order was delivered", () => {
+    const doc = EXPORT_CUTTINGS.pacing.write(
+      { zoneUnset: true, spendLast30d: null, spendPrev30d: null, paceDeltaPct: null, projectedNext4Weeks: null, committedOpenOrders: 300, openOrderCount: 1 },
+      { days: null },
+    );
+    expect(doc.say).toMatch(ZONE);
+    expect(isWithheld(figure(doc, "Paid out, the last 30 days"))).toBe(true);
+    expect(figure(doc, "Committed, not yet delivered")).toBe(300);
+    expect(JSON.stringify(doc)).not.toMatch(/No delivered purchase order|ambiguous/);
+  });
+
+  it("a real quiet month still says no order was delivered, without calling the zero ambiguous", () => {
+    const doc = EXPORT_CUTTINGS.pacing.write(
+      { spendLast30d: 0, spendPrev30d: 0, paceDeltaPct: null, projectedNext4Weeks: null, committedOpenOrders: 0, openOrderCount: 0, basis: { uncosted: "1 delivered order carries no cost and adds nothing to spend." } },
+      { days: null },
+    );
+    expect(doc.say).toMatch(/No delivered purchase order/);
+    expect(JSON.stringify(doc)).not.toMatch(/ambiguous/);
+    expect(doc.basis).toContain("1 delivered order carries no cost and adds nothing to spend.");
+  });
+
+  it("the week says the zone is missing, not that nothing was poured", () => {
+    const doc = EXPORT_CUTTINGS.week.write({ zoneUnset: true, weekdayProfile: [], bestDay: null }, { days: null });
+    expect(doc.say).toMatch(ZONE);
+  });
+});
+
+describe("against ourselves, for a house with no time zone (ADR 0296)", () => {
+  it("withholds buying and the week's extremes with the zone as the reason", () => {
+    const doc = EXPORT_CUTTINGS.bench.write(
+      {
+        ...(PAYLOADS.bench as object),
+        cashflow: { zoneUnset: true, spendLast30d: null, spendPrev30d: null, paceDeltaPct: null },
+        seasonality: { zoneUnset: true, weekdayProfile: [], bestDay: null, worstDay: null, tie: false, trendPerDayPct: null },
+      },
+      { days: null },
+    );
+    const [buying, week] = doc.tables[0].rows;
+    expect(JSON.stringify(buying[1])).toMatch(/time zone/);
+    expect(JSON.stringify(week[1])).toMatch(/time zone/);
+  });
+});
