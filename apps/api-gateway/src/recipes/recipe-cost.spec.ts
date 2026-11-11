@@ -70,24 +70,36 @@ describe("recipeCost (ADR 0360, F7)", () => {
     expect(c.lines[0]).toMatchObject({ status: "linked", costPerServe: null, costBasis: why });
   });
 
-  it("shows line cents that add up to the total, each within a cent of its exact cost", () => {
-    // Three lines of 1/3 each: 0.333.. x3 = 1.00, but each rounds to 0.33 (0.99).
+  it("rounds each line on its own: equal costs read the same, each within half a cent", () => {
+    // Three lines of 1/3 each: the total is 1.00, each line reads 0.33. A
+    // column that does not add up by a cent is rounding; one third reading
+    // 0.34 beside two reading 0.33 would be a wrong price.
     const third = (n: number) => line(null, null, { qtyBase: 10, item: { uom: "ml" }, lot: { has_invoice_cost: true, wac: n } });
     const c = recipeCost([third(1 / 3), third(1 / 3), third(1 / 3)], 1);
     expect(c.perServe).toBe(1);
-    const cents = c.lines.map((l) => Math.round((l.costPerServe as number) * 100));
-    expect(cents.reduce((a, b) => a + b, 0)).toBe(100);
-    for (const l of c.lines) expect(Math.abs((l.costPerServe as number) - (l.costPerServeExact as number))).toBeLessThanOrEqual(0.01);
+    expect(c.lines.map((l) => l.costPerServe)).toEqual([0.33, 0.33, 0.33]);
+    for (const l of c.lines) expect(Math.abs((l.costPerServe as number) - (l.costPerServeExact as number))).toBeLessThanOrEqual(0.005);
   });
 
   it("keeps six places: a total of many small lines is not a sum of roundings", () => {
-    // 7 lines at 0.004 each: rounded per line they would be 0.00, the total 0.03.
+    // 7 lines at 0.004 each: each reads 0.00 (its exact cost says it is not
+    // free), the total 0.03. No line is handed a cent it does not cost.
     const tiny = () => line(null, null, { qtyBase: 10, item: { uom: "ml" }, lot: { has_invoice_cost: true, wac: 0.004 } });
     const c = recipeCost(Array.from({ length: 7 }, tiny), 1);
     expect(c.perServeExact).toBe(0.028);
     expect(c.perServe).toBe(0.03);
     expect(c.lines.map((l) => l.costPerServeExact)).toEqual(Array(7).fill(0.004));
-    expect(c.lines.reduce((a, l) => a + Math.round((l.costPerServe as number) * 100), 0)).toBe(3);
+    expect(c.lines.map((l) => l.costPerServe)).toEqual(Array(7).fill(0));
+  });
+
+  it("reads the same cost the same way whichever amount and price it came from", () => {
+    // 0.125 a serve from 10 ml at 0.0125/ml and from 1 ml at 0.125/ml: both
+    // sit on a half cent, and both must land on the same side of it.
+    const a = line(null, null, { qtyBase: 100, item: { uom: "ml" }, lot: { has_invoice_cost: true, wac: 0.0125 } });
+    const b = line(null, null, { qtyBase: 10, item: { uom: "ml" }, lot: { has_invoice_cost: true, wac: 0.125 } });
+    const c = recipeCost([a, b], 1);
+    expect(c.lines[0].costPerServeExact).toBe(c.lines[1].costPerServeExact);
+    expect(c.lines[0].costPerServe).toBe(c.lines[1].costPerServe);
   });
 
   it("counts lines priced from part of the stock, and still prices them", () => {
