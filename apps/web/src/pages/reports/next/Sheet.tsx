@@ -46,13 +46,12 @@ import {
 } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import { tuck } from '@/lib/mudavym';
-import { colsForWidth, liftCuttings, projectCuttings, slotRect } from './rp-arrange';
+import { colsForWidth, liftCuttings, projectCuttings, sheetLayouts, slotRect } from './rp-arrange';
 import {
+  ANALYSIS_IDS,
   SHEET_BREAKPOINTS,
   SHEET_BREAKPOINT_COLS,
   SHEET_MARGIN,
-  SHEET_MIN_H,
-  SHEET_MIN_W,
   SHEET_ROW_HEIGHT,
   type AnalysisId,
   type Slot,
@@ -87,16 +86,10 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
   const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [ghostBox, setGhostBox] = useState<CSSProperties | null>(null);
 
-  const layouts = useMemo((): ResponsiveLayouts => {
-    const lg: LayoutItem[] = cuttings.map((c) => ({
-      i: c.id,
-      ...c.slot,
-      minW: SHEET_MIN_W,
-      minH: SHEET_MIN_H,
-      static: !arranging,
-    }));
-    return { lg, md: lg, sm: lg, xs: lg, xxs: lg };
-  }, [cuttings, arranging]);
+  const layouts = useMemo(
+    (): ResponsiveLayouts => sheetLayouts(cuttings, arranging),
+    [cuttings, arranging],
+  );
 
   /* The grid hands back the layout of the ruling it is drawing. On a narrow
      ruling that is a PROJECTION of the twelve-column sheet, so it is written
@@ -169,11 +162,16 @@ export function Sheet({ cuttings, arranging, onMove, containerRef, ghost }: Shee
         onDragStop={handleChange}
         onResizeStop={handleChange}
       >
-        {cuttings.map((c) => (
-          <div key={c.id} className="rp-grid-item">
-            {c.body}
-          </div>
-        ))}
+        {/* A stable DOM order: the list is the narrow reading order and
+            changes under a held cutting, and moving the focused grip's node
+            would drop keyboard focus mid-move. Position comes from the layout. */}
+        {[...cuttings]
+          .sort((a, b) => ANALYSIS_IDS.indexOf(a.id) - ANALYSIS_IDS.indexOf(b.id))
+          .map((c) => (
+            <div key={c.id} className="rp-grid-item">
+              {c.body}
+            </div>
+          ))}
       </Grid>
     </div>
   );

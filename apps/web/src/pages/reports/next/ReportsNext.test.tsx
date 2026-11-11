@@ -714,6 +714,28 @@ describe('ReportsNext — the sheet codec', () => {
     expect(decoded.cuttings).toEqual(sheet.cuttings);
   });
 
+  it('keeps the order the reader left the sheet in, which a narrow ruling reads by', () => {
+    const sheet = defaultSheet();
+    sheet.cuttings.reverse();
+    const decoded = decodeSheet(encodeSheet(sheet));
+    expect(decoded.cuttings.map((c) => c.id)).toEqual(sheet.cuttings.map((c) => c.id));
+  });
+
+  it('reads a sheet saved before v4 in the wide reading order, not catalogue order', () => {
+    // Before v4 blocks were written in catalogue order; the order a phone read
+    // was row then column, so that is the order the list takes.
+    const decoded = decodeSheet({
+      v: 3,
+      blocks: [
+        { i: 'reading', x: 0, y: 8, w: 6, h: 4, g: 'table', on: true },
+        { i: 'till', x: 6, y: 0, w: 6, h: 8, g: 'area', on: true },
+        { i: 'goals', x: 0, y: 0, w: 6, h: 8, g: 'table', on: true },
+        { i: 'bench', on: false },
+      ],
+    });
+    expect(decoded.cuttings.map((c) => c.id)).toEqual(['goals', 'till', 'reading']);
+  });
+
   it('upgrades a sheet saved by the first pass rather than discarding it', () => {
     const v1 = {
       v: 1,
@@ -1210,8 +1232,8 @@ describe('ReportsNext — moving a cutting without a pointer', () => {
     for (const name of [
       'Move Through the till left one column',
       'Move Through the till right one column',
-      'Move Through the till up one row',
-      'Move Through the till down one row',
+      'Move Through the till up past the cutting above',
+      'Move Through the till down past the cutting below',
       'Make Through the till one column wider',
       'Make Through the till one column narrower',
       'Make Through the till one row taller',
