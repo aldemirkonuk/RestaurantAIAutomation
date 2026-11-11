@@ -13,7 +13,7 @@ const HEADER: ExportHeader = {
   houseName: "Meyhouse",
   currency: "TRY",
   title: "Figures of record",
-  windowLabel: "365 days of COGS; the cellar as it stands today",
+  windowLabel: "365 days of the till; the cellar as it stands today",
   writtenAt: "2026-09-17T09:00:00.000Z",
   withheldCount: 2,
 };
@@ -89,7 +89,7 @@ describe("renderCsv (OD-81)", () => {
       "Mudavym report export",
       "House,Meyhouse",
       "Cutting,Figures of record",
-      "Window,365 days of COGS; the cellar as it stands today",
+      "Window,365 days of the till; the cellar as it stands today",
       "Written,2026-09-17T09:00:00.000Z",
       "Money,\"TRY, the house's reporting currency; money is written as a bare number\"",
       'Withheld,"2 figures the engine could not compute are written as ""withheld"", never as 0"',

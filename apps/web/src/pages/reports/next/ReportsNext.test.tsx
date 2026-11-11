@@ -416,7 +416,7 @@ function base() {
       ledger: ok({
         basis: {
           revenue: 'unit_price × on-hand qty',
-          cogs: 'delivered procurement_orders (trailing 365d) — 4 orders summed',
+          cogs: 'cost of what the till sold (365d) — 4 items',
           inventoryValue: 'on-hand qty × unit cost',
         },
         costCoverage: { total: 10, priced: 4, unpriced: 6, complete: false },
@@ -501,7 +501,7 @@ describe('ReportsNext — the sheet', () => {
     ).toBeInTheDocument();
     expect(
       within(screen.getByRole('region', { name: 'Figures of record' })).getByText(
-        '365 days of COGS; the cellar as it stands today',
+        '365 days of the till; the cellar as it stands today',
       ),
     ).toBeInTheDocument();
     expect(
@@ -822,9 +822,10 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
       'ledger',
       ok({
         basis: {
-          cogs: 'delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window',
+          cogs: 'cost of what the till sold (365d) — withheld: cost known for 3 of 4 items sold',
         },
         costCoverage: { total: 0, priced: 0, unpriced: 0, complete: false },
+        cogsCoverage: { itemsMoved: 4, itemsCosted: 3, bottlesUncosted: 2 },
         inventoryValue: null,
         cogs: null,
         revenue: null,
@@ -839,11 +840,13 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     paint();
     const ledger = screen.getByRole('region', { name: 'Figures of record' });
     expect(within(ledger).queryByText('$0')).not.toBeInTheDocument();
-    const cogs = within(ledger).getByText('Cost of goods (365d)').closest('.rp-fig');
+    const cogs = within(ledger).getByText('What it cost (365d)').closest('.rp-fig');
     expect(within(cogs as HTMLElement).getByText('—')).toBeInTheDocument();
+    // Cost-math lane 3.1: a cost gap says N of M, never prints a smaller sum.
+    expect(within(ledger).getByText(/Cost known for 3 of 4 items sold; 2 bottles/)).toBeInTheDocument();
     // …and the server's own reason is one click away.
     fireEvent.click(within(ledger).getByText('Show the working'));
-    expect(within(ledger).getByText(/no delivered order was returned/)).toBeInTheDocument();
+    expect(within(ledger).getByText(/withheld: cost known for 3 of 4 items sold/)).toBeInTheDocument();
   });
 
   it('claims no forecast total when the server reports no model fitted', () => {
