@@ -362,8 +362,51 @@ describe('a good kept in grams, millilitres or items (all goods, foods included)
   it('a write-off above what the book holds is refused in the good\u2019s own unit', () => {
     mount(<WriteOffSheet row={flour()} uom="g" onClose={() => {}} />);
     fireEvent.change(screen.getByRole('combobox', { name: 'Why they left' }), { target: { value: 'breakage' } });
-    fireEvent.change(screen.getByRole('textbox', { name: 'Weight, in kg' }), { target: { value: '13' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Weight, in kg' }), { target: { value: '13 kg' } });
     expect(document.body.textContent).toContain('The book holds 12.4 kg; a write-off cannot take it below zero.');
+  });
+
+  it('a bare 500 for a weighed good is asked about, never booked as 500 kg', () => {
+    mount(<CountSheet row={flour()} uom="g" onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Weight counted, in kg' }), { target: { value: '500' } });
+    expect(screen.getByTestId('iv-amount-echo').textContent).toBe('Say which: 500 g or 500 kg.');
+    expect(screen.getByRole('button', { name: 'Type the count first' })).toBeDisabled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Weight counted, in kg' }), { target: { value: '500 g' } });
+    expect(screen.getByRole('button', { name: 'Hold to record 500 g' })).toBeTruthy();
+  });
+
+  it('a write-off of a weighed good starts empty, not at an ambiguous 1', () => {
+    mount(<WriteOffSheet row={flour()} uom="g" onClose={() => {}} />);
+    expect((screen.getByRole('textbox', { name: 'Weight, in kg' }) as HTMLInputElement).value).toBe('');
+  });
+
+  it('a transfer of flour reads its zones in kg and sends grams', async () => {
+    api.transfer.mockResolvedValue({});
+    mount(
+      <TransferSheet
+        row={{ ...flour(), zones: [{ locationId: 'z1', qty: 5_000 }] }}
+        uom="g"
+        onClose={() => {}}
+        locations={[{ id: 'z1', name: 'Dry store' }, { id: 'z2', name: 'Line' }] as never}
+        locationsUnavailable={false}
+      />,
+    );
+    const from = screen.getByRole('combobox', { name: 'From' }) as HTMLSelectElement;
+    expect([...from.options].map((o) => o.textContent)).toContain('Dry store · 5 kg');
+    fireEvent.change(from, { target: { value: 'z1' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'To' }), { target: { value: 'z2' } });
+    expect(screen.queryByRole('textbox', { name: 'Bottles' })).toBeNull();
+    const field = screen.getByRole('textbox', { name: 'Weight, in kg' });
+    fireEvent.change(field, { target: { value: '2' } });
+    expect(document.body.textContent).toContain('Say which: 2 g or 2 kg.');
+    fireEvent.change(field, { target: { value: '6 kg' } });
+    expect(document.body.textContent).toContain('That zone holds 5 kg.');
+    fireEvent.change(field, { target: { value: '2 kg' } });
+    holdByKeyboard(screen.getByRole('button', { name: 'Hold to move 2 kg' }));
+    await waitFor(() => expect(api.transfer).toHaveBeenCalledTimes(1));
+    expect(api.transfer.mock.calls[0][1]).toEqual(expect.objectContaining({ qty: 2000 }));
+    await waitFor(() => expect(document.body.textContent).toContain('Moved 2 kg from Dry store to Line.'));
+    expect(document.body.textContent).not.toMatch(/bottle/i);
   });
 
   it('a good kept in grams is not ordered in bottles from here', () => {
