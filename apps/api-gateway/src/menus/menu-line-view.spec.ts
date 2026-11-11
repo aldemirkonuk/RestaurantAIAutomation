@@ -17,6 +17,20 @@ describe("menu-line-view", () => {
     expect(isKitchenLine(42, { pasta: true })).toBe(false);
   });
 
+  it("a known drink section wins: a dessert wine stays a drink, whatever its raw line says (QA M18)", () => {
+    expect(isKitchenLine("dessert", "Sauternes, Ch. Suduiraut, 2015, 90")).toBe(false);
+    expect(isKitchenLine("Dessert ", "Tokaji Aszú, great with dessert")).toBe(false);
+    expect(isKitchenLine("red", "Chianti, great with pasta")).toBe(false);
+    expect(isKitchenLine("sparkling", "Dish Imports, Cava, 40")).toBe(false);
+    expect(isKitchenLine("wine", "Salad days rosé")).toBe(false);
+    // With no known section the hints still decide, as whole words, plurals too.
+    expect(isKitchenLine(null, "Desserts: Tiramisu 12")).toBe(true);
+    expect(isKitchenLine("Pastas", null)).toBe(true);
+    expect(isKitchenLine("Entrées", null)).toBe(true);
+    expect(isKitchenLine(null, "Pastaio Rosso, 2020, 38")).toBe(false);
+    expect(isKitchenLine(null, "Dishwasher-safe carafe")).toBe(false);
+  });
+
   it("the gateway's kitchen hints are the web's nine", () => {
     expect(KITCHEN_HINTS).toEqual(["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad"]);
   });

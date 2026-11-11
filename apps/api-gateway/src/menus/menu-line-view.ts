@@ -1,4 +1,5 @@
 import { policyFor } from "../ask-readings/reading-data-classes";
+import { MENU_CATEGORY_VOCABULARY } from "./wine-extract-item.interface";
 
 /**
  * What one menu line read says to the person reading it (ADR 0309 option 1c,
@@ -30,9 +31,10 @@ import { policyFor } from "../ask-readings/reading-data-classes";
 /**
  * The kitchen hints. The same nine as the web's `KITCHEN`
  * (`apps/web/src/lib/firstProof.ts`); a CLAIMS row keeps the two lists equal.
- * 'dessert' is also a drink section, so a dessert wine counts as a kitchen
- * line: a known defect, filed in
- * `.planning/tech-debt.d/2026-10-08-fix-a-menu-line-carries-its-raw-line.md`.
+ * 'dessert' is also a drink section (MENU_CATEGORY_VOCABULARY, ADR 0186):
+ * a known drink section wins, so a dessert wine stays a drink; the hints
+ * decide only when the section is unknown (QA M18, tech-debt entry (ii) of
+ * `.planning/tech-debt.d/2026-10-08-fix-a-menu-line-carries-its-raw-line.md`).
  */
 export const KITCHEN_HINTS = ["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad"];
 
@@ -68,10 +70,21 @@ export interface LineView {
   rawLine: boolean;
 }
 
-/** The same test as the web's `isKitchenLine`: a hint in the section or in the raw line. */
+/** A hint as a whole word (plural allowed): "pasta" trips it, "Pastaio" and "dishwasher" do not. */
+const HINT_WORDS = new RegExp(`(^|[^\\p{L}\\p{N}])(${KITCHEN_HINTS.join("|")})(s|es)?(?=$|[^\\p{L}\\p{N}])`, "u");
+
+/**
+ * The same test as the web's `isKitchenLine`. A line in a known drink section
+ * (MENU_CATEGORY_VOCABULARY) is never a kitchen line, whatever its raw line
+ * says ("Sauternes, great with dessert"); otherwise a hint, as a whole word,
+ * in the section or in the raw line makes it one.
+ */
 export function isKitchenLine(category: unknown, raw: unknown): boolean {
-  const hay = `${typeof category === "string" ? category : ""} ${typeof raw === "string" ? raw : ""}`.toLowerCase();
-  return KITCHEN_HINTS.some((hint) => hay.includes(hint));
+  const section = typeof category === "string" ? category.toLowerCase().trim() : "";
+  // "wine" too, as the web's VOCABULARY holds it.
+  if (section === "wine" || (MENU_CATEGORY_VOCABULARY as readonly string[]).includes(section)) return false;
+  const hay = `${section} ${typeof raw === "string" ? raw : ""}`.toLowerCase();
+  return HINT_WORDS.test(hay);
 }
 
 /**

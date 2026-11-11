@@ -33,9 +33,20 @@ export function lineNeedsPencil(item: Pick<MenuImportReviewItem, 'matched' | 'ne
   return !VOCABULARY.has(category)
 }
 
+/** A hint as a whole word (plural allowed): "pasta" trips it, "Pastaio" and "dishwasher" do not. */
+const HINT_WORDS = new RegExp(`(^|[^\\p{L}\\p{N}])(${KITCHEN.join('|')})(s|es)?(?=$|[^\\p{L}\\p{N}])`, 'u')
+
+/**
+ * The same test as the gateway's `isKitchenLine` (menu-line-view.ts). A line in
+ * a known drink section (VOCABULARY) is never a kitchen line, so a dessert wine
+ * stays a drink (QA M18); otherwise a hint, as a whole word, in the section or
+ * in the raw line makes it one.
+ */
 export function isKitchenLine(item: Pick<MenuImportReviewItem, 'category' | 'rawText'>) {
-  const hay = `${item.category ?? ''} ${item.rawText ?? ''}`.toLowerCase()
-  return KITCHEN.some((hint) => hay.includes(hint))
+  const section = (item.category ?? '').toLowerCase().trim()
+  if (VOCABULARY.has(section)) return false
+  const hay = `${section} ${item.rawText ?? ''}`.toLowerCase()
+  return HINT_WORDS.test(hay)
 }
 
 export function pencilledCount(items: MenuImportReviewItem[]) {
