@@ -37,6 +37,13 @@ export interface SharedMailboxRead {
 const MAX_RESYNC_MINUTES = 7 * 24 * 60;
 
 /**
+ * Follow-up reads one call may run for pushes that arrived while it was
+ * reading. Each round needs a new push during the previous one; the cap only
+ * stops a push storm from holding one caller forever (the next push reads).
+ */
+const MAX_FOLLOW_UP_READS = 5;
+
+/**
  * The shared mailbox door (gap G2, 2026-11-11). One reader for the Gmail
  * push, the poll tick and the operator's resync, so the three cannot drift.
  *
@@ -51,16 +58,29 @@ const MAX_RESYNC_MINUTES = 7 * 24 * 60;
  *  - poll: every five minutes, reads only when no read has happened for ten
  *    (a lost Pub/Sub subscription used to mean silence until someone noticed);
  *  - resync: a 404 from `history.list` (Gmail dropped the cursor) reads the
- *    INBOX by date from the last read, capped at seven days, instead of
- *    re-arming the watch and skipping the gap; a platform operator can ask for
- *    the same by minutes. Rejected: a full mailbox walk (unbounded quota), and
- *    leaving the gap to the operator (nobody is told one exists).
+ *    INBOX by date from the last FINISHED read (a failed read does not move
+ *    `last_read_at`, migration 20270705100000), capped at seven days, instead
+ *    of re-arming the watch and skipping the gap; a platform operator can ask
+ *    for the same by minutes. Rejected: a full mailbox walk (unbounded quota),
+ *    and leaving the gap to the operator (nobody is told one exists). A
+ *    window too large to list (`inboxIdsSince` truncated) stops the resync
+ *    visibly with the cursor in place; it never reads part of the window and
+ *    then jumps to the present.
+ *
+ * A push that arrives while a read is running is not dropped: `read` answers
+ * it `busy` and the running read goes round once more, so the letter that
+ * push announced is read now, not at the next push or a poll ten minutes on.
+ * Rejected: answering the push 503 so Pub/Sub redelivers (its retry backoff
+ * slows the whole subscription, and the poll and resync callers would still
+ * drop the read).
  */
 @Injectable()
 export class SharedMailboxReaderService {
   private readonly logger = new Logger(SharedMailboxReaderService.name);
   /** One read at a time per instance; a second instance is safe by the cursor RPC. */
   private reading = false;
+  /** A read was asked for while one was running; the running one reads again. */
+  private readOwed = false;
 
   constructor(
     private readonly watch: GmailWatchService,
@@ -70,53 +90,84 @@ export class SharedMailboxReaderService {
     private readonly database: DatabaseService,
   ) {}
 
-  /** Read everything added since the cursor. */
+  /**
+   * Read everything added since the cursor. A call made while a read is
+   * running answers `busy` and owes a read: the running call reads again
+   * before it returns, so nothing the second caller announced waits.
+   */
   async read(pushedHistoryId?: string | null): Promise<SharedMailboxRead> {
     if (!this.watch.isReady()) {
       return { status: "not_configured", messages: 0, recorded: 0 };
     }
-    if (this.reading) return { status: "busy", messages: 0, recorded: 0 };
+    if (this.reading) {
+      this.readOwed = true;
+      return { status: "busy", messages: 0, recorded: 0 };
+    }
     this.reading = true;
     try {
-      const { cursor, lastReadAt } = await this.watch.readCursor();
-      if (!cursor) {
-        // Never read before: start from now. Nothing older is reached for.
-        const seed = pushedHistoryId || (await this.watch.currentHistoryId());
-        await this.watch.advanceCursor(seed, false);
-        return { status: "initialized", messages: 0, recorded: 0 };
-      }
-      const since = await this.watch.historySince(cursor);
-      if (since.expired) {
-        return await this.resyncFrom(
-          lastReadAt ? Date.parse(lastReadAt) : NaN,
-        );
-      }
       let messages = 0;
       let recorded = 0;
-      let reached: string | null = null;
-      for (const entry of since.entries) {
-        try {
-          for (const id of entry.messageIds) {
-            const msg = await this.watch.fetchMessage(id);
-            if (!msg) continue; // gone from the mailbox
-            messages++;
-            if (await this.recordOne(msg)) recorded++;
-          }
-        } catch (err: any) {
-          const why = err?.message ?? String(err);
-          this.logger.error(
-            `shared mailbox: read stopped at history ${entry.historyId} (${why}); the cursor stays before it`,
-          );
-          await this.saveCursor(reached, recorded > 0, why);
-          return { status: "stopped", messages, recorded, error: why };
-        }
-        reached = entry.historyId;
-      }
-      await this.saveCursor(since.latest ?? reached, recorded > 0, null);
-      return { status: "processed", messages, recorded };
+      let run: SharedMailboxRead;
+      let round = 0;
+      let pushed = pushedHistoryId;
+      do {
+        this.readOwed = false;
+        run = await this.readOnce(pushed);
+        messages += run.messages;
+        recorded += run.recorded;
+        pushed = null; // a follow-up reads from the cursor
+        round++;
+      } while (
+        this.readOwed &&
+        round <= MAX_FOLLOW_UP_READS &&
+        (run.status === "processed" || run.status === "resynced")
+      );
+      return { ...run, messages, recorded };
     } finally {
       this.reading = false;
     }
+  }
+
+  /** One pass from the cursor; `read` owns the lock and the follow-ups. */
+  private async readOnce(
+    pushedHistoryId?: string | null,
+  ): Promise<SharedMailboxRead> {
+    const { cursor, lastReadAt } = await this.watch.readCursor();
+    if (!cursor) {
+      // Never read before: start from now. Nothing older is reached for.
+      const seed = pushedHistoryId || (await this.watch.currentHistoryId());
+      await this.watch.advanceCursor(seed, false);
+      return { status: "initialized", messages: 0, recorded: 0 };
+    }
+    const since = await this.watch.historySince(cursor);
+    if (since.expired) {
+      return await this.resyncFrom(
+        lastReadAt ? Date.parse(lastReadAt) : NaN,
+      );
+    }
+    let messages = 0;
+    let recorded = 0;
+    let reached: string | null = null;
+    for (const entry of since.entries) {
+      try {
+        for (const id of entry.messageIds) {
+          const msg = await this.watch.fetchMessage(id);
+          if (!msg) continue; // gone from the mailbox
+          messages++;
+          if (await this.recordOne(msg)) recorded++;
+        }
+      } catch (err: any) {
+        const why = err?.message ?? String(err);
+        this.logger.error(
+          `shared mailbox: read stopped at history ${entry.historyId} (${why}); the cursor stays before it`,
+        );
+        await this.saveCursor(reached, recorded > 0, why);
+        return { status: "stopped", messages, recorded, error: why };
+      }
+      reached = entry.historyId;
+    }
+    await this.saveCursor(since.latest ?? reached, recorded > 0, null);
+    return { status: "processed", messages, recorded };
   }
 
   /**
@@ -241,7 +292,15 @@ export class SharedMailboxReaderService {
     let recorded = 0;
     try {
       const present = await this.watch.currentHistoryId();
-      const ids = await this.watch.inboxIdsSince(after / 1000);
+      const { ids, truncated } = await this.watch.inboxIdsSince(after / 1000);
+      if (truncated) {
+        // More letters in the window than one resync lists. Reading part of
+        // it and moving to the present would skip the rest in silence; the
+        // cursor and the resync floor stay, and the error is the door's.
+        throw new Error(
+          `the resync window holds more than ${ids.length} letters; nothing was read and the cursor did not move`,
+        );
+      }
       for (const id of ids) {
         const msg = await this.watch.fetchMessage(id);
         if (!msg) continue;

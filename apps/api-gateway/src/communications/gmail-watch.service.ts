@@ -279,9 +279,18 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
     return { entries, latest, expired: false };
   }
 
-  /** INBOX message ids received after `afterEpochSeconds`, every page, capped. */
-  async inboxIdsSince(afterEpochSeconds: number, cap = 500): Promise<string[]> {
-    if (!this.isConfigured) return [];
+  /**
+   * INBOX message ids received after `afterEpochSeconds`, every page, OLDEST
+   * first. Gmail lists newest first, so a cut list used to drop the oldest
+   * letters of the window while the caller moved the cursor to the present.
+   * Nothing is cut silently now: past `ceiling` ids the answer says
+   * `truncated` and the caller must not treat the window as read.
+   */
+  async inboxIdsSince(
+    afterEpochSeconds: number,
+    ceiling = 5000,
+  ): Promise<{ ids: string[]; truncated: boolean }> {
+    if (!this.isConfigured) return { ids: [], truncated: false };
     const ids: string[] = [];
     let pageToken: string | undefined;
     do {
@@ -289,13 +298,16 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
         userId: "me",
         labelIds: ["INBOX"],
         q: `after:${Math.floor(afterEpochSeconds)}`,
-        maxResults: 100,
+        maxResults: 500,
         pageToken,
       });
       for (const m of res.data.messages || []) if (m.id) ids.push(m.id);
       pageToken = res.data.nextPageToken || undefined;
-    } while (pageToken && ids.length < cap);
-    return ids.slice(0, cap);
+      if (pageToken && ids.length >= ceiling) {
+        return { ids: ids.reverse(), truncated: true };
+      }
+    } while (pageToken);
+    return { ids: ids.reverse(), truncated: false };
   }
 
   /** The mailbox's current historyId (`users.getProfile`). */

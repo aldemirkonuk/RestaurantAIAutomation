@@ -13,15 +13,22 @@ export interface FakeWatchOptions {
   expired?: boolean;
   /** Message ids whose fetch throws (a transient Gmail failure). */
   failing?: string[];
+  /** The door's last finished read (the resync floor). */
+  lastReadAt?: string | null;
+  /** Make the date listing say the window was too large to list. */
+  truncated?: boolean;
+  /** Called on every fetch, before it answers (to act mid-read). */
+  onFetch?: (id: string) => Promise<void> | void;
 }
 
 export function fakeWatch(messages: any[], o: FakeWatchOptions = {}) {
   const advanced: Array<[string | null, boolean, string | null]> = [];
+  const listedAfter: number[] = [];
   const watch: any = {
     isReady: () => true,
     readCursor: async () => ({
       cursor: o.cursor === undefined ? "1" : o.cursor,
-      lastReadAt: null,
+      lastReadAt: o.lastReadAt ?? null,
     }),
     advanceCursor: async (h: string | null, stored: boolean, e: string | null = null) =>
       void advanced.push([h, stored, e]),
@@ -36,15 +43,19 @@ export function fakeWatch(messages: any[], o: FakeWatchOptions = {}) {
             latest: String(10 + messages.length),
             expired: false,
           },
-    inboxIdsSince: async () => messages.map((m) => m.id),
+    inboxIdsSince: async (after: number) => {
+      listedAfter.push(after);
+      return { ids: messages.map((m) => m.id), truncated: !!o.truncated };
+    },
     currentHistoryId: async () => "99",
     fetchMessage: async (id: string) => {
+      await o.onFetch?.(id);
       if (o.failing?.includes(id)) throw new Error(`gmail 500 on ${id}`);
       return messages.find((m) => m.id === id) ?? null;
     },
     getAttachment: async () => null,
   };
-  return { watch, advanced };
+  return { watch, advanced, listedAfter };
 }
 
 export function fakeIntake(published: any[], refuse = false) {
