@@ -2,6 +2,7 @@ import { ServiceUnavailableException } from "@nestjs/common";
 import { ReceivingService } from "./receiving.service";
 import { ReceivingController } from "./receiving.controller";
 import { DatabaseService } from "../database/database.service";
+import * as reservation from "./order-reservation";
 import {
   FACT_TIME_TRUST_MS,
   explainStoredFactTime,
@@ -1361,6 +1362,136 @@ describe("arrivedToday", () => {
 
     expect(capped).toBe(false);
     expect(rows).toHaveLength(999);
+  });
+});
+
+/**
+ * F-143 — the door lets go of the order's reservation (founder, 2026-10-02,
+ * "At the door (Recommended)"). The arithmetic lives in order-reservation.ts
+ * and its own spec; these pin WHERE the door calls it: after the status write,
+ * only when that write landed, never on a failed booking, and never as a throw.
+ */
+describe("recordDoorReceipt lets go of the reservation (F-143)", () => {
+  const base = { restaurantId: "r1", orderId: "o1", userId: "u1" };
+  const orderRow = {
+    id: "o1",
+    order_number: "PO-1",
+    inventory_id: "inv1",
+    quantity: 24,
+    bottles_total: 24,
+    unit_type: "bottle",
+    status: "IN_TRANSIT",
+  };
+  let spy: jest.SpyInstance;
+  afterEach(() => spy?.mockRestore());
+
+  it("calls the release once, after the status write, and reports what it let go", async () => {
+    const { db, calls } = makeDb({ order: orderRow });
+    let updatesAtCall = -1;
+    spy = jest.spyOn(reservation, "releaseAcceptedShare").mockImplementation(async () => {
+      updatesAtCall = calls.orderUpdates.length;
+      return { released: 18, target: 18 };
+    });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 18,
+      countedUom: "bottle",
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0][1]).toEqual({ restaurantId: "r1", orderId: "o1", via: "door receipt" });
+    // After both order writes: the status, then the event's delivered_at (ADR 0286).
+    expect(updatesAtCall).toBe(2);
+    expect(calls.orderUpdates[0].status).toBe("PARTIALLY_RECEIVED");
+    expect(r.reservationReleased).toBe(18);
+    expect(r.reservationIssue).toBeUndefined();
+    expect(r.stockBooked).toBe(true);
+  });
+
+  it("does not let go when the order refused the status, and says why", async () => {
+    const { db, calls } = makeDb({ order: orderRow });
+    const client = db.getClient() as any;
+    const realFrom = client.from.bind(client);
+    client.from = (t: string) => {
+      const q = realFrom(t);
+      if (t === "procurement_orders")
+        q.update = (p: Row) => {
+          calls.orderUpdates.push(p);
+          const chain: any = {
+            eq: () => chain,
+            then: (res: any) => res({ data: null, error: { code: "23514", message: "check violated" } }),
+          };
+          return chain;
+        };
+      return q;
+    };
+    spy = jest.spyOn(reservation, "releaseAcceptedShare");
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 18,
+      countedUom: "bottle",
+    });
+    expect(spy).not.toHaveBeenCalled();
+    expect(r.reservationReleased).toBe(0);
+    expect(r.reservationIssue).toMatch(/refused the received status/);
+  });
+
+  it("does not let go when the status write failed retryably (the retry lets go)", async () => {
+    const { db, calls } = makeDb({ order: orderRow });
+    const client = db.getClient() as any;
+    const realFrom = client.from.bind(client);
+    client.from = (t: string) => {
+      const q = realFrom(t);
+      if (t === "procurement_orders")
+        q.update = (p: Row) => {
+          calls.orderUpdates.push(p);
+          const chain: any = {
+            eq: () => chain,
+            then: (res: any) => res({ data: null, error: { message: "check violated" } }),
+          };
+          return chain;
+        };
+      return q;
+    };
+    spy = jest.spyOn(reservation, "releaseAcceptedShare");
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 18, countedUom: "bottle" }),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the release's issue without failing the receipt", async () => {
+    const { db } = makeDb({ order: orderRow });
+    spy = jest
+      .spyOn(reservation, "releaseAcceptedShare")
+      .mockResolvedValue({ released: 0, target: null, issue: "the order's ledger could not be read (down)" });
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 18,
+      countedUom: "bottle",
+    });
+    expect(r.stockBooked).toBe(true);
+    expect(r.reservationIssue).toBe("the order's ledger could not be read (down)");
+  });
+
+  it("lets go of nothing for an order with no item", async () => {
+    const { db } = makeDb({ order: { ...orderRow, inventory_id: null } });
+    spy = jest.spyOn(reservation, "releaseAcceptedShare");
+    const r = await new ReceivingService(db).recordDoorReceipt({
+      ...base,
+      countedQty: 18,
+      countedUom: "bottle",
+    });
+    expect(spy).not.toHaveBeenCalled();
+    expect(r).not.toHaveProperty("reservationReleased");
+  });
+
+  it("lets go of nothing when the live booking failed (the receipt is retried)", async () => {
+    const { db } = makeDb({ order: orderRow, rpcError: { message: "boom" } });
+    spy = jest.spyOn(reservation, "releaseAcceptedShare");
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 18, countedUom: "bottle" }),
+    ).rejects.toThrow();
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 
