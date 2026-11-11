@@ -36,6 +36,7 @@ import { settingsApi } from '@/services/api/settings';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { failureOf, heldBackFailure, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
+import { readsRegister } from './rp-spec';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
 import { useReportExports, type ExportDesk } from './useReportExports';
 import {
@@ -259,7 +260,7 @@ export function useReportsNextData(
    *  the palette needs. The writing desk has no path and is never fetched. */
   const active = useMemo<AnalysisId[]>(() => {
     const ids = (showing ?? sheet.cuttings.map((c) => c.id)).filter(
-      (id) => CATALOGUE[id].path !== null,
+      (id) => readsRegister(CATALOGUE[id]),
     );
     return ids.includes('reading') ? ids : ['reading', ...ids];
   }, [sheet, showing]);
@@ -282,6 +283,18 @@ export function useReportsNextData(
     return out;
   }, [active, activeRole]);
 
+  /**
+   * One raw payload per URL, shared by every register that reads it, so the
+   * bench and spend pacing (both on /analytics/cashflow) cost one request
+   * (audit G9). Same freshness as the registers.
+   */
+  const readRaw = (url: string) =>
+    qc.fetchQuery({
+      queryKey: [ROOT, 'raw', url],
+      queryFn: async () => (await apiClient.get<unknown>(url)).data,
+      staleTime: 60_000,
+    });
+
   const results = useQueries({
     queries: active.map((id) => {
       const spec = CATALOGUE[id];
@@ -291,8 +304,25 @@ export function useReportsNextData(
         staleTime: 60_000,
         retry: 1,
         queryFn: async () => {
-          const { data } = await apiClient.get<unknown>(spec.path!(rid as string, { days: tillDays }));
-          return spec.select(data);
+          const ctx = { days: tillDays };
+          if (spec.sources) {
+            // A composed register (the bench): each source read once per
+            // minute however many cuttings share it; a failed source is null,
+            // which the register says, never a zero.
+            const keys = Object.keys(spec.sources);
+            const settled = await Promise.allSettled(
+              keys.map((k) => readRaw(spec.sources![k](rid as string, ctx))),
+            );
+            return spec.select(
+              Object.fromEntries(
+                keys.map((k, i) => {
+                  const r = settled[i];
+                  return [k, r.status === 'fulfilled' ? r.value : null];
+                }),
+              ),
+            );
+          }
+          return spec.select(await readRaw(spec.path!(rid as string, ctx)));
         },
       };
     }),

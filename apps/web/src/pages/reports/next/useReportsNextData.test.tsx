@@ -184,3 +184,37 @@ describe('useReportsNextData — the house’s money (audit G5)', () => {
     );
   });
 });
+
+describe('useReportsNextData — the bench reads what the sheet already reads (audit G9)', () => {
+  const CASHFLOW = '/analytics/cashflow/r1';
+  const SEASONALITY = '/analytics/seasonality/r1';
+  const GOALS = '/analytics/goals/r1?status=active';
+
+  beforeEach(() => {
+    auth.rid = 'r1';
+    auth.role = 'owner';
+    api.get.mockReset();
+    api.get.mockImplementation(async (path: string) => {
+      if (path === READING) return { data: { insights: [] } };
+      if (path === CASHFLOW) return { data: { spendLast30d: 1200, spendPrev30d: 900 } };
+      if (path === SEASONALITY) throw Object.assign(new Error('503'), { response: { status: 503 } });
+      if (path === GOALS) return { data: [] };
+      if (path.startsWith('/settings/currency')) return { data: { currency: 'USD' } };
+      throw new Error(`unexpected GET ${path}`);
+    });
+  });
+
+  it('never calls /overview, and pacing and the bench share one cashflow read', async () => {
+    const { result } = renderHook(() => useReportsNextData(30, () => {}, ['pacing', 'bench']), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(result.current.registers.bench?.loading).toBe(false));
+    await waitFor(() => expect(result.current.registers.pacing?.loading).toBe(false));
+    expect(paths().some((p) => p.includes('/overview'))).toBe(false);
+    expect(paths().filter((p) => p === CASHFLOW)).toHaveLength(1);
+    // A failed source is a missing lens on the bench, not a failed bench.
+    const bench = result.current.registers.bench!;
+    expect(bench.failure).toBeNull();
+    expect(bench.data).toMatchObject({ seasonalityMissing: true, cashflowMissing: false, goalsMissing: false });
+  });
+});
