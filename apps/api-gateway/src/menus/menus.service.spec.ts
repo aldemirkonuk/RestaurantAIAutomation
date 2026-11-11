@@ -1448,3 +1448,49 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     expect(list.namesReason).toMatch(/timeout/);
   });
 });
+
+// Founder 2026-11-07 ("Background job"): a version says where its read stands,
+// and only a finished read has a plan or can be made current.
+describe("MenusService — a version says where its read stands", () => {
+  const tables = (): Record<string, Row[]> => ({
+    restaurant_menus: [
+      { id: "menu-old", restaurant_id: "rest-1", status: "active" },
+      { id: "m-reading", restaurant_id: "rest-1", status: "draft", read_state: "reading", extracted_at: "2026-11-11T10:00:00Z" },
+      {
+        id: "m-failed",
+        restaurant_id: "rest-1",
+        status: "draft",
+        read_state: "failed",
+        read_failure: "No line could be read from this file.",
+        read_warnings: [null, { kind: "chunk_failed", pages: { first: 2, last: 2 } }],
+      },
+    ],
+    menu_items: [],
+  });
+
+  it("lists each version's read state and failure; a version read before the column is done; a null warning is dropped", async () => {
+    const service = makeService(tables());
+    const { versions } = await service.listVersions("rest-1");
+    const by = (id: string) => versions.find((v) => v.menuId === id)!;
+    expect([by("menu-old").readState, by("menu-old").readFailure]).toEqual(["done", null]);
+    expect(by("m-reading").readState).toBe("reading");
+    expect(by("m-failed")).toMatchObject({
+      readState: "failed",
+      readFailure: "No line could be read from this file.",
+      readWarnings: [{ kind: "chunk_failed", pages: { first: 2, last: 2 } }],
+    });
+  });
+
+  it.each([
+    ["m-reading", /still being read/],
+    ["m-failed", /This read failed, so it has no lines to make current\. No line could be read/],
+  ])("%s has no plan and cannot be made current (409), and nothing is written", async (id, said) => {
+    const t = tables();
+    const calls: RpcCall[] = [];
+    const service = makeService(t, { rpcCalls: calls });
+    await expect(service.planFor("rest-1", id)).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.makeCurrent("rest-1", id, "user-1", "fp")).rejects.toThrow(said);
+    expect(calls).toHaveLength(0);
+    expect(t.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
+  });
+});
