@@ -158,6 +158,28 @@ describe("ItemNutritionService.save", () => {
     expect(rpcCalls).toHaveLength(0);
   });
 
+  it("refuses macros over 100 g in 100 g with the sum in words, before any write", async () => {
+    const rpcCalls: Array<{ fn: string; args: Record<string, unknown> }> = [];
+    const err = await save(makeService({ rpcCalls }), {
+      figures: { basis: "100g", proteinG: 50, fatG: 40, carbohydrateG: 20, source: "pack_label" },
+      allergens: [],
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(BadRequestException);
+    expect(err.message).toContain("add up to 110 g");
+    expect(err.message).toContain("Nothing was saved.");
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it("saves energy that disagrees with 4/4/9 and says so in the answer", async () => {
+    const rpcCalls: Array<{ fn: string; args: Record<string, unknown> }> = [];
+    const out = await save(makeService({ rpcCalls }), {
+      figures: { basis: "100g", energyKcal: 600, proteinG: 10, fatG: 10, carbohydrateG: 50, source: "pack_label" },
+      allergens: [],
+    });
+    expect(rpcCalls).toHaveLength(1);
+    expect(out.warnings).toEqual([expect.stringContaining("about 330 kcal")]);
+  });
+
   it("refuses an allergen stated twice", async () => {
     await expect(
       save(makeService({}), {

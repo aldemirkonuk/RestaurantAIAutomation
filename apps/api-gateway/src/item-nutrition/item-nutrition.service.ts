@@ -51,6 +51,11 @@ export interface ItemNutrition {
   /** null: nothing stated yet. Each figure inside is null when not known, never 0. */
   figures: StoredFigures | null;
   allergens: AllergenLine[];
+  /**
+   * Only on the answer to a save: what was saved but looks wrong (energy
+   * against 4/4/9). Said, never refused; empty when nothing looks wrong.
+   */
+  warnings?: string[];
 }
 
 const FIGURE_COLUMNS =
@@ -166,6 +171,7 @@ export class ItemNutritionService {
     }
 
     let row: Record<string, unknown> | null = null;
+    let warnings: string[] = [];
     if (dto.figures) {
       const f = dto.figures;
       const checked = checkWrite({
@@ -185,6 +191,7 @@ export class ItemNutritionService {
       });
       if (!checked.ok) throw new BadRequestException(`${checked.why} Nothing was saved.`);
       row = checked.row;
+      warnings = checked.warnings;
     }
 
     const seen = new Set<string>();
@@ -213,6 +220,6 @@ export class ItemNutritionService {
       }
       throw new ServiceUnavailableException("What is in this item could not be saved just now. Nothing was changed; try again.");
     }
-    return this.read(restaurantId, itemId);
+    return { ...(await this.read(restaurantId, itemId)), warnings };
   }
 }
