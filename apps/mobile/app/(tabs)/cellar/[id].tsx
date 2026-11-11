@@ -11,6 +11,7 @@ import { SparklineBlock } from "@/components/cellar/Sparkline";
 import { ProvenanceStitch } from "@/components/cellar/ProvenanceStitch";
 import { color, space } from "@/design/tokens";
 import { useInventoryItem, useItemActivity } from "@/api/queries";
+import { COST_NOT_KNOWN, costLabel, unitCostOf } from "@/lib/stockValue";
 
 function money(value: number | null | undefined): string | null {
   if (value == null || !Number.isFinite(Number(value))) return null;
@@ -46,11 +47,12 @@ export default function WineDetailScreen() {
   if (item?.vintage) facts.push({ label: "Vintage", value: String(item.vintage) });
   if (item?.region) facts.push({ label: "Region", value: String(item.region) });
   if (item?.varietal) facts.push({ label: "Varietal", value: String(item.varietal) });
-  const wac = money(item?.wac);
-  if (wac) {
+  // An unknown cost is said, not left out and never shown as $0.
+  const cost = item ? unitCostOf(item) : null;
+  if (item) {
     facts.push({
-      label: item?.costProvenance === "invoice" ? "Cost (invoice)" : "Cost (est.)",
-      value: wac,
+      label: costLabel(item.costProvenance, cost),
+      value: cost == null ? COST_NOT_KNOWN : (money(cost) ?? COST_NOT_KNOWN),
     });
   }
 

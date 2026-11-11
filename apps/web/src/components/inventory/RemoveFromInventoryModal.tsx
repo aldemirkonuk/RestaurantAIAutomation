@@ -19,6 +19,12 @@ import { toast } from 'sonner'
 import { deleteInventoryItem, reconcileItem } from '../../services/api/inventory'
 import { ThemedSelect } from '../ui/ThemedSelect'
 import { fmtMoney } from '../../pages/inventory/command/bits'
+import {
+  COST_NOT_KNOWN,
+  stockValue,
+  totalStockValue,
+  totalStockValueText,
+} from '../../pages/inventory/command/stock-value'
 import type { InventoryItem } from '../../pages/inventory/useInventoryPage'
 
 const REMOVE_REASONS = [
@@ -52,12 +58,13 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
         const shadow = item.shadowStock ?? 0
         const openMl = item.openMl ?? 0
         const total = live + shadow
-        const value = (item.wac ?? item.price ?? 0) * total
+        // Null when bottles are on hand and their cost is unknown: never $0.
+        const value = stockValue(item)
         return { item, live, shadow, openMl, total, value }
       }),
     [items],
   )
-  const totalValue = rows.reduce((s, r) => s + r.value, 0)
+  const totalValue = totalStockValue(items)
   const anyStock = rows.some((r) => r.total > 0 || r.openMl > 0)
 
   if (!isOpen) return null
@@ -156,7 +163,11 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
                   <span className="font-mono text-gray-500 shrink-0">
                     {live + shadow > 0 ? `${live} live / ${shadow} shadow` : 'no stock'}
                     {openMl > 0 ? ` · ${openMl}ml open` : ''}
-                    {value > 0 && <b className="ml-2 text-gray-700">{fmtMoney(value)}</b>}
+                    {value == null ? (
+                      <span className="ml-2 text-gray-500">{COST_NOT_KNOWN}</span>
+                    ) : value > 0 ? (
+                      <b className="ml-2 text-gray-700">{fmtMoney(value)}</b>
+                    ) : null}
                   </span>
                 </div>
               ))}
@@ -166,8 +177,8 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved }: 
               <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-100">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-800 leading-relaxed">
-                  {totalValue > 0 ? (
-                    <>This will write off <b>{fmtMoney(totalValue)}</b> in on-hand value. </>
+                  {totalValue.known > 0 || totalValue.unknownItems > 0 ? (
+                    <>This will write off <b>{totalStockValueText(totalValue, fmtMoney)}</b> in on-hand value. </>
                   ) : null}
                   Remaining stock is reconciled to zero and logged to the ledger with the reason below before removal —
                   nothing is deleted silently.
