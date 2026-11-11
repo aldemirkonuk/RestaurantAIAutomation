@@ -9,11 +9,13 @@ import {
   getSeverityLabel,
 } from "./template-config";
 import { baseTemplate, metricBox, alertBox } from "./base-template";
+import { quantityIn, unitWord } from "../../common/goods-words";
 
 export interface LowStockAlertData {
   wineName: string;
   currentStock: number;
   threshold: number;
+  uom?: string | null;
   avgDailySales?: number;
   recommendedQty?: number;
   preferredSupplier?: string;
@@ -89,7 +91,7 @@ export function lowStockAlertTemplate(data: LowStockAlertData): string {
     ? alertBox({
         type: "warning",
         title: "Recommended Action",
-        message: `Order ${data.recommendedQty} bottles from ${data.preferredSupplier || "your preferred supplier"}${data.estimatedDelivery ? `. Estimated delivery: ${data.estimatedDelivery}` : ""}`,
+        message: `Order ${data.recommendedQty} ${unitWord(data.uom, data.recommendedQty)} from ${data.preferredSupplier || "your preferred supplier"}${data.estimatedDelivery ? `. Estimated delivery: ${data.estimatedDelivery}` : ""}`,
       })
     : "";
 
@@ -119,7 +121,7 @@ export function lowStockAlertTemplate(data: LowStockAlertData): string {
 
   return baseTemplate({
     title: `${severity}: ${data.wineName}`,
-    preheader: `Only ${data.currentStock} bottles remaining - ${data.wineName}`,
+    preheader: `Only ${quantityIn(data.currentStock, data.uom)} remaining - ${data.wineName}`,
     content,
     ctaButton: {
       // Same shape `low-stock-digest.template.ts` already gets right for its

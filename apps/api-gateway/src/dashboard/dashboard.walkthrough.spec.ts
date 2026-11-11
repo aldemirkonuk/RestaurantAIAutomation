@@ -375,12 +375,35 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
 
       expect(messages).toEqual(
         [
-          "1er Cru Montmains 2023 — 1 bottle left, you keep at least 6",
+          "1er Cru Montmains 2023 — 1 bottle left, you keep at least 6 bottles",
           "Sancerre 2022 — out of stock",
           "An item with no name — out of stock",
         ].sort(),
       );
       expect(messages.join(" ")).not.toMatch(/inv-|bottles \(min/);
+    });
+  });
+
+  describe("goods say their own unit; a good nobody counted is not low (OD-161)", () => {
+    it("a flour reads in grams and an uncounted wine reads not counted yet", async () => {
+      db.getClient.mockReturnValue(
+        makeClient({
+          v_low_stock_items: [
+            { id: "f", stock_live: 200, threshold_min: 500, wine_name: "Flour", vintage: null, uom: "g", last_counted_at: "2026-11-01T00:00:00Z" },
+            { id: "u", stock_live: 0, threshold_min: 6, wine_name: "Barolo", vintage: null, uom: "bottle", last_counted_at: null },
+          ],
+          restaurant_inventory: [
+            { id: "u", display_name: "Barolo", stock_live: 0, updated_at: "2026-09-30T10:00:00Z", last_counted_at: null, master_wine_library: null },
+          ],
+        }),
+      );
+      const alerts = await service.getAlerts("r1");
+      const messages = alerts.map((a) => a.message).sort();
+      expect(messages).toEqual(
+        ["Flour — 200 g left, you keep at least 500 g", "Barolo — not counted yet"].sort(),
+      );
+      expect(alerts.find((a) => a.title === "Low Stock")?.severity).toBe("warning");
+      expect(alerts.some((a) => a.severity === "critical")).toBe(false);
     });
   });
 

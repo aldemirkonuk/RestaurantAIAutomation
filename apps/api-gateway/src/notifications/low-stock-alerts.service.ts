@@ -17,6 +17,7 @@ import {
 } from "../communications/recipient-resolver.service";
 import type { LowStockDigestWine } from "../communications/email-templates";
 import { canonicalOrigin } from "../communications/email-templates";
+import { goodsNoun, quantityIn, unitWord } from "../common/goods-words";
 import {
   digestClockFor,
   digestHourOf,
@@ -150,6 +151,10 @@ interface LowStockRow {
   currentStock: number;
   threshold: number;
   severity: "critical" | "low";
+  /** What the good is (wine, beer, food, ...). Absent on a wines-only view. */
+  kind?: string | null;
+  /** The unit its stock and its par are written in (ADR 0070). */
+  uom?: string | null;
 }
 
 /**
@@ -777,19 +782,26 @@ export class LowStockAlertsService {
     const priority: "critical" | "high" =
       criticalCount > 0 ? "critical" : "high";
     const list = wines
-      .map((w) => `${w.wineName} (${w.currentStock}/${w.threshold})`)
+      .map(
+        (w) =>
+          `${w.wineName} (${w.currentStock}/${w.threshold} ${unitWord(w.uom, w.threshold)})`,
+      )
       .join(", ");
     // No emoji in a stored title (ADR 0042 / the 2026-09-03 house rule): the
     // inbox draws the register's mark itself, and an emoji written into the
     // row is unstylable, unsearchable and permanent. The severity the emoji
     // used to carry is stated in WORDS here and repeated in `priority` and
     // `metadata.criticalCount`, so nothing is lost by dropping the picture.
+    const noun = goodsNoun(
+      wines.map((w) => w.kind),
+      wines.length,
+    );
     const title =
       wines.length === 1
         ? `${wines[0].severity === "critical" ? "Critical" : "Low stock"}: ${wines[0].wineName}`
         : criticalCount > 0
-          ? `${wines.length} wines dropped below par — ${criticalCount} critical`
-          : `${wines.length} wines dropped below par`;
+          ? `${wines.length} ${noun} dropped below par — ${criticalCount} critical`
+          : `${wines.length} ${noun} dropped below par`;
 
     // 1) In-app inbox — the reliable channel (works even with no email set up).
     const persisted = await this.notifications.persistForRestaurant(
@@ -799,7 +811,7 @@ export class LowStockAlertsService {
         title,
         message:
           wines.length === 1
-            ? `Only ${wines[0].currentStock} bottles remaining (par: ${wines[0].threshold})`
+            ? `Only ${quantityIn(wines[0].currentStock, wines[0].uom)} remaining (par: ${wines[0].threshold})`
             : `Just crossed below par: ${list}`,
         priority,
         actionUrl: "/inventory?filter=low-stock",
@@ -1048,6 +1060,8 @@ export class LowStockAlertsService {
       threshold: w.threshold,
       severity: w.severity,
       wineId: w.wineId,
+      kind: w.kind,
+      uom: w.uom,
     }));
     try {
       await this.gmail.sendLowStockDigest({
@@ -1277,6 +1291,9 @@ export class LowStockAlertsService {
   private mapRow(raw: any): LowStockRow | null {
     const inventoryId = raw.id ?? raw.inventory_id;
     if (!inventoryId) return null;
+    // OD-161: last_counted_at null = never counted; its 0 is the column
+    // default, not a shortage. An absent column (older view) is not null.
+    if (raw.last_counted_at === null) return null;
     const currentStock = Number(raw.stock_live ?? raw.current_stock ?? 0);
     const threshold = Number(raw.threshold_min ?? raw.par_level ?? 10);
     if (!(threshold > 0)) return null;
@@ -1301,10 +1318,17 @@ export class LowStockAlertsService {
     return {
       inventoryId,
       wineId: raw.wine_id ?? raw.master_wine_id ?? inventoryId,
-      wineName: raw.wine_name ?? raw.name ?? "Unknown wine",
+      wineName:
+        raw.wine_name ??
+        raw.name ??
+        (raw.kind && String(raw.kind).toLowerCase() !== "wine"
+          ? "Unnamed good"
+          : "Unknown wine"),
       currentStock,
       threshold,
       severity,
+      kind: raw.kind ?? null,
+      uom: raw.uom ?? null,
     };
   }
 

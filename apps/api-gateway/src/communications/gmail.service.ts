@@ -5,6 +5,7 @@ import { google, gmail_v1 } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import * as nodemailer from "nodemailer";
 import { htmlToText } from "../common/html/html-to-text";
+import { goodsNoun, unitWord } from "../common/goods-words";
 import {
   addressListHeader,
   base64Body,
@@ -379,17 +380,21 @@ This is an automated alert from Mudavym.
       (w) => w.severity === "critical",
     ).length;
 
+    const noun = goodsNoun(
+      data.wines.map((w) => w.kind),
+      total,
+    );
     const subject =
       data.mode === "instant"
-        ? `${criticalCount > 0 ? "🚨" : "⚠️"} ${total} wine${total === 1 ? "" : "s"} dropped below par`
-        : `⚠️ Low-stock digest: ${total} wine${total === 1 ? "" : "s"} below par`;
+        ? `${criticalCount > 0 ? "🚨" : "⚠️"} ${total} ${noun} dropped below par`
+        : `⚠️ Low-stock digest: ${total} ${noun} below par`;
 
     const text = [
       subject,
       "",
       ...data.wines.map(
         (w) =>
-          `- ${w.wineName}: ${w.currentStock}/${w.threshold} bottles${
+          `- ${w.wineName}: ${w.currentStock}/${w.threshold} ${unitWord(w.uom, w.threshold)}${
             w.severity === "critical" ? " (CRITICAL)" : ""
           }`,
       ),
