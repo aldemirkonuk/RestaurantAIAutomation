@@ -96,25 +96,59 @@ describe("an order letter's From names the house (G3)", () => {
 });
 
 describe("GET communications/sender-identity tells the truth (G12)", () => {
-  function controller(rows: Rows) {
+  const SENDS = {
+    kind: "house_mailbox",
+    sendable: true,
+    address: "chef@kitchenette.example",
+  };
+  function controller(rows: Rows, identity: unknown = SENDS) {
     const c = Object.create(CommunicationsController.prototype) as any;
     c.gmailService = { getSenderEmail: () => "orders@mudavym.example" };
     c.configService = { get: () => undefined };
     c.databaseService = { supabase: db(rows) };
+    c.logger = { warn: () => undefined };
+    c.houseSender = {
+      resolve: async () => {
+        if (identity instanceof Error) throw identity;
+        return identity;
+      },
+    };
     return c as CommunicationsController;
   }
 
-  it("says per-house sending exists and names the order-mail From", async () => {
+  it("says per-house sending exists when the house has a sending mailbox, and names the order-mail From", async () => {
     const out = await controller({ branding: { display_name: "Kitchenette" } }).senderIdentity({
       restaurantId: "r-1",
     });
     expect(out.perHouse.supported).toBe(true);
+    expect(out.perHouse.reason).toContain("chef@kitchenette.example");
     expect(out.perHouse.reason).not.toMatch(/No per-restaurant sender exists/);
     expect(out.orderMail).toEqual({
       address: "orders@mudavym.example",
       fromName: "Kitchenette",
       words: expect.stringContaining('as from "Kitchenette"'),
     });
+  });
+
+  it("a house with no sending mailbox is told it has none, never supported", async () => {
+    const out = await controller(
+      { branding: { display_name: "Kitchenette" } },
+      { kind: "none", sendable: false, address: null },
+    ).senderIdentity({ restaurantId: "r-1" });
+    expect(out.perHouse.supported).toBe(false);
+    expect(out.perHouse.reason).toMatch(/no connected mailbox that may send/);
+    expect(out.perHouse.reason).not.toMatch(/leave from one of its own/);
+  });
+
+  it("grants that could not be read are unknown, not supported", async () => {
+    for (const identity of [
+      { kind: "unknown", sendable: false, address: null },
+      new Error("db down"),
+    ]) {
+      const out = await controller({}, identity).senderIdentity({ restaurantId: "r-1" });
+      expect(out.perHouse.supported).toBe(false);
+      expect(out.perHouse.reason).toMatch(/could not be read/);
+    }
   });
 
   it("says the default name is a default when the house's name is unread", async () => {
