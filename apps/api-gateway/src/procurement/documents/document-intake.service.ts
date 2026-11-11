@@ -582,6 +582,16 @@ export class DocumentIntakeService {
           duplicateOf: persisted.duplicateOf,
           ...(stored.failure ? { storageError: stored.failure } : {}),
         };
+      // Another path filed these exact bytes between the sha check above and
+      // the insert: the answer is that row, as a duplicate, and it is never
+      // resolved or stamped a second time.
+      if (persisted.sameBytes)
+        return {
+          documentId: persisted.documentId,
+          parsed: null,
+          duplicate: true,
+          ...(stored.failure ? { storageError: stored.failure } : {}),
+        };
       const documentId = persisted.documentId;
 
       /**
@@ -1055,7 +1065,12 @@ export class DocumentIntakeService {
     sha256: string,
     bytes: Buffer,
     parsed: ParsedDocument,
-  ): Promise<{ documentId: string | null; duplicateOf?: DuplicateOf }> {
+  ): Promise<{
+    documentId: string | null;
+    duplicateOf?: DuplicateOf;
+    /** Another path filed these exact bytes first; `documentId` is that row. */
+    sameBytes?: true;
+  }> {
     const needsReview = this.needsReview(parsed);
 
     /**
@@ -1210,9 +1225,18 @@ export class DocumentIntakeService {
       // a null id under a 200 (QA round 3 on PR #775, item 2).
       if (isSameNumberCollision(error) && input.providerId && parsed.docNumber)
         return this.earlierSameNumberPaper(input, parsed, input.providerId);
-      // A unique violation means another path won the race on the same bytes.
-      // That is the dedupe working, not a failure.
+      // A unique violation on the BYTES means another path won the race on
+      // the same file. That is the dedupe working, not a failure — but only
+      // when a second read finds the row that won. Any other 23505 (another
+      // index, or a sha race whose winner cannot be read back) is an error
+      // in words: answering `documentId: null` with no error is the silent
+      // drop proposal-receipt row 1.1 closes ("no path returns a null id
+      // without an error").
       if (error.code === "23505") {
+        if (!String(error.message ?? "").includes("uq_pd_restaurant_sha256"))
+          throw new Error(
+            `This paper could not be filed: the database refused it as a duplicate of something it did not name (${error.message}). Nothing was written; the file is kept in storage.`,
+          );
         const dup = await this.db
           .getClient()
           .from("procurement_documents")
@@ -1220,7 +1244,15 @@ export class DocumentIntakeService {
           .eq("restaurant_id", input.restaurantId)
           .eq("sha256", sha256)
           .maybeSingle();
-        return { documentId: dup.data?.id ?? null };
+        if (dup.error)
+          throw new Error(
+            `This file is already on file, but the earlier copy could not be read back: ${dup.error.message}.`,
+          );
+        if (!dup.data?.id)
+          throw new Error(
+            "This file is already on file by the database's own rule, but no earlier copy holds it on a second read.",
+          );
+        return { documentId: dup.data.id as string, sameBytes: true };
       }
       throw new Error(error.message);
     }
