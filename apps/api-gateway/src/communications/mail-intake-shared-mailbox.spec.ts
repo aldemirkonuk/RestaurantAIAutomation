@@ -69,6 +69,59 @@ describe("the shared mailbox moves its cursor only past recorded letters", () =>
     expect(advanced).toEqual([["99", true, null]]);
   });
 
+  it("an expired cursor resyncs from the last finished read, less five minutes", async () => {
+    const last = "2026-11-10T12:00:00.000Z";
+    const { watch, listedAfter } = fakeWatch([MSG("g1")], {
+      expired: true,
+      lastReadAt: last,
+    });
+    await reader(watch, fakeIntake([]).intake, memoryDb(house())).read();
+    expect(listedAfter).toEqual([(Date.parse(last) - 5 * 60_000) / 1000]);
+  });
+
+  it("a failed resync leaves the cursor and records the error (last_read_at is the RPC's to keep)", async () => {
+    const { watch, advanced } = fakeWatch([MSG("g1")], {
+      expired: true,
+      failing: ["g1"],
+    });
+    const run = await reader(watch, fakeIntake([]).intake, memoryDb(house())).read();
+    expect(run.status).toBe("stopped");
+    expect(advanced).toEqual([[null, false, expect.stringMatching(/g1/)]]);
+  });
+
+  it("a resync window too large to list stops visibly; it never jumps to the present", async () => {
+    const published: any[] = [];
+    const { watch, advanced } = fakeWatch([MSG("g1"), MSG("g2")], {
+      expired: true,
+      truncated: true,
+    });
+    const run = await reader(watch, fakeIntake(published).intake, memoryDb(house())).read();
+    expect(run).toMatchObject({ status: "stopped", recorded: 0 });
+    expect(run.error).toMatch(/more than 2 letters/);
+    expect(published).toEqual([]);
+    expect(advanced).toEqual([[null, false, expect.stringMatching(/did not move/)]]);
+  });
+
+  it("a push during a running read is answered busy, and the running read goes round again", async () => {
+    const published: any[] = [];
+    const answers: any[] = [];
+    let r: any;
+    let pushedOnce = false;
+    const { watch, advanced } = fakeWatch([MSG("g1")], {
+      onFetch: async () => {
+        if (pushedOnce) return;
+        pushedOnce = true;
+        answers.push(await r.read("50"));
+      },
+    });
+    r = reader(watch, fakeIntake(published).intake, memoryDb(house()));
+    const run = await r.read();
+    expect(answers).toEqual([{ status: "busy", messages: 0, recorded: 0 }]);
+    // Two passes from the cursor: the one that was running and the one owed.
+    expect(advanced).toHaveLength(2);
+    expect(run).toMatchObject({ status: "processed", messages: 2 });
+  });
+
   it("a door that never read starts at the pushed id and reads nothing older", async () => {
     const { watch, advanced } = fakeWatch([MSG("g1")], { cursor: null });
     const run = await reader(watch, fakeIntake([]).intake, memoryDb(house())).read("77");
@@ -83,6 +136,34 @@ describe("the shared mailbox moves its cursor only past recorded letters", () =>
     const { watch } = fakeWatch([own, spoof]);
     await reader(watch, fakeIntake(published).intake, memoryDb(house())).read();
     expect(published.map((p) => p.gmail_message_id)).toEqual(["g2"]);
+  });
+});
+
+describe("GmailWatchService.inboxIdsSince never cuts a window in silence", () => {
+  const svcWith = (pages: any[]) => {
+    const svc: any = new GmailWatchService({ get: () => undefined } as any, {} as any);
+    svc.isConfigured = true;
+    svc.gmail = { users: { messages: { list: async () => ({ data: pages.shift() }) } } };
+    return svc;
+  };
+
+  it("reads every page and answers oldest first", async () => {
+    const svc = svcWith([
+      { messages: [{ id: "new" }, { id: "mid" }], nextPageToken: "p2" },
+      { messages: [{ id: "old" }] },
+    ]);
+    await expect(svc.inboxIdsSince(0)).resolves.toEqual({
+      ids: ["old", "mid", "new"],
+      truncated: false,
+    });
+  });
+
+  it("says truncated when more pages remain past the ceiling", async () => {
+    const svc = svcWith([
+      { messages: [{ id: "c" }, { id: "b" }], nextPageToken: "p2" },
+      { messages: [{ id: "a" }] },
+    ]);
+    await expect(svc.inboxIdsSince(0, 2)).resolves.toMatchObject({ truncated: true });
   });
 });
 
