@@ -105,3 +105,22 @@ describe("a good with no library title moves through the ledger", () => {
     expect(t.events[0].payload).toEqual(expect.objectContaining({ wineId: null, inventoryId: ITEM, quantity: -2250 }));
   });
 });
+
+describe("a good with no library title is counted (and so zeroed before removal)", () => {
+  it("reconcile with no wineId reaches record_stock_count for the item, and returns the count", async () => {
+    const t = build();
+    const counts: Array<Record<string, any>> = [];
+    t.db.rpcHandlers.record_stock_count = (args) => {
+      counts.push(args);
+      return {
+        data: { count_id: "count-1", expected_qty: 2250, counted_qty: args.p_counted_qty, variance_qty: -2250, transaction_id: null },
+        error: null,
+      };
+    };
+    const out = await t.service.reconcileInventory(HOUSE, USER, ITEM, undefined, 0, "Removed from inventory — Discontinued");
+    expect(counts).toHaveLength(1);
+    expect(counts[0]).toEqual(expect.objectContaining({ p_inventory_id: ITEM, p_counted_qty: 0 }));
+    expect(out.count).toEqual(expect.objectContaining({ countedQty: 0, expectedQty: 2250 }));
+    expect(out.transaction).toBeNull();
+  });
+});

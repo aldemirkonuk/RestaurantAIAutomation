@@ -316,7 +316,8 @@ export class InventoryLedgerController {
     @Param("inventoryId") inventoryId: string,
     @Body()
     body: {
-      wineId: string;
+      /** Only logged. A good with no library title (flour, napkins) sends none. */
+      wineId?: string;
       actualCount: number;
       notes?: string;
       clientCountId?: string;
