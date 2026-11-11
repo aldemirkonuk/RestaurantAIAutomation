@@ -36,7 +36,7 @@ import { shortDate, volume } from '../../cellar/next/cellar-format';
 import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
-import { isPoured } from './iv-amount';
+import { amountUnit, isPoured } from './iv-amount';
 import { writeFailure } from './iv-failure';
 import { oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
 import {
@@ -247,6 +247,10 @@ export default function RowDropdown(props: RowDropdownProps) {
     row.stock !== null &&
     row.shadow !== null &&
     hold.some((f) => f.live === row.stock && f.shadow === row.shadow);
+  // Live and shadow are in the good's own unit: bottles say a bare figure, as they always have.
+  const goodUnit = amountUnit(props.uom);
+  const inBottles = goodUnit.base === 'bottle';
+  const say = inBottles ? fmtCount : goodUnit.words;
   const canReconcile =
     row.stock !== null && row.shadow !== null && row.shadow > 0 && row.wineId !== null && !reconciling && !held;
   const reconcileShadow = async () => {
@@ -263,12 +267,12 @@ export default function RowDropdown(props: RowDropdownProps) {
     try {
       await reconcileItem(row.id, { wineId: row.wineId, actualCount: total, notes: 'Shadow reconciled into live' });
       holdIt(true);
-      toast.success(`${title}: live set to ${fmtCount(total)}, the shadow bottles counted in.`);
+      toast.success(`${title}: live set to ${say(total)}, the shadow ${inBottles ? 'bottles ' : ''}counted in.`);
       void queryClient.invalidateQueries({ queryKey: queryKeys.inventory.all });
     } catch (e) {
       const f = writeFailure(e, {
         refused: 'Nothing was reconciled',
-        act: 'live was set to the count with the shadow bottles in it',
+        act: `live was set to the count with the shadow ${inBottles ? 'bottles ' : ''}in it`,
         check: 'Re-read the book before trying again.',
       });
       if (f.unknown) {
@@ -386,7 +390,7 @@ export default function RowDropdown(props: RowDropdownProps) {
             {row.shadow !== null && row.shadow > 0 && held ? (
               <p className="iv-note" role="note" data-testid="reconcile-held">
                 {holdWhy === 'landed'
-                  ? 'Reconcile is done for now: live was already set with the shadow bottles counted in, and the shadow lots still read until they are cleared. It comes back when live or shadow reads differently.'
+                  ? `Reconcile is done for now: live was already set with the shadow ${inBottles ? 'bottles ' : ''}counted in, and the shadow lots still read until they are cleared. It comes back when live or shadow reads differently.`
                   : 'Reconcile is held: the last one may have landed. It comes back when live or shadow reads differently.'}
               </p>
             ) : row.shadow !== null && row.shadow > 0 ? (
@@ -397,7 +401,7 @@ export default function RowDropdown(props: RowDropdownProps) {
                 disabled={!canReconcile}
                 onClick={() => void reconcileShadow()}
               >
-                Reconcile {fmtCount(row.shadow)} into live
+                Reconcile {say(row.shadow)} into live
               </button>
             ) : null}
             <button type="button" role="menuitem" className="iv-menu-item iv-focus" onClick={() => void copyName()}>
@@ -473,6 +477,7 @@ export default function RowDropdown(props: RowDropdownProps) {
           onClose={() => setSheet(null)}
           locations={props.locations}
           locationsUnavailable={props.locationsUnavailable}
+          uom={props.uom}
         />
       ) : null}
       {sheet === 'pour' && isPoured(props.uom, props.kind) ? <PourSheet row={row} onClose={() => setSheet(null)} /> : null}

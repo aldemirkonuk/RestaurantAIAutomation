@@ -697,6 +697,15 @@ describe('the rest of the legacy expansion (round 4 census)', () => {
     expect(toasts.success.mock.calls[0][0]).not.toMatch(/booked|moved/);
   });
 
+  it('a good kept in grams reconciles in kg, never "bottles"', async () => {
+    const m = await openMore({ row: row({ stock: 3_000, shadow: 2_500 }), uom: 'g', kind: 'food' });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2.5 kg into live' }));
+    });
+    expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5_500, notes: 'Shadow reconciled into live' });
+    expect(toasts.success.mock.calls[0][0]).toBe('Gravner Ribolla: live set to 5.5 kg, the shadow counted in.');
+  });
+
   it('holds Reconcile while live stock is unread', async () => {
     const m = await openMore({ row: row({ stock: null, shadow: 2 }) });
     expect((within(m).getByRole('menuitem', { name: 'Reconcile 2 into live' }) as HTMLButtonElement).disabled).toBe(true);

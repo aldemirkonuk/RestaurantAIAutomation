@@ -133,7 +133,11 @@ function AmountField({
         onChange={(e) => onChange(e.target.value)}
       />
       <span id={`${id}-echo`} className="iv-note" data-testid="iv-amount-echo" aria-live="polite">
-        {value.trim() === '' ? unit.hint : n === null ? `Not an amount this book can hold. ${unit.hint}` : `Reads as ${unit.words(n)}.`}
+        {value.trim() === ''
+          ? unit.hint
+          : n === null
+            ? (unit.why(value) ?? `Not an amount this book can hold. ${unit.hint}`)
+            : `Reads as ${unit.words(n)}.`}
       </span>
     </span>
   );
@@ -304,7 +308,8 @@ export function WriteOffSheet({ row, onClose, uom }: SheetProps) {
   const bottles = unit.base === 'bottle';
   const [idempotencyKey] = useState(() => freshKey('writeoff', row.id));
   const [reason, setReason] = useState<string>('');
-  const [qty, setQty] = useState('1');
+  // A weighed good starts empty: a bare "1" would only ask whether it is g or kg.
+  const [qty, setQty] = useState(unit.whole ? '1' : '');
   const [attempt, setAttempt] = useState(0);
   const [said, setSaid] = useState<{ text: string; alarm?: boolean } | null>(null);
   const n = unit.parse(qty);
@@ -359,7 +364,7 @@ export function WriteOffSheet({ row, onClose, uom }: SheetProps) {
         ? 'Write off at least one whole bottle.'
         : unit.whole
           ? `Write off at least ${unit.words(1)}.`
-          : `Type how much left. ${unit.hint}`
+          : (unit.why(qty) ?? `Type how much left. ${unit.hint}`)
       : row.stock !== null && n > row.stock
         ? `The book holds ${bottles ? fmtCount(row.stock) : unit.words(row.stock)}; a write-off cannot take it below zero. If the book is wrong, record a count first.`
         : null;
@@ -409,22 +414,28 @@ export function TransferSheet({
   onClose,
   locations,
   locationsUnavailable,
+  uom,
 }: SheetProps & { locations: StorageLocation[]; locationsUnavailable: boolean }) {
   const invalidate = useInvalidateStock();
+  // A zone holds the good in the book's own unit, as the total does (ADR 0070):
+  // 5,000 g of flour moves as kg, never as "bottles" that are really grams.
+  const unit = amountUnit(uom);
+  const bottles = unit.base === 'bottle';
+  const words = bottles ? fmtCount : unit.words;
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [qty, setQty] = useState('1');
+  const [qty, setQty] = useState(unit.whole ? '1' : '');
   const [attempt, setAttempt] = useState(0);
   const [said, setSaid] = useState<{ text: string; alarm?: boolean } | null>(null);
-  const n = wholeNumber(qty);
+  const n = unit.parse(qty);
   // A blocked sheet never says the count, so a null one reads as nothing (INV-W33).
-  const nText = n === null ? '' : fmtCount(n);
+  const nText = n === null ? '' : words(n);
 
   const nameOf = (id: string | null) =>
     id === null ? 'Unassigned' : (locations.find((l) => l.id === id)?.name ?? 'a zone this page cannot name');
   const fromOptions = (row.zones ?? [])
     .filter((z) => z.qty > 0)
-    .map((z) => ({ value: z.locationId ?? UNASSIGNED, label: `${nameOf(z.locationId)} · ${fmtCount(z.qty)}` }));
+    .map((z) => ({ value: z.locationId ?? UNASSIGNED, label: `${nameOf(z.locationId)} · ${words(z.qty)}` }));
   const held = (row.zones ?? []).find((z) => (z.locationId ?? UNASSIGNED) === from)?.qty ?? null;
   const toOptions = [
     ...locations.map((l) => ({ value: l.id, label: l.name })),
@@ -445,11 +456,13 @@ export function TransferSheet({
     },
     onError: (e) => {
       setAttempt((a) => a + 1);
-      // A transfer carries no key, so a second try after an unknown one can move the bottles twice.
+      // A transfer carries no key, so a second try after an unknown one can move the stock twice.
       const f = writeFailure(e, {
         refused: 'Nothing moved',
-        act: 'the bottles moved',
-        check: 'Look at where the bottles are on the page before trying again, so they do not move twice.',
+        act: bottles ? 'the bottles moved' : 'it moved',
+        check: bottles
+          ? 'Look at where the bottles are on the page before trying again, so they do not move twice.'
+          : 'Look at what each zone holds on the page before trying again, so it does not move twice.',
       });
       if (f.unknown) invalidate();
       setSaid({ text: f.text, alarm: true });
@@ -461,17 +474,25 @@ export function TransferSheet({
   const blocked = locationsUnavailable
     ? 'The storage locations could not be read, so no zone can be named and nothing can be moved.'
     : noZones
-      ? 'This house has no zones yet, so there is nowhere to move bottles to. Zones are added under Tools, in Storage locations.'
+      ? `This house has no zones yet, so there is nowhere to move ${bottles ? 'bottles' : 'it'} to. Zones are added under Tools, in Storage locations.`
       : row.zones === null
       ? 'Where this title sits could not be read, so there is nothing to move from.'
       : fromOptions.length === 0
-        ? 'No zone holds a bottle of this title.'
+        ? bottles
+          ? 'No zone holds a bottle of this title.'
+          : 'No zone holds any of this good.'
         : !from || !to
-          ? 'Choose where the bottles come from and where they go.'
+          ? bottles
+            ? 'Choose where the bottles come from and where they go.'
+            : 'Choose where it comes from and where it goes.'
           : n === null || n < 1
-            ? 'Move at least one whole bottle.'
+            ? bottles
+              ? 'Move at least one whole bottle.'
+              : unit.whole
+                ? `Move at least ${unit.words(1)}.`
+                : (unit.why(qty) ?? `Type how much moves. ${unit.hint}`)
             : held !== null && n > held
-              ? `That zone holds ${fmtCount(held)}.`
+              ? `That zone holds ${words(held)}.`
               : null;
 
   return (
@@ -479,16 +500,16 @@ export function TransferSheet({
       open
       bodyClassName="iv-sheet-body"
       onClose={onClose}
-      label={`Move bottles of ${titleOf(row)} between zones, sealed before the books change`}
+      label={`Move ${bottles ? 'bottles of ' : ''}${titleOf(row)} between zones, sealed before the books change`}
       eyebrow="Transfer"
       title={titleOf(row)}
-      footer={<span>A transfer moves bottles between zones; the total on the book does not change.</span>}
+      footer={<span>A transfer moves {bottles ? 'bottles' : 'stock'} between zones; the total on the book does not change.</span>}
     >
       {noZones ? null : (
         <div className="iv-sheet-fields">
           <Select label="From" value={from} onChange={setFrom} placeholder="Choose a zone…" options={fromOptions} disabled={fromOptions.length === 0} />
           <Select label="To" value={to} onChange={setTo} placeholder="Choose a zone…" options={toOptions} disabled={locationsUnavailable} />
-          <CountInput label="Bottles" value={qty} onChange={setQty} min={1} max={held ?? 100_000} />
+          <AmountField unit={unit} label={amountLabel(unit, '')} value={qty} onChange={setQty} min={1} max={held ?? 100_000} />
         </div>
       )}
       {blocked ? <p className="iv-note">{blocked}</p> : null}
