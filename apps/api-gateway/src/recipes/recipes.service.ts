@@ -11,12 +11,29 @@ import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
 import { SaveRecipeDto } from "./dto/recipes.dto";
+import { FIGURE_KEYS, ItemFigures, ServeNutrition, serveNutrition } from "./recipe-nutrition";
 
 export const NOT_THIS_HOUSE = "This drink is not on this house's list.";
 export const STALE_SAVE = "Someone saved this recipe after you opened it. Nothing was changed.";
 export const READ_FAILED = "We could not read this recipe just now. Nothing is shown rather than a wrong one.";
 export const SAVE_FAILED = "We could not save this recipe. Nothing was changed.";
 const SHELF_FAILED = "We could not read the shelf just now.";
+export const WHAT_IS_IN_UNREAD =
+  "What is in a serve could not be read just now, so nothing about it is shown as known. The recipe and its cost are unaffected.";
+
+/** item_nutrition column -> figure key. */
+const FIGURE_COLUMN: Record<(typeof FIGURE_KEYS)[number], string> = {
+  energyKcal: "energy_kcal",
+  fatG: "fat_g",
+  saturatesG: "saturates_g",
+  carbohydrateG: "carbohydrate_g",
+  sugarsG: "sugars_g",
+  proteinG: "protein_g",
+  saltG: "salt_g",
+};
+
+/** A failed read of what is in a serve is said, and never hides the recipe (ADR 0067). */
+export type WhatIsIn = ({ readable: true } & ServeNutrition) | { readable: false; sentence: string };
 
 /**
  * The most one line may hold, in the unit typed, and the most serves one
@@ -95,6 +112,7 @@ export class RecipesService {
 
     let current: Record<string, unknown> | null = null;
     let cost: Record<string, unknown> | null = null;
+    let whatIsIn: WhatIsIn | null = null;
     const versionId = (pointer.data as { version_id?: string } | null)?.version_id;
     if (versionId) {
       const [version, lines] = await Promise.all([
@@ -141,6 +159,7 @@ export class RecipesService {
       }
 
       const v = version.data as Record<string, any>;
+      whatIsIn = await this.whatIsIn(restaurantId, ids, rows, Number(v.yield_serves));
       const priced = recipeCost(
         rows.map((l) => ({
           role: l.role,
@@ -195,9 +214,65 @@ export class RecipesService {
       },
       current,
       cost,
+      whatIsIn,
       versionCount: count.count ?? 0,
       legacyLines,
     };
+  }
+
+  /**
+   * What is in one serve. Its own reads: a failure is said and the recipe still
+   * shows. <= 40 lines a version, so one page each, under the 1,000-row cap.
+   */
+  private async whatIsIn(restaurantId: string, ids: string[], rows: any[], yieldServes: number): Promise<WhatIsIn> {
+    const figuresById = new Map<string, ItemFigures>();
+    const allergensById = new Map<string, Array<{ allergen: string; status: string }>>();
+    if (ids.length) {
+      const client = this.db.getClient();
+      const [nutrition, allergens] = await Promise.all([
+        client
+          .from("item_nutrition")
+          .select("inventory_id, basis, energy_kcal, fat_g, saturates_g, carbohydrate_g, sugars_g, protein_g, salt_g, energy_from_abv")
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", ids),
+        client
+          .from("item_allergens")
+          .select("inventory_id, allergen, status")
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", ids),
+      ]);
+      const error = nutrition.error ?? allergens.error;
+      if (error) {
+        this.logger.error(`recipes: what-is-in read failed: ${error.message}`);
+        return { readable: false, sentence: WHAT_IS_IN_UNREAD };
+      }
+      for (const r of (nutrition.data ?? []) as any[]) {
+        const f = { basis: r.basis, energyFromAbv: Boolean(r.energy_from_abv) } as ItemFigures;
+        for (const k of FIGURE_KEYS) {
+          const raw = r[FIGURE_COLUMN[k]];
+          f[k] = raw === null || raw === undefined ? null : Number(raw);
+        }
+        figuresById.set(r.inventory_id, f);
+      }
+      for (const a of (allergens.data ?? []) as any[]) {
+        const list = allergensById.get(a.inventory_id) ?? [];
+        list.push({ allergen: a.allergen, status: a.status });
+        allergensById.set(a.inventory_id, list);
+      }
+    }
+    const sum = serveNutrition(
+      rows.map((l) => ({
+        label: l.label,
+        role: l.role,
+        inventoryId: l.inventory_id ?? null,
+        qtyBase: Number(l.qty_base),
+        baseUnit: l.base_unit,
+        figures: (l.inventory_id && figuresById.get(l.inventory_id)) || null,
+        allergens: (l.inventory_id && allergensById.get(l.inventory_id)) || [],
+      })),
+      yieldServes,
+    );
+    return { readable: true, ...sum };
   }
 
   async listVersions(restaurantId: string, cocktailId: string) {

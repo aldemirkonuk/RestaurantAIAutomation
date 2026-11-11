@@ -55,6 +55,32 @@ export interface LegacyRecipeLine {
   unit: string | null;
 }
 
+export type ServeFigureKey =
+  | 'energyKcal'
+  | 'fatG'
+  | 'saturatesG'
+  | 'carbohydrateG'
+  | 'sugarsG'
+  | 'proteinG'
+  | 'saltG';
+
+export interface ServeFigure {
+  /** Per serve; null when not known, never 0. */
+  value: number | null;
+  atLeast: boolean;
+  missing: string[];
+}
+
+/** recipes.service.ts WhatIsIn. */
+export type WhatIsIn =
+  | {
+      readable: true;
+      figures: Record<ServeFigureKey, ServeFigure>;
+      notCounted: Array<{ label: string; why: string }>;
+      allergens: Record<string, 'contains' | 'may_contain' | 'free' | 'not_stated'>;
+    }
+  | { readable: false; sentence: string };
+
 export interface CocktailRecipe {
   cocktail: {
     id: string;
@@ -67,6 +93,8 @@ export interface CocktailRecipe {
   };
   current: RecipeVersion | null;
   cost: RecipeCost | null;
+  /** Absent from an older gateway: said as not read. */
+  whatIsIn?: WhatIsIn | null;
   versionCount: number;
   legacyLines: LegacyRecipeLine[];
 }

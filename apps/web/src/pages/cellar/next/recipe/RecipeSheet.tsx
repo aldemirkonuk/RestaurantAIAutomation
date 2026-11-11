@@ -56,6 +56,7 @@ import LineRow, { LineRowRead, rowName, rowQty, type DraftRow } from './LineRow'
 import { draftKey, dropDraft, keepDraft, takeDraft } from './drafts';
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { AMBIGUOUS_AMOUNT, qtyText } from './units';
+import WhatIsInAServe from './WhatIsInAServe';
 import {
   useCanEditRecipe,
   useHouseMoney,
@@ -441,6 +442,8 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
           {footer}
         </p>
       ) : null}
+
+      <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
 
       {canEdit && proposed ? (
         <div className="cl-rcp-proposed" data-testid="recipe-proposed">

@@ -1,0 +1,130 @@
+/**
+ * What is in one serve, from the figures each linked item states
+ * (item_nutrition, #922). Pure, beside recipe-cost.ts, and as honest:
+ * - a line counts only when linked to an item stating figures on its own
+ *   basis (ml against per 100 ml, g against per 100 g; never converted);
+ * - any other line is named in notCounted and in each figure's missing,
+ *   so it reads "unknown for <label>", never 0;
+ * - a figure no counted line states is null; one some lines lack is atLeast;
+ *   energy from ABV is the alcohol alone, so atLeast;
+ * - per serve: divided by the yield, like the cost;
+ * - an allergen is free only when every line, untracked too, states it free.
+ */
+import type { BaseUnit } from "./recipe-cost";
+
+export const FIGURE_KEYS = ["energyKcal", "fatG", "saturatesG", "carbohydrateG", "sugarsG", "proteinG", "saltG"] as const;
+export type FigureKey = (typeof FIGURE_KEYS)[number];
+
+/** EU 1169/2011 Annex II, as item-nutrition/nutrition-figures.ts. */
+export const ALLERGENS = ["gluten", "crustaceans", "eggs", "fish", "peanuts", "soy", "milk", "tree_nuts", "celery", "mustard", "sesame", "sulphites", "lupin", "molluscs"] as const;
+export type Allergen = (typeof ALLERGENS)[number];
+export type AllergenStatus = "contains" | "may_contain" | "free" | "not_stated";
+
+/** One item_nutrition row as the gateway reads it (numerics already numbers or null). */
+export interface ItemFigures extends Record<FigureKey, number | null> {
+  basis: "100g" | "100ml";
+  energyFromAbv: boolean;
+}
+
+export interface NutritionLineInput {
+  label: string;
+  role: "stocked" | "untracked";
+  inventoryId: string | null;
+  qtyBase: number;
+  baseUnit: BaseUnit;
+  /** null: the item states nothing (or the line is not linked). */
+  figures: ItemFigures | null;
+  /** The item's stated allergens; an allergen absent here is not stated. */
+  allergens: ReadonlyArray<{ allergen: string; status: string }>;
+}
+
+export interface ServeFigure {
+  /** Per serve, rounded to 2 places; null when no counted line states it. */
+  value: number | null;
+  /** True when some line could not add to it, so the real figure is higher. */
+  atLeast: boolean;
+  /** Labels of the lines that could not add to it. */
+  missing: string[];
+}
+
+export interface ServeNutrition {
+  figures: Record<FigureKey, ServeFigure>;
+  notCounted: Array<{ label: string; why: string }>;
+  allergens: Record<Allergen, AllergenStatus>;
+  /** Lines counted in at least one figure, of all lines. */
+  counted: number;
+  of: number;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** The line's amount in ml or g (the per-100 figure's own unit), or why it cannot count. */
+function amountOf(line: NutritionLineInput): { amount: number } | { why: string } {
+  if (line.role === "untracked") return { why: "it is not counted from the shelf" };
+  if (!line.inventoryId) return { why: "it is not linked to anything on the shelf" };
+  if (line.baseUnit === "each_milli") return { why: "it is counted in pieces, not by weight or volume" };
+  if (!line.figures) return { why: "nothing is recorded about what is in it" };
+  const qty = Number(line.qtyBase);
+  if (!Number.isFinite(qty) || qty <= 0) return { why: "the recipe does not say how much" };
+  if (line.baseUnit === "ml10") {
+    if (line.figures.basis !== "100ml") return { why: "it is measured by volume, but its figures are per 100 g" };
+    return { amount: qty / 10 };
+  }
+  if (line.figures.basis !== "100g") return { why: "it is weighed, but its figures are per 100 ml" };
+  return { amount: qty / 1000 };
+}
+
+function allergenOf(lines: NutritionLineInput[], a: Allergen): AllergenStatus {
+  const statuses = lines.map((l) => {
+    if (l.role === "untracked" || !l.inventoryId) return "not_stated";
+    const s = l.allergens.find((x) => x.allergen === a)?.status;
+    return s === "contains" || s === "may_contain" || s === "free" ? s : "not_stated";
+  });
+  if (statuses.includes("contains")) return "contains";
+  if (statuses.includes("may_contain")) return "may_contain";
+  if (statuses.length > 0 && statuses.every((s) => s === "free")) return "free";
+  return "not_stated";
+}
+
+export function serveNutrition(lines: NutritionLineInput[], yieldServes: number): ServeNutrition {
+  const serves = Number.isInteger(yieldServes) && yieldServes > 0 ? yieldServes : NaN;
+  const notCounted: ServeNutrition["notCounted"] = [];
+  const counted: Array<{ line: NutritionLineInput; amount: number }> = [];
+  for (const line of lines) {
+    const a = amountOf(line);
+    if ("why" in a) notCounted.push({ label: line.label, why: a.why });
+    else counted.push({ line, amount: a.amount });
+  }
+  const left = notCounted.map((n) => n.label);
+
+  const figures = {} as Record<FigureKey, ServeFigure>;
+  const usedLines = new Set<NutritionLineInput>();
+  for (const k of FIGURE_KEYS) {
+    let total: number | null = null;
+    const missing = [...left];
+    let atLeast = left.length > 0;
+    for (const { line, amount } of counted) {
+      const per100 = line.figures![k];
+      if (per100 === null || per100 === undefined) {
+        missing.push(line.label);
+        atLeast = true;
+        continue;
+      }
+      usedLines.add(line);
+      total = (total ?? 0) + (amount / 100) * Number(per100);
+      if (k === "energyKcal" && line.figures!.energyFromAbv) atLeast = true;
+    }
+    const perServe = total === null ? null : total / serves;
+    figures[k] = {
+      value: perServe === null || !Number.isFinite(perServe) ? null : round2(perServe),
+      atLeast: perServe !== null && atLeast,
+      missing: [...new Set(missing)],
+    };
+  }
+
+  const allergens = Object.fromEntries(ALLERGENS.map((a) => [a, allergenOf(lines, a)])) as Record<
+    Allergen,
+    AllergenStatus
+  >;
+  return { figures, notCounted, allergens, counted: usedLines.size, of: lines.length };
+}
