@@ -69,7 +69,7 @@ describe("cost of goods is what the till sold", () => {
     expect(t.cogsRatio).toBeCloseTo(0.401, 6);
     expect(t.grossMargin).toBeCloseTo(0.599, 6);
     expect(t.settledAfterSale).toBe(0.5);
-    expect(t.basis.cogs).toContain("0.50 was settled after the sale");
+    expect(t.basis.cogs).toContain("0.50 is late prices settled in the window");
     expect(t.basis.revenue).toContain("5 lines naming no stocked item");
   });
 
@@ -86,6 +86,20 @@ describe("cost of goods is what the till sold", () => {
     expect(t.basis.cogs).toContain("2 bottles");
     expect(t.basis.cogs).toContain("1 till movement carried no cost");
     expect(t.cogsCoverage).toMatchObject({ itemsMoved: 2, itemsCosted: 1, bottlesUncosted: 2 });
+  });
+
+  it("counts a late price settled in the window in the cost, but not as an item sold", () => {
+    const t = run({
+      cost: {
+        ...COST,
+        items: [...COST.items!, item("c", { bottles_out: 0, cost: "4.000000", settled_after_sale: "4.000000" })],
+        cost: "204.500000",
+        settled_after_sale: "4.500000",
+      },
+    });
+    expect(t.cogs).toBe(204.5);
+    expect(t.cogsCoverage).toMatchObject({ itemsMoved: 2, itemsCosted: 2 });
+    expect(t.basis.cogs).toContain("2 items");
   });
 
   it("withholds when a void gave a bottle back at an unknown cost", () => {

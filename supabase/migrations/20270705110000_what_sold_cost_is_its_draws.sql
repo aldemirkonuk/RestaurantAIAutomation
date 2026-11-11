@@ -17,14 +17,20 @@
 --   bottles_out      bottles the till took out (sale rows, glass pours'
 --                    opened bottles included).
 --   bottles_back     bottles a void gave back (return rows).
---   cost             the sum of each row's settled cost
---                    (inventory_transaction_settled_cost.settled_cost_total):
---                    what the draws stamped, plus what a later verify settled.
---                    A matched void's row is negative, so a sale and its void
---                    net to the cost of what stayed sold. Six places, never
---                    rounded here: sum, then round once (a_settlement_keeps_
---                    six_places).
---   settled_after_sale  the part of cost a verify settled after the sale.
+--   cost             what the rows' draws stamped when the bottles left
+--                    (inventory_transactions.cost_total), plus
+--                    settled_after_sale. A matched void's row is negative, so
+--                    a sale and its void net to the cost of what stayed sold.
+--                    Six places, never rounded here: sum, then round once
+--                    (a_settlement_keeps_six_places).
+--   settled_after_sale  the settlements (inventory_lot_draw_settlements
+--                    .difference) MADE at or after p_since on this item's till
+--                    sale and return rows, whatever day those rows were sold.
+--                    A late price lands in the period it became known, by
+--                    name, and a period already read never changes under its
+--                    reader (proposal fork F6, the session's call of
+--                    2026-11-07). An item with only a settlement in the
+--                    window is listed with 0 bottles.
 --   uncosted_out     bottles that left with no known cost:
 --                    a row never stamped (unpriced_qty NULL: written before
 --                    a_sale_carries_its_cost, or a glass pour #809 has not
@@ -64,6 +70,7 @@ AS $$
            t.inventory_id,
            t.quantity_change AS qc,
            t.unpriced_qty,
+           t.cost_total,
            t.transaction_date
       FROM public.inventory_transactions t
      WHERE t.restaurant_id = p_restaurant_id
@@ -86,8 +93,7 @@ AS $$
            r.unpriced_qty IS NULL AS unstamped,
            CASE WHEN r.qc < 0 THEN -r.qc ELSE 0 END AS out_,
            CASE WHEN r.qc > 0 THEN r.qc ELSE 0 END AS back_,
-           coalesce(v.settled_cost_total, 0) AS cost,
-           coalesce(v.settled_difference, 0) AS settled,
+           coalesce(r.cost_total, 0) AS cost,
            CASE
              WHEN r.unpriced_qty IS NULL THEN abs(r.qc)
              WHEN r.qc < 0 THEN greatest(coalesce(v.unpriced_qty_remaining, 0),
@@ -99,17 +105,40 @@ AS $$
       LEFT JOIN public.inventory_transaction_settled_cost v ON v.txn_id = r.id
       LEFT JOIN drawn dr ON dr.txn_id = r.id
   ),
-  per_item AS (
+  moved AS (
     SELECT c.inventory_id,
            sum(c.out_) AS bottles_out,
            sum(c.back_) AS bottles_back,
            sum(c.cost) AS cost,
-           sum(c.settled) AS settled_after_sale,
            sum(c.uncosted) FILTER (WHERE c.qc < 0) AS uncosted_out,
            sum(c.uncosted) FILTER (WHERE c.qc > 0) AS uncosted_back,
            min(c.transaction_date) AS first_at
       FROM costed c
      GROUP BY c.inventory_id
+  ),
+  settled AS (
+    SELECT t.inventory_id, sum(s.difference) AS amount
+      FROM public.inventory_lot_draw_settlements s
+      JOIN public.inventory_transactions t ON t.id = s.txn_id
+     WHERE s.restaurant_id = p_restaurant_id
+       AND t.restaurant_id = p_restaurant_id
+       AND s.created_at >= p_since
+       AND t.source = 'pos'
+       AND t.transaction_type IN ('sale', 'return')
+       AND t.stock_type = 'live'
+     GROUP BY t.inventory_id
+  ),
+  per_item AS (
+    SELECT coalesce(m.inventory_id, s.inventory_id) AS inventory_id,
+           coalesce(m.bottles_out, 0) AS bottles_out,
+           coalesce(m.bottles_back, 0) AS bottles_back,
+           coalesce(m.cost, 0) + coalesce(s.amount, 0) AS cost,
+           coalesce(s.amount, 0) AS settled_after_sale,
+           m.uncosted_out,
+           m.uncosted_back,
+           m.first_at
+      FROM moved m
+      FULL JOIN settled s ON s.inventory_id = m.inventory_id
   ),
   hi AS (
     SELECT p.*, (h.id IS NOT NULL) AS in_house
@@ -142,8 +171,9 @@ $$;
 COMMENT ON FUNCTION public.pos_cost_of_goods(uuid, timestamptz) IS
   'Cost-math lane 3.1. Per stock item since p_since, over the till''s sale and '
   'return ledger rows (the rows pos_item_sales counts as bottles_out): bottles '
-  'out and back, the settled cost their draws carried (six places, a matched '
-  'void negative), the part settled after the sale, and the bottles whose cost '
+  'out and back, the cost their draws stamped (six places, a matched void '
+  'negative) plus the settlements made in the window on any till sale of the '
+  'item (settled_after_sale, proposal F6), and the bottles whose cost '
   'is unknown (uncosted_out, uncosted_back). cost holds priced bottles only: '
   'never print it as cost of goods while any uncosted count is above 0 (ADR '
   '0298 d1). Pass the tenant-checked house.';
