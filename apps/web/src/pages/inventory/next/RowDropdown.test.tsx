@@ -6,7 +6,7 @@
  * stubbed; the sheets and the ceremony stub are real mounts.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
@@ -491,6 +491,14 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     return screen.findByRole('menu');
   }
 
+  it('a food or a good weighed in grams is never offered "Record a pour"; a wine still is', async () => {
+    const food = await menu({ uom: 'g', kind: 'food' });
+    expect(within(food).queryByRole('menuitem', { name: 'Record a pour' })).toBeNull();
+    cleanup();
+    const wine = await menu();
+    expect(within(wine).getByRole('menuitem', { name: 'Record a pour' })).toBeTruthy();
+  });
+
   it('both acts are reachable from More, for staff as well as managers (legacy gates neither)', async () => {
     const m = await menu({ canManage: false });
     expect(within(m).getByRole('menuitem', { name: 'Mark inactive' })).toBeTruthy();
@@ -687,6 +695,15 @@ describe('the rest of the legacy expansion (round 4 census)', () => {
     expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5, notes: 'Shadow reconciled into live' });
     expect(toasts.success.mock.calls[0][0]).toBe('Gravner Ribolla: live set to 5, the shadow bottles counted in.');
     expect(toasts.success.mock.calls[0][0]).not.toMatch(/booked|moved/);
+  });
+
+  it('a good kept in grams reconciles in kg, never "bottles"', async () => {
+    const m = await openMore({ row: row({ stock: 3_000, shadow: 2_500 }), uom: 'g', kind: 'food' });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2.5 kg into live' }));
+    });
+    expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5_500, notes: 'Shadow reconciled into live' });
+    expect(toasts.success.mock.calls[0][0]).toBe('Gravner Ribolla: live set to 5.5 kg, the shadow counted in.');
   });
 
   it('holds Reconcile while live stock is unread', async () => {
