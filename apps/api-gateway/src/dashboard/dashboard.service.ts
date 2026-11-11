@@ -24,7 +24,7 @@ import {
   hasStatus,
 } from "../procurement/order-status";
 import { houseFrame } from "../common/house-frame";
-import { quantityIn, unitWord } from "../common/goods-words";
+import { isBottles, quantityIn, unitWord } from "../common/goods-words";
 import {
   localDateIn,
   localMidnight,
@@ -627,7 +627,9 @@ export class DashboardService {
 
     const totalItems = inventory?.length || 0;
     const totalBottles =
-      inventory?.reduce((sum, item) => sum + (item.stock_live || 0), 0) || 0;
+      inventory
+        ?.filter((item) => isBottles(item.uom))
+        .reduce((sum, item) => sum + (item.stock_live || 0), 0) || 0;
     const lowStockCount = lowStock?.length || 0;
     const criticalCount =
       inventory?.filter((item) => (item.stock_live || 0) === 0).length || 0;
@@ -1174,7 +1176,7 @@ export class DashboardService {
         await Promise.allSettled([
           client
             .from("restaurant_inventory")
-            .select("id, stock_live, bottle_size_ml")
+            .select("id, stock_live, bottle_size_ml, uom")
             .eq("restaurant_id", restaurantId)
             .is("deleted_at", null)
             .eq("is_active", true),
@@ -1200,11 +1202,14 @@ export class DashboardService {
       const orders = rowsOrThrow(ordersResult, "procurement_orders");
       const zone = valueOrThrow(zoneResult);
       const totalWines = inventory.length;
-      const totalBottles = inventory.reduce(
+      // Bottles are the rows counted in bottles; a flour's grams or a case of
+      // lemons is not a bottle, and ml-per-bottle only means something here.
+      const bottled = inventory.filter((i) => isBottles(i.uom));
+      const totalBottles = bottled.reduce(
         (sum, i) => sum + (i.stock_live || 0),
         0,
       );
-      const totalVolumeMl = inventory.reduce(
+      const totalVolumeMl = bottled.reduce(
         (sum, i) => sum + (i.stock_live || 0) * (i.bottle_size_ml || 750),
         0,
       );
@@ -1315,7 +1320,7 @@ export class DashboardService {
           client
             .from("restaurant_inventory")
             .select(
-              "id, display_name, wine_name, stock_live, updated_at, last_counted_at, master_wine_library(name, vintage)",
+              "id, display_name, wine_name, stock_live, uom, updated_at, master_wine_library(name, vintage)",
             )
             .eq("restaurant_id", restaurantId)
             .is("deleted_at", null)
@@ -1390,7 +1395,7 @@ export class DashboardService {
           id: `inv-${i.id}`,
           type: "inventory_change",
           title: name,
-          description: `${bottles(i.stock_live)} on hand`,
+          description: `${quantityIn(i.stock_live, i.uom)} on hand`,
           timestamp: i.updated_at,
           entityId: i.id,
           entityType: "inventory",
@@ -1434,7 +1439,7 @@ export class DashboardService {
           client
             .from("restaurant_inventory")
             .select(
-              "id, display_name, wine_name, stock_live, updated_at, master_wine_library(name, vintage)",
+              "id, display_name, wine_name, stock_live, updated_at, last_counted_at, master_wine_library(name, vintage)",
             )
             .eq("restaurant_id", restaurantId)
             .is("deleted_at", null)
