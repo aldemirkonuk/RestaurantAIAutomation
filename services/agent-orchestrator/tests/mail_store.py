@@ -68,19 +68,43 @@ class _Not:
 class Query:
     def __init__(self, store, table):
         self.store, self.table, self.filters = store, table, []
-        self.payload, self.lim = None, None
+        self.payload, self.lim, self.embeds = None, None, {}
 
-    def select(self, *_a, **_k):
+    def select(self, columns="*", *_a, **_k):
+        # A filter on ``rel.col`` needs ``rel!inner(...)``, as in PostgREST.
+        self.embeds = dict(re.findall(r"(\w+)(!inner)?\(", columns))
+        return self
+
+    def _check(self, col):
+        """A column the table lacks raises, as PostgREST does (400)."""
+        rel, sub = col.split(".", 1) if "." in col else (self.table, col)
+        known = (self.store.columns or {}).get(rel)
+        if "." in col and not self.embeds.get(rel) or known and sub not in known:
+            raise LookupError(f"column {col} does not exist here")
+
+    def _filter(self, col, test):
+        self._check(col)
+        if "." not in col:
+            self.filters.append(lambda r: test(_field(r, col)))
+            return self
+        rel, sub = col.split(".", 1)
+        fk = rel[:-1] + "_id"  # providers -> provider_id
+
+        def keep(r):
+            parents = self.store.tables.get(rel, [])
+            return any(
+                p.get("id") == r.get(fk) and test(_field(p, sub)) for p in parents
+            )
+
+        self.filters.append(keep)
         return self
 
     def eq(self, col, value):
-        self.filters.append(lambda r: _field(r, col) == value)
-        return self
+        return self._filter(col, lambda v: v == value)
 
     def ilike(self, col, pattern):
         rx = like_to_regex(pattern)
-        self.filters.append(lambda r: bool(rx.match(str(_field(r, col) or ""))))
-        return self
+        return self._filter(col, lambda v: bool(rx.match(str(v or ""))))
 
     def in_(self, col, values):
         self.filters.append(lambda r: _field(r, col) in values)
@@ -115,8 +139,9 @@ class Store:
     """``store.supabase`` stands in for the client; ``inserts`` and ``reads``
     record what the code under test wrote and which tables it read."""
 
-    def __init__(self, tables):
+    def __init__(self, tables, columns=None):
         self.tables, self.inserts, self.reads = tables, [], []
+        self.columns = columns  # {table: {column}}; None checks nothing
         self.supabase = self
 
     def table(self, name):

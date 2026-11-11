@@ -24,7 +24,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from config.settings import Settings
-from agents.email_parsing_agent import like_exactly
+from agents.email_parsing_agent import like_exactly, sender_address, sender_unconfirmed
 from core.base_agent import BaseAgent
 from core.notifications import notify_restaurant
 from models.email_intel import EmailClassification, PromoDetails
@@ -203,13 +203,6 @@ class EmailIntelAgent(BaseAgent):
         restaurant_id = payload.get("restaurant_id", "")
         received_at_str = payload.get("received_at") or payload.get("internalDate")
 
-        # PROVINT-04: Unknown sender detection (informational, non-blocking)
-        sender_email = payload.get("from_email", "")
-        if sender_email and restaurant_id:
-            is_unknown = await self._detect_unknown_sender(restaurant_id, sender_email)
-            if is_unknown:
-                await self._notify_unknown_sender(restaurant_id, sender_email, payload)
-
         classification = await self._classify_email(
             email_subject, email_body, restaurant_id=restaurant_id or None
         )
@@ -231,7 +224,19 @@ class EmailIntelAgent(BaseAgent):
             self.logger.debug(f"NOISE email discarded: {email_subject[:80]}")
             return
 
-        elif classification.category == "OPERATIONAL":
+        # PROVINT-04: unknown sender (informational). Publishers send `from`.
+        sender_email = sender_address(payload.get("from"))
+        if (
+            sender_email
+            and restaurant_id
+            and not sender_unconfirmed(
+                payload.get("ingress_authentication_results"), sender_email
+            )
+            and await self._detect_unknown_sender(restaurant_id, sender_email)
+        ):
+            await self._notify_unknown_sender(restaurant_id, sender_email, payload)
+
+        if classification.category == "OPERATIONAL":
             # Re-publish to EmailParsingAgent's routing key (per D-01 architecture)
             await self.publish(
                 "email.events",
@@ -939,12 +944,13 @@ class EmailIntelAgent(BaseAgent):
         restaurant_id = (restaurant_id or "").strip()
         if not restaurant_id:
             return False
+        exactly = like_exactly((sender_email or "").strip().lower())
         try:
             result = (
                 self.database.supabase.table("providers")
                 .select("id")
                 .eq("restaurant_id", restaurant_id)
-                .ilike("email", like_exactly(sender_email.strip().lower()))
+                .ilike("contact_email", exactly)
                 .limit(1)
                 .execute()
             )
@@ -954,9 +960,9 @@ class EmailIntelAgent(BaseAgent):
             # Also check provider_contacts table (secondary contacts)
             contact_result = (
                 self.database.supabase.table("provider_contacts")
-                .select("id")
-                .eq("restaurant_id", restaurant_id)
-                .ilike("email", like_exactly(sender_email.strip().lower()))
+                .select("id, providers!inner(restaurant_id)")
+                .eq("providers.restaurant_id", restaurant_id)
+                .ilike("email", exactly)
                 .limit(1)
                 .execute()
             )
