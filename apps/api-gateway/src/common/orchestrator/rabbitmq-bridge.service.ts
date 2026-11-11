@@ -13,6 +13,7 @@ import {
   Logger,
   OnModuleInit,
   OnModuleDestroy,
+  Optional,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import * as amqplib from "amqplib";
@@ -30,6 +31,7 @@ import { senderUnconfirmed } from "../../communications/sender-authentication";
 import { createHash, randomUUID } from "crypto";
 import { PromotionExtractorService } from "./promotion-extractor.service";
 import { ProspectsService } from "./prospects.service";
+import { MailIntakeService, type IntakeOutcome } from "./mail-intake.service";
 import { OWNER_AND_MANAGER } from "../tenant/live-membership";
 
 /** Mapping of RabbitMQ routing keys to handler methods */
@@ -41,7 +43,7 @@ interface RouteHandler {
    * (`msg.fields.routingKey`), not the binding pattern: under
    * `notification.#` it is `notification.promo_alert`, and so on.
    */
-  handler: (msg: any, deliveredKey?: string) => void;
+  handler: (msg: any, deliveredKey?: string) => void | Promise<void>;
 }
 
 /**
@@ -125,6 +127,10 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     private readonly inboundResponder: InboundResponderService,
     private readonly promotionExtractor: PromotionExtractorService,
     private readonly prospects: ProspectsService,
+    // The durable record every inbound door writes first (gap G2). Optional
+    // only so the specs that build the bridge by hand keep compiling; Nest
+    // always provides it.
+    @Optional() private readonly mailIntake?: MailIntakeService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -304,7 +310,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       {
         exchange: "email.events",
         routingKey: "email.inbound.received",
-        handler: (msg) => this.handleInboundEmail(msg),
+        handler: (msg) => this.fileInboundEmail(msg),
       },
 
       // --- Vendor / conversation events ---
@@ -376,16 +382,25 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           queue,
           (msg) => {
             if (!msg) return;
-            try {
-              const body = JSON.parse(msg.content.toString());
-              route.handler(body, msg.fields?.routingKey);
-              this.channel?.ack(msg);
-            } catch (err) {
-              this.logger.warn(
-                `Failed to process bridge message from ${route.exchange}/${route.routingKey}: ${err?.message}`,
-              );
-              this.channel?.ack(msg); // Ack even on error - bridge messages are ephemeral
-            }
+            // Acked once the handler has SETTLED, never before (gap G2): an
+            // async handler used to be called without await and acked at
+            // once, so a gateway that stopped mid-insert lost the letter.
+            // A handler that fails is still acked: the inbound-mail handler
+            // records its own failure in `mail_intake` (re-driven from
+            // there), and the other routes are notices that a requeue would
+            // only repeat.
+            const channel = this.channel;
+            Promise.resolve()
+              .then(() => {
+                const body = JSON.parse(msg.content.toString());
+                return route.handler(body, msg.fields?.routingKey);
+              })
+              .catch((err) =>
+                this.logger.warn(
+                  `Failed to process bridge message from ${route.exchange}/${route.routingKey}: ${err?.message}`,
+                ),
+              )
+              .finally(() => channel?.ack(msg));
           },
           { noAck: false },
         );
@@ -619,8 +634,44 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
   // INBOUND EMAIL HANDLER (NestJS fallback — stores to DB without Python agent)
   // ===========================================================================
 
-  private async handleInboundEmail(msg: any): Promise<void> {
+  /**
+   * The inbound-mail route (gap G2): file the letter, then tell its
+   * `mail_intake` row what became of it. A letter that could not be stored
+   * is marked `failed` and published again by the re-drive tick; nothing is
+   * only logged any more.
+   */
+  private async fileInboundEmail(msg: any): Promise<void> {
     const payload = msg?.payload || msg;
+    const intakeId: string | null =
+      typeof payload?.intake_id === "string" ? payload.intake_id : null;
+    try {
+      const outcome = await this.handleInboundEmail(msg);
+      if (intakeId && this.mailIntake) {
+        await this.mailIntake.settle(intakeId, outcome);
+      }
+    } catch (err: any) {
+      const reason = err?.message ?? String(err);
+      if (intakeId && this.mailIntake) {
+        await this.mailIntake.fail(intakeId, reason);
+        this.logger.error(
+          `handleInboundEmail: a letter was not stored (${reason}); intake ${intakeId} will be tried again`,
+        );
+      } else {
+        this.logger.error(
+          `handleInboundEmail: a letter was not stored (${reason}) and its event carried no intake record`,
+        );
+      }
+    }
+  }
+
+  /**
+   * File one inbound letter. Returns what became of it; THROWS when the
+   * letter could not be stored, so the caller can keep it for another try.
+   */
+  private async handleInboundEmail(msg: any): Promise<IntakeOutcome> {
+    const payload = msg?.payload || msg;
+    const intakeId: string | null =
+      typeof payload.intake_id === "string" ? payload.intake_id : null;
     // The Python email agents put correlation_id on the message envelope
     // (base_agent.py:660-662) and it was being dropped here — the ONLY flow
     // where a gateway NF/decision_log row can truthfully join the Python
@@ -703,7 +754,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         gmailMessageId,
         gmailThreadId,
       });
-      return;
+      return "held";
     }
 
     if (!restaurantIdFromEvent) {
@@ -717,7 +768,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         gmailThreadId,
         why: payload.house_resolution || "no_house",
       });
-      return;
+      return "held";
     }
     const restaurantId: string = restaurantIdFromEvent;
 
@@ -732,6 +783,10 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         .limit(1);
       const provider = providers?.[0];
       if (!provider) {
+        // What became of the letter, for its intake row. A sender outside the
+        // book whose letter is not outreach is read and deliberately not kept
+        // (the house's people outside the book are gap G4, not built here).
+        let keptAs: IntakeOutcome = "not_kept";
         // D1 — cold email from an unknown sender. Capture GENUINE vendor outreach (a personal
         // intro / catalogue / wine offer, usually with an attachment) as a digest-only Prospect;
         // drop mass marketing blasts (bulk/list transport) so this never becomes a spam magnet.
@@ -773,6 +828,11 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             // was held above), so captureFromColdEmail never guesses one.
             restaurantId,
           });
+          keptAs = result.captured
+            ? "prospect"
+            : result.duplicate
+              ? "duplicate"
+              : "not_kept";
           // Digest/notify parity with promotions — only for a NEW, attributed prospect. Triage
           // rows belong to no tenant, so there is no one to notify (they are logged instead).
           if (
@@ -817,7 +877,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             `handleInboundEmail: no provider found for ${senderEmail} (not leaded)`,
           );
         }
-        return;
+        return keptAs;
       }
 
       // 1b. The receiving server said this letter did not come from the
@@ -841,7 +901,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           gmailMessageId,
           gmailThreadId,
         });
-        return;
+        return "held";
       }
 
       // 2. Match order via the reply's gmail_thread_id, read from the thread's
@@ -968,8 +1028,31 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           this.logger.log(
             `handleInboundEmail: already stored gmail_message_id=${gmailMessageId}, skipping`,
           );
-          return;
+          return "duplicate";
         }
+      }
+      // 3b. A letter offered again (its intake row never heard back, gap G2)
+      //     may already be stored: the first try can have stored it and then
+      //     failed to say so. Its own intake id, written on the row below, is
+      //     the key that holds for every door, including the inbound address
+      //     whose events carry no Gmail id. Checked on EVERY try, not only
+      //     when intake_attempt > 1: a house's "Read again" resets attempts
+      //     to 0, so the claim publishes it as attempt 1, and a repeat
+      //     delivery of an unsettled row is published as attempt 1 too.
+      if (intakeId) {
+        const { data: stored, error: storedError } =
+          await this.databaseService.supabase
+            .from("procurement_conversations")
+            .select("id")
+            .eq("restaurant_id", restaurantId)
+            .eq("email_headers->>intake_id", intakeId)
+            .limit(1);
+        if (storedError) {
+          throw new Error(
+            `could not check whether intake ${intakeId} was already stored (${storedError.message})`,
+          );
+        }
+        if (stored?.length) return "duplicate";
       }
 
       // 4. Store inbound row
@@ -995,6 +1078,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             message_id: messageIdHeader,
             in_reply_to: inReplyTo,
             references,
+            ...(intakeId ? { intake_id: intakeId } : {}),
             gmail_thread_id: gmailThreadId,
             transport: transportSignals,
             ...(threadReadFailed ? { order_match: "thread_read_failed" } : {}),
@@ -1006,10 +1090,9 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         .single();
 
       if (error) {
-        this.logger.error(
-          `handleInboundEmail: DB insert failed — ${error.message}`,
-        );
-        return;
+        // Thrown, not only logged (gap G2): the intake row is marked failed
+        // and the letter is offered again.
+        throw new Error(`DB insert failed — ${error.message}`);
       }
 
       this.logger.log(
@@ -1087,10 +1170,14 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           correlationId,
         });
       }
+      return "filed";
     } catch (err: any) {
+      // Rethrown (gap G2): an error before the row was stored is a letter
+      // without a home, and the caller keeps it for another try.
       this.logger.error(
         `handleInboundEmail: unexpected error — ${err?.message}`,
       );
+      throw err;
     }
   }
 
@@ -1188,10 +1275,15 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(
         `handleInboundEmail: no receiving house (${letter.why}); ${held.captured || held.duplicate ? "held unattributed for the operator" : "NOT held, see the prospects log"}, not filed under any house`,
       );
+      if (!held.captured && !held.duplicate) {
+        throw new Error("a letter with no receiving house could not be held");
+      }
     } catch (err: any) {
       this.logger.error(
         `handleInboundEmail: no receiving house (${letter.why}) and holding the letter failed — ${err?.message}`,
       );
+      // Thrown (gap G2): a letter that could not be held is offered again.
+      throw err;
     }
   }
 
@@ -1232,6 +1324,11 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         gmailMessageId: letter.gmailMessageId || null,
         gmailThreadId: letter.gmailThreadId || null,
       });
+      // Not kept and not already kept: the row was refused (gap G2). Thrown
+      // so the letter is offered again rather than only logged.
+      if (!held.captured && !held.duplicate) {
+        throw new Error(`a ${letter.heldReason} letter could not be held`);
+      }
       if (!held.captured || !held.isNew || !letter.restaurantId) return;
       const title =
         letter.heldReason === "sender_unconfirmed"
@@ -1264,6 +1361,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `handleInboundEmail: holding a letter (${letter.heldReason}) failed — ${err?.message}`,
       );
+      throw err;
     }
   }
 
