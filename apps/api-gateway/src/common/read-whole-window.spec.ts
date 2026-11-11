@@ -634,6 +634,8 @@ describe("AdvancedAnalyticsService — menu engineering and seasonality count ev
     const { db } = cappedDb({
       restaurant_inventory: inventory,
       wine_consumption_log: lines,
+      // Weekdays are the house's (ADR 0296): a house with no zone names none.
+      restaurants: [{ id: "r1", timezone: "UTC", country: null }],
     });
     const out: any = await svc(db).getSeasonality("r1", 90);
     const units = sum(out.weekdayProfile.map((d: any) => d.mean * d.n));
