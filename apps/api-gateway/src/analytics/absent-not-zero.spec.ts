@@ -111,44 +111,52 @@ const consumption = (n: number, qty: (i: number) => number) =>
 // ---------------------------------------------------------------------------
 
 describe("financial never reports an empty result set as $0", () => {
-  it("returns null COGS when no delivered order came back", async () => {
+  // Since cost-math lane 3.1, `cogs` and `revenue` are the till's figures
+  // (cost-of-goods.spec.ts pins them). The two stand-ins this guard was
+  // written for keep their own names, and their own absence rule, here.
+  it("returns null delivered purchases when no delivered order came back", async () => {
     const out: any = await analytics({
       restaurant_inventory: [STOCKED],
     }).getFinancialSummary(RESTAURANT);
-    expect(out.cogs).toBeNull();
-    expect(out.cogs).not.toBe(0);
+    expect(out.deliveredPurchases).toBeNull();
+    expect(out.deliveredPurchases).not.toBe(0);
+    expect(out.basis.deliveredPurchases).toContain("no delivered order was returned");
+    expect(out.basis.deliveredPurchases).toContain("read that failed");
   });
 
-  it("says in the basis WHY the COGS is null, naming both possibilities", async () => {
-    const out: any = await analytics({
-      restaurant_inventory: [STOCKED],
-    }).getFinancialSummary(RESTAURANT);
-    // The load-bearing assertion: a null with no explanation is only half a fix.
-    expect(out.basis.cogs).toContain("no delivered order was returned");
-    expect(out.basis.cogs).toContain("read that failed");
-  });
-
-  it("returns null revenue when no inventory row came back", async () => {
+  it("returns null shelf value when no inventory row came back", async () => {
     const out: any = await analytics({}).getFinancialSummary(RESTAURANT);
-    expect(out.revenue).toBeNull();
-    expect(out.revenue).not.toBe(0);
-    expect(out.basis.revenue).toContain("no inventory row was returned");
+    expect(out.shelfValueAtMenuPrice).toBeNull();
+    expect(out.shelfValueAtMenuPrice).not.toBe(0);
+    expect(out.basis.shelfValueAtMenuPrice).toContain("no inventory row was returned");
   });
 
-  it("still reports a real COGS, and counts the orders it summed", async () => {
+  it("still reports real purchases and shelf value, which feed no ratio", async () => {
     const out: any = await analytics({
       restaurant_inventory: [STOCKED],
       procurement_orders: [DELIVERED],
     }).getFinancialSummary(RESTAURANT);
-    expect(out.cogs).toBe(480);
-    expect(out.basis.cogs).toContain("1 order summed");
-    expect(out.revenue).toBe(300); // 5 × 60
-    expect(out.basis.revenue).toContain("1 inventory row valued");
+    expect(out.deliveredPurchases).toBe(480);
+    expect(out.basis.deliveredPurchases).toContain("1 order summed");
+    expect(out.shelfValueAtMenuPrice).toBe(300); // 5 × 60
+    // Purchases are not the cost of what sold, and the shelf is not sales.
+    expect(out.cogs).toBeNull();
+    expect(out.revenue).toBeNull();
+    expect(out.cogsRatio).toBeNull();
   });
 
-  it("withholds every ratio that would divide by an absent COGS or revenue", async () => {
+  it("withholds purchases when a delivered order carries no recorded cost, never adding it as $0", async () => {
+    const out: any = await analytics({
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [DELIVERED, { ...DELIVERED, id: "po-2", total_cost: null, final_price: null }],
+    }).getFinancialSummary(RESTAURANT);
+    expect(out.deliveredPurchases).toBeNull();
+    expect(out.basis.deliveredPurchases).toContain("1 of 2 delivered orders carry no recorded cost");
+  });
+
+  it("withholds every ratio that would divide by an absent cost of what sold", async () => {
     // Inventory is fully priced here, so the cost-coverage gate is OPEN — the
-    // only thing left to withhold these is the missing COGS/revenue itself.
+    // only thing left to withhold these is the missing till figure itself.
     const out: any = await analytics({
       restaurant_inventory: [STOCKED],
     }).getFinancialSummary(RESTAURANT);
@@ -156,7 +164,7 @@ describe("financial never reports an empty result set as $0", () => {
     expect(out.inventoryValue).toBe(100); // 5 × 20 — knowable, and kept
     expect(out.inventoryTurnover).toBeNull();
     expect(out.daysInventoryOutstanding).toBeNull();
-    expect(out.basis.costDerived).toContain("absent denominator");
+    expect(out.salesWithheld).toBe(true);
   });
 });
 

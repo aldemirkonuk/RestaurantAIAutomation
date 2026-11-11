@@ -221,9 +221,12 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
     );
-    // 10 × 100 + 5 × 60 — menu price is recorded for both rows.
-    expect(out.revenue).toBe(1300);
-    expect(out.basis.revenue).toContain("2 inventory rows valued");
+    // 10 × 100 + 5 × 60 — menu price is recorded for both rows. Since
+    // cost-math lane 3.1 this shelf valuation keeps its own name; `revenue`
+    // is the till's net sales and is withheld from a caller without sales.
+    expect(out.shelfValueAtMenuPrice).toBe(1300);
+    expect(out.basis.shelfValueAtMenuPrice).toContain("2 inventory rows valued");
+    expect(out.revenue).toBeNull();
   });
 
   it("withholds COGS when no delivered order came back at all", async () => {
@@ -236,7 +239,8 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     );
     expect(out.cogs).toBeNull();
     expect(out.cogs).not.toBe(0);
-    expect(out.basis.cogs).toContain("null");
+    expect(out.deliveredPurchases).toBeNull();
+    expect(out.basis.deliveredPurchases).toContain("null");
   });
 
   it("stops the basis claiming WAC for a value that never touched WAC", async () => {
