@@ -68,7 +68,20 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved, sa
   // A row with no library title (ADR 0115: flour, napkins) is a good, not a
   // wine, and nothing of it stays in the Wine Library.
   const allWines = items.every((i) => Boolean(i.id))
+  const someWines = items.some((i) => Boolean(i.id))
   const noun = allWines ? 'wine' : 'item'
+  // Said per batch: a mixed one (wines and a flour) keeps the wines' library
+  // line, and a batch of goods speaks of "their" history, never "its".
+  const keeps =
+    rows.length === 1
+      ? allWines
+        ? 'Keeps the wine in your Wine Library — re-add anytime'
+        : 'Its history stays on the book — it can be added again'
+      : allWines
+        ? 'Keeps the wines in your Wine Library — re-add anytime'
+        : someWines
+          ? 'Their history stays on the book, and the wines stay in your Wine Library — each can be added again'
+          : 'Their history stays on the book — each can be added again'
 
   if (!isOpen) return null
 
@@ -148,10 +161,8 @@ export function RemoveFromInventoryModal({ isOpen, items, onClose, onRemoved, sa
                 <h2 className="text-base font-bold text-gray-900">
                   Remove {rows.length === 1 ? rows[0].item.name : `${rows.length} ${noun}s`} from inventory
                 </h2>
-                <p className="text-xs text-gray-500">
-                  {allWines
-                    ? 'Keeps the wine in your Wine Library — re-add anytime'
-                    : 'Its history stays on the book — it can be added again'}
+                <p className="text-xs text-gray-500" data-testid="remove-keeps">
+                  {keeps}
                 </p>
               </div>
             </div>
