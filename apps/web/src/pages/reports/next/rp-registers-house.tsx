@@ -164,6 +164,10 @@ export interface LedgerRegister {
   inventoryValue: number | null;
   cogs: number | null;
   cogsSettledAfterSale: number | null;
+  /** Late prices settled in the window on bottles sold before it: not in cogs, feeds no ratio. */
+  settledOnEarlierSales: number | null;
+  /** While cogs is withheld: the exact cost of the items whose every bottle is costed. Feeds no ratio. */
+  costOfCostedItems: { amount: number; items: number; of: number } | null;
   revenue: number | null;
   grossMarginDollars: number | null;
   grossMargin: number | null;
@@ -187,6 +191,8 @@ const ledger = analysis<LedgerRegister>({
   select: (raw) => {
     const d = obj(raw);
     const cg = d.cogsCoverage == null ? null : obj(d.cogsCoverage);
+    const kp = d.costOfCostedItems == null ? null : obj(d.costOfCostedItems);
+    const kpAmount = kp ? num(kp.amount) : null;
     return {
       basis: d.basis as Record<string, string>,
       costCoverage: d.costCoverage as LedgerRegister['costCoverage'],
@@ -201,6 +207,11 @@ const ledger = analysis<LedgerRegister>({
       inventoryValue: num(d.inventoryValue),
       cogs: num(d.cogs),
       cogsSettledAfterSale: num(d.cogsSettledAfterSale),
+      settledOnEarlierSales: num(d.settledOnEarlierSales),
+      costOfCostedItems:
+        kp && kpAmount != null
+          ? { amount: kpAmount, items: num(kp.items) ?? 0, of: num(kp.of) ?? 0 }
+          : null,
       revenue: num(d.revenue),
       grossMarginDollars: num(d.grossMarginDollars),
       grossMargin: num(d.grossMargin),
@@ -262,13 +273,26 @@ const ledger = analysis<LedgerRegister>({
       notes.push(
         `${costGap}; ${figure(cg!.bottlesUncosted)} bottle${cg!.bottlesUncosted === 1 ? '' : 's'} left or came back with no invoice cost yet, so what it cost reads ${EM} rather than a smaller number.`,
       );
+    // The known part, by name and apart: exact for those items, not what it
+    // cost, and divided into nothing (batch review 2026-11-11, finding 2).
+    const kp = f.costOfCostedItems;
+    if (costGap && kp && kp.items > 0)
+      notes.push(
+        `The ${figure(kp.items)} of ${figure(kp.of)} items sold whose every bottle carries its cost cost ${money(kp.amount)}. That is not what it cost, and no figure above divides by it.`,
+      );
     if (f.cogsSettledAfterSale != null && f.cogsSettledAfterSale !== 0)
-      notes.push(`${money(f.cogsSettledAfterSale)} of what it cost is late prices settled in this window, when invoices were verified after the bottles sold.`);
+      notes.push(`${money(f.cogsSettledAfterSale)} of what it cost is late prices on this window’s sales, settled when invoices were verified after the bottles sold.`);
+    if (f.settledOnEarlierSales != null && f.settledOnEarlierSales !== 0)
+      notes.push(
+        `${money(f.settledOnEarlierSales)} of late prices was settled in this window on bottles sold before it. It is not in what it cost: those sales are not in this window’s sales.`,
+      );
+    // Only the cellar-based figures wait on the cellar's cost; what sold,
+    // what it cost and what was kept come from the till (finding 3).
     if (cc && !cc.complete)
       notes.push(
         cc.total === 0
-          ? `No on-hand wine carries a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from nothing.`
-          : `${figure(cc.priced)} of ${figure(cc.total)} on-hand wines carry a recorded cost, so every cost-derived figure above reads ${EM} rather than a total assembled from part of the cellar.`,
+          ? `No on-hand wine carries a recorded cost, so the cellar at cost, inventory turns, days of inventory and GMROI read ${EM} rather than a total assembled from nothing.`
+          : `${figure(cc.priced)} of ${figure(cc.total)} on-hand wines carry a recorded cost, so the cellar at cost, inventory turns, days of inventory and GMROI read ${EM} rather than a total assembled from part of the cellar.`,
       );
     notes.push('Before tax. Bought is what was bought, not what sold: it feeds no ratio.');
     return {

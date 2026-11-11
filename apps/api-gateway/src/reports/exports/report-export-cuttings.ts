@@ -601,6 +601,10 @@ function writeLedger(payload: unknown): ExportDoc {
       : null;
   const uncosted = num(cg?.bottlesUncosted) ?? 0;
   const settled = num(d.cogsSettledAfterSale);
+  const earlier = num(d.settledOnEarlierSales);
+  const kp = d.costOfCostedItems == null ? null : obj(d.costOfCostedItems);
+  const kpAmount = num(kp?.amount);
+  const kpItems = num(kp?.items) ?? 0;
   return doc({
     figures: [
       // Cost-math lane 3.1: what sold and what it cost come from the till;
@@ -621,13 +625,22 @@ function writeLedger(payload: unknown): ExportDoc {
       costGap
         ? `${costGap}; ${uncosted} bottle${uncosted === 1 ? "" : "s"} left or came back with no invoice cost yet, so what it cost is withheld rather than a smaller number.`
         : "",
+      // Batch review 2026-11-11: the known part apart (finding 2), the late
+      // prices on earlier sales apart (finding 1), the cellar note scoped to
+      // the figures that wait on the cellar (finding 3).
+      costGap && kpAmount != null && kpItems > 0
+        ? `The ${kpItems} of ${num(kp?.of) ?? 0} items sold whose every bottle carries its cost cost ${kpAmount.toFixed(2)}. That is not what it cost, and no figure above divides by it.`
+        : "",
       settled != null && settled !== 0
-        ? `${settled.toFixed(2)} of what it cost is late prices settled in this window, when invoices were verified after the bottles sold.`
+        ? `${settled.toFixed(2)} of what it cost is late prices on this window's sales, settled when invoices were verified after the bottles sold.`
+        : "",
+      earlier != null && earlier !== 0
+        ? `${earlier.toFixed(2)} of late prices was settled in this window on bottles sold before it. It is not in what it cost: those sales are not in this window's sales.`
         : "",
       cc && cc.complete === false
         ? num(cc.total) === 0
-          ? "No on-hand wine carries a recorded cost, so every cost-derived figure above is withheld rather than a total assembled from nothing."
-          : `${num(cc.priced) ?? 0} of ${num(cc.total) ?? 0} on-hand wines carry a recorded cost, so every cost-derived figure above is withheld rather than a total assembled from part of the cellar.`
+          ? "No on-hand wine carries a recorded cost, so the cellar at cost, inventory turns, days of inventory and GMROI are withheld rather than a total assembled from nothing."
+          : `${num(cc.priced) ?? 0} of ${num(cc.total) ?? 0} on-hand wines carry a recorded cost, so the cellar at cost, inventory turns, days of inventory and GMROI are withheld rather than a total assembled from part of the cellar.`
         : "",
       "Before tax. Bought is what was bought, not what sold: it feeds no ratio.",
     ],

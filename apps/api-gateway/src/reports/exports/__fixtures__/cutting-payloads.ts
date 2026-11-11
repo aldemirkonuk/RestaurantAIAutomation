@@ -114,6 +114,8 @@ export const PAYLOADS: Record<ExportableCutting, unknown> = {
     inventoryValue: null,
     cogs: null,
     cogsSettledAfterSale: null,
+    settledOnEarlierSales: 7.25,
+    costOfCostedItems: { amount: 310.5, items: 2, of: 3 },
     revenue: 5400,
     grossMarginDollars: null,
     deliveredPurchases: null,
