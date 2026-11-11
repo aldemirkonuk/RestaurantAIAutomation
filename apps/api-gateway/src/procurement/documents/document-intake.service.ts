@@ -2252,83 +2252,191 @@ export class DocumentIntakeService {
    * OrchestratorModule, so hooking the bridge directly would need a circular
    * forwardRef — which in Nest fails by injecting `undefined` at runtime rather
    * than at build time, and the symptom would be invoices silently not being
-   * ingested. A five-minute sweep costs one indexed lookup per recent
-   * attachment and cannot break the mail path it feeds from.
+   * ingested.
    *
-   * The latency is immaterial for this channel: a distributor's invoice arrives
-   * hours after the delivery it bills, and the low-latency path is the receiver
-   * photographing the paper at the door. It also backfills attachments that
-   * landed before document intake existed.
+   * EACH ATTACHMENT IS READ ONCE, AND EACH ONE GETS AN OUTCOME
+   * (proposal-receipt row 1.2, migration
+   * `20270717093713_an_emailed_attachment_is_read_once.sql`).
    *
-   * Safe to run repeatedly — intake is content-addressed, so a second attempt on
-   * the same bytes is a no-op.
+   * Now the sweep reads `pending` rows only and writes `ingest_state` on every
+   * row it touches: ingested, duplicate, not_a_document, or failed with the
+   * reason in words. EVERY download counts against `limit`, whatever it
+   * became, so one run reads the model at most `limit` times.
+   *
+   * THE SESSION'S CALLS (2026-11-11, under the founder's 2026-11-07 /goal;
+   * the proposal's Decision 7 items):
+   * - Retry cap: a download or reading failure stays `pending` and is tried
+   *   again on a later run, up to `INGEST_ATTEMPTS` attempts, then `failed`.
+   *   Rejected: never retry (a storage blip would lose a real invoice for
+   *   good); retry forever (a file the model always refuses would spend on
+   *   every run).
+   * - An outcome that cannot be WRITTEN stops the run: carrying on would read
+   *   the same files again next run, which is the spend this closes.
+   * - Fairness between houses and releasing `backlog` are not built here.
    */
   @Cron("*/5 * * * *", { name: "procurement-document-intake-sweep" })
   async sweepUningestedAttachments(limit = 25): Promise<number> {
-    const { data: attachments, error } = await this.db
-      .getClient()
+    const client = this.db.getClient();
+    const { data: attachments, error } = await client
       .from("conversation_attachments")
       .select(
-        "id, restaurant_id, provider_id, order_id, filename, mime_type, storage_path, sha256",
+        "id, restaurant_id, provider_id, order_id, filename, mime_type, storage_path, sha256, bytes_deleted_at, ingest_attempts",
       )
+      .eq("ingest_state", "pending")
       .order("created_at", { ascending: false })
       .limit(200);
     if (error) {
-      this.logger.warn(`document backfill sweep failed: ${error.message}`);
+      this.logger.warn(`document intake sweep could not read: ${error.message}`);
       return 0;
     }
 
     let ingested = 0;
-    for (const a of attachments ?? []) {
-      if (ingested >= limit) break;
-      if (!a.restaurant_id || !a.storage_path) continue;
-      if (!isDocumentLike(a.mime_type, a.filename)) continue;
-
-      // Cheap pre-check on the hash we already have, so the common case costs
-      // one indexed lookup rather than a storage download.
-      if (a.sha256) {
-        const { data: seen } = await this.db
-          .getClient()
-          .from("procurement_documents")
-          .select("id")
-          .eq("restaurant_id", a.restaurant_id)
-          .eq("sha256", a.sha256)
-          .maybeSingle();
-        if (seen?.id) continue;
-      }
-
-      const file = await this.db
-        .getClient()
-        .storage.from("vendor-attachments")
-        .download(a.storage_path);
-      if (file.error || !file.data) continue;
-
-      const buffer = Buffer.from(await file.data.arrayBuffer());
-      // One correlation scope PER ATTACHMENT. `ingest` reaches
-      // DocumentExtractorService -> ModelClientService, and a cron has no
-      // request to inherit an id from, so without this the NF row for every
-      // email-sourced extraction lands with correlation_id NULL — which is
-      // most of them, since the HTTP path is manual upload. Per-attachment
-      // rather than per-sweep so one id still means one document.
-      const result = await runWithNewCorrelationId(() =>
-        this.ingest({
-          restaurantId: a.restaurant_id,
-          providerId: a.provider_id,
-          orderId: a.order_id,
-          source: "email",
-          buffer,
-          filename: a.filename,
-          mimeType: a.mime_type,
-          sourceRef: `conversation_attachment:${a.id}`,
-          storagePath: a.storage_path,
-        }),
-      );
-      if (result.documentId && !result.duplicate) ingested++;
+    let downloads = 0;
+    for (const a of (attachments ?? []) as SweepAttachment[]) {
+      if (downloads >= limit) break;
+      const decided = await this.sweepOne(a, () => downloads++);
+      if (!decided) break;
+      if (decided.state === "ingested") ingested++;
+      const wrote = await this.recordAttachmentOutcome(a, decided);
+      if (!wrote) break;
     }
 
     if (ingested)
-      this.logger.log(`document backfill ingested ${ingested} attachment(s)`);
+      this.logger.log(`document intake sweep filed ${ingested} attachment(s)`);
     return ingested;
+  }
+
+  /**
+   * What one pending attachment becomes. `null` means "stop the run": the
+   * database could not be read, so nothing can be decided about any row.
+   */
+  private async sweepOne(
+    a: SweepAttachment,
+    countDownload: () => void,
+  ): Promise<AttachmentOutcome | null> {
+    const attempts = (a.ingest_attempts ?? 0) + 1;
+    const retryOrFail = (reason: string): AttachmentOutcome =>
+      attempts >= INGEST_ATTEMPTS
+        ? {
+            state: "failed",
+            reason: `${reason} (tried ${attempts} times; not tried again)`,
+            attempts,
+          }
+        : { state: "pending", reason, attempts };
+
+    if (!a.restaurant_id)
+      return {
+        state: "failed",
+        reason: "This attachment names no house, so it cannot be filed.",
+        attempts: a.ingest_attempts ?? 0,
+      };
+    if (!isDocumentLike(a.mime_type, a.filename))
+      return {
+        state: "not_a_document",
+        reason: "Not a PDF, image, e-invoice XML or EDI file.",
+        attempts: a.ingest_attempts ?? 0,
+      };
+    if (a.bytes_deleted_at)
+      return {
+        state: "failed",
+        reason: `The file was removed under the mail retention rule on ${String(a.bytes_deleted_at).slice(0, 10)} before it was read.`,
+        attempts: a.ingest_attempts ?? 0,
+      };
+
+    // Cheap pre-check on the hash we already have, so the common case costs
+    // one indexed lookup rather than a storage download.
+    if (a.sha256) {
+      const seen = await this.db
+        .getClient()
+        .from("procurement_documents")
+        .select("id, source_ref")
+        .eq("restaurant_id", a.restaurant_id)
+        .eq("sha256", a.sha256)
+        .maybeSingle();
+      if (seen.error) {
+        this.logger.warn(
+          `document intake sweep stopped: the sha check failed (${seen.error.message})`,
+        );
+        return null;
+      }
+      if (seen.data?.id)
+        return seen.data.source_ref === `conversation_attachment:${a.id}`
+          ? { state: "ingested", documentId: seen.data.id, attempts: a.ingest_attempts ?? 0 }
+          : {
+              state: "duplicate",
+              documentId: seen.data.id,
+              reason: `The same file is already on file as document ${seen.data.id}.`,
+              attempts: a.ingest_attempts ?? 0,
+            };
+    }
+
+    countDownload();
+    const file = await this.db
+      .getClient()
+      .storage.from("vendor-attachments")
+      .download(a.storage_path);
+    if (file.error || !file.data)
+      return retryOrFail(
+        `The file could not be downloaded: ${file.error?.message ?? "no bytes came back"}`,
+      );
+
+    const buffer = Buffer.from(await file.data.arrayBuffer());
+    // One correlation scope PER ATTACHMENT. `ingest` reaches
+    // DocumentExtractorService -> ModelClientService, and a cron has no
+    // request to inherit an id from, so without this the NF row for every
+    // email-sourced extraction lands with correlation_id NULL.
+    const result = await runWithNewCorrelationId(() =>
+      this.ingest({
+        restaurantId: a.restaurant_id as string,
+        providerId: a.provider_id,
+        orderId: a.order_id,
+        source: "email",
+        buffer,
+        filename: a.filename,
+        mimeType: a.mime_type,
+        sourceRef: `conversation_attachment:${a.id}`,
+        storagePath: a.storage_path,
+      }),
+    );
+    if (result.error || !result.documentId)
+      return retryOrFail(
+        `The file could not be filed: ${result.error ?? "no document and no reason came back"}`,
+      );
+    if (result.duplicate)
+      return {
+        state: "duplicate",
+        documentId: result.documentId,
+        reason:
+          result.duplicateOf?.reason ??
+          `The same file is already on file as document ${result.documentId}.`,
+        attempts,
+      };
+    return { state: "ingested", documentId: result.documentId, attempts };
+  }
+
+  /** Write one attachment's outcome. False when the write failed. */
+  private async recordAttachmentOutcome(
+    a: SweepAttachment,
+    o: AttachmentOutcome,
+  ): Promise<boolean> {
+    const { error } = await this.db
+      .getClient()
+      .from("conversation_attachments")
+      .update({
+        ingest_state: o.state,
+        ingested_document_id: o.documentId ?? null,
+        ingest_attempts: o.attempts,
+        last_ingest_reason: o.reason ?? null,
+        ingest_decided_at: o.state === "pending" ? null : new Date().toISOString(),
+      })
+      .eq("id", a.id);
+    if (error) {
+      this.logger.error(
+        `document intake sweep stopped: attachment ${a.id} became ${o.state} but that could not be recorded (${error.message}); stopping so the next run does not read the same files again`,
+      );
+      return false;
+    }
+    return true;
   }
 
   /**
@@ -2824,6 +2932,36 @@ export class DocumentIntakeService {
  * one through a vision model costs money per message and fills the review queue
  * with noise that trains people to ignore it. Cheap filters first.
  */
+/** Attempts a failing attachment gets across sweep runs before `failed`. */
+export const INGEST_ATTEMPTS = 3;
+
+interface SweepAttachment {
+  id: string;
+  restaurant_id: string | null;
+  provider_id: string | null;
+  order_id: string | null;
+  filename: string | null;
+  mime_type: string | null;
+  storage_path: string;
+  sha256: string | null;
+  bytes_deleted_at: string | null;
+  ingest_attempts: number | null;
+}
+
+export type AttachmentIngestState =
+  | "pending"
+  | "ingested"
+  | "duplicate"
+  | "failed"
+  | "not_a_document";
+
+interface AttachmentOutcome {
+  state: AttachmentIngestState;
+  documentId?: string;
+  reason?: string;
+  attempts: number;
+}
+
 export function isDocumentLike(
   mimeType?: string | null,
   filename?: string | null,

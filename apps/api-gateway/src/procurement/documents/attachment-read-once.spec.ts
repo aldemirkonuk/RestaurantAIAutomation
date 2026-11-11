@@ -1,0 +1,259 @@
+import { DocumentIntakeService, INGEST_ATTEMPTS } from "./document-intake.service";
+
+/**
+ * Proposal-receipt row 1.2 — an emailed attachment is read once, and every
+ * one says what became of it. All ids are SYNTHETIC.
+ */
+
+type Row = Record<string, unknown>;
+
+function attachment(id: string, extra: Row = {}): Row {
+  return {
+    id,
+    restaurant_id: "house-1",
+    provider_id: null,
+    order_id: null,
+    filename: `${id}.pdf`,
+    mime_type: "application/pdf",
+    storage_path: `house-1/${id}.pdf`,
+    sha256: null,
+    bytes_deleted_at: null,
+    ingest_attempts: 0,
+    ...extra,
+  };
+}
+
+function harness(opts: {
+  pending: Row[];
+  shaSeen?: Row | null;
+  downloadError?: string;
+  updateError?: string;
+}) {
+  const updates: Array<{ id: unknown; patch: Row }> = [];
+  const selects: Array<{ table: string; eqs: Array<[string, unknown]> }> = [];
+  const download = jest.fn(async () =>
+    opts.downloadError
+      ? { data: null, error: { message: opts.downloadError } }
+      : { data: { arrayBuffer: async () => new ArrayBuffer(4) }, error: null },
+  );
+  const client = {
+    storage: { from: () => ({ download }) },
+    from(table: string) {
+      const call = { table, eqs: [] as Array<[string, unknown]> };
+      let patch: Row | null = null;
+      const chain: any = {
+        select: () => {
+          selects.push(call);
+          return chain;
+        },
+        update: (p: Row) => {
+          patch = p;
+          return chain;
+        },
+        eq: (k: string, v: unknown) => {
+          call.eqs.push([k, v]);
+          if (patch) {
+            updates.push({ id: v, patch });
+            return Promise.resolve({
+              error: opts.updateError ? { message: opts.updateError } : null,
+            });
+          }
+          return chain;
+        },
+        order: () => chain,
+        limit: async () => ({ data: opts.pending, error: null }),
+        maybeSingle: async () => ({ data: opts.shaSeen ?? null, error: null }),
+      };
+      return chain;
+    },
+  };
+  const service = new DocumentIntakeService(
+    { getClient: () => client } as never,
+    { available: () => false } as never,
+    {} as never,
+    {} as never,
+  );
+  return { service, updates, selects, download };
+}
+
+describe("row 1.2 — the sweep reads pending attachments only", () => {
+  it("asks for pending rows, never every recent row", async () => {
+    const h = harness({ pending: [] });
+    await h.service.sweepUningestedAttachments();
+    expect(h.selects[0].table).toBe("conversation_attachments");
+    expect(h.selects[0].eqs).toContainEqual(["ingest_state", "pending"]);
+  });
+
+  it("a paper whose number is on file is recorded as a duplicate, so it is not read again", async () => {
+    const h = harness({ pending: [attachment("a1")] });
+    const ingest = jest
+      .spyOn(h.service, "ingest")
+      .mockResolvedValue({
+        documentId: "earlier-doc",
+        duplicate: true,
+        parsed: null,
+        duplicateOf: {
+          documentId: "earlier-doc",
+          docNumber: "SYN-1",
+          reason: "SYNTHETIC: no. SYN-1 is already on file",
+        },
+      } as never);
+    await h.service.sweepUningestedAttachments();
+    expect(ingest).toHaveBeenCalledTimes(1);
+    expect(h.updates).toEqual([
+      {
+        id: "a1",
+        patch: expect.objectContaining({
+          ingest_state: "duplicate",
+          ingested_document_id: "earlier-doc",
+          ingest_attempts: 1,
+          last_ingest_reason: "SYNTHETIC: no. SYN-1 is already on file",
+        }),
+      },
+    ]);
+  });
+
+  it("a file removed under retention is failed with its date and never downloaded", async () => {
+    const h = harness({
+      pending: [attachment("a1", { bytes_deleted_at: "2027-01-02T00:00:00Z" })],
+    });
+    await h.service.sweepUningestedAttachments();
+    expect(h.download).not.toHaveBeenCalled();
+    expect(h.updates[0].patch).toMatchObject({ ingest_state: "failed" });
+    expect(String(h.updates[0].patch.last_ingest_reason)).toMatch(/2027-01-02/);
+  });
+
+  it("a logo is not a document, said without a download", async () => {
+    const h = harness({
+      pending: [attachment("a1", { filename: "logo.png", mime_type: "image/png" })],
+    });
+    await h.service.sweepUningestedAttachments();
+    expect(h.download).not.toHaveBeenCalled();
+    expect(h.updates[0].patch).toMatchObject({ ingest_state: "not_a_document" });
+  });
+
+  it("the same bytes already filed from this attachment read as ingested, without a download", async () => {
+    const h = harness({
+      pending: [attachment("a1", { sha256: "abc" })],
+      shaSeen: { id: "doc-1", source_ref: "conversation_attachment:a1" },
+    });
+    await h.service.sweepUningestedAttachments();
+    expect(h.download).not.toHaveBeenCalled();
+    expect(h.updates[0].patch).toMatchObject({
+      ingest_state: "ingested",
+      ingested_document_id: "doc-1",
+    });
+  });
+
+  it("a failed download is tried again later, then failed with the count", async () => {
+    const first = harness({ pending: [attachment("a1")], downloadError: "SYNTHETIC 503" });
+    await first.service.sweepUningestedAttachments();
+    expect(first.updates[0].patch).toMatchObject({
+      ingest_state: "pending",
+      ingest_attempts: 1,
+    });
+    expect(String(first.updates[0].patch.last_ingest_reason)).toMatch(/SYNTHETIC 503/);
+
+    const last = harness({
+      pending: [attachment("a1", { ingest_attempts: INGEST_ATTEMPTS - 1 })],
+      downloadError: "SYNTHETIC 503",
+    });
+    await last.service.sweepUningestedAttachments();
+    expect(last.updates[0].patch).toMatchObject({
+      ingest_state: "failed",
+      ingest_attempts: INGEST_ATTEMPTS,
+    });
+    expect(String(last.updates[0].patch.last_ingest_reason)).toMatch(
+      /not tried again/,
+    );
+  });
+
+  it("every download counts against the run's budget, whatever it became", async () => {
+    const h = harness({
+      pending: [attachment("a1"), attachment("a2"), attachment("a3")],
+    });
+    jest
+      .spyOn(h.service, "ingest")
+      .mockResolvedValue({ documentId: "d", duplicate: true, parsed: null } as never);
+    await h.service.sweepUningestedAttachments(2);
+    expect(h.download).toHaveBeenCalledTimes(2);
+  });
+
+  it("an outcome that cannot be written stops the run", async () => {
+    const h = harness({
+      pending: [attachment("a1"), attachment("a2")],
+      updateError: "SYNTHETIC write refused",
+    });
+    jest
+      .spyOn(h.service, "ingest")
+      .mockResolvedValue({ documentId: "d", duplicate: false, parsed: null } as never);
+    await h.service.sweepUningestedAttachments();
+    expect(h.download).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GET /procurement/documents/arrivals — what became of each emailed file", () => {
+  // Imported here so the sweep half above does not load the controller.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { DocumentsController } = require("./documents.controller");
+
+  function controllerWith(rows: Row[], error: unknown = null) {
+    const eqs: Array<[string, unknown]> = [];
+    let limitAsked = 0;
+    const chain: any = {
+      from: () => chain,
+      select: () => chain,
+      eq: (k: string, v: unknown) => {
+        eqs.push([k, v]);
+        return chain;
+      },
+      order: () => chain,
+      limit: async (n: number) => {
+        limitAsked = n;
+        return { data: rows.slice(0, n), error };
+      },
+    };
+    const unused = {} as never;
+    const c = new DocumentsController(
+      unused,
+      { getClient: () => chain } as never,
+      unused, unused, unused, unused, unused, unused, unused, unused, unused,
+    );
+    return { c, eqs, limit: () => limitAsked };
+  }
+
+  const row = (id: string, state: string): Row => ({
+    id,
+    filename: `${id}.pdf`,
+    mime_type: "application/pdf",
+    size_bytes: 10,
+    created_at: "2027-07-05T10:00:00Z",
+    ingest_state: state,
+    ingested_document_id: state === "duplicate" ? "doc-0" : null,
+    last_ingest_reason: state === "duplicate" ? "SYNTHETIC on file" : null,
+    ingest_attempts: 1,
+  });
+
+  it("reads one house's files with each outcome, and says when there are more", async () => {
+    const h = controllerWith([row("a1", "duplicate"), row("a2", "pending")]);
+    const out = await h.c.arrivals({ restaurantId: "house-1" } as never, "1");
+    expect(h.eqs).toContainEqual(["restaurant_id", "house-1"]);
+    expect(h.limit()).toBe(2);
+    expect(out.more).toBe(true);
+    expect(out.items).toEqual([
+      expect.objectContaining({
+        id: "a1",
+        state: "duplicate",
+        documentId: "doc-0",
+        reason: "SYNTHETIC on file",
+      }),
+    ]);
+  });
+
+  it("a failed read is a 503 in words, never an empty list", async () => {
+    const h = controllerWith([], { message: "SYNTHETIC down" });
+    await expect(
+      h.c.arrivals({ restaurantId: "house-1" } as never),
+    ).rejects.toThrow(/could not be read: SYNTHETIC down/);
+  });
+});
