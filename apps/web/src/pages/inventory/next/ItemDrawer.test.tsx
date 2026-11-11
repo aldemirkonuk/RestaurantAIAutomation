@@ -199,9 +199,20 @@ describe('the item drawer', () => {
   it('says a food is not drawn down by sales, never "not enough history"', () => {
     open(row({ velocity: null, runway: null, kind: 'food' }), { house: { kind: 'food', uom: 'g', displayName: 'Un' } });
     expect(screen.getByTestId('ivd-card-usage').textContent).toContain('Not drawn by sales');
-    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('no dish recipe links it');
+    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('no dish or drink recipe is taken from stock at the till');
     expect(screen.getByTestId('ivd-card-cover').textContent).toContain('Not known');
     expect(screen.getByTestId('ivd-card-usage').textContent).not.toContain('Not enough history');
+  });
+
+  it('a food whose pace could not be read stays unread, never "not drawn by sales"', () => {
+    open(row({ velocity: null, runway: null, kind: 'food', analyticsReadable: false }), {
+      house: { kind: 'food', uom: 'g', displayName: 'Un' },
+    });
+    const usage = screen.getByTestId('ivd-card-usage').textContent ?? '';
+    expect(usage).not.toContain('Not drawn by sales');
+    expect(usage).not.toContain('A sale does not draw');
+    expect(usage).toContain('The sales pace could not be read');
+    expect(screen.getByTestId('ivd-card-cover').textContent).not.toContain('not measured by sales');
   });
 
   it('a wine with no sales yet still says not enough history', () => {

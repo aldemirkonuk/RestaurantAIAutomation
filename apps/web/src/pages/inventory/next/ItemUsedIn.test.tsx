@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import ItemUsedIn, { DRINK_RECIPES_UNREAD, RECIPES_UNKNOWN, drinkHref } from './ItemUsedIn';
+import ItemUsedIn, { DRINKS_DO_NOT_DRAW, DRINK_RECIPES_UNREAD, RECIPES_UNKNOWN, drinkHref } from './ItemUsedIn';
 import type { ItemUsedIn as UsedIn } from '../../../services/api/inventory';
 
 const EUR = { state: 'recorded', code: 'EUR' } as const;
@@ -27,6 +27,21 @@ function load(over: Partial<UsedIn> = {}) {
 }
 
 describe('Used in', () => {
+  it('says a drink that uses the good does not take it from stock at the till yet (ADR 0360)', () => {
+    render(
+      <MemoryRouter>
+        <ItemUsedIn
+          load={load({ inDrinkRecipes: ok([{ cocktailId: 'c2', name: 'Lime sour', label: 'Lime', qtyEntered: 20, unitCode: 'ml' }]) })}
+          canManage
+          currency={EUR}
+          onRetry={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('ivd-used-cocktails').textContent).toContain(DRINKS_DO_NOT_DRAW);
+    expect(screen.getByTestId('ivd-used-drink-recipes').textContent).toContain(DRINKS_DO_NOT_DRAW);
+  });
+
   it('a drink that uses the good opens that drink, in the app and outside it', () => {
     const withRecipe = load({
       inDrinkRecipes: ok([{ cocktailId: 'c 2', name: 'Rakı highball', label: 'Rakı', qtyEntered: 40, unitCode: 'ml' }]),

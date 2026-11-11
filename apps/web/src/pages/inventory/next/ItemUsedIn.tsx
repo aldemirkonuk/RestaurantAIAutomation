@@ -42,6 +42,10 @@ function LineLink({ to, children }: { to: string; children: string }) {
 
 export const DRINK_RECIPES_UNREAD = 'Which drink recipes use this item could not be read here.';
 
+/** ADR 0360: a recipe links a good, but a sale does not take it from stock yet (sale depletion is the next wave). */
+export const DRINKS_DO_NOT_DRAW =
+  'A sale of these drinks does not take this item from stock yet; counts and write-offs move it.';
+
 /** A recipe quantity as a person writes it: 0.30000000000000004 reads 0.3, 29.5735295625 reads 29.57. */
 export function fmtRecipeQty(n: number): string {
   return n.toLocaleString('en-GB', { maximumFractionDigits: 2 });
@@ -151,6 +155,7 @@ export default function ItemUsedIn({
           title="In these cocktails"
           testid="ivd-used-cocktails"
           group={inCocktails}
+          note={DRINKS_DO_NOT_DRAW}
           // One cocktail may name the item twice (two lines): the key is the line, not the cocktail.
           line={(c, i) => ({
             key: `${c.cocktailId}-${i}`,
@@ -165,6 +170,7 @@ export default function ItemUsedIn({
           // An older gateway does not send the field: that is unread, never None.
           group={inDrinkRecipes ?? { readable: false, lines: null, source: DRINK_RECIPES_UNREAD }}
           unread={DRINK_RECIPES_UNREAD}
+          note={DRINKS_DO_NOT_DRAW}
           line={(d, i) => ({
             key: `${d.cocktailId}-${i}`,
             text: `${d.name} — ${fmtRecipeQty(d.qtyEntered)} ${d.unitCode} (${d.label})`,

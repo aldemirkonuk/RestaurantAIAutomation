@@ -17,7 +17,7 @@ import type { StorageLocation } from '../../../hooks/useStorageLocations';
 import ItemCards, { CARD_TITLE, type CardId, type FiguresLoad, type InsideLoad } from './ItemCards';
 import ItemUsedIn, { type UsedInLoad } from './ItemUsedIn';
 import WhatIsInIt from './NutritionCard';
-import RowDropdown, { type EvidenceSection } from './RowDropdown';
+import RowDropdown, { type EvidenceSection, type SheetId } from './RowDropdown';
 import { failureReason } from './iv-failure';
 import { noZoneWord, typeLabel, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import './item-drawer.css';
@@ -98,6 +98,8 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const { row, house, canManage, currency, zoneName, restaurantId, onClose } = props;
   const NutritionCard = props.NutritionCard ?? WhatIsInIt;
   const [evidence, setEvidence] = useState<CardId | 'all' | null>(null);
+  // One sheet for the drawer: the evidence's "Record a count" opens the sheet the acts own.
+  const [sheet, setSheet] = useState<SheetId | null>(null);
   const detailRef = useRef<HTMLElement | null>(null);
   // On a phone the detail card opens below the fold: bring it into view.
   useEffect(() => {
@@ -209,6 +211,8 @@ export default function ItemDrawer(props: ItemDrawerProps) {
         uom={house.uom}
         kind={house.kind ?? row.kind}
         sections={[]}
+        sheet={sheet}
+        onSheet={setSheet}
       />
       <p className="ivd-evbar">
         <button
@@ -246,6 +250,8 @@ export default function ItemDrawer(props: ItemDrawerProps) {
               kind={house.kind ?? row.kind}
               sections={CARD_EVIDENCE[evidence]}
               actions={false}
+              sheet={sheet}
+              onSheet={setSheet}
             />
           ) : null}
           <div className="ivd-nutrition" data-slot="NutritionCard" data-testid="ivd-nutrition-slot">

@@ -196,19 +196,23 @@ export interface ItemCardsProps {
 
 /**
  * A sale draws down only what the till maps to the good itself (a bottle, a
- * glass); a food or supply goes into dishes, and no dish recipe links it yet.
- * So its usage is not "not enough history": it is not measured by sales at all.
+ * glass). A drink recipe may link a food or supply (lime, syrup: "Used in"
+ * lists them), but no recipe is taken from stock at the till yet (ADR 0360:
+ * sale depletion is the next wave). So its usage is not "not enough history":
+ * it is not measured by sales at all.
  */
 export const NOT_DRAWN_BY_SALES =
-  'A sale does not draw a food or supply down yet, since no dish recipe links it; counts and write-offs move it.';
+  'A sale does not draw a food or supply down yet: no dish or drink recipe is taken from stock at the till, so counts and write-offs move it.';
 
 export default function ItemCards({ row, uom, kind, canManage, currency, figures, inside, open, onOpen }: ItemCardsProps) {
-  const unsold = (kind === 'food' || kind === 'supply') && (row.velocity === null || row.velocity === 0);
+  const pace = row.analyticsReadable;
+  // Only a pace that was read can say "not drawn by sales": an unread one is
+  // null too, and stays unread rather than read as a measured answer.
+  const unsold = pace && (kind === 'food' || kind === 'supply') && (row.velocity === null || row.velocity === 0);
   const f = figures.status === 'ready' ? figures.data : null;
   const reading = figures.status === 'reading';
   const failedWhy = figures.status === 'failed' ? `This item’s figures ${UNREAD} — ${figures.reason}.` : null;
   const money = (n: number | null) => cellMoney(n, currency);
-  const pace = row.analyticsReadable;
 
   const onHand =
     row.stock === null ? null : (
@@ -283,7 +287,13 @@ export default function ItemCards({ row, uom, kind, canManage, currency, figures
         onOpen={onOpen}
         unread={!pace}
         figure={unsold ? 'Not drawn by sales' : row.velocity === null ? 'Not enough history' : usageWords(row.velocity, uom)}
-        source={unsold ? NOT_DRAWN_BY_SALES : 'Sold over the last 30 days, from the stock ledger.'}
+        source={
+          unsold
+            ? NOT_DRAWN_BY_SALES
+            : pace
+              ? 'Sold over the last 30 days, from the stock ledger.'
+              : 'The sales pace could not be read, so how fast it goes is not shown.'
+        }
       />
       <Card
         id="cover"

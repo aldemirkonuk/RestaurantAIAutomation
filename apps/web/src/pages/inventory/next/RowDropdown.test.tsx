@@ -697,6 +697,27 @@ describe('Name this wine in the opened row (ADR 0192, ported from RowExpansion.t
   });
 });
 
+describe('the evidence-only copy the drawer mounts (actions={false})', () => {
+  it('is named apart from the opened row, draws no acts, and asks the holder for the count sheet', () => {
+    const onSheet = vi.fn();
+    renderDrop({ actions: false, sections: ['where'], onSheet, sheet: null });
+    expect(screen.queryByTestId('row-dropdown')).toBeNull();
+    const ev = screen.getByTestId('row-evidence');
+    expect(ev.getAttribute('aria-label')).toBe('Gravner Ribolla: the evidence');
+    expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+    fireEvent.click(within(ev).getByRole('button', { name: 'Record a count' }));
+    expect(onSheet).toHaveBeenCalledWith('count');
+  });
+
+  it('draws no sheet even when the shared state names one; the acts copy draws it', () => {
+    renderDrop({ actions: false, sections: ['where'], onSheet: vi.fn(), sheet: 'count' });
+    expect(screen.queryByRole('textbox', { name: 'Bottles counted' })).toBeNull();
+    cleanup();
+    renderDrop({ sections: [], onSheet: vi.fn(), sheet: 'count' });
+    expect(screen.getByRole('textbox', { name: 'Bottles counted' })).toBeTruthy();
+  });
+});
+
 describe('the rest of the legacy expansion (round 4 census)', () => {
   beforeEach(() => {
     inv.reconcile.mockReset().mockResolvedValue({});
@@ -726,6 +747,15 @@ describe('the rest of the legacy expansion (round 4 census)', () => {
       fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
     });
     expect(inv.reconcile).toHaveBeenCalledWith('i1', { actualCount: 5, notes: 'Shadow reconciled into live' });
+  });
+
+  it('a good kept in grams reconciles in kg, never "bottles"', async () => {
+    const m = await openMore({ row: row({ stock: 3_000, shadow: 2_500 }), uom: 'g', kind: 'food' });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2.5 kg into live' }));
+    });
+    expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5_500, notes: 'Shadow reconciled into live' });
+    expect(toasts.success.mock.calls[0][0]).toBe('Gravner Ribolla: live set to 5.5 kg, the shadow counted in.');
   });
 
   it('holds Reconcile while live stock is unread', async () => {
