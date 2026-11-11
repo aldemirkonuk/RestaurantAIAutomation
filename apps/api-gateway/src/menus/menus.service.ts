@@ -14,6 +14,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
 import { ScanParserService } from "./parsers/scan-parser.service";
+import { pagesToOneFile } from "./parsers/pages-to-pdf";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
@@ -295,9 +296,14 @@ const EMPTY_READ_REFUSAL: Record<string, string> = {
 /** What `POST /menus/import` answers, and what a finished background read keeps (`read_reply`). */
 export interface MenuImportReply {
   menuId: string;
-  current: false;
+  /** Always false for a new read; a reopened read says whether it is current now. */
+  current: boolean;
   /** A scan still being read: poll `GET /menu-versions/:menuId/read`. */
   reading?: true;
+  /** The same bytes were read before: this is that read, not a new one. */
+  reopened?: { readAt: string | null };
+  /** How many photos the upload joined into this one menu. */
+  pages?: number;
   itemsExtracted: number;
   submissionsCreated: number;
   items: MenuImportReviewItem[];
@@ -598,6 +604,12 @@ export class MenusService {
    * job"; audit M12: a read past the web's 30 s "failed" while the server went
    * on). The file and the draft are kept BEFORE the read, so a read that fails
    * or is cut off still names its file and says why (ADR 0213 #17).
+   *
+   * Several photos sent together are one menu and one version (founder
+   * 2026-11-07, "One upload = one version"), joined into one PDF, one photo
+   * per page. The same bytes sent again reopen the read they made unless the
+   * person asks to read them again (`readAgain`): a resend is not billed
+   * twice, and a double tap while reading starts one read, not two.
    */
   private async beginScan(
     dto: ImportMenuDto,
@@ -605,11 +617,24 @@ export class MenusService {
     menuDate: { date: string; precision: "day" | "month" } | null,
   ): Promise<MenuImportReply> {
     const { restaurantId } = dto;
-    const file = dto.data?.imageBase64;
-    if (typeof file !== "string" || file.trim() === "") {
-      throw new BadRequestException("A scan sends the photo or PDF it reads (data.imageBase64). Nothing was kept.");
+    const pages = Array.isArray(dto.data?.images)
+      ? dto.data.images
+      : typeof dto.data?.imageBase64 === "string"
+        ? [dto.data.imageBase64]
+        : null;
+    if (!pages) {
+      throw new BadRequestException(
+        "A scan sends the photo or PDF it reads (data.imageBase64, or data.images for several pages). Nothing was kept.",
+      );
     }
+    const file = await pagesToOneFile(pages);
     const bytes = Buffer.from(file, "base64");
+    const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+
+    if (dto.readAgain !== true) {
+      const earlier = await this.sameFileRead(restaurantId, sha256);
+      if (earlier) return earlier;
+    }
 
     const kept = await this.keepSource(restaurantId, bytes, sniffMime(bytes));
     const menu = await this.createVersion(restaurantId, userId, dto, [], [], kept, menuDate, "reading");
@@ -623,12 +648,56 @@ export class MenusService {
       menuId: menu.id,
       current: false,
       reading: true,
+      pages: pages.length,
       itemsExtracted: 0,
       submissionsCreated: 0,
       items: [],
       source: { kept: !!kept?.path, failure: kept?.failure ?? null },
       warnings: [],
     };
+  }
+
+  /** The read these exact bytes already made for this house, if it is still worth reopening. */
+  private async sameFileRead(restaurantId: string, sha256: string): Promise<MenuImportReply | null> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, status, read_state, read_reply, extracted_at, source_path, source_failure")
+      .eq("restaurant_id", restaurantId)
+      .eq("source_sha256", sha256)
+      .eq("source_method", "scan");
+    if (error) {
+      // Not knowing costs one more read, never a lost one.
+      this.logger.warn(`Could not look for an earlier read of the same file: ${error.message}`);
+      return null;
+    }
+    const rows = ((data ?? []) as Array<Record<string, any>>).sort((a, b) =>
+      String(b.extracted_at ?? "").localeCompare(String(a.extracted_at ?? "")),
+    );
+    const cutoff = Date.now() - READ_STALE_MS;
+    for (const row of rows) {
+      const state = (row.read_state as MenuReadState | undefined) ?? "done";
+      if (state === "reading" && (this.reading.has(row.id) || Date.parse(row.extracted_at) >= cutoff)) {
+        return {
+          menuId: row.id,
+          current: false,
+          reading: true,
+          itemsExtracted: 0,
+          submissionsCreated: 0,
+          items: [],
+          source: { kept: !!row.source_path, failure: row.source_failure ?? null },
+          warnings: [],
+        };
+      }
+      if (state === "done" && row.read_reply && typeof row.read_reply === "object") {
+        // Said as it is NOW: the read may have been made current since.
+        return {
+          ...(row.read_reply as MenuImportReply),
+          current: row.status === "active",
+          reopened: { readAt: row.extracted_at ?? null },
+        };
+      }
+    }
+    return null;
   }
 
   /** The background half of a scan. Never rejects: every ending is written on the version. */

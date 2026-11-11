@@ -1510,7 +1510,7 @@ describe("MenusService — a scan reads in the background (founder 2026-11-07)",
       },
     });
     const r = await service.importMenu({ method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any, "user-1");
-    expect(r).toMatchObject({ reading: true, itemsExtracted: 0, items: [] });
+    expect(r).toMatchObject({ reading: true, itemsExtracted: 0, items: [], pages: 1 });
     expect((await service.readStatus("rest-1", r.menuId)).state).toBe("reading");
     // Neither a plan nor a choice exists for a menu still being read.
     await expect(service.planFor("rest-1", r.menuId)).rejects.toBeInstanceOf(ConflictException);
@@ -1521,6 +1521,82 @@ describe("MenusService — a scan reads in the background (founder 2026-11-07)",
     expect(done.state).toBe("done");
     expect(done.reply).toMatchObject({ menuId: r.menuId, itemsExtracted: 1, current: false });
     expect(tables.menu_items.filter((l) => l.menu_id === r.menuId)).toHaveLength(1);
+  });
+
+  it("several photos sent together are ONE version, read and kept as one PDF of that many pages", async () => {
+    const tables = base();
+    const { seen, parser } = reads();
+    const service = makeService(tables, { wineSubmissions, scanParser: parser });
+    const r = await service.importMenu(
+      { method: "scan", data: { images: [PNG, `data:image/png;base64,${PNG}`, PNG] }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    await service.whenRead(r.menuId);
+    expect(r.pages).toBe(3);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].startsWith("JVBERi0")).toBe(true); // %PDF
+    const { PDFDocument } = await import("pdf-lib");
+    expect((await PDFDocument.load(Buffer.from(seen[0], "base64"))).getPageCount()).toBe(3);
+    const mine = tables.restaurant_menus.filter((m) => m.id !== "menu-old");
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ source_mime: "application/pdf", read_state: "done" });
+  });
+
+  it("refuses in words, before any read, a page that is not a photo it can join, and more than 20 pages", async () => {
+    const tables = base();
+    const { seen, parser } = reads();
+    const service = makeService(tables, { wineSubmissions, scanParser: parser });
+    const gif = Buffer.from("GIF89a....").toString("base64");
+    await expect(
+      service.importMenu({ method: "scan", data: { images: [PNG, gif] }, restaurantId: "rest-1" } as any, "user-1"),
+    ).rejects.toThrow(/Page 2 is not a JPEG or PNG photo/);
+    await expect(
+      service.importMenu({ method: "scan", data: { images: Array(21).fill(PNG) }, restaurantId: "rest-1" } as any, "user-1"),
+    ).rejects.toThrow(/at most 20 pages; this one has 21/);
+    expect(seen).toHaveLength(0);
+    expect(tables.restaurant_menus).toHaveLength(1);
+  });
+
+  it("the same bytes again reopen the read they made, not billed twice; readAgain reads them again", async () => {
+    const tables = base();
+    const { seen, parser } = reads();
+    const service = makeService(tables, { wineSubmissions, scanParser: parser });
+    const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any;
+    const first = await service.importMenu(dto, "user-1");
+    await service.whenRead(first.menuId);
+    const again = await service.importMenu(dto, "user-1");
+    expect(again.menuId).toBe(first.menuId);
+    expect(again.reopened).toBeDefined();
+    expect(again.items).toEqual([expect.objectContaining({ name: "Opus One" })]);
+    expect(seen).toHaveLength(1);
+    const fresh = await service.importMenu({ ...dto, readAgain: true }, "user-1");
+    await service.whenRead(fresh.menuId);
+    expect(fresh.menuId).not.toBe(first.menuId);
+    expect(seen).toHaveLength(2);
+  });
+
+  it("a double send while the first is still reading starts one read, not two", async () => {
+    const tables = base();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async () => {
+          calls++;
+          await gate;
+          return { items: [{ name: "Opus One" }], warnings: [] };
+        },
+      },
+    });
+    const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any;
+    const a = await service.importMenu(dto, "user-1");
+    const b = await service.importMenu(dto, "user-1");
+    expect([b.menuId, b.reading]).toEqual([a.menuId, true]);
+    release();
+    await service.whenRead(a.menuId);
+    expect(calls).toBe(1);
   });
 
   it("a read that breaks after its lines were kept drops them and ends FAILED in words; it can never be made current", async () => {
