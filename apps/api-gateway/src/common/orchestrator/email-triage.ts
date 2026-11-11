@@ -53,6 +53,10 @@ export interface TransportSignals {
   /**
    * `Content-Type: multipart/report; report-type=delivery-status` (RFC 3464):
    * a delivery status notification, i.e. a bounce, whoever it claims to be from.
+   * Also an `X-Failed-Recipients` header: the mail server's own list of the
+   * addresses it could not deliver to, which Exim and Gmail put on a plain-text
+   * bounce and no person's letter carries (QA round 22 on #946, "bounce
+   * detection is narrow").
    */
   deliveryReport: boolean;
   /**
@@ -189,8 +193,9 @@ export function deriveTransportSignals(
     precedence.trim() === "auto_reply";
   const contentType = (h["content-type"] || "").toLowerCase();
   const deliveryReport =
-    /^\s*multipart\/report\b/.test(contentType) &&
-    /\breport-type\s*=\s*"?delivery-status"?/.test(contentType);
+    (/^\s*multipart\/report\b/.test(contentType) &&
+      /\breport-type\s*=\s*"?delivery-status"?/.test(contentType)) ||
+    (h["x-failed-recipients"] || "").includes("@");
 
   const fromValue = fromHeaderOverride ?? h["from"] ?? "";
   const fromAddr = extractEmailAddress(fromValue);

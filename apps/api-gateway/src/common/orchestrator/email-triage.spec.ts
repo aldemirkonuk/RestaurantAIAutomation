@@ -164,6 +164,20 @@ describe("email-triage", () => {
         }).deliveryReport,
       ).toBe(false);
     });
+    it("a plain-text bounce naming the addresses it failed is a delivery report (QA r22 #946)", () => {
+      // Exim / Gmail: no multipart/report, From not mailer-daemon@.
+      expect(
+        deriveTransportSignals({
+          from: "Mail Delivery System <noreply-dsn@google.com>",
+          "content-type": "text/plain; charset=utf-8",
+          "x-failed-recipients": "orders@vendor.example",
+        }).deliveryReport,
+      ).toBe(true);
+      // An empty or address-less value is not a bounce.
+      expect(
+        deriveTransportSignals({ "x-failed-recipients": " " }).deliveryReport,
+      ).toBe(false);
+    });
   });
 
   describe("deriveTransportSignals — failing / spoofed auth", () => {
