@@ -2,6 +2,9 @@
  * What is in one serve of the SAVED recipe, as the gateway summed it
  * (recipes.service whatIsIn). Nothing is added up here. Unknown reads
  * "unknown for <lines>", never 0; a partial sum reads "at least".
+ *
+ * Allergens: a line that states nothing is named, so the card never reads as
+ * allergen-free because nothing was recorded (the round-20 rule).
  */
 import type { CocktailRecipe, ServeFigureKey } from '../../../../services/api/recipes';
 
@@ -56,6 +59,14 @@ export default function WhatIsInAServe({ data, unsaved }: { data: CocktailRecipe
             .join('. ')}
           .
         </p>
+      ) : null}
+      {(w.allergensUnstatedBy ?? []).length > 0 ? (
+        <p className="cl-note cl-rcp-note-warn" data-testid="recipe-whatisin-allergens-unstated">
+          No allergen can be ruled out: {names(w.allergensUnstatedBy ?? [])}{' '}
+          {(w.allergensUnstatedBy ?? []).length === 1 ? 'does' : 'do'} not say what {(w.allergensUnstatedBy ?? []).length === 1 ? 'it contains' : 'they contain'}.
+        </p>
+      ) : w.allergensUnstatedBy && stated.length === 0 ? (
+        <p className="cl-note" data-testid="recipe-whatisin-allergens-free">Every ingredient states it is free of the 14 allergens.</p>
       ) : null}
       {w.notCounted.length > 0 ? (
         <p className="cl-note" data-testid="recipe-whatisin-notcounted">

@@ -19,6 +19,10 @@ export interface DraftRow {
   inventoryId: string | null;
   itemName: string | null;
   itemKind: string | null;
+  /** How the shelf counts the linked item; used to say why a line has no price. */
+  itemUom?: string | null;
+  /** The linked item was archived or deleted since the line was saved. */
+  itemGone?: 'archived' | 'deleted' | null;
   label: string;
   qtyText: string;
   /**
@@ -43,7 +47,26 @@ export function rowName(row: DraftRow): string {
   return row.label.trim() || row.itemName || 'this line';
 }
 
-/** The sentence under a line, or null. Money sentences only when `say` is given. */
+/** "bottle" -> "by the bottle", "kg" -> "in kg". */
+function countedHow(uom: string | null | undefined): string {
+  const u = String(uom ?? '').toLowerCase();
+  if (['bottle', 'keg', 'case', 'pack', 'glass', 'shot'].includes(u)) return `by the ${u}`;
+  if (u === 'each') return 'by the piece';
+  return u ? `in ${u}` : 'another way';
+}
+
+/** "ml" -> "measured by volume". */
+function measuredHow(unit: DraftRow['unit']): string {
+  if (unit === 'g' || unit === 'kg') return 'weighed';
+  if (unit === 'each') return 'counted by the piece';
+  return 'measured by volume';
+}
+
+/**
+ * The sentence under a line an editor is working on, or null. Money sentences
+ * only when `say` is given. Staff never get one: nothing in it is theirs to
+ * act on (round 17, D7).
+ */
 export function rowNote(
   row: DraftRow,
   say: ((n: number) => string) | null,
@@ -55,10 +78,34 @@ export function rowNote(
       text: `This drink won't take stock until '${rowName(row)}' is linked to something on your shelf.`,
     };
   }
+  if (row.itemGone) {
+    return {
+      tone: 'warn',
+      text: `'${row.itemName ?? rowName(row)}' was ${row.itemGone === 'deleted' ? 'deleted' : 'archived'} from your shelf. Link this line to something still on it, or mark it not counted, before saving.`,
+    };
+  }
   if (!say || !row.saved) return null;
-  if (row.saved.costPerServe != null) return { tone: 'ink', text: `${say(row.saved.costPerServe)} a serve` };
-  if (row.saved.costBasis === 'size_not_known') {
-    return { tone: 'warn', text: "No price yet: your shelf doesn't say how much one of it holds." };
+  const basis = row.saved.costBasis;
+  if (row.saved.costPerServe != null) {
+    return basis === 'invoice_lot_wac_partial'
+      ? { tone: 'ink', text: `${say(row.saved.costPerServe)} a serve, from the bottles that have an invoice; some on hand have none yet.` }
+      : { tone: 'ink', text: `${say(row.saved.costPerServe)} a serve` };
+  }
+  const item = row.itemName ?? rowName(row);
+  if (basis === 'size_not_known') {
+    return { tone: 'warn', text: `No price yet: your shelf doesn't say how much one ${row.itemUom ?? 'bottle'} of ${item} holds.` };
+  }
+  if (basis === 'pack_size_not_known') {
+    return {
+      tone: 'warn',
+      text: `No price: ${item} is counted ${countedHow(row.itemUom)}, and your shelf doesn't say what one holds. Link the line to the single bottle you pour from.`,
+    };
+  }
+  if (basis === 'unit_mismatch') {
+    return {
+      tone: 'warn',
+      text: `No price: this line is ${measuredHow(row.unit)}, but ${item} is counted ${countedHow(row.itemUom)}. Change the unit, or link the item it pours from.`,
+    };
   }
   return { tone: 'warn', text: 'No price yet: it will cost once a delivery of it is checked in.' };
 }
@@ -78,8 +125,8 @@ function amountWords(row: DraftRow): string {
   return `${qtyText(q)} ${row.unit ? UNIT_LABEL[row.unit] : ''}`.trim();
 }
 
-/** A line as a staff member reads it: no inputs, no money. */
-export function LineRowRead({ row, say }: { row: DraftRow; say: ((n: number) => string) | null }) {
+/** A line as a staff member reads it: no inputs, no money, and no warning that is not theirs to act on. */
+export function LineRowRead({ row }: { row: DraftRow }) {
   return (
     <li className="cl-rcp-line" data-role={row.role} data-testid="recipe-line">
       <div className="cl-rcp-read">
@@ -92,7 +139,6 @@ export function LineRowRead({ row, say }: { row: DraftRow; say: ((n: number) => 
           {row.role === 'untracked' ? <span className="cl-dim"> · not counted</span> : null}
         </span>
       </div>
-      <Note note={rowNote(row, say)} />
     </li>
   );
 }
@@ -118,6 +164,8 @@ export default function LineRow({
       inventoryId: item.id,
       itemName: item.name,
       itemKind: item.kind,
+      itemUom: item.uom,
+      itemGone: null,
       label: row.label.trim() ? row.label : item.name,
       saved: null,
     });
@@ -198,7 +246,7 @@ export default function LineRow({
           onClick={() =>
             onChange(
               stocked
-                ? { role: 'untracked', inventoryId: null, itemName: null, itemKind: null, saved: null }
+                ? { role: 'untracked', inventoryId: null, itemName: null, itemKind: null, itemUom: null, itemGone: null, saved: null }
                 : { role: 'stocked', saved: null },
             )
           }
