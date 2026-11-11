@@ -78,9 +78,10 @@ function bottle(over: Partial<BottleVM> = {}): BottleVM {
   };
 }
 
-function mkData(bottles: BottleVM[]): CellarData {
+function mkData(bottles: BottleVM[], lowStock: ReadonlySet<string> | null = new Set()): CellarData {
   return {
     activeRestaurantId: 'r1',
+    lowStock,
     authLoading: false,
     bottles,
     building: { titles: bottles.length, bottles: 0, belowPar: 0, offBook: 0, parUnset: 0 },
@@ -108,12 +109,12 @@ function mkData(bottles: BottleVM[]): CellarData {
   } as unknown as CellarData;
 }
 
-function mount(bottles: BottleVM[]) {
+function mount(bottles: BottleVM[], lowStock?: ReadonlySet<string> | null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <MemoryRouter>
       <QueryClientProvider client={qc}>
-        <WineRegister data={mkData(bottles)} />
+        <WineRegister data={mkData(bottles, lowStock)} />
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -258,5 +259,31 @@ describe('WineRegister — sketch 121, the record opens beside a narrowed index'
     // same `wr-row-w2` id at different times.
     const rowAfterClose = screen.getByText('Barolo Riserva').closest('tr')!;
     expect(document.activeElement).toBe(rowAfterClose);
+  });
+});
+
+// QA 12a: the register's below-par filter says what the tile, /inventory and
+// the inbox say -- the low-stock list's one answer, never `stock <= min`.
+describe('below par on /cellar is the low-stock list (QA 12a)', () => {
+  const cellar = (inventoryId: string, stockLive: number) =>
+    ({ inventoryId, stockLive, thresholdMin: 3 }) as BottleVM['cellar'];
+  const three = () => [
+    bottle({ id: 'w1', name: 'Listed low', cellar: cellar('i1', 1) }),
+    bottle({ id: 'w2', name: 'At par', cellar: cellar('i2', 3) }),
+    bottle({ id: 'w3', name: 'Under par, off the list', cellar: cellar('i3', 0) }),
+  ];
+
+  it('the register filter keeps only the bottles the list holds', async () => {
+    mount(three(), new Set(['i1']));
+    await userEvent.selectOptions(screen.getByLabelText('Cellar'), 'par');
+    const table = screen.getByRole('table');
+    expect(within(table).getByText('Listed low')).toBeInTheDocument();
+    expect(within(table).queryByText('At par')).not.toBeInTheDocument();
+    expect(within(table).queryByText('Under par, off the list')).not.toBeInTheDocument();
+  });
+
+  it('offers no below-par filter while the list is unread', () => {
+    mount(three(), null);
+    expect(within(screen.getByLabelText('Cellar')).queryByRole('option', { name: /par/i })).toBeNull();
   });
 });

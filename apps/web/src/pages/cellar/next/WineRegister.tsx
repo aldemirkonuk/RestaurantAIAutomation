@@ -210,6 +210,8 @@ export default function WineRegister({ data }: { data: CellarData }) {
   const [vintage, setVintage] = useState('all');
   const [format, setFormat] = useState('all');
   const [cellarFilter, setCellarFilter] = useState<Cellar>('all');
+  const lowStock = data.lowStock ?? null;
+  const sift: Cellar = cellarFilter === 'par' && lowStock === null ? 'all' : cellarFilter;
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [asc, setAsc] = useState(true);
   const [shelf, setShelf] = useState(false);
@@ -294,12 +296,10 @@ export default function WineRegister({ data }: { data: CellarData }) {
       if (region !== 'all' && b.region !== region) return false;
       if (vintage !== 'all' && String(b.vintage) !== vintage) return false;
       if (format !== 'all' && String(b.bottleSizeMl) !== format) return false;
-      if (cellarFilter === 'in' && !b.cellar) return false;
-      if (cellarFilter === 'out' && b.cellar) return false;
-      if (cellarFilter === 'par') {
-        const c = b.cellar;
-        if (!c || c.thresholdMin === null || c.stockLive > c.thresholdMin) return false;
-      }
+      if (sift === 'in' && !b.cellar) return false;
+      if (sift === 'out' && b.cellar) return false;
+      // QA 12a: below par is the low-stock list's one answer, as on the tile.
+      if (sift === 'par' && !(b.cellar && lowStock?.has(b.cellar.inventoryId))) return false;
       return true;
     });
     return rows.sort((a, z) => {
@@ -312,7 +312,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
         typeof av === 'number' && typeof zv === 'number' ? av - zv : String(av).localeCompare(String(zv));
       return asc ? c : -c;
     });
-  }, [bottles, query, style, country, region, vintage, format, cellarFilter, sortKey, asc]);
+  }, [bottles, query, style, country, region, vintage, format, sift, lowStock, sortKey, asc]);
 
   const open = shown?.find((b) => b.id === openId) ?? null;
   const choose = (id: string) => setOpenId((cur) => (cur === id ? null : id));
@@ -416,13 +416,14 @@ export default function WineRegister({ data }: { data: CellarData }) {
         <Sift
           id="cl-f-cellar"
           label="Cellar"
-          value={cellarFilter}
+          value={sift}
           onChange={(v) => setCellarFilter(v as Cellar)}
           options={[
             { value: 'all', label: 'Everything' },
             { value: 'in', label: 'In the building' },
             { value: 'out', label: 'Not in the building' },
-            { value: 'par', label: 'At or under par' },
+            // An unread low-stock list offers no below-par filter, never an empty one.
+            ...(lowStock ? [{ value: 'par', label: 'Below their own par' }] : []),
           ]}
         />
         <span style={{ display: 'inline-flex', gap: 4, marginLeft: 'auto' }}>

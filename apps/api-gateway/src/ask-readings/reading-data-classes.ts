@@ -81,6 +81,7 @@ export const FIELD_CLASS: Readonly<Record<string, DataClass>> = {
   "restaurant_inventory.in_transit_quantity": "stock",
   "restaurant_inventory.threshold_min": "stock",
   "restaurants.*": "stock",
+  "v_low_stock_items.*": "stock",
   "inventory_lots.*": "stock",
   "inventory_lots.location_id": "stock",
   "inventory_lots.stock_state": "stock",

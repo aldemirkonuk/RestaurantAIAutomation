@@ -20,6 +20,11 @@ export class ReadingSources {
       .select("id,restaurant_id,display_name,wine_name,kind,uom,unit_type,stock_live,shadow_stock,in_transit_quantity,threshold_min,is_active,deleted_at", selected)
       .eq("restaurant_id", this.restaurantId).is("deleted_at", null), this.houseScope);
   }
+  /** The house's one below-par answer (QA 12a): the rows `v_low_stock_items` holds, by id. */
+  lowStock(): Promise<Evidence> {
+    return this.session.read(c => c.from("v_low_stock_items").select("id,restaurant_id", selected)
+      .eq("restaurant_id", this.restaurantId), this.houseScope);
+  }
   house(): Promise<Evidence> {
     return this.session.read(c => c.from("restaurants").select("id,threshold_configured", selected)
       .eq("id", this.restaurantId), r => r.id === this.restaurantId);
