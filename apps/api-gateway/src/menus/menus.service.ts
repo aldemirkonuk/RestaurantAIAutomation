@@ -664,12 +664,15 @@ export class MenusService {
         source: { kept: !!kept?.path, failure: kept?.failure ?? null },
         warnings,
       };
-      await this.endRead(menuId, { read_state: "done", read_reply: reply });
+      const ended = await this.endRead(menuId, { read_state: "done", read_reply: reply });
+      // The sweep already said this read stopped (it ran past half an hour, or
+      // another server took it for dead): it stays failed, so it keeps no line.
+      if (ended === "not_reading") await this.dropUnfinishedRead(menuId, restaurantId);
     } catch (err) {
       this.logger.error(`Menu read ${menuId} failed: ${(err as Error)?.message ?? err}`);
-      // A failed read keeps no half of its lines: the version says why instead.
-      const { error: dropError } = await sb.from("menu_items").delete().eq("menu_id", menuId).eq("restaurant_id", restaurantId);
-      if (dropError) this.logger.error(`Lines of failed read ${menuId} were not removed: ${dropError.message}`);
+      // A failed read keeps no half of what it wrote: its lines and the library
+      // submissions made for them go (dropUnfinishedRead); the version says why.
+      await this.dropUnfinishedRead(menuId, restaurantId);
       await this.endRead(menuId, {
         read_state: "failed",
         read_failure: failureWords(err),
@@ -679,9 +682,62 @@ export class MenusService {
     }
   }
 
-  private async endRead(menuId: string, patch: Record<string, unknown>): Promise<void> {
-    const { error } = await this.dbService.supabase.from("restaurant_menus").update(patch).eq("id", menuId);
-    if (error) this.logger.error(`Menu read ${menuId} ended but could not say so: ${error.message}`);
+  /**
+   * Ends a read that is still `reading`. A read the sweep has already ended
+   * is left as the sweep said (`not_reading`), never turned back into done.
+   */
+  private async endRead(
+    menuId: string,
+    patch: Record<string, unknown>,
+  ): Promise<"ended" | "not_reading" | "unknown"> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .update(patch)
+      .eq("id", menuId)
+      .eq("read_state", "reading")
+      .select("id");
+    if (error) {
+      this.logger.error(`Menu read ${menuId} ended but could not say so: ${error.message}`);
+      return "unknown";
+    }
+    return Array.isArray(data) && data.length > 0 ? "ended" : "not_reading";
+  }
+
+  /**
+   * What a read that did not finish wrote for its version goes: its lines, and
+   * the library submissions made for them. A submission names no menu, so it
+   * is found through the line that points at it, before the lines go. Library
+   * rows the resolver added stay: they are the shared library's, matched by
+   * signature and reused by the next read of the same wine (the synchronous
+   * path left them too; PR #773's register entry). A submission whose line was
+   * never pointed at it (the process died between the two writes) is not
+   * found here either; the transaction that would close both is still owed.
+   */
+  private async dropUnfinishedRead(menuId: string, restaurantId: string): Promise<void> {
+    const sb = this.dbService.supabase;
+    const { data: lines, error: readError } = await sb
+      .from("menu_items")
+      .select("id, submission_id")
+      .eq("menu_id", menuId)
+      .eq("restaurant_id", restaurantId);
+    if (readError) this.logger.error(`Lines of unfinished read ${menuId} could not be read: ${readError.message}`);
+    const submissionIds = ((lines ?? []) as Array<{ submission_id?: string | null }>)
+      .map((l) => l.submission_id)
+      .filter((id): id is string => typeof id === "string" && id !== "");
+    const { error: dropError } = await sb.from("menu_items").delete().eq("menu_id", menuId).eq("restaurant_id", restaurantId);
+    if (dropError) {
+      // The lines still point at their submissions; removing those now would
+      // only null the pointers (ON DELETE SET NULL) and hide what is left.
+      this.logger.error(`Lines of unfinished read ${menuId} were not removed: ${dropError.message}`);
+      return;
+    }
+    if (submissionIds.length === 0) return;
+    const { error: subError } = await sb
+      .from("master_wine_library_submissions")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .in("id", submissionIds);
+    if (subError) this.logger.error(`Submissions of unfinished read ${menuId} were not removed: ${subError.message}`);
   }
 
   /** A read nobody is reading any more (a restart) is said to have failed, lazily, when someone looks. */
@@ -698,13 +754,16 @@ export class MenusService {
       .filter((r) => !this.reading.has(r.id) && !(Date.parse(String(r.extracted_at)) >= cutoff))
       .map((r) => r.id);
     if (stale.length === 0) return;
-    const { error: upd } = await sb
+    const { data: ended, error: upd } = await sb
       .from("restaurant_menus")
-      .update({ read_state: "failed", read_failure: STOPPED_READ_FAILED })
+      .update({ read_state: "failed", read_failure: STOPPED_READ_FAILED, lines_extracted: 0, extraction: [] })
       .eq("restaurant_id", restaurantId)
       .eq("read_state", "reading")
-      .in("id", stale);
-    if (upd) this.logger.warn(`Could not end stopped menu reads: ${upd.message}`);
+      .in("id", stale)
+      .select("id");
+    if (upd) return void this.logger.warn(`Could not end stopped menu reads: ${upd.message}`);
+    // A stopped read keeps no half of what it wrote, as a failed one does.
+    for (const row of (ended ?? []) as Array<{ id: string }>) await this.dropUnfinishedRead(row.id, restaurantId);
   }
 
   /** Where one read stands, and what it found once it is done (`GET /menu-versions/:id/read`). */
