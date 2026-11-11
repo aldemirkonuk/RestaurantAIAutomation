@@ -9,6 +9,7 @@
  * Authentication-Results, with Gmail's authserv-id. The sender can write its
  * own Authentication-Results further down, and the header map keeps the last.
  */
+import { fakeIntake, fakeWatch, reader } from "./testing/shared-mailbox";
 import { CommunicationsController } from "./communications.controller";
 import {
   ingressAuthenticationResults,
@@ -230,23 +231,7 @@ describe("the Gmail publishers send the receiving server's own verdict", () => {
     const published: any[] = [];
     const db = memoryDb(house());
     const messages = [MSG("g1")];
-    const watch: any = {
-      isReady: () => true,
-      getLastHistoryId: async () => "1",
-      updateHistoryId: async () => undefined,
-      fetchNewMessages: async () => messages,
-      getMessage: async (id: string) => messages.find((m) => m.id === id),
-      startWatch: async () => undefined,
-      gmail: {
-        users: {
-          messages: {
-            list: async () => ({
-              data: { messages: messages.map((m) => ({ id: m.id })) },
-            }),
-          },
-        },
-      },
-    };
+    const { watch } = fakeWatch(messages);
     const c = new CommunicationsController(
       {} as any,
       { getSenderEmail: () => "house@mudavym.example" } as any,
@@ -259,6 +244,7 @@ describe("the Gmail publishers send the receiving server's own verdict", () => {
       { get: () => undefined } as any,
       db as any,
       { verifyPushRequest: async () => true } as any,
+      reader(watch, fakeIntake(published).intake, db),
     );
     return { c, published };
   }

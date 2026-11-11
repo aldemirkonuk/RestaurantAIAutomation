@@ -64,6 +64,9 @@ import { MailIntakeService } from "./mail-intake.service";
     InboundAddressService,
     // The durable record every inbound door writes first (gap G2).
     MailIntakeService,
+    // The shared mailbox's resync is a platform-operator action (gap G7).
+    PlatformOperatorService,
+    PlatformOperatorGuard,
   ],
 })
 export class OrchestratorModule {}

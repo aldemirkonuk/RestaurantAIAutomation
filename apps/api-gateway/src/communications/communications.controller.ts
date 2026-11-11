@@ -12,6 +12,7 @@ import {
   Headers,
   BadRequestException,
   UnauthorizedException,
+  ServiceUnavailableException,
   UseGuards,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from "@nestjs/swagger";
@@ -21,15 +22,9 @@ import { GmailService } from "./gmail.service";
 import { SmsService } from "./sms.service";
 import { GmailWatchService } from "./gmail-watch.service";
 import { GmailPushAuthService } from "./gmail-push-auth.service";
-// The one Gmail MIME walk, shared with the house-inbox reader. See gmail-mime.ts.
-import {
-  extractEmailContent as extractGmailContent,
-  fromHeader,
-  MAX_ATTACHMENTS_PER_MESSAGE,
-  MAX_ATTACHMENT_B64_LEN,
-} from "./gmail-mime";
+import { SharedMailboxReaderService } from "./shared-mailbox-reader.service";
+import { PlatformOperatorGuard } from "../common/orchestrator/platform-operator.service";
 import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
-import { receivingHouse } from "./shared-mailbox-house";
 import { DatabaseService } from "../database/database.service";
 import {
   LowStockAlertDto,
@@ -43,7 +38,6 @@ import { Public } from "../auth/decorators/public.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NonProductionGuard } from "./guards/non-production.guard";
-import { ingressAuthenticationResults } from "./sender-authentication";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 
 @ApiTags("Communications")
@@ -74,7 +68,8 @@ import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inve
  *    the push. Missing config now refuses, and GMAIL_PUBSUB_REQUIRE_AUTH is
  *    deleted.
  *    /webhooks/gmail/force-fetch is an operator action, not a push, so it lost
- *    @Public() and falls under the class-level JwtAuthGuard.
+ *    @Public() and falls under the class-level JwtAuthGuard; since 2026-11-11
+ *    (gap G7) it also needs a platform operator (PlatformOperatorGuard).
  */
 @UseGuards(JwtAuthGuard)
 @Controller("communications")
@@ -91,6 +86,7 @@ export class CommunicationsController {
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
     private readonly gmailPushAuthService: GmailPushAuthService,
+    private readonly sharedMailbox: SharedMailboxReaderService,
   ) {
     // Parse comma-separated emails from MANAGER_EMAIL
     const emailConfig = this.configService.get<string>("MANAGER_EMAIL") || "";
@@ -1201,141 +1197,36 @@ export class CommunicationsController {
       return { status: "ignored" };
     }
 
+    const message = body?.message;
+    if (!message?.data) {
+      this.logger.warn("No message data in push notification");
+      return { status: "no_data" };
+    }
+    let pushedHistoryId: string | null = null;
     try {
-      // Decode Pub/Sub message
-      const message = body?.message;
-      if (!message?.data) {
-        this.logger.warn("No message data in push notification");
-        return { status: "no_data" };
-      }
-
       const decoded = JSON.parse(
         Buffer.from(message.data, "base64").toString("utf-8"),
       );
-      const emailAddress = decoded.emailAddress;
-      const newHistoryId = decoded.historyId?.toString();
-
-      this.logger.log(
-        `Gmail push: email=${emailAddress}, historyId=${newHistoryId}`,
-      );
-
-      // Get the last known historyId
-      const lastHistoryId = await this.gmailWatchService.getLastHistoryId();
-      if (!lastHistoryId) {
-        this.logger.warn("No stored historyId — updating and skipping");
-        if (newHistoryId) {
-          await this.gmailWatchService.updateHistoryId(newHistoryId);
-        }
-        return { status: "initialized" };
-      }
-
-      // Fetch new messages since last historyId
-      const newMessages =
-        await this.gmailWatchService.fetchNewMessages(lastHistoryId);
-
-      this.logger.log(`Fetched ${newMessages.length} new messages`);
-
-      // Filter for inbound messages (not sent by us).
-      // Use the resolved Gmail sender (set from profile on init) so this works
-      // regardless of what GMAIL_SENDER_EMAIL is set to in env vars.
-      const senderEmail =
-        this.gmailService.getSenderEmail() ||
-        this.configService.get<string>("GMAIL_SENDER_EMAIL") ||
-        "wineops.ai@gmail.com";
-
-      for (const msg of newMessages) {
-        const headers = msg.payload?.headers || [];
-        // Every From header, not the first (QA round 22, N-1).
-        const from = fromHeader(headers);
-        const subject =
-          headers.find((h) => h.name?.toLowerCase() === "subject")?.value || "";
-        const messageId =
-          headers.find((h) => h.name?.toLowerCase() === "message-id")?.value ||
-          "";
-        const inReplyTo =
-          headers.find((h) => h.name?.toLowerCase() === "in-reply-to")?.value ||
-          "";
-        const references =
-          headers.find((h) => h.name?.toLowerCase() === "references")?.value ||
-          "";
-
-        // Skip our own outbound emails
-        if (from.includes(senderEmail)) {
-          continue;
-        }
-
-        this.logger.log(
-          `Inbound email: from=${from}, subject=${subject}, gmailId=${msg.id}`,
-        );
-
-        // Extract body (recursively — the text nests under multipart when an
-        // attachment is present) plus any image/PDF attachments (e.g. a receipt).
-        const { text: extractedText, attachmentRefs } =
-          this.extractEmailContent(msg.payload);
-        let bodyText = extractedText;
-        if (!bodyText && msg.payload?.body?.data) {
-          bodyText = Buffer.from(msg.payload.body.data, "base64url").toString(
-            "utf-8",
-          );
-        }
-        const attachments = attachmentRefs.length
-          ? await this.collectAttachments(msg.id!, attachmentRefs)
-          : [];
-        if (attachments.length) {
-          bodyText =
-            `${bodyText}\n\n[Attachments: ${attachments.map((a) => a.filename).join(", ")}]`.trim();
-        }
-
-        // The house this letter was written to (QA round 25): the shared
-        // mailbox belongs to no house, so the event carries the one
-        // `receivingHouse` finds, or null, and a consumer that gets null
-        // attributes nothing.
-        const house = await receivingHouse(this.databaseService.supabase, {
-          from,
-          gmailThreadId: msg.threadId,
-        });
-
-        // Publish to RabbitMQ for EmailParsingAgent to process
-        try {
-          await this.orchestratorService.publishEvent(
-            "email.events",
-            "email.inbound.received",
-            {
-              restaurant_id: house.restaurantId,
-              house_resolution: house.how,
-              gmail_message_id: msg.id,
-              gmail_thread_id: msg.threadId,
-              from,
-              subject,
-              body: bodyText,
-              attachments,
-              message_id_header: messageId,
-              in_reply_to: inReplyTo,
-              references,
-              received_at: new Date().toISOString(),
-              headers: Object.fromEntries(
-                headers
-                  .filter((h) => h.name && h.value)
-                  .map((h) => [h.name!.toLowerCase(), h.value]),
-              ),
-              // Gmail's own verdict, from the ordered list: the map above
-              // keeps the sender's last line (`sender-authentication.ts`).
-              ingress_authentication_results:
-                ingressAuthenticationResults(headers),
-            },
-          );
-        } catch (pubErr) {
-          this.logger.error(
-            `Failed to publish inbound email to RabbitMQ: ${pubErr}`,
-          );
-        }
-      }
-
-      return { status: "processed", messages: newMessages.length } as any;
-    } catch (error) {
-      this.logger.error(`Error processing Gmail webhook: ${error}`);
-      return { status: "error" };
+      pushedHistoryId = decoded.historyId?.toString() ?? null;
+    } catch {
+      this.logger.warn("Gmail push: message data is not JSON");
+      return { status: "no_data" };
     }
+
+    // One reader for the push, the poll and the resync (gap G2): every
+    // letter is recorded in `mail_intake` before the cursor moves past it.
+    // A read that stops partway answers 503, so Pub/Sub delivers the push
+    // again; the cursor already stands before the letter that failed.
+    const run = await this.sharedMailbox.read(pushedHistoryId);
+    if (run.status === "stopped") {
+      throw new ServiceUnavailableException(
+        "The shared mailbox read stopped partway; it will be read again.",
+      );
+    }
+    this.logger.log(
+      `Gmail push: ${run.status}, ${run.messages} fetched, ${run.recorded} recorded`,
+    );
+    return { status: run.status, messages: run.messages } as any;
   }
 
   /**
@@ -1351,201 +1242,34 @@ export class CommunicationsController {
   }
 
   /**
-   * Force-fetch recent Gmail messages and route them through the inbound pipeline.
-   * Bypasses Pub/Sub — directly lists INBOX messages from the last N minutes.
-   * Use this to recover missed replies (e.g. after a redeploy reset the historyId).
+   * Read the shared mailbox by date, for a platform operator who knows a
+   * stretch was missed. Every letter found is recorded (a repeat is one
+   * intake row); the cursor then moves to the mailbox's present.
+   *
+   * Gap G7 (2026-11-11): this used to answer any signed-in member of ANY
+   * house, and replayed the whole deployment's inbox. The shared mailbox is
+   * the platform's, so only a platform operator may read it again. A house
+   * asks for ITS OWN letters again through `POST letters/intake/read-again`
+   * (house-letters.controller.ts), which moves nothing of another house.
    */
-  // D3: @Public() removed. This is an operator recovery action, not a Pub/Sub
-  // push, so it has no OIDC token to present — it falls under the class-level
-  // JwtAuthGuard. The web UI (useForceFetchReplies) already sends a Bearer JWT.
-  // Left reachable in production on purpose: recovering missed vendor replies
-  // after a redeploy resets the historyId is a real production need.
   @Post("/webhooks/gmail/force-fetch")
+  @UseGuards(PlatformOperatorGuard)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "Force-fetch recent inbound Gmail messages",
+    summary: "Read the shared mailbox again by date (platform operators)",
     description:
-      "Directly queries Gmail INBOX for messages in the last N minutes and routes them through the email parsing pipeline. Use after missed pushes.",
+      "Lists the shared mailbox's INBOX for the last N minutes (at most 7 days) and records every letter in mail_intake before publishing it. Platform operators only.",
   })
   async forceGmailFetch(@Body() body?: { minutesBack?: number }): Promise<any> {
-    if (!this.gmailWatchService.isReady()) {
+    const run = await this.sharedMailbox.resync(body?.minutesBack ?? 60);
+    if (run.status === "not_configured") {
       return { status: "error", error: "Gmail Watch not configured" };
     }
-
-    const minutesBack = body?.minutesBack ?? 60;
-    const afterEpoch = Math.floor(
-      (Date.now() - minutesBack * 60 * 1000) / 1000,
-    );
-
-    this.logger.log(
-      `Force-fetching Gmail messages from last ${minutesBack} minutes`,
-    );
-
-    try {
-      const messages = await (
-        this.gmailWatchService as any
-      ).gmail?.users.messages.list({
-        userId: "me",
-        labelIds: ["INBOX"],
-        q: `after:${afterEpoch}`,
-        maxResults: 20,
-      });
-
-      const ids: string[] = (messages?.data?.messages || []).map(
-        (m: any) => m.id,
-      );
-      if (!ids.length) {
-        return { status: "ok", fetched: 0, processed: 0 };
-      }
-
-      const senderEmail =
-        this.gmailService.getSenderEmail() ||
-        this.configService.get<string>("GMAIL_SENDER_EMAIL") ||
-        "";
-
-      let processed = 0;
-      for (const id of ids) {
-        const fullMsg = await this.gmailWatchService.getMessage(id);
-        if (!fullMsg) continue;
-
-        const headers = fullMsg.payload?.headers || [];
-        // Every From header, not the first (QA round 22, N-1).
-        const from = fromHeader(headers);
-        const subject =
-          headers.find((h) => h.name?.toLowerCase() === "subject")?.value || "";
-        const messageIdHeader =
-          headers.find((h) => h.name?.toLowerCase() === "message-id")?.value ||
-          "";
-        const inReplyTo =
-          headers.find((h) => h.name?.toLowerCase() === "in-reply-to")?.value ||
-          "";
-        const references =
-          headers.find((h) => h.name?.toLowerCase() === "references")?.value ||
-          "";
-
-        if (senderEmail && from.includes(senderEmail)) continue;
-
-        const { text: extractedText, attachmentRefs } =
-          this.extractEmailContent(fullMsg.payload);
-        let bodyText = extractedText;
-        if (!bodyText && fullMsg.payload?.body?.data) {
-          bodyText = Buffer.from(
-            fullMsg.payload.body.data,
-            "base64url",
-          ).toString("utf-8");
-        }
-        const attachments = attachmentRefs.length
-          ? await this.collectAttachments(fullMsg.id!, attachmentRefs)
-          : [];
-        if (attachments.length) {
-          bodyText =
-            `${bodyText}\n\n[Attachments: ${attachments.map((a) => a.filename).join(", ")}]`.trim();
-        }
-
-        // The same house rule as the push path above (QA round 25). The
-        // caller's own house is not used: whoever recovers the shared
-        // mailbox recovers every house's letters.
-        const house = await receivingHouse(this.databaseService.supabase, {
-          from,
-          gmailThreadId: fullMsg.threadId,
-        });
-
-        try {
-          await this.orchestratorService.publishEvent(
-            "email.events",
-            "email.inbound.received",
-            {
-              restaurant_id: house.restaurantId,
-              house_resolution: house.how,
-              gmail_message_id: fullMsg.id,
-              gmail_thread_id: fullMsg.threadId,
-              from,
-              subject,
-              body: bodyText,
-              attachments,
-              message_id_header: messageIdHeader,
-              in_reply_to: inReplyTo,
-              references,
-              received_at: new Date().toISOString(),
-              headers: Object.fromEntries(
-                headers
-                  .filter((h) => h.name && h.value)
-                  .map((h) => [h.name!.toLowerCase(), h.value]),
-              ),
-              // Gmail's own verdict, from the ordered list: the map above
-              // keeps the sender's last line (`sender-authentication.ts`).
-              ingress_authentication_results:
-                ingressAuthenticationResults(headers),
-            },
-          );
-          processed++;
-          this.logger.log(
-            `Force-fetched inbound email: from=${from}, subject=${subject}, gmail_id=${fullMsg.id}`,
-          );
-        } catch (pubErr) {
-          this.logger.error(`Failed to publish force-fetched email: ${pubErr}`);
-        }
-      }
-
-      // Update historyId to current so next push notification works correctly
-      await this.gmailWatchService.startWatch();
-
-      return { status: "ok", fetched: ids.length, processed };
-    } catch (err: any) {
-      this.logger.error(`Force-fetch failed: ${err?.message}`);
-      return { status: "error", error: err?.message };
-    }
-  }
-
-  /**
-   * The Gmail MIME walk moved to `gmail-mime.ts` on 2026-09-04 and is imported
-   * rather than reimplemented: the house-inbox reader parses messages fetched
-   * through a HOUSE's own grant, and two walkers would eventually give the same
-   * vendor reply two different bodies depending on which mailbox it arrived on.
-   * Kept as a thin method so the two call sites below read unchanged.
-   */
-  private extractEmailContent(payload: any): {
-    text: string;
-    attachmentRefs: Array<{
-      filename: string;
-      mimeType: string;
-      attachmentId: string;
-    }>;
-  } {
-    return extractGmailContent(payload);
-  }
-
-  /**
-   * Fetch bytes for image/PDF attachments and return them base64-encoded for the
-   * vision model. Caps count and per-file size to keep the RabbitMQ event lean.
-   */
-  private async collectAttachments(
-    messageId: string,
-    refs: Array<{ filename: string; mimeType: string; attachmentId: string }>,
-  ): Promise<Array<{ filename: string; mime_type: string; data: string }>> {
-    // The caps are shared with the house-inbox reader (`gmail-mime.ts`) so the
-    // same vendor receipt is admitted or dropped identically whichever mailbox
-    // it arrived on.
-    const MAX_ATTACHMENTS = MAX_ATTACHMENTS_PER_MESSAGE;
-    const MAX_B64_LEN = MAX_ATTACHMENT_B64_LEN;
-    const out: Array<{ filename: string; mime_type: string; data: string }> =
-      [];
-    for (const ref of refs.slice(0, MAX_ATTACHMENTS)) {
-      const b64url = await this.gmailWatchService.getAttachment(
-        messageId,
-        ref.attachmentId,
-      );
-      if (!b64url) continue;
-      if (b64url.length > MAX_B64_LEN) {
-        this.logger.warn(
-          `Skipping oversized attachment ${ref.filename} (${b64url.length} b64 chars)`,
-        );
-        continue;
-      }
-      // Gmail returns base64url; the Anthropic API expects standard base64.
-      const data = b64url.replace(/-/g, "+").replace(/_/g, "/");
-      out.push({ filename: ref.filename, mime_type: ref.mimeType, data });
-    }
-    return out;
+    return {
+      status: run.status === "stopped" ? "error" : "ok",
+      fetched: run.messages,
+      processed: run.recorded,
+      ...(run.error ? { error: run.error } : {}),
+    };
   }
 }
