@@ -339,6 +339,17 @@ describe('unknown is never zero', () => {
     );
   });
 
+  it('adds weight to weight and volume to volume, whatever unit each good is kept in', () => {
+    const uom = (r: InvRow) => ({ s: 'g', f: 'kg', o: 'l', y: 'ml', n: 'pack' } as Record<string, string>)[r.id] ?? null;
+    const s = readSentence(
+      [row({ id: 's', stock: 1750 }), row({ id: 'f', stock: 10 }), row({ id: 'o', stock: 4 }), row({ id: 'y', stock: 1500 }), row({ id: 'n', stock: 3 })],
+      { state: 'recorded', code: 'EUR' },
+      false,
+      uom,
+    );
+    expect(s).toContain('5 titles, 11.75 kg, 5.5 l and 3 packs.');
+  });
+
   it('never says "0 bottles" when no stock was read', () => {
     const s = readSentence(
       [row({ stock: null, value: null, standing: 'unknown' }), row({ id: 'b', stock: null, value: null, standing: 'unknown' })],

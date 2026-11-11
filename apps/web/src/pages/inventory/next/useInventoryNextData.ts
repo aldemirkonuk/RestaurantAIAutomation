@@ -514,10 +514,21 @@ const TOTAL_WORDS: Record<string, [string, string]> = {
   each: ['item', 'items'],
 };
 
+/** The unit a total is summed in, and how many of it one stored unit is. */
+const MEASURE: Record<string, [string, number]> = {
+  mg: ['g', 0.001],
+  g: ['g', 1],
+  kg: ['g', 1000],
+  ml: ['ml', 1],
+  l: ['ml', 1000],
+};
+
 /** One total in its own unit: grams read in kg and millilitres in l from 1,000 up. */
 function totalWords(n: number, uom: string): string {
-  if (uom === 'g') return n >= 1000 ? `${fmtCount(n / 1000)} kg` : `${fmtCount(n)} g`;
-  if (uom === 'ml') return n >= 1000 ? `${fmtCount(n / 1000)} l` : `${fmtCount(n)} ml`;
+  // kg and l keep every gram and millilitre: 1,750 g is "1.75 kg", not "1.8 kg".
+  const scaled = (v: number) => v.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+  if (uom === 'g') return n >= 1000 ? `${scaled(n / 1000)} kg` : `${fmtCount(n)} g`;
+  if (uom === 'ml') return n >= 1000 ? `${scaled(n / 1000)} l` : `${fmtCount(n)} ml`;
   const [one, many] = TOTAL_WORDS[uom] ?? [uom, uom];
   return plural(n, one, many);
 }
@@ -531,8 +542,13 @@ export function onHandByUnit(rows: InvRow[], uomOf: (r: InvRow) => string | null
   const sums = new Map<string, number>();
   for (const r of rows) {
     if (r.stock === null) continue;
-    const u = uomOf(r) ?? 'bottle';
-    sums.set(u, (sums.get(u) ?? 0) + Math.max(0, r.stock));
+    // One sum per measure, not per stored unit: sugar kept in g and flour kept
+    // in kg are both weight, so they read "12 kg", never "2 kg, 10 kg" (browser
+    // walk 2026-11-11). Volume likewise sums ml and l. Bottles, packs and items
+    // are counts of different things and stay apart.
+    const stored = uomOf(r) ?? 'bottle';
+    const [u, factor] = MEASURE[stored] ?? [stored, 1];
+    sums.set(u, (sums.get(u) ?? 0) + Math.max(0, r.stock) * factor);
   }
   if (sums.size === 0) sums.set('bottle', 0);
   // Bottles lead, as the page always has; the other units follow as first met.
