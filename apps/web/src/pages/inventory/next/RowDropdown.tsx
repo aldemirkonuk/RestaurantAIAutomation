@@ -36,6 +36,7 @@ import { shortDate, volume } from '../../cellar/next/cellar-format';
 import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
+import { isPoured } from './iv-amount';
 import { writeFailure } from './iv-failure';
 import { oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
 import {
@@ -80,6 +81,10 @@ export interface RowDropdownProps {
   providers: Provider[] | null;
   providersError: string | null;
   restaurantId: string | null;
+  /** The good's own unit (house item `uom`): its sheets count, write off and order in it. */
+  uom?: string | null;
+  /** The house item's kind: a food or supply is never offered "Record a pour". */
+  kind?: string | null;
 }
 
 type SheetId = 'count' | 'order' | 'writeoff' | 'transfer' | 'pour';
@@ -350,17 +355,19 @@ export default function RowDropdown(props: RowDropdownProps) {
             >
               Transfer between zones
             </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="iv-menu-item iv-focus"
-              onClick={() => {
-                setMoreOpen(false);
-                setSheet('pour');
-              }}
-            >
-              Record a pour
-            </button>
+            {isPoured(props.uom, props.kind) ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="iv-menu-item iv-focus"
+                onClick={() => {
+                  setMoreOpen(false);
+                  setSheet('pour');
+                }}
+              >
+                Record a pour
+              </button>
+            ) : null}
             {row.shadow !== null && row.shadow > 0 && held ? (
               <p className="iv-note" role="note" data-testid="reconcile-held">
                 {holdWhy === 'landed'
@@ -432,7 +439,7 @@ export default function RowDropdown(props: RowDropdownProps) {
         </Popover>
       </div>
 
-      {sheet === 'count' ? <CountSheet row={row} onClose={() => setSheet(null)} /> : null}
+      {sheet === 'count' ? <CountSheet row={row} uom={props.uom} onClose={() => setSheet(null)} /> : null}
       {sheet === 'order' ? (
         <OrderSheet
           row={row}
@@ -440,9 +447,10 @@ export default function RowDropdown(props: RowDropdownProps) {
           providers={props.providers}
           providersError={props.providersError}
           restaurantId={props.restaurantId}
+          uom={props.uom}
         />
       ) : null}
-      {sheet === 'writeoff' && canManage ? <WriteOffSheet row={row} onClose={() => setSheet(null)} /> : null}
+      {sheet === 'writeoff' && canManage ? <WriteOffSheet row={row} uom={props.uom} onClose={() => setSheet(null)} /> : null}
       {sheet === 'transfer' ? (
         <TransferSheet
           row={row}
@@ -451,7 +459,7 @@ export default function RowDropdown(props: RowDropdownProps) {
           locationsUnavailable={props.locationsUnavailable}
         />
       ) : null}
-      {sheet === 'pour' ? <PourSheet row={row} onClose={() => setSheet(null)} /> : null}
+      {sheet === 'pour' && isPoured(props.uom, props.kind) ? <PourSheet row={row} onClose={() => setSheet(null)} /> : null}
       {removing && blocked === null ? (
         <RemoveFromInventoryModal
           isOpen

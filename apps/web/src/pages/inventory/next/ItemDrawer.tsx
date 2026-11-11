@@ -210,6 +210,8 @@ export default function ItemDrawer(props: ItemDrawerProps) {
             providers={props.providers}
             providersError={props.providersError}
             restaurantId={restaurantId}
+            uom={house.uom}
+            kind={house.kind ?? row.kind}
           />
         </section>
       ) : null}
