@@ -38,6 +38,7 @@ import {
 } from '../../../services/api/menus';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
+import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages } from '../../../lib/menuPhotos';
 
 const EM = '—';
 
@@ -158,53 +159,107 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () => void }) {
+/** How the chosen files go up: a sheet, one file as it is, or photos joined into one menu. */
+export function uploadShapeOf(files: File[]): { kind: 'csv' | 'sheet' | 'file' | 'photos'; problem: string | null } {
+  if (files.length === 0) return { kind: 'file', problem: 'Choose a photo, PDF or CSV of the menu first.' };
+  const nameOf = (f: File) => f.name.toLowerCase();
+  if (files.length === 1) {
+    const f = files[0];
+    if (nameOf(f).endsWith('.csv') || f.type === 'text/csv') return { kind: 'csv', problem: null };
+    if (nameOf(f).endsWith('.xlsx') || nameOf(f).endsWith('.xls')) return { kind: 'sheet', problem: null };
+    return { kind: isPhoto(f) ? 'photos' : 'file', problem: null };
+  }
+  const notPhoto = files.find((f) => !isPhoto(f));
+  if (notPhoto) {
+    return {
+      kind: 'photos',
+      problem: `Several files go up together only as photos of one menu; ${notPhoto.name} is not a photo. Send it on its own.`,
+    };
+  }
+  return { kind: 'photos', problem: null };
+}
+
+/** The pages of the chosen photos, ready to send. One photo the browser cannot redraw goes as it is. */
+async function pagesOf(files: File[]): Promise<{ images: string[] } | { imageBase64: string }> {
+  if (files.length === 1) {
+    try {
+      return { imageBase64: await photoToJpegBase64(files[0]) };
+    } catch {
+      return { imageBase64: await fileToBase64(files[0]) };
+    }
+  }
+  const images = await photosToPages(files);
+  const problem = pagesProblem(images);
+  if (problem) throw new Error(problem);
+  return { images };
+}
+
+/** The read that goes on without the page (the client stopped waiting, the server did not). */
+function stillReading(err: unknown): boolean {
+  return (err as { response?: { status?: number } })?.response?.status === 202;
+}
+
+export function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () => void }) {
   const queryClient = useQueryClient();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [cadence, setCadence] = useState<MenuCadence | ''>('');
   const [date, setDate] = useState('');
   const [result, setResult] = useState<MenuImportResult | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
   const [planning, setPlanning] = useState(false);
+  const [readingId, setReadingId] = useState<string | null>(null);
   const dateRead = readMenuDate(date);
+  const shape = uploadShapeOf(files);
 
   const read = useMutation({
-    mutationFn: async () => {
-      if (!file) throw new Error('Choose a photo, PDF or CSV of the menu first.');
-      const labels = { ...(cadence ? { cadence } : {}), ...(dateRead.value ? { menuDate: dateRead.value } : {}) };
-      const name = file.name.toLowerCase();
-      if (name.endsWith('.csv') || file.type === 'text/csv') {
-        return importMenu('csv', { csvContent: await file.text() }, labels);
-      }
-      if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
-        return importMenu('csv', { fileBase64: await fileToBase64(file) }, labels);
-      }
-      return importMenu('scan', { imageBase64: await fileToBase64(file) }, labels);
+    mutationFn: async ({ again }: { again: boolean }) => {
+      if (shape.problem) throw new Error(shape.problem);
+      setReadingId(null);
+      const labels = {
+        ...(cadence ? { cadence } : {}),
+        ...(dateRead.value ? { menuDate: dateRead.value } : {}),
+        ...(again ? { readAgain: true } : {}),
+        onReading: (menuId: string) => {
+          setReadingId(menuId);
+          // The kept version shows in the list at once, as "being read".
+          onRead();
+        },
+      };
+      if (shape.kind === 'csv') return importMenu('csv', { csvContent: await files[0].text() }, labels);
+      if (shape.kind === 'sheet') return importMenu('csv', { fileBase64: await fileToBase64(files[0]) }, labels);
+      if (shape.kind === 'file') return importMenu('scan', { imageBase64: await fileToBase64(files[0]) }, labels);
+      return importMenu('scan', await pagesOf(files), labels);
     },
     onSuccess: (r) => {
       setResult(r);
       setChosen(null);
       setPlanning(false);
+      setReadingId(null);
       onRead();
     },
+    onError: () => onRead(),
   });
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!dateRead.ok) return;
-    read.mutate();
+    setResult(null);
+    read.mutate({ again: false });
   };
+
+  const isCurrent = result?.current === true;
 
   return (
     <div style={{ border: '1px solid var(--paper-2)', borderRadius: 10, padding: 14, marginTop: 16 }} data-testid="menu-read-form">
       <form onSubmit={submit} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
         <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          Menu to read
+          Menu to read (several photos = one menu)
           <input
             type="file"
+            multiple
             accept="image/*,application/pdf,.csv,.xlsx,.xls"
             aria-label="Menu to read"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
           />
         </label>
         <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -222,32 +277,63 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
           Date (optional: a day or a month)
           <input aria-label="Menu date" placeholder="2026-10 or 2026-10-15" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
-        <button type="submit" className="cl-btn cl-focus" disabled={read.isPending || !file || !dateRead.ok}>
-          {read.isPending ? 'Reading…' : 'Read this menu'}
+        <button type="submit" className="cl-btn cl-focus" disabled={read.isPending || files.length === 0 || !dateRead.ok || shape.problem !== null}>
+          {read.isPending ? 'Reading…' : files.length > 1 ? `Read these ${files.length} pages as one menu` : 'Read this menu'}
         </button>
       </form>
+      {files.length > 0 && shape.problem ? (
+        <p role="alert" className="cl-note" data-testid="menu-read-shape">
+          {shape.problem}
+        </p>
+      ) : null}
       {dateRead.error ? (
         <p role="alert" className="cl-note">
           {dateRead.error}
         </p>
       ) : null}
-      {read.isError ? (
+      {read.isPending && readingId ? (
+        <p role="status" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-read-reading">
+          The file is kept and the server is reading it. A long menu can take a few minutes; you can leave this page,
+          and the read shows in the list below when it is done.
+        </p>
+      ) : null}
+      {read.isError && stillReading(read.error) ? (
+        <p role="status" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-read-still">
+          {reasonOf(read.error)}
+        </p>
+      ) : read.isError ? (
         <p role="alert" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-read-error">
           The menu was not read: {reasonOf(read.error).replace(/\.$/, '')}.
         </p>
       ) : null}
-      {read.isError ? <ReadWarnings warnings={warningsOf(read.error)} testId="menu-read-error-warnings" /> : null}
+      {read.isError && !stillReading(read.error) ? <ReadWarnings warnings={warningsOf(read.error)} testId="menu-read-error-warnings" /> : null}
       {result ? (
         <div style={{ marginTop: 10 }} data-testid="menu-read-result">
           <p className="cl-said">
-            Read {result.itemsExtracted} line{result.itemsExtracted === 1 ? '' : 's'} and kept this menu.{' '}
+            {result.reopened
+              ? `This exact file was already read${result.reopened.readAt ? ` on ${day(result.reopened.readAt)}` : ''}; this is that read, and nothing was read again. It found ${result.itemsExtracted} line${result.itemsExtracted === 1 ? '' : 's'}. `
+              : `Read ${result.itemsExtracted} line${result.itemsExtracted === 1 ? '' : 's'}${result.pages && result.pages > 1 ? ` from ${result.pages} pages` : ''} and kept this menu. `}
             {result.source && !result.source.kept
               ? `Its file was not kept: ${result.source.failure ?? 'no reason given'}. `
               : ''}
-            It is not the current menu, and no price has changed.
+            {isCurrent ? 'It is the current menu.' : 'It is not the current menu, and no price has changed.'}
           </p>
           <ReadWarnings warnings={result.warnings} testId="menu-read-warnings" />
-          {canManage ? (
+          {result.reopened ? (
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              style={{ marginTop: 8 }}
+              disabled={read.isPending}
+              onClick={() => {
+                setResult(null);
+                read.mutate({ again: true });
+              }}
+            >
+              Read it again
+            </button>
+          ) : null}
+          {isCurrent ? null : canManage ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button
                 type="button"
@@ -305,7 +391,12 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
       setLinkError(reasonOf(err));
     }
   };
-  const standing = v.current
+  const readState = v.readState ?? 'done';
+  const standing = readState === 'reading'
+    ? 'being read now'
+    : readState === 'failed'
+      ? `the read failed: ${v.readFailure ?? 'no reason was given'}`
+      : v.current
     ? `current since ${day(v.madeCurrentAt)}${v.madeCurrentBy?.name ? `, chosen by ${v.madeCurrentBy.name}` : ''}`
     : v.status === 'archived'
       ? `${v.menuId === lastUsedId ? 'last one used, ' : ''}used until ${day(v.retiredAt)}`
@@ -334,7 +425,7 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
         ) : null}
       </td>
       <td>
-        {!v.current && canManage ? (
+        {!v.current && canManage && readState === 'done' ? (
           <button
             type="button"
             className="cl-btn cl-focus"
@@ -357,7 +448,12 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
   // The house is in the key: one house's versions never stand under
   // another's name (MENU-01).
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
-  const q = useQuery({ queryKey: ['menu', 'versions', house], queryFn: listMenuVersions });
+  const q = useQuery({
+    queryKey: ['menu', 'versions', house],
+    queryFn: listMenuVersions,
+    // A read in the background finishes on the server: look again until none is left reading.
+    refetchInterval: (query) => (query.state.data?.versions.some((v) => v.readState === 'reading') ? 5000 : false),
+  });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
 
   return (
