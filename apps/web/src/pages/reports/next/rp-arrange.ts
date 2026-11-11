@@ -91,6 +91,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  cloneLayout,
+  correctBounds,
   getBreakpointFromWidth,
   getColsFromBreakpoint,
   getCompactor,
@@ -162,7 +164,13 @@ export function slotRect(
 
 /* ─────────────────────────────────────────────── the layout arithmetic ── */
 
-function toLayout(cuttings: Cutting[]): LayoutItem[] {
+/** Anything laid on the ruling: a draft cutting, or the sheet's own item. */
+interface Placed {
+  id: AnalysisId;
+  slot: Slot;
+}
+
+function toLayout(cuttings: Placed[]): LayoutItem[] {
   return cuttings.map((c) => ({
     i: c.id,
     x: c.slot.x,
@@ -175,7 +183,7 @@ function toLayout(cuttings: Cutting[]): LayoutItem[] {
 }
 
 /** Write a computed layout back onto the cuttings, keeping their order. */
-function fromLayout(cuttings: Cutting[], layout: Layout): Cutting[] {
+function fromLayout<T extends Placed>(cuttings: T[], layout: Layout): T[] {
   const byId = new Map(layout.map((l) => [l.i, l]));
   return cuttings.map((c) => {
     const l = byId.get(c.id);
@@ -187,7 +195,7 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
 
-export function slotOf(cuttings: Cutting[], id: AnalysisId): Slot | null {
+export function slotOf(cuttings: Placed[], id: AnalysisId): Slot | null {
   return cuttings.find((c) => c.id === id)?.slot ?? null;
 }
 
@@ -196,25 +204,167 @@ export function sameSlot(a: Slot | null, b: Slot | null): boolean {
   return a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h;
 }
 
+/* ────────────────────────────────────── one sheet, several rulings ──────── */
+
 /**
- * Move one cutting by whole grid units — the keyboard's half of `onDragStop`.
+ * The sheet as a narrower ruling draws it. The saved sheet is one layout in
+ * twelfths, handed to every breakpoint; `GridLayout` runs `correctBounds` then
+ * `compact` on it (chunk-XM2M6TC6.mjs:591), so a seven-wide cutting on the
+ * four-column phone ruling is drawn four wide at column 1. Same arithmetic
+ * here, so the keyboard reads the square the reader can see. Identity at twelve.
+ */
+export function projectCuttings<T extends Placed>(cuttings: T[], cols: number): T[] {
+  if (cols >= SHEET_COLS) return cuttings;
+  const drawn = correctBounds(cloneLayout(toLayout(cuttings)), { cols });
+  return fromLayout(cuttings, COMPACTOR.compact(drawn, cols));
+}
+
+/**
+ * A move made on a narrow ruling, written back onto the twelve-column sheet.
+ * A narrow screen may reorder the sheet and change heights, but never rewrites
+ * the wide columns of a cutting it did not move sideways or resize (before
+ * this, one phone drag saved every cutting four twelfths wide).
+ *  - Each cutting takes the narrow row and height; the sheet is recompacted at
+ *    twelve, which rebuilds the wide arrangement in the narrow reading order.
+ *  - Moved sideways: `x` scales by 12 / cols. Resized: at least one twelfth in
+ *    the pressed direction. Otherwise wide `x` and `w` stay.
+ *  - Row-mates tie on the grid's (row, clamped column) sort and fall back to
+ *    list order, so the list returns in the narrow order, and `honourOrder`
+ *    swaps row-mates where the clamped columns still disagree.
+ */
+export function liftCuttings<T extends Placed>(
+  stored: T[],
+  before: Placed[],
+  after: Placed[],
+  cols: number,
+): T[] {
+  const was = new Map(before.map((c) => [c.id, c.slot]));
+  const now = new Map(after.map((c) => [c.id, c.slot]));
+  if (cols >= SHEET_COLS) {
+    return stored.map((c) => {
+      const s = now.get(c.id);
+      return s ? { ...c, slot: { ...s } } : c;
+    });
+  }
+  if (stored.every((c) => sameSlot(was.get(c.id) ?? null, now.get(c.id) ?? null))) return stored;
+  const scale = SHEET_COLS / cols;
+  const lifted = stored.map((c) => {
+    const b = was.get(c.id);
+    const a = now.get(c.id);
+    if (!b || !a) return c;
+    let w = c.slot.w;
+    if (a.w > b.w) w = Math.max(c.slot.w + 1, Math.round(a.w * scale));
+    else if (a.w < b.w) w = Math.min(c.slot.w - 1, Math.round(a.w * scale));
+    w = clamp(w, SHEET_MIN_W, SHEET_COLS);
+    const x = clamp(a.x === b.x ? c.slot.x : Math.round(a.x * scale), 0, SHEET_COLS - w);
+    return { ...c, slot: { x, y: a.y, w, h: a.h } };
+  });
+  const order = [...after]
+    .sort((a, b) => a.slot.y - b.slot.y || a.slot.x - b.slot.x)
+    .map((c) => c.id);
+  const rank = new Map(order.map((id, i) => [id, i]));
+  const listed = [...lifted].sort(
+    (a, b) => (rank.get(a.id) ?? order.length) - (rank.get(b.id) ?? order.length),
+  );
+  return honourOrder(
+    fromLayout(listed, COMPACTOR.compact(toLayout(listed), SHEET_COLS)),
+    order,
+    cols,
+  );
+}
+
+/**
+ * Make the narrow ruling's reading order the one the reader asked for, by
+ * swapping two row-mates on the wide sheet where their order disagrees. Rows
+ * alone cannot do it: compaction puts row-mates side by side whatever their
+ * rows say, and the narrow ruling then reads them left first.
+ */
+function honourOrder<T extends Placed>(stored: T[], order: AnalysisId[], cols: number): T[] {
+  let cs = stored;
+  for (let pass = 0; pass < order.length; pass += 1) {
+    const drawn = [...projectCuttings(cs, cols)]
+      .sort((a, b) => a.slot.y - b.slot.y || a.slot.x - b.slot.x)
+      .map((c) => c.id);
+    const k = drawn.findIndex((id, i) => id !== order[i]);
+    if (k < 0) return cs;
+    const first = slotOf(cs, order[k]);
+    const second = slotOf(cs, drawn[k]);
+    if (!first || !second) return cs;
+    const sideBySide =
+      first.y < second.y + second.h &&
+      second.y < first.y + first.h &&
+      (first.x + first.w <= second.x || second.x + second.w <= first.x);
+    // Only a row-mate on its right can be swapped to its left; anything else
+    // the wide sheet cannot express, and the sheet gives it back as it was.
+    if (!sideBySide || first.x < second.x) return cs;
+    const left = second.x;
+    const swapped = cs.map((c) =>
+      c.id === order[k]
+        ? { ...c, slot: { ...c.slot, x: left, y: second.y } }
+        : c.id === drawn[k]
+          ? { ...c, slot: { ...c.slot, x: left + first.w } }
+          : c,
+    );
+    cs = fromLayout(swapped, COMPACTOR.compact(toLayout(swapped), SHEET_COLS));
+  }
+  return cs;
+}
+
+/**
+ * The row a vertical arrow takes a cutting to: just past its nearest neighbour
+ * sharing any of its columns; null at the top or foot. One-row steps never
+ * show on a vertically compacted sheet (the compactor undoes them), so this is
+ * dnd-kit's sortable keyboard model.
+ */
+function verticalTarget(layout: LayoutItem[], item: LayoutItem, dir: -1 | 1): number | null {
+  const shares = (o: LayoutItem) => o.i !== item.i && o.x < item.x + item.w && item.x < o.x + o.w;
+  if (dir < 0) {
+    // The nearest cutting wholly above: the one whose foot is lowest.
+    let best: LayoutItem | null = null;
+    for (const o of layout) {
+      if (!shares(o) || o.y + o.h > item.y) continue;
+      if (!best || o.y + o.h > best.y + best.h || (o.y + o.h === best.y + best.h && o.y > best.y))
+        best = o;
+    }
+    return best ? best.y : null;
+  }
+  // The nearest cutting wholly below: the one whose head is highest.
+  let best: LayoutItem | null = null;
+  for (const o of layout) {
+    if (!shares(o) || o.y < item.y + item.h) continue;
+    if (!best || o.y < best.y) best = o;
+  }
+  return best ? best.y + best.h : null;
+}
+
+/**
+ * Move one cutting — the keyboard's half of `onDragStop`. Left and right move
+ * it one column; up and down move it past its neighbour (`verticalTarget`).
  *
  * `moveElement` then `compact` is exactly what react-grid-layout runs when a
  * pointer is released (chunk-XM2M6TC6.mjs:800-811), with `isUserAction: true`
  * so a displaced neighbour is pushed the way a dragged one pushes it.
  */
-export function moveCutting(
-  cuttings: Cutting[],
+export function moveCutting<T extends Placed>(
+  cuttings: T[],
   id: AnalysisId,
   dx: number,
   dy: number,
   cols: number,
-): Cutting[] {
+): T[] {
   const layout = toLayout(cuttings);
   const item = getLayoutItem(layout, id);
   if (!item) return cuttings;
   const x = clamp(item.x + dx, 0, Math.max(0, cols - item.w));
-  const y = Math.max(0, item.y + dy);
+  let y = item.y;
+  if (dy !== 0) {
+    const to = verticalTarget(layout, item, dy < 0 ? -1 : 1);
+    if (to === null) {
+      if (x === item.x) return cuttings;
+    } else {
+      y = to;
+    }
+  }
   if (x === item.x && y === item.y) return cuttings;
   const moved = moveElement(layout, item, x, y, true, false, SHEET_COMPACT_TYPE, cols, false);
   return fromLayout(cuttings, COMPACTOR.compact(moved, cols));
@@ -228,13 +378,13 @@ export function moveCutting(
  * a pointer resize; the ceiling is the ruling itself, so a cutting can never be
  * widened off the paper.
  */
-export function resizeCutting(
-  cuttings: Cutting[],
+export function resizeCutting<T extends Placed>(
+  cuttings: T[],
   id: AnalysisId,
   dw: number,
   dh: number,
   cols: number,
-): Cutting[] {
+): T[] {
   const layout = toLayout(cuttings);
   const item = getLayoutItem(layout, id);
   if (!item) return cuttings;
@@ -303,7 +453,8 @@ export function cancelledWords(title: string, back: Slot, cols: number): string 
 export interface ArrangeApi {
   /** The cutting currently picked up, or null. */
   picked: AnalysisId | null;
-  /** Where the picked cutting was when it was picked up — the ghost's slot. */
+  /** Where the picked cutting was when it was picked up, as the ruling in
+   *  play draws it — the ghost's slot. */
   origin: Slot | null;
   /** The live-region sentence. Replaced, never appended to. */
   message: string;
@@ -332,6 +483,10 @@ export interface ArrangeInput {
 export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInput): ArrangeApi {
   const [picked, setPicked] = useState<AnalysisId | null>(null);
   const [origin, setOrigin] = useState<Slot | null>(null);
+  // The whole saved sheet as it was at pick-up, in twelfths — what Escape
+  // puts back. Whole, not just the held cutting: on a narrow ruling every move
+  // rewrites the rows of the cuttings it displaced (`liftCuttings`).
+  const [home, setHome] = useState<Map<AnalysisId, Slot> | null>(null);
   const [message, setMessage] = useState('');
   const [cols, setCols] = useState(SHEET_COLS);
 
@@ -353,6 +508,7 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
     if (!arranging && picked) {
       setPicked(null);
       setOrigin(null);
+      setHome(null);
       setMessage('');
     }
   }, [arranging, picked]);
@@ -361,12 +517,15 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
     (id: AnalysisId, title: string) => {
       const cs = live.current;
       if (!cs) return;
-      const slot = slotOf(cs, id);
-      if (!slot) return;
+      const stored = slotOf(cs, id);
+      if (!stored) return;
       titles.current.set(id, title);
       const c = measure();
+      // Say the square the reader can see, not the saved twelfths.
+      const slot = slotOf(projectCuttings(cs, c), id) ?? stored;
       setPicked(id);
       setOrigin({ ...slot });
+      setHome(new Map(cs.map((k) => [k.id, { ...k.slot }])));
       setMessage(pickedUpWords(title, slot, c));
     },
     [measure],
@@ -376,17 +535,22 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
     (dx: number, dy: number, dw: number, dh: number) => {
       const cs = live.current;
       if (!cs || !picked) return;
-      const before = slotOf(cs, picked);
+      // The move is made on the ruling in play, then written back onto the
+      // twelve-column sheet (`liftCuttings`); identity at the full ruling.
+      const drawn = projectCuttings(cs, cols);
+      const before = slotOf(drawn, picked);
       if (!before) return;
       const intent: 'move' | 'resize' = dw === 0 && dh === 0 ? 'move' : 'resize';
-      const next =
+      const moved =
         intent === 'move'
-          ? moveCutting(cs, picked, dx, dy, cols)
-          : resizeCutting(cs, picked, dw, dh, cols);
+          ? moveCutting(drawn, picked, dx, dy, cols)
+          : resizeCutting(drawn, picked, dw, dh, cols);
+      const next = liftCuttings(cs, drawn, moved, cols);
       apply(next);
-      // Read the answer back out of the layout the compactor produced. This is
-      // the line that makes the announcement a report rather than an echo.
-      const after = slotOf(next, picked);
+      // Read the answer back out of the layout the ruling will draw from what
+      // was saved. This is the line that makes the announcement a report
+      // rather than an echo.
+      const after = slotOf(projectCuttings(next, cols), picked);
       setMessage(
         movedWords(titles.current.get(picked) ?? 'The cutting', before, after ?? before, cols, intent),
       );
@@ -400,35 +564,33 @@ export function useArrange({ cuttings, apply, sheetRef, arranging }: ArrangeInpu
   const place = useCallback(() => {
     const cs = live.current;
     if (!picked || !cs || !origin) return;
-    const to = slotOf(cs, picked) ?? origin;
+    const to = slotOf(projectCuttings(cs, cols), picked) ?? origin;
     setMessage(placedWords(titles.current.get(picked) ?? 'The cutting', origin, to, cols));
     setPicked(null);
     setOrigin(null);
+    setHome(null);
   }, [cols, origin, picked]);
 
   const cancel = useCallback(() => {
     const cs = live.current;
-    if (!picked || !cs || !origin) return;
-    // Put it back exactly, then let the ruling settle the rest — the same
-    // compaction a pointer drag back to the origin would have produced.
-    const restored = fromLayout(
-      cs,
-      COMPACTOR.compact(
-        toLayout(cs.map((c) => (c.id === picked ? { ...c, slot: { ...origin } } : c))),
-        cols,
-      ),
-    );
+    if (!picked || !cs || !origin || !home) return;
+    // Put the sheet back exactly as it was picked up, in the saved twelfths.
+    const restored = cs.map((c) => {
+      const s = home.get(c.id);
+      return s ? { ...c, slot: { ...s } } : c;
+    });
     apply(restored);
     setMessage(
       cancelledWords(
         titles.current.get(picked) ?? 'The cutting',
-        slotOf(restored, picked) ?? origin,
+        slotOf(projectCuttings(restored, cols), picked) ?? origin,
         cols,
       ),
     );
     setPicked(null);
     setOrigin(null);
-  }, [apply, cols, origin, picked]);
+    setHome(null);
+  }, [apply, cols, home, origin, picked]);
 
   const keyDown = useCallback(
     (id: AnalysisId, title: string) =>
