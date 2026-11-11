@@ -40,9 +40,12 @@ export interface CostLineInput {
 export interface LineCost {
   status: LineStatus;
   /**
-   * For display, in cents. When the total is known the lines' cents add up to
-   * it exactly (largest remainder), so a sheet never shows lines that disagree
-   * with their total. Null when unknown or untracked.
+   * For display: the six-place cost rounded to the cent on its own, so two
+   * lines that cost the same always read the same, and each is within half a
+   * cent of what it costs. The lines are not forced to add up to the total,
+   * which is the exact sum rounded once: they can differ from it by a cent or
+   * so, as any rounded column does. A line under half a cent reads 0 here;
+   * `costPerServeExact` says it is not free. Null when unknown or untracked.
    */
   costPerServe: number | null;
   /** The same cost at six places, unrounded by the display; null as above. */
@@ -108,24 +111,6 @@ export function costPerBaseUnit(item: CostItem, unitCost: number, baseUnit: Base
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
-/**
- * Cents for each exact cost so they add up to the rounded total: floor every
- * line, then hand the cents left over to the largest remainders (ties to the
- * earlier line). Each line stays within a cent of its exact cost.
- */
-function centsThatAddUp(exact: number[], totalCents: number): number[] {
-  const raw = exact.map((x) => x * 100);
-  const floors = raw.map((x) => Math.floor(x + 1e-9));
-  let left = totalCents - floors.reduce((a, b) => a + b, 0);
-  const order = raw.map((x, i) => ({ i, rem: x - floors[i] })).sort((a, b) => b.rem - a.rem || a.i - b.i);
-  for (const { i } of order) {
-    if (left <= 0) break;
-    floors[i] += 1;
-    left -= 1;
-  }
-  return floors;
-}
-
 export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeCost {
   const serves = Number.isInteger(yieldServes) && yieldServes > 0 ? yieldServes : NaN;
   let priced = 0;
@@ -148,17 +133,13 @@ export function recipeCost(lines: CostLineInput[], yieldServes: number): RecipeC
     exact[exact.length - 1] = cost;
     priced += 1;
     if (costBasis === "invoice_lot_wac_partial") partial += 1;
-    return { status: "linked", costPerServe: round2(cost), costPerServeExact: round6(cost), costBasis };
+    // Cents from the six-place figure, so two lines that cost the same to six
+    // places never fall on different sides of a half cent.
+    return { status: "linked", costPerServe: round2(round6(cost)), costPerServeExact: round6(cost), costBasis };
   });
   const complete = of > 0 && priced === of;
   if (!complete) return { lines: out, perServe: null, perServeExact: null, priced, of, complete, partial };
 
   const sum = exact.reduce<number>((a, x) => a + (x ?? 0), 0);
-  const perServe = round2(sum);
-  const pricedAt = exact.map((x, i) => (x == null ? -1 : i)).filter((i) => i >= 0);
-  const cents = centsThatAddUp(pricedAt.map((i) => exact[i] as number), Math.round(perServe * 100));
-  pricedAt.forEach((i, k) => {
-    out[i] = { ...out[i], costPerServe: cents[k] / 100 };
-  });
-  return { lines: out, perServe, perServeExact: round6(sum), priced, of, complete, partial };
+  return { lines: out, perServe: round2(round6(sum)), perServeExact: round6(sum), priced, of, complete, partial };
 }
