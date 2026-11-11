@@ -8,8 +8,9 @@
  * - `pos_item_sales(house, since)` — net sales of stock items on closed,
  *   non-voided checks (ADR 0298 decisions 2 and 8);
  * - `pos_cost_of_goods(house, since)` — the cost each till movement's bottles
- *   carried when they left their lots, a matched void netted back, plus what a
- *   verify settled after the sale (migration what_sold_cost_is_its_draws).
+ *   carried when they left their lots, a matched void netted back, plus the
+ *   late prices settled in the window on any till sale of the item, dated when
+ *   they became known (proposal F6; migration what_sold_cost_is_its_draws).
  *
  * The invariant: **an unknown cost is never 0.** `cost` in the second read
  * holds priced bottles only, so cost of goods is printed only when no moved
@@ -75,7 +76,7 @@ export interface SalesCoverage {
 
 export interface TillFigures {
   cogs: number | null;
-  /** The part of cogs a verify settled after the bottles sold; null with cogs. */
+  /** The part of cogs that is late prices settled in the window (on bottles sold in it or before); null with cogs. */
   settledAfterSale: number | null;
   revenue: number | null;
   grossMarginDollars: number | null;
@@ -110,6 +111,7 @@ export function cogsCoverageOf(read: TillCostRead): CogsCoverage {
   let bottlesBack = 0;
   let bottlesUncosted = 0;
   let itemsCosted = 0;
+  let itemsMoved = 0;
   for (const i of mine) {
     const out = num(i.bottles_out);
     const back = num(i.bottles_back);
@@ -118,13 +120,17 @@ export function cogsCoverageOf(read: TillCostRead): CogsCoverage {
     // bottle the item moved is then counted as of unknown cost.
     const moved = (Number.isFinite(out) ? out : 0) + (Number.isFinite(back) ? back : 0);
     const uncosted = Number.isFinite(unc) ? unc : Math.max(moved, 1);
+    // An item listed only for a late price settled in the window moved no
+    // bottle here: its cost is in the total, but it is not an item sold.
+    if (moved === 0 && uncosted === 0) continue;
     bottlesOut += Number.isFinite(out) ? out : 0;
     bottlesBack += Number.isFinite(back) ? back : 0;
     bottlesUncosted += uncosted;
+    itemsMoved += 1;
     if (uncosted === 0 && Number.isFinite(num(i.cost))) itemsCosted += 1;
   }
   return {
-    itemsMoved: mine.length,
+    itemsMoved,
     itemsCosted,
     bottlesOut,
     bottlesBack,
@@ -183,12 +189,12 @@ export function tillFigures(input: {
       } else {
         cogs = round2(total);
         const settled = num(cost.settled_after_sale);
-        settledAfterSale = Number.isFinite(settled) ? round2(settled) : 0;
+        settledAfterSale = Number.isFinite(settled) ? round2(settled) : null;
         cogsBasis =
           `cost of what the till sold (${windowDays}d): each bottle at the cost it carried when it left its lot, voids given back at their sale's cost — ` +
           `${plural(c.itemsMoved, "item")}, ${plural(c.bottlesOut - c.bottlesBack, "bottle")} net` +
-          (settledAfterSale !== 0
-            ? `, of which ${settledAfterSale.toFixed(2)} was settled after the sale by an invoice verified later`
+          (settledAfterSale != null && settledAfterSale !== 0
+            ? `, of which ${settledAfterSale.toFixed(2)} is late prices settled in the window by invoices verified after the bottles sold (some may have sold earlier)`
             : "") +
           ". Waste, breakage, count corrections and off-till sales are not in it.";
       }

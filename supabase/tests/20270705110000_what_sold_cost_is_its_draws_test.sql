@@ -1,6 +1,6 @@
 -- what_sold_cost_is_its_draws (cost-math lane 3.1): pos_cost_of_goods sums the
 -- cost the till's bottles carried when they left, nets a matched void, adds
--- what a verify settled later, and counts every bottle whose cost is unknown
+-- what a verify settled in the window (on a sale of any day), and counts every bottle whose cost is unknown
 -- instead of adding it as 0.
 --
 -- Self-asserting (assert -> P0004); run with `psql -v ON_ERROR_STOP=1 -f` on a
@@ -52,7 +52,7 @@ begin
   foreach h in array array['a', 'b'] loop
     insert into public.restaurants (id, name, slug) values (pg_temp.house(h), 'COGS house ' || h, 'cogs-house-' || h);
   end loop;
-  foreach x in array array['a', 'b', 'c', 'd', 'e', 'f', '7', '8', '9'] loop
+  foreach x in array array['a', 'b', 'c', 'd', 'e', 'f', '7', '8', '9', 'a1'] loop
     h := case when x = '9' then 'b' else 'a' end;
     insert into public.master_wine_library (id, wine_id, name, primary_type)
       values (pg_temp.u('1' || x || '0'), 'COGS-' || upper(x), 'COGS wine ' || upper(x), 'red');
@@ -211,6 +211,26 @@ begin
   assert (r ->> 'cost')::numeric = s and (r ->> 'cost')::numeric > 0
      and (r ->> 'settled_after_sale')::numeric = 2.5 + 0.333333,
     format('C10 FAIL: cost %s vs items %s, settled %s', r ->> 'cost', s, r ->> 'settled_after_sale');
+end $$;
+
+-- C11: a price settled in the window on bottles sold before it lands in this
+-- window, by name, with 0 bottles (proposal F6); a window that starts after
+-- the settlement does not see it.
+do $$
+declare e jsonb; later jsonb;
+begin
+  perform pg_temp.book('a1', 3, 10.00);
+  perform pg_temp.sell('a1', 2, 'cogs-a1-old', 'pos', 'sale', now() - interval '400 days');
+  assert pg_temp.item('a1') is null, format('C11 FAIL (before verify): %s', pg_temp.item('a1'));
+  perform pg_temp.fin('a1', 12.00);
+  e := pg_temp.item('a1');
+  assert (e ->> 'bottles_out')::int = 0 and (e ->> 'cost')::numeric = 4
+     and (e ->> 'settled_after_sale')::numeric = 4 and (e ->> 'uncosted_out')::int = 0,
+    format('C11 FAIL: %s', e);
+  assert (pg_temp.cogs('a') ->> 'settled_after_sale')::numeric = 2.5 + 0.333333 + 4,
+    format('C11 FAIL (house): %s', pg_temp.cogs('a') ->> 'settled_after_sale');
+  later := public.pos_cost_of_goods(pg_temp.house('a'), now() + interval '1 second');
+  assert later -> 'items' = '[]'::jsonb, format('C11 FAIL (later window): %s', later);
 end $$;
 
 rollback;
