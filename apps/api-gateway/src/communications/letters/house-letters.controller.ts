@@ -23,9 +23,11 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Optional,
   Param,
   ParseUUIDPipe,
   Post,
+  ServiceUnavailableException,
   UseGuards,
 } from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
@@ -43,6 +45,7 @@ import { HouseInboxCron } from "../inbox/house-inbox.cron";
 import { HouseInboxService } from "../inbox/house-inbox.service";
 import { DeclineLetterRequestDto, QueueLetterDto, UpsertLetterTemplateDto } from "./house-letters.dto";
 import { houseActor, type TokenUser } from "./house-letters.actor";
+import { MailIntakeService } from "../../common/orchestrator/mail-intake.service";
 
 @ApiTags("Communications")
 @UseGuards(JwtAuthGuard)
@@ -54,7 +57,59 @@ export class HouseLettersController {
     private readonly cron: HouseLettersCron,
     private readonly inboxCron: HouseInboxCron,
     private readonly inbox: HouseInboxService,
+    // Gap G2/G7 (2026-11-11): the house's own intake, and its "Read again".
+    @Optional() private readonly intake?: MailIntakeService,
   ) {}
+
+  @Get("intake")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({
+    summary:
+      "Is this house's mail arriving: its letters at every door in the last 7 days, and when the shared mailbox last read",
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      "`intake.unknown: true` means the read failed and the counts are NOT zero; `waiting` counts letters recorded at a door but not yet given a home (received, failed or given up). `sharedMailbox` is null when it has never read; `lastReadAt` is its last FINISHED read and `errored` says its latest read failed (the error text is the operator's, not the house's).",
+  })
+  async intakeHealth(@CurrentUser() user: TokenUser) {
+    const { restaurantId } = houseActor(user);
+    if (!this.intake) {
+      return { intake: null, sharedMailbox: null };
+    }
+    const [intake, door] = await Promise.all([
+      this.intake.houseHealth(restaurantId),
+      this.intake.doorStatus("shared_mailbox"),
+    ]);
+    // The shared mailbox belongs to the deployment, not to this house: its
+    // error text is a raw Gmail or database message, so a house is told only
+    // THAT the last read failed, never what it said (batch review of #1049).
+    const sharedMailbox =
+      door && "lastReadAt" in door
+        ? {
+            lastReadAt: door.lastReadAt,
+            lastStoredAt: door.lastStoredAt,
+            errored: door.lastError !== null,
+          }
+        : door;
+    return { intake, sharedMailbox };
+  }
+
+  @Post("intake/read-again")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      "Offer this house's failed and given-up letters to the bridge again (moves nothing of another house)",
+  })
+  async intakeReadAgain(@CurrentUser() user: TokenUser) {
+    const { restaurantId } = houseActor(user);
+    if (!this.intake) throw new ServiceUnavailableException();
+    const queued = await this.intake.readAgain(restaurantId);
+    return { queued };
+  }
 
   @Get("sender")
   @ApiOperation({

@@ -28,7 +28,6 @@ export interface HistorySince {
   expired: boolean;
 }
 
-
 /**
  * GmailWatchService manages Gmail API push notifications via Google Pub/Sub.
  *
@@ -38,6 +37,15 @@ export interface HistorySince {
  *  3. The webhook endpoint (in communications.controller.ts) receives the push,
  *     fetches new messages via history.list(), and publishes to RabbitMQ.
  *  4. Watch expires after 7 days — we auto-renew every 6 days.
+ *
+ * THE CURSOR (gap G2, 2026-11-11). The shared mailbox's historyId lives in
+ * `mail_door_cursors` (migration 20270705100000), not in a Redis key with a
+ * 7-day TTL: a flushed or expired key made the next push "initialise" and
+ * skip every letter since. It moves only forward, and only when the reader
+ * has RECORDED every letter up to it (`SharedMailboxReaderService`). A
+ * renewal no longer overwrites it: `startWatch` used to reset it to "now"
+ * every six days and on every force-fetch, dropping whatever a failed push
+ * had left unread. The old Redis key is read once, to seed the row.
  */
 @Injectable()
 export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
@@ -147,14 +155,8 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
       const historyId = response.data.historyId;
       const expiration = response.data.expiration;
 
-      // Store historyId in Redis for incremental fetches
-      if (historyId) {
-        await this.cacheService.set(
-          this.HISTORY_ID_KEY,
-          historyId.toString(),
-          604800,
-        ); // 7 days TTL
-      }
+      // The cursor is NOT moved here (gap G2): a renewal is not a read. A
+      // door with no cursor yet is seeded from this id by the reader.
       if (expiration) {
         await this.cacheService.set(
           this.WATCH_EXPIRY_KEY,
@@ -184,71 +186,6 @@ export class GmailWatchService implements OnModuleInit, OnModuleDestroy {
       this.logger.log("Gmail Watch stopped");
     } catch (error) {
       this.logger.error(`Failed to stop Gmail watch: ${error}`);
-    }
-  }
-
-  /**
-   * Get the stored historyId for incremental message fetches
-   */
-  async getLastHistoryId(): Promise<string | null> {
-    return this.cacheService.get(this.HISTORY_ID_KEY);
-  }
-
-  /**
-   * Update the stored historyId after processing messages
-   */
-  async updateHistoryId(historyId: string): Promise<void> {
-    await this.cacheService.set(this.HISTORY_ID_KEY, historyId, 604800);
-  }
-
-  /**
-   * Fetch new messages since the last historyId using gmail.users.history.list()
-   */
-  async fetchNewMessages(
-    sinceHistoryId: string,
-  ): Promise<gmail_v1.Schema$Message[]> {
-    if (!this.isConfigured) return [];
-
-    try {
-      const historyResponse = await this.gmail.users.history.list({
-        userId: "me",
-        startHistoryId: sinceHistoryId,
-        historyTypes: ["messageAdded"],
-        labelId: "INBOX",
-      });
-
-      const history = historyResponse.data.history || [];
-      const messages: gmail_v1.Schema$Message[] = [];
-
-      for (const entry of history) {
-        for (const added of entry.messagesAdded || []) {
-          if (added.message?.id) {
-            // Fetch full message
-            const fullMessage = await this.gmail.users.messages.get({
-              userId: "me",
-              id: added.message.id,
-              format: "full",
-            });
-            messages.push(fullMessage.data);
-          }
-        }
-      }
-
-      // Update historyId to latest
-      if (historyResponse.data.historyId) {
-        await this.updateHistoryId(historyResponse.data.historyId.toString());
-      }
-
-      return messages;
-    } catch (error: any) {
-      // 404 means historyId is too old — need a full sync
-      if (error?.code === 404) {
-        this.logger.warn("History ID expired — performing full re-watch");
-        await this.startWatch();
-        return [];
-      }
-      this.logger.error(`Failed to fetch new messages: ${error}`);
-      return [];
     }
   }
 

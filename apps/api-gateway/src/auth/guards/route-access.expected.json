@@ -228,6 +228,14 @@
     "owner",
     "manager"
   ],
+  "GET /communications/letters/intake (HouseLettersController.intakeHealth)": [
+    "owner",
+    "manager"
+  ],
+  "POST /communications/letters/intake/read-again (HouseLettersController.intakeReadAgain)": [
+    "owner",
+    "manager"
+  ],
   "GET /communications/letters/sender (HouseLettersController.senderIdentity)": "open",
   "GET /communications/letters/book (HouseLettersController.book)": "open",
   "GET /communications/letters/queued (HouseLettersController.queued)": "open",
