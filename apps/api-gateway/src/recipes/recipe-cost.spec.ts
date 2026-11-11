@@ -27,7 +27,7 @@ describe("recipeCost (ADR 0360, F7)", () => {
     const c = recipeCost(negroni(line(750, null)), 1);
     expect(c.perServe).toBeNull();
     expect([c.priced, c.of, c.complete]).toEqual([2, 3, false]);
-    expect(c.lines[2]).toEqual({ status: "linked", costPerServe: null, costBasis: "unknown" });
+    expect(c.lines[2]).toEqual({ status: "linked", costPerServe: null, costPerServeExact: null, costBasis: "unknown" });
   });
 
   it("treats an unlinked vermouth the same way and says not_linked", () => {
@@ -41,15 +41,61 @@ describe("recipeCost (ADR 0360, F7)", () => {
     expect(recipeCost(negroni(), 2).perServe).toBe(28.5);
   });
 
-  it("never guesses a size: an ml line on an 'each' item is size_not_known", () => {
+  it("never guesses a size: an ml line on an 'each' item is a unit mismatch", () => {
     const c = recipeCost([line(null, 10, { item: { uom: "each" } })], 1);
-    expect(c.lines[0]).toEqual({ status: "linked", costPerServe: null, costBasis: "size_not_known" });
+    expect(c.lines[0]).toEqual({ status: "linked", costPerServe: null, costPerServeExact: null, costBasis: "unit_mismatch" });
     expect(c.perServe).toBeNull();
   });
 
-  it("does not price a case per bottle: its bottle count is not recorded", () => {
+  it("says size_not_known only for a bottle whose size the shelf does not say", () => {
+    expect(recipeCost([line(null, 700)], 1).lines[0].costBasis).toBe("size_not_known");
+    expect(recipeCost([line(0, 700)], 1).lines[0].costBasis).toBe("size_not_known");
+  });
+
+  it("does not price a case per bottle: its bottle count is not recorded (pack_size_not_known)", () => {
     const c = recipeCost([line(700, 8400, { item: { uom: "case", bottle_size_ml: 700 } })], 1);
-    expect(c.lines[0].costBasis).toBe("size_not_known");
+    expect(c.lines[0].costBasis).toBe("pack_size_not_known");
+  });
+
+  it.each([
+    ["ml on a kg item", "ml10", "kg", "unit_mismatch"],
+    ["g on a bottle item", "mg", "bottle", "unit_mismatch"],
+    ["g on an ml item", "mg", "ml", "unit_mismatch"],
+    ["a piece of a bottle item", "each_milli", "bottle", "unit_mismatch"],
+    ["a piece of a case", "each_milli", "case", "unit_mismatch"],
+    ["g of a pack", "mg", "pack", "pack_size_not_known"],
+    ["ml of a glass", "ml10", "glass", "pack_size_not_known"],
+  ] as const)("names the reason for %s", (_n, baseUnit, uom, why) => {
+    const c = recipeCost([line(700, 100, { baseUnit, item: { uom, bottle_size_ml: 700 } })], 1);
+    expect(c.lines[0]).toMatchObject({ status: "linked", costPerServe: null, costBasis: why });
+  });
+
+  it("shows line cents that add up to the total, each within a cent of its exact cost", () => {
+    // Three lines of 1/3 each: 0.333.. x3 = 1.00, but each rounds to 0.33 (0.99).
+    const third = (n: number) => line(null, null, { qtyBase: 10, item: { uom: "ml" }, lot: { has_invoice_cost: true, wac: n } });
+    const c = recipeCost([third(1 / 3), third(1 / 3), third(1 / 3)], 1);
+    expect(c.perServe).toBe(1);
+    const cents = c.lines.map((l) => Math.round((l.costPerServe as number) * 100));
+    expect(cents.reduce((a, b) => a + b, 0)).toBe(100);
+    for (const l of c.lines) expect(Math.abs((l.costPerServe as number) - (l.costPerServeExact as number))).toBeLessThanOrEqual(0.01);
+  });
+
+  it("keeps six places: a total of many small lines is not a sum of roundings", () => {
+    // 7 lines at 0.004 each: rounded per line they would be 0.00, the total 0.03.
+    const tiny = () => line(null, null, { qtyBase: 10, item: { uom: "ml" }, lot: { has_invoice_cost: true, wac: 0.004 } });
+    const c = recipeCost(Array.from({ length: 7 }, tiny), 1);
+    expect(c.perServeExact).toBe(0.028);
+    expect(c.perServe).toBe(0.03);
+    expect(c.lines.map((l) => l.costPerServeExact)).toEqual(Array(7).fill(0.004));
+    expect(c.lines.reduce((a, l) => a + Math.round((l.costPerServe as number) * 100), 0)).toBe(3);
+  });
+
+  it("counts lines priced from part of the stock, and still prices them", () => {
+    const part = line(700, 700, { lot: { has_invoice_cost: true, wac: 700, wac_qty: 1, live_qty: 3 } });
+    const c = recipeCost([part, line(1000, 500)], 1);
+    expect(c.complete).toBe(true);
+    expect(c.partial).toBe(1);
+    expect(c.lines[0].costBasis).toBe("invoice_lot_wac_partial");
   });
 
   it("leaves untracked lines out of priced/of and counts the same item twice", () => {
