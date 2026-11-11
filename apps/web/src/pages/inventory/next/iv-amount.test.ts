@@ -6,10 +6,28 @@ describe('amountUnit: what is typed for a good, in its own unit (ADR 0070)', () 
     const g = amountUnit('g');
     expect(g.parse('2.25')).toBe(2250);
     expect(g.parse('2,25')).toBe(2250);
-    expect(g.parse('12')).toBe(12_000);
+    expect(g.parse('12.0')).toBe(12_000);
+    expect(g.parse('12 kg')).toBe(12_000);
     expect(g.parse('0.035 kg')).toBe(35);
     expect(g.parse('250 g')).toBe(250);
     expect(g.parse('250g')).toBe(250);
+  });
+
+  it('asks about a bare whole number, since 500 could be grams or kilograms', () => {
+    const g = amountUnit('g');
+    expect(g.parse('500')).toBeNull();
+    expect(g.why('500')).toBe('Say which: 500 g or 500 kg.');
+    expect(g.parse('500 g')).toBe(500);
+    expect(g.parse('500 kg')).toBe(500_000);
+    expect(g.why('500 g')).toBeNull();
+    expect(g.why('0.5')).toBeNull();
+    // Zero is zero in any unit, so a count to empty is one keystroke.
+    expect(g.parse('0')).toBe(0);
+    expect(g.why('0')).toBeNull();
+    const ml = amountUnit('ml');
+    expect(ml.parse('2')).toBeNull();
+    expect(ml.why('1500')).toBe('Say which: 1,500 ml or 1,500 l.');
+    expect(amountUnit('bottle').why('500')).toBeNull();
   });
 
   it('refuses what is not a whole gram, never rounding it', () => {
