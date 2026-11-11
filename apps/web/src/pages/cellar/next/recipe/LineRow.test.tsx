@@ -90,12 +90,71 @@ describe('LineRow', () => {
       <ol>
         <LineRowRead
           row={{ ...blank, inventoryId: GIN, itemName: 'gin', label: 'gin', saved: { status: 'linked', costPerServe: 30, costBasis: 'lot_wac' } }}
-          say={null}
         />
       </ol>,
     );
     expect(container.querySelector('input, select')).toBeNull();
     expect(container.textContent).toBe('30 mlgin');
+  });
+
+  it('round 17 D7: staff read an unlinked or archived line with no warning they cannot act on', () => {
+    const { container } = mount(
+      <ol>
+        <LineRowRead row={{ ...blank, label: 'Campari' }} />
+        <LineRowRead row={{ ...blank, inventoryId: GIN, itemName: 'gin', label: 'gin', itemGone: 'archived' }} />
+      </ol>,
+    );
+    expect(container.querySelector('.cl-rcp-note')).toBeNull();
+    expect(container.textContent).not.toMatch(/won't take stock|archived|shelf/);
+  });
+
+  it.each([
+    ['size_not_known', 'bottle', 'ml', "No price yet: your shelf doesn't say how much one bottle of gin holds."],
+    ['pack_size_not_known', 'case', 'ml', "No price: gin is counted by the case, and your shelf doesn't say what one holds. Link the line to the single bottle you pour from."],
+    ['pack_size_not_known', 'glass', 'oz', "No price: gin is counted by the glass, and your shelf doesn't say what one holds. Link the line to the single bottle you pour from."],
+    ['pack_size_not_known', 'pack', 'g', "No price: gin is counted by the pack, and your shelf doesn't say what one holds. Link the line to something your shelf counts by weight, in g or kg."],
+    ['pack_size_not_known', 'case', 'kg', "No price: gin is counted by the case, and your shelf doesn't say what one holds. Link the line to something your shelf counts by weight, in g or kg."],
+    ['unit_mismatch', 'kg', 'ml', 'No price: this line is measured by volume, but gin is counted in kg. Change the unit, or link the item it pours from.'],
+    ['unit_mismatch', 'bottle', 'each', 'No price: this line is counted by the piece, but gin is counted by the bottle. Change the unit, or link the item it pours from.'],
+    ['unit_mismatch', 'l', 'g', 'No price: this line is weighed, but gin is counted in l. Change the unit, or link the item it pours from.'],
+  ] as const)('round 17 D6: %s on a %s item, %s line, says the real reason', (basis, uom, unit, text) => {
+    const linked = { ...blank, inventoryId: GIN, itemName: 'gin', label: 'gin', itemUom: uom, unit };
+    mount(<Harness start={{ ...linked, saved: { status: 'linked', costPerServe: null, costBasis: basis } }} say={(n) => `₺${n}`} />);
+    expect(screen.getByText(text)).toBeInTheDocument();
+  });
+
+  it('a line under half a cent is said as under a cent, never as free or as a cent it does not cost', () => {
+    const linked = { ...blank, inventoryId: GIN, itemName: 'gin', label: 'gin' };
+    const say = (n: number) => `₺${n.toFixed(2)}`;
+    const { unmount } = mount(
+      <Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 0, costPerServeExact: 0.004, costBasis: 'lot_wac' } }} say={say} />,
+    );
+    expect(screen.getByText('Under ₺0.01 a serve')).toBeInTheDocument();
+    unmount();
+    // A good that truly costs nothing, or an older gateway with no six-place figure, reads as the cents say.
+    mount(<Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 0, costPerServeExact: 0, costBasis: 'lot_wac' } }} say={say} />);
+    expect(screen.getByText('₺0.00 a serve')).toBeInTheDocument();
+  });
+
+  it('a line priced from part of the stock says so beside its cost', () => {
+    const linked = { ...blank, inventoryId: GIN, itemName: 'gin', label: 'gin' };
+    mount(<Harness start={{ ...linked, saved: { status: 'linked', costPerServe: 30, costBasis: 'invoice_lot_wac_partial' } }} say={(n) => `₺${n.toFixed(2)}`} />);
+    expect(screen.getByText('₺30.00 a serve, from the bottles that have an invoice; some on hand have none yet.')).toBeInTheDocument();
+  });
+
+  it('round 17 D9: an editor is told a linked good was archived, even with no money shown', () => {
+    mount(<Harness start={{ ...blank, inventoryId: GIN, itemName: 'Old gin', label: 'gin', itemGone: 'archived' }} />);
+    expect(
+      screen.getByText("'Old gin' was archived from your shelf. Link this line to something still on it, or mark it not counted, before saving."),
+    ).toBeInTheDocument();
+  });
+
+  it('picking a shelf item clears an archived flag and keeps how the shelf counts it', async () => {
+    h.get.mockResolvedValue({ data: [{ id: GIN, name: 'Tanqueray gin', kind: 'spirit', uom: 'bottle', bottleSizeMl: 700 }] });
+    mount(<Harness start={{ ...blank, inventoryId: 'old', itemName: 'Old gin', label: 'gin', itemGone: 'deleted' }} />);
+    fireEvent.click(screen.getByRole('button', { name: /Old gin/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Tanqueray gin/ }));
+    expect(last).toMatchObject({ inventoryId: GIN, itemGone: null, itemUom: 'bottle' });
   });
 
   it('a failed shelf read says it failed, never "nothing matches"', async () => {

@@ -95,11 +95,13 @@ function fromServer(l: RecipeLine): DraftRow {
     inventoryId: l.inventoryId,
     itemName: l.itemName,
     itemKind: l.itemKind,
+    itemUom: l.itemUom ?? null,
+    itemGone: l.itemGone ?? null,
     label: l.label,
     qtyText: qtyText(l.qtyEntered),
     storedQty: l.qtyEntered,
     unit: (l.unitCode as DraftRow['unit']) ?? '',
-    saved: { status: l.status, costPerServe: l.costPerServe, costBasis: l.costBasis },
+    saved: { status: l.status, costPerServe: l.costPerServe, costPerServeExact: l.costPerServeExact ?? null, costBasis: l.costBasis },
   };
 }
 
@@ -219,6 +221,9 @@ export function whyBlocked(rows: DraftRow[]): string | null {
       return `${named(i)} is more than one line can hold. The most is ${MAX_LINE_QTY.toLocaleString('en-US')} ${r.unit || 'of its unit'}.`;
     }
     if (r.unit === '') return `${named(i)} needs a unit.`;
+    if (r.role === 'stocked' && r.inventoryId && r.itemGone) {
+      return `${named(i)} is linked to something ${r.itemGone} from your shelf. Link it again, or mark it not counted.`;
+    }
     if (rowName(r) === 'this line') return `${named(i)} needs a name.`;
   }
   return null;
@@ -389,7 +394,10 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
     }
     if (!money || !data.cost || !data.current) return null;
     if (data.cost.complete && data.cost.perServe != null) {
-      return `Costs ${sayMoney(data.cost.perServe)} a serve at today's prices`;
+      const part = data.cost.partial ?? 0;
+      return `Costs ${sayMoney(data.cost.perServe)} a serve at today's prices${
+        part > 0 ? ` · ${count(part, 'ingredient is', 'ingredients are')} priced from the bottles with an invoice only` : ''
+      }`;
     }
     if (data.cost.of === 0) return 'Nothing in it is counted from the shelf.';
     return `${data.cost.priced} of ${count(data.cost.of, 'ingredient', 'ingredients')} priced`;
@@ -429,7 +437,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
                 onRemove={() => edit((rs) => rs.filter((x) => x.key !== r.key))}
               />
             ) : (
-              <LineRowRead key={r.key} row={r} say={null} />
+              <LineRowRead key={r.key} row={r} />
             ),
           )}
         </ol>

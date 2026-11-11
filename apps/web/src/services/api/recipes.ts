@@ -22,12 +22,26 @@ export interface RecipeLine {
   label: string;
   itemName: string | null;
   itemKind: string | null;
+  /** How the shelf counts the linked item (bottle, kg, each...); absent from an older gateway. */
+  itemUom?: string | null;
+  /** The linked item was archived or deleted since; such a line cannot be saved until linked again. */
+  itemGone?: 'archived' | 'deleted' | null;
   qtyEntered: number;
   unitCode: string;
   qtyBase: number;
   baseUnit: string;
   status: RecipeLineStatus;
+  /**
+   * The line's own cost, rounded to the cent on its own: equal costs read the
+   * same, and the lines can be a cent off the total, which is rounded once.
+   */
   costPerServe: number | null;
+  /** The same cost at six places. */
+  costPerServeExact?: number | null;
+  /**
+   * A cost basis, or why there is no price: size_not_known (a bottle with no
+   * size), pack_size_not_known (case, pack, glass, shot), unit_mismatch.
+   */
   costBasis: string | null;
 }
 
@@ -44,9 +58,12 @@ export interface RecipeVersion {
 
 export interface RecipeCost {
   perServe: number | null;
+  perServeExact?: number | null;
   priced: number;
   of: number;
   complete: boolean;
+  /** Priced lines whose average covers only part of the stock on hand. */
+  partial?: number;
 }
 
 export interface LegacyRecipeLine {
@@ -78,6 +95,8 @@ export type WhatIsIn =
       figures: Record<ServeFigureKey, ServeFigure>;
       notCounted: Array<{ label: string; why: string }>;
       allergens: Record<string, 'contains' | 'may_contain' | 'free' | 'not_stated'>;
+      /** Lines that leave an allergen unstated; absent from an older gateway. */
+      allergensUnstatedBy?: string[];
     }
   | { readable: false; sentence: string };
 
@@ -104,7 +123,15 @@ export interface RecipeVersionSummary {
   version: number;
   createdAt: string;
   author: string | null;
+  /** Who saved it, by name; null when not known. */
+  authorName?: string | null;
   lineCount: number;
+}
+
+/** One earlier version, as GET .../versions/:versionId sends it. */
+export interface PastRecipeVersion {
+  version: RecipeVersion;
+  cost: RecipeCost | null;
 }
 
 export interface SaveRecipeLine {
@@ -149,6 +176,13 @@ export const recipesApi = {
   async versions(restaurantId: string, cocktailId: string): Promise<RecipeVersionSummary[]> {
     const r = await apiClient.get<RecipeVersionSummary[]>(
       `${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}/versions`,
+    );
+    return r.data;
+  },
+
+  async version(restaurantId: string, cocktailId: string, versionId: string): Promise<PastRecipeVersion> {
+    const r = await apiClient.get<PastRecipeVersion>(
+      `${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}/versions/${encodeURIComponent(versionId)}`,
     );
     return r.data;
   },

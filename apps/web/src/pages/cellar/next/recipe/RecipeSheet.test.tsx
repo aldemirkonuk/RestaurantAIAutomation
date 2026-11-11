@@ -892,4 +892,24 @@ describe('RecipeSheet', () => {
     fireEvent.click(within(box).getByRole('button', { name: 'Use these lines' }));
     expect(screen.getAllByTestId('recipe-line')).toHaveLength(40);
   });
+  it('round 17 D9: a line linked to an archived good stops Save and says which', async () => {
+    const n = negroni();
+    serve({ ...n, current: { ...n.current!, lines: [{ ...n.current!.lines[0], itemGone: 'archived' }, ...n.current!.lines.slice(1)] } });
+    mount();
+    await screen.findAllByLabelText('Amount');
+    fireEvent.change(screen.getAllByLabelText('Amount')[1], { target: { value: '25' } });
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    expect(screen.getByText('Line 1 (gin) is linked to something archived from your shelf. Link it again, or mark it not counted.')).toBeInTheDocument();
+  });
+
+  it('a complete cost priced partly from uninvoiced stock says so in the footer', async () => {
+    serve(negroni({ cost: { perServe: 57, priced: 3, of: 3, complete: true, partial: 1 } }));
+    mount();
+    await waitFor(() =>
+      expect(screen.getByTestId('recipe-footer')).toHaveTextContent(
+        "Costs ₺57.00 a serve at today's prices · 1 ingredient is priced from the bottles with an invoice only",
+      ),
+    );
+  });
+
 });

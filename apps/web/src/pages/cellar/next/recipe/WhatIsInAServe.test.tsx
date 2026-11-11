@@ -51,4 +51,14 @@ describe('WhatIsInAServe', () => {
     render(<WhatIsInAServe data={recipe(readable())} unsaved />);
     expect(screen.getByTestId('recipe-whatisin').textContent).toContain('Save to count your changes.');
   });
+  it('names the lines that state no allergens, so the card never reads as allergen-free', () => {
+    const { unmount } = render(<WhatIsInAServe data={recipe(readable({ allergens: {}, allergensUnstatedBy: ['Campari', 'Orange twist'] }))} unsaved={false} />);
+    expect(screen.getByTestId('recipe-whatisin-allergens-unstated').textContent).toBe(
+      'No allergen can be ruled out: Campari, Orange twist do not say what they contain.',
+    );
+    unmount();
+    render(<WhatIsInAServe data={recipe(readable({ allergens: { milk: 'free' }, allergensUnstatedBy: [] }))} unsaved={false} />);
+    expect(screen.getByTestId('recipe-whatisin-allergens-free')).toBeInTheDocument();
+    expect(screen.queryByTestId('recipe-whatisin-allergens-unstated')).toBeNull();
+  });
 });
