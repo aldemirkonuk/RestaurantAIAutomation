@@ -1,0 +1,86 @@
+/**
+ * "Scan a menu" on /inventory and /cellar reaches the real menu reader
+ * (founder 2026-11-07, MU-2: "Repoint to menu reader"). The old scanner
+ * posted to an unmounted orchestrator route and said "No wines were detected"
+ * (QA M2); these tests prove both buttons open the reader, the inventory one
+ * reports nothing as added to stock, and the cellar keeps its next step.
+ */
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
+import { MenuScannerFlow } from '../scanner/MenuScannerFlow'
+import { MenuScannerModal, lineToDetected } from './MenuScannerModal'
+import { importMenu, type MenuImportReviewItem } from '../../services/api/menus'
+
+let role = 'manager'
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRestaurantId: 'r1', loading: false, activeRole: role, user: null }),
+}))
+vi.mock('../../stores', () => ({
+  useAuthStore: (sel: (s: { activeRestaurantId: string }) => unknown) => sel({ activeRestaurantId: 'r1' }),
+}))
+vi.mock('../../services/api/menus', async () => {
+  const actual = await vi.importActual<typeof import('../../services/api/menus')>('../../services/api/menus')
+  return { ...actual, importMenu: vi.fn(), getMenuPlan: vi.fn(), makeMenuCurrent: vi.fn() }
+})
+const mockImport = vi.mocked(importMenu)
+
+function item(over: Partial<MenuImportReviewItem>): MenuImportReviewItem {
+  return {
+    menuItemId: 'i1', submissionId: null, name: 'Barolo Cannubi', producer: 'Brezza', category: 'red',
+    vintage: '2019', region: 'Piedmont', grapeVariety: 'Nebbiolo', byGlassPrice: null, bottlePrice: 90,
+    rawText: null, matched: false, needsReview: true, ...over,
+  }
+}
+
+function mount(ui: React.ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{ui}</MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+beforeEach(() => {
+  role = 'manager'
+  mockImport.mockReset()
+})
+
+describe('Scan a menu on /inventory', () => {
+  it('opens the menu reader, and never reports bottles as added to stock', async () => {
+    mockImport.mockResolvedValue({ menuId: 'm1', current: false, itemsExtracted: 2, submissionsCreated: 0, items: [] })
+    const onWinesAdded = vi.fn()
+    mount(<MenuScannerFlow isOpen onClose={() => {}} onWinesAdded={onWinesAdded} />)
+    expect(screen.getByRole('dialog', { name: 'Read a menu' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Menu to read'), { target: { files: [new File(['%PDF'], 'menu.pdf', { type: 'application/pdf' })] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }))
+    expect(await screen.findByTestId('menu-read-result')).toBeInTheDocument()
+    expect(mockImport.mock.calls[0][0]).toBe('scan')
+    expect(onWinesAdded).not.toHaveBeenCalled()
+  })
+})
+
+describe('Scan a menu on /cellar', () => {
+  it('after a read, hands only the lines the library does not know to the cellar questions', async () => {
+    mockImport.mockResolvedValue({
+      menuId: 'm1', current: false, itemsExtracted: 3, submissionsCreated: 2,
+      items: [item({ menuItemId: 'a' }), item({ menuItemId: 'b', matched: true, name: 'Known' }), item({ menuItemId: 'c', name: 'Champagne Brut', producer: 'Krug', vintage: 'NV' })],
+    })
+    const onWinesDetected = vi.fn()
+    mount(<MenuScannerModal isOpen onClose={() => {}} onWinesDetected={onWinesDetected} />)
+    fireEvent.change(screen.getByLabelText('Menu to read'), { target: { files: [new File(['%PDF'], 'menu.pdf', { type: 'application/pdf' })] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }))
+    expect(await screen.findByTestId('menu-reader-cellar-step')).toHaveTextContent('2 lines are not in the wine library yet')
+    fireEvent.click(screen.getByRole('button', { name: 'Ask about these 2 in the cellar' }))
+    expect(onWinesDetected).toHaveBeenCalledWith([
+      { name: 'Barolo Cannubi', producer: 'Brezza', vintage: 2019, region: 'Piedmont', grapeVariety: 'Nebbiolo' },
+      { name: 'Champagne Brut', producer: 'Krug', vintage: null, region: 'Piedmont', grapeVariety: 'Nebbiolo' },
+    ])
+  })
+
+  it('a line with no producer goes over with an empty one (the cellar drops it, never guesses)', () => {
+    expect(lineToDetected(item({ producer: null, vintage: null })).producer).toBe('')
+  })
+})
