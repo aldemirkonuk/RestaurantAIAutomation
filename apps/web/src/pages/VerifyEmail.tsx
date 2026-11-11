@@ -21,6 +21,7 @@ import {
   signUpMailSentence,
   verificationMailSentence,
   type CodeRefusal,
+  type VerificationMail,
   type VerificationResendAnswer,
 } from '../lib/verificationMail'
 
@@ -62,7 +63,12 @@ export function VerifyEmail() {
   // whole page. The sign-up's send is kept in session storage by
   // `registerAccount`; a resend writes its own answer to the same key, so a
   // reload says the same thing and a newer answer replaces an older one.
-  const [mailState, setMailState] = useState(() => readSignUpMail())
+  // The note is this account's only (QA r19 on #914): it is read for the
+  // signed-in address, and says nothing once that address is verified.
+  const [resentState, setMailState] = useState<VerificationMail | null>(null)
+  const mailState = user?.emailVerified
+    ? null
+    : resentState ?? readSignUpMail(user?.email)
   const mailSentence = signUpMailSentence(mailState)
   // The address is verified but the session read after it failed (ADR 0020:
   // a failed read says it failed). The pair is kept for "Try again".
@@ -241,7 +247,7 @@ export function VerifyEmail() {
       // is never "sent" and leaves the resend button enabled.
       const outcome = resendOutcome(data)
       setMailState(outcome)
-      noteSignUpMail(outcome)
+      noteSignUpMail(outcome, user?.email)
       if (outcome !== 'sent') {
         setLastResent(null)
         return

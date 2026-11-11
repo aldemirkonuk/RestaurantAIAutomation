@@ -44,6 +44,8 @@ function mount() {
 }
 
 const KEY = 'mudavym:verification-mail'
+/** The note as sign-up keeps it: the outcome and the address it was mailed to. */
+const kept = (outcome: string, email = 'owner@house.test') => JSON.stringify({ outcome, email })
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -60,8 +62,21 @@ afterEach(() => {
 })
 
 describe("the sign-up's mail outcome", () => {
+  it('QA r19 (#914): a note kept for another address says nothing to this account', () => {
+    sessionStorage.setItem(KEY, kept('not_sent', 'someone.else@house.test'))
+    mount()
+    expect(screen.queryByText(/We could not send the verification email/)).not.toBeInTheDocument()
+  })
+
+  it('QA r19 (#914): an account already verified is never told its mail did not leave', () => {
+    h.auth.user = { email: 'owner@house.test', emailVerified: true }
+    sessionStorage.setItem(KEY, kept('not_sent'))
+    mount()
+    expect(screen.queryByText(/We could not send the verification email/)).not.toBeInTheDocument()
+  })
+
   it("t5: 'not_sent' says it could not send, with the resend button right there", () => {
-    sessionStorage.setItem(KEY, 'not_sent')
+    sessionStorage.setItem(KEY, kept('not_sent'))
     mount()
     expect(screen.getByRole('alert')).toHaveTextContent(
       'We could not send the verification email',
@@ -73,11 +88,11 @@ describe("the sign-up's mail outcome", () => {
       screen.queryByText(/Open the verification link in your inbox/),
     ).not.toBeInTheDocument()
     // Kept for the session, so a reload says the same thing.
-    expect(sessionStorage.getItem(KEY)).toBe('not_sent')
+    expect(sessionStorage.getItem(KEY)).toBe(kept('not_sent'))
   })
 
   it("t6: 'unconfirmed' says the mail may still arrive", () => {
-    sessionStorage.setItem(KEY, 'unconfirmed')
+    sessionStorage.setItem(KEY, kept('unconfirmed'))
     mount()
     expect(screen.getByRole('status')).toHaveTextContent(
       'Sending is taking longer than usual. The email may still arrive',
@@ -85,7 +100,7 @@ describe("the sign-up's mail outcome", () => {
   })
 
   it("'sent' keeps today's words", () => {
-    sessionStorage.setItem(KEY, 'sent')
+    sessionStorage.setItem(KEY, kept('sent'))
     mount()
     expect(
       screen.getByText(/Open the verification link in your inbox/),
@@ -125,7 +140,7 @@ describe("the sign-up's mail outcome", () => {
   })
 
   it('one state: a not_sent resend after an unconfirmed note replaces it, never stacks', async () => {
-    sessionStorage.setItem(KEY, 'unconfirmed')
+    sessionStorage.setItem(KEY, kept('unconfirmed'))
     h.post.mockResolvedValueOnce({
       data: { success: true, sent: false, verificationMail: 'not_sent' },
     })
@@ -141,7 +156,7 @@ describe("the sign-up's mail outcome", () => {
   })
 
   it('one state: a not_sent sign-up then a not_sent resend shows one sentence, not two', async () => {
-    sessionStorage.setItem(KEY, 'not_sent')
+    sessionStorage.setItem(KEY, kept('not_sent'))
     h.post.mockResolvedValueOnce({
       data: { success: true, sent: false, verificationMail: 'not_sent' },
     })
@@ -153,7 +168,7 @@ describe("the sign-up's mail outcome", () => {
   })
 
   it('one state: a sent resend clears an earlier note', async () => {
-    sessionStorage.setItem(KEY, 'not_sent')
+    sessionStorage.setItem(KEY, kept('not_sent'))
     h.post.mockResolvedValueOnce({
       data: { success: true, sent: true, verificationMail: 'sent' },
     })
@@ -165,7 +180,7 @@ describe("the sign-up's mail outcome", () => {
 
   it('the legacy page does not list "Open the email" steps under a could-not-send note', () => {
     localStorage.setItem('mudavym.design.public', 'false')
-    sessionStorage.setItem(KEY, 'not_sent')
+    sessionStorage.setItem(KEY, kept('not_sent'))
     mount()
     expect(screen.getByRole('alert')).toHaveTextContent('We could not send')
     expect(screen.getByText('Check Your Email')).toBeInTheDocument()
@@ -173,7 +188,7 @@ describe("the sign-up's mail outcome", () => {
   })
 
   it('a reload keeps the not_sent note (sign-up)', () => {
-    sessionStorage.setItem(KEY, 'not_sent')
+    sessionStorage.setItem(KEY, kept('not_sent'))
     const first = mount()
     first.unmount()
     mount()
@@ -197,7 +212,7 @@ describe("the sign-up's mail outcome", () => {
   })
 
   it('a reload after a sent resend shows the usual words', async () => {
-    sessionStorage.setItem(KEY, 'not_sent')
+    sessionStorage.setItem(KEY, kept('not_sent'))
     h.post.mockResolvedValueOnce({
       data: { success: true, sent: true, verificationMail: 'sent' },
     })
@@ -210,7 +225,7 @@ describe("the sign-up's mail outcome", () => {
   })
 
   it('a verified link clears the note, so it never returns for this account', async () => {
-    sessionStorage.setItem(KEY, 'not_sent')
+    sessionStorage.setItem(KEY, kept('not_sent'))
     h.post.mockResolvedValueOnce({
       data: { accessToken: 'x.e30.sig', refreshToken: 'r' },
     })

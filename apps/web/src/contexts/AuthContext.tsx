@@ -877,7 +877,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // /verify-email, where Register.tsx sends the new account next: a
         // send that did not leave, or did not confirm, is said there in words
         // and never as "check your inbox".
-        noteSignUpMail(response.data?.verificationMail);
+        noteSignUpMail(response.data?.verificationMail, data.email);
         await establishSession(response);
       } catch (err: any) {
         const message = err.response?.data?.message || "Registration failed";

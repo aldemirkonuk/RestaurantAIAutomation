@@ -61,10 +61,22 @@ describe('the sign-up hand-off', () => {
   })
 
   it('keeps a known outcome and clears for anything else', () => {
-    noteSignUpMail('unconfirmed')
-    expect(sessionStorage.getItem(VERIFICATION_MAIL_KEY)).toBe('unconfirmed')
-    expect(readSignUpMail()).toBe('unconfirmed')
-    noteSignUpMail(undefined)
+    noteSignUpMail('unconfirmed', ' Owner@House.test ')
+    expect(readSignUpMail('owner@house.test')).toBe('unconfirmed')
+    noteSignUpMail(undefined, 'owner@house.test')
+    expect(sessionStorage.getItem(VERIFICATION_MAIL_KEY)).toBeNull()
+  })
+
+  it('says the note only to the address it was mailed to (QA r19 on #914)', () => {
+    noteSignUpMail('not_sent', 'owner@house.test')
+    expect(readSignUpMail('OWNER@house.test')).toBe('not_sent')
+    expect(readSignUpMail('other@house.test')).toBeNull()
+    expect(readSignUpMail(undefined)).toBeNull()
+    // A note kept bare, before it carried an address, belongs to no one.
+    sessionStorage.setItem(VERIFICATION_MAIL_KEY, 'not_sent')
+    expect(readSignUpMail('owner@house.test')).toBeNull()
+    // No address: nothing is kept.
+    noteSignUpMail('not_sent', '')
     expect(sessionStorage.getItem(VERIFICATION_MAIL_KEY)).toBeNull()
   })
 
@@ -75,8 +87,8 @@ describe('the sign-up hand-off', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('blocked')
     })
-    expect(() => noteSignUpMail('sent')).not.toThrow()
-    expect(readSignUpMail()).toBeNull()
+    expect(() => noteSignUpMail('sent', 'owner@house.test')).not.toThrow()
+    expect(readSignUpMail('owner@house.test')).toBeNull()
   })
 })
 
