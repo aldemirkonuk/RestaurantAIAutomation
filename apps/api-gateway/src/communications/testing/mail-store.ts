@@ -52,7 +52,15 @@ export function memoryDb(
         filters.push((r) => re.test(String(r[c] ?? "")));
         return qb;
       },
-      eq: (c: string, v: any) => (filters.push((r) => r[c] === v), qb),
+      // `a->>b` reads a JSON field the way PostgREST does (as text).
+      eq: (c: string, v: any) => (
+        filters.push((r) => {
+          const [col, field] = c.split("->>");
+          const got = field === undefined ? r[col] : r[col]?.[field];
+          return field === undefined ? got === v : String(got ?? "") === String(v);
+        }),
+        qb
+      ),
       neq: (c: string, v: any) => (
         filters.push((r) => r[c] != null && r[c] !== v),
         qb
@@ -105,8 +113,12 @@ export function memoryDb(
 }
 
 /** The bridge over `memoryDb`; `events` records every outward effect. */
-export function bridge(tables: Record<string, Row[]>, failing: string[] = []) {
-  const db = memoryDb(tables, failing);
+export function bridge(
+  tables: Record<string, Row[]>,
+  failing: string[] = [],
+  refusing: string[] = [],
+) {
+  const db = memoryDb(tables, failing, refusing);
   const events: any[] = [];
   const ws: any = new Proxy(
     {},
