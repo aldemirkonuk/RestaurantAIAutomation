@@ -263,7 +263,7 @@ const ledger = analysis<LedgerRegister>({
         `${costGap}; ${figure(cg!.bottlesUncosted)} bottle${cg!.bottlesUncosted === 1 ? '' : 's'} left or came back with no invoice cost yet, so what it cost reads ${EM} rather than a smaller number.`,
       );
     if (f.cogsSettledAfterSale != null && f.cogsSettledAfterSale !== 0)
-      notes.push(`${money(f.cogsSettledAfterSale)} of what it cost was settled after the sale, when its invoice was verified.`);
+      notes.push(`${money(f.cogsSettledAfterSale)} of what it cost is late prices settled in this window, when invoices were verified after the bottles sold.`);
     if (cc && !cc.complete)
       notes.push(
         cc.total === 0

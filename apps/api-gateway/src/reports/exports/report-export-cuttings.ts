@@ -622,7 +622,7 @@ function writeLedger(payload: unknown): ExportDoc {
         ? `${costGap}; ${uncosted} bottle${uncosted === 1 ? "" : "s"} left or came back with no invoice cost yet, so what it cost is withheld rather than a smaller number.`
         : "",
       settled != null && settled !== 0
-        ? `${settled.toFixed(2)} of what it cost was settled after the sale, when its invoice was verified.`
+        ? `${settled.toFixed(2)} of what it cost is late prices settled in this window, when invoices were verified after the bottles sold.`
         : "",
       cc && cc.complete === false
         ? num(cc.total) === 0
