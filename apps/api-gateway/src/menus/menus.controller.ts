@@ -19,6 +19,7 @@ import { TenantGuard } from "../common/tenant/tenant.guard";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { MenusService } from "./menus.service";
 import { seesRawLine } from "./menu-line-view";
+import { withheldRawText } from "./import-reply-view";
 import { ImportMenuDto } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
 import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
@@ -61,9 +62,14 @@ export class MenusController {
   })
   async importMenu(
     @Body() dto: ImportMenuDto,
-    @CurrentUser() user: { userId: string; restaurantId: string },
+    @CurrentUser() user: { userId: string; restaurantId: string; role?: string | null },
   ) {
-    return this.menusService.importMenu(dto, user.userId);
+    const read = await this.menusService.importMenu(dto, user.userId);
+    // ADR 0358 D2: any member may read a menu in, but a line's raw text is the
+    // row as the file had it -- for a spreadsheet, the cost and supplier cells
+    // too -- so only a role that sees money and suppliers is sent it (the same
+    // ROLE_POLICY rule GET /menu-versions/:id follows, menu-line-view.ts).
+    return withheldRawText(read, seesRawLine(user.role));
   }
 
   @Post("items")
@@ -132,12 +138,26 @@ export class MenusController {
   @Patch(":restaurantId/items/:id/discard")
   @ApiOperation({
     summary:
-      "Discard one line from the active menu (ADR 0160 sec110 item 7). Soft remove — status becomes 'discarded', the row is kept",
+      "Discard one line from the active menu (ADR 0160 sec110 item 7) -- owner or manager only (ADR 0358 D2). Soft remove — status becomes 'discarded', the row is kept",
   })
   async discardMenuItem(
     @Param("restaurantId") restaurantId: string,
     @Param("id") id: string,
+    @CurrentUser() user: { userId?: string },
   ) {
+    // ADR 0358 D2: taking a line off the menu is an owner's or a manager's.
+    // Checked before anything is read or written. The path's house is the
+    // session's own (JwtAuthGuard asserts the tenant match).
+    if (!user?.userId) {
+      throw new ForbiddenException(
+        "Discarding a menu line names the person, and this session names nobody. Nothing was changed.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      restaurantId,
+      "discard a line from the menu",
+    );
     return this.menusService.discardMenuItem(restaurantId, id);
   }
 }
@@ -196,14 +216,20 @@ export class MenuVersionsController {
 
   @Get(":menuId/source")
   @ApiOperation({
-    summary: "A five-minute link to the kept source file (photo, PDF or CSV)",
-    description: "404 with the stored reason when the source was not kept.",
+    summary: "A five-minute link to the kept source file (photo, PDF or CSV) -- owner or manager only",
+    description: "403 for anyone but an owner or a manager of the house (ADR 0358 D2). 404 with the stored reason when the source was not kept.",
   })
   async source(
     @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("userId") userId: string,
     @Param("menuId", new ParseUUIDPipe()) menuId: string,
   ) {
-    return this.menusService.sourceUrl(this.house(restaurantId), menuId);
+    // ADR 0358 D2: the kept file is the whole menu as sent -- a spreadsheet
+    // carries cost and supplier columns -- so a link to it is an owner's or a
+    // manager's.
+    const house = this.house(restaurantId);
+    await this.organizations.assertCanManageRestaurant(userId, house, "open a kept menu file");
+    return this.menusService.sourceUrl(house, menuId);
   }
 
   @Get(":menuId/plan")

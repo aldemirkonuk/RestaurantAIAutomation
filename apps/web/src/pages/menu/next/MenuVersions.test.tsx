@@ -84,7 +84,7 @@ function version(over: Partial<MenuVersion> = {}): MenuVersion {
 
 function mount(canManage: boolean) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  return render(
     <QueryClientProvider client={client}>
       <MenuVersions canManage={canManage} />
     </QueryClientProvider>,
@@ -214,6 +214,17 @@ describe('MenuVersions', () => {
       'Pages 121–130 were not read, because only the first 120 pages of a file are read; send them as a file of their own.',
     ]);
     expect(rows[1].querySelector('[data-testid="menu-version-warnings"]')).toBeNull();
+  });
+
+  it('ADR 0358 D2: the kept file opens for an owner or a manager; staff are told it was kept, with no link', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [version({ menuId: 'm2' })] });
+    const { unmount } = mount(false);
+    const row = (await screen.findAllByTestId('menu-version-row'))[0];
+    expect(row).toHaveTextContent('PDF kept');
+    expect(screen.queryByRole('button', { name: 'Open PDF' })).not.toBeInTheDocument();
+    unmount();
+    mount(true);
+    expect(await screen.findByRole('button', { name: 'Open PDF' })).toBeInTheDocument();
   });
 
   it('a read that kept a menu with missing pages says which, under its result', async () => {

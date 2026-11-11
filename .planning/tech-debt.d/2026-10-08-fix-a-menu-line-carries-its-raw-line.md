@@ -1,4 +1,6 @@
-## The kept source file of a menu reaches every member, every CSV column included — OPEN — 2026-10-08
+## The kept source file of a menu reaches every member, every CSV column included — CLOSED on `fix/menu-discard-and-source-for-managers` (#1054) — 2026-11-11 (filed 2026-10-08)
+
+**Closed 2026-11-11.** `GET /menu-versions/:menuId/source` calls `assertCanManageRestaurant` (ADR 0358 D2: the kept source is an owner's or manager's), and the web draws "Open" for `canManage` only. Claim row 4 is resolved.
 
 Entry (i) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655). Claim: `../decisions/claims.d/fix-a-menu-line-carries-its-raw-line.jsonl:4` (status open).
 
@@ -18,7 +20,9 @@ Entry (ii) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655
 
 A related limit, not a defect of this branch: a workbook (XLSX) import keeps no raw line (`parsers/csv-parser.service.ts:97-105` never sets `raw_text`), so the same menu splits by section alone as XLSX and by section plus row as CSV.
 
-## The import's reply sends each CSV row back to whoever uploaded the file — OPEN — 2026-10-08
+## The import's reply sends each CSV row back to whoever uploaded the file — CLOSED on `fix/menu-discard-and-source-for-managers` (#1054) — 2026-11-11 (filed 2026-10-08)
+
+**Closed 2026-11-11.** The import reply goes through `withheldRawText` (`apps/api-gateway/src/menus/import-reply-view.ts`): a viewer without `seesRawLine` gets every `rawText` as null. Claim row 3 names that file.
 
 Entry (iii) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655).
 
