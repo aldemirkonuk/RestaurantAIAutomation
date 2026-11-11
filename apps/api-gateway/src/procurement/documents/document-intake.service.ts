@@ -19,6 +19,7 @@ import { applyTieOut, ParsedDocument, ParsedLine } from "./parsed-document";
 import { readSnapshot } from "../canonical/from-document-rows";
 import { LineMatch, matchLines, MatchLinesResult } from "./line-matcher";
 import { looksLikeX12, parseX12 } from "./x12";
+import { readEinvoiceFile } from "./efatura";
 // A pure reader, no Nest dependency and no network: the 832 the document door
 // stores and the 832 `distributor-feed` prices are read by ONE parser, so a
 // catalogue cannot be classified one way here and another way there.
@@ -566,6 +567,25 @@ export class DocumentIntakeService {
       const parsedWithStorage = stored.failure
         ? { ...parsed, warnings: [...parsed.warnings, stored.failure] }
         : parsed;
+      // THE SAME E-INVOICE AGAIN IS THE SAME PAPER (ADR 0261 W43). Its ETTN is
+      // unique per house; a second file carrying it (re-sent mail, the zip
+      // and the bare XML, another integrator's copy) is answered with the
+      // paper already on file. The unique index catches a race (`persist`).
+      if (parsedWithStorage.ettn) {
+        const earlier = await this.paperWithEttn(
+          input.restaurantId,
+          parsedWithStorage.ettn,
+        );
+        if (earlier)
+          return {
+            documentId: earlier.documentId,
+            parsed: parsedWithStorage,
+            duplicate: true,
+            duplicateOf: earlier,
+            ...(stored.failure ? { storageError: stored.failure } : {}),
+          };
+      }
+
       const persisted = await this.persist(
         resolvedInput,
         sha256,
@@ -741,6 +761,35 @@ export class DocumentIntakeService {
       input.restaurantId,
       input.orderId,
     );
+
+    /*
+     * THE E-INVOICE FILE IS READ AS WRITTEN (proposal-receipt rows 2.3 and
+     * 3.3). A UBL-TR XML (e-Fatura, e-Arşiv, e-İrsaliye), or a zip holding
+     * one, is read field by field and never sent to the model. A file that
+     * claims to be one and is not is stored unread with the reason.
+     */
+    const einvoice = readEinvoiceFile(bytes, input.filename, input.mimeType);
+    if (einvoice.kind === "refused") return this.unreadable(einvoice.reason);
+    if (einvoice.kind === "read") {
+      const failures = [house.failure, order.failure].filter(
+        (f): f is string => typeof f === "string",
+      );
+      // A despatch note carries no money, so no currency is filed for it.
+      const ruled =
+        einvoice.doc.docType === "delivery_note"
+          ? einvoice.doc
+          : applyCurrencyRules({
+              doc: einvoice.doc,
+              houseCurrency: house.code,
+              orderCurrency: order.code,
+              hasMatchedOrder: order.matched,
+              orderLabel: order.label,
+              fileField: "DocumentCurrencyCode",
+            });
+      return failures.length
+        ? { ...ruled, warnings: [...ruled.warnings, ...failures] }
+        : ruled;
+    }
 
     if (mime.startsWith("text/") || isEdiName || input.text != null) {
       const text = bytes.toString("utf8");
@@ -1106,6 +1155,7 @@ export class DocumentIntakeService {
         // a write whose column names are literal, and a payload it cannot read
         // is a payload it cannot check for a column the table does not have.
         printed: parsed.printed ?? null,
+        ettn: parsed.ettn ?? null,
         restaurant_id: input.restaurantId,
         provider_id: input.providerId ?? null,
         doc_type: parsed.docType,
@@ -1171,7 +1221,10 @@ export class DocumentIntakeService {
     if (error?.code === "42703" || error?.code === "PGRST204") {
       schemaLagNote =
         "The price base and the printed literals were read but could not be " +
-        "stored: this database has not applied migration 20260904120000.";
+        "stored: this database has not applied migration 20260904120000" +
+        (parsed.ettn
+          ? " or 20270717093714 (the e-invoice's ETTN stays in the read snapshot only)."
+          : ".");
       this.logger.warn(schemaLagNote);
       ({ data, error } = await this.db
         .getClient()
@@ -1225,6 +1278,19 @@ export class DocumentIntakeService {
       // a null id under a 200 (QA round 3 on PR #775, item 2).
       if (isSameNumberCollision(error) && input.providerId && parsed.docNumber)
         return this.earlierSameNumberPaper(input, parsed, input.providerId);
+      // Another path filed this e-invoice's ETTN first.
+      if (
+        error.code === "23505" &&
+        parsed.ettn &&
+        String(error.message ?? "").includes("uq_pd_restaurant_ettn")
+      ) {
+        const earlier = await this.paperWithEttn(input.restaurantId, parsed.ettn);
+        if (!earlier)
+          throw new Error(
+            `This e-invoice (ETTN ${parsed.ettn}) is already on file by the database's own rule, but no earlier paper holds it on a second read.`,
+          );
+        return { documentId: earlier.documentId, duplicateOf: earlier };
+      }
       // A unique violation on the BYTES means another path won the race on
       // the same file. That is the dedupe working, not a failure — but only
       // when a second read finds the row that won. Any other 23505 (another
@@ -1286,6 +1352,40 @@ export class DocumentIntakeService {
     );
 
     return { documentId };
+  }
+
+  /**
+   * The live paper in this house carrying this ETTN, or null when none does.
+   * A failed read THROWS: answering "none" would file a second copy of an
+   * e-invoice the house already holds.
+   */
+  private async paperWithEttn(
+    restaurantId: string,
+    ettn: string,
+  ): Promise<DuplicateOf | null> {
+    const { data, error } = await this.db
+      .getClient()
+      .from("procurement_documents")
+      .select("id, doc_number")
+      .eq("restaurant_id", restaurantId)
+      .eq("ettn", ettn)
+      .neq("status", "superseded")
+      .limit(1)
+      .maybeSingle();
+    // Before migration 20270717093714 no paper can carry an ETTN, so none
+    // holds this one: that is a true "none", not a failed read.
+    if (error?.code === "42703" || error?.code === "PGRST204") return null;
+    if (error)
+      throw new Error(
+        `Whether this e-invoice (ETTN ${ettn}) is already on file could not be read: ${error.message}. It was not filed.`,
+      );
+    if (!data?.id) return null;
+    const number = (data.doc_number as string | null) ?? ettn;
+    return {
+      documentId: data.id as string,
+      docNumber: number,
+      reason: `This e-invoice (ETTN ${ettn}) is already on file as paper no. ${number} (document ${data.id}), so it was not filed a second time.`,
+    };
   }
 
   /**
@@ -2971,6 +3071,15 @@ export function isDocumentLike(
   if (/logo|signature|banner|icon|footer|header/.test(n)) return false;
   if (m === "application/pdf" || n.endsWith(".pdf")) return true;
   if (/\.(edi|x12|810|856|812)$/.test(n)) return true;
+  // The e-invoice file (proposal-receipt row 3.3): any XML, and a zip only
+  // when its name says it holds an invoice, so a zip of photos is not filed.
+  if (n.endsWith(".xml") || m === "application/xml" || m === "text/xml")
+    return true;
+  if (
+    (n.endsWith(".zip") || m.includes("zip")) &&
+    /fatura|invoice|arsiv|ar[sş]iv|irsaliye|ettn|ubl|efat/.test(n)
+  )
+    return true;
   if (m.startsWith("image/")) return true;
   if (m.startsWith("text/") && /invoice|packing|credit|statement/.test(n))
     return true;

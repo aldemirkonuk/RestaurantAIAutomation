@@ -1052,7 +1052,7 @@ export class DocumentsController {
   @ApiOperation({
     summary: "Upload or photograph a vendor document",
     description:
-      "Accepts base64 content for a PDF, image or EDI file. Classifies it (invoice / packing slip / credit memo / EDI 832 price list), extracts lines, and stores it for review. Writes no stock, cost or orders. Identical content is deduplicated per restaurant, so the same invoice arriving by email and by photo is one document. " +
+      "Accepts base64 content for a PDF, image, EDI file, or e-invoice (UBL-TR XML, or a zip holding one, read field by field and kept once per ETTN). Classifies it (invoice / packing slip / credit memo / EDI 832 price list), extracts lines, and stores it for review. Writes no stock, cost or orders. Identical content is deduplicated per restaurant, so the same invoice arriving by email and by photo is one document. " +
       "AN EDI 832 PRICE CATALOGUE IS ALSO ADMITTED HERE (ADR 0126, batch 56) rather than at a door of its own: it is stored as a `price_list`, and when `distributorKey` names a measured distributor its lines are read against the price-code meanings a manager of this house has stated. The per-line outcome comes back in `catalog` — what was priced, and for each refused line the reason and the code that refused it. There is never a bare row count. The upload is open to every signed-in person at the house, because it is the delivery door. A session that does not hold the house's money gets `document` cut down to the keys the door reads (`docType`, `docNumber`, and per line `lineNo`, `qty`, `uom`, `packSize`, `qtyBottles`) and `amountsWithheld: true` at the root; owners and managers get the whole parse.",
   })
   async upload(
