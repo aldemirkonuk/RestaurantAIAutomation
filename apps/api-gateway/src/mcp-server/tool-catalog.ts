@@ -100,7 +100,7 @@ export const READ_TOOLS: CatalogTool[] = [
     name: "inventory.low_stock",
     title: "What is short",
     description:
-      "Stock lines at or under par. An empty result means nothing is short AND the read succeeded; a read that could not run says so with a reason instead of returning an empty list.",
+      "Stock lines below their par: stock strictly under the minimum (ADR 0129). Lines in transit, and lines never counted with no stock movement, are not listed. An empty result means nothing is short AND the read succeeded; a read that could not run says so with a reason instead of returning an empty list.",
     inputSchema: NO_ARGS,
     annotations: READ_ONLY,
     scope: "inventory:read",
