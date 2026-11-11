@@ -198,6 +198,21 @@ function yearOf(v: unknown): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/**
+ * Only a finished read has a plan or can be made current (the table says the
+ * same: restaurant_menus_only_a_finished_read_is_current). 409, nothing changed.
+ */
+function assertReadFinished(row: Record<string, unknown>): void {
+  const state = (row.read_state as string | undefined) ?? "done";
+  if (state === "reading") {
+    throw new ConflictException("This menu is still being read. Its plan can be shown once the read is done; nothing was changed.");
+  }
+  if (state === "failed") {
+    const why = typeof row.read_failure === "string" ? ` ${row.read_failure}` : "";
+    throw new ConflictException(`This read failed, so it has no lines to make current.${why}`);
+  }
+}
+
 /** When a kept menu was read: `extracted_at`, or, for a menu read before menus were kept, when its row was made. */
 function readMomentOf(row: Record<string, unknown>): string | null {
   const at = row.extracted_at ?? row.created_at ?? null;
@@ -240,6 +255,13 @@ export interface MenuVersion {
   linesExtracted: number | null;
   /** null = read before this was recorded. */
   readWarnings: MenuReadWarning[] | null;
+  /**
+   * Where a read stands (founder 2026-11-07, "Background job"): reading,
+   * done, or failed with `readFailure` saying why. Every menu read before
+   * reads were backgrounded is done.
+   */
+  readState: MenuReadState;
+  readFailure: string | null;
   extractedAt: string | null;
   extractedBy: { userId: string; name: string | null } | null;
   madeCurrentAt: string | null;
@@ -249,6 +271,8 @@ export interface MenuVersion {
   createdAt: string | null;
 }
 
+export type MenuReadState = "reading" | "done" | "failed";
+
 /** What `POST /menus/import` says when a read finds no line (422, nothing kept). */
 const EMPTY_READ_REFUSAL: Record<string, string> = {
   scan: "No line could be read from this file, so no menu was kept. Try a clearer photo or the PDF itself.",
@@ -257,7 +281,7 @@ const EMPTY_READ_REFUSAL: Record<string, string> = {
 };
 
 const VERSION_SELECT =
-  "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, read_warnings, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
+  "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, read_warnings, read_state, read_failure, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
 
 /**
  * The columns every line read asks for. `raw_extracted_text` is read so
@@ -1233,6 +1257,7 @@ export class MenusService {
    */
   async planFor(restaurantId: string, menuId: string): Promise<MenuPlan> {
     const row = await this.readVersionRow(restaurantId, menuId);
+    assertReadFinished(row);
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const plan = await this.computePlan(restaurantId, menuId, row.status === "active", lines, readMomentOf(row));
     // Names are for reading the plan; they never decide it (the fingerprint
@@ -1517,6 +1542,7 @@ export class MenusService {
     // read throws here and nothing is changed.
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const version = await this.readVersionRow(restaurantId, menuId);
+    assertReadFinished(version);
     const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
     if (plan.fingerprint !== fingerprint.trim()) {
       throw new ConflictException(
@@ -1642,7 +1668,9 @@ export class MenusService {
         failure: r.source_failure ?? null,
       },
       linesExtracted: num(r.lines_extracted),
-      readWarnings: Array.isArray(r.read_warnings) ? r.read_warnings : null,
+      readWarnings: Array.isArray(r.read_warnings) ? r.read_warnings.filter((w: unknown) => w && typeof w === "object") : null,
+      readState: (r.read_state as MenuReadState | undefined) ?? "done",
+      readFailure: r.read_failure ?? null,
       extractedAt: r.extracted_at ?? null,
       extractedBy: who(r.extracted_by),
       madeCurrentAt: r.made_current_at ?? null,
