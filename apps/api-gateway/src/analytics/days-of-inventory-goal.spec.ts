@@ -91,6 +91,22 @@ describe("days_of_inventory refuses rather than reporting zero", () => {
     ).rejects.toThrow(/every bottle on hand carries a recorded cost/);
   });
 
+  it("names which input is missing when the cost of what sold is withheld (batch review 2026-11-11)", async () => {
+    const service = serviceWith(12.5);
+    (service as any).analyticsService = {
+      getFinancialSummary: async () => ({
+        daysInventoryOutstanding: null,
+        cogs: null,
+        cogsCoverage: { itemsMoved: 12, itemsCosted: 11 },
+        inventoryValue: 900,
+        cogsWindow: { spanDays: 120 },
+      }),
+    };
+    await expect(
+      service.createGoal("r1", { name: "x", metricKey: "days_of_inventory", targetValue: 9 }, { withSales: true }),
+    ).rejects.toThrow(/known for 11 of 12 items sold\.$/);
+  });
+
   it("refuses, naming the gate, for a caller who does not see sales (cost-math 3.1)", async () => {
     const service = serviceWith(12.5);
     (service as any).analyticsService = {

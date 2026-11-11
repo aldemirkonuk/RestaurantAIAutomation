@@ -9,14 +9,21 @@
  *   non-voided checks (ADR 0298 decisions 2 and 8);
  * - `pos_cost_of_goods(house, since)` — the cost each till movement's bottles
  *   carried when they left their lots, a matched void netted back, plus the
- *   late prices settled in the window on any till sale of the item, dated when
- *   they became known (proposal F6; migration what_sold_cost_is_its_draws).
+ *   late prices settled on those same sales; a late price settled in the
+ *   window on a sale before it is named apart and is not in the cost, since
+ *   that sale is not in the window's revenue (proposal F6; batch review
+ *   2026-11-11; migration what_sold_cost_is_its_draws).
  *
  * The invariant: **an unknown cost is never 0.** `cost` in the second read
  * holds priced bottles only, so cost of goods is printed only when no moved
  * item has a bottle of unknown cost; otherwise it is withheld and the reason
  * says "cost known for N of M items" (founder, 2026-10-04: "Withhold, say N
- * of M"). Pure: no I/O, no clock beyond the `now` it is given.
+ * of M"). The withheld total is not shrunk to the known part; the known part
+ * is given apart, as the exact cost of the named items whose every bottle
+ * carries its cost (`costOfCostedItems`), and it feeds no ratio: the items
+ * left out are voids and glass pours, not a random sample, so a ratio over
+ * the rest would lean one way. Pure: no I/O, no clock beyond the `now` it is
+ * given.
  */
 
 import * as E from "./engine";
@@ -40,12 +47,14 @@ export interface TillCostRead {
     bottles_back: number | string;
     cost: number | string;
     settled_after_sale: number | string;
+    settled_on_earlier_sales?: number | string;
     uncosted_out: number | string;
     uncosted_back: number | string;
     in_house?: boolean;
   }>;
   cost?: number | string | null;
   settled_after_sale?: number | string | null;
+  settled_on_earlier_sales?: number | string | null;
   rows?: number;
   rows_unstamped?: number;
   first_move_at?: string | null;
@@ -60,10 +69,19 @@ export interface CogsCoverage {
   bottlesBack: number;
   /** Bottles out or back whose cost is unknown. */
   bottlesUncosted: number;
+  /** Of those, bottles a void gave back with no known cost (most often a void naming no sale). */
+  bottlesBackUncosted: number;
   /** Till rows written before costs were stamped, or glass pours not yet stamped. */
   rowsUnstamped: number;
   /** Ledger rows naming an item that is not this house's: left out, and named. */
   itemsNotInHouse: number;
+  /**
+   * The summed cost of the `itemsCosted` items (six places, unrounded), or
+   * null when one of them did not read as a number. Exact for those items;
+   * not a floor of the total (a void given back at an unknown cost leaves its
+   * sale's cost in the other items' rows).
+   */
+  costedItemsCost: number | null;
 }
 
 export interface SalesCoverage {
@@ -76,8 +94,22 @@ export interface SalesCoverage {
 
 export interface TillFigures {
   cogs: number | null;
-  /** The part of cogs that is late prices settled in the window (on bottles sold in it or before); null with cogs. */
+  /** The part of cogs that is late prices settled on the window's own sales; null with cogs. */
   settledAfterSale: number | null;
+  /**
+   * Late prices settled in the window on bottles sold BEFORE it: not in cogs
+   * (their sales are not in this window's revenue), named so the correction
+   * is seen when it became known (proposal F6). Feeds no ratio. Null when the
+   * cost read failed or the figure did not read as a number.
+   */
+  settledOnEarlierSales: number | null;
+  /**
+   * While cogs is withheld: the exact cost of the items whose every bottle
+   * carries its cost, with how many of how many items those are. Not the
+   * cost of goods and feeds no ratio. Null when cogs is printed, or when no
+   * item is costed.
+   */
+  costOfCostedItems: { amount: number; items: number; of: number } | null;
   revenue: number | null;
   grossMarginDollars: number | null;
   grossMargin: number | null;
@@ -110,8 +142,10 @@ export function cogsCoverageOf(read: TillCostRead): CogsCoverage {
   let bottlesOut = 0;
   let bottlesBack = 0;
   let bottlesUncosted = 0;
+  let bottlesBackUncosted = 0;
   let itemsCosted = 0;
   let itemsMoved = 0;
+  let costedItemsCost: number | null = 0;
   for (const i of mine) {
     const out = num(i.bottles_out);
     const back = num(i.bottles_back);
@@ -126,8 +160,14 @@ export function cogsCoverageOf(read: TillCostRead): CogsCoverage {
     bottlesOut += Number.isFinite(out) ? out : 0;
     bottlesBack += Number.isFinite(back) ? back : 0;
     bottlesUncosted += uncosted;
+    const backUnc = num(i.uncosted_back);
+    if (Number.isFinite(backUnc)) bottlesBackUncosted += backUnc;
     itemsMoved += 1;
-    if (uncosted === 0 && Number.isFinite(num(i.cost))) itemsCosted += 1;
+    const c = num(i.cost);
+    if (uncosted === 0 && Number.isFinite(c)) {
+      itemsCosted += 1;
+      if (costedItemsCost != null) costedItemsCost += c;
+    }
   }
   return {
     itemsMoved,
@@ -135,8 +175,10 @@ export function cogsCoverageOf(read: TillCostRead): CogsCoverage {
     bottlesOut,
     bottlesBack,
     bottlesUncosted,
+    bottlesBackUncosted,
     rowsUnstamped: num(read.rows_unstamped) || 0,
     itemsNotInHouse: items.length - mine.length,
+    costedItemsCost,
   };
 }
 
@@ -159,6 +201,8 @@ export function tillFigures(input: {
   // ---- cost of what sold -------------------------------------------------
   let cogs: number | null = null;
   let settledAfterSale: number | null = null;
+  let settledOnEarlierSales: number | null = null;
+  let costOfCostedItems: TillFigures["costOfCostedItems"] = null;
   let cogsCoverage: CogsCoverage | null = null;
   let cogsBasis: string;
   const firstMoveAt = cost?.first_move_at ?? null;
@@ -168,6 +212,10 @@ export function tillFigures(input: {
   } else {
     cogsCoverage = cogsCoverageOf(cost);
     const c = cogsCoverage;
+    // An absent field is a read from before the function named it apart: 0
+    // would be a claim, so it stays null.
+    const earlier = num(cost.settled_on_earlier_sales);
+    settledOnEarlierSales = Number.isFinite(earlier) ? round2(earlier) : null;
     if (c.itemsMoved === 0) {
       cogsBasis = `cost of what the till sold (${windowDays}d) — null: the till moved no stocked item in the window, and $0 would claim it sold nothing`;
     } else if (c.itemsCosted < c.itemsMoved) {
@@ -176,11 +224,23 @@ export function tillFigures(input: {
         why.push(
           `${plural(c.rowsUnstamped, "till movement")} carried no cost (sold before costs were stamped, or a glass pour)`,
         );
+      if (c.bottlesBackUncosted > 0)
+        why.push(
+          `${plural(c.bottlesBackUncosted, "bottle")} a void gave back named no sale to take its cost from`,
+        );
       cogsBasis =
         `cost of what the till sold (${windowDays}d) — withheld: cost known for ${c.itemsCosted} of ${plural(c.itemsMoved, "item")} sold; ` +
         `${plural(c.bottlesUncosted, "bottle")} left or came back with no invoice cost yet` +
         (why.length ? ` (${why.join("; ")})` : "") +
         ". A smaller number under this label would be a guess.";
+      if (c.itemsCosted > 0 && c.costedItemsCost != null) {
+        costOfCostedItems = {
+          amount: round2(c.costedItemsCost),
+          items: c.itemsCosted,
+          of: c.itemsMoved,
+        };
+        cogsBasis += ` The ${plural(c.itemsCosted, "item")} whose every bottle carries its cost cost ${costOfCostedItems.amount.toFixed(2)} (costOfCostedItems): exact for those items, not the cost of goods, and divided by nothing.`;
+      }
     } else {
       const total = num(cost.cost);
       if (!Number.isFinite(total)) {
@@ -194,11 +254,13 @@ export function tillFigures(input: {
           `cost of what the till sold (${windowDays}d): each bottle at the cost it carried when it left its lot, voids given back at their sale's cost — ` +
           `${plural(c.itemsMoved, "item")}, ${plural(c.bottlesOut - c.bottlesBack, "bottle")} net` +
           (settledAfterSale != null && settledAfterSale !== 0
-            ? `, of which ${settledAfterSale.toFixed(2)} is late prices settled in the window by invoices verified after the bottles sold (some may have sold earlier)`
+            ? `, of which ${settledAfterSale.toFixed(2)} is late prices on these sales, settled by invoices verified after the bottles sold`
             : "") +
           ". Waste, breakage, count corrections and off-till sales are not in it.";
       }
     }
+    if (settledOnEarlierSales != null && settledOnEarlierSales !== 0)
+      cogsBasis += ` Late prices settled in the window on bottles sold before it, ${settledOnEarlierSales.toFixed(2)}, are named apart (settledOnEarlierSales) and are not in it: those sales are not in this window's net sales.`;
   }
 
   // ---- net sales of stocked items ---------------------------------------
@@ -274,6 +336,8 @@ export function tillFigures(input: {
   return {
     cogs,
     settledAfterSale,
+    settledOnEarlierSales,
+    costOfCostedItems,
     revenue,
     grossMarginDollars,
     grossMargin,
@@ -291,7 +355,7 @@ export function tillFigures(input: {
       costDerived:
         "grossMarginDollars, grossMargin, cogsRatio and primeCostRatio divide the cost of what the till sold by its net sales of the same items, and are null when either is; " +
         `inventoryTurnover, daysInventoryOutstanding and gmroi annualise the span the till covers (null under ${MIN_SPAN_DAYS} days) against today's stock at cost, which is null unless every bottle on hand carries a recorded cost (ADR 0051). ` +
-        "deliveredPurchases and shelfValueAtMenuPrice keep their own names and feed no ratio.",
+        "settledOnEarlierSales (late prices settled in the window on bottles sold before it), costOfCostedItems, deliveredPurchases and shelfValueAtMenuPrice keep their own names and feed no ratio.",
     },
   };
 }
@@ -302,6 +366,8 @@ export function withheldTillFigures(windowDays: number): TillFigures {
   return {
     cogs: null,
     settledAfterSale: null,
+    settledOnEarlierSales: null,
+    costOfCostedItems: null,
     revenue: null,
     grossMarginDollars: null,
     grossMargin: null,

@@ -964,9 +964,26 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       );
       const dio = financial?.daysInventoryOutstanding;
       if (typeof dio !== "number" || !Number.isFinite(dio)) {
+        // Still a refusal, not a number: a days-of-stock built on the costed
+        // part of what sold would be a guess under the goal's name. It is
+        // caught per goal (listGoalsWithProgress) and shown as "could not be
+        // scored (<reason>)", so the reason names which input is missing
+        // (batch review 2026-11-11, finding 2).
+        const missing: string[] = [];
+        const cov = financial?.cogsCoverage;
+        if (financial?.cogs == null && cov && cov.itemsMoved > 0)
+          missing.push(
+            `the cost of what the till sold is known for ${cov.itemsCosted} of ${cov.itemsMoved} items sold`,
+          );
+        if (financial?.inventoryValue == null)
+          missing.push("a bottle on hand carries no recorded cost");
+        const span = financial?.cogsWindow?.spanDays;
+        if (typeof span === "number" && span < 28)
+          missing.push(`the till covers ${span} of the 28 days it needs`);
         throw new Error(
           gate.withSales === true
-            ? "Days of stock cannot be read for this restaurant yet: it is today's stock at cost over the cost of what the till sold, so it is only known when every bottle on hand carries a recorded cost, every bottle sold carries its cost, and the till covers 28 days."
+            ? "Days of stock cannot be read for this restaurant yet: it is today's stock at cost over the cost of what the till sold, so it is only known when every bottle on hand carries a recorded cost, every bottle sold carries its cost, and the till covers 28 days." +
+              (missing.length ? ` Here ${missing.join("; ")}.` : "")
             : "Days of stock cannot be read here: it is read from the till's sales, which reach owners and managers only.",
         );
       }

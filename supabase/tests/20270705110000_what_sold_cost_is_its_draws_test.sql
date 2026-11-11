@@ -1,7 +1,8 @@
 -- what_sold_cost_is_its_draws (cost-math lane 3.1): pos_cost_of_goods sums the
 -- cost the till's bottles carried when they left, nets a matched void, adds
--- what a verify settled in the window (on a sale of any day), and counts every bottle whose cost is unknown
--- instead of adding it as 0.
+-- what a verify settled on the window's own sales, names apart (and leaves out
+-- of cost) what a verify in the window settled on sales before it, and counts
+-- every bottle whose cost is unknown instead of adding it as 0.
 --
 -- Self-asserting (assert -> P0004); run with `psql -v ON_ERROR_STOP=1 -f` on a
 -- database built from supabase/migrations. CI runs no supabase/tests file
@@ -181,7 +182,9 @@ begin
 end $$;
 
 -- C8: a glass pour that opens a bottle writes a till sale row; until the pour
--- stamps its draws (#809), that bottle's cost is unknown, not 0.
+-- stamps its draws (#809), that bottle's cost is unknown, not 0. Pinned to
+-- today's exact state (batch review 2026-11-11, NIT): flip to cost 40 and
+-- uncosted_out 0 in the commit that lands #809.
 do $$
 declare e jsonb;
 begin
@@ -190,7 +193,7 @@ begin
     p_source => 'pos', p_idempotency_key => 'cogs-8-1');
   e := pg_temp.item('8');
   assert (e ->> 'bottles_out')::int = 1
-     and ((e ->> 'uncosted_out')::int = 1 or (e ->> 'cost')::numeric = 40),
+     and (e ->> 'uncosted_out')::int = 1 and (e ->> 'cost')::numeric = 0,
     format('C8 FAIL: %s', e);
 end $$;
 
@@ -213,24 +216,38 @@ begin
     format('C10 FAIL: cost %s vs items %s, settled %s', r ->> 'cost', s, r ->> 'settled_after_sale');
 end $$;
 
--- C11: a price settled in the window on bottles sold before it lands in this
--- window, by name, with 0 bottles (proposal F6); a window that starts after
--- the settlement does not see it.
+-- C11: a price settled in the window on bottles sold before it is named in
+-- this window (settled_on_earlier_sales, proposal F6) and is NOT in its cost:
+-- those bottles' sales are not in this window's revenue (batch review
+-- 2026-11-11, finding 1). A window that starts after the settlement does not
+-- see it; a window that holds the sale counts it in cost.
 do $$
-declare e jsonb; later jsonb;
+declare e jsonb; later jsonb; wide jsonb; cost_before numeric := (pg_temp.cogs('a') ->> 'cost')::numeric;
 begin
   perform pg_temp.book('a1', 3, 10.00);
   perform pg_temp.sell('a1', 2, 'cogs-a1-old', 'pos', 'sale', now() - interval '400 days');
   assert pg_temp.item('a1') is null, format('C11 FAIL (before verify): %s', pg_temp.item('a1'));
   perform pg_temp.fin('a1', 12.00);
   e := pg_temp.item('a1');
-  assert (e ->> 'bottles_out')::int = 0 and (e ->> 'cost')::numeric = 4
-     and (e ->> 'settled_after_sale')::numeric = 4 and (e ->> 'uncosted_out')::int = 0,
+  assert (e ->> 'bottles_out')::int = 0 and (e ->> 'cost')::numeric = 0
+     and (e ->> 'settled_after_sale')::numeric = 0
+     and (e ->> 'settled_on_earlier_sales')::numeric = 4
+     and (e ->> 'uncosted_out')::int = 0,
     format('C11 FAIL: %s', e);
-  assert (pg_temp.cogs('a') ->> 'settled_after_sale')::numeric = 2.5 + 0.333333 + 4,
-    format('C11 FAIL (house): %s', pg_temp.cogs('a') ->> 'settled_after_sale');
+  assert (pg_temp.cogs('a') ->> 'cost')::numeric = cost_before,
+    format('C11 FAIL (house cost moved): %s, was %s', pg_temp.cogs('a') ->> 'cost', cost_before);
+  assert (pg_temp.cogs('a') ->> 'settled_after_sale')::numeric = 2.5 + 0.333333
+     and (pg_temp.cogs('a') ->> 'settled_on_earlier_sales')::numeric = 4,
+    format('C11 FAIL (house): %s', pg_temp.cogs('a'));
   later := public.pos_cost_of_goods(pg_temp.house('a'), now() + interval '1 second');
   assert later -> 'items' = '[]'::jsonb, format('C11 FAIL (later window): %s', later);
+  wide := (select e2 from jsonb_array_elements(
+             public.pos_cost_of_goods(pg_temp.house('a'), now() - interval '401 days') -> 'items') e2
+            where (e2 ->> 'inventory_id')::uuid = pg_temp.i('a1'));
+  assert (wide ->> 'bottles_out')::int = 2 and (wide ->> 'cost')::numeric = 24
+     and (wide ->> 'settled_after_sale')::numeric = 4
+     and (wide ->> 'settled_on_earlier_sales')::numeric = 0,
+    format('C11 FAIL (window holding the sale): %s', wide);
 end $$;
 
 rollback;
