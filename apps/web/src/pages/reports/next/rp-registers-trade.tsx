@@ -11,6 +11,7 @@
  * page never writes a basis of its own.
  */
 
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import ReadingList from './ReadingList';
 import {
@@ -198,15 +199,7 @@ const till = analysis<TillWindow>({
     // the till states no figure rather than UTC days dressed as the house's.
     if (w.zoneUnset)
       return {
-        say: (
-          <>
-            This house&rsquo;s time zone isn&rsquo;t set, so no sale can be filed on the house&rsquo;s day
-            yet — nothing is drawn here.{' '}
-            <Link to="/settings?tab=time-zone" className="rp-link rp-ink rp-focus rp-no-drag">
-              Set the time zone in Settings
-            </Link>
-          </>
-        ),
+        say: zoneUnsetSay('no sale can be filed on the house’s day yet'),
         figures: [],
         notes: [],
         basis: [],
@@ -297,10 +290,27 @@ const till = analysis<TillWindow>({
   },
 });
 
+/**
+ * A house with no time zone has no day to file anything on (ADR 0296): the
+ * register states no figure and says so, with the way to set it.
+ */
+export function zoneUnsetSay(what: string): ReactNode {
+  return (
+    <>
+      This house&rsquo;s time zone isn&rsquo;t set, so {what} — nothing is drawn here.{' '}
+      <Link to="/settings?tab=time-zone" className="rp-link rp-ink rp-focus rp-no-drag">
+        Set the time zone in Settings
+      </Link>
+    </>
+  );
+}
+
 /* ───────────────────────────────────────────────────── 3. spend pacing ── */
 
 export interface PacingRegister {
-  basis?: { outflow?: string };
+  basis?: { outflow?: string; uncosted?: string };
+  /** True when the house has no time zone: spend is withheld, commitments are not. */
+  zoneUnset: boolean;
   spendLast30d: number | null;
   spendPrev30d: number | null;
   paceDeltaPct: number | null;
@@ -322,6 +332,7 @@ const pacing = analysis<PacingRegister>({
     const d = obj(raw);
     return {
       basis: d.basis as PacingRegister['basis'],
+      zoneUnset: d.zoneUnset === true,
       spendLast30d: num(d.spendLast30d),
       spendPrev30d: num(d.spendPrev30d),
       paceDeltaPct: num(d.paceDeltaPct),
@@ -355,10 +366,21 @@ const pacing = analysis<PacingRegister>({
         </>
       ),
     ];
-    const basis = [c.basis?.outflow ? `Outflow: ${c.basis.outflow}.` : null];
-    // Two invisible bars are not a chart. When both windows are empty the
-    // sentence is the honest rendering — and it names WHICH windows.
-    if ((c.spendLast30d ?? 0) === 0 && (c.spendPrev30d ?? 0) === 0)
+    const basis = [
+      c.basis?.outflow ? `Outflow: ${c.basis.outflow}.` : null,
+      c.basis?.uncosted ?? null,
+    ];
+    if (c.zoneUnset)
+      return {
+        say: zoneUnsetSay('no delivery can be filed on the house’s day yet; what is committed is still stated'),
+        figures: figures.slice(1),
+        notes: [],
+        basis: [],
+      };
+    // Two invisible bars are not a chart. The orders are read whole (ADR
+    // 0292), so two zeros are a quiet stretch, never a read that came back
+    // empty; the sentence is the honest rendering and names WHICH windows.
+    if (c.spendLast30d === 0 && c.spendPrev30d === 0)
       return {
         say: 'No delivered purchase order falls in either 30-day window, so there is no pace to draw — two bars at zero would say the same thing less clearly.',
         figures,
@@ -402,6 +424,8 @@ export interface WeekRegister {
   /** Since 2026-09-03: true when an extreme is shared and both are withheld. */
   tie: boolean | null;
   trendPerDayPct: number | null;
+  /** True when the house has no time zone: no weekday can be named. */
+  zoneUnset: boolean;
   basis?: { weekday?: string; extremes?: string };
 }
 
@@ -428,6 +452,7 @@ const week = analysis<WeekRegister>({
       worstDay: (d.worstDay ?? null) as string | null,
       tie: typeof d.tie === 'boolean' ? d.tie : null,
       trendPerDayPct: num(d.trendPerDayPct),
+      zoneUnset: d.zoneUnset === true,
       basis: d.basis as WeekRegister['basis'],
     };
   },
@@ -437,6 +462,13 @@ const week = analysis<WeekRegister>({
         'Mean units per weekday over the last 90 days of wine_consumption_log; a weekday with no observation is left blank rather than drawn at zero.',
       w.basis?.extremes,
     ];
+    if (w.zoneUnset)
+      return {
+        say: zoneUnsetSay('no pour can be filed on the house’s weekday yet'),
+        figures: [],
+        notes: [],
+        basis: [],
+      };
     if (w.weekdayProfile.length === 0)
       return {
         say: 'No consumption is recorded in the last 90 days, so the week has no shape yet.',
