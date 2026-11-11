@@ -29,7 +29,7 @@
  * measure off the menu ("1 shot gin") is flagged the same way.
  */
 
-import type { RecipeUnit } from './units';
+import { readsAsThousandAmbiguous, type RecipeUnit } from './units';
 
 export type LineRole = 'stocked' | 'untracked';
 
@@ -92,8 +92,6 @@ export function unitTypo(word: string): boolean {
 }
 /** "1)" or "2." at the start of a numbered list, before the amount. */
 const NUMBERED = /^\d{1,2}[.)]\s+(?=\S)/;
-/** 1,000 or 1.000: a thousand in one country, one in another. Not guessed. */
-const AMBIGUOUS_THOUSAND = /^[1-9]\d{0,2}[.,]\d{3}$/;
 
 /** Things a bar never counts from the shelf: they carry text and cost nothing. */
 const GARNISH = /\b(garnish(?:ed)?|twist|peel|zest|wedge|wheel|sprig|rim(?:med)?)\b/i;
@@ -116,7 +114,7 @@ const LEAD = new RegExp(String.raw`^(${NUM_TOKEN})(?![\d.,])(\s*)(?:(${UNIT_ALT}
 const SPLIT = new RegExp(String.raw`\r?\n|(?<=[^\d\s])\s*\/\s*(?=${NUM_TOKEN}(?![\d.,]))`);
 
 /** "1 1/2", "1½", "½", "22,5", "3/4" → a number; anything else → null. */
-export function readAmount(raw: string): number | null {
+export function readAmount(raw: string, unit?: RecipeUnit | null): number | null {
   const s = raw.trim();
   let m = /^(\d+)\s+(\d+)\/(\d+)$/.exec(s);
   if (m) return Number(m[3]) === 0 ? null : Number(m[1]) + Number(m[2]) / Number(m[3]);
@@ -125,7 +123,7 @@ export function readAmount(raw: string): number | null {
   if (VULGAR[s] !== undefined) return VULGAR[s];
   m = /^(\d+)\/(\d+)$/.exec(s);
   if (m) return Number(m[2]) === 0 ? null : Number(m[1]) / Number(m[2]);
-  if (AMBIGUOUS_THOUSAND.test(s)) return null;
+  if (readsAsThousandAmbiguous(s, unit)) return null;
   if (/^\d+(?:[.,]\d+)?$/.test(s)) return Number(s.replace(',', '.'));
   if (/^\.\d+$/.test(s)) return Number(s);
   return null;
@@ -158,11 +156,12 @@ export function parseLine(line: string): ProposedLine | null {
   };
   const m = LEAD.exec(text);
   if (!m) return asText();
-  const qty = readAmount(m[1]);
-  if (qty === null) return asText();
-  const gap = m[2];
   const unitWord = m[3]?.toLowerCase();
   let unit: RecipeUnit | null = unitWord ? UNIT_WORDS[unitWord] ?? null : null;
+  // The unit settles "1.125": a decimal for oz, still a refusal for ml or no unit.
+  const qty = readAmount(m[1], unit);
+  if (qty === null) return asText();
+  const gap = m[2];
   const rest = m[4] ?? '';
   // "1e3 ml", "30mlgin", "1:1 syrup": the number runs on into something that is not a unit.
   if (unit === null && gap === '' && rest !== '') return asText();

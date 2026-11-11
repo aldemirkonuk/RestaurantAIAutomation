@@ -14,6 +14,21 @@ describe('parseSpec — pasted text into rows to confirm', () => {
     });
   });
 
+  it('reads a three-digit decimal by its unit: 1.125 oz and 1,125 oz are 1.125, 1.500 l is 1.5', () => {
+    expect(parseLine('1.125 oz gin')).toMatchObject({ qty: 1.125, unit: 'oz', label: 'gin', role: 'stocked' });
+    expect(parseLine('1,125 oz gin')).toMatchObject({ qty: 1.125, unit: 'oz', label: 'gin' });
+    expect(parseLine('1.500 l water')).toMatchObject({ qty: 1.5, unit: 'l' });
+    expect(readAmount('1.125', 'oz')).toBe(1.125);
+  });
+
+  it('still refuses 1.500 ml, 1.000 g and a bare 1.125: a thousand in Europe, no unit to settle it', () => {
+    for (const line of ['1.500 ml gin', '1.000 g sugar', '1.125 gin', '1.125 each egg']) {
+      expect(parseLine(line), line).toMatchObject({ qty: null, unit: null, role: 'untracked' });
+    }
+    expect(readAmount('1.125')).toBeNull();
+    expect(readAmount('1.125', 'ml')).toBeNull();
+  });
+
   it('reads "2 dashes Angostura" as 2 dash', () => {
     expect(parseLine('2 dashes Angostura')).toMatchObject({ qty: 2, unit: 'dash', label: 'Angostura', role: 'stocked' });
   });

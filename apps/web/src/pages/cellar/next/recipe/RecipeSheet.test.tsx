@@ -523,6 +523,19 @@ describe('RecipeSheet', () => {
     expect(screen.getByRole('button', { name: /^save$/i })).not.toBeDisabled();
   });
 
+  it('a typed 1.125 with oz saves as a decimal; with ml it still stops Save', async () => {
+    serve(negroni());
+    mount();
+    const amounts = await screen.findAllByLabelText('Amount');
+    fireEvent.change(amounts[0], { target: { value: '1.125' } });
+    // the gin row is in ml: refused with the existing words
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    expect(screen.getByText('Line 1 (gin): 1.125 could be 1125 or 1.125. Type it without the separator.')).toBeInTheDocument();
+    fireEvent.change(screen.getAllByLabelText('Unit')[0], { target: { value: 'oz' } });
+    expect(screen.queryByText(/could be 1125/)).toBeNull();
+    expect(screen.getByRole('button', { name: /^save$/i })).not.toBeDisabled();
+  });
+
   it('round 19: an amount that could be a thousand or one stops Save and says both', async () => {
     serve(negroni());
     mount();
@@ -704,9 +717,9 @@ describe('RecipeSheet', () => {
     expect(h.put.mock.calls[0][1].lines.map((l: { qty: number }) => l.qty)).toEqual(values);
   });
 
-  it('QA round 21: the same amount typed by hand is still refused, and a loaded one stops being exempt once edited', async () => {
+  it('QA round 21: the same amount typed by hand is still refused (in ml; oz reads it as a decimal), and a loaded one stops being exempt once edited', async () => {
     const n = negroni();
-    serve({ ...n, current: { ...n.current!, lines: [{ ...linked('gin', 30, GIN), qtyEntered: 1.125, unitCode: 'oz' }] } });
+    serve({ ...n, current: { ...n.current!, lines: [{ ...linked('gin', 30, GIN), qtyEntered: 1.125, unitCode: 'ml' }] } });
     mount();
     const box = (await screen.findAllByLabelText('Amount'))[0];
     expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled();
