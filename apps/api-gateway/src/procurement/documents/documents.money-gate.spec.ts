@@ -40,7 +40,10 @@ const HOLDERS = [as("owner"), as("manager"), as("admin")];
 const NON_HOLDERS = [staff, as(null), as(undefined), as(""), as("sommelier")];
 
 /** Collaborators that record a touch and then throw, in constructor order. */
-function harness(intakeOverride?: Record<string, unknown>) {
+function harness(
+  intakeOverride?: Record<string, unknown>,
+  dbOverride?: Record<string, unknown>,
+) {
   const reached: string[] = [];
   const tripwire = (name: string) =>
     new Proxy(
@@ -54,7 +57,7 @@ function harness(intakeOverride?: Record<string, unknown>) {
     ) as never;
   const controller = new DocumentsController(
     (intakeOverride ?? tripwire("DocumentIntakeService")) as never,
-    tripwire("DatabaseService"),
+    (dbOverride ?? tripwire("DatabaseService")) as never,
     tripwire("CanonicalDocumentService"),
     tripwire("DeliverySpineService"),
     tripwire("DocumentCorrectionService"),
@@ -379,7 +382,21 @@ describe("POST /procurement/documents answers a non-holder without the money", (
       parsed: PARSE,
       vendor: VENDOR,
     }));
-    const h = harness({ ingest });
+    // The order is this house's (proposal-receipt row 1.3 checks that first;
+    // a foreign one is dropped before intake, `intake-no-silent-drop.spec.ts`).
+    const ownOrder = {
+      getClient: () => ({
+        from: () => {
+          const c: any = {
+            select: () => c,
+            eq: () => c,
+            then: (r: (v: unknown) => void) => r({ count: 1, error: null }),
+          };
+          return c;
+        },
+      }),
+    };
+    const h = harness({ ingest }, ownOrder);
     const res = (await h.controller.upload(
       { ...PHOTO, orderId: ORDER } as never,
       staff as never,
