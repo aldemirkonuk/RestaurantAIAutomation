@@ -12,15 +12,19 @@ import { apiClient, getErrorStatus, isUnconfirmedWrite } from '../services/api/c
 import { importMenu, type MenuImportResult } from '../services/api/menus'
 import { currencyForCountry } from '../lib/currency'
 import { getBrowserTimezone } from '../lib/browserTimezone'
+import { countryCodeFor } from '../lib/countries'
+import { zoneForPlace } from '../lib/zoneForPlace'
 import { writeProof } from '../lib/firstProof'
 import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
 
-type Step = 'you' | 'restaurant' | 'menu'
-type Role = 'Owner' | 'General manager' | 'Beverage lead' | 'Chef'
+/**
+ * Two steps (OB-7, proposal F6, the session's call under the 2026-11-07
+ * /goal): the old "You" step only re-showed the name sign-up already took and
+ * asked a role nothing read, so the welcome moved into the restaurant step.
+ */
+type Step = 'restaurant' | 'menu'
 type MenuMethod = 'photo' | 'file' | 'typed' | null
-
-const roles: Role[] = ['Owner', 'General manager', 'Beverage lead', 'Chef']
 
 /** Where a signed-out visitor is sent, and brought back here after. */
 const SIGN_IN_THEN_GET_STARTED = '/login?redirect=%2Fget-started'
@@ -30,14 +34,14 @@ const SIGN_IN_THEN_GET_STARTED = '/login?redirect=%2Fget-started'
  * staff and managers go to the desk, never owner onboarding; an owner (or no
  * role) resumes at the menu step; no house starts at the first step.
  */
-type Entry = 'sign-in' | 'desk' | 'menu' | 'you'
+type Entry = 'sign-in' | 'desk' | 'menu' | 'restaurant'
 
 function entryFor(user: Pick<User, 'restaurantId' | 'role'> | null): Entry {
   if (!user) return 'sign-in'
   if (user.restaurantId) {
     return user.role === 'staff' || user.role === 'manager' ? 'desk' : 'menu'
   }
-  return 'you'
+  return 'restaurant'
 }
 
 /** Said when the account has a house but this page could not load it. */
@@ -65,9 +69,8 @@ function ArrivalShell({
 }) {
   const label = step
     ? {
-        you: '01 · You',
-        restaurant: '02 · Your restaurant',
-        menu: '03 · Your menu',
+        restaurant: '01 · Your restaurant',
+        menu: '02 · Your menu',
       }[step]
     : null
   return (
@@ -91,15 +94,14 @@ export default function GetStarted() {
   const navigate = useNavigate()
   const { user, loading, createFirstHouse, signInWithSession } = useAuth()
   // No step shows until the entry rule decides, so Welcome never flashes.
-  const [step, setStep] = useState<Step>('you')
+  const [step, setStep] = useState<Step>('restaurant')
   const [entered, setEntered] = useState(false)
   const entryDecided = useRef(false)
   const [name, setName] = useState(user?.name ?? '')
   const nameTouched = useRef(false)
   const [rerouting, setRerouting] = useState(false)
   const [houseNotLoaded, setHouseNotLoaded] = useState(false)
-  const [mobile, setMobile] = useState('')
-  const [role, setRole] = useState<Role | null>(null)
+  const [changingName, setChangingName] = useState(false)
   const [restaurantName, setRestaurantName] = useState('')
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
@@ -107,6 +109,11 @@ export default function GetStarted() {
   const [stateProvince, setStateProvince] = useState('')
   const [postalCode, setPostalCode] = useState('')
   const [restaurantPhone, setRestaurantPhone] = useState('')
+  // What the picked place said about itself (OB-7): its country code and its
+  // UTC offset now. Cleared when the address is typed over.
+  const [placeCountryCode, setPlaceCountryCode] = useState<string | null>(null)
+  const [placeOffset, setPlaceOffset] = useState<number | null>(null)
+  const [pickedZone, setPickedZone] = useState('')
   const [placePoint, setPlacePoint] = useState<{
     latitude: number
     longitude: number
@@ -124,10 +131,21 @@ export default function GetStarted() {
   const [dropping, setDropping] = useState(false)
 
   const currency = useMemo(() => currencyForCountry(country), [country])
-  // The browser's own zone, or undefined if it will not say (item 62,
-  // 2026-09-27) — never a made-up default. `createHouse` sends exactly this;
-  // omitted, the gateway stores NULL rather than inventing a clock.
-  const timezone = useMemo(() => getBrowserTimezone(), [])
+  // The house's clock comes from the place, not the browser (OB-7, F7): a
+  // one-zone country names it; else the browser zone when its offset matches
+  // the place; else the person picks. Never a made-up default (item 62):
+  // with no answer `createHouse` omits it and the gateway stores NULL.
+  const browserZone = useMemo(() => getBrowserTimezone(), [])
+  const zone = useMemo(
+    () =>
+      zoneForPlace({
+        countryCode: placeCountryCode ?? countryCodeFor(country),
+        utcOffsetMinutes: placeOffset,
+        browserZone,
+      }),
+    [browserZone, country, placeCountryCode, placeOffset],
+  )
+  const timezone = zone.source === 'pick' ? pickedZone || undefined : zone.zone
 
   // Decided once: later step changes are the person's own.
   useEffect(() => {
@@ -162,23 +180,6 @@ export default function GetStarted() {
     else navigate('/choose-house', { replace: true })
   }, [navigate, rerouting, user])
 
-  const saveYou = async () => {
-    setSaving(true)
-    setError(null)
-    try {
-      await apiClient.patch('/auth/me', {
-        name: name.trim(),
-        phone: mobile.trim() || undefined,
-      })
-      if (role) sessionStorage.setItem('mudavym:arrival-role', role)
-      setStep('restaurant')
-    } catch (cause: any) {
-      setError(cause?.response?.data?.message || cause?.message || 'We could not save this yet.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
   const useMyLocation = () => {
     if (!navigator.geolocation) {
       setLocationStatus('Location is not available in this browser.')
@@ -202,6 +203,11 @@ export default function GetStarted() {
     setCountry(place.country)
     setStateProvince(place.stateProvince)
     setPostalCode(place.postalCode)
+    // The place's own phone fills the field (OB-7); the person can still edit it.
+    if (place.phone) setRestaurantPhone(place.phone)
+    setPlaceCountryCode(place.countryCode ?? null)
+    setPlaceOffset(place.utcOffsetMinutes ?? null)
+    setPickedZone('')
     if (place.latitude != null && place.longitude != null) {
       setPlacePoint({
         latitude: place.latitude,
@@ -212,14 +218,32 @@ export default function GetStarted() {
   }
 
   const createHouse = async () => {
+    if (!name.trim()) {
+      setError('Your name is needed: it is how the house signs your work.')
+      setChangingName(true)
+      return
+    }
     if (!restaurantName.trim() || !address.trim() || !city.trim() || !country.trim()) {
       setError('Restaurant name and full address are required.')
+      return
+    }
+    if (zone.source === 'pick' && !pickedZone) {
+      setError("Choose the house's clock: the place's time differs from this browser's.")
       return
     }
     setSaving(true)
     setError(null)
     setHouseNotLoaded(false)
     try {
+      // The name is saved only when it was changed here (it came from sign-up).
+      if (name.trim() !== (user?.name ?? '').trim()) {
+        try {
+          await apiClient.patch('/auth/me', { name: name.trim() })
+        } catch {
+          setError('Your name was not saved, so the house was not opened. Try again.')
+          return
+        }
+      }
       const opened = await createFirstHouse({
         restaurantName: restaurantName.trim(),
         address: address.trim(),
@@ -306,15 +330,24 @@ export default function GetStarted() {
 
   if (!entered) return <ArrivalShell step={null} />
 
-  if (step === 'you') {
+  if (step === 'restaurant') {
     return (
       <ArrivalShell step={step}>
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Welcome</p>
-        <h1 className="mt-3 font-serif text-4xl sm:text-5xl leading-tight">
-          Welcome, {name.trim().split(/\s+/)[0] || 'there'}. Let&apos;s set up your restaurant.
-        </h1>
-        <div className="mt-10 space-y-7">
-          <label className="block border-b border-[#211f1b]/25 pb-2">
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">
+          Welcome, {name.trim().split(/\s+/)[0] || 'there'}.
+          {!changingName && name.trim() && (
+            <button
+              type="button"
+              onClick={() => setChangingName(true)}
+              className="ml-3 normal-case tracking-normal text-[#6d685f] underline underline-offset-4"
+            >
+              Change your name
+            </button>
+          )}
+        </p>
+        <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your restaurant</h1>
+        {(changingName || !name.trim()) && (
+          <label className="mt-6 block max-w-md border-b border-[#211f1b]/25 pb-2">
             <span className="text-xs uppercase tracking-wider">Your name · required</span>
             <input
               aria-label="Your name"
@@ -326,62 +359,13 @@ export default function GetStarted() {
               className="mt-2 block w-full bg-transparent font-serif text-2xl outline-none"
             />
           </label>
-          <label className="block border-b border-[#211f1b]/25 pb-2">
-            <span className="text-xs uppercase tracking-wider">Mobile · optional</span>
-            <input
-              aria-label="Mobile"
-              value={mobile}
-              onChange={(event) => setMobile(event.target.value)}
-              placeholder="For urgent stock alerts. Never marketing."
-              className="mt-2 block w-full bg-transparent text-base outline-none"
-            />
-          </label>
-          {mobile.trim() && (
-            <p className="text-sm text-[#6d685f]">
-              If you give a number, we may text urgent stock alerts only. Never marketing.
-              Reply <strong>STOP</strong> anytime. Optional — the account does not depend on it.
-            </p>
-          )}
-          <fieldset>
-            <legend className="text-xs uppercase tracking-wider">Role · optional</legend>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {roles.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setRole(item)}
-                  className={`border px-3 py-2 text-sm ${role === item ? 'border-[#1a5e6b] bg-[#1a5e6b] text-white' : 'border-[#211f1b]/20 bg-white'}`}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-        </div>
-        {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
-        <button
-          type="button"
-          disabled={!name.trim() || saving}
-          onClick={saveYou}
-          className="mt-9 bg-[#1a5e6b] px-6 py-3 text-white disabled:opacity-40"
-        >
-          {saving ? 'Saving…' : 'Continue'}
-        </button>
-      </ArrivalShell>
-    )
-  }
-
-  if (step === 'restaurant') {
-    return (
-      <ArrivalShell step={step}>
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The house</p>
-        <h1 className="mt-3 font-serif text-4xl sm:text-5xl">Your restaurant</h1>
+        )}
         <p className="mt-3 max-w-xl text-[#6d685f]">
-          Find the exact place. Its address sets the house&apos;s timezone and reporting currency.
+          Find the exact place. Its address sets the house&apos;s clock and reporting currency.
         </p>
         {!isMapsConfigured() && (
           <p role="status" className="mt-4 text-sm text-[#6d685f]">
-            Places search needs <code>VITE_GOOGLE_MAPS_API_KEY</code>. Type the address by hand until it is set.
+            Search is off here; type the address.
           </p>
         )}
         <div className="mt-9 space-y-5">
@@ -393,9 +377,12 @@ export default function GetStarted() {
               onChange={(value) => {
                 setAddress(value)
                 setPlacePoint(null)
+                setPlaceOffset(null)
+                setPlaceCountryCode(null)
               }}
               onPlaceSelect={selectPlace}
               locationBias={locationBias}
+              withContact
               placeholder="Restaurant name or address"
               className="mt-2 rounded-none border-x-0 border-t-0 bg-transparent"
             />
@@ -427,7 +414,27 @@ export default function GetStarted() {
             </div>
           </div>
           <div className="border-y border-[#211f1b]/15 py-4 text-sm">
-            <span className="mr-6">Timezone · {timezone ?? 'Not detected'}</span>
+            {zone.source === 'pick' ? (
+              <label className="mr-6 inline-flex flex-wrap items-center gap-2">
+                <span>Clock · the place&apos;s time differs from this browser&apos;s. Choose:</span>
+                <select
+                  aria-label="The house's clock"
+                  value={pickedZone}
+                  onChange={(event) => setPickedZone(event.target.value)}
+                  className="border-b border-[#211f1b]/25 bg-transparent"
+                >
+                  <option value="">Choose…</option>
+                  {zone.choices.map((choice) => (
+                    <option key={choice} value={choice}>{choice}</option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <span className="mr-6">
+                Clock · {timezone ?? 'Not detected'}
+                {timezone && (zone.source === 'country' ? ' (from the country)' : ' (from this browser)')}
+              </span>
+            )}
             <span>Currency · {currency ?? 'Not inferred yet'}</span>
           </div>
         </div>
