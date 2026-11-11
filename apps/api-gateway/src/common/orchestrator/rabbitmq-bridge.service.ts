@@ -672,7 +672,6 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     const payload = msg?.payload || msg;
     const intakeId: string | null =
       typeof payload.intake_id === "string" ? payload.intake_id : null;
-    const intakeAttempt: number = Number(payload.intake_attempt) || 1;
     // The Python email agents put correlation_id on the message envelope
     // (base_agent.py:660-662) and it was being dropped here — the ONLY flow
     // where a gateway NF/decision_log row can truthfully join the Python
@@ -1032,12 +1031,15 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           return "duplicate";
         }
       }
-      // 3b. A re-driven letter (its intake row never heard back, gap G2) may
-      //     already be stored: the first try can have stored it and then
+      // 3b. A letter offered again (its intake row never heard back, gap G2)
+      //     may already be stored: the first try can have stored it and then
       //     failed to say so. Its own intake id, written on the row below, is
       //     the key that holds for every door, including the inbound address
-      //     whose events carry no Gmail id.
-      if (intakeId && intakeAttempt > 1) {
+      //     whose events carry no Gmail id. Checked on EVERY try, not only
+      //     when intake_attempt > 1: a house's "Read again" resets attempts
+      //     to 0, so the claim publishes it as attempt 1, and a repeat
+      //     delivery of an unsettled row is published as attempt 1 too.
+      if (intakeId) {
         const { data: stored, error: storedError } =
           await this.databaseService.supabase
             .from("procurement_conversations")
