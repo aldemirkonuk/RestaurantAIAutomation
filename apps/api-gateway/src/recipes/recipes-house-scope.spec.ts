@@ -39,6 +39,9 @@ const VB1 = "b1000000-0000-4000-8000-000000000001";
 const VB_STRAY = "b1000000-0000-4000-8000-0000000000a0";
 const ITEM_A = "a2000000-0000-4000-8000-000000000001";
 const ITEM_B = "b2000000-0000-4000-8000-000000000001";
+const ITEM_A_ARCHIVED = "a3000000-0000-4000-8000-0000000000ac";
+const AUTHOR_A = "a9000000-0000-4000-8000-000000000001";
+const VA0 = "a1000000-0000-4000-8000-000000000000";
 
 /* ── part 1: the real guard, over every declared route ───────────────── */
 
@@ -86,8 +89,8 @@ describe("recipes: the path's house is the caller's (real guard, every route)", 
   afterEach(() => jest.restoreAllMocks());
   const routes = declaredRoutes();
 
-  it("declares the four routes the sheet calls, all under :restaurantId", () => {
-    expect(routes.map((r) => r.handler).sort()).toEqual(["getRecipe", "listVersions", "saveRecipe", "shelf"]);
+  it("declares the five routes the sheet calls, all under :restaurantId", () => {
+    expect(routes.map((r) => r.handler).sort()).toEqual(["getRecipe", "listVersions", "readVersion", "saveRecipe", "shelf"]);
     for (const r of routes) expect(r.path.split("/")[0]).toBe(":restaurantId");
   });
 
@@ -213,7 +216,7 @@ function twoHouses() {
     version: n,
     yield_serves: 1,
     created_at: `2026-11-0${n}`,
-    author: null,
+    author: house === HOUSE_A ? AUTHOR_A : null,
   });
   return {
     cocktails: [
@@ -232,25 +235,28 @@ function twoHouses() {
       { cocktail_id: DRINK_A_FOREIGN_VERSION, version_id: VA_FOREIGN, restaurant_id: HOUSE_A },
     ],
     recipe_versions: [
-      version(VA1, HOUSE_A, DRINK_A, 1),
+      version(VA0, HOUSE_A, DRINK_A, 1),
+      version(VA1, HOUSE_A, DRINK_A, 2),
       version(VB1, HOUSE_B, DRINK_B, 1),
       // Rows that name house B under house A's drink or id: never shown to A.
-      version(VB_STRAY, HOUSE_B, DRINK_A, 2),
+      version(VB_STRAY, HOUSE_B, DRINK_A, 3),
       version(VA_FOREIGN, HOUSE_B, DRINK_A_FOREIGN_VERSION, 1),
     ],
     recipe_lines: [
       line("la1", VA1, HOUSE_A, 1, "Gin", ITEM_A),
       line("la2", VA1, HOUSE_A, 2, "Campari", ITEM_B),
+      line("la0", VA0, HOUSE_A, 1, "Old amaro", ITEM_A_ARCHIVED),
       line("lb-stray", VA1, HOUSE_B, 3, "B-SECRET line", null),
       line("lb1", VB1, HOUSE_B, 1, "B-SECRET vermouth", null),
     ],
     cocktail_ingredients: [],
+    users: [{ user_id: AUTHOR_A, name: "Ayşe Bar" }],
     restaurant_inventory: [
       item(ITEM_A, HOUSE_A, "House gin"),
       item(ITEM_B, HOUSE_B, "B-ONLY campari"),
       item("a3000000-0000-4000-8000-0000000000aa", HOUSE_A, "100% agave"),
       item("a3000000-0000-4000-8000-0000000000ab", HOUSE_A, "Gin_x"),
-      item("a3000000-0000-4000-8000-0000000000ac", HOUSE_A, "Archived amaro", { is_active: false }),
+      item(ITEM_A_ARCHIVED, HOUSE_A, "Archived amaro", { is_active: false }),
       item("a3000000-0000-4000-8000-0000000000ad", HOUSE_A, "Deleted amaro", { deleted_at: "2026-10-01" }),
       item("b3000000-0000-4000-8000-0000000000ae", HOUSE_B, "B-ONLY amaro"),
       ...shelf,
@@ -288,7 +294,7 @@ describe("recipes: house A never reads, versions or saves house B's recipe (real
   it("reads its own drink: its lines only, priced from its own lots", async () => {
     const r: any = await service().svc.getRecipe(HOUSE_A, DRINK_A, "owner");
     expect(r.cocktail).toMatchObject({ name: "Negroni", price: 450 });
-    expect(r.versionCount).toBe(1);
+    expect(r.versionCount).toBe(2);
     expect(r.current.versionId).toBe(VA1);
     expect(r.current.lines.map((l: any) => l.label)).toEqual(["Gin", "Campari"]);
     expect(r.current.lines[0]).toMatchObject({ itemName: "House gin", status: "linked", costPerServe: 30 });
@@ -317,9 +323,34 @@ describe("recipes: house A never reads, versions or saves house B's recipe (real
     expect(await statusOf(service().svc.getRecipe(HOUSE_A, DRINK_A_FOREIGN_VERSION, "owner"))).toBe(503);
   });
 
-  it("versions: lists only its own rows for its own drink", async () => {
+  it("versions: lists only its own rows for its own drink, with who saved each", async () => {
     const v = await service().svc.listVersions(HOUSE_A, DRINK_A);
-    expect(v.map((x) => x.versionId)).toEqual([VA1]);
+    expect(v.map((x) => x.versionId)).toEqual([VA1, VA0]);
+    expect(v[0]).toMatchObject({ authorName: "Ayşe Bar" });
+  });
+
+  it("past version: reads its own lines, at today's prices, and flags an archived item", async () => {
+    const r: any = await service().svc.readVersion(HOUSE_A, DRINK_A, VA0, "owner");
+    expect(r.version.versionId).toBe(VA0);
+    expect(r.version.lines).toEqual([
+      expect.objectContaining({ label: "Old amaro", itemName: "Archived amaro", itemGone: "archived", status: "linked" }),
+    ]);
+    expect(JSON.stringify(r)).not.toMatch(/B-SECRET|B-ONLY/);
+  });
+
+  it("past version: a staff read carries no money", async () => {
+    const r: any = await service().svc.readVersion(HOUSE_A, DRINK_A, VA1, "staff");
+    expect(r.cost).toBeNull();
+    expect(r.version.lines.every((l: any) => l.costPerServe === null && l.costPerServeExact === null)).toBe(true);
+  });
+
+  it.each([
+    ["house B's version of its own drink", DRINK_B, VB1],
+    ["a house-B row filed under its drink", DRINK_A, VB_STRAY],
+    ["its own version of another drink", DRINK_A_STRAY_POINTER, VA1],
+    ["a version of house B's drink", DRINK_B, VA1],
+  ])("past version refuses %s with 404", async (_n, drink, v) => {
+    expect(await statusOf(service().svc.readVersion(HOUSE_A, drink, v, "owner"))).toBe(404);
   });
 
   it.each([
@@ -415,6 +446,21 @@ describe("recipes: out-of-range numbers are a 400 with a sentence (real Validati
     expect(res.status).toBe(400);
     expect((await res.json()).message).toBe("A recipe makes at most 1,000 serves.");
     expect(rpcCalls).toEqual([]);
+  });
+
+  it.each(["\u00a0", " \u2003 "])("refuses a label of only spaces (%j) with 400, never reaching the database", async (label) => {
+    rpcCalls.length = 0;
+    const res = await put({ expectedVersionId: null, yieldServes: 1, lines: [line(30), { ...line(30), label }] });
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toBe("Ingredient 2 needs a name.");
+    expect(rpcCalls).toEqual([]);
+  });
+
+  it("saves a label with no-break spaces around it, trimmed", async () => {
+    rpcCalls.length = 0;
+    const res = await put({ expectedVersionId: null, yieldServes: 1, lines: [{ ...line(30), label: "\u00a0Gin\u00a0" }] });
+    expect(res.status).toBe(200);
+    expect((rpcCalls[0].p_lines as Row[])[0].label).toBe("Gin");
   });
 
   it("saves the largest amounts it allows", async () => {
