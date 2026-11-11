@@ -21,6 +21,7 @@ import { OnboardingProxyController } from "./onboarding-proxy.controller";
 import { CommunicationsModule } from "../../communications/communications.module";
 import { PlatformOperatorGuard, PlatformOperatorService } from "./platform-operator.service";
 import { AgentOperationsController } from "./agent-operations.controller";
+import { MailIntakeService } from "./mail-intake.service";
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { AgentOperationsController } from "./agent-operations.controller";
     SenderReputationService,
     ProspectsService,
     InboundAddressService,
+    MailIntakeService,
   ],
   exports: [
     OrchestratorService,
@@ -60,6 +62,8 @@ import { AgentOperationsController } from "./agent-operations.controller";
     SenderReputationService,
     ProspectsService,
     InboundAddressService,
+    // The durable record every inbound door writes first (gap G2).
+    MailIntakeService,
   ],
 })
 export class OrchestratorModule {}
