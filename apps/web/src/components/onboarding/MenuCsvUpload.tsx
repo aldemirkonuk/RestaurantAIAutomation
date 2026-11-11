@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { FileSpreadsheet, Upload, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
-import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
+import { importMenu, readRefusalWords, type MenuImportSuccess } from '../../services/api/menus'
 import {
   DOCUMENT_ACCEPT,
   MAX_UPLOAD_BYTES,
@@ -205,7 +205,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
           result = await importOne(await readFile(f))
         } catch (err: any) {
           failures.push(
-            `${f.name}: ${err?.response?.data?.message || err?.message || 'import failed'}`,
+            `${f.name}: ${readRefusalWords(err, 'import failed')}`,
           )
         }
       }
@@ -221,7 +221,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
           : null
       onSuccess(result, { image })
     } catch (e: any) {
-      setError(e?.response?.data?.message || e?.message || 'Import failed. Please try again.')
+      setError(readRefusalWords(e, 'Import failed. Please try again.'))
     } finally {
       setLoading(false)
       setProgress(null)
