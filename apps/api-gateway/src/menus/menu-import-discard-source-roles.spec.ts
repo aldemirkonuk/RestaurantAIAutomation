@@ -110,3 +110,28 @@ describe("GET /menu-versions/:menuId/source -- owner or manager only", () => {
     expect(sourceUrl).not.toHaveBeenCalled();
   });
 });
+
+describe("GET /menu-versions/:id/read -- a finished background read follows the same raw-line rule", () => {
+  function controller() {
+    const readStatus = jest.fn(async () => ({
+      menuId: "m-1",
+      state: "done" as const,
+      failure: null,
+      warnings: [],
+      reply: structuredClone(READ),
+    }));
+    return { c: new MenuVersionsController({ readStatus } as any, orgs("staff")), readStatus };
+  }
+
+  it("an owner is sent the raw text; staff are not, and are told it was held back", async () => {
+    const { c, readStatus } = controller();
+    const owner: any = await c.read("rest-1", "owner", "m-1");
+    expect(readStatus).toHaveBeenCalledWith("rest-1", "m-1");
+    expect(owner.reply.items[0].rawText).toBe(READ.items[0].rawText);
+    const staff: any = await c.read("rest-1", "staff", "m-1");
+    expect(staff.reply.items[0].rawText).toBeNull();
+    expect(staff.reply.rawLineWithheld).toBe(true);
+    expect(JSON.stringify(staff)).not.toContain("cost 41");
+  });
+
+});
