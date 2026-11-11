@@ -24,6 +24,7 @@ import aiohttp
 
 from utils.logger import setup_logger
 from config.settings import get_settings
+from services.rfc822_message_id import canonical_message_id, message_ids_in
 
 logger = setup_logger("email_composer_service")
 
@@ -1029,11 +1030,14 @@ AI DRAFT — {tags.get('urgency','normal').upper()} PRIORITY
 
                 if not thread_id and headers.get("gmail_thread_id"):
                     thread_id = headers["gmail_thread_id"]
-                if headers.get("message_id"):
-                    in_reply_to = headers["message_id"]
-                    references_chain.append(headers["message_id"])
-                    if headers.get("references"):
-                        references_chain.extend(headers["references"].split())
+                # The stored shape (`<id>`): the gateway writes only `<...>`
+                # tokens into In-Reply-To/References, so a bare id stored by an
+                # older door would have been dropped and the reply unthreaded.
+                message_id = canonical_message_id(headers.get("message_id"))
+                if message_id:
+                    in_reply_to = message_id
+                    references_chain.append(message_id)
+                    references_chain.extend(message_ids_in(headers.get("references")))
                     break
 
         references = (

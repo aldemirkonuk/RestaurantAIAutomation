@@ -21,6 +21,11 @@ from typing import Dict, Any, Optional, List, Tuple
 from core.base_agent import BaseAgent
 from core.message_bus import EventPriority
 from core.database import DatabaseClient
+from services.rfc822_message_id import (
+    canonical_message_id,
+    message_id_variants,
+    message_ids_in,
+)
 from utils.logger import setup_logger
 from config.settings import get_settings
 
@@ -110,7 +115,8 @@ class EmailParsingAgent(BaseAgent):
         sender = payload.get("from", "")
         subject = payload.get("subject", "")
         body = payload.get("body", "")
-        message_id_header = payload.get("message_id_header", "")
+        # One stored shape whatever door published it (rfc822_message_id.py).
+        message_id_header = canonical_message_id(payload.get("message_id_header"))
         in_reply_to = payload.get("in_reply_to", "")
         references = payload.get("references", "")
         gmail_message_id = payload.get("gmail_message_id", "")
@@ -324,12 +330,13 @@ class EmailParsingAgent(BaseAgent):
         self, in_reply_to: str, references: str
     ) -> Optional[Dict[str, Any]]:
         """Match by In-Reply-To or References headers"""
-        # Parse reference IDs
-        ref_ids = []
-        if in_reply_to:
-            ref_ids.append(in_reply_to.strip())
-        if references:
-            ref_ids.extend(references.strip().split())
+        # Parse reference IDs: In-Reply-To first, then References, each id in
+        # the stored shape. A row may still hold the bare shape (written
+        # before the 20270625100000 backfill), so each is matched both ways.
+        ref_ids = message_ids_in(in_reply_to)
+        for ref_id in message_ids_in(references):
+            if ref_id not in ref_ids:
+                ref_ids.append(ref_id)
 
         if not ref_ids:
             return None
@@ -340,7 +347,7 @@ class EmailParsingAgent(BaseAgent):
                 result = (
                     await self.db.supabase.table("procurement_conversations")
                     .select("id, order_id, thread_id")
-                    .eq("message_id", ref_id)
+                    .in_("message_id", message_id_variants(ref_id))
                     .limit(1)
                     .execute()
                 )
