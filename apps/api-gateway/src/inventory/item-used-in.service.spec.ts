@@ -14,6 +14,8 @@ function seed(item: Record<string, any>) {
   db.tables.menu_items = [];
   db.tables.cocktail_ingredients = [];
   db.tables.cocktails = [];
+  db.tables.recipe_lines = [];
+  db.tables.recipe_current = [];
   const svc = new ItemUsedInService({ supabase: db } as any);
   return { db, svc };
 }
@@ -98,5 +100,78 @@ describe("ItemUsedInService (proposal I4/I11)", () => {
   it("an item of another house is not found", async () => {
     const { svc } = seed({ kind: "food", display_name: "Un", beverage_id: null, master_wine_id: null });
     await expect(svc.usedIn("house-2", I)).rejects.toMatchObject({ status: 404 });
+  });
+
+  describe("in drink recipes (ADR 0360, reverse of the line picker)", () => {
+    const rl = (id: string, version: string, more: Record<string, any> = {}) => ({
+      id, version_id: version, restaurant_id: H, inventory_id: I, position: 1,
+      label: "Rakı", qty_entered: 40, unit_code: "ml", ...more,
+    });
+    const drinks = (db: FakeDb, n: number) => {
+      db.tables.cocktails = Array.from({ length: n }, (_, k) => ({
+        id: `c${k}`, restaurant_id: H, name: `Cocktail ${k}`, display_name: null, deleted_at: null,
+      }));
+    };
+
+    it("(a) lists current-version lines of house cocktails only", async () => {
+      const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: null, master_wine_id: null });
+      db.tables.cocktails = [
+        { id: "c-sour", restaurant_id: H, name: "sour", display_name: "Unx Sour", deleted_at: null },
+        { id: "c-gone", restaurant_id: H, name: "Gone", display_name: null, deleted_at: "2027-01-01" },
+        { id: "c-other", restaurant_id: "house-2", name: "Other", display_name: null, deleted_at: null },
+      ];
+      db.tables.recipe_current = [
+        { restaurant_id: H, cocktail_id: "c-sour", version_id: "v-new" },
+        { restaurant_id: H, cocktail_id: "c-gone", version_id: "v-gone" },
+        { restaurant_id: "house-2", cocktail_id: "c-other", version_id: "v-other" },
+      ];
+      db.tables.recipe_lines = [
+        rl("l1", "v-new", { label: "Unx 40", qty_entered: "40", unit_code: "ml" }),
+        rl("l2", "v-old"),
+        rl("l3", "v-gone"),
+        rl("l4", "v-other", { restaurant_id: "house-2" }),
+        rl("l5", "v-new", { inventory_id: "item-2" }),
+      ];
+      const out = await svc.usedIn(H, I);
+      expect(out.inDrinkRecipes).toEqual({
+        readable: true,
+        source: "Drinks whose current recipe has a line linked to this item.",
+        lines: [{ cocktailId: "c-sour", name: "Unx Sour", label: "Unx 40", qtyEntered: 40, unitCode: "ml" }],
+      });
+    });
+
+    it("(b) a failed recipe_lines read is unreadable, never []", async () => {
+      const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: null, master_wine_id: null });
+      db.failures.recipe_lines = "relation recipe_lines does not exist";
+      const out = await svc.usedIn(H, I);
+      expect(out.inDrinkRecipes).toMatchObject({ readable: false, lines: null });
+      expect(out.inDrinkRecipes.source).toContain("could not be read");
+    });
+
+    it("(b) a failed recipe_current read is unreadable, never []", async () => {
+      const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: null, master_wine_id: null });
+      db.tables.recipe_lines = [rl("l1", "v1")];
+      db.failures.recipe_current = "boom";
+      const out = await svc.usedIn(H, I);
+      expect(out.inDrinkRecipes).toMatchObject({ readable: false, lines: null });
+    });
+
+    it("(c) 1,001 lines across 1,001 current cocktails all come back (paging and chunking)", async () => {
+      const { db, svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: null, master_wine_id: null });
+      drinks(db, 1001);
+      db.tables.recipe_current = Array.from({ length: 1001 }, (_, k) => ({
+        restaurant_id: H, cocktail_id: `c${k}`, version_id: `v${k}`,
+      }));
+      db.tables.recipe_lines = Array.from({ length: 1001 }, (_, k) => rl(`l${String(k).padStart(5, "0")}`, `v${k}`));
+      const out = await svc.usedIn(H, I);
+      expect(out.inDrinkRecipes.lines).toHaveLength(1001);
+    });
+
+    it("(d) the recipes note no longer says drink", async () => {
+      const { svc } = seed({ kind: "spirit", display_name: "Unx", beverage_id: null, master_wine_id: null });
+      const out = await svc.usedIn(H, I);
+      expect(out.recipes.note).toBe("Dish recipes are not recorded yet, so no dish recipe is shown here.");
+      expect(out.recipes.note).not.toMatch(/drink/i);
+    });
   });
 });

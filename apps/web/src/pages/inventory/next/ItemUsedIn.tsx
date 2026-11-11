@@ -22,6 +22,8 @@ export type UsedInLoad = { status: 'reading' } | { status: 'failed'; reason: str
 export const RECIPES_UNKNOWN =
   'Dish recipes are not read on this page yet, so whether a recipe uses this item is not known here.';
 
+export const DRINK_RECIPES_UNREAD = 'Which drink recipes use this item could not be read here.';
+
 /** A recipe quantity as a person writes it: 0.30000000000000004 reads 0.3, 29.5735295625 reads 29.57. */
 export function fmtRecipeQty(n: number): string {
   return n.toLocaleString('en-GB', { maximumFractionDigits: 2 });
@@ -34,6 +36,7 @@ function Group<T>({
   line,
   testid,
   hideWhenEmpty,
+  unread,
 }: {
   title: string;
   group: ItemUsedInGroup<T>;
@@ -42,12 +45,14 @@ function Group<T>({
   testid: string;
   /** Only the "named, not linked" group: nothing to link is nothing to say. */
   hideWhenEmpty?: boolean;
+  /** Replaces the generic unread sentence with one that names the group. */
+  unread?: string;
 }) {
   if (!group.readable || group.lines === null) {
     return (
       <section className="ivd-used-g" data-testid={testid}>
         <h4 className="ivd-used-h">{title}</h4>
-        <p className="iv-note">This could not be read, so nothing is shown here.</p>
+        <p className="iv-note">{unread ?? 'This could not be read, so nothing is shown here.'}</p>
       </section>
     );
   }
@@ -120,7 +125,7 @@ export default function ItemUsedIn({
       </p>
     );
   } else {
-    const { soldAs, inCocktails, namedNotLinked } = load.data;
+    const { soldAs, inCocktails, inDrinkRecipes, namedNotLinked } = load.data;
     body = (
       <>
         <Group title="Sold as" testid="ivd-used-sold" group={soldAs} line={menu} />
@@ -133,6 +138,17 @@ export default function ItemUsedIn({
             key: `${c.cocktailId}-${i}`,
             text: c.name,
             side: c.quantity !== null ? `${fmtRecipeQty(c.quantity)}${c.unit ? ` ${c.unit}` : ''}` : undefined,
+          })}
+        />
+        <Group
+          title="In drink recipes"
+          testid="ivd-used-drink-recipes"
+          // An older gateway does not send the field: that is unread, never None.
+          group={inDrinkRecipes ?? { readable: false, lines: null, source: DRINK_RECIPES_UNREAD }}
+          unread={DRINK_RECIPES_UNREAD}
+          line={(d, i) => ({
+            key: `${d.cocktailId}-${i}`,
+            text: `${d.name} — ${fmtRecipeQty(d.qtyEntered)} ${d.unitCode} (${d.label})`,
           })}
         />
         <Group
