@@ -46,14 +46,20 @@
  * another drink and coming back finds the typed lines again, said as unsaved,
  * still pinned to the version they were typed over. Leaving the page while a
  * draft is unsaved asks the browser to warn first.
+ *
+ * Earlier versions open to their lines (round 17 D8). An editor can start
+ * from one: its lines, serves, glass, garnish and method go onto the sheet as
+ * an unsaved draft, and saving makes them a new current version. History is
+ * never rewritten, and the save is still pinned to the version that was
+ * current, so a colleague's save in between is a 409, not an overwrite.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ClipboardPaste, History, Plus, RotateCcw, Save } from 'lucide-react';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { getErrorStatus } from '../../../../services/api/client';
-import type { CocktailRecipe, RecipeLine, SaveRecipeBody } from '../../../../services/api/recipes';
+import type { CocktailRecipe, RecipeLine, RecipeVersion, SaveRecipeBody } from '../../../../services/api/recipes';
 import LineRow, { LineRowRead, rowName, rowQty, type DraftRow } from './LineRow';
-import { draftKey, dropDraft, keepDraft, takeDraft } from './drafts';
+import { draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft, type DraftMeta } from './drafts';
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { qtyText, readsAsThousandAmbiguous } from './units';
 import WhatIsInAServe from './WhatIsInAServe';
@@ -61,6 +67,7 @@ import {
   useCanEditRecipe,
   useHouseMoney,
   useRecipe,
+  useRecipeVersion,
   useRecipeVersions,
   useSaveRecipe,
 } from './useRecipe';
@@ -119,6 +126,16 @@ function fromProposal(p: ProposedLine): DraftRow {
   };
 }
 
+/** Serves, glass, garnish and method of a saved version, as a draft holds them. */
+function metaOf(v: Pick<RecipeVersion, 'yieldServes' | 'glass' | 'garnish' | 'method'> | null | undefined): DraftMeta {
+  return {
+    yieldServes: v?.yieldServes ?? 1,
+    glass: v?.glass ?? '',
+    garnish: v?.garnish ?? '',
+    method: v?.method ?? '',
+  };
+}
+
 type Proposed = { from: 'legacy' | 'paste'; lines: ProposedLine[]; note: string };
 
 /** The old recipe box's rows, read through the same parser as a paste. */
@@ -161,14 +178,66 @@ function LegacyLines({ data }: { data: CocktailRecipe }) {
   );
 }
 
+/** One earlier version, opened: its lines as written and, for an editor, a way to start from it. */
+function PastVersion({
+  cocktailId,
+  versionId,
+  onStartFrom,
+  say,
+}: {
+  cocktailId: string;
+  versionId: string;
+  onStartFrom: ((v: RecipeVersion) => void) | null;
+  say: ((n: number) => string) | null;
+}) {
+  const v = useRecipeVersion(cocktailId, versionId, true);
+  if (v.loading) return <p className="cl-note" role="status">Reading this version…</p>;
+  if (v.error || !v.data) {
+    return (
+      <p className="cl-note" role="alert">
+        This version could not be read{v.error ? ` (${v.error})` : ''}. It is unread, not gone.
+      </p>
+    );
+  }
+  const { version, cost } = v.data;
+  return (
+    <div className="cl-rcp-past" data-testid="recipe-past-version">
+      <ol className="cl-rcp-lines">
+        {version.lines.map((l) => (
+          <LineRowRead key={l.id} row={fromServer(l)} />
+        ))}
+      </ol>
+      {say && cost?.complete && cost.perServe != null ? (
+        <p className="cl-note">Would cost {say(cost.perServe)} a serve at today's prices.</p>
+      ) : null}
+      {onStartFrom ? (
+        <button type="button" className="cl-btn cl-focus" style={{ marginTop: 6 }} onClick={() => onStartFrom(version)}>
+          <RotateCcw size={13} aria-hidden />
+          Start from version {version.version}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * The versions before the one on the sheet. The gateway lists every version,
- * the current one included, so the current one is left out here. It sends
- * the author as an account id and each version as a line count, so the list
- * says when and how many lines, not who or which.
+ * the current one included, so the current one is left out here. Each one
+ * opens to its lines; who saved it is said by name when the gateway knows it.
  */
-function Versions({ cocktailId, currentId }: { cocktailId: string; currentId: string | null }) {
+function Versions({
+  cocktailId,
+  currentId,
+  onStartFrom,
+  say,
+}: {
+  cocktailId: string;
+  currentId: string | null;
+  onStartFrom: ((v: RecipeVersion) => void) | null;
+  say: ((n: number) => string) | null;
+}) {
   const v = useRecipeVersions(cocktailId, true);
+  const [open, setOpen] = useState<string | null>(null);
   if (v.loading) return <p className="cl-note" role="status">Reading the earlier versions…</p>;
   if (v.error || !v.data) {
     return (
@@ -183,10 +252,24 @@ function Versions({ cocktailId, currentId }: { cocktailId: string; currentId: st
     <ol className="cl-rcp-versions" data-testid="recipe-versions">
       {earlier.map((x) => (
         <li key={x.versionId}>
-          <span className="cl-num">Version {x.version}</span>
-          <span className="cl-dim"> · {when(x.createdAt)}</span>
-          {x.author && !UUIDISH.test(x.author) ? <span className="cl-dim"> · {x.author}</span> : null}
-          <span className="cl-dim"> · {count(x.lineCount, 'ingredient', 'ingredients')}</span>
+          <button
+            type="button"
+            className="cl-linkish cl-focus"
+            aria-expanded={open === x.versionId}
+            onClick={() => setOpen((o) => (o === x.versionId ? null : x.versionId))}
+          >
+            <span className="cl-num">Version {x.version}</span>
+            <span className="cl-dim"> · {when(x.createdAt)}</span>
+            {x.authorName ? (
+              <span className="cl-dim"> · {x.authorName}</span>
+            ) : x.author && !UUIDISH.test(x.author) ? (
+              <span className="cl-dim"> · {x.author}</span>
+            ) : null}
+            <span className="cl-dim"> · {count(x.lineCount, 'ingredient', 'ingredients')}</span>
+          </button>
+          {open === x.versionId ? (
+            <PastVersion cocktailId={cocktailId} versionId={x.versionId} onStartFrom={onStartFrom} say={say} />
+          ) : null}
         </li>
       ))}
     </ol>
@@ -262,15 +345,23 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   // The typed lines a "Load the saved recipe" replaced, kept until put back, thrown away or saved over.
   const [setAside, setSetAside] = useState<DraftRow[] | null>(kept?.setAside ?? null);
   const [restored, setRestored] = useState(Boolean(kept?.dirty));
+  // Serves, glass, garnish and method as this draft has them; null while they are the saved version's.
+  const [meta, setMeta] = useState<DraftMeta | null>(kept?.meta ?? null);
   const seededFrom = useRef<string | null | undefined>(kept ? kept.openedFrom : undefined);
 
   // Write the unsaved draft through to the session store, and drop it once
   // nothing typed is left unsaved.
   useEffect(() => {
     if (!canEdit) return;
-    if ((dirty && rows) || setAside) keepDraft(storeKey, { rows: rows ?? [], openedFrom, dirty, setAside });
+    if ((dirty && rows) || setAside) keepDraft(storeKey, { rows: rows ?? [], openedFrom, dirty, setAside, meta });
     else dropDraft(storeKey);
-  }, [canEdit, storeKey, rows, openedFrom, dirty, setAside]);
+  }, [canEdit, storeKey, rows, openedFrom, dirty, setAside, meta]);
+
+  // The drink is gone from this house: no draft of it, for anyone, can ever be
+  // saved, so none may keep the leave-page warning alive.
+  useEffect(() => {
+    if (recipe.status === 404) dropDraftsForDrink(cocktailId);
+  }, [recipe.status, cocktailId]);
 
   const data = recipe.data;
   const versionId = data?.current?.versionId ?? null;
@@ -280,6 +371,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
     seededFrom.current = v;
     setOpenedFrom(v);
     setRows((d.current?.lines ?? []).map(fromServer));
+    setMeta(null);
     setDirty(false);
     // A pasted spec still being looked at survives a re-seed; the old box's
     // rows are re-read from what the server now says.
@@ -311,8 +403,9 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
 
   const c = data.cocktail;
   const lines = rows ?? [];
-  const glass = data.current?.glass ?? c.glass;
-  const garnish = data.current?.garnish ?? c.garnish;
+  // A draft started from an earlier version shows that version's glass and garnish.
+  const glass = (meta ? meta.glass || null : data.current?.glass) ?? c.glass;
+  const garnish = (meta ? meta.garnish || null : data.current?.garnish) ?? c.garnish;
   const hasLegacy = !data.current && data.legacyLines.length > 0;
   const behind = canEdit && dirty && versionId !== openedFrom;
 
@@ -347,11 +440,25 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
     }
   };
 
+  // Round 17 D8: an earlier version's lines and settings become the draft; a
+  // draft already typed is set aside, never dropped.
+  const startFrom = (v: RecipeVersion) => {
+    if (dirty && rows && rows.length > 0) setSetAside(rows);
+    setMeta(metaOf(v));
+    edit(() => v.lines.map(fromServer));
+    setShowVersions(false);
+    setSaid({
+      tone: 'ok',
+      text: `Version ${v.version} is on the sheet. Nothing is saved yet: saving makes it the current recipe as a new version.`,
+    });
+  };
+
   const doSave = async () => {
     if (blocked || save.isPending) return;
+    const m = meta ?? metaOf(data.current);
     const body: SaveRecipeBody = {
       expectedVersionId: openedFrom,
-      yieldServes: data.current?.yieldServes ?? 1,
+      yieldServes: m.yieldServes,
       lines: lines.map((r) => ({
         role: r.role,
         inventoryId: r.role === 'stocked' ? r.inventoryId : null,
@@ -360,9 +467,9 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
         unit: r.unit as string,
       })),
     };
-    if (data.current?.method) body.method = data.current.method;
-    if (data.current?.glass) body.glass = data.current.glass;
-    if (data.current?.garnish) body.garnish = data.current.garnish;
+    if (m.method.trim()) body.method = m.method.trim();
+    if (m.glass.trim()) body.glass = m.glass.trim();
+    if (m.garnish.trim()) body.garnish = m.garnish.trim();
     setSaid(null);
     try {
       const out = await save.mutateAsync(body);
@@ -372,6 +479,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       setDirty(false);
       setRestored(false);
       setSetAside(null);
+      setMeta(null);
       setSaid({
         tone: 'ok',
         text: `Saved. ${count(body.lines.length, 'ingredient', 'ingredients')}, version ${out.version}.`,
@@ -619,7 +727,9 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
             <History size={12} aria-hidden style={{ verticalAlign: '-2px', marginRight: 4 }} />
             Earlier versions ({earlier})
           </button>
-          {showVersions ? <Versions cocktailId={cocktailId} currentId={versionId} /> : null}
+          {showVersions ? (
+            <Versions cocktailId={cocktailId} currentId={versionId} onStartFrom={canEdit ? startFrom : null} say={say} />
+          ) : null}
         </div>
       ) : null}
     </section>
