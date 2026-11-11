@@ -1,4 +1,4 @@
-## The onboarding threshold read still takes a failed read for "not configured" — OPEN — 2026-11-07
+## The onboarding threshold read still takes a failed read for "not configured" — CLOSED 2026-11-11 by `fix/onboarding-progress-reads-the-house` (OB-1: every read in `getOnboardingProgress` throws on error) — 2026-11-07
 
 Filed by `fix/menu-onboarding-self-heal-reads-its-error` (menu upload Phase 1A, step 1g, gap M20).
 
@@ -6,7 +6,7 @@ Filed by `fix/menu-onboarding-self-heal-reads-its-error` (menu upload Phase 1A, 
 
 **What closes it.** That read checks `error` and throws, with a spec beside the self-heal specs in `menus.service.spec.ts`.
 
-## An owner and a later invitee can still disagree on "menu uploaded" — OPEN — 2026-11-07
+## An owner and a later invitee can still disagree on "menu uploaded" — CLOSED 2026-11-11 by `fix/onboarding-progress-reads-the-house` (OB-1: the stored flag is no longer read; every person reads the house's lines at read time) — 2026-11-07
 
 Filed with the entry above; rewritten in wave 3 (2026-11-07), when the self-heal moved from `lines_extracted` to the live lines in `menu_items`.
 
