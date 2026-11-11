@@ -18,6 +18,12 @@ export interface ViewCtx {
   /** The till window the reader picked. Only `till` takes one. */
   days: number;
   /**
+   * The house's ISO 4217 code from `GET /settings/currency`; null or absent
+   * when it was never stated, is not read yet, or could not be read. Money
+   * then prints bare, never in `$` (`money`, rp-format.ts).
+   */
+  currency?: string | null;
+  /**
    * The one register on this sheet that WRITES.
    *
    * Every other analysis is a pure function of a payload, which is what makes
