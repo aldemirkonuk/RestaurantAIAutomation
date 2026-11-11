@@ -1515,11 +1515,10 @@ describe('ReportsNext — the benchmark cutting', () => {
     ).toBeInTheDocument();
   });
 
-  it('names the ambiguity when both buying windows read zero', () => {
-    // Measured live on 2026-09-03: the dev tenant returns 0 and 0, and
-    // `getCashflow` sums a loader that degrades a failed query to `[]`. A pair
-    // of zeros is therefore "no delivered order came back", not "nothing was
-    // bought" — and the cutting must not present it as a measured standstill.
+  it('says plainly when both buying windows read zero, and no longer calls the zeros ambiguous', () => {
+    // `getCashflow` reads its orders whole now (ADR 0292, audit G6): a failed
+    // read refuses the lens, so a pair of zeros is a quiet stretch, not a read
+    // that came back empty.
     hook.current = withRegister(
       'bench',
       ok(decode('bench', { ...BENCH, cashflow: { ...BENCH.cashflow, spendLast30d: 0, spendPrev30d: 0 } })),
@@ -1527,9 +1526,9 @@ describe('ReportsNext — the benchmark cutting', () => {
     paint();
     const bench = screen.getByRole('region', { name: 'Against ourselves' });
     expect(
-      within(bench).getByText(/Both buying windows came back at zero/),
+      within(bench).getByText(/No delivered purchase order falls in either 30-day window/),
     ).toBeInTheDocument();
-    expect(within(bench).getByText(/not necessarily .nothing was bought./)).toBeInTheDocument();
+    expect(within(bench).queryByText(/ambiguous/)).toBeNull();
     // …and it draws no bars at all: two bars at zero are an empty axis.
     expect(within(bench).getByText(/no bars are drawn/)).toBeInTheDocument();
   });
@@ -1537,7 +1536,7 @@ describe('ReportsNext — the benchmark cutting', () => {
   it('does not say it when the windows carry real figures', () => {
     paint();
     const bench = screen.getByRole('region', { name: 'Against ourselves' });
-    expect(within(bench).queryByText(/Both buying windows came back at zero/)).toBeNull();
+    expect(within(bench).queryByText(/No delivered purchase order falls/)).toBeNull();
   });
 
   it('withholds every figure the overview call did not return, rather than zeroing them', () => {
