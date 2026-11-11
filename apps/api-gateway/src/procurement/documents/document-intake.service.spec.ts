@@ -21,6 +21,8 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
     // The sweep records each attachment's outcome (proposal-receipt row 1.2).
     update: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
+    // The sweep's second pass looks again at XML/zip files (PR 1043 review).
+    or: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
     single: mockSingle,
