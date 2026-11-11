@@ -710,6 +710,8 @@ export interface ItemNutrition {
   suggestedBasis: NutritionBasis | null;
   figures: StoredNutrition | null;
   allergens: Array<{ allergen: Allergen; status: AllergenStatus; statedByName: string | null; statedAt: string | null }>;
+  /** Only on the answer to a save (gateway #1013): saved, but looks wrong. Empty or absent when fine. */
+  warnings?: string[];
 }
 
 export interface SaveItemNutritionBody {

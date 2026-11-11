@@ -6,6 +6,7 @@
  * reads it against the pack and presses Save. A lookup can add "contains" or
  * "may contain"; it never states an allergen free.
  */
+import axios from 'axios';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Select } from '@/components/mudavym';
@@ -59,6 +60,17 @@ export function readFigure(s: string): number | null | 'bad' {
   return Number.isFinite(n) && n >= 0 ? n : 'bad';
 }
 
+/**
+ * The gateway's own refusal on a 400 ("<why> Nothing was saved."), shown as it
+ * was written: it is already a sentence for a person, so it is not wrapped.
+ */
+export function serverRefusal(e: unknown): string | null {
+  if (!axios.isAxiosError(e) || e.response?.status !== 400) return null;
+  const raw = (e.response.data as { message?: unknown } | undefined)?.message;
+  const m = Array.isArray(raw) ? raw[0] : raw;
+  return typeof m === 'string' && m.trim() !== '' && m.length <= 400 ? m.trim() : null;
+}
+
 const asText = (v: number | null) => (v === null ? '' : String(v));
 
 export interface NutritionFormProps {
@@ -93,6 +105,7 @@ export default function NutritionForm({ restaurantId, itemId, data, startWithLoo
   const [found, setFound] = useState<NutritionLookup | null>(null);
   const [lookupSaid, setLookupSaid] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
+  const [savedWarnings, setSavedWarnings] = useState<string[] | null>(null);
 
   const fill = (d: NutritionDraft) => {
     setDraft(d);
@@ -120,10 +133,13 @@ export default function NutritionForm({ restaurantId, itemId, data, startWithLoo
     mutationFn: (body: SaveItemNutritionBody) => saveItemNutrition(itemId, body, restaurantId ?? undefined),
     onSuccess: (fresh) => {
       qc.setQueryData(inventoryItemKeys.nutrition(restaurantId ?? '', itemId), fresh);
-      onDone();
+      // Saved, but the server says it looks wrong: keep it on screen until read.
+      if (fresh.warnings && fresh.warnings.length > 0) setSavedWarnings(fresh.warnings);
+      else onDone();
     },
     onError: (e) =>
       setSaid(
+        serverRefusal(e) ??
         writeFailure(e, {
           refused: 'Nothing was saved',
           act: 'what is in it was saved',
@@ -175,6 +191,24 @@ export default function NutritionForm({ restaurantId, itemId, data, startWithLoo
       ? [{ value: source.source, label: source.source === 'open_food_facts' ? `Open Food Facts (${source.ref})` : `FoodData Central (${source.ref})` }]
       : []),
   ];
+
+  if (savedWarnings) {
+    return (
+      <div className="ivn" data-testid="ivn-saved-warning">
+        <p className="iv-note">Saved.</p>
+        {savedWarnings.map((w) => (
+          <p key={w} role="status" className="iv-said">
+            {w}
+          </p>
+        ))}
+        <p className="ivn-acts">
+          <button type="button" className="iv-btn iv-focus" onClick={onDone}>
+            Done
+          </button>
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="ivn" data-testid="ivn-form">
