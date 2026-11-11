@@ -103,8 +103,14 @@ export type EditableMenuItemField =
   | 'by_glass_price'
   | 'bottle_price'
 
+/**
+ * The setup of the house the session is in (OB-1): the house facts are read
+ * from the house's own tables on every GET; only `checklist_dismissed` is the
+ * person's. A PATCH writes `checklist_dismissed` alone.
+ */
 export interface OnboardingProgress {
-  id: string
+  /** The person's own row, or null for an invitee who has none. */
+  id: string | null
   user_id: string
   restaurant_id: string
   menu_uploaded: boolean
@@ -114,7 +120,9 @@ export interface OnboardingProgress {
   completed_at: string | null
   /** Whether restaurants.default_threshold_min has been explicitly confirmed. */
   threshold_configured: boolean
-  /** menu_uploaded AND threshold_configured — the soft-gate "done enough" signal. */
+  /** A menu version with a live line is the current one. Absent from a server before OB-1. */
+  menu_current?: boolean
+  /** First value: the house has a current menu (OB-1; before it, menu AND threshold). */
   activated: boolean
 }
 

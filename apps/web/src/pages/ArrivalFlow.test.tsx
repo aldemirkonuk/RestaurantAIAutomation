@@ -86,6 +86,11 @@ vi.mock('../services/api/menus', async () => {
 vi.mock('../services/api/vendors', () => ({
   addCustomProvider,
 }))
+// /house reads the house's setup from the server (OB-1); a house with nothing
+// read yet answers null, so the tab's own first proof is what shows.
+vi.mock('../hooks/queries/useOnboardingProgress', () => ({
+  useOnboardingProgress: () => ({ progress: null, refresh: vi.fn() }),
+}))
 
 beforeEach(() => {
   vi.clearAllMocks()

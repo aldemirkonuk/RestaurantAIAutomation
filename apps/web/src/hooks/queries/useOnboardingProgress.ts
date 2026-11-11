@@ -19,6 +19,8 @@ export function useOnboardingProgress() {
   return {
     progress: query.data ?? null,
     isLoading: query.isLoading,
+    /** Re-read the house's setup, after an act on another page changed it. */
+    refresh: () => qc.invalidateQueries({ queryKey: ['onboarding-progress'] }),
     update: mutation.mutate,
     isUpdating: mutation.isPending,
   }

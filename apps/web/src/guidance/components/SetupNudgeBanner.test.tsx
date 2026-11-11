@@ -72,6 +72,28 @@ describe('SetupNudgeBanner', () => {
     expect(navigate).toHaveBeenCalledWith('/menu')
   })
 
+  it('with an OB-1 server, a read menu that is not current still nudges, and leads an owner to the choice', () => {
+    state.progress = { menu_uploaded: true, menu_current: false, activated: false }
+    banner()
+    expect(document.body.textContent).toMatch(/Choose it as the current menu/)
+    fireEvent.click(screen.getByRole('button', { name: 'Choose the menu' }))
+    expect(navigate).toHaveBeenCalledWith('/house/menu')
+  })
+
+  it('a manager makes the choice on /menu', () => {
+    state.role = 'manager'
+    state.progress = { menu_uploaded: true, menu_current: false, activated: false }
+    banner()
+    fireEvent.click(screen.getByRole('button', { name: 'Choose the menu' }))
+    expect(navigate).toHaveBeenCalledWith('/menu')
+  })
+
+  it('a current menu ends the nudge', () => {
+    state.progress = { menu_uploaded: true, menu_current: true, activated: true }
+    banner()
+    expect(screen.queryByRole('button', { name: /Finish setup|Choose the menu/ })).toBeNull()
+  })
+
   it('is never shown to staff', () => {
     state.role = 'staff'
     state.progress = { menu_uploaded: false, threshold_configured: false, activated: false }
