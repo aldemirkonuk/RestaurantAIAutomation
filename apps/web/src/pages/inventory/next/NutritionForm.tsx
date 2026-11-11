@@ -17,6 +17,7 @@ import {
   type Allergen,
   type AllergenStatus,
   type ItemNutrition,
+  type NutritionBasis,
   type NutritionDraft,
   type NutritionFigures,
   type NutritionLookup,
@@ -25,6 +26,7 @@ import {
 } from '../../../services/api/inventory';
 import { getErrorStatus } from '../../../services/api/client';
 import { failureReason, writeFailure } from './iv-failure';
+import { kcalDisagrees, macrosOver100g } from './nutrition-check';
 import { ALLERGEN_WORDS, PER } from './nutrition-words';
 
 type Key = keyof NutritionFigures;
@@ -132,6 +134,7 @@ export default function NutritionForm({ restaurantId, itemId, data, startWithLoo
 
   const read = Object.fromEntries(FIELDS.map(([k]) => [k, readFigure(vals[k])])) as Record<Key, number | null | 'bad'>;
   if (basis !== '100ml') read.abvPct = null;
+  const numbers = Object.fromEntries(FIELDS.map(([k]) => [k, read[k] === 'bad' ? null : read[k]])) as Record<Key, number | null>;
   const bad = FIELDS.find(([k]) => read[k] === 'bad');
   const anyFigure = FIELDS.some(([k]) => read[k] !== null);
   const blocked =
@@ -141,7 +144,8 @@ export default function NutritionForm({ restaurantId, itemId, data, startWithLoo
         ? `${bad[1]} must be a number of 0 or more, or left empty.`
         : anyFigure && basis === ''
           ? 'Choose per 100 g or per 100 ml.'
-          : null;
+          : macrosOver100g(basis as NutritionBasis | '', numbers);
+  const warning = blocked === null ? kcalDisagrees(basis as NutritionBasis | '', numbers) : null;
 
   const submit = () => {
     if (blocked || save.isPending) return;
@@ -238,7 +242,7 @@ export default function NutritionForm({ restaurantId, itemId, data, startWithLoo
             A draft{draft.productName ? ` from ${draft.productName}` : ''}. Check each figure against the pack: nothing is saved until you
             press Save.
           </p>
-          {draft.notes.map((n) => (
+          {(draft.notes ?? []).map((n) => (
             <p key={n} className="iv-note">
               {n}
             </p>
@@ -302,6 +306,11 @@ export default function NutritionForm({ restaurantId, itemId, data, startWithLoo
           </div>
         </fieldset>
         {blocked && restaurantId !== null ? <p className="iv-note">{blocked}</p> : null}
+        {warning ? (
+          <p role="status" className="iv-said" data-testid="ivn-kcal-warning">
+            {warning}
+          </p>
+        ) : null}
         <p className="ivn-acts">
           <button type="submit" className="iv-btn iv-focus" data-seal="true" disabled={blocked !== null || save.isPending}>
             {save.isPending ? 'Saving…' : 'Save'}

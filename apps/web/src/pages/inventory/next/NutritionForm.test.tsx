@@ -130,3 +130,61 @@ describe('the label lookup', () => {
     expect(body.allergens.find((a: { allergen: string }) => a.allergen === 'gluten').status).toBe('not_stated');
   });
 });
+
+describe('checking the figures (#938)', () => {
+  const type = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
+
+  it('refuses Save when protein, fat, carbohydrate and salt weigh more than 100 g in 100 g', () => {
+    show(answer(null));
+    type('Protein (g)', '60');
+    type('Fat (g)', '30');
+    type('Carbohydrate (g)', '30');
+    expect(screen.getByText(/add up to 120 g, which is more than 100 g/)).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(api.save).not.toHaveBeenCalled();
+  });
+
+  it('warns, but still lets the house save, when the energy disagrees with 4/4/9', async () => {
+    api.save.mockResolvedValue(answer(null));
+    show(answer(null));
+    type('Energy (kcal)', '10');
+    type('Protein (g)', '20');
+    type('Fat (g)', '50');
+    type('Carbohydrate (g)', '30');
+    expect(screen.getByTestId('ivn-kcal-warning').textContent).toContain('about 650 kcal');
+    const save = screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    await waitFor(() => expect(api.save).toHaveBeenCalledTimes(1));
+  });
+
+  it('does not warn when the energy agrees, nor when a macro is not stated', () => {
+    show(answer(null));
+    type('Energy (kcal)', '640');
+    type('Protein (g)', '20');
+    type('Fat (g)', '50');
+    type('Carbohydrate (g)', '30');
+    expect(screen.queryByTestId('ivn-kcal-warning')).toBeNull();
+    type('Carbohydrate (g)', '');
+    expect(screen.queryByTestId('ivn-kcal-warning')).toBeNull();
+  });
+
+  it('shows a lookup draft that has no notes, instead of crashing', async () => {
+    api.lookup.mockResolvedValue({
+      kind: 'draft',
+      draft: {
+        source: 'open_food_facts',
+        sourceRef: '1',
+        productName: null,
+        basis: '100g',
+        figures: { energyKcal: null, fatG: null, saturatesG: null, carbohydrateG: null, sugarsG: null, proteinG: null, saltG: null, abvPct: null },
+        allergens: [],
+        attribution: 'From Open Food Facts.',
+      },
+    });
+    show(answer(null), true);
+    fireEvent.change(screen.getByLabelText('Barcode or name'), { target: { value: 'ayran' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Look it up' }));
+    expect(await screen.findByTestId('ivn-draft')).toBeTruthy();
+  });
+});
