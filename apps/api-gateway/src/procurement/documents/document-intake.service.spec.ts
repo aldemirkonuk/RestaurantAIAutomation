@@ -18,6 +18,8 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
     from: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
     insert: jest.fn().mockReturnThis(),
+    // The sweep records each attachment's outcome (proposal-receipt row 1.2).
+    update: jest.fn().mockReturnThis(),
     eq: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
@@ -45,6 +47,7 @@ describe("DocumentIntakeService — original bytes persistence (decision E47)", 
     mockSupabaseChain.from.mockReturnThis();
     mockSupabaseChain.select.mockReturnThis();
     mockSupabaseChain.insert.mockReturnThis();
+    mockSupabaseChain.update.mockReturnThis();
     mockSupabaseChain.eq.mockReturnThis();
     mockSupabaseChain.order.mockReturnThis();
     mockSupabaseChain.limit.mockReturnThis();

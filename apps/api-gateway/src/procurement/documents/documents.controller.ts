@@ -1353,6 +1353,58 @@ export class DocumentsController {
     return out;
   }
 
+  /**
+   * WHAT BECAME OF EACH EMAILED FILE (proposal-receipt rows 1.2 and 3.6).
+   *
+   * One row per attachment that reached this house's mail, newest first, with
+   * the outcome the intake sweep recorded: added (a document), already on
+   * file (the paper that holds it), not a paper, could not be read (why), or
+   * waiting. Declared before `:id` so "arrivals" is never read as an id.
+   *
+   * No money is on it: a file name, when it came, and what happened to it.
+   * The list is capped and says so (`more`), never a silent 1,000-row cut.
+   */
+  @Get("arrivals")
+  @ApiOperation({
+    summary: "What became of each file emailed to this house",
+  })
+  @ApiQuery({ name: "limit", required: false })
+  async arrivals(
+    @CurrentUser() user: AuthedUser,
+    @Query("limit") limit?: string,
+  ) {
+    const n = Math.min(Math.max(Number(limit) || 50, 1), 200);
+    const { data, error } = await this.db
+      .getClient()
+      .from("conversation_attachments")
+      .select(
+        "id, filename, mime_type, size_bytes, created_at, ingest_state, ingested_document_id, last_ingest_reason, ingest_attempts, provider_id",
+      )
+      .eq("restaurant_id", user.restaurantId)
+      .order("created_at", { ascending: false })
+      .limit(n + 1);
+    if (error)
+      throw new HttpException(
+        `The emailed files could not be read: ${error.message}`,
+        HttpStatus.SERVICE_UNAVAILABLE,
+      );
+    const rows = (data ?? []) as Record<string, unknown>[];
+    return {
+      items: rows.slice(0, n).map((r) => ({
+        id: r.id,
+        filename: r.filename,
+        mimeType: r.mime_type ?? null,
+        sizeBytes: r.size_bytes ?? null,
+        arrivedAt: r.created_at,
+        state: r.ingest_state,
+        documentId: r.ingested_document_id ?? null,
+        reason: r.last_ingest_reason ?? null,
+        attempts: r.ingest_attempts ?? 0,
+      })),
+      more: rows.length > n,
+    };
+  }
+
   @Get()
   @ApiOperation({ summary: "List vendor documents, newest first" })
   @ApiQuery({ name: "status", required: false })
