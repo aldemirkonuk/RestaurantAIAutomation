@@ -647,6 +647,26 @@ describe("approveDraft — concurrent approvals (duplicate vendor send)", () => 
     expect(conversationRow(store).status).toBe("SENT");
   });
 
+  it("a claim stored bare by an older writer goes out and is stored as <id> (rfc822-message-id.ts)", async () => {
+    const store = makeStore();
+    conversationRow(store).message_id = " legacy-1@wineops.ai ";
+    const seen: string[] = [];
+    const sendEmail = jest.fn(async (opts: any) => {
+      seen.push(opts.messageIdHeader);
+      return {
+        success: true,
+        messageId: "gmail-1",
+        threadId: "thread-1",
+        rfc822MessageId: opts.messageIdHeader,
+      };
+    });
+    const service = await buildService(store, sendEmail);
+    await service.approveDraft(RESTAURANT_ID, ORDER_ID, {} as any, ACTOR);
+    // RFC 5322 needs the brackets on the wire; the stored id is the same one.
+    expect(seen).toEqual(["<legacy-1@wineops.ai>"]);
+    expect(conversationRow(store).message_id).toBe("<legacy-1@wineops.ai>");
+  });
+
   it("never returns a sent draft to PENDING_APPROVAL when the status write fails", async () => {
     const store = makeStore();
     const sendEmail = slowSendEmail();

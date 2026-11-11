@@ -14,6 +14,7 @@ import { OrchestratorService } from "./orchestrator.service";
 import { InboundAddressService } from "./inbound-address.service";
 import { htmlToText } from "../../communications/gmail-mime";
 import { decodeEncodedWords } from "../../communications/inbound-headers";
+import { canonicalMessageId } from "../../communications/rfc822-message-id";
 
 interface NormalizedInbound {
   from: string;
@@ -204,8 +205,15 @@ export class InboundEmailController {
       }))
       .filter((a) => a.data);
 
+    // The letter's own Message-ID header first. Postmark's top-level
+    // `MessageID` is Postmark's id for the delivery (a bare UUID), not the
+    // RFC 5322 id: stored as the letter's id it never matched the same letter
+    // through the Gmail door, and a reply could not name it in In-Reply-To.
+    // It stays the last resort, so a webhook retry for a letter that carries
+    // no Message-ID header still has one key.
     const messageId: string =
-      b.MessageID || b.messageId || headerMap["message-id"] || "";
+      canonicalMessageId(headerMap["message-id"] || b.messageId || b.MessageID) ||
+      "";
     const inReplyTo: string = headerMap["in-reply-to"] || b.inReplyTo || "";
     const references: string = headerMap["references"] || b.references || "";
 

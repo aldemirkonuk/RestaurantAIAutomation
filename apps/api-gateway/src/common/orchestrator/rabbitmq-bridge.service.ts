@@ -30,6 +30,7 @@ import { createHash, randomUUID } from "crypto";
 import { PromotionExtractorService } from "./promotion-extractor.service";
 import { ProspectsService } from "./prospects.service";
 import { OWNER_AND_MANAGER } from "../tenant/live-membership";
+import { canonicalMessageId } from "../../communications/rfc822-message-id";
 
 /** Mapping of RabbitMQ routing keys to handler methods */
 interface RouteHandler {
@@ -640,7 +641,10 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
     }> = Array.isArray(payload.attachments) ? payload.attachments : [];
     const gmailThreadId: string = payload.gmail_thread_id || "";
     const gmailMessageId: string = payload.gmail_message_id || "";
-    const messageIdHeader: string = payload.message_id_header || "";
+    // One stored shape whatever door published it (rfc822-message-id.ts): the
+    // row's message_id, its email_headers copy and the responder's In-Reply-To.
+    const messageIdHeader: string =
+      canonicalMessageId(payload.message_id_header) || "";
     const inReplyTo: string = payload.in_reply_to || "";
     const references: string = payload.references || "";
     const receivedAt: string = payload.received_at || new Date().toISOString();
