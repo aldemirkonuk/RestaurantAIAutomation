@@ -21,6 +21,7 @@ import {
   signInDeviceSecret,
 } from "../common/rate-limit/sign-in-device";
 import {
+  EmailCodeLinkDto,
   EmailCodeRequestDto,
   EmailCodeVerifyDto,
   PasskeySignInVerifyDto,
@@ -114,6 +115,25 @@ export class SignInController {
   @ApiOperation({ summary: "Sign in with an emailed code; returns a session." })
   async emailCodeVerify(@Body() dto: EmailCodeVerifyDto) {
     const userId = await this.codes.verify("sign_in", dto.email, dto.code);
+    return this.codeSession(userId, dto);
+  }
+
+  @Post("email-code/link")
+  @Public()
+  @RateLimit({ limit: 10, windowSeconds: 600, keyPrefix: "email-code-link" })
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: "Sign in with the single-use link from a sign-in mail." })
+  async emailCodeLink(@Body() dto: EmailCodeLinkDto) {
+    // QA round 23: the link proves the mailbox as the code does.
+    const { userId, email } = await this.codes.verifyLink(dto.token);
+    return { ...(await this.codeSession(userId, { ...dto, email })), email };
+  }
+
+  /** The one session both mailbox proofs (code and link) end in. */
+  private async codeSession(
+    userId: string,
+    dto: { email: string; lastHouses?: unknown; signInDevice?: string },
+  ) {
     // The address the code was just checked against: an emailed-code sign-in
     // proves that mailbox, so AuthService marks it verified (ADR 0229, item 37).
     // `lastHouses` is this device's hint for THIS email, exactly as a
