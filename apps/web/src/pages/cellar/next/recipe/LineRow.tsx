@@ -36,7 +36,7 @@ export interface DraftRow {
 /** The line's amount: the stored number while the box is as loaded, else what was typed. */
 export function rowQty(row: DraftRow): number | null {
   if (row.storedQty != null && row.storedQty > 0 && row.qtyText === qtyText(row.storedQty)) return row.storedQty;
-  return readQty(row.qtyText);
+  return readQty(row.qtyText, row.unit);
 }
 
 export function rowName(row: DraftRow): string {

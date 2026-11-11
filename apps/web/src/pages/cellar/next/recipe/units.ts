@@ -22,9 +22,24 @@ export const UNIT_LABEL: Record<RecipeUnit, string> = {
  */
 export const AMBIGUOUS_AMOUNT = /^[1-9]\d{0,2}[.,]\d{3}$/;
 
+/**
+ * Units where a thousand in one serve is not a thing a bar pours: "1.125 oz"
+ * is 1⅛ oz, "1.500 l" is a litre and a half. There the separator is a decimal.
+ * ml and g stay ambiguous ("1.000 ml" is a real European batch), and so does
+ * `each` or no unit at all.
+ */
+const DECIMAL_WHEN_THREE_DIGITS: readonly (RecipeUnit | '' | null | undefined)[] = [
+  'oz', 'tsp', 'tbsp', 'dash', 'barspoon', 'cl', 'l', 'kg',
+];
+
+/** True when `text` could be a thousand or a decimal and the unit does not settle it. */
+export function readsAsThousandAmbiguous(text: string, unit?: RecipeUnit | '' | null): boolean {
+  return AMBIGUOUS_AMOUNT.test(text.trim()) && !DECIMAL_WHEN_THREE_DIGITS.includes(unit);
+}
+
 /** "22,5" → 22.5; anything that is not a positive number, or could be two numbers → null. */
-export function readQty(text: string): number | null {
-  if (AMBIGUOUS_AMOUNT.test(text.trim())) return null;
+export function readQty(text: string, unit?: RecipeUnit | '' | null): number | null {
+  if (readsAsThousandAmbiguous(text, unit)) return null;
   const s = text.trim().replace(',', '.');
   if (!/^\d+(?:\.\d+)?$|^\.\d+$/.test(s)) return null;
   const n = Number(s);
