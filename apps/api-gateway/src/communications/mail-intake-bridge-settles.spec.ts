@@ -87,6 +87,30 @@ describe("the bridge tells the intake row what became of a letter", () => {
     expect(calls).toEqual([["settle", "in-3", "duplicate"]]);
   });
 
+  it("a letter a house reads again (attempt 1 again) that was already stored is a duplicate", async () => {
+    // readAgain resets attempts to 0, claim_mail_intake makes it 1: the
+    // stored-row check must not depend on the attempt number.
+    const tables = house();
+    tables.procurement_conversations.push({
+      id: "pc-6",
+      restaurant_id: "house-A",
+      email_headers: { intake_id: "in-6" },
+    });
+    const { svc, inserts } = bridge(tables);
+    const { calls, intake } = intakeSpy();
+    svc.mailIntake = intake;
+    await svc.fileInboundEmail(
+      inbound({
+        restaurant_id: "house-A",
+        from: "sales@bigdist.com",
+        intake_id: "in-6",
+        intake_attempt: 1,
+      }),
+    );
+    expect(inserts).toEqual([]);
+    expect(calls).toEqual([["settle", "in-6", "duplicate"]]);
+  });
+
   it("a letter that could not be held is offered again", async () => {
     const { svc } = bridge(house());
     svc.prospects.holdLetter = async () => ({ captured: false });
