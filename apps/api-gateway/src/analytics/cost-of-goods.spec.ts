@@ -69,7 +69,7 @@ describe("cost of goods is what the till sold", () => {
     expect(t.cogsRatio).toBeCloseTo(0.401, 6);
     expect(t.grossMargin).toBeCloseTo(0.599, 6);
     expect(t.settledAfterSale).toBe(0.5);
-    expect(t.basis.cogs).toContain("0.50 is late prices settled in the window");
+    expect(t.basis.cogs).toContain("0.50 is late prices on these sales");
     expect(t.basis.revenue).toContain("5 lines naming no stocked item");
   });
 
@@ -88,18 +88,56 @@ describe("cost of goods is what the till sold", () => {
     expect(t.cogsCoverage).toMatchObject({ itemsMoved: 2, itemsCosted: 1, bottlesUncosted: 2 });
   });
 
-  it("counts a late price settled in the window in the cost, but not as an item sold", () => {
+  it("names a late price settled in the window on an earlier sale apart, out of cost and out of every ratio", () => {
+    // The SQL lists such an item with 0 bottles and cost 0 (batch review
+    // 2026-11-11, finding 1): its sale is not in this window's revenue.
     const t = run({
       cost: {
         ...COST,
-        items: [...COST.items!, item("c", { bottles_out: 0, cost: "4.000000", settled_after_sale: "4.000000" })],
-        cost: "204.500000",
-        settled_after_sale: "4.500000",
+        items: [
+          ...COST.items!,
+          item("c", { bottles_out: 0, cost: "0", settled_after_sale: "0", settled_on_earlier_sales: "4.000000" }),
+        ],
+        settled_on_earlier_sales: "4.000000",
       },
     });
-    expect(t.cogs).toBe(204.5);
+    expect(t.cogs).toBe(200.5);
+    expect(t.cogsRatio).toBeCloseTo(0.401, 6);
+    expect(t.grossMarginDollars).toBe(299.5);
+    expect(t.settledOnEarlierSales).toBe(4);
     expect(t.cogsCoverage).toMatchObject({ itemsMoved: 2, itemsCosted: 2 });
     expect(t.basis.cogs).toContain("2 items");
+    expect(t.basis.cogs).toContain("4.00, are named apart");
+    expect(t.basis.costDerived).toContain("settledOnEarlierSales");
+  });
+
+  it("keeps the earlier-sale settlement null when the read does not name it, never 0", () => {
+    expect(run().settledOnEarlierSales).toBeNull();
+    expect(run({ cost: { ...COST, settled_on_earlier_sales: "0.000000" } }).settledOnEarlierSales).toBe(0);
+  });
+
+  it("gives the exact cost of the costed items apart while cogs is withheld, and divides it by nothing", () => {
+    // A bar house with one void naming no sale (batch review 2026-11-11,
+    // finding 2): the total stays withheld, the known part is shown by name.
+    const t = run({
+      cost: {
+        ...COST,
+        items: [item("a", { cost: "120.000000" }), item("b", { bottles_back: 1, uncosted_back: 1, cost: "80.500000" })],
+      },
+    });
+    expect(t.cogs).toBeNull();
+    expect(t.costOfCostedItems).toEqual({ amount: 120, items: 1, of: 2 });
+    expect(t.cogsRatio).toBeNull();
+    expect(t.grossMargin).toBeNull();
+    expect(t.grossMarginDollars).toBeNull();
+    expect(t.daysInventoryOutstanding).toBeNull();
+    expect(t.basis.cogs).toContain("1 bottle a void gave back named no sale");
+    expect(t.basis.cogs).toContain("cost 120.00 (costOfCostedItems)");
+    // None costed: nothing to give apart.
+    const none = run({ cost: { ...COST, items: [item("a", { uncosted_out: 1 })] } });
+    expect(none.costOfCostedItems).toBeNull();
+    // Printed: the part is the whole, so it is not repeated.
+    expect(run().costOfCostedItems).toBeNull();
   });
 
   it("withholds when a void gave a bottle back at an unknown cost", () => {
@@ -172,7 +210,7 @@ describe("cost of goods is what the till sold", () => {
 
   it("withholds every till figure for a caller who does not see sales", () => {
     const w = withheldTillFigures(365);
-    for (const k of ["cogs", "revenue", "grossMargin", "cogsRatio", "daysInventoryOutstanding", "gmroi"] as const)
+    for (const k of ["cogs", "revenue", "grossMargin", "cogsRatio", "daysInventoryOutstanding", "gmroi", "settledOnEarlierSales", "costOfCostedItems"] as const)
       expect(w[k]).toBeNull();
     expect(w.basis.cogs).toContain("owners and managers only");
   });
