@@ -89,9 +89,10 @@
  * `revoked_at`, and the enumeration below never sees the row again.
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { OrchestratorService } from "../../common/orchestrator/orchestrator.service";
+import { MailIntakeService } from "../../common/orchestrator/mail-intake.service";
 import { IntegrationsOauthService } from "../../integrations/integrations-oauth.service";
 import { HouseLettersService } from "../letters/house-letters.service";
 import {
@@ -224,6 +225,10 @@ export class HouseInboxService {
     private readonly orchestrator: OrchestratorService,
     private readonly oauth: IntegrationsOauthService,
     private readonly letters: HouseLettersService,
+    // Gap G2 (2026-11-11): the letter is recorded before the cursor moves.
+    // Optional only for the specs that build the reader by hand; when it is
+    // absent the event is published directly, as before.
+    @Optional() private readonly intake?: MailIntakeService,
   ) {}
 
   // ==========================================================================
@@ -487,10 +492,10 @@ export class HouseInboxService {
         // THE MIRROR. Not an insert — the same event the shared mailbox
         // publishes, so `RabbitMqBridgeService.handleInboundEmail` does the
         // writing, the dedupe, the order match and the handoff to triage.
-        await this.orchestrator.publishEvent(
-          "email.events",
-          "email.inbound.received",
-          {
+        // Since gap G2 it is first recorded in `mail_intake` (one row per
+        // grant and message), and the record, not the publish, is what lets
+        // the cursor move: a lost publish is re-driven from the record.
+        const event = {
             restaurant_id: restaurantId,
             from,
             subject: decodeEncodedWords(headerValue(headers, "subject")),
@@ -520,13 +525,26 @@ export class HouseInboxService {
             // shared-mailbox replies that no personal grant covers. The bridge
             // writes this onto `procurement_conversations.mirrored_by_grant_id`.
             mirrored_by_grant_id: connectionId,
-          },
-        );
+        };
+        if (this.intake) {
+          await this.intake.recordAndPublish({
+            door: "house_mailbox",
+            providerKey: `${connectionId}:${message.id}`,
+            restaurantId,
+            event,
+          });
+        } else {
+          await this.orchestrator.publishEvent(
+            "email.events",
+            "email.inbound.received",
+            event,
+          );
+        }
 
-        // Advanced only AFTER the publish resolved. A publish that throws (no
-        // RabbitMQ channel — `orchestrator.service.ts:78-88` does not swallow
-        // it) leaves the cursor where it was, so the message is read again next
-        // tick rather than lost with the run reporting success.
+        // Advanced only AFTER the letter is recorded (or, with no intake, the
+        // publish resolved). A record that throws leaves the cursor where it
+        // was, so the message is read again next tick rather than lost with
+        // the run reporting success.
         mirrored += 1;
         if (internalDate > highWater) highWater = internalDate;
       }

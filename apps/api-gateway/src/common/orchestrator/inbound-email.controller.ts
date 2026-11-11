@@ -5,15 +5,19 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  Optional,
   Post,
-  Query,
+  ServiceUnavailableException,
+  UnauthorizedException,
 } from "@nestjs/common";
+import { timingSafeEqual } from "crypto";
 import { ConfigService } from "@nestjs/config";
 import { Public } from "../../auth/decorators/public.decorator";
 import { OrchestratorService } from "./orchestrator.service";
 import { InboundAddressService } from "./inbound-address.service";
 import { htmlToText } from "../../communications/gmail-mime";
 import { decodeEncodedWords } from "../../communications/inbound-headers";
+import { contentKey, MailIntakeService } from "./mail-intake.service";
 
 interface NormalizedInbound {
   from: string;
@@ -25,6 +29,16 @@ interface NormalizedInbound {
   inReplyTo: string;
   references: string;
   headers: Record<string, string>;
+  /** The provider's own id for this delivery (Postmark `MessageID`), when it sends one. */
+  providerMessageId: string;
+}
+
+/** Constant-time comparison; a length mismatch is a mismatch. */
+function secretsMatch(provided: string, configured: string): boolean {
+  const a = Buffer.from(provided, "utf8");
+  const b = Buffer.from(configured, "utf8");
+  if (a.length !== b.length || a.length === 0) return false;
+  return timingSafeEqual(a, b);
 }
 
 /**
@@ -37,9 +51,20 @@ interface NormalizedInbound {
  * restaurant_id — so the existing bridge/prospects/responder pipeline handles it unchanged.
  * Runs ALONGSIDE the Gmail ingest (dual-run); nothing here disables the legacy path.
  *
- * Security: gated by a shared secret (`INBOUND_WEBHOOK_SECRET`, sent as `x-inbound-secret`
- * header or `?secret=` query). With no secret configured the endpoint refuses, so it can never
- * act as an open relay.
+ * Security: gated by a shared secret (`INBOUND_WEBHOOK_SECRET`) sent in the `x-inbound-secret`
+ * header, compared in constant time. With no secret configured the endpoint refuses, so it can
+ * never act as an open relay.
+ *
+ * Gap G8 (2026-11-11), the session's call under the 2026-11-07 /goal:
+ *  - the `?secret=` query is no longer read: a secret in a URL lands in every proxy and access
+ *    log on the way. Rejected: keeping it as a fallback (one logged URL leaks it for good);
+ *  - a wrong secret is 401 and an unset one 503, never `200 {status:"unauthorized"}`: a 200 told
+ *    the provider the letter was delivered, so a misconfigured deploy dropped mail in silence;
+ *  - the letter is recorded in `mail_intake` (gap G2) before the 200. A failed record is 503,
+ *    so the provider sends it again (Postmark retries a non-2xx inbound webhook); a repeat
+ *    delivery is one intake row, keyed on the provider's message id;
+ *  - a letter with no readable sender is recorded and published too: the bridge holds it as
+ *    one whose sender could not be read (QA round 24), where it used to be "ignored".
  */
 @Controller("webhooks")
 export class InboundEmailController {
@@ -49,6 +74,8 @@ export class InboundEmailController {
     private readonly configService: ConfigService,
     private readonly orchestrator: OrchestratorService,
     private readonly inboundAddress: InboundAddressService,
+    // Optional only for the specs that build the controller by hand.
+    @Optional() private readonly intake?: MailIntakeService,
   ) {}
 
   @Public()
@@ -57,7 +84,6 @@ export class InboundEmailController {
   async inbound(
     @Body() body: any,
     @Headers("x-inbound-secret") headerSecret?: string,
-    @Query("secret") querySecret?: string,
   ): Promise<{ status: string; restaurant_id?: string | null }> {
     const configured = (
       this.configService.get<string>("INBOUND_WEBHOOK_SECRET") || ""
@@ -66,57 +92,71 @@ export class InboundEmailController {
       this.logger.warn(
         "inbound-email webhook hit but INBOUND_WEBHOOK_SECRET is not set — refusing.",
       );
-      return { status: "disabled" };
+      throw new ServiceUnavailableException("Inbound mail is not set up.");
     }
-    const provided = (headerSecret || querySecret || "").trim();
-    if (provided !== configured) {
+    if (!secretsMatch((headerSecret || "").trim(), configured)) {
       this.logger.warn(
         "inbound-email webhook: bad or missing secret — rejected.",
       );
-      return { status: "unauthorized" };
+      throw new UnauthorizedException();
     }
 
+    const norm = this.normalizePayload(body || {});
+    let restaurantId: string | null;
     try {
-      const norm = this.normalizePayload(body || {});
-      if (!norm.from) {
-        this.logger.warn(
-          "inbound-email webhook: payload had no sender — ignored.",
-        );
-        return { status: "ignored" };
-      }
-      const restaurantId = await this.inboundAddress.resolveRestaurantId(
+      restaurantId = await this.inboundAddress.resolveRestaurantId(
         norm.recipients,
       );
-
-      // Publish the exact event shape the Gmail path publishes, plus restaurant_id + source.
-      await this.orchestrator.publishEvent(
-        "email.events",
-        "email.inbound.received",
-        {
-          restaurant_id: restaurantId, // may be null -> the bridge routes it to triage
-          from: norm.from,
-          subject: norm.subject,
-          body: norm.body,
-          attachments: norm.attachments,
-          message_id_header: norm.messageId,
-          gmail_message_id: null,
-          gmail_thread_id: null,
-          in_reply_to: norm.inReplyTo,
-          references: norm.references,
-          received_at: new Date().toISOString(),
-          headers: norm.headers,
-          source: "inbound-domain",
-        },
+    } catch (e: any) {
+      this.logger.error(
+        `inbound-email: the recipient could not be resolved (${e?.message}); asking the provider to send it again`,
       );
+      throw new ServiceUnavailableException();
+    }
 
-      this.logger.log(
-        `inbound-email: from=${norm.from} to=${norm.recipients[0] ?? "?"} restaurant=${restaurantId ?? "TRIAGE"}`,
-      );
-      return { status: "ok", restaurant_id: restaurantId };
+    // Publish the exact event shape the Gmail path publishes, plus restaurant_id + source.
+    const event = {
+      restaurant_id: restaurantId, // may be null -> the bridge holds it unattributed
+      from: norm.from,
+      subject: norm.subject,
+      body: norm.body,
+      attachments: norm.attachments,
+      message_id_header: norm.messageId,
+      gmail_message_id: null,
+      gmail_thread_id: null,
+      in_reply_to: norm.inReplyTo,
+      references: norm.references,
+      received_at: new Date().toISOString(),
+      headers: norm.headers,
+      source: "inbound-domain",
+    };
+    try {
+      if (this.intake) {
+        await this.intake.recordAndPublish({
+          door: "inbound_address",
+          providerKey:
+            norm.providerMessageId ||
+            norm.messageId ||
+            contentKey([norm.from, norm.subject, norm.body, ...norm.recipients]),
+          restaurantId,
+          event,
+        });
+      } else {
+        await this.orchestrator.publishEvent(
+          "email.events",
+          "email.inbound.received",
+          event,
+        );
+      }
     } catch (e: any) {
       this.logger.error(`inbound-email webhook failed: ${e?.message}`);
-      return { status: "error" };
+      throw new ServiceUnavailableException();
     }
+
+    this.logger.log(
+      `inbound-email: from=${norm.from || "?"} to=${norm.recipients[0] ?? "?"} restaurant=${restaurantId ?? "TRIAGE"}`,
+    );
+    return { status: "ok", restaurant_id: restaurantId };
   }
 
   /**
@@ -214,6 +254,10 @@ export class InboundEmailController {
       }))
       .filter((a) => a.data);
 
+    // Postmark's `MessageID` is ITS id for the delivery, the intake key
+    // (gap G2). Which id `message_id_header` carries is left as it was: the
+    // message-id lane (fix/mail-message-id-one-shape) owns that.
+    const providerMessageId: string = String(b.MessageID || "").trim();
     const messageId: string =
       b.MessageID || b.messageId || headerMap["message-id"] || "";
     const inReplyTo: string = headerMap["in-reply-to"] || b.inReplyTo || "";
@@ -229,6 +273,7 @@ export class InboundEmailController {
       inReplyTo,
       references,
       headers: headerMap,
+      providerMessageId,
     };
   }
 }
