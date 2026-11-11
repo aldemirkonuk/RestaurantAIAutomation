@@ -4,7 +4,8 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import ItemUsedIn, { DRINK_RECIPES_UNREAD, RECIPES_UNKNOWN } from './ItemUsedIn';
+import { MemoryRouter } from 'react-router-dom';
+import ItemUsedIn, { DRINKS_DO_NOT_DRAW, DRINK_RECIPES_UNREAD, RECIPES_UNKNOWN, drinkHref } from './ItemUsedIn';
 import type { ItemUsedIn as UsedIn } from '../../../services/api/inventory';
 
 const EUR = { state: 'recorded', code: 'EUR' } as const;
@@ -26,6 +27,42 @@ function load(over: Partial<UsedIn> = {}) {
 }
 
 describe('Used in', () => {
+  it('says a drink that uses the good does not take it from stock at the till yet (ADR 0360)', () => {
+    render(
+      <MemoryRouter>
+        <ItemUsedIn
+          load={load({ inDrinkRecipes: ok([{ cocktailId: 'c2', name: 'Lime sour', label: 'Lime', qtyEntered: 20, unitCode: 'ml' }]) })}
+          canManage
+          currency={EUR}
+          onRetry={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId('ivd-used-cocktails').textContent).toContain(DRINKS_DO_NOT_DRAW);
+    expect(screen.getByTestId('ivd-used-drink-recipes').textContent).toContain(DRINKS_DO_NOT_DRAW);
+  });
+
+  it('a drink that uses the good opens that drink, in the app and outside it', () => {
+    const withRecipe = load({
+      inDrinkRecipes: ok([{ cocktailId: 'c 2', name: 'Rakı highball', label: 'Rakı', qtyEntered: 40, unitCode: 'ml' }]),
+    });
+    const { unmount } = render(
+      <MemoryRouter>
+        <ItemUsedIn load={withRecipe} canManage currency={EUR} onRetry={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(within(screen.getByTestId('ivd-used-cocktails')).getByRole('link', { name: 'Rakı sour' }).getAttribute('href')).toBe('/cocktails?open=c1');
+    expect(
+      within(screen.getByTestId('ivd-used-drink-recipes')).getByRole('link', { name: /Rakı highball/ }).getAttribute('href'),
+    ).toBe(drinkHref('c 2'));
+    expect(drinkHref('c 2')).toBe('/cocktails?open=c%202');
+    // A menu line has no page of its own to open yet, so it is not drawn as a link.
+    expect(within(screen.getByTestId('ivd-used-sold')).queryByRole('link')).toBeNull();
+    unmount();
+    render(<ItemUsedIn load={withRecipe} canManage currency={EUR} onRetry={vi.fn()} />);
+    expect(within(screen.getByTestId('ivd-used-cocktails')).getByRole('link', { name: 'Rakı sour' }).getAttribute('href')).toBe('/cocktails?open=c1');
+  });
+
   it('(d) draws the three groups, and says the unlinked one is not counted in usage', () => {
     render(<ItemUsedIn load={load()} canManage currency={EUR} onRetry={vi.fn()} />);
     expect(within(screen.getByTestId('ivd-used-sold')).getByText('Rakı, single')).toBeTruthy();

@@ -1018,7 +1018,10 @@ describe('INV-W38 — the view is the URL', () => {
     expect(new URLSearchParams(seen.search).get('open')).toBe('b');
     expect(screen.getByTestId('ivd-cards')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Istanbul White' })).toBeTruthy();
-    expect(screen.queryByTestId('row-dropdown')).toBeNull();
+    // Not a row in place: the one opened block is the drawer's acts, with no evidence panel until a card asks.
+    expect(screen.getByTestId('inv-row-b').querySelector('[data-testid="row-dropdown"]')).toBeNull();
+    expect(screen.getAllByTestId('row-dropdown')).toHaveLength(1);
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
     act(() => seen.back());
     expect(screen.queryByTestId('ivd-cards')).toBeNull();
     expect(new URLSearchParams(seen.search).has('open')).toBe(false);
