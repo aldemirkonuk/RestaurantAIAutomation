@@ -57,7 +57,8 @@ import WholeCellar from './WholeCellar';
 const MEASURE_LABEL: Record<GazetteerMeasureId, string> = {
   bottles: 'Bottles on hand',
   titles: 'Titles carried',
-  par: 'At or under their own par',
+  // QA 12a: the low-stock list's one answer, strictly below (ADR 0129).
+  par: 'Below their own par',
   // ADR 0293: the figure counts rows with no wine-library link (A-053), so
   // the label says that, not "off this read". The id `offbook` is unchanged.
   offbook: 'Carried, not in the wine library',

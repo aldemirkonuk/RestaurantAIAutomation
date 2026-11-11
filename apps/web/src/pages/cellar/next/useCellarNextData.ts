@@ -35,7 +35,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useInventory } from '../../../hooks/queries/useInventoryQueries';
+import { useInventory, useLowStockItems } from '../../../hooks/queries/useInventoryQueries';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useWineSubscription } from '../../../contexts/RealtimeContext';
 import { animate, ink } from '../../../lib/mudavym/motion';
@@ -269,11 +269,11 @@ export interface BuildingVM {
   titles: number | null;
   /** Sum of `stockLive` across those rows. Null while unknown. */
   bottles: number | null;
-  /** Rows at or under their own recorded minimum. Null while unknown. */
+  /** Rows the low-stock list holds, strictly below their own par (QA 12a). Null while unknown. */
   belowPar: number | null;
   /**
    * Rows with no `thresholdMin` recorded at all — coverage, not stock
-   * health, and a different fact from `belowPar` (at-or-under a minimum the
+   * health, and a different fact from `belowPar` (below a minimum the
    * row DOES record). ADR 0160 sec110 item 2's "one or two more" gazetteer
    * measures. Null while unknown.
    */
@@ -1382,6 +1382,14 @@ export function useCellarNextData() {
     return rows.map((w) => toBottle(w, inv));
   }, [winesQ.data, cellarByWine]);
 
+  // QA 12a: below par is the low-stock list's one answer (ADR 0129, strictly
+  // below), never `stock <= min` of this page's own, so the par tile says what
+  // /inventory and the inbox say. Null while the list is unread, never 0.
+  const lowQ = useLowStockItems();
+  const lowStock = useMemo<ReadonlySet<string> | null>(
+    () => (lowQ.data ? new Set(lowQ.data.map((i) => i.id)) : null),
+    [lowQ.data],
+  );
   const building: BuildingVM = useMemo(() => {
     const rows = inventoryQ.data;
     if (!rows) return { titles: null, bottles: null, belowPar: null, parUnset: null, offBook: null };
@@ -1392,8 +1400,7 @@ export function useCellarNextData() {
       const stock = num(it.stockLive) ?? 0;
       const min = num(it.thresholdMin);
       bottleCount += stock;
-      // "Below par" is only claimable where the row states its own minimum.
-      if (min !== null && stock <= min) below += 1;
+      if (lowStock?.has(it.id)) below += 1;
       // Coverage, not stock health: a row with no par recorded at all is
       // neither "below" nor "healthy" — it is unmeasured.
       if (min === null) unset += 1;
@@ -1401,14 +1408,14 @@ export function useCellarNextData() {
     return {
       titles: rows.length,
       bottles: bottleCount,
-      belowPar: below,
+      belowPar: lowStock === null ? null : below,
       parUnset: unset,
       // From the inventory alone, never from the library pages loaded so far
       // (A-053): a linked row's wine is in the library by its foreign key, so
       // the only rows off the library are the ones with no link at all.
       offBook: rows.filter((r) => !r.wineId).length,
     };
-  }, [inventoryQ.data]);
+  }, [inventoryQ.data, lowStock]);
 
   // True while a full page has been read and there may be more the reader
   // has not asked for yet; false once a page shorter than the limit came
@@ -1440,6 +1447,8 @@ export function useCellarNextData() {
 
   return {
     activeRestaurantId,
+    /** The low-stock list's ids (QA 12a); null while unread. */
+    lowStock,
     /**
      * True while AuthContext is still resolving the session and its branches.
      * Kept separate from `activeRestaurantId === null` on purpose: on a cold
