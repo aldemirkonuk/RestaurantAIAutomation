@@ -106,7 +106,6 @@ describe('GetStarted entry rule', () => {
       auth.user = { ...owner }
     })
     render(page())
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     await screen.findByRole('heading', { name: 'Your restaurant' })
     fireEvent.change(screen.getByLabelText('Restaurant name'), { target: { value: 'Meyhane' } })
     fireEvent.change(screen.getByLabelText('Address'), { target: { value: '1 House Street' } })
@@ -140,7 +139,8 @@ describe('GetStarted menu step', () => {
     auth.loading = false
     auth.user = { name: 'Selin Kaya', restaurantId: '', role: null, emailVerified: true }
     view.rerender(page())
-    expect(screen.getByRole('heading', { name: /Welcome, Selin/ })).toBeInTheDocument()
+    expect(screen.getByText(/Welcome, Selin\./)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Change your name' }))
     expect(screen.getByLabelText('Your name')).toHaveValue('Selin Kaya')
   })
 
