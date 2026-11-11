@@ -95,7 +95,9 @@ export function TillWindowPicker({
   days: number;
   onChange: (d: number) => void;
 }) {
-  const options = useMemo(() => [7, 30, 90], []);
+  // A year is the window an owner reads a season against (audit G19); the
+  // gateway already allows 1–365 house days (`analytics.controller.ts`).
+  const options = useMemo(() => [7, 30, 90, 365], []);
   return (
     <div role="group" aria-label="Till window" style={{ display: 'flex', gap: 3 }}>
       {options.map((d) => (
