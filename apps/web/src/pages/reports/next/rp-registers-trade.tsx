@@ -23,7 +23,6 @@ import {
   money,
   num,
   pct,
-  ratioPct,
   shortDay,
   weekLabel,
   weekStart,
@@ -115,7 +114,8 @@ export interface TillWindow {
   timezone: string | null;
   /** True when the house has no time zone: no day can be filed, so nothing is stated. */
   zoneUnset: boolean;
-  dailySeries: Array<{ date: string; revenue: number }>;
+  /** Sparse; a `null` revenue is a day the server could not state. */
+  dailySeries: Array<{ date: string; revenue: number | null }>;
 }
 
 /** Week columns spanning [from, to] — so a week with no takings is a BLANK
@@ -133,6 +133,20 @@ function weekColumns(from: string, to: string): string[] {
     cursor = weekStart(`${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`);
   }
   return cols;
+}
+
+/** Every YYYY-MM-DD from `from` to `to`, both inclusive; [] when either is unusable. */
+export function daysBetween(from: string, to: string): string[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return [];
+  const out: string[] = [];
+  const d = new Date(`${from}T12:00:00`);
+  for (let guard = 0; guard < 400; guard++) {
+    const day = `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`;
+    out.push(day);
+    if (day >= to) break;
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
 }
 
 const till = analysis<TillWindow>({
@@ -156,9 +170,10 @@ const till = analysis<TillWindow>({
       days: num(d.days) ?? 0,
       timezone: str(d.timezone) || null,
       zoneUnset: d.zoneUnset === true,
+      // A day the server sent with no figure stays unknown (null), never 0.
       dailySeries: arr(d.dailySeries).map((r) => ({
         date: str(r.date),
-        revenue: num(r.revenue) ?? 0,
+        revenue: num(r.revenue),
       })),
     };
   },
@@ -226,6 +241,7 @@ const till = analysis<TillWindow>({
     const byDate = new Map(w.dailySeries.map((d) => [d.date, d.revenue]));
     const cells: Cell[] = [];
     for (const [date, revenue] of byDate) {
+      if (revenue == null) continue;
       cells.push({
         row: WEEKDAY_SHORT[weekdayIndex(date)],
         col: weekLabel(weekStart(date)),
@@ -233,12 +249,17 @@ const till = analysis<TillWindow>({
         title: shortDay(date),
       });
     }
+    // Every house day of the window gets its slot, so a day with no check is
+    // a gap in the line or an empty bar slot, not a day the axis skips and
+    // the line quietly bridges.
+    const span = daysBetween(w.from, w.to);
+    const shown = span.length > 0 ? span : w.dailySeries.map((d) => d.date);
     return {
       cats: {
-        data: w.dailySeries.map((d) => ({
-          label: shortDay(d.date),
-          value: d.revenue,
-          full: shortDay(d.date),
+        data: shown.map((date) => ({
+          label: shortDay(date),
+          value: byDate.get(date) ?? null,
+          full: byDate.has(date) ? shortDay(date) : `${shortDay(date)} · no check`,
         })),
         xLabel: 'day',
         yLabel: 'taken',
@@ -511,10 +532,23 @@ export interface AheadRegister {
   modelFitted: boolean | null;
   horizon: number;
   history: { dates: string[]; values: number[] };
-  forecast: Array<{ date: string; value: number }>;
+  forecast: Array<{ date: string; value: number | null }>;
   totalForecastDemand: number | null;
   accuracy: { mape: number | null; scoredPoints: number; basis: string } | null;
   basis?: { demand?: string; model?: string; total?: string };
+}
+
+/**
+ * How far the projection has missed in past weeks, in words (ADR 0104: people
+ * read words, not error statistics). `mape` is the server's backtest error in
+ * percent; the number itself stays in the API and in the working the server
+ * writes. The bands are the whole rule, pinned by `rp-registers-trade.test.tsx`.
+ */
+export function heldWords(mape: number | null): string {
+  if (mape == null || !Number.isFinite(mape) || mape < 0) return EM;
+  if (mape <= 15) return 'Held close in past weeks';
+  if (mape <= 35) return 'Off by a fair margin at times; read the total as rough';
+  return 'Has missed often; read it as a direction, not a number';
 }
 
 const ahead = analysis<AheadRegister>({
@@ -537,7 +571,7 @@ const ahead = analysis<AheadRegister>({
         dates: Array.isArray(h.dates) ? (h.dates as string[]) : [],
         values: Array.isArray(h.values) ? (h.values as number[]) : [],
       },
-      forecast: arr(d.forecast).map((f) => ({ date: str(f.date), value: num(f.value) ?? 0 })),
+      forecast: arr(d.forecast).map((f) => ({ date: str(f.date), value: num(f.value) })),
       totalForecastDemand: num(d.totalForecastDemand),
       accuracy: (d.accuracy ?? null) as AheadRegister['accuracy'],
       basis: d.basis as AheadRegister['basis'],
@@ -559,7 +593,6 @@ const ahead = analysis<AheadRegister>({
         say: 'Nothing is projected: no model fitted this history, so no line is drawn and no total is claimed.',
         figures: [
           { label: `Next ${a.horizon} days`, value: EM, note: 'No model fitted this history' },
-          { label: 'Model', value: EM, note: 'No model fitted this history' },
         ],
         notes: [],
         basis,
@@ -603,11 +636,10 @@ const ahead = analysis<AheadRegister>({
       figures: [
         { label: `Next ${a.horizon} days`, value: figure(a.totalForecastDemand) },
         {
-          label: 'Backtest error (MAPE)',
-          value: a.accuracy?.mape == null ? EM : ratioPct(a.accuracy.mape / 100, 1),
+          label: 'How it has held',
+          value: heldWords(a.accuracy?.mape ?? null),
           note: 'Not scoreable on this history',
         },
-        { label: 'Model', value: a.model || EM, note: 'No model fitted this history' },
       ],
       notes: ['The dashed run is projected. It is the model’s expectation, not trade that happened.'],
       basis,

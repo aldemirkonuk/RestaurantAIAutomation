@@ -257,7 +257,10 @@ export default function Cutting({
   const windowLine = spec.window(ctx);
 
   // One body, two places: the sheet, and the flat view (working open).
-  const bodyFor = (g: GraphType, workingOpen = false, flatView = false) =>
+  // The flat view passes its own bars-and-line choice (view-only, kept across
+  // its "Draw as" flips); the sheet passes the page's, keyed by cutting id.
+  const sheetCombo: ComboControl = { pick: comboPick, onPick: onComboPick };
+  const bodyFor = (g: GraphType, workingOpen = false, combo: ComboControl = sheetCombo) =>
     spec.path ? (
       <RegisterBody
         register={spec.register}
@@ -272,7 +275,7 @@ export default function Cutting({
             graph={g}
             windowLine={windowLine}
             workingOpen={workingOpen}
-            combo={{ pick: comboPick, onPick: flatView ? undefined : onComboPick }}
+            combo={combo}
           />
         )}
       </RegisterBody>
@@ -282,7 +285,7 @@ export default function Cutting({
         graph={g}
         windowLine={windowLine}
         workingOpen={workingOpen}
-        combo={{ pick: comboPick, onPick: flatView ? undefined : onComboPick }}
+        combo={combo}
       />
     );
   const body = bodyFor(drawn);
@@ -419,7 +422,8 @@ export default function Cutting({
           windowLine={windowLine}
           graphs={spec.graphs}
           initialGraph={drawn}
-          renderBody={(g) => bodyFor(g, true, true)}
+          initialComboPick={comboPick}
+          renderBody={(g, combo) => bodyFor(g, true, combo)}
           windowControl={
             spec.takesWindow ? <TillWindowPicker days={ctx.days} onChange={onDays} /> : undefined
           }

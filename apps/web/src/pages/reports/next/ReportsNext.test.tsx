@@ -903,7 +903,9 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     const ahead = screen.getByRole('region', { name: 'What’s coming' });
     expect(within(ahead).getByText(/no model fitted this history/i)).toBeInTheDocument();
     expect(within(ahead).queryByText('0')).not.toBeInTheDocument();
-    expect(within(ahead).getAllByText('—').length).toBeGreaterThanOrEqual(2);
+    expect(within(ahead).getAllByText('—').length).toBeGreaterThanOrEqual(1);
+    // The model's identifier is no longer a figure on the page (ADR 0104).
+    expect(within(ahead).queryByText('Model')).not.toBeInTheDocument();
   });
 
   it('withholds both weekdays when the server reports a tie, and says why', () => {
@@ -1857,6 +1859,25 @@ describe('ReportsNext — bars and a line on one cutting', () => {
         /Line: Days seen \(days\), on the right scale/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it('full screen keeps its own bars-and-line choice across a Draw as flip, and never hands it to the sheet', () => {
+    hook.current = weekAsCombo();
+    paint();
+    fireEvent.click(screen.getByRole('button', { name: 'Show The week’s shape full screen' }));
+    const flat = screen.getByRole('dialog', { name: 'The week’s shape' });
+    fireEvent.change(within(flat).getByLabelText('Line shows'), { target: { value: 'seen' } });
+    const drawAs = within(flat).getByLabelText('Draw The week’s shape as');
+    fireEvent.change(drawAs, { target: { value: 'bars' } });
+    expect(within(flat).queryByLabelText('Line shows')).toBeNull();
+    fireEvent.change(drawAs, { target: { value: 'combo' } });
+    // Round 20 measured this flipping back to the default; it is the view's own choice now.
+    expect((within(flat).getByLabelText('Line shows') as HTMLSelectElement).value).toBe('seen');
+    fireEvent.click(within(flat).getByRole('button', { name: 'Back to the sheet' }));
+    expect(
+      within(screen.getByRole('region', { name: 'The week’s shape' })).getByText(WORDS),
+    ).toBeInTheDocument();
+    expect(saveSheet).not.toHaveBeenCalled();
   });
 
   it('keeps the drawing and its measures when the cutting is moved to another place', () => {
