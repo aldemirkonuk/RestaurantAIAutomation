@@ -4,7 +4,7 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
-import ItemUsedIn, { RECIPES_UNKNOWN } from './ItemUsedIn';
+import ItemUsedIn, { DRINK_RECIPES_UNREAD, RECIPES_UNKNOWN } from './ItemUsedIn';
 import type { ItemUsedIn as UsedIn } from '../../../services/api/inventory';
 
 const EUR = { state: 'recorded', code: 'EUR' } as const;
@@ -135,5 +135,32 @@ describe('Used in', () => {
     unmount();
     render(<ItemUsedIn load={load()} canManage={false} currency={EUR} onRetry={vi.fn()} />);
     expect(screen.getByTestId('ivd-used-sold').textContent).not.toMatch(/€/);
+  });
+
+  describe('In drink recipes', () => {
+    const d = { cocktailId: 'c1', name: 'Rakı sour', label: 'Rakı', qtyEntered: 40, unitCode: 'ml' };
+    const draw = (over: Partial<UsedIn>) =>
+      render(<ItemUsedIn load={load(over)} canManage currency={EUR} onRetry={vi.fn()} />);
+
+    it('(i) draws each line as name, quantity, unit and label', () => {
+      draw({ inDrinkRecipes: ok([d]) });
+      const g = screen.getByTestId('ivd-used-drink-recipes');
+      expect(g.textContent).toContain('In drink recipes');
+      expect(within(g).getByText('Rakı sour — 40 ml (Rakı)')).toBeTruthy();
+    });
+
+    it('(ii) a group that could not be read says so and is never None', () => {
+      draw({ inDrinkRecipes: { readable: false, lines: null, source: 'The drink recipes could not be read (x).' } });
+      const g = screen.getByTestId('ivd-used-drink-recipes');
+      expect(g.textContent).toContain(DRINK_RECIPES_UNREAD);
+      expect(g.textContent).not.toContain('None');
+    });
+
+    it('(iii) a missing field from an older gateway reads as unread, never None', () => {
+      draw({ inDrinkRecipes: undefined });
+      const g = screen.getByTestId('ivd-used-drink-recipes');
+      expect(g.textContent).toContain('could not be read here');
+      expect(g.textContent).not.toContain('None');
+    });
   });
 });

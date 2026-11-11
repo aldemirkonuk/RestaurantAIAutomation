@@ -621,6 +621,8 @@ export interface ItemUsedIn {
   item: { id: string; kind: string | null; displayName: string | null };
   soldAs: ItemUsedInGroup<ItemMenuLine>;
   inCocktails: ItemUsedInGroup<{ cocktailId: string; name: string; quantity: number | null; unit: string | null }>;
+  /** Optional: an older gateway does not send it. */
+  inDrinkRecipes?: ItemUsedInGroup<{ cocktailId: string; name: string; label: string; qtyEntered: number; unitCode: string }>;
   namedNotLinked: ItemUsedInGroup<ItemMenuLine>;
   recipes: { recorded: false; note: string };
 }
