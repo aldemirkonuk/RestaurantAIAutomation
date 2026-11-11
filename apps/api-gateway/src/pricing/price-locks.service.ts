@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { AGREED_LOT_COST_SELECT, mergeAgreedLotCost } from "../analytics/inventory-cost";
 import { MarginAdviceService, type InventoryPriceRow } from "./margin-advice.service";
 import { confirmedPourFrom, readHouseTargetMargin, targetsFrom } from "./target-margin.service";
 import { type LockKind, lockFromRow, readOpenLocks, readPeople } from "./price-locks";
@@ -226,21 +227,37 @@ export class PriceLocksService {
     if (menus.error) missing.push(`the current menu could not be read (${menus.error})`);
 
     // Advice inputs for the locked wines.
-    const [targets, rollup] = await Promise.all([
+    // The same cost the advice list and analytics read (resolveUnitCost): the
+    // rollup for invoiced lots, plus the cost agreed at delivery, which the
+    // rollup does not carry. Without the second read a locked wine whose only
+    // cost was agreed at delivery reads "no recorded cost" here while margin
+    // advice prices it.
+    const emptyRead = () =>
+      Promise.resolve({ data: [], error: null } as { data: unknown[]; error: { message: string } | null });
+    const [targets, rollup, agreed] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
       inventoryIds.length === 0
-        ? Promise.resolve({ data: [], error: null } as { data: unknown[]; error: { message: string } | null })
+        ? emptyRead()
         : client
             .from("inventory_lot_rollup")
             .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
             .eq("restaurant_id", restaurantId)
             .in("inventory_id", inventoryIds),
+      inventoryIds.length === 0
+        ? emptyRead()
+        : client
+            .from("inventory_lot_agreed_cost")
+            .select(AGREED_LOT_COST_SELECT)
+            .eq("restaurant_id", restaurantId)
+            .in("inventory_id", inventoryIds),
     ]);
-    const adviceReadable = targets.error === null && !rollup.error;
+    const adviceReadable = targets.error === null && !rollup.error && !agreed.error;
     if (targets.error !== null) missing.push(`the target margin could not be read (${targets.error})`);
     if (rollup.error) missing.push(`the recorded costs could not be read (${rollup.error.message})`);
+    if (agreed.error) missing.push(`the costs agreed at delivery could not be read (${agreed.error.message})`);
     const lots = new Map<string, Record<string, unknown>>();
     for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>) lots.set(String(r.inventory_id), r);
+    mergeAgreedLotCost(lots, agreed.data as Array<Record<string, unknown>> | null);
     const terms = { ...targetsFrom(targets.row), pourMl: confirmedPourFrom(targets.row) };
 
     // Who set each lock, and whether they still manage this house.

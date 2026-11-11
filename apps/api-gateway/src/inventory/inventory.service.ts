@@ -29,6 +29,12 @@ import {
 } from "./house-item-research";
 import { classifyStock } from "../common/stock-status";
 import {
+  AGREED_LOT_COST_SELECT,
+  mergeAgreedLotCost,
+  resolveUnitCost,
+  type CostBasis,
+} from "../analytics/inventory-cost";
+import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
   MapToastItemDto,
@@ -36,6 +42,19 @@ import {
   BulkCreateInventoryItemsDto,
   BulkInventoryLineDto,
 } from "./dto/inventory.dto";
+
+/**
+ * The page's short provenance label for each cost basis. An agreed cost is
+ * neither an invoice nor an estimate, so it gets its own word; an unknown cost
+ * gets no label at all.
+ */
+const COST_PROVENANCE: Record<CostBasis, string | undefined> = {
+  invoice_lot_wac: "invoice",
+  invoice_lot_wac_partial: "invoice",
+  agreed_lot_wac: "agreed",
+  last_purchase_price: "estimated",
+  unknown: undefined,
+};
 
 const ML_PER_OZ = 29.5735;
 
@@ -80,10 +99,20 @@ export class InventoryService {
 
   private mapInventoryItem(
     row: Record<string, any>,
-    rollup?: Record<string, any>,
+    // `undefined`: the caller did not read the lots, so no cost is stated.
+    // `null`: the lots were read and this item has none.
+    rollup?: Record<string, any> | null,
     locations?: any[],
     analytics?: Record<string, any>,
   ): Record<string, any> {
+    // The unit cost is the one analytics, margin advice and price locks read
+    // (resolveUnitCost: invoiced lot WAC, then the cost agreed at delivery,
+    // then a recorded last purchase price, else unknown). `wac` used to be the
+    // raw rollup average, which blends provisional estimates and called an
+    // agreed cost "estimated", so this page and analytics could disagree.
+    // Unknown stays null; it is never 0.
+    const cost =
+      rollup === undefined ? null : resolveUnitCost(row, rollup ?? undefined);
     const wineBottleMl = row.master_wine_library?.bottle_size_ml ?? 750;
     const defaultPourMl = row.restaurants?.default_pour_ml ?? 150;
     const effectiveBottleSizeMl = row.bottle_size_ml ?? wineBottleMl;
@@ -151,12 +180,10 @@ export class InventoryService {
       retailPriceAvg: retailPriceAvg ?? undefined,
       markupRatio: markupRatio ?? undefined,
       // Phase 2 read-cutover: true WAC + provenance + lot spread derived from inventory_lots.
-      wac: rollup?.wac ?? undefined,
-      costProvenance: rollup
-        ? rollup.has_invoice_cost
-          ? "invoice"
-          : "estimated"
-        : undefined,
+      wac: cost?.unitCost ?? undefined,
+      unitCost: cost ? cost.unitCost : undefined,
+      costBasis: cost?.costBasis,
+      costProvenance: cost ? COST_PROVENANCE[cost.costBasis] : undefined,
       lotLiveQty: rollup?.live_qty ?? undefined,
       lotLocationCount: rollup?.live_location_count ?? undefined,
       // Phase 2 (2c) by-the-glass: total open-bottle ml across live lots.
@@ -177,18 +204,42 @@ export class InventoryService {
   /** Phase 2: per-inventory WAC / on-hand / location spread derived from inventory_lots. */
   private async fetchLotRollup(
     restaurantId: string,
-  ): Promise<Map<string, any>> {
-    const map = new Map<string, any>();
+  ): Promise<Map<string, any> & { costReadable: boolean }> {
+    // `costReadable: false` says a cost read failed, so an unknown cost on
+    // this batch may be a failed read rather than a wine with no recorded
+    // cost. The rest of the rollup (quantities, locations) is still served.
+    const map = Object.assign(new Map<string, any>(), { costReadable: true });
     try {
       const client = this.dbService.getClient();
-      const { data } = await client
-        .from("inventory_lot_rollup")
-        .select(
-          "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, live_location_count, open_ml",
-        )
-        .eq("restaurant_id", restaurantId);
-      for (const r of data || []) map.set(r.inventory_id, r);
+      const [rollup, agreed] = await Promise.all([
+        client
+          .from("inventory_lot_rollup")
+          .select(
+            "inventory_id, live_qty, shadow_qty, wac, has_invoice_cost, wac_qty, live_location_count, open_ml",
+          )
+          .eq("restaurant_id", restaurantId),
+        // The cost agreed at delivery, which the rollup does not carry.
+        client
+          .from("inventory_lot_agreed_cost")
+          .select(AGREED_LOT_COST_SELECT)
+          .eq("restaurant_id", restaurantId),
+      ]);
+      if (rollup.error) {
+        map.costReadable = false;
+        this.logger.warn(`fetchLotRollup failed: ${rollup.error.message}`);
+      } else {
+        for (const r of rollup.data || []) map.set(r.inventory_id, r);
+      }
+      if (agreed.error) {
+        map.costReadable = false;
+        this.logger.warn(
+          `fetchLotRollup: the agreed costs could not be read: ${agreed.error.message}`,
+        );
+      } else {
+        mergeAgreedLotCost(map, agreed.data);
+      }
     } catch (err: any) {
+      map.costReadable = false;
       this.logger.warn(`fetchLotRollup failed: ${err?.message}`);
     }
     return map;
@@ -262,7 +313,7 @@ export class InventoryService {
     return (data || []).map((row) => ({
       ...this.mapInventoryItem(
         row,
-        rollup.get(row.id),
+        rollup.get(row.id) ?? null,
         locations.get(row.id),
         analytics.map.get(row.id),
       ),
@@ -270,6 +321,9 @@ export class InventoryService {
       // ignores it. `false` means the analytics join itself could not be
       // read for this batch — not that this row has no analytics row.
       analyticsReadable: analytics.ok,
+      // Same idea for cost: `false` means a cost read failed for this batch,
+      // so a null `unitCost` may be a failed read, not "no recorded cost".
+      costReadable: rollup.costReadable,
     }));
   }
 
@@ -334,7 +388,7 @@ export class InventoryService {
     return row.data
       ? this.mapInventoryItem(
           row.data,
-          rollup.get(inventoryId),
+          rollup.get(inventoryId) ?? null,
           locations.get(inventoryId),
         )
       : null;
@@ -436,7 +490,7 @@ export class InventoryService {
       item: row.data
         ? this.mapInventoryItem(
             row.data,
-            rollup.get(inventoryId),
+            rollup.get(inventoryId) ?? null,
             locations.get(inventoryId),
           )
         : null,
@@ -615,7 +669,7 @@ export class InventoryService {
       item: row.data
         ? this.mapInventoryItem(
             row.data,
-            rollup.get(inventoryId),
+            rollup.get(inventoryId) ?? null,
             locations.get(inventoryId),
           )
         : null,
@@ -1030,7 +1084,7 @@ export class InventoryService {
         const reactRollup = await this.fetchLotRollup(restaurantId);
         const reactMapped = this.mapInventoryItem(
           freshReact ?? reactivated,
-          reactRollup.get(existing.id),
+          reactRollup.get(existing.id) ?? null,
         );
         return reactPrice ? { ...reactMapped, priceChange: reactPrice } : reactMapped;
       }
@@ -1131,7 +1185,7 @@ export class InventoryService {
       .eq("id", data.id)
       .single();
     const rollup = await this.fetchLotRollup(restaurantId);
-    const mapped = this.mapInventoryItem(fresh ?? data, rollup.get(data.id));
+    const mapped = this.mapInventoryItem(fresh ?? data, rollup.get(data.id) ?? null);
     return price ? { ...mapped, priceChange: price } : mapped;
   }
 
@@ -1838,7 +1892,7 @@ export class InventoryService {
     }
 
     const rollup = await this.fetchLotRollup(restaurantId);
-    const mapped = this.mapInventoryItem(data, rollup.get(itemId));
+    const mapped = this.mapInventoryItem(data, rollup.get(itemId) ?? null);
     // Said, not implied: "unchanged" and "stale" are different answers from
     // "changed", and the page tells the manager which one happened.
     return priceChange ? { ...mapped, priceChange } : mapped;
