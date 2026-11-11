@@ -1612,7 +1612,37 @@ describe("MenusService — a scan reads in the background (founder 2026-11-07)",
       "The read stopped with an error, and nothing from it was kept but the file: progress table down.",
     );
     expect(tables.menu_items.filter((l) => l.menu_id === r.menuId)).toHaveLength(0);
+    // The library submission made for its line goes with it: nothing points back to it.
+    expect(tables.master_wine_library_submissions).toHaveLength(0);
     await expect(service.planFor("rest-1", r.menuId)).rejects.toThrow(/This read failed/);
+  });
+
+  it("a read the sweep already ended stays FAILED when it finishes late, and keeps no line or submission", async () => {
+    const tables = base();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async () => {
+          await gate;
+          return { items: [{ name: "Opus One", bottle_price: 62 }], warnings: [] };
+        },
+      },
+    });
+    const r = await service.importMenu({ method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any, "user-1");
+    // Another server (or the half-hour sweep) took this read for stopped.
+    Object.assign(tables.restaurant_menus.find((m) => m.id === r.menuId)!, {
+      read_state: "failed",
+      read_failure: "The read stopped before it finished.",
+    });
+    release();
+    await service.whenRead(r.menuId);
+    const read = await service.readStatus("rest-1", r.menuId);
+    expect(read.state).toBe("failed");
+    expect(read.reply).toBeNull();
+    expect(tables.menu_items.filter((l) => l.menu_id === r.menuId)).toHaveLength(0);
+    expect(tables.master_wine_library_submissions).toHaveLength(0);
   });
 
   it("a read nobody is reading any more (a restart) is said to have FAILED when the house's menus are next read", async () => {
@@ -1624,11 +1654,17 @@ describe("MenusService — a scan reads in the background (founder 2026-11-07)",
       read_state: "reading",
       extracted_at: new Date(Date.now() - 31 * 60 * 1000).toISOString(),
     });
+    // It had kept a line and its submission before the server stopped.
+    tables.master_wine_library_submissions.push({ id: "sub-stuck", restaurant_id: "rest-1" });
+    tables.menu_items.push({ id: "line-stuck", menu_id: "menu-stuck", restaurant_id: "rest-1", submission_id: "sub-stuck" });
     const service = makeService(tables, { wineSubmissions });
     const listed = await service.listVersions("rest-1");
     const v = listed.versions.find((x) => x.menuId === "menu-stuck")!;
     expect(v.readState).toBe("failed");
     expect(v.readFailure).toMatch(/stopped before it finished/);
+    // A stopped read keeps no half of what it wrote, as a failed one does.
+    expect(tables.menu_items.filter((l) => l.menu_id === "menu-stuck")).toHaveLength(0);
+    expect(tables.master_wine_library_submissions).toHaveLength(0);
   });
 });
 
