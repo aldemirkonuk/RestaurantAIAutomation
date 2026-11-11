@@ -66,6 +66,7 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 
 // Critical pages (loaded immediately)
 import { Login } from './pages/Login'
+import { SignInLink } from './pages/SignInLink'
 import { Register } from './pages/Register'
 import { ForgotPassword } from './pages/ForgotPassword'
 import { ResetPassword } from './pages/ResetPassword'
@@ -203,6 +204,7 @@ function App() {
                 </Route>
                 {/* Public Routes */}
                 <Route path="/login" element={<Login />} />
+                <Route path="/login/code" element={<SignInLink />} />
                 <Route path="/register" element={<RegisterDoor landing={<Landing />} form={<Register />} />} />
                 <Route path="/story" element={<Story />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />

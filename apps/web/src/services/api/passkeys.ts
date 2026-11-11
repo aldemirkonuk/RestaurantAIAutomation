@@ -170,6 +170,16 @@ export async function signInWithEmailCode(email: string, code: string): Promise<
   return { accessToken: data.accessToken, refreshToken: data.refreshToken }
 }
 
+/** The sign-in mail's link (QA round 23). No per-address hint is sent: the address is unknown until the answer. */
+export async function signInWithEmailLink(token: string): Promise<SessionPair> {
+  const { data } = await apiClient.post<SessionPair & { signInDevice?: string; email?: string }>(
+    '/auth/email-code/link',
+    { token },
+  )
+  if (data.email) rememberSignInDevice(data.email, data.signInDevice)
+  return { accessToken: data.accessToken, refreshToken: data.refreshToken }
+}
+
 export async function removePasskey(id: string): Promise<PasskeyReceipt> {
   const { data } = await apiClient.delete<PasskeyReceipt>(`/passkeys/${encodeURIComponent(id)}`)
   return data
