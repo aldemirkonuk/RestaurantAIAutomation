@@ -143,17 +143,49 @@ function hasSignature(el: XmlElement): boolean {
   return Boolean(ext && walk(ext)) || all(el, "Signature").length > 0;
 }
 
-function unitOf(code: string | undefined, lineNo: number, warnings: string[]): Uom {
+/**
+ * The unit a line counts in, and whether the count can be trusted as stated.
+ *
+ * `doubt` is true when the line's bottle count is NOT what the file means:
+ * - A case or pack code (CS, CA, CT, BX, CR, PK, PA). A UBL-TR line states
+ *   the number of cases, never how many are in one, so `packSize` stays 1 —
+ *   the house rule for "the paper did not say" (parsed-document.ts, the
+ *   price-base check) — and the bottle count equals the case count until a
+ *   person sets the pack size on the line. Ten cases of twelve read as ten.
+ * - A unit the match does not count in (KGM, GRM, MTR, …) or no unit at all:
+ *   the line is filed as items so it can be shown, which is not what it is.
+ *
+ * The session's call (2026-11-11, under the 2026-11-07 /goal): say it on the
+ * paper and lower the paper's confidence, rather than refuse the line.
+ * Rejected: refusing the line (the money on it is real, and the tie-out
+ * would then fail on a line the file does carry); guessing a pack of 12 (a
+ * guessed twelve is wrong by a factor of twelve, ADR 0104 BT-149 note).
+ */
+function unitOf(
+  code: string | undefined,
+  lineNo: number,
+  warnings: string[],
+): { uom: Uom; doubt: boolean } {
   const c = (code ?? "").trim().toUpperCase();
   const known = UNIT_CODES[c];
-  if (known) return known;
+  if (known === "case" || known === "pack") {
+    const word = known === "case" ? "cases" : "packs";
+    warnings.push(
+      `Line ${lineNo}: the file counts in ${word} (${c}) and does not say how many are in one, so the bottle count is the number of ${word} until a pack size is set on the line. Set it before this paper is booked.`,
+    );
+    return { uom: known, doubt: true };
+  }
+  if (known) return { uom: known, doubt: false };
   warnings.push(
     c
-      ? `Line ${lineNo}: the file counts in ${UNIT_WORDS[c] ? `${UNIT_WORDS[c]}s (${c})` : `unit code ${c}`}, which is not a unit the match counts; the quantity is left as the file states it, unconverted.`
-      : `Line ${lineNo}: the file states no unit; the quantity is left unconverted.`,
+      ? `Line ${lineNo}: the file counts in ${UNIT_WORDS[c] ? `${UNIT_WORDS[c]}s (${c})` : `unit code ${c}`}, which is not a unit the match counts; the quantity is left as the file states it, unconverted, and shown as items. Set the unit on the line before this paper is booked.`
+      : `Line ${lineNo}: the file states no unit; the quantity is left unconverted and shown as items. Set the unit on the line before this paper is booked.`,
   );
-  return "each";
+  return { uom: "each", doubt: true };
 }
+
+/** The most a paper with a doubtful line's count may claim to be sure of. */
+const DOUBTFUL_COUNT_CONFIDENCE = 0.5;
 
 /** Read a UBL-TR file. Throws `XmlRefused` with a sentence when it cannot. */
 export function readUblTr(xml: string): ParsedDocument {
@@ -185,12 +217,32 @@ export function readUblTr(xml: string): ParsedDocument {
   );
 
   const lineEls = despatch ? all(root, "DespatchLine") : all(root, "InvoiceLine");
+  // The file's own line numbers, when every line has one and no two share it;
+  // otherwise every line is numbered by position, so two lines never share a
+  // number (a mix of the two could).
+  const fileIds = lineEls.map((le) => Number(textAt(le, "ID")));
+  const idsUsable =
+    fileIds.every((n) => Number.isInteger(n) && n > 0) &&
+    new Set(fileIds).size === fileIds.length;
+  if (lineEls.length && !idsUsable)
+    warnings.push(
+      "The file's line numbers are missing, not numbers, or repeated, so its lines are numbered here by their position.",
+    );
+  let doubtfulCount = false;
   const lines: ParsedLine[] = lineEls.map((le, i) => {
-    const lineNo = Number(textAt(le, "ID")) || i + 1;
+    const lineNo = idsUsable ? fileIds[i] : i + 1;
     const qtyEl = at(le, despatch ? "DeliveredQuantity" : "InvoicedQuantity");
     const lineWarnings: string[] = [];
-    const qty = num(qtyEl, `line ${lineNo} quantity`, lineWarnings) ?? 0;
-    const uom = unitOf(qtyEl?.attrs.unitCode, lineNo, lineWarnings);
+    const statedQty = num(qtyEl, `line ${lineNo} quantity`, lineWarnings);
+    if (statedQty == null && !qtyEl?.text.trim())
+      lineWarnings.push(
+        `Line ${lineNo}: the file states no quantity, so it is filed as 0. That is an unread quantity, not a line delivered empty.`,
+      );
+    if (statedQty == null) doubtfulCount = true;
+    const qty = statedQty ?? 0;
+    const unit = unitOf(qtyEl?.attrs.unitCode, lineNo, lineWarnings);
+    const uom = unit.uom;
+    if (unit.doubt) doubtfulCount = true;
     warnings.push(...lineWarnings);
     const linePrinted: Record<string, string> = {};
     if (qtyEl?.text.trim()) linePrinted.qty = `${qtyEl.text.trim()} ${qtyEl.attrs.unitCode ?? ""}`.trim();
@@ -317,8 +369,11 @@ export function readUblTr(xml: string): ParsedDocument {
   }
 
   const tied = despatch ? base : applyTieOut(base);
+  const byWarnings = Math.max(0.4, 0.98 - tied.warnings.length * 0.08);
   return {
     ...tied,
-    confidence: Math.max(0.4, 0.98 - tied.warnings.length * 0.08),
+    // A tie-out proves the money adds up; it says nothing about whether ten
+    // "cases" are ten bottles. A doubtful count caps the paper's confidence.
+    confidence: doubtfulCount ? Math.min(byWarnings, DOUBTFUL_COUNT_CONFIDENCE) : byWarnings,
   };
 }
