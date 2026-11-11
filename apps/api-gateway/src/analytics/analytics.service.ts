@@ -654,6 +654,11 @@ export class AnalyticsService {
       cogs: t.cogs,
       cogsCoverage: t.cogsCoverage,
       cogsSettledAfterSale: t.settledAfterSale,
+      // Named apart, feeding no ratio (batch review 2026-11-11): late prices
+      // settled in the window on bottles sold before it, and, while cogs is
+      // withheld, the exact cost of the items whose every bottle is costed.
+      settledOnEarlierSales: t.settledOnEarlierSales,
+      costOfCostedItems: t.costOfCostedItems,
       cogsWindow: t.cogsWindow,
       revenue: t.revenue,
       salesCoverage: t.salesCoverage,

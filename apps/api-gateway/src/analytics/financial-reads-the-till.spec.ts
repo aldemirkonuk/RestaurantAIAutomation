@@ -90,6 +90,36 @@ describe("the financial summary reads what the till sold", () => {
     }
   });
 
+  it("hands on the earlier-sale late prices and the costed items' cost, both apart from cogs", async () => {
+    const withVoid = {
+      ...COST,
+      items: [
+        ...COST.items,
+        {
+          inventory_id: "inv-2",
+          bottles_out: 2,
+          bottles_back: 1,
+          cost: "40.000000",
+          settled_after_sale: "0",
+          settled_on_earlier_sales: "0",
+          uncosted_out: 0,
+          uncosted_back: 1,
+          in_house: true,
+        },
+      ],
+      settled_on_earlier_sales: "7.250000",
+    };
+    const { svc } = service({
+      pos_item_sales: { data: SALES, error: null },
+      pos_cost_of_goods: { data: withVoid, error: null },
+    });
+    const out: any = await svc.getFinancialSummary(RESTAURANT, 0, { withSales: true });
+    expect(out.cogs).toBeNull();
+    expect(out.cogsRatio).toBeNull();
+    expect(out.costOfCostedItems).toEqual({ amount: 300, items: 1, of: 2 });
+    expect(out.settledOnEarlierSales).toBe(7.25);
+  });
+
   it("does not read the till at all for a caller without sales", async () => {
     const { svc, calls } = service({});
     const out: any = await svc.getFinancialSummary(RESTAURANT);
