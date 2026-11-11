@@ -287,6 +287,16 @@ export function BigFigure({ fig, window }: { fig: Fig; window: string }) {
  * `projected` is always the dashed/hollow half: a forecast that looks like a
  * measurement is a lie told with a stroke width.
  */
+/**
+ * Which category ticks to draw. A week (seven short names) always fits, so it
+ * shows every day: `preserveStartEnd` with a 26px gap dropped Mon, Wed and Sat
+ * from "The week's shape" on a 340px plot. Longer runs keep the first and last
+ * and thin the middle rather than overprint.
+ */
+export function tickInterval(rows: ReadonlyArray<{ label: string }>): 0 | 'preserveStartEnd' {
+  return rows.length <= 7 && rows.every((r) => r.label.length <= 5) ? 0 : 'preserveStartEnd';
+}
+
 const KIND_WORDS = { line: 'A line', area: 'An area', bars: 'Bars' } as const;
 
 export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'area' | 'bars' }) {
@@ -306,7 +316,7 @@ export function CatPlot({ series, kind }: { series: CatSeries; kind: 'line' | 'a
   const axes = (
     <>
       <CartesianGrid vertical={false} stroke="var(--paper-2)" />
-      <XAxis dataKey="label" {...AXIS} interval="preserveStartEnd" minTickGap={26}>
+      <XAxis dataKey="label" {...AXIS} interval={tickInterval(data)} minTickGap={26}>
         <Label value={xLabel} position="insideBottom" offset={-11} style={AXIS_LABEL} />
       </XAxis>
       <YAxis {...AXIS} width={52} tickFormatter={(v: number) => format(v)}>
@@ -514,7 +524,7 @@ export function ComboPlot({
           margin={split ? { ...MARGIN, right: 2 } : MARGIN}
         >
           <CartesianGrid vertical={false} stroke="var(--paper-2)" />
-          <XAxis dataKey="label" {...AXIS} interval="preserveStartEnd" minTickGap={26}>
+          <XAxis dataKey="label" {...AXIS} interval={tickInterval(rows)} minTickGap={26}>
             <Label value={series.xLabel} position="insideBottom" offset={-11} style={AXIS_LABEL} />
           </XAxis>
           <YAxis

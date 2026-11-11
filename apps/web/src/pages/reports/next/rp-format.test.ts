@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { EM, failureLine, failureOf, money, moneyIn, pct } from './rp-format';
+import { EM, failureLine, failureOf, money, moneyIn, pct, shortLabels } from './rp-format';
 
 describe('pct — a 0–1 fraction, printed as a signed percentage', () => {
   it('multiplies by 100: the measured trend reads +20.7%, not +0.21%', () => {
@@ -79,5 +79,37 @@ describe('a refusal is said in the gateway’s words (audit G11)', () => {
       'The cashflow register could not be read (Network Error). Nothing below is claimed.',
     );
     expect(failureOf(refusal('Internal server error', 500))!.said).toBeUndefined();
+  });
+});
+
+describe('shortLabels', () => {
+  it('never draws two different names under the same label', () => {
+    const names = [
+      'Local Check Brut',
+      'Local Check Barolo',
+      'Local Check Rioja',
+      'Local Check Rosé',
+      'Local Check Riesling',
+      'Ana',
+    ];
+    const got = shortLabels(names, 14);
+    expect(new Set(got).size).toBe(names.length);
+    for (const l of got) expect(l.length).toBeLessThanOrEqual(14);
+    expect(got[5]).toBe('Ana');
+    // The shared words go; what tells them apart stays.
+    expect(got[1]).toBe('…Barolo');
+    expect(got[0]).toBe('…Brut');
+    expect(shortLabels(['Domaine Leflaive Puligny 2019', 'Domaine Leflaive Puligny 2020'], 14)).toEqual([
+      '…2019',
+      '…2020',
+    ]);
+  });
+
+  it('cuts a lone long name at the end, as before', () => {
+    expect(shortLabels(['Château Margaux Grand Vin'], 14)).toEqual(['Château Marga…']);
+  });
+
+  it('numbers names that are identical outright', () => {
+    expect(shortLabels(['Ben', 'Ben'], 12)).toEqual(['Ben', 'Ben 2']);
   });
 });

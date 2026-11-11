@@ -118,6 +118,37 @@ export function countOf(v: unknown, one: string, many: string): string {
 }
 
 /** Parse a YYYY-MM-DD as a LOCAL date (`new Date('YYYY-MM-DD')` is UTC). */
+/**
+ * Axis labels for a row of names: at most `max` characters, never two alike.
+ * Cutting the tail alone drew "Local Check B…" under two different wines.
+ * Names whose cut collides drop the words they share instead, so the label
+ * says what tells them apart ("…Barolo 2017", "…Brut NV"); the tooltip still
+ * carries the whole name.
+ */
+export function shortLabels(names: string[], max: number): string[] {
+  const fit = (n: string) => (n.length > max ? `${n.slice(0, max - 1).trimEnd()}…` : n);
+  const cut = names.map(fit);
+  const groups = new Map<string, string[]>();
+  names.forEach((n, i) => groups.set(cut[i], [...(groups.get(cut[i]) ?? []), n]));
+  const kept = names.map((n, i) => {
+    const group = groups.get(cut[i]) ?? [];
+    if (group.length < 2 || n.length <= max) return cut[i];
+    // The words every name in the clash starts with.
+    let p = 0;
+    while (group.every((g) => g[p] === n[p] && p < n.length)) p += 1;
+    p = n.lastIndexOf(' ', p) + 1;
+    const rest = n.slice(p);
+    if (p === 0) return cut[i];
+    return rest.length + 1 > max ? `…${rest.slice(0, max - 2).trimEnd()}…` : `…${rest}`;
+  });
+  const seen = new Map<string, number>();
+  return kept.map((l) => {
+    const k = (seen.get(l) ?? 0) + 1;
+    seen.set(l, k);
+    return k === 1 ? l : `${l} ${k}`;
+  });
+}
+
 export function parseDateStr(s: string): Date {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, (m ?? 1) - 1, d ?? 1);
