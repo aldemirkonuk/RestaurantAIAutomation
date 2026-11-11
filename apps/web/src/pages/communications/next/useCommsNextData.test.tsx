@@ -119,7 +119,7 @@ describe('useCommsNextData — every cache bucket names the tenant (P2)', () => 
 });
 
 const LABELS = {
-  history: 'the conversation book',
+  history: 'Mail',
   drafts: 'the replies the house has written',
 } as const;
 

@@ -5,7 +5,7 @@
  * The verdict, enforced: today's page won on at-a-glance completeness ("shows
  * basically everything"); the redesign lost on "too much text". So the page
  * leads with a three-figure glance strip (all derived from live queries, each
- * an em dash until its query answers), the conversation book is a ledger of
+ * an em dash until its query answers), Mail is a ledger of
  * short rows — prose lives inside the expansion, never on the row — and the
  * founder's two named additions are built in: the channels rail makes the
  * page's integrations visible, and the template builders open inside a sheet
@@ -478,7 +478,7 @@ export default function CommunicationsNext() {
   // COMMS-W33: every read on the page that could not be read, for the banner.
   // Each part of the page says its own reason and when its rows are from.
   const failedReads: FailedRead[] = [
-    ...(data.failed.history ? [{ name: 'the conversation book', stale: data.hasData, at: data.historyAt ?? 0 }] : []),
+    ...(data.failed.history ? [{ name: 'Mail', stale: data.hasData, at: data.historyAt ?? 0 }] : []),
     ...(data.failed.drafts
       ? [{ name: 'the replies the house has written', stale: data.draftsKnown, at: data.draftsAt ?? 0 }]
       : []),
@@ -490,7 +490,7 @@ export default function CommunicationsNext() {
       : []),
   ];
   const waitingAt = Math.min(
-    ...failedReads.filter((r) => r.name !== 'the conversation book' && r.stale).map((r) => r.at),
+    ...failedReads.filter((r) => r.name !== 'Mail' && r.stale).map((r) => r.at),
   );
   // "Try again" re-reads everything on the page; it used to re-read two of six.
   const queryClient = useQueryClient();
@@ -568,7 +568,7 @@ export default function CommunicationsNext() {
         </header>
 
         {/* The banner covers EVERY source this page owns, not just the
-            conversation book. Before ADR 0083 it read `historyQ.isError`
+            Mail. Before ADR 0083 it read `historyQ.isError`
             alone, so a failed thread index or drafts fetch rendered as a bare
             em dash — the mark ADR 0051 reserves for "has not answered".
             Extending the one banner rather than giving each figure its own
@@ -813,15 +813,15 @@ export default function CommunicationsNext() {
               {/* COMMS-W31: for staff the letter may well still be a draft — it is just not theirs to open. */}
               {houseDrafts.withheld
                 ? 'The letter this link points to is opened by an owner or manager of this house.'
-                : 'The letter this link points to is no longer a draft — it was sent or discarded. The conversation book says which.'}
+                : 'The letter this link points to is no longer a draft — it was sent or discarded. Mail says which.'}
             </p>
           )}
         </section>
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_300px]">
-          {/* ── the conversation book ─────────────────────────────────── */}
+          {/* ── Mail ─────────────────────────────────── */}
           <section
-            aria-label="Conversation book"
+            aria-label="Mail"
           >
             {/* COMMS-W36 (founder: "Visible label"): the book was the one region a
                 heading list skipped. The house's small mono label, as the rail's. */}
@@ -836,7 +836,7 @@ export default function CommunicationsNext() {
                 margin: '0 0 8px',
               }}
             >
-              The conversation book
+              Mail
             </h2>
             {/* COMMS-W33: the book says its own failure where its rows are; it used to leave an
                 empty ruled box, with the reason only in the banner, as "status code 500". */}
@@ -847,13 +847,13 @@ export default function CommunicationsNext() {
                 style={{ fontFamily: SANS, fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: '0 0 8px' }}
               >
                 {data.hasData
-                  ? readAgainFailed(data.errorMessage, data.historyAt ?? 0, data.rows.length === 0, 'the conversation book')
-                  : `The conversation book could not be read (${data.errorMessage}). That does not mean nothing was written.`}
+                  ? readAgainFailed(data.errorMessage, data.historyAt ?? 0, data.rows.length === 0, 'Mail')
+                  : `Mail could not be read (${data.errorMessage}). That does not mean nothing was written.`}
               </p>
             )}
             {!data.hasData && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>
-                Reading the conversation book…
+                Reading Mail…
               </p>
             ) : data.rows.length === 0 && !data.isError ? (
               <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)' }}>

@@ -1329,7 +1329,7 @@ export class IntegrationsOauthService {
         // deletion, and the person is told that rather than shown a success
         // that did not include the half they care about.
         throw new InternalServerErrorException(
-          "The grant was revoked and nothing more will be read, but the raw mail it mirrored was NOT deleted: the retention service is not available here. The mail is still in this restaurant's conversation book.",
+          "The grant was revoked and nothing more will be read, but the raw mail it mirrored was NOT deleted: the retention service is not available here. The mail is still in this restaurant's Mail.",
         );
       }
       const run = await this.rawMailRetention.sweepForRevokedGrant({
