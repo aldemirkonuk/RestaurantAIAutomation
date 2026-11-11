@@ -137,11 +137,88 @@ describe("an e-invoice file at the intake", () => {
 });
 
 describe("isDocumentLike admits the e-invoice file", () => {
-  it("any XML, and a zip whose name says invoice; not a zip of anything", () => {
+  it("any XML and any zip: a zip is judged by what it holds, not its name", () => {
     expect(isDocumentLike("application/xml", "SYN1.xml")).toBe(true);
     expect(isDocumentLike("application/zip", "efatura_SYN1.zip")).toBe(true);
     expect(isDocumentLike("application/zip", "e-arşiv.zip")).toBe(true);
-    expect(isDocumentLike("application/zip", "archive.zip")).toBe(false);
-    expect(isDocumentLike("application/zip", "photos.zip")).toBe(false);
+    // GİB and integrators name the zip after the bare ETTN, or a date.
+    expect(isDocumentLike("application/zip", `${ETTN}.zip`)).toBe(true);
+    expect(isDocumentLike("application/octet-stream", "2026-11-05.zip")).toBe(true);
+    expect(isDocumentLike("text/csv", "prices.csv")).toBe(false);
+  });
+});
+
+/** The same invoice, with both parties named by tax number. */
+const SELLER_VKN = "1234567890";
+const BUYER_VKN = "9876543217"; // SYNTHETIC, passes the VKN check digit
+const UBL_WITH_PARTIES = UBL.replace(
+  "<cac:LegalMonetaryTotal>",
+  `<cac:AccountingSupplierParty><cac:Party><cac:PartyIdentification><cbc:ID schemeID="VKN">${SELLER_VKN}</cbc:ID></cac:PartyIdentification><cac:PartyName><cbc:Name>SYN Satıcı</cbc:Name></cac:PartyName></cac:Party></cac:AccountingSupplierParty>
+  <cac:AccountingCustomerParty><cac:Party><cac:PartyIdentification><cbc:ID schemeID="VKN">${BUYER_VKN}</cbc:ID></cac:PartyIdentification><cac:PartyName><cbc:Name>SYN Alıcı</cbc:Name></cac:PartyName></cac:Party></cac:AccountingCustomerParty>
+  <cac:LegalMonetaryTotal>`,
+);
+
+describe("which side of the e-invoice is this house (PR 1043 review)", () => {
+  function sided(house: string | null, vendors: string[] = []) {
+    const h = intake({ reads: [] });
+    const s = h.service as unknown as Record<string, jest.Mock>;
+    s.houseTaxIdentity = jest.fn(async () => ({ normalized: house, failure: null }));
+    s.providerTaxIdentities = jest.fn(async () => ({ ids: new Set(vendors), failure: null }));
+    return { ...h, s };
+  }
+  const input = { ...INPUT, buffer: Buffer.from(UBL_WITH_PARTIES) };
+
+  it("the house as SELLER: kept with its ETTN, read into no lines, never filed as a purchase", async () => {
+    const h = sided(`TR:${SELLER_VKN}`);
+    const out = await h.service.ingest(input as never);
+    expect(out.parsed?.lines).toEqual([]);
+    expect(out.parsed?.docType).toBe("unknown");
+    expect(out.parsed?.ettn).toBe(ETTN);
+    expect(out.parsed?.warnings.join(" ")).toMatch(/issued BY this house.*not a purchase/);
+    const inserted = h.chain.insert.mock.calls[0][0] as Record<string, unknown>;
+    expect(inserted.ettn).toBe(ETTN);
+  });
+
+  it("the house as BUYER: a purchase, nothing said about the side", async () => {
+    const h = sided(`TR:${BUYER_VKN}`);
+    const out = await h.service.ingest(input as never);
+    expect(out.parsed?.lines).toHaveLength(1);
+    expect(out.parsed?.warnings.join(" ")).not.toMatch(/tax number/);
+  });
+
+  it("neither party is the house: filed, with a warning to check it", async () => {
+    const h = sided("TR:5555555553");
+    const out = await h.service.ingest(input as never);
+    expect(out.parsed?.lines).toHaveLength(1);
+    expect(out.parsed?.warnings.join(" ")).toMatch(/Neither party .* this house's tax number/);
+  });
+
+  it("no house number on file, and the BUYER is one of the house's vendors: not a purchase", async () => {
+    const h = sided(null, [`TR:${BUYER_VKN}`]);
+    const out = await h.service.ingest(input as never);
+    expect(out.parsed?.lines).toEqual([]);
+    expect(out.parsed?.warnings.join(" ")).toMatch(/buyer .* is one of this house's own vendors/);
+  });
+
+  it("no house number on file, and the SELLER is a known vendor: a purchase, nothing said", async () => {
+    const h = sided(null, [`TR:${SELLER_VKN}`]);
+    const out = await h.service.ingest(input as never);
+    expect(out.parsed?.lines).toHaveLength(1);
+    expect(out.parsed?.warnings.join(" ")).not.toMatch(/tax number/);
+  });
+
+  it("nothing to tell the side by: filed, and says the side was not checked", async () => {
+    const h = sided(null, []);
+    const out = await h.service.ingest(input as never);
+    expect(out.parsed?.lines).toHaveLength(1);
+    expect(out.parsed?.warnings.join(" ")).toMatch(/was not checked that this e-invoice was issued to the house/);
+  });
+
+  it("a failed read of the house's number is a warning in words, not a block and not silence", async () => {
+    const h = sided(null);
+    h.s.houseTaxIdentity = jest.fn(async () => ({ normalized: null, failure: "SYNTHETIC down" }));
+    const out = await h.service.ingest(input as never);
+    expect(out.parsed?.lines).toHaveLength(1);
+    expect(out.parsed?.warnings.join(" ")).toMatch(/could not be read \(SYNTHETIC down\)/);
   });
 });

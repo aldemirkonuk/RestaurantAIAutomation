@@ -179,7 +179,7 @@ describe("readEinvoiceFile — which files are e-invoices", () => {
 
   it("refuses an XML that is not an e-invoice, with a sentence", () => {
     const out = readEinvoiceFile(Buffer.from("<note>hi</note>"), "note.xml", "text/xml");
-    expect(out).toEqual({ kind: "refused", reason: expect.stringMatching(/not an e-invoice/) });
+    expect(out).toEqual({ kind: "refused", reason: expect.stringMatching(/not an e-invoice/), notADocument: true });
   });
 
   it("reads the e-invoice inside a zip, and names the ones it did not read", () => {
@@ -198,7 +198,11 @@ describe("readEinvoiceFile — which files are e-invoices", () => {
   it("a zip with no e-invoice in it is refused, naming what it held", () => {
     const z = zipOf([{ name: "photo.jpg", data: "x" }]);
     const out = readEinvoiceFile(z, "efatura.zip", "application/zip");
-    expect(out).toEqual({ kind: "refused", reason: expect.stringMatching(/holds no e-invoice XML.*photo\.jpg/) });
+    expect(out).toEqual({
+      kind: "refused",
+      reason: expect.stringMatching(/holds no e-invoice XML.*photo\.jpg/),
+      notADocument: true,
+    });
   });
 
   it("a zip not named as one (an .xlsx, a .docx) is not an e-invoice", () => {

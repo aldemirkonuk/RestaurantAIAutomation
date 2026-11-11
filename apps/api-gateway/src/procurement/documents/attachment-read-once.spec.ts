@@ -1,4 +1,10 @@
-import { DocumentIntakeService, INGEST_ATTEMPTS } from "./document-intake.service";
+import {
+  DocumentIntakeService,
+  INGEST_ATTEMPTS,
+  NOT_A_DOCUMENT_BEFORE_EINVOICE,
+  NOT_A_DOCUMENT_REASON,
+} from "./document-intake.service";
+import { zipOf } from "./efatura/test-zip.fixture";
 
 /**
  * Proposal-receipt row 1.2 — an emailed attachment is read once, and every
@@ -30,13 +36,28 @@ function harness(opts: {
   updateError?: string;
   /** Another run decided the row first: the guarded write matches nothing. */
   raced?: boolean;
+  /** Rows the narrower rule called not_a_document (the PR 1043 requeue pass). */
+  turnedAway?: Row[];
+  /** The bytes every download returns. */
+  bytes?: Buffer;
 }) {
   const updates: Array<{ id: unknown; patch: Row; guards: Array<[string, unknown]> }> = [];
   const selects: Array<{ table: string; eqs: Array<[string, unknown]> }> = [];
   const download = jest.fn(async () =>
     opts.downloadError
       ? { data: null, error: { message: opts.downloadError } }
-      : { data: { arrayBuffer: async () => new ArrayBuffer(4) }, error: null },
+      : {
+          data: {
+            arrayBuffer: async () =>
+              opts.bytes
+                ? opts.bytes.buffer.slice(
+                    opts.bytes.byteOffset,
+                    opts.bytes.byteOffset + opts.bytes.byteLength,
+                  )
+                : new ArrayBuffer(4),
+          },
+          error: null,
+        },
   );
   const client = {
     storage: { from: () => ({ download }) },
@@ -65,7 +86,11 @@ function harness(opts: {
           return chain;
         },
         order: () => chain,
-        limit: async () => ({ data: opts.pending, error: null }),
+        or: () => chain,
+        limit: async () =>
+          call.eqs.some(([k, v]) => k === "ingest_state" && v === "not_a_document")
+            ? { data: opts.turnedAway ?? [], error: null }
+            : { data: opts.pending, error: null },
         maybeSingle: async () => ({ data: opts.shaSeen ?? null, error: null }),
       };
       return chain;
@@ -221,6 +246,81 @@ describe("row 1.2 — the sweep reads pending attachments only", () => {
       .mockResolvedValue({ documentId: "d", duplicate: false, parsed: null } as never);
     await h.service.sweepUningestedAttachments();
     expect(h.download).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the e-invoice file at the sweep (PR 1043 review)", () => {
+  const ETTN = "0f0e0d0c-0000-4000-8000-synthetic001";
+  const UBL = `<?xml version="1.0"?><Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cbc="c"><cbc:ID>SYN1</cbc:ID><cbc:UUID>${ETTN}</cbc:UUID></Invoice>`;
+
+  it("a zip named after its bare ETTN is read, not turned away by its name", async () => {
+    const h = harness({
+      pending: [attachment("a1", { filename: `${ETTN}.zip`, mime_type: "application/zip" })],
+      bytes: zipOf([{ name: `${ETTN}.xml`, data: UBL }]),
+    });
+    const ingest = jest
+      .spyOn(h.service, "ingest")
+      .mockResolvedValue({ documentId: "doc-1", duplicate: false, parsed: null } as never);
+    await h.service.sweepUningestedAttachments();
+    expect(ingest).toHaveBeenCalledTimes(1);
+    expect(h.updates[0].patch).toMatchObject({ ingest_state: "ingested", ingested_document_id: "doc-1" });
+  });
+
+  it("a zip with no e-invoice in it is not a paper, said with what it held, and nothing is filed", async () => {
+    const h = harness({
+      pending: [attachment("a1", { filename: "2026-11-05.zip", mime_type: "application/zip" })],
+      bytes: zipOf([{ name: "photo.jpg", data: "SYNTHETIC" }]),
+    });
+    const ingest = jest.spyOn(h.service, "ingest");
+    await h.service.sweepUningestedAttachments();
+    expect(ingest).not.toHaveBeenCalled();
+    expect(h.updates[0].patch).toMatchObject({ ingest_state: "not_a_document" });
+    expect(String(h.updates[0].patch.last_ingest_reason)).toMatch(/holds no e-invoice XML.*photo\.jpg/);
+  });
+
+  it("a file that is no paper at all carries the new rule's words", async () => {
+    const h = harness({
+      pending: [attachment("a1", { filename: "prices.csv", mime_type: "text/csv" })],
+    });
+    await h.service.sweepUningestedAttachments();
+    expect(h.updates[0].patch).toMatchObject({
+      ingest_state: "not_a_document",
+      last_ingest_reason: NOT_A_DOCUMENT_REASON,
+    });
+  });
+
+  it("XML and zip files the narrower rule turned away are put back to be read, once", async () => {
+    const h = harness({
+      pending: [],
+      turnedAway: [
+        { id: "x1", filename: `${ETTN}.xml`, mime_type: "application/xml" },
+        { id: "z1", filename: "2026-11-05.zip", mime_type: "application/zip" },
+        { id: "l1", filename: "logo.xml", mime_type: "application/xml" },
+      ],
+    });
+    await h.service.sweepUningestedAttachments();
+    const byId = Object.fromEntries(h.updates.map((u) => [u.id, u]));
+    for (const id of ["x1", "z1"])
+      expect(byId[id].patch).toEqual({
+        ingest_state: "pending",
+        ingest_attempts: 0,
+        last_ingest_reason: null,
+        ingested_document_id: null,
+        ingest_decided_at: null,
+      });
+    // Still not a paper under the wider rule: reworded, so it is never picked again.
+    expect(byId.l1.patch).toEqual({ last_ingest_reason: NOT_A_DOCUMENT_REASON });
+    // Each write lands only on a row still holding the old rule's words.
+    for (const u of h.updates)
+      expect(u.guards).toEqual([
+        ["ingest_state", "not_a_document"],
+        ["last_ingest_reason", NOT_A_DOCUMENT_BEFORE_EINVOICE],
+      ]);
+    // And the look-again read asked for exactly those rows.
+    const again = h.selects.find((c) =>
+      c.eqs.some(([k, v]) => k === "ingest_state" && v === "not_a_document"),
+    );
+    expect(again?.eqs).toContainEqual(["last_ingest_reason", NOT_A_DOCUMENT_BEFORE_EINVOICE]);
   });
 });
 
