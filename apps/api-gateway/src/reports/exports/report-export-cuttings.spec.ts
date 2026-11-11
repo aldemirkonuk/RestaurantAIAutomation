@@ -168,12 +168,35 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     expect(figure(doc, "Could not be scored")).toBe(1);
   });
 
-  it("against ourselves: a lens that did not answer inside the overview is withheld by name", () => {
+  it("against ourselves: a register that could not be read is withheld by name", () => {
     const doc = EXPORT_CUTTINGS.bench.write(PAYLOADS.bench, { days: null });
     const week = figure(doc, "Trend per day, last 28 days");
     expect(isWithheld(week)).toBe(true);
-    expect((week as { why: string }).why).toBe("the weekday lens did not answer inside the overview call");
+    expect((week as { why: string }).why).toBe("the seasonality register could not be read");
     expect(figure(doc, "Bought, the last 30 days")).toBe(1200);
+    expect(figure(doc, "Goals running")).toBe(1);
+  });
+
+  it("against ourselves: a goals list that could not be read is not \"no goal is running\"", () => {
+    const doc = EXPORT_CUTTINGS.bench.write({ ...(PAYLOADS.bench as object), goals: null }, { days: null });
+    const running = figure(doc, "Goals running");
+    expect(isWithheld(running)).toBe(true);
+    expect((running as { why: string }).why).toBe("the goals list could not be read");
+    expect(doc.notes.join(" ")).toMatch(/goals list could not be read/);
+    expect(doc.notes.join(" ")).not.toMatch(/No goal is running/);
+    // An empty list that WAS read is still "no goal is running".
+    const none = EXPORT_CUTTINGS.bench.write({ ...(PAYLOADS.bench as object), goals: [] }, { days: null });
+    expect(figure(none, "Goals running")).toBe(0);
+    expect(none.notes.join(" ")).toMatch(/No goal is running/);
+  });
+
+  it("against ourselves: two zero windows are a quiet stretch, not an ambiguous zero (ADR 0292)", () => {
+    const doc = EXPORT_CUTTINGS.bench.write(
+      { ...(PAYLOADS.bench as object), cashflow: { spendLast30d: 0, spendPrev30d: 0, paceDeltaPct: null } },
+      { days: null },
+    );
+    expect(doc.notes).toContain("No delivered purchase order falls in either 30-day window.");
+    expect(JSON.stringify(doc)).not.toMatch(/ambiguous/);
   });
 
   it("the room and who served it: a table with no attributed check has no average, and a missing tip is not 0%", () => {

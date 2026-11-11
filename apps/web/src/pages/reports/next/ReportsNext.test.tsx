@@ -36,8 +36,8 @@ import { heldBackFailure } from './rp-format';
 
 /**
  * The two registers added in the fourth pass decode heavily on the way in
- * (`goals` reshapes a progress payload; `bench` flattens the overview's eight
- * lenses), so their fixtures go through the catalogue's own `select` — which
+ * (`goals` reshapes a progress payload; `bench` gathers three registers'
+ * payloads), so their fixtures go through the catalogue's own `select` — which
  * is what the data layer does, and which pins the decoder as well as the view.
  */
 const decode = (id: 'goals' | 'bench', raw: unknown) => CATALOGUE[id].select(raw);
@@ -312,14 +312,14 @@ const GOALS = {
 };
 
 /**
- * `GET /analytics/overview/:rid` — the benchmark cutting's one call.
+ * The benchmark cutting's three sources, as `useReportsNextData` hands them
+ * to `select`: cashflow, seasonality and the active goals list (audit G9).
  *
  * `paceDeltaPct` and `trendPerDayPct` are the engine's 0–1 fractions (1200
  * against 900 is 0.3333). They used to be written here as percentages, the
  * same mistake `pct` made, so nothing caught +20.7% a day printing "+0.21%".
  */
 const BENCH = {
-  financial: null,
   cashflow: {
     basis: { outflow: 'delivered procurement_orders' },
     spendLast30d: 1200,
@@ -336,7 +336,7 @@ const BENCH = {
     trendPerDayPct: -0.004,
     basis: { weekday: 'mean units per weekday over 90d', extremes: 'single weekdays' },
   },
-  activeGoals: [
+  goals: [
     {
       name: 'Lift wine revenue',
       metric_key: 'wine_revenue',
@@ -1539,13 +1539,21 @@ describe('ReportsNext — the benchmark cutting', () => {
     expect(within(bench).queryByText(/No delivered purchase order falls/)).toBeNull();
   });
 
-  it('withholds every figure the overview call did not return, rather than zeroing them', () => {
+  it('withholds every figure a source did not return, rather than zeroing them', () => {
     hook.current = withRegister('bench', ok(decode('bench', { ...BENCH, cashflow: null })));
     paint();
     const bench = screen.getByRole('region', { name: 'Against ourselves' });
     expect(
-      within(bench).getByText(/The buying lens did not answer inside the overview call/),
+      within(bench).getByText(/The cashflow register could not be read, so its four figures are em dashes/),
     ).toBeInTheDocument();
+  });
+
+  it('a goals list that could not be read is not "no goal running"', () => {
+    hook.current = withRegister('bench', ok(decode('bench', { ...BENCH, goals: null })));
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).getByText(/The goals list could not be read/)).toBeInTheDocument();
+    expect(within(bench).queryByText(/No goal is running/)).toBeNull();
   });
 });
 
