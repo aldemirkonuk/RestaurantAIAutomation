@@ -90,14 +90,25 @@ export interface RowDropdownProps {
    * for). Absent draws all of them, as the row always has.
    */
   sections?: ReadonlyArray<EvidenceSection>;
-  /** False draws no act buttons and no sheets (the drawer keeps its acts in one place). */
+  /**
+   * False draws no act buttons and no sheets (the drawer keeps its acts in one
+   * place). Its "Record a count" link still asks for the count sheet, through
+   * onSheet, and the instance that holds the acts draws it.
+   */
   actions?: boolean;
+  /**
+   * The open sheet, when the caller holds it: the drawer passes one state to
+   * both its instances, so a link in the evidence opens the sheet the acts own.
+   * Absent, the row holds its own.
+   */
+  sheet?: SheetId | null;
+  onSheet?: (sheet: SheetId | null) => void;
 }
 
 /** The panels the opened row draws: facts and naming, where, pace, cost, paperwork. */
 export type EvidenceSection = 'facts' | 'where' | 'pace' | 'cost' | 'paper';
 
-type SheetId = 'count' | 'order' | 'writeoff' | 'transfer' | 'pour';
+export type SheetId = 'count' | 'order' | 'writeoff' | 'transfer' | 'pour';
 
 /**
  * Why "Remove from inventory" cannot start for this row, or null when it can.
@@ -185,7 +196,9 @@ function invoiceOf(docs: ProcurementDocument[]): ProcurementDocument | null {
 
 export default function RowDropdown(props: RowDropdownProps) {
   const { row, canManage, currency, zoneName } = props;
-  const [sheet, setSheet] = useState<SheetId | null>(null);
+  const [ownSheet, setOwnSheet] = useState<SheetId | null>(null);
+  const sheet = props.onSheet ? (props.sheet ?? null) : ownSheet;
+  const setSheet = props.onSheet ?? setOwnSheet;
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
   const detail = useRowDetail(row.id);
@@ -309,7 +322,12 @@ export default function RowDropdown(props: RowDropdownProps) {
   if (row.openMl !== null && row.openMl > 0) head.push({ k: 'Open bottle', v: `${fmtCount(row.openMl)} ml left` });
 
   return (
-    <div className="iv-drop" data-testid="row-dropdown" aria-label={`${row.name ?? 'This title'}, opened`}>
+    <div
+      className="iv-drop"
+      // The drawer mounts an evidence-only copy beside the acts: it is named apart, never a second "opened" row.
+      data-testid={acts ? 'row-dropdown' : 'row-evidence'}
+      aria-label={acts ? `${row.name ?? 'This title'}, opened` : `${row.name ?? 'This title'}: the evidence`}
+    >
       {has('facts') && head.length > 0 ? (
         <dl className="iv-head-facts">
           {head.map((h) => (
@@ -459,8 +477,8 @@ export default function RowDropdown(props: RowDropdownProps) {
       </div>
       ) : null}
 
-      {sheet === 'count' ? <CountSheet row={row} uom={props.uom} onClose={() => setSheet(null)} /> : null}
-      {sheet === 'order' ? (
+      {acts && sheet === 'count' ? <CountSheet row={row} uom={props.uom} onClose={() => setSheet(null)} /> : null}
+      {acts && sheet === 'order' ? (
         <OrderSheet
           row={row}
           onClose={() => setSheet(null)}
@@ -470,8 +488,8 @@ export default function RowDropdown(props: RowDropdownProps) {
           uom={props.uom}
         />
       ) : null}
-      {sheet === 'writeoff' && canManage ? <WriteOffSheet row={row} uom={props.uom} onClose={() => setSheet(null)} /> : null}
-      {sheet === 'transfer' ? (
+      {acts && sheet === 'writeoff' && canManage ? <WriteOffSheet row={row} uom={props.uom} onClose={() => setSheet(null)} /> : null}
+      {acts && sheet === 'transfer' ? (
         <TransferSheet
           row={row}
           onClose={() => setSheet(null)}
@@ -480,7 +498,7 @@ export default function RowDropdown(props: RowDropdownProps) {
           uom={props.uom}
         />
       ) : null}
-      {sheet === 'pour' && isPoured(props.uom, props.kind) ? <PourSheet row={row} onClose={() => setSheet(null)} /> : null}
+      {acts && sheet === 'pour' && isPoured(props.uom, props.kind) ? <PourSheet row={row} onClose={() => setSheet(null)} /> : null}
       {removing && blocked === null ? (
         <RemoveFromInventoryModal
           isOpen

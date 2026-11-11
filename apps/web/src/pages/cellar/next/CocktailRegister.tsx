@@ -27,7 +27,7 @@
  * a two-step confirm, no wax (MOTIONS.md, "Deliberate non-motions").
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import RecipeNutrition from '../../inventory/next/RecipeNutrition';
@@ -240,7 +240,13 @@ export default function CocktailRegister({
   // /cocktails?open=<id> opens that drink: the inventory drawer's "used in"
   // lines link here, so a good leads to the drink that uses it.
   const [params] = useSearchParams();
-  const [openId, setOpenId] = useState<string | null>(() => params.get('open'));
+  const openParam = params.get('open');
+  const [openId, setOpenId] = useState<string | null>(openParam);
+  // A second link followed while already on /cocktails changes only the search:
+  // the page stays mounted, so the drink it names is opened here, not at mount alone.
+  useEffect(() => {
+    if (openParam) setOpenId(openParam);
+  }, [openParam]);
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const [query, setQuery] = useState('');
