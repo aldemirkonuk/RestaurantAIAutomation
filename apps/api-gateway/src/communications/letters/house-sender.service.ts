@@ -275,11 +275,16 @@ export class HouseSenderService {
     const { data, error } = await this.db.client
       .from("integration_oauth_connections")
       .select(
-        "id, user_id, integration_id, provider, account_email, scopes, restaurant_id, revoked_at",
+        "id, user_id, integration_id, provider, account_email, scopes, restaurant_id, revoked_at, connected_at",
       )
       .eq("restaurant_id", restaurantId)
       .eq("provider", "google")
-      .is("revoked_at", null);
+      .is("revoked_at", null)
+      // Oldest grant first (gap G11): with no house choice and no grant of
+      // the asker's own, "the house's first live one" was whatever order
+      // Postgres returned, so two reads could name two different mailboxes.
+      .order("connected_at", { ascending: true })
+      .order("id", { ascending: true });
 
     const rows = error
       ? []
