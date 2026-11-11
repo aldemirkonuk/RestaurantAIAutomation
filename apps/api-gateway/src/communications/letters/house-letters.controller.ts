@@ -71,17 +71,28 @@ export class HouseLettersController {
   @ApiResponse({
     status: 200,
     description:
-      "`intake.unknown: true` means the read failed and the counts are NOT zero; `waiting` counts letters recorded at a door but not yet given a home (received, failed or given up). `sharedMailbox` is null when it has never read.",
+      "`intake.unknown: true` means the read failed and the counts are NOT zero; `waiting` counts letters recorded at a door but not yet given a home (received, failed or given up). `sharedMailbox` is null when it has never read; `lastReadAt` is its last FINISHED read and `errored` says its latest read failed (the error text is the operator's, not the house's).",
   })
   async intakeHealth(@CurrentUser() user: TokenUser) {
     const { restaurantId } = houseActor(user);
     if (!this.intake) {
       return { intake: null, sharedMailbox: null };
     }
-    const [intake, sharedMailbox] = await Promise.all([
+    const [intake, door] = await Promise.all([
       this.intake.houseHealth(restaurantId),
       this.intake.doorStatus("shared_mailbox"),
     ]);
+    // The shared mailbox belongs to the deployment, not to this house: its
+    // error text is a raw Gmail or database message, so a house is told only
+    // THAT the last read failed, never what it said (batch review of #1049).
+    const sharedMailbox =
+      door && "lastReadAt" in door
+        ? {
+            lastReadAt: door.lastReadAt,
+            lastStoredAt: door.lastStoredAt,
+            errored: door.lastError !== null,
+          }
+        : door;
     return { intake, sharedMailbox };
   }
 

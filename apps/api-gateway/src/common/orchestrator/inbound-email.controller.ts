@@ -7,6 +7,7 @@ import {
   Logger,
   Optional,
   Post,
+  Query,
   ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
@@ -31,6 +32,8 @@ interface NormalizedInbound {
   headers: Record<string, string>;
   /** The provider's own id for this delivery (Postmark `MessageID`), when it sends one. */
   providerMessageId: string;
+  /** The letter's own Date (Postmark `Date`, or the Date header), "" when absent. */
+  date: string;
 }
 
 /** Constant-time comparison; a length mismatch is a mismatch. */
@@ -39,6 +42,40 @@ function secretsMatch(provided: string, configured: string): boolean {
   const b = Buffer.from(configured, "utf8");
   if (a.length !== b.length || a.length === 0) return false;
   return timingSafeEqual(a, b);
+}
+
+/** The password of an HTTP Basic `Authorization` header, or "". */
+export function basicAuthPassword(authorization: string | undefined): string {
+  const m = /^\s*basic\s+([A-Za-z0-9+/=]+)\s*$/i.exec(authorization || "");
+  if (!m) return "";
+  const decoded = Buffer.from(m[1], "base64").toString("utf8");
+  const colon = decoded.indexOf(":");
+  return colon < 0 ? "" : decoded.slice(colon + 1);
+}
+
+/**
+ * The intake key for a delivery the provider gave no id for. The letter's own
+ * Date is part of it, so two separate letters with the same words (a
+ * recurring "Delivery tomorrow 8am") are two rows, while the provider's retry
+ * of one delivery (same Date) is still one. With no Date either, the minute it
+ * reached us stands in: a retry may then be a second row, which is seen, where
+ * a merged letter would be lost.
+ */
+export function inboundContentKey(
+  norm: {
+    from: string;
+    subject: string;
+    body: string;
+    recipients: string[];
+    date: string;
+  },
+  receivedAt: Date,
+): string {
+  const parsed = norm.date ? Date.parse(norm.date) : NaN;
+  const when = Number.isFinite(parsed)
+    ? new Date(parsed).toISOString()
+    : norm.date || `received:${receivedAt.toISOString().slice(0, 16)}`;
+  return contentKey([norm.from, norm.subject, norm.body, when, ...norm.recipients]);
 }
 
 /**
@@ -51,13 +88,22 @@ function secretsMatch(provided: string, configured: string): boolean {
  * restaurant_id — so the existing bridge/prospects/responder pipeline handles it unchanged.
  * Runs ALONGSIDE the Gmail ingest (dual-run); nothing here disables the legacy path.
  *
- * Security: gated by a shared secret (`INBOUND_WEBHOOK_SECRET`) sent in the `x-inbound-secret`
- * header, compared in constant time. With no secret configured the endpoint refuses, so it can
- * never act as an open relay.
+ * Security: gated by a shared secret (`INBOUND_WEBHOOK_SECRET`), compared in constant time. It
+ * is accepted from, in order: the `x-inbound-secret` header; the password of HTTP Basic auth
+ * (Postmark's inbound hook takes `https://inbound:<secret>@host/...` and sends no custom
+ * header); and, deprecated, the `?secret=` query. With no secret configured the endpoint
+ * refuses, so it can never act as an open relay.
  *
  * Gap G8 (2026-11-11), the session's call under the 2026-11-07 /goal:
- *  - the `?secret=` query is no longer read: a secret in a URL lands in every proxy and access
- *    log on the way. Rejected: keeping it as a fallback (one logged URL leaks it for good);
+ *  - `?secret=` is KEPT as a deprecated fallback (batch review of #1049): the deployed provider's
+ *    hook URL may carry it (EXTERNAL_CONNECTIONS.md documented it), and the new 401 would turn
+ *    every one of its letters into a retry and then a drop. A delivery that used it is logged
+ *    (without the value) so the hook can be moved to Basic auth. Rejected: header only (Postmark
+ *    cannot send a custom inbound header, so it would 401 everything); dropping the query
+ *    without first reading the live hook config (this lane never reads production). The gateway's
+ *    own logs do not carry the value (Sentry reduces `request.url` to origin+path; TenantGuard
+ *    returns before its URL log on a `@Public()` route; there is no access-log middleware), but a
+ *    hosting platform's or proxy's access log may, which is why the query is deprecated;
  *  - a wrong secret is 401 and an unset one 503, never `200 {status:"unauthorized"}`: a 200 told
  *    the provider the letter was delivered, so a misconfigured deploy dropped mail in silence;
  *  - the letter is recorded in `mail_intake` (gap G2) before the 200. A failed record is 503,
@@ -84,6 +130,8 @@ export class InboundEmailController {
   async inbound(
     @Body() body: any,
     @Headers("x-inbound-secret") headerSecret?: string,
+    @Headers("authorization") authorization?: string,
+    @Query("secret") querySecret?: string,
   ): Promise<{ status: string; restaurant_id?: string | null }> {
     const configured = (
       this.configService.get<string>("INBOUND_WEBHOOK_SECRET") || ""
@@ -94,11 +142,21 @@ export class InboundEmailController {
       );
       throw new ServiceUnavailableException("Inbound mail is not set up.");
     }
-    if (!secretsMatch((headerSecret || "").trim(), configured)) {
+    const viaHeader = secretsMatch((headerSecret || "").trim(), configured);
+    const viaBasic =
+      !viaHeader && secretsMatch(basicAuthPassword(authorization).trim(), configured);
+    const viaQuery =
+      !viaHeader && !viaBasic && secretsMatch((querySecret || "").trim(), configured);
+    if (!viaHeader && !viaBasic && !viaQuery) {
       this.logger.warn(
         "inbound-email webhook: bad or missing secret — rejected.",
       );
       throw new UnauthorizedException();
+    }
+    if (viaQuery) {
+      this.logger.warn(
+        "inbound-email webhook: the secret came in the URL (?secret=, deprecated); move the provider's hook to Basic auth (any user name, the secret as the password) or the x-inbound-secret header",
+      );
     }
 
     const norm = this.normalizePayload(body || {});
@@ -137,7 +195,7 @@ export class InboundEmailController {
           providerKey:
             norm.providerMessageId ||
             norm.messageId ||
-            contentKey([norm.from, norm.subject, norm.body, ...norm.recipients]),
+            inboundContentKey(norm, new Date(event.received_at)),
           restaurantId,
           event,
         });
@@ -262,6 +320,7 @@ export class InboundEmailController {
       b.MessageID || b.messageId || headerMap["message-id"] || "";
     const inReplyTo: string = headerMap["in-reply-to"] || b.inReplyTo || "";
     const references: string = headerMap["references"] || b.references || "";
+    const date: string = String(b.Date || b.date || headerMap["date"] || "").trim();
 
     return {
       from,
@@ -274,6 +333,7 @@ export class InboundEmailController {
       references,
       headers: headerMap,
       providerMessageId,
+      date,
     };
   }
 }
