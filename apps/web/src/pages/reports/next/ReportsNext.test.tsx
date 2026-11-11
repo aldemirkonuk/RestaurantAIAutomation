@@ -436,6 +436,7 @@ function base() {
     sheet: defaultSheet(),
     saveSheet,
     sheetKnown: true,
+    currency: { state: 'stated' as const, code: 'USD' as string | null },
     refetchAll: vi.fn(),
   };
 }
@@ -852,6 +853,35 @@ describe('ReportsNext — a cutting laid flat keeps the page behind it', () => {
     fireEvent.keyDown(document.activeElement as Element, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: 'Through the till' })).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Ask the book' })).toBeInTheDocument();
+  });
+});
+
+describe('ReportsNext — money in the house’s currency (audit G5)', () => {
+  it('a Turkish house reads lira on the till, never dollars', () => {
+    hook.current = { ...base(), currency: { state: 'stated', code: 'TRY' } } as never;
+    paint();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    expect(within(till).getByText('₺4,210')).toBeInTheDocument();
+    expect(within(till).queryByText(/\$/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rp-money-line')).not.toBeInTheDocument();
+  });
+
+  it('a house with no recorded currency prints plain numbers and says so once', () => {
+    hook.current = { ...base(), currency: { state: 'unstated', code: null } } as never;
+    paint();
+    expect(within(screen.getByRole('region', { name: 'Through the till' })).getByText('4,210')).toBeInTheDocument();
+    const line = screen.getByTestId('rp-money-line');
+    expect(line).toHaveTextContent('This house has not recorded its currency');
+    expect(within(line).getByRole('link', { name: 'Record it in Settings' })).toHaveAttribute(
+      'href',
+      '/settings?tab=currency',
+    );
+  });
+
+  it('a currency that could not be read is said as unread, not as unrecorded', () => {
+    hook.current = { ...base(), currency: { state: 'unread', code: null, pending: false } } as never;
+    paint();
+    expect(screen.getByTestId('rp-money-line')).toHaveTextContent('could not be read');
   });
 });
 
