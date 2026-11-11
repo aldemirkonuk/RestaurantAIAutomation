@@ -91,7 +91,44 @@ describe("readUblTr — the e-invoice, field by field", () => {
     expect(doc.tax).toBe(70);
     expect(doc.total).toBe(770);
     expect(doc.tiesOut).toBe(true);
+    // The only thing said is the box line's pack size (next test).
+    expect(doc.warnings).toHaveLength(1);
+  });
+
+  it("a line counted in cases says the pack size is not stated, and the paper is not sure of its count", () => {
+    const doc = readUblTr(invoice());
+    // 2 boxes of an unstated size: the count stays 2, never a guessed 24.
+    expect(doc.lines[1]).toEqual(
+      expect.objectContaining({ qty: 2, uom: "case", packSize: 1, qtyBottles: 2 }),
+    );
+    expect(doc.warnings).toEqual([
+      expect.stringMatching(/Line 2: the file counts in cases \(BX\) and does not say how many are in one.*before this paper is booked/),
+    ]);
+    // The money ties out, but a tie-out does not vouch for the count.
+    expect(doc.tiesOut).toBe(true);
+    expect(doc.confidence).toBeLessThanOrEqual(0.5);
+  });
+
+  it("a paper whose every line counts in plain items is as sure as its warnings allow", () => {
+    const xml = invoice().replace('unitCode="BX"', 'unitCode="C62"');
+    const doc = readUblTr(xml);
     expect(doc.warnings).toEqual([]);
+    expect(doc.confidence).toBeCloseTo(0.98);
+  });
+
+  it("a line with no quantity says so, rather than reading as delivered empty", () => {
+    const extra = `<cac:InvoiceLine><cbc:ID>3</cbc:ID><cbc:InvoicedQuantity unitCode="C62"></cbc:InvoicedQuantity><cbc:LineExtensionAmount>0</cbc:LineExtensionAmount><cac:Item><cbc:Name>SYN</cbc:Name></cac:Item></cac:InvoiceLine>`;
+    const doc = readUblTr(invoice({ extraLine: extra }));
+    expect(doc.lines[2].qty).toBe(0);
+    expect(doc.warnings.join(" ")).toMatch(/Line 3: the file states no quantity/);
+    expect(doc.confidence).toBeLessThanOrEqual(0.5);
+  });
+
+  it("repeated line numbers are renumbered by position, so no two lines share one", () => {
+    const extra = `<cac:InvoiceLine><cbc:ID>2</cbc:ID><cbc:InvoicedQuantity unitCode="C62">1</cbc:InvoicedQuantity><cbc:LineExtensionAmount>0</cbc:LineExtensionAmount><cac:Item><cbc:Name>SYN</cbc:Name></cac:Item></cac:InvoiceLine>`;
+    const doc = readUblTr(invoice({ extraLine: extra }));
+    expect(doc.lines.map((l) => l.lineNo)).toEqual([1, 2, 3]);
+    expect(doc.warnings.join(" ")).toMatch(/numbered here by their position/);
   });
 
   it("says the tevkifat withheld, and still ties out on the tax-inclusive total", () => {
