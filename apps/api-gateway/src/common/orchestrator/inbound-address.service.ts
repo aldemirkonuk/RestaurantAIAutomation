@@ -2,6 +2,11 @@ import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomBytes } from "crypto";
 import { DatabaseService } from "../../database/database.service";
+import { addressesIn } from "../../communications/inbound-headers";
+import {
+  recordTestLetterArrival,
+  testCodeIn,
+} from "../../communications/mail-setup/test-letter";
 
 /**
  * InboundAddressService — Phase 1 dedicated-domain inbound addressing.
@@ -32,13 +37,23 @@ export class InboundAddressService {
     return d || null;
   }
 
-  /** Bare, lowercased email address from a raw value or `Name <a@b.com>`. */
+  /**
+   * Bare, lowercased email address from a raw value or `Name <a@b.com>`; ""
+   * when the value holds no address or more than one (use `normalizeAll` for
+   * a list). QA round 6 M-10: a comma list used to come back whole.
+   */
   normalize(raw: string | null | undefined): string {
-    const s = (raw ?? "").toString().trim().toLowerCase();
-    if (!s) return "";
-    const angled = s.match(/<([^>]+)>/);
-    const addr = (angled ? angled[1] : s).trim();
-    return addr.includes("@") ? addr : "";
+    const all = this.normalizeAll(raw);
+    return all.length === 1 ? all[0] : "";
+  }
+
+  /**
+   * Every address in a recipient value — `Chef <chef@house.com>, Mudavym
+   * <r-1a2b3c4d@in.example>` gives both — parsed by the shared RFC 5322
+   * parser, never by "the first `<...>`".
+   */
+  normalizeAll(raw: string | null | undefined): string[] {
+    return addressesIn(raw);
   }
 
   /** The active inbound address for a restaurant, provisioning one on first use. */
@@ -107,7 +122,7 @@ export class InboundAddressService {
     if (!this.domain()) return null;
     const list = Array.isArray(recipients) ? recipients : [recipients];
     const addrs = Array.from(
-      new Set(list.map((r) => this.normalize(r)).filter(Boolean)),
+      new Set(list.flatMap((r) => this.normalizeAll(r))),
     );
     if (!addrs.length) return null;
     try {
@@ -122,5 +137,34 @@ export class InboundAddressService {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * A house's "send a test letter" check (founder /goal 2026-11-07). True when
+   * this letter's subject carries a code that one of THIS house's open checks
+   * started, and the check is now marked arrived. False when the subject has
+   * no code or no open check of this house matches, so the letter goes on
+   * down the normal path and nothing is lost.
+   *
+   * Unlike the rest of this service a failed write is NOT swallowed: it throws,
+   * so the webhook answers 503 and the provider retries, instead of telling
+   * the owner "not arrived yet" about a letter that did arrive.
+   */
+  async noteTestLetter(
+    restaurantId: string,
+    subject: string,
+    from: string,
+  ): Promise<boolean> {
+    const code = testCodeIn(subject);
+    if (!code || !restaurantId) return false;
+    // A repeat of this house's own code is still its test letter: kept out of
+    // the vendor pipeline, and the first arrival stands (QA round 26, #974).
+    const seen = await recordTestLetterArrival(
+      this.databaseService.supabase,
+      restaurantId,
+      code,
+      from,
+    );
+    return seen !== "none";
   }
 }

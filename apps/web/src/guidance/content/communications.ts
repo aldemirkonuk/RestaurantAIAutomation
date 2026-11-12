@@ -6,24 +6,26 @@ import type { TourDefinition } from '../tours/registry'
 export const communicationsTip = {
   pageId: 'communications' as const,
   title: 'Communications',
-  body: 'Your latest letters with vendors, and the letters drafted for you.',
+  body: 'Your mail with vendors, and the letters drafted for you.',
 }
 
 export const communicationsTour: TourDefinition = {
   pageId: 'communications',
   steps: [
     {
-      element: 'section[aria-label="Conversation book"]',
-      title: 'Read the book',
+      // 2026-11-07: the conversation book became the Mail tab; the step
+      // points at the two tabs, which are always drawn.
+      element: 'nav[aria-label="Mail and letters"]',
+      title: 'Mail and letters',
       description:
-        'The latest letters between you and your vendors.',
+        'Mail is every letter between you and your vendors, by person and by thread. Letters is what waits to be sent and what you write.',
     },
     {
       // COMMS-W38 (founder: "#571's order, step 2 widened"): the whole waiting
       // region, which is always drawn; "Drafts waiting" is drawn only while a
       // drafted reply waits, and letters staff asked a manager to send sit
       // beside it.
-      element: 'section[aria-label="Waiting on you"]',
+      element: 'section[aria-label="To send"]',
       title: 'Answer what waits',
       description:
         'Letters your staff asked you to send and replies drafted for you. Read one, change it if you need to, then hold to send it, or to ask a manager to send it.',

@@ -139,6 +139,25 @@ vi.mock('./WhoIsWriting', () => ({
   default: () => <section aria-label="Who is writing" data-testid="who-is-writing" />,
 }));
 
+// The Mail tab (founder /goal 2026-11-07) is proved in MailTab.test.tsx; here it
+// is a stub that shows the props the page hands it, and the summary that names
+// the tab's waiting count is fixed per test.
+const mockMailSummary = vi.hoisted(() => ({
+  current: { data: undefined } as { data: unknown },
+}));
+vi.mock('./useMailData', () => ({
+  useMailSummary: () => mockMailSummary.current,
+}));
+vi.mock('./MailTab', () => ({
+  MailTab: ({ draftedOrderIds, onOpenReply }: { draftedOrderIds: ReadonlySet<string>; onOpenReply: (id: string) => void }) => (
+    <section aria-label="Mail" data-testid="mail-tab-stub" data-drafted={[...draftedOrderIds].join(',')}>
+      <button type="button" onClick={() => onOpenReply([...draftedOrderIds][0] ?? '')}>
+        stub open reply
+      </button>
+    </section>
+  ),
+}));
+
 import CommunicationsNext from './CommunicationsNext';
 import { communicationsTour } from '../../../guidance/content/communications';
 import { roomForAct } from '../../../lib/mudavym/counterRead';
@@ -180,6 +199,7 @@ function item(over: Partial<ProcurementHistoryItem>): ProcurementHistoryItem {
 const noFailures = {
   history: false,
   drafts: false,
+  mail: false,
 };
 
 const base = {
@@ -218,97 +238,10 @@ describe('CommunicationsNext', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('keeps the row short and the prose inside the expansion', () => {
-    mockData.current = { ...base, rows: [item({})] };
-    render(<CommunicationsNext />);
-    expect(screen.getByText('Bodega Álvaro')).toBeInTheDocument();
-    expect(screen.queryByText(/could you hold 6/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('Bodega Álvaro'));
-    expect(screen.getByText(/could you hold 6/)).toBeInTheDocument();
-    // COMMS-W30: a pasted link or any unbroken run wraps inside the row, never
-    // pushing the page sideways (measured live: 1067px of sideways scroll).
-    expect(screen.getByText(/could you hold 6/).style.overflowWrap).toBe('anywhere');
-  });
-
-  it('says why a draft was held in words, never the rule code, and links its order (COMMS-W22)', () => {
-    mockData.current = {
-      ...base,
-      rows: [
-        item({
-          status: 'PENDING_APPROVAL',
-          constraintFlags: { hard: ['C-20', 'C-21', 'C-99'], annotating: [], soft_warnings: [], is_sensitive: false },
-        }),
-      ],
-    };
-    render(<CommunicationsNext />);
-    fireEvent.click(screen.getByText('Bodega Álvaro'));
-    expect(
-      screen.getByText(
-        'Held because its tone is heated, it holds personal details, and a rule this page has no words for yet.',
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/C-2[01]|C-99/)).toBeNull();
-    expect(screen.getByRole('link', { name: 'order PO-014' })).toHaveAttribute('href', '/orders/o1');
-  });
-
-  it('an order number with no order id stays plain text (COMMS-W22)', () => {
-    mockData.current = { ...base, rows: [item({ orderId: null })] };
-    render(<CommunicationsNext />);
-    fireEvent.click(screen.getByText('Bodega Álvaro'));
-    expect(screen.getByText(/order PO-014/)).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /order PO-014/ })).toBeNull();
-  });
-
-  it('only a queued house letter carries the pull-back, without opening the row (COMMS-W23)', () => {
-    mockData.current = {
-      ...base,
-      rows: [
-        item({ id: 'q1', status: 'HOUSE_QUEUED' }),
-        item({ id: 's1', status: 'SENT' }),
-        item({ id: 'i1', status: 'HOUSE_QUEUED', direction: 'INBOUND' }),
-      ],
-    };
-    render(<CommunicationsNext />);
-    expect(screen.getAllByTestId('book-queued')).toHaveLength(1);
-  });
-
-  it('a draft can never look sent', () => {
-    mockData.current = { ...base, rows: [item({ status: 'PENDING_APPROVAL' })] };
-    render(<CommunicationsNext />);
-    expect(screen.getByText('AI draft · not sent')).toBeInTheDocument();
-    expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
-  });
-
-  // ADR 0099, founder 2026-09-21: a 400/403/422 relay refusal CLOSES the
-  // draft ("Close, no retry") and the manager sees why on the draft. The chip
-  // says it did not leave; the gateway's sentence is on the chip as a tooltip
-  // AND printed in the opened row, since a tooltip never shows on touch.
-  it('a relay refusal says Not sent and shows the gateway\'s sentence', () => {
-    const said =
-      "gateway refused the send: HTTP 403 — Conversation c1 is not one of this house's conversations. Nothing was sent.";
-    mockData.current = {
-      ...base,
-      rows: [item({ status: 'RELAY_REFUSED', relayRefusalReason: said })],
-    };
-    render(<CommunicationsNext />);
-    const chip = screen.getByText('Not sent');
-    expect(chip).toHaveAttribute('title', said);
-    expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/refused on the way out/)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText('Bodega Álvaro'));
-    expect(screen.getByText(/Not sent — it was refused on the way out: gateway refused the send: HTTP 403/)).toBeInTheDocument();
-    // COMMS-W30: a long refusal reason wraps inside the row.
-    expect(screen.getByText(/refused on the way out/).style.overflowWrap).toBe('anywhere');
-    // COMMS-W27: the page's own words carry no engineer word; the reason is the server's, verbatim.
-    expect(screen.queryByText(/relay/)).toBeNull();
-  });
-
-  it('APPROVED is approval, never dispatch (the audit blocker case)', () => {
-    mockData.current = { ...base, rows: [item({ status: 'APPROVED' })] };
-    render(<CommunicationsNext />);
-    expect(screen.getByText('Approved · not sent')).toBeInTheDocument();
-    expect(screen.queryByText(/^Sent$/)).not.toBeInTheDocument();
-  });
+  // The conversation book's row tests (row short, COMMS-W22 held words and
+  // order link, COMMS-W23 pull-back, prc-02 a draft never looks sent, ADR 0099
+  // refusal sentence, APPROVED is not dispatch) moved with the book to the Mail
+  // thread on 2026-11-07: MailTab.test.tsx and mail-format.test.ts prove them.
 
   it('a truncated history window renders the sent figure as a floor', () => {
     mockData.current = {
@@ -317,6 +250,21 @@ describe('CommunicationsNext', () => {
     };
     render(<CommunicationsNext />);
     expect(screen.getByText('≥97')).toBeInTheDocument();
+    // D6: replies are the server's exact count, never a floor of the book.
+    expect(screen.queryByText('≥3')).toBeNull();
+    expect(screen.getByText('3')).toBeInTheDocument();
+  });
+
+  it('a failed count of letters in fails the replies figure alone (D6)', () => {
+    mockData.current = {
+      ...base,
+      glance: { draftsPending: 1, sentLast30: 9, repliesLast30: null },
+      failed: { ...noFailures, mail: true },
+      failedSources: ['the count of letters in'],
+    };
+    render(<CommunicationsNext />);
+    expect(screen.getByLabelText('Replies · 30 days: could not be read')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Sent · 30 days: could not be/i)).toBeNull();
   });
 
   // ── ADR 0118: the legacy builders are retired from the rebuilt page ───────
@@ -422,15 +370,11 @@ describe('CommunicationsNext', () => {
       isError: true,
       errorMessage: 'down',
       failed: { ...noFailures, history: true },
-      failedSources: ['the conversation book'],
+      failedSources: ['the letter counts'],
     };
     render(<CommunicationsNext />);
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Part of this page could not be read: the conversation book. That does not mean there is nothing there.',
-    );
-    // COMMS-W33: the book says its own failure where its rows would be.
-    expect(screen.getByTestId('book-unread')).toHaveTextContent(
-      'The conversation book could not be read (down). That does not mean nothing was written.',
+      'Part of this page could not be read: the letter counts. That does not mean there is nothing there.',
     );
   });
 
@@ -461,12 +405,12 @@ describe('CommunicationsNext', () => {
     };
     render(<CommunicationsNext />);
     // the failed figure names its failure
-    expect(screen.getByLabelText('Waiting on you: could not be read')).toBeInTheDocument();
+    expect(screen.getByLabelText('To send: could not be read')).toBeInTheDocument();
     // the answered ones do not
     expect(screen.queryByLabelText(/Sent · 30 days: could not be/i)).toBeNull();
   });
 
-  it('the banner names every failed owned source, not only the conversation book', () => {
+  it('the banner names every failed owned source, not only the letter counts', () => {
     mockData.current = {
       ...base,
       glance: { draftsPending: null, sentLast30: null, repliesLast30: null },
@@ -476,12 +420,12 @@ describe('CommunicationsNext', () => {
       drafts: [],
       draftsKnown: false,
       failed: { history: true, drafts: true },
-      failedSources: ['the conversation book', 'the replies the house has written'],
+      failedSources: ['the letter counts', 'the replies the house has written'],
     };
     render(<CommunicationsNext />);
     const alert = screen.getByRole('alert');
     expect(alert).toHaveTextContent(
-      'Part of this page could not be read: the conversation book and the replies the house has written. That does not mean there is nothing there.',
+      'Part of this page could not be read: the letter counts and the replies the house has written. That does not mean there is nothing there.',
     );
     // COMMS-W33: no protocol, no bare dash standing for a word, no "in flight".
     expect(alert.querySelector('span')?.textContent).not.toMatch(/status code|in flight|—/);
@@ -505,8 +449,8 @@ describe('CommunicationsNext', () => {
     ] };
     mockData.current = { ...base, drafts: [{ id: 'a1', orderId: 'o1' }, { id: 'a2', orderId: 'o2' }] };
     render(<CommunicationsNext />);
-    expect(screen.getByText('Waiting on you · 4')).toBeInTheDocument();
-    expect(screen.getByLabelText('Waiting on you')).toContainElement(screen.getByTestId('letter-requests-stub'));
+    expect(screen.getByText('To send · 4')).toBeInTheDocument();
+    expect(screen.getByLabelText('To send')).toContainElement(screen.getByTestId('letter-requests-stub'));
   });
 
   it('says when an order’s draft stands in front of older ones (COMMS-W24)', () => {
@@ -527,67 +471,24 @@ describe('CommunicationsNext', () => {
   it('the waiting figure is unknown while any of its lists is unanswered', () => {
     mockDrafts.current = { ...mockDrafts.current, drafts: null };
     render(<CommunicationsNext />);
-    expect(screen.getByText('Waiting on you · —')).toBeInTheDocument();
-    expect(screen.queryByText('Nothing is waiting on you.')).toBeNull();
+    expect(screen.getByText('To send · —')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing is waiting to be sent.')).toBeNull();
   });
 
   it('says plainly when nothing is waiting, once every list has answered', () => {
     render(<CommunicationsNext />);
-    expect(screen.getByText('Waiting on you · 0')).toBeInTheDocument();
-    expect(screen.getByText('Nothing is waiting on you.')).toBeInTheDocument();
-  });
-  // ── ADR 0084 put inbound vendor replies on this page; ADR 0083's row could
-  //    not render one. All three of these throw on the merged tree. ──────────
-  //
-  // The fixture is the shape `conversation-ledger.spec.ts` asserts the gateway
-  // returns for production's ten inbound rows: `direction: 'INBOUND'`,
-  // `outbound_email_type` NULL, and `status` the column DEFAULT 'DRAFT' that
-  // the inbound writer never sets.
-  const inbound = () =>
-    item({
-      id: 'in-0',
-      direction: 'INBOUND',
-      emailType: null,
-      status: 'DRAFT',
-      orderId: null,
-      orderNumber: null,
-      quantity: null,
-      wineName: null,
-      draftContent: 'Vendor reply number 0',
-    });
-
-  it('renders an inbound vendor reply, which has no outbound email type', () => {
-    mockData.current = { ...base, rows: [inbound()] };
-    render(<CommunicationsNext />);
-    expect(screen.getByText('Bodega Álvaro')).toBeInTheDocument();
-    expect(screen.getByText(/Vendor reply/)).toBeInTheDocument();
+    expect(screen.getByText('To send · 0')).toBeInTheDocument();
+    expect(screen.getByText('Nothing is waiting to be sent.')).toBeInTheDocument();
   });
 
-  it('never calls a vendor’s own reply an unsent AI draft', () => {
-    mockData.current = { ...base, rows: [inbound()] };
-    render(<CommunicationsNext />);
-    // 'DRAFT' is the DEFAULT on an inbound row, not a lifecycle claim about it.
-    expect(screen.queryByText('AI draft · not sent')).toBeNull();
-    expect(screen.getByText('Received')).toBeInTheDocument();
-  });
-
-  it('renders a row whose status is null, and does not invent one for it', () => {
-    // ADR 0084's deny-list admits `status.is.null` on purpose; the mapper
-    // passes it straight through as `status: row.status`.
-    mockData.current = { ...base, rows: [item({ status: null })] };
-    render(<CommunicationsNext />);
-    expect(screen.getByText('Bodega Álvaro')).toBeInTheDocument();
-    expect(screen.getByText('no status recorded')).toBeInTheDocument();
-    expect(screen.queryByText(/^Sent$/)).toBeNull();
-    expect(screen.queryByText('AI draft · not sent')).toBeNull();
-  });
-
-  it('a house draft in the book is "Drafted · not sent", never sent (ADR 0230)', () => {
-    mockData.current = { ...base, rows: [item({ status: 'HOUSE_DRAFT', emailType: 'HOUSE_LETTER' })] };
-    render(<CommunicationsNext />);
-    expect(screen.getByText('Drafted · not sent')).toBeInTheDocument();
-    expect(screen.queryByText(/^Sent$/)).toBeNull();
-    expect(screen.queryByText('AI draft · not sent')).toBeNull();
+  // 2026-11-12: Mail says "waiting on you" for vendors owed a reply. Letters
+  // counts letters not yet sent, so it never borrows those words.
+  it('Letters never says "waiting on you": that is Mail’s count of vendors owed a reply', () => {
+    mockLetters.current = { ...mockLetters.current, data: { requests: [{ id: 'r1' }] } };
+    const { container } = render(<CommunicationsNext />);
+    expect(screen.getByText('To send · 1')).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/waiting on you/i);
+    expect(container.querySelector('[aria-label*="waiting on you" i]')).toBeNull();
   });
 });
 
@@ -751,7 +652,7 @@ describe('a read that fails after it answered (COMMS-W33)', () => {
   const at = AT.getTime();
   const reply = { id: 'a1', orderId: 'o1', orderNumber: 'PO-014', providerName: 'Bodega Álvaro', wineName: null, replaces: 0 };
 
-  it('the book keeps its rows and figures and says when they are from', () => {
+  it('the figures keep their values and say when they are from', () => {
     mockData.current = {
       ...base,
       rows: [item({})],
@@ -764,12 +665,8 @@ describe('a read that fails after it answered (COMMS-W33)', () => {
     render(<CommunicationsNext />);
     expect(screen.getByLabelText('Sent · 30 days: 9 as it was at 20:43. It could not be read again.')).toHaveTextContent('9');
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Part of this page could not be read again just now: the conversation book. What you see is as it was at 20:43.',
+      'Part of this page could not be read again just now: the letter counts. What you see is as it was at 20:43.',
     );
-    expect(screen.getByTestId('book-unread')).toHaveTextContent(
-      'The conversation book could not be read again (Internal server error). This is as it was at 20:43; there may be more or fewer now.',
-    );
-    expect(screen.getByText('Bodega Álvaro')).toBeInTheDocument();
   });
 
   it('the replies it read stay openable, under a line saying when, and the figure agrees', () => {
@@ -782,13 +679,13 @@ describe('a read that fails after it answered (COMMS-W33)', () => {
     expect(screen.queryByText(/none can be opened/)).toBeNull();
     // one line under the rows, never a second one claiming there were none
     expect(screen.queryByTestId('drafts-unread')).toBeNull();
-    expect(screen.getByLabelText('Waiting on you: 1 as it was at 20:43. It could not be read again.')).toBeInTheDocument();
+    expect(screen.getByLabelText('To send: 1 as it was at 20:43. It could not be read again.')).toBeInTheDocument();
   });
 
   it('a zero that could not be read again is not "nothing waiting"', () => {
     mockData.current = { ...base, drafts: [], failed: { ...noFailures, drafts: true }, draftsError: 'boom', draftsAt: at };
     render(<CommunicationsNext />);
-    expect(screen.queryByText('Nothing is waiting on you.')).toBeNull();
+    expect(screen.queryByText('Nothing is waiting to be sent.')).toBeNull();
     expect(screen.getByTestId('drafts-unread')).toHaveTextContent(
       'The replies the house has written could not be read again (boom). At 20:43 there were none; there may be some now.',
     );
@@ -1053,9 +950,8 @@ describe('what the address keeps (COMMS-W35)', () => {
 // COMMS-W36 (founder: "Page + queue shared", "Visible label"): the title names
 // its own ink, so the old Dark theme a browser may still keep (`html.dark`,
 // no control left since #576) cannot turn it pale on paper (it
-// measured 1.13:1); the two lists inside "Waiting on you" are a level below
-// it; and the conversation book, the one region a heading list skipped, has
-// the house's small label.
+// measured 1.13:1); the two lists inside "To send" are a level below
+// it; and the tabs, which replaced the book (2026-11-07), name themselves.
 describe('the outline and the title’s ink (COMMS-W36)', () => {
   beforeEach(() => {
     mockData.current = { ...base };
@@ -1067,16 +963,14 @@ describe('the outline and the title’s ink (COMMS-W36)', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Communications' }).style.color).toBe('var(--ink-1, #211C16)');
   });
 
-  it('reads as one outline: the waiting lists under "Waiting on you", the book labelled', () => {
+  it('reads as one outline: the waiting lists under "To send", the tabs named', () => {
     mockData.current = { ...base, drafts: [{ id: 'a1', orderId: 'o1' }, { id: 'a2', orderId: 'o2' }] };
     render(<CommunicationsNext />);
     // Only its level changed: the line it had as an h2 is kept, so nothing below it moves.
     expect(screen.getByRole('heading', { level: 3, name: 'The house has written · 2 waiting' }).style.lineHeight).toBe('2rem');
     expect(screen.queryByRole('heading', { level: 2, name: /The house has written/ })).toBeNull();
-    const book = screen.getByRole('region', { name: 'Conversation book' });
-    expect(within(book).getByRole('heading', { level: 2, name: 'The conversation book' })).toBe(
-      within(book).getAllByRole('heading')[0],
-    );
+    const tabs = screen.getByRole('navigation', { name: 'Mail and letters' });
+    expect(within(tabs).getAllByRole('button').map((b) => b.textContent)).toEqual(['Mail · —', 'Letters']);
   });
 });
 
@@ -1093,8 +987,8 @@ describe('the tour finds every step (COMMS-W38)', () => {
     const { container } = render(<CommunicationsNext />);
     expect(container.querySelector('section[aria-label="Drafts waiting"]')).toBeNull();
     expect(communicationsTour.steps.map((s) => s.element)).toEqual([
-      'section[aria-label="Conversation book"]',
-      'section[aria-label="Waiting on you"]',
+      'nav[aria-label="Mail and letters"]',
+      'section[aria-label="To send"]',
       '[data-tour="comms-write"]',
       'section[aria-label="Who is writing"]',
     ]);
@@ -1102,5 +996,132 @@ describe('the tour finds every step (COMMS-W38)', () => {
       expect(container.querySelector(step.element), step.element).not.toBeNull();
     }
     expect(container.querySelector('[data-tour="comms-write"]')?.textContent).toMatch(/Write a letter/);
+  });
+});
+
+// Mail and Letters (founder /goal 2026-11-07). The tab is URL state: Mail opens
+// on a click or on ?tab=mail, ?with= or ?thread=; ?draft= and ?reply= keep
+// opening on Letters exactly as before (spec h).
+describe('Mail and Letters', () => {
+  const waiting = {
+    id: 'a1',
+    orderId: 'o1',
+    orderNumber: 'PO-014',
+    wineName: 'Albariño 2022',
+    providerName: 'Bodega Álvaro',
+    providerEmail: 'v@x.example',
+    emailType: 'PRICE_INQUIRY',
+    roundCount: 1,
+    draftContent: 'Dear Bodega, could you hold 6 at $18.40?',
+    createdAt: '2026-10-01T09:00:00Z',
+    subject: 'Albariño 2022',
+  };
+  function Where() {
+    const l = useLocation();
+    return <output data-testid="where">{l.pathname + l.search}</output>;
+  }
+  const at = (url: string) =>
+    rtlRender(
+      <MemoryRouter initialEntries={[url]}>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <CommunicationsNext />
+          <Where />
+        </QueryClientProvider>
+      </MemoryRouter>,
+    );
+  const tabs = () => within(screen.getByRole('navigation', { name: 'Mail and letters' })).getAllByRole('button');
+  beforeEach(() => {
+    mockData.current = { ...base };
+    mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
+    mockMailSummary.current = { data: undefined };
+  });
+
+  it('opens on Letters, with the one line that points to Mail where the book was', () => {
+    at('/communications');
+    expect(tabs()[1]).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByTestId('mail-tab-stub')).toBeNull();
+    expect(screen.getByRole('region', { name: 'Every letter' })).toHaveTextContent(
+      'Every letter in and out, by vendor and by thread, is under Mail.',
+    );
+    fireEvent.click(within(screen.getByRole('region', { name: 'Every letter' })).getByRole('button', { name: 'Mail' }));
+    expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail');
+  });
+
+  it.each([['?tab=mail'], ['?with=vendor%3Ap1'], ['?thread=gm%3Aabc'], ['?setup=1']])('%s opens on Mail', (q) => {
+    at(`/communications${q}`);
+    expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
+    expect(tabs()[0]).toHaveAttribute('aria-current', 'page');
+    // Letters' own figures and lists stand with Letters.
+    expect(screen.queryByText('Replies · 30 days')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'To send' })).toBeNull();
+  });
+
+  // Spec (h): the counter's and the credit's links still land where they did.
+  it('?reply= still opens the drafted reply on Letters', () => {
+    mockData.current = { ...base, drafts: [waiting] };
+    at('/communications?reply=o1');
+    expect(screen.queryByTestId('mail-tab-stub')).toBeNull();
+    expect(tabs()[1]).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByText("The house's reply, drafted")).toBeInTheDocument();
+  });
+
+  it('?draft= still opens the drafted letter on Letters', () => {
+    mockDrafts.current = {
+      ...mockDrafts.current,
+      drafts: [
+        {
+          id: 'D1',
+          providerId: 'p1',
+          providerName: 'Bodega Álvaro',
+          orderId: null,
+          subject: 'Credit request — invoice INV-77',
+          to: 'orders@bodega.example',
+          category: 'invoice_mismatch',
+          creditId: 'c1',
+          body: 'We are asking for a credit.',
+          createdAt: '2026-09-25T09:00:00Z',
+        },
+      ],
+    };
+    at('/communications?draft=D1');
+    expect(screen.queryByTestId('mail-tab-stub')).toBeNull();
+    expect(screen.getByTestId('composer').getAttribute('data-draft')).toBe('D1');
+  });
+
+  it('the Mail label carries the waiting count, and an em dash while it is unknown', () => {
+    at('/communications');
+    expect(tabs()[0]).toHaveTextContent('Mail · —');
+  });
+
+  it('the Mail label says the count once the summary answers', () => {
+    mockMailSummary.current = {
+      data: {
+        waitingPeople: 3,
+        oldestWaitAt: null,
+        inToday: 0,
+        outToday: 0,
+        heldAtDoor: null,
+        doors: { houseMailbox: { lastStoredAt: null }, whatsapp: { lastStoredAt: null }, mudavymMail: { lastStoredAt: null } },
+        address: { configured: false, address: null },
+      },
+    };
+    at('/communications');
+    expect(tabs()[0]).toHaveTextContent('Mail · 3');
+  });
+
+  it('Letters leaves the person, thread and mail setup behind', () => {
+    at('/communications?tab=mail&with=vendor%3Ap1&thread=gm%3Aabc&setup=1');
+    fireEvent.click(tabs()[1]);
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications$/);
+    expect(screen.getByText('Replies · 30 days')).toBeInTheDocument();
+  });
+
+  it("hands Mail the orders that have a drafted reply, and Mail's reply act opens it", () => {
+    mockData.current = { ...base, drafts: [waiting] };
+    at('/communications?thread=gm%3Aabc');
+    expect(screen.getByTestId('mail-tab-stub').getAttribute('data-drafted')).toBe('o1');
+    fireEvent.click(screen.getByText('stub open reply'));
+    expect(screen.getByText("The house's reply, drafted")).toBeInTheDocument();
   });
 });

@@ -205,8 +205,10 @@ export class HouseSenderService {
   ) {}
 
   private deploymentMailbox(): string {
+    // Must agree with gmail.service.ts (`||`): a variable set but empty still
+    // sends from the default, so the page must name that address, never nobody.
     return (
-      this.config.get<string>("GMAIL_SENDER_EMAIL") ??
+      (this.config.get<string>("GMAIL_SENDER_EMAIL") ?? "").trim() ||
       "notifications@mudavym.com"
     );
   }
@@ -275,11 +277,16 @@ export class HouseSenderService {
     const { data, error } = await this.db.client
       .from("integration_oauth_connections")
       .select(
-        "id, user_id, integration_id, provider, account_email, scopes, restaurant_id, revoked_at",
+        "id, user_id, integration_id, provider, account_email, scopes, restaurant_id, revoked_at, connected_at",
       )
       .eq("restaurant_id", restaurantId)
       .eq("provider", "google")
-      .is("revoked_at", null);
+      .is("revoked_at", null)
+      // Oldest grant first (gap G11): with no house choice and no grant of
+      // the asker's own, "the house's first live one" was whatever order
+      // Postgres returned, so two reads could name two different mailboxes.
+      .order("connected_at", { ascending: true })
+      .order("id", { ascending: true });
 
     const rows = error
       ? []
@@ -327,26 +334,7 @@ export class HouseSenderService {
       this.logger.error(
         `House sender could not be resolved for ${restaurantId}: ${error.message}`,
       );
-      return {
-        ...base,
-        kind: "unknown",
-        address: null,
-        sendable: false,
-        ceremony: "none",
-        undoMs: null,
-        words: `Which mailbox this house sends from could not be read (${error.message}), so no letter may be queued. This is a failed read, not an empty answer — the house may well have a mailbox connected.`,
-        grant: null,
-        missing: [
-          "The connections register could not be read; retry before concluding anything about this house.",
-        ],
-        conversation: this.conversation({
-          sendGranted: "unknown",
-          sendAddress: null,
-          readConsented: "unknown",
-          readSwitchedOn,
-          deploymentAddress: base.deployment.address,
-        }),
-      };
+      return this.unreadable(base, error.message, readSwitchedOn);
     }
 
     if (withSend.length === 0) {
@@ -381,10 +369,33 @@ export class HouseSenderService {
       };
     }
 
-    // Prefer the asking person's own grant, so the letter leaves from the
-    // mailbox they expect; otherwise the house's first live sending grant.
+    // The house's own choice comes first: an owner or manager picked which
+    // connected mailbox the house's letters leave from (the Mail setup page).
+    // A choice that points at a grant which no longer sends is ignored, so a
+    // revoked mailbox never strands the house. A choice that could not be
+    // READ is not ignored: which address a vendor sees is the point, so the
+    // answer is "could not be read", never a quiet guess.
+    const houseChoice = await this.houseChoice(restaurantId);
+    if (houseChoice.failed) {
+      this.logger.error(
+        `House sender choice could not be read for ${restaurantId}: ${houseChoice.failed}`,
+      );
+      return this.unreadable(base, houseChoice.failed, readSwitchedOn);
+    }
+    // A choice counts only when the person who made it is the person whose
+    // mailbox it is (QA round 26, #973; the session's call under the
+    // 2026-11-07 /goal). Consenting to "this house's own letters may leave
+    // from my mailbox" is not consenting to being made the house's ONE line by
+    // somebody else. chooseSender refuses that; this is the second wall, for a
+    // row that got past it.
+    // Otherwise prefer the asking person's own grant, so the letter leaves
+    // from the mailbox they expect; otherwise the house's first live one.
     const chosen =
-      withSend.find((r) => String(r.user_id) === userId) ?? withSend[0];
+      withSend.find(
+        (r) => String(r.id) === houseChoice.connectionId && String(r.user_id) === houseChoice.chosenBy,
+      ) ??
+      withSend.find((r) => String(r.user_id) === userId) ??
+      withSend[0];
     const address = (chosen.account_email as string | null) ?? null;
     const owner = String(chosen.user_id);
     const mine = owner === userId;
@@ -421,6 +432,116 @@ export class HouseSenderService {
         sendGranted: true,
         sendAddress: address,
         readConsented,
+        readSwitchedOn,
+        deploymentAddress: base.deployment.address,
+      }),
+    };
+  }
+
+  /**
+   * The grant this house chose to send from, or null when it chose none.
+   * `failed` carries the reason when the choice could not be read.
+   */
+  private async houseChoice(
+    restaurantId: string,
+  ): Promise<{ connectionId: string | null; chosenBy: string | null; failed: string | null }> {
+    try {
+      const { data, error } = await this.db.client
+        .from("house_mail_sender_choice")
+        .select("connection_id, chosen_by")
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+      if (error) return { connectionId: null, chosenBy: null, failed: error.message };
+      const row = data as Record<string, unknown> | null;
+      const id = row?.connection_id;
+      const by = row?.chosen_by;
+      return {
+        connectionId: typeof id === "string" ? id : null,
+        chosenBy: typeof by === "string" ? by : null,
+        failed: null,
+      };
+    } catch (e) {
+      return {
+        connectionId: null,
+        chosenBy: null,
+        failed: e instanceof Error ? e.message : "the read threw",
+      };
+    }
+  }
+
+  /**
+   * The grant a QUEUED letter was pinned to, re-read at send time (QA round
+   * 26, #973). A letter leaves from the mailbox it was queued under or not at
+   * all: this never falls back to the house's current rule, because the
+   * writer approved one address and a vendor must not see another.
+   *
+   * Throws plain words when the grant is gone, no longer sends, or could not
+   * be read; the dispatcher records them as the letter's failure, which the
+   * manager sees.
+   */
+  async pinned(
+    restaurantId: string,
+    connectionId: string,
+    queuedAddress: string | null,
+  ): Promise<{ address: string | null; grant: NonNullable<HouseSenderIdentity["grant"]> }> {
+    const named = queuedAddress ? ` (${queuedAddress})` : "";
+    let row: Record<string, unknown> | null = null;
+    try {
+      const { data, error } = await this.db.client
+        .from("integration_oauth_connections")
+        .select("id, user_id, integration_id, account_email, scopes")
+        .eq("id", connectionId)
+        .eq("restaurant_id", restaurantId)
+        .eq("provider", "google")
+        .is("revoked_at", null)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      row = (data as Record<string, unknown> | null) ?? null;
+    } catch {
+      throw new Error(
+        `The mailbox this letter was queued to leave from${named} could not be read, so it was not sent, and not from another mailbox either. Write it again to try once more.`,
+      );
+    }
+    const scopes = Array.isArray(row?.scopes) ? (row!.scopes as string[]) : [];
+    if (!row || !scopes.includes(GMAIL_SEND_SCOPE)) {
+      throw new Error(
+        `The mailbox this letter was queued to leave from${named} can no longer send for this house, so it was not sent, and not from another mailbox either. Write it again to send it from the mailbox the house uses now.`,
+      );
+    }
+    const accountEmail = (row.account_email as string | null) ?? null;
+    return {
+      address: accountEmail,
+      grant: {
+        connectionId: String(row.id),
+        integrationId: String(row.integration_id),
+        accountEmail,
+        personUserId: String(row.user_id),
+      },
+    };
+  }
+
+  /** The identity when what it rests on could not be read: never "none". */
+  private unreadable(
+    base: Pick<HouseSenderIdentity, "deployment" | "subdomain" | "missing">,
+    reason: string,
+    readSwitchedOn: boolean,
+  ): HouseSenderIdentity {
+    return {
+      ...base,
+      kind: "unknown",
+      address: null,
+      sendable: false,
+      ceremony: "none",
+      undoMs: null,
+      words: `Which mailbox this house sends from could not be read (${reason}), so no letter may be queued. This is a failed read, not an empty answer — the house may well have a mailbox connected.`,
+      grant: null,
+      missing: [
+        "The connections register could not be read; retry before concluding anything about this house.",
+      ],
+      conversation: this.conversation({
+        sendGranted: "unknown",
+        sendAddress: null,
+        readConsented: "unknown",
         readSwitchedOn,
         deploymentAddress: base.deployment.address,
       }),

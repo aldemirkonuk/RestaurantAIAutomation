@@ -84,6 +84,7 @@ import { IntegrationReturnNotice } from '../../authorize-integration/Integration
  */
 
 import { useEffect, useId, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 // The one write this page makes to a text sender: a manager ending the house's
 // use of it (ADR 0114 — the attachment is the house's, and a manager may stop
 // it). Declaring one is still disabled and still carries the server's reason.
@@ -114,9 +115,11 @@ import {
   AttachmentRow,
   LoadingRegister,
   UnreadRegister,
+  type AttachmentRowProps,
   type RowChip,
   type RowPermission,
 } from './AttachmentRow';
+import type { MailSetupView } from '../../communications/next/useMailSetup';
 import { grantHolds, wouldAskFor } from './cx-permissions';
 import { HouseServerControls } from './HouseServerControls';
 import { DistributorFeedPanel } from './DistributorFeedPanel';
@@ -166,8 +169,118 @@ export const REGISTER_ANCHORS = [
   'grants',
 ] as const;
 
+/**
+ * The sender row's words, from the house's own choice on the mail setup page
+ * (audit follow-up on #981). Three cases, each true on its own:
+ *   chosen   — an owner or manager picked one of the house's connected
+ *              mailboxes; the row names it and says the house chose it.
+ *   unchosen — the house has a connected mailbox that may send, and none is
+ *              picked; the row says so in the setup page's own sentence.
+ *   shared   — no connected mailbox of the house's may send, so letters leave
+ *              from the mailbox Mudavym restaurants share.
+ * None of them says the sender cannot be changed: it can, on the setup page.
+ */
+function senderIdentityCopy(
+  setup: MailSetupView,
+  sharedAddress: string | null,
+  openSetup: () => void,
+  // Order letters keep the shared address with the house's name in From
+  // (gap G3); said on every branch, so the row never implies that EVERY
+  // letter leaves from the house's own mailbox (gap G12).
+  orderMail: string | null = null,
+): Pick<
+  AttachmentRowProps,
+  'owner' | 'chips' | 'subtitle' | 'why' | 'permissions' | 'controls' | 'stopNote'
+> {
+  const { canChange, senders } = setup;
+  const change: RowPermission = {
+    text: 'Choose which of its own mailboxes the house sends from',
+    can: canChange,
+  };
+  const cannot = 'Only an owner or a manager of this house can change this.';
+  const chosen = senders.choices.find(
+    (c) => c.chosen && c.connectionId === senders.chosenConnectionId,
+  );
+  if (chosen) {
+    const whose = chosen.mine
+      ? 'your own connected mailbox'
+      : `the mailbox ${chosen.personName ?? 'another member of this house'} connected`;
+    return {
+      owner: "This house's",
+      chips: [{ label: "The house's own", tone: 'on' }],
+      subtitle: chosen.address ?? DASH,
+      why: (
+        <>
+          Letters this house sends leave from{' '}
+          <em>{chosen.address ? `${chosen.address}, ${whose}` : whose}</em>,
+          chosen on the mail setup page. A vendor sees this house&rsquo;s own
+          address, not one other restaurants share.
+          {orderMail ? <> {orderMail}</> : null}
+        </>
+      ),
+      permissions: [
+        { text: "Send mail signed with this house's name", can: true },
+        { text: "Receive the vendor's reply", can: true },
+        change,
+      ],
+      controls: [{ label: 'Change which mailbox sends', onClick: openSetup }],
+      stopNote: canChange
+        ? 'To send from Mudavym’s choice again, use “Let Mudavym choose again” on the mail setup page.'
+        : cannot,
+    };
+  }
+  const control = { label: "Send from the house's own mailbox", onClick: openSetup };
+  if (senders.choices.some((c) => c.sending)) {
+    return {
+      owner: "This house's",
+      chips: [{ label: 'None chosen', tone: 'warn' }],
+      subtitle: DASH,
+      why: (
+        <>
+          This house has a mailbox of its own that can send, and none is
+          chosen, so a letter leaves from the mailbox of the person who sends
+          it, or else the first one connected.
+          {orderMail ? <> {orderMail}</> : null}
+        </>
+      ),
+      permissions: [
+        { text: "Send mail signed with this house's name", can: true },
+        { text: "Receive the vendor's reply", can: true },
+        change,
+      ],
+      controls: [control],
+      stopNote: canChange
+        ? 'Choosing one on the mail setup page makes every letter leave from the same address.'
+        : cannot,
+    };
+  }
+  return {
+    owner: "Mudavym's",
+    chips: [{ label: 'Shared, not yours', tone: 'warn' }],
+    subtitle: sharedAddress ?? DASH,
+    why: (
+      <>
+        Every vendor letter this house sends leaves from{' '}
+        <em>one mailbox Mudavym restaurants share</em>.{' '}
+        {orderMail ?? 'The sign-off inside the letter carries this house’s name.'} A
+        vendor who replies is replying to a mailbox other restaurants also send from.
+      </>
+    ),
+    permissions: [
+      { text: "Send mail signed with this house's name", can: true },
+      { text: "Receive the vendor's reply", can: true },
+      change,
+    ],
+    controls: [control],
+    stopNote: canChange
+      ? 'Until a mailbox of the house’s own is connected and chosen on the mail setup page, its letters leave from the shared one.'
+      : cannot,
+  };
+}
+
 export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
   const d = useConnectionsNextData();
+  const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
 
   /**
@@ -551,7 +664,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
 
           {/* — the sender identity — (`/settings?tab=email` lands here) */}
           <span id="sender" aria-hidden />
-          {d.sender.loading ? (
+          {d.sender.loading || d.mailSetup.loading ? (
             <LoadingRegister name="the sender identity" />
           ) : d.sender.error ? (
             <UnreadRegister
@@ -559,35 +672,36 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
               detail={d.sender.error}
               refused={d.sender.refused}
             />
+          ) : d.mailSetup.error || !d.mailSetup.data || d.mailSetup.data.senders.failed ? (
+            // Which mailbox a vendor sees is the point of this row, so a choice
+            // that could not be read is said, never guessed as "shared".
+            <UnreadRegister
+              name="Which mailbox this house sends from"
+              // The gateway's own failure text can be a status code; the
+              // house is told what failed, in words (ADR 0020).
+              detail={
+                d.mailSetup.error
+                  ? "Nothing about the house's choice came back, so this row does not guess."
+                  : plainReason(
+                      d.mailSetup.data?.senders.failed,
+                      "The house's choice of mailbox did not come back with the answer.",
+                    )
+              }
+              refused={d.mailSetup.refused}
+            />
           ) : (
             <AttachmentRow
               icon={<Mail {...ICON} />}
               title="Sender identity"
-              owner="Mudavym's"
-              chips={[{ label: 'Shared, not yours', tone: 'warn' }]}
-              subtitle={d.sender.data?.address ?? DASH}
-              why={
-                <>
-                  Every vendor letter this house sends leaves from{' '}
-                  <em>one mailbox Mudavym restaurants share</em>. The sign-off
-                  inside the letter carries this house&rsquo;s name; the
-                  envelope does not. A vendor who replies is replying to a
-                  mailbox other restaurants also send from.
-                </>
-              }
-              permissions={[
-                { text: "Send mail signed with this house's name", can: true },
-                { text: "Receive the vendor's reply", can: true },
-                { text: 'Cannot be changed by this house', can: false },
-              ]}
+              {...senderIdentityCopy(
+                d.mailSetup.data,
+                d.sender.data?.address ?? null,
+                () => navigate('/communications?tab=mail&setup=1'),
+                d.sender.data?.orderMail?.words ?? null,
+              )}
               lastLabel="Last sent"
               last={null}
               lastDetail="No per-letter send record is kept against this address, so what it last sent is not on this row."
-              controls={[{ label: 'Use our own address', disabled: true }]}
-              stopNote={plainReason(
-                d.sender.data?.perHouse.reason,
-                'No per-restaurant sender exists yet.',
-              )}
             />
           )}
 

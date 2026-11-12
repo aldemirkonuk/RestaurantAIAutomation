@@ -49,6 +49,7 @@ function build(
     self.select = pass;
     self.eq = pass;
     self.is = pass;
+    self.order = pass;
     self.limit = pass;
     self.maybeSingle = () =>
       Promise.resolve({ data: data?.[0] ?? null, error });
@@ -200,6 +201,23 @@ describe("a failed read is not a fifth arrangement", () => {
     expect(identity.conversation.words).toContain("This is a failed read");
     expect(identity.conversation.sending.granted).toBe("unknown");
     expect(identity.conversation.receiving.consented).toBe("unknown");
+  });
+});
+
+describe("the shared mailbox is named, never blank", () => {
+  it("names the default address when GMAIL_SENDER_EMAIL is set but empty", async () => {
+    const db = build({
+      integration_oauth_connections: [sendGrant],
+      restaurant_feature_flags: READER_OFF,
+      users: [{ name: "Aldemir" }],
+    });
+    const config = { get: () => "  " } as never;
+    const identity = await new HouseSenderService(db, config).resolve(
+      HOUSE,
+      PERSON,
+    );
+    expect(identity.conversation.words).toContain("notifications@mudavym.com");
+    expect(identity.conversation.words).not.toContain("through ,");
   });
 });
 
