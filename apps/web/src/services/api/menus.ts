@@ -48,7 +48,7 @@ export interface MenuImportReviewItem {
    * a menu update changes the house price). `failed` carries the reason in
    * `priceSyncError`; the page says so rather than implying the price moved.
    */
-  priceSync?: 'changed' | 'unchanged' | 'stale' | 'locked' | 'no_price' | 'not_linked' | 'not_current' | 'failed'
+  priceSync?: 'changed' | 'unchanged' | 'stale' | 'locked' | 'no_price' | 'not_linked' | 'not_current' | 'kitchen_line' | 'failed'
   priceSyncError?: string | null
   /**
    * Set when a blank menu price kept the house's last known one (founder,
@@ -421,6 +421,11 @@ export interface MenuPlan {
   }>
   namesReadable: boolean
   namesReason: string | null
+  /**
+   * Lines set aside as kitchen lines: they stay on the menu and are carried
+   * nowhere (no wine, price or stock). Optional only for an older gateway.
+   */
+  kitchenLines?: Array<{ menuItemId: string; name: string }>
 }
 
 /** What choosing this menu would do. Nothing is written. A failed read throws. */

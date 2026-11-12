@@ -108,6 +108,7 @@ const OUTCOME_WORDS: Record<string, (n: number) => string> = {
   locked: (n) => `${n} held by a lock`,
   no_price: (n) => `${n} with no price on the line`,
   not_linked: (n) => `${n} not matched to a wine, so no price`,
+  kitchen_line: (n) => `${n} kitchen line${n === 1 ? '' : 's'}, kept off the wine list`,
   failed: () => '',
 };
 
@@ -117,7 +118,7 @@ export function makeCurrentSentence(r: MakeCurrentResult): string {
   const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
   const keys = Object.keys(r.priceSync);
   if (!keys.includes('changed')) parts.push(OUTCOME_WORDS.changed(0));
-  for (const k of ['changed', 'unchanged', 'stale', 'locked', 'no_price', 'not_linked']) {
+  for (const k of ['changed', 'unchanged', 'stale', 'locked', 'no_price', 'not_linked', 'kitchen_line']) {
     const n = r.priceSync[k] ?? 0;
     if (n > 0) parts.push(OUTCOME_WORDS[k](n));
   }
