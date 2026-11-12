@@ -22,7 +22,7 @@ import {
   catalogueForPrompt,
   checkCuttingSpec,
 } from "./report-cuttings";
-import { GoalsService, stripFence } from "./goals.service";
+import { GOAL_ADVICE_OFF, GoalsService, stripFence } from "./goals.service";
 
 /**
  * `AnalyticsService`, stubbed. Only `days_of_inventory` reaches it — it reads
@@ -300,7 +300,8 @@ describe("GoalsService.proposeCuttingSpec — a provider that is not configured 
     expect(called.model).toBe(0);
     expect(out.available).toBe(false);
     expect(out.spec).toBeNull();
-    expect(out.reason).toContain("ANTHROPIC_API_KEY");
+    expect(out.reason).toBe(GOAL_ADVICE_OFF);
+    expect(out.reason).not.toMatch(/ANTHROPIC|API key|gateway|configured/i);
     expect(out.goal).toEqual({
       id: "g1",
       name: "Lift wine revenue",
