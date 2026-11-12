@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
+import { readLotCostsByIds } from "./lot-costs-by-ids";
 import * as E from "./engine";
 import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
@@ -60,53 +61,32 @@ export class AdvancedAnalyticsService {
   // Shared lean loaders
   // =========================================================================
 
+  /**
+   * Read whole or refused, as `AnalyticsService.loadInventory` is (ADR 0292):
+   * unranged, all three reads stopped at 1,000 rows. A refusal propagates;
+   * both callers read consumption beside it, which already refuses.
+   */
   private async loadInventoryWithCost(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes, agreedRes] = await Promise.allSettled([
+    const inventory = await readWholeWindow<any>("The house's inventory", () =>
       client
         .from("restaurant_inventory")
         // Same schema-drift fix as AnalyticsService.loadInventory: a single
-        // unknown column 42703s the whole PostgREST query, and allSettled
-        // swallows it into an empty inventory.
+        // unknown column 42703s the whole PostgREST query.
         .select(
           "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
+          { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
-        )
-        .eq("restaurant_id", restaurantId),
-      // The cost agreed at delivery; see AnalyticsService.loadInventory.
-      client
-        .from("inventory_lot_agreed_cost")
-        .select("inventory_id, has_agreed_cost, agreed_wac")
-        .eq("restaurant_id", restaurantId),
-    ]);
-    if (invRes.status === "fulfilled" && invRes.value.error)
-      this.logQueryFailure("restaurant_inventory", invRes.value.error);
-    if (rollupRes.status === "fulfilled" && rollupRes.value.error)
-      this.logQueryFailure("inventory_lot_rollup", rollupRes.value.error);
-    if (agreedRes.status === "fulfilled" && agreedRes.value.error)
-      this.logQueryFailure("inventory_lot_agreed_cost", agreedRes.value.error);
-    const inventory =
-      invRes.status === "fulfilled" ? invRes.value.data || [] : [];
-    const rollup = new Map<string, any>();
-    if (rollupRes.status === "fulfilled")
-      for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
-    if (agreedRes.status === "fulfilled")
-      for (const r of agreedRes.value.data || [])
-        rollup.set(r.inventory_id, {
-          ...rollup.get(r.inventory_id),
-          inventory_id: r.inventory_id,
-          has_agreed_cost: r.has_agreed_cost,
-          agreed_wac: r.agreed_wac,
-        });
+    );
+    // The rollup and the cost agreed at delivery, for the items in hand; see
+    // AnalyticsService.loadInventory.
+    const rollup = await readLotCostsByIds(
+      client,
+      restaurantId,
+      inventory.map((i: any) => i.id),
+    );
     // Same fix as AnalyticsService.loadInventory: the third branch here was
     // `unitPrice * 0.6`, an undocumented magic number that was the live path
     // for ~70 of 72 production rows while `basis.margin` below called the
