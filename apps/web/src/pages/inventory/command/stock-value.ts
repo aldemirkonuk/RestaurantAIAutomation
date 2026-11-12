@@ -69,16 +69,26 @@ export function menuPriceOf(item: Pick<InventoryItem, 'menuPriceBottle'>): numbe
 }
 
 /**
+ * Kinds of good that are never sold by the bottle (`restaurant_inventory.kind`).
+ * A lemon or a pack of napkins has no bottle price to set, so the menu line
+ * neither sums nor counts it. A row whose kind was not sent stays counted:
+ * leaving it out would hide an unpriced drink.
+ */
+const NOT_SOLD_BY_THE_BOTTLE: ReadonlySet<string> = new Set(['food', 'supply'])
+
+/**
  * What the bottles on hand sell for at the house's own prices. The page used
  * to sum `menuPrice ?? 0` (the library's figure, absent for almost every
  * wine), so an unpriced wine joined the total as $0. Here it is counted.
+ * Food and supplies are left out of the line altogether.
  */
 export function totalMenuValue(
-  items: readonly (Costed & Pick<InventoryItem, 'menuPriceBottle'>)[],
+  items: readonly (Costed & Pick<InventoryItem, 'menuPriceBottle' | 'kind'>)[],
 ): StockValueTotal {
   let known = 0
   let unknownItems = 0
   for (const i of items) {
+    if (i.kind && NOT_SOLD_BY_THE_BOTTLE.has(i.kind)) continue
     const bottles = bottlesOnHand(i)
     if (bottles === 0) continue
     const price = menuPriceOf(i)
@@ -88,9 +98,13 @@ export function totalMenuValue(
   return { known, unknownItems }
 }
 
-/** "$3,100 menu", "$3,100 menu + 2 wines with no bottle price", or "no bottle price set (5 wines)". */
+/**
+ * "$3,100 menu", "$3,100 menu + 2 drinks with no bottle price", or "no bottle
+ * price set (5 drinks)". "Drinks", not "wines": a gin or a tonic on the shelf
+ * counts here too.
+ */
 export function totalMenuValueText(t: StockValueTotal, fmt: (n: number) => string): string {
-  const wines = `${t.unknownItems} wine${t.unknownItems === 1 ? '' : 's'}`
+  const wines = `${t.unknownItems} drink${t.unknownItems === 1 ? '' : 's'}`
   if (t.unknownItems === 0) return t.known > 0 ? `${fmt(t.known)} menu` : 'cost basis'
   if (t.known === 0) return `no bottle price set (${wines})`
   return `${fmt(t.known)} menu + ${wines} with no bottle price`

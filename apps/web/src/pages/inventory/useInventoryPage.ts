@@ -17,6 +17,11 @@ export interface InventoryItem extends Wine {
   marketPrice?: number;
   /** This house's own bottle price (ADR 0193). Undefined = not set. */
   menuPriceBottle?: number;
+  /**
+   * The good's kind on the house row (`restaurant_inventory.kind`: wine,
+   * spirit, food, supply, ...). Undefined when the gateway did not send it.
+   */
+  kind?: string;
   wac?: number;
   costProvenance?: "invoice" | "estimated";
   lotLocationCount?: number;
@@ -214,6 +219,7 @@ export function useInventoryPage(options: UseInventoryPageOptions = {}) {
         // The house's own bottle price (ADR 0193: menu_price_current on the
         // row, `menuPriceBottle` on the wire). Never the library's figure.
         menuPriceBottle: item.menuPriceBottle ?? undefined,
+        kind: (item as any).kind ?? undefined,
         marketPrice: (item as any).retailPriceAvg ?? undefined,
         wac: (item as any).wac ?? undefined,
         costProvenance: (item as any).costProvenance ?? undefined,

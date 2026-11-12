@@ -31,16 +31,31 @@ describe('menu value on hand', () => {
   it('an unpriced wine with bottles is counted, not summed as $0', () => {
     const t = totalMenuValue([wine(40, 2), wine(undefined, 3)]);
     expect(t).toEqual({ known: 80, unknownItems: 1 });
-    expect(totalMenuValueText(t, fmt)).toBe('TRY 80 menu + 1 wine with no bottle price');
+    expect(totalMenuValueText(t, fmt)).toBe('TRY 80 menu + 1 drink with no bottle price');
   });
 
   it('no price anywhere says so, never "$0 menu"', () => {
     const t = totalMenuValue([wine(undefined, 3), wine(undefined, 1)]);
-    expect(totalMenuValueText(t, fmt)).toBe('no bottle price set (2 wines)');
+    expect(totalMenuValueText(t, fmt)).toBe('no bottle price set (2 drinks)');
   });
 
   it('a wine with no bottles on hand adds nothing and is not "unpriced"', () => {
     expect(totalMenuValue([wine(undefined, 0, 0)])).toEqual({ known: 0, unknownItems: 0 });
     expect(totalMenuValueText({ known: 0, unknownItems: 0 }, fmt)).toBe('cost basis');
+  });
+
+  it('food and supplies are neither summed nor counted as unpriced', () => {
+    const good = (kind: string | undefined, menuPriceBottle?: number) =>
+      ({ kind, menuPriceBottle, liveStock: 4, shadowStock: 0, wac: undefined }) as any;
+    const t = totalMenuValue([
+      good('wine', 50),
+      good('food'),
+      good('supply'),
+      good('spirit'),
+      good(undefined),
+    ]);
+    // 4 × 50 from the wine; the spirit and the row with no kind are unpriced drinks.
+    expect(t).toEqual({ known: 200, unknownItems: 2 });
+    expect(totalMenuValueText(t, fmt)).toBe('TRY 200 menu + 2 drinks with no bottle price');
   });
 });
