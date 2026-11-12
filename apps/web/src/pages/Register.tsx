@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-do
 import { readInviteMailSecret } from '../lib/inviteMailSecret'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, Eye, EyeOff } from 'lucide-react'
+import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, ChevronRight, Eye, EyeOff } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
 import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
