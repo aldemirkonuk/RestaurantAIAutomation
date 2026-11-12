@@ -109,7 +109,7 @@ export function Register() {
   // /invite/<code> as a fragment. Sent with the join; without it the new
   // account is unverified.
   const inviteMailSecret = readInviteMailSecret(useLocation().hash)
-  const { registerAccount, registerRestaurant, joinViaInvite, error: authError } = useAuth()
+  const { registerAccount, registerRestaurant, joinViaInvite, error: authError, clearError: clearAuthError } = useAuth()
   const on = usePublicDesign()
 
   // Read the address before the first paint. The two-card chooser is retired
@@ -222,6 +222,10 @@ export function Register() {
   const waiting = waitUntil > Date.now()
   const sayRefusal = (err: unknown, where: 'account' | 'join') => {
     const r = signUpRefusal(err, where)
+    // This page words the refusal itself. The auth context's own sentence for
+    // the same failure ("Too many requests. Please try again later.") would
+    // otherwise show through `error || authError` once this one is cleared.
+    clearAuthError?.()
     setError(r.text)
     setSignInHint(r.kind === 'exists')
     waitSaid.current = r.kind === 'wait' ? r.text : null
