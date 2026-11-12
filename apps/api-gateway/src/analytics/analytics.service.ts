@@ -444,6 +444,9 @@ export class AnalyticsService {
   // 1. Financial summary — the P&L / capital-efficiency lens
   // =========================================================================
 
+  /** How many uncosted on-hand rows the financial summary names. */
+  static readonly MAX_UNCOSTED_NAMED = 50;
+
   async getFinancialSummary(restaurantId: string, labor = 0) {
     const DEAD_STOCK_WINDOW_DAYS = 90;
     const [inventory, orders, consumption] = await Promise.all([
@@ -600,6 +603,14 @@ export class AnalyticsService {
           "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio",
       },
       costCoverage,
+      // Which on-hand rows carry no recorded cost, by name (F-133): the
+      // count alone told the owner that the cellar's value was withheld but
+      // not which wines to cost to get it back. Capped; `costCoverage.unpriced`
+      // is the whole count.
+      uncosted: onHand
+        .filter((i) => i.unitCost == null)
+        .slice(0, AnalyticsService.MAX_UNCOSTED_NAMED)
+        .map((i) => ({ id: i.id, name: i.name, qty: i.qty })),
       inventoryValue,
       cogs,
       revenue,

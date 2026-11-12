@@ -37,7 +37,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, MessageSquarePlus, Pencil, Plus, Sparkles, Target, X } from 'lucide-react';
-import { EM, countOf, figure, num, ratioPct } from './rp-format';
+import { EM, countOf, figure, money, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 import type { GoalScenario, GoalScenarios } from '@/hooks/useGoalScenarios';
 import type { GoalsDesk, ScenarioRequest } from './useGoalsDesk';
@@ -91,7 +91,8 @@ export interface GoalsRegister {
 function inUnit(v: number | null, unit: string): string {
   if (v === null) return EM;
   if (unit === 'percent') return ratioPct(v);
-  if (unit === 'currency') return figure(v, 'compact');
+  // Money in the house's currency, never a bare number (F-184).
+  if (unit === 'currency') return money(v, 'compact');
   return figure(v, 'compact');
 }
 
@@ -134,6 +135,35 @@ function paceAwaitsZone(g: GoalRow): boolean {
 /* ──────────────────────────────────────────────────────────── the desk ── */
 
 const PERIODS = ['day', 'week', 'month', 'quarter', 'custom'];
+
+/**
+ * What the Target field is counted in, beside its label, with a placeholder
+ * in the same unit (F-184: an attach-rate target typed as 35 under a "9000"
+ * placeholder was stored as 3,500%).
+ */
+const TARGET_UNIT: Record<string, { label: string; placeholder: string }> = {
+  percent: { label: 'Target, in percent', placeholder: '35' },
+  currency: { label: 'Target, in money', placeholder: '9000' },
+  days: { label: 'Target, in days', placeholder: '30' },
+  units: { label: 'Target, in bottles', placeholder: '400' },
+  count: { label: 'Target, a count', placeholder: '1200' },
+};
+
+/**
+ * A percent measure is typed as 0–100 and stored as a share (35 → 0.35),
+ * which is what the gateway scores and `ratioPct` prints. Anything else is
+ * stored as typed.
+ */
+export function targetToStore(typed: number | null, unit: string): number | null {
+  if (typed === null) return null;
+  return unit === 'percent' ? typed / 100 : typed;
+}
+
+/** The stored target as the field shows it: a share back to 0–100. */
+export function targetToType(stored: number | null | undefined, unit: string | undefined): string {
+  if (stored == null) return '';
+  return unit === 'percent' ? String(Number((stored * 100).toFixed(4))) : String(stored);
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -418,7 +448,7 @@ function GoalForm({
 }) {
   const [name, setName] = useState(initial?.name ?? '');
   const [metricKey, setMetricKey] = useState(initial?.metricKey ?? metrics[0]?.key ?? '');
-  const [target, setTarget] = useState(initial?.target != null ? String(initial.target) : '');
+  const [target, setTarget] = useState(targetToType(initial?.target, initial?.unit));
   const [deadline, setDeadline] = useState(initial?.deadline ?? '');
   const [direction, setDirection] = useState<'at_least' | 'at_most'>(
     initial?.direction === 'at_most' ? 'at_most' : 'at_least',
@@ -427,8 +457,15 @@ function GoalForm({
   const [scenarioId, setScenarioId] = useState('');
   const editing = !!initial?.id;
 
-  const targetValue = num(target);
-  const ready = name.trim() !== '' && targetValue !== null && targetValue > 0 && metricKey !== '';
+  const unit = metrics.find((m) => m.key === metricKey)?.unit ?? '';
+  const typedTarget = num(target);
+  const targetValue = targetToStore(typedTarget, unit);
+  const ready =
+    name.trim() !== '' &&
+    targetValue !== null &&
+    targetValue > 0 &&
+    (unit !== 'percent' || (typedTarget ?? 0) <= 100) &&
+    metricKey !== '';
 
   /**
    * Choosing a scenario fills four fields and deliberately leaves the fifth.
@@ -509,12 +546,12 @@ function GoalForm({
           <option value="at_most">Keep at most</option>
         </select>
       </Field>
-      <Field label="Target">
+      <Field label={TARGET_UNIT[unit]?.label ?? 'Target'}>
         <input
           className="rp-input rp-focus"
           value={target}
           inputMode="decimal"
-          placeholder="9000"
+          placeholder={TARGET_UNIT[unit]?.placeholder ?? '9000'}
           onChange={(e) => setTarget(e.target.value)}
         />
       </Field>
