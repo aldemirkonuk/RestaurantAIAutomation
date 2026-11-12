@@ -39,10 +39,49 @@ export function MarkDraws({ size = 26, play = true, delay = 0, className }: Mark
     const stop = stopRef.current
     const [r1, r2] = ruleRefs.current
     if (!name || !stop || !r1 || !r2) return
-    animate(name, [{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }], turn, { delay })
-    animate(stop, [{ opacity: 0, transform: 'scale(.4)' }, { opacity: 1, transform: 'none' }], stamp, { delay: delay + 300 })
-    animate(r1, [{ transform: 'scaleX(0)' }, { transform: 'none' }], settle, { delay: delay + 340 })
-    animate(r2, [{ transform: 'scaleX(0)' }, { transform: 'none' }], settle, { delay: delay + 400 })
+    // Onboarding walk 2026-11-12: at 375 px the register's band read "Mudavy",
+    // with no full stop and no rules. The layout had room (the name is 120 px
+    // in a 349 px band); the draw had started and the page then drew no more
+    // frames (a hidden pane, a background tab, a capture), so `fill: both` held
+    // the half-written mark. The mark's resting state is the whole mark:
+    //  - the draw starts on the first frame the page actually paints, so a page
+    //    that paints none keeps the whole mark;
+    //  - a page that is hidden mid-draw finishes the draw at once;
+    //  - and when the draw's own length has passed, it is finished whatever the
+    //    frames did (a pane can stop painting and still report itself visible:
+    //    the walk's capture showed the draw stopped part-way through "Mudavym").
+    let runs: (Animation | null)[] = []
+    const finish = () => {
+      for (const a of runs) {
+        try {
+          a?.finish()
+        } catch {
+          // an animation the engine already dropped has nothing to finish
+        }
+      }
+    }
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') finish()
+    }
+    const draw = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      runs = [
+        animate(name, [{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }], turn, { delay }),
+        animate(stop, [{ opacity: 0, transform: 'scale(.4)' }, { opacity: 1, transform: 'none' }], stamp, { delay: delay + 300 }),
+        animate(r1, [{ transform: 'scaleX(0)' }, { transform: 'none' }], settle, { delay: delay + 340 }),
+        animate(r2, [{ transform: 'scaleX(0)' }, { transform: 'none' }], settle, { delay: delay + 400 }),
+      ]
+    }
+    const frame = typeof requestAnimationFrame === 'function' ? requestAnimationFrame(draw) : (draw(), 0)
+    const drawn = delay + Math.max(turn.ms, 300 + stamp.ms, 400 + settle.ms) + 250
+    const backstop = setTimeout(finish, drawn)
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame)
+      clearTimeout(backstop)
+      document.removeEventListener('visibilitychange', onHide)
+      finish()
+    }
     // Mount-only by design: the mark draws once, when it first appears.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
