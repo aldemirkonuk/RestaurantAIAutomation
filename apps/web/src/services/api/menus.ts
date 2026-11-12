@@ -221,6 +221,20 @@ export class MenuReadFailed extends Error {
 /** How long the page waits on one read before it says the read goes on without it. */
 export const READ_WAIT_MS = 20 * 60 * 1000
 
+/** Polls in a row that may fail (network, 5xx, 408, 429) before the page stops waiting. */
+export const MAX_MISSED_POLLS = 8
+
+/**
+ * Whether a failed poll can never succeed by asking again: any 4xx but a
+ * timeout (408) or a throttle (429). A 401/403 (the session ended, or the
+ * person is no longer in this house) and a 404 (the read is gone) end the
+ * wait at once instead of leaving "Reading…" up for twenty minutes.
+ */
+function pollIsRefused(err: unknown): boolean {
+  const code = (err as { response?: { status?: unknown } })?.response?.status
+  return typeof code === 'number' && code >= 400 && code < 500 && code !== 408 && code !== 429
+}
+
 /** Wait on a background read until it is done or failed. Exported for tests. */
 export async function waitForRead(
   menuId: string,
@@ -229,16 +243,27 @@ export async function waitForRead(
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
   const now = opts.now ?? Date.now
   const started = now()
+  let missed = 0
   for (let i = 0; ; i++) {
     // Quick at first (a one-page photo takes seconds), then every few seconds.
     await sleep(i < 10 ? 1500 : 4000)
     let status: MenuReadStatus
     try {
       status = await readMenuStatus(menuId)
+      missed = 0
     } catch (err) {
-      // A missed poll is not the read's failure; keep waiting unless the read is gone.
-      if ((err as { response?: { status?: number } })?.response?.status === 404) throw err
-      if (now() - started > READ_WAIT_MS) throw err
+      // A refusal is said at once (the caller shows the gateway's words).
+      if (pollIsRefused(err)) throw err
+      // A missed poll is not the read's failure, but many in a row end the wait.
+      missed += 1
+      if (missed >= MAX_MISSED_POLLS || now() - started > READ_WAIT_MS) {
+        throw new MenuReadFailed(
+          menuId,
+          'Lost touch with the read: the server did not answer several times in a row. The read goes on; it shows on the menu page when it is done.',
+          [],
+          202,
+        )
+      }
       continue
     }
     if (status.state === 'done') {

@@ -24,11 +24,13 @@ export interface MenuReaderDialogProps {
   onClose: () => void
   /** Told the finished read, so a host can offer its own next step. */
   onReadDone?: (r: MenuImportResult) => void
+  /** Told when a new read begins, so a host drops the step it offered for the last one. */
+  onReadStart?: () => void
   /** Shown under the reader, e.g. a host's next step for the finished read. */
   footer?: ReactNode
 }
 
-export function MenuReaderDialog({ isOpen, onClose, onReadDone, footer }: MenuReaderDialogProps) {
+export function MenuReaderDialog({ isOpen, onClose, onReadDone, onReadStart, footer }: MenuReaderDialogProps) {
   const queryClient = useQueryClient();
   const { activeRole, user } = useAuth();
   // Choosing the current menu is an owner's or a manager's (ADR 0193); the
@@ -88,6 +90,7 @@ export function MenuReaderDialog({ isOpen, onClose, onReadDone, footer }: MenuRe
         <ReadMenuForm
           canManage={canManage}
           onRead={() => void queryClient.invalidateQueries({ queryKey: ['menu'] })}
+          onReadStart={onReadStart}
           onReadDone={onReadDone}
           // Making a menu current moves house prices: every page showing a
           // price (stock, cellar, menu) reads again.

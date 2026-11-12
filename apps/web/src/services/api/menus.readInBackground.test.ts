@@ -6,7 +6,7 @@
  * failed read reaches every caller shaped like the gateway's own 422.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { importMenu, MenuReadFailed, readRefusalWords, waitForRead } from './menus'
+import { importMenu, MAX_MISSED_POLLS, MenuReadFailed, readRefusalWords, waitForRead } from './menus'
 import { apiClient } from './client'
 
 vi.mock('./client', async () => {
@@ -62,6 +62,40 @@ describe('waitForRead', () => {
     get.mockReset()
     get.mockRejectedValueOnce({ response: { status: 404 } })
     await expect(waitForRead('m1', { sleep: noSleep })).rejects.toEqual({ response: { status: 404 } })
+  })
+
+  it('a refused poll (session ended, role lost) ends the wait at once; a throttle or timeout is retried', async () => {
+    get.mockRejectedValueOnce({ response: { status: 401 } })
+    await expect(waitForRead('m1', { sleep: noSleep })).rejects.toEqual({ response: { status: 401 } })
+    get.mockReset()
+    get.mockRejectedValueOnce({ response: { status: 403 } })
+    await expect(waitForRead('m1', { sleep: noSleep })).rejects.toEqual({ response: { status: 403 } })
+    expect(get).toHaveBeenCalledTimes(1)
+    get.mockReset()
+    const reply = { menuId: 'm1', itemsExtracted: 1, submissionsCreated: 0, items: [] }
+    get
+      .mockRejectedValueOnce({ response: { status: 429 } })
+      .mockRejectedValueOnce({ response: { status: 408 } })
+      .mockResolvedValueOnce(status('done', { reply }))
+    await expect(waitForRead('m1', { sleep: noSleep })).resolves.toEqual(reply)
+  })
+
+  it('a server that keeps failing ends the wait after MAX_MISSED_POLLS in a row, saying the read goes on', async () => {
+    get.mockRejectedValue({ response: { status: 503 } })
+    const err = await waitForRead('m1', { sleep: noSleep }).catch((e) => e)
+    expect(err).toBeInstanceOf(MenuReadFailed)
+    expect(err.response.status).toBe(202)
+    expect(err.message).toMatch(/Lost touch with the read/)
+    expect(get).toHaveBeenCalledTimes(MAX_MISSED_POLLS)
+    get.mockReset()
+    // One answer in between starts the count again.
+    const failures = Array.from({ length: MAX_MISSED_POLLS - 1 }, () => ({ response: { status: 503 } }))
+    const reply = { menuId: 'm1', itemsExtracted: 1, submissionsCreated: 0, items: [] }
+    for (const f of failures) get.mockRejectedValueOnce(f)
+    get.mockResolvedValueOnce(status('reading'))
+    for (const f of failures) get.mockRejectedValueOnce(f)
+    get.mockResolvedValueOnce(status('done', { reply }))
+    await expect(waitForRead('m1', { sleep: noSleep })).resolves.toEqual(reply)
   })
 
   it('after twenty minutes it stops waiting and says the read goes on (202, not a failure)', async () => {

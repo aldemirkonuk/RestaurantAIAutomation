@@ -3,18 +3,31 @@
  *
  * Several photos of one menu go up together as one menu (founder 2026-11-07,
  * "One upload = one version"); the gateway joins them into one PDF and can
- * join only JPEG and PNG. So every photo is redrawn here as a JPEG, no longer
- * than MAX_EDGE on its long side: a phone's 12-megapixel HEIC or PNG becomes
- * a few hundred kilobytes the reader reads just as well, and twenty pages fit
- * under the gateway's 15 MB body limit.
+ * join only JPEG and PNG. So every photo is redrawn here as a JPEG: a phone's
+ * 12-megapixel HEIC (which the gateway cannot read at all) or PNG becomes a
+ * JPEG the reader takes, and twenty pages fit under the gateway's 15 MB body.
+ *
+ * How far a photo is shrunk (batch review of #1064, 2026-11-11): the reader
+ * (`scan-parser.service.ts`, claude-haiku-4-5) is sent an image, and the API
+ * scales any image longer than 1568 px on its long edge down to that before
+ * the model sees it; only the high-resolution models (Claude Opus 4.7 and
+ * later, Sonnet 5) see up to 2576 px. So a single photo is drawn at up to
+ * ONE_PAGE_EDGE (2576): no model the reader could move to loses a pixel it
+ * would have seen from the phone's original, and fine print on a dense wine
+ * list is as legible as the API allows. Pages of a several-photo upload are
+ * drawn at MAX_EDGE (2000), still above what the current reader sees, so
+ * twenty of them fit the body limit. Not verified on a real dense list: no
+ * billed read was run for this change.
  *
  * A HEIC opens only where the browser itself can decode it (Safari does); any
  * photo the browser cannot open is refused in words, naming it, before
  * anything is sent.
  */
 
-/** The longest side a page is sent at. Menu text stays legible well below it. */
+/** The longest side a page of a several-photo upload is sent at (above the reader's 1568 px). */
 export const MAX_EDGE = 2000
+/** The longest side a single photo is sent at: the high-resolution models' 2576 px. */
+export const ONE_PAGE_EDGE = 2576
 /** JPEG quality for a redrawn page. */
 const QUALITY = 0.85
 /** The most pages one upload carries (the gateway's MAX_MENU_PAGES). */
@@ -64,10 +77,10 @@ function loadImage(file: File): Promise<HTMLImageElement> {
   })
 }
 
-/** One photo as the bare base64 of a JPEG, at most MAX_EDGE on its long side. */
-export async function photoToJpegBase64(file: File): Promise<string> {
+/** One photo as the bare base64 of a JPEG, at most `maxEdge` (a single photo's ONE_PAGE_EDGE) on its long side. */
+export async function photoToJpegBase64(file: File, maxEdge = ONE_PAGE_EDGE): Promise<string> {
   const img = await loadImage(file)
-  const { width, height } = fitWithin(img.naturalWidth, img.naturalHeight)
+  const { width, height } = fitWithin(img.naturalWidth, img.naturalHeight, maxEdge)
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
@@ -86,6 +99,8 @@ export async function photoToJpegBase64(file: File): Promise<string> {
 /** Every chosen photo ready to send, in the order chosen. */
 export async function photosToPages(files: File[]): Promise<string[]> {
   const pages: string[] = []
-  for (const f of files) pages.push(await photoToJpegBase64(f))
+  // One photo keeps the single-photo edge; several are shrunk to fit together.
+  const edge = files.length === 1 ? ONE_PAGE_EDGE : MAX_EDGE
+  for (const f of files) pages.push(await photoToJpegBase64(f, edge))
   return pages
 }
