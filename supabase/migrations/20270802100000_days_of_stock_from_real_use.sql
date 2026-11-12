@@ -33,14 +33,29 @@
 --     day = sold in 30 days / the days the house has carried it, at least 7
 --     and at most 30 (the earlier of restaurant_inventory.created_at and its
 --     first ledger row).
---   * Counts (a good the till did not draw in 90 days): between two live
---     counts at least 3 days apart, the later one in the last 90 days and
---     the earlier as close to 30 days before it as the counts allow, usage =
---     what was sold, wasted or given in between, plus every count gap in
---     between (a count that found less than the book is stock used and not
---     booked). That equals first count + received - last count, without
---     having to say which ledger types are deliveries. Usage a day = that /
---     the days between the two counts. Never below 0.
+--   * Counts (a food or a supply the till did not draw in 90 days; never a
+--     drink, whose shrink between counts is loss, not use): between two live
+--     counts at least 3 days apart, the later one in the last 30 days and
+--     the earlier as close to 30 days before it as the counts allow,
+--
+--         used = first count + what arrived between them - last count
+--
+--     where "arrived" is every live ledger row that brings stock in or
+--     sends it back without its being used: a purchase, an initial stock, a
+--     transfer leg, anything booked from a procurement order (source
+--     'order': a door count that found fewer than booked, a delivery
+--     reversed), and a return to the vendor (a 'return' out of stock). Every
+--     other row (a sale, a void, a waste, a comp, a manual override, a
+--     count's own correction) is either use or a correction of the book,
+--     and the two counts already hold what it did to the shelf, so none of
+--     them is summed. Usage a day = used / the days between the counts.
+--     When the counts found more than arrived (a delivery nobody booked),
+--     the counts cannot say what was used, and the good is not measured.
+--   * A counted good's on hand is the book since its last count, and the
+--     till takes nothing off it, so its days of cover and its reorder
+--     suggestion are read from what is left after the use since that count:
+--     on hand less (usage a day x the days since it, less what was booked
+--     out since it), never below 0.
 --   * Neither: usage 0 and usage_source NULL, exactly as before.
 --   * dead_stock: as before, unless counts show the good is used; and a food
 --     or supply is dead only when two counts show it unused, never because
@@ -65,8 +80,10 @@
 -- unchanged, with the existing columns. Re-running is safe. One transaction.
 --
 -- Decided under the founder's /goal of 2026-11-07 (the session's calls are in
--- the PR body): counts as the usage of a good the till does not draw; 3-day
--- minimum between counts; the 7-day floor on a new good's sales window.
+-- the PR body): counts as the usage of a food or supply the till does not
+-- draw; 3-day minimum between counts; the last count within 30 days; which
+-- ledger rows are arrivals; cover read from what is left since the last
+-- count; the 7-day floor on a new good's sales window.
 
 BEGIN;
 
@@ -103,7 +120,11 @@ CREATE OR REPLACE VIEW public.inventory_analytics AS
             EXTRACT(epoch FROM now() - LEAST(ri.created_at, l.first_moved_at)) / 86400.0)) AS sales_days,
           cl.counted_at AS count_until,
           cf.counted_at AS count_since,
-          GREATEST(COALESCE(cu.used_out, 0) - COALESCE(cu.gap, 0), 0)::numeric AS counted_used,
+          -- first count + arrived - last count: what the shelf lost to use.
+          (cf.counted_qty + COALESCE(cu.arrived, 0) - cl.counted_qty)::numeric AS counted_used,
+          -- What the book took off since the last count without its arriving
+          -- or leaving unused (a waste, an override down), never below 0.
+          GREATEST(COALESCE(cs.booked_out, 0), 0)::numeric AS booked_since,
           COALESCE(ri.kind, 'wine') IN ('food', 'supply') AS kitchen_good,
           COALESCE(ri.menu_price_current, (0)::numeric) AS menu_price
      FROM public.restaurant_inventory ri
@@ -119,19 +140,21 @@ CREATE OR REPLACE VIEW public.inventory_analytics AS
          FROM public.inventory_transactions t
         WHERE t.inventory_id = ri.id AND (t.stock_type)::text = 'live'
      ) l ON true
-     -- The last live count in 90 days ...
+     -- A food's or a supply's last live count, if it is in the last 30 days
+     -- (an older one is no pace for today) ...
      LEFT JOIN LATERAL (
-       SELECT sc.counted_at
+       SELECT sc.counted_at, sc.counted_qty
          FROM public.stock_counts sc
         WHERE sc.inventory_id = ri.id AND sc.stock_state = 'live'
-          AND sc.counted_at > now() - '90 days'::interval
+          AND COALESCE(ri.kind, 'wine') IN ('food', 'supply')
+          AND sc.counted_at > now() - '30 days'::interval
         ORDER BY sc.counted_at DESC
         LIMIT 1
      ) cl ON true
      -- ... and an earlier one at least 3 days before it: the earliest within
      -- 30 days of it, else the latest before that (still within 90 days).
      LEFT JOIN LATERAL (
-       SELECT sc.counted_at
+       SELECT sc.counted_at, sc.counted_qty
          FROM public.stock_counts sc
         WHERE sc.inventory_id = ri.id AND sc.stock_state = 'live'
           AND sc.counted_at > now() - '90 days'::interval
@@ -141,32 +164,55 @@ CREATE OR REPLACE VIEW public.inventory_analytics AS
                  sc.counted_at DESC
         LIMIT 1
      ) cf ON true
-     -- What was used between them: sold, wasted or given, and every count
-     -- gap after the first count up to and including the last.
+     -- What arrived between them (or left unused): the only ledger rows the
+     -- two counts do not already account for.
      LEFT JOIN LATERAL (
-       SELECT (SELECT sum(-t.quantity_change)
-                 FROM public.inventory_transactions t
-                WHERE t.inventory_id = ri.id AND (t.stock_type)::text = 'live'
-                  AND t.transaction_type IN ('sale', 'waste', 'comp') AND t.quantity_change < 0
-                  AND t.transaction_date > cf.counted_at AND t.transaction_date <= cl.counted_at) AS used_out,
-              (SELECT sum(sc.variance_qty)
-                 FROM public.stock_counts sc
-                WHERE sc.inventory_id = ri.id AND sc.stock_state = 'live'
-                  AND sc.counted_at > cf.counted_at AND sc.counted_at <= cl.counted_at) AS gap
+       SELECT sum(t.quantity_change) AS arrived
+         FROM public.inventory_transactions t
         WHERE cf.counted_at IS NOT NULL
+          AND t.inventory_id = ri.id AND (t.stock_type)::text = 'live'
+          AND t.transaction_date > cf.counted_at AND t.transaction_date <= cl.counted_at
+          AND (t.transaction_type IN ('purchase', 'initial', 'transfer')
+               OR (t.source)::text = 'order'
+               OR (t.transaction_type = 'return' AND t.quantity_change < 0))
      ) cu ON true
+     -- What the book took off since the last count, other than that.
+     LEFT JOIN LATERAL (
+       SELECT sum(-t.quantity_change) AS booked_out
+         FROM public.inventory_transactions t
+        WHERE cl.counted_at IS NOT NULL
+          AND t.inventory_id = ri.id AND (t.stock_type)::text = 'live'
+          AND t.transaction_date > cl.counted_at
+          AND NOT (t.transaction_type IN ('purchase', 'initial', 'transfer')
+                   OR (t.source)::text = 'order'
+                   OR (t.transaction_type = 'return' AND t.quantity_change < 0))
+     ) cs ON true
     WHERE COALESCE(ri.is_active, true)
- ), used AS (
+ ), sourced AS (
    SELECT base.*,
           CASE WHEN base.sold_90d > 0 THEN 'sales'
-               WHEN base.count_since IS NOT NULL THEN 'counts'
-          END AS usage_source,
-          CASE WHEN base.sold_90d > 0 THEN base.sold_30d::numeric / base.sales_days
-               WHEN base.count_since IS NOT NULL
-                 THEN base.counted_used / (EXTRACT(epoch FROM base.count_until - base.count_since) / 86400.0)
+               -- Counts that found more than arrived cannot say what was used.
+               WHEN base.count_since IS NOT NULL AND base.counted_used >= 0 THEN 'counts'
+          END AS usage_source
+     FROM base
+ ), paced AS (
+   SELECT sourced.*,
+          CASE WHEN usage_source = 'sales' THEN sold_30d::numeric / sales_days
+               WHEN usage_source = 'counts'
+                 THEN counted_used / (EXTRACT(epoch FROM count_until - count_since) / 86400.0)
                ELSE 0::numeric
           END AS velocity_per_day
-     FROM base
+     FROM sourced
+ ), used AS (
+   -- What is left to cover with: a counted good's book less the use since
+   -- its last count that the book has not already taken off.
+   SELECT paced.*,
+          CASE WHEN usage_source = 'counts'
+                 THEN GREATEST(on_hand::numeric - GREATEST(
+                        velocity_per_day * (EXTRACT(epoch FROM now() - count_until) / 86400.0) - booked_since, 0), 0)
+               ELSE on_hand::numeric
+          END AS cover_qty
+     FROM paced
  ), ranked AS (
    SELECT used.*,
           sum(((used.sold_90d)::numeric * used.menu_price)) OVER (PARTITION BY used.restaurant_id) AS total_value,
@@ -181,14 +227,14 @@ CREATE OR REPLACE VIEW public.inventory_analytics AS
     last_sold_at,
     round(velocity_per_day, 3) AS velocity_per_day,
         CASE
-            WHEN (velocity_per_day > (0)::numeric) THEN round(((on_hand)::numeric / velocity_per_day))
+            WHEN (velocity_per_day > (0)::numeric) THEN round((cover_qty / velocity_per_day))
             ELSE NULL::numeric
         END AS days_of_cover,
         CASE
             WHEN (velocity_per_day > (0)::numeric) THEN GREATEST((1)::numeric, ceil((velocity_per_day * (10)::numeric)))
             ELSE NULL::numeric
         END AS reorder_point,
-    ((velocity_per_day > (0)::numeric) AND ((on_hand)::numeric <= GREATEST((1)::numeric, ceil((velocity_per_day * (10)::numeric))))) AS reorder_suggested,
+    ((velocity_per_day > (0)::numeric) AND (cover_qty <= GREATEST((1)::numeric, ceil((velocity_per_day * (10)::numeric))))) AS reorder_suggested,
         CASE
             WHEN (total_value = (0)::numeric) THEN NULL::text
             WHEN (cum_value <= (0.80 * total_value)) THEN 'A'::text
@@ -241,7 +287,7 @@ END
 $mig$;
 
 COMMENT ON COLUMN public.inventory_analytics.usage_source IS
-  'Where velocity_per_day comes from: sales (the till drew it in 90 days; net of voids, over the days carried, 7 to 30), counts (two live counts at least 3 days apart: sold + wasted + given + count gaps between them), or NULL (neither; velocity 0).';
+  'Where velocity_per_day comes from: sales (the till drew it in 90 days; net of voids, over the days carried, 7 to 30), counts (a food or supply only: two live counts at least 3 days apart, the later in the last 30 days; first count + arrived - last count, where arrived is purchase, initial, transfer, any order-sourced row and a return to the vendor; days_of_cover and reorder_suggested then read on hand less the use since the last count), or NULL (neither, or counts that found more than arrived; velocity 0).';
 COMMENT ON COLUMN public.inventory_analytics.usage_qty IS
   'What was used between usage_since and usage_until, in the good''s own unit (restaurant_inventory.uom).';
 
