@@ -85,11 +85,14 @@ function day(iso: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** The day and the minute, so two menus read the same day are told apart. */
-function moment(iso: string): string {
+/**
+ * The day and the minute, so two menus read the same day are told apart; with
+ * `second`, the second too, for two read in the same minute.
+ */
+function moment(iso: string, second = false): string {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso.slice(0, 16).replace('T', ' ');
-  return `${day(iso)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (Number.isNaN(d.getTime())) return iso.slice(0, second ? 19 : 16).replace('T', ' ');
+  return `${day(iso)} ${pad(d.getHours())}:${pad(d.getMinutes())}${second ? `:${pad(d.getSeconds())}` : ''}`;
 }
 
 /**
@@ -101,16 +104,53 @@ function keepFailure(failure: string): string {
   return failure.replace(/^the source file was not kept:\s*/i, '');
 }
 
-/** How a kept menu is named in a sentence: its own date if it has one, else when it was read. */
-export function versionLabel(v: MenuVersion): string {
+/**
+ * How a kept menu is named in a sentence: its own date if it has one, else when
+ * it was read. `sharp` names it more closely, for when another kept menu has the
+ * same name: a read moment to the second, a dated menu with when it was read,
+ * and a menu from before reads were dated with when it was kept.
+ */
+export function versionLabel(v: MenuVersion, sharp = false): string {
+  const read = v.extractedAt ? moment(v.extractedAt, sharp) : null;
   const date = v.menuDate
-    ? v.menuDatePrecision === 'month'
-      ? `the ${v.menuDate} menu`
-      : `the menu for ${v.menuDate}`
-    : v.extractedAt
-      ? `the menu read ${moment(v.extractedAt)}`
-      : 'a menu read before menus were kept';
+    ? `${v.menuDatePrecision === 'month' ? `the ${v.menuDate} menu` : `the menu for ${v.menuDate}`}${sharp && read ? `, read ${read}` : ''}`
+    : read
+      ? `the menu read ${read}`
+      : `a menu read before menus were kept${sharp && v.createdAt ? ` (kept ${moment(v.createdAt, true)})` : ''}`;
   return v.cadence && v.cadence !== 'none' ? `${date} (${v.cadence})` : date;
+}
+
+/**
+ * A name for every kept menu that no other kept menu shares (menu walk
+ * 2026-11-11: two reads in the same minute had the same name, and "Make the
+ * menu read 2026-11-11 22:05 current" could mean either). A name is said as
+ * plainly as it can be: the minute when that is enough, then the second (or,
+ * for a dated menu, when it was read); two still alike -- the same second --
+ * are counted in the order they were read, "(1 of 2)", "(2 of 2)".
+ */
+export function versionLabels(versions: MenuVersion[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const groups = (vs: MenuVersion[], name: (v: MenuVersion) => string) => {
+    const by = new Map<string, MenuVersion[]>();
+    for (const v of vs) by.set(name(v), [...(by.get(name(v)) ?? []), v]);
+    return by;
+  };
+  const when = (v: MenuVersion) => v.extractedAt ?? v.createdAt ?? '';
+  for (const [plain, alike] of groups(versions, (v) => versionLabel(v))) {
+    if (alike.length === 1) {
+      out.set(alike[0].menuId, plain);
+      continue;
+    }
+    for (const [close, still] of groups(alike, (v) => versionLabel(v, true))) {
+      if (still.length === 1) {
+        out.set(still[0].menuId, close);
+        continue;
+      }
+      const ordered = [...still].sort((a, b) => when(a).localeCompare(when(b)) || a.menuId.localeCompare(b.menuId));
+      ordered.forEach((v, i) => out.set(v.menuId, `${close} (${i + 1} of ${ordered.length})`));
+    }
+  }
+  return out;
 }
 
 /** What one kept menu's source is, in words. */
@@ -411,8 +451,10 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   );
 }
 
-function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
+function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan }: {
   v: MenuVersion
+  /** Its name among the house's kept menus (versionLabels): no two alike. */
+  label: string
   canManage: boolean
   lastUsedId: string | null
   planning: boolean
@@ -440,7 +482,7 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
       : 'kept, never current';
   return (
     <tr data-testid="menu-version-row">
-      <td>{versionLabel(v)}</td>
+      <td>{label}</td>
       <td className="cl-dim">{standing}</td>
       <td className="cl-dim">
         {v.linesExtracted === null ? EM : `${v.linesExtracted} line${v.linesExtracted === 1 ? '' : 's'}`}
@@ -468,7 +510,7 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
             className="cl-btn cl-focus"
             data-on={planning ? 'true' : 'false'}
             onClick={() => onPlan(v.menuId)}
-            aria-label={`Make ${versionLabel(v)} current`}
+            aria-label={`Make ${label} current`}
           >
             {planning ? 'See below' : 'Make current'}
           </button>
@@ -492,6 +534,8 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
     refetchInterval: (query) => (query.state.data?.versions.some((v) => v.readState === 'reading') ? 5000 : false),
   });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
+  const labels = versionLabels(q.data?.versions ?? []);
+  const nameOf = (v: MenuVersion) => labels.get(v.menuId) ?? versionLabel(v);
 
   return (
     <section style={{ marginTop: 32 }} aria-labelledby="menu-versions-h">
@@ -519,8 +563,8 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
       ) : (
         <>
           <p className="cl-standing" style={{ marginTop: 12 }} data-testid="menu-versions-standing">
-            {q.data?.current ? `Current: ${versionLabel(q.data.current)}.` : 'No menu is current yet.'}{' '}
-            {q.data?.lastUsed ? `Last one used: ${versionLabel(q.data.lastUsed)}.` : 'No earlier menu has been used.'}
+            {q.data?.current ? `Current: ${nameOf(q.data.current)}.` : 'No menu is current yet.'}{' '}
+            {q.data?.lastUsed ? `Last one used: ${nameOf(q.data.lastUsed)}.` : 'No earlier menu has been used.'}
           </p>
           {q.data && q.data.versions.length > 0 ? (
             <>
@@ -540,6 +584,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                     <VersionRow
                       key={v.menuId}
                       v={v}
+                      label={nameOf(v)}
                       canManage={canManage}
                       lastUsedId={q.data?.lastUsed?.menuId ?? null}
                       planning={planFor === v.menuId}
