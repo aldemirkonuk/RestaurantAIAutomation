@@ -9,7 +9,10 @@
  * price thirty times a month.
  */
 
-import { VendorPageExtractorService } from "./vendor-page-extractor.service";
+import {
+  PRICES_NOT_SAVED,
+  VendorPageExtractorService,
+} from "./vendor-page-extractor.service";
 import { ExtractedItem } from "./vendor-page-extraction";
 import { readPageSizeEvidence } from "./bottle-size";
 
@@ -190,9 +193,16 @@ describe("what is refused, and counted", () => {
 
   it("reports a failed write as a failure, not as an empty page", async () => {
     const { service } = makeService({ upsertError: "23514 check violation" });
+    const logged = jest
+      .spyOn((service as any).logger, "error")
+      .mockImplementation(() => undefined);
     const out = await write(service, [item()]);
     expect(out.written).toBe(0);
-    expect(out.warnings.join(" ")).toContain("23514");
+    // The house reads that the prices were not saved; the database's own
+    // code stays in the log, where whoever can fix it reads it.
+    expect(out.warnings).toEqual([PRICES_NOT_SAVED]);
+    expect(out.warnings.join(" ")).not.toContain("23514");
+    expect(logged.mock.calls.flat().join(" ")).toContain("23514");
   });
 });
 

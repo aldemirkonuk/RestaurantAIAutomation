@@ -107,7 +107,14 @@ export interface ExtractionRunResult {
   pageStatedDate: string | null;
   /** The delay this host's robots.txt asked for, if it asked for one. */
   crawlDelaySeconds: number | null;
+  /**
+   * Why the page was not read, as one sentence the house can act on. It
+   * reaches the house as the site-sweep status `detail`. The raw cause (the
+   * resolver's error, the status line, the network message) goes to the log.
+   */
   skippedReason?: string;
+  /** The same skip as a code, for the sweep to branch on; never shown. */
+  skipped?: SkipCode;
   warnings: string[];
 }
 
@@ -124,8 +131,71 @@ export const PRICE_READER_OFF =
  * What the house reads when the model call fails. The model client's own
  * error (status code, vendor name, request detail) goes to the log.
  */
+/** A failed register write: not "nothing was found", and not the database's words. */
+export const PRICES_NOT_SAVED =
+  "Prices were read from this page but could not be saved; the next sweep tries again.";
+
 export const PRICE_READER_DOWN =
   "Reading prices from this page did not work just now; the next sweep tries again.";
+
+/** Every reason a page is not read. The sweep branches on these, not on words. */
+export type SkipCode =
+  | "not_an_address"
+  | "not_public"
+  | "not_found"
+  | "redirect_loop"
+  | "robots_forbids"
+  | "page_gone"
+  | "site_unavailable"
+  | "no_text"
+  | "reader_off"
+  | "reader_down";
+
+/**
+ * The house's sentence for each skip. These replaced the fetcher's own words:
+ * "Unsupported protocol ftp:", "Could not resolve shop.example: ENOTFOUND",
+ * "HTTP 503", "Fetch failed: socket hang up", "Disallowed by robots.txt" and
+ * "Page produced almost no text — likely a JS-rendered app".
+ */
+export const SKIP_SENTENCE: Record<SkipCode, string> = {
+  not_an_address:
+    "This is not a web page address (it starts with https:// or http://), so nothing was fetched.",
+  not_public:
+    "This address is not on the public internet, so it is never fetched from here.",
+  not_found:
+    "No site answers at this address. Check it for a typo.",
+  redirect_loop:
+    "The vendor's site kept sending this reader to other pages, so this one was not read.",
+  robots_forbids:
+    "The vendor's site asks automated readers not to open this page, so it is not read.",
+  page_gone:
+    "The vendor's site says this page does not exist any more. Check the address.",
+  site_unavailable:
+    "The vendor's site did not give this page just now; the next sweep tries again.",
+  no_text:
+    "This page draws its prices after it loads, so this reader sees almost no text on it.",
+  reader_off: PRICE_READER_OFF,
+  reader_down: PRICE_READER_DOWN,
+};
+
+/**
+ * A refusal from the address guard, by its cause. The guard's reason is
+ * engineering text (it names hosts, addresses and resolver errors), so the
+ * house reads the sentence for its kind and the log keeps the reason.
+ */
+export function skipForBlockedAddress(reason: string): SkipCode {
+  if (/^Unsupported protocol/i.test(reason)) return "not_an_address";
+  if (/Could not resolve|resolved to no addresses/i.test(reason)) return "not_found";
+  if (/Too many redirects/i.test(reason)) return "redirect_loop";
+  if (/non-public/i.test(reason)) return "not_public";
+  return "site_unavailable";
+}
+
+function skip(result: ExtractionRunResult, code: SkipCode): ExtractionRunResult {
+  result.skipped = code;
+  result.skippedReason = SKIP_SENTENCE[code];
+  return result;
+}
 
 /**
  * Fetches a vendor page and turns it into price observations.
@@ -218,12 +288,12 @@ export class VendorPageExtractorService {
     try {
       target = new URL(url);
     } catch {
-      result.skippedReason = "Not a valid URL.";
-      return result;
+      this.logger.log(`Not reading ${url}: not a URL`);
+      return skip(result, "not_an_address");
     }
     if (target.protocol !== "https:" && target.protocol !== "http:") {
-      result.skippedReason = `Unsupported protocol ${target.protocol}`;
-      return result;
+      this.logger.log(`Not reading ${url}: protocol ${target.protocol}`);
+      return skip(result, "not_an_address");
     }
 
     // OD-54. robots.txt below is politeness, not a security control — it was the
@@ -234,9 +304,8 @@ export class VendorPageExtractorService {
       await assertPublicHttpTarget(target);
     } catch (err: any) {
       if (err instanceof SsrfBlockedError) {
-        result.skippedReason = err.reason;
         this.logger.warn(`Refusing ${url} — ${err.reason}`);
-        return result;
+        return skip(result, skipForBlockedAddress(err.reason));
       }
       throw err;
     }
@@ -244,9 +313,8 @@ export class VendorPageExtractorService {
     const robots = await this.readRobots(target);
     result.crawlDelaySeconds = robots.crawlDelaySeconds;
     if (!robots.allowed) {
-      result.skippedReason = "Disallowed by robots.txt";
       this.logger.log(`Skipping ${url} — robots.txt disallows it`);
-      return result;
+      return skip(result, "robots_forbids");
     }
 
     let html: string;
@@ -261,21 +329,32 @@ export class VendorPageExtractorService {
       result.fetchedAt = new Date().toISOString();
       result.httpStatus = res.status;
       if (!res.ok) {
-        result.skippedReason = `HTTP ${res.status}`;
-        return result;
+        this.logger.log(`Not reading ${url}: HTTP ${res.status}`);
+        return skip(
+          result,
+          res.status === 404 || res.status === 410 ? "page_gone" : "site_unavailable",
+        );
       }
       html = await res.text();
       result.fetched = true;
     } catch (err: any) {
-      result.skippedReason = `Fetch failed: ${err?.message ?? "unknown"}`;
-      return result;
+      // safeFetch re-checks every redirect hop, so a hop to a private address
+      // or a redirect loop lands here as the guard's own refusal.
+      this.logger.warn(`Fetch failed for ${url}: ${err?.message ?? "unknown"}`);
+      return skip(
+        result,
+        err instanceof SsrfBlockedError
+          ? skipForBlockedAddress(err.reason)
+          : "site_unavailable",
+      );
     }
 
     const text = htmlToText(html);
     if (text.length < 100) {
-      result.skippedReason =
-        "Page produced almost no text — likely a JS-rendered app this fetcher cannot see.";
-      return result;
+      this.logger.log(
+        `Not reading ${url}: ${text.length} characters of text (a page drawn by script?)`,
+      );
+      return skip(result, "no_text");
     }
 
     // content_hash is computed over the extracted TEXT, not the raw HTML: a
@@ -294,8 +373,7 @@ export class VendorPageExtractorService {
       this.logger.warn(
         `Not reading ${url}: ANTHROPIC_API_KEY is not configured on this gateway.`,
       );
-      result.skippedReason = PRICE_READER_OFF;
-      return result;
+      return skip(result, "reader_off");
     }
 
     let rawText: string;
@@ -332,8 +410,7 @@ export class VendorPageExtractorService {
       this.logger.warn(
         `Model call failed for ${url}: ${err?.message ?? "unknown"}`,
       );
-      result.skippedReason = PRICE_READER_DOWN;
-      return result;
+      return skip(result, "reader_down");
     }
 
     const extraction = normalizeExtraction(rawText);
@@ -575,7 +652,8 @@ export class VendorPageExtractorService {
         `Failed to write vendor price observations for ${ctx.url}: ${error.message}`,
       );
       // A failed write is NOT "nothing was found". Say which, on the result.
-      warnings.push(`Register write failed: ${error.message}`);
+      // The database's message stays in the log line above.
+      warnings.push(PRICES_NOT_SAVED);
       return { written: 0, refusals, flaggedOutliers: 0, volumeSources, warnings };
     }
     return {

@@ -24,6 +24,7 @@ import {
 import {
   ExtractionRunResult,
   emptyRefusalCounts,
+  SKIP_SENTENCE,
 } from "./vendor-page-extractor.service";
 
 const TENANT = "11111111-1111-1111-1111-111111111111";
@@ -259,7 +260,8 @@ describe("one failure never ends the sweep", () => {
           httpStatus: null,
           itemsFound: 0,
           observationsWritten: 0,
-          skippedReason: "Disallowed by robots.txt",
+          skipped: "robots_forbids",
+          skippedReason: SKIP_SENTENCE.robots_forbids,
         }),
     });
     const out = await sweep.sweep({ restaurantId: TENANT });
