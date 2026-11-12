@@ -25,7 +25,10 @@ import type { ReactNode } from 'react';
 
 /** The props `Sheet` last handed the grid. */
 const grid = vi.hoisted(() => ({
+  /** Every width the grid was ever drawn at, in order. */
+  widths: [] as Array<number | undefined>,
   props: null as null | {
+    width?: number;
     isDraggable?: boolean;
     isResizable?: boolean;
     draggableCancel?: string;
@@ -40,6 +43,7 @@ vi.mock('react-grid-layout/legacy', () => ({
   WidthProvider: (C: unknown) => C,
   Responsive: (props: Record<string, unknown>) => {
     grid.props = props as typeof grid.props;
+    grid.widths.push(props.width as number | undefined);
     return <div data-testid="grid">{props.children as ReactNode}</div>;
   },
 }));
@@ -112,5 +116,31 @@ describe('Sheet — the drag-to-rearrange canvas', () => {
   it('gives every cutting a floor, so a resize cannot crush one to nothing', () => {
     const { props } = paint(true);
     expect(props.layouts?.lg.every((l) => (l.minW ?? 0) >= 3 && (l.minH ?? 0) >= 3)).toBe(true);
+  });
+});
+
+/*
+ * /reports measured 1528 px wide in a 1440 window (reports lane r2,
+ * 2026-11-11): `WidthProvider` drew the grid at 1280 px until a rendered frame
+ * let it measure, and the items then animated in from the 1280 boxes. The grid
+ * now takes the sheet's own width, and is not drawn before the sheet is.
+ */
+describe('Sheet — the grid is never wider than the sheet', () => {
+  it('draws the grid at the sheet’s measured width from its first draw', () => {
+    const spy = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(708);
+    try {
+      grid.widths = [];
+      paint(false);
+      expect(grid.widths.length).toBeGreaterThan(0);
+      expect(grid.widths.every((w) => w === 708)).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('falls back to a fixed width only where the sheet measures nothing (jsdom)', () => {
+    grid.widths = [];
+    paint(false);
+    expect(grid.widths.every((w) => w === 1280)).toBe(true);
   });
 });
