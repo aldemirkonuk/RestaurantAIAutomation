@@ -346,17 +346,11 @@ export class GoalsService {
     // zone, a windowed metric refuses with the zone sentence rather than
     // writing a baseline measured on UTC days.
     const house = await readHouseZone(this.dbService.getClient(), restaurantId);
-    // A purchases goal is a running total from its own first day, so the
-    // scorer never reads its baseline (goal-score.ts: "ignored for a running
-    // total"), and its baseline window is the trailing period before the goal
-    // existed. One delivered order in that window with no recorded cost used
-    // to refuse the goal outright (readers lane r4 fix round): the house could
-    // not set "keep purchases under $25k" over an order the goal will never
-    // read. So the goal is stored with its baseline unread, and the reason,
-    // and the first live reading scores it like any other. Every other
-    // refusal (no house zone, a read that failed, a bottle line with no
-    // figure, days of stock with a cost missing) still refuses here: those
-    // are about the window the goal itself reads, or a baseline it needs.
+    // A purchases goal is a running total from its first day: the scorer
+    // never reads its baseline (goal-score.ts), and the baseline window is
+    // the period before the goal existed. An uncosted order there stores the
+    // goal unread with the reason; the first live reading scores it. Every
+    // other refusal still refuses here.
     let baseline: number | null;
     let baselineUnread: string | null = null;
     try {
