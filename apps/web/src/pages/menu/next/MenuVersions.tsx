@@ -168,7 +168,9 @@ export function sourceWords(v: MenuVersion): string {
  * drops is a price change -- or a hold -- nobody hears about.
  */
 const OUTCOME_WORDS: Record<string, (n: number) => string> = {
-  changed: (n) => `${n} price${n === 1 ? '' : 's'} set from this menu`,
+  // Counted by line, as the gateway tallies priceSync: one wine can carry a
+  // bottle and a glass price, and the plan counts those apart ("7 prices").
+  changed: (n) => `${n} wine${n === 1 ? '' : 's'} priced from this menu`,
   unchanged: (n) => `${n} already at the menu's price`,
   stale: (n) => `${n} kept a price someone set after this menu was chosen`,
   locked: (n) => `${n} held by a lock`,
@@ -434,6 +436,10 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
               onDone={(r) => {
                 setPlanning(false);
                 setChosen(makeCurrentSentence(r));
+                // The read's own line said "not the current menu" and offered the
+                // choice again under "This is now the current menu" (browser walk
+                // 2026-11-12). Once it is chosen, the read says so.
+                setResult((cur) => (cur && cur.menuId === r.menuId ? { ...cur, current: true } : cur));
                 void queryClient.invalidateQueries({ queryKey: ['menu'] });
                 onRead();
                 onChosen?.();
