@@ -322,7 +322,7 @@ export function provenanceOf(row: VendorObservationRow): Provenance {
     ? row.identityLabel
       ? `Names bottle identity “${row.identityLabel}”.`
       : `Names bottle identity ${row.identityId} (no label recorded).`
-    : 'Unidentified — no confirmed bottle identity names this row yet (ADR 0124). It is ranked by name and vintage alone, so a 375 ml and a 750 ml of one wine could share a rung.'
+    : 'Unidentified — no confirmed bottle identity names this row yet. It is ranked by name and vintage alone, so a 375 ml and a 750 ml of one wine could share a rung.'
 
   const lines = provenanceLines(row)
   const hasLink =

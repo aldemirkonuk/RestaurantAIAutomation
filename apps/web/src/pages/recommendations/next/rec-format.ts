@@ -133,19 +133,19 @@ export interface StakeFiling {
 const RULE_STAKE: Record<string, { stake: StakeId; why: string }> = {
   plowhorse_repricing: {
     stake: 'money',
-    why: 'The rule says “Raise those prices 5–8% or renegotiate cost on the next PO”. A price change moves what each bottle and glass brings in. The engine calls the rule efficiency; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+    why: 'The rule says “Raise those prices 5–8% or renegotiate cost on the next PO”. A price change moves what each bottle and glass brings in. The engine calls the rule efficiency; it is filed here by name, as decided on 2026-10-04.',
   },
   puzzle_activation: {
     stake: 'stock',
-    why: 'The rule says “Put one puzzle wine by-the-glass this week”. It moves a bottle that is standing still on the shelf. The engine calls the rule efficiency; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+    why: 'The rule says “Put one puzzle wine by-the-glass this week”. It moves a bottle that is standing still on the shelf. The engine calls the rule efficiency; it is filed here by name, as decided on 2026-10-04.',
   },
   revenue_concentration: {
     stake: 'stock',
-    why: 'The rule says “Protect the top sellers’ stock first (raise their service level to 98%)”. It changes how deep the stock runs on the wines the room actually drinks, not which vendor is paid. The engine calls the rule risk; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+    why: 'The rule says “Protect the top sellers’ stock first (raise their service level to 98%)”. It changes how deep the stock runs on the wines the room actually drinks, not which vendor is paid. The engine calls the rule risk; it is filed here by name, as decided on 2026-10-04.',
   },
   weekday_gap: {
     stake: 'floor',
-    why: 'The rule leads with “Move staff training, deliveries, and inventory counts to <weakest day>”. Putting the team’s work on a named day changes how the floor runs its week. Its second half, a day-only offer, would change money; it is filed by the clause it leads with, as its act is. The engine calls the rule sales; it is filed here by name, on the founder’s word (2026-10-04, ADR 0288).',
+    why: 'The rule leads with “Move staff training, deliveries, and inventory counts to <weakest day>”. Putting the team’s work on a named day changes how the floor runs its week. Its second half, a day-only offer, would change money; it is filed by the clause it leads with, as its act is. The engine calls the rule sales; it is filed here by name, as decided on 2026-10-04.',
   },
 };
 

@@ -387,7 +387,7 @@ export function DraftedReplyPanel({
                 autonomy switch on still auto-sends replies with no hold
                 (processScheduledAutoSends), so the claim cannot be made for
                 every letter this house sends — only for the one in this panel. */}
-            This letter reaches the vendor only after a person’s hold (ADR 0118).
+            This letter reaches the vendor only after a person’s hold.
           </span>
           <button
             type="button"

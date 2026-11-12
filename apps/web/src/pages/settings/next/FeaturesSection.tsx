@@ -38,7 +38,7 @@ import { HoldToApprove } from '@/components/mudavym';
 import { INACTIVE_FEATURES } from '@/components/settings/inactiveFeatures';
 import { LIVE_PAGES, type MudavymPage } from '@/lib/mudavym/useMudavymDesign';
 import { Action, Micro, Note, Register, Row, Toggle } from './SectionKit';
-import { EM, MONO, SANS, isRedesignFlag, titleFromFlagKey } from './st-format';
+import { MONO, SANS, isRedesignFlag, titleFromFlagKey } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
 
 /**
@@ -83,9 +83,9 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
         return (
           <>
             <Note>
-              Only flags the gateway declares active render as controls. That list lives in one file —{' '}
-              <code style={{ fontFamily: MONO, fontSize: 11 }}>apps/api-gateway/src/settings/feature-flag-registry.ts</code>{' '}
-              — and this page renders whatever it returns, so it cannot drift out of step with it.
+              {/* The list is apps/api-gateway/src/settings/feature-flag-registry.ts. */}
+              Only switches the server says are in use are drawn here, and this page draws whatever it
+              returns, so it cannot drift out of step with what the server reads.
             </Note>
 
             {!canManage && (
@@ -115,7 +115,8 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 // function's docblock, not the read) — corrected 2026-09-19 against
                 // the actual `.select("enable_ai_autonomous_send")` call, which
                 // matches the registry's own `readBy` for this key.
-                readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>common/orchestrator/inbound-responder.service.ts:1027</code>,
+                // common/orchestrator/inbound-responder.service.ts:1027
+                readBy: 'the vendor mail assistant, before it sends a reply by itself',
               }}
               consequence={
                 <>
@@ -165,7 +166,8 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 // function's docblock, not the read) — corrected 2026-09-19 against
                 // the actual `.select("enable_ai_negotiation")` call, which matches
                 // the registry's own `readBy` for this key.
-                readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>common/orchestrator/inbound-responder.service.ts:1003</code>,
+                // common/orchestrator/inbound-responder.service.ts:1003
+                readBy: "the vendor mail assistant, before it reads a vendor's reply",
               }}
               consequence={
                 <>
@@ -190,7 +192,8 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 tone={values[HOUSE_INBOX] === true ? 'grave' : undefined}
                 provenance={{
                   kept: 'restaurant', when: null, whenUnknown: NO_DATE,
-                  readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>communications/inbox/house-inbox.service.ts:339</code>,
+                  // communications/inbox/house-inbox.service.ts:339
+                  readBy: "the scheduled reading of the house's mailbox",
                 }}
                 consequence={
                   <>
@@ -219,9 +222,9 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 <div style={{ margin: '20px 0 4px' }}><Micro tone="seal">Mudavym redesign · {redesign.length} pages</Micro></div>
                 <Note>
                   One switch per rebuilt page, opt-in for this restaurant and off by default. While a switch is off the
-                  page you already know renders unchanged. A per-browser override —{' '}
-                  <code style={{ fontFamily: MONO, fontSize: 11 }}>localStorage["mudavym.design.&lt;page&gt;"]</code> — beats
-                  the switch on this machine only, which is how a design is reviewed without turning it on for the floor.
+                  page you already know renders unchanged.
+                  {/* A per-browser override, localStorage["mudavym.design.<page>"], beats the switch on that machine
+                      only; it is for reviewing a design and is not offered on screen. */}
                 </Note>
                 {redesign.map((key) => {
                   const alwaysOn = isAlwaysOnRedesignFlag(key);
@@ -242,22 +245,24 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                         // For a page in LIVE_PAGES the hook returns before
                         // that call ever runs (see its module doc above) — the
                         // column is real but nothing reads it any more.
+                        // lib/mudavym/useMudavymDesign.ts · checkFeatureFlag;
+                        // a LIVE_PAGES page returns before that call.
                         readBy: alwaysOn
-                          ? "nothing — useMudavymDesign.ts's LIVE_PAGES short-circuits before the fetch"
-                          : <code style={{ fontFamily: MONO, fontSize: 11 }}>lib/mudavym/useMudavymDesign.ts · checkFeatureFlag</code>,
+                          ? 'nothing any more: this page always shows its new design'
+                          : 'the page itself, each time it opens',
                       }}
                       consequence={
                         alwaysOn ? (
                           <>
-                            Live for every restaurant already — this page resolves the Mudavym design in code, not
-                            from this switch (ADR 0149 row 36; the sketch review that cleared it is ADR 0160). The
-                            stored value below no longer changes anything; it is kept only because the column has not
-                            been retired yet.
+                            {/* ADR 0149 row 36 made this page live for every house; the sketch review that
+                                cleared it is ADR 0160. */}
+                            Live for every restaurant already — this page always opens in the Mudavym design, whatever
+                            this switch says. The stored value no longer changes anything; it is kept only until the
+                            switch itself is removed.
                           </>
                         ) : (
                           <>
-                            Renders the Mudavym design of this page for everyone at this restaurant.{' '}
-                            <code style={{ fontFamily: MONO, fontSize: 11 }}>{key}</code>
+                            Renders the Mudavym design of this page for everyone at this restaurant.
                           </>
                         )
                       }
@@ -298,8 +303,10 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                     provenance={{ kept: 'restaurant', when: null, whenUnknown: NO_DATE }}
                     consequence={
                       <>
-                        Declared active by the registry. This page holds no description of what it changes —{' '}
-                        {EM} see its <code style={{ fontFamily: MONO, fontSize: 11 }}>readBy</code> entry in the registry.
+                        {/* Declared active in apps/api-gateway/src/settings/feature-flag-registry.ts; its
+                            `readBy` there names what reads it. This page has no sentence of its own for it. */}
+                        Mudavym has this switch in use, but this page does not yet say what it changes. Leave it as
+                        it is until it does.
                       </>
                     }
                     control={

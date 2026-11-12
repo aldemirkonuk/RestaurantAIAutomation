@@ -190,7 +190,7 @@ export function OfferSheet({ offer, today, onClose, onDismiss, onRestore, busy }
         </a>
       </div>
       <p className="pn-sheet__note">
-        Putting an offer away removes it from every manager’s table, not just this browser (ADR 0144 §4). The
+        Putting an offer away removes it from every manager’s table, not just this browser. The
         card leaves once the server confirms it — never before.
       </p>
     </Sheet>

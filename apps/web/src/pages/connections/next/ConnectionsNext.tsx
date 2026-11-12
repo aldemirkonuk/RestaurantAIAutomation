@@ -429,8 +429,7 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
           <p className="cx-sec-d">
             Attachments this restaurant is answerable for. They belong to the
             house and survive the person who connected them — deleting an
-            account nulls the name on the row and leaves the attachment standing
-            (ADR 0114).
+            account clears the name on the row and leaves the attachment standing.
           </p>
           <p className="cx-sec-k">
             kept for this restaurant · managers and owners may change · read by

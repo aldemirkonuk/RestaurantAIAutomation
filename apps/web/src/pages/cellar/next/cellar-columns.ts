@@ -162,8 +162,13 @@ export interface CellarColumn {
   series: ColumnSeries;
 }
 
-const NO_WRITER = (what: string, where: string) =>
-  `${what} is a real column (${where}) with no writer on this database — measured 0 of 609 rows. Drawing it would be a column of em dashes on every row.`;
+/**
+ * A column the catalogue has room for and nothing fills in. Each call site
+ * cites the migration line that proves the column real; the page says it in
+ * the house's words (reports lane r3).
+ */
+const NO_WRITER = (what: string) =>
+  `Nothing records ${what} for any bottle yet (0 of 609). Drawing it would be a column of dashes on every row.`;
 
 /* ── the spine every register shares: this house's own record ───────────── */
 
@@ -348,7 +353,8 @@ const ABV: CellarColumn = {
     'Strength by volume. Optional even on Untappd, which is the one beer tool in the field study; required by nobody.',
   fill: '0 of 609.',
   on: false,
-  why: NO_WRITER('abv_pct', '20260817070000_beverages_table.sql:228'),
+  // 20260817070000_beverages_table.sql:228
+  why: NO_WRITER('the strength'),
   series: null,
 };
 
@@ -362,10 +368,8 @@ const FORMAT: CellarColumn = {
     'What it comes in — a 330ml can, a 50l keg, a 750ml bottle. The one field a beer register genuinely needs that a wine register does not.',
   fill: '0 of 609 for both columns.',
   on: false,
-  why: NO_WRITER(
-    'volume_ml / package_format',
-    '20260817070000_beverages_table.sql:229-230',
-  ),
+  // 20260817070000_beverages_table.sql:229-230
+  why: NO_WRITER('the size or the pack'),
   series: null,
 };
 
@@ -380,7 +384,8 @@ const STYLE_BEER: CellarColumn = {
   fill: 'type_attributes is {} on all 609 rows, so 0 of 57 beers carry a style.',
   on: false,
   why:
-    'The column exists (type_attributes is JSONB and needs no migration) and has never been written to. It is the single highest-value writer this register is waiting on — a beer register without a style is a list of brand names.',
+    // The column exists (type_attributes is JSONB and needs no migration).
+    'Nothing records a beer’s style yet. It is the single highest-value writer this register is waiting on — a beer register without a style is a list of brand names.',
   series: null,
 };
 
@@ -408,7 +413,8 @@ const AGE: CellarColumn = {
   meaning: 'The age statement — the youngest whisky in the bottle.',
   fill: '0 of 272 whiskies.',
   on: false,
-  why: NO_WRITER('age_years', '20260817070000_beverages_table.sql:262'),
+  // 20260817070000_beverages_table.sql:262
+  why: NO_WRITER('the age'),
   series: null,
 };
 
@@ -422,7 +428,8 @@ const CASK: CellarColumn = {
     'The wood it matured in. The trade holds that cask and distillery explain more of the flavour than region does.',
   fill: '0 of 272.',
   on: false,
-  why: NO_WRITER('cask_finish', '20260817070000_beverages_table.sql:263'),
+  // 20260817070000_beverages_table.sql:263
+  why: NO_WRITER('the cask'),
   series: null,
 };
 
@@ -435,7 +442,8 @@ const PROOF: CellarColumn = {
   meaning: 'Strength on the American scale — twice ABV.',
   fill: '0 of 272.',
   on: false,
-  why: NO_WRITER('proof', '20260817070000_beverages_table.sql:265'),
+  // 20260817070000_beverages_table.sql:265
+  why: NO_WRITER('the proof'),
   series: null,
 };
 

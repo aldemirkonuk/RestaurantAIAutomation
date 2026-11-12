@@ -661,7 +661,7 @@ export function PaymentRegister({ data }: { data: ProfileNextData }) {
           state={locReadable && loc?.subscriptionTier ? 'connected' : 'unknown'}
           reason={
             locReadable && loc?.subscriptionTier
-              ? 'Read from the restaurant record. Changing it is a restaurant decision with a price behind it, not a control on a personal profile — and this product cannot create a charge at all: the gateway’s Stripe client throws before it can call payment_intents or charges (ADR 0110).'
+              ? 'Read from the restaurant record. Changing it is a restaurant decision with a price behind it, not a control on a personal profile — and this product cannot create a charge at all: its payment connection refuses before any charge is made.'
               : data.locationState === 'idle'
                 ? 'The plan is on the restaurant record, and the server now refuses that read for anyone but a manager or owner.'
                 : 'The restaurant record has not answered, so the plan is unknown rather than free.'

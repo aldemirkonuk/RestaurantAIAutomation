@@ -316,7 +316,7 @@ export function RcOutboxRail({ data }: { data: OutboxData }) {
                 </span>
               ) : (
                 <span
-                  title="Attempts made so far. The outbox keeps trying until the server takes it or refuses it for good (ADR 0241)"
+                  title="Attempts made so far. The outbox keeps trying until the server takes it or refuses it for good"
                   style={{
                     flex: 'none',
                     fontFamily: MONO,

@@ -81,7 +81,9 @@ describe('every register has a column set, and every column accounts for itself'
       const c = whisky.find((x) => x.id === id);
       expect(c, id).toBeDefined();
       expect(c?.on).toBe(false);
-      expect(c?.why).toMatch(/beverages_table\.sql/);
+      // Said in the house's words: no file or column name reaches the page.
+      expect(c?.why).toMatch(/Nothing records the /);
+      expect(c?.why).not.toMatch(/\.sql|_/);
     }
   });
 
