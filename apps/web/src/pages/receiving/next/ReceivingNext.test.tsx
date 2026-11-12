@@ -610,6 +610,28 @@ describe("the owner ledger prints each claim currency on its own and never a bor
     expect(document.body.textContent).not.toContain('340')
   })
 
+  it('claims with no currency are grouped as "not recorded", never under the gateway key', async () => {
+    const tl = { ...zero, recovered: 300, openClaims: 0 }
+    const none = { ...zero, recovered: 900, openClaims: 0 }
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/stats')
+        ? {
+            data: {
+              ...zero, recovered: 1200, selfEvidencedOpen: 0,
+              byCurrency: { TRY: tl, UNRECORDED: none }, rowsCounted: 2, capped: false,
+            },
+          }
+        : { data: { items: [] } },
+    )
+    harness(OwnerBody)
+
+    expect(await screen.findByText('TRY 300')).toBeInTheDocument()
+    expect(screen.getByText('900 (currency not recorded)')).toBeInTheDocument()
+    expect(screen.getByText('Claims in TRY')).toBeInTheDocument()
+    expect(screen.getByText('Claims in a currency not recorded')).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('UNRECORDED')
+  })
+
   it('an older gateway with no per-currency figures says the currency was not recorded', async () => {
     get.mockImplementation(async (url: string) =>
       url.endsWith('/stats')
