@@ -25,6 +25,9 @@ export type HouseCurrencyState =
   | { state: 'not_recorded'; code: null }
   | { state: 'unreadable'; code: null }
 
+/** The places a lot's unit cost is kept to (`toLotCostPrecision`, #909). */
+const LOT_COST_PLACES = 6
+
 /** The legacy page's dash for a figure it does not have. */
 const NONE = '-'
 
@@ -45,7 +48,11 @@ export function useHouseCurrency(): HouseCurrencyState {
 /**
  * One money figure. `whole` is for totals (the KPI, a row's stock value), which
  * this page has always shown without cents; `exact` is for a unit price, shown
- * with the currency's own minor units (two for TRY, none for JPY).
+ * with at least the currency's own minor units (two for TRY, none for JPY) and
+ * up to the lot's six places (`inventory_lots.unit_cost numeric(14,6)`). A
+ * gram of sugar at 0.0024 read "TRY 0.00" on the local check (2026-11-12): a
+ * known cost printed as nothing. Trailing zeros past the minor units are not
+ * printed, so a menu price of 160 still reads "TRY 160.00".
  */
 export function houseMoney(
   v: number | null | undefined,
@@ -55,14 +62,15 @@ export function houseMoney(
   if (v == null || !Number.isFinite(v)) return NONE
   if (currency.state === 'reading') return NONE
   const digits = mode === 'whole' ? 0 : (currencyMinorUnits(currency.code) ?? 2)
-  const plain = v.toLocaleString('en-GB', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+  const most = mode === 'whole' ? 0 : Math.max(digits, LOT_COST_PLACES)
+  const plain = v.toLocaleString('en-GB', { minimumFractionDigits: digits, maximumFractionDigits: most })
   if (currency.state !== 'recorded') return plain
   try {
     return new Intl.NumberFormat('en-GB', {
       style: 'currency',
       currency: currency.code,
       minimumFractionDigits: digits,
-      maximumFractionDigits: digits,
+      maximumFractionDigits: most,
     }).format(v)
   } catch {
     // A well-formed code this runtime does not know: the number is still true.
