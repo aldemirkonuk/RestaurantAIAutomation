@@ -21,6 +21,7 @@ import {
   TillCostRead,
   TillSalesRead,
   tillFigures,
+  tillStockOf,
   withheldTillFigures,
 } from "./cost-of-goods";
 
@@ -536,11 +537,17 @@ export class AnalyticsService {
     // printed the buy, and the ratios divided today's stock by a shelf
     // valuation. The till's figures replace both; the old two keep their own
     // names (`deliveredPurchases`, `shelfValueAtMenuPrice`) and feed no ratio.
+    // Turns, days of stock and GMROI divide by the stock of the goods the
+    // till reaches, not the whole cellar: the cost of what sold holds only
+    // those goods (tillStockOf, reports lane r2).
+    const tillStock = till
+      ? tillStockOf({ onHand, sales: till.sales, cost: till.cost })
+      : null;
     const t = till
       ? tillFigures({
           sales: till.sales,
           cost: till.cost,
-          inventoryValue,
+          tillStock,
           labor,
           now: new Date(),
           windowDays: TILL_WINDOW_DAYS,
@@ -650,6 +657,9 @@ export class AnalyticsService {
       },
       costCoverage,
       inventoryValue,
+      // What the ratios' stock base covered; null without sales or when the
+      // till's sales could not be read.
+      tillStock,
       salesWithheld: !withSales,
       cogs: t.cogs,
       cogsCoverage: t.cogsCoverage,

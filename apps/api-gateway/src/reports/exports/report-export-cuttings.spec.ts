@@ -110,15 +110,16 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     expect(figure(doc, "Sold, net (365d)")).toBe(5400);
     expect(doc.figures.map((x) => x.label)).not.toContain("Sell-price valuation");
     expect(doc.notes.join(" ")).toContain("Cost known for 2 of 3 items sold; 4 bottles");
-    expect(doc.notes.join(" ")).toContain("1 of 2 on-hand wines carry a recorded cost");
+    expect(doc.notes.join(" ")).toContain("1 of 2 on-hand goods carry a recorded cost");
     expect(countWithheld(doc)).toBe(10);
     // Batch review 2026-11-11: the cellar note names only the figures that
     // wait on the cellar; the costed part and the late prices on earlier
     // sales are said apart and divide into nothing.
     const notes = doc.notes.join(" ");
     expect(notes).not.toContain("every cost-derived figure");
-    expect(notes).toContain("so the cellar at cost, inventory turns, days of inventory and GMROI are withheld");
-    expect(notes).toContain("The 2 of 3 items sold whose every bottle carries its cost cost 310.50. That is not what it cost");
+    expect(notes).toContain("so the cellar at cost is withheld rather than");
+    expect(notes).not.toContain("inventory turns, days of inventory and GMROI are withheld");
+    expect(notes).toContain("The 2 of 3 items sold whose every bottle carries its cost came to 310.50 at cost. That is not the cost of everything sold");
     expect(notes).toContain("7.25 of late prices was settled in this window on bottles sold before it. It is not in what it cost");
   });
 
