@@ -11,6 +11,7 @@ const per100ml = (f: Partial<ItemFigures>): ItemFigures => ({
   sugarsG: null,
   proteinG: null,
   saltG: null,
+  alcoholMl: null,
   ...f,
 });
 const line = (label: string, more: Partial<NutritionLineInput>): NutritionLineInput => ({
@@ -85,6 +86,39 @@ describe("serveNutrition", () => {
   it("marks energy from ABV as at least: it is the alcohol alone", () => {
     const out = serveNutrition([line("Gin", { figures: per100ml({ energyKcal: 220.9, energyFromAbv: true }) })], 1);
     expect(out.figures.energyKcal).toMatchObject({ value: 66.27, atLeast: true });
+  });
+
+  it("sums pure alcohol from each line's stated ABV; a mixer that states none is unknown for it, never 0", () => {
+    const out = serveNutrition(
+      [
+        line("Gin", { qtyBase: 500, figures: per100ml({ alcoholMl: 40 }) }), // 50 ml at 40%
+        line("Tonic", { qtyBase: 2000, figures: per100ml({ energyKcal: 34 }) }), // no strength stated
+      ],
+      1,
+    );
+    expect(out.figures.alcoholMl).toEqual({ value: 20, atLeast: true, missing: ["Tonic"] });
+  });
+
+  it("counts a mixer that states 0% as 0, and divides a batch's alcohol by its serves", () => {
+    const out = serveNutrition(
+      [
+        line("Gin", { qtyBase: 5000, figures: per100ml({ alcoholMl: 40 }) }), // 500 ml
+        line("Tonic", { qtyBase: 20000, figures: per100ml({ alcoholMl: 0 }) }),
+      ],
+      10,
+    );
+    expect(out.figures.alcoholMl).toEqual({ value: 20, atLeast: false, missing: [] });
+  });
+
+  it("never counts a weighed line's alcohol: a strength is a share of a volume", () => {
+    const out = serveNutrition(
+      [
+        line("Gin", { qtyBase: 500, figures: per100ml({ alcoholMl: 40 }) }),
+        line("Sugar", { baseUnit: "mg", qtyBase: 10000, figures: { ...per100ml({ carbohydrateG: 100 }), basis: "100g" } }),
+      ],
+      1,
+    );
+    expect(out.figures.alcoholMl).toEqual({ value: 20, atLeast: true, missing: ["Sugar"] });
   });
 
   it("says free only when every line, untracked ones too, states it free", () => {

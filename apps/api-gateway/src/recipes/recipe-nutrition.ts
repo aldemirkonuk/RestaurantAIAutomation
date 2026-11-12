@@ -8,6 +8,10 @@
  * - a figure no counted line states is null; one some lines lack is atLeast;
  *   energy from ABV is the alcohol alone, so atLeast;
  * - per serve: divided by the yield, like the cost;
+ * - alcohol is a figure like the others: the item's stated ABV (item_nutrition
+ *   .abv_pct, per 100 ml) is millilitres of pure alcohol per 100 ml, so a
+ *   line with no stated strength is "unknown for" it, never 0, and a weighed
+ *   line never counts (a strength is a share of a volume);
  * - an allergen is free only when every line, untracked too, states it free;
  * - the lines that leave any allergen unstated are named (allergensUnstatedBy),
  *   so a sheet can say which ingredients stop "free of" being said, instead of
@@ -15,7 +19,16 @@
  */
 import type { BaseUnit } from "./recipe-cost";
 
-export const FIGURE_KEYS = ["energyKcal", "fatG", "saturatesG", "carbohydrateG", "sugarsG", "proteinG", "saltG"] as const;
+export const FIGURE_KEYS = [
+  "energyKcal",
+  "fatG",
+  "saturatesG",
+  "carbohydrateG",
+  "sugarsG",
+  "proteinG",
+  "saltG",
+  "alcoholMl",
+] as const;
 export type FigureKey = (typeof FIGURE_KEYS)[number];
 
 /** EU 1169/2011 Annex II, as item-nutrition/nutrition-figures.ts. */
