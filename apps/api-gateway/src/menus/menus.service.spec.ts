@@ -844,6 +844,61 @@ describe("MenusService — every menu read is kept as its own version", () => {
     master_wine_library_submissions: [] as Row[],
   });
 
+  it("a kitchen line is never sent to the library: no library row, no submission, kept on the menu unlinked (menu walk 2026-11-11)", async () => {
+    const tables: Record<string, Row[]> = base();
+    const sent: string[] = [];
+    const spy = {
+      ...wineSubmissions,
+      resolveLibraryWinesBatch: async (items: Array<{ name: string }>) => {
+        sent.push(...items.map((i) => i.name));
+        return items.map(() => ({ masterWineId: "mw-1", matched: true, libraryTier: 1, confidence: 99 }));
+      },
+    };
+    const service = makeService(tables, { wineSubmissions: spy, csvParser: new CsvParserService() });
+    const r = await service.importMenu(
+      {
+        method: "csv",
+        data: { csvContent: "name,category,bottle_price\nTiramisu,dessert,9\nOpus One,red,62\nSauternes 2015,dessert,80\n" },
+        restaurantId: "rest-1",
+      } as any,
+      "user-1",
+    );
+
+    // The dish is not sent; the wine and the dessert WINE are, in menu order.
+    expect(sent).toEqual(["Opus One", "Sauternes 2015"]);
+    expect(r.items.map((i: any) => [i.name, i.matched])).toEqual([
+      ["Tiramisu", false],
+      ["Opus One", true],
+      ["Sauternes 2015", true],
+    ]);
+    const tiramisu = tables.menu_items.find((l) => l.name === "Tiramisu")!;
+    expect(tiramisu.wine_library_id).toBeNull();
+    expect(tiramisu.submission_id ?? null).toBeNull();
+    expect(tables.master_wine_library_submissions).toHaveLength(2);
+    expect(tables.menu_items.find((l) => l.name === "Opus One")!.wine_library_id).toBe("mw-1");
+  });
+
+  it("a menu of kitchen lines only asks the library nothing", async () => {
+    const tables: Record<string, Row[]> = base();
+    let asked = 0;
+    const spy = {
+      ...wineSubmissions,
+      resolveLibraryWinesBatch: async (items: unknown[]) => {
+        asked += 1;
+        return items.map(() => ({ masterWineId: "mw-1", matched: true, libraryTier: 1, confidence: 99 }));
+      },
+    };
+    const service = makeService(tables, { wineSubmissions: spy, csvParser: new CsvParserService() });
+    const r = await service.importMenu(
+      { method: "csv", data: { csvContent: "name,category,bottle_price\nTiramisu,dessert,9\nCaesar salad,food,12\n" }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    expect(asked).toBe(0);
+    expect(r.items).toHaveLength(2);
+    expect(tables.menu_items.every((l) => l.wine_library_id === null)).toBe(true);
+    expect(tables.master_wine_library_submissions).toHaveLength(0);
+  });
+
   it("a CSV read becomes a NEW draft version with its source, its lines as read, and who read it -- and touches no price", async () => {
     const calls: RpcCall[] = [];
     const tables: Record<string, Row[]> = base();

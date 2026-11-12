@@ -22,7 +22,8 @@ const VOCABULARY = new Set([
   'non-alcoholic',
 ])
 
-const KITCHEN = ['food', 'kitchen', 'dish', 'starter', 'dessert', 'entree', 'entrée', 'pasta', 'salad']
+// The same list as the gateway's KITCHEN_HINTS (menu-line-view.ts says why each course word is there).
+const KITCHEN = ['food', 'kitchen', 'dish', 'starter', 'dessert', 'entree', 'entrée', 'pasta', 'salad', 'mains', 'main course', 'appetizer', 'appetiser', 'sides', 'soup', 'meze', 'mezze', 'grill', 'small plate', 'snack', 'tapas', 'pizza', 'burger', 'sandwich']
 
 /** ADR 0213: unmatched fallback, plus missing/unknown category. Never invent certainty. */
 export function lineNeedsPencil(item: Pick<MenuImportReviewItem, 'matched' | 'needsReview' | 'category'>) {
