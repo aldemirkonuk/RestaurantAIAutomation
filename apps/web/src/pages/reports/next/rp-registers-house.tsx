@@ -12,7 +12,7 @@
 
 import { Link } from 'react-router-dom';
 import { FigureRow } from './rp-plot';
-import { EM, MONO, countOf, figure, money, num, ratioPct } from './rp-format';
+import { EM, MONO, countOf, figure, figureTo, money, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 
 /* ────────────────────────────────────────── 6. margin against movement ── */
@@ -254,9 +254,9 @@ const ledger = analysis<LedgerRegister>({
         value: money(f.inventoryValue),
         note: 'Not every on-hand row carries a recorded cost',
       },
-      { label: 'Inventory turns', value: figure(f.inventoryTurnover), note: 'Needs the cellar at cost, what it cost, and 28 days of the till' },
-      { label: 'Days of inventory', value: figure(f.daysInventoryOutstanding), note: 'Needs the cellar at cost, what it cost, and 28 days of the till' },
-      { label: 'GMROI', value: figure(f.gmroi), note: 'Needs the cellar at cost, what was kept, and 28 days of the till' },
+      { label: 'Inventory turns', value: figureTo(f.inventoryTurnover, 2), note: 'Needs the cellar at cost, what it cost, and 28 days of the till' },
+      { label: 'Days of inventory', value: figureTo(f.daysInventoryOutstanding, 1), note: 'Needs the cellar at cost, what it cost, and 28 days of the till' },
+      { label: 'GMROI', value: figureTo(f.gmroi, 2), note: 'Needs the cellar at cost, what was kept, and 28 days of the till' },
       {
         label: 'Bought (365d)',
         value: money(f.deliveredPurchases),
