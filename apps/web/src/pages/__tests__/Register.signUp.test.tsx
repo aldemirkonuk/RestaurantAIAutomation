@@ -114,7 +114,6 @@ describe('Register — OB-11', () => {
     type(/^Full Name/, 'Ayşe Kaya')
     type(/^Email/, 'ayse@kaya.test')
     type(/^Password/, 'long-enough-1')
-    type(/^Confirm Password/, 'long-enough-1')
     fireEvent.click(screen.getByRole('button', { name: /create account/i }))
     expect(await screen.findByText(/Wait 2 seconds, then try again\./)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /create account/i })).toBeDisabled()
