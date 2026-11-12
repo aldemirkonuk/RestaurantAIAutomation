@@ -64,34 +64,18 @@ export function LearnPanel({
       done: true,
       cta: null as null | { label: string; onClick: () => void },
     },
-    // Done = a CURRENT menu (OB-1: a read menu kept as a draft gives no
-    // stock and no prices). A read-but-not-current menu names that step and
-    // leads to /menu, where an owner or a manager chooses the current menu.
-    progress?.menu_uploaded && !progress?.menu_current
-      ? {
-          id: 'menu',
-          label: 'Make your menu the current one',
-          done: false,
-          cta: {
-            label: 'Choose it',
-            onClick: () => {
-              navigate('/menu')
-              onClose()
-            },
-          },
-        }
-      : {
-          id: 'menu',
-          label: 'Read your menu',
-          done: !!progress?.menu_current,
-          cta: {
-            label: 'Read it now',
-            onClick: () => {
-              navigate('/get-started')
-              onClose()
-            },
-          },
+    {
+      id: 'menu',
+      label: 'Upload your wine menu',
+      done: !!progress?.menu_uploaded,
+      cta: {
+        label: 'Upload Now',
+        onClick: () => {
+          navigate('/get-started')
+          onClose()
         },
+      },
+    },
     {
       id: 'vendor',
       label: 'Add your first vendor',

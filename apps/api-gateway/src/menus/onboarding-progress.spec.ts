@@ -15,11 +15,7 @@ type Row = Record<string, any>;
  * Every write is recorded in `writes`; `readFails[table]` fails that table's
  * reads.
  */
-function fakeDb(
-  tables: Record<string, Row[]>,
-  readFails: Record<string, string> = {},
-  insertFails: Record<string, { code: string; message: string }> = {},
-) {
+function fakeDb(tables: Record<string, Row[]>, readFails: Record<string, string> = {}) {
   const writes: Array<{ table: string; kind: string; value: Row }> = [];
   function from(table: string) {
     const preds: Array<(r: Row) => boolean> = [];
@@ -45,18 +41,6 @@ function fakeDb(
       eq: (c: string, v: any) => (preds.push((r) => col(r, c) === v), api),
       neq: (c: string, v: any) => (preds.push((r) => col(r, c) !== undefined && col(r, c) !== v), api),
       is: (c: string, v: null) => (preds.push((r) => (r[c] ?? null) === v), api),
-      // PostgREST `or`: "col.not.is.null" and "col.gt.<value>" terms.
-      or: (expr: string) => {
-        const terms = expr.split(",").map((t) => {
-          const [c, ...rest] = t.split(".");
-          const op = rest.join(".");
-          if (op === "not.is.null") return (r: Row) => (r[c] ?? null) !== null;
-          if (op.startsWith("gt.")) return (r: Row) => r[c] != null && String(r[c]) > op.slice(3);
-          throw new Error(`fake or(): unsupported term ${t}`);
-        });
-        preds.push((r) => terms.some((f) => f(r)));
-        return api;
-      },
       order: (c: string) => ((sortBy = c), api),
       limit: (n: number) => ((cap = n), api),
       update: (value: Row) => ((write = { kind: "update", value }), api),
@@ -70,17 +54,8 @@ function fakeDb(
       then(resolve: any) {
         if (write) {
           writes.push({ table, ...write });
-          if (write.kind === "update") {
-            const hit = rows();
-            for (const r of hit) Object.assign(r, write.value);
-            return resolve({ data: hit.map((r) => ({ id: r.id })), error: null });
-          }
-          if (insertFails[table]) {
-            const fail = insertFails[table];
-            delete insertFails[table];
-            return resolve({ data: null, error: fail });
-          }
-          (tables[table] = tables[table] || []).push({ id: `new-${writes.length}`, ...write.value });
+          if (write.kind === "update") for (const r of rows()) Object.assign(r, write.value);
+          else (tables[table] = tables[table] || []).push({ id: `new-${writes.length}`, ...write.value });
           return resolve({ data: null, error: null });
         }
         if (readFails[table]) return resolve({ data: null, error: { message: readFails[table] } });
@@ -92,12 +67,8 @@ function fakeDb(
   return { db: { from } as any, writes };
 }
 
-function serviceOn(
-  tables: Record<string, Row[]>,
-  readFails: Record<string, string> = {},
-  insertFails: Record<string, { code: string; message: string }> = {},
-) {
-  const { db, writes } = fakeDb(tables, readFails, insertFails);
+function serviceOn(tables: Record<string, Row[]>, readFails: Record<string, string> = {}) {
+  const { db, writes } = fakeDb(tables, readFails);
   const service = new MenusService(
     { supabase: db } as unknown as DatabaseService,
     undefined as any,
@@ -125,8 +96,7 @@ function twoHouses(): Record<string, Row[]> {
       { id: "i-B", menu_id: "m-B", restaurant_id: houseB, status: "approved", created_at: "2026-02-01T00:00:00+00:00" },
     ],
     providers: [{ id: "p-A", restaurant_id: houseA, deleted_at: null, created_at: "2026-01-02T00:00:00+00:00" }],
-    // Open until 2999: it can still be used.
-    organization_invites: [{ id: "inv-A", restaurant_id: houseA, created_at: "2026-01-03T00:00:00+00:00", expires_at: "2999-01-01T00:00:00+00:00", used_at: null }],
+    organization_invites: [{ id: "inv-A", restaurant_id: houseA, created_at: "2026-01-03T00:00:00+00:00" }],
     restaurants: [
       { id: houseA, threshold_configured: true },
       { id: houseB, threshold_configured: false },
@@ -230,72 +200,13 @@ describe("onboarding progress is read from the session's house (OB-1)", () => {
     },
   );
 
-  it("putting the checklist away updates the person's own row only, and keeps the house it names", async () => {
-    const tables = twoHouses();
-    const { service, writes } = serviceOn(tables);
+  it("putting the checklist away updates the person's own row only", async () => {
+    const { service, writes } = serviceOn(twoHouses());
     const answer = await service.updateOnboardingProgress("u-1", houseB, { checklist_dismissed: true });
     expect(answer.checklist_dismissed).toBe(true);
     expect(writes).toEqual([
       { table: "user_onboarding_progress", kind: "update", value: { checklist_dismissed: true } },
     ]);
-    expect(tables.user_onboarding_progress).toHaveLength(1);
-    expect(tables.user_onboarding_progress[0].restaurant_id).toBe(houseA);
-  });
-
-  it("two first-time dismissals at once: the one that loses the insert updates the winner's row, no 500", async () => {
-    const tables = twoHouses();
-    tables.user_onboarding_progress = [];
-    const { service, writes } = serviceOn(tables, {}, {
-      user_onboarding_progress: { code: "23505", message: "duplicate key value violates unique constraint" },
-    });
-    // The winner's row lands between this request's update (0 rows) and its insert.
-    const winner = { id: "uop-w", user_id: "invitee-9", restaurant_id: houseA, checklist_dismissed: false };
-    const realUpdate = writes.push.bind(writes);
-    let seen = 0;
-    (writes as any).push = (w: any) => {
-      seen += 1;
-      if (seen === 2) tables.user_onboarding_progress.push(winner);
-      return realUpdate(w);
-    };
-    const answer = await service.updateOnboardingProgress("invitee-9", houseA, { checklist_dismissed: true });
-    expect(answer.checklist_dismissed).toBe(true);
-    expect(writes.map((w) => w.kind)).toEqual(["update", "insert", "update"]);
-    expect(tables.user_onboarding_progress).toEqual([{ ...winner, checklist_dismissed: true }]);
-  });
-
-  it("an insert that fails for another reason is said, never a quiet success", async () => {
-    const tables = twoHouses();
-    tables.user_onboarding_progress = [];
-    const { service } = serviceOn(tables, {}, {
-      user_onboarding_progress: { code: "42501", message: "permission denied" },
-    });
-    await expect(
-      service.updateOnboardingProgress("invitee-9", houseA, { checklist_dismissed: true }),
-    ).rejects.toThrow(/not put away: permission denied/);
-  });
-
-  it("an expired invite nobody used is not an invite; a used one still is", async () => {
-    const tables = twoHouses();
-    tables.organization_invites[0].expires_at = "2020-01-01T00:00:00+00:00";
-    const expired = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
-    expect(expired.team_member_invited).toBe(false);
-    expect(expired.completed_at).toBeNull();
-    tables.organization_invites[0].used_at = "2020-01-02T00:00:00+00:00";
-    const used = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
-    expect(used.team_member_invited).toBe(true);
-  });
-
-  it("a menu that was read but not made current leaves setup unfinished: completed_at waits for the current menu", async () => {
-    const tables = twoHouses();
-    tables.restaurant_menus[0].status = "draft";
-    const { service } = serviceOn(tables);
-    const a = await service.getOnboardingProgress("u-1", houseA);
-    expect(a.menu_uploaded).toBe(true);
-    expect(a.menu_current).toBe(false);
-    expect(a.activated).toBe(false);
-    expect(a.vendor_added).toBe(true);
-    expect(a.team_member_invited).toBe(true);
-    expect(a.completed_at).toBeNull();
   });
 
   it("putting the checklist away with no row writes one row in the session's house", async () => {
@@ -305,7 +216,6 @@ describe("onboarding progress is read from the session's house (OB-1)", () => {
     const answer = await service.updateOnboardingProgress("invitee-9", houseA, { checklist_dismissed: true });
     expect(answer.checklist_dismissed).toBe(true);
     expect(writes).toEqual([
-      { table: "user_onboarding_progress", kind: "update", value: { checklist_dismissed: true } },
       {
         table: "user_onboarding_progress",
         kind: "insert",

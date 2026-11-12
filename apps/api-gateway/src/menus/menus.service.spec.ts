@@ -1453,19 +1453,6 @@ describe("MenusService.getOnboardingProgress — the self-heal counts the lines 
           preds.push((r) => (col(r, c) ?? null) === v),
           api
         ),
-        // PostgREST `or` ("col.not.is.null" / "col.gt.<value>"), as the
-        // invite read uses it.
-        or: (expr: string) => {
-          const terms = expr.split(",").map((t) => {
-            const [c, ...rest] = t.split(".");
-            const op = rest.join(".");
-            return op === "not.is.null"
-              ? (r: Row) => (r[c] ?? null) !== null
-              : (r: Row) => r[c] != null && String(r[c]) > op.slice(3);
-          });
-          preds.push((r) => terms.some((f) => f(r)));
-          return api;
-        },
         limit: (n: number) => ((cap = n), api),
         order: () => api,
         update: (p: Row) => ((patch = p), api),
