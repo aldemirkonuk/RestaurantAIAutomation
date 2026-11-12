@@ -1,4 +1,5 @@
 import { policyFor } from "../ask-readings/reading-data-classes";
+import { MENU_CATEGORY_VOCABULARY } from "./wine-extract-item.interface";
 
 /**
  * What one menu line read says to the person reading it (ADR 0309 option 1c,
@@ -30,9 +31,12 @@ import { policyFor } from "../ask-readings/reading-data-classes";
 /**
  * The kitchen hints. The same nine as the web's `KITCHEN`
  * (`apps/web/src/lib/firstProof.ts`); a CLAIMS row keeps the two lists equal.
- * 'dessert' is also a drink section, so a dessert wine counts as a kitchen
- * line: a known defect, filed in
- * `.planning/tech-debt.d/2026-10-08-fix-a-menu-line-carries-its-raw-line.md`.
+ * 'dessert' is also a drink section (MENU_CATEGORY_VOCABULARY, ADR 0186):
+ * a known drink section wins, so a dessert wine stays a drink; the hints
+ * decide only when the section is unknown (QA M18, tech-debt entry (ii) of
+ * `.planning/tech-debt.d/2026-10-08-fix-a-menu-line-carries-its-raw-line.md`).
+ * 'dessert' is the one section that is also a course, so it alone is weighed:
+ * see `isKitchenLine`.
  */
 export const KITCHEN_HINTS = ["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad"];
 
@@ -68,10 +72,57 @@ export interface LineView {
   rawLine: boolean;
 }
 
-/** The same test as the web's `isKitchenLine`: a hint in the section or in the raw line. */
-export function isKitchenLine(category: unknown, raw: unknown): boolean {
-  const hay = `${typeof category === "string" ? category : ""} ${typeof raw === "string" ? raw : ""}`.toLowerCase();
-  return KITCHEN_HINTS.some((hint) => hay.includes(hint));
+/** A hint as a whole word (plural allowed): "pasta" trips it, "Pastaio" and "dishwasher" do not. */
+const HINT_WORDS = new RegExp(`(^|[^\\p{L}\\p{N}])(${KITCHEN_HINTS.join("|")})(s|es)?(?=$|[^\\p{L}\\p{N}])`, "u");
+
+/**
+ * Words that make a line in the 'dessert' section a dessert wine and not a
+ * course. The same list as the web's `DESSERT_WINE_CUES`
+ * (`apps/web/src/lib/firstProof.ts`); a CLAIMS row keeps the two equal.
+ */
+export const DESSERT_WINE_CUES = [
+  "wine", "vin", "vino", "glass", "bottle", "sauternes", "barsac", "tokaji", "tokay", "port", "porto",
+  "moscato", "muscat", "moscatel", "eiswein", "icewine", "ice wine", "late harvest", "vin santo",
+  "vin doux", "pedro ximenez", "pedro ximénez", "madeira", "sherry", "oloroso", "banyuls", "maury",
+  "passito", "recioto", "auslese", "beerenauslese", "trockenbeerenauslese", "noble rot",
+];
+
+/** A cue as a whole word, a vintage year, or a pour size ("75cl", "100 ml"). */
+const DESSERT_WINE_WORDS = new RegExp(
+  `(^|[^\\p{L}\\p{N}])((${DESSERT_WINE_CUES.join("|")})s?|(19|20)\\d{2}|\\d+\\s?(cl|ml))(?=$|[^\\p{L}\\p{N}])`,
+  "u",
+);
+
+/** The fields of a stored line that only a drink carries. */
+const DRINK_FIELDS = ["vintage", "region", "grape_variety", "producer"] as const;
+
+const filled = (v: unknown) => (typeof v === "string" ? v.trim() !== "" : v !== null && v !== undefined);
+
+/**
+ * The same test as the web's `isKitchenLine`. A line in a known drink section
+ * (MENU_CATEGORY_VOCABULARY) is never a kitchen line, whatever its raw line
+ * says ("Chianti, great with pasta"); otherwise a hint, as a whole word, in the
+ * section or in the raw line makes it one.
+ *
+ * 'dessert' is both a drink section and a course: the reader is told to take
+ * the category from the section heading, so "Tiramisu" under "Desserts" can
+ * come back as 'dessert'. A 'dessert' line is a drink only on evidence: a
+ * field only a drink carries (vintage, region, grape, producer), or in its
+ * name or raw line a dessert-wine word, a vintage year or a pour size. With
+ * neither it is a course, so it is set aside with the kitchen lines.
+ */
+export function isKitchenLine(category: unknown, raw: unknown, line?: Record<string, unknown>): boolean {
+  const section = typeof category === "string" ? category.toLowerCase().trim() : "";
+  const text = typeof raw === "string" ? raw : "";
+  if (section === "dessert") {
+    if (line && DRINK_FIELDS.some((k) => filled(line[k]))) return false;
+    const name = line && typeof line.name === "string" ? line.name : "";
+    return !DESSERT_WINE_WORDS.test(`${name} ${text}`.toLowerCase());
+  }
+  // "wine" too, as the web's VOCABULARY holds it.
+  if (section === "wine" || (MENU_CATEGORY_VOCABULARY as readonly string[]).includes(section)) return false;
+  const hay = `${section} ${text}`.toLowerCase();
+  return HINT_WORDS.test(hay);
 }
 
 /**
@@ -99,7 +150,7 @@ export function lineForViewer(row: Record<string, unknown>, view: LineView): Rec
   for (const key of MEMBER_LINE_KEYS) {
     if (Object.prototype.hasOwnProperty.call(row, key)) out[key] = row[key];
   }
-  out.kitchen_line = isKitchenLine(row.category, raw);
+  out.kitchen_line = isKitchenLine(row.category, raw, row);
   if (view.rawLine) {
     out[RAW_LINE_COLUMN] = raw ?? null;
   } else if (typeof raw === "string" && raw.length > 0) {

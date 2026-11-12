@@ -17,6 +17,40 @@ describe("menu-line-view", () => {
     expect(isKitchenLine(42, { pasta: true })).toBe(false);
   });
 
+  it("a known drink section wins: a dessert wine stays a drink, whatever its raw line says (QA M18)", () => {
+    expect(isKitchenLine("dessert", "Sauternes, Ch. Suduiraut, 2015, 90")).toBe(false);
+    expect(isKitchenLine("Dessert ", "Tokaji Aszú, great with dessert")).toBe(false);
+    expect(isKitchenLine("red", "Chianti, great with pasta")).toBe(false);
+    expect(isKitchenLine("sparkling", "Dish Imports, Cava, 40")).toBe(false);
+    expect(isKitchenLine("wine", "Salad days rosé")).toBe(false);
+    // With no known section the hints still decide, as whole words, plurals too.
+    expect(isKitchenLine(null, "Desserts: Tiramisu 12")).toBe(true);
+    expect(isKitchenLine("Pastas", null)).toBe(true);
+    expect(isKitchenLine("Entrées", null)).toBe(true);
+    expect(isKitchenLine(null, "Pastaio Rosso, 2020, 38")).toBe(false);
+    expect(isKitchenLine(null, "Dishwasher-safe carafe")).toBe(false);
+  });
+
+  it("'dessert' is a course unless the line shows it is a wine: Tiramisu goes to the kitchen", () => {
+    expect(isKitchenLine("dessert", "Tiramisu 9")).toBe(true);
+    expect(isKitchenLine("dessert", null, { name: "Crème brûlée", bottle_price: 11 })).toBe(true);
+    expect(isKitchenLine("Dessert", "Panna cotta, 8", { name: "Panna cotta", producer: "  " })).toBe(true);
+    // A drink field, a dessert-wine word, a year or a pour size makes it a drink.
+    expect(isKitchenLine("dessert", null, { name: "Ch. d'Yquem", vintage: "2015" })).toBe(false);
+    expect(isKitchenLine("dessert", null, { name: "Cuvée Marie", producer: "Ch. Rieussec" })).toBe(false);
+    expect(isKitchenLine("dessert", "Moscato d'Asti 9")).toBe(false);
+    expect(isKitchenLine("dessert", null, { name: "Late Harvest Riesling" })).toBe(false);
+    expect(isKitchenLine("dessert", "Royal Tokaji 5 Puttonyos 50cl 70")).toBe(false);
+    expect(isKitchenLine("dessert", "10yr Tawny, by the glass 8")).toBe(false);
+    // Only 'dessert' is weighed: another drink section stays a drink with no evidence at all.
+    expect(isKitchenLine("red", "House 9")).toBe(false);
+  });
+
+  it("lineForViewer weighs a dessert line by its own fields", () => {
+    expect(lineForViewer({ name: "Tiramisu", category: "dessert", raw_extracted_text: "Tiramisu 9" }, { rawLine: false }).kitchen_line).toBe(true);
+    expect(lineForViewer({ name: "Sauternes", category: "dessert", vintage: "2016" }, { rawLine: false }).kitchen_line).toBe(false);
+  });
+
   it("the gateway's kitchen hints are the web's nine", () => {
     expect(KITCHEN_HINTS).toEqual(["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad"]);
   });
