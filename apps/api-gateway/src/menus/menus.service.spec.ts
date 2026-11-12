@@ -41,6 +41,7 @@ function makeFakeSupabase(
     // reads the inserted rows back; the fake appends them to the table so a
     // later read sees them, same as the real write.
     let inserted: Row[] | null = null;
+    let insertError: { code: string; message: string } | null = null;
     const extra: Array<(r: Row) => boolean> = [];
     // `tables.__readFails = [{ <table>: "<message>" }]` makes every READ of
     // that table fail with the message (writes still land), so a test can
@@ -92,6 +93,13 @@ function makeFakeSupabase(
       },
       insert(rows: Row | Row[]) {
         const list = Array.isArray(rows) ? rows : [rows];
+        // `tables.__insertFails = { <table>: (rows) => "<message>" | undefined }`
+        // refuses an INSERT whose rows the function names (nothing lands).
+        const refuse = (tables as any).__insertFails?.[table]?.(list);
+        if (refuse) {
+          insertError = { code: "XX000", message: refuse };
+          return api;
+        }
         inserted = list.map((r) => ({
           id: `${table}-${++seq}`,
           created_at: "2026-09-21T10:00:00.000Z",
@@ -101,6 +109,7 @@ function makeFakeSupabase(
         return api;
       },
       single: async () => {
+        if (insertError) return { data: null, error: insertError };
         const rows = inserted ?? matching();
         return { data: rows[0] ?? null, error: null };
       },
@@ -113,6 +122,7 @@ function makeFakeSupabase(
         return { data: rows[0] ?? null, error: null };
       },
       then(resolve: any) {
+        if (insertError) return resolve({ data: null, error: insertError });
         if (inserted) return resolve({ data: inserted, error: null });
         if (!updatePatch && readFails()) return resolve({ data: null, error: { message: readFails() } });
         const rows = matching();
@@ -1246,6 +1256,171 @@ describe("MenusService — every menu read is kept as its own version", () => {
       // Once current, there is nothing it replaces.
       await choose(service, read.menuId);
       expect((await service.planFor("rest-1", read.menuId)).notOnThisFile).toEqual([]);
+    });
+
+    describe("2e: make-current writes in batches, the price still per line (L4, L27)", () => {
+      /** The write-back the migration adds, against the fake's tables: only the named keys, only this house. */
+      const writeBack = (tables: Record<string, Row[]>, args: Row) => {
+        let n = 0;
+        for (const r of args.p_rows as Row[]) {
+          const row = tables.menu_items.find((m) => m.id === r.id && m.restaurant_id === args.p_restaurant_id);
+          if (!row) continue;
+          for (const k of ["inventory_item_id", "submission_id", "price_flag", "price_flag_note"]) if (k in r) row[k] = r[k];
+          n += 1;
+        }
+        return { data: n, error: null };
+      };
+      /** set_house_menu_price that moves the house's price, as the real writer does. */
+      const pricing = (tables: Record<string, Row[]>) => (fn: string, args: Row) => {
+        if (fn === "menu_items_write_back") return writeBack(tables, args);
+        if (fn === "set_house_menu_price") {
+          const inv = tables.restaurant_inventory.find((i) => i.id === args.p_inventory_id)!;
+          if (args.p_set_bottle) inv.menu_price_current = args.p_bottle_price;
+          if (args.p_set_glass) inv.menu_price_glass = args.p_glass_price;
+          return { data: { outcome: "changed", held: [] }, error: null };
+        }
+        return makeCurrentRpc(tables)(fn, args);
+      };
+      /** Counts the fake's round trips by table and kind. */
+      const counting = (service: MenusService) => {
+        const fake = (service as any).dbService.supabase;
+        const real = fake.from;
+        const n: Record<string, number> = {};
+        const bump = (k: string) => (n[k] = (n[k] ?? 0) + 1);
+        fake.from = (table: string) => {
+          const api = real(table);
+          bump(`${table}:from`);
+          const { update, insert } = api;
+          api.update = (p: Row) => (bump(`${table}:update`), update(p));
+          api.insert = (r: Row | Row[]) => (bump(`${table}:insert`), insert(r));
+          return api;
+        };
+        return n;
+      };
+      const each = {
+        ...wineSubmissions,
+        resolveLibraryWinesBatch: async (items: Array<{ name: string }>) =>
+          items.map((i) => ({ masterWineId: `mw-${i.name}`, matched: true, libraryTier: 1, confidence: 99 })),
+      };
+
+      it("a 300-line menu: the house's rows in 2 reads and 1 insert, every link and flag in 1 write-back, 1 price call per line", async () => {
+        const calls: RpcCall[] = [];
+        const tables: Record<string, Row[]> = base();
+        const lines = Array.from({ length: 300 }, (_, i) => ({ name: `Wine ${i}`, bottle_price: 40 + i }));
+        const service = makeService(tables, {
+          wineSubmissions: each,
+          rpcCalls: calls,
+          rpc: pricing(tables),
+          scanParser: { parseWithWarnings: async () => ({ items: lines, warnings: [] }) },
+        });
+        const read = await service.importMenu(
+          { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+          "user-1",
+        );
+        // A scan is read in the background on the #1086 chain (whenRead); here it is not.
+        await (service as any).whenRead?.(read.menuId);
+        const plan = await service.planFor("rest-1", read.menuId);
+        const n = counting(service);
+        calls.length = 0;
+        const r = await service.makeCurrent("rest-1", read.menuId, "user-2", plan.fingerprint);
+
+        expect(r.priceSync).toEqual({ changed: 300 });
+        expect(r.failed).toEqual([]);
+        // The plan's own paged read (1) + 300 wines in chunks of 150 (2) + one insert.
+        expect(n["restaurant_inventory:from"]).toBe(4);
+        expect(n["restaurant_inventory:insert"]).toBe(1);
+        expect(n["menu_items:update"] ?? 0).toBe(0);
+        expect(calls.filter(([fn]) => fn === "menu_items_write_back")).toHaveLength(1);
+        expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(300);
+        const mine = tables.menu_items.filter((m) => m.menu_id === read.menuId);
+        expect(mine.every((m) => typeof m.inventory_item_id === "string")).toBe(true);
+        expect(new Set(mine.map((m) => m.inventory_item_id)).size).toBe(300);
+        expect(tables.restaurant_inventory).toHaveLength(301);
+      });
+
+      it("two lines of one wine: the second sees the price the first just set, as the per-line read did", async () => {
+        const tables: Record<string, Row[]> = base();
+        const twice = {
+          ...wineSubmissions,
+          resolveLibraryWinesBatch: async (items: unknown[]) =>
+            items.map(() => ({ masterWineId: "mw-1", matched: true, libraryTier: 1, confidence: 99 })),
+        };
+        const service = makeService(tables, {
+          wineSubmissions: twice,
+          rpc: pricing(tables),
+          scanParser: {
+            parseWithWarnings: async () => ({
+              items: [{ name: "Opus One", bottle_price: 64 }, { name: "Opus One by the glass", by_glass_price: 15 }],
+              warnings: [],
+            }),
+          },
+        });
+        const read = await service.importMenu(
+          { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+          "user-1",
+        );
+        // A scan is read in the background on the #1086 chain (whenRead); here it is not.
+        await (service as any).whenRead?.(read.menuId);
+        await service.makeCurrent("rest-1", read.menuId, "user-2", (await service.planFor("rest-1", read.menuId)).fingerprint);
+        const second = tables.menu_items.find((m) => m.name === "Opus One by the glass")!;
+        // 64.00, not the 60.00 read before the first line moved it.
+        expect(second.price_flag).toBe("blank_kept_last_known");
+        expect(second.price_flag_note).toMatch(/kept the bottle price 64\.00/);
+        expect(second.inventory_item_id).toBe("inv-1");
+      });
+
+      it("a write-back that does not answer falls back to one write per line, and the lines are still linked", async () => {
+        const tables: Record<string, Row[]> = base();
+        const rpc = (fn: string, args: Row) =>
+          fn === "menu_items_write_back"
+            ? { data: null, error: { code: "PGRST202", message: "Could not find the function" } }
+            : pricing(tables)(fn, args);
+        const service = makeService(tables, {
+          wineSubmissions: each,
+          rpc,
+          scanParser: { parseWithWarnings: async () => ({ items: [{ name: "Barolo", bottle_price: 80 }], warnings: [] }) },
+        });
+        const read = await service.importMenu(
+          { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+          "user-1",
+        );
+        // A scan is read in the background on the #1086 chain (whenRead); here it is not.
+        await (service as any).whenRead?.(read.menuId);
+        const r = await service.makeCurrent("rest-1", read.menuId, "user-2", (await service.planFor("rest-1", read.menuId)).fingerprint);
+        expect(r.failed).toEqual([]);
+        expect(tables.menu_items.find((m) => m.name === "Barolo")!.inventory_item_id).toEqual(expect.any(String));
+      });
+
+      it("a refused batch insert is tried wine by wine: one refusal fails its own line, said, and the rest are carried", async () => {
+        const tables: Record<string, Row[]> = base();
+        (tables as any).__insertFails = {
+          restaurant_inventory: (rows: Row[]) =>
+            rows.length > 1 || rows[0].master_wine_id === "mw-Barolo" ? "duplicate key value" : undefined,
+        };
+        const service = makeService(tables, {
+          wineSubmissions: each,
+          rpc: pricing(tables),
+          scanParser: {
+            parseWithWarnings: async () => ({
+              items: [{ name: "Barolo", bottle_price: 80 }, { name: "Chianti", bottle_price: 48 }],
+              warnings: [],
+            }),
+          },
+        });
+        const read = await service.importMenu(
+          { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+          "user-1",
+        );
+        // A scan is read in the background on the #1086 chain (whenRead); here it is not.
+        await (service as any).whenRead?.(read.menuId);
+        const r = await service.makeCurrent("rest-1", read.menuId, "user-2", (await service.planFor("rest-1", read.menuId)).fingerprint);
+        expect(r.priceSync).toEqual({ failed: 1, changed: 1 });
+        expect(r.failed).toEqual([
+          { menuItemId: expect.any(String), name: "Barolo", error: expect.stringMatching(/could not be added to the house's inventory.*duplicate key value/) },
+        ]);
+        expect(tables.menu_items.find((m) => m.name === "Chianti")!.inventory_item_id).toEqual(expect.any(String));
+        expect(tables.menu_items.find((m) => m.name === "Barolo")!.inventory_item_id ?? null).toBeNull();
+      });
     });
 
     it("a dessert WINE under Desserts is still carried: a vintage says it is a drink", async () => {

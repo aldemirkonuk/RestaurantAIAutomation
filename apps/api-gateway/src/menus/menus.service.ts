@@ -35,6 +35,12 @@ const SOURCE_BUCKET = "vendor-attachments";
 const SOURCE_URL_SECONDS = 300;
 /** PostgREST's max_rows (supabase/config.toml): a page never holds more. */
 const PAGE_ROWS = 1000;
+/**
+ * Wine ids per `.in()` read of the house's rows (menu proposal 2e). Each id is
+ * 36 characters in the query string, so 150 keep a request well under URL
+ * limits, and one row per house and wine keeps every chunk far below PAGE_ROWS.
+ */
+const WINE_ID_CHUNK = 150;
 const DEFAULT_THRESHOLD_MIN_FALLBACK = 3;
 const PRICE_FIELDS = new Set(["by_glass_price", "bottle_price"]);
 
@@ -1703,11 +1709,11 @@ export class MenusService {
       };
     }
 
-    const { inventoryMap, priceSync } = await this.addToInventory(lines, restaurantId, userId, {
+    // addToInventory writes each line's house link and price flag back itself.
+    const { priceSync } = await this.addToInventory(lines, restaurantId, userId, {
       effectiveFrom: madeCurrentAt,
       menuId,
     });
-    await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
 
     const counts: Record<string, number> = {};
     const failed: Array<{ menuItemId: string; name: string; error: string }> = [];
@@ -1960,7 +1966,7 @@ export class MenusService {
             ]),
           ),
         };
-    await this.backfillMenuItemColumn(inventoryMap, "inventory_item_id");
+    // (addToInventory wrote each carried line's house link back itself.)
 
     // Provenance trail for governance (awaited, non-fatal on failure so a
     // submissions-table hiccup never blocks the manager's own inventory).
@@ -1972,7 +1978,10 @@ export class MenusService {
         restaurantId,
         userId,
       );
-      await this.backfillMenuItemColumn(submissionMap, "submission_id");
+      await this.writeBackLines(
+        restaurantId,
+        [...submissionMap.entries()].map(([id, submissionId]) => ({ id, submission_id: submissionId })),
+      );
     } catch (err) {
       this.logger.warn(
         `wine library submission failed (non-fatal): ${err.message}`,
@@ -2117,88 +2126,179 @@ export class MenusService {
     const validItems = menuItems.filter((i) => i.wine_library_id && !isKitchenItem(i));
     if (validItems.length === 0) return { inventoryMap: result, priceSync };
 
+    const client = this.dbService.supabase;
     const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
 
-    for (const item of validItems) {
-      const { data: existing, error: existingErr } = await this.dbService.supabase
-        .from("restaurant_inventory")
-        .select("id, menu_price_current, menu_price_glass")
-        .eq("restaurant_id", restaurantId)
-        .eq("master_wine_id", item.wine_library_id)
-        .maybeSingle();
+    // BATCHED (menu proposal 2e, M15). This was one read, maybe one insert,
+    // one flag write and one link write PER LINE -- about a third of a second
+    // each against the pooler, so minutes for a long list. Now: the house's
+    // rows read in chunks, one insert for the wines it lacks, and one write-back
+    // for every line's link and flag. The price stays one set_house_menu_price
+    // call per priced line: it is the writer that holds the locks (L4, L27).
 
+    // 1. The house's own row for every wine on these lines. A chunk that cannot
+    //    be read fails its lines, said on each, never taken for "no row".
+    const wineIds = [...new Set(validItems.map((i) => String(i.wine_library_id)))];
+    type HouseRow = { id: string; master_wine_id: string; menu_price_current: number | string | null; menu_price_glass: number | string | null };
+    const existingByWine = new Map<string, HouseRow>();
+    const readFailed = new Map<string, string>();
+    for (let at = 0; at < wineIds.length; at += WINE_ID_CHUNK) {
+      const chunk = wineIds.slice(at, at + WINE_ID_CHUNK);
+      const { data, error } = await client
+        .from("restaurant_inventory")
+        .select("id, master_wine_id, menu_price_current, menu_price_glass")
+        .eq("restaurant_id", restaurantId)
+        .in("master_wine_id", chunk);
+      if (error) {
+        for (const w of chunk) readFailed.set(w, error.message);
+        continue;
+      }
+      // One row per house and wine (the UNIQUE), so a chunk never nears the 1000-row cap.
+      for (const r of (data ?? []) as HouseRow[]) existingByWine.set(String(r.master_wine_id), r);
+    }
+
+    // 2. One insert for every wine the house has no row for, named by its first
+    //    line and WITHOUT a price on purpose: the price goes through
+    //    set_house_menu_price below, so its version row says 'import' and names
+    //    the person, instead of the trigger's "no person named". If the batch is
+    //    refused, each wine is tried on its own so one refusal does not fail the rest.
+    const firstLine = new Map<string, InsertedMenuItem>();
+    for (const i of validItems) if (!firstLine.has(String(i.wine_library_id))) firstLine.set(String(i.wine_library_id), i);
+    const missing = wineIds.filter((w) => !readFailed.has(w) && !existingByWine.has(w));
+    const createdByWine = new Map<string, string>();
+    const insertFailed = new Map<string, string>();
+    if (missing.length > 0) {
+      const rowFor = (w: string) => ({
+        restaurant_id: restaurantId,
+        master_wine_id: w,
+        wine_name: firstLine.get(w)!.name,
+        threshold_min: thresholdMin,
+        is_active: true,
+      });
+      const { data, error } = await client
+        .from("restaurant_inventory")
+        .insert(missing.map(rowFor))
+        .select("id, master_wine_id");
+      if (!error) {
+        for (const r of (data ?? []) as Array<{ id: string; master_wine_id: string }>) {
+          createdByWine.set(String(r.master_wine_id), String(r.id));
+        }
+      } else {
+        this.logger.warn(`adding ${missing.length} wine(s) to the house in one go was refused (${error.message}); adding them one by one`);
+        for (const w of missing) {
+          const { data: one, error: oneErr } = await client.from("restaurant_inventory").insert(rowFor(w)).select("id").single();
+          if (oneErr || !one?.id) insertFailed.set(w, oneErr?.message ?? "no row came back");
+          else createdByWine.set(w, String(one.id));
+        }
+      }
+    }
+
+    // 3. Each line, in menu order: its row, then its price through the writer.
+    const carried = new Set<string>();
+    const writeBacks: Array<{ id: string; inventory_item_id: string; price_flag: PriceFlag | null; price_flag_note: string | null }> = [];
+    for (const item of validItems) {
+      const w = String(item.wine_library_id);
       // A failed read is not "no row" (last-call review, 2026-09-21). Read as
       // one, it tried a duplicate INSERT (refused by the house+wine UNIQUE),
       // skipped the line in silence -- counted "not_linked" -- and decided the
       // blank-price flag (founder answer 3) from a price it never saw.
-      if (existingErr) {
-        const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${existingErr.message}`;
+      const readErr = readFailed.get(w);
+      if (readErr !== undefined) {
+        const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${readErr}`;
         this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
         priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
         continue;
       }
-
-      let inventoryId: string | null = existing?.id ?? null;
+      const existing = existingByWine.get(w) ?? null;
+      const inventoryId = existing?.id ?? createdByWine.get(w) ?? null;
       if (!inventoryId) {
-        // Inserted WITHOUT a price on purpose: the price goes through
-        // set_house_menu_price below, so its version row says 'import' and
-        // names the person, instead of the trigger's "no person named".
-        const { data: created, error } = await this.dbService.supabase
+        // Still non-fatal for the menu, but said on the line: "not_linked"
+        // means the menu matched no wine, never that the house's row failed.
+        const why = insertFailed.get(w) ?? "no row came back";
+        const message = `the wine could not be added to the house's inventory, so no price was set: ${why}`;
+        this.logger.warn(`inventory seeding failed for "${item.name}" (non-fatal): ${why}`);
+        priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
+        continue;
+      }
+      let house = {
+        bottle: existing?.menu_price_current ?? null,
+        glass: existing?.menu_price_glass ?? null,
+      };
+      if (carried.has(w)) {
+        // A second line of the same wine: the first may just have moved its
+        // price, so the row is read again -- what the per-line read used to see.
+        const { data: again, error: againErr } = await client
           .from("restaurant_inventory")
-          .insert({
-            restaurant_id: restaurantId,
-            master_wine_id: item.wine_library_id,
-            wine_name: item.name,
-            threshold_min: thresholdMin,
-            is_active: true,
-          })
-          .select("id")
-          .single();
-
-        if (error) {
-          // Still non-fatal for the menu, but said on the line: "not_linked"
-          // means the menu matched no wine, never that the house's row failed.
-          const message = `the wine could not be added to the house's inventory, so no price was set: ${error.message}`;
-          this.logger.warn(`inventory seeding failed for "${item.name}" (non-fatal): ${error.message}`);
+          .select("menu_price_current, menu_price_glass")
+          .eq("id", inventoryId)
+          .eq("restaurant_id", restaurantId)
+          .maybeSingle();
+        if (againErr) {
+          const message = `the house's own row for this wine could not be read, so neither its price nor a blank-price flag was decided: ${againErr.message}`;
+          this.logger.error(`menu line ${item.id} ("${item.name}"): ${message}`);
           priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
           continue;
         }
-        inventoryId = created?.id ?? null;
+        house = { bottle: again?.menu_price_current ?? null, glass: again?.menu_price_glass ?? null };
       }
-      if (!inventoryId) continue;
       result.set(item.id, inventoryId);
-      if (!existing) result.created.add(item.id);
-      const entry = await this.carryMenuPrice(
-        item,
-        restaurantId,
-        inventoryId,
-        userId,
-        {
-          bottle: existing?.menu_price_current ?? null,
-          glass: existing?.menu_price_glass ?? null,
-        },
-        dating,
-      );
+      // A row this call created is "created" on its first line only.
+      if (!existing && !carried.has(w)) result.created.add(item.id);
+      carried.add(w);
+      const entry = await this.carryMenuPrice(item, restaurantId, inventoryId, userId, house, dating);
       priceSync.set(item.id, entry);
-      await this.writeLineFlag(item.id, entry);
+      writeBacks.push({ id: item.id, inventory_item_id: inventoryId, price_flag: entry.flag, price_flag_note: entry.flagNote });
     }
+
+    // 4. Every carried line's house link and price flag (null clears a flag an
+    //    earlier choice left), in one call. A line whose write failed carries
+    //    the reason; the price outcome itself is already decided.
+    await this.writeBackLines(restaurantId, writeBacks, (id, message) => {
+      const entry = priceSync.get(id);
+      if (entry) entry.flagError = message;
+    });
 
     return { inventoryMap: result, priceSync };
   }
 
   /**
-   * The blank-price flag, written on the line (null clears a flag an earlier
-   * choice left). A failed write is logged loudly and returned on the entry;
-   * the price outcome itself is already decided.
+   * Writes back many lines of one house in one call (menu proposal 2e):
+   * `menu_items_write_back` sets only the keys each row names (house link,
+   * submission, price flag and note). If that call is refused or does not say
+   * how many rows it wrote -- the function not there yet, say -- each line is
+   * written on its own, and a line whose write fails is handed to `onFail`
+   * with the reason and logged loudly.
    */
-  private async writeLineFlag(menuItemId: string, entry: PriceSyncEntry): Promise<void> {
-    const { error } = await this.dbService.supabase
-      .from("menu_items")
-      .update({ price_flag: entry.flag, price_flag_note: entry.flagNote })
-      .eq("id", menuItemId);
-    if (error) {
-      this.logger.error(`menu line ${menuItemId}: its price flag was not written: ${error.message}`);
-      entry.flagError = error.message;
+  private async writeBackLines(
+    restaurantId: string,
+    rows: Array<{ id: string } & Record<string, unknown>>,
+    onFail?: (menuItemId: string, message: string) => void,
+  ): Promise<void> {
+    if (rows.length === 0) return;
+    const client = this.dbService.supabase;
+    const { data, error } = await client.rpc("menu_items_write_back", {
+      p_restaurant_id: restaurantId,
+      p_rows: rows,
+    });
+    if (!error && typeof data === "number") {
+      if (data !== rows.length) {
+        this.logger.warn(`${rows.length - data} of ${rows.length} menu line(s) were gone when written back`);
+      }
+      return;
+    }
+    this.logger.warn(
+      `menu lines were not written back in one call (${error?.message ?? "no count came back"}); writing them one by one`,
+    );
+    for (const { id, ...patch } of rows) {
+      const { error: oneErr } = await client
+        .from("menu_items")
+        .update(patch)
+        .eq("id", id)
+        .eq("restaurant_id", restaurantId);
+      if (oneErr) {
+        this.logger.error(`menu line ${id}: ${Object.keys(patch).join(", ")} not written: ${oneErr.message}`);
+        onFail?.(id, oneErr.message);
+      }
     }
   }
 
@@ -2287,24 +2387,6 @@ export class MenusService {
       .eq("id", restaurantId)
       .maybeSingle();
     return data?.default_threshold_min ?? DEFAULT_THRESHOLD_MIN_FALLBACK;
-  }
-
-  private async backfillMenuItemColumn(
-    menuItemToValue: Map<string, string>,
-    column: "inventory_item_id" | "submission_id",
-  ): Promise<void> {
-    for (const [menuItemId, value] of menuItemToValue.entries()) {
-      const { error } = await this.dbService.supabase
-        .from("menu_items")
-        .update({ [column]: value })
-        .eq("id", menuItemId);
-
-      if (error) {
-        this.logger.warn(
-          `Failed to backfill ${column} for menu_item ${menuItemId}: ${error.message}`,
-        );
-      }
-    }
   }
 
   private async markMenuUploaded(restaurantId: string): Promise<void> {
