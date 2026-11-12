@@ -23,7 +23,11 @@ import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { documentsApi, type ProcurementDocument } from '../../../services/api/documents';
-import { receivingApi, type UnverifiedDelivery } from '../../../services/api/receiving';
+import {
+  receivingApi,
+  type DoorCountedDelivery,
+  type UnverifiedDelivery,
+} from '../../../services/api/receiving';
 import {
   creditsApi,
   type CreditState,
@@ -95,8 +99,10 @@ export interface ReceiptsNextData {
   verifiedCount: number | null;
   verifiedCapped: boolean;
   /** null until the uncounted list answers — `[]` would read as "all clear". */
-  deliveriesWithoutPaper: UnverifiedDelivery[] | null;
+  deliveriesWithoutPaper: DoorWaiting[] | null;
   deliveriesKnown: boolean;
+  /** The door-counted read landed on its cap: the strip lists the newest, not all. */
+  deliveriesCapped: boolean;
   isError: boolean;
   /** One sentence per query that failed, so a dead endpoint is never silent. */
   failures: string[];
@@ -140,6 +146,53 @@ export function useActiveRestaurantId(): string | null {
   return activeRestaurantId || user?.restaurantId || null;
 }
 
+/**
+ * One row of "Counted at the door, no paperwork yet". The door has two ways in
+ * (R10, 2026-11-11): the order door writes a receipt event (`items`), and the
+ * document door writes a delivery with a door count (`doorCounted`). Both wait
+ * on the same thing, so they share one strip, oldest first. The gateway already
+ * drops a door-counted delivery whose order is in `items`, so none shows twice.
+ */
+export interface DoorWaiting {
+  key: string;
+  orderNumber: string | null;
+  /** True when the door counted goods nobody ordered. */
+  unordered: boolean;
+  /** Who brought it, when the delivery names a vendor (browser walk 2026-11-12). */
+  vendorName: string | null;
+  countedQtyBottles: number;
+  /** Lines in a unit with no bottle figure (a weight, a keg), not added in. */
+  linesWithoutBottles: number;
+  ageHours: number;
+}
+
+export function doorWaiting(data: {
+  items?: UnverifiedDelivery[];
+  doorCounted?: DoorCountedDelivery[];
+}): DoorWaiting[] {
+  const rows: DoorWaiting[] = [
+    ...(data.items ?? []).map((u) => ({
+      key: `order-${u.orderId}`,
+      orderNumber: u.orderNumber,
+      unordered: false,
+      vendorName: null,
+      countedQtyBottles: u.countedQtyBottles,
+      linesWithoutBottles: 0,
+      ageHours: u.ageHours,
+    })),
+    ...(data.doorCounted ?? []).map((d) => ({
+      key: `delivery-${d.deliveryId}`,
+      orderNumber: d.orderNumber,
+      unordered: d.orderId == null,
+      vendorName: d.vendorName ?? null,
+      countedQtyBottles: d.countedQtyBottles,
+      linesWithoutBottles: d.linesWithoutBottles,
+      ageHours: d.ageHours,
+    })),
+  ];
+  return rows.sort((a, b) => b.ageHours - a.ageHours);
+}
+
 export function useReceiptsNextData(): ReceiptsNextData {
   const rid = useActiveRestaurantId();
   const enabled = rid !== null;
@@ -165,7 +218,12 @@ export function useReceiptsNextData(): ReceiptsNextData {
     enabled,
     staleTime: 30_000,
   });
-  const unverifiedQ = useQuery<{ items: UnverifiedDelivery[] }>({
+  const unverifiedQ = useQuery<{
+    items: UnverifiedDelivery[];
+    doorCounted?: DoorCountedDelivery[];
+    doorCountedComplete?: boolean;
+    doorCountedFailed?: boolean;
+  }>({
     queryKey: ['receipts-next', 'unverified-deliveries', rid],
     queryFn: () => receivingApi.listUnverified(),
     enabled,
@@ -190,6 +248,15 @@ export function useReceiptsNextData(): ReceiptsNextData {
       out.push({
         sentence: `the deliveries counted at the door (${msg(unverifiedQ.error)})`,
         read: unverifiedQ.data !== undefined,
+        plural: true,
+      });
+    // The order door's list answered but the document door's did not (R10):
+    // the strip shows what is known and the banner says what is not, so an
+    // empty door-counted list is never read as a clear door.
+    else if (unverifiedQ.data?.doorCountedFailed === true)
+      out.push({
+        sentence: 'the deliveries counted at the document door',
+        read: false,
         plural: true,
       });
     return out;
@@ -231,8 +298,11 @@ export function useReceiptsNextData(): ReceiptsNextData {
     verifiedKnown: verifiedQ.data !== undefined,
     verifiedCount: verifiedQ.data === undefined ? null : verifiedQ.data.length,
     verifiedCapped: verified.length >= RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS,
-    deliveriesWithoutPaper: unverifiedQ.data === undefined ? null : unverifiedQ.data.items ?? [],
+    deliveriesWithoutPaper: unverifiedQ.data === undefined ? null : doorWaiting(unverifiedQ.data),
     deliveriesKnown: unverifiedQ.data !== undefined,
+    // A failed read is not a capped one: the banner says that it failed.
+    deliveriesCapped:
+      unverifiedQ.data?.doorCountedComplete === false && unverifiedQ.data?.doorCountedFailed !== true,
     isError: failures.length > 0,
     failures,
     errorMessage: failures.join('; ') || 'unknown error',

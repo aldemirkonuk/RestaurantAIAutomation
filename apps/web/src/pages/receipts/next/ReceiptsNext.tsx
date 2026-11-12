@@ -1885,13 +1885,25 @@ export default function ReceiptsNext() {
             </span>
             <div style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', marginTop: 4 }}>
               {(data.deliveriesWithoutPaper ?? []).map((d) => (
-                <span key={d.orderId} style={{ marginRight: 16 }}>
-                  {/* "btl" was a wine word; the count is of whatever came in (W38). */}
-                  {d.orderNumber ?? 'an order with no number'} · {d.countedQtyBottles} counted ·{' '}
-                  {Math.round(d.ageHours)}h ago
+                <span key={d.key} style={{ marginRight: 16 }}>
+                  {/* "btl" was a wine word; the count is of whatever came in (W38).
+                      A line in a weight or a keg is never added to the count (R10). */}
+                  {d.orderNumber ??
+                    (d.unordered ? 'a delivery nobody ordered' : 'an order with no number')}
+                  {/* Two unordered deliveries read alike without the vendor (walk 2026-11-12). */}
+                  {d.vendorName ? ` from ${d.vendorName}` : ''}{' '}
+                  · {d.countedQtyBottles} counted
+                  {d.linesWithoutBottles > 0 &&
+                    ` + ${d.linesWithoutBottles} ${d.linesWithoutBottles === 1 ? 'line' : 'lines'} in another unit`}{' '}
+                  · {Math.round(d.ageHours)}h ago
                 </span>
               ))}
             </div>
+            {data.deliveriesCapped && (
+              <div style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', marginTop: 4 }}>
+                These are the newest open deliveries; older ones may be waiting too.
+              </div>
+            )}
           </div>
         )}
 

@@ -145,6 +145,28 @@ export interface UnverifiedDelivery {
 }
 
 /**
+ * A delivery counted at the document door (`POST /procurement/documents/door-count`
+ * with `createDelivery`) that has no vendor paper yet (R10, 2026-11-11). That
+ * door writes no receipt event, so it is not in `items`; the gateway reads it
+ * from `deliveries` and sends it beside them. `orderId` is null when the door
+ * counted goods nobody ordered. `linesWithoutBottles` counts lines in a unit
+ * with no bottle figure, which are not added into `countedQtyBottles`.
+ */
+export interface DoorCountedDelivery {
+  deliveryId: string
+  orderId: string | null
+  orderNumber: string | null
+  /** The vendor on the delivery, from this house's providers; null when none is named. */
+  providerId?: string | null
+  vendorName?: string | null
+  countedQtyBottles: number
+  linesWithoutBottles: number
+  countedAt: string
+  ageHours: number
+  severity: 'fresh' | 'stale' | 'overdue'
+}
+
+/**
  * What `POST /procurement/documents` answers. An owner or a manager gets the
  * whole parse. Anyone else gets only the keys the door reads (`docType`,
  * `docNumber`, and per line `lineNo`, `qty`, `uom`, `packSize`, `qtyBottles`)
@@ -274,6 +296,12 @@ export const receivingApi = {
    */
   async listUnverified(): Promise<{
     items: UnverifiedDelivery[]
+    /** Door-counted deliveries with no vendor paper; absent from an older gateway. */
+    doorCounted?: DoorCountedDelivery[]
+    /** false when the read landed on its cap: the list is the newest, not all. */
+    doorCountedComplete?: boolean
+    /** true when the door-counted read failed: `doorCounted` is unknown, not empty. */
+    doorCountedFailed?: boolean
     summary: string | null
     overdue: number
   }> {

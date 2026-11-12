@@ -96,6 +96,7 @@ describe("receiving queue and credit ledger: owner or manager only (ADR 0167)", 
               receivingCalls.listUnverified += 1;
               return [];
             },
+            listDoorCountedWithoutPaper: async () => ({ rows: [], capped: false }),
           },
         },
         { provide: DatabaseService, useValue: emptyLedger(touched) },

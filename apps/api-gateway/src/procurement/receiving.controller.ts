@@ -4,6 +4,7 @@ import {
   Get,
   HttpException,
   HttpStatus,
+  Logger,
   Param,
   ParseUUIDPipe,
   Post,
@@ -30,6 +31,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { notListedByTheOrderDoor } from "./door-counted-deliveries";
 import {
   DOOR_OUTCOMES,
   DOOR_REFUSAL_REASONS,
@@ -254,6 +256,8 @@ export class DoorReceiptDto {
 @UseGuards(JwtAuthGuard)
 @Controller("procurement/receiving")
 export class ReceivingController {
+  private readonly logger = new Logger(ReceivingController.name);
+
   constructor(private readonly receiving: ReceivingService) {}
 
   @Post("orders/:id/door")
@@ -414,15 +418,47 @@ export class ReceivingController {
 
   @Get("unverified")
   @ApiOperation({
-    summary: "Deliveries counted by case and not yet counted by bottle",
+    summary:
+      "Deliveries counted by case and not yet counted by bottle; and deliveries counted at the door with no vendor paper yet",
     description:
       "The safety net for booking stock at the door. The approximate hour after a truck arrives is fine; the delivery nobody ever went back to is how a short case becomes unexplained shrinkage two months later — at which point it is indistinguishable from theft and can no longer be claimed from the vendor. Sorted oldest first, with a severity tier that escalates with age.",
   })
   async unverified(@CurrentUser() user: AuthedUser) {
     try {
-      const items = await this.receiving.listUnverified(user.restaurantId);
+      // The door-counted read is a side read (R10): its failure must not take
+      // the order door's list down with it, which answered before R10 existed
+      // (fix round 2026-11-12, finding on #1096). It is caught on its own and
+      // said in `doorCountedFailed`, never turned into an empty list.
+      const [items, door] = await Promise.all([
+        this.receiving.listUnverified(user.restaurantId),
+        this.receiving.listDoorCountedWithoutPaper(user.restaurantId).then(
+          (value) => ({ ok: true as const, value }),
+          (error: unknown) => {
+            this.logger.error(
+              `unverified: the door-counted deliveries could not be read for ${user.restaurantId}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+            return { ok: false as const };
+          },
+        ),
+      ]);
+      // An order the order door already lists is listed once (R10). The house
+      // counter reads through the same rule, so its number agrees.
+      const doorCounted = door.ok
+        ? notListedByTheOrderDoor(items, door.value.rows)
+        : [];
       return {
         items,
+        // R10: deliveries counted through the document door (door-count with
+        // createDelivery) that have no vendor paper yet. They write no receipt
+        // event, so `items` never held them. `doorCountedComplete` is false
+        // when a read landed on its cap (the list is then a floor) or failed.
+        // `doorCountedFailed` is true when that read failed: `doorCounted` is
+        // then empty because it is unknown, not because the door is clear.
+        doorCounted,
+        doorCountedComplete: door.ok ? !door.value.capped : false,
+        doorCountedFailed: !door.ok,
         // A single line for the manager's queue, rather than a second stock
         // number on every screen that would train people to ignore both.
         summary: items.length
