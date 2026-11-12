@@ -1,0 +1,716 @@
+{
+ "sweep": {
+  "1:plain": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "1:charges": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "1:charges+disc": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "1:all": {
+   "runs": 40,
+   "held": 2,
+   "exact": 38,
+   "off": {},
+   "maxOff": 0,
+   "examples": [
+    "the invoice prices this item, but not per bottle: the invoice line totals 188.31 for 4 counted, but 46.5100 each makes 186.04, so the price's unit is not what the line says. The lot stays provisional."
+   ]
+  },
+  "1:cheapBulk": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "2:plain": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "2:charges": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "2:charges+disc": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "2:all": {
+   "runs": 40,
+   "held": 10,
+   "exact": 30,
+   "off": {},
+   "maxOff": 0,
+   "examples": [
+    "the invoice prices this item, but not per bottle: the invoice line totals 87.98 for 3 counted, but 28.4400 each makes 85.32, so the price's unit is not what the line says. The lot stays provisional."
+   ]
+  },
+  "2:cheapBulk": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "3:plain": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "3:charges": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "3:charges+disc": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "3:all": {
+   "runs": 40,
+   "held": 15,
+   "exact": 25,
+   "off": {},
+   "maxOff": 0,
+   "examples": [
+    "the invoice prices this item, but not per bottle: the invoice line totals 31.72 for 1 counted, but 30.1400 each makes 30.14, so the price's unit is not what the line says. The lot stays provisional."
+   ]
+  },
+  "3:cheapBulk": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "7:plain": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "7:charges": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "7:charges+disc": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "7:all": {
+   "runs": 40,
+   "held": 20,
+   "exact": 20,
+   "off": {},
+   "maxOff": 0,
+   "examples": [
+    "the invoice prices this item, but not per bottle: the invoice line totals 143.31 for 6 counted, but 24.6300 each makes 147.78, so the price's unit is not what the line says. The lot stays provisional."
+   ]
+  },
+  "7:cheapBulk": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "10:plain": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "10:charges": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "10:charges+disc": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "10:all": {
+   "runs": 40,
+   "held": 30,
+   "exact": 10,
+   "off": {},
+   "maxOff": 0,
+   "examples": [
+    "the invoice prices this item, but not per bottle: the invoice line totals 21.66 for 3 counted, but 6.9800 each makes 20.94, so the price's unit is not what the line says. The lot stays provisional."
+   ]
+  },
+  "10:cheapBulk": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "25:plain": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "25:charges": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "25:charges+disc": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "25:all": {
+   "runs": 40,
+   "held": 38,
+   "exact": 2,
+   "off": {},
+   "maxOff": 0,
+   "examples": [
+    "the invoice prices this item, but not per bottle: the invoice line totals 271.93 for 10 counted, but 27.4700 each makes 274.7, so the price's unit is not what the line says. The lot stays provisional."
+   ]
+  },
+  "25:cheapBulk": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "50:plain": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "50:charges": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "50:charges+disc": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "50:all": {
+   "runs": 40,
+   "held": 40,
+   "exact": 0,
+   "off": {},
+   "maxOff": 0,
+   "examples": [
+    "the invoice prices this item, but not per bottle: the invoice line totals 390.85 for 8 counted, but 49.4000 each makes 395.2, so the price's unit is not what the line says. The lot stays provisional."
+   ]
+  },
+  "50:cheapBulk": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "100:plain": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "100:charges": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "100:charges+disc": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "100:all": {
+   "runs": 40,
+   "held": 40,
+   "exact": 0,
+   "off": {},
+   "maxOff": 0,
+   "examples": [
+    "the invoice prices this item, but not per bottle: the invoice line totals 248.14 for 6 counted, but 42.0300 each makes 252.18, so the price's unit is not what the line says. The lot stays provisional."
+   ]
+  },
+  "100:cheapBulk": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "150:plain": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "150:charges": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "150:charges+disc": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "150:all": {
+   "runs": 40,
+   "held": 40,
+   "exact": 0,
+   "off": {},
+   "maxOff": 0,
+   "examples": [
+    "the invoice prices this item, but not per bottle: the invoice line totals 116.48 for 2 counted, but 60.0300 each makes 120.06, so the price's unit is not what the line says. The lot stays provisional."
+   ]
+  },
+  "150:cheapBulk": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "200:plain": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "200:charges": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "200:charges+disc": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  },
+  "200:all": {
+   "runs": 40,
+   "held": 40,
+   "exact": 0,
+   "off": {},
+   "maxOff": 0,
+   "examples": [
+    "the invoice prices this item, but not per bottle: the invoice line totals 87.88 for 2 counted, but 46.0200 each makes 92.04, so the price's unit is not what the line says. The lot stays provisional."
+   ]
+  },
+  "200:cheapBulk": {
+   "runs": 40,
+   "held": 0,
+   "exact": 40,
+   "off": {},
+   "maxOff": 0,
+   "examples": []
+  }
+ },
+ "sweepOff": [],
+ "lrProperty": {
+  "trials": 199896,
+  "failures": 0,
+  "fails": []
+ },
+ "lrWeird": {
+  "negativeWeights": [
+   7.5,
+   -2.5,
+   5
+  ],
+  "allNegative": [
+   0,
+   0
+  ],
+  "zeroSum": [
+   0,
+   0
+  ],
+  "negativeTotal": [
+   -3.33,
+   -3.33,
+   -3.34
+  ],
+  "nan": [
+   null,
+   null
+  ],
+  "halfCentTotal": [
+   0.5,
+   0.5
+  ],
+  "third": [
+   0.01,
+   0,
+   0
+  ],
+  "big": [
+   20576131.67,
+   41152263.33,
+   61728394.99
+  ],
+  "tiny": [
+   0.01,
+   0.01,
+   0.01,
+   0.01,
+   0,
+   0,
+   0,
+   0,
+   0,
+   0
+  ],
+  "identical": [
+   0.34,
+   0.33,
+   0.33
+  ]
+ },
+ "determinism": {
+  "run1": [
+   0.34,
+   0.33,
+   0.33
+  ],
+  "run2": [
+   0.34,
+   0.33,
+   0.33
+  ],
+  "reversedWeights": [
+   0.34,
+   0.33,
+   0.33
+  ]
+ },
+ "floorHazard": [],
+ "orderAndEdges": {
+  "sameTwice": [
+   [
+    0.34,
+    0.33,
+    0.33
+   ],
+   [
+    0.34,
+    0.33,
+    0.33
+   ]
+  ],
+  "arrayReversedSameLineNos": [
+   0.33,
+   0.33,
+   0.34
+  ],
+  "lineNosSwapped": [
+   0.33,
+   0.33,
+   0.34
+  ],
+  "zeroQty": {
+   "byItem": [],
+   "held": [
+    [
+     "i2",
+     "the invoice line does not say how many bottles it bills. The lot stays provisional."
+    ],
+    [
+     "i1",
+     "Line 2 could not be priced, so this paper's charges and discount cannot be shared out and no line's cost is final. The lot stays provisional."
+    ],
+    [
+     "i3",
+     "Line 2 could not be priced, so this paper's charges and discount cannot be shared out and no line's cost is final. The lot stays provisional."
+    ]
+   ]
+  },
+  "freeLine": {
+   "byItem": [
+    [
+     "i1",
+     10.333333,
+     1
+    ]
+   ],
+   "held": [
+    [
+     "i2",
+     "its bottles came free on the invoice, and a lot is never booked at a cost of nothing. The lot stays provisional."
+    ]
+   ]
+  },
+  "negativeLine": {
+   "byItem": [],
+   "held": [
+    [
+     "i2",
+     "the invoice line does not say how many bottles it bills. The lot stays provisional."
+    ],
+    [
+     "i1",
+     "Line 2 could not be priced, so this paper's charges and discount cannot be shared out and no line's cost is final. The lot stays provisional."
+    ]
+   ]
+  },
+  "negativeCharge": {
+   "byItem": 0,
+   "held": "The paper's freight is negative or not a number, so no line's cost can be final. The lot stays provisional."
+  },
+  "discountThreeWay": [
+   [
+    9.776667,
+    -0.67
+   ],
+   [
+    9.776667,
+    -0.67
+   ],
+   [
+    9.78,
+    -0.66
+   ]
+  ],
+  "allowanceDeposit": {
+   "cost": [],
+   "held": [
+    [
+     "i1",
+     "the invoice prices this item, but not per bottle: the invoice line totals 550 for 10 counted, but 60.0000 each makes 600, so the price's unit is not what the line says. The lot stays provisional."
+    ],
+    [
+     "i2",
+     "the invoice prices this item, but not per bottle: the invoice line totals 410 for 10 counted, but 40.0000 each makes 400, so the price's unit is not what the line says. The lot stays provisional."
+    ]
+   ],
+   "expectedCents": 98333,
+   "postedCents": 0
+  }
+ },
+ "toLandedPrecision": [
+  [
+   5e-7,
+   0.000001
+  ],
+  [
+   4.999e-7,
+   0
+  ],
+  [
+   1.2345675,
+   1.234568
+  ],
+  [
+   1.2345665,
+   1.234567
+  ],
+  [
+   10.0049,
+   10.0049
+  ],
+  [
+   9.230769230769,
+   9.230769
+  ],
+  [
+   1e-7,
+   0
+  ],
+  [
+   123456789.1234565,
+   123456789.123457
+  ],
+  [
+   1e+21,
+   null
+  ],
+  [
+   5e-7,
+   0.000001
+  ],
+  [
+   -1.2345675,
+   -1.234567
+  ],
+  [
+   null,
+   null
+  ],
+  [
+   null,
+   null
+  ],
+  [
+   99999999.9999995,
+   100000000
+  ]
+ ],
+ "bulkHolds": [
+  {
+   "q": 30000,
+   "price": 1,
+   "freight": 0.01,
+   "held": "its 30000 bottles are too many for a cost per bottle to six places to add back to the invoice's 30000.01 to the cent. The lot stays provisional."
+  },
+  {
+   "q": 5000,
+   "price": 0.37,
+   "freight": 7.77,
+   "cost": 0.371554,
+   "held": null
+  },
+  {
+   "q": 1200,
+   "price": 2.19,
+   "freight": 13.13,
+   "cost": 2.200942,
+   "held": null
+  },
+  {
+   "q": 100000,
+   "price": 0.05,
+   "freight": 0.03,
+   "held": "its 100000 bottles are too many for a cost per bottle to six places to add back to the invoice's 5000.03 to the cent. The lot stays provisional."
+  },
+  {
+   "q": 24,
+   "price": 11.99,
+   "freight": 9.99,
+   "cost": 12.40625,
+   "held": null
+  },
+  {
+   "q": 60,
+   "price": 8.33,
+   "freight": 17.17,
+   "cost": 8.616167,
+   "held": null
+  },
+  {
+   "q": 999,
+   "price": 3.33,
+   "freight": 1.01,
+   "cost": 3.331011,
+   "held": null
+  }
+ ],
+ "randomHoldRate": {
+  "total": 5000,
+  "holds": 0
+ }
+}

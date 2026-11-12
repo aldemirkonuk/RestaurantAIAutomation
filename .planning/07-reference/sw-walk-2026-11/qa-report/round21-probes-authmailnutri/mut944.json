@@ -1,0 +1,10 @@
+{"cwd":"apps/web","cmd":"npx vitest run src/contexts/AuthContext.signInDevice >/dev/null 2>&1",
+"mutants":[
+{"id":"w1 token never sent","file":"apps/web/src/contexts/AuthContext.tsx","old":"...(signInDevice ? { signInDevice } : {}),","new":""},
+{"id":"w2 token never remembered","file":"apps/web/src/contexts/AuthContext.tsx","old":"rememberSignInDevice(email, response.data.signInDevice);","new":""},
+{"id":"w3 sent for any email","file":"apps/web/src/lib/houseMemory.ts","old":"return readSignInDevices()[foldEmail(email)] ?? null;","new":"return Object.values(readSignInDevices())[0] ?? null;"},
+{"id":"w4 no fold","file":"apps/web/src/lib/houseMemory.ts","old":"    .normalize(\"NFKC\")\n    .replace(/[\\u200B-\\u200D\\u2060\\uFEFF]/g, \"\")\n    .trim()\n    .toLowerCase();","new":"    .toLowerCase();"},
+{"id":"w5 keep 5 -> keep all","file":"apps/web/src/lib/houseMemory.ts","old":"const SIGN_IN_DEVICES_KEPT = 5;","new":"const SIGN_IN_DEVICES_KEPT = 500;"},
+{"id":"w6 clear on logout","file":"apps/web/src/contexts/AuthContext.tsx","old":"    await endSession();\n    if (who) {","new":"    localStorage.removeItem('mudavym.signInDevices');\n    await endSession();\n    if (who) {"},
+{"id":"w7 no try/catch on write (throw)","file":"apps/web/src/lib/houseMemory.ts","old":"    /* the next login just sends none and shares the untrusted bucket */","new":"    throw new Error('x');"}
+]}

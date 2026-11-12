@@ -1,0 +1,11 @@
+{
+ "list": 2500,
+ "invSummary": "{\"totalItems\":2500,\"totalBottles\":2500,\"lowStockCount\":2500,\"criticalCount\":2500,\"atParCount\":0,\"unknownCount\":0,\"healthyCount\":0,\"toastMappedCount\":0,\"toastUnm",
+ "card": "{\"totalItems\":2500,\"totalBottles\":2500,\"lowStockCount\":2500,\"criticalCount\":2500,\"healthyCount\":0}",
+ "chip": 2500,
+ "mcpLow": 2500,
+ "mcpList": 2500,
+ "dashAlerts": 1000,
+ "dashStats": "{\"totalWines\":1000,\"totalBottles\":1000,\"totalVolumeMl\":750000,\"totalVolumeOz\":25360.5,\"lowStockItems\":1000,\"pendingOrders\":0,\"todayProcurementSpend\":0,\"weekProc",
+ "inbox": 2500
+}

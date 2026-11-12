@@ -28,6 +28,7 @@ plan of record — that is `PROJECT.md` → `STATE.md` → `ROADMAP.md`.
 | [INVENTORY_ADD_REMOVE_SCENARIOS.md](INVENTORY_ADD_REMOVE_SCENARIOS.md) | Add/remove flow scenarios | Shipped |
 | [INBOUND_EMAIL_INTELLIGENCE_PLAN.md](INBOUND_EMAIL_INTELLIGENCE_PLAN.md) | Inbound email triage/classification plan | Phase 0 shipped; rest dormant |
 | [INVOICE_DOC_UX_RESEARCH.md](INVOICE_DOC_UX_RESEARCH.md) | Invoice/document UX research | Research record |
+| [sw-walk-2026-11/](sw-walk-2026-11/README.md) | Small-software walk notes 2026-11-07→12: QUEUE log, per-lane audits/proposals/build + browser reports | Working notes (stopped 2026-11-12) |
 | [MENU_EXTRACTION_SCALE_PLAN.md](MENU_EXTRACTION_SCALE_PLAN.md) | Menu-extraction scaling plan | Plan |
 | [PRODUCER_REPUTATION_PLAN.md](PRODUCER_REPUTATION_PLAN.md) | Producer reputation pipeline; raw data in `datasets/planning-exports/` | Plan |
 | [CONVERSATION_THREADING_PLAN.md](CONVERSATION_THREADING_PLAN.md) | Vendor-conversation threading | Shipped |

@@ -1,0 +1,42 @@
+[
+ {
+  "l": "quotes x50000",
+  "ms": 3,
+  "r": null
+ },
+ {
+  "l": "open parens x50000",
+  "ms": 3,
+  "r": null
+ },
+ {
+  "l": "nested balanced x20000",
+  "ms": 2,
+  "r": null
+ },
+ {
+  "l": "angles x50000",
+  "ms": 4,
+  "r": null
+ },
+ {
+  "l": "long local 200k",
+  "ms": 20,
+  "r": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+ },
+ {
+  "l": "commas x50000",
+  "ms": 31,
+  "r": null
+ },
+ {
+  "l": "backslashes x100000",
+  "ms": 6,
+  "r": "a@b.com"
+ },
+ {
+  "l": "encoded words x5000",
+  "ms": 7,
+  "r": "a@b.com"
+ }
+]

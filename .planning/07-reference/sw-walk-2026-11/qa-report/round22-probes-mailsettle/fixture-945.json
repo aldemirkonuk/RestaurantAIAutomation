@@ -1,0 +1,335 @@
+{
+ "restaurant": "00000000-0000-4000-8000-000000000001",
+ "inv": [
+  {
+   "id": "00000000-0000-4000-8000-000000000003",
+   "wine_name": "agreed_only",
+   "stock_live": 6,
+   "menu_price_current": "60.00",
+   "last_purchase_price": null,
+   "threshold_min": 5,
+   "master_wine_id": "00000000-0000-4000-8000-000000000002",
+   "name": "agreed_only"
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000034",
+   "wine_name": "agreed_plus_provisional",
+   "stock_live": 6,
+   "menu_price_current": "60.00",
+   "last_purchase_price": null,
+   "threshold_min": 5,
+   "master_wine_id": "00000000-0000-4000-8000-000000000033",
+   "name": "agreed_plus_provisional"
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000031",
+   "wine_name": "depleted_agreed",
+   "stock_live": 0,
+   "menu_price_current": "60.00",
+   "last_purchase_price": null,
+   "threshold_min": 5,
+   "master_wine_id": "00000000-0000-4000-8000-000000000030",
+   "name": "depleted_agreed"
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000006",
+   "wine_name": "invoice_only",
+   "stock_live": 6,
+   "menu_price_current": "60.00",
+   "last_purchase_price": null,
+   "threshold_min": 5,
+   "master_wine_id": "00000000-0000-4000-8000-000000000005",
+   "name": "invoice_only"
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000019",
+   "wine_name": "last_price_only",
+   "stock_live": 3,
+   "menu_price_current": "60.00",
+   "last_purchase_price": "9.50",
+   "threshold_min": 5,
+   "master_wine_id": "00000000-0000-4000-8000-000000000018",
+   "name": "last_price_only"
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000009",
+   "wine_name": "mixed_inv2_manual4",
+   "stock_live": 6,
+   "menu_price_current": "60.00",
+   "last_purchase_price": null,
+   "threshold_min": 5,
+   "master_wine_id": "00000000-0000-4000-8000-000000000008",
+   "name": "mixed_inv2_manual4"
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000013",
+   "wine_name": "provisional_only",
+   "stock_live": 6,
+   "menu_price_current": "60.00",
+   "last_purchase_price": null,
+   "threshold_min": 5,
+   "master_wine_id": "00000000-0000-4000-8000-000000000012",
+   "name": "provisional_only"
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000028",
+   "wine_name": "reverified_13",
+   "stock_live": 4,
+   "menu_price_current": "60.00",
+   "last_purchase_price": null,
+   "threshold_min": 5,
+   "master_wine_id": "00000000-0000-4000-8000-000000000027",
+   "name": "reverified_13"
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000016",
+   "wine_name": "sample_only",
+   "stock_live": 3,
+   "menu_price_current": "60.00",
+   "last_purchase_price": null,
+   "threshold_min": 5,
+   "master_wine_id": "00000000-0000-4000-8000-000000000015",
+   "name": "sample_only"
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000025",
+   "wine_name": "verified_manual_then_sold",
+   "stock_live": 4,
+   "menu_price_current": "60.00",
+   "last_purchase_price": null,
+   "threshold_min": 5,
+   "master_wine_id": "00000000-0000-4000-8000-000000000024",
+   "name": "verified_manual_then_sold"
+  },
+  {
+   "id": "00000000-0000-4000-8000-000000000022",
+   "wine_name": "verified_then_sold",
+   "stock_live": 4,
+   "menu_price_current": "60.00",
+   "last_purchase_price": null,
+   "threshold_min": 5,
+   "master_wine_id": "00000000-0000-4000-8000-000000000021",
+   "name": "verified_then_sold"
+  }
+ ],
+ "rollup": [
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000003",
+   "live_qty": 6,
+   "wac": "12.120000",
+   "has_invoice_cost": false,
+   "wac_qty": 6
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000006",
+   "live_qty": 6,
+   "wac": "10.000000",
+   "has_invoice_cost": true,
+   "wac_qty": 6
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000009",
+   "live_qty": 6,
+   "wac": "12.000000",
+   "has_invoice_cost": true,
+   "wac_qty": 6
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000013",
+   "live_qty": 6,
+   "wac": null,
+   "has_invoice_cost": false,
+   "wac_qty": 0
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000016",
+   "live_qty": 3,
+   "wac": null,
+   "has_invoice_cost": false,
+   "wac_qty": 0
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000019",
+   "live_qty": 3,
+   "wac": null,
+   "has_invoice_cost": false,
+   "wac_qty": 0
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000022",
+   "live_qty": 4,
+   "wac": "12.000000",
+   "has_invoice_cost": true,
+   "wac_qty": 4
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000025",
+   "live_qty": 4,
+   "wac": "12.500000",
+   "has_invoice_cost": false,
+   "wac_qty": 4
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000028",
+   "live_qty": 4,
+   "wac": "13.000000",
+   "has_invoice_cost": true,
+   "wac_qty": 4
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000034",
+   "live_qty": 6,
+   "wac": "14.000000",
+   "has_invoice_cost": false,
+   "wac_qty": 3
+  }
+ ],
+ "agreed": [
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000022",
+   "has_agreed_cost": true,
+   "agreed_wac": "12.000000",
+   "agreed_qty": 4
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000025",
+   "has_agreed_cost": true,
+   "agreed_wac": "12.500000",
+   "agreed_qty": 4
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000028",
+   "has_agreed_cost": true,
+   "agreed_wac": "13.000000",
+   "agreed_qty": 4
+  }
+ ],
+ "lots": [
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000003",
+   "qty": 6,
+   "unit_cost": "12.12",
+   "cost_state": "provisional",
+   "cost_provenance": "manual"
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000006",
+   "qty": 6,
+   "unit_cost": "10.00",
+   "cost_state": "provisional",
+   "cost_provenance": "invoice"
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000009",
+   "qty": 2,
+   "unit_cost": "10.00",
+   "cost_state": "provisional",
+   "cost_provenance": "invoice"
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000009",
+   "qty": 4,
+   "unit_cost": "13.00",
+   "cost_state": "provisional",
+   "cost_provenance": "manual"
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000013",
+   "qty": 6,
+   "unit_cost": null,
+   "cost_state": "provisional",
+   "cost_provenance": "estimated"
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000016",
+   "qty": 3,
+   "unit_cost": "0.00",
+   "cost_state": "provisional",
+   "cost_provenance": "sample"
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000019",
+   "qty": 3,
+   "unit_cost": null,
+   "cost_state": "provisional",
+   "cost_provenance": "estimated"
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000022",
+   "qty": 4,
+   "unit_cost": "12.00",
+   "cost_state": "final",
+   "cost_provenance": "invoice"
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000025",
+   "qty": 4,
+   "unit_cost": "12.50",
+   "cost_state": "final",
+   "cost_provenance": "manual"
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000028",
+   "qty": 4,
+   "unit_cost": "13.00",
+   "cost_state": "final",
+   "cost_provenance": "invoice"
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000031",
+   "qty": 0,
+   "unit_cost": "11.00",
+   "cost_state": "provisional",
+   "cost_provenance": "manual"
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000034",
+   "qty": 3,
+   "unit_cost": "14.00",
+   "cost_state": "provisional",
+   "cost_provenance": "manual"
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000034",
+   "qty": 3,
+   "unit_cost": null,
+   "cost_state": "provisional",
+   "cost_provenance": "estimated"
+  }
+ ],
+ "settledSales": [
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000025",
+   "settled_cost_total": "25.000000",
+   "quantity_change": -2
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000028",
+   "settled_cost_total": "26.000000",
+   "quantity_change": -2
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000022",
+   "settled_cost_total": "24.000000",
+   "quantity_change": -2
+  },
+  {
+   "inventory_id": "00000000-0000-4000-8000-000000000031",
+   "settled_cost_total": "22.000000",
+   "quantity_change": -2
+  }
+ ],
+ "nameOf": {
+  "00000000-0000-4000-8000-000000000003": "agreed_only",
+  "00000000-0000-4000-8000-000000000006": "invoice_only",
+  "00000000-0000-4000-8000-000000000009": "mixed_inv2_manual4",
+  "00000000-0000-4000-8000-000000000013": "provisional_only",
+  "00000000-0000-4000-8000-000000000016": "sample_only",
+  "00000000-0000-4000-8000-000000000019": "last_price_only",
+  "00000000-0000-4000-8000-000000000022": "verified_then_sold",
+  "00000000-0000-4000-8000-000000000025": "verified_manual_then_sold",
+  "00000000-0000-4000-8000-000000000028": "reverified_13",
+  "00000000-0000-4000-8000-000000000031": "depleted_agreed",
+  "00000000-0000-4000-8000-000000000034": "agreed_plus_provisional"
+ }
+}

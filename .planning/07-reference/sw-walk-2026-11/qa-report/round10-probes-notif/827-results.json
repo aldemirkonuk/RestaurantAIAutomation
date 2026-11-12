@@ -1,0 +1,35 @@
+{
+ "both_fail": {
+  "rollupReadable": false,
+  "locationsReadable": false
+ },
+ "rollup_throws": {
+  "locations": [],
+  "rollupReadable": false,
+  "locationsReadable": true
+ },
+ "rollup_ok": {
+  "openMl": 0,
+  "wac": 12.5,
+  "lotLiveQty": 3,
+  "costProvenance": "invoice",
+  "locations": [],
+  "rollupReadable": true,
+  "locationsReadable": true
+ },
+ "rollup_fail_wac_flagged": {
+  "hasFlagForCost": [
+   "rollupReadable",
+   "locationsReadable",
+   "analyticsReadable"
+  ]
+ },
+ "truncation_row_1199": {
+  "openMl": 0,
+  "rollupReadable": true
+ },
+ "single_item_mapper_rollup_fail": {
+  "locations": [],
+  "rollupReadable": false
+ }
+}

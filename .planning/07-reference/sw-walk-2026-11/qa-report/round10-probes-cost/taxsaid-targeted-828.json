@@ -1,0 +1,488 @@
+{
+ "rate null, basis null, costed [reclaims]": {
+  "said": "1 line is costed as printed, and what its cost holds is not stated, since the paper does not say enough about the tax in its price.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": null,
+    "st": null
+   }
+  ]
+ },
+ "rate null, unresolved by big discount [reclaims]": {
+  "said": "Nothing on this paper carries tax.",
+  "lines": [
+   {
+    "st": "unresolved",
+    "why": "This paper's discount of 500.00 is more than its stock and charges, so no line's"
+   }
+  ]
+ },
+ "rate 0 unresolved by big discount [reclaims]": {
+  "said": "Nothing on this paper carries tax.",
+  "lines": [
+   {
+    "st": "unresolved",
+    "why": "This paper's discount of 500.00 is more than its stock and charges, so no line's"
+   }
+  ]
+ },
+ "rate 18 incl, no charges [reclaims]": {
+  "said": "Tax of 18.31 printed inside the prices is taken out of cost, since the house reclaims it.",
+  "lines": [
+   {
+    "cost": 101.69491525423729,
+    "landed": 101.69491525423729,
+    "out": 18.305084745762713,
+    "inc": 0,
+    "st": "net"
+   }
+  ]
+ },
+ "rate 18 excl, no charges [reclaims]": {
+  "said": "Cost is before tax, since the house reclaims it.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": 0,
+    "st": "net"
+   }
+  ]
+ },
+ "rate 18 incl + freight 10 [reclaims]": {
+  "said": "Tax of 18.31 printed inside the prices is taken out of cost, since the house reclaims it. 1 line carries a share of the paper's charges or discount whose tax is not known, so what its cost holds is not stated.",
+  "lines": [
+   {
+    "cost": 101.69491525423729,
+    "landed": 111.69491525423729,
+    "out": 18.305084745762713,
+    "inc": 0,
+    "st": null
+   }
+  ]
+ },
+ "two lines: A incl18, B rate null [reclaims]": {
+  "said": "Tax of 18.31 printed inside the prices is taken out of cost, since the house reclaims it. 1 line is costed as printed, and what its cost holds is not stated, since the paper does not say enough about the tax in its price.",
+  "lines": [
+   {
+    "cost": 101.69491525423729,
+    "landed": 101.69491525423729,
+    "out": 18.305084745762713,
+    "inc": 0,
+    "st": "net"
+   },
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": null,
+    "st": null
+   }
+  ]
+ },
+ "two lines: A incl18 costed, B unresolved(neg price) [reclaims]": {
+  "said": "Tax of 18.31 printed inside the prices is taken out of cost, since the house reclaims it. 1 line could not be costed, so the tax on it is not treated.",
+  "lines": [
+   {
+    "cost": 101.69491525423729,
+    "landed": 101.69491525423729,
+    "out": 18.305084745762713,
+    "inc": 0,
+    "st": "net"
+   },
+   {
+    "st": "unresolved",
+    "why": "Line 2 prints a figure that is negative or not a number, so it cannot be read as"
+   }
+  ]
+ },
+ "credit note (all negative) [reclaims]": {
+  "said": "The paper's tax could not be treated, since none of its lines could be costed.",
+  "lines": [
+   {
+    "st": "unresolved",
+    "why": "Line 1 prints a figure that is negative or not a number, so it cannot be read as"
+   }
+  ]
+ },
+ "header tax 18 printed, line not stock [reclaims]": {
+  "said": "The paper prints tax of 18.00, but none of its costed lines carries it, so it is not treated.",
+  "lines": [
+   {
+    "st": "not_stocked",
+    "why": ""
+   }
+  ]
+ },
+ "kdv incl 20 + discount 12 incl [reclaims]": {
+  "said": "Tax of 20.00 printed inside the prices is taken out of cost, since the house reclaims it. 1 line carries a share of the paper's charges or discount whose tax is not known, so what its cost holds is not stated.",
+  "lines": [
+   {
+    "cost": 100,
+    "landed": 88,
+    "out": 20,
+    "inc": 0,
+    "st": null
+   }
+  ]
+ },
+ "line carries allowance 10, rate 18 excl [reclaims]": {
+  "said": "Cost is before tax, since the house reclaims it.",
+  "lines": [
+   {
+    "cost": 110,
+    "landed": 110,
+    "out": 0,
+    "inc": 0,
+    "st": "net"
+   }
+  ]
+ },
+ "mixed rates 8 & 18 incl, freight 10 [reclaims]": {
+  "said": "Tax of 27.19 printed inside the prices is taken out of cost, since the house reclaims it. 2 lines carry a share of the paper's charges or discount whose tax is not known, so what their cost holds is not stated.",
+  "lines": [
+   {
+    "cost": 111.1111111111111,
+    "landed": 116.3323500491642,
+    "out": 8.8888888888889,
+    "inc": 0,
+    "st": null
+   },
+   {
+    "cost": 101.69491525423729,
+    "landed": 106.4736763161842,
+    "out": 18.305084745762713,
+    "inc": 0,
+    "st": null
+   }
+  ]
+ },
+ "rate null, basis null, costed [keeps]": {
+  "said": "1 line is costed as printed, and what its cost holds is not stated, since the paper does not say enough about the tax in its price.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": null,
+    "st": null
+   }
+  ]
+ },
+ "rate null, unresolved by big discount [keeps]": {
+  "said": "Nothing on this paper carries tax.",
+  "lines": [
+   {
+    "st": "unresolved",
+    "why": "This paper's discount of 500.00 is more than its stock and charges, so no line's"
+   }
+  ]
+ },
+ "rate 0 unresolved by big discount [keeps]": {
+  "said": "Nothing on this paper carries tax.",
+  "lines": [
+   {
+    "st": "unresolved",
+    "why": "This paper's discount of 500.00 is more than its stock and charges, so no line's"
+   }
+  ]
+ },
+ "rate 18 incl, no charges [keeps]": {
+  "said": "Tax of 18.31 is in cost, since the house does not reclaim it.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": 18.305084745762713,
+    "st": "gross_cost"
+   }
+  ]
+ },
+ "rate 18 excl, no charges [keeps]": {
+  "said": "Tax of 21.60 is in cost, since the house does not reclaim it.",
+  "lines": [
+   {
+    "cost": 141.6,
+    "landed": 141.6,
+    "out": 0,
+    "inc": 21.599999999999994,
+    "st": "gross_cost"
+   }
+  ]
+ },
+ "rate 18 incl + freight 10 [keeps]": {
+  "said": "Tax of 18.31 is in cost, since the house does not reclaim it. 1 line carries a share of the paper's charges or discount whose tax is not known, so what its cost holds is not stated.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 130,
+    "out": 0,
+    "inc": 18.305084745762713,
+    "st": null
+   }
+  ]
+ },
+ "two lines: A incl18, B rate null [keeps]": {
+  "said": "Tax of 18.31 is in cost, since the house does not reclaim it. 1 line is costed as printed, and what its cost holds is not stated, since the paper does not say enough about the tax in its price.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": 18.305084745762713,
+    "st": "gross_cost"
+   },
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": null,
+    "st": null
+   }
+  ]
+ },
+ "two lines: A incl18 costed, B unresolved(neg price) [keeps]": {
+  "said": "Tax of 18.31 is in cost, since the house does not reclaim it. 1 line could not be costed, so the tax on it is not treated.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": 18.305084745762713,
+    "st": "gross_cost"
+   },
+   {
+    "st": "unresolved",
+    "why": "Line 2 prints a figure that is negative or not a number, so it cannot be read as"
+   }
+  ]
+ },
+ "credit note (all negative) [keeps]": {
+  "said": "The paper's tax could not be treated, since none of its lines could be costed.",
+  "lines": [
+   {
+    "st": "unresolved",
+    "why": "Line 1 prints a figure that is negative or not a number, so it cannot be read as"
+   }
+  ]
+ },
+ "header tax 18 printed, line not stock [keeps]": {
+  "said": "The paper prints tax of 18.00, but none of its costed lines carries it, so it is not treated.",
+  "lines": [
+   {
+    "st": "not_stocked",
+    "why": ""
+   }
+  ]
+ },
+ "kdv incl 20 + discount 12 incl [keeps]": {
+  "said": "Tax of 20.00 is in cost, since the house does not reclaim it. 1 line carries a share of the paper's charges or discount whose tax is not known, so what its cost holds is not stated.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 108,
+    "out": 0,
+    "inc": 20,
+    "st": null
+   }
+  ]
+ },
+ "line carries allowance 10, rate 18 excl [keeps]": {
+  "said": "Tax of 19.80 is in cost, since the house does not reclaim it.",
+  "lines": [
+   {
+    "cost": 129.79999999999998,
+    "landed": 129.79999999999998,
+    "out": 0,
+    "inc": 19.799999999999983,
+    "st": "gross_cost"
+   }
+  ]
+ },
+ "mixed rates 8 & 18 incl, freight 10 [keeps]": {
+  "said": "Tax of 27.19 is in cost, since the house does not reclaim it. 2 lines carry a share of the paper's charges or discount whose tax is not known, so what their cost holds is not stated.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 125,
+    "out": 0,
+    "inc": 8.8888888888889,
+    "st": null
+   },
+   {
+    "cost": 120,
+    "landed": 125,
+    "out": 0,
+    "inc": 18.305084745762713,
+    "st": null
+   }
+  ]
+ },
+ "rate null, basis null, costed [unset]": {
+  "said": "1 line is costed as printed, and what its cost holds is not stated, since the house has not set its tax basis.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": null,
+    "st": null
+   }
+  ]
+ },
+ "rate null, unresolved by big discount [unset]": {
+  "said": "Nothing on this paper carries tax.",
+  "lines": [
+   {
+    "st": "unresolved",
+    "why": "This paper's discount of 500.00 is more than its stock and charges, so no line's"
+   }
+  ]
+ },
+ "rate 0 unresolved by big discount [unset]": {
+  "said": "Nothing on this paper carries tax.",
+  "lines": [
+   {
+    "st": "unresolved",
+    "why": "This paper's discount of 500.00 is more than its stock and charges, so no line's"
+   }
+  ]
+ },
+ "rate 18 incl, no charges [unset]": {
+  "said": "1 line is costed as printed, and what its cost holds is not stated, since the house has not set its tax basis.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": 18.305084745762713,
+    "st": null
+   }
+  ]
+ },
+ "rate 18 excl, no charges [unset]": {
+  "said": "1 line is costed as printed, and what its cost holds is not stated, since the house has not set its tax basis.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": 0,
+    "st": null
+   }
+  ]
+ },
+ "rate 18 incl + freight 10 [unset]": {
+  "said": "1 line is costed as printed, and what its cost holds is not stated, since the house has not set its tax basis.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 130,
+    "out": 0,
+    "inc": 18.305084745762713,
+    "st": null
+   }
+  ]
+ },
+ "two lines: A incl18, B rate null [unset]": {
+  "said": "2 lines are costed as printed, and what their cost holds is not stated, since the house has not set its tax basis.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": 18.305084745762713,
+    "st": null
+   },
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": null,
+    "st": null
+   }
+  ]
+ },
+ "two lines: A incl18 costed, B unresolved(neg price) [unset]": {
+  "said": "1 line is costed as printed, and what its cost holds is not stated, since the house has not set its tax basis. 1 line could not be costed, so the tax on it is not treated.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 120,
+    "out": 0,
+    "inc": 18.305084745762713,
+    "st": null
+   },
+   {
+    "st": "unresolved",
+    "why": "Line 2 prints a figure that is negative or not a number, so it cannot be read as"
+   }
+  ]
+ },
+ "credit note (all negative) [unset]": {
+  "said": "The paper's tax could not be treated, since none of its lines could be costed.",
+  "lines": [
+   {
+    "st": "unresolved",
+    "why": "Line 1 prints a figure that is negative or not a number, so it cannot be read as"
+   }
+  ]
+ },
+ "header tax 18 printed, line not stock [unset]": {
+  "said": "The paper prints tax of 18.00, but none of its costed lines carries it, so it is not treated.",
+  "lines": [
+   {
+    "st": "not_stocked",
+    "why": ""
+   }
+  ]
+ },
+ "kdv incl 20 + discount 12 incl [unset]": {
+  "said": "1 line is costed as printed, and what its cost holds is not stated, since the house has not set its tax basis.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 108,
+    "out": 0,
+    "inc": 20,
+    "st": null
+   }
+  ]
+ },
+ "line carries allowance 10, rate 18 excl [unset]": {
+  "said": "1 line is costed as printed, and what its cost holds is not stated, since the house has not set its tax basis.",
+  "lines": [
+   {
+    "cost": 110,
+    "landed": 110,
+    "out": 0,
+    "inc": 0,
+    "st": null
+   }
+  ]
+ },
+ "mixed rates 8 & 18 incl, freight 10 [unset]": {
+  "said": "2 lines are costed as printed, and what their cost holds is not stated, since the house has not set its tax basis.",
+  "lines": [
+   {
+    "cost": 120,
+    "landed": 125,
+    "out": 0,
+    "inc": 8.8888888888889,
+    "st": null
+   },
+   {
+    "cost": 120,
+    "landed": 125,
+    "out": 0,
+    "inc": 18.305084745762713,
+    "st": null
+   }
+  ]
+ }
+}

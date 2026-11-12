@@ -1,0 +1,16 @@
+{
+ "failedMid": {
+  "fired": 0,
+  "writes": 0,
+  "levelsOk": 0
+ },
+ "healthy": {
+  "fired": 1,
+  "writes": 2500,
+  "levelsOk": 0,
+  "pages": 3
+ },
+ "warns": [
+  "v_low_stock_items could not be read: v_low_stock_items could not be read whole: the database refused one of its pages (page 2: XX000 injected failure on v_low_stock_items request 2). Nothing is reported from part of it. — alert states kept, nothing sent"
+ ]
+}

@@ -1,0 +1,54 @@
+{
+ "E1": {
+  "first": {
+   "alreadyVerified": false,
+   "note": "the delivery is VERIFIED but its cost could not be posted for item ffffffff-ffff-ffff-ffff-ffffffffffff: connection reset. The stock is correct and the lot stays provisional; verifying the delivery again posts the cost of every item still provisional, once."
+  },
+  "re1": {
+   "note": "This delivery was already verified; a cost already posted is not posted twice. Cost posted now for 1 item(s) whose cost had not posted at the first verify.",
+   "rpc": [
+    [
+     "ffff",
+     42
+    ]
+   ]
+  },
+  "re2": {
+   "note": "This delivery was already verified; a cost already posted is not posted twice.",
+   "rpc": 0
+  },
+  "lots": [
+   [
+    "eeee",
+    "final",
+    63
+   ],
+   [
+    "ffff",
+    "final",
+    42
+   ]
+  ]
+ },
+ "E2": {
+  "first": "No cost was posted: 2 item(s) stay provisional. Its invoice is in EUR and this house keeps its costs in USD; no exchange rate is recorded, so a cost in EUR is not booked as USD. The lot stays provisional. On the invoice: Nothing on it was costed: its invoice is in EUR and this house keeps its costs in USD; no exchange rate is recorded, so a cost in EUR is not booked as USD. ",
+  "reverify": "This delivery was already verified; a cost already posted is not posted twice."
+ },
+ "E3": {
+  "a": "This delivery was already verified; a cost already posted is not posted twice. Cost posted now for 1 item(s) whose cost had not posted at the first verify.",
+  "b": "This delivery was already verified; a cost already posted is not posted twice. Cost posted now for 1 item(s) whose cost had not posted at the first verify.",
+  "rpc": 2,
+  "lots": [
+   [
+    "eeee",
+    "final",
+    63
+   ],
+   [
+    "ffff",
+    "final",
+    42
+   ]
+  ]
+ }
+}
