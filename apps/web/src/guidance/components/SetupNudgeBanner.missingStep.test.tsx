@@ -75,6 +75,14 @@ describe('SetupNudgeBanner says the step that is missing', () => {
     expect(navigate).toHaveBeenCalledWith('/get-started')
   })
 
+  it('a manager with no menu reads it on /menu', () => {
+    role = 'manager'
+    progress = { ...base }
+    renderBanner()
+    fireEvent.click(screen.getByRole('button', { name: 'Read your menu' }))
+    expect(navigate).toHaveBeenCalledWith('/menu')
+  })
+
   it('never names a wine list or a threshold', () => {
     for (const p of [{ ...base }, { ...base, menu_uploaded: true }]) {
       progress = p

@@ -62,7 +62,9 @@ export function SetupNudgeBanner() {
         title: 'Finish setting up Mudavym.',
         body: 'Read your menu and make it the current one: stock and prices come from it.',
         primary: 'Read your menu',
-        to: '/get-started',
+        // /get-started opens an owner's first house; a manager never opens
+        // one, so a manager reads the menu on /menu (as #848 has it).
+        to: user?.role === 'manager' ? '/menu' : '/get-started',
       }
 
   return (
