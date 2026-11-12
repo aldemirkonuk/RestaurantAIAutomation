@@ -140,7 +140,14 @@ export function makeMockDb(): MockDb {
     (chain as { then: unknown }).then = (
       resolve: (v: unknown) => unknown,
     ): unknown => {
-      const a = answer();
+      // R8: the items' units are a LIST read of restaurant_inventory, beside
+      // the single-row research read. They answer apart, from
+      // `answers["restaurant_inventory[]"]`, and default to no rows (every
+      // fixture item then books as a container, as before).
+      const a =
+        table === "restaurant_inventory" && verb === "read"
+          ? (state.answers["restaurant_inventory[]"] ?? { data: [], error: null })
+          : answer();
       return Promise.resolve({
         data: a.error ? null : (a.data ?? null),
         error: a.error,

@@ -2,6 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
+import { isMass, massFactor } from "../documents/document-types";
 import { LotUnitCost, perBottleLotCost, proposalPerBottle, toCentsAsBooked } from "./lot-unit-cost";
 import {
   LandedBlock,
@@ -147,6 +148,81 @@ interface LineRow {
   allowance?: number | string | null;
   deposit?: number | string | null;
   printed?: unknown;
+  /** The house item's own unit (`restaurant_inventory.uom`), attached after the read (R8). */
+  item_uom?: string | null;
+}
+
+/** The weights a house item may be kept in (`restaurant_inventory_uom_check`, ADR 0070). */
+const ITEM_MASS: ReadonlySet<string> = new Set(["kg", "g", "mg"]);
+
+/**
+ * A line unit that is only a count, never a container of known size: unstated,
+ * `bottle` (`procurement_document_lines.uom` defaults to it, so a line that
+ * never said its unit reads `bottle`) and `each`. Into an item kept by weight it
+ * is read as that many of the item's unit.
+ */
+const PLAIN_COUNT: ReadonlySet<string> = new Set(["", "bottle", "each"]);
+
+/**
+ * What a door-count line puts on the shelf, in the unit the ITEM is kept in
+ * (R8). A container line into a container item is its `qty_bottles`, as
+ * before. A weighed line converts into the item's weight (`3 kg` into a cheese
+ * kept in `g` is 3000); it is refused by name when the item is not kept by
+ * weight, when an item kept by weight is counted in containers, and when the
+ * weight is not a whole number of the item's unit (ADR 0070: integer
+ * quantities; `2.5 kg` into an item kept in `kg` is not booked as 2 or 3).
+ *
+ * A plain count into an item kept by weight (a line whose unit is unstated,
+ * `bottle` — the column's default — or `each`) is the count in the item's own
+ * unit, as it was before R8: the door has no kg or g picker, so a line typed
+ * there never states a weight, and refusing it left weight-kept items with no
+ * way to be booked (mail-receipts fix round, 2026-11-12, finding on #1109).
+ * Only a container that is not a count (case, pack, split case, keg, liter)
+ * is refused into such an item: its weight is not known.
+ */
+export function shelfQuantity(
+  line: { qty_bottles: unknown; uom?: string | null },
+  itemUom: string | null | undefined,
+): { ok: true; qty: number } | { ok: false; reason: string } {
+  const n = Number(line.qty_bottles ?? 0);
+  if (!Number.isFinite(n) || n < 0)
+    return { ok: false, reason: `the counted quantity reads ${String(line.qty_bottles)}, which is not a number` };
+  const weighed = isMass(line.uom);
+  const keptByWeight = itemUom != null && ITEM_MASS.has(itemUom);
+  if (!weighed && !keptByWeight) return { ok: true, qty: Math.round(n) };
+  if (weighed && !itemUom)
+    return { ok: false, reason: `this line is weighed in ${line.uom}, and the item it names states no unit, so how much of it this is cannot be put on the shelf` };
+  if (weighed && !keptByWeight)
+    return { ok: false, reason: `this line is weighed in ${line.uom}, but the item it names is kept in ${itemUom}s, and a weight is not a number of ${itemUom}s. It is NOT booked; keep the item by weight, or link the line to one that is.` };
+  if (!weighed && PLAIN_COUNT.has(line.uom ?? "")) return { ok: true, qty: Math.round(n) };
+  if (!weighed)
+    return { ok: false, reason: `the item this line names is kept in ${itemUom}, but the line counts ${String(line.uom).replace("_", " ")}s, and what one weighs is not known. It is NOT booked; state the line's weight, or count it in ${itemUom}.` };
+  const f = massFactor(String(line.uom), String(itemUom));
+  if (f == null)
+    return { ok: false, reason: `${line.uom} does not convert into ${itemUom}` };
+  const exact = n * f;
+  const whole = Math.round(exact);
+  if (Math.abs(exact - whole) > 1e-9)
+    return { ok: false, reason: `${n} ${line.uom} is ${exact} ${itemUom}, not a whole number of ${itemUom}, the unit the item is kept in. It is NOT rounded; keep the item in a finer unit (g), or count the line in one.` };
+  return { ok: true, qty: whole };
+}
+
+/**
+ * A weighed line as the landed rule reads it (R8): its listed and free counts
+ * in the ITEM's unit, so they meet the door's booking (also in that unit) and
+ * the gatekeeper's price per one of it. `3 kg` into a cheese kept in `g` lists
+ * 3000. Any other line is returned as it is.
+ */
+function inItemUnits(line: LineRow): LineRow {
+  if (!isMass(line.uom) || !line.item_uom) return line;
+  const f = massFactor(String(line.uom), line.item_uom);
+  if (f == null) return line;
+  const scale = (v: unknown) => (v == null || v === "" || !Number.isFinite(Number(v)) ? v : Number(v) * f);
+  return {
+    ...line,
+    qty_bottles: scale(line.qty_bottles) as LineRow["qty_bottles"],
+    ...("free_goods_qty" in line ? { free_goods_qty: scale((line as { free_goods_qty?: unknown }).free_goods_qty) } : {}),
+  } as LineRow;
 }
 
 const positiveOrZero = (v: unknown): number => {
@@ -170,7 +246,7 @@ const positiveOrZero = (v: unknown): number => {
  * uses at its own, tighter tolerance.
  */
 function perBottleOfLine(line: LineRow): LotUnitCost {
-  return perBottleLotCost(readableLine(line));
+  return perBottleLotCost(readableLine(line), { uom: line.item_uom });
 }
 
 /** The line with the reading of its printed total the gatekeeper accepts (as
@@ -179,7 +255,8 @@ function perBottleOfLine(line: LineRow): LotUnitCost {
 function readableLine(line: LineRow): LineRow {
   const paid = paidLine(line);
   const total = Number(line.line_total);
-  if (perBottleLotCost(paid).ok || line.line_total == null || !Number.isFinite(total))
+  const item = { uom: line.item_uom };
+  if (perBottleLotCost(paid, item).ok || line.line_total == null || !Number.isFinite(total))
     return paid;
   const allowance = positiveOrZero(line.allowance);
   const deposit = positiveOrZero(line.deposit);
@@ -190,7 +267,7 @@ function readableLine(line: LineRow): LineRow {
   for (const reading of readings) {
     if (!(reading > 0)) continue;
     const read = { ...paid, line_total: reading };
-    if (perBottleLotCost(read).ok) return read;
+    if (perBottleLotCost(read, item).ok) return read;
   }
   return paid;
 }
@@ -309,7 +386,7 @@ export class DeliveryStockService {
       .getClient()
       .from("procurement_document_lines")
       .select(
-        "document_id, line_no, inventory_id, qty_bottles, unit_price, description, vendor_sku",
+        "document_id, line_no, inventory_id, qty_bottles, unit_price, description, vendor_sku, uom",
       )
       .eq("restaurant_id", restaurantId)
       .eq("document_id", documentId);
@@ -338,6 +415,13 @@ export class DeliveryStockService {
     const already = await this.bookedSoFar(deliveryId);
     if (!already.ok) return already;
 
+    // R8: what each line puts on the shelf is in its ITEM's unit.
+    const units = await this.itemUnits(
+      restaurantId,
+      lines.map((l) => l.inventory_id ?? (lines.length === 1 ? delivery.value.orderInventoryId : null)),
+    );
+    if (!units.ok) return units;
+
     for (const line of lines) {
       const label = line.description ?? line.vendor_sku ?? `line ${line.line_no}`;
       if (line.line_no == null) {
@@ -364,16 +448,12 @@ export class DeliveryStockService {
         continue;
       }
 
-      const wanted = Math.round(Number(line.qty_bottles ?? 0));
-      if (!Number.isFinite(wanted) || wanted < 0) {
-        notBooked.push({
-          documentId,
-          lineNo: line.line_no,
-          label,
-          reason: `the counted quantity reads ${String(line.qty_bottles)}, which is not a number of bottles`,
-        });
+      const onShelf = shelfQuantity(line, units.value.get(inventoryId));
+      if (!onShelf.ok) {
+        notBooked.push({ documentId, lineNo: line.line_no, label, reason: onShelf.reason });
         continue;
       }
+      const wanted = onShelf.qty;
 
       const delta = wanted - (already.value.get(inventoryId) ?? 0);
       if (delta === 0) {
@@ -846,6 +926,34 @@ export class DeliveryStockService {
   }
 
   /** Bottles this delivery has already put on each shelf, by item. */
+  /**
+   * Each named item's own unit (`restaurant_inventory.uom`, ADR 0070), this
+   * house only. A failed read is never "no unit": it stops the caller (ADR 0067).
+   */
+  private async itemUnits(
+    restaurantId: string,
+    ids: Array<string | null | undefined>,
+  ): Promise<StockResult<Map<string, string | null>>> {
+    const wanted = [...new Set(ids.filter((x): x is string => !!x))];
+    const out = new Map<string, string | null>();
+    for (let i = 0; i < wanted.length; i += 100) {
+      const read = await this.db
+        .getClient()
+        .from("restaurant_inventory")
+        .select("id, uom")
+        .eq("restaurant_id", restaurantId)
+        .in("id", wanted.slice(i, i + 100));
+      if (read.error)
+        return {
+          ok: false,
+          status: 500,
+          error: `the units the items on this paper are kept in could not be read (${read.error.message}), so nothing was booked or costed. Retry is safe.`,
+        };
+      for (const r of (read.data ?? []) as Array<{ id: string; uom: string | null }>) out.set(r.id, r.uom);
+    }
+    return { ok: true, value: out };
+  }
+
   private async bookedSoFar(
     deliveryId: string,
   ): Promise<StockResult<Map<string, number>>> {
@@ -1051,7 +1159,12 @@ export class DeliveryStockService {
           status: 500,
           error: `the lines of the documents on delivery ${deliveryId} could not be read: ${read.error.message}`,
         };
-      for (const line of (read.data ?? []) as unknown as LineRow[]) {
+      const rows = (read.data ?? []) as unknown as LineRow[];
+      // R8: a weighed line is costed per one of its ITEM's unit.
+      const units = await this.itemUnits(restaurantId, rows.map((l) => l.inventory_id));
+      if (!units.ok) return units;
+      for (const line of rows) {
+        line.item_uom = line.inventory_id ? (units.value.get(line.inventory_id) ?? null) : null;
         lineByKey.set(`${line.document_id}:${line.line_no}`, line);
         // Only an INVOICE line is a price the vendor is asking for. A door
         // count carries no money at all (ADR 0104 D11), so it is indexed for
@@ -1075,7 +1188,7 @@ export class DeliveryStockService {
           else lineOnly.set(id, { unitCost: cost.unitCost, provenance: "invoice", source: "invoice_line", basis: cost.basis });
         } else if (id && !cost.ok && cost.kind === "refused") lineClash.add(id);
         // Every line goes to its paper, priced or not (a refusal holds).
-        fed.push({ row: line, cost });
+        fed.push({ row: inItemUnits(line), cost });
       }
     }
 
@@ -1123,7 +1236,7 @@ export class DeliveryStockService {
       // that disagree, and it is refused. A proposal on no line has no unit.
       const line = keyed && !invoiceSet.has(keyed.document_id) ? baseLine(invoiceLines, id) : keyed;
       const cost = line
-        ? proposalPerBottle(p.unit_price_proposed, readableLine(line))
+        ? proposalPerBottle(p.unit_price_proposed, readableLine(line), { uom: line.item_uom })
         : !(said > 0)
           ? ({ ok: false, kind: "no_price" } as const)
           : ({
