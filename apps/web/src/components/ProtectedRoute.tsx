@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { ShieldAlert, ArrowLeft } from 'lucide-react'
+import { SessionWaitScreen } from './SessionWaitScreen'
 
 type HouseRole = 'owner' | 'manager' | 'staff'
 
@@ -22,8 +23,14 @@ export function ProtectedRoute({
   requiredStudioRole,
   redirectTo = '/login',
 }: ProtectedRouteProps) {
-  const { user, loading, isAuthenticated } = useAuth()
+  const { user, loading, isAuthenticated, sessionWait, retrySessionNow, signOutWhileWaiting } = useAuth()
   const location = useLocation()
+
+  // A stored session waiting to be read again (429, 5xx, offline) is still
+  // signed in: say so, never /login.
+  if (loading && sessionWait) {
+    return <SessionWaitScreen wait={sessionWait} onRetryNow={retrySessionNow} onSignOut={signOutWhileWaiting} />
+  }
 
   // Loading State
   if (loading) {
