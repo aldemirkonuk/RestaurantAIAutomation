@@ -156,6 +156,14 @@ interface LineRow {
 const ITEM_MASS: ReadonlySet<string> = new Set(["kg", "g", "mg"]);
 
 /**
+ * A line unit that is only a count, never a container of known size: unstated,
+ * `bottle` (`procurement_document_lines.uom` defaults to it, so a line that
+ * never said its unit reads `bottle`) and `each`. Into an item kept by weight it
+ * is read as that many of the item's unit.
+ */
+const PLAIN_COUNT: ReadonlySet<string> = new Set(["", "bottle", "each"]);
+
+/**
  * What a door-count line puts on the shelf, in the unit the ITEM is kept in
  * (R8). A container line into a container item is its `qty_bottles`, as
  * before. A weighed line converts into the item's weight (`3 kg` into a cheese
@@ -163,6 +171,14 @@ const ITEM_MASS: ReadonlySet<string> = new Set(["kg", "g", "mg"]);
  * weight, when an item kept by weight is counted in containers, and when the
  * weight is not a whole number of the item's unit (ADR 0070: integer
  * quantities; `2.5 kg` into an item kept in `kg` is not booked as 2 or 3).
+ *
+ * A plain count into an item kept by weight (a line whose unit is unstated,
+ * `bottle` — the column's default — or `each`) is the count in the item's own
+ * unit, as it was before R8: the door has no kg or g picker, so a line typed
+ * there never states a weight, and refusing it left weight-kept items with no
+ * way to be booked (mail-receipts fix round, 2026-11-12, finding on #1109).
+ * Only a container that is not a count (case, pack, split case, keg, liter)
+ * is refused into such an item: its weight is not known.
  */
 export function shelfQuantity(
   line: { qty_bottles: unknown; uom?: string | null },
@@ -178,8 +194,9 @@ export function shelfQuantity(
     return { ok: false, reason: `this line is weighed in ${line.uom}, and the item it names states no unit, so how much of it this is cannot be put on the shelf` };
   if (weighed && !keptByWeight)
     return { ok: false, reason: `this line is weighed in ${line.uom}, but the item it names is kept in ${itemUom}s, and a weight is not a number of ${itemUom}s. It is NOT booked; keep the item by weight, or link the line to one that is.` };
+  if (!weighed && PLAIN_COUNT.has(line.uom ?? "")) return { ok: true, qty: Math.round(n) };
   if (!weighed)
-    return { ok: false, reason: `the item this line names is kept in ${itemUom}, but the line counts ${line.uom ?? "items"}, which is not a weight. It is NOT booked; state the line's weight.` };
+    return { ok: false, reason: `the item this line names is kept in ${itemUom}, but the line counts ${String(line.uom).replace("_", " ")}s, and what one weighs is not known. It is NOT booked; state the line's weight, or count it in ${itemUom}.` };
   const f = massFactor(String(line.uom), String(itemUom));
   if (f == null)
     return { ok: false, reason: `${line.uom} does not convert into ${itemUom}` };
