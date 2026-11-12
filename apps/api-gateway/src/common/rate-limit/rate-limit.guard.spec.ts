@@ -1,7 +1,7 @@
 import { ExecutionContext, HttpException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
-import { RateLimitGuard } from "./rate-limit.guard";
+import { RateLimitGuard, SESSION_RENEWAL_RATE_LIMIT } from "./rate-limit.guard";
 import { AuthController } from "../../auth/auth.controller";
 
 /**
@@ -92,8 +92,9 @@ describe("RateLimitGuard: a session reading itself is not a sign-in attempt", ()
 
   // Readers lane r4: a refresh and a house switch renew a session from a
   // credential already held (a signed refresh JWT; a valid access token), so
-  // they left the guessing bucket. 30 = a house's tablets and tabs whose
-  // 15-minute tokens expire in the same minute.
+  // they left the guessing bucket. 30 is the need, not the cap: a house's
+  // tablets and tabs whose 15-minute tokens expire in the same minute. The
+  // cap is the ordinary 100 (SESSION_RENEWAL_RATE_LIMIT), pinned below.
   it.each([
     ["POST /auth/refresh", proto.refresh, "/api/v1/auth/refresh"],
     [
@@ -102,7 +103,7 @@ describe("RateLimitGuard: a session reading itself is not a sign-in attempt", ()
       "/api/v1/auth/switch-restaurant",
     ],
   ])(
-    "%s admits 30 renewals a minute from one address",
+    "%s admits a house's 30 same-minute renewals from one address (cap is 100)",
     async (_label, handler, path) => {
       expect(typeof handler).toBe("function");
       expect(await admitted(guard, handler, path, 30)).toBe(30);
@@ -110,8 +111,17 @@ describe("RateLimitGuard: a session reading itself is not a sign-in attempt", ()
   );
 
   it("a renewal is still bounded (the ordinary 100 a minute)", async () => {
+    expect(SESSION_RENEWAL_RATE_LIMIT).toEqual({ limit: 100, windowSeconds: 60 });
     expect(
       await admitted(guard, proto.refresh, "/api/v1/auth/refresh", 101),
+    ).toBe(100);
+    expect(
+      await admitted(
+        guard,
+        proto.switchRestaurant,
+        "/api/v1/auth/switch-restaurant",
+        101,
+      ),
     ).toBe(100);
   });
 

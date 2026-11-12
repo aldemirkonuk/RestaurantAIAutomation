@@ -76,10 +76,20 @@ export const SESSION_READ_RATE_LIMIT: RateLimitConfig = DEFAULT_RATE_LIMITS.defa
  * fell to /login, then again every fifteen minutes. The session reads above
  * left the bucket for the same reason (#1136).
  *
- * So both take the ordinary limit, keyed as before on address and route, so
- * the refresh bucket is not the login bucket and loosening one does not
- * loosen the other. `login`, the code and reset doors, `register/*`, `join`
- * and every route not opted in here keep 10 a minute.
+ * So both take the ordinary limit, 100 a minute, keyed as before on address
+ * and route, so the refresh bucket is not the login bucket and loosening one
+ * does not loosen the other. `login`, the code and reset doors, `register/*`,
+ * `join` and every route not opted in here keep 10 a minute.
+ *
+ * Why 100 and not the 30 the spec measures a house needing (its tablets and
+ * tabs expiring in one minute): the session reads those devices make
+ * (`SESSION_READ_RATE_LIMIT`) are allowed 100, and a renewal capped below the
+ * reads it keeps alive would put the same devices back on /login, the fault
+ * this removes. What the 100 costs: `refresh` is `@Public()`, so one address
+ * can send it 100 tokens a minute where it could send 10. A forged or garbage
+ * token is refused by `jwtService.verify` on its signature before any read;
+ * only a validly signed token reaches the users table, and its holder already
+ * holds the session.
  */
 export const SESSION_RENEWAL_RATE_LIMIT: RateLimitConfig =
   DEFAULT_RATE_LIMITS.default;
