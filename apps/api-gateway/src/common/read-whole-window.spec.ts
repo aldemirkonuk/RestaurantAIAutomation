@@ -527,7 +527,7 @@ describe("GoalsService — the till and goal progress read the whole window", ()
     expect((stored[0].payload as any).current_value).toBe(3313);
   });
 
-  it("getGoalProgress writes no current_value from a refused read", async () => {
+  it("getGoalProgress writes no current_value from a refused read, only the refusal", async () => {
     // Request 1 is the "ever had a check" probe; request 2 is page 0.
     const { db, writes } = cappedDb(
       { pos_checks: rows, analytics_goals: [goal], restaurants },
@@ -537,7 +537,13 @@ describe("GoalsService — the till and goal progress read the whole window", ()
       .getGoalProgress("r1", "g1")
       .catch((e) => e);
     expect(err).toBeInstanceOf(WholeReadError);
-    expect(writes.filter((w) => w.table === "analytics_goals")).toEqual([]);
+    // Reports lane r2: the refusal is recorded, so the older stored value is
+    // not shown as current; no number is written from the refused read.
+    const goalWrites = writes.filter((w) => w.table === "analytics_goals");
+    expect(goalWrites).toHaveLength(1);
+    expect(goalWrites[0].op).toBe("update");
+    expect(goalWrites[0].payload).not.toHaveProperty("current_value");
+    expect((goalWrites[0].payload as any).current_unread).toBe(err.message);
   });
 });
 
