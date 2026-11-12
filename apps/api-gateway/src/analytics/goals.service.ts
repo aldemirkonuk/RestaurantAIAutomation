@@ -50,6 +50,9 @@ import {
   type SpecRejection,
 } from "./report-cuttings";
 
+/** What became of a goal reading's write (`recordReading`). */
+export type GoalReadingStored = "stored" | "superseded" | "unstored";
+
 /**
  * GoalsService — metric-linked goals with AI assistance.
  *
@@ -221,14 +224,20 @@ export class GoalsService {
    * equally fresh, and the first stored stays. Gateways stamp from their own
    * clocks, so two of them skewed by more than the gap between two readings
    * could still order them wrongly.
+   *
+   * Says what became of the write (fix round on #1133): `stored` when the row
+   * now holds this reading, `superseded` when the condition matched no row
+   * because a newer reading is already stored, `unstored` when the write
+   * failed or the store did not say. The caller still answers with its own
+   * live reading; this only tells it whether the stored row agrees.
    */
   private async recordReading(
     restaurantId: string,
     goalId: string,
     patch: Record<string, unknown> & { current_read_at: string },
-  ): Promise<void> {
+  ): Promise<GoalReadingStored> {
     try {
-      const { error } = await this.dbService
+      const { data, error } = await this.dbService
         .getClient()
         .from("analytics_goals")
         .update(patch)
@@ -236,11 +245,17 @@ export class GoalsService {
         .eq("id", goalId)
         .or(
           `current_read_at.is.null,current_read_at.lt."${patch.current_read_at}"`,
-        );
-      if (error)
+        )
+        .select("id");
+      if (error) {
         this.logger.warn(`goal reading not stored for ${goalId}: ${error.message}`);
+        return "unstored";
+      }
+      if (!Array.isArray(data)) return "unstored";
+      return data.length > 0 ? "stored" : "superseded";
     } catch (err: any) {
       this.logger.warn(`goal reading not stored for ${goalId}: ${err?.message ?? err}`);
+      return "unstored";
     }
   }
 
@@ -636,7 +651,7 @@ export class GoalsService {
       throw err;
     }
     const { current, dailySeries, units } = reading;
-    await this.recordReading(restaurantId, goalId, {
+    const readingStored = await this.recordReading(restaurantId, goalId, {
       current_value: current,
       current_unread: null,
       current_read_at: readAt.toISOString(),
@@ -733,6 +748,13 @@ export class GoalsService {
         category: s.category,
         score: s.score,
       })),
+      /**
+       * Whether the stored row now holds this reading (fix round on #1133).
+       * Every figure above is this live reading. `superseded` means a newer
+       * reading, begun after this one, is already stored, so the next list
+       * read shows that one rather than `goal.current_value` here.
+       */
+      readingStored,
       generatedAt: new Date().toISOString(),
     };
   }

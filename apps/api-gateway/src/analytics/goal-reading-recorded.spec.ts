@@ -70,6 +70,8 @@ describe("a goal's reading is recorded with when, and a refusal with why", () =>
     const out = await service.getGoalProgress("r1", "g1", undefined, { withSales: true });
     expect(out.current).toBe(28);
     expect(out.met).toBe(true);
+    // This harness's store answers no rows, so it cannot say the row holds it.
+    expect(out.readingStored).toBe("unstored");
     expect(updates).toHaveLength(1);
     expect(updates[0].patch).toMatchObject({ current_value: 28, current_unread: null });
     expect(typeof updates[0].patch.current_read_at).toBe("string");
@@ -123,13 +125,19 @@ describe("a slower, older reading never overwrites a newer one", () => {
         single: async () => ({ data: { ...row }, error: null }),
         maybeSingle: async () => ({ data: { timezone: "America/Detroit", country: "US" }, error: null }),
         then: (resolve: any, reject: any) => {
+          // `.select("id")` after an update answers the rows it changed, as
+          // PostgREST does: none when the condition kept the newer reading.
+          let changed: Array<{ id: unknown }> = [];
           if (patch) {
             const m = /^current_read_at\.is\.null,current_read_at\.lt\."([^"]+)"$/.exec(or ?? "");
             const held = row.current_read_at as string | null;
             const newer = !m || held == null || Date.parse(held) < Date.parse(m[1]);
-            if (eqs.every(([k, v]) => row[k] === v) && newer) Object.assign(row, patch);
+            if (eqs.every(([k, v]) => row[k] === v) && newer) {
+              Object.assign(row, patch);
+              changed = [{ id: row.id }];
+            }
           }
-          return Promise.resolve(patch ? { error: null } : { data: [row], error: null }).then(resolve, reject);
+          return Promise.resolve(patch ? { data: changed, error: null } : { data: [row], error: null }).then(resolve, reject);
         },
       };
       return chain;
@@ -182,6 +190,23 @@ describe("a slower, older reading never overwrites a newer one", () => {
     await slow;
     expect(s.row.current_unread).toMatch(/Days of stock cannot be read/);
     expect(s.row.current_value).toBe(312.07);
+  });
+
+  it("says when its own reading was not stored because a newer one already was", async () => {
+    const s = store({ ...GOAL });
+    const svc = service(s.from, [
+      { after: 60, dio: 25 },
+      { after: 0, dio: 28 },
+    ]);
+    const slow = svc.getGoalProgress("r1", "g1", undefined, { withSales: true });
+    await sleep(15);
+    const quick = await svc.getGoalProgress("r1", "g1", undefined, { withSales: true });
+    const late = await slow;
+    expect(quick.readingStored).toBe("stored");
+    // The late answer is still its own live reading, and says the row is not it.
+    expect(late.current).toBe(25);
+    expect(late.readingStored).toBe("superseded");
+    expect(s.row).toMatchObject({ current_value: 28, current_read_at: quick.goal.current_read_at });
   });
 
   it("stamps the reading with when it began, and writes only over no reading or an older one", async () => {
