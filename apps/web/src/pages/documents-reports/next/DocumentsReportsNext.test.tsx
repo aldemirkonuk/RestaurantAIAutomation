@@ -28,7 +28,7 @@ const api = vi.hoisted(() => ({
   threadsError: false,
   active: [] as unknown[],
   activeError: false,
-  unverified: { items: [] as unknown[] },
+  unverified: { items: [] as unknown[] } as { items: unknown[]; doorCounted?: unknown[] },
   unverifiedReject: false,
   timeline: { events: [] as unknown[] } as {
     events: unknown[];
@@ -410,6 +410,31 @@ describe('DocumentsReportsNext', () => {
     await waitFor(() => expect(screen.getByText(/PO-77/)).toBeTruthy());
     expect(screen.getByText(/PO-77/).textContent).toMatch(/bottle/i);
     expect(screen.queryByText(/no paperwork/i)).toBeNull();
+  });
+
+  it('a delivery counted at the document door with no paper waits in the drawer (R10)', async () => {
+    // The document door writes a delivery, not a receipt event; that debt is
+    // the missing invoice, so here "no paperwork" is the right sentence.
+    api.unverified = {
+      items: [],
+      doorCounted: [
+        {
+          deliveryId: 'd1',
+          orderId: null,
+          orderNumber: null,
+          countedQtyBottles: 10,
+          linesWithoutBottles: 1,
+          countedAt: '2026-08-25T08:00:00Z',
+          ageHours: 30,
+          severity: 'stale',
+        },
+      ],
+    };
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/A delivery nobody ordered counted at the door, no paperwork yet/)).toBeTruthy(),
+    );
+    expect(screen.getByText(/10 counted \+ 1 line in another unit · 30h waiting/)).toBeTruthy();
   });
 
   it('a filled timeline window whose oldest event is still today floors the routine count', async () => {
