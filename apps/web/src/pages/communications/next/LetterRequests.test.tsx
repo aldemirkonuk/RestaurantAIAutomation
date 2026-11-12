@@ -301,11 +301,11 @@ describe('when the letters cannot be read again', () => {
 // off /profile), and its `p` rule outranks the house's reset, so a
 // paragraph that only inherited its ink turned pale on the paper ground (the
 // letter's words measured 1.70:1). Each names the ink it already had. And the
-// panel sits under "Waiting on you", so its heading is one level below it.
+// panel sits under "To send", so its heading is one level below it.
 describe('the ink and the outline (COMMS-W36)', () => {
   const INK1 = 'var(--ink-1, #211C16)';
 
-  it('its heading is a level below "Waiting on you", and the letter’s words name their ink', async () => {
+  it('its heading is a level below "To send", and the letter’s words name their ink', async () => {
     api.get.mockResolvedValue({ data: { requests: [{ ...REQ, payload: { ...REQ.payload, body: 'Hello,\n\nOne case.' } }] } });
     draw(false);
     const heading = await screen.findByRole('heading', { level: 3, name: 'Letters waiting for a manager · 1' });

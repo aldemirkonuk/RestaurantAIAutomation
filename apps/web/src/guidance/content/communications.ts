@@ -18,14 +18,14 @@ export const communicationsTour: TourDefinition = {
       element: 'nav[aria-label="Mail and letters"]',
       title: 'Mail and letters',
       description:
-        'Mail is every letter between you and your vendors, by person and by thread. Letters is what waits on you and what you write.',
+        'Mail is every letter between you and your vendors, by person and by thread. Letters is what waits to be sent and what you write.',
     },
     {
       // COMMS-W38 (founder: "#571's order, step 2 widened"): the whole waiting
       // region, which is always drawn; "Drafts waiting" is drawn only while a
       // drafted reply waits, and letters staff asked a manager to send sit
       // beside it.
-      element: 'section[aria-label="Waiting on you"]',
+      element: 'section[aria-label="To send"]',
       title: 'Answer what waits',
       description:
         'Letters your staff asked you to send and replies drafted for you. Read one, change it if you need to, then hold to send it, or to ask a manager to send it.',

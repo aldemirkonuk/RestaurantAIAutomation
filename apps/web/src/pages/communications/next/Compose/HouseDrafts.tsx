@@ -42,7 +42,7 @@ export function useHouseDrafts() {
   const qc = useQueryClient();
   // COMMS-W31: the gateway lists these for an owner or manager only. A staff
   // member's page used to ask anyway, and every visit drew "Forbidden
-  // resource." in red and left "Waiting on you" unknowable. Now staff are not
+  // resource." in red and left "To send" unknowable. Now staff are not
   // asked about letters that are not theirs to open: nothing here waits on
   // them. A refusal that still comes back (a role changed mid-visit) is the
   // same fact, said the same way, never a failure.
