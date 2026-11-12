@@ -80,6 +80,44 @@ describe('Scan a menu on /cellar', () => {
     ])
   })
 
+  it('closing the dialog drops the cellar step: a reopened dialog does not offer the last menu', async () => {
+    mockImport.mockResolvedValue({
+      menuId: 'm1', current: false, itemsExtracted: 1, submissionsCreated: 0, items: [item({ menuItemId: 'a' })],
+    })
+    const onWinesDetected = vi.fn()
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const ui = (open: boolean) => (
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <MenuScannerModal isOpen={open} onClose={() => {}} onWinesDetected={onWinesDetected} />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+    const { rerender } = render(ui(true))
+    fireEvent.change(screen.getByLabelText('Menu to read'), { target: { files: [new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }))
+    expect(await screen.findByTestId('menu-reader-cellar-step')).toBeInTheDocument()
+    rerender(ui(false))
+    rerender(ui(true))
+    expect(screen.getByRole('dialog', { name: 'Read a menu' })).toBeInTheDocument()
+    expect(screen.queryByTestId('menu-reader-cellar-step')).toBeNull()
+  })
+
+  it('a new read drops the last read\'s step at once, and a failed one leaves none', async () => {
+    mockImport.mockResolvedValueOnce({
+      menuId: 'm1', current: false, itemsExtracted: 1, submissionsCreated: 0, items: [item({ menuItemId: 'a' })],
+    })
+    mount(<MenuScannerModal isOpen onClose={() => {}} onWinesDetected={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Menu to read'), { target: { files: [new File(['%PDF'], 'a.pdf', { type: 'application/pdf' })] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }))
+    expect(await screen.findByTestId('menu-reader-cellar-step')).toBeInTheDocument()
+    mockImport.mockRejectedValueOnce({ response: { status: 422, data: { message: 'No line could be read.' } } })
+    fireEvent.change(screen.getByLabelText('Menu to read'), { target: { files: [new File(['%PDF'], 'b.pdf', { type: 'application/pdf' })] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }))
+    expect(await screen.findByText(/No line could be read/)).toBeInTheDocument()
+    expect(screen.queryByTestId('menu-reader-cellar-step')).toBeNull()
+  })
+
   it('a line with no producer goes over with an empty one (the cellar drops it, never guesses)', () => {
     expect(lineToDetected(item({ producer: null, vintage: null })).producer).toBe('')
   })

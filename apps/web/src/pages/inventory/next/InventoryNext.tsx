@@ -656,8 +656,8 @@ export default function InventoryNext() {
               <section className="iv-card">
                 <h3 className="iv-h3">Scan your menu</h3>
                 <p className="iv-said">
-                  Read your menu into the book. Each title comes in with no count until someone counts it. It is never
-                  set to zero.
+                  Read your menu. It is kept as a draft on the Menu page and adds nothing to the book: bottles come
+                  in where they are counted.
                 </p>
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('scanner')}>
                   Scan your menu

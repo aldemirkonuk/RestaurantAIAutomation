@@ -10,7 +10,7 @@
  * `pages/cellar/next/readings.ts`, which drops a line with no name or no
  * producer). Nothing is written there until the person answers.
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MenuReaderDialog } from '../scanner/MenuReaderDialog'
 import type { MenuImportResult, MenuImportReviewItem } from '../../services/api/menus'
 
@@ -39,14 +39,27 @@ export function unmatchedLines(r: MenuImportResult): MenuImportReviewItem[] {
 }
 
 export function MenuScannerModal({ isOpen, onClose, onWinesDetected }: MenuScannerModalProps) {
+  // The cellar step belongs to the read just made in THIS opening of the
+  // dialog (batch review of #1066): it is dropped when the dialog closes and
+  // when a new read begins, and a read that finishes after the dialog closed
+  // offers nothing, so a reopened dialog never shows the last menu's lines
+  // under an empty form.
   const [read, setRead] = useState<MenuImportResult | null>(null)
+  const open = useRef(isOpen)
+  useEffect(() => {
+    open.current = isOpen
+    if (!isOpen) setRead(null)
+  }, [isOpen])
   const ask = read ? unmatchedLines(read) : []
 
   return (
     <MenuReaderDialog
       isOpen={isOpen}
       onClose={onClose}
-      onReadDone={setRead}
+      onReadStart={() => setRead(null)}
+      onReadDone={(r) => {
+        if (open.current) setRead(r)
+      }}
       footer={
         read && ask.length > 0 ? (
           <div style={{ marginTop: 12 }} data-testid="menu-reader-cellar-step">
