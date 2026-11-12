@@ -18,8 +18,8 @@ describe("perBottleLotCost", () => {
     // QA 8a: 2 cases @ 264 / case, pack 12, no base, no total.
     expect(cost({})).toBe(22);
     // 12 şişe @ 142,00 / KS(12), with or without the base unit.
-    expect(cost({ uom: "bottle", unit_price: 142, price_base_qty: 12, price_base_uom: "bottle" })).toBe(11.8333);
-    expect(cost({ uom: "bottle", unit_price: 142, price_base_qty: "12.000" })).toBe(11.8333);
+    expect(cost({ uom: "bottle", unit_price: 142, price_base_qty: 12, price_base_uom: "bottle" })).toBeCloseTo(142 / 12, 12);
+    expect(cost({ uom: "bottle", unit_price: 142, price_base_qty: "12.000" })).toBeCloseTo(142 / 12, 12);
     expect(cost({ uom: "bottle", price_base_qty: 1, price_base_uom: "case" })).toBe(22);
     expect(cost({ price_base_qty: 12, price_base_uom: "bottle" })).toBe(22);
     expect(cost({ unit_price: "264.0000", pack_size: "12" })).toBe(22);
@@ -46,7 +46,9 @@ describe("perBottleLotCost", () => {
     expect(refusal({ price_base_uom: "dozen" })).toMatch(/dozen/);
     for (const price_base_qty of [0, -12, "twelve"])
       expect(refusal({ price_base_qty })).toMatch(/cannot be divided/);
-    expect(refusal({ uom: "bottle", unit_price: 0.04, price_base_qty: 12 })).toMatch(/cost of nothing/);
+    // Six places keep 0.04 / 12 = 0.003333 (#839); only a price under half a
+    // millionth a bottle rounds to nothing.
+    expect(refusal({ uom: "bottle", unit_price: 0.0001, price_base_qty: 1000 })).toMatch(/rounds to 0\.00, and a lot is never booked at a cost of nothing/);
   });
 
   it("refuses an unmapped unit kept as each, and a line total that contradicts the price (D1, QA 9a)", () => {
@@ -56,10 +58,10 @@ describe("perBottleLotCost", () => {
     expect(refusal({ price_base_qty: 12, printed: { priceBaseUom: "magnum" } })).toMatch(/per "magnum"/);
     // 24 bottles @ 264 cannot total 528: the price was per case.
     for (const pack_size of [12, 1])
-      expect(refusal({ uom: "bottle", pack_size, qty_bottles: 24, line_total: 528 })).toMatch(/totals 528 for 24 counted, but 264\.0000 each makes 6336/);
+      expect(refusal({ uom: "bottle", pack_size, qty_bottles: 24, line_total: 528 })).toMatch(/totals 528 for 24 counted, but 264\.00 each makes 6336\.00,/);
     // Totals that agree, to the cent, pass.
     expect(cost({ qty_bottles: 24, line_total: "528.00" })).toBe(22);
-    expect(cost({ uom: "bottle", unit_price: 142, price_base_qty: 12, qty_bottles: 12, line_total: 142 })).toBe(11.8333);
+    expect(cost({ uom: "bottle", unit_price: 142, price_base_qty: 12, qty_bottles: 12, line_total: 142 })).toBeCloseTo(142 / 12, 12);
   });
 
   it("QA 10a (2): a bare price on a bottle row whose bottles come in cases is decided by its total, or refused", () => {
@@ -81,7 +83,7 @@ describe("perBottleLotCost", () => {
       expect(cost({ uom: "each", pack_size: 1, unit_price: 22, qty_bottles: 24, line_total: 528, printed: { uom } })).toBe(22);
     expect(refusal({ uom: "each", pack_size: 1, printed: { uom: "kutu" } })).toMatch(/"kutu"/);
     // Credit note filed as an invoice: count and total negative, price positive.
-    expect(refusal({ uom: "bottle", pack_size: 1, qty_bottles: -24, line_total: -528 })).toMatch(/totals -528 for -24 counted, but 264\.0000 each makes -6336/);
+    expect(refusal({ uom: "bottle", pack_size: 1, qty_bottles: -24, line_total: -528 })).toMatch(/totals -528 for -24 counted, but 264\.00 each makes -6336\.00,/);
     expect(refusal({ uom: "bottle", pack_size: 1, qty_bottles: 24, line_total: -528 })).toMatch(/totals -528/);
     expect(cost({ qty_bottles: -24, line_total: -528 })).toBe(22);
     expect(refusal({ uom: "bottle", pack_size: 1, qty_bottles: 24, line_total: 0 })).toMatch(/totals 0 for 24/);
@@ -97,7 +99,39 @@ describe("perBottleLotCost", () => {
     expect(proposalPerBottle(0, line())).toEqual({ ok: false, kind: "no_price" });
   });
 
-  it("rounds half away from zero, as Postgres numeric does", () => {
-    expect([1.005, 11.8333, 11.835, 22].map(toLotCostPrecision)).toEqual([1.01, 11.83, 11.84, 22]);
+  it("rounds half away from zero to six places, as numeric(14,6) does", () => {
+    expect([1.0000005, 142 / 12, 11.8333335, 22, 0.035].map(toLotCostPrecision)).toEqual([1.000001, 11.833333, 11.833334, 22, 0.035]);
+  });
+
+  // cost-math R7 (2026-11-11). Red before: four places then two, so 100 per
+  // case of 12 posted 8.33 and its twelve bottles came to 99.96.
+  it("R7: a case price becomes a per-bottle cost to six places that adds back to the case", () => {
+    const r = perBottleLotCost(line({ unit_price: 100, qty_bottles: 24, line_total: 200 }));
+    expect(r.ok && r.unitCost).toBe(8.333333);
+    expect(r.ok && Math.round(r.unitCost * 12 * 100)).toBe(10000);
+    expect(r.ok && r.basis).toBe("invoice price 100 per case of 12 = 8.333333 per bottle");
+    const p = proposalPerBottle(100, line());
+    expect(p.ok && p.unitCost).toBe(8.333333);
+    // 142 / KS(12): the posted cost is 11.833333, not the four-place 11.8333.
+    const k = perBottleLotCost(line({ uom: "bottle", unit_price: 142, price_base_qty: 12, pack_size: 1 }));
+    expect(k.ok && k.unitCost).toBe(11.833333);
+  });
+
+  it("R7: the rows #1079 and a UBL-TR reader write for a ₺1,800 case of 6", () => {
+    // #1079 sets the pack on the review card: 2 cases, 6 a case, 12 bottles.
+    const set = { unit_price: 1800, uom: "case", pack_size: 6, qty_bottles: 12, line_total: 3600 };
+    const r = perBottleLotCost(set);
+    expect(r.ok && [r.unitCost, r.basis]).toEqual([300, "invoice price 1800 per case of 6 = 300.00 per bottle"]);
+    // The e-Fatura reader never states a pack (pack_size 1): refused by name, never 1,800 a bottle.
+    expect(perBottleLotCost({ ...set, pack_size: 1, qty_bottles: 2 })).toMatchObject({
+      ok: false,
+      kind: "refused",
+      reason: expect.stringMatching(/does not state how many bottles a case holds/),
+    });
+    // An unmapped e-Fatura code kept in printed.uom (#1080) is refused, never a bottle.
+    expect(perBottleLotCost({ unit_price: 120, uom: "each", pack_size: 1, qty_bottles: 3, line_total: 360, printed: { uom: "KGM", qty: "3 KGM" } })).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/prints its unit as "KGM"/),
+    });
   });
 });

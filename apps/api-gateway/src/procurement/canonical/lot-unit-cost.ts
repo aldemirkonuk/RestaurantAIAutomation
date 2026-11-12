@@ -63,7 +63,12 @@ function printedUnit(p: unknown, key: string): string | null {
   const v = p && typeof p === "object" ? (p as Record<string, unknown>)[key] : null;
   return typeof v === "string" && v.trim() ? v.trim() : null;
 }
-const four = (n: number) => Math.round(n * 10000) / 10000;
+/** A cost per bottle as the reason prints it: the posted six places, never fewer than two. */
+export function sixPlaces(n: number): string {
+  const t = n.toFixed(6).replace(/0+$/, "");
+  const dot = t.indexOf(".");
+  return dot < 0 ? `${t}.00` : t.length - dot - 1 < 2 ? t.padEnd(dot + 3, "0") : t;
+}
 
 export function perBottleLotCost(line: LotCostLine): LotUnitCost {
   const price = asNumber(line.unit_price);
@@ -130,7 +135,10 @@ function resolve(line: LotCostLine, price: number): LotUnitCost {
     };
 
   const bottlesPriced = toBottles(base, baseUom, pack ?? 1);
-  const perBottle = four(price / bottlesPriced);
+  // Unrounded: the six-place rounding happens once, at the column's scale
+  // (cost-math R7: a four-place step first posted 142/12 as 11.8333, and
+  // 1,200 such bottles then missed their paper by 4 kuruş).
+  const perBottle = price / bottlesPriced;
   if (!Number.isFinite(perBottle) || perBottle <= 0)
     return { ok: false, kind: "refused", reason: `${price} for ${bottlesPriced} bottles is not a price per bottle` };
 
@@ -147,9 +155,9 @@ function resolve(line: LotCostLine, price: number): LotUnitCost {
   const counted = asNumber(line.qty_bottles);
   const checked = total != null && counted != null && counted !== 0;
   if (checked) {
-    const implied = four(perBottle * Math.abs(counted));
+    const implied = perBottle * Math.abs(counted);
     if (Math.abs(implied - Math.abs(total)) > Math.max(0.05, Math.abs(total) * 0.01))
-      return refuse(`the invoice line totals ${total} for ${counted} counted, but ${perBottle.toFixed(4)} each makes ${four(perBottle * counted)}, so the price's unit is not what the line says`);
+      return refuse(`the invoice line totals ${total} for ${counted} counted, but ${sixPlaces(unitCost)} each makes ${sixPlaces(unitCost * counted)}, so the price's unit is not what the line says`);
   }
 
   // QA 10a (2): `24 bottle @ 264, pack 12` with no base reads 264 a bottle,
@@ -168,14 +176,14 @@ function roundsToNothing(perBottle: number, unitCost: number): LotUnitCost {
   return {
     ok: false,
     kind: "refused",
-    reason: `a price per bottle of ${perBottle} rounds to ${unitCost.toFixed(2)}, and a lot is never booked at a cost of nothing`,
+    reason: `a price per bottle of ${perBottle} rounds to ${sixPlaces(unitCost)}, and a lot is never booked at a cost of nothing`,
   };
 }
 
 function basisOf(price: number, priced: string, bottles: number, perBottle: number, unit: string): string {
   return bottles === 1
     ? `invoice price ${price} per ${priced}; booked as-is`
-    : `invoice price ${price} per ${priced} = ${perBottle.toFixed(4)} per ${unit}`;
+    : `invoice price ${price} per ${priced} = ${sixPlaces(perBottle)} per ${unit}`;
 }
 
 /**
@@ -198,14 +206,29 @@ function inLineBase(price: number | null, line: LotCostLine): LotUnitCost {
   if (!printed.ok && printed.kind === "no_price")
     return perBottleLotCost({ ...line, unit_price: price, qty_bottles: null, line_total: null });
   if (!printed.ok) return printed;
-  const perBottle = four(price / printed.bottles);
+  const perBottle = price / printed.bottles;
   const unitCost = toLotCostPrecision(perBottle);
   if (!(unitCost > 0)) return roundsToNothing(perBottle, unitCost);
   return { ...printed, perBottle, unitCost, basis: basisOf(price, printed.priced, printed.bottles, perBottle, printed.per) };
 }
 
-/** What `unit_cost numeric(10,2)` keeps, half away from zero: posting 11.8333
- * would defeat `finalise_delivery_cost`'s idempotency. Widening is QA H1. */
+/**
+ * What `unit_cost numeric(14,6)` keeps (#839's 20270302143700), half away from
+ * zero: six places, so posting it again is the same number and
+ * `finalise_delivery_cost` stays idempotent. It is the landed path's own
+ * rounding (`toLandedPrecision`), so a line-only price and an accepted proposal
+ * are no longer posted at two places beside a landed cost at six
+ * (cost-math R7: 100 per case of 12 posted 8.33, and 12 bottles came to 99.96).
+ */
 export function toLotCostPrecision(perBottle: number): number {
-  return Number(`${Math.round(Number(`${perBottle}e2`))}e-2`);
+  return Number(`${Math.round(Number(`${perBottle.toFixed(12)}e6`))}e-6`);
+}
+
+/**
+ * The same price at cents: what a lot booked AT a printed price holds when it
+ * was posted into the old `numeric(10,2)` column. A re-verify's repair must
+ * still recognise it (`repairPrintedCost`), so the printed set keeps both.
+ */
+export function toCentsAsBooked(price: number): number {
+  return Number(`${Math.round(Number(`${price.toFixed(12)}e2`))}e-2`);
 }

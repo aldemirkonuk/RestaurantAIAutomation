@@ -2,7 +2,7 @@ import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { queueResearchIfLibraryLacks } from "../../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "../delivery-item-to-name";
-import { LotUnitCost, perBottleLotCost, proposalPerBottle } from "./lot-unit-cost";
+import { LotUnitCost, perBottleLotCost, proposalPerBottle, toCentsAsBooked } from "./lot-unit-cost";
 import {
   LandedBlock,
   landDelivery,
@@ -1068,7 +1068,7 @@ export class DeliveryStockService {
           cost.printed != null &&
           !(cost.ok && cost.unitCost === cost.printed)
         )
-          printed.set(id, (printed.get(id) ?? new Set<number>()).add(cost.printed));
+          printed.set(id, (printed.get(id) ?? new Set<number>()).add(cost.printed).add(toCentsAsBooked(cost.printed)));
         if (id && cost.ok) {
           const prior = lineOnly.get(id);
           if (prior && prior.unitCost !== cost.unitCost) lineClash.add(id);
@@ -1134,7 +1134,7 @@ export class DeliveryStockService {
                 : `an accepted proposal settles a price of ${said} but names no invoice line, so what unit that price is for is not known`,
             } as const);
       if (id && "printed" in cost && cost.printed != null)
-        printed.set(id, (printed.get(id) ?? new Set<number>()).add(cost.printed));
+        printed.set(id, (printed.get(id) ?? new Set<number>()).add(cost.printed).add(toCentsAsBooked(cost.printed)));
       // QA 15 (5): a settled price is in its line's money.
       const foreignWhy = line ? moneyOfPaper.get(line.document_id) : undefined;
       if (foreignWhy && said > 0) {

@@ -471,13 +471,13 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     const res = await run({});
     expect(res.ok && res.value.finalised[0].unitCost).toBe(22);
     expect(posted()[0].args.p_unit_cost).toBe(22);
-    expect(String(posted()[0].args.p_reason)).toMatch(/264 per case of 12 = 22\.0000 per bottle/);
+    expect(String(posted()[0].args.p_reason)).toMatch(/264 per case of 12 = 22\.00 per bottle/);
   });
 
-  it("B1: 12 bottles @ 142 / KS(12) posts 11.8333, the gatekeeper's per-bottle price kept to six places (#839)", async () => {
+  it("B1: 12 bottles @ 142 / KS(12) posts 11.833333, the per-bottle price to six places (#839; R7: was 11.8333)", async () => {
     await run({ uom: "bottle", unit_price: 142, price_base_qty: 12 });
-    expect(posted()[0].args.p_unit_cost).toBe(11.8333);
-    expect(String(posted()[0].args.p_reason)).toMatch(/11\.8333 per bottle/);
+    expect(posted()[0].args.p_unit_cost).toBe(11.833333);
+    expect(String(posted()[0].args.p_reason)).toMatch(/11\.833333 per bottle/);
   });
 
   it("B1: a case price with no stated pack stays PROVISIONAL by name, never 264 or 0", async () => {
@@ -534,6 +534,14 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
       await repair([other], {});
       expect(posted()).toEqual([]);
     }
+  });
+
+  // cost-math R7 (2026-11-11): the printed price is now kept to six places, so
+  // a lot an older build booked at it in numeric(10,2) cents must still match.
+  it("R7: a re-verify still finds a lot booked at a four-place printed price in cents", async () => {
+    const r = await repair([lot(264.13)], { unit_price: 264.125 });
+    expect(r.ok && r.value.repaired.map((x) => x.unitCost)).toEqual([22.010417]);
+    expect(posted().map((c) => c.args.p_unit_cost)).toEqual([22.010417]);
   });
 
   it("QA 9a: a lot at the printed price whose line now refuses keeps it, and the reason is returned", async () => {
@@ -609,7 +617,7 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     accept(240);
     await run({});
     expect(posted()[0].args).toMatchObject({ p_unit_cost: 20, p_cost_provenance: "manual" });
-    expect(String(posted()[0].args.p_reason)).toMatch(/accepted proposal: price 240 per case of 12 = 20\.0000 per bottle/);
+    expect(String(posted()[0].args.p_reason)).toMatch(/accepted proposal: price 240 per case of 12 = 20\.00 per bottle/);
     expect(await held(run({ pack_size: 1 }))).toMatch(/proposal's price 240 .* how many bottles a case holds/);
     // A delivery-wide proposal has no unit: it never stands in for the one item.
     accept(240, null);
@@ -617,6 +625,16 @@ describe("DeliveryStockService — VERIFIED settles the cost (A1)", () => {
     expect(posted()).toEqual([]);
     expect(await held(run({}))).toBe("");
     expect(posted().map((c) => c.args.p_unit_cost)).toEqual([22]);
+  });
+
+  // cost-math R7 (2026-11-11). Red before: an accepted proposal posted at two
+  // places (8.33), so the case it settled came to 99.96 over its 12 bottles.
+  it("R7: an accepted 100 per case of 12 posts 8.333333 a bottle, which adds back to the case", async () => {
+    db.answers.delivery_proposals = { data: [{ document_id: "inv-1", line_no: 1, unit_price_proposed: 100 }], error: null };
+    await run({});
+    expect(posted()[0].args).toMatchObject({ p_unit_cost: 8.333333, p_cost_provenance: "manual" });
+    expect(Math.round(Number(posted()[0].args.p_unit_cost) * 12 * 100)).toBe(10000);
+    expect(String(posted()[0].args.p_reason)).toMatch(/price 100 per case of 12 = 8\.333333 per bottle/);
   });
 
   it("QA 12b D1+C: a door-count proposal takes the invoice line's base; a total settles a bottle row's", async () => {
