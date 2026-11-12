@@ -930,6 +930,18 @@ export function createAnchorScanner(opts: {
           if (attrName(a) === 'path' && ts.isStringLiteral(a.initializer)) path = a.initializer.text
           if (attrName(a) === 'element' && ts.isJsxExpression(a.initializer)) element = a.initializer.expression
         }
+        // A route whose element is a layout draws its page through an `index`
+        // child (`/` under RootDoor, ADR 0320): the page is that child's element.
+        if (path === route && ts.isJsxOpeningElement(n) && ts.isJsxElement(n.parent)) {
+          for (const c of n.parent.children) {
+            const tag = ts.isJsxSelfClosingElement(c) ? c : ts.isJsxElement(c) ? c.openingElement : undefined
+            if (!tag || tag.tagName.getText() !== 'Route') continue
+            const props = tag.attributes.properties.filter(ts.isJsxAttribute)
+            if (!props.some((a) => attrName(a) === 'index')) continue
+            const el = props.find((a) => attrName(a) === 'element')?.initializer
+            if (el && ts.isJsxExpression(el) && el.expression) element = el.expression
+          }
+        }
         if (path === route && element) {
           let f: ts.Node | undefined = n.parent
           while (f && !ts.isFunctionLike(f)) f = f.parent

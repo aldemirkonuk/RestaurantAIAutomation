@@ -131,7 +131,9 @@ describe('useMudavymDesign precedence', () => {
 describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
   // [2026-09-27: vendor_prices no longer ships dark — founder item 53
   // superseded the 2026-09-19 per-house flip; see PROMOTED_2026_09_27.]
-  const HELD_BACK = ['arrival'] as const;
+  // [2026-10-30, ADR 0315 amendment: `inventory_next` joins — it picks the
+  // page inside /inventory's live gate, OFF until the port lands.]
+  const HELD_BACK = ['arrival', 'inventory_next'] as const;
   const PROMOTED_2026_09_27 = ['receiving', 'promotions', 'vendor_prices'] as const;
   const PROMOTED_2026_09_25 = [
     'shell',
@@ -145,10 +147,10 @@ describe('LIVE_PAGES (ADR 0149 row 36, go-live 2026-09-17)', () => {
     const expected = MUDAVYM_PAGES.filter((p) => !held.has(p));
     expect([...LIVE_PAGES].sort()).toEqual([...expected].sort());
     expect(LIVE_PAGES.size).toBe(28);
-    expect(MUDAVYM_PAGES.length).toBe(29);
+    expect(MUDAVYM_PAGES.length).toBe(30);
   });
 
-  it('holds back only arrival', () => {
+  it('holds back only arrival and inventory_next', () => {
     for (const page of HELD_BACK) {
       expect(LIVE_PAGES.has(page)).toBe(false);
       expect(MUDAVYM_PAGES).toContain(page); // still a real page, just gated

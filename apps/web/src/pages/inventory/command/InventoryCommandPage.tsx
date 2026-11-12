@@ -1367,11 +1367,6 @@ export function InventoryCommandPage() {
                   })}
                 </div>
 
-                {rows.length === 0 && (
-                  <div className="p-10 text-center text-sm text-gray-400">
-                    No wines match the current filters.
-                  </div>
-                )}
 
                 {rows.map((item, idx) => {
                   const isOpen = expandedId === item.inventoryId;
@@ -1558,11 +1553,52 @@ export function InventoryCommandPage() {
                 })}
               </div>
             </div>
+              {/* Three different facts, never one sentence (founder
+                  walk-through 2026-10-01, INV-W1): still reading, a house
+                  with nothing on the books, and a search that hid rows. */}
+              {rows.length === 0 &&
+                (figuresUnknown ? (
+                  <div className="p-10 text-center text-sm text-gray-400">
+                    {hasFailedRead
+                      ? "The wines could not be read."
+                      : "Reading the cellar…"}
+                  </div>
+                ) : stats.total === 0 ? (
+                  <div className="p-10 text-center">
+                    <p className="text-sm font-semibold text-gray-900">
+                      No wines on the books yet.
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Add a wine, scan your wine list or receive a delivery,
+                      and it shows up here.
+                    </p>
+                    <button
+                      onClick={() => setShowAddWineSelection(true)}
+                      className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 bg-wine-600 hover:bg-wine-700 text-white rounded-lg text-xs font-bold shadow-sm"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add your first wine
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-10 text-center text-sm text-gray-500">
+                    None of your {fig(stats.total)} wines match this search.{" "}
+                    <button
+                      onClick={() => {
+                        page.clearFilters();
+                        setActiveFlag(null);
+                      }}
+                      className="font-semibold text-wine-700 hover:underline"
+                    >
+                      Show all wines
+                    </button>
+                  </div>
+                ))}
           </div>
           <HouseItemResearchUnread />
           <div className="flex items-center justify-between mt-2.5 text-xs text-gray-400">
             <span>
-              Showing {fig(rows.length)} of {fig(stats.total)} wines
+              {(figuresUnknown || stats.total > 0) &&
+                `Showing ${fig(rows.length)} of ${fig(stats.total)} wines`}
             </span>
             {flagCounts.dead > 0 && (
               <span>

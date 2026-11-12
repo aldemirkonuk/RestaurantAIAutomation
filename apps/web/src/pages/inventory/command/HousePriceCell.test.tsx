@@ -314,3 +314,21 @@ describe('addedPriceNote -- what adding a wine did to the price typed with it (l
     expect(addedPriceNote(null)).toBeNull()
   })
 })
+
+describe('HousePriceCell -- the page decides how money is drawn (INV-W14)', () => {
+  it('draws both prices with the formatter it is given, and a missing one as that formatter says', () => {
+    const money = (n: number | null) => (n === null ? '—' : `${n} CHF`)
+    mount({ bottle: 50, glass: null, money })
+    const cell = screen.getByTestId('house-price-inv-1')
+    expect(cell.textContent).toContain('50 CHF')
+    expect(cell.textContent).toContain('—')
+    expect(cell.textContent).not.toContain('$')
+  })
+
+  it('keeps the legacy $ look when no formatter is passed', () => {
+    mount({ bottle: 50, glass: null })
+    const cell = screen.getByTestId('house-price-inv-1')
+    expect(cell.textContent).toContain('$50.00')
+    expect(cell.textContent).toContain('-')
+  })
+})

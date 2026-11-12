@@ -151,7 +151,7 @@ and the 42P10, so the next reader does not re-derive this.
 - **Also standing:** the 42P10 on `notification_preferences` remains open, and
   web push cannot work until it is settled. This ADR does not settle it — it
   removes a reader that was pointed at the wrong thing regardless of how that
-  question is answered.
+  question is answered. [2026-10-31: see Proposed ADR 0352 § Decision › The push rule]
 - **Revisit when:** anything asks for push recipients by anything other than a
   user id, or when the 42P10 fork is settled and `push_subscription` becomes
   writable *and* a caller wants push routed by role rather than by user.

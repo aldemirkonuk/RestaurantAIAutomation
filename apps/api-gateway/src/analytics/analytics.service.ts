@@ -62,6 +62,19 @@ export interface PosConsumptionRow {
   costPerBottle: number | null;
 }
 
+/**
+ * Who the till's figures are read for (ADR 0298, decision 9). ADR 0145's
+ * ROLE_POLICY gives the `sales` class to owners and managers and not to
+ * staff, and ADR 0290 §5 applies it to a read as
+ * `withSales = policyFor(role).sees.includes("sales")`: for anyone else the
+ * till is not read at all. Absent is `false`, so a caller that names no role
+ * gets no till figure; only a caller that has checked the role, or whose
+ * audience is owner/manager by its own guard, passes `true`.
+ */
+export interface SalesGate {
+  withSales?: boolean;
+}
+
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
@@ -444,7 +457,11 @@ export class AnalyticsService {
   // 1. Financial summary — the P&L / capital-efficiency lens
   // =========================================================================
 
-  async getFinancialSummary(restaurantId: string, labor = 0) {
+  async getFinancialSummary(
+    restaurantId: string,
+    labor = 0,
+    opts: SalesGate = {},
+  ) {
     const DEAD_STOCK_WINDOW_DAYS = 90;
     const [inventory, orders, consumption] = await Promise.all([
       this.loadInventory(restaurantId),
@@ -790,7 +807,7 @@ export class AnalyticsService {
   // 3. Risk profile — the trader/PE lens
   // =========================================================================
 
-  async getRiskProfile(restaurantId: string) {
+  async getRiskProfile(restaurantId: string, opts: SalesGate = {}) {
     const [inventory, orders, consumption] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadDeliveredOrders(restaurantId, 365),

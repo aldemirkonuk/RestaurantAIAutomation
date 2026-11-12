@@ -29,9 +29,14 @@ const house = vi.hoisted(() => ({ currency: vi.fn() }));
 vi.mock('@/services/api/wines', () => ({
   searchWines: (...a: unknown[]) => wines.search(...a),
 }));
-vi.mock('@/services/api/client', () => ({
-  getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
-}));
+vi.mock('@/services/api/client', async () => {
+  // The real classifier, so the 5xx / no-answer split is the shipped one.
+  const real = await vi.importActual<typeof import('@/services/api/client')>('@/services/api/client');
+  return {
+    getErrorMessage: (e: unknown) => (e as { message?: string })?.message ?? 'unknown error',
+    isUnconfirmedWrite: real.isUnconfirmedWrite,
+  };
+});
 vi.mock('@/services/api/inventory', () => ({
   createAuctionLotRecord: (...a: unknown[]) => auctionApi.createAuctionLotRecord(...a),
 }));
@@ -285,6 +290,39 @@ describe('the sheet', () => {
     expect(screen.getByTestId('auction-hammer')).toHaveValue('1200');
     // Refused before the stock write, so the lot record is never attempted.
     expect(auctionApi.createAuctionLotRecord).not.toHaveBeenCalled();
+  });
+
+  it('says the outcome is unknown after a 5xx on the stock write, and will not carry again', async () => {
+    const err = Object.assign(new Error('Request failed with status code 502'), {
+      isAxiosError: true,
+      response: { status: 502, data: {} },
+    });
+    const onCarry = vi.fn().mockRejectedValue(err);
+    draw({ onCarry });
+    await fillALot('6');
+    fireEvent.click(screen.getByTestId('auction-carry'));
+    await waitFor(() =>
+      expect(screen.getByTestId('auction-failure')).toHaveTextContent(
+        /couldn't tell whether these bottles were carried in.*Look at the book before carrying them again/,
+      ),
+    );
+    expect(screen.getByTestId('auction-failure')).not.toHaveTextContent(/Nothing was written/);
+    expect(screen.getByTestId('auction-carry')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('auction-carry'));
+    expect(onCarry).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('auction-hammer')).toHaveValue('1200');
+  });
+
+  it('says the outcome is unknown when the stock write gets no answer', async () => {
+    const err = Object.assign(new Error('Network Error'), { isAxiosError: true, request: {} });
+    const onCarry = vi.fn().mockRejectedValue(err);
+    draw({ onCarry });
+    await fillALot('6');
+    fireEvent.click(screen.getByTestId('auction-carry'));
+    await waitFor(() =>
+      expect(screen.getByTestId('auction-failure')).toHaveTextContent(/couldn't tell whether/),
+    );
+    expect(screen.getByTestId('auction-carry')).toBeDisabled();
   });
 
   it('never draws an unreadable register as a register without the bottle', async () => {

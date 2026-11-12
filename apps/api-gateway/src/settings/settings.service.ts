@@ -220,7 +220,8 @@ export class SettingsService {
   /**
    * Coerce a row (or its absence) into definite booleans. Anything that is not
    * literally `true`/`false` in the column falls back to the registry default,
-   * so a NULL can never be read as "on".
+   * so a NULL reads as that default, never as a stored choice (for a flag
+   * whose default is true, such as mudavym_design_inventory_next, that is on).
    */
   private normalize(row: Record<string, unknown> | null): FeatureFlagsDto {
     const defaults = defaultActiveFlags();

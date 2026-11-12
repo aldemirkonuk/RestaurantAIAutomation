@@ -6,6 +6,13 @@ import { CanonicalCheck, CanonicalItem, checkChannelOf } from "./pos-types";
  * Money convention: Square/Clover speak minor units (cents/kuruş) → divide by
  * 100; Toast speaks major units. Adapters never touch the database — the hub
  * service owns validation, wine mapping, and the pos_checks upsert.
+ *
+ * Line convention: `price` is the price of ONE unit and `qty` the units rung,
+ * so price × qty is the line's sale (CanonicalItem, pos-types.ts; ADR 0298's
+ * sales, decisions 2 and 8, sum exactly that). Which amount a unit's price
+ * counts is each provider's, as on main: Square and Clover give list price,
+ * before modifiers and discounts, and Toast its net amount. Which one every
+ * line should carry is OD-244. Each field is named at its adapter.
  */
 
 export interface PosAdapter {
@@ -37,6 +44,37 @@ const num = (v: unknown): number | null => {
 const cents = (v: unknown): number | null => {
   const n = num(v);
   return n === null ? null : n / 100;
+};
+
+/**
+ * Clover's `unitQty` is set only on a line priced per unit (by weight or
+ * measure), as a fixed-point integer scaled by 1000: 2500 is 2.5 units, and
+ * the line's total is price × unitQty / 1000. A fixed-price line has none,
+ * since Clover rings each unit as its own line. Read raw, 1.5 kg was 1500.
+ * This trusts the sender to follow Clover's scale: a `unitQty` of 1 meant as
+ * one unit reads as 0.001, and nothing here can tell the two apart.
+ */
+const cloverQty = (v: unknown): number => {
+  const n = num(v);
+  return n === null ? 1 : n / 1000;
+};
+
+/**
+ * One unit's price on a Toast selection: its `price` over its quantity.
+ * Toast's Selection schema
+ * (doc.toasttab.com/openapi/orders/tag/Data-definitions/schema/Selection)
+ * gives `price` as the "Net price for this selection", after its discounts
+ * and the check's, with its quantity and modifiers in it, so read raw as a
+ * unit price a two-glass line counted four glasses. It is the only amount on
+ * a selection with the modifiers in: `receiptLinePrice` leaves them out (a
+ * glass priced by its pour reads 0), and `preDiscountPrice` is documented as
+ * receiptLinePrice × quantity. This keeps main's net basis for every Toast
+ * line and changes only the arithmetic; the basis is OD-244's, an assumption
+ * stated in tech-debt.d (fix-pos-lines-carry-unit-price), not an answer.
+ */
+const toastUnitPrice = (s: any, qty: number): number => {
+  const total = num(s.price);
+  return total === null || qty === 0 ? 0 : total / qty;
 };
 
 // ---------------------------------------------------------------------------
@@ -121,6 +159,8 @@ export const squareAdapter: PosAdapter = {
             externalItemId: li.catalog_object_id ?? null,
             category: null,
             qty: num(li.quantity) ?? 1,
+            // base_price_money is "the base price for a single unit of the
+            // line item" (Square, OrderLineItem).
             price: cents(li.base_price_money?.amount) ?? 0,
           }),
         ),
@@ -175,7 +215,8 @@ export const cloverAdapter: PosAdapter = {
             name: String(li.name ?? "unknown"),
             externalItemId: li.item?.id ?? null,
             category: null,
-            qty: num(li.unitQty) ?? 1,
+            qty: cloverQty(li.unitQty),
+            // `price` is one unit's, before modifiers and discounts.
             price: cents(li.price) ?? 0,
           }),
         ),
@@ -214,15 +255,16 @@ export const toastAdapter: PosAdapter = {
         subtotal: num(c.amount),
         total: num(c.totalAmount ?? c.amount),
         tip: num(c.tipAmount),
-        items: (c.selections ?? []).map(
-          (s: any): CanonicalItem => ({
+        items: (c.selections ?? []).map((s: any): CanonicalItem => {
+          const qty = num(s.quantity) ?? 1;
+          return {
             name: String(s.displayName ?? s.itemName ?? "unknown"),
             externalItemId: s.item?.guid ?? null,
             category: s.salesCategory?.name ?? null,
-            qty: num(s.quantity) ?? 1,
-            price: num(s.price) ?? 0,
-          }),
-        ),
+            qty,
+            price: toastUnitPrice(s, qty),
+          };
+        }),
         raw: c,
       }));
   },

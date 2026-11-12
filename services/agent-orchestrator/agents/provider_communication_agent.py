@@ -892,18 +892,27 @@ class ProviderCommunicationAgent(BaseAgent):
         The cap branch is reached only after Redis answered, so the fence is
         Redis too: SET NX on a per-house key that lives as long as the pause.
         The pause ends when rate_key expires, and once the cap is reached nothing
-        renews it, so the fence copies its TTL (+60 s, so it cannot re-arm just
-        before the counter clears). A TTL Redis cannot give (no key, no expiry)
-        holds the fence a day. A failed read or SET sends nothing: a missed
-        notice beats a flood. A notice that does not land (no member to tell,
-        or the insert failed) lifts the fence again, so the next order over the
-        cap retries it instead of the pause passing in silence.
+        renews it, so the fence follows its TTL. Above 0, the fence holds that
+        TTL + 60 s, so it cannot re-arm just before the counter clears. When
+        Redis answers 0 or -2 (0: Redis rounds the time left to 0 s; -2: the
+        counter is already gone since the cap check, by expiry, eviction or
+        deletion), it holds 60 s, so a pause
+        that starts later the same day is still announced. At -1 (no expiry),
+        None or any other negative, it holds a day. A failed read or SET sends
+        nothing: a missed notice beats a flood. A notice that does not land (no
+        member to tell, or the insert failed) lifts the fence again, so the next
+        order over the cap retries it instead of the pause passing in silence.
         """
         cap = self.settings.negotiation_draft_daily_cap
         fence_key = f"prov_comm:cap_notice:{restaurant_id}"
         try:
             ttl = await self.redis.ttl(rate_key)
-            ex = int(ttl) + 60 if ttl is not None and int(ttl) > 0 else 86400
+            if ttl is not None and int(ttl) > 0:
+                ex = int(ttl) + 60
+            elif ttl is not None and int(ttl) in (0, -2):
+                ex = 60
+            else:
+                ex = 86400
             first = await self.redis.set(fence_key, "1", nx=True, ex=ex)
         except Exception as exc:
             self.logger.error(f"Cap notice fence failed, notice not sent: {exc}")

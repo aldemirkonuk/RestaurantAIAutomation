@@ -118,3 +118,10 @@ describe('the refusal note on the endpaper', () => {
     expect(screen.queryByText('That password did not match.')).toBeNull()
   })
 })
+
+describe('the sign-up link', () => {
+  it('opens the sign-up form, not the landing a bare /register shows (ADR 0344)', () => {
+    render(createElement(MemoryRouter, { initialEntries: ['/login'] }, createElement(Login)))
+    expect(screen.getByRole('link', { name: 'Create one now' }).getAttribute('href')).toBe('/register?type=new')
+  })
+})

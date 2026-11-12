@@ -233,6 +233,7 @@ whose `/` is the dashboard behind a login, and there is no separate landing page
 in the tree -- so a link to `/` would only bounce a stranger. When a real landing
 page exists the link moves to it in one line. Rejected: linking `/` (a redirect,
 and a "home" that lands on a login wall); a footer link with no wordmark link.
+[2026-10-09: a real landing page exists ([ADR 0320](0320-the-root-is-a-landing-page-for-a-stranger.md)); the vendor page's lockup and its "Published on Mudavym" line now go to `/`. Measured the same day: the seven signed-out pages pass no `homeHref`, so their wordmark was never a link and nothing else moved.]
 
 ## Founder answers, 2026-09-12 — the voice, what the seal covers, and the emails at the door
 

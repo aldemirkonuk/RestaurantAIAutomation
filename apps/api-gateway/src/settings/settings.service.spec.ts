@@ -294,5 +294,28 @@ describe("SettingsService — feature flags (OD-86)", () => {
         service.isFeatureEnabled("rest-1", "enable_ai_autonomous_send"),
       ).resolves.toEqual({ enabled: true, active: true });
     });
+
+    // ADR 0315; founder 2026-10-31, "Default ON (Recommended)": a house with no
+    // settings row yet gets InventoryNext, and one that turned it off keeps it off.
+    it("gives a house with no settings row InventoryNext", async () => {
+      const { databaseService } = makeDb({ data: null, error: null });
+      const service = new SettingsService(databaseService, recordingAudit());
+
+      await expect(
+        service.isFeatureEnabled("rest-1", "mudavym_design_inventory_next"),
+      ).resolves.toEqual({ enabled: true, active: true });
+    });
+
+    it("keeps InventoryNext off where the row says false", async () => {
+      const { databaseService } = makeDb({
+        data: { mudavym_design_inventory_next: false },
+        error: null,
+      });
+      const service = new SettingsService(databaseService, recordingAudit());
+
+      await expect(
+        service.isFeatureEnabled("rest-1", "mudavym_design_inventory_next"),
+      ).resolves.toEqual({ enabled: false, active: true });
+    });
   });
 });

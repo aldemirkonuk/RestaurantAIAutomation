@@ -695,6 +695,8 @@ export function useStorageLocations() {
     locationsUnavailable,
     /** The wine→zone mappings fetch failed. "Nothing assigned" would be a lie. */
     mappingsUnavailable,
+    /** The mappings have not answered yet; "nothing assigned" is not known. */
+    mappingsLoading: mappingsQuery.isPending,
     getWineLocation,
     getWinesInLocation,
     assignWineToLocation,

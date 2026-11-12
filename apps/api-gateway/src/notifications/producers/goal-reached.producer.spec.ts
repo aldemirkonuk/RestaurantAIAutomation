@@ -193,6 +193,56 @@ describe("GoalReachedProducer", () => {
     expect(tally.withheldReason).toMatch(/ceilings this producer does not report/);
   });
 
+  it("a run that reports a goal still names the days-of-stock goal it did not read", async () => {
+    const { db, notifications, goals, producer } = build(REACHED);
+    db.tables.analytics_goals.push(
+      goalRow(),
+      goalRow({ id: "goal-dio", metric_key: "days_of_inventory" }),
+    );
+    seedCrossing(db);
+    seedShift(db);
+    const log = jest.spyOn((producer as any).logger, "log");
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(goals.getGoalProgress.calls.map((c: any[]) => c[1])).toEqual([
+      "goal-1",
+    ]);
+    expect(notifications.persistForRestaurant.calls).toHaveLength(1);
+    expect(log).toHaveBeenCalledWith(
+      expect.stringMatching(/not read: 1 on days of stock/),
+    );
+    log.mockRestore();
+  });
+
+  it("[REVERT-FAILS] a days-of-stock goal is not read without the sales gate, and is named", async () => {
+    // The answer it would get without the gate (ADR 0298 decision 9); it must not ask.
+    const { db, notifications, goals, producer } = build({
+      unreadable: true,
+      withheld: true,
+    });
+    db.tables.analytics_goals.push(
+      goalRow({ metric_key: "days_of_inventory" }),
+    );
+    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(goals.getGoalProgress.calls).toHaveLength(0);
+    expect(notifications.persistForRestaurant.calls).toHaveLength(0);
+    expect(tally.withheldReason).toMatch(
+      /Not read: 1 on days of stock or without a metric key/,
+    );
+    expect(tally.withheldReason).toMatch(/No active goal that was read has/);
+  });
+
+  it("beside a ceiling, an unread days-of-stock goal is not reported as a miss", async () => {
+    const { db, producer } = build({ unreadable: true, withheld: true });
+    db.tables.analytics_goals.push(
+      goalRow({ id: "goal-cap", direction: "at_most" }),
+      goalRow({ id: "goal-dio", metric_key: "days_of_inventory" }),
+    );
+    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(tally.withheldReason).toMatch(
+      /No 'at least' goal that was read has reached its target\. Not read: 1/,
+    );
+  });
+
   it("with no active goal it says so rather than reporting an empty sweep", async () => {
     const { producer } = build(REACHED);
     const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);

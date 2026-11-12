@@ -37,7 +37,7 @@ which needs only `table_id` + `server_name`; Stage 2 — the personal alert — 
 until a kitchen-ready event is *modelled in `CanonicalCheck` and emitted by a non-simulator
 provider*. [[service-floor-directive]]'s null-input rule makes `simpos` a development
 target and never evidence. If the input audit comes back empty for every `available`
-provider, the honest product is Stage 1 alone, and that is a smaller thing that can be true.
+provider, the honest product is Stage 1 alone, and that is a smaller thing that can be true. [2026-10-31: to change for the port, if the answer to open OD-242 reaches it, as at `service-floor-charter.md:127`: by the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242), not his pick (Proposed ADR 0345 § Executor's calls › The service-floor charter's staged entry, where the delegation is quoted), this counter-pressure and the signal at `:30-32` do not hold the port back. His *"Port in-SPA (Recommended)"* (AskUserQuestion asked 2026-10-31T03:03:50Z, Q1) is the port; only Stage 2's yield follows from his *"Include it (Recommended)"* (AskUserQuestion asked 2026-10-31T02:52:37Z, Q4), both 2026-10-30. Its floor and Food-up run on staff taps; M1 stays true for an alert that waits on a till's kitchen-ready event. Until it locks, what it brackets holds.]
 
 ---
 
@@ -59,11 +59,11 @@ request for a per-staff ranking or export.
 **Counter-pressure.** Three, and they are design decisions made now rather than policy made
 later. **(a)** The charter names a deliberate non-goal — no staff performance scores,
 rankings, or disciplinary exports — and that is a founder-level decision to reverse
-([[service-floor-directive]]). **(b)** "Real engagement" is defined by a **signal the staff
+([[service-floor-directive]]). [2026-10-31: to change under ADR 0346 (Proposed, not in force until it locks) § Decision: the founder made that reversal (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2); per-waiter scores, rankings and exports ship to owners and managers only. Until it locks, what it brackets holds.] **(b)** "Real engagement" is defined by a **signal the staff
 member benefits from producing**, not one that only indicts them: an alert acknowledged
 because it was useful, not a proximity beacon. **(c)** Aggregate before it leaves the team:
 service-level views by shift or section, not by name, unless the founder explicitly
-reverses.
+reverses. [2026-10-31: to change under ADR 0346 (Proposed, not in force until it locks) § Decision: the founder reversed (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2), so views by name ship; that they go to owners and managers only (open as OD-255) is his *"Nothing for now"* (the waiter's phone, AskUserQuestion asked 2026-10-31T03:03:50Z, Q3) and the executor's reading of it for every surface (§ Decision › D2). M2's failure description above stays true. Until it locks, what it brackets holds.]
 
 ---
 
@@ -138,11 +138,11 @@ than discovered after launch.
 
 - **The staging gate is the whole strategy.** Stage 0 (audit) → Stage 1 (check-in timing) →
   Stage 2 (personal alert), each with a named trigger in [[service-floor-charter]]. Skipping
-  to Stage 2 is M1.
+  to Stage 2 is M1. [2026-10-31: to change for the port, if the answer to open OD-242 reaches it, as at `service-floor-charter.md:127` (the executor's call under the founder's 2026-10-31T16:57:09Z delegation; not the founder's words): the port ships before Stage 1's and Stage 2's triggers fire, as its floor and Food-up run on staff taps, not a till event. Until it locks, what it brackets holds.]
 - **Mis-route target is zero and is never traded for latency.** Two errors that are not
   commensurable are never summed ([[service-floor-directive]]).
 - **The surveillance non-goal is a founder-level decision to reverse**, not a team
-  preference. That is what makes M2 survivable.
+  preference. That is what makes M2 survivable. [2026-10-31: to change under ADR 0346 (Proposed, not in force until it locks) § Decision: the founder made that reversal (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2). Against M2 now stands ADR 0346 § The risk the charter named, and what answers it, whose mitigations it says do not stop a manager using a true figure as a stick. Until it locks, what it brackets holds.]
 - **[[red-team-charter]] should attack the "real engagement" definition** specifically — it
   is the single place where a reasonable-looking design choice turns this into a monitoring
   product. Findings-only ([[ORG_STRUCTURE]] §3).

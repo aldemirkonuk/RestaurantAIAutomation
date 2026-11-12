@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   HttpException,
+  ConflictException,
   HttpStatus,
   Optional,
   Inject,
@@ -42,6 +43,12 @@ function roundOz(ml: number): number {
   return Math.round((ml / ML_PER_OZ) * 10) / 10;
 }
 
+
+// One refusal for every spent pour key: a key whose pour is in another house
+// (it reads as missing here), one whose pour cannot be read, and one spent on
+// a different pour answer alike, so the reply never says which.
+const POUR_KEY_ALREADY_USED =
+  "This request's key was already used, so nothing new was poured. Read the item again before pouring.";
 @Injectable()
 export class InventoryService {
   private readonly logger = new Logger(InventoryService.name);
@@ -390,6 +397,19 @@ export class InventoryService {
       this.logger.error(`record_glass_pour failed: ${error.message}`);
       throw new HttpException(error.message, HttpStatus.BAD_REQUEST);
     }
+    // A replayed key answers with the pour it FIRST recorded and pours
+    // nothing (`record_glass_pour` looks the key up alone). If this body asks
+    // for a different pour, the person must not be told this one was
+    // recorded (ADR 0315, mount-line fix b).
+    if (pourResult?.idempotent === true) {
+      await this.assertReplayedPourMatches(
+        client,
+        restaurantId,
+        inventoryId,
+        pourResult.pour_event,
+        dto,
+      );
+    }
     const [row, rollup, locations] = await Promise.all([
       client
         .from("restaurant_inventory")
@@ -421,6 +441,50 @@ export class InventoryService {
           )
         : null,
     };
+  }
+
+  /**
+   * The pour a replayed key points at must be the pour this request asks for:
+   * the same item, the same number of glasses, and the same glass size when
+   * the caller named one. The read is scoped to this house, so a key another
+   * house spent reads as unreadable and its figures never reach this caller.
+   * An event that cannot be read is a refusal, never a pass: nothing new was
+   * poured either way, and "recorded" would be a guess.
+   */
+  private async assertReplayedPourMatches(
+    client: ReturnType<DatabaseService["getClient"]>,
+    restaurantId: string,
+    inventoryId: string,
+    pourEventId: unknown,
+    dto: { pours?: number; pourMl?: number | null },
+  ): Promise<void> {
+    const { data, error } = await client
+      .from("pour_events")
+      .select("restaurant_id, inventory_id, pours, pour_ml")
+      .eq("id", pourEventId as string)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    const first = data as {
+      restaurant_id: string;
+      inventory_id: string;
+      pours: number;
+      pour_ml: number;
+    } | null;
+    if (error || !first) {
+      throw new ConflictException(
+        POUR_KEY_ALREADY_USED,
+      );
+    }
+    const same =
+      first.restaurant_id === restaurantId &&
+      first.inventory_id === inventoryId &&
+      first.pours === (dto.pours ?? 1) &&
+      (dto.pourMl == null || first.pour_ml === dto.pourMl);
+    if (!same) {
+      throw new ConflictException(
+        POUR_KEY_ALREADY_USED,
+      );
+    }
   }
 
   /**

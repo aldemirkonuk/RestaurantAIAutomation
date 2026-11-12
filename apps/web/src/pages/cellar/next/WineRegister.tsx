@@ -36,7 +36,7 @@ import {
   type BottleVM,
   type CellarData,
 } from './useCellarNextData';
-import { EM, houseNamingFor, money, volume, year } from './cellar-format';
+import { byWhom, EM, houseNamingFor, money, volume, year } from './cellar-format';
 import IsThisTheBottlePanel, { type BottleReading } from './IsThisTheBottlePanel';
 import { readingsFrom } from './readings';
 
@@ -283,7 +283,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
     const q = query.trim().toLowerCase();
     const rows = bottles.filter((b) => {
       if (q) {
-        const hay = [b.name, b.producer, b.grape, b.region, b.country, b.appellation, b.style]
+        const hay = [b.name, byWhom(b), b.grape, b.region, b.country, b.appellation, b.style]
           .filter(Boolean)
           .join(' ')
           .toLowerCase();
@@ -631,7 +631,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
                     {b.name}
                   </span>
                   <span className="cl-dim" style={{ fontSize: 11 }}>
-                    {[b.producer, b.style].filter(Boolean).join(' · ') || 'unattributed'}
+                    {[byWhom(b), b.style].filter(Boolean).join(' · ') || 'unattributed'}
                   </span>
                   <span className="cl-num" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
                     <span>{year(b.vintage)}</span>
@@ -683,7 +683,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
                       <td>
                         <span style={{ display: 'block', fontWeight: 600 }}>{b.name}</span>
                         <span className="cl-dim" style={{ fontSize: 11 }}>
-                          {[b.producer, b.grape].filter(Boolean).join(' · ') || 'unattributed'}
+                          {[byWhom(b), b.grape].filter(Boolean).join(' · ') || 'unattributed'}
                         </span>
                       </td>
                       <td>{b.style ?? <span className="cl-dim">{EM}</span>}</td>

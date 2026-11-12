@@ -11,6 +11,36 @@ import type { InventoryItem } from '../useInventoryPage'
 import { StockGauge } from './bits'
 import { rolledUpTotals, rollupLabel } from '../../../components/inventory/zoneNesting'
 
+/** A tile's tint. Named by colour so each page can attach its own words. */
+export type MapTone = 'violet' | 'rose' | 'amber' | 'green' | 'neutral'
+
+const TONE_CLASS: Record<MapTone, string> = {
+  violet: 'bg-violet-50 border-violet-200',
+  rose: 'bg-rose-50 border-rose-200',
+  amber: 'bg-amber-50 border-amber-200',
+  green: 'bg-emerald-50 border-emerald-200',
+  neutral: 'bg-gray-50 border-gray-200',
+}
+
+const DEFAULT_WORDS: Record<MapTone, string> = {
+  green: 'Healthy',
+  amber: 'Below par',
+  rose: 'Critical',
+  violet: 'Needs reconcile',
+  neutral: 'Stock not read, or no par',
+}
+
+// An unread count or a missing par used to fall through to green "Healthy"
+// (INV-W19). It has nothing to be healthy against, so it is neutral.
+function defaultTone(item: InventoryItem): MapTone {
+  if ((item.shadowStock ?? 0) > 0) return 'violet'
+  const s = classifyStock(item.liveStock, item.threshold)
+  if (s.key === 'critical') return 'rose'
+  if (s.key === 'low') return 'amber'
+  if (s.key === 'unknown') return 'neutral'
+  return 'green'
+}
+
 interface Props {
   items: InventoryItem[]
   locations: StorageLocation[]
@@ -20,6 +50,10 @@ interface Props {
   locationsUnavailable?: boolean
   onOpenInTable: (locationId: string) => void
   onManageLocations: () => void
+  /** The page's own rule for a tile's tint; defaults to the old page's. */
+  toneOf?: (item: InventoryItem) => MapTone
+  /** The legend's words, in the page's vocabulary; defaults to the old page's. */
+  toneWords?: Record<MapTone, string>
 }
 
 export function CellarMapView({
@@ -29,8 +63,13 @@ export function CellarMapView({
   locationsUnavailable = false,
   onOpenInTable,
   onManageLocations,
+  toneOf = defaultTone,
+  toneWords = DEFAULT_WORDS,
 }: Props) {
-  const [selected, setSelected] = useState<string | null>(locations[0]?.id ?? null)
+  const [picked, setSelected] = useState<string | null>(null)
+  // Zones usually arrive after the page opens; until someone picks one, the
+  // first zone is selected rather than none (INV-W19).
+  const selected = picked ?? locations[0]?.id ?? null
 
   const byLocation = useMemo(() => {
     const map = new Map<string, Array<{ item: InventoryItem; qty: number }>>()
@@ -60,12 +99,10 @@ export function CellarMapView({
   const selectedLoc = locations.find((l) => l.id === selected)
   const selectedWines = (selected && byLocation.get(selected)) || []
 
-  const tileTone = (item: InventoryItem) => {
-    if ((item.shadowStock ?? 0) > 0) return 'bg-violet-50 border-violet-200'
-    const s = classifyStock(item.liveStock, item.threshold)
-    if (s.key === 'critical') return 'bg-rose-50 border-rose-200'
-    if (s.key === 'low') return 'bg-amber-50 border-amber-200'
-    return 'bg-emerald-50 border-emerald-200'
+  const tileTone = (item: InventoryItem) => TONE_CLASS[toneOf(item)]
+  const gaugeTone = (item: InventoryItem) => {
+    const t = toneOf(item)
+    return t === 'rose' || t === 'amber' ? t : null
   }
 
   // Three different sentences for three different states. Before 2026-09-02 all
@@ -170,17 +207,14 @@ export function CellarMapView({
           )
         })}
         <div className="flex flex-wrap gap-4 text-[10.5px] text-gray-500 px-1">
-          {[
-            ['bg-emerald-50 border-emerald-200', 'Healthy'],
-            ['bg-amber-50 border-amber-200', 'Below par'],
-            ['bg-rose-50 border-rose-200', 'Critical'],
-            ['bg-violet-50 border-violet-200', 'Needs reconcile'],
-          ].map(([cls, label]) => (
-            <span key={label} className="inline-flex items-center gap-1.5">
-              <i className={cn('w-2.5 h-2.5 rounded border inline-block', cls)} />
-              {label}
-            </span>
-          ))}
+          {(['green', 'amber', 'rose', 'violet', 'neutral'] as const)
+            .map((tone) => [TONE_CLASS[tone], toneWords[tone]])
+            .map(([cls, label]) => (
+              <span key={label} className="inline-flex items-center gap-1.5">
+                <i className={cn('w-2.5 h-2.5 rounded border inline-block', cls)} />
+                {label}
+              </span>
+            ))}
         </div>
       </div>
 
@@ -196,8 +230,16 @@ export function CellarMapView({
               {selectedWines.map(({ item, qty }) => (
                 <div key={item.inventoryId} className="py-2.5 border-t border-gray-50 first:border-t-0">
                   <div className="text-xs font-semibold text-gray-900">{item.name}</div>
-                  <div className="text-[10.5px] text-gray-400 mb-1.5">{qty} here of {(item.liveStock ?? 0) + (item.shadowStock ?? 0)} total</div>
-                  <StockGauge item={item} compact />
+                  <div className="text-[10.5px] text-gray-400 mb-1.5">
+                    {item.liveStock != null && item.shadowStock != null
+                      ? `${qty} here of ${item.liveStock + item.shadowStock} total`
+                      : `${qty} here; the total could not be read`}
+                  </div>
+                  <StockGauge
+                    item={item}
+                    compact
+                    numTone={gaugeTone(item)}
+                  />
                 </div>
               ))}
               {selectedWines.length === 0 && <p className="text-xs text-gray-400 py-2">Empty zone.</p>}

@@ -139,6 +139,12 @@ export function App() { return <><Route path="/p" element={<Here />} /><Route pa
     expect(p.check('section#there').status).toBe('missing')
   })
 
+  it('reads a layout route through its index child, the page its outlet draws', () => {
+    const app = `export function App() { return <Route path="/p" element={<Door />}><Route index element={<section id="page" />} /></Route> }`
+    const p = page(app, {})
+    expect(p.check('section#page').status).toBe('rings')
+  })
+
   it('puts nothing above an element drawn through a portal', () => {
     const p = page(route('<header className="h">{createPortal(<button data-y="1" />, document.body)}</header>'))
     expect(p.check('header.h button[data-y="1"]').status).toBe('missing')

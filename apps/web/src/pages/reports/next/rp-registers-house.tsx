@@ -335,6 +335,8 @@ const seats = analysis<SeatsRegister>({
   answers: 'Which tables earn, and which seats sit idle',
   window: () => 'the last 90 days of POS checks',
   path: (rid) => `/analytics/table-performance/${rid}?sinceDays=90`,
+  // The endpoint's @Roles (ADR 0348): staff keep the page, not this register.
+  readers: ['owner', 'manager'],
   graphs: ['bars', 'scatter', 'table'],
   graphNote:
     'The scatter puts seats against average check, which is the question this register exists for. No line, area or heat map: tables are not a sequence and the endpoint returns no per-day grain.',
@@ -509,6 +511,8 @@ const service = analysis<ServiceRegister>({
   answers: 'What each server’s checks look like, before and after the table they were given',
   window: () => 'the last 90 days of POS checks',
   path: (rid) => `/analytics/waiters/${rid}?sinceDays=90`,
+  // The endpoint's @Roles (ADR 0348): staff keep the page, not this register.
+  readers: ['owner', 'manager'],
   graphs: ['bars', 'table'],
   graphNote:
     'Bars rank one measure; the table carries all five. No scatter — the endpoint publishes no second axis a server can be placed on without a fixed effect, and its own adjusted model is a fit, not a coordinate.',
