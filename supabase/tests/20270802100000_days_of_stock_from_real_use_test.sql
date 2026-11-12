@@ -49,7 +49,12 @@ insert into public.restaurant_inventory (id, restaurant_id, kind, uom, display_n
   (pg_temp.item('f'), pg_temp.u('1'), 'food',   'g',      'DOS sugar',    'DOS sugar',    'house_declared', 0, 0, true, now() - interval '200 days'),
   (pg_temp.item('g'), pg_temp.u('1'), 'supply', 'each',   'DOS napkins',  'DOS napkins',  'house_declared', 0, 0, true, now() - interval '200 days'),
   (pg_temp.item('h'), pg_temp.u('1'), 'food',   'g',      'DOS pepper',   'DOS pepper',   'house_declared', 0, 0, true, now() - interval '200 days'),
-  (pg_temp.item('i'), pg_temp.u('1'), 'spirit', 'bottle', 'DOS old port', 'DOS old port', 'house_declared', 0, 0, true, now() - interval '200 days');
+  (pg_temp.item('i'), pg_temp.u('1'), 'spirit', 'bottle', 'DOS old port', 'DOS old port', 'house_declared', 0, 0, true, now() - interval '200 days'),
+  (pg_temp.item('j'), pg_temp.u('1'), 'food',   'ml',     'DOS oil',      'DOS oil',      'house_declared', 0, 0, true, now() - interval '200 days'),
+  (pg_temp.item('k'), pg_temp.u('1'), 'food',   'g',      'DOS rice',     'DOS rice',     'house_declared', 0, 0, true, now() - interval '200 days'),
+  (pg_temp.item('l'), pg_temp.u('1'), 'wine',   'bottle', 'DOS slow red', 'DOS slow red', 'house_declared', 0, 0, true, now() - interval '200 days'),
+  (pg_temp.item('m'), pg_temp.u('1'), 'food',   'g',      'DOS beans',    'DOS beans',    'house_declared', 0, 0, true, now() - interval '200 days'),
+  (pg_temp.item('n'), pg_temp.u('1'), 'food',   'g',      'DOS lentils',  'DOS lentils',  'house_declared', 0, 0, true, now() - interval '200 days');
 
 -- a: 40 in 60 days ago, one sold a day for the last 20 days.
 select pg_temp.mv('a', 40, 'purchase', 'order', 'a-in', '60 days', 18.5);
@@ -87,6 +92,34 @@ select pg_temp.cnt('h', 100, 'h-c1', '15 days');
 select pg_temp.cnt('h', 300, 'h-c2', '5 days');
 -- i: a spirit on the shelf, never sold.
 select pg_temp.mv('i', 3, 'purchase', 'order', 'i-in', '120 days', 30);
+-- j: oil. Counted 10000 @-11; an owner's manual override takes it to 7000
+-- @-6 (spillage, an 'adjustment'); the count @-1 agrees with the book at 7000.
+select pg_temp.mv('j', 10000, 'purchase', 'order', 'j-in', '30 days', 0.001);
+select pg_temp.cnt('j', 10000, 'j-c1', '11 days');
+select pg_temp.mv('j', -3000, 'adjustment', 'manual', 'j-o', '6 days');
+select pg_temp.cnt('j', 7000, 'j-c2', '1 day');
+-- k: rice. Counted 1000 @-12; 5000 booked in @-8 and the door count takes
+-- 1000 of it back (an order-sourced 'adjustment'); 500 returned to the vendor
+-- @-6; counted 2000 @-2.
+select pg_temp.mv('k', 1000, 'purchase', 'order', 'k-in0', '20 days', 0.002);
+select pg_temp.cnt('k', 1000, 'k-c1', '12 days');
+select pg_temp.mv('k', 5000, 'purchase', 'order', 'k-in', '8 days', 0.002);
+select pg_temp.mv('k', -1000, 'adjustment', 'order', 'k-door', '8 days');
+select pg_temp.mv('k', -500, 'return', 'manual', 'k-ret', '6 days');
+select pg_temp.cnt('k', 2000, 'k-c2', '2 days');
+-- l: a wine no one has bought in 90 days, counted 12 then 10 five days apart.
+select pg_temp.mv('l', 12, 'purchase', 'order', 'l-in', '60 days', 15);
+select pg_temp.cnt('l', 12, 'l-c1', '10 days');
+select pg_temp.cnt('l', 10, 'l-c2', '5 days');
+-- m: beans, counted twice, but the later count was 40 days ago.
+select pg_temp.mv('m', 5000, 'purchase', 'order', 'm-in', '60 days', 0.002);
+select pg_temp.cnt('m', 5000, 'm-c1', '50 days');
+select pg_temp.cnt('m', 4000, 'm-c2', '40 days');
+-- n: lentils, counted 5000 @-20 and 3000 @-10; 500 written off @-5 since.
+select pg_temp.mv('n', 5000, 'purchase', 'order', 'n-in', '25 days', 0.002);
+select pg_temp.cnt('n', 5000, 'n-c1', '20 days');
+select pg_temp.cnt('n', 3000, 'n-c2', '10 days');
+select pg_temp.mv('n', -500, 'waste', 'manual', 'n-w', '5 days');
 
 do $$
 declare r public.inventory_analytics;
@@ -111,12 +144,13 @@ begin
 
   -- T4 flour: first count of the window -21 (9000), last -1 (8200), 5000 received:
   -- used 9000 + 5000 - 8200 = 5800 = 200 wasted + gaps 2000 + 2000 + 1600, over 20 days = 290 g a day;
-  -- 8200 on hand / 290 = 28 days. Used, so not dead stock.
+  -- the last count was 1 day ago, so 290 more is gone: (8200 - 290) / 290 = 27 days.
+  -- Used, so not dead stock.
   r := pg_temp.a('d');
   assert r.usage_source = 'counts', format('T4 source %s', r.usage_source);
   assert r.usage_qty = 5800, format('T4 used %s', r.usage_qty);
   assert r.velocity_per_day = 290.000, format('T4 velocity %s', r.velocity_per_day);
-  assert r.days_of_cover = 28, format('T4 cover %s', r.days_of_cover);
+  assert r.days_of_cover = 27 and r.on_hand = 8200, format('T4 cover %s on hand %s', r.days_of_cover, r.on_hand);
   assert r.reorder_point = 2900 and r.reorder_suggested = false, format('T4 reorder %s', r.reorder_point);
   assert r.dead_stock = false and r.sold_30d = 0 and r.last_sold_at is null, 'T4 dead/sold';
   assert r.usage_since::date = (now() - interval '21 days')::date and r.usage_until::date = (now() - interval '1 day')::date, 'T4 window';
@@ -135,13 +169,52 @@ begin
   assert r.usage_source = 'counts' and r.velocity_per_day = 0 and r.usage_qty = 0, 'T7 none used';
   assert r.days_of_cover is null and r.dead_stock = true, 'T7 dead';
 
-  -- T8 pepper: the later count found 200 more than the book: used never reads below 0.
+  -- T8 pepper: the later count found 200 more than arrived (a delivery nobody
+  -- booked): the counts cannot say what was used, so it is not measured, and
+  -- not called dead stock either.
   r := pg_temp.a('h');
-  assert r.usage_source = 'counts' and r.usage_qty = 0 and r.velocity_per_day = 0, format('T8 used %s', r.usage_qty);
+  assert r.usage_source is null and r.velocity_per_day = 0 and r.usage_qty is null, format('T8 %s %s', r.usage_source, r.usage_qty);
+  assert r.dead_stock = false and r.reorder_suggested = false, 'T8 dead/reorder';
 
   -- T9 a spirit never sold and never counted: dead stock, exactly as before.
   r := pg_temp.a('i');
   assert r.usage_source is null and r.dead_stock = true, 'T9 dead';
+
+  -- T10 oil: the override is use the counts already hold: 10000 - 7000 = 3000
+  -- over 10 days = 300 a day (summing only sale/waste/comp read 0 and dead stock).
+  r := pg_temp.a('j');
+  assert r.usage_source = 'counts' and r.usage_qty = 3000, format('T10 %s %s', r.usage_source, r.usage_qty);
+  assert r.velocity_per_day = 300.000 and r.dead_stock = false, format('T10 velocity %s', r.velocity_per_day);
+  -- (7000 - 300 since the count) / 300 = 22.3
+  assert r.days_of_cover = 22, format('T10 cover %s', r.days_of_cover);
+
+  -- T11 rice: arrived = 5000 - 1000 at the door - 500 back to the vendor = 3500;
+  -- used = 1000 + 3500 - 2000 = 2500 over 10 days = 250 a day. Neither the
+  -- door correction nor the return is use.
+  r := pg_temp.a('k');
+  assert r.usage_source = 'counts' and r.usage_qty = 2500 and r.velocity_per_day = 250.000,
+    format('T11 %s %s %s', r.usage_source, r.usage_qty, r.velocity_per_day);
+  -- (2000 - 250 x 2 days) / 250 = 6
+  assert r.on_hand = 2000 and r.days_of_cover = 6, format('T11 cover %s', r.days_of_cover);
+
+  -- T12 a wine the till has not sold in 90 days: its shrink between counts is
+  -- loss, not a pace, so it is not measured and no reorder is suggested.
+  r := pg_temp.a('l');
+  assert r.usage_source is null and r.velocity_per_day = 0 and r.reorder_suggested = false,
+    format('T12 %s %s', r.usage_source, r.velocity_per_day);
+
+  -- T13 beans: two counts, but the later one is 40 days old: no pace for today.
+  r := pg_temp.a('m');
+  assert r.usage_source is null and r.days_of_cover is null and r.dead_stock = false, format('T13 %s', r.usage_source);
+
+  -- T14 lentils: 2000 used over 10 days = 200 a day. 10 days since the last
+  -- count is 2000 more, 500 of it already booked as waste: left = 2500 -
+  -- (2000 - 500) = 1000, so 5 days, and 1000 is under the reorder point 2000.
+  r := pg_temp.a('n');
+  assert r.usage_source = 'counts' and r.velocity_per_day = 200.000 and r.on_hand = 2500,
+    format('T14 %s %s %s', r.usage_source, r.velocity_per_day, r.on_hand);
+  assert r.days_of_cover = 5 and r.reorder_point = 2000 and r.reorder_suggested = true,
+    format('T14 cover %s point %s suggested %s', r.days_of_cover, r.reorder_point, r.reorder_suggested);
 end $$;
 
 rollback;
