@@ -156,10 +156,13 @@ describe('EndpaperShell', () => {
           <p>x</p>
         </Fresh>,
       )
-      // name (turn), full stop (stamp), two rules (settle), kicker + voice (ink)
+      // The mark draws on the first painted frame (2026-11-12: a page that
+      // paints none keeps the whole mark), so the shell's own ink comes first.
+      await act(() => new Promise<void>((done) => requestAnimationFrame(() => done())))
+      // kicker + voice (ink), then name (turn), full stop (stamp), two rules (settle)
       expect(calls).toHaveLength(6)
-      expect(calls.map((c) => c.options.duration)).toEqual([420, 360, 320, 320, 160, 160])
-      expect(calls.map((c) => c.options.delay)).toEqual([0, 300, 340, 400, 560, 560])
+      expect(calls.map((c) => c.options.duration)).toEqual([160, 160, 420, 360, 320, 320])
+      expect(calls.map((c) => c.options.delay)).toEqual([560, 560, 0, 300, 340, 400])
       first.unmount()
       calls = []
       render(
@@ -167,6 +170,7 @@ describe('EndpaperShell', () => {
           <p>x</p>
         </Fresh>,
       )
+      await act(() => new Promise<void>((done) => requestAnimationFrame(() => done())))
       expect(calls).toHaveLength(0)
     })
 
