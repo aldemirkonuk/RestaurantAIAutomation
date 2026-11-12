@@ -107,7 +107,8 @@ export function notOnFileWords(n: NonNullable<Plan['notOnThisFile']>[number]): s
     n.glass !== null ? `glass ${money(n.glass)}` : null,
   ].filter(Boolean);
   const locked = n.locked.length ? `, ${n.locked.join(' and ')} locked` : '';
-  return `${name}: keeps ${kept.length ? kept.join(', ') : 'no price (it had none)'}${locked}`;
+  const gone = n.active === false ? 'the house no longer sells it; its row ' : '';
+  return `${name}: ${gone}keeps ${kept.length ? kept.join(', ') : 'no price (it had none)'}${locked}`;
 }
 
 function setWords(k: PlanKind): string {

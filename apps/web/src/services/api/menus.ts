@@ -447,6 +447,8 @@ export interface MenuPlan {
     bottle: number | null
     glass: number | null
     locked: Array<'bottle' | 'glass'>
+    /** False when the house deleted or set inactive its row; null with no row. Optional for an older gateway. */
+    active?: boolean | null
   }>
 }
 
