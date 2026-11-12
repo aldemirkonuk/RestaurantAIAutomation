@@ -133,16 +133,38 @@ describe("resolveUnitCost never invents a number", () => {
     });
   });
 
-  it("treats an invoiced WAC of 0 as measured — that is how samples are recorded", () => {
-    // inventory.service.ts records sample bottles as unitCost 0 / provenance
-    // "sample". The old expression read that 0 as falsy and fabricated a cost
-    // for a bottle that provably cost nothing.
+  it("reads an invoiced WAC of 0 as unknown, never as free", () => {
+    // Samples never reach the WAC (the rollup filters them), so a 0 here is a
+    // lot booked at 0: a form left at "0" or an invoice line with no price.
+    // Read as measured it gave the wine a 100% margin and a zero value.
     expect(
       resolveUnitCost(
         { last_purchase_price: null },
         { has_invoice_cost: true, wac: 0 },
       ),
-    ).toEqual({ unitCost: 0, costBasis: "invoice_lot_wac" });
+    ).toEqual({ unitCost: null, costBasis: "unknown" });
+    expect(
+      resolveUnitCost({}, { has_invoice_cost: true, wac: "0.00", wac_qty: 6, live_qty: 6 }),
+    ).toEqual({ unitCost: null, costBasis: "unknown" });
+  });
+
+  it("lets a zero invoiced WAC fall through to a real agreed or last price", () => {
+    expect(
+      resolveUnitCost(
+        { last_purchase_price: null },
+        { has_invoice_cost: true, wac: 0, has_agreed_cost: true, agreed_wac: 14.5 },
+      ),
+    ).toEqual({ unitCost: 14.5, costBasis: "agreed_lot_wac" });
+    expect(
+      resolveUnitCost({ last_purchase_price: "18.25" }, { has_invoice_cost: true, wac: 0 }),
+    ).toEqual({ unitCost: 18.25, costBasis: "last_purchase_price" });
+  });
+
+  it("still reads a small positive invoiced WAC as measured", () => {
+    expect(resolveUnitCost({}, { has_invoice_cost: true, wac: 0.01 })).toEqual({
+      unitCost: 0.01,
+      costBasis: "invoice_lot_wac",
+    });
   });
 
   it("does not treat has_invoice_cost with a null wac as a measurement", () => {
