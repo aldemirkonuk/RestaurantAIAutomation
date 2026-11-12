@@ -290,6 +290,19 @@ describe('ReceiptsNext', () => {
     await waitFor(() => expect(container.textContent).toContain('off by $210.10'));
   });
 
+  describe('a printed price basis is said under the unit price', () => {
+    it('reads "per 12 bottles" on a line priced per twelve, and nothing on a plain line', async () => {
+      const based = { ...line, id: 'l4', line_no: 1, uom: 'bottle', qty: 12, pack_size: 1, qty_bottles: 12, unit_price: 142, line_total: 142, price_base_qty: 12, price_base_uom: 'bottle' };
+      const plain = { ...line, id: 'l5', line_no: 2, uom: 'bottle', qty: 3, pack_size: 1, qty_bottles: 3 };
+      api.detail = { document: doc({}), lines: [based, plain], links: [] };
+      render(<ReceiptsNext />, { wrapper });
+      await openFirstDoc();
+      const notes = screen.getAllByTestId('line-price-base');
+      expect(notes).toHaveLength(1);
+      expect(notes[0].textContent).toBe('per 12 bottles');
+    });
+  });
+
   describe('a case line takes its bottles per case', () => {
     const caseLine = { ...line, id: 'l2', line_no: 1, description: 'SYN Zeytinyağı koli', uom: 'case', qty: 2, pack_size: 1, qty_bottles: 2 };
     const bottleLine = { ...line, id: 'l3', line_no: 2, description: 'SYN Domates', uom: 'bottle', qty: 10, pack_size: 1, qty_bottles: 10 };

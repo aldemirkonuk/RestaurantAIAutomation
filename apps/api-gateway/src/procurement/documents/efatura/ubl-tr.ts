@@ -165,7 +165,7 @@ function unitOf(
   code: string | undefined,
   lineNo: number,
   warnings: string[],
-): { uom: Uom; doubt: boolean } {
+): { uom: Uom; doubt: boolean; unmapped?: string } {
   const c = (code ?? "").trim().toUpperCase();
   const known = UNIT_CODES[c];
   if (known === "case" || known === "pack") {
@@ -181,7 +181,12 @@ function unitOf(
       ? `Line ${lineNo}: the file counts in ${UNIT_WORDS[c] ? `${UNIT_WORDS[c]}s (${c})` : `unit code ${c}`}, which is not a unit the match counts; the quantity is left as the file states it, unconverted, and shown as items. Set the unit on the line before this paper is booked.`
       : `Line ${lineNo}: the file states no unit; the quantity is left unconverted and shown as items. Set the unit on the line before this paper is booked.`,
   );
-  return { uom: "each", doubt: true };
+  // An unmapped code is filed as `each`, and the code survives only in
+  // `printed`. The cost gatekeeper refuses an `each` line whose printed.uom it
+  // cannot normalise, so 3 KGM @ 120 is never costed 120 "a bottle". Mapped
+  // codes are never carried: it does not know NIU, BO, CS or BX and would
+  // refuse good lines.
+  return { uom: "each", doubt: true, ...(c ? { unmapped: (code ?? "").trim() } : {}) };
 }
 
 /** The most a paper with a doubtful line's count may claim to be sure of. */
@@ -245,6 +250,7 @@ export function readUblTr(xml: string): ParsedDocument {
     if (unit.doubt) doubtfulCount = true;
     warnings.push(...lineWarnings);
     const linePrinted: Record<string, string> = {};
+    if (unit.unmapped) linePrinted.uom = unit.unmapped;
     if (qtyEl?.text.trim()) linePrinted.qty = `${qtyEl.text.trim()} ${qtyEl.attrs.unitCode ?? ""}`.trim();
     const unitPrice = num(at(le, "Price/PriceAmount"), `line ${lineNo} price`, warnings, linePrinted, "unitPrice");
     const lineTotal = num(at(le, "LineExtensionAmount"), `line ${lineNo} amount`, warnings, linePrinted, "lineTotal");

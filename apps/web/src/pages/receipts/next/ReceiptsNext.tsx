@@ -68,7 +68,7 @@ import {
   sentence,
   serverMessage,
 } from './rc2-format';
-import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
+import { DOC_TYPE_LABELS, nameCarriesYear, unitWord } from '../../../components/documents/canonical-format';
 import { qtyUnitWord, takesPackSize } from './lineUnits';
 import { SwipeToConfirm } from './SwipeToConfirm';
 import {
@@ -1394,6 +1394,14 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                               >
                                 {qtyUnitWord(l.uom, l.qty)}
                               </span>
+                            )}
+                            {f.key === 'unit_price' && l.price_base_qty != null && l.price_base_qty !== 1 && (
+                              <div
+                                data-testid="line-price-base"
+                                style={{ fontSize: 9.5, color: 'var(--ink-4, #665D50)', marginTop: 2 }}
+                              >
+                                per {l.price_base_qty} {unitWord(l.price_base_uom ?? l.uom, l.price_base_qty)}
+                              </div>
                             )}
                             {changed && (
                               <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)', marginTop: 2 }}>

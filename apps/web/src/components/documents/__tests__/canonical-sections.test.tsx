@@ -1183,6 +1183,43 @@ describe('CanonicalSheet — what the reader kept, said as such (W41)', () => {
     expect(billedCell(container)).toBe('12')
   })
 
+  describe('a case line says what its unit price is per', () => {
+    const caseDoc = (base: boolean) => {
+      const d = doc()
+      d.layer1.lines = [
+        line({
+          quantity: env(2),
+          unit: env('case'),
+          netPrice: env(1800, { as_printed: null }),
+          priceBaseQuantity: base ? env(12, { as_printed: 'KS(12)' }) : env(1),
+          priceBaseUnit: env('bottle'),
+          netAmount: env(3600),
+        }),
+      ]
+      d.layer2.lines = [{ lineIndex: 0, packSize: 6 } as (typeof d.layer2.lines)[number]]
+      d.layer3.lines = [adjudicated({ billed: 12 })]
+      return d
+    }
+
+    it('names the cases behind the bottle count and the unit the price is per', () => {
+      const { getByTestId } = render(<CanonicalSheet doc={caseDoc(false)} />)
+      expect(getByTestId('billed-as-printed').textContent).toBe('2 cases of 6')
+      expect(getByTestId('price-unit').textContent).toBe('per case of 6')
+    })
+
+    it('says neither on a bottle line', () => {
+      const { queryByTestId } = render(<CanonicalSheet doc={doc()} />)
+      expect(queryByTestId('billed-as-printed')).toBeNull()
+      expect(queryByTestId('price-unit')).toBeNull()
+    })
+
+    it('leaves price-unit to the printed price base when the paper printed one', () => {
+      const { queryByTestId, getByTestId } = render(<CanonicalSheet doc={caseDoc(true)} />)
+      expect(getByTestId('price-base').textContent).toMatch(/per 12 bottles$/)
+      expect(queryByTestId('price-unit')).toBeNull()
+    })
+  })
+
   it('leaves the count bare when the unit was not read — never a guessed unit', () => {
     const d = doc()
     d.layer1.lines = [line({ unit: env<string>(null) })]
