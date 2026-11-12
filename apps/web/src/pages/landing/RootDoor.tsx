@@ -19,6 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ProtectedRoute } from '../../components/ProtectedRoute';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { HousePageLoader } from '../../components/mudavym/HousePageLoader';
+import { SessionWaitScreen } from '../../components/SessionWaitScreen';
 
 function hasStoredSession(): boolean {
   try {
@@ -29,7 +30,10 @@ function hasStoredSession(): boolean {
 }
 
 export function RootDoor({ landing }: { landing: ReactNode }) {
-  const { loading, isAuthenticated } = useAuth();
+  const { loading, isAuthenticated, sessionWait, retrySessionNow, signOutWhileWaiting } = useAuth();
+  if (loading && sessionWait) {
+    return <SessionWaitScreen wait={sessionWait} onRetryNow={retrySessionNow} onSignOut={signOutWhileWaiting} />;
+  }
   if (loading && hasStoredSession()) return <HousePageLoader />;
   if (!isAuthenticated) return <>{landing}</>;
   return (
