@@ -54,7 +54,7 @@ const run = (over: Partial<Parameters<typeof tillFigures>[0]> = {}) =>
   tillFigures({
     sales: SALES,
     cost: COST,
-    tillStock: { value: 1000, goodsOnHand: 2, goodsOnTill: 2, uncostedOnTill: 0, goodsOffTill: 0, offTillValue: 0 },
+    tillStock: { value: 1000, goodsOnHand: 2, goodsOnTill: 2, uncostedOnTill: 0, idleOnTill: 0, idleOnTillValue: 0, goodsOffTill: 0, offTillValue: 0 },
     labor: 0,
     now: NOW,
     windowDays: 365,
@@ -202,7 +202,7 @@ describe("cost of goods is what the till sold", () => {
     expect(young.inventoryTurnover).toBeNull();
     expect(young.daysInventoryOutstanding).toBeNull();
     expect(young.gmroi).toBeNull();
-    const unpriced = run({ tillStock: { value: null, goodsOnHand: 2, goodsOnTill: 2, uncostedOnTill: 1, goodsOffTill: 0, offTillValue: 0 } });
+    const unpriced = run({ tillStock: { value: null, goodsOnHand: 2, goodsOnTill: 2, uncostedOnTill: 1, idleOnTill: 0, idleOnTillValue: 0, goodsOffTill: 0, offTillValue: 0 } });
     expect(unpriced.daysInventoryOutstanding).toBeNull();
   });
 
@@ -243,6 +243,9 @@ describe("turns, days of stock and GMROI divide by the stock the till reaches (r
       goodsOnHand: 4,
       goodsOnTill: 2,
       uncostedOnTill: 0,
+      // The mapped wine that sold nothing stays in, and is named.
+      idleOnTill: 1,
+      idleOnTillValue: 400,
       goodsOffTill: 2,
       // The flour has no cost, so the left-out value is unknown, never a part.
       offTillValue: null,
@@ -254,10 +257,20 @@ describe("turns, days of stock and GMROI divide by the stock the till reaches (r
     expect(t.daysInventoryOutstanding).not.toBeNull();
     expect(t.basis.costDerived).toContain("2 of 4 goods on hand");
     expect(t.basis.costDerived).toContain("the 2 goods the till does not reach are left out");
+    expect(t.basis.costDerived).toContain("1 of them sold nothing in the window (400.00 at cost) and stays in, since the till can sell it");
+  });
+
+  it("a good the till moved a bottle of is not idle, even with no sale value on the line", () => {
+    const s = tillStockOf({
+      onHand: onHand.slice(0, 2),
+      sales,
+      cost: { items: [{ inventory_id: "w-mapped-idle", bottles_out: 0, bottles_back: 1, cost: 0, settled_after_sale: 0, uncosted_out: 0, uncosted_back: 0 }] },
+    });
+    expect(s).toMatchObject({ idleOnTill: 0, idleOnTillValue: 0 });
   });
 
   it("the unmapped wine no longer inflates days of stock", () => {
-    const whole = run({ tillStock: { value: 3000, goodsOnHand: 3, goodsOnTill: 3, uncostedOnTill: 0, goodsOffTill: 0, offTillValue: 0 } });
+    const whole = run({ tillStock: { value: 3000, goodsOnHand: 3, goodsOnTill: 3, uncostedOnTill: 0, idleOnTill: 0, idleOnTillValue: 0, goodsOffTill: 0, offTillValue: 0 } });
     const reached = run({ tillStock: tillStockOf({ onHand: onHand.slice(0, 3), sales, cost: null }) });
     expect(reached.daysInventoryOutstanding! * 3).toBeCloseTo(whole.daysInventoryOutstanding!, 6);
   });
