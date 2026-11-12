@@ -225,10 +225,13 @@ export default function CommunicationsNext() {
     setParams(params, { replace: true });
   };
 
-  /* Everything waiting on a person, from the three reads that list it: letters
-     staff asked a manager to send, replies the house drafted on orders, and the
+  /* Everything not yet sent, from the three reads that list it: letters staff
+     asked a manager to send, replies the house drafted on orders, and the
      house's own drafted letters. The count is null until all three have
-     answered, so it can never undercount a list still in flight. */
+     answered, so it can never undercount a list still in flight.
+     2026-11-12: named "To send", not "Waiting on you". Mail says "waiting on
+     you" for vendors owed a reply, and a staff member's own request waits on
+     a manager, not on them; the same words never mean two things here. */
   const letterQ = useLetterRequests(letterStanding.restaurantId);
   const waitingParts = [
     letterStanding.restaurantId ? letterQ.data?.requests.length ?? null : 0,
@@ -336,7 +339,7 @@ export default function CommunicationsNext() {
           {tab === 'letters' && (
           <div className="flex flex-wrap gap-6">
             <GlanceFigure
-              label="Waiting on you"
+              label="To send"
               value={waitingCount}
               failed={waitingFailed}
               at={Number.isFinite(waitingAt) ? waitingAt : 0}
@@ -442,7 +445,7 @@ export default function CommunicationsNext() {
           </div>
         )}
 
-        <section aria-label="Waiting on you" className="mb-6">
+        <section aria-label="To send" className="mb-6">
           <h2
             style={{
               fontFamily: MONO,
@@ -454,7 +457,7 @@ export default function CommunicationsNext() {
               margin: '0 0 10px',
             }}
           >
-            Waiting on you · {waitingCount ?? EM}
+            To send · {waitingCount ?? EM}
           </h2>
           {replyLinked && !replyHit && replyOpened !== replyLinked && (data.draftsKnown || data.failed.drafts) && (
             <p
@@ -478,7 +481,7 @@ export default function CommunicationsNext() {
           {/* COMMS-W33: a zero from a read that then failed is not "nothing waiting"; the failed part says it. */}
           {waitingCount === 0 && !waitingFailed && (
             <p style={{ fontFamily: SANS, fontSize: 12.5, color: 'var(--ink-4, #665D50)', margin: 0 }}>
-              Nothing is waiting on you.
+              Nothing is waiting to be sent.
             </p>
           )}
           {letterStanding.restaurantId && (
@@ -500,7 +503,7 @@ export default function CommunicationsNext() {
               className="mb-6 rounded-xl p-4"
               style={{ fontFamily: SANS, border: '1px solid var(--paper-2, #EAE4D8)', background: 'var(--paper-1, #F3EFE6)' }}
             >
-              {/* COMMS-W36: under "Waiting on you", so one level below it; the
+              {/* COMMS-W36: under "To send", so one level below it; the
                   line it had as an h2 is kept, so only its level changed. */}
               <h3
                 style={{

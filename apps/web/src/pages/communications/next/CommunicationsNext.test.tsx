@@ -405,7 +405,7 @@ describe('CommunicationsNext', () => {
     };
     render(<CommunicationsNext />);
     // the failed figure names its failure
-    expect(screen.getByLabelText('Waiting on you: could not be read')).toBeInTheDocument();
+    expect(screen.getByLabelText('To send: could not be read')).toBeInTheDocument();
     // the answered ones do not
     expect(screen.queryByLabelText(/Sent · 30 days: could not be/i)).toBeNull();
   });
@@ -449,8 +449,8 @@ describe('CommunicationsNext', () => {
     ] };
     mockData.current = { ...base, drafts: [{ id: 'a1', orderId: 'o1' }, { id: 'a2', orderId: 'o2' }] };
     render(<CommunicationsNext />);
-    expect(screen.getByText('Waiting on you · 4')).toBeInTheDocument();
-    expect(screen.getByLabelText('Waiting on you')).toContainElement(screen.getByTestId('letter-requests-stub'));
+    expect(screen.getByText('To send · 4')).toBeInTheDocument();
+    expect(screen.getByLabelText('To send')).toContainElement(screen.getByTestId('letter-requests-stub'));
   });
 
   it('says when an order’s draft stands in front of older ones (COMMS-W24)', () => {
@@ -471,14 +471,24 @@ describe('CommunicationsNext', () => {
   it('the waiting figure is unknown while any of its lists is unanswered', () => {
     mockDrafts.current = { ...mockDrafts.current, drafts: null };
     render(<CommunicationsNext />);
-    expect(screen.getByText('Waiting on you · —')).toBeInTheDocument();
-    expect(screen.queryByText('Nothing is waiting on you.')).toBeNull();
+    expect(screen.getByText('To send · —')).toBeInTheDocument();
+    expect(screen.queryByText('Nothing is waiting to be sent.')).toBeNull();
   });
 
   it('says plainly when nothing is waiting, once every list has answered', () => {
     render(<CommunicationsNext />);
-    expect(screen.getByText('Waiting on you · 0')).toBeInTheDocument();
-    expect(screen.getByText('Nothing is waiting on you.')).toBeInTheDocument();
+    expect(screen.getByText('To send · 0')).toBeInTheDocument();
+    expect(screen.getByText('Nothing is waiting to be sent.')).toBeInTheDocument();
+  });
+
+  // 2026-11-12: Mail says "waiting on you" for vendors owed a reply. Letters
+  // counts letters not yet sent, so it never borrows those words.
+  it('Letters never says "waiting on you": that is Mail’s count of vendors owed a reply', () => {
+    mockLetters.current = { ...mockLetters.current, data: { requests: [{ id: 'r1' }] } };
+    const { container } = render(<CommunicationsNext />);
+    expect(screen.getByText('To send · 1')).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/waiting on you/i);
+    expect(container.querySelector('[aria-label*="waiting on you" i]')).toBeNull();
   });
 });
 
@@ -669,13 +679,13 @@ describe('a read that fails after it answered (COMMS-W33)', () => {
     expect(screen.queryByText(/none can be opened/)).toBeNull();
     // one line under the rows, never a second one claiming there were none
     expect(screen.queryByTestId('drafts-unread')).toBeNull();
-    expect(screen.getByLabelText('Waiting on you: 1 as it was at 20:43. It could not be read again.')).toBeInTheDocument();
+    expect(screen.getByLabelText('To send: 1 as it was at 20:43. It could not be read again.')).toBeInTheDocument();
   });
 
   it('a zero that could not be read again is not "nothing waiting"', () => {
     mockData.current = { ...base, drafts: [], failed: { ...noFailures, drafts: true }, draftsError: 'boom', draftsAt: at };
     render(<CommunicationsNext />);
-    expect(screen.queryByText('Nothing is waiting on you.')).toBeNull();
+    expect(screen.queryByText('Nothing is waiting to be sent.')).toBeNull();
     expect(screen.getByTestId('drafts-unread')).toHaveTextContent(
       'The replies the house has written could not be read again (boom). At 20:43 there were none; there may be some now.',
     );
@@ -940,7 +950,7 @@ describe('what the address keeps (COMMS-W35)', () => {
 // COMMS-W36 (founder: "Page + queue shared", "Visible label"): the title names
 // its own ink, so the old Dark theme a browser may still keep (`html.dark`,
 // no control left since #576) cannot turn it pale on paper (it
-// measured 1.13:1); the two lists inside "Waiting on you" are a level below
+// measured 1.13:1); the two lists inside "To send" are a level below
 // it; and the tabs, which replaced the book (2026-11-07), name themselves.
 describe('the outline and the title’s ink (COMMS-W36)', () => {
   beforeEach(() => {
@@ -953,7 +963,7 @@ describe('the outline and the title’s ink (COMMS-W36)', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Communications' }).style.color).toBe('var(--ink-1, #211C16)');
   });
 
-  it('reads as one outline: the waiting lists under "Waiting on you", the tabs named', () => {
+  it('reads as one outline: the waiting lists under "To send", the tabs named', () => {
     mockData.current = { ...base, drafts: [{ id: 'a1', orderId: 'o1' }, { id: 'a2', orderId: 'o2' }] };
     render(<CommunicationsNext />);
     // Only its level changed: the line it had as an h2 is kept, so nothing below it moves.
@@ -978,7 +988,7 @@ describe('the tour finds every step (COMMS-W38)', () => {
     expect(container.querySelector('section[aria-label="Drafts waiting"]')).toBeNull();
     expect(communicationsTour.steps.map((s) => s.element)).toEqual([
       'nav[aria-label="Mail and letters"]',
-      'section[aria-label="Waiting on you"]',
+      'section[aria-label="To send"]',
       '[data-tour="comms-write"]',
       'section[aria-label="Who is writing"]',
     ]);
@@ -1044,7 +1054,7 @@ describe('Mail and Letters', () => {
     expect(tabs()[0]).toHaveAttribute('aria-current', 'page');
     // Letters' own figures and lists stand with Letters.
     expect(screen.queryByText('Replies · 30 days')).toBeNull();
-    expect(screen.queryByRole('region', { name: 'Waiting on you' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'To send' })).toBeNull();
   });
 
   // Spec (h): the counter's and the credit's links still land where they did.
