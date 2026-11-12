@@ -194,6 +194,34 @@ describe('RecipeSheet', () => {
     expect(foot.textContent).not.toMatch(/₺|Costs/);
   });
 
+  it('the drink opens on its cards: a line with no price makes the cost not known and names it, never a partial sum', async () => {
+    serve(
+      negroni({
+        current: { ...negroni().current!, lines: [linked('gin', 30, GIN), linked('Campari', 15, '55555555-5555-4555-8555-555555555555'), linked('sweet vermouth', null, '66666666-6666-4666-8666-666666666666')] },
+        cost: { perServe: null, priced: 2, of: 3, complete: false },
+      }),
+    );
+    mount();
+    const card = await screen.findByTestId('drink-card-cost');
+    expect(card).toHaveAttribute('data-known', 'false');
+    expect(card).toHaveTextContent('Cost a serve');
+    expect(card).toHaveTextContent('Not known');
+    expect(card).toHaveTextContent('2 of 3 ingredients priced; no price yet for sweet vermouth.');
+    // 30 + 15 of the priced lines is never shown as the drink's cost.
+    expect(card.textContent).not.toMatch(/₺|45/);
+    expect(screen.getByTestId('drink-card-ingredients')).toHaveTextContent('3 from your shelf.');
+  });
+
+  it('the cards say a complete cost, the price, and what a serve holds; a line under a cent is not free', async () => {
+    serve(negroni({ cost: { perServe: 0, perServeExact: 0.004, priced: 3, of: 3, complete: true } }));
+    mount();
+    expect(await screen.findByTestId('drink-card-cost')).toHaveTextContent('Under ₺0.01');
+    expect(screen.getByTestId('drink-card-price')).toHaveTextContent('₺450.00A serve, as your list has it.');
+    // No whatIsIn from this gateway: said as not read on both cards, never 0.
+    expect(screen.getByTestId('drink-card-energy')).toHaveTextContent('Not read');
+    expect(screen.getByTestId('drink-card-alcohol')).toHaveTextContent('Not read');
+  });
+
   it('3. a complete Negroni costs ₺57.00 a serve at today’s prices', async () => {
     serve(negroni());
     mount();
@@ -233,6 +261,10 @@ describe('RecipeSheet', () => {
     const { container } = mount();
     await screen.findAllByTestId('recipe-line');
     expect(container.textContent).not.toMatch(/₺/);
+    // Staff get the cards that are theirs to read: no cost, no price.
+    expect(screen.queryByTestId('drink-card-cost')).toBeNull();
+    expect(screen.queryByTestId('drink-card-price')).toBeNull();
+    expect(screen.getByTestId('drink-card-ingredients')).toHaveTextContent('3');
     expect(screen.queryByRole('button', { name: /save/i })).toBeNull();
     expect(screen.queryByRole('spinbutton')).toBeNull();
     expect(screen.queryByLabelText('Amount')).toBeNull();
@@ -423,7 +455,7 @@ describe('RecipeSheet', () => {
   it('a manager sees the price and each line’s cost; staff see neither', async () => {
     serve(negroni());
     const { unmount } = mount();
-    await waitFor(() => expect(screen.getByText('₺450.00 a serve')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('drink-card-price')).toHaveTextContent('₺450.00'));
     expect(screen.getByText('₺30.00 a serve')).toBeInTheDocument();
     unmount();
     h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { role: 'manager' } };
