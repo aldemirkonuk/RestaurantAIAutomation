@@ -39,8 +39,13 @@ export interface InsightEvidence {
   forecastGapPct?: number;
   goalName?: string;
   goalProgressPct?: number;
+  /** "at_most": a ceiling to stay under, not a target to reach. */
+  goalDirection?: "at_least" | "at_most";
+  goalMet?: boolean;
   goalDaysLeft?: number;
   goalOnTrack?: boolean;
+  /** The day the goal's reading was taken, when it was not today. */
+  goalReadOn?: string;
   surgeMinutes?: number;
   n?: number;
 }
@@ -183,15 +188,32 @@ export function verbalize(template: string, e: InsightEvidence): string | null {
     }
     case "goal": {
       if (e.goalProgressPct == null || !e.goalName) return null;
+      const days =
+        e.goalDaysLeft != null ? ` with ${e.goalDaysLeft} days left` : "";
+      const asOf = e.goalReadOn ? ` (read on ${e.goalReadOn})` : "";
+      if (e.goalDirection === "at_most") {
+        // A ceiling: the share of it used, and whether it still holds.
+        const where =
+          e.goalMet === false
+            ? `"${e.goalName}" is over its ceiling: ${fmtPct(e.goalProgressPct)} of it${days}${asOf}.`
+            : `"${e.goalName}" stands at ${fmtPct(e.goalProgressPct)} of its ceiling${days}${asOf}.`;
+        const pace =
+          e.goalOnTrack == null || e.goalMet === false
+            ? ""
+            : e.goalOnTrack
+              ? " At this pace it stays under."
+              : " At this pace it goes over — consider acting on the levers below.";
+        return `${where}${pace}`;
+      }
+      if (e.goalMet === true)
+        return `"${e.goalName}" is reached: ${fmtPct(e.goalProgressPct)} of its target${days}${asOf}.`;
       const pace =
         e.goalOnTrack == null
           ? ""
           : e.goalOnTrack
             ? " Current pace gets you there."
             : " Current pace falls short — consider acting on the levers below.";
-      const days =
-        e.goalDaysLeft != null ? ` with ${e.goalDaysLeft} days left` : "";
-      return `You're ${fmtPct(e.goalProgressPct)} of the way to "${e.goalName}"${days}.${pace}`;
+      return `You're ${fmtPct(e.goalProgressPct)} of the way to "${e.goalName}"${days}${asOf}.${pace}`;
     }
     case "hot": {
       if (e.value == null || e.z == null) return null;

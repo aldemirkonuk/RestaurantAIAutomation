@@ -26,6 +26,8 @@ import {
 } from "../consumption-units";
 import { DayExclusionsService } from "./day-exclusions.service";
 import { RecommendationActionsService } from "../recommendation-actions.service";
+import { isSalesGatedGoal } from "../sales-gated-goals";
+import { datedReading, figureOrNull, goalShape, scoreGoal } from "../goal-score";
 import {
   SuppressionScope,
   buildSuppressionKey,
@@ -1895,43 +1897,57 @@ export class InsightGeneratorService {
   private computeGoalsFamily(bundle: Bundle, push: Push) {
     if (!bundle.availability.has("goals")) return;
     for (const g of bundle.goals) {
-      const target = Number(g.target_value) || 0;
-      const current = Number(g.current_value) || 0;
-      if (target <= 0) continue;
-      const progress = current / target;
-      let daysLeft: number | null = null;
-      let onTrack: boolean | null = null;
-      if (g.deadline) {
-        const total = g.created_at
-          ? (new Date(g.deadline).getTime() -
-              new Date(g.created_at).getTime()) /
-            86400000
-          : null;
-        daysLeft = Math.max(
-          0,
-          Math.ceil((new Date(g.deadline).getTime() - Date.now()) / 86400000),
-        );
-        if (total && total > 0) {
-          const elapsedFrac = Math.min(
-            1,
-            Math.max(0, (total - daysLeft) / total),
-          );
-          onTrack = progress >= elapsedFrac * 0.9; // within 10% of linear pace
-        }
-      }
+      // Every role reads this feed, and a days-of-stock goal is read from the
+      // till, which reaches owners and managers only (ADR 0298 decision 9):
+      // its pace is said on the goal itself, never here.
+      if (isSalesGatedGoal(g.metric_key)) continue;
+      // The stored reading, dated, and not one a later reading refused. A
+      // never-read row (the column's default 0) is no reading: it read "0% of
+      // the way" for every goal before (reports browser walk 2026-11-11).
+      const reading = datedReading(g);
+      if (!reading) continue;
+      // Judged when it was read, by the scorer the goals desk uses, so the
+      // feed and the desk cannot disagree about one goal.
+      const deadline = g.deadline
+        ? Date.parse(`${String(g.deadline).slice(0, 10)}T00:00:00Z`)
+        : NaN;
+      const start = Date.parse(String(g.created_at ?? ""));
+      const score = scoreGoal({
+        direction: g.direction,
+        shape: goalShape(g.metric_key),
+        current: reading.current,
+        target: figureOrNull(g.target_value),
+        baseline: figureOrNull(g.baseline_value),
+        start: Number.isFinite(start) ? start : null,
+        end: Number.isFinite(deadline) ? deadline : null,
+        at: reading.at,
+      });
+      if (score.progressPct === null) continue;
+      const readOn = new Date(reading.at).toISOString().slice(0, 10);
       const ev: InsightEvidence = {
         measureLabel: g.metric_key,
         unit: "ratio",
         goalName: g.name,
-        goalProgressPct: progress,
-        goalDaysLeft: daysLeft ?? undefined,
-        goalOnTrack: onTrack ?? undefined,
+        goalProgressPct: score.progressPct,
+        goalDirection: score.direction,
+        goalMet: score.met ?? undefined,
+        goalDaysLeft: score.daysLeft ?? undefined,
+        goalOnTrack: score.onTrack ?? undefined,
+        // Dated when the reading is not today's.
+        goalReadOn: readOn !== new Date().toISOString().slice(0, 10) ? readOn : undefined,
       };
+      // How far from done: a ceiling held is done, a target reached is done.
+      const effect =
+        score.direction === "at_most"
+          ? score.met
+            ? 0
+            : score.progressPct - 1
+          : score.progressPct - 1;
       push(
         this.record("overall.revenue.goal_pace", "goals", "goal", ev, {
-          effectPct: progress - 1,
+          effectPct: effect,
           n: 14,
-          boost: onTrack === false ? 1.5 : 1,
+          boost: score.onTrack === false ? 1.5 : 1,
           entityLabel: g.name,
         }),
       );
