@@ -297,6 +297,8 @@ export const receivingApi = {
     doorCounted?: DoorCountedDelivery[]
     /** false when the read landed on its cap: the list is the newest, not all. */
     doorCountedComplete?: boolean
+    /** true when the door-counted read failed: `doorCounted` is unknown, not empty. */
+    doorCountedFailed?: boolean
     summary: string | null
     overdue: number
   }> {

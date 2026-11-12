@@ -218,6 +218,7 @@ export function useReceiptsNextData(): ReceiptsNextData {
     items: UnverifiedDelivery[];
     doorCounted?: DoorCountedDelivery[];
     doorCountedComplete?: boolean;
+    doorCountedFailed?: boolean;
   }>({
     queryKey: ['receipts-next', 'unverified-deliveries', rid],
     queryFn: () => receivingApi.listUnverified(),
@@ -243,6 +244,15 @@ export function useReceiptsNextData(): ReceiptsNextData {
       out.push({
         sentence: `the deliveries counted at the door (${msg(unverifiedQ.error)})`,
         read: unverifiedQ.data !== undefined,
+        plural: true,
+      });
+    // The order door's list answered but the document door's did not (R10):
+    // the strip shows what is known and the banner says what is not, so an
+    // empty door-counted list is never read as a clear door.
+    else if (unverifiedQ.data?.doorCountedFailed === true)
+      out.push({
+        sentence: 'the deliveries counted at the document door',
+        read: false,
         plural: true,
       });
     return out;
@@ -286,7 +296,9 @@ export function useReceiptsNextData(): ReceiptsNextData {
     verifiedCapped: verified.length >= RECEIPTS_SERVER_WINDOWS.VERIFIED_ITEMS,
     deliveriesWithoutPaper: unverifiedQ.data === undefined ? null : doorWaiting(unverifiedQ.data),
     deliveriesKnown: unverifiedQ.data !== undefined,
-    deliveriesCapped: unverifiedQ.data?.doorCountedComplete === false,
+    // A failed read is not a capped one: the banner says that it failed.
+    deliveriesCapped:
+      unverifiedQ.data?.doorCountedComplete === false && unverifiedQ.data?.doorCountedFailed !== true,
     isError: failures.length > 0,
     failures,
     errorMessage: failures.join('; ') || 'unknown error',

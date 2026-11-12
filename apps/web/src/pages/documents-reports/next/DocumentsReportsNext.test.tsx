@@ -28,7 +28,11 @@ const api = vi.hoisted(() => ({
   threadsError: false,
   active: [] as unknown[],
   activeError: false,
-  unverified: { items: [] as unknown[] } as { items: unknown[]; doorCounted?: unknown[] },
+  unverified: { items: [] as unknown[] } as {
+    items: unknown[];
+    doorCounted?: unknown[];
+    doorCountedFailed?: boolean;
+  },
   unverifiedReject: false,
   timeline: { events: [] as unknown[] } as {
     events: unknown[];
@@ -435,6 +439,16 @@ describe('DocumentsReportsNext', () => {
       expect(screen.getByText(/A delivery nobody ordered counted at the door, no paperwork yet/)).toBeTruthy(),
     );
     expect(screen.getByText(/10 counted \+ 1 line in another unit · 30h waiting/)).toBeTruthy();
+  });
+
+  it('a failed door-counted read is said in the banner, never shown as a clear door (R10)', async () => {
+    api.unverified = { items: [], doorCounted: [], doorCountedFailed: true };
+    api.reports = [report('r1')];
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain('the deliveries counted at the document door'),
+    );
+    expect(screen.getByRole('status').textContent).toContain('could not be refreshed');
   });
 
   it('a filled timeline window whose oldest event is still today floors the routine count', async () => {

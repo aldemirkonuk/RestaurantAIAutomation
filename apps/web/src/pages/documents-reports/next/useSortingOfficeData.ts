@@ -191,6 +191,7 @@ export function useSortingOfficeData(): SortingOfficeData {
   const unverifiedQ = useQuery<{
     items: UnverifiedDelivery[];
     doorCounted?: DoorCountedDelivery[];
+    doorCountedFailed?: boolean;
   }>({
     queryKey: ['sorting-office', 'unverified', rid],
     queryFn: () => receivingApi.listUnverified(),
@@ -354,6 +355,16 @@ export function useSortingOfficeData(): SortingOfficeData {
     ['Conversations', threadsQ],
     ['draft replies', activeQ],
     ['the door count', unverifiedQ],
+    // The document door's list failed while the order door's answered (R10):
+    // a partial answer is said in the banner, never shown as a clear door.
+    [
+      'the deliveries counted at the document door',
+      {
+        isError: unverifiedQ.data?.doorCountedFailed === true,
+        isFetching: unverifiedQ.isFetching,
+        error: new Error('that list could not be read'),
+      },
+    ],
     ['the system log', timelineQ],
     ['the system log', timelineSourcesQ],
   ];

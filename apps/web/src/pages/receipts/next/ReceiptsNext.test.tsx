@@ -21,6 +21,7 @@ const api = vi.hoisted(() => ({
     items: unknown[];
     doorCounted?: unknown[];
     doorCountedComplete?: boolean;
+    doorCountedFailed?: boolean;
   },
   detail: { document: {}, lines: [] as unknown[], links: [] },
   detailFails: null as unknown,
@@ -370,6 +371,22 @@ describe('ReceiptsNext', () => {
     };
     render(<ReceiptsNext />, { wrapper });
     expect(await screen.findByText(/older ones may be waiting too/)).toBeInTheDocument();
+  });
+
+  it('a failed door-counted read keeps the order door strip and says the rest is unknown (R10)', async () => {
+    api.unverified = {
+      items: [{ orderId: 'o9', orderNumber: 'PO-9', countedQtyBottles: 24, countedAt: '', ageHours: 5, severity: 'fresh' }],
+      doorCounted: [],
+      doorCountedComplete: false,
+      doorCountedFailed: true,
+    };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/PO-9 · 24 counted · 5h ago/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Could not read the deliveries counted at the document door — nothing is claimed about them/),
+    ).toBeInTheDocument();
+    // A failed read is not a capped one.
+    expect(container.textContent).not.toContain('older ones may be waiting');
   });
 
   it('a null tie-out is untestable, never a pass or a fail', async () => {
