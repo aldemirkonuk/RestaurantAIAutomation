@@ -91,10 +91,11 @@ export type Uom = (typeof UOMS)[number];
 
 /**
  * Weights (R8, mail-receipts lane 2026-11-11). A cheese invoiced `3 KGM @ 450`
- * was filed as `3 each` and booked as three pieces. This is the arithmetic a
- * weighed line meets (`lot-unit-cost.ts`, `delivery-stock.service.ts`); no
- * line carries `kg` or `g` yet, because `normalizeUom` does not read them and
- * the line's CHECK does not hold them. The stacked change opens both.
+ * was filed as `3 each` and booked as three pieces. A line may now say `kg` or
+ * `g`; `procurement_document_lines.uom` and `price_base_uom` accept them
+ * (migration 20270727120000). An ORDER and the order door do not: their columns
+ * keep the seven container units (`ORDER_UNIT_TYPES`), and both refuse a weight
+ * by name rather than write it into a CHECK that would fail.
  *
  * A weight is never a number of bottles (`toBottles` passes it through 1:1 and
  * `comparableUnits` keeps it apart, as for a keg or a liter). It converts only
@@ -263,6 +264,24 @@ export function normalizeUom(raw?: string | null): Uom | null {
     case "lt":
     case "ltr": // UN/ECE Rec 20 `LTR`, as a UBL-TR e-Fatura prints it.
       return "liter";
+    case "kg":
+    case "kgs":
+    case "kgm": // UN/ECE Rec 20 `KGM`, as a UBL-TR e-Fatura prints a kilogram (R8).
+    case "kilo":
+    case "kilos":
+    case "kilogram":
+    case "kilograms":
+    case "kilogramm":
+    case "kilogramme":
+      return "kg";
+    case "g":
+    case "gr": // TR `gr`, a gram.
+    case "grm": // UN/ECE Rec 20 `GRM`.
+    case "gram":
+    case "grams":
+    case "gramm":
+    case "gramme":
+      return "g";
     default:
       return null;
   }

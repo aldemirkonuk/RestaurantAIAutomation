@@ -138,7 +138,9 @@ export function resolveStatedPriceUnit(input: {
     };
   }
 
-  const priceUom = normalizeUom(rawUom);
+  const read = normalizeUom(rawUom);
+  // A weight reads (`kg`, R8) but `price_uom` keeps the container units.
+  const priceUom = read && (PRICE_UOM_TYPES as readonly string[]).includes(read) ? read : null;
   if (!priceUom) {
     return {
       ok: false,

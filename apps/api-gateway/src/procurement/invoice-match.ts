@@ -53,6 +53,9 @@
  *   - An **opaque** unit (keg/liter) may only be matched against the same
  *     opaque unit; mixing one with bottles throws. Inventing a keg-to-bottle
  *     factor produces confident, wrong cost maths.
+ *   - A **weight** (kg/g) is opaque the same way: it is matched only against
+ *     the same weight. `3 each` ordered and `3 kg` invoiced is not a clean
+ *     match of 3 against 3 (mail-receipts fix round 2026-11-12, #1110).
  *   - An **absent** unit resolves to the ORDER's unit, and the order's own
  *     absent unit resolves to `bottle`. This is not the guess the ADR forbids:
  *     a client that declares no unit counts in the order's own unit (the desk
@@ -67,7 +70,7 @@
  * what is persisted.
  */
 
-import { normalizeUom, Uom } from "./documents/document-types";
+import { isMass, normalizeUom, Uom } from "./documents/document-types";
 
 export type MatchVerdict =
   | "matched"
@@ -550,14 +553,22 @@ export function toBottleOperands(input: MatchInput): {
       ? ([["the physical count", counted]] as Array<[string, ResolvedUnit]>)
       : []),
   ];
-  const opaque = participating.filter(([, u]) => OPAQUE.has(u.uom));
+  // A weight is opaque here too (R8): `normalizeUom` reads KGM and GRM, and a
+  // weight passed through as one "bottle" a unit would match 3 kg against 3
+  // pieces as clean. It is compared only with the very same weight unit; no
+  // kg-to-g conversion is made here, because an order is never placed by
+  // weight, so a weighed operand always meets an order it cannot be read as.
+  const opaque = participating.filter(([, u]) => OPAQUE.has(u.uom) || isMass(u.uom));
   if (opaque.length > 0) {
     const mismatch = participating.find(([, u]) => u.uom !== opaque[0][1].uom);
     if (mismatch) {
+      const first = opaque[0][1].uom;
       throw new MatchUnitError(
         "not_comparable",
-        `${opaque[0][0]} is counted in ${opaque[0][1].uom}s and ${mismatch[0]} in ${mismatch[1].uom}s. ` +
-          `A ${opaque[0][1].uom} is not a number of bottles in any way a receiver would accept, so these cannot be compared.`,
+        `${opaque[0][0]} is counted in ${first}s and ${mismatch[0]} in ${mismatch[1].uom}s. ` +
+          (isMass(first)
+            ? `A weight is not a count of ${mismatch[1].uom.replace("_", " ")}s, so these cannot be compared.`
+            : `A ${first} is not a number of bottles in any way a receiver would accept, so these cannot be compared.`),
       );
     }
   }
