@@ -1007,11 +1007,13 @@ describe('ReportsNext — honesty', () => {
     expect(screen.queryByRole('region', { name: 'The reading' })).not.toBeInTheDocument();
   });
 
-  it('prints the SERVER’s own basis sentence when the working is shown', () => {
+  it('prints the SERVER’s own basis sentence, in the house’s words, when the working is shown', () => {
     paint();
     const pacingCut = screen.getByRole('region', { name: 'Spend pacing' });
     fireEvent.click(within(pacingCut).getByText('Show the working'));
-    expect(within(pacingCut).getByText(/Outflow: delivered procurement_orders/)).toBeInTheDocument();
+    // Same lineage (delivered orders), never the table's name (rp-working-words.ts).
+    expect(within(pacingCut).getByText(/Outflow: delivered orders/)).toBeInTheDocument();
+    expect(within(pacingCut).queryByText(/procurement_orders/)).not.toBeInTheDocument();
   });
 });
 

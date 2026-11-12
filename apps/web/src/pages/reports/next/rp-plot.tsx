@@ -51,6 +51,7 @@ import {
   ZAxis,
 } from 'recharts';
 import { turn } from '@/lib/mudavym';
+import { workingLines } from './rp-working-words';
 import { EM, MONO, failureLine, type Failure } from './rp-format';
 import type { CatSeries, Fig, MatrixSeries, PointSeries, TableSpec } from './rp-view';
 
@@ -188,12 +189,15 @@ export function RegisterBody<T>({
  * Every analytics endpoint returns a `basis` describing the rows it actually
  * covered (`financial.basis.revenue`, `menuEngineering.basis.margin`), written
  * precisely because a hand-written basis once claimed "on-hand qty × WAC" for
- * a figure computed from WAC on 2 rows in 72. Reprinting it verbatim is the
- * only version of this line that cannot go stale.
+ * a figure computed from WAC on 2 rows in 72. Reprinting it is the only
+ * version of this line that cannot go stale; it is reprinted in the house's
+ * words (`workingLines`), which change the vocabulary and never the claim.
  */
 export function Working({ lines }: { lines: Array<string | null | undefined> }) {
   const [open, setOpen] = useState(false);
-  const real = lines.filter((l): l is string => !!l && l.trim() !== '');
+  // The server's sentences, in the house's words (rp-working-words.ts): the
+  // lineage stays, the table names and payload fields do not.
+  const real = workingLines(lines);
   if (real.length === 0) return null;
   return (
     <div style={{ marginTop: 'auto' }}>
