@@ -67,6 +67,24 @@ describe('invoiceMatch (web mirror)', () => {
     expect(r.creditDue).toBe(false)
   })
 
+  it('a differing price accepted with a reason never says "the agreed price" (walk 2026-11-12)', () => {
+    const r = computeMatch({
+      orderedQty: 6,
+      poUnitPrice: 20,
+      invoiceQty: 6,
+      invoiceUnitPrice: 25,
+      acceptedQty: 6,
+      priceOverrideReason: 'Vendor price rise, agreed by phone',
+    })
+    expect(r.requiresOverride).toBe(false)
+    expect(r.summary).not.toMatch(/agreed price/)
+    expect(r.summary).toMatch(/^All 6 accepted at the billed .*25\.00, not the agreed .*20\.00\.$/)
+    // The same price says what it always said.
+    expect(
+      computeMatch({ orderedQty: 6, poUnitPrice: 20, invoiceQty: 6, invoiceUnitPrice: 20, acceptedQty: 6 }).summary,
+    ).toBe('All 6 accepted at the agreed price.')
+  })
+
   it('holds a backorder open on a partial delivery', () => {
     const r = computeMatch({ ...base, invoiceQty: 20, acceptedQty: 20 })
 

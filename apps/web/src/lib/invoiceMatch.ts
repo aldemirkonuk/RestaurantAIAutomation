@@ -132,7 +132,12 @@ export function computeMatch(input: MatchInput): MatchResult {
     switch (verdict) {
       case 'matched':
         return (
-          `All ${acceptedQty} accepted at the agreed price.` +
+          // A price that differs, accepted with a reason, is not "the agreed
+          // price" (browser walk 2026-11-12: billed 25 against an agreed 20,
+          // accepted with an override, and the toast said "at the agreed price").
+          (priceMismatch
+            ? `All ${acceptedQty} accepted at the billed ${money(invoiceUnitPrice as number)}, not the agreed ${money(poUnitPrice as number)}.`
+            : `All ${acceptedQty} accepted at the agreed price.`) +
           (freeGoodsQty > 0 ? ` Includes ${freeGoodsQty} free.` : '')
         )
       case 'overbilled_vs_ship':
