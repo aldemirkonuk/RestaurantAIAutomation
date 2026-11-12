@@ -121,6 +121,37 @@ describe("serveNutrition", () => {
     expect(out.figures.alcoholMl).toEqual({ value: 20, atLeast: true, missing: ["Sugar"] });
   });
 
+  it("a line that states 0% adds 0 alcohol even with no amount or counted in pieces; one that states nothing stays unknown", () => {
+    const out = serveNutrition(
+      [
+        line("Gin", { qtyBase: 500, figures: per100ml({ alcoholMl: 40 }) }), // 20 ml pure alcohol
+        line("Tonic", { qtyBase: 0, figures: per100ml({ alcoholMl: 0, energyKcal: 34 }) }), // "top with", no amount
+        line("Soda", { baseUnit: "each_milli", qtyBase: 1000, figures: per100ml({ alcoholMl: 0 }) }), // 1 can
+      ],
+      1,
+    );
+    expect(out.figures.alcoholMl).toEqual({ value: 20, atLeast: false, missing: [] });
+    // Every other figure still says it could not count them.
+    expect(out.figures.energyKcal).toEqual({ value: null, atLeast: false, missing: ["Tonic", "Soda", "Gin"] });
+    expect(out.notCounted.map((n) => n.label)).toEqual(["Tonic", "Soda"]);
+
+    const garnished = serveNutrition(
+      [
+        line("Gin", { qtyBase: 500, figures: per100ml({ alcoholMl: 40 }) }),
+        line("Cherry", { baseUnit: "each_milli", qtyBase: 1000, figures: { ...per100ml({}), basis: "100g" } }),
+        line("Orange peel", { role: "untracked", inventoryId: null }),
+      ],
+      1,
+    );
+    // A brandied cherry is counted in pieces too: no stated strength is never read as none.
+    expect(garnished.figures.alcoholMl).toEqual({ value: 20, atLeast: true, missing: ["Cherry", "Orange peel"] });
+  });
+
+  it("a drink of only 0% lines not counted by volume says 0 ml, not unknown", () => {
+    const out = serveNutrition([line("Ginger beer", { baseUnit: "each_milli", qtyBase: 1000, figures: per100ml({ alcoholMl: 0 }) })], 1);
+    expect(out.figures.alcoholMl).toEqual({ value: 0, atLeast: false, missing: [] });
+  });
+
   it("says free only when every line, untracked ones too, states it free", () => {
     const free = [{ allergen: "milk", status: "free" }];
     const all = serveNutrition([line("Gin", { allergens: free }), line("Vermouth", { allergens: free })], 1);
