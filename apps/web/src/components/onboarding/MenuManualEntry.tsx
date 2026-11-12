@@ -23,9 +23,16 @@ function emptyRow(): WineRow {
 
 interface MenuManualEntryProps {
   onSuccess: MenuImportSuccess
+  /**
+   * The house's reporting currency code when the page knows it. The price
+   * headings said a dollar sign in every house (walk 2026-11-11: a Turkish
+   * house, TRY); a heading names the code it knows and no symbol it does not.
+   */
+  currency?: string | null
 }
 
-export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
+export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
+  const unit = currency ? ` (${currency})` : ''
   const [rows, setRows] = useState<WineRow[]>([emptyRow()])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -94,8 +101,8 @@ export function MenuManualEntry({ onSuccess }: MenuManualEntryProps) {
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[160px]">Producer</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[90px]">Vintage</th>
               <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[140px]">Region</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[100px]">Glass ($)</th>
-              <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[100px]">Bottle ($)</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[100px]">{`Glass${unit}`}</th>
+              <th className="px-3 py-2.5 text-left font-semibold text-gray-600 min-w-[100px]">{`Bottle${unit}`}</th>
               <th className="w-10" />
             </tr>
           </thead>

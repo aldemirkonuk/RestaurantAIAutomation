@@ -522,7 +522,7 @@ export default function GetStarted() {
         <div className="mt-6">
           {menuMethod === 'photo' && <MenuScanUpload onSuccess={menuRead} />}
           {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} />}
-          {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} />}
+          {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} currency={currency} />}
         </div>
         <div className="mt-8 border border-dashed border-[#211f1b]/20 px-4 py-3 text-sm text-[#b7b2a8]">
           <p className="text-[11px] uppercase tracking-[0.12em]">Later</p>
