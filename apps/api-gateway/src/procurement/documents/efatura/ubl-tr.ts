@@ -1,4 +1,4 @@
-import { toBottles, Uom } from "../document-types";
+import { isMass, toBottles, Uom } from "../document-types";
 import {
   applyTieOut,
   ParsedDocument,
@@ -60,11 +60,15 @@ const UNIT_CODES: Record<string, Uom> = {
   PA: "pack",
   LTR: "liter",
   LT: "liter",
+  // Weights (R8): an e-Fatura cheese line is `3 KGM @ 450`. Filed as `kg`, it
+  // books by weight into the item's own unit, as the extraction route does
+  // (`normalizeUom` maps KGM and GRM the same way). Before, it was filed as
+  // `each` with a warning, and the cost gatekeeper refused it.
+  KGM: "kg",
+  GRM: "g",
 };
 
 const UNIT_WORDS: Record<string, string> = {
-  KGM: "kilogram",
-  GRM: "gram",
   MTR: "metre",
   MTK: "square metre",
   MLT: "millilitre",
@@ -152,7 +156,7 @@ function hasSignature(el: XmlElement): boolean {
  *   the house rule for "the paper did not say" (parsed-document.ts, the
  *   price-base check) — and the bottle count equals the case count until a
  *   person sets the pack size on the line. Ten cases of twelve read as ten.
- * - A unit the match does not count in (KGM, GRM, MTR, …) or no unit at all:
+ * - A unit the match does not count in (MTR, MLT, …) or no unit at all:
  *   the line is filed as items so it can be shown, which is not what it is.
  *
  * The session's call (2026-11-11, under the 2026-11-07 /goal): say it on the
@@ -259,7 +263,15 @@ export function readUblTr(xml: string): ParsedDocument {
     );
     const allowance = sum(allowances.map((a) => num(at(a, "Amount"), `line ${lineNo} discount`, warnings)));
     if (allowance != null) linePrinted.allowance = String(allowance);
-    const baseQty = num(at(le, "Price/BaseQuantity"), `line ${lineNo} price base`, warnings);
+    const baseEl = at(le, "Price/BaseQuantity");
+    const baseQty = num(baseEl, `line ${lineNo} price base`, warnings);
+    // A weighed line may be priced per another weight (`3000 GRM` at 450 per
+    // `1 KGM`). Read only between two weights: the price's unit is then said,
+    // not assumed to be the line's, so 450 a kilogram is never 450 a gram.
+    // Any other pairing keeps the line's unit, as before.
+    const baseUnit = UNIT_CODES[(baseEl?.attrs.unitCode ?? "").trim().toUpperCase()];
+    const priceBaseUom: Uom | null =
+      isMass(uom) && isMass(baseUnit) && baseUnit !== uom ? baseUnit : null;
     const item = at(le, "Item");
     return {
       lineNo,
@@ -277,7 +289,7 @@ export function readUblTr(xml: string): ParsedDocument {
       allowance,
       lineKind: "goods",
       priceBaseQty: baseQty != null && baseQty !== 1 ? baseQty : null,
-      priceBaseUom: null,
+      priceBaseUom,
       printed: linePrinted,
       poNumber: null,
     };
