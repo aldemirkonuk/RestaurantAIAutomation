@@ -26,7 +26,7 @@ import {
   type DayOrdersState,
   type MonthSales,
 } from './useDashboardNextData';
-import { DASH, dateIn, eventKindWords, eventTime, figure, longDay, money, timeAgo, uncostedSaid } from './format';
+import { DASH, dateIn, eventKindWords, eventTime, figure, longDay, timeAgo, uncostedSaid, useHouseMoney, type Money } from './format';
 import { SERIF } from './fonts';
 
 /** A delivered order's money figure is a recorded cost only when it is above 0 (as the gateway reads it). */
@@ -159,7 +159,7 @@ function MiniFig({ label, value, note }: { label: string; value: string; note?: 
  * subtotals the checks carried, "not recorded" when checks came and none
  * carried one, the dash when the day is not known.
  */
-function netSalesValue(day: DayLedger): string {
+function netSalesValue(day: DayLedger, money: Money): string {
   if (day.checks != null && day.checks > 0 && day.net_sales == null) return NOT_RECORDED;
   return money(day.net_sales);
 }
@@ -219,6 +219,7 @@ export function DayDetail({
   seesAmounts = true,
   today,
 }: DayDetailProps) {
+  const money = useHouseMoney();
   if (!day) return <div className="min-h-[1px]" />;
 
   const salesShown = sales === 'shown';
@@ -318,7 +319,7 @@ export function DayDetail({
         style={{ gridTemplateColumns: figureColumns(salesShown ? 6 : 4) }}
       >
         {salesShown && (
-          <MiniFig label="Net sales" value={netSalesValue(day)} note={fromChecks(day.net_checks, day.checks)} />
+          <MiniFig label="Net sales" value={netSalesValue(day, money)} note={fromChecks(day.net_checks, day.checks)} />
         )}
         {salesShown && <MiniFig label="Checks" value={figure(day.checks)} />}
         {seesAmounts && (
