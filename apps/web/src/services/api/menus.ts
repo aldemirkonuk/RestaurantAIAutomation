@@ -103,18 +103,29 @@ export type EditableMenuItemField =
   | 'by_glass_price'
   | 'bottle_price'
 
+/**
+ * The setup of the house the session is in (OB-1). The house facts are read
+ * from the house's own tables on every GET; only `checklist_dismissed` is the
+ * person's own. An invitee with no row of their own still gets the house's
+ * facts (id null), never a 404.
+ */
 export interface OnboardingProgress {
-  id: string
+  /** The person's own row, or null when they have none yet (most invitees). */
+  id: string | null
   user_id: string
   restaurant_id: string
+  /** A kept menu (not archived) with at least one live line. */
   menu_uploaded: boolean
+  /** The house's CURRENT menu has at least one live line. */
+  menu_current: boolean
   vendor_added: boolean
   team_member_invited: boolean
   checklist_dismissed: boolean
+  /** When the last of current menu, supplier and invite held; null while one is missing (derived, not remembered). */
   completed_at: string | null
-  /** Whether restaurants.default_threshold_min has been explicitly confirmed. */
+  /** Reported only; it no longer gates activation (no screen sets it). */
   threshold_configured: boolean
-  /** menu_uploaded AND threshold_configured — the soft-gate "done enough" signal. */
+  /** The house has a current menu with a live line: stock and prices come from it. */
   activated: boolean
 }
 
