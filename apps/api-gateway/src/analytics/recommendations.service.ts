@@ -1,4 +1,5 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
+import { datedReading, figureOrNull, goalShape, scoreGoal } from "./goal-score";
 import * as crypto from "crypto";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
@@ -795,33 +796,40 @@ export class RecommendationsService {
     // ---- Goal rules -------------------------------------------------------
     for (const g of ctx.goals.slice(0, 3)) {
       // A goal whose stored value is withheld from this caller (a
-      // days-of-stock goal without sales, GoalsService.withholdTillGoalValues)
-      // or was never read is not "0% done": it is left out, never called
-      // behind.
-      if (g.current_value === null || g.current_value === undefined) continue;
-      const target = Number(g.target_value) || 0;
-      const current = Number(g.current_value) || 0;
-      const behind =
-        g.deadline &&
-        target > 0 &&
-        current / target <
-          Math.max(
-            0,
-            1 -
-              Math.max(
-                0,
-                (new Date(g.deadline).getTime() - Date.now()) / 86400000,
-              ) /
-                Math.max(
-                  1,
-                  (new Date(g.deadline).getTime() -
-                    new Date(g.created_at).getTime()) /
-                    86400000,
-                ),
-          ) *
-            0.9;
-      rule(`goal_behind_${g.id}`, !!behind, () => ({
-        observation: `Goal "${g.name}" is behind its linear pace (${Math.round((current / target) * 100)}% done).`,
+      // days-of-stock goal without sales, GoalsService.withholdTillGoalValues),
+      // whose latest reading was refused, or which has no dated reading is not
+      // "0% done": it is left out, never called behind. A dated reading is
+      // judged when it was taken, by the scorer the goals desk uses
+      // (goal-score.ts), so a "keep at most" goal under its ceiling is not
+      // behind, and a level is paced from its baseline (reports lane r2).
+      const reading = datedReading(g);
+      if (!reading) continue;
+      const start = Date.parse(String(g.created_at ?? ""));
+      const end = g.deadline
+        ? Date.parse(`${String(g.deadline).slice(0, 10)}T00:00:00Z`)
+        : NaN;
+      const score = scoreGoal({
+        direction: g.direction,
+        shape: goalShape(g.metric_key),
+        current: reading.current,
+        target: figureOrNull(g.target_value),
+        baseline: figureOrNull(g.baseline_value),
+        start: Number.isFinite(start) ? start : null,
+        end: Number.isFinite(end) ? end : null,
+        at: reading.at,
+      });
+      const behind = score.onTrack === false && score.progressPct !== null;
+      const share = Math.round((score.progressPct ?? 0) * 100);
+      const readOn = new Date(reading.at).toISOString().slice(0, 10);
+      const asOf =
+        readOn !== new Date().toISOString().slice(0, 10) ? `, read on ${readOn}` : "";
+      rule(`goal_behind_${g.id}`, behind, () => ({
+        observation:
+          score.direction === "at_most"
+            ? score.met === false
+              ? `Goal "${g.name}" is over its ceiling (${share}% of it${asOf}).`
+              : `Goal "${g.name}" is on course to go over its ceiling (${share}% of it used${asOf}).`
+            : `Goal "${g.name}" is behind its pace (${share}% done${asOf}).`,
         recommendation:
           "Pick the single biggest lever from the insight feed for this goal's category and commit to it for 7 days before adding anything else.",
         rationale:
