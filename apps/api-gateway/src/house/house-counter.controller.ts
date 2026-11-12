@@ -44,7 +44,7 @@ export class HouseCounterController {
   @ApiOperation({
     summary: "What waits on the signed-in person, one outcome per register",
     description:
-      "Seven registers (orders awaiting the seal, deliveries counted by case, credits promised, vendor replies waiting, identities to decide, invitations, the assistant's proposals). " +
+      "Seven registers (orders awaiting the seal, deliveries counted at the door, credits promised, vendor replies waiting, identities to decide, invitations, the assistant's proposals). " +
       "Each is `answered` (count, `complete`, first rows, whose act), `refused` for this role (a sentence), or `unreadable` (status and a sentence). " +
       "There is no total: a sum over registers that did not all answer would print a failure as a zero.",
   })

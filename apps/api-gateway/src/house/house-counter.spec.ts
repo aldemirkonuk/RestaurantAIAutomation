@@ -114,6 +114,9 @@ function sources(over: Partial<Record<string, jest.Mock>> = {}) {
           ],
           capped: false,
         })),
+      listDoorCountedWithoutPaper:
+        over.listDoorCountedWithoutPaper ??
+        jest.fn(async () => ({ rows: [], capped: false })),
     },
     conversations: {
       getPendingConversations:
@@ -552,5 +555,91 @@ describe("the controller takes the house and the role from the token only", () =
     const { svc } = build();
     const threads = reg(await svc.read(HOUSE, USER, "owner"), "threads") as any;
     expect(threads.rows[0]).toMatchObject({ id: "c-1", orderId: "o-3" });
+  });
+});
+
+describe("deliveries counts the document door too (browser walk 2026-11-12)", () => {
+  const orderDoorRow = {
+    orderId: "o-9",
+    orderNumber: "ORD-9",
+    countedQtyBottles: 36,
+    countedAt: "2026-09-21T08:00:00Z",
+    ageHours: 6,
+    severity: "fresh",
+  };
+  function doorRow(over: Record<string, unknown> = {}) {
+    return {
+      deliveryId: "d-1",
+      orderId: null,
+      orderNumber: null,
+      providerId: "p-1",
+      vendorName: "Ege Şarap Dağıtım",
+      countedQtyBottles: 6,
+      linesWithoutBottles: 2,
+      countedAt: "2026-09-21T02:00:00Z",
+      ageHours: 10,
+      severity: "fresh",
+      ...over,
+    };
+  }
+
+  it("a delivery counted at the document door, with no paper, is in the count and the rows", async () => {
+    const { svc, src } = build(
+      sources({
+        listDoorCountedWithoutPaper: jest.fn(async () => ({ rows: [doorRow()], capped: false })),
+      }),
+    );
+    const deliveries = reg(await svc.read(HOUSE, USER, "owner"), "deliveries") as any;
+    expect(src.receiving.listDoorCountedWithoutPaper).toHaveBeenCalledWith(HOUSE);
+    expect(deliveries).toMatchObject({ state: "answered", count: 2, complete: true });
+    // Oldest first, as the strip lists them.
+    expect(deliveries.rows[0]).toEqual({
+      door: "document",
+      orderId: null,
+      orderNumber: null,
+      deliveryId: "d-1",
+      vendorName: "Ege Şarap Dağıtım",
+      countedQtyBottles: 6,
+      linesWithoutBottles: 2,
+      countedAt: "2026-09-21T02:00:00Z",
+      ageHours: 10,
+      severity: "fresh",
+    });
+    expect(deliveries.rows[1]).toMatchObject({ door: "order", orderId: "o-9", deliveryId: null });
+  });
+
+  it("an order the order door already lists is counted once", async () => {
+    const { svc } = build(
+      sources({
+        listDoorCountedWithoutPaper: jest.fn(async () => ({
+          rows: [doorRow({ deliveryId: "d-2", orderId: "o-9", orderNumber: "ORD-9" })],
+          capped: false,
+        })),
+      }),
+    );
+    const deliveries = reg(await svc.read(HOUSE, USER, "owner"), "deliveries");
+    expect(deliveries).toMatchObject({ state: "answered", count: 1, complete: true });
+  });
+
+  it("a failed document-door read keeps the order door's count, as a floor", async () => {
+    const { svc } = build(
+      sources({
+        listDoorCountedWithoutPaper: jest.fn(async () => {
+          throw new Error("canceling statement due to statement timeout");
+        }),
+      }),
+    );
+    const deliveries = reg(await svc.read(HOUSE, USER, "owner"), "deliveries");
+    expect(deliveries).toMatchObject({ state: "answered", count: 1, complete: false });
+  });
+
+  it("a capped document-door read makes the count a floor", async () => {
+    const { svc } = build(
+      sources({
+        listDoorCountedWithoutPaper: jest.fn(async () => ({ rows: [doorRow()], capped: true })),
+      }),
+    );
+    const deliveries = reg(await svc.read(HOUSE, USER, "owner"), "deliveries");
+    expect(deliveries).toMatchObject({ state: "answered", count: 2, complete: false });
   });
 });

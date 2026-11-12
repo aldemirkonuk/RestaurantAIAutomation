@@ -76,9 +76,24 @@ export interface CounterOrderRow {
 }
 
 export interface CounterDeliveryRow {
-  orderId: string;
+  /**
+   * Which door counted it. `order`: counted by case at the order door, not yet
+   * by the bottle. `document`: counted at the document door, and no vendor
+   * paper has come in yet (R10; browser walk 2026-11-12, the counter left
+   * these out while the receipts strip and the sorting office listed them).
+   */
+  door: "order" | "document";
+  /** The order it was counted against; a document-door delivery may name none. */
+  orderId: string | null;
   orderNumber: string | null;
+  /** The delivery row, for a document-door count. Null for the order door. */
+  deliveryId: string | null;
+  /** Who brought it, from this house's providers. Null when the delivery names none. */
+  vendorName: string | null;
+  /** Bottles counted, from the lines that state a bottle figure. */
   countedQtyBottles: number;
+  /** Lines in a unit with no bottle figure (a weight, a keg), never added in. */
+  linesWithoutBottles: number;
   countedAt: string;
   ageHours: number;
   severity: "fresh" | "stale" | "overdue";

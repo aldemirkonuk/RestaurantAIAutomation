@@ -12,9 +12,11 @@ import { ConversationsService } from "../conversations/conversations.service";
 import { IdentityService } from "../vendor-intel/identity.service";
 import { MembersService } from "../restaurants/members.service";
 import { AskAiService } from "../ask-ai/ask-ai.service";
+import { notListedByTheOrderDoor } from "../procurement/door-counted-deliveries";
 import {
   COUNTER_REGISTERS,
   CounterAct,
+  CounterDeliveryRow,
   CounterRegister,
   CounterRegisterKey,
   CounterRow,
@@ -116,7 +118,7 @@ export function outcomeOfFailure(
 
 const LABELS: Record<CounterRegisterKey, string> = {
   orders: "Orders awaiting the seal",
-  deliveries: "Deliveries counted by case",
+  deliveries: "Deliveries counted at the door",
   credits: "Credits promised",
   threads: "Vendor replies waiting",
   identities: "Identities to decide",
@@ -201,12 +203,64 @@ export class HouseCounterService {
           // at 500 lifetime events (`receiving.service.ts`), so a read that
           // hits that cap is a floor, not a total — `complete` must say so,
           // the same rule `identities` and `proposals` already follow below.
-          const { rows: all, capped } =
-            await this.receiving.listUnverifiedCapped(house);
+          //
+          // The document door's deliveries count too (R10, browser walk
+          // 2026-11-12): they write no receipt event, so the order door's read
+          // never held them, and the counter said fewer than the receipts
+          // strip. Same read and same once-only rule as `GET /unverified`.
+          // That read failing does not take the register down; the count is
+          // then a floor (`complete: false`), never a clear door.
+          const [orderDoor, door] = await Promise.all([
+            this.receiving.listUnverifiedCapped(house),
+            this.receiving.listDoorCountedWithoutPaper(house).then(
+              (value) => ({ ok: true as const, value }),
+              (error: unknown) => {
+                this.logger.error(
+                  `deliveries counted at the document door for ${house}: ${
+                    error instanceof Error ? error.message : String(error)
+                  }`,
+                );
+                return { ok: false as const };
+              },
+            ),
+          ]);
+          const all: CounterDeliveryRow[] = [
+            ...orderDoor.rows.map(
+              (d): CounterDeliveryRow => ({
+                door: "order",
+                orderId: d.orderId,
+                orderNumber: d.orderNumber,
+                deliveryId: null,
+                vendorName: null,
+                countedQtyBottles: d.countedQtyBottles,
+                linesWithoutBottles: 0,
+                countedAt: d.countedAt,
+                ageHours: d.ageHours,
+                severity: d.severity,
+              }),
+            ),
+            ...(door.ok
+              ? notListedByTheOrderDoor(orderDoor.rows, door.value.rows)
+              : []
+            ).map(
+              (d): CounterDeliveryRow => ({
+                door: "document",
+                orderId: d.orderId,
+                orderNumber: d.orderNumber,
+                deliveryId: d.deliveryId,
+                vendorName: d.vendorName,
+                countedQtyBottles: d.countedQtyBottles,
+                linesWithoutBottles: d.linesWithoutBottles,
+                countedAt: d.countedAt,
+                ageHours: d.ageHours,
+                severity: d.severity,
+              }),
+            ),
+          ].sort((a, b) => b.ageHours - a.ageHours);
           return {
             count: all.length,
-            complete: !capped,
-            rows: all.slice(0, COUNTER_ROWS).map((d) => ({ ...d })),
+            complete: !orderDoor.capped && door.ok && !door.value.capped,
+            rows: all.slice(0, COUNTER_ROWS),
           };
         },
       },
