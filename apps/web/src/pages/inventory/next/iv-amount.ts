@@ -69,6 +69,29 @@ function scaled(intPart: string, frac: string, factor: number): number | null {
 
 const MEASURED = /^(\d{1,9})(?:[.,](\d{1,3}))?\s*([a-zA-Z]*)$/;
 
+/**
+ * "1,500" or "1.500": a comma or a point before exactly three digits is a
+ * thousands mark in one house's writing and a decimal point in another's (a
+ * Turkish "1.500" is fifteen hundred; an English "1,500" is too), so a figure
+ * written that way is a thousandfold slip either way it is read. It is asked
+ * about, never guessed. "0.035" and "2,25" are not asked: neither can be a
+ * thousands mark.
+ */
+function ambiguousSeparator(typed: string): { point: string; whole: number; said: string } | null {
+  const m = MEASURED.exec(typed.trim());
+  if (!m || m[2] === undefined || m[2].length !== 3 || Number(m[1]) === 0) return null;
+  return { point: `${Number(m[1])}.${m[2]}`.replace(/\.?0+$/, ''), whole: Number(m[1] + m[2]), said: m[3] };
+}
+
+/** What to type instead of an ambiguous "1,500", in `unit` when the figure did not say its own. */
+function separatorWhy(typed: string, unit: string): string | null {
+  const a = ambiguousSeparator(typed);
+  if (!a) return null;
+  const u = a.said || unit;
+  const sfx = a.said ? ` ${a.said}` : '';
+  return `“${typed.trim()}” could be either: type ${a.point}${sfx} for ${a.point} ${u}, or ${a.whole}${sfx} for ${fmtCount(a.whole)} ${u}.`;
+}
+
 /** A bare whole number other than zero ("500"): it does not say whether it is g or kg. */
 function bareWhole(typed: string): number | null {
   const m = MEASURED.exec(typed.trim());
@@ -79,7 +102,7 @@ function bareWhole(typed: string): number | null {
 
 function measuredParser(factors: Record<string, number>) {
   return (typed: string): number | null => {
-    if (bareWhole(typed) !== null) return null;
+    if (bareWhole(typed) !== null || ambiguousSeparator(typed) !== null) return null;
     const m = MEASURED.exec(typed.trim());
     if (!m) return null;
     const factor = factors[m[3].toLowerCase()];
@@ -88,6 +111,37 @@ function measuredParser(factors: Record<string, number>) {
     return n === null || n > MAX_BASE ? null : n;
   };
 }
+
+/**
+ * An amount typed in a unit the person has just chosen ("Par, in kg"), as a
+ * whole amount of the book's unit: with kg chosen, "2.5", "2,5" or "2.5 kg"
+ * is 2,500 g and "250 g" is 250 g. Unlike a count of a good already kept in
+ * g (amountUnit, which asks "g or kg?" of a bare "500"), the unit here was
+ * picked one field above, so a bare number is in that unit. Still refused,
+ * never rounded: anything that is not a whole g, ml or count, a negative, or
+ * more than MAX_BASE. `factors` maps each unit word to its size in the book's
+ * unit; '' is the chosen unit.
+ */
+export function amountInChosenUnit(typed: string, factors: Record<string, number>): number | null {
+  if (ambiguousSeparator(typed) !== null) return null;
+  const m = MEASURED.exec(typed.trim());
+  if (!m) return null;
+  const factor = factors[m[3].toLowerCase()];
+  if (factor === undefined) return null;
+  const n = scaled(m[1], m[2] ?? '', factor);
+  return n === null || n > MAX_BASE ? null : n;
+}
+
+/** Why amountInChosenUnit refused `typed`, when the reason is a separator it will not guess at; `unit` is the chosen one. */
+export function chosenUnitWhy(typed: string, unit: string): string | null {
+  return separatorWhy(typed, unit);
+}
+
+/** The units a measured good's figures may be typed in, by book unit; '' is filled by the chosen one. */
+export const MEASURE_WORDS: Record<'g' | 'ml', Record<string, number>> = {
+  g: { kg: 1000, g: 1 },
+  ml: { l: 1000, cl: 10, ml: 1 },
+};
 
 function wholeParser(typed: string): number | null {
   const t = typed.trim();
@@ -107,7 +161,7 @@ export function amountUnit(uom: string | null | undefined): AmountUnit {
       parse: measuredParser({ '': 1000, kg: 1000, g: 1 }),
       why: (typed) => {
         const n = bareWhole(typed);
-        return n === null ? null : `Say which: ${fmtCount(n)} g or ${fmtCount(n)} kg.`;
+        return n === null ? separatorWhy(typed, 'kg') : `Say which: ${fmtCount(n)} g or ${fmtCount(n)} kg.`;
       },
       words: (n) => exactMeasure(n, 'g', 'kg'),
     };
@@ -121,7 +175,7 @@ export function amountUnit(uom: string | null | undefined): AmountUnit {
       parse: measuredParser({ '': 1000, l: 1000, cl: 10, ml: 1 }),
       why: (typed) => {
         const n = bareWhole(typed);
-        return n === null ? null : `Say which: ${fmtCount(n)} ml or ${fmtCount(n)} l.`;
+        return n === null ? separatorWhy(typed, 'l') : `Say which: ${fmtCount(n)} ml or ${fmtCount(n)} l.`;
       },
       words: (n) => exactMeasure(n, 'ml', 'l'),
     };
