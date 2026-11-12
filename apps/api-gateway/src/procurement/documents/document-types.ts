@@ -84,8 +84,43 @@ export const UOMS = [
   "split_case",
   "each",
   "liter",
+  "kg",
+  "g",
 ] as const;
 export type Uom = (typeof UOMS)[number];
+
+/**
+ * Weights (R8, mail-receipts lane 2026-11-11). A cheese invoiced `3 KGM @ 450`
+ * was filed as `3 each` and booked as three pieces. A line may now say `kg` or
+ * `g`; `procurement_document_lines.uom` and `price_base_uom` accept them
+ * (migration 20270727120000). An ORDER and the order door do not: their columns
+ * keep the seven container units (`ORDER_UNIT_TYPES`), and both refuse a weight
+ * by name rather than write it into a CHECK that would fail.
+ *
+ * A weight is never a number of bottles (`toBottles` passes it through 1:1 and
+ * `comparableUnits` keeps it apart, as for a keg or a liter). It converts only
+ * to another weight, by `massFactor`, into the unit the house item is kept in
+ * (ADR 0070: integer quantities, the unit belongs to the item).
+ */
+export const MASS_UOMS = ["kg", "g"] as const;
+export type MassUom = (typeof MASS_UOMS)[number];
+
+export function isMass(u: unknown): u is MassUom {
+  return u === "kg" || u === "g";
+}
+
+/** Grams in one of a weight unit, the item's `mg` included (`restaurant_inventory.uom`). */
+const GRAMS: Readonly<Record<string, number>> = { kg: 1000, g: 1, mg: 0.001 };
+
+/**
+ * How many `to` make one `from`, both weights, or null when either is not a
+ * weight this file knows. `massFactor("kg", "g")` is 1000.
+ */
+export function massFactor(from: string, to: string): number | null {
+  const a = GRAMS[from];
+  const b = GRAMS[to];
+  return a == null || b == null ? null : a / b;
+}
 
 export const MATCH_METHODS = [
   "vendor_sku",
@@ -164,13 +199,27 @@ export function normalizeUom(raw?: string | null): Uom | null {
     // `ı` (U+0131, dotless i) has no decomposition, so the pass above cannot
     // reach it. Folded explicitly rather than left to fall through as null.
     .replace(/ı/g, "i")
-    .replace(/[\s_-]+/g, "");
+    // `btl.`, `St.`, `bottle(s)`: an abbreviation's dot and a plural's `(s)`
+    // say nothing about the unit (QA 10a (3)).
+    .replace(/\((?:s|es|e)\)$/, "")
+    .replace(/[\s_.-]+/g, "");
   switch (s) {
     case "bottle":
     case "bottles":
     case "btl":
     case "bt":
     case "sise": // TR `şişe`, folded to `sise` by the pass above.
+    case "siseler":
+    case "bouteille": // FR
+    case "bouteilles":
+    case "botella": // ES
+    case "botellas":
+    case "bottiglia": // IT
+    case "bottiglie":
+    case "flasche": // DE
+    case "flaschen":
+    case "fles": // NL
+    case "flessen":
       return "bottle";
     case "case":
     case "cases":
@@ -196,6 +245,16 @@ export function normalizeUom(raw?: string | null): Uom | null {
     case "unit":
     case "units":
     case "adet": // TR, a countable piece. NOT `bottle` — see the header note.
+    case "ad": // TR, `Ad.` / `AD`, the abbreviation of `adet`.
+    case "c62": // UN/ECE Rec 20 "one", what a UBL-TR e-Fatura prints for `adet`.
+    case "h87": // UN/ECE Rec 20 "piece".
+    case "pcs": // EN piece(s), like `adet` a count, not a container (QA 10a (3)).
+    case "pc":
+    case "piece":
+    case "pieces":
+    case "stk": // DE/NL/Nordic Stück / stuk / styk.
+    case "st":
+    case "stuck": // DE `Stück`, folded by the pass above.
       return "each";
     case "liter":
     case "liters":
@@ -203,7 +262,26 @@ export function normalizeUom(raw?: string | null): Uom | null {
     case "litres":
     case "l":
     case "lt":
+    case "ltr": // UN/ECE Rec 20 `LTR`, as a UBL-TR e-Fatura prints it.
       return "liter";
+    case "kg":
+    case "kgs":
+    case "kgm": // UN/ECE Rec 20 `KGM`, as a UBL-TR e-Fatura prints a kilogram (R8).
+    case "kilo":
+    case "kilos":
+    case "kilogram":
+    case "kilograms":
+    case "kilogramm":
+    case "kilogramme":
+      return "kg";
+    case "g":
+    case "gr": // TR `gr`, a gram.
+    case "grm": // UN/ECE Rec 20 `GRM`.
+    case "gram":
+    case "grams":
+    case "gramm":
+    case "gramme":
+      return "g";
     default:
       return null;
   }
@@ -219,7 +297,7 @@ export function normalizeUom(raw?: string | null): Uom | null {
  * bottle-equivalents; the original unit is kept alongside so the UI can still
  * say "2 cases" to the person who counted cases.
  *
- * `liter` and `keg` deliberately do NOT convert. A keg is not a number of
+ * `liter`, `keg` and the weights `kg` and `g` deliberately do NOT convert. A keg is not a number of
  * bottles in any way a receiver would accept, and inventing a conversion factor
  * would produce confident, wrong cost math. They compare only against the same
  * unit.
@@ -237,13 +315,15 @@ export function toBottles(qty: number, uom: Uom, packSize = 1): number {
       return n;
     case "keg":
     case "liter":
+    case "kg":
+    case "g":
       return n;
   }
 }
 
 /** True when two quantities are in units that can be meaningfully compared. */
 export function comparableUnits(a: Uom, b: Uom): boolean {
-  const opaque = (u: Uom) => u === "keg" || u === "liter";
+  const opaque = (u: Uom) => u === "keg" || u === "liter" || isMass(u);
   if (opaque(a) || opaque(b)) return a === b;
   return true;
 }

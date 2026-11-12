@@ -4,6 +4,7 @@ import {
   isDiscrepancy,
   MatchInput,
   MatchUnitError,
+  toBottleOperands,
 } from "./invoice-match";
 
 /**
@@ -587,6 +588,43 @@ describe("computeMatch — units", () => {
           invoiceBottlesPerUnit: 12,
         }),
       ).toThrow(/holds exactly one/i);
+    });
+
+    it("refuses a weighed invoice against an order counted in pieces (R8, fix round #1110)", () => {
+      // 3 each ordered, 3 KGM invoiced: before, kg passed through as one
+      // "bottle" a unit and the verdict read a clean 3 against 3.
+      const weighed = {
+        orderedQtyInOrderedUom: 3,
+        orderedUom: "each",
+        poUnitPrice: 450,
+        invoiceQtyInInvoiceUom: 3,
+        invoiceUom: "KGM",
+        invoiceUnitPrice: 450,
+        acceptedQtyInCountedUom: 3,
+      };
+      expect(() => computeMatch(weighed)).toThrow(MatchUnitError);
+      expect(() => computeMatch(weighed)).toThrow(/weight is not a count of eachs/i);
+      expect(() => toBottleOperands({ ...weighed, invoiceUom: "g" })).toThrow(/cannot be compared/i);
+    });
+
+    it("refuses a weighed door count against a bottle order, and kg against g", () => {
+      expect(() =>
+        computeMatch({
+          orderedQtyInOrderedUom: 3,
+          poUnitPrice: 450,
+          acceptedQtyInCountedUom: 3,
+          countedUom: "kg",
+        }),
+      ).toThrow(/cannot be compared/i);
+      expect(() =>
+        toBottleOperands({
+          orderedQtyInOrderedUom: 3,
+          orderedUom: "kg",
+          poUnitPrice: 450,
+          invoiceQtyInInvoiceUom: 3000,
+          invoiceUom: "g",
+        }),
+      ).toThrow(/cannot be compared/i);
     });
 
     it("refuses to compare kegs against bottles", () => {
