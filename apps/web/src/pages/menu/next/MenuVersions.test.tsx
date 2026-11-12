@@ -459,7 +459,7 @@ describe('MenuVersions', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
     await waitFor(() => expect(mockMake).toHaveBeenLastCalledWith('m2', 'fp-m2'));
     await waitFor(() =>
-      expect(screen.getByTestId('menu-read-result')).toHaveTextContent('It is not the current menu, and no price has changed.'),
+      expect(screen.getByTestId('menu-read-result')).toHaveTextContent('It is no longer the current menu: another was chosen.'),
     );
     expect(screen.queryByTestId('menu-choice-said')).not.toBeInTheDocument();
     expect(screen.getAllByText(/^This is now the current menu/)).toHaveLength(1);

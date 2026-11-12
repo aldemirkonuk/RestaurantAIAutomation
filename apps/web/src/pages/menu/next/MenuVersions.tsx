@@ -289,6 +289,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   const [date, setDate] = useState('');
   const [result, setResult] = useState<MenuImportResult | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
+  const [replaced, setReplaced] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [readingId, setReadingId] = useState<string | null>(null);
   const dateRead = readMenuDate(date);
@@ -316,6 +317,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
     onMutate: () => onReadStart?.(),
     onSuccess: (r) => {
       setResult(r);
+      setReplaced(false);
       setChosen(null);
       setPlanning(false);
       setReadingId(null);
@@ -334,11 +336,13 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
 
   useEffect(() => {
     if (currentMenuId === undefined) return;
-    setResult((cur) => {
-      if (!cur) return cur;
-      const now = currentMenuId === cur.menuId;
-      return cur.current === now ? cur : { ...cur, current: now };
-    });
+    if (!result) return;
+    const now = currentMenuId === result.menuId;
+    const was = result.current === true;
+    if (was === now) return;
+    // Once current and now replaced, "no price has changed" is no longer true.
+    setReplaced(was && !now);
+    setResult({ ...result, current: now });
     // A sentence about an earlier choice no longer describes the house.
     setChosen((said) => (said && currentMenuId !== result?.menuId ? null : said));
   }, [currentMenuId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -412,7 +416,11 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
             {result.source && !result.source.kept
               ? `Its file was not kept: ${result.source.failure ? keepFailure(result.source.failure) : 'no reason given'}. `
               : ''}
-            {isCurrent ? 'It is the current menu.' : 'It is not the current menu, and no price has changed.'}
+            {isCurrent
+              ? 'It is the current menu.'
+              : replaced
+                ? 'It is no longer the current menu: another was chosen.'
+                : 'It is not the current menu, and no price has changed.'}
           </p>
           <ReadWarnings warnings={result.warnings} testId="menu-read-warnings" />
           {result.reopened ? (
