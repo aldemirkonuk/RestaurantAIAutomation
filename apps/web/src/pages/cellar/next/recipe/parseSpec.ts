@@ -27,6 +27,13 @@
  * word of two letters or more, or a word that starts with ml, oz, tsp, tbsp,
  * kg or bsp. Every other word is the start of the label, as "2 limes" is. A
  * measure off the menu ("1 shot gin") is flagged the same way.
+ *
+ * A count whose label states a measure ("1 Tonic Water 200ml", "2 x 330 ml
+ * soda") is read by the measure, not as pieces (r5): the stated measure wins,
+ * times the count, and leaves the label. A bar buys tonic by the bottle size,
+ * and a count of a bottle item never prices (`recipe-cost.ts` refuses to
+ * assume one bottle of a bottle item). Only volume and weight words count as a
+ * stated measure; two of them on one line are not guessed between.
  */
 
 import { readsAsThousandAmbiguous, type RecipeUnit } from './units';
@@ -90,6 +97,32 @@ export function unitTypo(word: string): boolean {
   if (GLUED_UNIT.test(w)) return true;
   return TYPO_TARGETS.some((k) => oneEditApart(w, k));
 }
+/** Unit words that state a size: volume and weight, never a bar measure or a count. */
+const SIZE_WORDS = Object.keys(UNIT_WORDS).filter((k) => ['ml', 'cl', 'l', 'oz', 'g', 'kg'].includes(UNIT_WORDS[k]));
+/** "200ml", "33 cl", "0,7 l" inside a label, standing alone (not "47 gin", not "x200mlx"). */
+const STATED_SIZE = new RegExp(
+  String.raw`(?<![\p{L}\d.,])(\d+(?:[.,]\d+)?)\s*(${SIZE_WORDS.sort((a, b) => b.length - a.length).join('|')})(?![\p{L}\d])\.?`,
+  'giu',
+);
+/** The container a size names: "bottle tonic 200ml" keeps "tonic". */
+const CONTAINER = /^(?:bottles?|btls?|cans?|cartons?|packs?)\s+(?:of\s+)?/i;
+
+/**
+ * The size stated inside a counted label, or null when there is none.
+ * Two sizes are returned as `two`, so the caller can say so instead of picking.
+ */
+export function statedSize(label: string): { qty: number; unit: RecipeUnit; rest: string } | { two: string[] } | null {
+  const found = [...label.matchAll(STATED_SIZE)];
+  if (found.length === 0) return null;
+  if (found.length > 1) return { two: found.map((f) => f[0].trim()) };
+  const [whole, amount, word] = found[0];
+  const unit = UNIT_WORDS[word.toLowerCase()];
+  const qty = readAmount(amount, unit);
+  if (qty === null || qty <= 0) return null;
+  const rest = tidy(label.replace(whole, ' ').replace(/\s*[,(\-–]\s*$/, '')).replace(CONTAINER, '');
+  return rest ? { qty, unit, rest } : null;
+}
+
 /** "1)" or "2." at the start of a numbered list, before the amount. */
 const NUMBERED = /^\d{1,2}[.)]\s+(?=\S)/;
 
@@ -183,6 +216,18 @@ export function parseLine(line: string): ProposedLine | null {
     // "30 mll gin": a unit typed wrong is never guessed, and never read as a count.
     const flag = `"${word}" is not a unit I know. Pick the unit.`;
     return { qty, unit: null, label, role: roleOf(text, label, qty), confirmed: false, flag };
+  }
+  if (unit === null || unit === 'each') {
+    // "1 Tonic Water 200ml": the size the line states wins over the count.
+    const size = statedSize(label);
+    if (size && 'two' in size) {
+      const flag = `Two sizes on one line (${size.two.join(', ')}). Pick the amount and unit.`;
+      return { qty, unit: null, label, role: roleOf(text, label, qty), confirmed: false, flag };
+    }
+    if (size) {
+      const total = Math.round(qty * size.qty * 1000) / 1000;
+      return { qty: total, unit: size.unit, label: size.rest, role: roleOf(text, size.rest, total), confirmed: false, flag: null };
+    }
   }
   if (unit === null) {
     // A count with no unit word ("2 egg whites", "1 lime") is a count.

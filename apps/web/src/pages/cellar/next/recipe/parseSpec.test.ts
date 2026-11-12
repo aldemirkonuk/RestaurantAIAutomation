@@ -165,3 +165,37 @@ describe('parseSpec — pasted text into rows to confirm', () => {
     expect(rows[2].flag).toBe('"Gin" is pasted above too. Leave one out if it was pasted twice.');
   });
 });
+
+describe('a stated size wins over a count (r5, R6)', () => {
+  it('reads "1 Tonic Water 200ml" as 200 ml of tonic water, not 1 each', () => {
+    expect(parseLine('1 Tonic Water 200ml')).toMatchObject({ qty: 200, unit: 'ml', label: 'Tonic Water', role: 'stocked', flag: null });
+  });
+
+  it('multiplies the count by the size, and reads cl, l, oz, g and kg', () => {
+    expect(parseLine('2 x 330 ml soda')).toMatchObject({ qty: 660, unit: 'ml', label: 'soda' });
+    expect(parseLine('1 ginger beer 20cl')).toMatchObject({ qty: 20, unit: 'cl', label: 'ginger beer' });
+    expect(parseLine('1 tomato juice 0,5 l')).toMatchObject({ qty: 0.5, unit: 'l', label: 'tomato juice' });
+    expect(parseLine('½ bottle tonic 200ml')).toMatchObject({ qty: 100, unit: 'ml', label: 'tonic' });
+    expect(parseLine('1 sugar 10 g')).toMatchObject({ qty: 10, unit: 'g', label: 'sugar' });
+  });
+
+  it('leaves counts with no stated size alone, and a number in a name is not a size', () => {
+    expect(parseLine('2 egg whites')).toMatchObject({ qty: 2, unit: 'each', label: 'egg white' });
+    expect(parseLine('1 Monkey 47 gin')).toMatchObject({ qty: 1, unit: 'each', label: 'Monkey 47 gin' });
+    expect(parseLine('1 Tanqueray No. 10')).toMatchObject({ qty: 1, unit: 'each' });
+  });
+
+  it('never touches a line whose own unit is a measure', () => {
+    expect(parseLine('50 ml Absolut 70cl')).toMatchObject({ qty: 50, unit: 'ml', label: 'Absolut 70cl' });
+  });
+
+  it('does not choose between two sizes: it keeps the count and says so', () => {
+    const row = parseLine('1 tonic 200ml 20cl');
+    expect(row).toMatchObject({ qty: 1, unit: null });
+    expect(row?.flag).toBe('Two sizes on one line (200ml, 20cl). Pick the amount and unit.');
+  });
+
+  it('does not read an ambiguous thousand as a size', () => {
+    expect(parseLine('1 tonic 1.000ml')).toMatchObject({ qty: 1, unit: 'each' });
+  });
+});
