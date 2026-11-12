@@ -83,9 +83,9 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
         return (
           <>
             <Note>
-              Only flags the gateway declares active render as controls. That list lives in one file —{' '}
-              <code style={{ fontFamily: MONO, fontSize: 11 }}>apps/api-gateway/src/settings/feature-flag-registry.ts</code>{' '}
-              — and this page renders whatever it returns, so it cannot drift out of step with it.
+              {/* The list is apps/api-gateway/src/settings/feature-flag-registry.ts. */}
+              Only switches the server says are in use are drawn here, and this page draws whatever it
+              returns, so it cannot drift out of step with what the server reads.
             </Note>
 
             {!canManage && (
@@ -115,7 +115,8 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 // function's docblock, not the read) — corrected 2026-09-19 against
                 // the actual `.select("enable_ai_autonomous_send")` call, which
                 // matches the registry's own `readBy` for this key.
-                readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>common/orchestrator/inbound-responder.service.ts:1027</code>,
+                // common/orchestrator/inbound-responder.service.ts:1027
+                readBy: 'the vendor mail assistant, before it sends a reply by itself',
               }}
               consequence={
                 <>
@@ -165,7 +166,8 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 // function's docblock, not the read) — corrected 2026-09-19 against
                 // the actual `.select("enable_ai_negotiation")` call, which matches
                 // the registry's own `readBy` for this key.
-                readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>common/orchestrator/inbound-responder.service.ts:1003</code>,
+                // common/orchestrator/inbound-responder.service.ts:1003
+                readBy: "the vendor mail assistant, before it reads a vendor's reply",
               }}
               consequence={
                 <>
@@ -190,7 +192,8 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 tone={values[HOUSE_INBOX] === true ? 'grave' : undefined}
                 provenance={{
                   kept: 'restaurant', when: null, whenUnknown: NO_DATE,
-                  readBy: <code style={{ fontFamily: MONO, fontSize: 11 }}>communications/inbox/house-inbox.service.ts:339</code>,
+                  // communications/inbox/house-inbox.service.ts:339
+                  readBy: "the scheduled reading of the house's mailbox",
                 }}
                 consequence={
                   <>
@@ -242,9 +245,11 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                         // For a page in LIVE_PAGES the hook returns before
                         // that call ever runs (see its module doc above) — the
                         // column is real but nothing reads it any more.
+                        // lib/mudavym/useMudavymDesign.ts · checkFeatureFlag;
+                        // a LIVE_PAGES page returns before that call.
                         readBy: alwaysOn
-                          ? "nothing — useMudavymDesign.ts's LIVE_PAGES short-circuits before the fetch"
-                          : <code style={{ fontFamily: MONO, fontSize: 11 }}>lib/mudavym/useMudavymDesign.ts · checkFeatureFlag</code>,
+                          ? 'nothing any more: this page always shows its new design'
+                          : 'the page itself, each time it opens',
                       }}
                       consequence={
                         alwaysOn ? (
