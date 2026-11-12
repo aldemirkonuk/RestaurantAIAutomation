@@ -233,16 +233,16 @@ const GOAL_BEHIND_FILING: ActFiling = {
   why: `The rule says “Pick the single biggest lever from the insight feed for this goal’s category and commit to it for 7 days”. That is not one of the acts above ${EM} it is a warning that a target you already set is behind its own pace. So this section sends you to the goal’s progress rather than offering an act, and the levers the rule points at are the other entries standing on this page.`,
 };
 
-const UNKNOWN_FILING = (ruleKey: string): ActFiling => ({
+const UNKNOWN_FILING: ActFiling = {
   act: 'unfiled',
-  why: `This page has no act filed for the rule ${ruleKey}. A rule it does not recognise is shown here rather than sorted into a heading by guesswork.`,
-});
+  why: `This page has no act filed for this kind of entry. A kind it does not recognise is shown here rather than sorted into a heading by guesswork.`,
+};
 
 /** `RULE_ACT` is read by its own rows only (`ownRow`, ADR 0288), so a stored
  * key such as `constructor` or `__proto__` is a rule this file does not know. */
 export function actOf(ruleKey: string): ActFiling {
   if (ruleKey.startsWith(GOAL_RULE_PREFIX)) return GOAL_BEHIND_FILING;
-  return ownRow(RULE_ACT, ruleKey) ?? UNKNOWN_FILING(ruleKey);
+  return ownRow(RULE_ACT, ruleKey) ?? UNKNOWN_FILING;
 }
 
 /**

@@ -196,8 +196,8 @@ export function stakeFilingOf(
   return {
     stake: 'unfiled',
     why: category
-      ? `This page has no register for the rule ${ruleId || EM} or for its category, ${category}. It is shown under ${stakeInSentence('unfiled')} rather than sorted by guesswork.`
-      : `This page has no register for the rule ${ruleId || EM}, and it carried no category to file it by. It is shown under ${stakeInSentence('unfiled')} rather than sorted by guesswork.`,
+      ? `This page has no register for this kind of entry or for its category, ${category}. It is shown under ${stakeInSentence('unfiled')} rather than sorted by guesswork.`
+      : `This page has no register for this kind of entry, and it carried no category to file it by. It is shown under ${stakeInSentence('unfiled')} rather than sorted by guesswork.`,
     by: 'unfiled',
   };
 }

@@ -201,7 +201,7 @@ describe('the register — filed by what acting on it changes (ADR 0288)', () =>
   it('a new efficiency rule lands in Unfiled, never in a register nobody sorted it into', () => {
     expect(stakeOf('a_new_efficiency_rule', 'efficiency')).toBe('unfiled');
     expect(stakeFilingOf('a_new_efficiency_rule', 'efficiency').by).toBe('unfiled');
-    expect(stakeFilingOf('a_new_efficiency_rule', 'efficiency').why).toMatch(/no register for the rule a_new_efficiency_rule/);
+    expect(stakeFilingOf('a_new_efficiency_rule', 'efficiency').why).toMatch(/no register for this kind of entry/);
   });
 
   it('names a register lower-case inside a sentence, and keeps the rail’s capitals in STAKE_LABEL', () => {
@@ -265,7 +265,7 @@ describe('a key named on Object.prototype is an unknown rule, never an inherited
   it.each(PROTO_KEYS)('the register files the rule %s under Unfiled, with a why', (key) => {
     const filing = stakeFilingOf(key, null);
     expect(filing).toEqual({ stake: 'unfiled', by: 'unfiled', why: expect.any(String) });
-    expect(filing.why).toContain(`no register for the rule ${key}`);
+    expect(filing.why).toContain('no register for this kind of entry');
     // a category no register knows changes nothing
     expect(stakeFilingOf(key, 'efficiency')).toMatchObject({ stake: 'unfiled', by: 'unfiled' });
     // nor does a composite stored key on the leaves (ADR 0191)
@@ -286,7 +286,7 @@ describe('a key named on Object.prototype is an unknown rule, never an inherited
   it.each(PROTO_KEYS)('the docket files the rule %s under its unfiled act, with a why', (key) => {
     const filing = actOf(key);
     expect(filing.act).toBe('unfiled');
-    expect(filing.why).toContain(`no act filed for the rule ${key}`);
+    expect(filing.why).toContain('no act filed for this kind of entry');
   });
 
   it.each(PROTO_KEYS)('the hand of the rule %s falls back to its category, then Reports', (key) => {
@@ -307,14 +307,14 @@ describe('a key named on Object.prototype is an unknown rule, never an inherited
   it.each(PROTO_KEYS)('the goal door refuses the rule %s in words', (key) => {
     expect(goalOfferFor(forward(key))).toEqual({
       kind: 'refused',
-      why: expect.stringContaining(`no metric filed for the rule ${key}`),
+      why: expect.stringContaining('no figure filed for this kind of entry'),
     });
   });
 
   it.each(PROTO_KEYS)('the cutting door refuses the rule %s in words', (key) => {
     expect(cuttingFor(forward(key))).toEqual({
       kind: 'refused',
-      why: expect.stringContaining(`no cutting filed for the rule ${key}`),
+      why: expect.stringContaining('no cutting filed for this kind of entry'),
     });
   });
 
