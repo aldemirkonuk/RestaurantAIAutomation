@@ -58,6 +58,26 @@ describe('WhatIsInAServe', () => {
     expect(screen.getByTestId('recipe-whatisin-allergens').textContent).toBe('Contains milk.');
   });
 
+  it('puts allergens first, then the figures, then pure alcohol with its grams', () => {
+    const base = readable();
+    if (!base.readable) throw new Error('fixture');
+    render(<WhatIsInAServe data={recipe(readable({ figures: { ...base.figures, alcoholMl: fig(20, ['Tonic'], true) } }))} unsaved={false} />);
+    const card = screen.getByTestId('recipe-whatisin');
+    const allergens = screen.getByTestId('recipe-whatisin-allergens');
+    const energy = screen.getByTestId('recipe-whatisin-energyKcal');
+    expect(allergens.compareDocumentPosition(energy) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // 20 ml x 0.789 g/ml = 15.78 g.
+    expect(screen.getByTestId('recipe-whatisin-alcoholMl').textContent).toBe('Pure alcohol: at least 20 ml (15.8 g), unknown for Tonic');
+    expect(card).toHaveAttribute('aria-label', 'What is in a serve');
+  });
+
+  it('says alcohol nobody states as unknown for those lines, never 0 ml', () => {
+    const base = readable();
+    if (!base.readable) throw new Error('fixture');
+    render(<WhatIsInAServe data={recipe(readable({ figures: { ...base.figures, alcoholMl: fig(null, ['Gin', 'Tonic']) } }))} unsaved={false} />);
+    expect(screen.getByTestId('recipe-whatisin-alcoholMl').textContent).toBe('Pure alcohol: unknown for Gin, Tonic');
+  });
+
   it('says a failed read in the gateway sentence, not as an empty card', () => {
     render(<WhatIsInAServe data={recipe({ readable: false, sentence: 'What is in a serve could not be read just now.' })} unsaved={false} />);
     expect(screen.getByTestId('recipe-whatisin-unread').textContent).toBe('What is in a serve could not be read just now.');
