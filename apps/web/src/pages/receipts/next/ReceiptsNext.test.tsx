@@ -17,7 +17,12 @@ const api = vi.hoisted(() => ({
   verified: [] as ProcurementDocument[],
   /** Papers that read cleanly, `status = received` (W44). */
   clean: [] as ProcurementDocument[],
-  unverified: { items: [] as unknown[] },
+  unverified: { items: [] as unknown[] } as {
+    items: unknown[];
+    doorCounted?: unknown[];
+    doorCountedComplete?: boolean;
+    doorCountedFailed?: boolean;
+  },
   detail: { document: {}, lines: [] as unknown[], links: [] },
   detailFails: null as unknown,
   unverifiedFails: null as unknown,
@@ -332,6 +337,73 @@ describe('ReceiptsNext', () => {
     expect(await screen.findByText(/an order with no number · 6 counted · 2h ago/)).toBeInTheDocument();
     expect(container.textContent).not.toContain('btl');
     expect(container.textContent).not.toContain('o9abcdef');
+  });
+
+  it('a delivery counted at the document door with no paper is on the strip (R10)', async () => {
+    // The receipts walk counted at the door, booked 10, and the strip read
+    // `items: []`: the document door writes a delivery, not a receipt event.
+    api.unverified = {
+      items: [{ orderId: 'o9', orderNumber: 'PO-9', countedQtyBottles: 24, countedAt: '', ageHours: 5, severity: 'fresh' }],
+      doorCounted: [
+        { deliveryId: 'd1', orderId: null, orderNumber: null, countedQtyBottles: 10, linesWithoutBottles: 0, countedAt: '', ageHours: 2, severity: 'fresh' },
+        { deliveryId: 'd2', orderId: 'o3', orderNumber: 'PO-3', countedQtyBottles: 6, linesWithoutBottles: 1, countedAt: '', ageHours: 50, severity: 'overdue' },
+      ],
+      doorCountedComplete: true,
+    };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/a delivery nobody ordered · 10 counted · 2h ago/)).toBeInTheDocument();
+    // A weight or keg line is named, never added into the count.
+    expect(screen.getByText(/PO-3 · 6 counted \+ 1 line in another unit · 50h ago/)).toBeInTheDocument();
+    // Oldest first, across both doors.
+    const text = container.textContent ?? '';
+    expect(text.indexOf('PO-3')).toBeLessThan(text.indexOf('PO-9'));
+    expect(text.indexOf('PO-9')).toBeLessThan(text.indexOf('a delivery nobody ordered'));
+    expect(text).not.toContain('older ones may be waiting');
+  });
+
+  it('a door-counted delivery names its vendor, so two unordered ones read apart (walk 2026-11-12)', async () => {
+    api.unverified = {
+      items: [],
+      doorCounted: [
+        { deliveryId: 'd1', orderId: null, orderNumber: null, providerId: 'p1', vendorName: 'Ege Şarap', countedQtyBottles: 10, linesWithoutBottles: 1, countedAt: '', ageHours: 2, severity: 'fresh' },
+        { deliveryId: 'd2', orderId: null, orderNumber: null, providerId: null, vendorName: null, countedQtyBottles: 4, linesWithoutBottles: 0, countedAt: '', ageHours: 1, severity: 'fresh' },
+      ],
+      doorCountedComplete: true,
+    };
+    render(<ReceiptsNext />, { wrapper });
+    expect(
+      await screen.findByText(/a delivery nobody ordered from Ege Şarap · 10 counted \+ 1 line in another unit · 2h ago/),
+    ).toBeInTheDocument();
+    // No vendor on the delivery: no name is made up.
+    expect(screen.getByText(/a delivery nobody ordered · 4 counted · 1h ago/)).toBeInTheDocument();
+  });
+
+  it('a capped door-counted read says the strip is the newest, not all (R10)', async () => {
+    api.unverified = {
+      items: [],
+      doorCounted: [
+        { deliveryId: 'd1', orderId: null, orderNumber: null, countedQtyBottles: 10, linesWithoutBottles: 0, countedAt: '', ageHours: 2, severity: 'fresh' },
+      ],
+      doorCountedComplete: false,
+    };
+    render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/older ones may be waiting too/)).toBeInTheDocument();
+  });
+
+  it('a failed door-counted read keeps the order door strip and says the rest is unknown (R10)', async () => {
+    api.unverified = {
+      items: [{ orderId: 'o9', orderNumber: 'PO-9', countedQtyBottles: 24, countedAt: '', ageHours: 5, severity: 'fresh' }],
+      doorCounted: [],
+      doorCountedComplete: false,
+      doorCountedFailed: true,
+    };
+    const { container } = render(<ReceiptsNext />, { wrapper });
+    expect(await screen.findByText(/PO-9 · 24 counted · 5h ago/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Could not read the deliveries counted at the document door — nothing is claimed about them/),
+    ).toBeInTheDocument();
+    // A failed read is not a capped one.
+    expect(container.textContent).not.toContain('older ones may be waiting');
   });
 
   it('a null tie-out is untestable, never a pass or a fail', async () => {
