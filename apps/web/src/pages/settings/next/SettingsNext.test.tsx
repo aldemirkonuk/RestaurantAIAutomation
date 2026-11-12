@@ -758,7 +758,9 @@ describe('SettingsNext — provenance and unknowns', () => {
     // Push: stored, but nothing sends it — no control anywhere for it.
     expect(screen.queryByRole('switch', { name: /^Push/i })).not.toBeInTheDocument();
     expect(screen.getByText(/Nothing in the product sends a push notification/i)).toBeInTheDocument();
-    expect(screen.getByText(/push-is-not-resolved-here/)).toBeInTheDocument();
+    // Said in the house's words; the file citations moved to a code comment.
+    expect(screen.getByText(/nothing that sends an alert looks at it/i)).toBeInTheDocument();
+    expect(screen.queryByText(/push-is-not-resolved-here/)).not.toBeInTheDocument();
     // Email and SMS are real, so they keep their switches.
     expect(screen.getByRole('switch', { name: /Email notifications/i })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /SMS notifications/i })).toBeInTheDocument();
@@ -1077,10 +1079,11 @@ describe('SettingsNext — approval thresholds', () => {
    * sentence being authored for the state it describes. Both branches are
    * tested; testing only one would let the page hard-code either claim.
    */
-  it('says it is ENFORCED, and names the path that enforces it', () => {
+  it('says it is ENFORCED, in the house\'s words, without printing the code path', () => {
     mount('/settings?tab=thresholds');
     expect(screen.getByText(/Enforced\./i)).toBeInTheDocument();
-    expect(screen.getByText(new RegExp(ENFORCED_AT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).toBeInTheDocument();
+    expect(screen.getByText(/Every order is checked against these rules before it can be sealed/i)).toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(ENFORCED_AT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))).not.toBeInTheDocument();
     expect(screen.queryByText(/Nothing stops an order yet/i)).not.toBeInTheDocument();
   });
 
@@ -1228,7 +1231,7 @@ describe('SettingsNext — the settings record', () => {
     // page now (e.g. "Email sign-off" is both this list's item and its own
     // register's `<h3>`), since the interview renders all sixteen together.
     const section = screen.getByTestId('st-section-ledger');
-    expect(within(section).getByText(/Eight registers write through services this pass did not touch/i)).toBeInTheDocument();
+    expect(within(section).getByText(/A change made in one of these eight is not logged here yet/i)).toBeInTheDocument();
     for (const label of ['Email sign-off', 'Locations & chains', 'Cellar registers']) {
       expect(within(section).getByText(label)).toBeInTheDocument();
     }

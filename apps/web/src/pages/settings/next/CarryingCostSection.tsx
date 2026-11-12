@@ -172,7 +172,8 @@ function CarryingCostBody({
           when: reg.statedAt,
           whenUnknown: NO_DATE,
           verb: 'typed',
-          readBy: <>every commodity alert's saving line — <code style={{ fontFamily: MONO }}>settings/house-carrying-cost.service.ts</code></>,
+          // settings/house-carrying-cost.service.ts
+          readBy: "every commodity alert's saving line",
         }}
         control={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>

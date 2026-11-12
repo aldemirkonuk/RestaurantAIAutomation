@@ -61,7 +61,7 @@
  */
 
 import { Choice, Dead, Micro, Note, Register, Row, SaveFailure, Toggle, fieldStyle } from './SectionKit';
-import { MONO, PROVENANCE_UNKNOWN, SANS, fmtWhen } from './st-format';
+import { PROVENANCE_UNKNOWN, SANS, fmtWhen } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
 
 const MODE_OPTIONS = [
@@ -101,7 +101,8 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             <Row
               label="Email door"
               cert="manual"
-              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>team/broadcast-preferences.ts:69,104</code> }}
+              // team/broadcast-preferences.ts:69,104
+              provenance={{ ...kept, readBy: 'team broadcasts and the scheduled digests' }}
               consequence="Team broadcasts and scheduled digests reach you by email."
               control={
                 <Toggle label="Email notifications" checked={p.email} busy={writer.busy === 'email'}
@@ -111,7 +112,8 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             <Row
               label="SMS door"
               cert="manual"
-              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>team/broadcast-preferences.ts:70,104</code> }}
+              // team/broadcast-preferences.ts:70,104
+              provenance={{ ...kept, readBy: 'team broadcasts' }}
               consequence="Team broadcasts may also go to your phone number, where one is on file."
               control={
                 <Toggle label="SMS notifications" checked={p.sms} busy={writer.busy === 'sms'}
@@ -122,14 +124,22 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
               label="Push"
               stored={p.push ? 'stored: on' : 'stored: off'}
               consequence="Nothing in the product sends a push notification to your phone, and this preference would not be what decided it if something did. Push-sending code exists in the alerting agent, but it chooses its channels by urgency and never consults this switch; the device register it would send to is absent from production; and the gateway has no push path at all."
-              evidence="`push_enabled` has three writers and no reader: notifications.service.ts:189,1142,1193 write it; the channel chooser reads urgency and `<type>_channels` instead (notification_agent.py:1435-1470). The one other hit, core/database.py:1967, copies a `restaurants.push_enabled` onto a manager object nothing then reads. Device table missing per notification_agent.py:31-37; gateway path per apps/api-gateway/src/communications/push-is-not-resolved-here.spec.ts. Grepped 2026-09-03 across all four runtimes."
+              // Checked 2026-09-03 across all four runtimes: `push_enabled` has
+              // three writers and no reader (notifications.service.ts:189,1142,
+              // 1193); the channel chooser reads urgency and `<type>_channels`
+              // (notification_agent.py:1435-1470); core/database.py:1967 copies
+              // it onto an object nothing reads; no device table
+              // (notification_agent.py:31-37); no gateway path
+              // (push-is-not-resolved-here.spec.ts).
+              evidence="The switch is saved, and nothing that sends an alert looks at it."
             />
 
             <div style={{ margin: '20px 0 0' }}><Micro tone="seal">Low stock</Micro></div>
             <Row
               label="Low-stock alerts"
               cert="manual"
-              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>notifications/low-stock-alerts.service.ts:505,515</code> }}
+              // notifications/low-stock-alerts.service.ts:505,515
+              provenance={{ ...kept, readBy: 'the low-stock alerts' }}
               consequence="The alerting engine runs for this restaurant when any member has this on."
               control={
                 <Toggle label="Low-stock alerts" checked={low.enabled} busy={writer.busy === 'low.enabled'}
@@ -182,7 +192,8 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             <div style={{ margin: '20px 0 0' }}><Micro tone="seal">Scheduled mail</Micro></div>
             <Row
               label="Order reminders"
-              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>communications/scheduled-tasks.service.ts:1528</code> }}
+              // communications/scheduled-tasks.service.ts:1528
+              provenance={{ ...kept, readBy: 'the order reminder mail' }}
               consequence="Recurring orders coming due within two days. “In-app only” keeps the notification and drops the email."
               control={
                 <Choice label="Order reminders" value={p.ordersMode ?? 'both'} options={MODE_OPTIONS}
@@ -191,7 +202,8 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
             />
             <Row
               label="Weekly report"
-              provenance={{ ...kept, readBy: <code style={{ fontFamily: MONO }}>communications/scheduled-tasks.service.ts:1528</code> }}
+              // communications/scheduled-tasks.service.ts:1528
+              provenance={{ ...kept, readBy: 'the Monday report mail' }}
               consequence="The Monday summary of the week's spend and movement."
               control={
                 <Choice label="Weekly report" value={p.reportsMode ?? 'both'} options={MODE_OPTIONS}
@@ -205,11 +217,8 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
               cert="manual"
               provenance={{
                 ...kept,
-                readBy: (
-                  <code style={{ fontFamily: MONO }}>
-                    notification_agent.py:1448,1487-1494
-                  </code>
-                ),
+                // notification_agent.py:1448,1487-1494
+                readBy: 'the alerts, before each one is sent',
               }}
               consequence={
                 <>
@@ -270,7 +279,13 @@ export default function NotifySection({ data }: { data: SettingsNextData }) {
                 label={`${c.charAt(0).toUpperCase()}${c.slice(1)} category`}
                 stored={cats[c] ? 'stored: on' : 'stored: off'}
                 consequence="Category filtering is written to your preferences, but no sender branches on it — every category still reaches you exactly as the doors above decide."
-                evidence="Written at apps/api-gateway/src/notifications/notifications.service.ts:1144-1145 and read back only to render this row. No sender in any of the four runtimes branches on it: the scheduled mail reads orders_mode / reports_mode (scheduled-tasks.service.ts:1528), the low-stock engine reads its own five columns (low-stock-alerts.service.ts:505), and the alerting agent reads urgency and quiet hours. Grepped 2026-09-03."
+                // Checked 2026-09-03: written at notifications.service.ts:1144-1145
+                // and read back only for this row. The scheduled mail reads
+                // orders_mode / reports_mode (scheduled-tasks.service.ts:1528),
+                // the low-stock engine its own five columns
+                // (low-stock-alerts.service.ts:505), the alerting agent urgency
+                // and quiet hours.
+                evidence="It is saved and shown here, and nothing that sends looks at it: the order and report mails, the low-stock alerts and the other alerts each go by their own settings above."
               />
             ))}
 

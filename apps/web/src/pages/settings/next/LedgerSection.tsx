@@ -41,14 +41,18 @@ import type { LedgerEntry, LedgerRegister, SettingsNextData } from './useSetting
 
 /** Registers whose writes do NOT reach this log yet, and where they go instead. */
 const NOT_YET_FILED: Array<{ id: string; label: string; hint: string }> = [
-  { id: 'email', label: 'Email sign-off', hint: 'restaurant-templates.service.ts' },
-  { id: 'notifications', label: 'Notifications', hint: 'notifications.service.ts' },
-  { id: 'locations', label: 'Locations & chains', hint: 'organizations.service.ts' },
-  { id: 'map', label: 'Map', hint: 'user-preferences.service.ts' },
-  { id: 'services', label: 'Services & permissions', hint: 'user-preferences.service.ts' },
-  { id: 'pos', label: 'Point of sale', hint: 'user-preferences.service.ts' },
-  { id: 'calendar', label: 'Calendar links', hint: 'calendar-links.service.ts' },
-  { id: 'cellar', label: 'Cellar registers', hint: 'cellar-registers.service.ts' },
+  // Each hint was the gateway service that writes the register
+  // (restaurant-templates, notifications, organizations, user-preferences x3,
+  // calendar-links, cellar-registers .service.ts); the page says where the
+  // change is kept instead (reports lane r3).
+  { id: 'email', label: 'Email sign-off', hint: 'kept with the mail templates' },
+  { id: 'notifications', label: 'Notifications', hint: "kept with each person's alerts" },
+  { id: 'locations', label: 'Locations & chains', hint: "kept with the house's group" },
+  { id: 'map', label: 'Map', hint: "kept with each person's preferences" },
+  { id: 'services', label: 'Services & permissions', hint: "kept with each person's preferences" },
+  { id: 'pos', label: 'Point of sale', hint: "kept with each person's preferences" },
+  { id: 'calendar', label: 'Calendar links', hint: 'kept with the calendar links' },
+  { id: 'cellar', label: 'Cellar registers', hint: 'kept with the cellar registers' },
 ];
 
 /** Actions whose consequence deserves the seal-tinted band. */
@@ -218,16 +222,14 @@ export function LedgerSection({ data }: { data: SettingsNextData }) {
           <div style={{ borderTop: '1px solid var(--paper-2)', marginTop: 18, paddingTop: 12 }}>
             <Micro>What this record does not yet cover</Micro>
             <p style={{ fontFamily: SANS, fontSize: 12, lineHeight: 1.55, color: 'var(--ink-2)', margin: '5px 0 0', maxWidth: 720 }}>
-              Eight registers write through services this pass did not touch, so
-              a change made in one of them files no row and its silence here means
-              nothing. Each needs the same two lines the three above got: read the
-              row before the write, then call the recorder.
+              A change made in one of these eight is not logged here yet, so a
+              quiet log does not mean nothing changed in them.
             </p>
             <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
               {NOT_YET_FILED.map((r) => (
                 <li key={r.id} style={{ fontFamily: SANS, fontSize: 11.5, color: 'var(--ink-4)' }}>
                   {r.label}{' '}
-                  <span style={{ fontFamily: MONO, fontSize: 10, opacity: 0.8 }}>{r.hint}</span>
+                  <span style={{ fontSize: 11, opacity: 0.8 }}>{r.hint}</span>
                 </li>
               ))}
             </ul>

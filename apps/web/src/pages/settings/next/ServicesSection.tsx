@@ -38,7 +38,7 @@ export function ServicesSection({ data }: { data: SettingsNextData }) {
     <>
       <Note>
         No analytics consent is collected yet. The panel that once asked for one — four switches for email access, web
-        access, product analytics and partner sharing — is deleted (2026-09-17, ADR 0149 row 14): nothing in the
+        access, product analytics and partner sharing — is deleted (2026-09-17): nothing in the
         product reads a consent, so nothing was asked and nothing was recorded, and a switch here would have been a
         promise the panel could not keep. When something does read a consent, it becomes a real question on this page
         first, not a record with an already-decided answer. The one consent Mudavym does read — whether this

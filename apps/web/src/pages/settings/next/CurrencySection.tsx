@@ -134,7 +134,8 @@ function CurrencyBody({
           when: reg.statedAt,
           whenUnknown: NO_DATE,
           verb: 'stated',
-          readBy: <>every money figure the product prints — <code style={{ fontFamily: MONO }}>fmtMoney</code>, <code style={{ fontFamily: MONO }}>formatCurrency</code></>,
+          // fmtMoney, formatCurrency
+          readBy: 'every money figure the product prints',
         }}
         control={
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
