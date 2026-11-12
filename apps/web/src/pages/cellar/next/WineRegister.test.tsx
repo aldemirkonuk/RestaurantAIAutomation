@@ -56,6 +56,7 @@ function bottle(over: Partial<BottleVM> = {}): BottleVM {
     id: 'w1',
     name: 'Boğazkere 2021',
     producer: 'Kavaklıdere',
+    houseOwn: false,
     grape: 'Boğazkere',
     country: 'Türkiye',
     region: 'Diyarbakır',
@@ -258,5 +259,28 @@ describe('WineRegister — sketch 121, the record opens beside a narrowed index'
     // same `wr-row-w2` id at different times.
     const rowAfterClose = screen.getByText('Barolo Riserva').closest('tr')!;
     expect(document.activeElement).toBe(rowAfterClose);
+  });
+});
+
+// 2026-11-12 (menu walk): "House Red" and "House White" read "unattributed"
+// beside every catalogue row whose producer was never recorded. A generic name
+// kept as this house's own wine (ADR 0130) is said as the house's own.
+describe('WineRegister — the house’s own wine is not unattributed', () => {
+  it('says "the house’s own" where a producer would stand, and keeps "unattributed" for a catalogue row', () => {
+    mount([
+      bottle({ id: 'h1', name: 'House Red', producer: null, houseOwn: true, grape: null, style: null, vintage: null }),
+      bottle({ id: 'c1', name: 'Nameless Red', producer: null, houseOwn: false, grape: null, style: null, vintage: null }),
+    ]);
+    const house = screen.getByText('House Red').closest('tr')!;
+    expect(within(house).getByText('the house’s own')).toBeInTheDocument();
+    expect(within(house).queryByText('unattributed')).not.toBeInTheDocument();
+    const shared = screen.getByText('Nameless Red').closest('tr')!;
+    expect(within(shared).getByText('unattributed')).toBeInTheDocument();
+  });
+
+  it('a producer, when recorded, still leads', () => {
+    mount([bottle({ id: 'h2', name: 'House White', producer: 'Kavaklıdere', houseOwn: true, grape: 'Narince' })]);
+    const row = screen.getByText('House White').closest('tr')!;
+    expect(within(row).getByText('Kavaklıdere · Narince')).toBeInTheDocument();
   });
 });

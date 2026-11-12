@@ -113,6 +113,7 @@ function bottle(over: Partial<BottleVM> = {}): BottleVM {
     id: 'w1',
     name: '2016 Gravner Ribolla',
     producer: 'Gravner',
+    houseOwn: false,
     grape: 'Ribolla Gialla',
     country: 'Italy',
     region: 'Friuli',

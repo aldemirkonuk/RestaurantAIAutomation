@@ -86,6 +86,7 @@ function bottle(over: Partial<BottleVM> = {}): BottleVM {
     id: 'w1',
     name: 'Boğazkere 2021',
     producer: 'Kavaklıdere',
+    houseOwn: false,
     grape: 'Boğazkere',
     country: 'Türkiye',
     region: 'Diyarbakır',

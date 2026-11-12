@@ -73,6 +73,18 @@ export function year(v: number | null | undefined): string {
   return String(n);
 }
 
+/**
+ * Who a bottle is by, as the register says it: its producer; for the house's
+ * own wine (ADR 0130, a generic name like "House Red" with no producer) "the
+ * house’s own"; else null, and the caller says "unattributed".
+ */
+export const HOUSE_OWN_WORDS = 'the house’s own';
+
+export function byWhom(b: { producer: string | null; houseOwn?: boolean }): string | null {
+  if (b.producer) return b.producer;
+  return b.houseOwn ? HOUSE_OWN_WORDS : null;
+}
+
 /** Plain count, or the dash. */
 export function count(v: number | null | undefined): string {
   const n = num(v);

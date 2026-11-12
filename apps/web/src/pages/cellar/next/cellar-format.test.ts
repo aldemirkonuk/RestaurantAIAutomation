@@ -11,6 +11,8 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  byWhom,
+  HOUSE_OWN_WORDS,
   EM,
   acidityTicks,
   bodyTicks,
@@ -184,5 +186,14 @@ describe('composedTastingSentence', () => {
     expect(composedTastingSentence(null, 'high', 'dry')).toBeNull();
     expect(composedTastingSentence('full', null, 'dry')).toBeNull();
     expect(composedTastingSentence('full', 'high', null)).toBeNull();
+  });
+});
+
+describe('byWhom', () => {
+  it('names the producer, else the house’s own wine, else nobody', () => {
+    expect(byWhom({ producer: 'Gravner', houseOwn: true })).toBe('Gravner');
+    expect(byWhom({ producer: null, houseOwn: true })).toBe(HOUSE_OWN_WORDS);
+    expect(byWhom({ producer: null, houseOwn: false })).toBeNull();
+    expect(byWhom({ producer: null })).toBeNull();
   });
 });

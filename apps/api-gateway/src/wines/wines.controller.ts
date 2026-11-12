@@ -44,9 +44,14 @@ export class WinesController {
   @Get()
   @ApiOperation({ summary: "Search wines in master wine library" })
   @ApiResponse({ status: 200, description: "Returns wine list" })
-  async searchWines(@Query() query: GetWinesQueryDto) {
+  async searchWines(
+    @Query() query: GetWinesQueryDto,
+    @CurrentUser() user?: { restaurantId?: string | null },
+  ) {
     try {
-      return await this.winesService.searchWines(query);
+      // The session's house: another house's own wines (ADR 0130) are not
+      // listed, and this house's are marked as its own.
+      return await this.winesService.searchWines(query, user?.restaurantId);
     } catch (error) {
       // The service already chose the status: 503 for a failed library read,
       // 400 for a malformed id. Rewriting every failure to 500 hid that, and
@@ -78,16 +83,27 @@ export class WinesController {
   }
 
   @Get("suggestions")
-  async getSuggestions(@Query() query: WineSuggestionsQueryDto) {
-    return await this.winesService.getWineSuggestions(query);
+  async getSuggestions(
+    @Query() query: WineSuggestionsQueryDto,
+    @CurrentUser() user?: { restaurantId?: string | null },
+  ) {
+    return await this.winesService.getWineSuggestions(
+      query,
+      user?.restaurantId,
+    );
   }
 
   @Get(":wineId/similar")
   async getSimilar(
     @Param("wineId") wineId: string,
     @Query() query: SimilarWinesQueryDto,
+    @CurrentUser() user?: { restaurantId?: string | null },
   ) {
-    return await this.winesService.getSimilarWines(wineId, query);
+    return await this.winesService.getSimilarWines(
+      wineId,
+      query,
+      user?.restaurantId,
+    );
   }
 
   @Get(":wineId")

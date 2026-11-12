@@ -36,6 +36,7 @@ import {
   EM,
   acidityTicks,
   bodyTicks,
+  byWhom,
   composedTastingSentence,
   handlingSentence,
   knowledgeLabel,
@@ -237,7 +238,7 @@ export default function BottleLeaf({
         <div style={{ minWidth: 0 }}>
           <h2 className="cl-h2">{bottle.name}</h2>
           <p className="cl-dim" style={{ margin: '3px 0 0', fontSize: 12.5 }}>
-            {[bottle.producer, bottle.grape, bottle.appellation].filter(Boolean).join(' · ') ||
+            {[byWhom(bottle), bottle.grape, bottle.appellation].filter(Boolean).join(' · ') ||
               'No producer, grape or appellation recorded'}
           </p>
         </div>

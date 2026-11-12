@@ -123,6 +123,13 @@ type WireWine = Wine & {
   beverageKind?: string;
   classificationStatus?: string;
   /**
+   * ADR 0130, carried 2026-11-12: true when the row is a generic name kept as
+   * this house's own wine ("House Red", no producer). `undefined` when the
+   * gateway did not say — read as "not the house's own", never guessed from
+   * the name.
+   */
+  houseOwn?: boolean;
+  /**
    * ADR 0160 sec110 Owed #4/#11 — "the wine's own detail". Mirrors the
    * gateway's `mapWine` `structure` block (`wines.service.ts`), flat exactly
    * as the wire sends it; `toWineStructure` below reshapes the four handling
@@ -209,6 +216,12 @@ export interface BottleVM {
   id: string;
   name: string;
   producer: string | null;
+  /**
+   * The house's own wine (ADR 0130): a generic name with no producer, kept as
+   * this house's. Said as "the house’s own" where a producer would stand, so
+   * it never reads as a producer the book failed to record.
+   */
+  houseOwn: boolean;
   grape: string | null;
   country: string | null;
   region: string | null;
@@ -242,6 +255,7 @@ function toBottle(w: WireWine, inv: Map<string, CellarRow>): BottleVM {
     id: w.id,
     name: text(w.displayName) ?? text(w.name) ?? 'Untitled bottle',
     producer: text(w.producer),
+    houseOwn: w.houseOwn === true,
     grape: text(w.grapeVariety),
     country: text(w.country),
     region: text(w.region),
