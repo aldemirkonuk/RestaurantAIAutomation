@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
+import { readByIds } from "../common/read-by-ids";
 import * as E from "./engine";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
 import {
@@ -130,58 +131,54 @@ export class AnalyticsService {
     );
   }
 
-  /** The allSettled variant: a rejection is a failure too. */
-  private reportSlice(table: string, r: PromiseSettledResult<any>) {
-    if (r.status === "rejected")
-      this.logger.error(`analytics query on ${table} rejected: ${r.reason}`);
-    else if (r.value?.error) this.logQueryFailure(table, r.value.error);
-  }
-
+  /**
+   * Every active inventory row, each with its lot rollup, read whole or
+   * refused (ADR 0292). Unranged, both reads stopped at PostgREST's 1,000
+   * rows, so a cellar past that was valued, turned and reordered on its first
+   * thousand rows, and a row past the rollup's thousandth fell back to its
+   * last purchase price (reports lane r3).
+   *
+   * A refusal (`WholeReadError`, a 503) PROPAGATES, as `loadConsumption`'s
+   * does (ADR 0292 fork 3): every caller reads both in one `Promise.all`, so
+   * each lens already refuses whole on a consumption read it could not make.
+   * The rollup is read for the ids in hand (`readByIds`): it has no unique
+   * column to page on.
+   */
   private async loadInventory(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes] = await Promise.allSettled([
+    // Column names must match the live schema exactly. PostgREST rejects the
+    // WHOLE query with 42703 on a single unknown column. There is no
+    // wine_type/unit_price/unit_cost/reorder_point on this table: the menu
+    // price is `menu_price_current`, cost is `last_purchase_price`, the
+    // reorder trigger is `threshold_min`, and the varietal/type lives on
+    // master_wine_library.
+    const inventory = await readWholeWindow<any>("The house's inventory", () =>
       client
         .from("restaurant_inventory")
-        // Column names must match the live schema exactly. PostgREST rejects
-        // the WHOLE query with 42703 on a single unknown column, and the
-        // allSettled + `data || []` below turns that rejection into an empty
-        // inventory rather than an error — so every metric downstream
-        // (inventory value, COGS ratio, turnover, GMROI, reorder science)
-        // silently reported 0/null for every restaurant. There is no
-        // wine_type/unit_price/unit_cost/reorder_point on this table: the
-        // menu price is `menu_price_current`, cost is `last_purchase_price`,
-        // the reorder trigger is `threshold_min`, and the varietal/type
-        // lives on master_wine_library.
         .select(
           "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type)",
+          { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
-        )
-        .eq("restaurant_id", restaurantId),
-    ]);
-
-    // allSettled makes a REJECTION invisible and `{ data, error }` makes a
-    // FAILED QUERY invisible; both land as `[]` here, which every metric below
-    // reads as "this restaurant has no inventory". Its sibling
-    // advanced-analytics.service.ts was hardened with logQueryFailure and this
-    // file, same directory and same tables, was not. See ADR 0067.
-    this.reportSlice("restaurant_inventory", invRes);
-    this.reportSlice("inventory_lot_rollup", rollupRes);
-
-    const inventory =
-      invRes.status === "fulfilled" ? invRes.value.data || [] : [];
+    );
+    const lots = await readByIds<any>(
+      "The house's lot totals",
+      inventory.map((i: any) => i.id),
+      (batch) =>
+        client
+          .from("inventory_lot_rollup")
+          .select(
+            // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
+            // can tell a WAC that covers every on-hand bottle from one that
+            // covers a single invoiced bottle in twenty-one.
+            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
+          )
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", batch),
+    );
     const rollup = new Map<string, any>();
-    if (rollupRes.status === "fulfilled") {
-      for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
-    }
+    for (const r of lots) rollup.set(r.inventory_id, r);
 
     // Unit cost: invoiced lot WAC → recorded last purchase price → UNKNOWN.
     // The third branch used to be `unitPrice * 0.6`, a magic number with no
@@ -216,19 +213,25 @@ export class AnalyticsService {
   private async loadDeliveredOrders(restaurantId: string, sinceDays = 365) {
     const client = this.dbService.getClient();
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data, error } = await client
-      .from("procurement_orders")
-      .select(
-        "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
-      )
-      .eq("restaurant_id", restaurantId)
-      .in("status", ORDER_SPEND_STATUSES)
-      .gte("delivered_at", since);
     // Every spend, COGS-ratio and vendor-concentration figure is built on this
     // list. Discarding the error made a failed read report a restaurant that
-    // bought nothing all year — the exact shape ADR 0053 named for cost.
-    if (error) this.logQueryFailure("procurement_orders", error);
-    return (data || []).map((o: any) => ({
+    // bought nothing all year — the exact shape ADR 0053 named for cost. Read
+    // whole or refused (ADR 0292): unranged, a year past 1,000 delivered
+    // orders was summed on its first thousand (reports lane r3).
+    const data = await readWholeWindow<any>(
+      "The delivered orders in this window",
+      () =>
+        client
+          .from("procurement_orders")
+          .select(
+            "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .in("status", ORDER_SPEND_STATUSES)
+          .gte("delivered_at", since),
+    );
+    return data.map((o: any) => ({
       providerId: o.provider_id || "unknown",
       // A delivered order with no recorded cost is an unknown, never 0: the
       // purchases total below withholds rather than counting it as free.
@@ -518,10 +521,9 @@ export class AnalyticsService {
     // cost, so it cannot block the total. Only ON-HAND rows need a cost.
     const onHand = inventory.filter((i) => i.qty > 0);
     // NB `complete` is false for an EMPTY on-hand set, so an empty cellar
-    // reports null rather than $0. That is deliberate: `loadInventory` above
-    // degrades a failed PostgREST query to `[]` (see its comment), so `[]` is
-    // "no rows or no answer", and $0 for a dead query is precisely the silent
-    // zero this endpoint has already been burned by once.
+    // reports null rather than $0. `loadInventory` now refuses a read it
+    // could not make whole rather than answering `[]`, but $0 for a cellar
+    // with nothing on hand would still read as a valuation, and it is not one.
     const costCoverage = summarizeCostBasis(onHand);
     // A total assembled from 2 of 72 SKUs is not "inventory value" — it is a
     // different, much smaller number wearing that label. ADR 0051: say we do
