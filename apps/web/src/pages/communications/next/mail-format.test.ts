@@ -12,7 +12,10 @@ import {
   headerSentence,
   houseMailboxStatus,
   lastStoredWords,
+  heldAtDoorWords,
   lastWriterWords,
+  sharedMailboxDoor,
+  type IntakeRead,
   letterAt,
   letterLook,
   mailStatusLine,
@@ -304,9 +307,77 @@ describe('the list around the people', () => {
   });
 
   it('says who wrote last', () => {
-    expect(lastWriterWords('inbound', 'Bodega Álvaro')).toBe('Bodega Álvaro wrote last');
-    expect(lastWriterWords('outbound', null)).toBe('The house wrote last');
-    expect(lastWriterWords(null, null)).toBe('Who wrote last was not recorded');
+    expect(lastWriterWords('inbound', 'Bodega Álvaro', 3)).toBe('Bodega Álvaro wrote last');
+    expect(lastWriterWords('outbound', null, 1)).toBe('The house wrote last');
+  });
+
+  it('says a thread of only automatic mail holds nothing to answer', () => {
+    expect(lastWriterWords(null, null, 0)).toBe('Only automatic mail — a bounce or an auto-reply, nothing to answer');
+  });
+
+  it('says a thread of unsent letters has had nothing sent or received', () => {
+    expect(lastWriterWords(null, null, 2)).toBe('Nothing on it has been sent or received yet');
+  });
+});
+
+describe('the intake record in words', () => {
+  const NOW = Date.parse('2026-11-11T12:00:00Z');
+  const known = (intake: unknown, sharedMailbox: unknown = null): IntakeRead =>
+    ({ kind: 'known', data: { intake, sharedMailbox } }) as IntakeRead;
+  const rec = (over: Record<string, unknown>) => ({
+    byStatus: {},
+    waiting: 0,
+    oldestWaitingAt: null,
+    unknown: false,
+    ...over,
+  });
+
+  it('keeps "not recorded yet" while the record is absent', () => {
+    expect(heldAtDoorWords({ kind: 'absent' }, NOW)).toBe('— not recorded yet.');
+    expect(sharedMailboxDoor({ kind: 'absent' }, NOW).lastRead).toBe('— not recorded yet');
+    expect(sharedMailboxDoor({ kind: 'absent' }, NOW).status.state).toBe('cannot_tell');
+  });
+
+  it('says a failed or unknown read is not none', () => {
+    const w = 'could not be read — that is not the same as none.';
+    expect(heldAtDoorWords({ kind: 'failed' }, NOW)).toBe(w);
+    expect(heldAtDoorWords(known(rec({ unknown: true })), NOW)).toBe(w);
+  });
+
+  it('says none only for a record of zero', () => {
+    expect(heldAtDoorWords(known(rec({})), NOW)).toBe('none.');
+  });
+
+  it('counts the waiting and the oldest, and names the ones that stopped', () => {
+    const oldest = new Date(NOW - 3 * 86_400_000).toISOString();
+    expect(heldAtDoorWords(known(rec({ waiting: 2, oldestWaitingAt: oldest, byStatus: { failed: 2 } })), NOW)).toBe(
+      '2 waiting for a home, the oldest for 3 days.',
+    );
+    expect(heldAtDoorWords(known(rec({ waiting: 3, oldestWaitingAt: oldest, byStatus: { gave_up: 1, failed: 2 } })), NOW)).toBe(
+      '3 waiting for a home, the oldest for 3 days; 1 stopped after six tries and waits for \u201CRead again\u201D.',
+    );
+  });
+
+  it('words the shared mailbox from its own record', () => {
+    const lastReadAt = new Date(NOW - 4 * 60_000).toISOString();
+    const ok = sharedMailboxDoor(known(null, { lastReadAt, lastStoredAt: null, errored: false }), NOW);
+    expect(ok.status).toEqual({ state: 'reading', words: "Mudavym's mailbox is read every few minutes.", tone: 'ink' });
+    expect(ok.lastRead).toBe('4 min ago');
+    const bad = sharedMailboxDoor(known(null, { lastReadAt, lastStoredAt: null, errored: true }), NOW);
+    expect(bad.status.state).toBe('failing');
+    expect(bad.status.tone).toBe('alarm');
+    expect(bad.status.words).toBe("Mudavym's mailbox: its last read failed. Letters wait at the door and are read again.");
+    expect(sharedMailboxDoor(known(null, { lastReadAt: null, lastStoredAt: null, errored: false }), NOW).lastRead).toBe('—');
+  });
+
+  it('cannot tell when the mailbox record is unknown, failed, or null', () => {
+    for (const r of [known(null, { unknown: true }), { kind: 'failed' } as IntakeRead]) {
+      const d = sharedMailboxDoor(r, NOW);
+      expect(d.status.state).toBe('cannot_tell');
+      expect(d.status.words).toBe("Cannot tell: the mailbox's record could not be read.");
+      expect(d.lastRead).toBe('—');
+    }
+    expect(sharedMailboxDoor(known(null, null), NOW).lastRead).toBe('— not recorded yet');
   });
 });
 

@@ -261,6 +261,75 @@ export function unrecordedDoorStatus(): DoorStatus {
   };
 }
 
+/**
+ * The intake record (GET /communications/letters/intake). `absent` is a 404 or
+ * 403 (the route is not deployed yet, or the reader is staff) and while the
+ * read is pending; `failed` is any other error. The two never read alike.
+ */
+export interface MailIntakeRecord {
+  byStatus: Record<string, number>;
+  waiting: number;
+  oldestWaitingAt: string | null;
+  unknown: boolean;
+}
+export type SharedMailboxRecord =
+  | { lastReadAt: string | null; lastStoredAt: string | null; errored: boolean }
+  | { unknown: true };
+export interface MailIntakeResponse {
+  intake: MailIntakeRecord | null;
+  sharedMailbox: SharedMailboxRecord | null;
+}
+export type IntakeRead = { kind: 'absent' } | { kind: 'failed' } | { kind: 'known'; data: MailIntakeResponse };
+
+/** "Letters held before reaching the house: <this>". */
+export function heldAtDoorWords(read: IntakeRead, now: number): string {
+  if (read.kind === 'failed') return 'could not be read — that is not the same as none.';
+  if (read.kind === 'absent' || !read.data.intake) return `${EM} not recorded yet.`;
+  const intake = read.data.intake;
+  if (intake.unknown) return 'could not be read — that is not the same as none.';
+  if (intake.waiting === 0) return 'none.';
+  const oldest = at(intake.oldestWaitingAt);
+  const head =
+    oldest === null
+      ? `${intake.waiting} waiting for a home`
+      : `${intake.waiting} waiting for a home, the oldest for ${shortSpan(now - oldest)}`;
+  const gaveUp = intake.byStatus.gave_up ?? 0;
+  return gaveUp > 0 ? `${head}; ${gaveUp} stopped after six tries and ${gaveUp === 1 ? 'waits' : 'wait'} for \u201CRead again\u201D.` : `${head}.`;
+}
+
+/** The shared Mudavym mailbox's row: its own record when there is one. */
+export function sharedMailboxDoor(read: IntakeRead, now: number): { status: DoorStatus; lastRead: string } {
+  const none = { status: unrecordedDoorStatus(), lastRead: `${EM} not recorded yet` };
+  if (read.kind === 'absent') return none;
+  const cannot = {
+    status: { state: 'cannot_tell' as const, words: "Cannot tell: the mailbox's record could not be read.", tone: 'alarm' as const },
+    lastRead: EM,
+  };
+  if (read.kind === 'failed') return cannot;
+  const shared = read.data.sharedMailbox;
+  if (!shared) return none;
+  if ('unknown' in shared) return cannot;
+  if (shared.errored) {
+    return {
+      status: {
+        state: 'failing',
+        words: "Mudavym's mailbox: its last read failed. Letters wait at the door and are read again.",
+        tone: 'alarm',
+      },
+      lastRead: lastReadAgo(shared.lastReadAt, now),
+    };
+  }
+  return {
+    status: { state: 'reading', words: "Mudavym's mailbox is read every few minutes.", tone: 'ink' },
+    lastRead: lastReadAgo(shared.lastReadAt, now),
+  };
+}
+
+function lastReadAgo(iso: string | null, now: number): string {
+  const t = at(iso);
+  return t === null ? EM : `${shortSpan(now - t)} ago`;
+}
+
 export type MailStatusState =
   | 'checking'
   | 'connected'
@@ -537,11 +606,22 @@ export function emptyListWords(
   return `${lead}${opened}${closed} Replies to letters sent from Mudavym's mailbox arrive there.`;
 }
 
-/** The thread list row's "who wrote last". */
-export function lastWriterWords(direction: 'inbound' | 'outbound' | null, name: string | null): string {
+/**
+ * The thread list row's "who wrote last". `messageCount` counts every
+ * non-automatic row while `direction` comes from visible rows only, so a count
+ * of 0 means the thread holds only automatic mail (a bounce, an auto-reply),
+ * and a count above 0 with no direction means only letters the house has not
+ * sent (drafts, refused sends).
+ */
+export function lastWriterWords(
+  direction: 'inbound' | 'outbound' | null,
+  name: string | null,
+  messageCount: number,
+): string {
+  if (messageCount === 0) return 'Only automatic mail — a bounce or an auto-reply, nothing to answer';
   if (direction === 'inbound') return `${name ?? 'The vendor'} wrote last`;
   if (direction === 'outbound') return 'The house wrote last';
-  return 'Who wrote last was not recorded';
+  return 'Nothing on it has been sent or received yet';
 }
 
 /** Channel glyph names, in words, for an accessible label. */

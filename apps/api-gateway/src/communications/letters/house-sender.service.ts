@@ -205,8 +205,10 @@ export class HouseSenderService {
   ) {}
 
   private deploymentMailbox(): string {
+    // Must agree with gmail.service.ts (`||`): a variable set but empty still
+    // sends from the default, so the page must name that address, never nobody.
     return (
-      this.config.get<string>("GMAIL_SENDER_EMAIL") ??
+      (this.config.get<string>("GMAIL_SENDER_EMAIL") ?? "").trim() ||
       "notifications@mudavym.com"
     );
   }

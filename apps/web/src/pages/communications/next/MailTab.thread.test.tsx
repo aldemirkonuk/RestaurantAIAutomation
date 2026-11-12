@@ -10,7 +10,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 
-const api = vi.hoisted(() => ({ get: vi.fn() }));
+const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('../../../services/api/client', () => ({ apiClient: api }));
 
 const auth = vi.hoisted(() => ({
@@ -123,7 +123,12 @@ beforeEach(() => {
     '/mail/people': () => ({ people: [person(1), person(2)], next: null, storedKinds: ['vendor'] }),
     '/mail/threads': () => ({ person: THREAD.person, threads: [], next: null }),
     '/mail/thread': () => THREAD,
+    // Until the gateway serves the intake record, the route is simply not there.
+    '/communications/letters/intake': () => {
+      throw Object.assign(new Error('Not Found'), { response: { status: 404 } });
+    },
   };
+  api.post.mockReset();
   api.get.mockReset();
   api.get.mockImplementation(async (url: string, cfg?: { params?: Record<string, string> }) => {
     const h = routes[url];
@@ -266,6 +271,65 @@ describe('the intake sheet', () => {
     );
     expect(screen.getByTestId('held-at-door')).toHaveTextContent(/^Letters held before reaching the house: — not recorded yet\.$/);
     expect(screen.getByTestId('sender-address')).toHaveTextContent('Letters leave from siparis@mail.mudavym.com.');
+  });
+
+  const INTAKE_OK = (over: Record<string, unknown> = {}, shared: unknown = null) => ({
+    intake: { byStatus: {}, waiting: 0, oldestWaitingAt: null, unknown: false, ...over },
+    sharedMailbox: shared,
+  });
+
+  it('a record of zero says none, and offers no Read again', async () => {
+    routes['/communications/letters/intake'] = () =>
+      INTAKE_OK({}, { lastReadAt: new Date(Date.now() - 5 * 60_000).toISOString(), lastStoredAt: null, errored: false });
+    mount();
+    await open();
+    await waitFor(() =>
+      expect(screen.getByTestId('held-at-door')).toHaveTextContent(/^Letters held before reaching the house: none\.$/),
+    );
+    expect(screen.getByTestId('door-mudavym')).toHaveAttribute('data-state', 'reading');
+    expect(screen.getByTestId('door-mudavym-status')).toHaveTextContent("Mudavym's mailbox is read every few minutes.");
+    expect(screen.queryByTestId('read-again')).toBeNull();
+  });
+
+  it('letters waiting, one stopped: counts them and Read again offers them once more', async () => {
+    routes['/communications/letters/intake'] = () =>
+      INTAKE_OK({ waiting: 3, oldestWaitingAt: new Date(Date.now() - 2 * 86_400_000 - 60_000).toISOString(), byStatus: { gave_up: 1, failed: 2 } });
+    api.post.mockResolvedValue({ data: { queued: 3 } });
+    mount();
+    await open();
+    await waitFor(() =>
+      expect(screen.getByTestId('held-at-door')).toHaveTextContent(
+        '3 waiting for a home, the oldest for 2 days; 1 stopped after six tries and waits for \u201CRead again\u201D.',
+      ),
+    );
+    fireEvent.click(await screen.findByTestId('read-again'));
+    expect(await screen.findByTestId('read-again-result')).toHaveTextContent('Offered again: 3.');
+    expect(api.post).toHaveBeenCalledWith('/communications/letters/intake/read-again');
+  });
+
+  it('a Read again that fails says it was not done', async () => {
+    routes['/communications/letters/intake'] = () => INTAKE_OK({ waiting: 1, byStatus: { failed: 1 } });
+    api.post.mockRejectedValue(Object.assign(new Error('boom'), { response: { status: 500, data: { message: 'The queue is down' } } }));
+    mount();
+    await open();
+    fireEvent.click(await screen.findByTestId('read-again'));
+    expect(await screen.findByTestId('read-again-result')).toHaveTextContent('Reading again was not saved (The queue is down).');
+  });
+
+  it('an intake record that fails to read is not "none"', async () => {
+    routes['/communications/letters/intake'] = () => {
+      throw Object.assign(new Error('Server Error'), { response: { status: 500 } });
+    };
+    mount();
+    await open();
+    await waitFor(() =>
+      expect(screen.getByTestId('held-at-door')).toHaveTextContent(
+        'could not be read — that is not the same as none.',
+      ),
+    );
+    expect(screen.getByTestId('door-mudavym')).toHaveAttribute('data-state', 'cannot_tell');
+    expect(screen.getByTestId('door-mudavym-status')).toHaveTextContent("Cannot tell: the mailbox's record could not be read.");
+    expect(screen.queryByTestId('read-again')).toBeNull();
   });
 
   it('the house mailbox reads as reading only on a recent recorded read', async () => {

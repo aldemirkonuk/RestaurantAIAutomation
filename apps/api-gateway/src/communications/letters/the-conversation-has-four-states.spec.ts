@@ -204,6 +204,23 @@ describe("a failed read is not a fifth arrangement", () => {
   });
 });
 
+describe("the shared mailbox is named, never blank", () => {
+  it("names the default address when GMAIL_SENDER_EMAIL is set but empty", async () => {
+    const db = build({
+      integration_oauth_connections: [sendGrant],
+      restaurant_feature_flags: READER_OFF,
+      users: [{ name: "Aldemir" }],
+    });
+    const config = { get: () => "  " } as never;
+    const identity = await new HouseSenderService(db, config).resolve(
+      HOUSE,
+      PERSON,
+    );
+    expect(identity.conversation.words).toContain("notifications@mudavym.com");
+    expect(identity.conversation.words).not.toContain("through ,");
+  });
+});
+
 describe("the read grant never becomes a sending identity", () => {
   it("leaves a read-only house unable to send, whatever the reader says", async () => {
     const identity = await resolveWith([readGrant], READER_ON);
