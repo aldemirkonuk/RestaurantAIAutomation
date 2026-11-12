@@ -45,6 +45,7 @@ import type {
   RecoveryFigures,
 } from '../../../services/api/credits';
 import type { ProcurementDocument } from '../../../services/api/documents';
+import { REASON_WORDS, reasonWords, STATE_WORDS } from '@/services/api/credit-words';
 import { EM, GE, MONO, SANS, SERIF, fmtDate, fmtMoney, sentence, serverMessage } from './rc2-format';
 import {
   CHASED_STATES,
@@ -58,31 +59,9 @@ import {
 
 /* ─────────────────────────────────────────────────────────────── words ── */
 
-/** The reason codes (`procurement_credits_reason_check`) in the house's words. */
-export const REASON_WORDS: Record<string, string> = {
-  overbilled_vs_ship: 'Billed for more than their packing slip shipped',
-  qty_short: 'Billed for more than arrived',
-  short_shipped: 'Lost between their warehouse and the door',
-  damaged: 'Refused at the door',
-  price_variance: 'Billed above the agreed price',
-  never_ordered: 'Billed for something never ordered',
-  other: 'Another reason',
-};
-
-export function reasonWords(code: string | null | undefined): string {
-  if (!code) return 'No reason recorded';
-  return REASON_WORDS[code] ?? `Recorded as “${code}”`;
-}
-
-/** What each state means, said so it cannot be mistaken for a sent letter. */
-export const STATE_WORDS: Record<CreditState, string> = {
-  open: 'Opened — the vendor has not been asked',
-  requested: 'Asked — the vendor has been asked for it',
-  promised: 'Promised — the vendor said yes; not money yet',
-  credited: 'Recovered — settled by a credit memo',
-  rejected: 'Refused by the vendor',
-  written_off: 'Written off',
-};
+// The reason and state words live beside the claim type (services/api/credit-words)
+// so /receiving's draft card says them too; re-exported here for this page's callers.
+export { REASON_WORDS, reasonWords, STATE_WORDS };
 
 /** The move buttons, and the sentence each one writes to the ledger. */
 export const MOVE_WORDS: Record<CreditState, { verb: string; writes: string }> = {
