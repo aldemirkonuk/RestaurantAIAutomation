@@ -104,21 +104,22 @@ export interface LotRollupRow {
  * unknown. The agreed cost is a price settled at delivery but not printed on an
  * invoice, so it sits below the invoice and is never labelled one.
  *
- * Two deliberate judgement calls, both narrower than they look:
+ * Three deliberate judgement calls, each narrower than it looks:
  *
- *  • A lot WAC of exactly **0 is accepted as measured** when
- *    `has_invoice_cost` is set, because the old expression treated 0 as falsy
- *    and fabricated `0.6 × menu price` from it.
- *
- *    This branch used to justify itself by citing sample bottles —
- *    `inventory.service.ts` records them as `unitCost: 0`, provenance
- *    `"sample"`. That reasoning was wrong about the mechanism, though not
- *    about the conclusion: `inventory_lot_rollup.wac` FILTERs
- *    `cost_provenance <> 'sample'` (baseline migration :3207), so a sample lot
- *    can never contribute to the WAC and the cited case cannot arise. A zero
- *    WAC now means an invoice really did record $0 for a non-sample lot —
- *    rarer, and still a measurement rather than a gap, so the branch stays and
- *    only its explanation changes.
+ *  • A lot WAC of exactly **0 is unknown, not free** (r5, 2026-11-12).
+ *    Samples cannot produce it: `inventory_lot_rollup.wac` FILTERs
+ *    `cost_provenance <> 'sample'` (baseline migration :3207). So a zero WAC
+ *    means every costed, non-sample live lot was booked at 0: a form left at
+ *    "0", or an invoice line read with no price. Neither is a measurement of
+ *    what the bottle cost. Reading it as one handed the wine a 100% margin and
+ *    a zero value. The house's other cost doors already refuse a 0:
+ *    `delivery-stock.service.ts` settles no invoice or proposal price
+ *    `<= 0`, and the agreed and last-price branches below take `> 0` only.
+ *    The row falls through to them, and then to `unknown`. A bottle that
+ *    really came free is a sample, and is booked as one. This used to accept
+ *    the 0 because the old expression read 0 as falsy and fabricated
+ *    `0.6 × menu price`; refusing it as unknown keeps that fix and drops the
+ *    false zero.
  *
  *  • A WAC that covers only SOME of the on-hand bottles is returned, but as
  *    `invoice_lot_wac_partial`. The average is a real measurement of the
@@ -141,7 +142,7 @@ export function resolveUnitCost(
   const rawWac = lot?.wac;
   if (lot?.has_invoice_cost && rawWac != null) {
     const wac = Number(rawWac);
-    if (Number.isFinite(wac) && wac >= 0) {
+    if (Number.isFinite(wac) && wac > 0) {
       const covered = Number(lot?.wac_qty);
       const onHand = Number(lot?.live_qty);
       const measurable =
