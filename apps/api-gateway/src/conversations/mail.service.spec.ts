@@ -41,6 +41,7 @@ function builder(q: Query): any {
     "not",
     "order",
     "limit",
+    "maybeSingle",
     "insert",
     "upsert",
     "update",
@@ -534,22 +535,42 @@ const SUMMARY_ROW = {
   house_mailbox_last_at: null,
   whatsapp_last_at: "2026-11-07 08:00:00+00",
   mudavym_mail_last_at: "2026-11-07 09:00:00+00",
+  in_30d: 17,
 };
+
+/** The house row the zone is read from; Istanbul unless a test says otherwise. */
+let houseRow: Result = {
+  data: { timezone: "Europe/Istanbul", country: "TR" },
+  error: null,
+};
+beforeEach(() => {
+  houseRow = { data: { timezone: "Europe/Istanbul", country: "TR" }, error: null };
+});
+const withHouse =
+  (rest: (q: Query) => Result) =>
+  (q: Query): Result =>
+    q.kind === "from" && q.name === "restaurants" ? houseRow : rest(q);
 
 describe("summary", () => {
   it("with no inbound domain, never reads the address table and says so", async () => {
-    resolve = () => ({ data: [SUMMARY_ROW], error: null });
+    resolve = withHouse(() => ({ data: [SUMMARY_ROW], error: null }));
     const s = await service().summary(HOUSE, "staff");
-    expect(queries.map((q) => q.name)).toEqual(["mail_inbox_summary"]);
-    expect(queries[0].payload).toEqual({
+    expect(queries.map((q) => q.name)).toEqual([
+      "restaurants",
+      "mail_inbox_summary",
+    ]);
+    expect(queries[1].payload).toEqual({
       p_restaurant_id: HOUSE,
       p_withhold_house_letters: true,
+      p_zone: "Europe/Istanbul",
     });
     expect(s).toEqual({
       waitingPeople: 3,
       oldestWaitAt: "2026-11-06 09:00:00+00",
       inToday: 5,
       outToday: 2,
+      zone: { zone: "Europe/Istanbul", source: "house" },
+      inLast30: 17,
       heldAtDoor: null,
       doors: {
         houseMailbox: { lastStoredAt: null },
@@ -562,10 +583,10 @@ describe("summary", () => {
 
   it("reads the existing address with a plain select and never provisions one", async () => {
     inboundDomain = "in.example.test";
-    resolve = (q) =>
+    resolve = withHouse((q) =>
       q.kind === "rpc"
         ? { data: [SUMMARY_ROW], error: null }
-        : { data: [{ address: "house-1@in.example.test" }], error: null };
+        : { data: [{ address: "house-1@in.example.test" }], error: null });
     const s = await service().summary(HOUSE, "owner");
     const read = queries.find(
       (q) => q.name === "restaurant_inbound_addresses",
@@ -592,12 +613,58 @@ describe("summary", () => {
 
   it("a house with no address yet is configured with no address, not a new one", async () => {
     inboundDomain = "in.example.test";
-    resolve = (q) =>
+    resolve = withHouse((q) =>
       q.kind === "rpc"
         ? { data: [SUMMARY_ROW], error: null }
-        : { data: [], error: null };
+        : { data: [], error: null });
     const s = await service().summary(HOUSE, "owner");
     expect(s.address).toEqual({ configured: true, address: null });
+  });
+});
+
+describe("summary: the house's day (D7)", () => {
+  it("a house with no zone counts today in its country's only zone", async () => {
+    houseRow = { data: { timezone: null, country: "TR" }, error: null };
+    resolve = withHouse(() => ({ data: [SUMMARY_ROW], error: null }));
+    const s = await service().summary(HOUSE, "owner");
+    const rpc = queries.find((q) => q.name === "mail_inbox_summary")!;
+    expect((rpc.payload as any).p_zone).toBe("Europe/Istanbul");
+    expect(s.zone).toEqual({ zone: "Europe/Istanbul", source: "country" });
+    expect(s.inToday).toBe(5);
+  });
+
+  it("a house with no zone and a country of several zones has no today, never UTC", async () => {
+    houseRow = { data: { timezone: "", country: "US" }, error: null };
+    resolve = withHouse(() => ({
+      data: [{ ...SUMMARY_ROW, in_today: null, out_today: null }],
+      error: null,
+    }));
+    const s = await service().summary(HOUSE, "owner");
+    const rpc = queries.find((q) => q.name === "mail_inbox_summary")!;
+    expect((rpc.payload as any).p_zone).toBeNull();
+    expect(s.zone).toEqual({ zone: null, source: "none" });
+    expect(s.inToday).toBeNull();
+    expect(s.outToday).toBeNull();
+    // The 30-day figures need no zone.
+    expect(s.inLast30).toBe(17);
+  });
+
+  it("a zone name nobody can read is no zone", async () => {
+    houseRow = { data: { timezone: "Mars/Olympus", country: null }, error: null };
+    resolve = withHouse(() => ({ data: [SUMMARY_ROW], error: null }));
+    const s = await service().summary(HOUSE, "owner");
+    expect(s.zone.zone).toBeNull();
+    expect(s.inToday).toBeNull();
+  });
+
+  it("a failed read of the house row is a 503, never 'no zone'", async () => {
+    houseRow = { data: null, error: { message: "connection reset" } };
+    resolve = withHouse(() => ({ data: [SUMMARY_ROW], error: null }));
+    const err = await service()
+      .summary(HOUSE, "owner")
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect(queries.some((q) => q.name === "mail_inbox_summary")).toBe(false);
   });
 });
 
@@ -624,7 +691,7 @@ describe("a failed read says it failed", () => {
   );
 
   it("summary: no row back is a failure, not zeros", async () => {
-    resolve = () => ({ data: [], error: null });
+    resolve = withHouse(() => ({ data: [], error: null }));
     await expect(service().summary(HOUSE, "owner")).rejects.toThrow(
       ServiceUnavailableException,
     );
@@ -632,8 +699,8 @@ describe("a failed read says it failed", () => {
 
   it("summary: a failed address read is a failure, not 'no address'", async () => {
     inboundDomain = "in.example.test";
-    resolve = (q) =>
-      q.kind === "rpc" ? { data: [SUMMARY_ROW], error: null } : boom;
+    resolve = withHouse((q) =>
+      q.kind === "rpc" ? { data: [SUMMARY_ROW], error: null } : boom);
     await expect(service().summary(HOUSE, "owner")).rejects.toThrow(
       ServiceUnavailableException,
     );

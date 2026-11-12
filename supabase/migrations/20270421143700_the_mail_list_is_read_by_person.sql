@@ -96,7 +96,8 @@
 -- TIME
 -- ----
 -- A message's time is received_at for inbound and sent_at for outbound, else
--- created_at. "Today" is the house's day in restaurants.timezone, not UTC.
+-- created_at. "Today" is the house's day in the zone the gateway passes (the
+-- house's own, else its country's only one), and unknown without one; never UTC.
 -- A thread reads in that time too, never in created_at order: a mailbox
 -- backfill stores old letters after new ones, and created_at order then reads
 -- a thread backwards (QA round 18 on PR #895, finding 2).
@@ -542,9 +543,27 @@ COMMENT ON FUNCTION public.list_mail_threads(uuid, uuid, boolean, timestamp with
   '(last_at desc, thread_key). (the_mail_list_is_read_by_person)';
 
 
+-- The zone is the CALLER's, never read here (D7, mail-receipts lane
+-- 2026-11-11). The gateway resolves it by the one rule every house-day reader
+-- uses (apps/api-gateway/src/common/house-day.ts readHouseZone: the house's
+-- own zone, else its country's only zone, else none — never UTC). This used to
+-- COALESCE a missing restaurants.timezone to 'UTC', so a house in Istanbul with
+-- no zone set read "Today: 0 letters in" beside letters stamped that
+-- afternoon. With no zone, in_today and out_today are NULL: the day has no
+-- midnight, so the count is not known. The 30-day figure is a rolling window
+-- of instants and needs no zone.
+--
+-- in_30d is the Letters strip's "Replies · 30 days" (D6). That strip counted
+-- every INBOUND row of the conversation book — bounces, auto-replies and
+-- second copies of one letter included — and read 7 where Mail read 4. Both
+-- tabs now count with the one `visible` flag of mail_letter_rows, so the same
+-- letters give the same number on both.
+DROP FUNCTION IF EXISTS public.mail_inbox_summary(uuid, boolean);
+
 CREATE OR REPLACE FUNCTION public.mail_inbox_summary(
   p_restaurant_id uuid,
-  p_withhold_house_letters boolean DEFAULT true
+  p_withhold_house_letters boolean DEFAULT true,
+  p_zone text DEFAULT NULL
 ) RETURNS TABLE(
   waiting_people integer,
   oldest_wait_at timestamp with time zone,
@@ -552,20 +571,19 @@ CREATE OR REPLACE FUNCTION public.mail_inbox_summary(
   out_today integer,
   house_mailbox_last_at timestamp with time zone,
   whatsapp_last_at timestamp with time zone,
-  mudavym_mail_last_at timestamp with time zone
+  mudavym_mail_last_at timestamp with time zone,
+  in_30d integer
 )
     LANGUAGE plpgsql STABLE SECURITY INVOKER
     SET search_path = ''
     AS $$
 DECLARE
-  v_tz text;
+  v_tz text := NULLIF(btrim(p_zone), '');
   v_day_start timestamptz;
   v_day_end timestamptz;
+  v_since timestamptz := now() - interval '30 days';
 BEGIN
-  SELECT COALESCE(NULLIF(btrim(r.timezone::text), ''), 'UTC')
-    INTO v_tz
-    FROM public.restaurants r
-   WHERE r.id = p_restaurant_id;
+  PERFORM 1 FROM public.restaurants r WHERE r.id = p_restaurant_id;
   -- No house, no numbers: an answer of zeros for a house that does not exist
   -- would read as a quiet inbox (ADR 0051 — absence is not health).
   IF NOT FOUND THEN
@@ -573,10 +591,13 @@ BEGIN
       USING ERRCODE = 'P0002';
   END IF;
 
-  -- The house's own day. A bad timezone name raises here rather than counting
-  -- a UTC day under the house's name.
-  v_day_start := (date_trunc('day', now() AT TIME ZONE v_tz)) AT TIME ZONE v_tz;
-  v_day_end := (date_trunc('day', now() AT TIME ZONE v_tz) + interval '1 day') AT TIME ZONE v_tz;
+  -- The house's own day. A bad zone name raises here rather than counting a
+  -- UTC day under the house's name. No zone: no day, so both bounds stay NULL
+  -- and the two "today" counts come back NULL, never 0.
+  IF v_tz IS NOT NULL THEN
+    v_day_start := (date_trunc('day', now() AT TIME ZONE v_tz)) AT TIME ZONE v_tz;
+    v_day_end := (date_trunc('day', now() AT TIME ZONE v_tz) + interval '1 day') AT TIME ZONE v_tz;
+  END IF;
 
   RETURN QUERY
   WITH people AS (
@@ -592,10 +613,13 @@ BEGIN
       -- "In today" counts letters: a second copy of one letter, a bounce and
       -- an auto-reply are not letters (QA round 16, M-5). The door times below
       -- still see every stored row: they say the door is working.
-      SELECT (count(*) FILTER (WHERE l.dir = 'inbound' AND l.visible
-                                 AND l.at >= v_day_start AND l.at < v_day_end))::integer AS in_today,
-             (count(*) FILTER (WHERE l.dir = 'outbound' AND l.visible
-                                 AND l.at >= v_day_start AND l.at < v_day_end))::integer AS out_today,
+      SELECT CASE WHEN v_tz IS NULL THEN NULL ELSE
+               (count(*) FILTER (WHERE l.dir = 'inbound' AND l.visible
+                                   AND l.at >= v_day_start AND l.at < v_day_end))::integer END AS in_today,
+             CASE WHEN v_tz IS NULL THEN NULL ELSE
+               (count(*) FILTER (WHERE l.dir = 'outbound' AND l.visible
+                                   AND l.at >= v_day_start AND l.at < v_day_end))::integer END AS out_today,
+             (count(*) FILTER (WHERE l.dir = 'inbound' AND l.visible AND l.at >= v_since))::integer AS in_30d,
              max(l.at) FILTER (WHERE l.dir = 'inbound' AND l.mirrored_by_grant_id IS NOT NULL)
                AS house_mailbox_last_at,
              max(l.at) FILTER (WHERE l.dir = 'inbound' AND l.mirrored_by_grant_id IS NULL
@@ -607,15 +631,17 @@ BEGIN
   )
   SELECT p.waiting_people, p.oldest_wait_at,
          c.in_today, c.out_today,
-         c.house_mailbox_last_at, c.whatsapp_last_at, c.mudavym_mail_last_at
+         c.house_mailbox_last_at, c.whatsapp_last_at, c.mudavym_mail_last_at,
+         c.in_30d
   FROM people p CROSS JOIN counted c;
 END;
 $$;
 
-COMMENT ON FUNCTION public.mail_inbox_summary(uuid, boolean) IS
+COMMENT ON FUNCTION public.mail_inbox_summary(uuid, boolean, text) IS
   'The Mail tab header for a house: people waiting, oldest wait, letters in/out on the '
-  'house''s own day, and the last letter stored per door. Counted with count(*). '
-  '(the_mail_list_is_read_by_person)';
+  'house''s own day in p_zone (NULL when no zone is known), letters in over the '
+  'last 30 days (the Letters strip), and the last letter stored per door. Counted with '
+  'count(*). (the_mail_list_is_read_by_person)';
 
 
 CREATE OR REPLACE FUNCTION public.mail_thread_letters(
@@ -747,7 +773,7 @@ REVOKE ALL ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.list_mail_threads(uuid, uuid, boolean, timestamp with time zone, text, integer)
   FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.mail_inbox_summary(uuid, boolean)
+REVOKE ALL ON FUNCTION public.mail_inbox_summary(uuid, boolean, text)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.mail_thread_letters(uuid, text, uuid, boolean, timestamp with time zone, uuid, integer)
   FROM PUBLIC, anon, authenticated;
@@ -756,5 +782,5 @@ GRANT EXECUTE ON FUNCTION public.mail_letter_rows(uuid, boolean, uuid) TO servic
 GRANT EXECUTE ON FUNCTION public.mail_thread_states(uuid, boolean, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.list_mail_threads(uuid, uuid, boolean, timestamp with time zone, text, integer) TO service_role;
-GRANT EXECUTE ON FUNCTION public.mail_inbox_summary(uuid, boolean) TO service_role;
+GRANT EXECUTE ON FUNCTION public.mail_inbox_summary(uuid, boolean, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_thread_letters(uuid, text, uuid, boolean, timestamp with time zone, uuid, integer) TO service_role;
