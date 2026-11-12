@@ -62,7 +62,7 @@ function plural(n: number, one: string, many: string): string {
 }
 
 /** The plan in one sentence, in the order a person reads a menu change. */
-export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines'>): string {
+export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines'>): string {
   if (plan.current) return 'This is already the current menu. Choosing it again changes nothing.';
   const c = plan.counts;
   const parts: string[] = [];
@@ -78,6 +78,11 @@ export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'curre
   if (unpriced > 0) more.push(`${plural(unpriced, 'line shows', 'lines show')} no price and the house has none either (flagged)`);
   const unmatched = plan.lines.filter((l) => l.bottle.result === 'not_linked').length;
   if (unmatched > 0) more.push(`${plural(unmatched, 'line is', 'lines are')} not matched to a wine, so no price`);
+  const kitchen = plan.kitchenLines ?? [];
+  if (kitchen.length > 0)
+    more.push(
+      `${plural(kitchen.length, 'kitchen line stays', 'kitchen lines stay')} on the menu and ${kitchen.length === 1 ? 'is' : 'are'} not carried (${kitchen.map((k) => k.name).join(', ')})`,
+    );
   if (plan.dormantLocks.length > 0)
     more.push(
       `${plural(plan.dormantLocks.length, 'locked price is', 'locked prices are')} not on this menu and ${plan.dormantLocks.length === 1 ? 'stays' : 'stay'} locked`,

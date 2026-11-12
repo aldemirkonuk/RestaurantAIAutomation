@@ -713,6 +713,32 @@ describe("MenusService.addMenuItem — the line's prices reach the house (ADR 01
     expect(item.priceSync).toBe("changed");
   });
 
+  it("a kitchen line added to the CURRENT menu gets no house row and no price, and says so", async () => {
+    const calls: RpcCall[] = [];
+    const tables: Record<string, Row[]> = {
+      restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1", status: "active" }],
+      restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+      restaurant_inventory: [],
+      menu_items: [],
+    };
+    const service = makeService(tables, {
+      wineSubmissions,
+      rpcCalls: calls,
+      rpc: () => ({ data: { outcome: "changed", bottle_price: 9, glass_price: null }, error: null }),
+    });
+
+    const item = await service.addMenuItem(
+      { menuId: "menu-1", name: "Tiramisu", category: "dessert", bottle_price: 9 } as any,
+      "user-1",
+      "rest-1",
+      true,
+    );
+
+    expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(0);
+    expect(tables.restaurant_inventory).toHaveLength(0);
+    expect(item.priceSync).toBe("kitchen_line");
+  });
+
   it("a new house wine is inserted WITHOUT a price, then priced through the writer (so its history names the person)", async () => {
     const calls: RpcCall[] = [];
     const tables: Record<string, Row[]> = {
@@ -1027,6 +1053,39 @@ describe("MenusService — every menu read is kept as its own version", () => {
       });
       expect(r.madeCurrentAt).toBe("2026-09-21T12:00:00Z");
       expect(tables.menu_items[0].inventory_item_id).toBe("inv-1");
+    });
+
+    it("a kitchen line stays on the menu and is carried nowhere: not in the plan's prices, no house row, no price", async () => {
+      const { calls, tables, service, read } = await readThenChoose([
+        { name: "Opus One", bottle_price: 64, by_glass_price: 15 },
+        { name: "Tiramisu", category: "dessert", bottle_price: 9, raw_text: "Tiramisu 9" },
+      ]);
+      const plan = await service.planFor("rest-1", read.menuId);
+      expect(plan.lines.map((l) => l.name)).toEqual(["Opus One"]);
+      expect(plan.kitchenLines).toEqual([{ menuItemId: expect.any(String), name: "Tiramisu" }]);
+      expect(plan.counts.new_wine + plan.counts.change + plan.counts.unchanged).toBe(2);
+
+      const inventoryBefore = tables.restaurant_inventory.length;
+      const r = await service.makeCurrent("rest-1", read.menuId, "user-2", plan.fingerprint);
+      expect(r.priceSync).toEqual({ changed: 1, kitchen_line: 1 });
+      const price = calls.filter(([fn]) => fn === "set_house_menu_price");
+      expect(price).toHaveLength(1);
+      expect(price[0][1]).toMatchObject({ p_bottle_price: 64 });
+      expect(tables.restaurant_inventory).toHaveLength(inventoryBefore);
+      const tiramisu = tables.menu_items.find((m) => m.name === "Tiramisu")!;
+      expect(tiramisu.inventory_item_id ?? null).toBeNull();
+      expect(tiramisu.status).not.toBe("discarded");
+    });
+
+    it("a dessert WINE under Desserts is still carried: a vintage says it is a drink", async () => {
+      const { calls, service, read } = await readThenChoose([
+        { name: "Sauternes", category: "dessert", vintage: "2015", bottle_price: 90 },
+      ]);
+      const plan = await service.planFor("rest-1", read.menuId);
+      expect(plan.kitchenLines).toEqual([]);
+      const r = await service.makeCurrent("rest-1", read.menuId, "user-2", plan.fingerprint);
+      expect(r.priceSync).toEqual({ changed: 1 });
+      expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(1);
     });
 
     it("a blank bottle price keeps the house's last known 60.00 and FLAGS the line (founder answer 3)", async () => {

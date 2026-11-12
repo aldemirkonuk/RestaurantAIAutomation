@@ -117,6 +117,15 @@ describe('the plan in one sentence', () => {
     ).toBe('Choosing this menu changes no price. 1 line shows no price and the house has none either (flagged); 1 line is not matched to a wine, so no price.');
     expect(planSentence(plan({ current: true }))).toBe('This is already the current menu. Choosing it again changes nothing.');
   });
+
+  it('names the kitchen lines it leaves on the menu and carries nowhere', () => {
+    expect(planSentence(plan({ dormantLocks: [], kitchenLines: [{ menuItemId: 'k1', name: 'Tiramisu' }] }))).toBe(
+      'Choosing this menu will set 1 price from this menu, leave 1 locked price as it is. 1 kitchen line stays on the menu and is not carried (Tiramisu).',
+    );
+    expect(planSentence(plan({ dormantLocks: [], kitchenLines: [] }))).toBe(
+      'Choosing this menu will set 1 price from this menu, leave 1 locked price as it is.',
+    );
+  });
 });
 
 describe('MenuPlan -- the section before the choice (L13)', () => {

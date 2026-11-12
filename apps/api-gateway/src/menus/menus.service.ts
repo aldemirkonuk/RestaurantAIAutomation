@@ -20,7 +20,7 @@ import { ReviewMenuItemDto } from "./dto/review-menu-item.dto";
 import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dto";
 import { MenuReadWarning, WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
-import { lineForViewer, type LineView } from "./menu-line-view";
+import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
 import {
   setHouseMenuPrice,
   type HeldKind,
@@ -58,6 +58,27 @@ interface InsertedMenuItem {
   created_at?: string | null;
   producer?: string | null;
   vintage?: string | null;
+  // What decides a kitchen line (menu-line-view.ts isKitchenLine). A line read
+  // through readLines already says `kitchen_line`, decided on the full row
+  // before its raw line was withheld; a freshly inserted line is decided here.
+  category?: string | null;
+  raw_extracted_text?: string | null;
+  region?: string | null;
+  grape_variety?: string | null;
+  kitchen_line?: boolean;
+}
+
+/**
+ * Whether a menu line is a kitchen line (a dish, not a drink). The view's
+ * `kitchen_line` when the line carries it, else the same test on the row. A
+ * kitchen line stays on the menu, and it is never carried to the house: no
+ * inventory row, no house price, no stock. Before this, the split was shown
+ * and nowhere enforced, so "Tiramisu 9" under Desserts became a bottle at 9.00
+ * when its menu was made current.
+ */
+export function isKitchenItem(line: InsertedMenuItem): boolean {
+  if (typeof line.kitchen_line === "boolean") return line.kitchen_line;
+  return isKitchenLine(line.category, line.raw_extracted_text, line as unknown as Record<string, unknown>);
 }
 
 /**
@@ -170,6 +191,11 @@ export interface MenuPlan {
   /** Whether the people named in the plan could be named (L25). */
   namesReadable: boolean;
   namesReason: string | null;
+  /**
+   * Lines set aside as kitchen lines: they stay on the menu and are carried
+   * nowhere (no wine, price or stock). Not in `lines` or `counts`.
+   */
+  kitchenLines: Array<{ menuItemId: string; name: string }>;
 }
 
 function emptyPlanCounts(): Record<PlanResult, number> {
@@ -331,6 +357,7 @@ export type MenuPriceSync =
   | "no_price"
   | "not_linked"
   | "not_current"
+  | "kitchen_line"
   | "failed";
 
 /** What one line did to the house price, and whether it was flagged. */
@@ -1354,7 +1381,10 @@ export class MenusService {
 
     const counts = emptyPlanCounts();
     const onThisMenu = new Set<string>();
-    const planLines: PlanLine[] = lines.map((line) => {
+    const kitchenLines = lines
+      .filter((line) => isKitchenItem(line))
+      .map((line) => ({ menuItemId: line.id, name: line.name }));
+    const planLines: PlanLine[] = lines.filter((line) => !isKitchenItem(line)).map((line) => {
       const wineId = line.wine_library_id ?? null;
       const row = wineId ? (house.get(wineId) ?? null) : null;
       if (row) onThisMenu.add(String(row.id));
@@ -1445,6 +1475,7 @@ export class MenusService {
           [l.glass.result, l.glass.menuPrice, l.glass.housePrice, l.glass.lock?.lockId ?? null],
         ]),
       dormant: dormantLocks.map((d) => d.lockId).sort(),
+      kitchen: kitchenLines.map((k) => k.menuItemId).sort(),
     };
     return {
       menuId,
@@ -1457,6 +1488,7 @@ export class MenusService {
       dormantLocks,
       namesReadable: true,
       namesReason: null,
+      kitchenLines,
     };
   }
 
@@ -1558,12 +1590,17 @@ export class MenusService {
       // The menu IS current, and its prices cannot be dated by the choice. Said
       // on every line, never dated by something else.
       const why = "the menu switch did not say when it happened, so no price was dated or carried";
+      const wines = lines.filter((l) => !isKitchenItem(l));
+      const kitchen = lines.length - wines.length;
       return {
         outcome: "made_current",
         ...empty,
         lines: lines.length,
-        priceSync: lines.length ? { failed: lines.length } : {},
-        failed: lines.map((l) => ({ menuItemId: l.id, name: l.name, error: why })),
+        priceSync: {
+          ...(wines.length ? { failed: wines.length } : {}),
+          ...(kitchen ? { kitchen_line: kitchen } : {}),
+        },
+        failed: wines.map((l) => ({ menuItemId: l.id, name: l.name, error: why })),
       };
     }
 
@@ -1773,7 +1810,9 @@ export class MenusService {
     const { data, error: menuItemsErr } = await this.dbService.supabase
       .from("menu_items")
       .insert(menuItemRows)
-      .select("id, wine_library_id, name, by_glass_price, bottle_price, created_at");
+      .select(
+        "id, wine_library_id, name, by_glass_price, bottle_price, created_at, producer, vintage, region, grape_variety, category, raw_extracted_text",
+      );
 
     if (menuItemsErr) {
       this.logger.error(`Failed to insert menu_items: ${menuItemsErr.message}`);
@@ -1951,7 +1990,14 @@ export class MenusService {
       created: new Set<string>(),
     });
     const priceSync = new Map<string, PriceSyncEntry>();
-    const validItems = menuItems.filter((i) => i.wine_library_id);
+    // A kitchen line is never carried: no inventory row, no price, no stock.
+    // Said on the line, never dropped (ADR 0193 round 3, L15).
+    for (const i of menuItems) {
+      if (isKitchenItem(i)) {
+        priceSync.set(i.id, { outcome: "kitchen_line", error: null, flag: null, flagNote: null, held: [] });
+      }
+    }
+    const validItems = menuItems.filter((i) => i.wine_library_id && !isKitchenItem(i));
     if (validItems.length === 0) return { inventoryMap: result, priceSync };
 
     const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
