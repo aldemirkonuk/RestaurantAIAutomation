@@ -41,6 +41,21 @@ import { InsightGeneratorService } from "./insights/insight-generator.service";
  * from `compose`'s. Calls follow this codebase's existing raw-fetch Messages
  * API convention (see inbound-responder.service.ts).
  */
+/**
+ * What a house reads when its advisers cannot answer. These replaced the
+ * deployment's own words ("ANTHROPIC_API_KEY not configured", "Model API error
+ * 401", a raw client error, a route to PUT), which reached the house through
+ * `POST /analytics/consult/:restaurantId`. The engineering detail goes to the log.
+ */
+export const CONSULTANTS_OFF_HERE =
+  "Advisers are not switched on here yet, so none was asked. Every figure they would read is still on the sheet.";
+export const CONSULTANTS_OFF_FOR_HOUSE =
+  "Advisers are switched off for this house. A manager can switch them on.";
+export const CONSULTANT_DECLINED =
+  "The adviser would not answer this one. Every figure it would read is still on the sheet.";
+export const CONSULTANT_DOWN =
+  "The adviser could not be reached just now. Try again in a few minutes.";
+
 @Injectable()
 export class ConsultantsService {
   private readonly logger = new Logger(ConsultantsService.name);
@@ -121,8 +136,7 @@ export class ConsultantsService {
     if (!(await this.isEnabled(restaurantId))) {
       return {
         enabled: false,
-        message:
-          "Consultant agents are disabled for this restaurant. Enable via PUT /analytics/consultants/:restaurantId/toggle.",
+        message: CONSULTANTS_OFF_FOR_HOUSE,
       };
     }
     const personaKey = ConsultantsService.PERSONAS[persona]
@@ -130,7 +144,11 @@ export class ConsultantsService {
       : "finance";
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
-      return { enabled: true, error: "ANTHROPIC_API_KEY not configured" };
+      // The operator's fix goes to the log; the house reads what it can do.
+      this.logger.warn(
+        "Consultant not asked: ANTHROPIC_API_KEY is not set on this gateway",
+      );
+      return { enabled: true, error: CONSULTANTS_OFF_HERE };
     }
 
     // Evidence pack: deterministic outputs only — the consultant reasons over
@@ -246,7 +264,8 @@ Each claim ≤ 2 sentences. each why_it_matters ≤ 2 sentences. each suggested_
           GROUNDING_BASIS,
           consultantVerdict({ refused: true, parsed: false, grounding: null }),
         );
-        return { enabled: true, error: "Model declined the request" };
+        this.logger.warn(`Consultant (${personaKey}) declined the request`);
+        return { enabled: true, error: CONSULTANT_DECLINED };
       }
       const textBlock = (payload.content || []).find(
         (b: any) => b.type === "text",
@@ -296,14 +315,14 @@ Each claim ≤ 2 sentences. each why_it_matters ≤ 2 sentences. each suggested_
         generatedAt: new Date().toISOString(),
       };
     } catch (err: any) {
-      // Preserve the pre-wrapper contract: an HTTP-status failure returns the
-      // same `Model API error <status>` payload the old non-OK branch built.
+      // The status and the client's message go to the log; the house reads
+      // one sentence either way (it cannot act on a status code).
       if (err instanceof ModelClientError && err.status != null) {
         this.logger.error(`Consultant API error ${err.status}: ${err.message}`);
-        return { enabled: true, error: `Model API error ${err.status}` };
+        return { enabled: true, error: CONSULTANT_DOWN };
       }
       this.logger.error(`Consultant call failed: ${err?.message}`);
-      return { enabled: true, error: err?.message || "Consultant call failed" };
+      return { enabled: true, error: CONSULTANT_DOWN };
     }
   }
 }
