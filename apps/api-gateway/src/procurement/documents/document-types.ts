@@ -84,8 +84,42 @@ export const UOMS = [
   "split_case",
   "each",
   "liter",
+  "kg",
+  "g",
 ] as const;
 export type Uom = (typeof UOMS)[number];
+
+/**
+ * Weights (R8, mail-receipts lane 2026-11-11). A cheese invoiced `3 KGM @ 450`
+ * was filed as `3 each` and booked as three pieces. This is the arithmetic a
+ * weighed line meets (`lot-unit-cost.ts`, `delivery-stock.service.ts`); no
+ * line carries `kg` or `g` yet, because `normalizeUom` does not read them and
+ * the line's CHECK does not hold them. The stacked change opens both.
+ *
+ * A weight is never a number of bottles (`toBottles` passes it through 1:1 and
+ * `comparableUnits` keeps it apart, as for a keg or a liter). It converts only
+ * to another weight, by `massFactor`, into the unit the house item is kept in
+ * (ADR 0070: integer quantities, the unit belongs to the item).
+ */
+export const MASS_UOMS = ["kg", "g"] as const;
+export type MassUom = (typeof MASS_UOMS)[number];
+
+export function isMass(u: unknown): u is MassUom {
+  return u === "kg" || u === "g";
+}
+
+/** Grams in one of a weight unit, the item's `mg` included (`restaurant_inventory.uom`). */
+const GRAMS: Readonly<Record<string, number>> = { kg: 1000, g: 1, mg: 0.001 };
+
+/**
+ * How many `to` make one `from`, both weights, or null when either is not a
+ * weight this file knows. `massFactor("kg", "g")` is 1000.
+ */
+export function massFactor(from: string, to: string): number | null {
+  const a = GRAMS[from];
+  const b = GRAMS[to];
+  return a == null || b == null ? null : a / b;
+}
 
 export const MATCH_METHODS = [
   "vendor_sku",
@@ -244,7 +278,7 @@ export function normalizeUom(raw?: string | null): Uom | null {
  * bottle-equivalents; the original unit is kept alongside so the UI can still
  * say "2 cases" to the person who counted cases.
  *
- * `liter` and `keg` deliberately do NOT convert. A keg is not a number of
+ * `liter`, `keg` and the weights `kg` and `g` deliberately do NOT convert. A keg is not a number of
  * bottles in any way a receiver would accept, and inventing a conversion factor
  * would produce confident, wrong cost math. They compare only against the same
  * unit.
@@ -262,13 +296,15 @@ export function toBottles(qty: number, uom: Uom, packSize = 1): number {
       return n;
     case "keg":
     case "liter":
+    case "kg":
+    case "g":
       return n;
   }
 }
 
 /** True when two quantities are in units that can be meaningfully compared. */
 export function comparableUnits(a: Uom, b: Uom): boolean {
-  const opaque = (u: Uom) => u === "keg" || u === "liter";
+  const opaque = (u: Uom) => u === "keg" || u === "liter" || isMass(u);
   if (opaque(a) || opaque(b)) return a === b;
   return true;
 }
