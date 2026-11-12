@@ -44,6 +44,12 @@ describe('isKitchenLine (the same test as the gateway\'s menu-line-view.ts)', ()
     expect(isKitchenLine({ category: 'Entrées', rawText: null })).toBe(true)
     expect(isKitchenLine({ category: null, rawText: 'Pastaio Rosso, 2020' })).toBe(false)
     expect(isKitchenLine({ category: null, rawText: 'Dishwasher-safe carafe' })).toBe(false)
+    // Browser walk 2026-11-12: "Mains" sent Grilled Octopus to the wine library.
+    expect(isKitchenLine({ category: 'Mains', rawText: 'Grilled Octopus,,,Mains,,24' })).toBe(true)
+    expect(isKitchenLine({ category: 'Appetizers', rawText: null })).toBe(true)
+    expect(isKitchenLine({ category: 'Sides', rawText: null })).toBe(true)
+    expect(isKitchenLine({ category: 'Cocktails', rawText: 'Side Car, cognac, 14' })).toBe(false)
+    expect(isKitchenLine({ category: null, rawText: 'Grillo, Sicily, 2022' })).toBe(false)
   })
 
   it("'dessert' is a course unless the line shows it is a wine: Tiramisu goes to the kitchen", () => {
