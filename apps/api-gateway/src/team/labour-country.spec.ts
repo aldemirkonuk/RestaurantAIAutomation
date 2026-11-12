@@ -523,6 +523,30 @@ describe("F-1549 — the week's cost as a share of the till's net sales", () => 
     expect(week.labor.laborPctWhy).toMatch(/no amount before tax/);
   });
 
+  it("F-1716: a day with net on only some of its checks is not summed as the day", async () => {
+    const db = seed({
+      country: "TR",
+      timezone: "Europe/Istanbul",
+      tax_basis: "prices_include_tax",
+    });
+    costedWeek(db);
+    db.tables.pos_checks = [
+      check("c0", "2026-08-01T12:00:00Z", 50),
+      check("c1", "2026-09-08T12:00:00Z", 1000),
+      // Same Tuesday: a mixed-rate check the house could not make pre-tax.
+      check("c2", "2026-09-08T13:00:00Z", null),
+      check("c3", "2026-09-12T12:00:00Z", 800),
+      check("c4", "2026-09-14T12:00:00Z", 999),
+    ];
+    const week = await scheduleOf(db).getWeek(OWNER, RID, WEEK);
+    // Before: 1800 and 10%, the Tuesday read as its one stated check.
+    expect(week.labor.netSales).toBeNull();
+    expect(week.labor.laborPct).toBeNull();
+    expect(week.labor.laborPctWhy).toBe(
+      "1 of this week's 3 checks carries no amount before tax, so the week's sales are not all known.",
+    );
+  });
+
   it("F-1557: a ruled-out day with no check leaves the week's sales unknown, as on the dashboard", async () => {
     const db = seed({ country: "TR", timezone: "Europe/Istanbul" });
     costedWeek(db);

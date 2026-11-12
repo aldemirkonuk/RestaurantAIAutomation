@@ -25,6 +25,13 @@ import {
 } from "../procurement/order-status";
 import { orderSpend } from "../procurement/order-spend";
 import {
+  costTaxProof,
+  readAdviceTaxTerms,
+  wineTaxRate,
+  type CostTaxProof,
+  type InventoryPriceRow,
+} from "../pricing/margin-advice.service";
+import {
   houseDayBounds,
   houseDayOf,
   houseToday,
@@ -184,7 +191,7 @@ export class AnalyticsService {
           // are tagged `isActive` and the reorder and risk lenses keep only
           // active ones (see `activeOnly`).
           .select(
-            "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, is_active, created_at, master_wine_library(primary_type)",
+            "id, wine_name, stock_live, menu_price_current, last_purchase_price, last_purchase_price_tax_basis, threshold_min, master_wine_id, is_active, created_at, master_wine_library(primary_type)",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId),
@@ -231,7 +238,8 @@ export class AnalyticsService {
             // can tell a WAC that covers every on-hand bottle from one that
             // covers a single invoiced bottle in twenty-one.
             // cost_currency / cost_currency_count (F-343): which money the WAC is in.
-            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count",
+            // wac_pre_tax_qty / wac_tax_included_qty (F-1715): whether tax is inside it.
+            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty, cost_currency, cost_currency_count, wac_pre_tax_qty, wac_tax_included_qty",
             { count: "exact" },
           )
           .eq("restaurant_id", restaurantId)
@@ -301,6 +309,13 @@ export class AnalyticsService {
         qty,
         unitCost,
         costBasis,
+        // F-1715: whether that cost is proven without tax, by the advice's rule.
+        costTax: costTaxProof(
+          costBasis,
+          i as InventoryPriceRow,
+          lot ?? null,
+          null,
+        ) as CostTaxProof,
         unitPrice,
         hasPrice,
         thresholdMin: i.threshold_min || 0,
@@ -750,11 +765,15 @@ export class AnalyticsService {
 
   async getFinancialSummary(restaurantId: string, labor = 0) {
     const DEAD_STOCK_WINDOW_DAYS = 90;
-    const [inventory, orders, consumption, house] = await Promise.all([
+    const [inventory, orders, consumption, house, tax] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadDeliveredOrders(restaurantId, 365),
       this.loadConsumption(restaurantId, DEAD_STOCK_WINDOW_DAYS),
       this.loadHouse(restaurantId),
+      // F-1715: the house's tax basis, as margin advice and menu engineering
+      // read it. Null terms and no error for every house whose till prices
+      // do not include tax: those are as before, key for key.
+      readAdviceTaxTerms(this.dbService.getClient(), restaurantId, null),
     ]);
     const houseCurrency = house.currency;
 
@@ -853,15 +872,44 @@ export class AnalyticsService {
       priced: onHandPriced.length,
       unpriced: onHand.length - onHandPriced.length,
     };
+    // F-1715: at a house whose till prices include tax, the shelf price
+    // holds the tax, and sales tax is not the house's money. The valuation
+    // is taken without it, price ÷ (1 + the wine's rate in force today), as
+    // menu engineering's margin is (preTaxMargin, F-1587); and the margin
+    // below is set only against costs proven without tax. A wine on hand
+    // with no rate, a cost not proven pre-tax, or a basis nobody could read
+    // withholds the figures that need it, and `marginTaxNote` says which.
+    const taxed = tax.terms !== null || tax.error !== null;
+    const heldPriced = priced.filter((i) => (i.qty || 0) !== 0);
+    const rateOf = new Map<string, number>();
+    let noRate = 0;
+    if (tax.terms !== null) {
+      for (const i of heldPriced) {
+        const r = wineTaxRate(tax.terms, i.id);
+        if ("rate" in r) rateOf.set(i.id, r.rate);
+        else noRate += 1;
+      }
+    }
+    const costNotPreTax = taxed
+      ? onHandPriced.filter((i) => i.unitCost != null && i.costTax !== "pre_tax")
+          .length
+      : 0;
     const revenue =
-      priced.length === 0
+      priced.length === 0 || (taxed && (tax.terms === null || noRate > 0))
         ? null
-        : E.stats.sum(priced.map((i) => i.unitPrice * (i.qty || 0)));
+        : E.stats.sum(
+            priced.map(
+              (i) =>
+                (taxed && (i.qty || 0) !== 0
+                  ? i.unitPrice / (1 + (rateOf.get(i.id) as number))
+                  : i.unitPrice) * (i.qty || 0),
+            ),
+          );
     // The cost side of the margin: the same priced on-hand rows, so the two
     // sides of every ratio below cover the same bottles. Null whenever the
     // cellar's cost is not complete, as before (ADR 0051).
     const pricedValue =
-      inventoryValue == null
+      inventoryValue == null || costNotPreTax > 0
         ? null
         : E.stats.sum(onHandPriced.map((i) => i.inventoryValue as number));
     const marginDollars =
@@ -1075,6 +1123,20 @@ export class AnalyticsService {
           ? `Ordered in ${Array.from(orderCurrencies).sort().join(" and ")}: with no exchange rate on record these cannot be added into one figure.`
           : null,
       revenue,
+      // F-1715: only for a house whose till prices include tax, or whose
+      // basis could not be read; every other house gets no key.
+      ...(taxed
+        ? {
+            marginTaxNote:
+              tax.terms === null
+                ? "Whether your till prices include tax could not be read, so the sell-price valuation, gross margin, COGS ratio and GMROI are not worked out until it can be."
+                : noRate > 0
+                  ? `Your till prices include tax, and ${noRate} wine${noRate === 1 ? "" : "s"} on hand ${noRate === 1 ? "has" : "have"} no tax rate in force today, so the sell-price valuation, gross margin, COGS ratio and GMROI are not worked out. Set the rates in Settings.`
+                  : costNotPreTax > 0
+                    ? `Your till prices include tax, so margin is set against costs recorded without tax, and ${costNotPreTax} wine${costNotPreTax === 1 ? "" : "s"} on hand ${costNotPreTax === 1 ? "has a cost" : "have costs"} not recorded that way, so gross margin, COGS ratio and GMROI are not worked out.`
+                    : "Your till prices include tax, so the sell-price valuation and the margins here are worked out on prices without it, price ÷ (1 + the wine's tax rate).",
+          }
+        : {}),
       grossMarginDollars: marginDollars,
       grossMargin,
       cogsRatio: cogsRatioVal,

@@ -26,6 +26,7 @@ import {
   orderSpend,
 } from "../../procurement/order-spend";
 import { readWholeWindow } from "../../common/read-whole-window";
+import { netSalesOf } from "../../dashboard/dashboard.service";
 import { readHouseMoney } from "../../common/house-money";
 import { goalSchedule, goalWindow } from "../goal-window";
 import {
@@ -1082,7 +1083,7 @@ export class InsightGeneratorService {
           client
             .from("pos_checks")
             .select(
-              "id, source, table_id, server_name, server_external_id, opened_at, closed_at, covers, total, tip, items",
+              "id, source, table_id, server_name, server_external_id, opened_at, closed_at, covers, total, subtotal, tip, items",
               { count: "exact" },
             )
             .eq("restaurant_id", restaurantId)
@@ -1908,9 +1909,13 @@ export class InsightGeneratorService {
         byWaiter.set(server, w);
         // The control takes every check here (one with a server) that has a
         // table, hidden or not: a hidden table still shapes what its servers
-        // took (ADR 0303).
-        if (c.table_id) {
-          waiterObs.y.push(c.total || 0);
+        // took (ADR 0303). The fit reads net sales, as the server register's
+        // does (w113-net-readers, ADR 0341 bracket): sales tax and tips are
+        // not what a server sold. A check with no stated net leaves the
+        // whole fit, never read as its total.
+        const net = netSalesOf(c);
+        if (c.table_id && net !== null) {
+          waiterObs.y.push(net);
           waiterObs.waiter.push(server);
           waiterObs.table.push(c.table_id);
         }
@@ -2215,6 +2220,10 @@ export class InsightGeneratorService {
       const rings = Array.isArray(c.items) ? c.items.length : 0;
       if (minutes < HOT_TABLE_MIN_MINUTES || rings < HOT_TABLE_MIN_RINGS)
         continue;
+      // Pace stays on the till's running total, not net sales (w113-net-
+      // readers): a check still open may carry no subtotal yet, and a
+      // running net beside closed totals would not compare. Its history
+      // below is read on the same total.
       const pace = (c.total || 0) / minutes; // $/min so far
       // typical pace for this table across history
       const hist = checks

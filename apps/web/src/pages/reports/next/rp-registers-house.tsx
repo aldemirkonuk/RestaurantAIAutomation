@@ -300,6 +300,12 @@ export interface LedgerRegister {
   /** Why `cogs` is blank when the orders were in two currencies (F-1054). */
   cogsNote?: string | null;
   revenue: number | null;
+  /**
+   * F-1715: at a house whose till prices include tax, how the valuation and
+   * margins are taken without it, or why they are withheld; absent elsewhere
+   * and from an older gateway.
+   */
+  marginTaxNote?: string | null;
   grossMargin: number | null;
   cogsRatio: number | null;
   inventoryTurnover: number | null;
@@ -342,6 +348,7 @@ const ledger = analysis<LedgerRegister>({
       cogsUnpricedCount: num(d.cogsUnpricedCount) ?? undefined,
       cogsNote: typeof d.cogsNote === 'string' ? d.cogsNote : null,
       revenue: num(d.revenue),
+      marginTaxNote: typeof d.marginTaxNote === 'string' && d.marginTaxNote ? d.marginTaxNote : null,
       grossMargin: num(d.grossMargin),
       cogsRatio: num(d.cogsRatio),
       inventoryTurnover: num(d.inventoryTurnover),
@@ -377,6 +384,10 @@ const ledger = analysis<LedgerRegister>({
     // short span, then the cost basis. The scaled-up span is not a reason;
     // it is said only beside a figure that is drawn.
     const turnsDrawn = f.inventoryTurnover != null || f.daysInventoryOutstanding != null;
+    // F-1715: at a house whose till prices include tax, why a margin reads a
+    // dash is the tax basis first; the sentence also says what a drawn one
+    // is worked out on.
+    const taxNote = f.marginTaxNote ?? undefined;
     const turnsWhy =
       shortCogsWhy ??
       (f.cogsCurrency && f.houseCurrency && f.cogsCurrency !== f.houseCurrency
@@ -406,17 +417,17 @@ const ledger = analysis<LedgerRegister>({
       {
         label: 'Sell-price valuation',
         value: money(f.revenue),
-        note: 'No wine on hand carries a bottle price, or no inventory row came back',
+        note: taxNote ?? 'No wine on hand carries a bottle price, or no inventory row came back',
       },
-      { label: 'Gross margin', value: ratioPct(f.grossMargin), note: 'Needs a complete cost basis' },
-      { label: 'COGS ratio', value: ratioPct(f.cogsRatio) },
+      { label: 'Gross margin', value: ratioPct(f.grossMargin), note: taxNote ?? 'Needs a complete cost basis' },
+      { label: 'COGS ratio', value: ratioPct(f.cogsRatio), note: taxNote },
       // F-1443: turns and days divide Cost of goods by the cellar; with
       // deliveries left out for no price that is short, so neither is drawn.
       // F-1491: otherwise a dash here had no reason; a young house's is its
       // short span.
       { label: 'Inventory turns', value: shortCogs ? EM : figure(f.inventoryTurnover), note: turnsWhy },
       { label: 'Days of inventory', value: shortCogs ? EM : figure(f.daysInventoryOutstanding), note: turnsWhy },
-      { label: 'GMROI', value: figure(f.gmroi) },
+      { label: 'GMROI', value: figure(f.gmroi), note: taxNote },
       {
         label: 'Capital sitting still',
         value: money(f.deadStockCapital),
@@ -468,6 +479,7 @@ const ledger = analysis<LedgerRegister>({
                 : []),
             ]
           : []),
+        ...(f.marginTaxNote ? [f.marginTaxNote] : []),
         // F-574: a wine with no bottle price is left out of the sell-price
         // valuation and the margin rather than counted as selling for $0.
         ...(pc && pc.unpriced > 0

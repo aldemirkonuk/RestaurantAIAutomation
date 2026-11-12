@@ -133,6 +133,8 @@ export async function readWeekSales(
       );
     }
     let sum = 0;
+    let checks = 0;
+    let missing = 0;
     for (let i = 0; i < 7; i++) {
       const date = plusDays(weekStart, i);
       const day = days.get(date);
@@ -142,12 +144,17 @@ export async function readWeekSales(
         );
       }
       if (!day) continue; // the till was sending and took nothing: 0
-      if (day.net_sales === null) {
-        return unknown(
-          "Some of this week's checks carry no amount before tax, so the week's sales are not known.",
-        );
-      }
-      sum += day.net_sales;
+      checks += day.checks;
+      // F-1716: a day whose net covers only some of its checks is not that
+      // day's sales. foldNetSales sums the checks that stated a net and is
+      // null only when none did, so read the count, never the sum alone.
+      missing += day.checks - day.net_checks;
+      if (day.net_sales !== null) sum += day.net_sales;
+    }
+    if (missing > 0) {
+      return unknown(
+        `${missing} of this week's ${checks} checks ${missing === 1 ? "carries" : "carry"} no amount before tax, so the week's sales are not all known.`,
+      );
     }
     // F-1588: the figure stands, and says when its days are on two bases
     // (ADR 0341 F2: no stored check is restamped). An unread answer history

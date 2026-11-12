@@ -175,6 +175,8 @@ function closed(
     closed_at: `${day}T21:00:00.000Z`,
     covers: 2,
     total,
+    // Net as the till states it; the waiter fit reads it (w113-net-readers).
+    subtotal: total,
     tip: 0,
     items: [],
   };
@@ -334,6 +336,46 @@ describe("The waiter adjustment keeps hidden tables in its control (founder, 202
     expect(w[0].evidence.attributeReading).toBe(
       "Still #1 after adjusting for which tables they worked.",
     );
+  });
+
+  it("fits on net sales, not the till total: tips and tax do not make a server #1", async () => {
+    // Ana's totals average 250 but 100 of each is tax and tip; Ben's 200 is
+    // all sales. On totals the fit kept Ana #1; on net Ben leads, so the
+    // lead is not hers to print.
+    const net = (rows: any[], less: number) =>
+      rows.map((c) => ({ ...c, subtotal: c.total - less }));
+    const w = of(
+      await fire({
+        restaurant_tables: [table("t1", "1"), table("t2", "2")],
+        pos_checks: [
+          ...net(around("t1", 250, 20, () => "Ana"), 100),
+          ...net(around("t2", 250, 20, () => "Ana"), 100),
+          ...around("t1", 200, 20, () => "Ben"),
+          ...around("t2", 200, 20, () => "Ben"),
+        ],
+      }),
+      WAITER,
+    );
+    expect(w).toEqual([]);
+  });
+
+  it("a check with no net leaves the whole fit, never read as its total", async () => {
+    const none = (rows: any[]) => rows.map((c) => ({ ...c, subtotal: null }));
+    const w = of(
+      await fire({
+        restaurant_tables: [table("t1", "1"), table("tp", "Patio", { hidden_at: HIDDEN_AT })],
+        pos_checks: none([
+          ...around("t1", 240, 20, () => "Ana"),
+          ...around("tp", 260, 20, () => "Ana"),
+          ...around("t1", 140, 20, () => "Ben"),
+          ...around("tp", 160, 20, () => "Ben"),
+        ]),
+      }),
+      WAITER,
+    );
+    // No fit runs, so no "Still #1 ..."; the raw lead stands as before.
+    expect(w).toHaveLength(1);
+    expect(w[0].evidence.attributeReading).toBeUndefined();
   });
 
   it("keeps a hidden table's checks in the server's own figure", async () => {

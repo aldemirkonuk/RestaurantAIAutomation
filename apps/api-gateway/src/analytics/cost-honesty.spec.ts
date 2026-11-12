@@ -769,6 +769,106 @@ describe("getMenuEngineering on a house whose prices include tax (F-1587)", () =
   });
 });
 
+// F-1715 (sim 57): the House register's gross margin, COGS ratio and GMROI
+// were taken on the shelf price with KDV inside while menu engineering on the
+// same page was pre-tax: 66.7% beside 60% for one wine.
+describe("getFinancialSummary on a house whose prices include tax (F-1715)", () => {
+  const HOUSE = {
+    currency: "TRY",
+    tax_basis: "prices_include_tax",
+    tax_basis_confirmed_at: "2026-10-01T09:00:00Z",
+    timezone: "Europe/Istanbul",
+    country: "TR",
+  };
+  const RATE = {
+    id: "r1",
+    version: 1,
+    key_kind: "house",
+    key: "",
+    rate: 0.2,
+    effective_from: "2026-01-01",
+    effective_to: null,
+  };
+  /** 1,200 TL with 20% KDV inside, bought at 400 TL before tax. */
+  const WINE = {
+    id: "inv-1200",
+    wine_name: "Boğazkere",
+    stock_live: 1,
+    menu_price_current: 1200,
+    last_purchase_price: 400,
+    last_purchase_price_tax_basis: "excludes_tax",
+    threshold_min: 0,
+    master_wine_id: "mw-1200",
+  };
+  const build = (
+    house: Record<string, unknown> = HOUSE,
+    rates: any[] = [RATE],
+    wine: Record<string, unknown> = WINE,
+  ) =>
+    analytics({
+      restaurants: [house],
+      house_tax_rates: rates,
+      restaurant_inventory: [wine],
+    });
+
+  it("takes sales without tax: (1000 - 400) / 1000 = 60%, not 66.7%", async () => {
+    const out: any = await build().getFinancialSummary(RESTAURANT);
+    expect(out.revenue).toBeCloseTo(1000, 6);
+    expect(out.grossMargin).toBeCloseTo(0.6, 6);
+    expect(out.cogsRatio).toBeCloseTo(0.4, 6);
+    expect(out.gmroi).toBeCloseTo(600 / 400, 6);
+    expect(out.marginTaxNote).toMatch(/worked out on prices without it/);
+  });
+
+  it("withholds the margins on a cost not recorded without tax, and says why", async () => {
+    const out: any = await build(HOUSE, [RATE], {
+      ...WINE,
+      last_purchase_price_tax_basis: null,
+    }).getFinancialSummary(RESTAURANT);
+    expect(out.revenue).toBeCloseTo(1000, 6);
+    expect(out.grossMargin).toBeNull();
+    expect(out.cogsRatio).toBeNull();
+    expect(out.gmroi).toBeNull();
+    expect(out.primeCostRatio).toBeNull();
+    expect(out.marginTaxNote).toMatch(/1 wine on hand has a cost not recorded/);
+    // The cellar at cost is still the cellar at cost.
+    expect(out.inventoryValue).toBe(400);
+  });
+
+  it("withholds the valuation and margins when no rate is in force", async () => {
+    const out: any = await build(HOUSE, []).getFinancialSummary(RESTAURANT);
+    expect(out.revenue).toBeNull();
+    expect(out.grossMargin).toBeNull();
+    expect(out.marginTaxNote).toMatch(/no tax rate in force today/);
+  });
+
+  it("a failed basis read refuses the margins and never says prices include tax", async () => {
+    const spy = jest
+      .spyOn(marginAdvice, "readAdviceTaxTerms")
+      .mockResolvedValue({ terms: null, error: "connection reset" });
+    try {
+      const out: any = await build().getFinancialSummary(RESTAURANT);
+      expect(out.grossMargin).toBeNull();
+      expect(out.marginTaxNote).toMatch(/could not be read/);
+      expect(out.marginTaxNote).not.toMatch(/Your till prices include tax/);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("leaves a US house and an unset one exactly as before: shelf price, no new key (control)", async () => {
+    for (const house of [
+      { ...HOUSE, tax_basis: "prices_exclude_tax", country: "US", timezone: "America/Detroit" },
+      { ...HOUSE, tax_basis: "unset" },
+    ]) {
+      const out: any = await build(house).getFinancialSummary(RESTAURANT);
+      expect(out.revenue).toBe(1200);
+      expect(out.grossMargin).toBeCloseTo(800 / 1200, 6);
+      expect("marginTaxNote" in out).toBe(false);
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // getWine360
 // ---------------------------------------------------------------------------

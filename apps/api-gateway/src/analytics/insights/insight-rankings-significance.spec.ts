@@ -263,6 +263,8 @@ function check(
     closed_at: `${date}T21:00:00.000Z`,
     covers: 2,
     total: Math.round(total * 100) / 100,
+    // Net as the till states it; the waiter fit reads it (w113-net-readers).
+    subtotal: Math.round(total * 100) / 100,
     tip: 0,
     items,
   };

@@ -655,6 +655,26 @@ describe("two currencies are said in the file, not read as an empty window (F-10
     );
   });
 
+  // F-1715: at a house whose till prices include tax, the margins' reason and
+  // basis are the tax, as the screen says them.
+  it("figures of record gives the tax basis as the margins' reason and note", () => {
+    const TAXED =
+      "Your till prices include tax, so margin is set against costs recorded without tax, and 1 wine on hand has a cost not recorded that way, so gross margin, COGS ratio and GMROI are not worked out.";
+    const doc = EXPORT_CUTTINGS.ledger.write(
+      {
+        ...(PAYLOADS.ledger as object),
+        grossMargin: null,
+        cogsRatio: null,
+        gmroi: null,
+        marginTaxNote: TAXED,
+      },
+      { days: null },
+    );
+    for (const label of ["Gross margin", "COGS ratio", "GMROI"])
+      expect(why(doc, label)).toBe(TAXED);
+    expect(doc.notes).toContain(TAXED);
+  });
+
   // F-1216: turns and days are withheld because COGS is in other money, not
   // for want of a cost basis or a year of orders.
   it("inventory turns and days give the currency as their reason, not the cost basis", () => {

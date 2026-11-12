@@ -971,6 +971,10 @@ function writeLedger(payload: unknown, ctx: WriteCtx): ExportDoc {
   const cc = d.costCoverage == null ? null : obj(d.costCoverage);
   const pc = d.priceCoverage == null ? null : obj(d.priceCoverage);
   const costBasis = "Needs a complete cost basis";
+  // F-1715: at a house whose till prices include tax, the margins' basis or
+  // why they are withheld, as the screen says it; absent elsewhere.
+  const taxNote = str(d.marginTaxNote);
+  const marginWhy = taxNote || costBasis;
   // F-989: the screen's partly costed cellar (`rp-registers-house.tsx` view):
   // the priced wines' value under its own label, not withheld outright.
   const unpriced = cc ? (num(cc.unpriced) ?? 0) : 0;
@@ -1035,22 +1039,24 @@ function writeLedger(payload: unknown, ctx: WriteCtx): ExportDoc {
         "Sell-price valuation",
         figure(
           d.revenue,
-          "No wine on hand carries a bottle price, or no inventory row came back",
+          taxNote ||
+            "No wine on hand carries a bottle price, or no inventory row came back",
         ),
         "money",
       ),
-      f("Gross margin", figure(d.grossMargin, costBasis), "ratio"),
-      f("COGS ratio", figure(d.cogsRatio, costBasis), "ratio"),
+      f("Gross margin", figure(d.grossMargin, marginWhy), "ratio"),
+      f("COGS ratio", figure(d.cogsRatio, marginWhy), "ratio"),
       f("Inventory turns", figure(d.inventoryTurnover, turnsWhy), "count"),
       f(
         "Days of inventory",
         figure(d.daysInventoryOutstanding, turnsWhy),
         "days",
       ),
-      f("GMROI", figure(d.gmroi, costBasis), "count"),
+      f("GMROI", figure(d.gmroi, marginWhy), "count"),
       f("Capital sitting still", figure(d.deadStockCapital, "No movement signal recorded, or an idle row has no cost"), "money"),
     ],
     notes: [
+      taxNote,
       cc && cc.complete === false
         ? num(cc.total) === 0
           ? "No on-hand wine carries a recorded cost, so every cost-derived figure above is withheld rather than a total assembled from nothing."

@@ -157,6 +157,34 @@ describe('Figures of record — the dash on turns gives its own reason', () => {
   });
 });
 
+// F-1715 (sim 57): at a house whose till prices include tax, the margins
+// were taken on the shelf price with KDV inside and nothing said so.
+describe('Figures of record — the margins at a house whose till prices include tax', () => {
+  const SAID =
+    "Your till prices include tax, so the sell-price valuation and the margins here are worked out on prices without it, price ÷ (1 + the wine's tax rate).";
+  const REFUSED =
+    'Your till prices include tax, so margin is set against costs recorded without tax, and 1 wine on hand has a cost not recorded that way, so gross margin, COGS ratio and GMROI are not worked out.';
+
+  it('says what a drawn margin is worked out on', () => {
+    const v = view({ ...base, revenue: 1000, grossMargin: 0.6, marginTaxNote: SAID });
+    expect(v.notes).toContain(SAID);
+  });
+
+  it('gives the tax basis as the reason a margin reads a dash', () => {
+    const v = view({ ...base, revenue: 1000, marginTaxNote: REFUSED });
+    for (const label of ['Gross margin', 'COGS ratio', 'GMROI'])
+      expect(v.figures?.find((x) => x.label === label)).toMatchObject({ value: EM, note: REFUSED });
+    expect(v.notes).toContain(REFUSED);
+  });
+
+  it('staff are not told the margin sentence; a house without the key is as before (control)', () => {
+    expect(view({ ...base, marginTaxNote: SAID, amountsWithheld: true }).notes).not.toContain(SAID);
+    expect(view({ ...base }).figures?.find((x) => x.label === 'Gross margin')?.note).toBe(
+      'Needs a complete cost basis',
+    );
+  });
+});
+
 /**
  * w111-tips-owed (S239, after F-1691): Who served it read a fixed 90 days and
  * gave each server's tip only as a rate. It now follows the page's calendar
