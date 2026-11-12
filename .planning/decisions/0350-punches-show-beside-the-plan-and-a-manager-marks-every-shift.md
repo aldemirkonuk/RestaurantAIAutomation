@@ -102,7 +102,7 @@ Each rejection here is the executor's call under the founder's 2026-10-31T16:57:
 ## Evidence
 
 - Pick 10's option text says "the /team week shows punched times beside planned ones" and "It amends ADR 0215; wages stay on planned hours" (› Context). Reading "wages" as `labor_cost` is the executor's reading (`0215:1223-1225`); planned hours hold on that reading and on the payroll reading.
-- The sheet and the clock are not built. No tracked file under `supabase/migrations` or `apps/api-gateway/src` names a confirmed-hours, attendance, puantaj or punch column (claim ADR-0350-NO-CLOCK-OR-SHEET-YET checks it), and the clock-in lines there say there is none (`notifications/producers/roster.ts:16`). So no figure changes today.
+- The sheet is not built, and the clock is only a table. `floor_punches` lands with the floor's record migration (`supabase/migrations/20270302100000_the_floor_keeps_its_own_record.sql`); no file under `team/`, where shifts are priced (`pay-rules.ts`, `schedule.service.ts`, `team.service.ts`), reads it, and no confirmed-hours, attendance or puantaj column exists (claim ADR-0350-NO-CLOCK-OR-SHEET-YET checks both). The roster still reads `shifts` as the plan (`notifications/producers/roster.ts:14-16`). So no figure changes today.
 - The gamed tap: once check-ins are management evidence, staff tap from the pass or for each other, and the system produces "confident, false compliance data" (`.planning/01-org/product/product-vision/teams/service-floor/service-floor-premortem.md:49-52`).
 
 ## Consequences

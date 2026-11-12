@@ -113,7 +113,7 @@ He took all fourteen offered items (AskUserQuestion asked 2026-10-31T03:41:53Z, 
 
 #### pick 8
 
-*"Goal notices name who worked"* (Q2): "the notice names the people clocked in, not just those on the schedule." Today `shifts` is a plan with no clock-in table (`apps/api-gateway/src/notifications/producers/roster.ts:15-16`); the audience does not change.
+*"Goal notices name who worked"* (Q2): "the notice names the people clocked in, not just those on the schedule." Today `shifts` is a plan, and the roster reads it as one (`apps/api-gateway/src/notifications/producers/roster.ts:15-16`); the floor's punch table (`floor_punches`) is not read there, so the audience does not change.
 
 #### pick 9
 
@@ -219,7 +219,7 @@ The executor's design. Each target is re-measured at `origin/main` `037452ebe`; 
 | staff and settings history | `system_audit_log` | `baseline:5553-5568`; writer precedent `apps/api-gateway/src/team/access-audit.ts:97` |
 | per-house switches | `restaurant_feature_flags` + registry | `baseline:5097-5105`; `apps/api-gateway/src/settings/feature-flag-registry.ts:38`, `:44-46` (`readBy` required), `:54` |
 | `sections` | new `floor_sections` (his pick) | not `house_areas` (`20260930100000:86`) |
-| `shifts` (punches) | new punch table, linked to `public.shifts` by a nullable id | `baseline:5378`; no clock-in table on main (`roster.ts:15-16`) |
+| `shifts` (punches) | new punch table, linked to `public.shifts` by a nullable id | `baseline:5378`; `floor_punches` in `20270302100000_the_floor_keeps_its_own_record.sql`, which the roster does not read (`roster.ts:15-16`) |
 | `assignments`, `seatings`, `events`, `table_merges` | new floor tables in the floor module | named in the migrations, not fixed here |
 | `/api/push/nudge` daily cron | a gateway job under `ScheduleModule` | `app.module.ts:90` |
 | till server names | new `pos_server_links` (E4) | `pos_checks.server_external_id`, `server_name` at `baseline:4198-4199` |
@@ -272,6 +272,7 @@ The global `TenantGuard` (`app.module.ts:187-188`) reads no role (`apps/api-gate
 
 - One flag ships with a `restaurant_feature_flags` column and an `ACTIVE_FEATURE_FLAGS` entry with its `readBy`, in one change, default off (ADR 0131).
 - The `mudavym_design_arrival` entry is the precedent (`feature-flag-registry.ts:82-92`).
+- [2026-11-07, executor's reading under OD-242, PR #772] The column lands first, with the floor's record migration, and is unread; its `ACTIVE_FEATURE_FLAGS` entry lands with its first reader, because the registry requires a real `readBy` and the Settings PATCH refuses a key not in it. That departs from "in one change" above. The flag cannot be switched on until the entry lands.
 
 ### E8. Routes and install
 
