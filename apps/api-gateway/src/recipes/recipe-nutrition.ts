@@ -12,6 +12,13 @@
  *   .abv_pct, per 100 ml) is millilitres of pure alcohol per 100 ml, so a
  *   line with no stated strength is "unknown for" it, never 0, and a weighed
  *   line never counts (a strength is a share of a volume);
+ * - the one exception to "not counted is unknown": a line linked to an item
+ *   that states 0% alcohol adds 0 alcohol whatever its amount or unit (zero
+ *   of anything is zero, nothing is converted). "Top with tonic" with no
+ *   amount, or a can counted in pieces, then leaves the alcohol firm. A line
+ *   that states no strength stays unknown even if it looks like a garnish: a
+ *   brandied cherry or an absinthe sugar cube is counted in pieces too, and
+ *   understating alcohol is the direction that hurts;
  * - an allergen is free only when every line, untracked too, states it free;
  * - the lines that leave any allergen unstated are named (allergensUnstatedBy),
  *   so a sheet can say which ingredients stop "free of" being said, instead of
@@ -92,6 +99,11 @@ function amountOf(line: NutritionLineInput): { amount: number } | { why: string 
   return { amount: qty / 1000 };
 }
 
+/** Linked to an item that states 0% alcohol (a strength is per 100 ml by the schema's CHECK). */
+function statesNoAlcohol(l: NutritionLineInput): boolean {
+  return l.role === "stocked" && Boolean(l.inventoryId) && l.figures?.basis === "100ml" && l.figures.alcoholMl === 0;
+}
+
 function leavesAllergenUnstated(l: NutritionLineInput): boolean {
   if (l.role === "untracked" || !l.inventoryId) return true;
   return ALLERGENS.some((a) => {
@@ -116,19 +128,24 @@ export function serveNutrition(lines: NutritionLineInput[], yieldServes: number)
   const serves = Number.isInteger(yieldServes) && yieldServes > 0 ? yieldServes : NaN;
   const notCounted: ServeNutrition["notCounted"] = [];
   const counted: Array<{ line: NutritionLineInput; amount: number }> = [];
+  const leftLines: NutritionLineInput[] = [];
   for (const line of lines) {
     const a = amountOf(line);
-    if ("why" in a) notCounted.push({ label: line.label, why: a.why });
-    else counted.push({ line, amount: a.amount });
+    if ("why" in a) {
+      notCounted.push({ label: line.label, why: a.why });
+      leftLines.push(line);
+    } else counted.push({ line, amount: a.amount });
   }
-  const left = notCounted.map((n) => n.label);
 
   const figures = {} as Record<FigureKey, ServeFigure>;
   const usedLines = new Set<NutritionLineInput>();
   for (const k of FIGURE_KEYS) {
-    let total: number | null = null;
-    const missing = [...left];
-    let atLeast = left.length > 0;
+    // A not-counted line stating 0% adds 0 alcohol (see the header), so it is
+    // not "unknown for" it; for every other figure it is.
+    const zero = k === "alcoholMl" ? leftLines.filter(statesNoAlcohol) : [];
+    let total: number | null = zero.length > 0 ? 0 : null;
+    const missing = leftLines.filter((l) => !zero.includes(l)).map((l) => l.label);
+    let atLeast = missing.length > 0;
     for (const { line, amount } of counted) {
       const per100 = line.figures![k];
       if (per100 === null || per100 === undefined) {
