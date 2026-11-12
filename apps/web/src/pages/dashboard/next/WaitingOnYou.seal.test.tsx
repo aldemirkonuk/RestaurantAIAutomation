@@ -250,11 +250,39 @@ describe('the states that are not an approval', () => {
     // The defect: `formatMoney(undefined)` is the string "$0", so a card reading
     // a key the route does not send showed a real order as costing nothing —
     // on the control a human holds to spend the money. Measured 2026-09-05.
-    mount([order()]);
-    expect(screen.getByText('$2,000')).toBeInTheDocument();
+    mount([order({ currency: 'USD' })]);
+    expect(screen.getByText('$2,000.00')).toBeInTheDocument();
     expect(screen.queryByText('$0')).not.toBeInTheDocument();
     openRow();
-    expect(screen.getByRole('button', { name: /Hold to approve · \$2,000/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Hold to approve · \$2,000\.00/i })).toBeInTheDocument();
+  });
+
+  it('prints a TRY order in TRY, never $, and says "12 bottles" (browser walk 2026-11-12)', () => {
+    // The defect: a TRY house's TRY order read "$456" on the row and
+    // "12 bottle × $456" in the ceremony. The order names its currency.
+    mount([order({ quantity: 12, unitType: 'bottle', finalPrice: 38, totalCost: 456, currency: 'TRY' })]);
+    const row = screen.getByRole('button', { name: /Barolo Riserva/i });
+    expect(row.textContent).toMatch(/(TRY|₺)\s?456\.00/);
+    expect(row.textContent).not.toMatch(/\$/);
+    openRow();
+    expect(screen.getByText(/^12 bottles × (TRY|₺)\s?38\.00$/)).toBeInTheDocument();
+    expect(screen.queryByText(/12 bottle\b(?!s)/)).not.toBeInTheDocument();
+    expect(die()).toHaveAccessibleName(/Hold to approve · (TRY|₺)\s?456\.00/);
+  });
+
+  it('an order that names no currency says so, and borrows neither $ nor the house\'s code', () => {
+    mount([order({ currency: null })]);
+    expect(screen.getByText('2,000.00 (currency not recorded)')).toBeInTheDocument();
+    expect(screen.queryByText(/\$/)).not.toBeInTheDocument();
+  });
+
+  it('a staff row says the quantity in words, without money', () => {
+    render(
+      <MemoryRouter>
+        <WaitingOnYou pending={[order({ quantity: 1, unitType: 'case' })]} onChanged={vi.fn()} seesAmounts={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('button', { name: /Barolo Riserva/i }).textContent).toMatch(/1 case(?!s)/);
   });
 
   it('says nothing about money the route did not carry', () => {

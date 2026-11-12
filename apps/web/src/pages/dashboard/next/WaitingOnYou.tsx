@@ -41,7 +41,7 @@ import { apiClient } from '@/services/api/client';
 import type { ApprovalGate, ApprovalGateRow } from '@/pages/orders/next/useOrdersNextData';
 import { vendorLine } from '@/lib/mudavym/vendor';
 import { formatNumber } from '@/lib/utils';
-import { DASH, approveLabel, money, timeAgo } from './format';
+import { DASH, approveLabel, orderMoney, quantityWords, timeAgo } from './format';
 import { TryAgain } from './TryAgain';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -186,9 +186,7 @@ export function WaitingOnYou({ pending, onChanged, restaurantId, seesAmounts = t
                   className="shrink-0 text-[13px] text-inkm-1"
                   style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
                 >
-                  {seesAmounts
-                    ? money(o.totalCost)
-                    : `${formatNumber(o.quantity)}${o.unitType ? ` ${o.unitType}` : ''}`}
+                  {seesAmounts ? orderMoney(o.totalCost, o.currency) : quantityWords(o.quantity, o.unitType)}
                 </span>
               </button>
 
@@ -200,9 +198,8 @@ export function WaitingOnYou({ pending, onChanged, restaurantId, seesAmounts = t
                       className="text-[12px] text-inkm-2"
                       style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
                     >
-                      {formatNumber(o.quantity)}
-                      {o.unitType ? ` ${o.unitType}` : ''}
-                      {seesAmounts ? ` × ${money(o.finalPrice)}` : ''}
+                      {quantityWords(o.quantity, o.unitType)}
+                      {seesAmounts ? ` × ${orderMoney(o.finalPrice, o.currency)}` : ''}
                     </p>
                     <div className="flex items-center gap-3">
                       <Link
@@ -214,7 +211,7 @@ export function WaitingOnYou({ pending, onChanged, restaurantId, seesAmounts = t
                       {/* Disabled, never hidden: a shut control with the rule beside it teaches who to ask. */}
                       <SealedApproveDie
                         orderIds={[o.id]}
-                        label={approveLabel(seesAmounts ? o.totalCost : undefined)}
+                        label={approveLabel(seesAmounts ? o.totalCost : undefined, o.currency)}
                         disabled={held}
                         onApproved={onApproved}
                       />
