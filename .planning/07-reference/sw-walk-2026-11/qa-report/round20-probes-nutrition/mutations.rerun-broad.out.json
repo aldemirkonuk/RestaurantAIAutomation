@@ -1,0 +1,22 @@
+[
+ [
+  "n5 ABV allowed per 100 g",
+  "KILLED by whole item-nutrition suite"
+ ],
+ [
+  "n19 fdcId shape unchecked",
+  "SURVIVED whole suite"
+ ],
+ [
+  "n20 name not URL-encoded",
+  "SURVIVED whole suite"
+ ],
+ [
+  "n24 timeout removed",
+  "SURVIVED whole suite"
+ ],
+ [
+  "n25 lookup open to any role",
+  "KILLED by whole item-nutrition suite"
+ ]
+]

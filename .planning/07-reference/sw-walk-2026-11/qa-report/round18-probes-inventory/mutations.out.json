@@ -1,0 +1,142 @@
+[
+ [
+  "896-a staff sees money: canManage ignored on Cost card",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "896-b Value card drawn for staff",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "896-c failed waste read shown as a figure not \"could not be read\"",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "896-d failed count-gap read shown as \"Never counted\"",
+  "SURVIVES",
+  "6 passed (6)"
+ ],
+ [
+  "896-e on hand null shown as 0 instead of unread",
+  "SURVIVES",
+  "6 passed (6)"
+ ],
+ [
+  "896-f food unit: kg conversion removed",
+  "SURVIVES",
+  "6 passed (6)"
+ ],
+ [
+  "896-g bottle words for food: house kind check removed",
+  "SURVIVES",
+  "6 passed (6)"
+ ],
+ [
+  "896-h an id not on the list: reads figures anyway",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "898-a Close always navigates back (deep link leaves the page)",
+  "SURVIVES",
+  "94 passed (94)"
+ ],
+ [
+  "898-b Close never pops history (Back stack grows)",
+  "SURVIVES",
+  "94 passed (94)"
+ ],
+ [
+  "898-c row open replaces history (Back leaves the page)",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "898-d drawer key removed (state leaks between items)",
+  "SURVIVES",
+  "101 passed (101)"
+ ],
+ [
+  "898-e cost-trend: no-points sentence reverts to \"not enough receipts\"",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "899-a failed group drawn as empty/omitted",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "899-b menu prices shown to staff",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "899-c nothing-used ignores a failed group (says \"Not on the menu\")",
+  "SURVIVES",
+  "4 passed (4)"
+ ],
+ [
+  "899-d unlinked group note (\"not counted in usage\") dropped",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "899-e used-in read enabled for an id not on the list",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "899-f failed used-in read swallowed (stays \"reading\")",
+  "SURVIVES",
+  "11 passed (11)"
+ ],
+ [
+  "900-a kind filter removed",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "900-b supply counted as drink in goodOf",
+  "SURVIVES",
+  "96 passed (96)"
+ ],
+ [
+  "900-c kind chips drawn for a drinks-only house",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "900-d Carry button shown to staff",
+  "SURVIVES",
+  "100 passed (100)"
+ ],
+ [
+  "900-e 409 says generic failure not \"already carries\"",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "900-f par accepts decimals / negatives",
+  "SURVIVES",
+  "4 passed (4)"
+ ],
+ [
+  "900-g name not trimmed",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "900-h unit default food -> each",
+  "CAUGHT",
+  "1 \u23af\u23af\u23af\u23af\u23af\u23af\u23af"
+ ],
+ [
+  "900-i kind from URL junk accepted",
+  "SURVIVES",
+  "96 passed (96)"
+ ]
+]

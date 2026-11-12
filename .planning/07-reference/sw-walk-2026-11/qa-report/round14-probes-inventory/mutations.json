@@ -1,0 +1,152 @@
+[
+ [
+  "860",
+  "cocktails not scoped to house (drop .eq restaurant_id on cocktails)",
+  "1 failed, 3 passed, 4 total",
+  "CAUGHT"
+ ],
+ [
+  "860",
+  "deleted cocktails counted (drop .is deleted_at)",
+  "4 passed, 4 total",
+  "SURVIVES"
+ ],
+ [
+  "860",
+  "menu_items not scoped to house in soldAs (drop .eq restaurant_id)",
+  "4 passed, 4 total",
+  "SURVIVES"
+ ],
+ [
+  "860",
+  "archived/draft menus counted (drop status active)",
+  "1 failed, 3 passed, 4 total",
+  "CAUGHT"
+ ],
+ [
+  "860",
+  "discarded lines counted (drop neq discarded in soldAs)",
+  "4 passed, 4 total",
+  "SURVIVES"
+ ],
+ [
+  "860",
+  "failed read shown as [] (failed() returns lines [])",
+  "1 failed, 3 passed, 4 total",
+  "CAUGHT"
+ ],
+ [
+  "860",
+  "namedNotLinked paging dropped (single page)",
+  "4 passed, 4 total",
+  "SURVIVES"
+ ],
+ [
+  "860",
+  "item of another house found (drop restaurant filter in readHouseItem)",
+  "1 failed, 3 passed, 4 total",
+  "CAUGHT"
+ ],
+ [
+  "861",
+  "waste window dropped (30d)",
+  "2 failed, 3 passed, 5 total",
+  "CAUGHT"
+ ],
+ [
+  "861",
+  "shadow-stock waste counted (drop stock_type live)",
+  "5 passed, 5 total",
+  "SURVIVES"
+ ],
+ [
+  "861",
+  "waste and comp added together",
+  "2 failed, 3 passed, 5 total",
+  "CAUGHT"
+ ],
+ [
+  "861",
+  "sample lots in cost trend (drop neq sample)",
+  "1 failed, 4 passed, 5 total",
+  "CAUGHT"
+ ],
+ [
+  "861",
+  "cost trend 90d window dropped",
+  "5 passed, 5 total",
+  "SURVIVES"
+ ],
+ [
+  "861",
+  "shadow lots excluded from trend (the REAL fix: add live filter) - control: adding it must keep spec green",
+  "1 failed, 4 passed, 5 total",
+  "CAUGHT"
+ ],
+ [
+  "861",
+  "counts not scoped to house (drop restaurant_id on stock_counts)",
+  "5 passed, 5 total",
+  "SURVIVES"
+ ],
+ [
+  "861",
+  "lots not scoped to house (drop restaurant_id on inventory_lots)",
+  "5 passed, 5 total",
+  "SURVIVES"
+ ],
+ [
+  "861",
+  "staff sees money (seesMoney always true)",
+  "1 failed, 4 passed, 5 total",
+  "CAUGHT"
+ ],
+ [
+  "861",
+  "last 5 counts -> unlimited (drop limit 5)",
+  "5 passed, 5 total",
+  "SURVIVES"
+ ],
+ [
+  "862",
+  "par default 3 instead of 0",
+  "1 failed, 3 passed, 4 total",
+  "CAUGHT"
+ ],
+ [
+  "862",
+  "kg allowed (drop BIG_UNIT check)",
+  "1 failed, 3 passed, 4 total",
+  "CAUGHT"
+ ],
+ [
+  "862",
+  "wine allowed through carry",
+  "1 failed, 3 passed, 4 total",
+  "CAUGHT"
+ ],
+ [
+  "862",
+  "duplicate returns 500 not 409",
+  "1 failed, 3 passed, 4 total",
+  "CAUGHT"
+ ],
+ [
+  "862",
+  "name not trimmed",
+  "2 failed, 2 passed, 4 total",
+  "CAUGHT"
+ ],
+ [
+  "862",
+  "not marked house_declared",
+  "1 failed, 3 passed, 4 total",
+  "CAUGHT"
+ ],
+ [
+  "862",
+  "stock_live set at creation (invented stock)",
+  "1 failed, 3 passed, 4 total",
+  "CAUGHT"
+ ]
+]

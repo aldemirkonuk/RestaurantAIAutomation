@@ -1,0 +1,108 @@
+{
+ "cwd": "apps/api-gateway",
+ "cmd": "JEST_WT=/private/tmp/claude-501/qa-wt-r21-71 npx jest -c /Users/aldemirkonuk/Projects/p4-scratch/sw-walk/qa-report/round21-probes-authmailnutri/jest.cjs sign-in-device.spec client-address-callers.spec >/dev/null 2>&1",
+ "mutants": [
+  {
+   "id": "m1 any token trusted (skip account check)",
+   "file": "apps/api-gateway/src/common/rate-limit/sign-in-device.ts",
+   "old": "if (p.a !== accountDigest(folded).slice(0, 32)) return null;",
+   "new": ""
+  },
+  {
+   "id": "m2 signature not checked",
+   "file": "apps/api-gateway/src/common/rate-limit/sign-in-device.ts",
+   "old": "if (expected.length !== given.length || !timingSafeEqual(expected, given)) {",
+   "new": "if (false) {"
+  },
+  {
+   "id": "m3 expiry not checked",
+   "file": "apps/api-gateway/src/common/rate-limit/sign-in-device.ts",
+   "old": "if (p.t < now - MAX_AGE_MS || p.t > now + MAX_FUTURE_MS) return null;",
+   "new": ""
+  },
+  {
+   "id": "m4 future not checked",
+   "file": "apps/api-gateway/src/common/rate-limit/sign-in-device.ts",
+   "old": "|| p.t > now + MAX_FUTURE_MS) return null;",
+   "new": "|| false) return null;"
+  },
+  {
+   "id": "m5 device id format",
+   "file": "apps/api-gateway/src/common/rate-limit/sign-in-device.ts",
+   "old": "if (typeof p.d !== \"string\" || !/^[0-9a-f]{32}$/.test(p.d)) return null;",
+   "new": ""
+  },
+  {
+   "id": "m6 untrusted peer bucket off",
+   "file": "apps/api-gateway/src/common/rate-limit/rate-limit.guard.ts",
+   "old": "if (!account.deviceId) {",
+   "new": "if (false) {"
+  },
+  {
+   "id": "m7 untrusted factor 100",
+   "file": "apps/api-gateway/src/common/rate-limit/client-address.ts",
+   "old": "UNTRUSTED_PEER_FACTOR = 10;",
+   "new": "UNTRUSTED_PEER_FACTOR = 100;"
+  },
+  {
+   "id": "m8 device ignored (all untrusted)",
+   "file": "apps/api-gateway/src/common/rate-limit/rate-limit.guard.ts",
+   "old": "      deviceId,\n    };",
+   "new": "      deviceId: null,\n    };"
+  },
+  {
+   "id": "m9 untrusted shares device bucket key",
+   "file": "apps/api-gateway/src/common/rate-limit/rate-limit.guard.ts",
+   "old": "${deviceId ? `device:${deviceId}` : \"untrusted\"}",
+   "new": "${\"untrusted\"}"
+  },
+  {
+   "id": "m10 account digest sliced",
+   "file": "apps/api-gateway/src/common/rate-limit/sign-in-device.ts",
+   "old": "return createHash(\"sha256\").update(folded).digest(\"hex\");",
+   "new": "return createHash(\"sha256\").update(folded.slice(0,320)).digest(\"hex\");"
+  },
+  {
+   "id": "m11 no NFKC",
+   "file": "apps/api-gateway/src/common/rate-limit/sign-in-device.ts",
+   "old": "raw.normalize(\"NFKC\")",
+   "new": "raw"
+  },
+  {
+   "id": "m12 no zero-width strip",
+   "file": "apps/api-gateway/src/common/rate-limit/sign-in-device.ts",
+   "old": ".replace(ZERO_WIDTH, \"\")",
+   "new": ""
+  },
+  {
+   "id": "m13 controller never re-issues same device id",
+   "file": "apps/api-gateway/src/auth/auth.controller.ts",
+   "old": "readSignInDevice(secret, credentials.signInDevice, folded) ?? undefined,",
+   "new": "undefined,"
+  },
+  {
+   "id": "m14 controller issues no token",
+   "file": "apps/api-gateway/src/auth/auth.controller.ts",
+   "old": "      signInDevice,\n      message",
+   "new": "      message"
+  },
+  {
+   "id": "m15 account bucket route unscoped",
+   "file": "apps/api-gateway/src/common/rate-limit/rate-limit.guard.ts",
+   "old": "        `account:${digest}:${deviceId ? `device:${deviceId}` : \"untrusted\"}`,\n        `route:${route}`,",
+   "new": "        `account:${digest}:${deviceId ? `device:${deviceId}` : \"untrusted\"}`,"
+  },
+  {
+   "id": "m16 token length cap",
+   "file": "apps/api-gateway/src/common/rate-limit/sign-in-device.ts",
+   "old": "token.length > MAX_TOKEN_LENGTH",
+   "new": "false"
+  },
+  {
+   "id": "m17 signing secret = raw jwt secret",
+   "file": "apps/api-gateway/src/common/rate-limit/sign-in-device.ts",
+   "old": ".update(\"sign-in-device\")",
+   "new": ".update(\"\")"
+  }
+ ]
+}

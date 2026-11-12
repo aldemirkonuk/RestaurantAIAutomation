@@ -1,0 +1,11 @@
+{
+ "list": "threw: The house's inventory could not be read whole: the database refused one of its pages (page",
+ "invSummary": "threw: The house's inventory could not be read whole: the database refused one of its pages (page",
+ "card": "threw: The house's inventory could not be read whole: the database refused one of its pages (page",
+ "chip": "ANSWERED 2500 rows",
+ "mcpLow": "ANSWERED 2500 rows",
+ "mcpList": "threw: The house's inventory could not be read whole: the database refused one of its pages (page",
+ "dashAlerts": "ANSWERED 1000 rows",
+ "dashStats": "ANSWERED {\"totalWines\":1000,\"totalBottles\":1000,\"totalVolumeMl\":750000,\"totalVolumeOz\":25360.5,\"lowStockItems\":1000,\"pendingOrder",
+ "inbox": "ANSWERED 2500 rows"
+}

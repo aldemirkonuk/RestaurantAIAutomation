@@ -1,0 +1,70 @@
+[
+ [
+  "829-bev-no-fold",
+  "jest[\u25cf the SQL twin public.fold_undecomposable_letters \u203a is called by the latest public.beverage_normalize_text | Test Suites: 1 failed, 45 passed, 46 total | Tests:       1 failed, 776 passed, 777 total] ## py[......................                                                   [100%] | 22 passed in 0.28s]"
+ ],
+ [
+  "829-wine-no-fold",
+  "jest[\u25cf the SQL twin public.fold_undecomposable_letters \u203a is called by the latest public.wine_normalize_text | Test Suites: 1 failed, 45 passed, 46 total | Tests:       1 failed, 776 passed, 777 total] ## py[......................                                                   [100%] | 22 passed in 0.13s]"
+ ],
+ [
+  "829-beverage-UPDATE-dropped",
+  "jest[Test Suites: 46 passed, 46 total | Tests:       777 passed, 777 total] ## py[......................                                                   [100%] | 22 passed in 0.11s]"
+ ],
+ [
+  "829-py-eval-no-fold",
+  "jest[Test Suites: 46 passed, 46 total | Tests:       777 passed, 777 total] ## py[FAILED scripts/test_fold_letters_mirrors.py::test_beverage_norm_still_does_not_expand_abbreviations | 3 failed, 19 passed in 0.15s]"
+ ],
+ [
+  "830-identity-no-fold",
+  "jest[\u25cf foldUndecomposableLetters \u203a normalizeIdentityText applies the table |   \u25cf the dotless-\u0131 fold (QA round 5, #785) \u203a keys a page's Kavakl\u0131dere and a price list's KAVAKLIDERE together |   \u25cf the dotless-\u0131 fold (QA round 5, #785) \u203a still knows the key a row was stored under before the fold | Test Suites: 2 failed, 45 passed, 47 total | Tests:       3 failed, 796 passed, 799 total] ## py[......................                                                   [100%] | 22 passed in 0.13s]"
+ ],
+ [
+  "830-assert-no-prefold-lookup",
+  "jest[\u25cf a bottle asserted before the dotless-\u0131 fold (QA round 5, #785) \u203a finds the row under its old key rather than asserting it twice | Test Suites: 1 failed, 1 total | Tests:       1 failed, 27 passed, 28 total]"
+ ],
+ [
+  "831-ladder-no-prefold-key",
+  "jest[\u25cf VendorComparisonService \u203a matching scraped rows to a picked wine \u203a also asks for the hash a row was stored under before the dotless-\u0131 fold | Test Suites: 1 failed, 1 total | Tests:       1 failed, 42 passed, 43 total]"
+ ],
+ [
+  "831-prior-no-prefold",
+  "jest[\u25cf VendorComparisonService \u203a recordManualObservation \u203a the outlier screen, added 2026-09-04 \u203a reads priors stored before the dotless-\u0131 fold for an off-catalogue bottle | Test Suites: 1 failed, 1 total | Tests:       1 failed, 42 passed, 43 total]"
+ ],
+ [
+  "831-extractor-no-prefold",
+  "jest[\u25cf the outlier flag \u203a counts priors stored under the pre-fold hash toward the same bottle | Test Suites: 1 failed, 1 total | Tests:       1 failed, 17 passed, 18 total]"
+ ],
+ [
+  "831-extractor-prefold-not-queried",
+  "jest[Test Suites: 1 passed, 1 total | Tests:       18 passed, 18 total]"
+ ],
+ [
+  "832-no-holder-guard",
+  "jest[\u25cf wine_signatures_refold_dotless_i \u203a skips a row whose folded hash another row already holds, before writing | Test Suites: 1 failed, 1 total | Tests:       1 failed, 4 passed, 5 total] ## scenarios[FAIL 832 applies over window data (no unique-index violation) :: duplicate key value violates unique constraint \"idx_master_wine_library_signature_hash\" in 6ms;]"
+ ],
+ [
+  "832-order-desc",
+  "jest[Test Suites: 1 passed, 1 total | Tests:       5 passed, 5 total] ## scenarios[FAIL B1 (older of two colliding \u0131-rows) takes the folded hash;FAIL B2 (younger) held back, held_by B1;FAIL no roster row is left orphaned from the library by the refold (every roster hash still joins a live row) :: [{\"wine_name\":\"Karasi Ozel (old key)\"}];FAIL submission copy of B2 old hash still joins B2 (B2 held);]"
+ ],
+ [
+  "832-single-pass",
+  "jest[Test Suites: 1 passed, 1 total | Tests:       5 passed, 5 total] ## scenarios[FAIL no roster row is left orphaned from the library by the refold (every roster hash still joins a live row) :: [{\"wine_name\":\"Karasi Ozel (old key)\"}];]"
+ ],
+ [
+  "832-skip-submissions",
+  "jest[Test Suites: 1 passed, 1 total | Tests:       5 passed, 5 total] ## scenarios[FAIL no roster row is left orphaned from the library by the refold (every roster hash still joins a live row) :: [{\"wine_name\":\"Karasi Ozel (old key)\"}];]"
+ ],
+ [
+  "832-skip-menu-changes",
+  "jest[Test Suites: 1 passed, 1 total | Tests:       5 passed, 5 total] ## scenarios[FAIL no roster row is left orphaned from the library by the refold (every roster hash still joins a live row) :: [{\"wine_name\":\"Karasi Ozel (old key)\"}];]"
+ ],
+ [
+  "832-no-iota-filter",
+  "jest[Test Suites: 1 passed, 1 total | Tests:       5 passed, 5 total] ## scenarios[FAIL X1 non-\u0131 drifted row untouched;FAIL no roster row is left orphaned from the library by the refold (every roster hash still joins a live row) :: [{\"wine_name\":\"Karasi Ozel (old key)\"}];]"
+ ],
+ [
+  "832-no-deleted-filter-n/a",
+  "jest[Test Suites: 1 passed, 1 total | Tests:       5 passed, 5 total] ## scenarios[FAIL G1 NULL-hash \u0131-row stays NULL;FAIL no roster row is left orphaned from the library by the refold (every roster hash still joins a live row) :: [{\"wine_name\":\"Karasi Ozel (old key)\"}];]"
+ ]
+]

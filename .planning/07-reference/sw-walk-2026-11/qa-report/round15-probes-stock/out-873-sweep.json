@@ -1,0 +1,154 @@
+{
+ "r1": {
+  "fired": [],
+  "levels": {
+   "U1_uncounted_recv_sold_2of3": "low",
+   "U2_uncounted_recv_sold_0of3": "critical",
+   "C1_counted_2of5_critical": "critical",
+   "C2_counted_4of5_low": "low",
+   "Z_counted_zero_par3": "critical",
+   "NEG_negative_stock": "critical",
+   "CB_closed_bottle_only_1of3": "critical",
+   "OB_open_bottle_only_0of3": "critical"
+  }
+ },
+ "failedWhole": {
+  "fired": [],
+  "writes": [],
+  "levels": {
+   "U1_uncounted_recv_sold_2of3": "low",
+   "U2_uncounted_recv_sold_0of3": "critical",
+   "C1_counted_2of5_critical": "critical",
+   "C2_counted_4of5_low": "low",
+   "Z_counted_zero_par3": "critical",
+   "NEG_negative_stock": "critical",
+   "CB_closed_bottle_only_1of3": "critical",
+   "OB_open_bottle_only_0of3": "critical"
+  }
+ },
+ "afterRecovery": {
+  "fired": [],
+  "writes": [
+   {
+    "op": "upsert",
+    "inv": "U1_uncounted_recv_sold_2of3",
+    "level": "low"
+   },
+   {
+    "op": "upsert",
+    "inv": "U2_uncounted_recv_sold_0of3",
+    "level": "critical"
+   },
+   {
+    "op": "upsert",
+    "inv": "C1_counted_2of5_critical",
+    "level": "critical"
+   },
+   {
+    "op": "upsert",
+    "inv": "C2_counted_4of5_low",
+    "level": "low"
+   },
+   {
+    "op": "upsert",
+    "inv": "Z_counted_zero_par3",
+    "level": "critical"
+   },
+   {
+    "op": "upsert",
+    "inv": "NEG_negative_stock",
+    "level": "critical"
+   },
+   {
+    "op": "upsert",
+    "inv": "CB_closed_bottle_only_1of3",
+    "level": "critical"
+   },
+   {
+    "op": "upsert",
+    "inv": "OB_open_bottle_only_0of3",
+    "level": "critical"
+   }
+  ]
+ },
+ "outage": {
+  "fired": [],
+  "writes": []
+ },
+ "recovered": {
+  "fired": [
+   [
+    "AT_at_par_3of3"
+   ]
+  ],
+  "writes": [
+   {
+    "op": "upsert",
+    "inv": "U1_uncounted_recv_sold_2of3",
+    "level": "low"
+   },
+   {
+    "op": "upsert",
+    "inv": "U2_uncounted_recv_sold_0of3",
+    "level": "critical"
+   },
+   {
+    "op": "upsert",
+    "inv": "C2_counted_4of5_low",
+    "level": "low"
+   },
+   {
+    "op": "upsert",
+    "inv": "Z_counted_zero_par3",
+    "level": "critical"
+   },
+   {
+    "op": "upsert",
+    "inv": "NEG_negative_stock",
+    "level": "critical"
+   },
+   {
+    "op": "upsert",
+    "inv": "CB_closed_bottle_only_1of3",
+    "level": "critical"
+   },
+   {
+    "op": "upsert",
+    "inv": "OB_open_bottle_only_0of3",
+    "level": "critical"
+   },
+   {
+    "op": "upsert",
+    "inv": "AT_at_par_3of3",
+    "level": "critical"
+   },
+   {
+    "op": "update",
+    "inv": "C1_counted_2of5_critical",
+    "level": "ok"
+   }
+  ],
+  "levels": {
+   "U1_uncounted_recv_sold_2of3": "low",
+   "U2_uncounted_recv_sold_0of3": "critical",
+   "C1_counted_2of5_critical": "ok",
+   "C2_counted_4of5_low": "low",
+   "Z_counted_zero_par3": "critical",
+   "NEG_negative_stock": "critical",
+   "CB_closed_bottle_only_1of3": "critical",
+   "OB_open_bottle_only_0of3": "critical",
+   "AT_at_par_3of3": "critical"
+  }
+ },
+ "recoveredTwice": {
+  "fired": [
+   [
+    "AT_at_par_3of3"
+   ]
+  ]
+ },
+ "warns": [
+  "v_low_stock_items could not be read: v_low_stock_items could not be read whole: the database refused one of its pages (page 1: XX000 injected failure on v_low_stock_items request 1). Nothing is reported from part of it. — alert states kept, nothing sent",
+  "v_low_stock_items could not be read: v_low_stock_items could not be read whole: the database refused one of its pages (page 1: XX000 injected failure on v_low_stock_items request 1). Nothing is reported from part of it. — alert states kept, nothing sent"
+ ]
+}

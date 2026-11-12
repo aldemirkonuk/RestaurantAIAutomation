@@ -1,0 +1,8 @@
+{
+ "inboxCount": 8,
+ "dashAlertsThrew": "restaurant_inventory read failed: injected failure on restaurant_inventory",
+ "dashSummaryThrew": "injected failure on restaurant_inventory",
+ "invSummaryThrew": "injected failure on restaurant_inventory",
+ "listThrew": "injected failure on restaurant_inventory",
+ "dashAlertKeys": []
+}

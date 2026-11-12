@@ -1,0 +1,210 @@
+{
+ "per": [
+  {
+   "wine": "U1_uncounted_recv_sold_2of3",
+   "standing": "below",
+   "below": true,
+   "alertsChip": true,
+   "inView": true
+  },
+  {
+   "wine": "U2_uncounted_recv_sold_0of3",
+   "standing": "uncounted",
+   "below": false,
+   "alertsChip": true,
+   "inView": true
+  },
+  {
+   "wine": "U3_uncounted_never_moved_0of3",
+   "standing": "uncounted",
+   "below": false,
+   "alertsChip": false,
+   "inView": false
+  },
+  {
+   "wine": "C1_counted_2of5_critical",
+   "standing": "below",
+   "below": true,
+   "alertsChip": true,
+   "inView": true
+  },
+  {
+   "wine": "C2_counted_4of5_low",
+   "standing": "below",
+   "below": true,
+   "alertsChip": true,
+   "inView": true
+  },
+  {
+   "wine": "P0_par0_counted_0",
+   "standing": "out",
+   "below": false,
+   "alertsChip": false,
+   "inView": false
+  },
+  {
+   "wine": "Z_counted_zero_par3",
+   "standing": "out",
+   "below": false,
+   "alertsChip": true,
+   "inView": true
+  },
+  {
+   "wine": "NEG_negative_stock",
+   "standing": "out",
+   "below": false,
+   "alertsChip": true,
+   "inView": true
+  },
+  {
+   "wine": "RC_recent_count_above_par",
+   "standing": "above",
+   "below": false,
+   "alertsChip": false,
+   "inView": false
+  },
+  {
+   "wine": "CB_closed_bottle_only_1of3",
+   "standing": "below",
+   "below": true,
+   "alertsChip": true,
+   "inView": true
+  },
+  {
+   "wine": "OB_open_bottle_only_0of3",
+   "standing": "out",
+   "below": false,
+   "alertsChip": true,
+   "inView": true
+  },
+  {
+   "wine": "AT_at_par_3of3",
+   "standing": "at",
+   "below": false,
+   "alertsChip": false,
+   "inView": false
+  },
+  {
+   "wine": "IT_in_transit_counted_1of3",
+   "standing": "below",
+   "below": true,
+   "alertsChip": false,
+   "inView": false
+  },
+  {
+   "wine": "HD_house_declared_beer_counted_1of3",
+   "standing": "below",
+   "below": true,
+   "alertsChip": false,
+   "inView": false
+  }
+ ],
+ "single": [
+  {
+   "wine": "U1_uncounted_recv_sold_2of3",
+   "inView": true,
+   "says": "1 title, 2 bottles. None is out; 1 is below par. No title has a cost on the books yet, so the value at cost reads —, not"
+  },
+  {
+   "wine": "U2_uncounted_recv_sold_0of3",
+   "inView": true,
+   "says": "1 title, 0 bottles. 1 is not counted yet, so whether it is out is not known until it is counted; nothing else is out or "
+  },
+  {
+   "wine": "U3_uncounted_never_moved_0of3",
+   "inView": false,
+   "says": "1 title, 0 bottles. 1 is not counted yet, so whether it is out is not known until it is counted; nothing else is out or "
+  },
+  {
+   "wine": "C1_counted_2of5_critical",
+   "inView": true,
+   "says": "1 title, 2 bottles. None is out; 1 is below par. No title has a cost on the books yet, so the value at cost reads —, not"
+  },
+  {
+   "wine": "C2_counted_4of5_low",
+   "inView": true,
+   "says": "1 title, 4 bottles. None is out; 1 is below par. No title has a cost on the books yet, so the value at cost reads —, not"
+  },
+  {
+   "wine": "P0_par0_counted_0",
+   "inView": false,
+   "says": "1 title, 0 bottles. 1 is out. No title has a cost on the books yet, so the value at cost reads —, not 0. This page does "
+  },
+  {
+   "wine": "Z_counted_zero_par3",
+   "inView": true,
+   "says": "1 title, 0 bottles. 1 is out. No title has a cost on the books yet, so the value at cost reads —, not 0. This page does "
+  },
+  {
+   "wine": "NEG_negative_stock",
+   "inView": true,
+   "says": "1 title, 0 bottles. 1 is out. No title has a cost on the books yet, so the value at cost reads —, not 0. This page does "
+  },
+  {
+   "wine": "RC_recent_count_above_par",
+   "inView": false,
+   "says": "1 title, 6 bottles. Nothing is out or below par. No title has a cost on the books yet, so the value at cost reads —, not"
+  },
+  {
+   "wine": "CB_closed_bottle_only_1of3",
+   "inView": true,
+   "says": "1 title, 1 bottle. None is out; 1 is below par. No title has a cost on the books yet, so the value at cost reads —, not "
+  },
+  {
+   "wine": "OB_open_bottle_only_0of3",
+   "inView": true,
+   "says": "1 title, 0 bottles. 1 is out. No title has a cost on the books yet, so the value at cost reads —, not 0. This page does "
+  },
+  {
+   "wine": "AT_at_par_3of3",
+   "inView": false,
+   "says": "1 title, 3 bottles. Nothing is out or below par. No title has a cost on the books yet, so the value at cost reads —, not"
+  },
+  {
+   "wine": "IT_in_transit_counted_1of3",
+   "inView": false,
+   "says": "1 title, 1 bottle. None is out; 1 is below par. No title has a cost on the books yet, so the value at cost reads —, not "
+  },
+  {
+   "wine": "HD_house_declared_beer_counted_1of3",
+   "inView": false,
+   "says": "1 title, 1 bottle. None is out; 1 is below par. No title has a cost on the books yet, so the value at cost reads —, not "
+  }
+ ],
+ "sorted": {
+  "tr": [
+   "Calka",
+   "Çalka",
+   "Ismet",
+   "İsmail",
+   "Okuz",
+   "Öküz",
+   "Siraz",
+   "Şiraz"
+  ],
+  "en": [
+   "Calka",
+   "Çalka",
+   "İsmail",
+   "Ismet",
+   "Okuz",
+   "Öküz",
+   "Siraz",
+   "Şiraz"
+  ],
+  "undef": [
+   "Calka",
+   "Çalka",
+   "İsmail",
+   "Ismet",
+   "Okuz",
+   "Öküz",
+   "Siraz",
+   "Şiraz"
+  ]
+ },
+ "houseLocaleTR": "tr-Latn-TR",
+ "houseLocaleTurkey": "tr-Latn-TR",
+ "houseLocaleTurkiye": "tr-Latn-TR",
+ "houseLocaleUS": "en-Latn-US"
+}

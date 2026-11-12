@@ -1,0 +1,28 @@
+{
+ "truth": {
+  "titles": 1100,
+  "low": 1050,
+  "critical": 1050
+ },
+ "inboxRows": 1000,
+ "dashAlertCount": 1000,
+ "dashSummary": {
+  "totalItems": 1000,
+  "totalBottles": 1250,
+  "lowStockCount": 950,
+  "criticalCount": 950,
+  "healthyCount": 50
+ },
+ "invSummary": {
+  "totalItems": 1000,
+  "totalBottles": 1250,
+  "lowStockCount": 950,
+  "criticalCount": 950,
+  "atParCount": 0,
+  "unknownCount": 0,
+  "healthyCount": 50,
+  "toastMappedCount": 0,
+  "toastUnmappedCount": 1000
+ },
+ "listRows": 1000
+}

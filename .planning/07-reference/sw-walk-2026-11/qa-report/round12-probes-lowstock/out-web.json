@@ -1,0 +1,322 @@
+{
+ "per": [
+  {
+   "wine": "U1_uncounted_recv_sold_2of3",
+   "standing": "below",
+   "out": false,
+   "below": true,
+   "alertsChip": true,
+   "inView": true,
+   "sev": 1
+  },
+  {
+   "wine": "U2_uncounted_recv_sold_0of3",
+   "standing": "uncounted",
+   "out": false,
+   "below": false,
+   "alertsChip": true,
+   "inView": true,
+   "sev": 2
+  },
+  {
+   "wine": "U3_uncounted_never_moved_0of3",
+   "standing": "uncounted",
+   "out": false,
+   "below": false,
+   "alertsChip": false,
+   "inView": false,
+   "sev": 2
+  },
+  {
+   "wine": "C1_counted_2of5_critical",
+   "standing": "below",
+   "out": false,
+   "below": true,
+   "alertsChip": true,
+   "inView": true,
+   "sev": 1
+  },
+  {
+   "wine": "C2_counted_4of5_low",
+   "standing": "below",
+   "out": false,
+   "below": true,
+   "alertsChip": true,
+   "inView": true,
+   "sev": 1
+  },
+  {
+   "wine": "P0_par0_counted_0",
+   "standing": "out",
+   "out": true,
+   "below": false,
+   "alertsChip": false,
+   "inView": false,
+   "sev": 0
+  },
+  {
+   "wine": "Z_counted_zero_par3",
+   "standing": "out",
+   "out": true,
+   "below": false,
+   "alertsChip": true,
+   "inView": true,
+   "sev": 0
+  },
+  {
+   "wine": "RC_recent_count_above_par",
+   "standing": "above",
+   "out": false,
+   "below": false,
+   "alertsChip": false,
+   "inView": false,
+   "sev": 3
+  },
+  {
+   "wine": "CB_closed_bottle_only_1of3",
+   "standing": "below",
+   "out": false,
+   "below": true,
+   "alertsChip": true,
+   "inView": true,
+   "sev": 1
+  },
+  {
+   "wine": "AT_at_par_3of3",
+   "standing": "at",
+   "out": false,
+   "below": false,
+   "alertsChip": false,
+   "inView": false,
+   "sev": 3
+  },
+  {
+   "wine": "IT_in_transit_counted_1of3",
+   "standing": "below",
+   "out": false,
+   "below": true,
+   "alertsChip": false,
+   "inView": false,
+   "sev": 1
+  },
+  {
+   "wine": "DL_deleted_at_counted_1of3",
+   "standing": "below",
+   "out": false,
+   "below": true,
+   "alertsChip": false,
+   "inView": false,
+   "sev": 1
+  },
+  {
+   "wine": "OB_open_bottle_only_0of3",
+   "standing": "out",
+   "out": true,
+   "below": false,
+   "alertsChip": true,
+   "inView": true,
+   "sev": 0
+  },
+  {
+   "wine": "NEG_negative_stock",
+   "standing": "out",
+   "out": true,
+   "below": false,
+   "alertsChip": true,
+   "inView": true,
+   "sev": 0
+  }
+ ],
+ "counts": {
+  "listed": 14,
+  "out": 4,
+  "below": 6,
+  "alertsChip": 8,
+  "uncounted": 2,
+  "inView": 8
+ },
+ "single": [
+  {
+   "wine": "U1_uncounted_recv_sold_2of3",
+   "inView": true,
+   "sentence": "1 title, 2 bottles. None is out; 1 is below par",
+   "says": "low-words"
+  },
+  {
+   "wine": "U2_uncounted_recv_sold_0of3",
+   "inView": true,
+   "sentence": "1 title, 0 bottles. 1 is not counted yet, so whether it is out is not known until it is counted; nothing else is out or below par",
+   "says": "uncounted-words"
+  },
+  {
+   "wine": "U3_uncounted_never_moved_0of3",
+   "inView": false,
+   "sentence": "1 title, 0 bottles. 1 is not counted yet, so whether it is out is not known until it is counted; nothing else is out or below par",
+   "says": "uncounted-words"
+  },
+  {
+   "wine": "C1_counted_2of5_critical",
+   "inView": true,
+   "sentence": "1 title, 2 bottles. None is out; 1 is below par",
+   "says": "low-words"
+  },
+  {
+   "wine": "C2_counted_4of5_low",
+   "inView": true,
+   "sentence": "1 title, 4 bottles. None is out; 1 is below par",
+   "says": "low-words"
+  },
+  {
+   "wine": "P0_par0_counted_0",
+   "inView": false,
+   "sentence": "1 title, 0 bottles. 1 is out",
+   "says": "low-words"
+  },
+  {
+   "wine": "Z_counted_zero_par3",
+   "inView": true,
+   "sentence": "1 title, 0 bottles. 1 is out",
+   "says": "low-words"
+  },
+  {
+   "wine": "RC_recent_count_above_par",
+   "inView": false,
+   "sentence": "1 title, 6 bottles. Nothing is out or below par",
+   "says": "NOTHING-LOW"
+  },
+  {
+   "wine": "CB_closed_bottle_only_1of3",
+   "inView": true,
+   "sentence": "1 title, 1 bottle. None is out; 1 is below par",
+   "says": "low-words"
+  },
+  {
+   "wine": "AT_at_par_3of3",
+   "inView": false,
+   "sentence": "1 title, 3 bottles. Nothing is out or below par",
+   "says": "NOTHING-LOW"
+  },
+  {
+   "wine": "IT_in_transit_counted_1of3",
+   "inView": false,
+   "sentence": "1 title, 1 bottle. None is out; 1 is below par",
+   "says": "low-words"
+  },
+  {
+   "wine": "DL_deleted_at_counted_1of3",
+   "inView": false,
+   "sentence": "1 title, 1 bottle. None is out; 1 is below par",
+   "says": "low-words"
+  },
+  {
+   "wine": "OB_open_bottle_only_0of3",
+   "inView": true,
+   "sentence": "1 title, 0 bottles. 1 is out",
+   "says": "low-words"
+  },
+  {
+   "wine": "NEG_negative_stock",
+   "inView": true,
+   "sentence": "1 title, 0 bottles. 1 is out",
+   "says": "low-words"
+  }
+ ],
+ "syn": [
+  {
+   "id": "s-parnull",
+   "standing": "nopar",
+   "stock": 1,
+   "par": 0
+  },
+  {
+   "id": "s-stocknull",
+   "standing": "out",
+   "stock": 0,
+   "par": 3
+  }
+ ],
+ "sentenceAll": "14 titles, 20 bottles. 4 are out, and 6 more are below par; 2 more are not counted yet. No title has a cost on the books yet, so the value at cost reads —, not 0. This page does not read a market price yet, so the market reads unknown, not zero.",
+ "order": {
+  "byNeeds": [
+   "Z:out",
+   "OB:out",
+   "NEG:out",
+   "P0:out",
+   "C2:below",
+   "CB:below",
+   "U1:below",
+   "IT:below",
+   "DL:below",
+   "C1:below",
+   "U2:uncounted",
+   "U3:uncounted",
+   "RC:above",
+   "AT:at"
+  ],
+  "byName": [
+   "Ada",
+   "Boğazkere",
+   "Çalkarası",
+   "Dikmen",
+   "Emir",
+   "İsmail Şarabı",
+   "Ismet",
+   "Kalecik",
+   "Öküzgözü",
+   "Okuzgozu IT",
+   "Silinmis",
+   "Şiraz",
+   "Yakut",
+   "Zeytin"
+  ],
+  "defaultLocale": "en-US",
+  "en": [
+   "Ada",
+   "Boğazkere",
+   "Çalkarası",
+   "Dikmen",
+   "Emir",
+   "İsmail Şarabı",
+   "Ismet",
+   "Kalecik",
+   "Öküzgözü",
+   "Okuzgozu IT",
+   "Silinmis",
+   "Şiraz",
+   "Yakut",
+   "Zeytin"
+  ],
+  "tr": [
+   "Ada",
+   "Boğazkere",
+   "Çalkarası",
+   "Dikmen",
+   "Emir",
+   "Ismet",
+   "İsmail Şarabı",
+   "Kalecik",
+   "Okuzgozu IT",
+   "Öküzgözü",
+   "Silinmis",
+   "Şiraz",
+   "Yakut",
+   "Zeytin"
+  ],
+  "none": [
+   "Ada",
+   "Boğazkere",
+   "Çalkarası",
+   "Dikmen",
+   "Emir",
+   "İsmail Şarabı",
+   "Ismet",
+   "Kalecik",
+   "Öküzgözü",
+   "Okuzgozu IT",
+   "Silinmis",
+   "Şiraz",
+   "Yakut",
+   "Zeytin"
+  ]
+ }
+}

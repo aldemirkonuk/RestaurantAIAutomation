@@ -1,0 +1,821 @@
+{
+ "S3": [
+  {
+   "name": "house USD | paper \"USD\"",
+   "ok": true,
+   "posted": [
+    62
+   ],
+   "reason": null,
+   "basisMentionsCurrency": false
+  },
+  {
+   "name": "house USD | paper \"EUR\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice is in EUR and this house keeps its costs in USD; no exchange rate is recorded, so a cost in EUR is not booked as USD. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house USD | paper \"TRY\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice is in TRY and this house keeps its costs in USD; no exchange rate is recorded, so a cost in TRY is not booked as USD. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house USD | paper \"usd\"",
+   "ok": true,
+   "posted": [
+    62
+   ],
+   "reason": null,
+   "basisMentionsCurrency": false
+  },
+  {
+   "name": "house USD | paper \" EUR \"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice is in EUR and this house keeps its costs in USD; no exchange rate is recorded, so a cost in EUR is not booked as USD. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house USD | paper null",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice does not say what currency it is in, and this house keeps its costs in USD. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house USD | paper \"\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice does not say what currency it is in, and this house keeps its costs in USD. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house USD | paper \"TL\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice gives its currency as \"TL\", which is not a currency code, and this house keeps its costs in USD. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house USD | paper \"US$\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice gives its currency as \"US$\", which is not a currency code, and this house keeps its costs in USD. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house USD | paper \"₺\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice gives its currency as \"₺\", which is not a currency code, and this house keeps its costs in USD. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house USD | paper \"XTS\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice gives its currency as \"XTS\", which is not a currency code, and this house keeps its costs in USD. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house NULL | paper \"USD\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house NULL | paper \"EUR\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house NULL | paper \"TRY\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house NULL | paper \"usd\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house NULL | paper \" EUR \"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house NULL | paper null",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house NULL | paper \"\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house NULL | paper \"TL\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house NULL | paper \"US$\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house NULL | paper \"₺\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house NULL | paper \"XTS\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '' | paper \"USD\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '' | paper \"EUR\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '' | paper \"TRY\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '' | paper \"usd\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '' | paper \" EUR \"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '' | paper null",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '' | paper \"\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '' | paper \"TL\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '' | paper \"US$\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '' | paper \"₺\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '' | paper \"XTS\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '  ' | paper \"USD\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '  ' | paper \"EUR\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '  ' | paper \"TRY\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '  ' | paper \"usd\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '  ' | paper \" EUR \"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '  ' | paper null",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '  ' | paper \"\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '  ' | paper \"TL\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '  ' | paper \"US$\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '  ' | paper \"₺\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house '  ' | paper \"XTS\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house 'tl' | paper \"USD\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"tl\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house 'tl' | paper \"EUR\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"tl\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house 'tl' | paper \"TRY\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"tl\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house 'tl' | paper \"usd\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"tl\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house 'tl' | paper \" EUR \"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"tl\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house 'tl' | paper null",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"tl\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house 'tl' | paper \"\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"tl\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house 'tl' | paper \"TL\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"tl\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house 'tl' | paper \"US$\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"tl\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house 'tl' | paper \"₺\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"tl\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house 'tl' | paper \"XTS\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"tl\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ZZZ | paper \"USD\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"ZZZ\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ZZZ | paper \"EUR\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"ZZZ\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ZZZ | paper \"TRY\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"ZZZ\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ZZZ | paper \"usd\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"ZZZ\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ZZZ | paper \" EUR \"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"ZZZ\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ZZZ | paper null",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"ZZZ\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ZZZ | paper \"\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"ZZZ\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ZZZ | paper \"TL\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"ZZZ\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ZZZ | paper \"US$\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"ZZZ\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ZZZ | paper \"₺\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"ZZZ\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ZZZ | paper \"XTS\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house's currency is recorded as \"ZZZ\", which is not a currency code, so no invoice is costed in it yet; correct the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ' try ' | paper \"USD\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice is in USD and this house keeps its costs in TRY; no exchange rate is recorded, so a cost in USD is not booked as TRY. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ' try ' | paper \"EUR\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice is in EUR and this house keeps its costs in TRY; no exchange rate is recorded, so a cost in EUR is not booked as TRY. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ' try ' | paper \"TRY\"",
+   "ok": true,
+   "posted": [
+    62
+   ],
+   "reason": null,
+   "basisMentionsCurrency": false
+  },
+  {
+   "name": "house ' try ' | paper \"usd\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice is in USD and this house keeps its costs in TRY; no exchange rate is recorded, so a cost in USD is not booked as TRY. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ' try ' | paper \" EUR \"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice is in EUR and this house keeps its costs in TRY; no exchange rate is recorded, so a cost in EUR is not booked as TRY. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ' try ' | paper null",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice does not say what currency it is in, and this house keeps its costs in TRY. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ' try ' | paper \"\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice does not say what currency it is in, and this house keeps its costs in TRY. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ' try ' | paper \"TL\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice gives its currency as \"TL\", which is not a currency code, and this house keeps its costs in TRY. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ' try ' | paper \"US$\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice gives its currency as \"US$\", which is not a currency code, and this house keeps its costs in TRY. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ' try ' | paper \"₺\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice gives its currency as \"₺\", which is not a currency code, and this house keeps its costs in TRY. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house ' try ' | paper \"XTS\"",
+   "ok": true,
+   "posted": [],
+   "reason": "its invoice gives its currency as \"XTS\", which is not a currency code, and this house keeps its costs in TRY. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house row missing | paper \"USD\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house row missing | paper \"EUR\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house row missing | paper \"TRY\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house row missing | paper \"usd\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house row missing | paper \" EUR \"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house row missing | paper null",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house row missing | paper \"\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house row missing | paper \"TL\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house row missing | paper \"US$\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house row missing | paper \"₺\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house row missing | paper \"XTS\"",
+   "ok": true,
+   "posted": [],
+   "reason": "this house has not named the currency it keeps its costs in, so no invoice is costed in it yet; name the house's currency and verify the delivery again. The lot stays provisional.",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house read error | paper \"USD\"",
+   "ok": false,
+   "posted": [],
+   "reason": "the currency this house keeps its costs in could not be read: timeout",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house read error | paper \"EUR\"",
+   "ok": false,
+   "posted": [],
+   "reason": "the currency this house keeps its costs in could not be read: timeout",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house read error | paper \"TRY\"",
+   "ok": false,
+   "posted": [],
+   "reason": "the currency this house keeps its costs in could not be read: timeout",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house read error | paper \"usd\"",
+   "ok": false,
+   "posted": [],
+   "reason": "the currency this house keeps its costs in could not be read: timeout",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house read error | paper \" EUR \"",
+   "ok": false,
+   "posted": [],
+   "reason": "the currency this house keeps its costs in could not be read: timeout",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house read error | paper null",
+   "ok": false,
+   "posted": [],
+   "reason": "the currency this house keeps its costs in could not be read: timeout",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house read error | paper \"\"",
+   "ok": false,
+   "posted": [],
+   "reason": "the currency this house keeps its costs in could not be read: timeout",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house read error | paper \"TL\"",
+   "ok": false,
+   "posted": [],
+   "reason": "the currency this house keeps its costs in could not be read: timeout",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house read error | paper \"US$\"",
+   "ok": false,
+   "posted": [],
+   "reason": "the currency this house keeps its costs in could not be read: timeout",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house read error | paper \"₺\"",
+   "ok": false,
+   "posted": [],
+   "reason": "the currency this house keeps its costs in could not be read: timeout",
+   "basisMentionsCurrency": null
+  },
+  {
+   "name": "house read error | paper \"XTS\"",
+   "ok": false,
+   "posted": [],
+   "reason": "the currency this house keeps its costs in could not be read: timeout",
+   "basisMentionsCurrency": null
+  }
+ ],
+ "S3_twoCurrenciesOneItem": {
+  "ok": true,
+  "posted": [],
+  "still": [
+   "its invoice is in EUR and this house keeps its costs in USD; no exchange rate is recorded, so a cost in EUR is not booked as USD. The lot stays provisional."
+  ]
+ },
+ "S3_proposalForeign": {
+  "ok": true,
+  "posted": [],
+  "still": [
+   "the accepted proposal's price 55 is on an invoice not in this house's money: its invoice is in EUR and this house keeps its costs in USD; no exchange rate is recorded, so a cost in EUR is not booked as USD. The lot stays provisional."
+  ]
+ },
+ "S3_proposalUnattached": {
+  "ok": true,
+  "posted": [],
+  "still": [
+   "the invoice prices this item, but not per bottle: an accepted proposal settles a price of 55 but names no invoice line, so what unit that price is for is not known. The lot stays provisional."
+  ]
+ },
+ "S3b": [
+  {
+   "name": "EUR in TRY",
+   "ok": true,
+   "repaired": 0,
+   "flagged": [
+    "its lot was finalised at the printed price 264, and its cost per bottle cannot be said yet: its invoice is in EUR and th"
+   ],
+   "posts": []
+  },
+  {
+   "name": "EUR, house NULL",
+   "ok": true,
+   "repaired": 0,
+   "flagged": [
+    "its lot was finalised at the printed price 264, and its cost per bottle cannot be said yet: this house has not named the"
+   ],
+   "posts": []
+  },
+  {
+   "name": "null paper in USD",
+   "ok": true,
+   "repaired": 0,
+   "flagged": [
+    "its lot was finalised at the printed price 264, and its cost per bottle cannot be said yet: its invoice does not say wha"
+   ],
+   "posts": []
+  }
+ ],
+ "S4": {
+  "eqByTable": {
+   "deliveries": [
+    "deliveries:restaurant_id=11111111",
+    "deliveries:id=dddddddd"
+   ],
+   "inventory_transactions": [
+    "inventory_transactions:delivery_id=dddddddd"
+   ],
+   "document_deliveries": [
+    "document_deliveries:delivery_id=dddddddd"
+   ],
+   "procurement_documents": [
+    "procurement_documents:restaurant_id=11111111"
+   ],
+   "restaurants": [
+    "restaurants:id=11111111"
+   ],
+   "procurement_document_lines": [
+    "procurement_document_lines:restaurant_id=11111111"
+   ],
+   "delivery_proposals": [
+    "delivery_proposals:delivery_id=dddddddd",
+    "delivery_proposals:status=accepted"
+   ]
+  },
+  "foreignFinalise": {
+   "status": 404
+  },
+  "foreignFinish": {
+   "status": 404
+  },
+  "rpcCallsForForeign": 0
+ },
+ "S5": {
+  "noHeader.NULL": {
+   "ok": true,
+   "err": null,
+   "posted": [],
+   "still": [
+    "the totals of the invoice it is on could not be found, so that paper's charges and discount are not known. The lot stays provisional."
+   ]
+  },
+  "proposalOnly.NULL": {
+   "ok": true,
+   "err": null,
+   "posted": [],
+   "still": [
+    "the invoice prices this item, but not per bottle: an accepted proposal settles a price of 55 but names no invoice line, so what unit that pr"
+   ]
+  },
+  "noHeader.USD": {
+   "ok": true,
+   "err": null,
+   "posted": [],
+   "still": [
+    "the totals of the invoice it is on could not be found, so that paper's charges and discount are not known. The lot stays provisional."
+   ]
+  },
+  "proposalOnly.USD": {
+   "ok": true,
+   "err": null,
+   "posted": [],
+   "still": [
+    "the invoice prices this item, but not per bottle: an accepted proposal settles a price of 55 but names no invoice line, so what unit that pr"
+   ]
+  }
+ }
+}
