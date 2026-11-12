@@ -22,7 +22,7 @@
  * Keep switch on each price (the founder, 2026-09-21: "add a section to that
  * where you can lock price"), then "Make it current".
  */
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MENU_CADENCES,
@@ -267,8 +267,15 @@ function stillReading(err: unknown): boolean {
   return (err as { response?: { status?: number } })?.response?.status === 202;
 }
 
-export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onChosen }: {
+export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onChosen, currentMenuId }: {
   canManage: boolean
+  /**
+   * The house's current menu as the host last read it (null: none; left out:
+   * the host does not know). When it moves, the read's line follows it, so a
+   * read chosen here and then replaced from the list stops saying it is the
+   * current menu (browser walk 2026-11-12).
+   */
+  currentMenuId?: string | null
   onRead: () => void
   /** Told when a new read begins, so a host drops what it offered for the last one. */
   onReadStart?: () => void
@@ -325,6 +332,17 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
     setResult(null);
     read.mutate({ again: false });
   };
+
+  useEffect(() => {
+    if (currentMenuId === undefined) return;
+    setResult((cur) => {
+      if (!cur) return cur;
+      const now = currentMenuId === cur.menuId;
+      return cur.current === now ? cur : { ...cur, current: now };
+    });
+    // A sentence about an earlier choice no longer describes the house.
+    setChosen((said) => (said && currentMenuId !== result?.menuId ? null : said));
+  }, [currentMenuId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCurrent = result?.current === true;
 
@@ -553,7 +571,16 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
         Every menu this house reads is kept: the file and the lines it found. Reading one does not change the current
         menu or any price; choosing it does.
       </p>
-      <ReadMenuForm canManage={canManage} onRead={refresh} />
+      <ReadMenuForm
+        canManage={canManage}
+        onRead={refresh}
+        currentMenuId={q.data ? (q.data.current?.menuId ?? null) : undefined}
+        onChosen={() => {
+          // The list's own sentence was about an earlier choice.
+          setSaid(null);
+          setPlanFor(null);
+        }}
+      />
       {said ? (
         <p role="status" className="cl-said" style={{ marginTop: 10 }}>
           {said}

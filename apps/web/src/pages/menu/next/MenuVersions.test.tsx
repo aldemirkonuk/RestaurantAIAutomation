@@ -452,6 +452,33 @@ describe('MenuVersions', () => {
     expect(screen.queryByRole('button', { name: 'Keep it, not current' })).not.toBeInTheDocument();
   });
 
+  it('a read chosen here, then replaced from the list, stops saying it is current (browser walk 2026-11-12)', async () => {
+    const other = version({ menuId: 'm2', extractedAt: local(2026, 9, 19, 9, 0) });
+    let current: MenuVersion | null = null;
+    mockList.mockImplementation(async () => ({ current, lastUsed: null, versions: [other] }));
+    mockImport.mockResolvedValue({ menuId: 'm9', current: false, itemsExtracted: 12, submissionsCreated: 0, items: [] });
+    mockMake.mockImplementation(async (id: string) => {
+      current = version({ menuId: id, current: true });
+      return { outcome: 'made_current', menuId: id, previousMenuIds: [], lines: 1, priceSync: { changed: 1 }, flagged: 0, failed: [] };
+    });
+    mount(true);
+    const file = new File(['name,bottle_price\nOpus,60\n'], 'menu.csv', { type: 'text/csv' });
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Make this the current menu' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    await waitFor(() => expect(screen.getByTestId('menu-read-result')).toHaveTextContent('It is the current menu.'));
+    // Now the other kept menu is chosen from the list.
+    fireEvent.click(await screen.findByRole('button', { name: /^Make the menu read .* current$/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    await waitFor(() => expect(mockMake).toHaveBeenLastCalledWith('m2', 'fp-m2'));
+    await waitFor(() =>
+      expect(screen.getByTestId('menu-read-result')).toHaveTextContent('It is not the current menu, and no price has changed.'),
+    );
+    expect(screen.queryByTestId('menu-choice-said')).not.toBeInTheDocument();
+    expect(screen.getAllByText(/^This is now the current menu/)).toHaveLength(1);
+  });
+
   it('an untagged read sends no cadence and no date -- never a default', async () => {
     mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
     mockImport.mockResolvedValue({ menuId: 'm9', itemsExtracted: 1, submissionsCreated: 0, items: [] });
