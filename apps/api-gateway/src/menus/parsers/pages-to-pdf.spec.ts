@@ -16,6 +16,21 @@ describe("pagesToOneFile — several photos of one menu are one file", () => {
     expect(doc.getPage(0).getSize()).toEqual({ width: 1, height: 1 });
   });
 
+  it("joins the same pages to the same bytes, a minute apart (so a resend reopens its read)", async () => {
+    // pdf-lib stamps the current time unless told not to; move the clock past it.
+    jest.useFakeTimers({ now: new Date("2026-11-11T10:00:00Z"), doNotFake: ["nextTick", "setImmediate", "queueMicrotask"] });
+    try {
+      const first = await pagesToOneFile([PNG, PNG]);
+      jest.setSystemTime(new Date("2026-11-11T10:01:01Z"));
+      const later = await pagesToOneFile([PNG, PNG]);
+      expect(later).toBe(first);
+      // Three pages are another file.
+      expect(await pagesToOneFile([PNG, PNG, PNG])).not.toBe(first);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("refuses no page, an empty page, too many pages, and a page it cannot join, in words", async () => {
     await expect(pagesToOneFile([])).rejects.toThrow(/sent none that could be read/);
     await expect(pagesToOneFile([PNG, ""])).rejects.toThrow(/sent none that could be read/);
