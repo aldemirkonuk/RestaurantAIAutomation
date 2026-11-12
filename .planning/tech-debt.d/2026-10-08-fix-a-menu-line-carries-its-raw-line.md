@@ -12,7 +12,7 @@ So this branch's line read withholds the raw line, but the kept file still reach
 
 ## A dessert wine counts as a kitchen line — CLOSED on `fix/menu-dessert-wine-stays-a-drink` — 2026-11-11 (filed 2026-10-08)
 
-**Closed 2026-11-11.** A known drink section now wins in both tests, and the hints match whole words only (plurals allowed): `menu-line-view.ts` `isKitchenLine` and `firstProof.ts` `isKitchenLine`, with cases in `menu-line-view.spec.ts` and `firstProof.test.ts`. Claim row 5 is resolved. What stays true: with no known section, a raw line naming a hint as a word ("Dish Imports") is still set aside.
+**Closed 2026-11-11.** A known drink section now wins in both tests, and the hints match whole words only (plurals allowed): `menu-line-view.ts` `isKitchenLine` and `firstProof.ts` `isKitchenLine`, with cases in `menu-line-view.spec.ts` and `firstProof.test.ts`. Claim row 5 is resolved. What stays true: with no known section, a raw line naming a hint as a word ("Dish Imports") is still set aside. **Amended 2026-11-11 (fix round of #1069):** 'dessert' is also a course, and the reader takes the category from the section heading, so "Tiramisu" under "Desserts" came back as 'dessert' and was kept as a drink. A 'dessert' line is now a drink only on evidence (a vintage, region, grape or producer, or a dessert-wine word, a year or a cl/ml size in its name or raw line), else a course; claim `A-DESSERT-LINE-IS-A-COURSE-WITHOUT-EVIDENCE`. Still open: a course whose raw line carries a cue ("tart with port reduction") is kept as a drink.
 
 Entry (ii) of this branch. Filed by `fix/a-menu-line-carries-its-raw-line` (#655). Claim: `../decisions/claims.d/fix-a-menu-line-carries-its-raw-line.jsonl:5` (status open).
 

@@ -37,13 +37,43 @@ export function lineNeedsPencil(item: Pick<MenuImportReviewItem, 'matched' | 'ne
 const HINT_WORDS = new RegExp(`(^|[^\\p{L}\\p{N}])(${KITCHEN.join('|')})(s|es)?(?=$|[^\\p{L}\\p{N}])`, 'u')
 
 /**
- * The same test as the gateway's `isKitchenLine` (menu-line-view.ts). A line in
- * a known drink section (VOCABULARY) is never a kitchen line, so a dessert wine
- * stays a drink (QA M18); otherwise a hint, as a whole word, in the section or
- * in the raw line makes it one.
+ * Words that make a line in the 'dessert' section a dessert wine and not a
+ * course. The same list as the gateway's `DESSERT_WINE_CUES`
+ * (menu-line-view.ts); a CLAIMS row keeps the two equal.
  */
-export function isKitchenLine(item: Pick<MenuImportReviewItem, 'category' | 'rawText'>) {
+const DESSERT_WINE_CUES = [
+  'wine', 'vin', 'vino', 'glass', 'bottle', 'sauternes', 'barsac', 'tokaji', 'tokay', 'port', 'porto',
+  'moscato', 'muscat', 'moscatel', 'eiswein', 'icewine', 'ice wine', 'late harvest', 'vin santo',
+  'vin doux', 'pedro ximenez', 'pedro ximénez', 'madeira', 'sherry', 'oloroso', 'banyuls', 'maury',
+  'passito', 'recioto', 'auslese', 'beerenauslese', 'trockenbeerenauslese', 'noble rot',
+]
+
+/** A cue as a whole word, a vintage year, or a pour size ("75cl", "100 ml"). */
+const DESSERT_WINE_WORDS = new RegExp(
+  `(^|[^\\p{L}\\p{N}])((${DESSERT_WINE_CUES.join('|')})s?|(19|20)\\d{2}|\\d+\\s?(cl|ml))(?=$|[^\\p{L}\\p{N}])`,
+  'u',
+)
+
+type KitchenTestLine = Pick<MenuImportReviewItem, 'category' | 'rawText'> &
+  Partial<Pick<MenuImportReviewItem, 'name' | 'producer' | 'vintage' | 'region' | 'grapeVariety'>>
+
+const filled = (v: string | null | undefined) => typeof v === 'string' && v.trim() !== ''
+
+/**
+ * The same test as the gateway's `isKitchenLine` (menu-line-view.ts). A line in
+ * a known drink section (VOCABULARY) is never a kitchen line (QA M18);
+ * otherwise a hint, as a whole word, in the section or in the raw line makes it
+ * one. 'dessert' is both a drink section and a course, so a 'dessert' line is a
+ * drink only on evidence: a vintage, region, grape or producer, or a
+ * dessert-wine word, a vintage year or a pour size in its name or raw line.
+ * "Tiramisu" with none of these is a course.
+ */
+export function isKitchenLine(item: KitchenTestLine) {
   const section = (item.category ?? '').toLowerCase().trim()
+  if (section === 'dessert') {
+    if ([item.vintage, item.region, item.grapeVariety, item.producer].some(filled)) return false
+    return !DESSERT_WINE_WORDS.test(`${item.name ?? ''} ${item.rawText ?? ''}`.toLowerCase())
+  }
   if (VOCABULARY.has(section)) return false
   const hay = `${section} ${item.rawText ?? ''}`.toLowerCase()
   return HINT_WORDS.test(hay)
