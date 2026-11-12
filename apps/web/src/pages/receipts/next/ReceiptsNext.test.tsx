@@ -290,6 +290,55 @@ describe('ReceiptsNext', () => {
     await waitFor(() => expect(container.textContent).toContain('off by $210.10'));
   });
 
+  describe('a case line takes its bottles per case', () => {
+    const caseLine = { ...line, id: 'l2', line_no: 1, description: 'SYN Zeytinyağı koli', uom: 'case', qty: 2, pack_size: 1, qty_bottles: 2 };
+    const bottleLine = { ...line, id: 'l3', line_no: 2, description: 'SYN Domates', uom: 'bottle', qty: 10, pack_size: 1, qty_bottles: 10 };
+
+    it('shows the unit word after the quantity, and a pack cell only on a case line', async () => {
+      api.detail = { document: doc({}), lines: [caseLine, bottleLine], links: [] };
+      render(<ReceiptsNext />, { wrapper });
+      await openFirstDoc();
+      const units = screen.getAllByTestId('line-unit').map((n) => n.textContent);
+      expect(units).toEqual(['cases', 'bottles']);
+      expect(screen.getByLabelText('Bottles per case, line 1')).toBeTruthy();
+      expect(screen.queryByLabelText('Bottles per case, line 2')).toBeNull();
+      // The phone prints each figure under its head (W35): the pack carries "Per".
+      expect((screen.getByLabelText('Bottles per case, line 1').closest('td') as HTMLElement).dataset.label).toBe('Per');
+    });
+
+    it('commits 6 as a sealed packSize edit', async () => {
+      api.detail = { document: doc({}), lines: [caseLine, bottleLine], links: [] };
+      render(<ReceiptsNext />, { wrapper });
+      await openFirstDoc();
+      const pack = screen.getByLabelText('Bottles per case, line 1');
+      fireEvent.change(pack, { target: { value: '6' } });
+      fireEvent.blur(pack);
+      expect(await screen.findByText(/Nothing has been written yet/)).toBeTruthy();
+      expect(api.editLine).not.toHaveBeenCalled();
+      holdToApprove(/Hold to seal this correction/);
+      await waitFor(() =>
+        expect(api.mintLineEditSeal).toHaveBeenCalledWith('d1', 'l2', { packSize: 6 }),
+      );
+      await waitFor(() =>
+        expect(api.editLine).toHaveBeenCalledWith('d1', 'l2', { packSize: 6 }, 'seal-edit'),
+      );
+    });
+
+    it('refuses a pack that is not a whole number of at least one, and stages nothing', async () => {
+      api.detail = { document: doc({}), lines: [caseLine], links: [] };
+      render(<ReceiptsNext />, { wrapper });
+      await openFirstDoc();
+      const pack = screen.getByLabelText('Bottles per case, line 1');
+      for (const bad of ['0', '2.5', '-3']) {
+        fireEvent.change(pack, { target: { value: bad } });
+        fireEvent.blur(pack);
+        expect(pack.getAttribute('aria-invalid')).toBe('true');
+      }
+      expect(screen.queryByText(/Nothing has been written yet/)).toBeNull();
+      expect(api.editLine).not.toHaveBeenCalled();
+    });
+  });
+
   it('locks the lines of a verified document, with the reason in words', async () => {
     api.queue = [doc({ status: 'verified' as ProcurementDocument['status'] })];
     api.detail = { document: api.queue[0], lines: [line], links: [] };
@@ -1183,7 +1232,7 @@ describe('ReceiptsNext — at phone width', () => {
     expect(row.getAttribute('role')).toBe('row');
     const cells = [...row.querySelectorAll('td')];
     expect(cells.every((td) => td.getAttribute('role') === 'cell')).toBe(true);
-    expect(cells.map((td) => td.dataset.cell)).toEqual(['line', 'qty', 'unit_price', 'line_total', 'order']);
+    expect(cells.map((td) => td.dataset.cell)).toEqual(['line', 'qty', 'pack_size', 'unit_price', 'line_total', 'order']);
     expect(cells.filter((td) => td.dataset.label).map((td) => td.dataset.label)).toEqual([
       'Qty',
       'Unit',
