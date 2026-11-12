@@ -4,7 +4,8 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { offsetMinutesOf } from '../../lib/zoneForPlace'
 
-const { navigate, createFirstHouse, patch, placeProps, nextPlace, browserZone } = vi.hoisted(() => ({
+const { navigate, createFirstHouse, patch, placeProps, nextPlace, browserZone, maps } = vi.hoisted(() => ({
+  maps: { on: true },
   navigate: vi.fn(),
   createFirstHouse: vi.fn(),
   patch: vi.fn(),
@@ -32,7 +33,7 @@ vi.mock('../../services/api/client', async (importOriginal) => ({
 vi.mock('../../services/api/menus', () => ({ importMenu: vi.fn() }))
 vi.mock('../../lib/browserTimezone', () => ({ getBrowserTimezone: () => browserZone.current }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
-vi.mock('../../lib/googleMaps', () => ({ isMapsConfigured: () => false }))
+vi.mock('../../lib/googleMaps', () => ({ isMapsConfigured: () => maps.on }))
 vi.mock('../../components/ui/PlacesAutocomplete', () => ({
   PlacesAutocomplete: (props: { onPlaceSelect: (place: unknown) => void }) => {
     placeProps.current = props as unknown as Record<string, unknown>
@@ -78,6 +79,7 @@ const place = (over: Record<string, unknown>) => ({
 beforeEach(() => {
   vi.clearAllMocks()
   browserZone.current = 'America/New_York'
+  maps.on = true
   sessionStorage.clear()
   createFirstHouse.mockResolvedValue({ detailsLoaded: true })
   patch.mockResolvedValue({})
@@ -126,13 +128,16 @@ describe('GetStarted: the place fills the house', () => {
   })
 
   it('a changed name is saved before the house opens; Maps off names no setting', async () => {
-    nextPlace.current = place({})
+    maps.on = false
     render(page())
     expect(screen.getByText('Search is off here; type the address.')).toBeInTheDocument()
     expect(document.body.textContent).not.toContain('VITE_')
     fireEvent.click(screen.getByRole('button', { name: 'Change your name' }))
     fireEvent.change(screen.getByLabelText('Your name'), { target: { value: 'Selin K.' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Pick the place' }))
+    fireEvent.change(screen.getByLabelText('Restaurant name'), { target: { value: 'Meyhane' } })
+    fireEvent.change(screen.getByLabelText('Address'), { target: { value: '1 House Street' } })
+    fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Istanbul' } })
+    fireEvent.change(screen.getByLabelText('Country'), { target: { value: 'Türkiye' } })
     fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
     await screen.findByRole('heading', { name: 'Your menu' })
     expect(patch).toHaveBeenCalledWith('/auth/me', { name: 'Selin K.' })
@@ -176,5 +181,25 @@ describe('GetStarted: the place fills the house', () => {
     fireEvent.click(screen.getByRole('button', { name: 'This is us' }))
     await screen.findByRole('heading', { name: 'Your menu' })
     expect(createFirstHouse).toHaveBeenCalledWith(expect.objectContaining({ timezone: 'America/New_York', country: 'United States' }))
+  })
+
+  // Walk 2026-11-11: with Maps off the find box and "Use my location" were
+  // still drawn; the location button then said to search by name, which
+  // there is no way to do. Neither is drawn; the typed fields are the form.
+  it('Maps off draws no find box and no location button', () => {
+    maps.on = false
+    render(page())
+    expect(screen.queryByRole('button', { name: 'Pick the place' })).toBeNull()
+    expect(screen.queryByText('Find your restaurant')).toBeNull()
+    expect(screen.queryByRole('button', { name: /Use my location/ })).toBeNull()
+    expect(screen.queryByText(/Find the exact place/)).toBeNull()
+    expect(screen.getByLabelText('Address')).toBeInTheDocument()
+  })
+
+  it('Maps on still draws the find box and the location button', () => {
+    render(page())
+    expect(screen.getByRole('button', { name: 'Pick the place' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Use my location/ })).toBeInTheDocument()
+    expect(screen.getByText(/Find the exact place/)).toBeInTheDocument()
   })
 })

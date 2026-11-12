@@ -133,6 +133,7 @@ export default function GetStarted() {
   const [dropping, setDropping] = useState(false)
 
   const currency = useMemo(() => currencyForCountry(country), [country])
+  const mapsOn = isMapsConfigured()
   // The house's clock comes from the place, not the browser (OB-7, F7): a
   // one-zone country names it; else the browser zone when its offset matches
   // the place; else the person picks. Never a made-up default (item 62):
@@ -375,14 +376,23 @@ export default function GetStarted() {
           </label>
         )}
         <p className="mt-3 max-w-xl text-[#6d685f]">
-          Find the exact place. Its address sets the house&apos;s clock and reporting currency.
+          {mapsOn
+            ? "Find the exact place. Its address sets the house's clock and reporting currency."
+            : "Its country sets the house's clock and reporting currency."}
         </p>
-        {!isMapsConfigured() && (
+        {!mapsOn && (
           <p role="status" className="mt-4 text-sm text-[#6d685f]">
             Search is off here; type the address.
           </p>
         )}
         <div className="mt-9 space-y-5">
+          {/* Maps off (walk 2026-11-11): the find box was still drawn, bound to
+              the same address as the field below, and "Use my location" only
+              centres a search that does not exist; its failure line then said
+              "Search by name or address instead". Both are drawn only when the
+              search runs; the typed fields are the whole form otherwise. */}
+          {mapsOn && (
+          <>
           <label htmlFor="arrival-place" className="block">
             <span className="text-xs uppercase tracking-wider">Find your restaurant</span>
             <PlacesAutocomplete
@@ -405,6 +415,8 @@ export default function GetStarted() {
             <MapPin className="h-4 w-4" /> Use my location
           </button>
           {locationStatus && <p role="status" className="text-xs text-[#6d685f]">{locationStatus}</p>}
+          </>
+          )}
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="border-b border-[#211f1b]/25 pb-2">
               <span className="text-xs uppercase tracking-wider">Restaurant name · required</span>
