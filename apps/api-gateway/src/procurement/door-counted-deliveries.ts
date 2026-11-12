@@ -24,8 +24,8 @@
  *
  * WHAT IT SAYS. `countedQtyBottles` is the door count's own `qty_bottles`, summed
  * over the lines that state one. A line in a unit with no bottle figure (a keg,
- * a liter, a weight; its `qty_bottles` is the column's default 0) is not added
- * in, never grams to bottles; `linesWithoutBottles` says how many.
+ * a liter, a weight; its `qty_bottles` is that count in its own unit) is not
+ * added in, never grams to bottles; `linesWithoutBottles` says how many.
  *
  * READS ARE BOUNDED AND SAY SO (ADR 0051). Open deliveries are read newest
  * first, at most `OPEN_DELIVERY_CAP`; the line read is chunked under PostgREST's
@@ -54,11 +54,11 @@ const MAX_ROWS = 1000;
 
 /**
  * Units with no bottle figure (`document-types.ts` `comparableUnits` keeps
- * keg and liter opaque; `kg` is listed ahead of the weight unit, R8). Their
- * `qty_bottles` is the column default 0, not a count, so the line is named
- * apart instead of being added in as nothing.
+ * keg and liter opaque; `kg` and `g` are the weights R8 adds). `toBottles`
+ * passes their count through 1:1, so `qty_bottles` holds kegs, liters or a
+ * weight, not bottles: the line is named apart, never added in.
  */
-const NO_BOTTLE_FIGURE: ReadonlySet<string> = new Set(["keg", "liter", "kg"]);
+const NO_BOTTLE_FIGURE: ReadonlySet<string> = new Set(["keg", "liter", "kg", "g"]);
 
 const STALE_AFTER_HOURS = 12;
 const OVERDUE_AFTER_HOURS = 48;

@@ -75,8 +75,8 @@ const base = (): Tables => ({
   ],
   procurement_document_lines: [
     { document_id: "c1", qty_bottles: 10, uom: "bottle" },
-    // A keg line carries the column default 0: named apart, not counted as 0 bottles.
-    { document_id: "c1", qty_bottles: 0, uom: "keg" },
+    // A keg line's qty_bottles is its kegs (toBottles passes them through): named apart, never added.
+    { document_id: "c1", qty_bottles: 2, uom: "keg" },
     { document_id: "c1", qty_bottles: "12" },
     // A weight line: no bottle figure, never added to bottles.
     { document_id: "c2", qty_bottles: 6 },
