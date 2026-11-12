@@ -42,6 +42,7 @@ function makeFakeSupabase(
     // reads the inserted rows back; the fake appends them to the table so a
     // later read sees them, same as the real write.
     let inserted: Row[] | null = null;
+    let insertError: { code: string; message: string } | null = null;
     const extra: Array<(r: Row) => boolean> = [];
     // `tables.__readFails = [{ <table>: "<message>" }]` makes every READ of
     // that table fail with the message (writes still land), so a test can
@@ -98,6 +99,23 @@ function makeFakeSupabase(
       },
       insert(rows: Row | Row[]) {
         const list = Array.isArray(rows) ? rows : [rows];
+        // uq_restaurant_menus_one_read_of_a_file_at_a_time: one read under way
+        // per house, file and labels (migration 20270722100000).
+        const key = (r: Row) =>
+          [r.restaurant_id, r.source_sha256, r.cadence ?? "", r.menu_date ?? "", r.menu_date_precision ?? ""].join("|");
+        if (
+          table === "restaurant_menus" &&
+          list.some(
+            (r) =>
+              r.read_state === "reading" &&
+              r.source_sha256 &&
+              (tables[table] || []).some((o) => o.read_state === "reading" && o.source_sha256 && key(o) === key(r)),
+          )
+        ) {
+          insertError = { code: "23505", message: 'duplicate key value violates unique constraint "uq_restaurant_menus_one_read_of_a_file_at_a_time"' };
+          inserted = [];
+          return api;
+        }
         inserted = list.map((r) => ({
           id: `${table}-${++seq}`,
           created_at: "2026-09-21T10:00:00.000Z",
@@ -107,6 +125,7 @@ function makeFakeSupabase(
         return api;
       },
       single: async () => {
+        if (insertError) return { data: null, error: insertError };
         const rows = inserted ?? matching();
         return { data: rows[0] ?? null, error: null };
       },
@@ -1599,6 +1618,100 @@ describe("MenusService — a scan reads in the background (founder 2026-11-07)",
     expect(calls).toBe(1);
   });
 
+  it("two sends of the same file AT ONCE (both pass the look-up before either keeps a version) make one version and one read", async () => {
+    const tables = base();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async () => {
+          calls++;
+          await gate;
+          return { items: [{ name: "Opus One" }], warnings: [] };
+        },
+      },
+    });
+    const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any;
+    // Both look before either inserts: the look-up alone cannot tell them apart.
+    const look = jest.spyOn(service as any, "sameFileRead");
+    const [a, b] = await Promise.all([service.importMenu(dto, "user-1"), service.importMenu(dto, "user-1")]);
+    expect(look.mock.calls.filter((c) => !(c[3] as any)?.readingOnly)).toHaveLength(2);
+    expect(b.menuId).toBe(a.menuId);
+    expect(b.reading).toBe(true);
+    expect(tables.restaurant_menus.filter((m) => m.id !== "menu-old")).toHaveLength(1);
+    release();
+    await service.whenRead(a.menuId);
+    expect(calls).toBe(1);
+  });
+
+  it("a reopened read is said as it is NOW: a line discarded since is gone, a corrected price is the corrected one", async () => {
+    const tables = base();
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async () => ({
+          items: [
+            { name: "Opus One", bottle_price: 62 },
+            { name: "Misread Line", bottle_price: 1 },
+          ],
+          warnings: [],
+        }),
+      },
+    });
+    const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any;
+    const first = await service.importMenu(dto, "user-1");
+    await service.whenRead(first.menuId);
+    const lines = tables.menu_items.filter((l) => l.menu_id === first.menuId);
+    lines.find((l) => l.name === "Misread Line")!.status = "discarded";
+    lines.find((l) => l.name === "Opus One")!.bottle_price = 70;
+    const again = await service.importMenu(dto, "user-1");
+    expect(again.menuId).toBe(first.menuId);
+    expect(again.reopened).toBeDefined();
+    expect(again.items).toHaveLength(1);
+    expect(again.items[0]).toMatchObject({ name: "Opus One", bottlePrice: 70, matched: true });
+    // What the read found stays what it found.
+    expect(again.itemsExtracted).toBe(2);
+  });
+
+  it("the same file for another day is its own version; an upload naming no label reopens the labelled one", async () => {
+    const tables = base();
+    const { seen, parser } = reads();
+    const service = makeService(tables, { wineSubmissions, scanParser: parser });
+    const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1", menuDate: "2026-11-11" } as any;
+    const monday = await service.importMenu(dto, "user-1");
+    await service.whenRead(monday.menuId);
+    const tuesday = await service.importMenu({ ...dto, menuDate: "2026-11-12" }, "user-1");
+    await service.whenRead(tuesday.menuId);
+    expect(tuesday.menuId).not.toBe(monday.menuId);
+    expect(tuesday.reopened).toBeUndefined();
+    expect(tables.restaurant_menus.find((m) => m.id === tuesday.menuId)!.menu_date).toBe("2026-11-12");
+    expect(seen).toHaveLength(2);
+    const unlabelled = await service.importMenu({ ...dto, menuDate: undefined }, "user-1");
+    expect(unlabelled.reopened).toBeDefined();
+    expect(seen).toHaveLength(2);
+  });
+
+  it("a retired menu sent again is read as a new version; the current one reopens saying it is current", async () => {
+    const tables = base();
+    const { seen, parser } = reads();
+    const service = makeService(tables, { wineSubmissions, scanParser: parser });
+    const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any;
+    const first = await service.importMenu(dto, "user-1");
+    await service.whenRead(first.menuId);
+    const row = tables.restaurant_menus.find((m) => m.id === first.menuId)!;
+    row.status = "active";
+    const current = await service.importMenu(dto, "user-1");
+    expect(current).toMatchObject({ menuId: first.menuId, current: true });
+    row.status = "archived";
+    const fresh = await service.importMenu(dto, "user-1");
+    await service.whenRead(fresh.menuId);
+    expect(fresh.menuId).not.toBe(first.menuId);
+    expect(fresh.reopened).toBeUndefined();
+    expect(seen).toHaveLength(2);
+  });
+
   it("a read that breaks after its lines were kept drops them and ends FAILED in words; it can never be made current", async () => {
     const tables = base();
     const service = makeService(tables, { wineSubmissions, scanParser: reads().parser });
@@ -1612,7 +1725,37 @@ describe("MenusService — a scan reads in the background (founder 2026-11-07)",
       "The read stopped with an error, and nothing from it was kept but the file: progress table down.",
     );
     expect(tables.menu_items.filter((l) => l.menu_id === r.menuId)).toHaveLength(0);
+    // The library submission made for its line goes with it: nothing points back to it.
+    expect(tables.master_wine_library_submissions).toHaveLength(0);
     await expect(service.planFor("rest-1", r.menuId)).rejects.toThrow(/This read failed/);
+  });
+
+  it("a read the sweep already ended stays FAILED when it finishes late, and keeps no line or submission", async () => {
+    const tables = base();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async () => {
+          await gate;
+          return { items: [{ name: "Opus One", bottle_price: 62 }], warnings: [] };
+        },
+      },
+    });
+    const r = await service.importMenu({ method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any, "user-1");
+    // Another server (or the half-hour sweep) took this read for stopped.
+    Object.assign(tables.restaurant_menus.find((m) => m.id === r.menuId)!, {
+      read_state: "failed",
+      read_failure: "The read stopped before it finished.",
+    });
+    release();
+    await service.whenRead(r.menuId);
+    const read = await service.readStatus("rest-1", r.menuId);
+    expect(read.state).toBe("failed");
+    expect(read.reply).toBeNull();
+    expect(tables.menu_items.filter((l) => l.menu_id === r.menuId)).toHaveLength(0);
+    expect(tables.master_wine_library_submissions).toHaveLength(0);
   });
 
   it("a read nobody is reading any more (a restart) is said to have FAILED when the house's menus are next read", async () => {
@@ -1624,11 +1767,17 @@ describe("MenusService — a scan reads in the background (founder 2026-11-07)",
       read_state: "reading",
       extracted_at: new Date(Date.now() - 31 * 60 * 1000).toISOString(),
     });
+    // It had kept a line and its submission before the server stopped.
+    tables.master_wine_library_submissions.push({ id: "sub-stuck", restaurant_id: "rest-1" });
+    tables.menu_items.push({ id: "line-stuck", menu_id: "menu-stuck", restaurant_id: "rest-1", submission_id: "sub-stuck" });
     const service = makeService(tables, { wineSubmissions });
     const listed = await service.listVersions("rest-1");
     const v = listed.versions.find((x) => x.menuId === "menu-stuck")!;
     expect(v.readState).toBe("failed");
     expect(v.readFailure).toMatch(/stopped before it finished/);
+    // A stopped read keeps no half of what it wrote, as a failed one does.
+    expect(tables.menu_items.filter((l) => l.menu_id === "menu-stuck")).toHaveLength(0);
+    expect(tables.master_wine_library_submissions).toHaveLength(0);
   });
 });
 
