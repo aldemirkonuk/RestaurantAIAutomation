@@ -175,6 +175,62 @@ describe("DocumentsController.canonicalDocument", () => {
     expect(res.failedRead.join(" ")).toContain("connection reset");
   });
 
+  it("passes the reader's own sentences and the e-invoice record through", async () => {
+    mockMaybeSingle.mockResolvedValue({
+      data: {
+        storage_path: "rest-1/documents/abc/fatura.xml",
+        content_type: "application/xml",
+        status: "needs_review",
+        intake_verdict: null,
+        intake_reason: null,
+        source_channel: "email",
+        extraction_model: null,
+        sha256: "abc",
+        created_at: "2026-08-14T09:12:00Z",
+        warnings: ["Line 2: the file counts in cases (BX) and does not say how many are in one.", 7],
+        einvoice: { kind: "e-fatura", profile: "TICARIFATURA", typeCode: "SATIS", signed: true, signatureChecked: false },
+      },
+      error: null,
+    });
+    const res: any = await controller.canonicalDocument("doc-1", user);
+    expect(res.intake.warnings).toEqual([
+      "Line 2: the file counts in cases (BX) and does not say how many are in one.",
+    ]);
+    // Only what the page shows; `signatureChecked` is not echoed.
+    expect(res.intake.einvoice).toEqual({
+      kind: "e-fatura",
+      profile: "TICARIFATURA",
+      typeCode: "SATIS",
+      signed: true,
+    });
+  });
+
+  it("caps the reader's sentences at twenty", async () => {
+    mockMaybeSingle.mockResolvedValue({
+      data: { warnings: Array.from({ length: 30 }, (_, i) => `w${i}`), created_at: "2026-08-14T09:12:00Z" },
+      error: null,
+    });
+    const res: any = await controller.canonicalDocument("doc-1", user);
+    expect(res.intake.warnings).toHaveLength(20);
+  });
+
+  it("reads a non-array warnings value and a non-object einvoice as null, not as empty", async () => {
+    mockMaybeSingle.mockResolvedValue({
+      data: { warnings: "boom", einvoice: "x", created_at: "2026-08-14T09:12:00Z" },
+      error: null,
+    });
+    const res: any = await controller.canonicalDocument("doc-1", user);
+    expect(res.intake.warnings).toBeNull();
+    expect(res.intake.einvoice).toBeNull();
+  });
+
+  it("asks the database for both, aliased out of extracted", async () => {
+    await controller.canonicalDocument("doc-1", user);
+    const sel = mockChain.select.mock.calls.map((c: any[]) => c[0]).join(" ");
+    expect(sel).toContain("warnings:extracted->warnings");
+    expect(sel).toContain("einvoice:extracted->einvoice");
+  });
+
   it("says WHY the original is missing rather than only that it is", async () => {
     mockMaybeSingle.mockResolvedValue({
       data: { storage_path: null, content_type: null, filename: null },

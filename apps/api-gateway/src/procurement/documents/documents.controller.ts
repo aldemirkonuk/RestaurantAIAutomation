@@ -137,6 +137,34 @@ function requireUuid(value: string, label: string): void {
   );
 }
 
+const MAX_READER_WARNINGS = 20;
+
+/** `extracted.warnings` as strings, at most 20; null when absent or not an array. */
+export function readerWarnings(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  return raw
+    .filter((w): w is string => typeof w === "string")
+    .slice(0, MAX_READER_WARNINGS);
+}
+
+/** `extracted.einvoice`'s display fields; null when absent or not an object. */
+export function readerEinvoice(raw: unknown): {
+  kind: string;
+  profile: string | null;
+  typeCode: string | null;
+  signed: boolean;
+} | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const e = raw as Record<string, unknown>;
+  if (typeof e.kind !== "string") return null;
+  return {
+    kind: e.kind,
+    profile: typeof e.profile === "string" ? e.profile : null,
+    typeCode: typeof e.typeCode === "string" ? e.typeCode : null,
+    signed: e.signed === true,
+  };
+}
+
 /**
  * Vendor documents — upload, review, and the four-way match's evidence base.
  *
@@ -562,7 +590,7 @@ export class DocumentsController {
          * put it.
          */
         .select(
-          "storage_path, content_type, status, intake_verdict, intake_reason, source_channel, extraction_model, sha256, created_at",
+          "storage_path, content_type, status, intake_verdict, intake_reason, source_channel, extraction_model, sha256, created_at, warnings:extracted->warnings, einvoice:extracted->einvoice",
         )
         .eq("id", id)
         .eq("restaurant_id", user.restaurantId)
@@ -635,6 +663,19 @@ export class DocumentsController {
         extractionModel: (row?.extraction_model as string) ?? null,
         sha256: (row?.sha256 as string) ?? null,
         createdAt: (row?.created_at as string) ?? null,
+        /**
+         * The reader's own sentences, as intake wrote them to
+         * `extracted.warnings` (a DOCTYPE refusal, a case line with no pack
+         * size, the buyer and tax-number checks). A paper that arrived by email
+         * has no upload outcome line, so without this nobody ever sees them.
+         * NULL when absent or not an array — never a guess. This read already
+         * returns every amount on the document to any signed-in person at the
+         * house (it holds no money gate), so a sentence that quotes one adds
+         * nothing the sheet beside it does not show.
+         */
+        warnings: readerWarnings(row?.warnings),
+        /** How an e-invoice was read: the file's own kind, profile and type code. */
+        einvoice: readerEinvoice(row?.einvoice),
       },
       // Things that are true about this READ rather than about the document:
       // a schema lag, a partial failure. Absent when there is nothing to say.

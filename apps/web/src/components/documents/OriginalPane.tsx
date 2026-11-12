@@ -55,7 +55,7 @@ export interface OriginalPaneProps {
 }
 
 /** The gateway's reason when no file was ever stored (`signOriginal`). */
-const NOTHING_STORED = /^no original was stored/i
+export const NOTHING_STORED = /^no original was stored/i
 
 /**
  * A NAMED BOX, LIKE THE PROVENANCE UNDER IT (walk-through W11, 2026-10-01).

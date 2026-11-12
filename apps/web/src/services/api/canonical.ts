@@ -326,6 +326,18 @@ export interface CanonicalDocumentResponse {
     extractionModel: string | null;
     sha256: string | null;
     createdAt: string | null;
+    /**
+     * The reader's own sentences from intake (`extracted.warnings`), as
+     * written. `null` = none recorded; the page never writes its own.
+     */
+    warnings?: string[] | null;
+    /** How an e-invoice was read: the file's own kind, profile and type code. */
+    einvoice?: {
+      kind: string;
+      profile: string | null;
+      typeCode: string | null;
+      signed: boolean;
+    } | null;
   };
   /**
    * `null` = the log could not be read and `failedRead` says so; `[]` = nobody

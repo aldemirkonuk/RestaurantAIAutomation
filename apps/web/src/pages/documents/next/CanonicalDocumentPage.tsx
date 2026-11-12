@@ -77,6 +77,7 @@ import {
   printedVintageOf,
   sourceSentence,
 } from '../../../components/documents'
+import { NOTHING_STORED } from '../../../components/documents/OriginalPane'
 import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
@@ -630,6 +631,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
             verdict={res.intake.verdict}
             verdictReason={res.intake.reason}
             lineCount={doc.layer1.lines.length}
+            originalStored={!NOTHING_STORED.test(res.original.reason ?? '')}
           />
         </div>
       )}
@@ -754,11 +756,36 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               Arrived by {res.intake.sourceChannel ?? 'an unrecorded channel'} ·{' '}
               {res.intake.extractionModel ? (
                 <span title={res.intake.extractionModel}>read automatically</span>
+              ) : res.intake.einvoice ? (
+                /* An e-invoice is read field by field, so it has no model by
+                   design — its record is the file's own kind and profile. */
+                <span data-testid="einvoice-provenance">
+                  {`read from the ${res.intake.einvoice.kind} file as written (${[
+                    res.intake.einvoice.profile,
+                    res.intake.einvoice.typeCode,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}); ${
+                    res.intake.einvoice.signed
+                      ? 'its signature is present but was not checked'
+                      : 'it carries no signature'
+                  }`}
+                </span>
               ) : (
                 'no record of how it was read'
               )}
               .
             </p>
+            {res.intake.warnings && res.intake.warnings.length > 0 && (
+              <div data-testid="reader-warnings" style={{ margin: '4px 0 0' }}>
+                <span style={{ fontWeight: 600 }}>What the reader noted</span>
+                <ul style={{ margin: '2px 0 0', paddingLeft: 16 }}>
+                  {res.intake.warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <p style={{ margin: '2px 0 0', fontFamily: MONO, fontSize: 9.5 }}>
               version {doc.revision} · file fingerprint {res.intake.sha256?.slice(0, 8) ?? '—'}…
               {doc.jurisdiction ? ` · ${doc.jurisdiction}` : ''}
