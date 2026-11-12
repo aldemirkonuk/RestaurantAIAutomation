@@ -6157,12 +6157,17 @@ export class ProcurementService {
       // is a legitimate outcome — every bottle from this delivery has already
       // been poured — but "the correction covered no bottles" and "the
       // correction covered them all" must not look identical in the log.
+      // Since a_verified_invoice_settles_sold_bottles the bottles already
+      // sold from these lots are settled to the verified cost too
+      // (draws_settled), so a sold-out delivery can still correct cost.
       const covered = (receipt as any)?.lots_revalued ?? 0;
       const matched = (receipt as any)?.lots_matched ?? 0;
+      const settled = (receipt as any)?.draws_settled ?? 0;
       if (matched === 0) {
         this.logger.warn(
           `verifyReceipt: no live lot from order ${orderId} remains for ${inventoryId}, ` +
-            `so the verified unit cost ${unitCost} was recorded on the order but corrected no stock.`,
+            `so the verified unit cost ${unitCost} corrected no stock on hand; ` +
+            `it settled ${settled} earlier sale(s) of it.`,
         );
       } else {
         this.logger.log({
@@ -6173,6 +6178,7 @@ export class ProcurementService {
           lotsMatched: matched,
           lotsRevalued: covered,
           bottlesRevalued: (receipt as any)?.bottles_revalued ?? 0,
+          salesSettled: settled,
         });
       }
     }
