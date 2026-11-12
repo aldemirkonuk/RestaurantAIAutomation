@@ -86,6 +86,14 @@ export interface LandedCostLineInput {
   stocked?: boolean;
   /** Lines with the same key are one item: their cost per bottle is pooled. */
   item_key?: string | null;
+  /**
+   * The unit `listed_bottles` and `accepted_bottles` count, in words only: the
+   * caller has already converted. Absent is `bottle`. A weighed line costed per
+   * one of its item's unit (R8) passes that unit (`g`, `kg`, `mg`), so the
+   * sentences say "3000 grams … 0.45 a gram", never "3000 bottles" (browser
+   * walk 2026-11-12).
+   */
+  unit?: string | null;
 }
 
 export interface LandedCostInput {
@@ -116,6 +124,8 @@ export interface CostedLine {
   accepted_landed_value: number;
   /** Null when no bottle was accepted from this line. */
   landed_cost_per_bottle: number | null;
+  /** The noun its counts are in: `bottle`, `gram`, `keg`, … (`unitNoun`). */
+  unit: string;
   basis: string;
 }
 
@@ -183,6 +193,31 @@ const isNum = (n: unknown): n is number =>
   typeof n === "number" && Number.isFinite(n);
 const plural = (n: number, word: string): string =>
   `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/**
+ * The noun a count is said in. A unit symbol a house item is kept in reads as
+ * its word ("3000 grams", "0.45 a gram"); a container reads as itself; nothing
+ * stated is a bottle, as every caller before R8 meant.
+ */
+export function unitNoun(unit: string | null | undefined): string {
+  switch (unit) {
+    case "g":
+    case "gram":
+      return "gram";
+    case "kg":
+    case "kilogram":
+      return "kilogram";
+    case "mg":
+    case "milligram":
+      return "milligram";
+    case "keg":
+      return "keg";
+    case "liter":
+      return "liter";
+    default:
+      return "bottle";
+  }
+}
 
 /**
  * Share `total` (money) over `weights` in whole cents, by largest remainder:
@@ -527,13 +562,14 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
     const r = reconcileLineValue(line);
     if (!r.ok) return { line, kind: "unresolved", sentence: r.sentence };
     const { listed_bottles: listed, accepted_bottles: accepted } = line;
+    const u = unitNoun(line.unit);
     const why =
       !isNum(listed) || listed <= 0
-        ? "does not say how many bottles it lists"
+        ? `does not say how many ${u}s it lists`
         : !isNum(accepted) || accepted < 0
-          ? "has an accepted count that is not a number of bottles"
+          ? `has an accepted count that is not a number of ${u}s`
           : accepted > listed
-            ? `lists ${plural(listed, "bottle")} but ${accepted} were accepted; the extra bottles have no price on this paper`
+            ? `lists ${plural(listed, u)} but ${accepted} were accepted; the extra ${u}s have no price on this paper`
             : null;
     if (why) {
       return {
@@ -642,10 +678,11 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
       ...(charge_share !== 0 || discount_share !== 0 ? headerStamps : []),
     ]);
 
+    const u = unitNoun(x.line.unit);
     const said: string[] = [`Line ${line_no} is worth ${m(x.net)}: ${x.how}.`];
     if (x.net === 0)
       said.push(
-        `It is free goods: its bottles add no value and dilute the item's cost.`,
+        `It is free goods: its ${u}s add no value and dilute the item's cost.`,
       );
     else said.push(`For cost, ${x.tax.said}: ${m(cost_value)}.`);
     const headerSaid = (t: TaxTreated) => (t.ok ? `; ${t.said}` : "");
@@ -664,13 +701,13 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
     if (accepted < listed) {
       const short = listed - accepted;
       said.push(
-        `${accepted} of ${plural(listed, "bottle")} were accepted; the ${short} not accepted are left out of cost.`,
+        `${accepted} of ${plural(listed, u)} were accepted; the ${short} not accepted are left out of cost.`,
       );
     }
     said.push(
       perBottle == null
-        ? `No bottle was accepted, so there is no cost per bottle.`
-        : `Landed cost ${m(perBottle)} a bottle.`,
+        ? `No ${u} was accepted, so there is no cost per ${u}.`
+        : `Landed cost ${m(perBottle)} a ${u}.`,
     );
 
     return {
@@ -689,6 +726,7 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
       accepted_bottles: accepted,
       accepted_landed_value,
       landed_cost_per_bottle: perBottle,
+      unit: u,
       basis: said.join(" "),
     };
   });
@@ -707,6 +745,16 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
     if (open)
       return { item_key, status: "unresolved", unresolved: open.unresolved };
     const costed = mine as CostedLine[];
+    // One item is kept in one unit (ADR 0070): lines counted in two units
+    // cannot share one cost per unit, and adding them would add grams to bottles.
+    const units = [...new Set(costed.map((l) => l.unit))];
+    if (units.length > 1)
+      return {
+        item_key,
+        status: "unresolved",
+        unresolved: `This item's lines count it in ${units.map((x) => `${x}s`).join(" and ")}, and one cost per unit cannot cover both.`,
+      };
+    const u = units[0] ?? "bottle";
     const bottles = costed.reduce((s, l) => s + l.accepted_bottles, 0);
     const value = costed.reduce((s, l) => s + l.accepted_landed_value, 0);
     const perBottle = bottles > 0 ? value / bottles : null;
@@ -719,8 +767,8 @@ export function landedCost(input: LandedCostInput): LandedCostResult {
       cost_tax_basis: sameStamp(costed.map((l) => l.cost_tax_basis)),
       basis:
         perBottle == null
-          ? `No bottle of this item was accepted from this paper.`
-          : `${plural(bottles, "bottle")} accepted across ${plural(costed.length, "line")}, landed at ${m(value)}: ${m(perBottle)} a bottle.`,
+          ? `No ${u} of this item was accepted from this paper.`
+          : `${plural(bottles, u)} accepted across ${plural(costed.length, "line")}, landed at ${m(value)}: ${m(perBottle)} a ${u}.`,
     };
   });
 

@@ -356,3 +356,55 @@ describe("a paper not in the house's money is never costed as the house's (QA ro
     expect(r.papers[0].leftOut).toMatch(/^Nothing on it was costed: /);
   });
 });
+
+describe("a weighed item's landed cost is said in its own unit (browser walk 2026-11-12)", () => {
+  // As the door's finalise feeds it (#1109 `inItemUnits`): 3 KGM @ 450 into a
+  // cheese kept in g is listed as 3000 and costed per gram by the gatekeeper.
+  function weighed(over: Partial<PaperLineRow> = {}): PaperLine {
+    const r = row({ qty_bottles: 3000, uom: "kg", unit_price: 450, line_total: 1350, ...over });
+    return {
+      row: r,
+      cost: perBottleLotCost(
+        { unit_price: 450, uom: "kg", pack_size: 1, price_base_qty: null, price_base_uom: null, qty_bottles: 3, line_total: 1350 },
+        { uom: "g" },
+      ),
+    };
+  }
+
+  it("says grams, not bottles, and still posts 0.45 a gram for 1350", () => {
+    const r = run({}, [weighed()], { [A]: 3000 });
+    const p = r.byItem.get(A);
+    expect(p?.unitCost).toBe(0.45);
+    expect(p?.basis).toMatch(/^landed cost per accepted gram; /);
+    expect(p?.basis).toMatch(/3000 grams accepted across 1 line, landed at 1350\.00: posted as 0\.45 a gram, which adds back to 1350\.00\./);
+    expect(p?.basis).not.toMatch(/bottle/);
+  });
+
+  it("an extra the door booked is said in grams too", () => {
+    const r = run({}, [weighed()], { [A]: 3500 });
+    expect(r.byItem.get(A)?.basis).toMatch(/The door booked 500 grams more than the invoice lists; they take the same cost a gram\./);
+  });
+
+  it("a free weighed line takes its item's unit and dilutes in grams", () => {
+    const free: PaperLine = {
+      row: row({ line_no: 2, qty_bottles: 500, uom: "kg", unit_price: 0, line_total: 0 }),
+      cost: { ok: false, kind: "no_price" },
+    };
+    const r = run({}, [weighed(), free], { [A]: 3500 });
+    const p = r.byItem.get(A);
+    expect(p?.unitCost).toBe(0.385714);
+    expect(p?.basis).toMatch(/3500 grams accepted across 2 lines/);
+    expect(p?.basis).toMatch(/its grams add no value/);
+  });
+
+  it("a bottle item reads exactly as before", () => {
+    const r = run({}, [line()], { [A]: 10 });
+    expect(r.byItem.get(A)?.basis).toMatch(/10 bottles accepted across 1 line, landed at 600\.00: posted as 60\.00 a bottle/);
+  });
+
+  it("one item counted in grams on one line and bottles on another is held, never summed", () => {
+    const r = run({}, [weighed(), line({ line_no: 2 })], { [A]: 3010 });
+    expect(r.byItem.has(A)).toBe(false);
+    expect(r.held.get(A)).toMatch(/count it in grams and bottles|count it in bottles and grams/);
+  });
+});
