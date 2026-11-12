@@ -29,6 +29,11 @@ import {
 import { DASH, dateIn, eventKindWords, eventTime, figure, longDay, money, timeAgo, uncostedSaid } from './format';
 import { SERIF } from './fonts';
 
+/** A delivered order's money figure is a recorded cost only when it is above 0 (as the gateway reads it). */
+function costRecorded(v: number | null | undefined): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v > 0;
+}
+
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
 /* ── the tape ───────────────────────────────────────────────────────────── */
@@ -398,12 +403,21 @@ export function DayDetail({
                 >
                   {formatNumber(o.quantity)}
                   {o.unitType ? ` ${o.unitType}` : ''}
-                  {seesAmounts && (
-                    <>
-                      {' '}× {money(o.finalPrice)} ·{' '}
-                      <span className="text-inkm-1">{money(o.totalCost)}</span>
-                    </>
-                  )}
+                  {/*
+                    A delivered order whose cost is absent or 0 carries no
+                    recorded cost (the gateway's `orderCostOrNull`, which the
+                    day's "Paid to vendors" figure already withholds over). It
+                    says so in words, never "× $0 · $0".
+                  */}
+                  {seesAmounts &&
+                    (costRecorded(o.totalCost) ? (
+                      <>
+                        {' '}× {costRecorded(o.finalPrice) ? money(o.finalPrice) : DASH} ·{' '}
+                        <span className="text-inkm-1">{money(o.totalCost)}</span>
+                      </>
+                    ) : (
+                      <span data-testid="dn-order-uncosted"> · no recorded cost</span>
+                    ))}
                 </span>
               </Link>
             ))}

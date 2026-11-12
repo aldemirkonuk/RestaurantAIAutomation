@@ -1101,6 +1101,31 @@ describe('DashboardNext — the month calendar (ADR 0290)', () => {
     expect(screen.queryByText('Yakut')).not.toBeInTheDocument();
   });
 
+  it('a delivery with no recorded cost says so, never "× $0 · $0"', async () => {
+    browserAt('2026-10-05T19:00:00Z');
+    routeMonth(() => houseMonth({ today: '2026-10-05', days: TRADING_DAY }), {
+      '/orders/history': {
+        orders: [
+          { id: 'o0', wineName: 'Uncosted Rose', deliveredAt: '2026-10-02T16:00:00Z', quantity: 12, unitType: 'bottle', finalPrice: 0, totalCost: 0 },
+          { id: 'o1', wineName: 'Costed Rioja', deliveredAt: '2026-10-02T17:00:00Z', quantity: 6, unitType: 'bottle', finalPrice: 21, totalCost: 126 },
+        ],
+        total: 2,
+        page: 1,
+        limit: 100,
+        hasMore: false,
+      },
+    });
+    mount();
+
+    await waitFor(() => expect(cellFig('2026-10-02')).toBe('$800'));
+    fireEvent.click(dayCell('2026-10-02'));
+    const uncosted = (await screen.findByText('Uncosted Rose')).closest('a')!;
+    expect(uncosted).toHaveTextContent('no recorded cost');
+    expect(uncosted).not.toHaveTextContent('$0');
+    const costed = screen.getByText('Costed Rioja').closest('a')!;
+    expect(costed).toHaveTextContent('× $21 · $126');
+  });
+
   it('no longer says every figure on the page is procurement', async () => {
     browserAt('2026-10-03T19:00:00Z');
     routeMonth(() => houseMonth());
