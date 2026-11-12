@@ -611,6 +611,11 @@ export function CanonicalSheet({
             const basePrinted =
               base.as_printed != null ||
               (base.value != null && base.value !== 1)
+            const unitCode = line.unit.value
+            const packed =
+              unitCode === 'case' || unitCode === 'pack' || unitCode === 'split_case'
+            const rawPack = resolvedByIndex.get(i)?.packSize ?? null
+            const packSize = rawPack != null && rawPack > 1 ? rawPack : null
             return (
               <tr
                 key={i}
@@ -701,6 +706,28 @@ export function CanonicalSheet({
                   {adj?.billed != null && line.unit.value && adj.billed === line.quantity.value
                     ? ` ${unitWord(line.unit.value, adj.billed)}`
                     : null}
+                  {/* The conversion, said out loud: Billed is the
+                      bottle-equivalent the spine compares, and the unit price
+                      is per case, so 12 x 1,800 would not be 3,600 without
+                      this line. */}
+                  {adj?.billed != null &&
+                    line.quantity.value != null &&
+                    adj.billed !== line.quantity.value &&
+                    unitCode &&
+                    packed &&
+                    packSize != null && (
+                      <span
+                        data-testid="billed-as-printed"
+                        style={{
+                          display: 'block',
+                          fontSize: 8,
+                          color: 'var(--ink-4, #665D50)',
+                        }}
+                      >
+                        {fmtQty(line.quantity.value, currency)}{' '}
+                        {unitWord(unitCode, line.quantity.value)} of {packSize}
+                      </span>
+                    )}
                 </td>
                 <td role="cell" data-cell="unit" data-label="Unit" style={TD}>
                   {money ? (
@@ -724,6 +751,19 @@ export function CanonicalSheet({
                         >
                           per {fmtQty(base.value, currency)}{' '}
                           {unitWord(line.priceBaseUnit.value ?? line.unit.value ?? '', base.value)}
+                        </span>
+                      )}
+                      {!basePrinted && packed && unitCode && (
+                        <span
+                          data-testid="price-unit"
+                          style={{
+                            display: 'block',
+                            fontSize: 8,
+                            color: 'var(--ink-4, #665D50)',
+                          }}
+                        >
+                          per {unitWord(unitCode, 1)}
+                          {packSize != null ? ` of ${packSize}` : ''}
                         </span>
                       )}
                     </>

@@ -151,6 +151,17 @@ describe("readUblTr — the e-invoice, field by field", () => {
     expect(doc.warnings.join(" ")).toMatch(/Line 3: the file counts in kilograms \(KGM\)/);
   });
 
+  it("keeps only an unmapped unit code in printed.uom, for the cost gatekeeper", () => {
+    const extra = `<cac:InvoiceLine><cbc:ID>3</cbc:ID><cbc:InvoicedQuantity unitCode="KGM">3</cbc:InvoicedQuantity><cbc:LineExtensionAmount>0</cbc:LineExtensionAmount><cac:Item><cbc:Name>SYN</cbc:Name></cac:Item></cac:InvoiceLine><cac:InvoiceLine><cbc:ID>4</cbc:ID><cbc:InvoicedQuantity unitCode="CS">1</cbc:InvoicedQuantity><cbc:LineExtensionAmount>0</cbc:LineExtensionAmount><cac:Item><cbc:Name>SYN</cbc:Name></cac:Item></cac:InvoiceLine>`;
+    const doc = readUblTr(invoice({ extraLine: extra }));
+    expect(doc.lines[2].uom).toBe("each");
+    expect(doc.lines[2].printed.uom).toBe("KGM");
+    expect(doc.lines[0].printed.uom).toBeUndefined(); // C62
+    expect(doc.lines[1].printed.uom).toBeUndefined(); // BX
+    expect(doc.lines[3].uom).toBe("case");
+    expect(doc.lines[3].printed.uom).toBeUndefined(); // CS
+  });
+
   it("reads an e-despatch (e-İrsaliye) as a delivery note with no money", () => {
     const xml = `<DespatchAdvice xmlns="urn:oasis:names:specification:ubl:schema:xsd:DespatchAdvice-2" xmlns:cbc="x" xmlns:cac="y">
       <cbc:ID>IRS-SYN-3</cbc:ID><cbc:UUID>AAAA-SYN</cbc:UUID><cbc:IssueDate>2027-07-01</cbc:IssueDate>

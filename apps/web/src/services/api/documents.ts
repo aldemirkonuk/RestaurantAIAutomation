@@ -87,6 +87,13 @@ export interface ProcurementDocumentLine {
   free_goods_qty: number
   unit_price: number | null
   line_total: number | null
+  /**
+   * What `unit_price` is quoted per, when the paper printed a basis: the price
+   * is for `price_base_qty` of `price_base_uom` (e.g. 142 per 12 bottles).
+   * Null or 1 means per invoiced unit.
+   */
+  price_base_qty?: number | null
+  price_base_uom?: string | null
   allowance: number | null
   order_line_id: string | null
   /**
