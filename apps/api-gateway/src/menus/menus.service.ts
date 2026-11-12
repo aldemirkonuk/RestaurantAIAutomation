@@ -2152,8 +2152,17 @@ export class MenusService {
    * own tables every time; the person's row keeps only checklist_dismissed.
    * A GET writes nothing; an invitee with no row still reads their house.
    * "Activated" = a CURRENT menu with a live line (ADR 0193: a kept draft
-   * gives no stock and no prices); the threshold no longer gates it.
-   * `completed_at` = when the last of menu, supplier and invite first held.
+   * gives no stock and no prices); the threshold no longer gates it. This
+   * read does not make any menu current: that is the person's choice, on the
+   * first proof (#1053) or on /menu, and the web says which one is missing.
+   * `completed_at` = when the last of current menu, supplier and invite held.
+   * It is derived, not remembered: if the house loses its only supplier or
+   * its current menu, the step is undone again and the checklist says so
+   * (putting the checklist away, `checklist_dismissed`, is what is kept).
+   * An invite counts while it can still be used or once it was used; an
+   * expired, unused invite does not (a revoked one is deleted, so it never
+   * counts). A supplier counts whoever added it -- the person, a promoted
+   * prospect, or a seller read off the house's own invoice.
    * A failed read throws; it is never taken for "not yet".
    */
   async getOnboardingProgress(userId: string, restaurantId: string | null | undefined) {
@@ -2188,6 +2197,7 @@ export class MenusService {
           .from("organization_invites")
           .select("created_at")
           .eq("restaurant_id", restaurantId)
+          .or(`used_at.not.is.null,expires_at.gt.${new Date().toISOString()}`)
           .order("created_at", { ascending: true })
           .limit(1),
         supabase
@@ -2204,9 +2214,9 @@ export class MenusService {
     // A fact holds when its first row exists; `since` is that row's time.
     const supplierRow = (supplier.data ?? [])[0] ?? null;
     const inviteRow = (invite.data ?? [])[0] ?? null;
-    const times = [menuRead?.since, supplierRow?.created_at, inviteRow?.created_at];
+    const times = [menuCurrent?.since, supplierRow?.created_at, inviteRow?.created_at];
     const completedAt =
-      menuRead && supplierRow && inviteRow && times.every(Boolean)
+      menuCurrent && supplierRow && inviteRow && times.every(Boolean)
         ? (times as string[]).reduce((a, b) =>
             Date.parse(b) > Date.parse(a) ? b : a,
           )
@@ -2298,32 +2308,38 @@ export class MenusService {
           "This session is in no house yet, so there is no checklist to put away.",
         );
       }
-      const { data: row, error: readErr } = await this.dbService.supabase
-        .from("user_onboarding_progress")
-        .select("id")
-        .eq("user_id", userId)
-        .maybeSingle();
-      if (readErr) {
-        throw new InternalServerErrorException(
-          `The checklist was not put away: ${readErr.message}`,
+      // Update the person's row (user_id is UNIQUE); with none, insert one.
+      // Two first-time PATCHes at once both find no row: the loser's insert
+      // hits the unique index (23505) and updates the winner's row instead
+      // of answering 500. Not an upsert: that would rewrite the row's
+      // restaurant_id, which the menu self-heal still keys on.
+      const dismissed = { checklist_dismissed: dto.checklist_dismissed };
+      const updateOwn = () =>
+        this.dbService.supabase
+          .from("user_onboarding_progress")
+          .update(dismissed)
+          .eq("user_id", userId)
+          .select("id");
+      const notPutAway = (message: string) =>
+        new InternalServerErrorException(
+          `The checklist was not put away: ${message}`,
         );
-      }
-      const { error } = row
-        ? await this.dbService.supabase
-            .from("user_onboarding_progress")
-            .update({ checklist_dismissed: dto.checklist_dismissed })
-            .eq("id", row.id)
-        : await this.dbService.supabase
-            .from("user_onboarding_progress")
-            .insert({
-              user_id: userId,
-              restaurant_id: restaurantId,
-              checklist_dismissed: dto.checklist_dismissed,
-            });
-      if (error) {
-        throw new InternalServerErrorException(
-          `The checklist was not put away: ${error.message}`,
-        );
+      const updated = await updateOwn();
+      if (updated.error) throw notPutAway(updated.error.message);
+      if ((updated.data ?? []).length === 0) {
+        const inserted = await this.dbService.supabase
+          .from("user_onboarding_progress")
+          .insert({
+            user_id: userId,
+            restaurant_id: restaurantId,
+            ...dismissed,
+          });
+        if (inserted.error?.code === "23505") {
+          const again = await updateOwn();
+          if (again.error) throw notPutAway(again.error.message);
+        } else if (inserted.error) {
+          throw notPutAway(inserted.error.message);
+        }
       }
     }
     return this.getOnboardingProgress(userId, restaurantId);
