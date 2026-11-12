@@ -62,7 +62,9 @@ function plural(n: number, one: string, many: string): string {
 }
 
 /** The plan in one sentence, in the order a person reads a menu change. */
-export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines'>): string {
+export function planSentence(
+  plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines' | 'notOnThisFile'>,
+): string {
   if (plan.current) return 'This is already the current menu. Choosing it again changes nothing.';
   const c = plan.counts;
   const parts: string[] = [];
@@ -83,6 +85,11 @@ export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'curre
     more.push(
       `${plural(kitchen.length, 'kitchen line stays', 'kitchen lines stay')} on the menu and ${kitchen.length === 1 ? 'is' : 'are'} not carried (${kitchen.map((k) => k.name).join(', ')})`,
     );
+  const gone = plan.notOnThisFile ?? [];
+  if (gone.length > 0)
+    more.push(
+      `${plural(gone.length, 'wine on the current menu is', 'wines on the current menu are')} not on this file and ${gone.length === 1 ? 'keeps its' : 'keep their'} price`,
+    );
   if (plan.dormantLocks.length > 0)
     more.push(
       `${plural(plan.dormantLocks.length, 'locked price is', 'locked prices are')} not on this menu and ${plan.dormantLocks.length === 1 ? 'stays' : 'stay'} locked`,
@@ -91,6 +98,19 @@ export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'curre
 }
 
 /** Who set the price that would be replaced, in words. */
+/** One wine that is not on this file, in a line: what it is and what the house keeps. */
+export function notOnFileWords(n: NonNullable<Plan['notOnThisFile']>[number]): string {
+  const name = [n.name, n.vintage].filter(Boolean).join(' ');
+  if (!n.inventoryId) return `${name}: not in the house's wines, so nothing is kept for it`;
+  const kept = [
+    n.bottle !== null ? `bottle ${money(n.bottle)}` : null,
+    n.glass !== null ? `glass ${money(n.glass)}` : null,
+  ].filter(Boolean);
+  const locked = n.locked.length ? `, ${n.locked.join(' and ')} locked` : '';
+  const gone = n.active === false ? 'the house no longer sells it; its row ' : '';
+  return `${name}: ${gone}keeps ${kept.length ? kept.join(', ') : 'no price (it had none)'}${locked}`;
+}
+
 function setWords(k: PlanKind): string {
   if (!k.lastSet) return '';
   const who = k.lastSet.by.name ?? (k.lastSet.by.userId ? 'someone whose name is not on record' : 'no person named');
@@ -366,6 +386,23 @@ export function MenuPlan({
             </table>
           </div>
         </details>
+      ) : null}
+
+      {(plan.notOnThisFile ?? []).length > 0 ? (
+        <div style={{ marginTop: 12 }} data-testid="menu-plan-not-on-file">
+          <p className="cl-said">
+            Not on this file: what the current menu lists and this one does not. Choosing it leaves{' '}
+            {(plan.notOnThisFile ?? []).length === 1 ? 'it as it is' : 'them as they are'}: the price, the
+            house&apos;s row and any lock stay.
+          </p>
+          <ul className="cl-said" style={{ paddingLeft: 18, marginTop: 4 }}>
+            {(plan.notOnThisFile ?? []).map((n) => (
+              <li key={n.menuItemId} data-testid="menu-plan-not-on-file-line">
+                {notOnFileWords(n)}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
 
       {plan.dormantLocks.length > 0 ? (

@@ -432,6 +432,24 @@ export interface MenuPlan {
    * nowhere (no wine, price or stock). Optional only for an older gateway.
    */
   kitchenLines?: Array<{ menuItemId: string; name: string }>
+  /**
+   * Wines on the menu being replaced that this menu does not carry ("not on this
+   * file"). Shown only: choosing the menu leaves their price, row and locks as
+   * they are (ADR 0193 L12). Optional only for an older gateway.
+   */
+  notOnThisFile?: Array<{
+    menuItemId: string
+    name: string
+    producer: string | null
+    vintage: string | null
+    wineLibraryId: string | null
+    inventoryId: string | null
+    bottle: number | null
+    glass: number | null
+    locked: Array<'bottle' | 'glass'>
+    /** False when the house deleted or set inactive its row; null with no row. Optional for an older gateway. */
+    active?: boolean | null
+  }>
 }
 
 /** What choosing this menu would do. Nothing is written. A failed read throws. */
