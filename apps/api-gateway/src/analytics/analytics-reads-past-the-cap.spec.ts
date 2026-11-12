@@ -1,4 +1,5 @@
 import { AnalyticsService } from "./analytics.service";
+import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { WholeReadError } from "../common/read-whole-window";
 import { CappedRow, cappedPostgrest } from "../common/testing/capped-postgrest";
 
@@ -85,5 +86,13 @@ describe("the analytics readers read past 1,000 rows, or refuse (reports lane r3
   it("sums a year of 1,500 delivered orders", async () => {
     const rows: Row[] = await (new AnalyticsService(db(postgrest(tables()))) as any).loadDeliveredOrders(HOUSE, 365);
     expect(rows).toHaveLength(1500);
+  });
+
+  it("the advanced lenses read the same whole cellar and every order", async () => {
+    const svc: any = new AdvancedAnalyticsService(db(postgrest(tables())), {} as any, {} as any, {} as any);
+    const inv: Row[] = await svc.loadInventoryWithCost(HOUSE);
+    expect(inv).toHaveLength(N);
+    expect(inv.every((r) => r.qty === 2 && r.unitCost === 10)).toBe(true);
+    expect(await svc.loadOrders(HOUSE, 365)).toHaveLength(1500);
   });
 });

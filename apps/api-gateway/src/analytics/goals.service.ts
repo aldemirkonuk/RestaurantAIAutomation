@@ -1048,8 +1048,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
      * `0` — the shape that lets a failed query read as "this house bought
      * nothing". The other six metrics have lived with it since before this
      * change and repairing them is its own piece of work (since ADR 0292 the
-     * check and consumption reads refuse through it with `WholeReadError`;
-     * `purchase_spend` still falls through); what must not happen
+     * check, consumption and, since reports lane r3, order reads refuse
+     * through it with `WholeReadError`); what must not happen
      * is a NEW metric inheriting it, because a days-of-stock goal reading
      * "0 days" is not a light cellar, it is an unread one.
      *
@@ -1153,16 +1153,27 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
 
     try {
       if (metricKey === "purchase_spend") {
-        let q = client
-          .from("procurement_orders")
-          .select("total_cost, final_price, delivered_at, created_at, status")
-          .eq("restaurant_id", restaurantId)
-          .in("status", ORDER_SPEND_STATUSES)
-          .gte("delivered_at", sinceIso);
-        if (untilIso) q = q.lte("delivered_at", untilIso);
-        const { data } = await q;
+        // Read whole or refused (ADR 0292, reports lane r3). This read kept
+        // neither the cap nor its error: a failed read summed no orders, and
+        // a "keep purchases under" goal then read as met.
+        const data = await readWholeWindow<any>(
+          "The delivered orders in this window",
+          () => {
+            let q = client
+              .from("procurement_orders")
+              .select(
+                "id, total_cost, final_price, delivered_at, created_at, status",
+                { count: "exact" },
+              )
+              .eq("restaurant_id", restaurantId)
+              .in("status", ORDER_SPEND_STATUSES)
+              .gte("delivered_at", sinceIso);
+            if (untilIso) q = q.lte("delivered_at", untilIso);
+            return q;
+          },
+        );
         const orders = fileByHouseDay(
-          (data || []) as any[],
+          data,
           (o) => o.delivered_at || o.created_at,
         );
         rowCount = orders.length;

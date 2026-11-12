@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
+import { readByIds } from "../common/read-by-ids";
 import * as E from "./engine";
 import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
@@ -60,38 +61,43 @@ export class AdvancedAnalyticsService {
   // Shared lean loaders
   // =========================================================================
 
+  /**
+   * Read whole or refused, as `AnalyticsService.loadInventory` is (ADR 0292,
+   * reports lane r3): unranged, both reads stopped at 1,000 rows. A refusal
+   * propagates; both callers read consumption beside it, which already
+   * refuses, and the overview turns a throwing lens into a null one.
+   */
   private async loadInventoryWithCost(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes] = await Promise.allSettled([
+    const inventory = await readWholeWindow<any>("The house's inventory", () =>
       client
         .from("restaurant_inventory")
         // Same schema-drift fix as AnalyticsService.loadInventory: a single
-        // unknown column 42703s the whole PostgREST query, and allSettled
-        // swallows it into an empty inventory.
+        // unknown column 42703s the whole PostgREST query.
         .select(
           "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
+          { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
-        )
-        .eq("restaurant_id", restaurantId),
-    ]);
-    if (invRes.status === "fulfilled" && invRes.value.error)
-      this.logQueryFailure("restaurant_inventory", invRes.value.error);
-    if (rollupRes.status === "fulfilled" && rollupRes.value.error)
-      this.logQueryFailure("inventory_lot_rollup", rollupRes.value.error);
-    const inventory =
-      invRes.status === "fulfilled" ? invRes.value.data || [] : [];
+    );
+    const lots = await readByIds<any>(
+      "The house's lot totals",
+      inventory.map((i: any) => i.id),
+      (batch) =>
+        client
+          .from("inventory_lot_rollup")
+          .select(
+            // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
+            // can tell a WAC that covers every on-hand bottle from one that
+            // covers a single invoiced bottle in twenty-one.
+            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
+          )
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", batch),
+    );
     const rollup = new Map<string, any>();
-    if (rollupRes.status === "fulfilled")
-      for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
+    for (const r of lots) rollup.set(r.inventory_id, r);
     // Same fix as AnalyticsService.loadInventory: the third branch here was
     // `unitPrice * 0.6`, an undocumented magic number that was the live path
     // for ~70 of 72 production rows while `basis.margin` below called the
@@ -210,22 +216,29 @@ export class AdvancedAnalyticsService {
     // list, so getVendorScorecard and getCashflow returned zeroes for every
     // restaurant, forever. The vendor label comes from the FK embed instead;
     // wine_name was selected but never read, so it is simply gone.
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("procurement_orders")
-      .select(
-        "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
-      )
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", since);
-    if (error) this.logQueryFailure("procurement_orders", error);
-    return data || [];
+    //
+    // Read whole or refused (ADR 0292, reports lane r3): unranged, a window
+    // past 1,000 orders scored vendors and drew cash flow on its first
+    // thousand. A refusal propagates: the vendor scorecard and cash flow say
+    // they could not be read, and the overview's allSettled draws a null lens.
+    const client = this.dbService.getClient();
+    return readWholeWindow<any>("The orders in this window", () =>
+      client
+        .from("procurement_orders")
+        .select(
+          "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
+          { count: "exact" },
+        )
+        .eq("restaurant_id", restaurantId)
+        .gte("created_at", since),
+    );
   }
 
   /**
-   * A failed loader still degrades to `[]` — an analytics page that 500s
-   * because one lens is unavailable is worse than one that renders the rest.
-   * But it must never do so SILENTLY: a query that fails and returns no rows
+   * A loader whose rows only label something (the wine types) still degrades
+   * to none; the inventory, order and consumption loaders refuse instead, and
+   * the overview renders the other lenses around the one that refused. A
+   * degraded read must never be SILENT: a query that fails and returns no rows
    * is indistinguishable from one that succeeds with no rows, which is exactly
    * how the provider_name drift above survived unnoticed in production.
    */
@@ -604,12 +617,24 @@ export class AdvancedAnalyticsService {
     // Per-category weekday winners (which type sells on which day).
     const byType = new Map<string, Array<{ date: string; value: number }>>();
     const client = this.dbService.getClient();
-    const { data: inv, error: invError } = await client
-      .from("restaurant_inventory")
-      // Varietal/type lives on master_wine_library, not restaurant_inventory.
-      .select("master_wine_id, master_wine_library(primary_type)")
-      .eq("restaurant_id", restaurantId);
-    if (invError) this.logQueryFailure("restaurant_inventory", invError);
+    // Read whole (ADR 0292, reports lane r3): unranged, a wine past the
+    // thousandth row was filed under "unknown". A read that cannot be made
+    // whole files every wine there, as a failed read always did, rather than
+    // naming the types of only some of them.
+    let inv: any[] = [];
+    try {
+      inv = await readWholeWindow<any>("The house's wine types", () =>
+        client
+          .from("restaurant_inventory")
+          // Varietal/type lives on master_wine_library, not restaurant_inventory.
+          .select("id, master_wine_id, master_wine_library(primary_type)", {
+            count: "exact",
+          })
+          .eq("restaurant_id", restaurantId),
+      );
+    } catch (err: any) {
+      this.logQueryFailure("restaurant_inventory", err);
+    }
     const typeByWine = new Map(
       (inv || []).map((i: any) => [
         i.master_wine_id,
