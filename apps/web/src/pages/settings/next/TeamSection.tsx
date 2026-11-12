@@ -134,9 +134,8 @@ export function TeamSection({ data }: { data: SettingsNextData }) {
             {reg.members.length > 0 && (
               <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '8px 0 0' }}>
                 “Granted” is when the access row was written, not when the role last changed —{' '}
-                {PROVENANCE_UNKNOWN.memberChange}. A role change <em>is</em> filed, but in the audit log rather than
-                here: <code>system_audit_log</code>, action <code>member_role_changed</code>, with the actor and the
-                before/after. Nothing on this page reads that log yet (page note §13.16).
+                {PROVENANCE_UNKNOWN.memberChange}. A role change <em>is</em> filed, with who made it and the role before
+                and after, in the settings record at the foot of this page.
               </p>
             )}
 

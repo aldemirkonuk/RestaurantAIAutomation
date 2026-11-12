@@ -46,8 +46,8 @@ export function MapSection({ data }: { data: SettingsNextData }) {
           />
           <SaveFailure failed={writer.failed} what="The frame above is still the server’s." />
           <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '12px 0 0' }}>
-            That date belongs to your whole preference record, not to this one field — the gateway dates the row
-            (<code>user_preferences.updated_at</code>), and every setting kept on your account shares it.
+            That date belongs to your whole preference record, not to this one field: it moves when any setting
+            kept on your account is saved.
           </p>
         </>
       )}

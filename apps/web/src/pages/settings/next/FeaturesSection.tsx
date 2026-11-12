@@ -222,9 +222,9 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                 <div style={{ margin: '20px 0 4px' }}><Micro tone="seal">Mudavym redesign · {redesign.length} pages</Micro></div>
                 <Note>
                   One switch per rebuilt page, opt-in for this restaurant and off by default. While a switch is off the
-                  page you already know renders unchanged. A per-browser override —{' '}
-                  <code style={{ fontFamily: MONO, fontSize: 11 }}>localStorage["mudavym.design.&lt;page&gt;"]</code> — beats
-                  the switch on this machine only, which is how a design is reviewed without turning it on for the floor.
+                  page you already know renders unchanged.
+                  {/* A per-browser override, localStorage["mudavym.design.<page>"], beats the switch on that machine
+                      only; it is for reviewing a design and is not offered on screen. */}
                 </Note>
                 {redesign.map((key) => {
                   const alwaysOn = isAlwaysOnRedesignFlag(key);
@@ -262,8 +262,7 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                           </>
                         ) : (
                           <>
-                            Renders the Mudavym design of this page for everyone at this restaurant.{' '}
-                            <code style={{ fontFamily: MONO, fontSize: 11 }}>{key}</code>
+                            Renders the Mudavym design of this page for everyone at this restaurant.
                           </>
                         )
                       }

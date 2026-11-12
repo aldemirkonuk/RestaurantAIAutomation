@@ -803,7 +803,9 @@ describe('SettingsNext — provenance and unknowns', () => {
     expect(screen.getByText(/issued · 3 days ago/i)).toBeInTheDocument();
     // "granted" is not "changed", and the row says where a change WOULD be filed.
     expect(screen.getByText(/no column records a later change to this access/i)).toBeInTheDocument();
-    expect(screen.getByText(/member_role_changed/)).toBeInTheDocument();
+    expect(screen.getByText(/in the settings record at the foot of this page/)).toBeInTheDocument();
+    // In house words: no table or action name on screen.
+    expect(screen.queryByText(/member_role_changed|system_audit_log/)).toBeNull();
   });
 
   it('shows the chain and branch dates the gateway now returns', () => {
