@@ -585,6 +585,26 @@ export function heldWords(mape: number | null): string {
   return 'Has missed often; read it as a direction, not a number';
 }
 
+/**
+ * A projected count of bottles, said the way bottles are counted.
+ *
+ * The engine's expectation is a real number, and the sheet printed it raw:
+ * "Next 14 days 202.964" (browser walk 2026-11-12) — three decimals of a
+ * bottle, and no unit. The fortnight's total is said to the nearest bottle,
+ * with its noun ("203 bottles"); a total above nothing that rounds to none is
+ * "under 1 bottle", never "0". A single day's projection keeps one place,
+ * because a slow wine expecting 0.4 of a bottle a day is not a wine expecting
+ * none. The raw figure stays in the API.
+ */
+export function projectedBottles(v: unknown, per: 'total' | 'day'): string {
+  const n = num(v);
+  if (n === null) return EM;
+  if (per === 'day') return figure(Math.round(n * 10) / 10);
+  const whole = Math.round(n);
+  if (whole === 0 && n > 0) return 'under 1 bottle';
+  return countOf(whole, 'bottle', 'bottles');
+}
+
 const ahead = analysis<AheadRegister>({
   title: 'What’s coming',
   register: 'forecast register',
@@ -655,7 +675,7 @@ const ahead = analysis<AheadRegister>({
         xLabel: 'day',
         yLabel: 'bottles',
         unit: 'bottles',
-        format: (v) => figure(v),
+        format: (v) => projectedBottles(v, 'day'),
         projectedLabel: 'projected',
         refs: seam ? [{ x: seam.label, label: 'projected from here' }] : undefined,
       },
@@ -664,11 +684,11 @@ const ahead = analysis<AheadRegister>({
           { key: 'd', label: 'Day' },
           { key: 'v', label: 'Projected', numeric: true },
         ],
-        rows: a.forecast.map((f) => ({ key: f.date, cells: [shortDay(f.date), figure(f.value)] })),
+        rows: a.forecast.map((f) => ({ key: f.date, cells: [shortDay(f.date), projectedBottles(f.value, 'day')] })),
         more: 'Every row below is the model’s expectation. None of it is trade that happened.',
       },
       figures: [
-        { label: `Next ${a.horizon} days`, value: figure(a.totalForecastDemand) },
+        { label: `Next ${a.horizon} days`, value: projectedBottles(a.totalForecastDemand, 'total') },
         {
           label: 'How it has held',
           value: heldWords(a.accuracy?.mape ?? null),
