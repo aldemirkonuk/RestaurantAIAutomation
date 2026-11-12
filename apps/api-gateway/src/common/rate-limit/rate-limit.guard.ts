@@ -95,6 +95,20 @@ export const SESSION_RENEWAL_RATE_LIMIT: RateLimitConfig =
   DEFAULT_RATE_LIMITS.default;
 
 /**
+ * The limit for a session ending itself: `POST /auth/logout` (r5, 2026-11-12).
+ *
+ * Signing out sits behind `JwtAuthGuard`, so it carries a valid access token
+ * and guesses nothing. In the `auth` bucket it shared 10 a minute per address
+ * with every device in the house: at the end of a shift, the eleventh tablet
+ * signing out in a minute was answered 429 and stayed signed in, which is the
+ * opposite of what a shared tablet needs. It takes the ordinary limit,
+ * keyed as before on address and route, so it never spends the sign-in
+ * bucket. Rejected: no limit at all (`@SkipRateLimit`), since a sign-out
+ * writes a revocation; and keeping 10, for the reason above.
+ */
+export const SESSION_END_RATE_LIMIT: RateLimitConfig = DEFAULT_RATE_LIMITS.default;
+
+/**
  * Decorator to set custom rate limit for a route
  */
 export const RATE_LIMIT_KEY = "rateLimit";
