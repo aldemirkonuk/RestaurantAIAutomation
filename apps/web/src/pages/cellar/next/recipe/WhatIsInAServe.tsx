@@ -19,7 +19,16 @@ const ROWS: Array<[ServeFigureKey, string, string]> = [
 ];
 
 const names = (list: string[]) => [...new Set(list)].join(', ');
-const num = (n: number) => (Math.round(n * 10) / 10).toLocaleString('en-US');
+/**
+ * One decimal, but two under one gram: the gateway sums to the hundredth
+ * (recipe-nutrition.ts round2), and 0.06 g of salt read as "0.1 g" was a
+ * two-thirds overstatement (browser walk 2026-11-11). EU 1169/2011's rounding
+ * guidance also gives salt under 1 g to 0.01 g.
+ */
+const num = (n: number, unit: string) =>
+  unit === 'g' && Math.abs(n) < 1
+    ? (Math.round(n * 100) / 100).toLocaleString('en-US')
+    : (Math.round(n * 10) / 10).toLocaleString('en-US');
 
 export default function WhatIsInAServe({ data, unsaved }: { data: CocktailRecipe; unsaved: boolean }) {
   if (!data.current) return null;
@@ -43,7 +52,7 @@ export default function WhatIsInAServe({ data, unsaved }: { data: CocktailRecipe
           const said =
             f.value === null
               ? unknown ?? 'not known'
-              : `${f.atLeast ? 'at least ' : ''}${num(f.value)} ${unit}${unknown ? `, ${unknown}` : ''}`;
+              : `${f.atLeast ? 'at least ' : ''}${num(f.value, unit)} ${unit}${unknown ? `, ${unknown}` : ''}`;
           return (
             <div key={k} data-testid={`recipe-whatisin-${k}`}>
               <dt style={{ display: 'inline' }}>{label}: </dt>
