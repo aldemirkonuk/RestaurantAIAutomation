@@ -29,7 +29,7 @@ import { MENU_CATEGORY_VOCABULARY } from "./wine-extract-item.interface";
  */
 
 /**
- * The kitchen hints. The same nine as the web's `KITCHEN`
+ * The kitchen hints. The same list as the web's `KITCHEN`
  * (`apps/web/src/lib/firstProof.ts`); a CLAIMS row keeps the two lists equal.
  * 'dessert' is also a drink section (MENU_CATEGORY_VOCABULARY, ADR 0186):
  * a known drink section wins, so a dessert wine stays a drink; the hints
@@ -37,8 +37,15 @@ import { MENU_CATEGORY_VOCABULARY } from "./wine-extract-item.interface";
  * `.planning/tech-debt.d/2026-10-08-fix-a-menu-line-carries-its-raw-line.md`).
  * 'dessert' is the one section that is also a course, so it alone is weighed:
  * see `isKitchenLine`.
+ *
+ * The course words after 'salad' came from the browser walk of 2026-11-12: a
+ * CSV whose dish section was "Mains" sent "Grilled Octopus" to the wine
+ * library. 'mains' and 'sides' are listed plural on purpose: the plural
+ * suffix is optional, so 'mains' still matches "Mains" but a cocktail called
+ * "Side Car" or a wine called "Main Street" is not taken for a dish. 'grill'
+ * is whole-word, so the Grillo grape is not one.
  */
-export const KITCHEN_HINTS = ["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad"];
+export const KITCHEN_HINTS = ["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad", "mains", "main course", "appetizer", "appetiser", "sides", "soup", "meze", "mezze", "grill", "small plate", "snack", "tapas", "pizza", "burger", "sandwich"];
 
 /** The raw line's column. Sent only when the caller's view allows it. */
 export const RAW_LINE_COLUMN = "raw_extracted_text";

@@ -28,6 +28,17 @@ describe("menu-line-view", () => {
     expect(isKitchenLine("Pastas", null)).toBe(true);
     expect(isKitchenLine("Entrées", null)).toBe(true);
     expect(isKitchenLine(null, "Pastaio Rosso, 2020, 38")).toBe(false);
+    // Browser walk 2026-11-12: a dish section the house names its own way.
+    expect(isKitchenLine("Mains", "Grilled Octopus,,,Mains,,24")).toBe(true);
+    expect(isKitchenLine("Main Courses", null)).toBe(true);
+    expect(isKitchenLine("Appetizers", null)).toBe(true);
+    expect(isKitchenLine("Sides", null)).toBe(true);
+    expect(isKitchenLine("Small plates", null)).toBe(true);
+    expect(isKitchenLine("Meze", null)).toBe(true);
+    // ...but a drink that only shares a word with a course stays a drink.
+    expect(isKitchenLine("Cocktails", "Side Car, cognac, 14")).toBe(false);
+    expect(isKitchenLine(null, "Main Street Cabernet, 2019, 48")).toBe(false);
+    expect(isKitchenLine(null, "Grillo, Sicily, 2022, 36")).toBe(false);
     expect(isKitchenLine(null, "Dishwasher-safe carafe")).toBe(false);
   });
 
@@ -52,7 +63,7 @@ describe("menu-line-view", () => {
   });
 
   it("the gateway's kitchen hints are the web's nine", () => {
-    expect(KITCHEN_HINTS).toEqual(["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad"]);
+    expect(KITCHEN_HINTS).toEqual(["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad", "mains", "main course", "appetizer", "appetiser", "sides", "soup", "meze", "mezze", "grill", "small plate", "snack", "tapas", "pizza", "burger", "sandwich"]);
   });
 
   it("seesRawLine follows ROLE_POLICY: a role that sees money AND suppliers", () => {
