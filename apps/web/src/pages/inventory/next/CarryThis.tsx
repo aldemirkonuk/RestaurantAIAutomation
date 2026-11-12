@@ -43,10 +43,10 @@ const UNITS = (Object.keys(PICKS) as CarryPick[]).map((value) => ({ value, label
 /** The unit a kind is usually weighed or measured in, until the person picks one. */
 const UNIT_FOR: Record<CarryKind, CarryPick> = { food: 'kg', supply: 'each', other: 'l' };
 const UNIT_HINT: Record<CarryPick, string> = {
-  kg: 'Weighed in kilograms. We keep it in grams, so 1.25 kg is kept as 1,250 g; the list shows kg.',
-  g: 'Weighed in grams; the list shows kg once it passes 1,000 g.',
-  l: 'Measured in litres. We keep it in millilitres, so 0.75 l is kept as 750 ml; the list shows l.',
-  ml: 'Measured in millilitres; the list shows l once it passes 1,000 ml.',
+  kg: 'Weighed in kilograms. We keep it in grams, so 1.25 kg is kept as 1,250 g.',
+  g: 'Weighed in grams.',
+  l: 'Measured in litres. We keep it in millilitres, so 0.75 l is kept as 750 ml.',
+  ml: 'Measured in millilitres.',
   each: 'We keep a count of each one.',
 };
 

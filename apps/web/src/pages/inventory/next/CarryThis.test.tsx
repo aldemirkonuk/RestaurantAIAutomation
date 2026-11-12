@@ -41,6 +41,8 @@ describe('Carry this', () => {
     // A food starts in kilograms: the kitchen weighs in kg, the book keeps grams.
     expect((screen.getByLabelText('Unit') as HTMLSelectElement).value).toBe('kg');
     expect(screen.getByTestId('ivc-unit-hint').textContent).toContain('1.25 kg is kept as 1,250 g');
+    // The list on this stack shows the book's grams; the hint promises nothing about the list.
+    expect(screen.getByTestId('ivc-unit-hint').textContent).not.toMatch(/the list shows/);
     fireEvent.change(nameField(), { target: { value: ' Un ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Carry this' }));
     await waitFor(() => expect(api.carry).toHaveBeenCalledTimes(1));
