@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
+import { readLotCostsByIds } from "./lot-costs-by-ids";
 import * as E from "./engine";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
 import {
@@ -126,66 +127,37 @@ export class AnalyticsService {
 
   private async loadInventory(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes, agreedRes] = await Promise.allSettled([
+    // Read whole or refused (ADR 0292). Unranged, all three reads stopped at
+    // PostgREST's 1,000 rows: a house with a bigger cellar had its value, its
+    // till-stock base and its reorder science computed on the first thousand
+    // items, and an item past the thousandth agreed-cost row fell back to its
+    // last purchase price. The same shape #1131 gives this loader on the
+    // reports stack, with the agreed cost read beside the rollup.
+    //
+    // Column names must match the live schema exactly. PostgREST rejects the
+    // WHOLE query with 42703 on a single unknown column. There is no
+    // wine_type/unit_price/unit_cost/reorder_point on this table: the menu
+    // price is `menu_price_current`, cost is `last_purchase_price`, the
+    // reorder trigger is `threshold_min`, and the varietal/type lives on
+    // master_wine_library.
+    const inventory = await readWholeWindow<any>("The house's inventory", () =>
       client
         .from("restaurant_inventory")
-        // Column names must match the live schema exactly. PostgREST rejects
-        // the WHOLE query with 42703 on a single unknown column, and the
-        // allSettled + `data || []` below turns that rejection into an empty
-        // inventory rather than an error — so every metric downstream
-        // (inventory value, COGS ratio, turnover, GMROI, reorder science)
-        // silently reported 0/null for every restaurant. There is no
-        // wine_type/unit_price/unit_cost/reorder_point on this table: the
-        // menu price is `menu_price_current`, cost is `last_purchase_price`,
-        // the reorder trigger is `threshold_min`, and the varietal/type
-        // lives on master_wine_library.
         .select(
           "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type)",
+          { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
-        )
-        .eq("restaurant_id", restaurantId),
-      // A price settled at delivery (final cost, not on an invoice): the
-      // rollup does not carry it, so a bottle whose only cost is an agreed
-      // one would read as unknown. See inventory-cost.ts (agreed_lot_wac).
-      client
-        .from("inventory_lot_agreed_cost")
-        .select("inventory_id, has_agreed_cost, agreed_wac")
-        .eq("restaurant_id", restaurantId),
-    ]);
-
-    // allSettled makes a REJECTION invisible and `{ data, error }` makes a
-    // FAILED QUERY invisible; both land as `[]` here, which every metric below
-    // reads as "this restaurant has no inventory". Its sibling
-    // advanced-analytics.service.ts was hardened with logQueryFailure and this
-    // file, same directory and same tables, was not. See ADR 0067.
-    this.reportSlice("restaurant_inventory", invRes);
-    this.reportSlice("inventory_lot_rollup", rollupRes);
-    this.reportSlice("inventory_lot_agreed_cost", agreedRes);
-
-    const inventory =
-      invRes.status === "fulfilled" ? invRes.value.data || [] : [];
-    const rollup = new Map<string, any>();
-    if (rollupRes.status === "fulfilled") {
-      for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
-    }
-    if (agreedRes.status === "fulfilled") {
-      for (const r of agreedRes.value.data || [])
-        rollup.set(r.inventory_id, {
-          ...rollup.get(r.inventory_id),
-          inventory_id: r.inventory_id,
-          has_agreed_cost: r.has_agreed_cost,
-          agreed_wac: r.agreed_wac,
-        });
-    }
+    );
+    // The rollup and the cost agreed at delivery (a price settled at delivery
+    // is final but not on an invoice, so the rollup does not carry it; see
+    // inventory-cost.ts agreed_lot_wac), for the items in hand.
+    const rollup = await readLotCostsByIds(
+      client,
+      restaurantId,
+      inventory.map((i: any) => i.id),
+    );
 
     // Unit cost: invoiced lot WAC → recorded last purchase price → UNKNOWN.
     // The third branch used to be `unitPrice * 0.6`, a magic number with no

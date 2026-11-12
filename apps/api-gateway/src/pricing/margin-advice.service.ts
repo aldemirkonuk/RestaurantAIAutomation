@@ -6,6 +6,8 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
+import { readLotCostsByIds } from "../analytics/lot-costs-by-ids";
 import {
   COST_BASIS_LABEL,
   type CostBasis,
@@ -147,6 +149,10 @@ const ROLLUP_SELECT = "inventory_id, live_qty, wac, has_invoice_cost, wac_qty";
 /** The cost agreed at delivery (final, not invoiced): the rollup does not carry it. */
 const AGREED_SELECT = "inventory_id, has_agreed_cost, agreed_wac";
 
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function n(v: unknown): number | null {
   if (v === null || v === undefined) return null;
   const x = typeof v === "number" ? v : Number(v);
@@ -174,15 +180,22 @@ export class MarginAdviceService {
   /** Every active wine's advice. A failed read throws; it is never an empty list. */
   async adviseHouse(restaurantId: string): Promise<HouseAdvice> {
     const client = this.databaseService.client;
-    const [targets, inv, rollup, agreed, lockRead] = await Promise.all([
+    // The wines read whole or refused (ADR 0292): unranged, the list and both
+    // cost reads stopped at PostgREST's 1,000 rows, so a house with more
+    // wines was advised on its first thousand, and a wine past the
+    // thousandth agreed-cost row read "no recorded cost" (readers lane r4).
+    const [targets, inv, lockRead] = await Promise.all([
       readHouseTargetMargin(client, restaurantId),
-      client
-        .from("restaurant_inventory")
-        .select(INVENTORY_SELECT)
-        .eq("restaurant_id", restaurantId)
-        .eq("is_active", true),
-      client.from("inventory_lot_rollup").select(ROLLUP_SELECT).eq("restaurant_id", restaurantId),
-      client.from("inventory_lot_agreed_cost").select(AGREED_SELECT).eq("restaurant_id", restaurantId),
+      readWholeWindow<InventoryPriceRow>("The house's wines", () =>
+        client
+          .from("restaurant_inventory")
+          .select(INVENTORY_SELECT, { count: "exact" })
+          .eq("restaurant_id", restaurantId)
+          .eq("is_active", true),
+      ).then(
+        (rows) => ({ rows, error: null as string | null }),
+        (err: unknown) => ({ rows: [] as InventoryPriceRow[], error: messageOf(err) }),
+      ),
       readOpenLocks(client, restaurantId),
     ]);
     if (targets.error !== null) {
@@ -190,42 +203,36 @@ export class MarginAdviceService {
         `The house's target margin could not be read, so no advice was computed: ${targets.error}`,
       );
     }
-    if (inv.error) {
+    if (inv.error !== null) {
       throw new InternalServerErrorException(
-        `The house's wines could not be read, so no advice was computed: ${inv.error.message}`,
+        `The house's wines could not be read, so no advice was computed: ${inv.error}`,
       );
     }
-    if (rollup.error) {
-      // Cost comes from here. Advising without it would call every wine
-      // "no recorded cost" when the truth is "cost could not be read".
-      throw new InternalServerErrorException(
-        `The recorded costs could not be read, so no advice was computed: ${rollup.error.message}`,
+    // Cost comes from the rollup and the cost agreed at delivery, read for
+    // the wines in hand. Advising without either would call a wine "no
+    // recorded cost" when the truth is "cost could not be read".
+    let lots: Map<string, Record<string, unknown>>;
+    try {
+      lots = await readLotCostsByIds(
+        client,
+        restaurantId,
+        inv.rows.map((r) => r.id),
+        ROLLUP_SELECT,
       );
-    }
-    if (agreed.error) {
-      // Same reason: an unread agreed cost would make a wine whose cost was
-      // settled at delivery read as "no recorded cost".
+    } catch (err) {
       throw new InternalServerErrorException(
-        `The costs agreed at delivery could not be read, so no advice was computed: ${agreed.error.message}`,
+        `The recorded costs could not be read, so no advice was computed: ${messageOf(err)}`,
       );
     }
 
     const t: HouseTerms = { ...targetsFrom(targets.row), pourMl: confirmedPourFrom(targets.row) };
-    const lots = new Map<string, Record<string, unknown>>();
-    for (const r of (rollup.data ?? []) as Array<Record<string, unknown>>) {
-      lots.set(String(r.inventory_id), r);
-    }
-    for (const r of (agreed.data ?? []) as Array<Record<string, unknown>>) {
-      const id = String(r.inventory_id);
-      lots.set(id, { ...lots.get(id), ...r });
-    }
 
     // A failed lock read is said (locks.readable false), never taken for "no
     // lock" (L25): every `locked` is then unknown and accept refuses.
     const byKind = lockIndex(lockRead.locks);
     const counts = emptyCounts();
     let held = 0;
-    const wines = ((inv.data ?? []) as unknown as InventoryPriceRow[]).map((row) => {
+    const wines = inv.rows.map((row) => {
       const w = this.adviseWine(row, lots.get(row.id) ?? null, t, byKind);
       if (w.bottle) counts[w.bottle.state] += 1;
       if (w.glass) counts[w.glass.state] += 1;

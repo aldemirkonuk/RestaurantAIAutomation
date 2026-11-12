@@ -17,16 +17,24 @@ function client(rows: Rows, errors: Errors = {}, selects: string[] = []) {
   return {
     from: (table: string) => {
       const b: any = {};
-      for (const m of ["select", "eq", "order", "limit"])
+      // The loaders read the lot views for the ids in hand (readByIds).
+      let only: unknown[] | null = null;
+      for (const m of ["select", "eq", "gt", "order", "limit"])
         b[m] = (...a: any[]) => {
           if (m === "select") selects.push(`${table}:${a[0]}`);
           return b;
         };
+      b.in = (_c: string, vs: unknown[]) => ((only = vs), b);
       b.then = (res: any, rej: any) =>
         Promise.resolve(
           errors[table]
             ? { data: null, error: errors[table] }
-            : { data: rows[table] ?? [], error: null },
+            : {
+                data: (rows[table] ?? []).filter(
+                  (r) => only === null || only.includes(r.inventory_id),
+                ),
+                error: null,
+              },
         ).then(res, rej);
       return b;
     },
@@ -103,15 +111,15 @@ describe.each(loaders)("%s reads the agreed lot cost", (_n, make, method) => {
     expect(selects.some((s) => s.startsWith("inventory_lot_agreed_cost:"))).toBe(true);
   });
 
-  it("says so when the view cannot be read, and does not invent a cost", async () => {
+  it("refuses when the view cannot be read, and states no cost from half of it", async () => {
+    // Readers lane r4: a failed agreed-cost read used to be logged and read
+    // as "no recorded cost" on every item it priced. It refuses now, as a
+    // failed rollup read does (WholeReadError, 503).
     const svc: any = make(ROWS, {
       inventory_lot_agreed_cost: { code: "42P01", message: "view gone" },
     });
-    const spy = jest.spyOn(svc.logger, "error").mockImplementation(() => undefined);
-    const out = await svc[method](RESTAURANT);
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining("inventory_lot_agreed_cost"));
-    const a = out.find((r: any) => r.id === "agreed-only");
-    expect(a.unitCost).toBeNull();
-    expect(a.costBasis).toBe("unknown");
+    await expect(svc[method](RESTAURANT)).rejects.toThrow(
+      /costs agreed at delivery could not be read whole.*view gone/,
+    );
   });
 });
