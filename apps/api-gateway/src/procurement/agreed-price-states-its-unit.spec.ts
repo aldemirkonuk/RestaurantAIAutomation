@@ -32,6 +32,7 @@
 import {
   PRICE_UOM_TYPES,
   agreedOrderTotal,
+  agreedPricePerBottleForDoor,
   describeAgreedPrice,
   embeddedOrderLines,
   foldOrderPriceUnit,
@@ -274,8 +275,40 @@ describe("perBottleFromAgreedPrice — one conversion, and it says so", () => {
     expect(r.ok).toBe(true);
     if (!r.ok) throw new Error("unreachable");
     expect(r.perBottle).toBe(35);
-    expect(r.note).toContain("$420.00 per case of 12");
-    expect(r.note).toContain("$35.0000");
+    expect(r.note).toContain("420.00 per case of 12");
+    expect(r.note).toContain("recorded per bottle as 35.00.");
+    // No currency mark: the function is not told the agreement's currency.
+    expect(r.note).not.toContain("$");
+  });
+
+  it("keeps the lot's six places, so a case's bottles add back up (cost-math R7)", () => {
+    // 100 per case of 12 went in at four places as 8.3333 (12 bottles =
+    // 99.9996). The lot column keeps six (numeric(14,6)), and so does this.
+    const r = perBottleFromAgreedPrice({
+      price: 100,
+      stated: { priceUom: "case", pricePackSize: 12 },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.perBottle).toBe(8.333333);
+    expect(r.note).toContain("recorded per bottle as 8.333333.");
+    // 0.30 per pack of 250: 0.0012 apiece is kept, not rounded to nothing.
+    const small = perBottleFromAgreedPrice({
+      price: 0.3,
+      stated: { priceUom: "pack", pricePackSize: 250 },
+    });
+    expect(small.ok && small.perBottle).toBe(0.0012);
+  });
+
+  it("the door's note prints the six-place figure and no borrowed $", () => {
+    const r = agreedPricePerBottleForDoor({
+      price: 100,
+      stated: { priceUom: "case", pricePackSize: 12 },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.perBottle).toBe(8.333333);
+    expect(r.note).toBe("Agreed at 100.00 per case of 12; compared per bottle at 8.333333.");
   });
 
   it("leaves a per-bottle price alone", () => {
