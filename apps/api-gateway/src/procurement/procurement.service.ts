@@ -50,6 +50,7 @@ import {
   OrderFilterDto,
   OrderListResponseDto,
   OrderResponseDto,
+  ReceiptCostCorrection,
   ProcurementOrderStatus,
   UpdateOrderDto,
   VerifyReceiptDto,
@@ -6001,7 +6002,7 @@ export class ProcurementService {
     reason: string,
     unitCost?: number | null,
     userId?: string | null,
-  ): Promise<void> {
+  ): Promise<ReceiptCostCorrection | null> {
     // TENANCY. `apply_stock_movement` derives restaurant_id from the inventory
     // row it is pointed at, not from the caller — so an id this method does not
     // check is an id that writes stock wherever it happens to live. The
@@ -6181,7 +6182,13 @@ export class ProcurementService {
           salesSettled: settled,
         });
       }
+      return {
+        unitCost,
+        bottlesRevalued: Number((receipt as any)?.bottles_revalued ?? 0),
+        salesSettled: Number(settled),
+      };
     }
+    return null;
   }
 
   /**
@@ -6670,12 +6677,18 @@ export class ProcurementService {
     // the one this screen exists to catch — ledgerDelta is 0, so nothing ran
     // and the verified landed cost never reached the books. A verified price is
     // now reason enough to write, on its own.
+    // What the verified price restated, so the screen can say it (receipts
+    // walk 2026-11-11, item 5): since a_verified_invoice_settles_sold_bottles
+    // the bottles already sold from this delivery are settled to the invoice
+    // cost, and until now only the gateway log knew. Only the ordered line
+    // carries a price; the free-form extras below never revalue.
+    let costCorrection: ReceiptCostCorrection | null = null;
     if (
       match &&
       (match.ledgerDelta !== 0 || match.effectiveUnitCost != null) &&
       (orderRow as any).inventory_id
     ) {
-      await this.applyReceiptAdjustment(
+      costCorrection = await this.applyReceiptAdjustment(
         restaurantId,
         orderId,
         (orderRow as any).inventory_id,
@@ -6996,7 +7009,7 @@ export class ProcurementService {
       `Receipt verified for order ${orderId}: verdict=${match?.verdict ?? "legacy"}, ` +
         `status=${status}, adjustments=${adjustments.length}`,
     );
-    return order;
+    return costCorrection ? { ...order, costCorrection } : order;
   }
 
   /**
