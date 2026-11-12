@@ -286,6 +286,9 @@ export interface VerificationResend {
   verificationMail: VerificationMail;
 }
 
+/** What a resend for an already-verified address answers (409, ALREADY_VERIFIED). */
+export const ALREADY_VERIFIED_SENTENCE = "This address is already verified.";
+
 function resendAnswer(verificationMail: VerificationMail): VerificationResend {
   return { sent: verificationMail === "sent", verificationMail };
 }
@@ -3726,6 +3729,17 @@ export class AuthService {
         message:
           "This session was signed out because its password was never confirmed. Sign in with a code emailed to you.",
         code: SESSION_ENDED,
+      });
+    }
+    // A verified address gets no new code (walk 2026-11-11): a resend that
+    // landed 18 ms after a code verified minted and mailed a fresh code to an
+    // account that needed none. The row says verified, so nothing is sent.
+    // The lockout shape above (every email_verifications row used, the
+    // account still unverified) reads `false` here and keeps its send.
+    if (account.email_verified === true) {
+      throw new ConflictException({
+        message: ALREADY_VERIFIED_SENTENCE,
+        code: "ALREADY_VERIFIED",
       });
     }
 
