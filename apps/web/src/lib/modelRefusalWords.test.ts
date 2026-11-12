@@ -1,15 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import { PHOTO_COUNT_OFF, namesTheOperator, photoRefusalWords } from './modelRefusalWords'
+import { PHOTO_COUNT_DOWN, PHOTO_COUNT_OFF, namesTheOperator, photoRefusalWords } from './modelRefusalWords'
 
 describe("a photo reader's refusal, in the house's words", () => {
   it('the gateway\'s missing-key sentence never reaches the toast', () => {
     for (const raw of [
       'Anthropic API key not configured — set ANTHROPIC_API_KEY',
       'ANTHROPIC_API_KEY is not configured',
-      'Anthropic 400: Your credit balance is too low',
     ]) {
       expect(namesTheOperator(raw)).toBe(true)
       expect(photoRefusalWords(raw)).toBe(PHOTO_COUNT_OFF)
+    }
+  })
+
+  it('a vendor outage or exhausted credit says try again later, never "not switched on"', () => {
+    for (const raw of [
+      'Anthropic 529: Overloaded',
+      'Anthropic 400: Your credit balance is too low to access the Anthropic API',
+      'Anthropic 500: Internal server error',
+    ]) {
+      expect(namesTheOperator(raw)).toBe(true)
+      expect(photoRefusalWords(raw)).toBe(PHOTO_COUNT_DOWN)
+      expect(photoRefusalWords(raw)).not.toMatch(/anthropic|credit/i)
     }
   })
 
