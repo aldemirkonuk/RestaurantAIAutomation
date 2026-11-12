@@ -66,12 +66,12 @@ export class HouseLettersController {
   @Roles("owner", "manager")
   @ApiOperation({
     summary:
-      "Is this house's mail arriving: its letters at every door in the last 7 days, and when the shared mailbox last read",
+      "Is this house's mail arriving: its letters at every door (settled ones over the last 7 days, waiting ones with no window), and when the shared mailbox last read",
   })
   @ApiResponse({
     status: 200,
     description:
-      "`intake.unknown: true` means the read failed and the counts are NOT zero; `waiting` counts letters recorded at a door but not yet given a home (received, failed or given up). `sharedMailbox` is null when it has never read; `lastReadAt` is its last FINISHED read and `errored` says its latest read failed (the error text is the operator's, not the house's).",
+      "`intake.unknown: true` means the read failed and the counts are NOT zero; Settled counts (filed, held, prospect, duplicate, not kept) are the last 7 days; `waiting` counts letters recorded at a door but not yet given a home (received, failed or given up) and has NO window, so an old one still shows. `sharedMailbox` is null when it has never read; `lastReadAt` is its last FINISHED read and `errored` says its latest read failed (the error text is the operator's, not the house's).",
   })
   async intakeHealth(@CurrentUser() user: TokenUser) {
     const { restaurantId } = houseActor(user);

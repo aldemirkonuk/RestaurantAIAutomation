@@ -45,9 +45,12 @@ export interface RecordResult {
 }
 
 export interface HouseIntakeHealth {
-  /** Letters recorded for this house in the last 7 days, by status. */
+  /**
+   * Letters recorded for this house, by status: the settled statuses over the
+   * last 7 days, the waiting ones (received, failed, gave_up) over all time.
+   */
   byStatus: Record<string, number>;
-  /** Letters still waiting for a home (received, failed or gave up). */
+  /** Letters still waiting for a home (received, failed or gave up), no window. */
   waiting: number;
   /** The oldest of those, or null. */
   oldestWaitingAt: string | null;
@@ -62,6 +65,20 @@ const SETTLED = new Set([
   "duplicate",
   "not_kept",
 ]);
+
+const WAITING = new Set(["received", "failed", "gave_up"]);
+
+/** Every value the `mail_intake.status` CHECK allows. */
+const INTAKE_STATUSES = [
+  "received",
+  "filed",
+  "held",
+  "prospect",
+  "duplicate",
+  "not_kept",
+  "failed",
+  "gave_up",
+] as const;
 
 /** A stable key for a delivery the door has no id for. */
 export function contentKey(parts: Array<string | null | undefined>): string {
@@ -237,30 +254,63 @@ export class MailIntakeService {
     return Array.isArray(data) ? data.length : 0;
   }
 
-  /** The house's last 7 days at its doors. Unknown is said, never zero. */
+  /**
+   * The house's intake, counted whole. Settled statuses are the last 7 days;
+   * the waiting ones (received, failed, gave_up) have NO window, so a letter
+   * that gave up 8 days ago, payload kept for "Read again", is still the
+   * house's to see. One exact head count per status, because PostgREST caps a
+   * row response at `max_rows` (1000) and the cap drops the newest. Unknown
+   * is said, never zero: any one failed count makes the whole answer unknown.
+   */
   async houseHealth(restaurantId: string): Promise<HouseIntakeHealth> {
+    const unknown: HouseIntakeHealth = {
+      byStatus: {},
+      waiting: 0,
+      oldestWaitingAt: null,
+      unknown: true,
+    };
     const since = new Date(Date.now() - 7 * 86_400_000).toISOString();
-    const { data, error } = await this.database.supabase
-      .from("mail_intake")
-      .select("status, created_at")
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", since)
-      .order("created_at", { ascending: true })
-      .range(0, 4999);
-    if (error || !Array.isArray(data)) {
-      return { byStatus: {}, waiting: 0, oldestWaitingAt: null, unknown: true };
-    }
-    const byStatus: Record<string, number> = {};
-    let waiting = 0;
-    let oldestWaitingAt: string | null = null;
-    for (const row of data) {
-      byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
-      if (!SETTLED.has(row.status)) {
-        waiting++;
-        oldestWaitingAt = oldestWaitingAt ?? row.created_at;
+    const db = this.database.supabase;
+    try {
+      const [counts, oldest] = await Promise.all([
+        Promise.all(
+          INTAKE_STATUSES.map(async (status) => {
+            let q = db
+              .from("mail_intake")
+              .select("id", { count: "exact", head: true })
+              .eq("restaurant_id", restaurantId)
+              .eq("status", status);
+            if (SETTLED.has(status)) q = q.gte("created_at", since);
+            const { count, error } = await q;
+            if (error || typeof count !== "number") return null;
+            return [status, count] as const;
+          }),
+        ),
+        db
+          .from("mail_intake")
+          .select("created_at")
+          .eq("restaurant_id", restaurantId)
+          .in("status", [...WAITING])
+          .order("created_at", { ascending: true })
+          .limit(1),
+      ]);
+      if (oldest.error || !Array.isArray(oldest.data)) return unknown;
+      const byStatus: Record<string, number> = {};
+      let waiting = 0;
+      for (const c of counts) {
+        if (!c) return unknown;
+        byStatus[c[0]] = c[1];
+        if (WAITING.has(c[0])) waiting += c[1];
       }
+      return {
+        byStatus,
+        waiting,
+        oldestWaitingAt: oldest.data[0]?.created_at ?? null,
+        unknown: false,
+      };
+    } catch {
+      return unknown;
     }
-    return { byStatus, waiting, oldestWaitingAt, unknown: false };
   }
 
   /**

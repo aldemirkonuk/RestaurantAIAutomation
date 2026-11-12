@@ -319,6 +319,23 @@ describe('a held letter (QA round 24)', () => {
   });
 });
 
+describe('the Strangers lede does not call a held letter a stranger\'s', () => {
+  const HELD = /It also holds letters whose sender could not be read or confirmed — even from an address in your vendor book — until a person checks them\./;
+  it('keeps the original sentence alone when no row is held', () => {
+    render(<WhoIsWriting />);
+    expect(screen.getByText(/Mail from senders who are not one of your vendors/)).toBeInTheDocument();
+    expect(screen.queryByText(HELD)).toBeNull();
+  });
+  it('adds the held sentence when any row carries a held reason', () => {
+    h.strangers = ok([stranger(), stranger({ id: 'p-held', held_reason: 'sender_unconfirmed', capture_reason: 'sender_unconfirmed' })]);
+    render(<WhoIsWriting />);
+    expect(screen.getByText(/Mail from senders who are not one of your vendors/)).toHaveTextContent(HELD);
+    expect(screen.getByText(/Mail from senders who are not one of your vendors/)).toHaveTextContent(
+      /offer\. It also holds .* until a person checks them\. Nothing here is trusted/,
+    );
+  });
+});
+
 describe('put away, and the undo', () => {
   it('puts away, offers Undo, and restores', async () => {
     h.putAway.mutateAsync.mockResolvedValue({ dismissed: true });

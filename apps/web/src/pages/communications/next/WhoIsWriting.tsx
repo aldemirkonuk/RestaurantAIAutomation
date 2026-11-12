@@ -317,7 +317,10 @@ function Strangers({
       </div>
       <p style={LEDE}>
         Mail from senders who are not one of your vendors. Mudavym kept it because it carried an attachment or read like an
-        offer. Nothing here is trusted, and Mudavym never answers it on its own.
+        offer.
+        {data?.some((p) => p.held_reason) &&
+          ' It also holds letters whose sender could not be read or confirmed — even from an address in your vendor book — until a person checks them.'}{' '}
+        Nothing here is trusted, and Mudavym never answers it on its own.
       </p>
       {undo && (
         <p role="status" style={{ ...LEDE, display: 'flex', alignItems: 'center', gap: 10 }}>
