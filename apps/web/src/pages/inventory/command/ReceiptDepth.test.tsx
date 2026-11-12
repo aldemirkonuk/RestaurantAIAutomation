@@ -69,12 +69,24 @@ beforeEach(() => {
 })
 
 describe('ReceiptDepth', () => {
+  it('prints a document in its own currency, and an unpriced one without its defaulted code', async () => {
+    api.byOrder = {
+      o1: [
+        doc({ currency: 'TRY', total: 456 }),
+        doc({ id: 'd5', doc_type: 'delivery_receipt', currency: 'USD', total: 99, moneyState: { priced: false, reason: 'no currency on the paper' } }),
+      ],
+    }
+    render(<ReceiptDepth orders={[{ id: 'o1', orderNumber: 'PO-14' }]} />, { wrapper })
+    expect(await screen.findByText(/^(TRY|₺)\s?456\.00$/)).toBeInTheDocument()
+    expect(screen.getByText('99.00 (currency not recorded)')).toBeInTheDocument()
+  })
+
   it('renders the paperwork with E49 dashes for null tie-out and doc number', async () => {
     api.byOrder = {
       o1: [
         doc({}),
         doc({ id: 'd2', doc_type: 'delivery_receipt', doc_number: null, ties_out: true, status: 'verified' }),
-        doc({ id: 'd3', doc_type: 'credit_memo', doc_number: 'CM-3', ties_out: false, tie_out_delta: -12.4 }),
+        doc({ id: 'd3', doc_type: 'credit_memo', doc_number: 'CM-3', ties_out: false, tie_out_delta: -12.4, currency: 'USD' }),
         doc({ id: 'd4', status: 'superseded' }), // never shown
       ],
     }
@@ -85,6 +97,8 @@ describe('ReceiptDepth', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('ties out')).toBeInTheDocument()
     expect(screen.getByText('off by $12.40')).toBeInTheDocument()
+    // A document with no currency on it is not dollars (browser walk 2026-11-12).
+    expect(screen.getAllByText('412.50 (currency not recorded)').length).toBeGreaterThanOrEqual(1)
     // superseded paperwork stays out of the book
     expect(screen.getAllByText('Invoice')).toHaveLength(1)
   })

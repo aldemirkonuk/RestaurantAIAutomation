@@ -23,6 +23,7 @@ import { ReceiptDepth } from './ReceiptDepth'
 import { stockValueText, unitCostOf } from './stock-value'
 import { SpotCountPanel } from './SpotCountPanel'
 import { NameThisWine } from './NameThisWine'
+import { formatMoney } from '../../../lib/currency'
 
 function Card({ title, right, children }: { title: string; right?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -57,9 +58,13 @@ const ADJUST_REASONS = [
 export function RowExpansion({
   item,
   locations,
+  money = fmtMoneyExact,
 }: {
   item: InventoryItem
   locations: StorageLocation[]
+  /** How a unit price is drawn. The page passes the house's own currency
+   * (`house-money.ts`); the default is the legacy `$` format. */
+  money?: (n: number | null) => string
 }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -243,14 +248,16 @@ export function RowExpansion({
             </span>
           }
         >
-          <KV k={`Market avg (${formatVolume(item.bottleSizeMl ?? 750, measurementUnit)})`} v={fmtMoneyExact(item.marketPrice)} />
-          <KV k="You paid (WAC)" v={stockValueText(paid, fmtMoneyExact)} />
+          {/* The wine library records no currency for its average, so it is
+              printed with "(currency not recorded)": never the house's code, never $. */}
+          <KV k={`Market avg (${formatVolume(item.bottleSizeMl ?? 750, measurementUnit)})`} v={item.marketPrice == null ? "-" : formatMoney(item.marketPrice, null)} />
+          <KV k="You paid (WAC)" v={stockValueText(paid, money)} />
           <KV
             k="Delta"
             v={delta$ == null ? 'n/a' : `${delta$ > 0 ? '+' : ''}${delta$.toFixed(0)}%${delta$ >= 15 ? ', appreciating, hold' : delta$ <= -5 ? ', re-quote vendor' : ''}`}
             tone={delta$ != null && delta$ > 0 ? 'green' : 'amber'}
           />
-          <KV k="Menu price" v={item.menuPrice ? `${fmtMoneyExact(item.menuPrice)}${paid ? ` (${(item.menuPrice / paid).toFixed(1)}x)` : ''}` : 'not set'} tone="blue" />
+          <KV k="Menu price" v={item.menuPrice ? `${money(item.menuPrice)}${paid ? ` (${(item.menuPrice / paid).toFixed(1)}x)` : ''}` : 'not set'} tone="blue" />
           <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
             Alerts fire when a vendor quote exceeds market or margin slips under 1.8x.
           </p>
