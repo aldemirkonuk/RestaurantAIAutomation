@@ -1889,7 +1889,9 @@ export default function ReceiptsNext() {
                   {/* "btl" was a wine word; the count is of whatever came in (W38).
                       A line in a weight or a keg is never added to the count (R10). */}
                   {d.orderNumber ??
-                    (d.unordered ? 'a delivery nobody ordered' : 'an order with no number')}{' '}
+                    (d.unordered ? 'a delivery nobody ordered' : 'an order with no number')}
+                  {/* Two unordered deliveries read alike without the vendor (walk 2026-11-12). */}
+                  {d.vendorName ? ` from ${d.vendorName}` : ''}{' '}
                   · {d.countedQtyBottles} counted
                   {d.linesWithoutBottles > 0 &&
                     ` + ${d.linesWithoutBottles} ${d.linesWithoutBottles === 1 ? 'line' : 'lines'} in another unit`}{' '}

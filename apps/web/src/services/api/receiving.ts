@@ -156,6 +156,9 @@ export interface DoorCountedDelivery {
   deliveryId: string
   orderId: string | null
   orderNumber: string | null
+  /** The vendor on the delivery, from this house's providers; null when none is named. */
+  providerId?: string | null
+  vendorName?: string | null
   countedQtyBottles: number
   linesWithoutBottles: number
   countedAt: string
