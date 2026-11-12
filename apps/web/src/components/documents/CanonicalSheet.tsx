@@ -238,6 +238,9 @@ export interface CanonicalSheetProps {
     source: 'chosen' | 'remembered',
   ) => Promise<void>
   onChooseItem?: (lineId: string) => void
+  /** The line the by-hand chooser is open on, and what draws it (#347). */
+  choosingLineId?: string | null
+  renderChooser?: (lineId: string) => React.ReactNode
   itemName?: (inventoryId: string) => string | null
   /** An item's vintage, for the shelf proposal's mismatch note (W8). */
   itemVintage?: (inventoryId: string) => number | null
@@ -252,6 +255,8 @@ export function CanonicalSheet({
   onVerify,
   onLinkItem,
   onChooseItem,
+  choosingLineId,
+  renderChooser,
   itemName,
   itemVintage,
 }: CanonicalSheetProps) {
@@ -650,6 +655,8 @@ export function CanonicalSheet({
                       itemName={itemName ?? (() => null)}
                       onLink={onLinkItem}
                       onChoose={onChooseItem}
+                      choosing={!!choosingLineId && resolvedByIndex.get(i)!.lineId === choosingLineId}
+                      renderChooser={renderChooser}
                       printedVintage={printedVintageOf(line.vintage.value, line.description.value)}
                       itemVintage={itemVintage}
                     />

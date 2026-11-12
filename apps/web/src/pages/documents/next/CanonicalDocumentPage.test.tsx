@@ -20,10 +20,17 @@ const mintCorrectMock = vi.fn()
 const mintVerifyMock = vi.fn()
 /** Every call, in order, so the mint's TIMING is asserted rather than assumed. */
 const calls: string[] = []
+const linkMock = vi.fn()
+const inventoryMock = vi.fn()
+vi.mock('../../../services/api/inventory', () => ({
+  getInventory: () => inventoryMock(),
+}))
 vi.mock('../../../services/api/canonical', () => ({
   canonicalApi: {
     document: (id: string) => documentMock(id),
     delivery: vi.fn(),
+    lineMappings: vi.fn().mockResolvedValue([]),
+    linkLineToItem: (...a: unknown[]) => linkMock(...a),
     correctField: (id: string, body: unknown, challenge?: string | null) => {
       calls.push('correctField')
       return correctMock(id, body, challenge)
@@ -183,6 +190,9 @@ describe('CanonicalDocumentPage', () => {
     verifyMock.mockReset()
     mintCorrectMock.mockReset()
     mintVerifyMock.mockReset()
+    linkMock.mockReset()
+    inventoryMock.mockReset()
+    inventoryMock.mockResolvedValue([])
     calls.length = 0
     mintCorrectMock.mockResolvedValue('seal-correct')
     mintVerifyMock.mockResolvedValue('seal-tick')
@@ -548,5 +558,94 @@ describe('CanonicalDocumentPage', () => {
     hold(/Type a value this field can take/)
     expect(mintCorrectMock).not.toHaveBeenCalled()
     expect(correctMock).not.toHaveBeenCalled()
+  })
+  describe('pairing a line by hand (#347)', () => {
+    const resolved = (over: Record<string, unknown> = {}) => ({
+      lineIndex: 0,
+      lineId: 'line-syn-1',
+      inventoryId: null,
+      inventoryIdSource: null,
+      proposedInventoryId: null,
+      proposedSentence: null,
+      proposalUnavailable: false,
+      proposalUnavailableReason: null,
+      masterWineId: null,
+      canonicalUom: null,
+      packSize: null,
+      qtyBottles: null,
+      matchMethod: null,
+      matchConfidence: null,
+      ...over,
+    })
+    const withLine = (over: Record<string, unknown> = {}) => {
+      const r = response()
+      ;(r.canonical.layer2 as { lines: unknown[] }).lines = [resolved(over)]
+      return r
+    }
+    const items = [
+      { id: 'inv-1', wineName: 'Şarap Kırmızı', bottleSizeMl: 750 },
+      { id: 'inv-2', wineName: 'Öküzgözü Reserve', bottleSizeMl: 750 },
+    ]
+
+    it('a line the memory has nothing for offers "Choose an item"', async () => {
+      documentMock.mockResolvedValue(withLine())
+      mount()
+      await waitFor(() => expect(screen.getByTestId('shelf-choose')).toBeTruthy())
+      expect(screen.getByTestId('shelf-choose').textContent).toBe('Choose an item')
+    })
+
+    it('choosing one links it by hand, with source "chosen"', async () => {
+      documentMock.mockResolvedValue(withLine())
+      inventoryMock.mockResolvedValue(items)
+      linkMock.mockResolvedValue({ lineId: 'line-syn-1', inventoryId: 'inv-1', remembered: true, memoryNote: null })
+      mount()
+      await waitFor(() => expect(screen.getByTestId('shelf-choose')).toBeTruthy())
+      fireEvent.click(screen.getByTestId('shelf-choose'))
+      fireEvent.change(screen.getByTestId('chooser-input'), { target: { value: 'sarap' } })
+      const match = await screen.findByTestId('chooser-match')
+      expect(match.textContent).toMatch(/Şarap Kırmızı/)
+      fireEvent.click(match)
+      await waitFor(() =>
+        expect(linkMock).toHaveBeenCalledWith('doc-syn', 'line-syn-1', 'inv-1', 'chosen'),
+      )
+      await waitFor(() => expect(screen.queryByTestId('chooser')).toBeNull())
+    })
+
+    it('Cancel closes the chooser and calls nothing', async () => {
+      documentMock.mockResolvedValue(withLine())
+      inventoryMock.mockResolvedValue(items)
+      mount()
+      await waitFor(() => expect(screen.getByTestId('shelf-choose')).toBeTruthy())
+      fireEvent.click(screen.getByTestId('shelf-choose'))
+      fireEvent.click(screen.getByTestId('chooser-cancel'))
+      expect(linkMock).not.toHaveBeenCalled()
+      expect(screen.queryByTestId('chooser')).toBeNull()
+      expect(screen.getByTestId('shelf-choose')).toBeTruthy()
+    })
+
+    it('a failed item read says so and offers no item to choose', async () => {
+      documentMock.mockResolvedValue(withLine())
+      inventoryMock.mockRejectedValue(new Error('SYNTHETIC items down'))
+      mount()
+      await waitFor(() => expect(screen.getByTestId('shelf-choose')).toBeTruthy())
+      await waitFor(() => expect(inventoryMock).toHaveBeenCalled())
+      // Wait for the query to settle into error before opening the chooser.
+      await new Promise((r) => setTimeout(r, 50))
+      fireEvent.click(screen.getByTestId('shelf-choose'))
+      await waitFor(() => expect(screen.getByTestId('chooser-failed')).toBeTruthy())
+      expect(screen.getByTestId('chooser-failed').textContent).toMatch(
+        /The house's items could not be read, so none can be chosen\./,
+      )
+      expect(screen.queryAllByTestId('chooser-match')).toHaveLength(0)
+      expect(screen.queryByTestId('chooser-input')).toBeNull()
+    })
+
+    it('a line whose memory could not be read can still be chosen by hand', async () => {
+      documentMock.mockResolvedValue(withLine({ proposalUnavailable: true, proposalUnavailableReason: 'SYN' }))
+      mount()
+      await waitFor(() => expect(screen.getByTestId('shelf-unavailable')).toBeTruthy())
+      fireEvent.click(screen.getByTestId('shelf-choose'))
+      expect(screen.getByTestId('chooser')).toBeTruthy()
+    })
   })
 })
