@@ -411,7 +411,8 @@ describe('RecipeSheet', () => {
     fireEvent.change(screen.getByLabelText(/paste a spec/i), { target: { value: '1½ oz gin / 2 dashes Angostura' } });
     fireEvent.click(screen.getByRole('button', { name: 'Read it' }));
     const box = screen.getByTestId('recipe-proposed');
-    expect(box).toHaveTextContent('1.5 oz');
+    expect(box).toHaveTextContent('1.5 US oz');
+    expect(box).toHaveTextContent('2 dashes');
     expect(box).toHaveTextContent('Nothing is saved yet.');
     fireEvent.click(within(box).getByRole('button', { name: 'Change the paste' }));
     expect(screen.queryByTestId('recipe-proposed')).toBeNull();

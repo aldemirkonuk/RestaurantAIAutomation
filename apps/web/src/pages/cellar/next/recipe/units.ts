@@ -17,6 +17,23 @@ export const UNIT_LABEL: Record<RecipeUnit, string> = {
 };
 
 /**
+ * The unit as a reader says it after an amount: "2 dashes", "1 dash", "2
+ * barspoons" (browser walk 2026-11-11, R3: "2 dash"). Symbols and
+ * abbreviations (ml, US oz, tsp) and "each" do not take a plural.
+ */
+const PLURAL: Partial<Record<RecipeUnit, string>> = { dash: 'dashes', barspoon: 'barspoons' };
+export function unitWord(unit: RecipeUnit, qty: number | null | undefined): string {
+  const many = PLURAL[unit];
+  return many && qty != null && Number.isFinite(qty) && qty !== 1 ? many : UNIT_LABEL[unit];
+}
+
+/** "2 dashes", "30 ml", or the amount alone when no unit is known. */
+export function amountWithUnit(qty: number, unit: RecipeUnit | '' | null | undefined): string {
+  const known = unit && (RECIPE_UNITS as readonly string[]).includes(unit) ? unitWord(unit as RecipeUnit, qty) : unit ?? '';
+  return `${qtyText(qty)} ${known}`.trim();
+}
+
+/**
  * 1,000 or 1.000: a thousand in one country, one in another (round 19: "1,000"
  * saved as 1). Not guessed; the sheet asks for it without the separator.
  */
