@@ -155,6 +155,24 @@ export interface SaveRecipeBody {
   lines: SaveRecipeLine[];
 }
 
+/** One line of an unsaved draft, as POST .../cost-preview takes it. */
+export interface PreviewCostLine {
+  role: RecipeLineRole;
+  inventoryId: string | null;
+  qtyEntered: number;
+  unitCode: string;
+}
+
+export interface PreviewCostBody {
+  yieldServes: number;
+  lines: PreviewCostLine[];
+}
+
+/** What a draft would cost at today's prices: the saved cost's shape, plus each line in the order sent. */
+export interface CostPreview extends RecipeCost {
+  lines: Array<{ status: RecipeLineStatus; costPerServe: number | null; costBasis: string | null }>;
+}
+
 export interface SaveRecipeResult {
   versionId: string;
   version: number;
@@ -194,6 +212,15 @@ export const recipesApi = {
   async save(restaurantId: string, cocktailId: string, body: SaveRecipeBody): Promise<SaveRecipeResult> {
     const r = await apiClient.put<SaveRecipeResult>(
       `${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}`,
+      body,
+    );
+    return r.data;
+  },
+
+  /** Prices an unsaved draft at today's prices. The server prices it; nothing is written. */
+  async previewCost(restaurantId: string, cocktailId: string, body: PreviewCostBody): Promise<CostPreview> {
+    const r = await apiClient.post<CostPreview>(
+      `${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}/cost-preview`,
       body,
     );
     return r.data;
