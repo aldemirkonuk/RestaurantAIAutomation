@@ -89,6 +89,31 @@ function measuredParser(factors: Record<string, number>) {
   };
 }
 
+/**
+ * An amount typed in a unit the person has just chosen ("Par, in kg"), as a
+ * whole amount of the book's unit: with kg chosen, "2.5", "2,5" or "2.5 kg"
+ * is 2,500 g and "250 g" is 250 g. Unlike a count of a good already kept in
+ * g (amountUnit, which asks "g or kg?" of a bare "500"), the unit here was
+ * picked one field above, so a bare number is in that unit. Still refused,
+ * never rounded: anything that is not a whole g, ml or count, a negative, or
+ * more than MAX_BASE. `factors` maps each unit word to its size in the book's
+ * unit; '' is the chosen unit.
+ */
+export function amountInChosenUnit(typed: string, factors: Record<string, number>): number | null {
+  const m = MEASURED.exec(typed.trim());
+  if (!m) return null;
+  const factor = factors[m[3].toLowerCase()];
+  if (factor === undefined) return null;
+  const n = scaled(m[1], m[2] ?? '', factor);
+  return n === null || n > MAX_BASE ? null : n;
+}
+
+/** The units a measured good's figures may be typed in, by book unit; '' is filled by the chosen one. */
+export const MEASURE_WORDS: Record<'g' | 'ml', Record<string, number>> = {
+  g: { kg: 1000, g: 1 },
+  ml: { l: 1000, cl: 10, ml: 1 },
+};
+
 function wholeParser(typed: string): number | null {
   const t = typed.trim();
   if (!/^\d{1,6}$/.test(t)) return null;
