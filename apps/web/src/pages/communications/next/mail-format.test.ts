@@ -354,7 +354,7 @@ describe('the intake record in words', () => {
       '2 waiting for a home, the oldest for 3 days.',
     );
     expect(heldAtDoorWords(known(rec({ waiting: 3, oldestWaitingAt: oldest, byStatus: { gave_up: 1, failed: 2 } })), NOW)).toBe(
-      '3 waiting for a home, the oldest for 3 days; 1 stopped after six tries and wait for \u201CRead again\u201D.',
+      '3 waiting for a home, the oldest for 3 days; 1 stopped after six tries and waits for \u201CRead again\u201D.',
     );
   });
 

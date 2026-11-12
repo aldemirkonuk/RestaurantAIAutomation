@@ -299,7 +299,7 @@ describe('the intake sheet', () => {
     await open();
     await waitFor(() =>
       expect(screen.getByTestId('held-at-door')).toHaveTextContent(
-        '3 waiting for a home, the oldest for 2 days; 1 stopped after six tries and wait for \u201CRead again\u201D.',
+        '3 waiting for a home, the oldest for 2 days; 1 stopped after six tries and waits for \u201CRead again\u201D.',
       ),
     );
     fireEvent.click(await screen.findByTestId('read-again'));

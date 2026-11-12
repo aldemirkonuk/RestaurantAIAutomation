@@ -294,7 +294,7 @@ export function heldAtDoorWords(read: IntakeRead, now: number): string {
       ? `${intake.waiting} waiting for a home`
       : `${intake.waiting} waiting for a home, the oldest for ${shortSpan(now - oldest)}`;
   const gaveUp = intake.byStatus.gave_up ?? 0;
-  return gaveUp > 0 ? `${head}; ${gaveUp} stopped after six tries and wait for \u201CRead again\u201D.` : `${head}.`;
+  return gaveUp > 0 ? `${head}; ${gaveUp} stopped after six tries and ${gaveUp === 1 ? 'waits' : 'wait'} for \u201CRead again\u201D.` : `${head}.`;
 }
 
 /** The shared Mudavym mailbox's row: its own record when there is one. */
