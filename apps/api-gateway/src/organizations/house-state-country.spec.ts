@@ -34,7 +34,10 @@ import {
 import { OrganizationsService } from "./organizations.service";
 import { OrganizationsController } from "./organizations.controller";
 import { UpdateLocationDto } from "./dto/update-location.dto";
-import { SettingsAuditService } from "../settings-audit/settings-audit.service";
+import {
+  SettingsAuditService,
+  TRAIL_UNREACHABLE,
+} from "../settings-audit/settings-audit.service";
 import { DatabaseService } from "../database/database.service";
 
 beforeAll(() => {
@@ -541,7 +544,8 @@ describe("OrganizationsService.updateLocation — the state and country", () => 
     expect(out).toEqual({
       stateAndCountry: "changed",
       audited: false,
-      auditReason: "system_audit_log is read-only right now",
+      // The house's words; the table's message stays in the gateway log.
+      auditReason: TRAIL_UNREACHABLE,
     });
   });
 

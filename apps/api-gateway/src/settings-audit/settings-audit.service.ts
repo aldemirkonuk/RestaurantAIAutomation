@@ -379,6 +379,17 @@ export interface SettingsAuditReadout {
  */
 export const SETTINGS_RECORDING_SINCE = "2026-09-03";
 
+/**
+ * What a house reads when the trail could not be written or read. The
+ * database's own message ("system_audit_log is unreachable", "relation …
+ * does not exist", "permission denied for table …") names a table and goes to
+ * the gateway log only; the Settings sections print these clauses after a
+ * dash ("…not written to the trail — <reason>."), so each is one clause.
+ */
+export const TRAIL_UNREACHABLE = "the record of changes could not be reached just now";
+export const TRAIL_NOT_KEPT_HERE = "the record of changes is not kept on this server yet";
+export const TRAIL_NO_PERSON = "no signed-in person was attached to the change";
+
 /** PostgREST / Postgres codes that mean "the relation is not there". */
 const MISSING_RELATION_CODES = new Set(["42P01", "PGRST205", "PGRST202"]);
 
@@ -416,10 +427,7 @@ export class SettingsAuditService {
       this.logger.error(
         `${change.action} was not recorded: no actor. The change happened; the paper did not.`,
       );
-      return {
-        recorded: false,
-        reason: "no signed-in user was attached to the request",
-      };
+      return { recorded: false, reason: TRAIL_NO_PERSON };
     }
 
     try {
@@ -444,7 +452,7 @@ export class SettingsAuditService {
         this.logger.error(
           `${change.action} happened but the audit row failed to write: ${error.message}`,
         );
-        return { recorded: false, reason: error.message };
+        return { recorded: false, reason: TRAIL_UNREACHABLE };
       }
       return { recorded: true, reason: null };
     } catch (err: unknown) {
@@ -452,7 +460,7 @@ export class SettingsAuditService {
       this.logger.error(
         `${change.action} happened but the audit row threw: ${message}`,
       );
-      return { recorded: false, reason: message };
+      return { recorded: false, reason: TRAIL_UNREACHABLE };
     }
   }
 
@@ -495,21 +503,23 @@ export class SettingsAuditService {
         .limit(capped);
       if (error) {
         const code = (error as { code?: string }).code ?? "";
+        this.logger.error(
+          `The settings trail for ${restaurantId} could not be read: ${error.message}`,
+        );
         return {
           ...empty,
           readable: false,
           reason: MISSING_RELATION_CODES.has(code)
-            ? "the audit table is not present on this database"
-            : error.message,
+            ? TRAIL_NOT_KEPT_HERE
+            : TRAIL_UNREACHABLE,
         };
       }
       rows = (data ?? []) as unknown as AuditRow[];
     } catch (err: unknown) {
-      return {
-        ...empty,
-        readable: false,
-        reason: err instanceof Error ? err.message : String(err),
-      };
+      this.logger.error(
+        `The settings trail for ${restaurantId} threw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return { ...empty, readable: false, reason: TRAIL_UNREACHABLE };
     }
 
     const actors = await this.resolveActors(

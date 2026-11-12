@@ -5,9 +5,13 @@ import { ApprovalThresholdsService } from "./approval-thresholds.service";
 import { OrganizationsService } from "../organizations/organizations.service";
 import {
   CURRENCY_AUDIT_ACTION,
+  CURRENCY_NOT_READ,
   HouseCurrencyService,
 } from "./house-currency.service";
-import { SETTINGS_AUDIT_ACTIONS } from "../settings-audit/settings-audit.service";
+import {
+  SETTINGS_AUDIT_ACTIONS,
+  TRAIL_UNREACHABLE,
+} from "../settings-audit/settings-audit.service";
 
 /**
  * An existing house can state the money it reports in.
@@ -152,7 +156,9 @@ describe("HouseCurrencyService.read — three states, never two", () => {
     });
     const out = await svc.read(REST);
     expect(out.readable).toBe(false);
-    expect(out.reason).toContain("connection reset");
+    // In the house's words; the database's message stays in the gateway log.
+    expect(out.reason).toBe(CURRENCY_NOT_READ);
+    expect(out.reason).not.toContain("connection reset");
     expect(out.code).toBeNull();
   });
 
@@ -231,11 +237,14 @@ describe("HouseCurrencyService.write — explicit, validated, audited", () => {
         restaurants: { data: { currency: "USD", country: null }, error: null },
         system_audit_log: NO_TRAIL,
       },
-      { receipt: { recorded: false, reason: "system_audit_log is unreachable" } },
+      { receipt: { recorded: false, reason: TRAIL_UNREACHABLE } },
     );
     const out = await svc.write(REST, "TRY", USER);
     expect(out.audited).toBe(false);
-    expect(out.auditReason).toBe("system_audit_log is unreachable");
+    // The trail's own clause, in the house's words, never a table name
+    // (browser walk 2026-11-12 read "system_audit_log is unreachable").
+    expect(out.auditReason).toBe(TRAIL_UNREACHABLE);
+    expect(out.auditReason).not.toMatch(/system_audit_log|_/);
   });
 
   it("refuses anything the database's own CHECK would refuse, and writes NOTHING", async () => {

@@ -122,6 +122,9 @@ interface HouseRow {
   country: string | null;
 }
 
+/** The house's words for a failed read of its own currency (one clause). */
+export const CURRENCY_NOT_READ = "the house's record could not be reached just now";
+
 @Injectable()
 export class HouseCurrencyService {
   /** Guarded seven-day restore, with expected values loaded from the sealed receipt. */
@@ -253,7 +256,9 @@ export class HouseCurrencyService {
       this.logger.error(
         `Could not read the reporting currency for ${restaurantId}: ${error.message}`,
       );
-      return { row: null, error: error.message };
+      // The page prints this after "The currency could not be read —"; the
+      // database's message names a table and stays in the log above.
+      return { row: null, error: CURRENCY_NOT_READ };
     }
     return { row: (data as HouseRow | null) ?? null, error: null };
   }
