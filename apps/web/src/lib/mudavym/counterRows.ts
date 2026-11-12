@@ -56,11 +56,37 @@ export function shortWhen(iso: string | null | undefined, now: Date = new Date()
   return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 }
 
+/**
+ * The words for `procurement_orders.unit_type` (its CHECK: bottle, case, keg,
+ * pack, split_case, each, liter), one and many. The Seal row printed the
+ * stored code beside the count, so twelve bottles read "12 bottle" and a split
+ * case read "split_case" (browser walk 2026-11-12). Same words as the
+ * receiving page's `rc-format.ts` UNIT_PLURAL.
+ */
+const ORDER_UNIT_WORDS: Record<string, readonly [string, string]> = {
+  bottle: ['bottle', 'bottles'],
+  case: ['case', 'cases'],
+  keg: ['keg', 'kegs'],
+  pack: ['pack', 'packs'],
+  split_case: ['split case', 'split cases'],
+  each: ['unit', 'units'],
+  liter: ['litre', 'litres'],
+};
+
+/** "12 bottles", "1 case", "3 split cases"; a unit outside the list is said as it came. */
+export function orderQuantity(quantity: number | null | undefined, unitType: string | null | undefined): string {
+  if (quantity === null || quantity === undefined || !Number.isFinite(quantity)) {
+    return 'quantity not stated';
+  }
+  const code = (unitType ?? '').trim();
+  if (code === '') return String(quantity);
+  const words = ORDER_UNIT_WORDS[code.toLowerCase()];
+  if (!words) return `${quantity} ${code.replace(/_/g, ' ')}`;
+  return `${quantity} ${quantity === 1 ? words[0] : words[1]}`;
+}
+
 function orderLine(o: CounterOrderRow, read: HouseCounterRead | null): ActLine {
-  const qty =
-    o.quantity !== null && o.quantity !== undefined
-      ? `${o.quantity}${o.unitType ? ` ${o.unitType}` : ''}`
-      : 'quantity not stated';
+  const qty = orderQuantity(o.quantity, o.unitType);
   return {
     id: o.id,
     what: `${o.vendor ?? 'Vendor not named'} — ${o.wine ?? `order ${o.orderNumber ?? EM}`}`,
@@ -95,7 +121,7 @@ function deliveryLine(d: CounterDeliveryRow): ActLine {
   }
   return {
     id: d.orderId ?? EM,
-    what: `Order ${d.orderNumber ?? EM} · ${d.countedQtyBottles} bottles counted by case`,
+    what: `Order ${d.orderNumber ?? EM} · ${plural(d.countedQtyBottles, 'bottle')} counted by case`,
     detail:
       d.severity === 'overdue'
         ? `not counted by the bottle · ${d.ageHours} h, overdue`
