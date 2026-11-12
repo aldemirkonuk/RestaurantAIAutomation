@@ -99,7 +99,9 @@ describe('rec-forward — the goal door', () => {
     const offer = goalOfferFor(e({ ruleKey: 'some_rule_shipped_next_year' }));
     expect(offer.kind).toBe('refused');
     if (offer.kind === 'refused')
-      expect(offer.why).toMatch(/some_rule_shipped_next_year/);
+      expect(offer.why).toMatch(/this kind of entry/);
+    if (offer.kind === 'refused')
+      expect(offer.why).not.toMatch(/some_rule_shipped_next_year/);
   });
 
   it('carries the subject into the goal name where the rule names one', () => {

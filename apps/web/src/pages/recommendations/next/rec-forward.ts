@@ -257,7 +257,7 @@ export function goalOfferFor(entry: ForwardEntry): GoalOffer {
   if (!spec)
     return {
       kind: 'refused',
-      why: `This page has no metric filed for the rule ${entry.ruleKey}, so it will not guess one ${EM} a goal on the wrong figure is worse than no goal.`,
+      why: `This page has no figure filed for this kind of entry, so it will not guess one ${EM} a goal on the wrong figure is worse than no goal.`,
     };
   const metric = METRICS[spec.metricKey];
   return {
@@ -402,7 +402,7 @@ export function cuttingFor(entry: ForwardEntry): CuttingOffer {
   if (!spec)
     return {
       kind: 'refused',
-      why: `This page has no cutting filed for the rule ${entry.ruleKey}, so it will not send you to a drawing that may not be about it.`,
+      why: `This page has no cutting filed for this kind of entry, so it will not send you to a drawing that may not be about it.`,
     };
   const q = `cutting=${encodeURIComponent(spec.id)}&rec=${encodeURIComponent(
     entry.ruleKey,

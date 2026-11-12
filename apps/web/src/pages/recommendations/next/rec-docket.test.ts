@@ -98,10 +98,11 @@ describe('the docket — filing by the act', () => {
     expect(actOf('goal_behind_x').act).not.toBe('unfiled');
   });
 
-  it('files an unrecognised rule as unfiled, and names it', () => {
+  it('files an unrecognised rule as unfiled, without printing its internal key', () => {
     const filed = actOf('some_rule_shipped_next_week');
     expect(filed.act).toBe('unfiled');
-    expect(filed.why).toContain('some_rule_shipped_next_week');
+    expect(filed.why).toContain('this kind of entry');
+    expect(filed.why).not.toContain('some_rule_shipped_next_week');
   });
 
   it('gives every rule the engine fires a heading, and a reason read off its own prescription', () => {

@@ -465,7 +465,7 @@ describe('RecommendationsNext — the standing book', () => {
     expect(within(row).getByText('Would change').nextElementSibling).toHaveTextContent('Unfiled');
     fireEvent.click(within(row).getByText('The working'));
     expect(screen.getByText('Why it is unfiled')).toBeInTheDocument();
-    expect(screen.getByTestId('rc-register-why')).toHaveTextContent(/no register for the rule constructor/);
+    expect(screen.getByTestId('rc-register-why')).toHaveTextContent(/no register for this kind of entry/);
     expect(screen.queryByText(/undefined/)).toBeNull();
   });
 
@@ -482,17 +482,17 @@ describe('RecommendationsNext — the standing book', () => {
     expect(within(row).getByText('Would change').nextElementSibling).toHaveTextContent('Unfiled');
     expect(screen.getByTestId('rc-goal-dark')).toHaveAttribute(
       'title',
-      expect.stringContaining('no metric filed for the rule __proto__'),
+      expect.stringContaining('no figure filed for this kind of entry'),
     );
     expect(screen.getByTestId('rc-cutting-dark')).toHaveAttribute(
       'title',
-      expect.stringContaining('no cutting filed for the rule __proto__'),
+      expect.stringContaining('no cutting filed for this kind of entry'),
     );
     const note = row.querySelector('.rc-forward-note');
-    expect(note).toHaveTextContent(/no metric filed for the rule __proto__/);
-    expect(note).toHaveTextContent(/no cutting filed for the rule __proto__/);
+    expect(note).toHaveTextContent(/no figure filed for this kind of entry/);
+    expect(note).toHaveTextContent(/no cutting filed for this kind of entry/);
     fireEvent.click(within(row).getByText('The working'));
-    expect(screen.getByTestId('rc-register-why')).toHaveTextContent(/no register for the rule __proto__/);
+    expect(screen.getByTestId('rc-register-why')).toHaveTextContent(/no register for this kind of entry/);
     expect(document.body.textContent).not.toMatch(/undefined|\[object Object\]/);
   });
 
