@@ -58,3 +58,40 @@ export function totalStockValueText(t: StockValueTotal, fmt: (n: number) => stri
   if (t.known === 0) return `${COST_NOT_KNOWN} (${wines})`
   return `${fmt(t.known)} + ${wines} whose cost is not known yet`
 }
+
+/**
+ * The house's own bottle price (ADR 0193 `menuPriceBottle`), or null. Never
+ * the library's `menuPrice`, and never 0 for "no price set".
+ */
+export function menuPriceOf(item: Pick<InventoryItem, 'menuPriceBottle'>): number | null {
+  const p = item.menuPriceBottle
+  return typeof p === 'number' && Number.isFinite(p) && p > 0 ? p : null
+}
+
+/**
+ * What the bottles on hand sell for at the house's own prices. The page used
+ * to sum `menuPrice ?? 0` (the library's figure, absent for almost every
+ * wine), so an unpriced wine joined the total as $0. Here it is counted.
+ */
+export function totalMenuValue(
+  items: readonly (Costed & Pick<InventoryItem, 'menuPriceBottle'>)[],
+): StockValueTotal {
+  let known = 0
+  let unknownItems = 0
+  for (const i of items) {
+    const bottles = bottlesOnHand(i)
+    if (bottles === 0) continue
+    const price = menuPriceOf(i)
+    if (price == null) unknownItems += 1
+    else known += price * bottles
+  }
+  return { known, unknownItems }
+}
+
+/** "$3,100 menu", "$3,100 menu + 2 wines with no bottle price", or "no bottle price set (5 wines)". */
+export function totalMenuValueText(t: StockValueTotal, fmt: (n: number) => string): string {
+  const wines = `${t.unknownItems} wine${t.unknownItems === 1 ? '' : 's'}`
+  if (t.unknownItems === 0) return t.known > 0 ? `${fmt(t.known)} menu` : 'cost basis'
+  if (t.known === 0) return `no bottle price set (${wines})`
+  return `${fmt(t.known)} menu + ${wines} with no bottle price`
+}
