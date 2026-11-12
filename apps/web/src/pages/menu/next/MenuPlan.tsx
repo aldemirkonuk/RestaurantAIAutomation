@@ -66,17 +66,43 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** The plan in one sentence, in the order a person reads a menu change. */
+/** "a, b and c": a list as a sentence says it. */
+function listWords(parts: string[]): string {
+  return parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+/** Wines (menu lines) with at least one kind in `result`. */
+function winesWith(lines: PlanLine[], result: PlanKind['result']): number {
+  return lines.filter((l) => l.bottle.result === result || l.glass.result === result).length;
+}
+
+/**
+ * The plan in one sentence, in the order a person reads a menu change.
+ *
+ * Menu walk 2026-11-12: it said "add 7 prices for wines new to the house" (and
+ * "add 1 price for wines new to the house") where the choice's own result then
+ * said "4 wines priced from this menu". What the menu prices is counted in
+ * wines, as the result counts it; a lock or a price already the same is a
+ * single price, and is counted in prices.
+ */
 export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines'>): string {
   if (plan.current) return 'This is already the current menu. Choosing it again changes nothing.';
   const c = plan.counts;
   const parts: string[] = [];
-  if (c.change > 0) parts.push(`set ${plural(c.change, 'price', 'prices')} from this menu`);
-  if (c.new_wine > 0) parts.push(`add ${plural(c.new_wine, 'price', 'prices')} for wines new to the house`);
+  const changed = winesWith(plan.lines, 'change');
+  const added = winesWith(plan.lines, 'new_wine');
+  // A plan's counts with no lines to count from (never sent by the gateway
+  // today) still say what they can, in prices.
+  if (changed > 0) parts.push(`change the price of ${plural(changed, 'wine', 'wines')} the house already has`);
+  else if (c.change > 0) parts.push(`change ${plural(c.change, 'price', 'prices')}`);
+  if (added > 0)
+    parts.push(`add ${plural(added, 'wine', 'wines')} new to the house at ${added === 1 ? 'its menu price' : 'their menu prices'}`);
+  else if (c.new_wine > 0) parts.push(`price the wines new to the house (${plural(c.new_wine, 'price', 'prices')})`);
   if (c.held_by_lock > 0)
     parts.push(`leave ${plural(c.held_by_lock, 'locked price', 'locked prices')} as ${c.held_by_lock === 1 ? 'it is' : 'they are'}`);
-  if (c.unchanged > 0) parts.push(`find ${plural(c.unchanged, 'price', 'prices')} already the same`);
-  const lead = parts.length ? `Choosing this menu will ${parts.join(', ')}.` : 'Choosing this menu changes no price.';
+  if (c.unchanged > 0)
+    parts.push(`keep ${plural(c.unchanged, 'price that already matches', 'prices that already match')} the menu`);
+  const lead = parts.length ? `Choosing this menu will ${listWords(parts)}.` : 'Choosing this menu changes no price.';
   const more: string[] = [];
   if (c.blank_kept > 0) more.push(`${plural(c.blank_kept, 'price is', 'prices are')} blank on the menu, so the house keeps its own (flagged)`);
   const unpriced = plan.lines.filter((l) => l.flag === 'blank_no_house_price').length;
