@@ -8,10 +8,9 @@
  * that does not see it, and the sheet shows money and controls only to a
  * role that edits.
  *
- * What it says is what the server said. The cost a serve is the gateway's sum
- * at today's prices (F7), said once, on the drink's cost card (DrinkCards.tsx):
- * a figure only when every counted line is priced, otherwise how many are,
- * never a partial total dressed as the cost.
+ * What it says is what the server said. The cost line is the gateway's sum at
+ * today's prices (F7) and appears only when every counted line is priced;
+ * otherwise it says how many are, never a partial total dressed as the cost.
  * There is no pour-cost percentage yet: it waits for the house's tax basis
  * (F8), and a percentage of a price that includes KDV would mislead.
  *
@@ -515,13 +514,23 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
     }
   };
 
-  // Only the empty recipe has a footer. The cost a serve is the cost card's
-  // (DrinkCards.tsx) alone: a second sentence built apart from it could say
-  // something else (it once read "₺0.00" where the card said "Under ₺0.01").
-  const footer =
-    !data.current && lines.length === 0 && !hasLegacy
-      ? canEdit ? 'No recipe yet. Add what goes in it, or paste a spec.' : 'No recipe yet.'
-      : null;
+  const footer = (() => {
+    if (!data.current && lines.length === 0) {
+      if (hasLegacy) return null;
+      return canEdit ? 'No recipe yet. Add what goes in it, or paste a spec.' : 'No recipe yet.';
+    }
+    if (!money || !data.cost || !data.current) return null;
+    // While the draft differs, the cost is the saved recipe's, and says so.
+    const asSaved = canEdit && dirty ? 'As saved: ' : '';
+    if (data.cost.complete && data.cost.perServe != null) {
+      const part = data.cost.partial ?? 0;
+      return `${asSaved}Costs ${sayMoney(data.cost.perServe)} a serve at today's prices${
+        part > 0 ? ` · ${count(part, 'ingredient is', 'ingredients are')} priced from the bottles with an invoice only` : ''
+      }`;
+    }
+    if (data.cost.of === 0) return `${asSaved}Nothing in it is counted from the shelf.`;
+    return `${asSaved}${data.cost.priced} of ${count(data.cost.of, 'ingredient', 'ingredients')} priced`;
+  })();
 
   // The same good on more than one counted line: said, not merged; a split pour is real.
   const repeated = (() => {
@@ -619,7 +628,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       {hasLegacy && !(canEdit && proposed?.from === 'legacy') ? <LegacyLines data={data} /> : null}
 
       {footer ? (
-        <p className="cl-rcp-foot" data-testid="recipe-footer">
+        <p className="cl-rcp-foot" data-testid="recipe-footer" data-complete={data.cost?.complete ? 'true' : 'false'}>
           {footer}
         </p>
       ) : null}

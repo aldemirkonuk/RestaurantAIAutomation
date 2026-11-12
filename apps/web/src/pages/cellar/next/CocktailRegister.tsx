@@ -93,7 +93,7 @@ export default function CocktailRegister({
   // /cocktails?open=<id> opens that drink: the inventory drawer's "used in"
   // lines link here, so a good leads to the drink that uses it, and the drink
   // opens on its cards and its nutrition card.
-  const [params, setParams] = useSearchParams();
+  const [params] = useSearchParams();
   const openParam = params.get('open');
   const [openId, setOpenId] = useState<string | null>(openParam);
   // A second link followed while already on /cocktails changes only the search:
@@ -101,20 +101,6 @@ export default function CocktailRegister({
   useEffect(() => {
     if (openParam) setOpenId(openParam);
   }, [openParam]);
-  // Closing the linked drink, or opening another, takes `open` out of the
-  // address. Left in, the address would name a drink that is not open, and the
-  // same link followed again would change nothing and open nothing.
-  const toggleOpen = (id: string) => {
-    const next = openId === id ? null : id;
-    setOpenId(next);
-    if (openParam && next !== openParam) {
-      setParams((prev) => {
-        const kept = new URLSearchParams(prev);
-        kept.delete('open');
-        return kept;
-      }, { replace: true });
-    }
-  };
   const leafRef = useRef<HTMLDivElement | null>(null);
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
@@ -300,11 +286,11 @@ export default function CocktailRegister({
                       key={c.id}
                       data-selected={c.id === openId}
                       tabIndex={0}
-                      onClick={() => toggleOpen(c.id)}
+                      onClick={() => setOpenId((k) => (k === c.id ? null : c.id))}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
                           e.preventDefault();
-                          toggleOpen(c.id);
+                          setOpenId((k) => (k === c.id ? null : c.id));
                         }
                       }}
                     >
