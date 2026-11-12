@@ -252,12 +252,10 @@ export default function WholeCellar({
           )}
 
           <p className="cl-note">
-            Wines are not in this list. `/wines` is served by a different read
-            with the cellar laid over it, so a wine row carries a stock figure
-            and a beer row cannot — putting them in one table would mean one of
-            the two columns lying. Nothing here can be counted into the cellar
-            either: `restaurant_inventory` is keyed on the wine library, which is
-            OD-113.
+            Wines are not in this list. A wine row carries a stock figure and a
+            beer row cannot, so putting them in one table would mean one of the
+            two columns lying. Nothing here can be counted into the cellar yet:
+            the cellar keeps stock only for wines in the wine library.
           </p>
 
           {series !== null ? (

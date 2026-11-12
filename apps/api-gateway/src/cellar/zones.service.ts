@@ -79,7 +79,7 @@ export interface ZonesResult {
 }
 
 export const ZONES_SCOPE_NOTE =
-  "A zone is drawn on the floor only once somebody in this house has confirmed its name. Every row here was written by a seeder or an import until a manager says otherwise, so an unconfirmed zone is counted in words and never drawn as a room. Capacity is the row's own figure; what is in it is counted from the inventory rows assigned to it, not from current_occupancy, which disagrees with them.";
+  "A zone is drawn on the floor only once somebody in this house has confirmed its name. Every row here was written by a seeder or an import until a manager says otherwise, so an unconfirmed zone is counted in words and never drawn as a room. Capacity is the row's own figure; what is in it is counted from the inventory rows assigned to it, not from the zone's own stored occupancy figure, which disagrees with them.";
 
 interface ZoneRow {
   id: string;

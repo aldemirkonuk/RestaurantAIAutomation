@@ -749,7 +749,7 @@ function registerVM(over: Record<string, unknown> = {}) {
       available: false,
       decision: 'OD-113',
       reason:
-        'Nothing in this register can be counted into the cellar yet. restaurant_inventory is keyed on master_wine_id.',
+        'Nothing in this register can be counted into the cellar yet. The cellar keeps stock only for wines in the wine library.',
     },
     scopeNote:
       "Rows with a record are this house's own. Rows without one are the shared reference catalogue and belong to nobody.",
@@ -1106,7 +1106,7 @@ describe('CellarNext — the registers that are not wines', () => {
 
     const gate = screen.getByTestId('stock-gate');
     expect(gate).toBeDisabled();
-    expect(screen.getByTestId('house-leaf')).toHaveTextContent(/keyed on master_wine_id/);
+    expect(screen.getByTestId('house-leaf')).toHaveTextContent(/only for wines in the wine library/);
   });
 
   it('keeps a bottle the house bought that no catalogue row carries', () => {
@@ -1868,10 +1868,10 @@ describe('the expanded row — the /inventory dropdown, in the cellar', () => {
     draw({ category: 'beer' });
     fireEvent.click(screen.getByText('Efes Pilsen').closest('tr')!);
     expect(screen.getByTestId('withheld-live-vs-shadow')).toHaveTextContent(
-      /keyed on master_wine_id/,
+      /only for wines in the wine library/,
     );
     expect(screen.getByTestId('withheld-par-and-reorder')).toHaveTextContent(
-      /restaurant_inventory\.threshold_min/,
+      /kept on the item’s stock row/,
     );
   });
 

@@ -200,7 +200,7 @@ export interface RegisterResult {
 }
 
 export const STOCKING_WITHHELD =
-  "Nothing in this register can be counted into the cellar yet. restaurant_inventory is keyed on master_wine_id → master_wine_library, so a keg, a bottle of rye and a case of cola have no stock row to write to. The identity axis that would give them one is OD-113 and is not decided, so adding to inventory is withheld rather than faked.";
+  "Nothing in this register can be counted into the cellar yet. The cellar keeps stock only for wines in the wine library, so a keg, a bottle of rye and a case of cola have no stock row to write to. How they would get one is not decided yet, so adding to inventory is withheld rather than faked.";
 
 /** One row of `house_beverage_ledger`, exactly as the RPC returns it. */
 export interface LedgerRow {
