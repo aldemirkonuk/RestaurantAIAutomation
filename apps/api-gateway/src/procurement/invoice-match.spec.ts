@@ -706,3 +706,33 @@ describe("computeMatch — units", () => {
     });
   });
 });
+
+describe("a price is printed in its own currency (browser walk 2026-11-12)", () => {
+  const lira: MatchInput = {
+    orderedQty: 6,
+    poUnitPrice: 20,
+    invoiceQty: 6,
+    invoiceUnitPrice: 25,
+    acceptedQty: 6,
+    poCurrency: "TRY",
+    invoiceCurrency: "TRY",
+  };
+
+  it("a TRY invoice's summary and price check never say dollars", () => {
+    const r = computeMatch(lira);
+    expect(r.summary).toBe("Billed TRY\u00a025.00 against an agreed TRY\u00a020.00.");
+    const price = r.checks.find((c) => c.id === "price");
+    expect(price?.detail).toBe("Agreed TRY\u00a020.00 vs billed TRY\u00a025.00");
+    expect(JSON.stringify(r)).not.toMatch(/\$/);
+  });
+
+  it("each price names its own money when the two differ", () => {
+    const r = computeMatch({ ...lira, invoiceCurrency: "EUR", priceOverrideReason: "billed in euro" });
+    expect(r.summary).toBe("All 6 accepted at the billed €25.00, not the agreed TRY\u00a020.00.");
+  });
+
+  it("with no code the number stands alone, never a dollar sign", () => {
+    const r = computeMatch({ ...lira, poCurrency: null, invoiceCurrency: undefined });
+    expect(r.summary).toBe("Billed 25.00 against an agreed 20.00.");
+  });
+});

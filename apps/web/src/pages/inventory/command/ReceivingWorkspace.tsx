@@ -44,7 +44,7 @@ import { CURRENCY_CODES } from '../../../lib/currency'
  */
 import { RECEIVING_PRICE_CURRENCY_RUNGS } from '../../../../../api-gateway/src/procurement/price-currency'
 import { ThemedSelect } from '../../../components/ui/ThemedSelect'
-import { computeMatch, verdictStyle, money } from '../../../lib/invoiceMatch'
+import { computeMatch, costCorrectionLine, verdictStyle, money } from '../../../lib/invoiceMatch'
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import type { ShelfReceived } from '../../../services/api/types'
@@ -399,6 +399,17 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
   })
   const houseCurrency = house?.readable ? (house.code ?? null) : null
 
+  /*
+   * WHAT EACH PRICE ON THIS SCREEN IS PRINTED IN (browser walk 2026-11-12: a
+   * TRY invoice read "$25.00" here, because `money` only knew dollars). Words
+   * only; nothing is converted. The agreed price is the order's money, or the
+   * house's when the order names none. The billed price, the real cost and the
+   * difference are the invoice's money as the desk filed it, else the agreed
+   * price's. No code anywhere: the number stands alone, never a `$`.
+   */
+  const agreedCode = orderCurrency?.currency || houseCurrency || null
+  const billedCode = invoiceCurrency || agreedCode
+
   const { invoice, packingSlip } = useMemo(() => pickDocuments(documents), [documents])
   const allocatedCharges = useMemo(() => allocatedChargesFor(invoice), [invoice])
 
@@ -467,6 +478,8 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         freeGoodsQty,
         allocatedCharges,
         priceOverrideReason,
+        poCurrency: agreedCode,
+        invoiceCurrency: billedCode,
       }),
     [
       orderedQty,
@@ -479,6 +492,8 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
       freeGoodsQty,
       allocatedCharges,
       priceOverrideReason,
+      agreedCode,
+      billedCode,
     ],
   )
 
@@ -641,16 +656,18 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
         })),
         note: note || undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (verified) => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] })
       queryClient.invalidateQueries({ queryKey: ['orders'] })
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
       const heldOpen = match.backorderQty > 0
+      const settled = costCorrectionLine(verified?.costCorrection)
+      const said = heldOpen
+        ? `${acceptedQty} of ${orderedQty} accepted — ${match.backorderQty} still on backorder.`
+        : match.summary
       toast.success(
         heldOpen ? 'Received, order held open' : 'Receipt verified',
-        heldOpen
-          ? `${acceptedQty} of ${orderedQty} accepted — ${match.backorderQty} still on backorder.`
-          : match.summary,
+        settled ? `${said} ${settled}` : said,
       )
       onClose()
     },
@@ -848,7 +865,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               </select>
             </div>
             <div className="text-center font-mono text-sm text-gray-500">
-              {poUnitPrice != null ? money(poUnitPrice) : '—'}
+              {poUnitPrice != null ? money(poUnitPrice, agreedCode) : '—'}
             </div>
             <div className="flex justify-center">
               <input
@@ -881,8 +898,11 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
               ) : priceDiffers ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600">
                   <AlertTriangle className="w-3 h-3" />
-                  {money(Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice))}/btl{' '}
-                  {(invoiceUnitPrice ?? 0) > poUnitPrice ? 'over' : 'under'} agreed
+                  {billedCode && agreedCode && billedCode !== agreedCode
+                    ? `billed in ${billedCode}, agreed in ${agreedCode}`
+                    : `${money(Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice), billedCode)}/btl ${
+                        (invoiceUnitPrice ?? 0) > poUnitPrice ? 'over' : 'under'
+                      } agreed`}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
@@ -1106,7 +1126,7 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
                   <div className="text-[10.5px] text-gray-500">
                     Real cost{' '}
                     <span className="font-mono font-bold text-gray-700">
-                      {money(match.effectiveUnitCost)}
+                      {money(match.effectiveUnitCost, billedCode)}
                     </span>
                     /btl
                   </div>
