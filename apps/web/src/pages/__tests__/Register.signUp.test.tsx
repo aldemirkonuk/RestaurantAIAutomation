@@ -1,12 +1,12 @@
 /**
- * OB-11, part 1: a refused sign-up is said in words.
+ * OB-11: sign-up says "wait" and stops probing.
  *   t1. A 429 renders the seconds from Retry-After, in words, and holds the button.
- *   An address already in use offers Sign in under the sentence.
- *   t2. Typing an email makes 0 check-email calls (no address probe).
- * (The confirm field goes in the next branch of the stack.)
+ *   t2. Typing an email makes 0 check-email calls.
+ *   t3. There is no confirm field; a show/hide toggle reveals the password.
+ *   Enter submits (browser walk 2026-11-11: it did not).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { signUpRefusal } from '../../lib/authWords'
 
@@ -64,6 +64,34 @@ describe('Register — OB-11', () => {
     expect(h.get.mock.calls.filter(([u]) => String(u).includes('check-email'))).toHaveLength(0)
   })
 
+  it('t3: no confirm field, and the toggle shows and hides the password', () => {
+    open()
+    expect(screen.queryByLabelText(/confirm/i)).toBeNull()
+    const box = screen.getByLabelText(/^Password/) as HTMLInputElement
+    expect(box.type).toBe('password')
+    fireEvent.click(screen.getByRole('button', { name: 'Show password' }))
+    expect(box.type).toBe('text')
+    fireEvent.click(screen.getByRole('button', { name: 'Hide password' }))
+    expect(box.type).toBe('password')
+  })
+
+  it('Enter in the form submits the account', async () => {
+    h.auth.registerAccount.mockResolvedValue(undefined)
+    open()
+    type(/^Full Name/, 'Ayşe Kaya')
+    type(/^Email/, 'ayse@kaya.test')
+    type(/^Password/, 'long-enough-1')
+    fireEvent.submit(screen.getByLabelText(/^Password/).closest('form')!)
+    await waitFor(() =>
+      expect(h.auth.registerAccount).toHaveBeenCalledWith({
+        name: 'Ayşe Kaya',
+        email: 'ayse@kaya.test',
+        password: 'long-enough-1',
+      }),
+    )
+    expect(h.navigate).toHaveBeenCalledWith('/verify-email', { replace: true })
+  })
+
   it('t1: a 429 says the seconds from Retry-After and holds the button', async () => {
     h.auth.registerAccount.mockRejectedValue(
       Object.assign(new Error('ThrottlerException: Too Many Requests'), { status: 429, retryAfter: '42' }),
@@ -72,7 +100,6 @@ describe('Register — OB-11', () => {
     type(/^Full Name/, 'Ayşe Kaya')
     type(/^Email/, 'ayse@kaya.test')
     type(/^Password/, 'long-enough-1')
-    type(/^Confirm Password/, 'long-enough-1')
     fireEvent.click(screen.getByRole('button', { name: /create account/i }))
     expect(await screen.findByText(/Wait 42 seconds, then try again\./)).toBeInTheDocument()
     expect(screen.queryByText(/Throttler/)).toBeNull()
@@ -87,7 +114,6 @@ describe('Register — OB-11', () => {
     type(/^Full Name/, 'Ayşe Kaya')
     type(/^Email/, 'ayse@kaya.test')
     type(/^Password/, 'long-enough-1')
-    type(/^Confirm Password/, 'long-enough-1')
     fireEvent.click(screen.getByRole('button', { name: /create account/i }))
     expect(await screen.findByText(/already has an account/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Sign in' })).toHaveAttribute('href', '/login')

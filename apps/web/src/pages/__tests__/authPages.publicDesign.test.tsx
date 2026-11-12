@@ -246,7 +246,6 @@ async function joinAccount(emailAvailable: boolean) {
   type('Full Name *', 'Deniz Kaya')
   type('Email *', 'deniz@house.test')
   type('Password *', 'long-enough-1')
-  type('Confirm Password *', 'long-enough-1')
   if (!emailAvailable) {
     fireEvent.click(screen.getByRole('button', { name: /join restaurant/i }))
     await screen.findByText(/already in this house/, undefined, WAIT)
@@ -265,7 +264,6 @@ async function createAccountTaken() {
   type('Full Name *', 'Deniz Kaya')
   type('Email *', 'taken@house.test')
   type('Password *', 'long-enough-1')
-  type('Confirm Password *', 'long-enough-1')
   fireEvent.click(screen.getByRole('button', { name: /create account/i }))
   await screen.findByText(/already has an account/, undefined, WAIT)
   return r.container
@@ -737,7 +735,6 @@ describe('the invite mail secret reaches the join', () => {
     type('Full Name *', 'Deniz Kaya')
     type('Email *', 'deniz@house.test')
     type('Password *', 'long-enough-1')
-    type('Confirm Password *', 'long-enough-1')
     fireEvent.click(screen.getByRole('button', { name: 'Join Restaurant' }))
     await vi.waitFor(() => expect(h.auth.joinViaInvite).toHaveBeenCalledTimes(1))
     return h.auth.joinViaInvite.mock.calls[0][0] as Record<string, unknown>
