@@ -21,7 +21,7 @@
 import type { ReactElement } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render as rtlRender, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 /**
  * The manager view now renders IntegrationReturnNotice unconditionally too
@@ -132,6 +132,8 @@ interface Fixture {
   provider: Reg;
   payments: Reg;
   sender: Reg;
+  /** The mail setup page's read: which connected mailbox the house chose. */
+  mailSetup: Reg;
   /** Receive-half grant status — drives the reconnect banner. */
   mailReader: Reg;
   /** The house's WhatsApp and SMS senders (ADR 0121). */
@@ -194,6 +196,24 @@ function myLink(over: Record<string, unknown> = {}) {
 const ISSUED_ADDRESS = `https://api.mudavym.test/api/v1/calendar/feed/${'e'.repeat(64)}.ics`;
 const reloadTextSenders = vi.fn();
 
+function mailSetup(over: { canChange?: boolean; chosenConnectionId?: string | null; choices?: unknown[] } = {}) {
+  return {
+    canChange: over.canChange ?? true,
+    senders: { failed: null, chosenConnectionId: over.chosenConnectionId ?? null, choices: over.choices ?? [] },
+    arrival: { domainReady: true, address: 'bodega@in.mudavym.com', failed: null },
+    testLetter: { failed: null, latest: null },
+  };
+}
+
+const CHOICE = {
+  connectionId: 'c1',
+  address: 'orders@bodega.example',
+  personName: null,
+  mine: true,
+  chosen: false,
+  sending: true,
+};
+
 function base(): Fixture {
   return {
     restaurantId: 'r1',
@@ -217,6 +237,8 @@ function base(): Fixture {
       resolvedFromProfile: false,
       perHouse: { supported: false, reason: 'No per-restaurant sender exists.' },
     }),
+    /** Default: no mailbox of the house's own may send, so letters leave from the shared one. */
+    mailSetup: reg(mailSetup()),
     /** Default: reading off — no reconnect banner. Tests that need the banner set this. */
     mailReader: reg({
       granted: false,
@@ -1430,14 +1452,74 @@ describe('a manager may see, not approve', () => {
 });
 
 describe('the sender identity', () => {
-  it('says the address is the deployment’s and the control is not available', () => {
-    render(<ConnectionsNext />);
+  const show = () =>
+    rtlRender(
+      <MemoryRouter initialEntries={['/connections']}>
+        <ConnectionsNext />
+        <Where />
+      </MemoryRouter>,
+    );
+  const row = () => screen.getByText('Sender identity').closest('.cx-row') as HTMLElement;
 
+  it('with no mailbox of its own, says the address is shared, and leads to choosing the house’s own', () => {
+    show();
     expect(screen.getByText(/shared, not yours/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /use our own address/i })).toBeDisabled();
-    expect(screen.getByText(/no per-restaurant sender exists/i)).toBeInTheDocument();
+    // Audit follow-up on #981: the row used to say the sender could not be
+    // changed, beside the button that changes it.
+    expect(screen.queryByText(/cannot be changed by this house/i)).toBeNull();
+    expect(screen.queryByText(/no per-restaurant sender exists/i)).toBeNull();
+    expect(row()).toHaveTextContent('Choose which of its own mailboxes the house sends from');
+    expect(row()).toHaveTextContent(/until a mailbox of the house’s own is connected and chosen/i);
+    // The mail setup page is where the house picks which of its own connected
+    // mailboxes its letters leave from (founder /goal 2026-11-07).
+    const go = screen.getByRole('button', { name: "Send from the house's own mailbox" });
+    expect(go).toBeEnabled();
+    fireEvent.click(go);
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail&setup=1');
+  });
+
+  it('a house that chose its own mailbox is told which one, and never that the sender is shared', () => {
+    mockData.current.mailSetup = reg(
+      mailSetup({ chosenConnectionId: 'c1', choices: [{ ...CHOICE, chosen: true }] }),
+    );
+    show();
+    expect(screen.queryByText(/shared, not yours/i)).toBeNull();
+    expect(screen.queryByText(/one mailbox Mudavym restaurants share/i)).toBeNull();
+    expect(screen.queryByText(/cannot be changed/i)).toBeNull();
+    expect(row()).toHaveTextContent("The house's own");
+    expect(row()).toHaveTextContent('orders@bodega.example, your own connected mailbox');
+    const go = screen.getByRole('button', { name: 'Change which mailbox sends' });
+    fireEvent.click(go);
+    expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail&setup=1');
+  });
+
+  it('a mailbox that can send but is not chosen says none is chosen, not that the sender is shared', () => {
+    mockData.current.mailSetup = reg(mailSetup({ choices: [CHOICE] }));
+    show();
+    expect(screen.queryByText(/shared, not yours/i)).toBeNull();
+    expect(row()).toHaveTextContent('None chosen');
+    expect(row()).toHaveTextContent(/leaves from the mailbox of the person who sends it/);
+  });
+
+  it('a choice that could not be read says so, and does not guess "shared"', () => {
+    mockData.current.mailSetup = reg(null, { error: 'Request failed with status code 503' });
+    show();
+    expect(screen.getByText('Which mailbox this house sends from could not be read.')).toBeInTheDocument();
+    expect(screen.queryByText(/shared, not yours/i)).toBeNull();
+    expect(screen.queryByText(/status code|503/)).toBeNull();
+  });
+
+  it('a person who may not change it is told who can', () => {
+    mockData.current.mailSetup = reg(mailSetup({ canChange: false }));
+    show();
+    expect(row()).toHaveTextContent('Only an owner or a manager of this house can change this.');
   });
 });
+
+function Where() {
+  const l = useLocation();
+  return <output data-testid="where">{l.pathname + l.search}</output>;
+}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    THE COLLAPSE, 2026-09-04 — what arrived here when `/profile` and `/settings`

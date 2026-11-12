@@ -13,6 +13,7 @@ import {
   BadRequestException,
   UnauthorizedException,
   UseGuards,
+  Optional,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiHeader } from "@nestjs/swagger";
 import { ConfigService } from "@nestjs/config";
@@ -42,6 +43,45 @@ import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { NonProductionGuard } from "./guards/non-production.guard";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
+import { houseFromName } from "./house-from-name";
+import {
+  HouseSenderService,
+  type HouseSenderIdentity,
+} from "./letters/house-sender.service";
+
+/**
+ * `perHouse` for one house, from its resolved sender (batch review of #1050):
+ * true only when a letter written in Communications may actually leave from a
+ * line of the house's own. The order-mail clause is the same on every branch.
+ */
+export function perHouseSender(
+  identity: Pick<HouseSenderIdentity, "kind" | "sendable" | "address"> | null,
+): { supported: boolean; reason: string } {
+  const orders =
+    "Order letters leave from this shared address either way, so the vendor's reply comes back to a mailbox Mudavym always reads.";
+  if (!identity || identity.kind === "unknown") {
+    return {
+      supported: false,
+      reason: `Whether this house has a mailbox of its own that letters may leave from could not be read just now. ${orders}`,
+    };
+  }
+  if (identity.sendable && identity.kind === "mudavym_subdomain") {
+    return {
+      supported: true,
+      reason: `Letters this house writes in Communications leave from ${identity.address}, the house's own line on Mudavym's sending domain. ${orders}`,
+    };
+  }
+  if (identity.sendable) {
+    return {
+      supported: true,
+      reason: `Letters this house writes in Communications leave from ${identity.address ?? "a mailbox a member of this house connected (its address was not recorded)"}, the house's own connected mailbox chosen on the mail setup page. ${orders}`,
+    };
+  }
+  return {
+    supported: false,
+    reason: `This house has no connected mailbox that may send, so a letter written in Communications cannot leave yet: connect one on the mail setup page. ${orders}`,
+  };
+}
 
 @ApiTags("Communications")
 /**
@@ -88,6 +128,9 @@ export class CommunicationsController {
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
     private readonly gmailPushAuthService: GmailPushAuthService,
+    // Optional only for the specs that build the controller by hand; Nest
+    // always provides it (CommunicationsModule). It answers `perHouse`.
+    @Optional() private readonly houseSender?: HouseSenderService,
   ) {
     // Parse comma-separated emails from MANAGER_EMAIL
     const emailConfig = this.configService.get<string>("MANAGER_EMAIL") || "";
@@ -119,10 +162,21 @@ export class CommunicationsController {
    * nobody's, but one setting shared by every house here.
    *
    * The founder settled the direction on 2026-09-03 — a house gets its own
-   * mailbox, or a Mudavym subdomain — and neither is built: there is no
-   * per-restaurant sender column, no domain, and no DNS. `perHouse.supported`
-   * is therefore `false` with the reason, and the page's control is disabled
-   * carrying that sentence rather than a hopeful one of its own.
+   * mailbox, or a Mudavym subdomain. The own-mailbox half is built: a letter
+   * written in /communications leaves from the mailbox chosen on the mail
+   * setup page (`HouseSenderService`, `GET communications/mail-setup`). Until
+   * 2026-11-11 this route still said `perHouse.supported: false`, "no
+   * per-restaurant sender exists" (gap G12) — false since that shipped. It
+   * now reads the asking house's own sender (`perHouseSender`): `supported`
+   * is true only when a letter may really leave from a line of the house's
+   * own, and a house with no sending mailbox, or one whose grants could not
+   * be read, is told so rather than told it has one.
+   *
+   * What stays on the shared address is ORDER mail (the procurement sender):
+   * it leaves from here, with the house's name in From (gap G3), because its
+   * replies must come back to a mailbox Mudavym always reads. `orderMail`
+   * says that, with the exact name a vendor sees, so a page never implies
+   * every letter leaves from the house's own mailbox.
    */
   @Get("sender-identity")
   @ApiOperation({
@@ -133,13 +187,16 @@ export class CommunicationsController {
     description:
       "`scope: \"deployment\"` means one mailbox shared by every restaurant on this deployment. No credential is returned in any shape.",
   })
-  senderIdentity(): {
+  async senderIdentity(
+    @CurrentUser() user?: { restaurantId?: string; userId?: string },
+  ): Promise<{
     address: string | null;
     scope: "deployment" | "house";
     configuredBy: string;
     resolvedFromProfile: boolean;
     perHouse: { supported: boolean; reason: string };
-  } {
+    orderMail: { address: string; fromName: string; words: string };
+  }> {
     // The RESOLVED address where one exists (Gmail reports the profile's own
     // address at init), falling back to the variable, falling back to the
     // hardcoded default the service itself uses. Three steps, because a page
@@ -148,15 +205,39 @@ export class CommunicationsController {
     const resolved = this.gmailService.getSenderEmail();
     const configured =
       this.configService.get<string>("GMAIL_SENDER_EMAIL") ?? null;
+    const address = resolved || configured || "notifications@mudavym.com";
+    // The name in an order letter's From. A failed or missing read is the
+    // service's own default, said as such, never a guess.
+    const houseName = user?.restaurantId
+      ? await houseFromName(this.databaseService.supabase, user.restaurantId)
+      : undefined;
+    const fromName = houseName ?? "Mudavym";
+    // Whether THIS house has a line of its own (gap G12, batch review of
+    // #1050): read from its grants, never asserted. A failed read is said as
+    // unknown, not as "supported".
+    let identity: HouseSenderIdentity | null = null;
+    if (this.houseSender && user?.restaurantId) {
+      identity = await this.houseSender
+        .resolve(user.restaurantId, user.userId ?? "")
+        .catch((err: any) => {
+          this.logger.warn(
+            `sender-identity: the house sender could not be resolved (${err?.message ?? err})`,
+          );
+          return null;
+        });
+    }
     return {
-      address: resolved || configured || "notifications@mudavym.com",
+      address,
       scope: "deployment",
       configuredBy: "GMAIL_SENDER_EMAIL",
       resolvedFromProfile: Boolean(resolved),
-      perHouse: {
-        supported: false,
-        reason:
-          "No per-restaurant sender exists: there is no sender column on any table, no verified domain, and no DNS. The direction is decided (a house's own mailbox, or a Mudavym subdomain) and neither is built, so this house's letters leave from the deployment's shared address.",
+      perHouse: perHouseSender(identity),
+      orderMail: {
+        address,
+        fromName,
+        words: houseName
+          ? `Order letters leave from ${address}, shared by every restaurant here, and a vendor sees them as from "${houseName}".`
+          : `Order letters leave from ${address}, shared by every restaurant here, and a vendor sees them as from "Mudavym": this house's name could not be read.`,
       },
     };
   }
