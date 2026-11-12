@@ -317,6 +317,57 @@ type BundleRead = keyof typeof BUNDLE_READ_WORDS;
  */
 const HOUSE_ZONE_WORD = "house time zone";
 
+/** Days of purchasing spend the trend reads: the 90 before today (`toDaily`). */
+const SPEND_TREND_DAYS = 90;
+
+/** What a purchasing insight holds back, and why. */
+interface SpendHeld {
+  uncostedOrders: number;
+  orders: number;
+  reason: string;
+}
+
+function heldOver(orders: Bundle["orders"]): SpendHeld | null {
+  const uncosted = orders.filter((o) => o.cost == null).length;
+  if (uncosted === 0) return null;
+  return {
+    uncostedOrders: uncosted,
+    orders: orders.length,
+    reason: new UncostedOrdersError(uncosted, orders.length).message,
+  };
+}
+
+/**
+ * Which purchasing insights an order with no recorded cost holds back, each
+ * judged over the orders that insight reads (readers lane r4 fix round). One
+ * uncosted order anywhere in the 180 days used to silence the whole family
+ * for up to six months, trend and vendor share alike, though the trend reads
+ * only the 90 days before today:
+ *
+ *   * `trend`: the 90 days of the daily series (`toDaily` drops today and
+ *     anything older). An uncosted order outside them is never on the series.
+ *   * `vendorShare`: every order in the bundle (180 days), which is what the
+ *     share and the HHI are summed over. Not judged per vendor: the top share
+ *     is one vendor's total over everyone's, so any vendor's unknown makes
+ *     the denominator unknown.
+ *
+ * Null when neither is held back.
+ */
+function spendWithheld(
+  bundle: Bundle,
+  now: number = Date.now(),
+): { trend: SpendHeld | null; vendorShare: SpendHeld | null } | null {
+  const day = (back: number) =>
+    new Date(now - back * 86400000).toISOString().substring(0, 10);
+  const first = day(SPEND_TREND_DAYS);
+  const last = day(1);
+  const trend = heldOver(
+    bundle.orders.filter((o) => !!o.date && o.date >= first && o.date <= last),
+  );
+  const vendorShare = heldOver(bundle.orders);
+  return trend || vendorShare ? { trend, vendorShare } : null;
+}
+
 /**
  * Whether this bundle read was refused or failed: its slice is `[]` because
  * nothing could be read, not because the house has no rows. An insight that
@@ -325,18 +376,6 @@ const HOUSE_ZONE_WORD = "house time zone";
  * insight that names things from its own family's slice is gated on that
  * slice's length, which is empty when the read failed.
  */
-function spendWithheld(
-  bundle: Bundle,
-): { uncostedOrders: number; orders: number; reason: string } | null {
-  const uncosted = bundle.orders.filter((o) => o.cost == null).length;
-  if (uncosted === 0) return null;
-  return {
-    uncostedOrders: uncosted,
-    orders: bundle.orders.length,
-    reason: new UncostedOrdersError(uncosted, bundle.orders.length).message,
-  };
-}
-
 function readWasRefused(bundle: Bundle, read: BundleRead): boolean {
   return bundle.unread.includes(BUNDLE_READ_WORDS[read]);
 }
@@ -563,9 +602,10 @@ export class InsightGeneratorService {
       // carry no bottle figure (ADR 0297). Each record built on them carries
       // its own count in `evidence.units`.
       units: this.unitsOf(bundle.consumption),
-      // Orders in the bundle with no recorded cost. While any stands, the
-      // purchasing-spend insights (trend and vendor share) say nothing rather
-      // than count it as $0; null when every order carries a cost.
+      // Orders with no recorded cost, per purchasing insight, over the
+      // orders that insight reads: the trend (90 days) or the vendor share
+      // (the bundle's 180 days) says nothing while one stands in its window
+      // rather than count it as $0. Null when neither is held back.
       spendWithheld: spendWithheld(bundle),
       // The bundle's reads that were refused or failed, in house words
       // (`BUNDLE_READ_WORDS`). Empty = every read answered, rows or none. A
@@ -1314,33 +1354,35 @@ export class InsightGeneratorService {
     // Every insight here is a sum of what was bought: the spend's trend and
     // which vendor holds the most of it. An order with no recorded cost used
     // to join both as $0, so a week holding one read as a drop in spend and
-    // its vendor as a smaller share than it is. While any order in the bundle
-    // waits on a cost, the family says nothing, and `generate()` says why
-    // (`spendWithheld`).
-    if (spendWithheld(bundle)) return;
-    const rows = bundle.orders.map((o) => ({
-      date: o.date,
-      value: o.cost as number,
-    }));
-    const { dates, values, observed } = this.toDaily(
-      rows,
-      90,
-      bundle.excludedDates,
-    );
+    // its vendor as a smaller share than it is. Each insight now says nothing
+    // while an uncosted order stands in the window it reads, and `generate()`
+    // says why (`spendWithheld`).
+    const held = spendWithheld(bundle);
+    if (!held?.trend) {
+      const rows = bundle.orders
+        .filter((o) => o.cost != null)
+        .map((o) => ({ date: o.date, value: o.cost as number }));
+      const { dates, values, observed } = this.toDaily(
+        rows,
+        SPEND_TREND_DAYS,
+        bundle.excludedDates,
+      );
 
-    this.timeSeriesInsights({
-      push,
-      dates,
-      values,
-      observed,
-      measure: "purchase_spend",
-      measureLabel: "purchasing spend",
-      unit: "currency",
-      dimension: "overall",
-      category: "purchasing",
-      periodWindow: 30,
-      windowLabel: "30 days",
-    });
+      this.timeSeriesInsights({
+        push,
+        dates,
+        values,
+        observed,
+        measure: "purchase_spend",
+        measureLabel: "purchasing spend",
+        unit: "currency",
+        dimension: "overall",
+        category: "purchasing",
+        periodWindow: 30,
+        windowLabel: "30 days",
+      });
+    }
+    if (held?.vendorShare) return;
 
     // Vendor concentration + peer rank.
     const byVendor = new Map<string, { name: string; total: number }>();

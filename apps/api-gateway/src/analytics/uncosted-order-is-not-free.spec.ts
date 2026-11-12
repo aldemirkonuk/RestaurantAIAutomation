@@ -127,8 +127,9 @@ describe("the insight feed's purchasing family", () => {
   it("says nothing about spend while an order waits on a cost, and says why", async () => {
     const withOne = [...costed, order(999, {}, daysBack(3), "big")];
     const out: any = await insightGenerator(withOne).generate(HOUSE, { persist: false, maxPerCategory: 1000 });
-    expect(out.spendWithheld).toMatchObject({ uncostedOrders: 1, orders: 61 });
-    expect(out.spendWithheld.reason).toContain("1 of the 61 delivered orders");
+    expect(out.spendWithheld.trend).toMatchObject({ uncostedOrders: 1, orders: 61 });
+    expect(out.spendWithheld.vendorShare).toMatchObject({ uncostedOrders: 1, orders: 61 });
+    expect(out.spendWithheld.trend.reason).toContain("1 of the 61 delivered orders");
     expect(out.insights.some((i: any) => String(i.type ?? i.candidateKey).includes("purchase_spend"))).toBe(false);
   });
 
@@ -140,6 +141,85 @@ describe("the insight feed's purchasing family", () => {
     // read never saw it and fired on the rest.
     many.push(order(5000, {}, daysBack(2)));
     const out: any = await insightGenerator(many).generate(HOUSE, { persist: false, maxPerCategory: 1000 });
-    expect(out.spendWithheld).toMatchObject({ uncostedOrders: 1, orders: 1201 });
+    expect(out.spendWithheld.vendorShare).toMatchObject({ uncostedOrders: 1, orders: 1201 });
+  });
+
+  // Fix round: each insight is held back only by an uncosted order inside the
+  // window it reads, not by one anywhere in the bundle's 180 days.
+  it("an uncosted order older than the trend's 90 days holds back only the vendor share", async () => {
+    const withOld = [...costed, order(998, {}, daysBack(120), "big")];
+    const out: any = await insightGenerator(withOld).generate(HOUSE, { persist: false, maxPerCategory: 1000 });
+    expect(out.spendWithheld.trend).toBeNull();
+    expect(out.spendWithheld.vendorShare).toMatchObject({ uncostedOrders: 1, orders: 61 });
+    const types = out.insights.map((i: any) => String(i.type ?? i.candidateKey));
+    expect(types.some((t: string) => t.includes("concentration"))).toBe(false);
+    expect(types.some((t: string) => t.includes("purchase_spend") && !t.includes("concentration"))).toBe(true);
+  });
+
+  it("an uncosted order dated today is on neither the trend nor held against it", async () => {
+    const withToday = [...costed, order(997, {}, new Date().toISOString(), "big")];
+    const out: any = await insightGenerator(withToday).generate(HOUSE, { persist: false, maxPerCategory: 1000 });
+    expect(out.spendWithheld.trend).toBeNull();
+    expect(out.spendWithheld.vendorShare).toMatchObject({ uncostedOrders: 1 });
+  });
+});
+
+/** A goals service that can create a purchases goal over `orders`. */
+function goalCreator(orders: any[], seen: { patch: Record<string, unknown> }) {
+  const capped = cappedPostgrest({ procurement_orders: orders });
+  const house: any = {
+    select: () => house,
+    eq: () => house,
+    maybeSingle: async () => ({ data: { timezone: "UTC", country: "US" }, error: null }),
+  };
+  const goals: any = {
+    insert: (patch: Record<string, unknown>) => ((seen.patch = patch), goals),
+    select: () => goals,
+    single: async () => ({ data: { id: "g1", ...seen.patch }, error: null }),
+  };
+  const client = {
+    from: (t: string) =>
+      t === "procurement_orders" ? capped.from(t) : t === "restaurants" ? house : goals,
+  };
+  return new GoalsService(
+    { getClient: () => client } as any,
+    { getStored: async () => [] } as any,
+    { get: () => undefined } as any,
+    {} as any,
+    { record: () => {} } as any,
+    {} as any,
+  );
+}
+
+describe("creating a purchases goal over an uncosted order", () => {
+  const input = { name: "Keep purchases under $25k", metricKey: "purchase_spend", targetValue: 25000, direction: "at_most" as const };
+
+  it("creates the goal with its baseline unread and the reason, never a $0 baseline", async () => {
+    const seen = { patch: {} as Record<string, unknown> };
+    const orders = [order(1, { total_cost: 400 }, daysBack(5)), order(2, {}, daysBack(4))];
+    const goal: any = await goalCreator(orders, seen).createGoal(HOUSE, input, { withSales: true });
+    expect(goal.id).toBe("g1");
+    expect(seen.patch.baseline_value).toBeNull();
+    expect(seen.patch.current_value).toBeNull();
+    expect(String(seen.patch.current_unread)).toContain("1 of the 2 delivered orders");
+    expect(GoalsService.presentStoredReading(goal).current_value).toBeNull();
+  });
+
+  it("a fully costed window stores the measured baseline and no refusal", async () => {
+    const seen = { patch: {} as Record<string, unknown> };
+    const orders = [order(1, { total_cost: 400 }, daysBack(5)), order(2, { final_price: 100 }, daysBack(4))];
+    await goalCreator(orders, seen).createGoal(HOUSE, input, { withSales: true });
+    expect(seen.patch.baseline_value).toBe(500);
+    expect(seen.patch.current_unread).toBeNull();
+  });
+
+  it("a read that failed still refuses the goal (only the uncosted case is stored unread)", async () => {
+    const seen = { patch: {} as Record<string, unknown> };
+    const svc: any = goalCreator([], seen);
+    svc.computeMetric = async () => {
+      throw new Error("The delivered orders could not be read");
+    };
+    await expect(svc.createGoal(HOUSE, input, { withSales: true })).rejects.toThrow(/could not be read/);
+    expect(seen.patch).toEqual({});
   });
 });

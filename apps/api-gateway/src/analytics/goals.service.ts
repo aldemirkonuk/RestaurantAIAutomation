@@ -346,13 +346,32 @@ export class GoalsService {
     // zone, a windowed metric refuses with the zone sentence rather than
     // writing a baseline measured on UTC days.
     const house = await readHouseZone(this.dbService.getClient(), restaurantId);
-    const baseline = await this.computeMetric(
-      restaurantId,
-      input.metricKey,
-      house.zone ? this.periodStart(input.period, house.zone) : null,
-      house.zone,
-      gate,
-    );
+    // A purchases goal is a running total from its own first day, so the
+    // scorer never reads its baseline (goal-score.ts: "ignored for a running
+    // total"), and its baseline window is the trailing period before the goal
+    // existed. One delivered order in that window with no recorded cost used
+    // to refuse the goal outright (readers lane r4 fix round): the house could
+    // not set "keep purchases under $25k" over an order the goal will never
+    // read. So the goal is stored with its baseline unread, and the reason,
+    // and the first live reading scores it like any other. Every other
+    // refusal (no house zone, a read that failed, a bottle line with no
+    // figure, days of stock with a cost missing) still refuses here: those
+    // are about the window the goal itself reads, or a baseline it needs.
+    let baseline: number | null;
+    let baselineUnread: string | null = null;
+    try {
+      baseline = await this.computeMetric(
+        restaurantId,
+        input.metricKey,
+        house.zone ? this.periodStart(input.period, house.zone) : null,
+        house.zone,
+        gate,
+      );
+    } catch (err) {
+      if (!(err instanceof UncostedOrdersError)) throw err;
+      baseline = null;
+      baselineUnread = err.message;
+    }
     const { data, error } = await this.dbService
       .getClient()
       .from("analytics_goals")
@@ -363,6 +382,9 @@ export class GoalsService {
         target_value: input.targetValue,
         baseline_value: baseline,
         current_value: baseline,
+        // Why the reading at creation was refused, so no reader of the stored
+        // row takes the null for $0 (`presentStoredReading`).
+        current_unread: baselineUnread,
         // The baseline is a live reading too, taken now.
         current_read_at: new Date().toISOString(),
         direction: input.direction ?? "at_least",
