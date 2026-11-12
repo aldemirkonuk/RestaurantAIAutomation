@@ -84,6 +84,8 @@ import {
   stockValueText,
   totalStockValue,
   totalStockValueText,
+  totalMenuValue,
+  totalMenuValueText,
 } from "./stock-value";
 import { HouseItemResearchUnread, NameThisWineHint } from "./NameThisWine";
 // Moved to components/mudavym (founder, 2026-09-22, round 6z, verbatim pick 8:
@@ -859,11 +861,8 @@ export function InventoryCommandPage() {
   const kpis = useMemo(() => {
     // Wines whose cost is unknown are counted, never summed as $0.
     const valueOnHand = totalStockValue(filteredInventory);
-    const menuPotential = filteredInventory.reduce(
-      (s, i) =>
-        s + (i.menuPrice ?? 0) * ((i.liveStock ?? 0) + (i.shadowStock ?? 0)),
-      0,
-    );
+    // At the house's own bottle price; an unpriced wine is counted, not $0.
+    const menuPotential = totalMenuValue(filteredInventory);
     const runwayAlerts = filteredInventory.filter((i) => {
       const r = runwayDays(i);
       return r != null && r <= 5;
@@ -1068,9 +1067,7 @@ export function InventoryCommandPage() {
           sub={
             figuresUnknown
               ? UNKNOWN
-              : kpis.menuPotential > 0
-                ? `${fmtMoney(kpis.menuPotential)} menu`
-                : "cost basis"
+              : totalMenuValueText(kpis.menuPotential, fmtMoney)
           }
           tone="green"
         />
