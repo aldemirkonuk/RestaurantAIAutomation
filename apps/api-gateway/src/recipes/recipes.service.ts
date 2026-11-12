@@ -10,7 +10,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
-import { SaveRecipeDto } from "./dto/recipes.dto";
+import { PreviewCostDto, SaveRecipeDto } from "./dto/recipes.dto";
 import { FIGURE_KEYS, ItemFigures, ServeNutrition, serveNutrition } from "./recipe-nutrition";
 
 export const NOT_THIS_HOUSE = "This drink is not on this house's list.";
@@ -144,6 +144,42 @@ export class RecipesService {
   }
 
   /**
+   * The shelf items and their lot costs a set of lines is priced from. ONE
+   * read for the saved version and for a draft, so the two can never price
+   * differently. Scoped to the house on both tables: an id that is not this
+   * house's is simply not found, and its line reads as an unknown item.
+   */
+  private async readPricing(restaurantId: string, ids: string[], money: boolean) {
+    const client = this.db.getClient();
+    const items = new Map<string, any>();
+    const lots = new Map<string, any>();
+    if (ids.length) {
+      // Two literal column lists, so the read-columns guard can check both;
+      // a role without money never reads the price.
+      const itemQuery = money
+        ? client
+            .from("restaurant_inventory")
+            .select("id, display_name, kind, uom, bottle_size_ml, last_purchase_price, is_active, deleted_at")
+        : client.from("restaurant_inventory").select("id, display_name, kind, uom, bottle_size_ml, is_active, deleted_at");
+      const [itemRead, lotRead] = await Promise.all([
+        itemQuery.eq("restaurant_id", restaurantId).in("id", ids),
+        money
+          ? client
+              .from("inventory_lot_rollup")
+              .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
+              .eq("restaurant_id", restaurantId)
+              .in("inventory_id", ids)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (itemRead.error) this.failed("item read", itemRead.error);
+      if (lotRead.error) this.failed("lot read", lotRead.error);
+      for (const i of (itemRead.data ?? []) as any[]) items.set(i.id, i);
+      for (const l of (lotRead.data ?? []) as any[]) lots.set(l.inventory_id, l);
+    }
+    return { items, lots };
+  }
+
+  /**
    * One saved version as the sheet reads it: its lines linked to the house's
    * items, each line's cost at today's prices, and (for the current version)
    * what is in a serve. The version is read by its id AND the house, so a
@@ -185,31 +221,7 @@ export class RecipesService {
     const rows = (lines.data ?? []) as any[];
     const ids = [...new Set(rows.map((l) => l.inventory_id).filter(Boolean))] as string[];
 
-    const items = new Map<string, any>();
-    const lots = new Map<string, any>();
-    if (ids.length) {
-      // Two literal column lists, so the read-columns guard can check both;
-      // a role without money never reads the price.
-      const itemQuery = money
-        ? client
-            .from("restaurant_inventory")
-            .select("id, display_name, kind, uom, bottle_size_ml, last_purchase_price, is_active, deleted_at")
-        : client.from("restaurant_inventory").select("id, display_name, kind, uom, bottle_size_ml, is_active, deleted_at");
-      const [itemRead, lotRead] = await Promise.all([
-        itemQuery.eq("restaurant_id", restaurantId).in("id", ids),
-        money
-          ? client
-              .from("inventory_lot_rollup")
-              .select("inventory_id, live_qty, wac, has_invoice_cost, wac_qty")
-              .eq("restaurant_id", restaurantId)
-              .in("inventory_id", ids)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
-      if (itemRead.error) this.failed("item read", itemRead.error);
-      if (lotRead.error) this.failed("lot read", lotRead.error);
-      for (const i of (itemRead.data ?? []) as any[]) items.set(i.id, i);
-      for (const l of (lotRead.data ?? []) as any[]) lots.set(l.inventory_id, l);
-    }
+    const { items, lots } = await this.readPricing(restaurantId, ids, money);
 
     const v = version.data as Record<string, any>;
     const whatIsIn = withWhatIsIn ? await this.whatIsIn(restaurantId, ids, rows, Number(v.yield_serves)) : null;
@@ -278,6 +290,67 @@ export class RecipesService {
     await this.houseCocktail(restaurantId, cocktailId);
     const { version, cost } = await this.versionBody(restaurantId, versionId, money, false, cocktailId);
     return { version, cost };
+  }
+
+  /**
+   * What an UNSAVED draft would cost per serve at today's prices (a manager
+   * editing lines sees the cost of the edit before saving). Writes nothing.
+   * Quantities become base units through the database's own
+   * `recipe_qty_base`, once per distinct (qty, unit), so no second table of
+   * unit factors exists in code. Items and lots are read by `readPricing`,
+   * exactly as a saved version's are. Unknown stays null, never 0 (ADR 0051).
+   */
+  async previewCost(restaurantId: string, cocktailId: string, dto: PreviewCostDto) {
+    await this.houseCocktail(restaurantId, cocktailId);
+    const client = this.db.getClient();
+
+    const stocked = dto.lines.filter((l) => l.role === "stocked");
+    const pairs = new Map<string, { qty: number; unit: string }>();
+    for (const l of stocked) pairs.set(`${l.qtyEntered}|${l.unitCode}`, { qty: l.qtyEntered, unit: l.unitCode });
+    const converted = new Map<string, { qtyBase: number; baseUnit: BaseUnit } | null>();
+    await Promise.all(
+      [...pairs.entries()].map(async ([k, p]) => {
+        const { data, error } = await client.rpc("recipe_qty_base", { p_qty: p.qty, p_unit: p.unit });
+        if (error) this.failed("quantity conversion", error);
+        const row = (Array.isArray(data) ? data[0] : data) as { qty_base?: unknown; base_unit?: unknown } | null;
+        converted.set(
+          k,
+          row && row.qty_base != null && row.base_unit != null
+            ? { qtyBase: Number(row.qty_base), baseUnit: row.base_unit as BaseUnit }
+            : null,
+        );
+      }),
+    );
+
+    const ids = [...new Set(stocked.map((l) => l.inventoryId).filter(Boolean))] as string[];
+    const { items, lots } = await this.readPricing(restaurantId, ids, true);
+
+    const priced = recipeCost(
+      dto.lines.map((l) => {
+        const inventoryId = l.role === "stocked" ? (l.inventoryId ?? null) : null;
+        const q = l.role === "stocked" ? converted.get(`${l.qtyEntered}|${l.unitCode}`) : null;
+        return {
+          role: l.role,
+          inventoryId,
+          // A unit the database does not know has no base quantity: NaN prices
+          // the line as unknown, never as free.
+          qtyBase: q ? q.qtyBase : Number.NaN,
+          baseUnit: q ? q.baseUnit : ("ml10" as BaseUnit),
+          item: (inventoryId && (items.get(inventoryId) as CostItem)) || null,
+          lot: (inventoryId && lots.get(inventoryId)) || null,
+        };
+      }),
+      dto.yieldServes,
+    );
+    return {
+      perServe: priced.perServe,
+      perServeExact: priced.perServeExact,
+      priced: priced.priced,
+      of: priced.of,
+      complete: priced.complete,
+      partial: priced.partial,
+      lines: priced.lines.map((l) => ({ status: l.status, costPerServe: l.costPerServe, costBasis: l.costBasis })),
+    };
   }
 
   /**

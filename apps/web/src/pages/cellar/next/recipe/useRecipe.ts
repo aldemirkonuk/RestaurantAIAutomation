@@ -12,10 +12,11 @@
  * key under it, so the sheet re-reads the saved lines and their costs at once
  * (gap G8) instead of waiting for a page reload.
  */
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { draftKey, dropDraft } from './drafts';
-import { recipesApi, type SaveRecipeBody } from '../../../../services/api/recipes';
+import { recipesApi, type PreviewCostBody, type SaveRecipeBody } from '../../../../services/api/recipes';
 import { getErrorStatus } from '../../../../services/api/client';
 import { settingsApi } from '../../../../services/api/settings';
 import { managesHouse } from '../../../communications/next/cm-format';
@@ -74,6 +75,41 @@ export function useRecipeVersion(cocktailId: string, versionId: string, enabled:
     staleTime: 60_000,
   });
   return { data: q.data ?? null, loading: q.isLoading && enabled, error: q.isError ? reason(q.error) : null };
+}
+
+/** How long the draft must sit still before it is priced. */
+export const PREVIEW_DEBOUNCE_MS = 400;
+
+/**
+ * What the unsaved draft would cost at today's prices, asked of the gateway
+ * (which owns the unit table and the pricing; the web never prices). `body`
+ * is null whenever the draft is not complete enough to price: then nothing is
+ * asked. The ask waits for the draft to sit still, is keyed on the draft
+ * itself so the same draft is never asked twice, and only ever answers for
+ * the draft on the sheet now. A failed or pending ask returns null, and the
+ * sheet keeps showing the saved figures.
+ */
+export function useCostPreview(cocktailId: string, body: PreviewCostBody | null) {
+  const { activeRestaurantId } = useAuth();
+  const key = body ? JSON.stringify(body) : null;
+  const [settled, setSettled] = useState<string | null>(key);
+  useEffect(() => {
+    if (key === null) {
+      setSettled(null);
+      return;
+    }
+    const t = setTimeout(() => setSettled(key), PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [key]);
+  const ready = key !== null && settled === key;
+  const q = useQuery({
+    queryKey: [...recipeKey(activeRestaurantId, cocktailId), 'cost-preview', settled],
+    enabled: ready && Boolean(activeRestaurantId && cocktailId),
+    queryFn: () => recipesApi.previewCost(activeRestaurantId as string, cocktailId, JSON.parse(settled as string) as PreviewCostBody),
+    staleTime: 60_000,
+    retry: false,
+  });
+  return ready && q.isSuccess ? q.data : null;
 }
 
 export function useShelf(search: string, enabled: boolean) {

@@ -10,6 +10,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   Min,
   ValidateIf,
@@ -69,6 +70,47 @@ export class SaveRecipeDto {
   @ValidateNested({ each: true })
   @Type(() => RecipeLineDto)
   lines!: RecipeLineDto[];
+}
+
+/** One line of an unsaved draft, as a cost preview takes it. */
+export class PreviewLineDto {
+  @ApiProperty({ enum: ["stocked", "untracked"] })
+  @IsIn(["stocked", "untracked"])
+  role!: "stocked" | "untracked";
+
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsUUID()
+  inventoryId?: string | null;
+
+  // 100,000 is the most one saved line holds (MAX_LINE_QTY in recipes.service.ts,
+  // which imports this file, so the number is repeated here).
+  @ApiProperty()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(Number.MIN_VALUE)
+  @Max(100_000)
+  qtyEntered!: number;
+
+  @ApiProperty({ enum: RECIPE_UNITS })
+  @IsIn(RECIPE_UNITS as unknown as string[])
+  unitCode!: string;
+}
+
+/** An unsaved draft to be priced. Nothing about it is stored. */
+export class PreviewCostDto {
+  @ApiProperty()
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  yieldServes!: number;
+
+  @ApiProperty({ type: [PreviewLineDto] })
+  @IsArray()
+  @ArrayMaxSize(60)
+  @ValidateNested({ each: true })
+  @Type(() => PreviewLineDto)
+  lines!: PreviewLineDto[];
 }
 
 export class ShelfQueryDto {
