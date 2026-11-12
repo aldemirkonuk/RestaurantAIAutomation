@@ -143,7 +143,9 @@ export function resolveOrderUnits(input: OrderUnitInput): OrderUnitResolution {
       ? "bottle"
       : normalizeUom(raw);
 
-  if (!unitType) {
+  // A weight reads (`kg`, R8) but an order's column keeps the seven container
+  // units, so it is refused here by name instead of failing the CHECK.
+  if (!unitType || !(ORDER_UNIT_TYPES as readonly string[]).includes(unitType)) {
     return {
       ok: false,
       reason: "unknown_unit",
