@@ -2,7 +2,8 @@
  * OB-11, part 1: a refused sign-up is said in words.
  *   t1. A 429 renders the seconds from Retry-After, in words, and holds the button.
  *   An address already in use offers Sign in under the sentence.
- * (Part 2, stacked on this branch, removes the email probe and the confirm field.)
+ *   t2. Typing an email makes 0 check-email calls (no address probe).
+ * (The confirm field goes in the next branch of the stack.)
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
@@ -55,6 +56,14 @@ beforeEach(() => {
 })
 
 describe('Register — OB-11', () => {
+  it('t2: typing an email asks the gateway nothing', async () => {
+    open()
+    type(/^Email/, 'a@b')
+    type(/^Email/, 'ayse@kaya.test')
+    await new Promise((r) => setTimeout(r, 500))
+    expect(h.get.mock.calls.filter(([u]) => String(u).includes('check-email'))).toHaveLength(0)
+  })
+
   it('t1: a 429 says the seconds from Retry-After and holds the button', async () => {
     h.auth.registerAccount.mockRejectedValue(
       Object.assign(new Error('ThrottlerException: Too Many Requests'), { status: 429, retryAfter: '42' }),

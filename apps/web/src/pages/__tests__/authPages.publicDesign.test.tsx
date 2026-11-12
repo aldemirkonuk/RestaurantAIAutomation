@@ -234,6 +234,11 @@ function type(label: string, value: string) {
 
 async function joinAccount(emailAvailable: boolean) {
   gateway({ invite: 'valid', emailAvailable })
+  // OB-11: no address probe while typing; "taken" is the join's own refusal.
+  h.auth.joinViaInvite.mockReset()
+  if (!emailAvailable) {
+    h.auth.joinViaInvite.mockRejectedValue(Object.assign(new Error('already_member'), { status: 409 }))
+  }
   const r = renderAt(createElement(Register), '/register?invite=abcdefgh')
   await screen.findByText('Invited by', undefined, WAIT)
   fireEvent.click(screen.getByRole('button', { name: /continue/i }))
@@ -242,16 +247,27 @@ async function joinAccount(emailAvailable: boolean) {
   type('Email *', 'deniz@house.test')
   type('Password *', 'long-enough-1')
   type('Confirm Password *', 'long-enough-1')
-  await screen.findByText(emailAvailable ? 'Email is available' : /already registered/, undefined, WAIT)
+  if (!emailAvailable) {
+    fireEvent.click(screen.getByRole('button', { name: /join restaurant/i }))
+    await screen.findByText(/already in this house/, undefined, WAIT)
+  }
   return r.container
 }
 
 async function createAccountTaken() {
   gateway({ emailAvailable: false })
+  h.auth.registerAccount.mockReset()
+  h.auth.registerAccount.mockRejectedValue(
+    Object.assign(new Error('Email already registered'), { status: 400 }),
+  )
   const r = renderAt(createElement(Register), '/register?type=new')
   await screen.findByText(CREATE_ACCOUNT, undefined, WAIT)
+  type('Full Name *', 'Deniz Kaya')
   type('Email *', 'taken@house.test')
-  await screen.findByText(/already registered/, undefined, WAIT)
+  type('Password *', 'long-enough-1')
+  type('Confirm Password *', 'long-enough-1')
+  fireEvent.click(screen.getByRole('button', { name: /create account/i }))
+  await screen.findByText(/already has an account/, undefined, WAIT)
   return r.container
 }
 
@@ -722,7 +738,6 @@ describe('the invite mail secret reaches the join', () => {
     type('Email *', 'deniz@house.test')
     type('Password *', 'long-enough-1')
     type('Confirm Password *', 'long-enough-1')
-    await screen.findByText('Email is available', undefined, WAIT)
     fireEvent.click(screen.getByRole('button', { name: 'Join Restaurant' }))
     await vi.waitFor(() => expect(h.auth.joinViaInvite).toHaveBeenCalledTimes(1))
     return h.auth.joinViaInvite.mock.calls[0][0] as Record<string, unknown>
