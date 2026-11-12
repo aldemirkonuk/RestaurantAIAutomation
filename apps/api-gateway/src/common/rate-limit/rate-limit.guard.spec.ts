@@ -90,11 +90,50 @@ describe("RateLimitGuard: a session reading itself is not a sign-in attempt", ()
     );
   });
 
-  it("still refuses the 11th refresh in a minute (no opt-in there)", async () => {
+  // Readers lane r4: a refresh and a house switch renew a session from a
+  // credential already held (a signed refresh JWT; a valid access token), so
+  // they left the guessing bucket. 30 = a house's tablets and tabs whose
+  // 15-minute tokens expire in the same minute.
+  it.each([
+    ["POST /auth/refresh", proto.refresh, "/api/v1/auth/refresh"],
+    [
+      "POST /auth/switch-restaurant",
+      proto.switchRestaurant,
+      "/api/v1/auth/switch-restaurant",
+    ],
+  ])(
+    "%s admits 30 renewals a minute from one address",
+    async (_label, handler, path) => {
+      expect(typeof handler).toBe("function");
+      expect(await admitted(guard, handler, path, 30)).toBe(30);
+    },
+  );
+
+  it("a renewal is still bounded (the ordinary 100 a minute)", async () => {
     expect(
-      await admitted(guard, proto.refresh, "/api/v1/auth/refresh", 11),
-    ).toBe(10);
+      await admitted(guard, proto.refresh, "/api/v1/auth/refresh", 101),
+    ).toBe(100);
   });
+
+  it("a refresh storm does not spend the sign-in bucket", async () => {
+    await admitted(guard, proto.refresh, "/api/v1/auth/refresh", 50);
+    expect(await admitted(guard, proto.login, "/api/v1/auth/login", 11)).toBe(
+      10,
+    );
+  });
+
+  it.each([
+    ["POST /auth/reset-password", "resetPassword", "/api/v1/auth/reset-password"],
+    ["POST /auth/join", "joinViaInvite", "/api/v1/auth/join"],
+    ["POST /auth/oauth/google", "loginWithGoogle", "/api/v1/auth/oauth/google"],
+  ])(
+    "%s keeps the strict 10 a minute (not opted in)",
+    async (_label, name, path) => {
+      const handler = proto[name];
+      expect(typeof handler).toBe("function");
+      expect(await admitted(guard, handler, path, 11)).toBe(10);
+    },
+  );
 
   it("a session read is still bounded (the ordinary 100 a minute)", async () => {
     expect(

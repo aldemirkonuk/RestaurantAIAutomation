@@ -45,7 +45,11 @@ import {
 } from "./dto/password-reset.dto";
 import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
 import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
-import { RateLimit, SESSION_READ_RATE_LIMIT } from "../common/rate-limit";
+import {
+  RateLimit,
+  SESSION_READ_RATE_LIMIT,
+  SESSION_RENEWAL_RATE_LIMIT,
+} from "../common/rate-limit";
 import { Request } from "express";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
@@ -222,6 +226,8 @@ export class AuthController {
   // the person's; the new pair then names no house (ADR 0164, R5).
   @Public()
   @Post("refresh")
+  // A session renewing itself, not a guess (SESSION_RENEWAL_RATE_LIMIT).
+  @RateLimit(SESSION_RENEWAL_RATE_LIMIT)
   async refresh(@Body() body: { refreshToken: string }) {
     const tokens = await this.authService.refreshAccessToken(body.refreshToken);
 
@@ -618,6 +624,7 @@ export class AuthController {
    */
   @Post("switch-restaurant")
   @UseGuards(JwtAuthGuard)
+  @RateLimit(SESSION_RENEWAL_RATE_LIMIT)
   @AllowsTenantChange()
   @AllowsNoHouse() // choosing a house is how a session in none gets one
   async switchRestaurant(
