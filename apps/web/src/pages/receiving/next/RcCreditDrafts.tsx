@@ -21,8 +21,9 @@ import { useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
 import { settle, turn } from '@/lib/mudavym/motion';
 import type { ProcurementCredit } from '@/services/api/credits';
+import { STATE_WORDS, reasonWords } from '@/services/api/credit-words';
 import { fmtMoney } from '@/lib/mudavym/format';
-import { EM, MONO, SANS, SERIF, capStyle, fmtDate, num } from './rc-format';
+import { MONO, SANS, SERIF, capStyle, fmtDate, num } from './rc-format';
 import { useApproveCreditDraft, type CreditDraftsData } from './useReceivingNextData';
 
 function DraftCard({ draft }: { draft: ProcurementCredit }) {
@@ -102,7 +103,7 @@ function DraftCard({ draft }: { draft: ProcurementCredit }) {
           margin: '8px 0 0',
         }}
       >
-        {draft.reason || 'Credit claim'}
+        {reasonWords(draft.reason)}
         {draft.self_evidenced && (
           <span
             title="Provable from the vendor's own paperwork"
@@ -169,9 +170,9 @@ function DraftCard({ draft }: { draft: ProcurementCredit }) {
             }}
           >
             <span style={capStyle}>What the house knows</span>
-            <p style={{ margin: '3px 0 0' }}>{draft.notes || draft.reason || EM}</p>
+            <p style={{ margin: '3px 0 0' }}>{draft.notes || draft.summary || reasonWords(draft.reason)}</p>
             <p style={{ margin: '3px 0 0', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>
-              claimed {claimed} · state {draft.state}
+              claimed {claimed} · {STATE_WORDS[draft.state] ?? draft.state}
               {draft.document_id ? ' · document attached' : ' · no document attached'}
             </p>
           </div>
