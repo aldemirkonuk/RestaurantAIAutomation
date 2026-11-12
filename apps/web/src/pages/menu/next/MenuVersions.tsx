@@ -199,9 +199,11 @@ function stillReading(err: unknown): boolean {
   return (err as { response?: { status?: number } })?.response?.status === 202;
 }
 
-export function ReadMenuForm({ canManage, onRead, onReadDone, onChosen }: {
+export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onChosen }: {
   canManage: boolean
   onRead: () => void
+  /** Told when a new read begins, so a host drops what it offered for the last one. */
+  onReadStart?: () => void
   /** Told the finished read (used by the Scan buttons on /inventory and /cellar). */
   onReadDone?: (r: MenuImportResult) => void
   /** Told once the read was made the current menu (prices and stock lines moved). */
@@ -237,6 +239,7 @@ export function ReadMenuForm({ canManage, onRead, onReadDone, onChosen }: {
       if (shape.kind === 'file') return importMenu('scan', { imageBase64: await fileToBase64(files[0]) }, labels);
       return importMenu('scan', await pagesOf(files), labels);
     },
+    onMutate: () => onReadStart?.(),
     onSuccess: (r) => {
       setResult(r);
       setChosen(null);
