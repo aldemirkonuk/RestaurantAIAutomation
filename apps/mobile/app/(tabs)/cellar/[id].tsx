@@ -10,12 +10,8 @@ import { ErrorState } from "@/components/ui/StateViews";
 import { SparklineBlock } from "@/components/cellar/Sparkline";
 import { ProvenanceStitch } from "@/components/cellar/ProvenanceStitch";
 import { color, space } from "@/design/tokens";
-import { useInventoryItem, useItemActivity } from "@/api/queries";
-
-function money(value: number | null | undefined): string | null {
-  if (value == null || !Number.isFinite(Number(value))) return null;
-  return `$${Number(value).toLocaleString("en-US", { maximumFractionDigits: 2 })}`;
-}
+import { useHouseCurrency, useInventoryItem, useItemActivity } from "@/api/queries";
+import { houseMoney } from "@/lib/houseMoney";
 
 export default function WineDetailScreen() {
   const router = useRouter();
@@ -23,6 +19,11 @@ export default function WineDetailScreen() {
   const { width } = useWindowDimensions();
   const { data: item, isLoading, isError, refetch } = useInventoryItem(id);
   const { data: activity } = useItemActivity(id);
+  const house = useHouseCurrency().data;
+  const money = (value: number | null | undefined): string | null => {
+    if (value == null || !Number.isFinite(Number(value))) return null;
+    return houseMoney(Number(value), house, 2);
+  };
 
   const contentWidth = width - space.lg * 2 - space.lg * 2;
 

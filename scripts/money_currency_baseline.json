@@ -2,10 +2,6 @@
   "_why": "Sites that render money with a pinned currency or a bare dollar sign. ADR 0117 Q25/Q30. This number only ever goes DOWN; raising a row is not an option, and a new file is a new failure.",
   "_measured": "2026-09-05",
   "files": {
-    "apps/mobile/app/(tabs)/cellar/[id].tsx": 1,
-    "apps/mobile/app/(tabs)/insights.tsx": 1,
-    "apps/mobile/src/components/supply/OrderRow.tsx": 1,
-    "apps/mobile/src/components/today/PulseStrip.tsx": 1,
     "apps/web/src/components/notifications/OneTapActionCenter.tsx": 2,
     "apps/web/src/components/orders/DealApprovalModal.tsx": 3,
     "apps/web/src/components/providers/EditProviderModal.tsx": 2,

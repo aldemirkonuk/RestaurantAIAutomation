@@ -119,6 +119,16 @@ export interface ShelfReceived {
   countedNotBookedBottles: number | null;
 }
 
+/**
+ * The house's reporting currency, as `GET /settings/currency` states it.
+ * `code: null` = nobody has stated one; `readable: false` = the row could not
+ * be read (a different state, and it says so in words).
+ */
+export interface HouseCurrency {
+  code: string | null;
+  readable: boolean;
+}
+
 export interface ProcurementOrder {
   id: string;
   orderNumber?: string;
