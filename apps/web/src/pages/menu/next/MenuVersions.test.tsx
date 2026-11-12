@@ -213,7 +213,7 @@ describe('the words the panel uses', () => {
         failed: [{ menuItemId: 'l9', name: 'Barolo', error: 'timeout' }],
       }),
     ).toBe(
-      'This is now the current menu: 3 lines, 1 price set from this menu, 1 kept a price someone set after this menu was chosen, 1 not matched to a wine, so no price, 1 flagged for a blank price. 1 could not be priced: Barolo (timeout).',
+      'This is now the current menu: 3 lines, 1 wine priced from this menu, 1 kept a price someone set after this menu was chosen, 1 not matched to a wine, so no price, 1 flagged for a blank price. 1 could not be priced: Barolo (timeout).',
     );
   });
 
@@ -247,7 +247,7 @@ describe('the words the panel uses', () => {
       returned: [{ menuItemId: 'l1', name: 'Barolo' }],
     });
     expect(s).toBe(
-      'This is now the current menu: 4 lines, 2 prices set from this menu, 1 held by a lock, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at 95.00); Soave (glass, locked at 9.00). Back on the menu with its lock still holding: Barolo.',
+      'This is now the current menu: 4 lines, 2 wines priced from this menu, 1 held by a lock, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at 95.00); Soave (glass, locked at 9.00). Back on the menu with its lock still holding: Barolo.',
     );
   });
 });
@@ -404,7 +404,7 @@ describe('MenuVersions', () => {
     expect(mockMake).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Make it current' }));
     await waitFor(() => expect(mockMake).toHaveBeenCalledWith('m1', 'fp-m1'));
-    expect(await screen.findByText(/This is now the current menu: 42 lines, 40 prices set from this menu, 2 flagged/)).toBeInTheDocument();
+    expect(await screen.findByText(/This is now the current menu: 42 lines, 40 wines priced from this menu, 2 flagged/)).toBeInTheDocument();
   });
 
   it('staff see every kept menu but are offered no choice of the current one', async () => {
@@ -445,6 +445,11 @@ describe('MenuVersions', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
     await waitFor(() => expect(mockMake).toHaveBeenCalledWith('m9', 'fp-m9'));
     expect(await screen.findByTestId('menu-choice-said')).toHaveTextContent('This is now the current menu: 12 lines');
+    // Browser walk 2026-11-12: the read no longer says it is not current, nor offers the choice again.
+    expect(screen.getByTestId('menu-read-result')).toHaveTextContent('Read 12 lines and kept this menu. It is the current menu.');
+    expect(screen.getByTestId('menu-read-result')).not.toHaveTextContent('no price has changed');
+    expect(screen.queryByRole('button', { name: 'Make this the current menu' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Keep it, not current' })).not.toBeInTheDocument();
   });
 
   it('an untagged read sends no cadence and no date -- never a default', async () => {
