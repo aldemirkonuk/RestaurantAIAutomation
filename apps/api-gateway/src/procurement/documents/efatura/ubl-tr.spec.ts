@@ -12,7 +12,9 @@ const NS =
   'xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" ' +
   'xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"';
 
-function invoice(opts: { typeCode?: string; withholding?: boolean; extraLine?: string } = {}) {
+function invoice(
+  opts: { typeCode?: string; withholding?: boolean; extraLine?: string; supplierCountry?: string } = {},
+) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <Invoice ${NS}>
   <cbc:UBLVersionID>2.1</cbc:UBLVersionID>
@@ -27,7 +29,7 @@ function invoice(opts: { typeCode?: string; withholding?: boolean; extraLine?: s
   <cac:AccountingSupplierParty><cac:Party>
     <cac:PartyIdentification><cbc:ID schemeID="VKN">1234567890</cbc:ID></cac:PartyIdentification>
     <cac:PartyName><cbc:Name>Sentetik Gıda &amp; Ticaret A.Ş.</cbc:Name></cac:PartyName>
-    <cac:PostalAddress><cbc:CityName>Antalya</cbc:CityName><cac:Country><cbc:Name>Türkiye</cbc:Name></cac:Country></cac:PostalAddress>
+    <cac:PostalAddress><cbc:CityName>Antalya</cbc:CityName>${opts.supplierCountry ?? "<cac:Country><cbc:Name>Türkiye</cbc:Name></cac:Country>"}</cac:PostalAddress>
     <cac:PartyTaxScheme><cac:TaxScheme><cbc:Name>Muratpaşa</cbc:Name></cac:TaxScheme></cac:PartyTaxScheme>
   </cac:Party></cac:AccountingSupplierParty>
   <cac:AccountingCustomerParty><cac:Party>
@@ -69,6 +71,22 @@ function invoice(opts: { typeCode?: string; withholding?: boolean; extraLine?: s
 }
 
 describe("readUblTr — the e-invoice, field by field", () => {
+  it("a VKN with no country on the address is a Turkish number", () => {
+    const doc = readUblTr(invoice({ supplierCountry: "" }));
+    expect(doc.vendorTaxId).toBe("1234567890");
+    expect(doc.vendorCountry).toBe("TR");
+  });
+
+  it("an address that names another country wins over the scheme", () => {
+    const doc = readUblTr(
+      invoice({
+        supplierCountry:
+          "<cac:Country><cbc:IdentificationCode>DE</cbc:IdentificationCode></cac:Country>",
+      }),
+    );
+    expect(doc.vendorCountry).toBe("DE");
+  });
+
   it("reads number, ETTN, parties, lines and money, and ties out", () => {
     const doc = readUblTr(invoice());
     expect(doc.docType).toBe("invoice");

@@ -127,12 +127,17 @@ function partyOf(party: XmlElement | null) {
     taxId: taxIdEl?.text.trim() || null,
     taxOffice: textAt(party, "PartyTaxScheme/TaxScheme/Name"),
     address,
+    // The address wins when it names a country. Otherwise a VKN/TCKN is a Turkish
+    // scheme by definition, so the number itself says "TR"; leaving it null made the
+    // vendor resolver refuse a bare 10-digit id the reader already knew was Turkish.
     country:
       countryCode && /^[A-Za-z]{2}$/.test(countryCode)
         ? countryCode.toUpperCase()
         : countryName && /t[üu]rkiye|turkey/i.test(countryName)
           ? "TR"
-          : null,
+          : taxIdEl
+            ? "TR"
+            : null,
   };
 }
 
