@@ -1,18 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { saveProofItems } from '../lib/firstProof'
 import { BrandMark } from '../components/brand/BrandMark'
 import {
   addMenuItem,
   reviewMenuItem,
   type MenuImportReviewItem,
 } from '../services/api/menus'
-import {
-  isKitchenLine,
-  lineNeedsPencil,
-  lineSourceCrop,
-  readProof,
-  saveProofItems,
-} from '../lib/firstProof'
+import { isKitchenLine, lineNeedsPencil, lineSourceCrop, readProof } from '../lib/firstProof'
 
 const sectionOrder = [
   'wine',
@@ -202,9 +197,6 @@ export default function HouseMenu() {
           <p><strong className="block font-serif text-3xl">{pencilled}</strong><span className="text-xs uppercase tracking-wider">pencilled</span></p>
         </div>
 
-        {placeError && (
-          <p role="alert" className="mt-6 text-sm text-red-700">{placeError}</p>
-        )}
         <div className="mt-12 space-y-12">
           {grouped.map(([category, rows]) => (
             <section key={category}>
@@ -305,6 +297,9 @@ export default function HouseMenu() {
             </section>
           ))}
         </div>
+        {placeError && (
+          <p role="alert" className="mt-6 text-sm text-red-700">{placeError}</p>
+        )}
         {kitchen.length > 0 && (
           <p className="mt-10 text-sm text-[#6d685f]">
             {kitchen.length} kitchen {kitchen.length === 1 ? 'line' : 'lines'} set aside — not Mudavym&apos;s job yet.
