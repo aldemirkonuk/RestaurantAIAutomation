@@ -179,8 +179,13 @@ const OUTCOME_WORDS: Record<string, (n: number) => string> = {
   failed: () => '',
 };
 
-/** What making a menu current did, in one sentence -- every outcome it was told, and every lock by name. */
-export function makeCurrentSentence(r: MakeCurrentResult): string {
+/**
+ * What making a menu current did, in one sentence -- every outcome it was told,
+ * and every lock by name. `name` is the menu's name in the list; given, the
+ * sentence says which menu it is about (menu walk 2026-11-12: a choice made
+ * from the list was said as "This is now the current menu" with no name).
+ */
+export function makeCurrentSentence(r: MakeCurrentResult, name?: string): string {
   if (r.outcome === 'already_current') return 'That menu was already the current one. Nothing changed.';
   const parts = [`${r.lines} line${r.lines === 1 ? '' : 's'}`];
   const keys = Object.keys(r.priceSync);
@@ -206,7 +211,8 @@ export function makeCurrentSentence(r: MakeCurrentResult): string {
   const failed = r.failed.length
     ? ` ${r.failed.length} could not be priced: ${r.failed.map((f) => `${f.name} (${f.error})`).join('; ')}.`
     : '';
-  return `This is now the current menu: ${parts.join(', ')}.${held}${returned}${failed}`;
+  const who = name ? `${name.charAt(0).toUpperCase()}${name.slice(1)} is` : 'This is';
+  return `${who} now the current menu: ${parts.join(', ')}.${held}${returned}${failed}`;
 }
 
 /** A menu date the gateway accepts: a day or just a month. Empty = none. */
@@ -588,19 +594,22 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
           setPlanFor(null);
         }}
       />
-      {said ? (
-        <p role="status" className="cl-said" style={{ marginTop: 10 }}>
-          {said}
-        </p>
-      ) : null}
       {q.isLoading ? (
         <p className="cl-said" role="status" style={{ marginTop: 12 }}>
           Reading the menus this house has kept…
         </p>
       ) : q.isError ? (
-        <p className="cl-said" role="alert" style={{ marginTop: 12 }} data-testid="menu-versions-error">
-          The menus this house has kept could not be read ({reasonOf(q.error)}). This is not the same as having none.
-        </p>
+        <>
+          <p className="cl-said" role="alert" style={{ marginTop: 12 }} data-testid="menu-versions-error">
+            The menus this house has kept could not be read ({reasonOf(q.error)}). This is not the same as having none.
+          </p>
+          {/* A choice made just before the list failed to read again is still said. */}
+          {said ? (
+            <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-list-choice-said">
+              {said}
+            </p>
+          ) : null}
+        </>
       ) : (
         <>
           <p className="cl-standing" style={{ marginTop: 12 }} data-testid="menu-versions-standing">
@@ -648,11 +657,21 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                 canManage={canManage}
                 onCancel={() => setPlanFor(null)}
                 onDone={(r) => {
+                  const chosenOne = q.data?.versions.find((v) => v.menuId === r.menuId);
                   setPlanFor(null);
-                  setSaid(makeCurrentSentence(r));
+                  setSaid(makeCurrentSentence(r, chosenOne ? nameOf(chosenOne) : undefined));
                   refresh();
                 }}
               />
+            ) : null}
+            {/* Menu walk 2026-11-12: this sentence sat under the read form, right
+                below that form's line about a different read. It is about a
+                menu in this list, so it stands where its plan stood, and it
+                names the menu. */}
+            {said ? (
+              <p role="status" className="cl-said" style={{ marginTop: 10 }} data-testid="menu-list-choice-said">
+                {said}
+              </p>
             ) : null}
             </>
           ) : (

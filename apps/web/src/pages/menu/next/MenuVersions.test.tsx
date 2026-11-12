@@ -217,6 +217,15 @@ describe('the words the panel uses', () => {
     );
   });
 
+  it('names the menu when it is given one, so a sentence under the list says which menu it is about', () => {
+    expect(
+      makeCurrentSentence(
+        { outcome: 'made_current', menuId: 'm1', previousMenuIds: [], lines: 2, priceSync: { changed: 2 }, flagged: 0, failed: [] },
+        'the menu read 2026-11-12 01:25:06',
+      ),
+    ).toBe('The menu read 2026-11-12 01:25:06 is now the current menu: 2 lines, 2 wines priced from this menu.');
+  });
+
   it('ADR 0193 round 3 (L15): a held kind is counted AND named, a returned lock is named, and an outcome the page does not know is still printed', () => {
     const s = makeCurrentSentence({
       outcome: 'made_current',
@@ -390,7 +399,10 @@ describe('MenuVersions', () => {
     expect(mockMake).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Make it current' }));
     await waitFor(() => expect(mockMake).toHaveBeenCalledWith('m1', 'fp-m1'));
-    expect(await screen.findByText(/This is now the current menu: 42 lines, 40 wines priced from this menu, 2 flagged/)).toBeInTheDocument();
+    // Named, and said under the list it is about (menu walk 2026-11-12).
+    expect(await screen.findByTestId('menu-list-choice-said')).toHaveTextContent(
+      /^The menu read 2026-09-20 10:00 is now the current menu: 42 lines, 40 wines priced from this menu, 2 flagged/,
+    );
   });
 
   it('staff see every kept menu but are offered no choice of the current one', async () => {
@@ -462,7 +474,18 @@ describe('MenuVersions', () => {
       expect(screen.getByTestId('menu-read-result')).toHaveTextContent('It is no longer the current menu: another was chosen.'),
     );
     expect(screen.queryByTestId('menu-choice-said')).not.toBeInTheDocument();
-    expect(screen.getAllByText(/^This is now the current menu/)).toHaveLength(1);
+    // The list's sentence names its menu and stands with the list, not under the
+    // read form's line about the other read (menu walk 2026-11-12).
+    const listSaid = screen.getByTestId('menu-list-choice-said');
+    expect(listSaid).toHaveTextContent(/^The menu read .* is now the current menu: 1 line/);
+    expect(screen.queryByText(/^This is now the current menu/)).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId('menu-read-result').compareDocumentPosition(listSaid) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId('menu-versions-standing').compareDocumentPosition(listSaid) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByTestId('menu-read-result')).not.toContainElement(listSaid);
   });
 
   it('an untagged read sends no cadence and no date -- never a default', async () => {
