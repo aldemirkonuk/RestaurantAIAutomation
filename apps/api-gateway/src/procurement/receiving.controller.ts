@@ -4,6 +4,7 @@ import {
   Get,
   HttpException,
   HttpStatus,
+  Logger,
   Param,
   ParseUUIDPipe,
   Post,
@@ -254,6 +255,8 @@ export class DoorReceiptDto {
 @UseGuards(JwtAuthGuard)
 @Controller("procurement/receiving")
 export class ReceivingController {
+  private readonly logger = new Logger(ReceivingController.name);
+
   constructor(private readonly receiving: ReceivingService) {}
 
   @Post("orders/:id/door")
@@ -421,23 +424,40 @@ export class ReceivingController {
   })
   async unverified(@CurrentUser() user: AuthedUser) {
     try {
+      // The door-counted read is a side read (R10): its failure must not take
+      // the order door's list down with it, which answered before R10 existed
+      // (fix round 2026-11-12, finding on #1096). It is caught on its own and
+      // said in `doorCountedFailed`, never turned into an empty list.
       const [items, door] = await Promise.all([
         this.receiving.listUnverified(user.restaurantId),
-        this.receiving.listDoorCountedWithoutPaper(user.restaurantId),
+        this.receiving.listDoorCountedWithoutPaper(user.restaurantId).then(
+          (value) => ({ ok: true as const, value }),
+          (error: unknown) => {
+            this.logger.error(
+              `unverified: the door-counted deliveries could not be read for ${user.restaurantId}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+            return { ok: false as const };
+          },
+        ),
       ]);
       // An order the order door already lists is listed once (R10).
       const listed = new Set(items.map((i) => i.orderId));
-      const doorCounted = door.rows.filter(
-        (d) => !d.orderId || !listed.has(d.orderId),
-      );
+      const doorCounted = door.ok
+        ? door.value.rows.filter((d) => !d.orderId || !listed.has(d.orderId))
+        : [];
       return {
         items,
         // R10: deliveries counted through the document door (door-count with
         // createDelivery) that have no vendor paper yet. They write no receipt
         // event, so `items` never held them. `doorCountedComplete` is false
-        // when a read landed on its cap: the list is then a floor.
+        // when a read landed on its cap (the list is then a floor) or failed.
+        // `doorCountedFailed` is true when that read failed: `doorCounted` is
+        // then empty because it is unknown, not because the door is clear.
         doorCounted,
-        doorCountedComplete: !door.capped,
+        doorCountedComplete: door.ok ? !door.value.capped : false,
+        doorCountedFailed: !door.ok,
         // A single line for the manager's queue, rather than a second stock
         // number on every screen that would train people to ignore both.
         summary: items.length
