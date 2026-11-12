@@ -328,7 +328,7 @@ export const documentsApi = {
       Pick<
         ProcurementDocumentLine,
         'qty' | 'description' | 'vintage' | 'uom'
-      > & { unitPrice: number | null; lineTotal: number | null }
+      > & { unitPrice: number | null; lineTotal: number | null; packSize: number }
     >,
     challenge?: string | null,
   ): Promise<{

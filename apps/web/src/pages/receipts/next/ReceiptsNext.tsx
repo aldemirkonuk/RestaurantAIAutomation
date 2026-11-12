@@ -69,6 +69,7 @@ import {
   serverMessage,
 } from './rc2-format';
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
+import { qtyUnitWord, takesPackSize } from './lineUnits';
 import { SwipeToConfirm } from './SwipeToConfirm';
 import {
   RECEIPTS_SERVER_WINDOWS,
@@ -451,12 +452,15 @@ function EditCell({
   ariaLabel,
   locked,
   nullable = true,
+  validate,
   onCommit,
 }: {
   value: number | null;
   ariaLabel: string;
   locked: boolean;
   nullable?: boolean;
+  /** Refuses a figure the field cannot hold (a pack of 0.5), in place. */
+  validate?: (n: number) => boolean;
   onCommit: (next: number | null) => void;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
@@ -470,7 +474,11 @@ function EditCell({
   const commit = () => {
     if (draft === null) return;
     const parsed = parseCell(draft);
-    if (parsed === 'invalid' || (parsed === null && !nullable)) {
+    if (
+      parsed === 'invalid' ||
+      (parsed === null && !nullable) ||
+      (parsed !== null && validate && !validate(parsed))
+    ) {
       setBad(true);
       return;
     }
@@ -713,6 +721,8 @@ export function PaperPane({
 const EDITABLE_FIELDS = [
   // `head` is the column's word, which a phone prints above each figure (W35).
   { key: 'qty', patch: 'qty', label: 'Quantity', head: 'Qty', nullable: false },
+  // Only on a line counted in cases, packs or split cases (`takesPackSize`).
+  { key: 'pack_size', patch: 'packSize', label: 'Bottles per case', head: 'Per', nullable: false },
   { key: 'unit_price', patch: 'unitPrice', label: 'Unit price', head: 'Unit', nullable: true },
   { key: 'line_total', patch: 'lineTotal', label: 'Line total', head: 'Total', nullable: true },
 ] as const;
@@ -1342,6 +1352,7 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                   <tr role="row" style={{ fontFamily: MONO, fontSize: 9, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--ink-4, #665D50)' }}>
                     <th role="columnheader" style={{ textAlign: 'left', padding: '4px 6px' }}>Line</th>
                     <th role="columnheader" style={{ textAlign: 'right', padding: '4px 6px' }}>Qty</th>
+                    <th role="columnheader" style={{ textAlign: 'right', padding: '4px 6px' }}>Per</th>
                     <th role="columnheader" style={{ textAlign: 'right', padding: '4px 6px' }}>Unit</th>
                     <th role="columnheader" style={{ textAlign: 'right', padding: '4px 6px' }}>Total</th>
                     <th role="columnheader" style={{ textAlign: 'left', padding: '4px 6px' }}>Order line</th>
@@ -1355,6 +1366,10 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                         {l.vintage && !nameCarriesYear(l.description, l.vintage) ? ` · ${l.vintage}` : ''}
                       </td>
                       {EDITABLE_FIELDS.map((f) => {
+                        // A bottle line has no pack to say: an empty cell, not an input.
+                        if (f.key === 'pack_size' && !takesPackSize(l.uom)) {
+                          return <td key={f.key} role="cell" data-cell={f.key} style={{ padding: '5px 6px' }} />;
+                        }
                         const k = `${l.id}:${f.key}`;
                         const was = k in originals ? originals[k] : undefined;
                         const changed = was !== undefined && was !== l[f.key];
@@ -1365,15 +1380,25 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
                               ariaLabel={`${f.label}, line ${l.line_no}`}
                               locked={!editable}
                               nullable={f.nullable}
+                              /* A pack is a whole count of at least one bottle. */
+                              validate={f.key === 'pack_size' ? (n) => Number.isInteger(n) && n >= 1 : undefined}
                               onCommit={(v) => {
                                 if (v === null && !f.nullable) return;
                                 commitEdit(l, f.key, f.patch, v);
                               }}
                             />
+                            {f.key === 'qty' && l.uom && (
+                              <span
+                                data-testid="line-unit"
+                                style={{ marginLeft: 4, fontSize: 10.5, color: 'var(--ink-4, #665D50)' }}
+                              >
+                                {qtyUnitWord(l.uom, l.qty)}
+                              </span>
+                            )}
                             {changed && (
                               <div style={{ fontFamily: MONO, fontSize: 9.5, color: 'var(--ink-4, #665D50)', marginTop: 2 }}>
                                 <span>
-                                  extracted {was == null ? EM : f.key === 'qty' ? was : fmtMoney(was, shownDoc.currency)}
+                                  extracted {was == null ? EM : f.key === 'qty' || f.key === 'pack_size' ? was : fmtMoney(was, shownDoc.currency)}
                                 </span>{' '}
                                 <button
                                   type="button"
@@ -1708,6 +1733,7 @@ export default function ReceiptsNext() {
           .rc-lines tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 8px; row-gap: 6px; padding: 8px 0 }
           .rc-lines td { display: block; min-width: 0; max-width: none !important; padding: 0 !important; text-align: left !important }
           .rc-lines td[data-cell="line"], .rc-lines td[data-cell="order"] { grid-column: 1 / -1 }
+          .rc-lines td[data-cell="pack_size"]:not([data-label]) { display: none }
           .rc-lines td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 2px; font-family: ${MONO}; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-4, #665D50) }
           .rc-lines input { max-width: 100% }
         }
