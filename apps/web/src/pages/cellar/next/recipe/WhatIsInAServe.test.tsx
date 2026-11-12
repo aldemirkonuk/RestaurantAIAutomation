@@ -30,6 +30,26 @@ const recipe = (whatIsIn: WhatIsIn | null | undefined): CocktailRecipe =>
   }) as CocktailRecipe;
 
 describe('WhatIsInAServe', () => {
+
+  it('keeps two decimals under one gram, so 0.06 g of salt never reads 0.1 g', () => {
+    const base = readable();
+    if (!base.readable) throw new Error('fixture');
+    const data = readable({
+      figures: {
+        ...base.figures,
+        saltG: fig(0.06, ['Angostura'], true),
+        sugarsG: fig(17, ['Angostura'], true),
+        fatG: fig(0.94, [], false),
+        energyKcal: fig(178.45, [], false),
+      },
+    });
+    render(<WhatIsInAServe data={recipe(data)} unsaved={false} />);
+    expect(screen.getByTestId('recipe-whatisin-saltG').textContent).toBe('Salt: at least 0.06 g, unknown for Angostura');
+    expect(screen.getByTestId('recipe-whatisin-fatG').textContent).toBe('Fat: 0.94 g');
+    expect(screen.getByTestId('recipe-whatisin-sugarsG').textContent).toBe('of which sugars: at least 17 g, unknown for Angostura');
+    // kcal is not grams: one decimal as before.
+    expect(screen.getByTestId('recipe-whatisin-energyKcal').textContent).toBe('Energy: 178.5 kcal');
+  });
   it('says the summed figure, at least, and names the unlinked line as unknown, never 0', () => {
     render(<WhatIsInAServe data={recipe(readable())} unsaved={false} />);
     expect(screen.getByTestId('recipe-whatisin-energyKcal').textContent).toBe('Energy: at least 66.6 kcal, unknown for Campari');
