@@ -10,6 +10,10 @@ import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
 import { queueResearchIfLibraryLacks } from "../inventory/house-item-research";
 import { closeDeliveryItemToNameBookedElsewhere } from "./delivery-item-to-name";
 import { normalizeUom, toBottles, Uom } from "./documents/document-types";
+import {
+  readDoorCountedWithoutPaper,
+  type DoorCountedDelivery,
+} from "./door-counted-deliveries";
 import { readBookedOrderBottles } from "./booked-order-quantity";
 import { packsAndLoose, readOneShelfReceived, readShelfReceived } from "./shelf-received";
 import { ORDER_UNIT_TYPES } from "./order-units";
@@ -996,6 +1000,17 @@ export class ReceivingService {
    */
   async listUnverified(restaurantId: string): Promise<UnverifiedDelivery[]> {
     return (await this.listUnverifiedCapped(restaurantId)).rows;
+  }
+
+  /**
+   * Deliveries counted through the document door with no vendor paper yet
+   * (R10). `listUnverified` reads only the order door's receipt events, which
+   * the document door never writes; see `door-counted-deliveries.ts`.
+   */
+  async listDoorCountedWithoutPaper(
+    restaurantId: string,
+  ): Promise<{ rows: DoorCountedDelivery[]; capped: boolean }> {
+    return readDoorCountedWithoutPaper(this.db.getClient(), restaurantId);
   }
 
   /**
