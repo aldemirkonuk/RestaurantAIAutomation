@@ -19,8 +19,14 @@ import * as matchers from '@testing-library/jest-dom/matchers';
 expect.extend(matchers);
 
 // Cleanup after each test
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // The page-load `/auth/me` read is shared for a few seconds (lib/meAtBoot.ts);
+  // one test's answer must not stand in for the next test's. Imported here, not
+  // at the top: a top-level import would load meAtBoot (and the real
+  // sessionRefresh) before a test file's vi.mock of either could apply.
+  const { forgetMeAtBoot } = await import('../lib/meAtBoot');
+  forgetMeAtBoot();
 });
 
 // Guard all window-dependent setup so tests that run in the node environment

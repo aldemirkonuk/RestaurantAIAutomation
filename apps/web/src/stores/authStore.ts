@@ -1,8 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import axios from 'axios'
-import { doRefresh } from '../lib/sessionRefresh'
 import { AUTH_STORAGE_KEY, leaveDeadSession } from '../lib/deadSession'
+import { readMeAtBoot } from '../lib/meAtBoot'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -262,28 +262,25 @@ export const useAuthStore = create<AuthState>()(
         }
 
         try {
-          const response = await api.get('/api/v1/auth/me')
+          // Shared with AuthContext's boot read: one `/auth/me` per page load
+          // (lib/meAtBoot.ts). After an expired token it is asked under the
+          // refreshed one, so the header is the token it is given.
+          const response = await readMeAtBoot(token, (t) =>
+            api.get('/api/v1/auth/me', { headers: { Authorization: `Bearer ${t}` } }),
+          )
+          const current = localStorage.getItem('accessToken')
+          if (current) api.defaults.headers.common['Authorization'] = `Bearer ${current}`
           applyUserData(response.data.user, response.data.availableRestaurants)
         } catch (err: any) {
           const status = err?.response?.status
           if (status === 401) {
             // ADR 0164, item 2/3: the one shared, single-flight refresh
             // (`doRefresh`, also used by AuthContext.tsx and its axios
-            // interceptor) instead of a fourth independent implementation —
-            // a refresh AuthContext started around the same moment is
-            // shared, not raced, and houseAccessEnded/503 are handled the
-            // one place both clients rely on.
-            const newAccess = await doRefresh()
-            if (newAccess) {
-              get().setTokens(newAccess, localStorage.getItem('refreshToken') || '')
-              try {
-                const retryRes = await api.get('/api/v1/auth/me')
-                applyUserData(retryRes.data.user, retryRes.data.availableRestaurants)
-                return
-              } catch (retryErr) {
-                console.error('Failed to load user after refresh:', retryErr)
-              }
-            }
+            // interceptor). `readMeAtBoot` has already made it and asked
+            // again under the new token, shared with AuthContext's reader. A
+            // 401 here means that hop failed: the refresh gave no token, or
+            // the new token was refused too. Refreshing again here would
+            // spend a second refresh on the same answer.
             // `doRefresh` removes the stored refresh token itself only when
             // it was genuinely rejected. A houseAccessEnded response leaves a
             // fresh (no-house) pair in place and has already sent the person
