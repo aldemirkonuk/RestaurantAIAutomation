@@ -72,13 +72,13 @@ export function signUpRefusal(
   // already registered" (auth.service.ts registerAccount); the join answers a
   // person already in the house with a 409 "already_member".
   if (where === 'join' && status === 409) {
-    return { kind: 'exists', text: 'You are already in this house. Sign in to reach it.' }
+    return { kind: 'exists', text: 'You are already in this house.' }
   }
   if (
     status === 409 ||
     (status === 400 && said !== null && /already (registered|uses this email|has an account)/i.test(said))
   ) {
-    return { kind: 'exists', text: 'This email already has an account. Sign in instead.' }
+    return { kind: 'exists', text: 'This email already has an account.' }
   }
   if (status === 400 || status === 403 || status === 404 || status === 410) {
     return {
