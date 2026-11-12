@@ -491,7 +491,7 @@ export function Sidebar() {
   }
 
   const completedCount = progress
-    ? [true, progress.menu_uploaded, progress.vendor_added, progress.team_member_invited].filter(
+    ? [true, progress.menu_current, progress.vendor_added, progress.team_member_invited].filter(
         Boolean,
       ).length
     : 1
