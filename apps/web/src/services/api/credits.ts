@@ -96,12 +96,26 @@ export interface RecoveryFigures {
   settlementRate: number | null
 }
 
+/**
+ * The `byCurrency` key the gateway uses for claims that carry no currency
+ * (`CURRENCY_UNRECORDED` in procurement/documents/credit-ledger.ts). An
+ * engineering key, not an ISO code: read it back as "not recorded".
+ */
+export const CURRENCY_UNRECORDED = 'UNRECORDED'
+
+/** A `byCurrency` key as the code a screen prints: null when none was recorded. */
+export function claimCurrencyCode(key: string): string | null {
+  return key === CURRENCY_UNRECORDED ? null : key
+}
+
 export interface CreditStats extends RecoveryFigures {
   selfEvidencedOpen: number
   /**
    * The same figures kept apart by the claim's currency. The top-level ones add
    * every claim together whatever its currency; nothing converts, so a screen
    * that prints money reads these. Absent from a gateway older than this field.
+   * A claim with no stated currency is keyed `CURRENCY_UNRECORDED`, which is
+   * not a currency and must never be printed as one.
    */
   byCurrency?: Record<string, RecoveryFigures>
   /** Rows the figures were computed from. Absent from an older gateway. */

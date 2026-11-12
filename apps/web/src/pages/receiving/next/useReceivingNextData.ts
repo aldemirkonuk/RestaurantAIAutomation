@@ -611,11 +611,23 @@ export function useApproveCreditDraft() {
 
 /* ───────────────────────────────────────────────────── owner: recovery ── */
 
+/** Settled money in one currency, this calendar month and last. */
+export interface RecoveryTrend {
+  /** The claims' own ISO code, or null when they carry none. Nothing is converted. */
+  currency: string | null;
+  thisMonth: number;
+  lastMonth: number;
+}
+
 export interface RecoveryData {
   stats: CreditStats | null;
-  /** Sum of credited_amount settled this calendar month / last. Null until known. */
-  creditedThisMonth: number | null;
-  creditedLastMonth: number | null;
+  /**
+   * Sum of credited_amount settled this calendar month and last, one entry per
+   * currency the settled claims carry (a lira claim and a euro claim are never
+   * added together). Null until the settled-claims list is known; an empty
+   * array when it is known and no claim has settled.
+   */
+  trend: RecoveryTrend[] | null;
   /**
    * The trend's own failure. Separate from `isError` on purpose: the headline
    * figure is allowed to stand when only the trend broke, but the trend must
@@ -625,10 +637,11 @@ export interface RecoveryData {
   trendIsError: boolean;
   trendFailure: FailureVM | null;
   /**
-   * Every stats figure is computed behind `.limit(5000)` with no `.order()`
-   * (credits.controller.ts:137), and the trend behind `.limit(200)` ordered
-   * OLDEST-first (:112) — so a restaurant past either cap has its most recent
-   * settlements outside the window entirely. Both are lower bounds.
+   * The stats are computed behind `.limit(5000)` with no `.order()`
+   * (credits.controller.ts `stats`), and the trend behind `.limit(200)` ordered
+   * OLDEST-first — so a restaurant past either cap has its most recent
+   * settlements outside the window entirely. The server says when the stats
+   * filled their window (`capped`); a gateway too old to say is read as a floor.
    */
   statsAtFloor: boolean;
   trendAtFloor: boolean;
@@ -654,8 +667,7 @@ export function useOwnerRecovery(): RecoveryData {
   });
 
   return useMemo(() => {
-    let thisMonth: number | null = null;
-    let lastMonth: number | null = null;
+    let trend: RecoveryTrend[] | null = null;
     if (Array.isArray(creditedQ.data)) {
       const now = new Date();
       const lastRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -664,23 +676,34 @@ export function useOwnerRecovery(): RecoveryData {
         const d = new Date(iso);
         return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
       };
-      const sum = (ref: Date) =>
-        creditedQ.data!
-          .filter((c) => inMonth(c.settled_at, ref))
-          .reduce((s, c) => s + (num(c.credited_amount) ?? 0), 0);
-      thisMonth = sum(now);
-      lastMonth = sum(lastRef);
+      // One bucket per claim currency: a sum across currencies is a number
+      // with no unit, and nothing on this page converts.
+      const byCcy = new Map<string, RecoveryTrend>();
+      for (const c of creditedQ.data) {
+        const code =
+          typeof c.currency === 'string' && c.currency.trim() !== ''
+            ? c.currency.trim().toUpperCase()
+            : null;
+        const key = code ?? '';
+        const bucket = byCcy.get(key) ?? { currency: code, thisMonth: 0, lastMonth: 0 };
+        const amount = num(c.credited_amount) ?? 0;
+        if (inMonth(c.settled_at, now)) bucket.thisMonth += amount;
+        else if (inMonth(c.settled_at, lastRef)) bucket.lastMonth += amount;
+        byCcy.set(key, bucket);
+      }
+      trend = [...byCcy.values()].sort((a, b) =>
+        (a.currency ?? '~').localeCompare(b.currency ?? '~'),
+      );
     }
     return {
       stats: statsQ.data ?? null,
-      creditedThisMonth: thisMonth,
-      creditedLastMonth: lastMonth,
+      trend,
       trendIsError: creditedQ.isError,
       trendFailure: failureOf(creditedQ.isError, creditedQ.error),
-      // Not observable from the payload — /credits/stats returns aggregates,
-      // not the 5000 rows behind them — so this is unconditional whenever
-      // there is anything to bound.
-      statsAtFloor: !!statsQ.data,
+      // The server counts the rows behind its aggregates and says when they
+      // filled the window. A gateway too old to say (`capped` absent) is read
+      // as a floor, the same rule as the receipts credit lane.
+      statsAtFloor: !!statsQ.data && statsQ.data.capped !== false,
       trendAtFloor: Array.isArray(creditedQ.data) && creditedQ.data.length > 0,
       hasData: !!statsQ.data,
       isLoading: statsQ.isLoading,

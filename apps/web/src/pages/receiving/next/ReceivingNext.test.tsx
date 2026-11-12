@@ -520,23 +520,128 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     expect(await screen.findByText('≥1')).toBeInTheDocument()
   })
 
-  it('marks every owner figure as a floor — stats read at most 5000 unordered rows', async () => {
+  it('marks owner figures as a floor when the server says its window filled, in the claims\' own currency', async () => {
+    const figures = {
+      recovered: 900, outstanding: 400, promised: 100, rejected: 250,
+      openClaims: 3, oldestOpenDays: 12, settlementRate: 0.5,
+    }
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/stats')
+        ? { data: { ...figures, selfEvidencedOpen: 0, byCurrency: { TRY: figures }, rowsCounted: 5000, capped: true } }
+        : { data: { items: [] } },
+    )
+    harness(OwnerBody)
+
+    expect(await screen.findByText('≥TRY 900')).toBeInTheDocument()
+    expect(screen.getByText('≥TRY 400')).toBeInTheDocument()
+    expect(screen.getByText('≥TRY 250')).toBeInTheDocument()
+    expect(screen.getByText(/≥3 open claims/)).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('$')
+  })
+})
+
+/* ═══════════════ the owner ledger speaks the house's money (walk 2026-11-12) ══ */
+
+describe("the owner ledger prints each claim currency on its own and never a borrowed $", () => {
+  const zero = {
+    recovered: 0, outstanding: 0, promised: 0, rejected: 0,
+    openClaims: 0, oldestOpenDays: null, settlementRate: null,
+  }
+
+  it('a house with no claim at all is told so in words, not shown "≥$0"', async () => {
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/stats')
+        ? { data: { ...zero, selfEvidencedOpen: 0, byCurrency: {}, rowsCounted: 0, capped: false } }
+        : { data: { items: [] } },
+    )
+    harness(OwnerBody)
+
+    expect(await screen.findByText(/no credit claim has been opened at this house/)).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/≥|\$0/)
+  })
+
+  it('a window that did not fill draws no floor marker', async () => {
+    const figures = { ...zero, recovered: 450, outstanding: 120, openClaims: 1, oldestOpenDays: 1 }
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/stats')
+        ? { data: { ...figures, selfEvidencedOpen: 0, byCurrency: { TRY: figures }, rowsCounted: 2, capped: false } }
+        : { data: { items: [] } },
+    )
+    harness(OwnerBody)
+
+    expect(await screen.findByText('TRY 450')).toBeInTheDocument()
+    expect(screen.getByText('TRY 120')).toBeInTheDocument()
+    expect(screen.getByText(/^1 open claim, oldest 1 day$/)).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('≥')
+  })
+
+  it('two currencies stay apart, headline, figures and trend, and nothing is added across them', async () => {
+    const tl = { ...zero, recovered: 300, openClaims: 0 }
+    const eu = { ...zero, recovered: 40, openClaims: 0 }
+    const thisMonth = new Date().toISOString()
+    get.mockImplementation(async (url: string, opts?: { params?: { state?: string } }) =>
+      url.endsWith('/stats')
+        ? {
+            data: {
+              ...zero, recovered: 340, selfEvidencedOpen: 0,
+              byCurrency: { EUR: eu, TRY: tl }, rowsCounted: 2, capped: false,
+            },
+          }
+        : opts?.params?.state === 'credited'
+          ? {
+              data: {
+                items: [
+                  { id: 'c1', state: 'credited', credited_amount: 300, settled_at: thisMonth, currency: 'TRY' },
+                  { id: 'c2', state: 'credited', credited_amount: 40, settled_at: thisMonth, currency: 'EUR' },
+                ],
+              },
+            }
+          : { data: { items: [] } },
+    )
+    harness(OwnerBody)
+
+    expect(await screen.findByText('TRY 300')).toBeInTheDocument()
+    expect(screen.getByText('€40')).toBeInTheDocument()
+    expect(screen.getByText('Claims in TRY')).toBeInTheDocument()
+    expect(screen.getByText('Claims in EUR')).toBeInTheDocument()
+    expect(await screen.findByText(/this month ≥TRY 300 · last month ≥TRY 0/)).toBeInTheDocument()
+    expect(screen.getByText(/this month ≥€40 · last month ≥€0/)).toBeInTheDocument()
+    // The combined 340 is lira plus euros: a number with no unit.
+    expect(document.body.textContent).not.toContain('340')
+  })
+
+  it('claims with no currency are grouped as "not recorded", never under the gateway key', async () => {
+    const tl = { ...zero, recovered: 300, openClaims: 0 }
+    const none = { ...zero, recovered: 900, openClaims: 0 }
     get.mockImplementation(async (url: string) =>
       url.endsWith('/stats')
         ? {
             data: {
-              recovered: 900, outstanding: 400, promised: 100, rejected: 250,
-              openClaims: 3, oldestOpenDays: 12, settlementRate: 0.5, selfEvidencedOpen: 0,
+              ...zero, recovered: 1200, selfEvidencedOpen: 0,
+              byCurrency: { TRY: tl, UNRECORDED: none }, rowsCounted: 2, capped: false,
             },
           }
         : { data: { items: [] } },
     )
     harness(OwnerBody)
 
-    expect(await screen.findByText('≥$900')).toBeInTheDocument()
-    expect(screen.getByText('≥$400.00')).toBeInTheDocument()
-    expect(screen.getByText('≥$250.00')).toBeInTheDocument()
-    expect(screen.getByText(/≥3 open claims/)).toBeInTheDocument()
+    expect(await screen.findByText('TRY 300')).toBeInTheDocument()
+    expect(screen.getByText('900 (currency not recorded)')).toBeInTheDocument()
+    expect(screen.getByText('Claims in TRY')).toBeInTheDocument()
+    expect(screen.getByText('Claims in a currency not recorded')).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('UNRECORDED')
+  })
+
+  it('an older gateway with no per-currency figures says the currency was not recorded', async () => {
+    get.mockImplementation(async (url: string) =>
+      url.endsWith('/stats')
+        ? { data: { ...zero, recovered: 900, selfEvidencedOpen: 0 } }
+        : { data: { items: [] } },
+    )
+    harness(OwnerBody)
+
+    expect(await screen.findByText('≥900 (currency not recorded)')).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('$')
   })
 })
 
@@ -883,6 +988,13 @@ describe('F9 — the trend says when it broke, instead of being honest by accide
           data: {
             recovered: 900, outstanding: 0, promised: 0, rejected: 0,
             openClaims: 0, oldestOpenDays: null, settlementRate: null, selfEvidencedOpen: 0,
+            byCurrency: {
+              TRY: {
+                recovered: 900, outstanding: 0, promised: 0, rejected: 0,
+                openClaims: 0, oldestOpenDays: null, settlementRate: null,
+              },
+            },
+            capped: true,
           },
         }
       throw httpError(500, 'credits list down')
@@ -895,7 +1007,7 @@ describe('F9 — the trend says when it broke, instead of being honest by accide
     // Awaited on its own: /stats can land after the list fails, and the headline
     // is an RcTally, which shows its figure one effect after the commit. Read in
     // the alert's tick, it saw the em dash on a slow CI runner (2026-10-06).
-    expect(await screen.findByText('≥$900')).toBeInTheDocument()
+    expect(await screen.findByText('≥TRY 900')).toBeInTheDocument()
   })
 
   it('says nothing when the list simply came back empty', async () => {
