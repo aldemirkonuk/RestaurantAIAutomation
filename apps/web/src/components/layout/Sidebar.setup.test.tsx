@@ -8,7 +8,7 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
 
-let role = 'staff'
+let role: string | null = 'staff'
 let progress: Record<string, unknown> | null = null
 
 vi.mock('../../contexts/AuthContext', async () => {
@@ -79,6 +79,21 @@ describe('Sidebar — Get started is for the people who run setup', () => {
     renderSidebar()
     expect(screen.getByText('Get started')).toBeInTheDocument()
     expect(screen.queryByText('Learn & Help')).toBeNull()
+  })
+
+  it('while the role is not known yet, neither entry is drawn (no Learn & Help flash for an owner)', () => {
+    role = null
+    progress = unfinished
+    renderSidebar()
+    expect(screen.queryByText('Get started')).toBeNull()
+    expect(screen.queryByText('Learn & Help')).toBeNull()
+  })
+
+  it('an owner whose menu is read but not current counts the menu step as not done', () => {
+    role = 'owner'
+    progress = unfinished // menu_uploaded true, menu_current false, invite true
+    renderSidebar()
+    expect(screen.getByText('2/4')).toBeInTheDocument()
   })
 
   it('a manager who put the checklist away sees Learn & Help', () => {

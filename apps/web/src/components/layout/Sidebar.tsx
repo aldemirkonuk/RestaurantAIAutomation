@@ -499,11 +499,15 @@ export function Sidebar() {
   // Staff (most invitees) never see it: they get Learn & Help from the first
   // day, whatever the house's setup says (OB-1, invitees used to see "1/4"
   // because their progress read was a 404).
+  // Until the role in this house is known (no user yet, or a role still
+  // null), neither entry is drawn: an owner must not see Learn & Help flash
+  // in and then swap to Get started.
+  const roleKnown = user?.role != null
   const runsSetup = user?.role === 'owner' || user?.role === 'manager'
   const activationComplete = !!(progress?.completed_at)
   const checklistDismissed = !!progress?.checklist_dismissed
-  const showGetStarted = runsSetup && !activationComplete && !checklistDismissed
-  const showLearn = !showGetStarted
+  const showGetStarted = roleKnown && runsSetup && !activationComplete && !checklistDismissed
+  const showLearn = roleKnown && !showGetStarted
 
   const renderNavItem = (item: NavItem) => {
     const badgeCount = item.badge ?? badgeByHref[item.href] ?? 0
