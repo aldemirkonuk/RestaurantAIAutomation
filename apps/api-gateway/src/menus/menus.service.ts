@@ -191,6 +191,8 @@ export interface NotOnThisFile {
   glass: number | null;
   /** Kinds an open lock holds; they stay locked. */
   locked: Array<"bottle" | "glass">;
+  /** False when the house's row is deleted or inactive (it no longer sells it); null with no row. */
+  active: boolean | null;
 }
 
 /**
@@ -1511,22 +1513,29 @@ export class MenusService {
       });
 
     // NOT ON THIS FILE (2d). A replaced line is on this file when this menu
-    // carries its wine, or a line of the same name (a line either side may be
-    // unlinked). One entry per wine (or per name, unlinked), in the replaced
-    // menu's order. Nothing is written for them: L12.
+    // carries its wine. A name stands in for the wine only when one side is
+    // unlinked: two lines that both name a wine are compared by the wine, so
+    // "Barolo" 2015 replaced by "Barolo" 2018 (another library wine, which
+    // choosing this menu does not carry onto the 2015 row) is listed. One
+    // entry per wine (or per name, unlinked), in the replaced menu's order.
+    // Nothing is written for them: L12.
     const idsHere = new Set<string>();
     const namesHere = new Set<string>();
+    const unlinkedNamesHere = new Set<string>();
     for (const line of lines) {
       if (isKitchenItem(line)) continue;
+      const name = foldMenuName(line.name);
       if (line.wine_library_id) idsHere.add(String(line.wine_library_id));
-      namesHere.add(foldMenuName(line.name));
+      else unlinkedNamesHere.add(name);
+      namesHere.add(name);
     }
     const notOnThisFile: NotOnThisFile[] = [];
     const seen = new Set<string>();
     for (const line of replacedLines) {
       const wineId = line.wine_library_id ? String(line.wine_library_id) : null;
       const name = foldMenuName(line.name);
-      if ((wineId && idsHere.has(wineId)) || namesHere.has(name)) continue;
+      const here = wineId ? idsHere.has(wineId) || unlinkedNamesHere.has(name) : namesHere.has(name);
+      if (here) continue;
       const key = wineId ? `w:${wineId}` : `n:${name}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -1544,6 +1553,9 @@ export class MenusService {
         bottle: row ? linePrice(row.menu_price_current) : null,
         glass: row ? linePrice(row.menu_price_glass) : null,
         locked: [...locked],
+        // A row the house deleted or set inactive still holds its prices, but
+        // the house no longer sells the wine: the page says so.
+        active: row ? row.is_active !== false && !row.deleted_at : null,
       });
     }
 

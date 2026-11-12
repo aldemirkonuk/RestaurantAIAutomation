@@ -151,6 +151,10 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
     expect(notOnFileWords(BAROLO_GONE)).toBe('Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked');
     expect(notOnFileWords(HOUSE_RED)).toBe("House red: not in the house's wines, so nothing is kept for it");
     expect(notOnFileWords({ ...BAROLO_GONE, bottle: null, glass: null, locked: [] })).toBe('Barolo 2016: keeps no price (it had none)');
+    expect(notOnFileWords({ ...BAROLO_GONE, active: false })).toBe(
+      'Barolo 2016: the house no longer sells it; its row keeps bottle 80.00, glass 14.00, bottle locked',
+    );
+    expect(notOnFileWords({ ...BAROLO_GONE, active: true })).toBe('Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked');
   });
 
   it('lists them on the plan, with no control that would act on them', async () => {
