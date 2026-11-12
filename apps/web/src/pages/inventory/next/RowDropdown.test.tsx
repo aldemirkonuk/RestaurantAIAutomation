@@ -309,7 +309,7 @@ describe('RowDropdown head facts (INV-W13, W16, W17)', () => {
       kind: 'food',
     });
     const t = screen.getByTestId('row-dropdown').textContent ?? '';
-    expect(t).toContain('About 290 g a day: 5.8 kg used between the counts of 22 Oct 2026 and 11 Nov 2026; at that pace it lasts 28 days.');
+    expect(t).toContain('About 290 g a day: 5.8 kg used between the counts of 22 Oct 2026 and 11 Nov 2026; at that pace, counting the use since the last count, it lasts 28 days.');
     expect(t).not.toContain('sold in the last 30 days');
   });
 

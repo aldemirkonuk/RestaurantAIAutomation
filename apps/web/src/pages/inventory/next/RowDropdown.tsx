@@ -594,8 +594,12 @@ function HowFastItPours({ row, uom, kind }: { row: InvRow; uom: string | null; k
   const maxDay = Math.max(1, ...vel.days.map((d) => d.qty));
   const maxHour = Math.max(1, ...hours.buckets.map((b) => b.qty));
 
+  // A counted good's runway is read from what is left after the use since
+  // its last count (inventory_analytics), so the sentence says so.
   const lasts =
-    row.runway === null ? '.' : `; at that pace it lasts ${fmtCount(Math.round(row.runway))} day${Math.round(row.runway) === 1 ? '' : 's'}.`;
+    row.runway === null
+      ? '.'
+      : `; at that pace${row.usageSource === 'counts' ? ', counting the use since the last count,' : ''} it lasts ${fmtCount(Math.round(row.runway))} day${Math.round(row.runway) === 1 ? '' : 's'}.`;
   const between =
     row.usageSince && row.usageUntil
       ? `between the counts of ${shortDate(row.usageSince)} and ${shortDate(row.usageUntil)}`

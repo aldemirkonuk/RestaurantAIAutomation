@@ -217,7 +217,7 @@ export interface ItemCardsProps {
  * is not "not enough history", it is not measured yet, and says how to.
  */
 export const NOT_DRAWN_BY_SALES =
-  'A sale does not draw a food or supply down yet, so its use is measured from its counts: count it twice, at least 3 days apart, and what was used between them shows here.';
+  'A sale does not draw a food or supply down yet, so its use is measured from its counts: count it twice, at least 3 days apart and the second within the last 30 days, and what was used between them shows here.';
 
 const DAY_MS = 86_400_000;
 
@@ -365,7 +365,7 @@ export default function ItemCards({ row, uom, kind, canManage, currency, figures
           unsold
             ? 'On hand divided by usage a day; its use is measured once it has been counted twice.'
             : counted
-              ? 'On hand divided by usage a day between its last counts.'
+              ? `On hand less what was used since the last count${row.usageUntil ? ` (${shortDate(row.usageUntil)})` : ''}, at its usage a day between its last counts.`
               : 'On hand divided by usage a day.'
         }
       />

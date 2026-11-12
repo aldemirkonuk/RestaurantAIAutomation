@@ -247,7 +247,7 @@ describe('the item drawer', () => {
     expect(usage).not.toContain('Not measured yet');
     const cover = screen.getByTestId('ivd-card-cover').textContent ?? '';
     expect(cover).toContain('28 days');
-    expect(cover).toContain('between its last counts');
+    expect(cover).toContain('On hand less what was used since the last count (11 Nov 2026), at its usage a day between its last counts.');
   });
 
   it('counts that show nothing used say so, and that it is not running down', () => {
