@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { actLine } from './counterRows';
+import { actLine, orderQuantity } from './counterRows';
 import {
   actsWaiting,
   counterHead,
@@ -166,5 +166,49 @@ describe('deliveries counted at the document door (browser walk 2026-11-12)', ()
     );
     expect(line.what).toBe('Order ORD-9 · 36 bottles counted by case');
     expect(line.id).toBe('o-9');
+  });
+});
+
+describe('the Seal row says its quantity in words (browser walk 2026-11-12)', () => {
+  const order = {
+    id: 'o-1',
+    orderNumber: 'PO-1',
+    vendor: 'Ege Şarap Dağıtım',
+    wine: 'Yakut',
+    quantity: 12,
+    unitType: 'bottle',
+    total: 456,
+    status: 'PENDING_APPROVAL',
+    requestedAt: '2026-11-12T08:00:00Z',
+  };
+
+  it('twelve bottles read "12 bottles", never "12 bottle"', () => {
+    const line = actLine('orders', order, null);
+    expect(line.detail.startsWith('12 bottles · ')).toBe(true);
+    expect(line.detail).not.toMatch(/\b12 bottle\b(?!s)/);
+  });
+
+  it('one of a unit is singular, and a stored code is never printed', () => {
+    expect(orderQuantity(1, 'bottle')).toBe('1 bottle');
+    expect(orderQuantity(1, 'case')).toBe('1 case');
+    expect(orderQuantity(3, 'split_case')).toBe('3 split cases');
+    expect(orderQuantity(2, 'each')).toBe('2 units');
+    expect(orderQuantity(20, 'liter')).toBe('20 litres');
+    expect(orderQuantity(6, 'CASE')).toBe('6 cases');
+  });
+
+  it('a unit outside the list is said as it came, and a missing one adds nothing', () => {
+    expect(orderQuantity(4, 'magnum_box')).toBe('4 magnum box');
+    expect(orderQuantity(4, null)).toBe('4');
+    expect(orderQuantity(null, 'bottle')).toBe('quantity not stated');
+  });
+
+  it('a count of one bottle at the order door is singular too', () => {
+    const line = actLine(
+      'deliveries',
+      { orderId: 'o-2', orderNumber: 'ORD-2', countedQtyBottles: 1, countedAt: '2026-09-21T08:00:00Z', ageHours: 6, severity: 'fresh' },
+      null,
+    );
+    expect(line.what).toBe('Order ORD-2 · 1 bottle counted by case');
   });
 });
