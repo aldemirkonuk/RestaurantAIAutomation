@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { CocktailRecipe, RecipeLine, WhatIsIn } from '../../../../services/api/recipes';
-import DrinkCards from './DrinkCards';
+import type { CocktailRecipe, CostPreview, RecipeLine, WhatIsIn } from '../../../../services/api/recipes';
+import DrinkCards, { type DraftCost } from './DrinkCards';
 
 const fig = (value: number | null, missing: string[] = [], atLeast = false) => ({ value, atLeast, missing });
 const say = (n: number) => `$${n.toFixed(2)}`;
@@ -132,5 +132,76 @@ describe('DrinkCards', () => {
   it('shows nothing before a recipe is saved', () => {
     const { container } = render(<DrinkCards data={gAndT({ current: null, cost: null })} sayMoney={say} unsaved={false} />);
     expect(container.innerHTML).toBe('');
+  });
+});
+
+describe('DrinkCards: the cost of unsaved lines', () => {
+  const draft = (cost: Partial<CostPreview>, labels = ['House London Dry Gin', 'Tonic Water']): DraftCost => ({
+    labels,
+    cost: {
+      perServe: 3.1,
+      perServeExact: 3.1,
+      priced: 2,
+      of: 2,
+      complete: true,
+      partial: 0,
+      lines: [
+        { status: 'linked', costPerServe: 2.2, costBasis: 'invoice_lot_wac' },
+        { status: 'linked', costPerServe: 0.9, costBasis: 'invoice_lot_wac' },
+      ],
+      ...cost,
+    },
+  });
+
+  it('shows the draft cost with its own said-line, and says which figures are still the saved ones', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved draftCost={draft({})} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe("Cost a serve$3.10Your unsaved lines, at today's prices.");
+    expect(screen.getByTestId('drink-card-price').textContent).toBe('Price$12.00A serve, as your list has it.');
+    expect(screen.getByTestId('drink-cards').textContent).toContain(
+      'The cost is your unsaved lines. The other figures are the saved recipe\u2019s; save to count them.',
+    );
+    expect(screen.getByTestId('drink-cards').textContent).not.toContain('Save to count your changes.');
+  });
+
+  it('keeps the saved cost and the old note while the draft is not priced (absent draftCost)', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved draftCost={null} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe("Cost a serve$2.47At today's prices, all 2 ingredients priced.");
+    expect(screen.getByTestId('drink-cards').textContent).toContain('These are the saved recipe\u2019s figures. Save to count your changes.');
+  });
+
+  it('ignores a draft cost once the sheet is not unsaved', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved={false} draftCost={draft({})} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toContain('$2.47');
+  });
+
+  it('says an unknown draft cost as not known and names the line, never 0', () => {
+    render(
+      <DrinkCards
+        data={gAndT({}, readable(fig(20)))}
+        sayMoney={say}
+        unsaved
+        draftCost={draft({
+          perServe: null,
+          perServeExact: null,
+          priced: 1,
+          complete: false,
+          lines: [
+            { status: 'linked', costPerServe: 2.2, costBasis: 'invoice_lot_wac' },
+            { status: 'linked', costPerServe: null, costBasis: 'unknown' },
+          ],
+        })}
+      />,
+    );
+    const cost = screen.getByTestId('drink-card-cost');
+    expect(cost).toHaveAttribute('data-known', 'false');
+    expect(cost.textContent).toBe('Cost a serveNot known1 of 2 ingredients priced; no price yet for Tonic Water.');
+    expect(cost.textContent).not.toMatch(/\$0/);
+  });
+
+  it('says a partial draft cost the way the saved one does', () => {
+    render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved draftCost={draft({ partial: 1 })} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe(
+      "Cost a serve$3.10Your unsaved lines, at today's prices; 1 ingredient is priced from the bottles with an invoice only.",
+    );
   });
 });

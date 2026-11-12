@@ -3,7 +3,8 @@
  * proposal S2.4: "a drink opens its own drawer with the same cards, rolled up
  * from its lines"). Each card is one figure and one sentence that says where
  * it comes from. Nothing is summed here: the cost and what is in a serve are
- * the gateway's (recipe-cost.ts, recipe-nutrition.ts), of the SAVED recipe.
+ * the gateway's (recipe-cost.ts, recipe-nutrition.ts), of the SAVED recipe, except
+ * the cost of an unsaved draft, which the gateway also prices (`draftCost`).
  *
  * Unknown is a word, never 0: a cost with one unpriced line is "Not known"
  * and names that line, because a partial sum shown as the cost would read as
@@ -13,7 +14,7 @@
  * basis is not set anywhere yet (ADR 0360 item 8, ADR 0359 open as #784), so
  * a percentage of it would be wrong in a way nobody could see.
  */
-import type { CocktailRecipe, RecipeLine } from '../../../../services/api/recipes';
+import type { CocktailRecipe, CostPreview, RecipeCost, RecipeLine } from '../../../../services/api/recipes';
 import { alcoholGrams, figureAmount, figureUnknown, names } from './WhatIsInAServe';
 
 interface Card {
@@ -33,28 +34,34 @@ function count(n: number, one: string, many: string) {
 const unpricedNames = (lines: RecipeLine[]) =>
   names(lines.filter((l) => l.role === 'stocked' && l.costPerServe == null).map((l) => l.itemName ?? l.label));
 
-function costCard(data: CocktailRecipe, sayMoney: (n: number) => string): Card | null {
-  const cost = data.cost;
-  if (!cost || !data.current) return null;
+/** The unsaved lines' cost, with the label of each line sent, in the order sent. */
+export interface DraftCost {
+  cost: CostPreview;
+  labels: string[];
+}
+
+function costCard(cost: RecipeCost | null, missing: string, sayMoney: (n: number) => string, draft: boolean): Card | null {
+  if (!cost) return null;
   const base = { id: 'cost', label: 'Cost a serve' };
   if (cost.complete && cost.perServe != null) {
     const exact = cost.perServeExact ?? null;
     const figure = cost.perServe === 0 && exact != null && exact > 0 ? `Under ${sayMoney(0.01)}` : sayMoney(cost.perServe);
     const part = cost.partial ?? 0;
+    const lead = draft ? "Your unsaved lines, at today's prices" : "At today's prices";
+    const priced = draft ? '' : cost.of === 1 ? ', its one ingredient priced' : `, all ${cost.of} ingredients priced`;
     return {
       ...base,
       figure,
       known: true,
       said:
         part > 0
-          ? `At today's prices; ${count(part, 'ingredient is', 'ingredients are')} priced from the bottles with an invoice only.`
-          : `At today's prices, ${cost.of === 1 ? 'its one ingredient' : `all ${cost.of} ingredients`} priced.`,
+          ? `${lead}; ${count(part, 'ingredient is', 'ingredients are')} priced from the bottles with an invoice only.`
+          : `${lead}${priced}.`,
     };
   }
   if (cost.of === 0) {
     return { ...base, figure: 'Not known', known: false, said: 'Nothing in it is counted from your shelf, so nothing here has a price.' };
   }
-  const missing = unpricedNames(data.current.lines);
   return {
     ...base,
     figure: 'Not known',
@@ -138,22 +145,46 @@ export default function DrinkCards({
   data,
   sayMoney,
   unsaved,
+  draftCost,
 }: {
   data: CocktailRecipe;
   /** Null for a role that does not see money: then no cost or price card. */
   sayMoney: ((n: number) => string) | null;
   unsaved: boolean;
+  /**
+   * The unsaved lines priced at today's prices, once the gateway has answered.
+   * Absent while it is asked, when it failed, or when the draft is not whole
+   * enough to price: then the cost card keeps the saved recipe's figure.
+   */
+  draftCost?: DraftCost | null;
 }) {
   if (!data.current) return null;
+  const draft = unsaved && draftCost ? draftCost : null;
+  const cost = !sayMoney
+    ? null
+    : draft
+      ? costCard(
+          draft.cost,
+          names(draft.cost.lines.flatMap((l, i) => (l.status !== 'untracked' && l.costPerServe == null ? [draft.labels[i] ?? 'a line'] : []))),
+          sayMoney,
+          true,
+        )
+      : costCard(data.cost, unpricedNames(data.current.lines), sayMoney, false);
   const cards = [
-    sayMoney ? costCard(data, sayMoney) : null,
+    cost,
     sayMoney ? priceCard(data, sayMoney) : null,
     ingredientsCard(data),
     ...nutritionCards(data),
   ].filter((c): c is Card => c !== null);
   return (
     <section className="cl-rcp-kpis" data-testid="drink-cards" aria-label="This drink in figures">
-      {unsaved ? <p className="cl-note">These are the saved recipe&rsquo;s figures. Save to count your changes.</p> : null}
+      {unsaved ? (
+        <p className="cl-note">
+          {draft
+            ? 'The cost is your unsaved lines. The other figures are the saved recipe’s; save to count them.'
+            : 'These are the saved recipe’s figures. Save to count your changes.'}
+        </p>
+      ) : null}
       <ul className="cl-rcp-cards">
         {cards.map((c) => (
           <li
