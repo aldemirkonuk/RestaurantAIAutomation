@@ -801,7 +801,13 @@ function summarize(
   switch (verdict) {
     case "matched":
       return (
-        `All ${f.acceptedQty} accepted at the agreed price.` +
+        // A differing price accepted with a reason is not "the agreed price"
+        // (browser walk 2026-11-12). The web twin says the same (parity test).
+        (f.poUnitPrice != null &&
+        f.invoiceUnitPrice != null &&
+        !priceEquals(f.poUnitPrice, f.invoiceUnitPrice)
+          ? `All ${f.acceptedQty} accepted at the billed ${money(f.invoiceUnitPrice)}, not the agreed ${money(f.poUnitPrice)}.`
+          : `All ${f.acceptedQty} accepted at the agreed price.`) +
         (f.freeGoodsQty > 0 ? ` Includes ${f.freeGoodsQty} free.` : "")
       );
     case "overbilled_vs_ship":
