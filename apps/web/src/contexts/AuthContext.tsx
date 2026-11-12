@@ -28,6 +28,7 @@ import {
   tokenHouse,
 } from "../lib/houseMemory";
 import { doRefresh } from "../lib/sessionRefresh";
+import { readMeAtBoot } from "../lib/meAtBoot";
 import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
@@ -421,7 +422,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        const response = await api.get("/api/v1/auth/me");
+        // Shared with authStore's boot read: one `/auth/me` per page load
+        // (lib/meAtBoot.ts). A 401 still goes through this instance's refresh.
+        const response = await readMeAtBoot(
+          token,
+          () => api.get("/api/v1/auth/me"),
+          { askRefreshes: true },
+        );
         // Studio roles come from the JWT itself (app_metadata.roles), and the
         // session's house from the token when /auth/me names none.
         setUser(
