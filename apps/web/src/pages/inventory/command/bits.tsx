@@ -7,8 +7,9 @@ import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import { unitCostOf } from './stock-value'
 
-export const fmtMoney = (n?: number | null) =>
-  n == null || !Number.isFinite(n) ? '-' : `$${Math.round(n).toLocaleString()}`
+// `fmtMoney` (a hard-coded `$`, rounded) is gone: its last two callers, the
+// remove modal and the batch-receive grid, print through `house-money.ts`
+// (r56, 2026-11-12). Money on these pages is the house's, never a default.
 
 export const fmtMoneyExact = (n?: number | null) =>
   n == null || !Number.isFinite(n) ? '-' : `$${n.toFixed(2)}`

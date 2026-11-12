@@ -11,7 +11,7 @@
 import { useCallback, useMemo, useRef } from 'react'
 import { AlertTriangle, Check, Trash2, Wine } from 'lucide-react'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
-import { fmtMoney } from '../../pages/inventory/command/bits'
+import { houseMoney, useHouseCurrency } from '../../pages/inventory/command/house-money'
 import { cn } from '../../lib/utils'
 import type { BulkInventoryLine, WineDraft } from '../../services/api/types'
 
@@ -147,6 +147,8 @@ export function BatchReceiveGrid({
   className,
 }: BatchReceiveGridProps) {
   const { locations } = useStorageLocations()
+  // The batch's cost in the house's own money, never a hard-coded `$` (r56).
+  const currency = useHouseCurrency()
   const bodyRef = useRef<HTMLDivElement>(null)
   const fillRef = useRef<{ quantity: string; cost: string; locationId: string }>({
     quantity: '',
@@ -441,7 +443,7 @@ export function BatchReceiveGrid({
             {totals.bottles} bottle{totals.bottles !== 1 ? 's' : ''}
             <span className="text-gray-400 font-normal">across {totals.rows} wine{totals.rows !== 1 ? 's' : ''}</span>
           </span>
-          <span className="font-mono font-semibold text-gray-800">{fmtMoney(totals.cost)}</span>
+          <span className="font-mono font-semibold text-gray-800">{houseMoney(totals.cost, currency, 'whole')}</span>
           {totals.samples > 0 && (
             <span className="text-amber-700">{totals.samples} free sample{totals.samples !== 1 ? 's' : ''} — excluded from average cost</span>
           )}
