@@ -26,6 +26,7 @@ export function cappedPostgrest(
         in: (c: string, vs: unknown[]) => keep((r) => vs.includes(r[c])),
         gte: (c: string, v: string) => keep((r) => r[c] != null && r[c] >= v),
         lte: (c: string, v: string) => keep((r) => r[c] != null && r[c] <= v),
+        lt: (c: string, v: string) => keep((r) => r[c] != null && r[c] < v),
         gt: (c: string, v: string) => keep((r) => r[c] != null && String(r[c]) > v),
         order: (c: string) => ((orderBy = c), q),
         limit: (n: number) => ((limit = n), q),
