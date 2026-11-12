@@ -44,6 +44,17 @@ beforeEach(() => {
 })
 
 describe('HouseMenu: the first proof keeps its places', () => {
+  it('counts a kitchen line as set aside, never as set (read = set + pencilled + set aside)', () => {
+    typedProof([
+      unplaced('a', 'House Red'),
+      { menuItemId: 'k', name: 'Tiramisu', category: 'dessert', matched: false, needsReview: false, kitchen_line: true },
+    ])
+    page()
+    const count = screen.getByRole('group', { name: 'The reading count' })
+    expect(count).toHaveTextContent('2read0set1pencilled')
+    expect(screen.getByText(/1 kitchen line set aside/)).toBeInTheDocument()
+  })
+
   it('a placed line stays placed after a reload', async () => {
     typedProof([unplaced('a', 'Kavaklidere Yakut')])
     page()
