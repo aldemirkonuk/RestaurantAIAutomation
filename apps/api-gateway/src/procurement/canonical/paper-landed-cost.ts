@@ -30,7 +30,7 @@
  */
 
 import { currencyCode } from "../../common/iso-4217";
-import { normalizeUom, toBottles, UOMS } from "../documents/document-types";
+import { isMass, normalizeUom, toBottles, UOMS } from "../documents/document-types";
 import { LineKind } from "../documents/parsed-document";
 import {
   CostedLine,
@@ -39,6 +39,7 @@ import {
   LandedCostHeader,
   LandedCostLineInput,
   LandedCostResult,
+  unitNoun,
   landedCost,
 } from "../landed-cost";
 import { snapshotLineKinds } from "./from-document-rows";
@@ -289,6 +290,12 @@ type Fed =
       row: PaperLineRow;
       key: string | null;
       listed: number;
+      /**
+       * The unit `listed` counts: the gatekeeper's `per` (`bottle`, `g`, `kg`,
+       * `keg`, …). Null for a free weighed line, which takes its item's unit
+       * (its count was scaled into that unit by the caller, R8).
+       */
+      per: string | null;
       input: Omit<LandedCostLineInput, "accepted_bottles">;
       said: string;
     }
@@ -368,10 +375,13 @@ function feed(line: PaperLine, kind: LineKind | null, key: string | null): Fed {
   const listed = num(r.qty_bottles);
   const { cost } = line;
   if (cost.ok) {
+    // A weighed line is costed per one of its item's unit (R8): its counts
+    // arrive in that unit, and every sentence below says so.
+    const unit = unitNoun(cost.per);
     const paid = paidBottles(r);
     if (listed == null || paid == null || !(paid > 0) || !(listed >= paid))
       return open(
-        `the invoice line does not say how many bottles it bills`,
+        `the invoice line does not say how many ${unit}s it bills`,
         null,
       );
     return {
@@ -379,9 +389,11 @@ function feed(line: PaperLine, kind: LineKind | null, key: string | null): Fed {
       row: r,
       key,
       listed,
+      per: cost.per,
       said: `line ${n}: ${cost.basis}`,
       input: {
         ...shared,
+        unit: cost.per,
         // Per-bottle terms: the gatekeeper already converted the unit.
         qty: paid,
         uom: "bottle",
@@ -409,7 +421,8 @@ function feed(line: PaperLine, kind: LineKind | null, key: string | null): Fed {
       row: r,
       key,
       listed: free.bottles,
-      said: `line ${n}: free goods, ${plural(free.bottles, "bottle")} at no price`,
+      per: isMass(r.uom) ? null : "bottle",
+      said: `line ${n}: free goods, ${plural(free.bottles, isMass(r.uom) ? "unit" : "bottle")} at no price`,
       input: {
         ...shared,
         qty: free.bottles,
@@ -518,6 +531,8 @@ export function landDelivery(input: {
   const accepted = new Map<Fed, number>();
   const extraOf = new Map<string, number>();
   const valueByKey = new Map<string, Extract<Fed, { kind: "value" }>[]>();
+  /** The unit each item's lines count it in (one per item, or it is held). */
+  const perOf = new Map<string, string>();
   for (const f of fed) {
     if (f.kind !== "value") continue;
     if (!f.key) {
@@ -527,6 +542,19 @@ export function landDelivery(input: {
     valueByKey.set(f.key, [...(valueByKey.get(f.key) ?? []), f]);
   }
   for (const [key, mine] of valueByKey) {
+    // One item is kept in one unit (ADR 0070). Lines that count it in two
+    // cannot be added, or grams are summed with bottles.
+    const pers = [...new Set(mine.map((f) => f.per).filter((p): p is string => p != null))];
+    if (pers.length > 1) {
+      for (const f of mine) accepted.set(f, f.listed);
+      hold(
+        key,
+        `its invoice lines count it in ${pers.map((x) => `${unitNoun(x)}s`).join(" and ")}, and one cost per unit cannot cover both. The lot stays provisional.`,
+      );
+      continue;
+    }
+    perOf.set(key, pers[0] ?? "bottle");
+    const u = unitNoun(perOf.get(key));
     const listed = mine.reduce((s, f) => s + f.listed, 0);
     const booked = Math.max(0, input.booked.get(key) ?? 0);
     if (booked >= listed) {
@@ -539,7 +567,7 @@ export function landDelivery(input: {
       for (const f of mine) accepted.set(f, f.listed);
       hold(
         key,
-        `the door counted ${plural(booked, "bottle")} of this item, but its invoice lines list ${listed} across ${mine.length} lines, and which line was short is not known. The lot stays provisional until the count or the invoice is corrected.`,
+        `the door counted ${plural(booked, u)} of this item, but its invoice lines list ${listed} across ${mine.length} lines, and which line was short is not known. The lot stays provisional until the count or the invoice is corrected.`,
       );
     }
   }
@@ -587,6 +615,8 @@ export function landDelivery(input: {
       house,
       lines: mine.map((f) => ({
         ...f.input,
+        // The item's unit, so a free weighed line is said in it too.
+        ...(f.key && perOf.has(f.key) ? { unit: perOf.get(f.key) } : {}),
         accepted_bottles: accepted.get(f) ?? 0,
       })),
     });
@@ -633,12 +663,14 @@ export function landDelivery(input: {
       );
       continue;
     }
+    // The item's unit, as its lines were costed (Step 2 held a mix).
+    const u = unitNoun(perOf.get(key) ?? costed[0]?.unit);
     const bottles = costed.reduce((s, l) => s + l.accepted_bottles, 0);
     const value = costed.reduce((s, l) => s + l.accepted_landed_value, 0);
     if (!(bottles > 0)) {
       hold(
         key,
-        `no bottle of it on its invoice lines was accepted at the door, so there is no cost per bottle. The lot stays provisional.`,
+        `no ${u} of it on its invoice lines was accepted at the door, so there is no cost per ${u}. The lot stays provisional.`,
       );
       continue;
     }
@@ -652,14 +684,14 @@ export function landDelivery(input: {
     if (!(unitCost > 0)) {
       hold(
         key,
-        `its bottles came free on the invoice, and a lot is never booked at a cost of nothing. The lot stays provisional.`,
+        `its ${u}s came free on the invoice, and a lot is never booked at a cost of nothing. The lot stays provisional.`,
       );
       continue;
     }
     if (Math.round(unitCost * bottles * 100) !== valueCents) {
       hold(
         key,
-        `its ${plural(bottles, "bottle")} are too many for a cost per bottle to six places to add back to the invoice's ${m(valueCents / 100)} to the cent. The lot stays provisional.`,
+        `its ${plural(bottles, u)} are too many for a cost per ${u} to six places to add back to the invoice's ${m(valueCents / 100)} to the cent. The lot stays provisional.`,
       );
       continue;
     }
@@ -676,12 +708,12 @@ export function landDelivery(input: {
       : null;
     const extra = extraOf.get(key) ?? 0;
     const basis = [
-      `landed cost per accepted bottle; ${(said.get(key) ?? []).join("; ")}.`,
+      `landed cost per accepted ${u}; ${(said.get(key) ?? []).join("; ")}.`,
       ...costed.map((l) => l.basis),
-      `${plural(bottles, "bottle")} accepted across ${plural(costed.length, "line")}, landed at ${m(valueCents / 100)}: posted as ${six(unitCost)} a bottle, which adds back to ${m(valueCents / 100)}.`,
+      `${plural(bottles, u)} accepted across ${plural(costed.length, "line")}, landed at ${m(valueCents / 100)}: posted as ${six(unitCost)} a ${u}, which adds back to ${m(valueCents / 100)}.`,
       ...(extra > 0
         ? [
-            `The door booked ${plural(extra, "bottle")} more than the invoice lists; ${extra === 1 ? "it takes" : "they take"} the same cost a bottle.`,
+            `The door booked ${plural(extra, u)} more than the invoice lists; ${extra === 1 ? "it takes" : "they take"} the same cost a ${u}.`,
           ]
         : []),
       stamp == null
