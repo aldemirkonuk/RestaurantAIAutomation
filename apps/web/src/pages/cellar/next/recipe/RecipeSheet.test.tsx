@@ -189,11 +189,9 @@ describe('RecipeSheet', () => {
       }),
     );
     mount();
-    const card = await screen.findByTestId('drink-card-cost');
-    expect(card).toHaveTextContent('2 of 3 ingredients priced');
-    expect(card.textContent).not.toMatch(/₺/);
-    // The cost is said once, on its card: no second cost sentence under the lines.
-    expect(screen.queryByTestId('recipe-footer')).toBeNull();
+    const foot = await screen.findByTestId('recipe-footer');
+    await waitFor(() => expect(foot).toHaveTextContent('2 of 3 ingredients priced'));
+    expect(foot.textContent).not.toMatch(/₺|Costs/);
   });
 
   it('the drink opens on its cards: a line with no price makes the cost not known and names it, never a partial sum', async () => {
@@ -227,10 +225,10 @@ describe('RecipeSheet', () => {
   it('3. a complete Negroni costs ₺57.00 a serve at today’s prices', async () => {
     serve(negroni());
     mount();
-    const card = await screen.findByTestId('drink-card-cost');
-    expect(card).toHaveTextContent("₺57.00At today's prices, all 3 ingredients priced.");
-    expect(card.textContent).not.toMatch(/%/);
-    expect(screen.queryByTestId('recipe-footer')).toBeNull();
+    await waitFor(() =>
+      expect(screen.getByTestId('recipe-footer')).toHaveTextContent("Costs ₺57.00 a serve at today's prices"),
+    );
+    expect(screen.getByTestId('recipe-footer').textContent).not.toMatch(/%/);
   });
 
   it('1. picking a shelf item sends inventoryId in the PUT body', async () => {
@@ -1001,11 +999,13 @@ describe('RecipeSheet', () => {
     expect(screen.getByText('Line 1 (gin) is linked to something archived from your shelf. Link it again, or mark it not counted.')).toBeInTheDocument();
   });
 
-  it('a complete cost priced partly from uninvoiced stock says so on the cost card', async () => {
+  it('a complete cost priced partly from uninvoiced stock says so in the footer', async () => {
     serve(negroni({ cost: { perServe: 57, priced: 3, of: 3, complete: true, partial: 1 } }));
     mount();
-    expect(await screen.findByTestId('drink-card-cost')).toHaveTextContent(
-      "₺57.00At today's prices; 1 ingredient is priced from the bottles with an invoice only.",
+    await waitFor(() =>
+      expect(screen.getByTestId('recipe-footer')).toHaveTextContent(
+        "Costs ₺57.00 a serve at today's prices · 1 ingredient is priced from the bottles with an invoice only",
+      ),
     );
   });
 
@@ -1032,9 +1032,7 @@ describe('RecipeSheet', () => {
     fireEvent.change(within(meta).getByLabelText('Garnish'), { target: { value: '' } });
     fireEvent.change(within(meta).getByLabelText('Method'), { target: { value: 'Batch, then stir over ice' } });
     // The cost shown is still the saved recipe's, and says so.
-    const cards = screen.getByTestId('drink-cards');
-    expect(cards).toHaveTextContent("These are the saved recipe’s figures. Save to count your changes.");
-    expect(within(cards).getByTestId('drink-card-cost')).toHaveTextContent('₺57.00');
+    expect(screen.getByTestId('recipe-footer')).toHaveTextContent("As saved: Costs ₺57.00 a serve at today's prices");
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
     await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
     const body = h.put.mock.calls[0][1];
