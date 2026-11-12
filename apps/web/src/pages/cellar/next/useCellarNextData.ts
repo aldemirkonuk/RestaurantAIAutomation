@@ -309,6 +309,11 @@ export interface BuildingVM {
 export interface RegisterEvidenceVM {
   inventoryRows: number | null;
   menuRows: number | null;
+  /**
+   * Rows on the house's own list; present only where a list exists (cocktails),
+   * null when it could not be read. Never folded into `menuRows`.
+   */
+  listRows?: number | null;
   catalogueRows: number | null;
   nameOnly: boolean;
 }

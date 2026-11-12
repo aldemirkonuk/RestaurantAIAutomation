@@ -7,6 +7,8 @@
  * Every figure here can be null and every null is words, never a zero:
  *  - `inventoryRows: null` — the cellar could not be read.
  *  - `catalogueRows: null` — the shared catalogue could not be read.
+ *  - `listRows` — the house's own list (cocktails only), said apart from the
+ *    menu: two drinks on the list are not two menu lines.
  * And a catalogue figure is always labelled as the catalogue's, never as this
  * house's stock: `public.beverages` has no `restaurant_id` at all.
  */
@@ -25,6 +27,11 @@ export default function RegisterEvidenceLine({
   return (
     <p className="cl-note" style={{ marginTop: 4 }}>
       <span className="cl-num">{fig(evidence.inventoryRows)}</span> in the cellar ·{' '}
+      {evidence.listRows !== undefined ? (
+        <>
+          <span className="cl-num">{fig(evidence.listRows)}</span> on this house’s list ·{' '}
+        </>
+      ) : null}
       <span className="cl-num">{fig(evidence.menuRows)}</span> on the menu ·{' '}
       <span className="cl-num">{fig(evidence.catalogueRows)}</span> in the shared catalogue
       {evidence.nameOnly ? ' · read from names, not a classification' : ''} ·{' '}

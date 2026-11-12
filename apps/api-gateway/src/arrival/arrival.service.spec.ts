@@ -501,3 +501,30 @@ describe("Arrival's configuration boundary", () => {
     );
   });
 });
+
+describe("an inferred cellar proposal", () => {
+  function inferred(evidence: Record<string, number | null>) {
+    const service: any = Object.create(ArrivalService.prototype);
+    service.manage = jest.fn().mockResolvedValue(undefined);
+    service.append = jest.fn().mockResolvedValue({ ok: true });
+    service.cellar = {
+      read: jest.fn().mockResolvedValue({
+        registers: [{ id: "cocktails", decidedBy: "inferred", carried: true, evidence }],
+      }),
+    };
+    return service;
+  }
+  const dto = { provenance: "inferred", rows: [{ target: "cellar", field: "cocktails", value: true }] } as any;
+
+  it("is backed by the house's own cocktail list, now said apart from menu lines (R2)", async () => {
+    const service = inferred({ inventoryRows: 0, menuRows: 0, listRows: 2 });
+    await expect(service.propose(actor, dto)).resolves.toEqual({ ok: true });
+    expect(service.append).toHaveBeenCalledTimes(1);
+  });
+
+  it("is refused when no cellar row, menu line or list row backs it", async () => {
+    const service = inferred({ inventoryRows: 0, menuRows: 0, listRows: 0 });
+    await expect(service.propose(actor, dto)).rejects.toThrow("not supported by this house's items or menu");
+    expect(service.append).not.toHaveBeenCalled();
+  });
+});

@@ -376,6 +376,15 @@ export interface RegisterEvidence {
   /** Menu rows whose section or name names this register. Null when unread. */
   menuRows: number | null;
   /**
+   * Rows on this house's OWN list of the kind. Only cocktails have one
+   * (`public.cocktails`, restaurant-owned), so the key is present on that
+   * register alone; null when the list could not be read. Kept apart from
+   * `menuRows`: a drink the house wrote on its list is not a menu line, and
+   * folding the two made /cocktails say "2 on the menu" over a ledger saying
+   * no menu line names a cocktail (browser walk 2026-11-11, R2).
+   */
+  listRows?: number | null;
+  /**
    * True when this register can be reached only through a word in a name or a
    * menu section, because the database's own classifier has no value for it.
    */
@@ -488,10 +497,8 @@ export function inferRegisters(input: InferenceInput): RegisterReadout[] {
     const inventoryRows =
       byKind === null && byName === null ? null : (byKind ?? 0) + (byName ?? 0);
 
-    let menuRows = input.menuCounts === null ? null : (input.menuCounts.get(id) ?? 0);
-    if (id === "cocktails" && input.cocktailRows !== null) {
-      menuRows = (menuRows ?? 0) + input.cocktailRows;
-    }
+    const menuRows = input.menuCounts === null ? null : (input.menuCounts.get(id) ?? 0);
+    const listRows = id === "cocktails" ? input.cocktailRows : undefined;
 
     const catalogueRows =
       input.catalogueCounts === null
@@ -501,6 +508,7 @@ export function inferRegisters(input: InferenceInput): RegisterReadout[] {
     const evidence: RegisterEvidence = {
       inventoryRows,
       menuRows,
+      ...(listRows !== undefined ? { listRows } : {}),
       catalogueRows,
       nameOnly,
     };
@@ -544,6 +552,22 @@ export function inferRegisters(input: InferenceInput): RegisterReadout[] {
         basis: nameOnly
           ? `${byName} ${byName === 1 ? "row" : "rows"} in this cellar ${byName === 1 ? "names" : "name"} ${HUMAN[id].toLowerCase()}. The library's classifier has no value for this register, so this reads the name, not a classification.`
           : `${byName} ${byName === 1 ? "row" : "rows"} in this cellar ${byName === 1 ? "names" : "name"} ${HUMAN[id].toLowerCase()}.`,
+        evidence,
+        needsEvidence: false,
+        strandedItems: 0,
+      };
+    }
+
+    // On the house's own list: the house wrote these rows itself, so the
+    // answer is as sure as a classified bottle, and it is said as the list,
+    // never as the menu.
+    if (listRows !== undefined && listRows !== null && listRows > 0) {
+      return {
+        id,
+        carried: true,
+        decidedBy: "inferred" as const,
+        confidence: "certain" as const,
+        basis: `${listRows} ${listRows === 1 ? "cocktail is" : "cocktails are"} on this house's own list.`,
         evidence,
         needsEvidence: false,
         strandedItems: 0,
@@ -621,9 +645,9 @@ export function applyAnswers(
     // ON with nothing behind it asks for rows; OFF with rows behind it says
     // the rows are still there.
     const ownRows =
-      r.evidence.inventoryRows === null && r.evidence.menuRows === null
+      r.evidence.inventoryRows === null && r.evidence.menuRows === null && (r.evidence.listRows ?? null) === null
         ? null
-        : (r.evidence.inventoryRows ?? 0) + (r.evidence.menuRows ?? 0);
+        : (r.evidence.inventoryRows ?? 0) + (r.evidence.menuRows ?? 0) + (r.evidence.listRows ?? 0);
     const booksShowNothing = ownRows === 0;
 
     const said = d.carried ? "carries" : "does not carry";

@@ -158,7 +158,37 @@ describe("inferRegisters", () => {
     });
     const c = by(rows, "cocktails");
     expect(c.carried).toBe(true);
-    expect(c.evidence.menuRows).toBe(14);
+    // R2 (browser walk 2026-11-11): the list is said as the list, never as menu lines.
+    expect(c.evidence.listRows).toBe(14);
+    expect(c.evidence.menuRows).toBe(0);
+    expect(c.basis).toBe("14 cocktails are on this house's own list.");
+    expect(c.basis).not.toMatch(/menu/);
+    // Only cocktails have a list: no other register carries the key.
+    expect("listRows" in by(rows, "wines").evidence).toBe(false);
+  });
+
+  it("keeps menu lines and list rows apart when a house has both", () => {
+    const rows = inferRegisters({
+      ...EMPTY,
+      menuCounts: new Map<RegisterId, number>([["cocktails", 3]]),
+      cocktailRows: 1,
+      hasAnyEvidence: true,
+    });
+    const c = by(rows, "cocktails");
+    expect(c.evidence).toMatchObject({ menuRows: 3, listRows: 1 });
+    expect(c.basis).toBe("1 cocktail is on this house's own list.");
+  });
+
+  it("says an unread list as null, and a house with menu lines only still reads from the menu", () => {
+    const rows = inferRegisters({
+      ...EMPTY,
+      menuCounts: new Map<RegisterId, number>([["cocktails", 2]]),
+      cocktailRows: null,
+      hasAnyEvidence: true,
+    });
+    const c = by(rows, "cocktails");
+    expect(c.evidence.listRows).toBeNull();
+    expect(c.basis).toMatch(/^2 menu lines name cocktails/);
   });
 
   it("leaves inventoryRows null — never 0 — when the cellar could not be read", () => {

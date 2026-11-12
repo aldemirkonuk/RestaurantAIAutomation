@@ -694,3 +694,13 @@ export function matchNote(matchedBy: 'exact' | 'contains' | null): string | null
 export function noHouseRowsLine(id: RegisterId): string {
   return `Nothing in this house’s menu, invoices, orders, quotes or till lines names ${REGISTER_TITLE[id].toLowerCase()}. ${addRowsPrompt(id)}`;
 }
+
+/**
+ * What this house's own books hold of a register: cellar rows, menu lines and
+ * (cocktails only) its own list. The list is counted, but never as menu lines.
+ */
+export function ownRowsOf(
+  e: { inventoryRows: number | null; menuRows: number | null; listRows?: number | null } | undefined,
+): number {
+  return (e?.inventoryRows ?? 0) + (e?.menuRows ?? 0) + (e?.listRows ?? 0);
+}

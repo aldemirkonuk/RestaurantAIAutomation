@@ -13,7 +13,8 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import CellarRegistersControl from './CellarRegistersControl';
 import CellarRegistersStep from './CellarRegistersStep';
 import RegisterNotice from './NeedsItemsNotice';
-import type { RegisterId } from './cellar-format';
+import RegisterEvidenceLine from './RegisterEvidenceLine';
+import { ownRowsOf, type RegisterId } from './cellar-format';
 import type { CellarRegistersVM, RegisterReadoutVM } from './useCellarNextData';
 
 const ALL: RegisterId[] = [
@@ -378,5 +379,34 @@ describe('the register notices — the backtest amendments', () => {
     unmount();
     render(<RegisterNotice kind="stranded" registers={['whiskey']} counts={{ whiskey: 12 }} />);
     expect(screen.getByTestId('stranded-whiskey')).toBeInTheDocument();
+  });
+});
+
+describe('RegisterEvidenceLine: the house list is not the menu (browser walk R2)', () => {
+  it('says two cocktails on the house list and none on the menu, never "2 on the menu"', () => {
+    render(
+      <RegisterEvidenceLine
+        evidence={{ inventoryRows: 0, menuRows: 0, listRows: 2, catalogueRows: 120, nameOnly: true }}
+        confidence="certain"
+      />,
+    );
+    const said = document.body.textContent ?? '';
+    expect(said).toContain('2 on this house’s list');
+    expect(said).toContain('0 on the menu');
+    expect(said).not.toContain('2 on the menu');
+  });
+
+  it('a register with no list of its own never mentions one', () => {
+    render(<RegisterEvidenceLine evidence={{ inventoryRows: 5, menuRows: 1, catalogueRows: 0, nameOnly: false }} confidence="certain" />);
+    expect(document.body.textContent).not.toContain('list');
+  });
+});
+
+describe('ownRowsOf', () => {
+  it('counts the house list with the cellar and the menu, so switching cocktails off still names what the books hold', () => {
+    expect(ownRowsOf({ inventoryRows: 0, menuRows: 0, listRows: 2 })).toBe(2);
+    expect(ownRowsOf({ inventoryRows: 3, menuRows: 1 })).toBe(4);
+    expect(ownRowsOf({ inventoryRows: null, menuRows: null, listRows: null })).toBe(0);
+    expect(ownRowsOf(undefined)).toBe(0);
   });
 });
