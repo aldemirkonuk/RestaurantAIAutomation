@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Put, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import { RecipesService } from "./recipes.service";
-import { SaveRecipeDto, ShelfQueryDto } from "./dto/recipes.dto";
+import { PreviewCostDto, SaveRecipeDto, ShelfQueryDto } from "./dto/recipes.dto";
 
 /**
  * A cocktail's recipe (ADR 0360). Every route names the house, so
@@ -60,6 +60,18 @@ export class RecipesController {
     @CurrentUser() user: { userId?: string } | undefined,
   ) {
     return this.recipes.saveRecipe(restaurantId, cocktailId, user?.userId ?? null, dto);
+  }
+
+  @Post(":restaurantId/cocktails/:cocktailId/cost-preview")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
+  @ApiOperation({ summary: "What an unsaved draft would cost per serve at today's prices (owner/manager); writes nothing" })
+  previewCost(
+    @Param("restaurantId", ParseUUIDPipe) restaurantId: string,
+    @Param("cocktailId", ParseUUIDPipe) cocktailId: string,
+    @Body() dto: PreviewCostDto,
+  ) {
+    return this.recipes.previewCost(restaurantId, cocktailId, dto);
   }
 
   @Get(":restaurantId/shelf")
