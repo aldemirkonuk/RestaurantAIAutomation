@@ -11,6 +11,7 @@ const per100ml = (f: Partial<ItemFigures>): ItemFigures => ({
   sugarsG: null,
   proteinG: null,
   saltG: null,
+  alcoholMl: null,
   ...f,
 });
 const line = (label: string, more: Partial<NutritionLineInput>): NutritionLineInput => ({
@@ -85,6 +86,70 @@ describe("serveNutrition", () => {
   it("marks energy from ABV as at least: it is the alcohol alone", () => {
     const out = serveNutrition([line("Gin", { figures: per100ml({ energyKcal: 220.9, energyFromAbv: true }) })], 1);
     expect(out.figures.energyKcal).toMatchObject({ value: 66.27, atLeast: true });
+  });
+
+  it("sums pure alcohol from each line's stated ABV; a mixer that states none is unknown for it, never 0", () => {
+    const out = serveNutrition(
+      [
+        line("Gin", { qtyBase: 500, figures: per100ml({ alcoholMl: 40 }) }), // 50 ml at 40%
+        line("Tonic", { qtyBase: 2000, figures: per100ml({ energyKcal: 34 }) }), // no strength stated
+      ],
+      1,
+    );
+    expect(out.figures.alcoholMl).toEqual({ value: 20, atLeast: true, missing: ["Tonic"] });
+  });
+
+  it("counts a mixer that states 0% as 0, and divides a batch's alcohol by its serves", () => {
+    const out = serveNutrition(
+      [
+        line("Gin", { qtyBase: 5000, figures: per100ml({ alcoholMl: 40 }) }), // 500 ml
+        line("Tonic", { qtyBase: 20000, figures: per100ml({ alcoholMl: 0 }) }),
+      ],
+      10,
+    );
+    expect(out.figures.alcoholMl).toEqual({ value: 20, atLeast: false, missing: [] });
+  });
+
+  it("never counts a weighed line's alcohol: a strength is a share of a volume", () => {
+    const out = serveNutrition(
+      [
+        line("Gin", { qtyBase: 500, figures: per100ml({ alcoholMl: 40 }) }),
+        line("Sugar", { baseUnit: "mg", qtyBase: 10000, figures: { ...per100ml({ carbohydrateG: 100 }), basis: "100g" } }),
+      ],
+      1,
+    );
+    expect(out.figures.alcoholMl).toEqual({ value: 20, atLeast: true, missing: ["Sugar"] });
+  });
+
+  it("a line that states 0% adds 0 alcohol even with no amount or counted in pieces; one that states nothing stays unknown", () => {
+    const out = serveNutrition(
+      [
+        line("Gin", { qtyBase: 500, figures: per100ml({ alcoholMl: 40 }) }), // 20 ml pure alcohol
+        line("Tonic", { qtyBase: 0, figures: per100ml({ alcoholMl: 0, energyKcal: 34 }) }), // "top with", no amount
+        line("Soda", { baseUnit: "each_milli", qtyBase: 1000, figures: per100ml({ alcoholMl: 0 }) }), // 1 can
+      ],
+      1,
+    );
+    expect(out.figures.alcoholMl).toEqual({ value: 20, atLeast: false, missing: [] });
+    // Every other figure still says it could not count them.
+    expect(out.figures.energyKcal).toEqual({ value: null, atLeast: false, missing: ["Tonic", "Soda", "Gin"] });
+    expect(out.notCounted.map((n) => n.label)).toEqual(["Tonic", "Soda"]);
+
+    const garnished = serveNutrition(
+      [
+        line("Gin", { qtyBase: 500, figures: per100ml({ alcoholMl: 40 }) }),
+        line("Cherry", { baseUnit: "each_milli", qtyBase: 1000, figures: { ...per100ml({}), basis: "100g" } }),
+        line("Orange peel", { role: "untracked", inventoryId: null }),
+      ],
+      1,
+    );
+    // A brandied cherry is counted in pieces too: no stated strength is never read as none.
+    expect(garnished.figures.alcoholMl).toEqual({ value: 20, atLeast: true, missing: ["Cherry", "Orange peel"] });
+  });
+
+  it("a drink of only 0% lines not counted by volume says 0 ml, not unknown", () => {
+    const out = serveNutrition([line("Ginger beer", { baseUnit: "each_milli", qtyBase: 1000, figures: per100ml({ alcoholMl: 0 }) })], 1);
+    expect(out.figures.alcoholMl).toEqual({ value: 0, atLeast: false, missing: [] });
   });
 
   it("says free only when every line, untracked ones too, states it free", () => {
