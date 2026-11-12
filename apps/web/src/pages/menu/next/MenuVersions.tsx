@@ -22,7 +22,7 @@
  * Keep switch on each price (the founder, 2026-09-21: "add a section to that
  * where you can lock price"), then "Make it current".
  */
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MENU_CADENCES,
@@ -168,7 +168,9 @@ export function sourceWords(v: MenuVersion): string {
  * drops is a price change -- or a hold -- nobody hears about.
  */
 const OUTCOME_WORDS: Record<string, (n: number) => string> = {
-  changed: (n) => `${n} price${n === 1 ? '' : 's'} set from this menu`,
+  // Counted by line, as the gateway tallies priceSync: one wine can carry a
+  // bottle and a glass price, and the plan counts those apart ("7 prices").
+  changed: (n) => `${n} wine${n === 1 ? '' : 's'} priced from this menu`,
   unchanged: (n) => `${n} already at the menu's price`,
   stale: (n) => `${n} kept a price someone set after this menu was chosen`,
   locked: (n) => `${n} held by a lock`,
@@ -264,8 +266,15 @@ function stillReading(err: unknown): boolean {
   return (err as { response?: { status?: number } })?.response?.status === 202;
 }
 
-export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onChosen }: {
+export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onChosen, currentMenuId }: {
   canManage: boolean
+  /**
+   * The house's current menu as the host last read it (null: none; left out:
+   * the host does not know). When it moves, the read's line follows it, so a
+   * read chosen here and then replaced from the list stops saying it is the
+   * current menu (browser walk 2026-11-12).
+   */
+  currentMenuId?: string | null
   onRead: () => void
   /** Told when a new read begins, so a host drops what it offered for the last one. */
   onReadStart?: () => void
@@ -280,6 +289,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
   const [date, setDate] = useState('');
   const [result, setResult] = useState<MenuImportResult | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
+  const [replaced, setReplaced] = useState(false);
   const [planning, setPlanning] = useState(false);
   const [readingId, setReadingId] = useState<string | null>(null);
   const dateRead = readMenuDate(date);
@@ -307,6 +317,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
     onMutate: () => onReadStart?.(),
     onSuccess: (r) => {
       setResult(r);
+      setReplaced(false);
       setChosen(null);
       setPlanning(false);
       setReadingId(null);
@@ -322,6 +333,19 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
     setResult(null);
     read.mutate({ again: false });
   };
+
+  useEffect(() => {
+    if (currentMenuId === undefined) return;
+    if (!result) return;
+    const now = currentMenuId === result.menuId;
+    const was = result.current === true;
+    if (was === now) return;
+    // Once current and now replaced, "no price has changed" is no longer true.
+    setReplaced(was && !now);
+    setResult({ ...result, current: now });
+    // A sentence about an earlier choice no longer describes the house.
+    setChosen((said) => (said && currentMenuId !== result?.menuId ? null : said));
+  }, [currentMenuId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCurrent = result?.current === true;
 
@@ -392,7 +416,11 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
             {result.source && !result.source.kept
               ? `Its file was not kept: ${result.source.failure ? keepFailure(result.source.failure) : 'no reason given'}. `
               : ''}
-            {isCurrent ? 'It is the current menu.' : 'It is not the current menu, and no price has changed.'}
+            {isCurrent
+              ? 'It is the current menu.'
+              : replaced
+                ? 'It is no longer the current menu: another was chosen.'
+                : 'It is not the current menu, and no price has changed.'}
           </p>
           <ReadWarnings warnings={result.warnings} testId="menu-read-warnings" />
           {result.reopened ? (
@@ -434,6 +462,10 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
               onDone={(r) => {
                 setPlanning(false);
                 setChosen(makeCurrentSentence(r));
+                // The read's own line said "not the current menu" and offered the
+                // choice again under "This is now the current menu" (browser walk
+                // 2026-11-12). Once it is chosen, the read says so.
+                setResult((cur) => (cur && cur.menuId === r.menuId ? { ...cur, current: true } : cur));
                 void queryClient.invalidateQueries({ queryKey: ['menu'] });
                 onRead();
                 onChosen?.();
@@ -546,7 +578,16 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
         Every menu this house reads is kept: the file and the lines it found. Reading one does not change the current
         menu or any price; choosing it does.
       </p>
-      <ReadMenuForm canManage={canManage} onRead={refresh} />
+      <ReadMenuForm
+        canManage={canManage}
+        onRead={refresh}
+        currentMenuId={q.data ? (q.data.current?.menuId ?? null) : undefined}
+        onChosen={() => {
+          // The list's own sentence was about an earlier choice.
+          setSaid(null);
+          setPlanFor(null);
+        }}
+      />
       {said ? (
         <p role="status" className="cl-said" style={{ marginTop: 10 }}>
           {said}
