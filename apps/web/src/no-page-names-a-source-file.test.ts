@@ -8,7 +8,13 @@
  * This reads every page and component the way the compiler does and fails on
  * any text that can reach the screen (JSX text, a string, a template's text)
  * and names a `.ts`, `.tsx`, `.py` or `.sql` file. Comments are not text, so
- * they stay free to cite. Skipped: imports, `console.*` and `require` calls,
+ * they stay free to cite.
+ *
+ * Fix round (PR #1135): a file name was not the only internal name on screen.
+ * Settings told a manager to look up a flag's "readBy entry in the registry",
+ * and twelve pages printed "(ADR 0149 row 36)", "(ADR 0241)" and the like —
+ * a record number nobody in the house can open. Both are rejected too: an
+ * `ADR nnnn` reference and the word `readBy`. Skipped: imports, `console.*` and `require` calls,
  * and CSS template strings (a class like `.hp-readiness .ts` is not a file).
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
@@ -18,7 +24,7 @@ import { describe, expect, it } from 'vitest'
 
 const SRC = join(__dirname)
 const ROOTS = ['pages', 'components'].map((d) => join(SRC, d))
-const FILE = /[\w./-]+\.(?:tsx?|py|sql)(?::\d+)?(?![\w])/
+const FILE = /[\w./-]+\.(?:tsx?|py|sql)(?::\d+)?(?![\w])|\bADRs? ?\d{2,4}\b|\breadBy\b/g
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((f) => {
@@ -45,8 +51,11 @@ function named(path: string): string[] {
         ? n.text
         : null
     const css = text !== null && ts.isTemplateLiteralToken(n) && /[{};]/.test(text)
-    const hit = text && !css ? FILE.exec(text) : null
-    if (hit && !skipped(n)) out.push(`${relative(SRC, path)}:${sf.getLineAndCharacterOfPosition(n.getStart()).line + 1} ${hit[0]}`)
+    const hits = text && !css ? [...text.matchAll(FILE)].map((m) => m[0]) : []
+    if (hits.length > 0 && !skipped(n)) {
+      const line = sf.getLineAndCharacterOfPosition(n.getStart()).line + 1
+      for (const hit of hits) out.push(`${relative(SRC, path)}:${line} ${hit}`)
+    }
     ts.forEachChild(n, visit)
   }
   visit(sf)
@@ -54,6 +63,14 @@ function named(path: string): string[] {
 }
 
 describe('no page names a source file to the house', () => {
+  it('matches a file, a record number and a registry field, and not an ordinary word', () => {
+    const all = (s: string) => [...s.matchAll(FILE)].map((m) => m[0])
+    expect(all('read by · analytics.controller.ts:1143')).toEqual(['analytics.controller.ts:1143'])
+    expect(all('kept as its own register (ADR 0117), and (ADR 0149 row 36; ADR 0160)')).toEqual(['ADR 0117', 'ADR 0149', 'ADR 0160'])
+    expect(all('see its readBy entry')).toEqual(['readBy'])
+    expect(all('Read by the low-stock alerts; an address, a ready bottle')).toEqual([])
+  })
+
   it('finds no file name in any text a page can render', () => {
     expect(ROOTS.flatMap(files).flatMap(named)).toEqual([])
   })

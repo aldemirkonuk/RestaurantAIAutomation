@@ -204,7 +204,7 @@ export function TeamRecordSection({
             className="tm-fact__k"
             style={{ marginTop: 5, letterSpacing: '0.1em', fontWeight: 500, textTransform: 'none' }}
           >
-            {`kept · the gateway, by role and each manager's pay switch ${EM} decided by the owner of Mudavym on 2026-09-21 and 2026-09-25 (ADR 0215)`}
+            {`kept · the gateway, by role and each manager's pay switch ${EM} decided by the owner of Mudavym on 2026-09-21 and 2026-09-25`}
           </p>
         }
       />

@@ -623,7 +623,7 @@ describe('SettingsNext — features', () => {
     mount('/settings?tab=features');
     expect(screen.queryByRole('switch', { name: /Settings — Mudavym design/i })).not.toBeInTheDocument();
     expect(screen.getByText(/live for everyone/i)).toBeInTheDocument();
-    expect(screen.getByText(/resolves the Mudavym design in code, not from this switch/i)).toBeInTheDocument();
+    expect(screen.getByText(/always opens in the Mudavym design, whatever this switch says/i)).toBeInTheDocument();
     expect(saveFlag).not.toHaveBeenCalledWith('mudavym_design_settings', expect.anything());
   });
 

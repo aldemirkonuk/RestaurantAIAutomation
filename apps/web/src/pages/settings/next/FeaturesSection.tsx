@@ -38,7 +38,7 @@ import { HoldToApprove } from '@/components/mudavym';
 import { INACTIVE_FEATURES } from '@/components/settings/inactiveFeatures';
 import { LIVE_PAGES, type MudavymPage } from '@/lib/mudavym/useMudavymDesign';
 import { Action, Micro, Note, Register, Row, Toggle } from './SectionKit';
-import { EM, MONO, SANS, isRedesignFlag, titleFromFlagKey } from './st-format';
+import { MONO, SANS, isRedesignFlag, titleFromFlagKey } from './st-format';
 import type { SettingsNextData } from './useSettingsNextData';
 
 /**
@@ -254,10 +254,11 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                       consequence={
                         alwaysOn ? (
                           <>
-                            Live for every restaurant already — this page resolves the Mudavym design in code, not
-                            from this switch (ADR 0149 row 36; the sketch review that cleared it is ADR 0160). The
-                            stored value below no longer changes anything; it is kept only because the column has not
-                            been retired yet.
+                            {/* ADR 0149 row 36 made this page live for every house; the sketch review that
+                                cleared it is ADR 0160. */}
+                            Live for every restaurant already — this page always opens in the Mudavym design, whatever
+                            this switch says. The stored value no longer changes anything; it is kept only until the
+                            switch itself is removed.
                           </>
                         ) : (
                           <>
@@ -303,8 +304,10 @@ export default function FeaturesSection({ data }: { data: SettingsNextData }) {
                     provenance={{ kept: 'restaurant', when: null, whenUnknown: NO_DATE }}
                     consequence={
                       <>
-                        Declared active by the registry. This page holds no description of what it changes —{' '}
-                        {EM} see its <code style={{ fontFamily: MONO, fontSize: 11 }}>readBy</code> entry in the registry.
+                        {/* Declared active in apps/api-gateway/src/settings/feature-flag-registry.ts; its
+                            `readBy` there names what reads it. This page has no sentence of its own for it. */}
+                        Mudavym has this switch in use, but this page does not yet say what it changes. Leave it as
+                        it is until it does.
                       </>
                     }
                     control={

@@ -861,7 +861,7 @@ export function MarketIndexPanel() {
         className="mt-2.5 pt-2 text-[10.5px]"
         style={{ fontFamily: SANS, color: 'var(--ink-4)', borderTop: '1px solid var(--paper-2)' }}
       >
-        A state-published or control-state list, kept as its own register (ADR 0117), and — where
+        A state-published or control-state list, kept as its own register, and — where
         one exists — a public index of another market the house buys from, in its own labelled
         box. Every line is shown as published: its own unit, basis and pack, never reduced to a
         bottle. None of them is ever placed beside, ranked against or averaged with a vendor
