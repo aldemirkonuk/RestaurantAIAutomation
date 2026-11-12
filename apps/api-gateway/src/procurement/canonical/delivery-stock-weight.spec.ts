@@ -20,6 +20,12 @@ describe("shelfQuantity (R8)", () => {
     [{ qty_bottles: 10, uom: "bottle" }, "bottle", 10],
     [{ qty_bottles: 10, uom: "bottle" }, undefined, 10],
     [{ qty_bottles: 2, uom: "keg" }, "keg", 2],
+    // A plain count into an item kept by weight is that many of the item's
+    // unit, as before R8: the door cannot state a weight (fix round, #1109).
+    [{ qty_bottles: 12, uom: null }, "kg", 12],
+    [{ qty_bottles: 12 }, "kg", 12],
+    [{ qty_bottles: 12, uom: "bottle" }, "kg", 12],
+    [{ qty_bottles: 3, uom: "each" }, "g", 3],
   ])("%j into an item kept in %s puts %d on the shelf", (line, unit, want) => {
     expect(shelfQuantity(line, unit)).toEqual({ ok: true, qty: want });
   });
@@ -29,7 +35,9 @@ describe("shelfQuantity (R8)", () => {
     [{ qty_bottles: 250, uom: "g" }, "kg", "not a whole number of kg"],
     [{ qty_bottles: 3, uom: "kg" }, "bottle", "kept in bottles"],
     [{ qty_bottles: 3, uom: "kg" }, null, "states no unit"],
-    [{ qty_bottles: 3, uom: "each" }, "g", "not a weight"],
+    [{ qty_bottles: 2, uom: "case" }, "kg", "what one weighs is not known"],
+    [{ qty_bottles: 1, uom: "keg" }, "g", "what one weighs is not known"],
+    [{ qty_bottles: 4, uom: "split_case" }, "kg", "split cases"],
     [{ qty_bottles: "x", uom: "kg" }, "g", "not a number"],
   ])("%j into an item kept in %s is refused: %s", (line, unit, why) => {
     const r = shelfQuantity(line, unit as string | null);
@@ -78,6 +86,23 @@ describe("DeliveryStockService — a weighed door count and its invoice (R8)", (
     if (!res.ok) return;
     expect(res.value.notBooked).toEqual([expect.objectContaining({ lineNo: 1, reason: expect.stringContaining("kept in bottles") })]);
     expect(db.rpcCalls.filter((c) => c.fn === "apply_stock_movement")).toEqual([]);
+  });
+
+  it("the door books a plain count of 12 into an item kept in kg as 12 (an unlabelled line is not refused)", async () => {
+    db.answers["restaurant_inventory[]"] = { data: [{ id: ITEM, uom: "kg" }], error: null };
+    db.answers.deliveries = { data: { id: DEL, state: "DELIVERED", order_id: null }, error: null };
+    db.answers.procurement_document_lines = {
+      data: [{ document_id: DOC, line_no: 1, inventory_id: ITEM, qty_bottles: 12, uom: "bottle", unit_price: null, description: "Beyaz peynir", vendor_sku: null }],
+      error: null,
+    };
+    db.answers.inventory_transactions = { data: [], error: null };
+    db.rpcAnswers.apply_stock_movement = { data: "txn-1", error: null };
+    const res = await service.bookAtTheDoor(REST, DEL, DOC, "u1");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.notBooked).toEqual([]);
+    const call = db.rpcCalls.find((c) => c.fn === "apply_stock_movement");
+    expect(call?.args).toMatchObject({ p_inventory_id: ITEM, p_delta: 12 });
   });
 
   it("an unreadable item unit stops the door; it is never read as no unit", async () => {
