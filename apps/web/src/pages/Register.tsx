@@ -10,6 +10,7 @@ import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
 import { currencyForCountry, currencyToRecord } from '../lib/currency'
 import { getBrowserTimezone } from '../lib/browserTimezone'
 import { houseNotOpened } from '../lib/houseOpeningWords'
+import { signUpRefusal } from '../lib/authWords'
 import { CurrencyStep } from '../components/onboarding/CurrencyStep'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import { Button } from '../components/ui'
@@ -155,6 +156,24 @@ export function Register() {
 
   // Restaurant form section (left-rail sub-navigation within pathBStep 2)
   const [restaurantSection, setRestaurantSection] = useState<1 | 2 | 3>(1)
+
+  // A refused sign-up is said in words (lib/authWords.ts, OB-11): "this
+  // address already has an account" offers Sign in under the sentence, and
+  // a 429 holds the button until the wait the gateway named has passed.
+  const [signInHint, setSignInHint] = useState(false)
+  const [waitUntil, setWaitUntil] = useState(0)
+  useEffect(() => {
+    if (waitUntil <= Date.now()) return
+    const t = setTimeout(() => setWaitUntil(0), waitUntil - Date.now())
+    return () => clearTimeout(t)
+  }, [waitUntil])
+  const waiting = waitUntil > Date.now()
+  const sayRefusal = (err: unknown, where: 'account' | 'join') => {
+    const r = signUpRefusal(err, where)
+    setError(r.text)
+    setSignInHint(r.kind === 'exists')
+    if (r.kind === 'wait') setWaitUntil(Date.now() + (r.seconds ?? 60) * 1000)
+  }
 
   // Email availability checking state
   const [joinEmailCheck, setJoinEmailCheck] = useState<EmailAvailability>({ checking: false, available: null, error: null })
@@ -594,6 +613,7 @@ export function Register() {
       return
     }
     setError(null)
+    setSignInHint(false)
     setLoading(true)
     try {
       await joinViaInvite({
@@ -605,7 +625,7 @@ export function Register() {
       })
       navigate('/', { replace: true })
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to join restaurant')
+      sayRefusal(err, 'join')
     } finally {
       setLoading(false)
     }
@@ -765,12 +785,22 @@ export function Register() {
       {(error || authError) && (
         <div role={on ? 'alert' : undefined} className={on ? 'mdv-ep-note mt-4 border-red-700' : 'mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2'}>
           {!on && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
-          <p className={on ? 'mdv-ep-note-title !text-red-800' : 'text-sm text-red-700'}>{error || authError}</p>
+          <p className={on ? 'mdv-ep-note-title !text-red-800' : 'text-sm text-red-700'}>
+            {error || authError}
+            {signInHint && (
+              <>
+                {' '}
+                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
+                  Sign in
+                </Link>
+              </>
+            )}
+          </p>
         </div>
       )}
       <Button
         className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
-        disabled={loading || joinEmailCheck.checking || !joinName || !joinEmail || !joinPassword || !joinConfirm || joinEmailCheck.available === false}
+        disabled={loading || waiting || joinEmailCheck.checking || !joinName || !joinEmail || !joinPassword || !joinConfirm || joinEmailCheck.available === false}
         onClick={async () => {
           // If debounced check hasn't settled, run immediately before submitting
           let available = joinEmailCheck.available
@@ -949,10 +979,29 @@ export function Register() {
           </div>
         </div>
       </div>
+      {/* Step 1 had no error line at all: a refused sign-up said nothing. */}
+      {(error || authError) && (
+        <div role="alert" className={on ? 'mdv-ep-note mt-4 border-red-700' : 'mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2'}>
+          {!on && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
+          <p className={on ? 'mdv-ep-note-title !text-red-800' : 'text-sm text-red-700'}>
+            {error || authError}
+            {signInHint && (
+              <>
+                {' '}
+                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
+                  Sign in
+                </Link>
+              </>
+            )}
+          </p>
+        </div>
+      )}
       <Button
         type="button"
         className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
         disabled={
+          loading ||
+          waiting ||
           !createName ||
           !createEmail ||
           createPassword.length < 8 ||
@@ -978,6 +1027,7 @@ export function Register() {
           }
 
           setError(null)
+          setSignInHint(false)
           setLoading(true)
           try {
             await registerAccount({
@@ -987,7 +1037,7 @@ export function Register() {
             })
             navigate('/verify-email', { replace: true })
           } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Registration failed')
+            sayRefusal(err, 'account')
           } finally {
             setLoading(false)
           }

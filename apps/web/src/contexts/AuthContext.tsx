@@ -357,6 +357,18 @@ function userFrom(
   };
 }
 
+/**
+ * The Error a sign-up or a join rethrows, carrying the gateway's status and
+ * Retry-After so the page can say "wait N seconds" or offer Sign in
+ * (OB-11, lib/authWords.ts). The message is the one it always carried.
+ */
+function refusalFrom(err: any, message: string): Error {
+  return Object.assign(new Error(message), {
+    status: typeof err?.response?.status === "number" ? err.response.status : null,
+    retryAfter: err?.response?.headers?.["retry-after"] ?? null,
+  });
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -877,7 +889,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err: any) {
         const message = err.response?.data?.message || "Registration failed";
         setError(message);
-        throw new Error(message);
+        throw refusalFrom(err, message);
       } finally {
         setLoading(false);
       }
@@ -969,7 +981,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const message =
         err.response?.data?.message || "Failed to join restaurant";
       setError(message);
-      throw new Error(message);
+      throw refusalFrom(err, message);
     } finally {
       setLoading(false);
     }
