@@ -12,11 +12,22 @@
 
 import {
   comparableUnits,
+  isMass,
+  massFactor,
   normalizeUom,
   toBottles,
   Uom,
   UOMS,
 } from "../documents/document-types";
+
+/**
+ * The house item the line books into: only its unit (`restaurant_inventory.uom`,
+ * ADR 0070) matters here. A weighed line is costed per ONE of that unit, since
+ * that is what the lot's integer `qty` counts (R8). A container line ignores it.
+ */
+export interface LotCostItem {
+  uom?: string | null;
+}
 
 /** The money and unit columns of one `procurement_document_lines` row. */
 export interface LotCostLine {
@@ -70,15 +81,15 @@ export function sixPlaces(n: number): string {
   return dot < 0 ? `${t}.00` : t.length - dot - 1 < 2 ? t.padEnd(dot + 3, "0") : t;
 }
 
-export function perBottleLotCost(line: LotCostLine): LotUnitCost {
+export function perBottleLotCost(line: LotCostLine, item?: LotCostItem): LotUnitCost {
   const price = asNumber(line.unit_price);
   // Skipped before this existed, and still: not a price anybody agreed.
   if (price == null || price <= 0) return { ok: false, kind: "no_price" };
   // `printed` lets a re-verify spot a lot booked AT the printed price (QA 9a).
-  return { ...resolve(line, price), printed: toLotCostPrecision(price) } as LotUnitCost;
+  return { ...resolve(line, price, item), printed: toLotCostPrecision(price) } as LotUnitCost;
 }
 
-function resolve(line: LotCostLine, price: number): LotUnitCost {
+function resolve(line: LotCostLine, price: number, item?: LotCostItem): LotUnitCost {
   // Audit D1: the extractor keeps an unmapped unit as `each` and its glyph in
   // `printed`. "kutu" stored as `each` is not one bottle; neither guess holds.
   const said = printedUnit(line.printed, "uom");
@@ -116,6 +127,12 @@ function resolve(line: LotCostLine, price: number): LotUnitCost {
       kind: "refused",
       reason: `the invoice line prints its price per ${JSON.stringify(rawBaseUom)}, which is not a unit this house counts in`,
     };
+
+  if (isMass(uom) || isMass(baseUom)) return weighed(line, price, uom, baseUom, base, rawBase, item);
+  // The other way round: an item kept by weight priced per container has no
+  // conversion either (a `3 each` cheese is not 3 grams).
+  if (item?.uom && massFactor(String(item.uom), "g") != null)
+    return refuse(`the item this line books into is kept in ${item.uom}, but the invoice line counts ${words(uom)}s, which is not a weight, so what one ${item.uom} costs is not known`);
 
   if (!comparableUnits(uom, baseUom))
     return {
@@ -172,6 +189,58 @@ function resolve(line: LotCostLine, price: number): LotUnitCost {
   return { ok: true, perBottle, unitCost, basis: basisOf(price, priced, bottlesPriced, perBottle, unit), bottles: bottlesPriced, priced, per: unit };
 }
 
+/**
+ * A weighed line (R8): `3 kg @ 450` into a cheese kept in `g` is 0.45 a gram,
+ * and the lot's 3000 g at 0.45 is the paper's 1350. The price is per `base` of
+ * `baseUom`; per one of the ITEM's unit = price ÷ (base × massFactor(baseUom,
+ * item unit)). Refused by name when the line mixes a weight with a container,
+ * when the item states no unit or is not kept by weight, or when the printed
+ * total says the price's unit was misread.
+ */
+function weighed(
+  line: LotCostLine,
+  price: number,
+  uom: Uom,
+  baseUom: Uom,
+  base: number,
+  rawBase: LotCostLine["price_base_qty"],
+  item?: LotCostItem,
+): LotUnitCost {
+  if (!isMass(uom) || !isMass(baseUom))
+    return refuse(`the invoice line is counted in ${words(uom)}s but priced per ${words(baseUom)}, and a weight is not a number of bottles`);
+  const kept = item?.uom ? String(item.uom) : null;
+  if (!kept)
+    return refuse(`the invoice line is weighed in ${uom}, and the item it books into states no unit, so what one unit of it costs is not known`);
+  const toItem = massFactor(baseUom, kept);
+  const countedToItem = massFactor(uom, kept);
+  if (toItem == null || countedToItem == null)
+    return refuse(`the invoice line is priced per ${baseUom}, but the item it books into is kept in ${kept}s, and a weight is not a number of ${kept}s`);
+
+  const unitsPriced = base * toItem;
+  const perUnit = price / unitsPriced;
+  if (!Number.isFinite(perUnit) || perUnit <= 0)
+    return refuse(`${price} for ${unitsPriced} ${kept} is not a price per ${kept}`);
+  const unitCost = toLotCostPrecision(perUnit);
+  if (!(unitCost > 0))
+    return refuse(`a price per ${kept} of ${perUnit} rounds to ${sixPlaces(unitCost)}, and a lot is never booked at a cost of nothing`);
+
+  // QA 9a, by weight: the total for the weighed count must bear the price out.
+  const total = asNumber(line.line_total);
+  const counted = asNumber(line.qty_bottles);
+  if (total != null && counted != null && counted !== 0) {
+    const inItem = Math.abs(counted) * countedToItem;
+    if (Math.abs(perUnit * inItem - Math.abs(total)) > Math.max(0.05, Math.abs(total) * 0.01))
+      return refuse(`the invoice line totals ${total} for ${counted} ${uom}, but ${sixPlaces(unitCost)} a ${kept} makes ${sixPlaces(unitCost * inItem)}, so the price's unit is not what the line says`);
+  }
+
+  const priced = `${rawBase == null || rawBase === "" || base === 1 ? "" : `${base} `}${baseUom}`;
+  const basis =
+    unitsPriced === 1
+      ? `invoice price ${price} per ${priced}; booked as-is`
+      : `invoice price ${price} per ${priced} = ${sixPlaces(perUnit)} per ${kept}`;
+  return { ok: true, perBottle: perUnit, unitCost, basis, bottles: unitsPriced, priced, per: kept };
+}
+
 function roundsToNothing(perBottle: number, unitCost: number): LotUnitCost {
   return {
     ok: false,
@@ -193,18 +262,18 @@ function basisOf(price: number, priced: string, bottles: number, perBottle: numb
  * price. A line whose printed price is refused refuses the proposal with it;
  * a line that prints no price is read on its unit columns alone.
  */
-export function proposalPerBottle(proposed: unknown, line: LotCostLine): LotUnitCost {
+export function proposalPerBottle(proposed: unknown, line: LotCostLine, item?: LotCostItem): LotUnitCost {
   const price = asNumber(proposed);
-  const cost = inLineBase(price, line);
+  const cost = inLineBase(price, line, item);
   // A re-verify spots a lot booked at the proposal's RAW price (10a (1)).
   return price == null || price <= 0 ? cost : ({ ...cost, printed: toLotCostPrecision(price) } as LotUnitCost);
 }
 
-function inLineBase(price: number | null, line: LotCostLine): LotUnitCost {
+function inLineBase(price: number | null, line: LotCostLine, item?: LotCostItem): LotUnitCost {
   if (price == null || price <= 0) return { ok: false, kind: "no_price" };
-  const printed = perBottleLotCost(line);
+  const printed = perBottleLotCost(line, item);
   if (!printed.ok && printed.kind === "no_price")
-    return perBottleLotCost({ ...line, unit_price: price, qty_bottles: null, line_total: null });
+    return perBottleLotCost({ ...line, unit_price: price, qty_bottles: null, line_total: null }, item);
   if (!printed.ok) return printed;
   const perBottle = price / printed.bottles;
   const unitCost = toLotCostPrecision(perBottle);
