@@ -16,10 +16,10 @@ import {
   shiftHouseDay,
   type HouseZone,
 } from "../common/house-day";
-import { localMidnight } from "../notifications/producers/service-day";
 import { isSalesGatedGoal } from "./sales-gated-goals";
 import {
   figureOrNull,
+  goalSchedule,
   goalShape,
   presentStoredReading,
   scoreGoal,
@@ -642,17 +642,19 @@ export class GoalsService {
     // zone; every other metric has already thrown HOUSE_ZONE_UNSET.
     let paceUnread: string | null = null;
     if (goal.deadline && !zone) paceUnread = HOUSE_ZONE_UNSET_PACE;
-    const scheduled = Boolean(goal.deadline && zone && periodStart);
+    // The one schedule every goal reader passes (goal-score.ts
+    // `goalSchedule`); the feed and the recommendations rule reach it through
+    // `storedGoalSchedule`, which opens the goal on the same house day.
+    const schedule = goalSchedule(periodStart, goal.deadline, zone);
+    const scheduled = schedule.start !== null && schedule.end !== null;
     const score = scoreGoal({
       direction: goal.direction,
       shape: goalShape(goal.metric_key),
       current,
       target,
       baseline: figureOrNull(goal.baseline_value),
-      start: scheduled ? localMidnight(periodStart as string, zone as string).getTime() : null,
-      end: scheduled
-        ? localMidnight(String(goal.deadline).slice(0, 10), zone as string).getTime()
-        : null,
+      start: schedule.start,
+      end: schedule.end,
       at: readAt.getTime(),
     });
     // An unknown target is no progress, never 0% (the desk draws no bar).
