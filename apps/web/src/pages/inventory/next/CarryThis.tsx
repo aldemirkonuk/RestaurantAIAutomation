@@ -13,7 +13,7 @@ import { Select, Sheet } from '@/components/mudavym';
 import { carryHouseItem, type CarryHouseItemBody, type CarriedHouseItem } from '../../../services/api/inventory';
 import { getErrorStatus } from '../../../services/api/client';
 import { writeFailure } from './iv-failure';
-import { amountInChosenUnit, MEASURE_WORDS } from './iv-amount';
+import { amountInChosenUnit, chosenUnitWhy, MEASURE_WORDS } from './iv-amount';
 
 export type CarryKind = 'food' | 'supply' | 'other';
 /** What the book keeps (ADR 0070): whole grams, millilitres or a count. The server refuses kg and l. */
@@ -113,7 +113,8 @@ export default function CarryThis({
           : parBad
             ? pick.base === 'each'
               ? 'A par is a whole number, or leave it empty.'
-              : `A par is an amount in ${pick.short}, as 2.5 or 500 g, down to a whole ${pick.base}; or leave it empty.`
+              : (chosenUnitWhy(par, pick.short) ??
+                `A par is an amount in ${pick.short}, as 2.5 or 500 g, down to a whole ${pick.base}; or leave it empty.`)
             : null;
 
   const submit = () => {

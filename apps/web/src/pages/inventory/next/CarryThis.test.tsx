@@ -112,6 +112,24 @@ describe('Carry this', () => {
     expect((await screen.findByRole('alert')).textContent).toContain('whole small units');
   });
 
+  it('asks about "1,500" or "1.500" in kg, a thousandfold slip either way it is read: nothing is added', () => {
+    open();
+    fireEvent.change(nameField(), { target: { value: 'Flour' } });
+    const par = screen.getByLabelText(/Par/);
+    const button = () => screen.getByRole('button', { name: 'Carry this' }) as HTMLButtonElement;
+    fireEvent.change(par, { target: { value: '1,500' } });
+    expect(button().disabled).toBe(true);
+    expect(screen.getByText('“1,500” could be either: type 1.5 for 1.5 kg, or 1500 for 1,500 kg.')).toBeTruthy();
+    expect(screen.queryByTestId('ivc-par-said')).toBeNull();
+    fireEvent.change(par, { target: { value: '1.500' } });
+    expect(button().disabled).toBe(true);
+    fireEvent.change(par, { target: { value: '1500' } });
+    expect(button().disabled).toBe(false);
+    expect(screen.getByTestId('ivc-par-said').textContent).toBe('Par 1,500 kg, kept as 1,500,000 g.');
+    fireEvent.change(par, { target: { value: '1.5' } });
+    expect(screen.getByTestId('ivc-par-said').textContent).toBe('Par 1.5 kg, kept as 1,500 g.');
+    expect(api.carry).not.toHaveBeenCalled();
+  });
   it('adds nothing without a name', () => {
     open();
     expect((screen.getByRole('button', { name: 'Carry this' }) as HTMLButtonElement).disabled).toBe(true);
@@ -150,6 +168,13 @@ describe('parInBook', () => {
     expect(parInBook('33 cl', 'ml')).toBe(330);
     expect(parInBook('0', 'kg')).toBe(0);
     expect(parInBook('0.5', 'g')).toBeNull();
+    // A separator before exactly three digits is asked about, never read.
+    expect(parInBook('1,500', 'kg')).toBeNull();
+    expect(parInBook('1.500', 'l')).toBeNull();
+    expect(parInBook('2.250 kg', 'g')).toBeNull();
+    // Not ambiguous: a leading 0, or two places.
+    expect(parInBook('0.035', 'kg')).toBe(35);
+    expect(parInBook('2,25', 'kg')).toBe(2250);
     expect(parInBook('3', 'each')).toBe(3);
     expect(parInBook('3 kg', 'each')).toBeNull();
   });
