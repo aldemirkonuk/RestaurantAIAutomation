@@ -251,6 +251,7 @@ export class OnboardingController {
   constructor(
     private readonly menusService: MenusService,
     private readonly inboundAddress: InboundAddressService,
+    private readonly organizations: OrganizationsService,
   ) {}
 
   @Get("progress")
@@ -288,11 +289,31 @@ export class OnboardingController {
   @Patch("threshold")
   @ApiOperation({
     summary:
-      "Set the restaurant's default low-stock threshold (get-started step 3)",
+      "Set the house's default low-stock threshold (an owner or a manager, in the session's house)",
   })
-  async setThreshold(@Body() dto: SetThresholdDto) {
+  async setThreshold(
+    @Body() dto: SetThresholdDto,
+    @CurrentUser() user: { userId: string; restaurantId?: string },
+  ) {
+    // The house is the session's. A body that names another house is refused,
+    // never followed (it used to be taken from the body alone).
+    if (!user.restaurantId) {
+      throw new ForbiddenException(
+        "This session is in no house, so no threshold was set.",
+      );
+    }
+    if (dto.restaurantId && dto.restaurantId !== user.restaurantId) {
+      throw new ForbiddenException(
+        "That is not the house this session is in. No threshold was set.",
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      user.userId,
+      user.restaurantId,
+      "set the low-stock threshold",
+    );
     return this.menusService.setDefaultThreshold(
-      dto.restaurantId,
+      user.restaurantId,
       dto.thresholdMin,
     );
   }
