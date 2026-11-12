@@ -14,6 +14,7 @@ import {
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
 import { ScanParserService } from "./parsers/scan-parser.service";
+import { pagesToOneFile } from "./parsers/pages-to-pdf";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
@@ -292,12 +293,34 @@ const EMPTY_READ_REFUSAL: Record<string, string> = {
   manual: "No line was given, so no menu was kept.",
 };
 
+/** The labels a read is kept with; a reopened read must fit them (`sameFileRead`). */
+interface ReadLabels {
+  cadence: MenuCadence | null;
+  menuDate: { date: string; precision: "day" | "month" } | null;
+}
+
+/**
+ * The insert of a `reading` version met another read of the same file and
+ * labels still under way (uq_restaurant_menus_one_read_of_a_file_at_a_time).
+ */
+class SameFileReading extends Error {
+  constructor() {
+    super("the same file is already being read for this house");
+    this.name = "SameFileReading";
+  }
+}
+
 /** What `POST /menus/import` answers, and what a finished background read keeps (`read_reply`). */
 export interface MenuImportReply {
   menuId: string;
-  current: false;
+  /** Always false for a new read; a reopened read says whether it is current now. */
+  current: boolean;
   /** A scan still being read: poll `GET /menu-versions/:menuId/read`. */
   reading?: true;
+  /** The same bytes were read before: this is that read, not a new one. */
+  reopened?: { readAt: string | null };
+  /** How many photos the upload joined into this one menu. */
+  pages?: number;
   itemsExtracted: number;
   submissionsCreated: number;
   items: MenuImportReviewItem[];
@@ -598,6 +621,15 @@ export class MenusService {
    * job"; audit M12: a read past the web's 30 s "failed" while the server went
    * on). The file and the draft are kept BEFORE the read, so a read that fails
    * or is cut off still names its file and says why (ADR 0213 #17).
+   *
+   * Several photos sent together are one menu and one version (founder
+   * 2026-11-07, "One upload = one version"), joined into one PDF, one photo
+   * per page. The same bytes sent again reopen the read they made unless the
+   * person asks to read them again (`readAgain`): a resend is not billed
+   * twice. Two requests with the same bytes sent together (a double tap, a
+   * retry, two phones) make one read: the database keeps one `reading` row
+   * per house, file and labels (uq_restaurant_menus_one_read_of_a_file_at_a_time),
+   * and the request that loses the insert joins the read already under way.
    */
   private async beginScan(
     dto: ImportMenuDto,
@@ -605,14 +637,49 @@ export class MenusService {
     menuDate: { date: string; precision: "day" | "month" } | null,
   ): Promise<MenuImportReply> {
     const { restaurantId } = dto;
-    const file = dto.data?.imageBase64;
-    if (typeof file !== "string" || file.trim() === "") {
-      throw new BadRequestException("A scan sends the photo or PDF it reads (data.imageBase64). Nothing was kept.");
+    const pages = Array.isArray(dto.data?.images)
+      ? dto.data.images
+      : typeof dto.data?.imageBase64 === "string"
+        ? [dto.data.imageBase64]
+        : null;
+    if (!pages) {
+      throw new BadRequestException(
+        "A scan sends the photo or PDF it reads (data.imageBase64, or data.images for several pages). Nothing was kept.",
+      );
     }
+    const file = await pagesToOneFile(pages);
     const bytes = Buffer.from(file, "base64");
+    const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+
+    const labels: ReadLabels = { cadence: dto.cadence ?? null, menuDate };
+    if (dto.readAgain !== true) {
+      const earlier = await this.sameFileRead(restaurantId, sha256, labels);
+      if (earlier) return earlier;
+    }
 
     const kept = await this.keepSource(restaurantId, bytes, sniffMime(bytes));
-    const menu = await this.createVersion(restaurantId, userId, dto, [], [], kept, menuDate, "reading");
+    let menu: { id: string };
+    try {
+      menu = await this.createVersion(restaurantId, userId, dto, [], [], kept, menuDate, "reading");
+    } catch (err) {
+      if (!(err instanceof SameFileReading)) throw err;
+      // Another request with these bytes and labels began its read first:
+      // this one joins it (readAgain too: reading the file twice at once
+      // would only pay twice for one answer). The source path is the file's
+      // own hash, so the upload above wrote the same object, not a second.
+      const joined = await this.sameFileRead(restaurantId, sha256, labels, { readingOnly: true });
+      if (joined) return joined;
+      // The read in the way is one nobody is reading any more: end it, then begin.
+      await this.sweepStaleReads(restaurantId);
+      try {
+        menu = await this.createVersion(restaurantId, userId, dto, [], [], kept, menuDate, "reading");
+      } catch (again) {
+        if (!(again instanceof SameFileReading)) throw again;
+        throw new ConflictException(
+          "This file is already being read for this house. Wait for that read, then look on the Menu page. Nothing new was kept.",
+        );
+      }
+    }
     // Detached; must never reject (an unhandled rejection ends the process).
     const run = this.finishScan(menu.id, restaurantId, file, dto, userId, kept)
       .catch((err) => this.logger.error(`Menu read ${menu.id} could not record how it ended: ${(err as Error)?.message ?? err}`))
@@ -623,11 +690,147 @@ export class MenusService {
       menuId: menu.id,
       current: false,
       reading: true,
+      pages: pages.length,
       itemsExtracted: 0,
       submissionsCreated: 0,
       items: [],
       source: { kept: !!kept?.path, failure: kept?.failure ?? null },
       warnings: [],
+    };
+  }
+
+  /**
+   * The read these exact bytes already made for this house, if it is still
+   * worth reopening (founder 2026-11-07, "One upload = one version"; a resend
+   * is not billed twice). Reopened, it is said as it is NOW, never as it was
+   * frozen when the read finished (batch review of #1062):
+   *
+   * - only a read whose labels fit: a cadence or menu date the new upload
+   *   names must be the version's own. The same file for another day is its
+   *   own version, read again; an upload that names no label takes the
+   *   version's.
+   * - only a draft or the current menu. A retired menu sent again is read
+   *   as a new version, so its choice is made afresh and never rolls the
+   *   house back to an old menu under an "already read" banner.
+   * - its lines are the live ones (`reopenedReply`): a discarded line is not
+   *   offered again, a corrected name or price is the corrected one.
+   *
+   * `readingOnly` looks only for a read under way (the losing side of two
+   * imports of the same file at once).
+   */
+  private async sameFileRead(
+    restaurantId: string,
+    sha256: string,
+    labels: ReadLabels,
+    opts: { readingOnly?: boolean } = {},
+  ): Promise<MenuImportReply | null> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, status, read_state, read_reply, extracted_at, source_path, source_failure, cadence, menu_date, menu_date_precision")
+      .eq("restaurant_id", restaurantId)
+      .eq("source_sha256", sha256)
+      .eq("source_method", "scan");
+    if (error) {
+      // Not knowing costs one more read, never a lost one.
+      this.logger.warn(`Could not look for an earlier read of the same file: ${error.message}`);
+      return null;
+    }
+    const fits = (row: Record<string, any>) =>
+      (labels.cadence === null || (row.cadence ?? null) === labels.cadence) &&
+      (labels.menuDate === null ||
+        ((row.menu_date ?? null) === labels.menuDate.date && (row.menu_date_precision ?? null) === labels.menuDate.precision));
+    const rows = ((data ?? []) as Array<Record<string, any>>)
+      .filter(fits)
+      .sort((a, b) => String(b.extracted_at ?? "").localeCompare(String(a.extracted_at ?? "")));
+    const cutoff = Date.now() - READ_STALE_MS;
+    for (const row of rows) {
+      const state = (row.read_state as MenuReadState | undefined) ?? "done";
+      if (state === "reading" && (this.reading.has(row.id) || Date.parse(row.extracted_at) >= cutoff)) {
+        return {
+          menuId: row.id,
+          current: false,
+          reading: true,
+          itemsExtracted: 0,
+          submissionsCreated: 0,
+          items: [],
+          source: { kept: !!row.source_path, failure: row.source_failure ?? null },
+          warnings: [],
+        };
+      }
+      if (opts.readingOnly) continue;
+      if (
+        state === "done" &&
+        (row.status === "draft" || row.status === "active") &&
+        row.read_reply &&
+        typeof row.read_reply === "object"
+      ) {
+        const reopened = await this.reopenedReply(row, restaurantId);
+        if (reopened) return reopened;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * A finished read as it stands now: the reply it was kept with, its lines
+   * replaced by the version's live ones. A line discarded since is gone; a
+   * corrected field is the corrected value; a line added since is there. What
+   * the read did when it ran (its price-sync outcome, its match) stays as the
+   * read said it. A line read that fails gives null: the caller reads the
+   * file again rather than show lines it could not check.
+   */
+  private async reopenedReply(row: Record<string, any>, restaurantId: string): Promise<MenuImportReply | null> {
+    const reply = row.read_reply as MenuImportReply;
+    const live: Array<Record<string, any>> = [];
+    let after: string | null = null;
+    for (;;) {
+      let q = this.dbService.supabase
+        .from("menu_items")
+        .select(`${LINE_SELECT}, submission_id`)
+        .eq("menu_id", row.id)
+        .eq("restaurant_id", restaurantId)
+        .neq("status", "discarded");
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+      if (error) {
+        this.logger.warn(`Could not read the lines of earlier read ${row.id}; reading the file again: ${error.message}`);
+        return null;
+      }
+      const page = (data ?? []) as Array<Record<string, any>>;
+      live.push(...page);
+      if (page.length < PAGE_ROWS) break;
+      after = String(page[page.length - 1].id);
+    }
+    const asRead = new Map((Array.isArray(reply.items) ? reply.items : []).map((i) => [i.menuItemId, i]));
+    const money = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number(v));
+    const items: MenuImportReviewItem[] = live.map((line) => {
+      const was = asRead.get(line.id);
+      return {
+        ...(was ?? {
+          submissionId: line.submission_id ?? null,
+          matched: !!line.wine_library_id,
+          needsReview: false,
+          rawText: line.raw_extracted_text ?? null,
+        }),
+        menuItemId: line.id,
+        inventoryItemId: line.inventory_item_id ?? null,
+        name: line.name,
+        producer: line.producer ?? null,
+        category: line.category ?? null,
+        vintage: line.vintage ?? null,
+        region: line.region ?? null,
+        grapeVariety: line.grape_variety ?? null,
+        byGlassPrice: money(line.by_glass_price),
+        bottlePrice: money(line.bottle_price),
+        priceFlag: line.price_flag ?? null,
+        priceFlagNote: line.price_flag_note ?? null,
+      };
+    });
+    return {
+      ...reply,
+      items,
+      current: row.status === "active",
+      reopened: { readAt: row.extracted_at ?? null },
     };
   }
 
@@ -921,6 +1124,10 @@ export class MenusService {
       })
       .select("id")
       .single();
+    if (error && (error as { code?: string }).code === "23505" && readState === "reading") {
+      // uq_restaurant_menus_one_read_of_a_file_at_a_time: the same file is already being read.
+      throw new SameFileReading();
+    }
     if (error || !data) {
       throw new InternalServerErrorException(
         `The menu was read but could not be kept, so nothing was saved: ${error?.message ?? "no row returned"}`,
