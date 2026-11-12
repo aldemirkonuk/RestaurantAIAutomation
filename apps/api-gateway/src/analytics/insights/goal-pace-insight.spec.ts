@@ -13,7 +13,12 @@ import { verbalize } from "./insight-verbalizer";
 
 const DAY = 86400000;
 
-function family(goals: Array<Record<string, unknown>>) {
+const LA = "America/Los_Angeles";
+
+function family(
+  goals: Array<Record<string, unknown>>,
+  house: { zone?: string | null; zoneUnread?: boolean; unread?: string[] } = {},
+) {
   const pushed: Array<{ key: string; ev: any; opts: any; sentence: string | null }> = [];
   const fakeThis = {
     record: (key: string, _cat: string, template: string, ev: any, opts: any) => ({
@@ -25,7 +30,13 @@ function family(goals: Array<Record<string, unknown>>) {
   };
   (InsightGeneratorService.prototype as any).computeGoalsFamily.call(
     fakeThis,
-    { availability: new Set(["goals"]), goals },
+    {
+      availability: new Set(["goals"]),
+      goals,
+      zone: house.zone === undefined ? LA : house.zone,
+      zoneUnread: house.zoneUnread ?? false,
+      unread: house.unread ?? [],
+    },
     (x: any) => pushed.push(x),
   );
   return pushed;
@@ -86,6 +97,49 @@ describe("the feed's goal sentence reads a dated reading, by direction", () => {
   it("an older reading is dated", () => {
     const at = new Date(now.getTime() - 2 * DAY);
     const [x] = family([goal({ current_read_at: at.toISOString() })]);
-    expect(x.sentence).toContain(`(read on ${at.toISOString().slice(0, 10)})`);
+    // By the house's day, as the desk files its days.
+    const day = new Intl.DateTimeFormat("en-CA", { timeZone: LA }).format(at);
+    expect(x.sentence).toContain(`(read on ${day})`);
+  });
+});
+
+describe("the feed schedules a goal on the desk's clock (fix round 2026-11-12)", () => {
+  // Los Angeles in January (UTC-8). Created 10:00 on the 13th, deadline the
+  // 15th, read at 20:00 on the 14th, 85 of 100. The desk's schedule runs
+  // midnight to midnight on the house's clock (48 h, 44 run): on pace. The
+  // feed used the raw creation instant and UTC's midnight, which had closed
+  // four hours before the reading, and called the same goal behind.
+  const edge = (over: Record<string, unknown> = {}) =>
+    goal({
+      target_value: 100,
+      current_value: 85,
+      created_at: "2026-01-13T18:00:00Z",
+      deadline: "2026-01-15",
+      current_read_at: "2026-01-15T04:00:00Z",
+      ...over,
+    });
+
+  it("a goal the desk calls on pace reads on pace here", () => {
+    const [x] = family([edge()]);
+    expect(x.ev.goalOnTrack).toBe(true);
+    expect(x.ev.goalReadOn).toBe("2026-01-14");
+    expect(x.opts.boost).toBe(1);
+  });
+
+  it("control: well short of its pace is behind", () => {
+    const [x] = family([edge({ current_value: 60 })]);
+    expect(x.ev.goalOnTrack).toBe(false);
+  });
+
+  it("no zone: the progress is said, the pace is not", () => {
+    const [x] = family([edge({ current_value: 60 })], { zone: null });
+    expect(x.ev.goalOnTrack).toBeUndefined();
+    expect(x.ev.goalProgressPct).toBeCloseTo(0.6);
+  });
+
+  it("a failed zone read that held a pace back is named once", () => {
+    const unread: string[] = [];
+    family([edge({ id: "a" }), edge({ id: "b" })], { zone: null, zoneUnread: true, unread });
+    expect(unread).toEqual(["house time zone"]);
   });
 });

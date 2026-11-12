@@ -123,6 +123,14 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     expect(notes).toContain("7.25 of late prices was settled in this window on bottles sold before it. It is not in what it cost");
   });
 
+  it("figures of record: mapped goods that sold nothing are named, and counted (fix round 2026-11-12)", () => {
+    const tillStock = { value: 1000, goodsOnHand: 4, goodsOnTill: 3, uncostedOnTill: 0, idleOnTill: 2, idleOnTillValue: 400, goodsOffTill: 1, offTillValue: 50 };
+    const notes = EXPORT_CUTTINGS.ledger.write({ ...(PAYLOADS.ledger as object), tillStock }, { days: null }).notes.join(" ");
+    expect(notes).toContain("2 of the 3 goods on hand the till sells sold nothing in this window (400.00 at cost). They are counted");
+    const none = EXPORT_CUTTINGS.ledger.write({ ...(PAYLOADS.ledger as object), tillStock: { ...tillStock, idleOnTill: 0, idleOnTillValue: 0 } }, { days: null });
+    expect(none.notes.join(" ")).not.toContain("sold nothing in this window");
+  });
+
   it("figures of record: a caller without sales sees the till's figures withheld by name", () => {
     const doc = EXPORT_CUTTINGS.ledger.write({ ...(PAYLOADS.ledger as object), salesWithheld: true, revenue: null }, { days: null });
     expect(isWithheld(figure(doc, "Sold, net (365d)"))).toBe(true);
