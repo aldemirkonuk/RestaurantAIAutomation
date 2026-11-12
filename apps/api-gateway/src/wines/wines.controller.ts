@@ -107,8 +107,15 @@ export class WinesController {
   }
 
   @Get(":wineId")
-  async getById(@Param("wineId") wineId: string) {
-    const wine = await this.winesService.getWineById(wineId);
+  async getById(
+    @Param("wineId") wineId: string,
+    @CurrentUser() user?: { restaurantId?: string | null },
+  ) {
+    // The session's house: another house's own wine reads as not found.
+    const wine = await this.winesService.getWineById(
+      wineId,
+      user?.restaurantId,
+    );
     if (!wine) {
       throw new HttpException("Wine not found", HttpStatus.NOT_FOUND);
     }

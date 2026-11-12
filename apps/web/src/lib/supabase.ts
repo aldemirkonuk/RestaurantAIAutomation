@@ -114,74 +114,13 @@ export interface Order {
 
 // ============ Wine Library Functions ============
 
-export async function getWines(options?: {
-  search?: string
-  type?: string
-  region?: string
-  country?: string
-  minPrice?: number
-  maxPrice?: number
-  sortBy?: 'name' | 'price' | 'vintage' | 'type'
-  sortOrder?: 'asc' | 'desc'
-  limit?: number
-  offset?: number
-}) {
-  let query = supabase
-    .from('master_wine_library')
-    .select('*')
-
-  if (options?.search) {
-    query = query.or(`name.ilike.%${options.search}%,producer.ilike.%${options.search}%`)
-  }
-
-  if (options?.type) {
-    query = query.ilike('classification->primary_type', `%${options.type}%`)
-  }
-
-  if (options?.region) {
-    query = query.ilike('classification->region', `%${options.region}%`)
-  }
-
-  if (options?.country) {
-    query = query.ilike('classification->country', `%${options.country}%`)
-  }
-
-  if (options?.minPrice !== undefined) {
-    query = query.gte('price', options.minPrice)
-  }
-
-  if (options?.maxPrice !== undefined) {
-    query = query.lte('price', options.maxPrice)
-  }
-
-  if (options?.sortBy) {
-    query = query.order(options.sortBy, { ascending: options.sortOrder === 'asc' })
-  }
-
-  if (options?.limit) {
-    query = query.limit(options.limit)
-  }
-
-  if (options?.offset) {
-    query = query.range(options.offset, options.offset + (options.limit || 10) - 1)
-  }
-
-  const { data, error } = await query
-  
-  if (error) throw error
-  return data as Wine[]
-}
-
-export async function getWineById(wineId: string) {
-  const { data, error } = await supabase
-    .from('master_wine_library')
-    .select('*')
-    .eq('wine_id', wineId)
-    .single()
-  
-  if (error) throw error
-  return data as Wine
-}
+// No wine is read from here. A wine is read through the gateway
+// (services/api/wines.ts -> GET /wines, GET /wines/:wineId), which keeps the
+// shared library plus this house's own wines and nothing of another house's
+// (ADR 0130, houseScopeFilter). The direct reads that stood here (getWines,
+// getWineById) had no importer, ran on the anon key with no house scope, and
+// would have bypassed that filter the day someone imported them; OD-72
+// (20260825210000) already revoked the anon grant they needed.
 
 // ============ Inventory Functions ============
 

@@ -621,22 +621,34 @@ export class WinesService {
     );
   }
 
-  async getWineById(wineId: string) {
+  /**
+   * One library row by id, as the session's house may see it. Another
+   * house's own wine (ADR 0130, `provisional_for_restaurant_id`) reads as not
+   * found, exactly like an id that does not exist, so a house cannot fetch,
+   * or learn of, a row the list reads never show it. Before 2026-11-12 this
+   * read had no scope: any member of any house could open another venue's
+   * "House Red" by id.
+   *
+   * Not found is null (the controller says 404): no row, a row of another
+   * house, or an id that is not a uuid (22P02, which no row can match).
+   */
+  async getWineById(wineId: string, restaurantId?: string | null) {
     const client = this.dbService.getClient();
     const { data, error } = await client
       .from("master_wine_library")
       .select("*")
       .eq("id", wineId)
+      .or(houseScopeFilter(restaurantId))
       .single();
 
     if (error) {
-      if (error.code === "PGRST116") {
+      if (error.code === "PGRST116" || error.code === "22P02") {
         return null;
       }
       throw error;
     }
 
-    return this.mapWine(data as WineRow);
+    return this.mapWine(data as WineRow, restaurantId);
   }
 
   async getWineCategories() {
@@ -712,7 +724,9 @@ export class WinesService {
     query: SimilarWinesQueryDto,
     restaurantId?: string | null,
   ) {
-    const wine = await this.getWineById(wineId);
+    // The seed wine is read in the same scope: another house's own wine is
+    // not a starting point for this house's suggestions.
+    const wine = await this.getWineById(wineId, restaurantId);
     if (!wine) return [];
 
     const client = this.dbService.getClient();
