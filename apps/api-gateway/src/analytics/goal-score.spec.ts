@@ -1,9 +1,12 @@
 import {
   datedReading,
   figureOrNull,
+  goalSchedule,
   goalShape,
   presentStoredReading,
+  readOnIfNotToday,
   scoreGoal,
+  storedGoalSchedule,
 } from "./goal-score";
 
 const DAY = 86400000;
@@ -117,5 +120,63 @@ describe("a stored reading", () => {
     expect(datedReading({ ...row, current_unread: "refused" })).toBeNull();
     // The column's default 0 on a row nobody read is not a reading.
     expect(datedReading({ id: "g2", current_value: 0 })).toBeNull();
+  });
+});
+
+describe("one clock for every reader (fix round 2026-11-12)", () => {
+  const LA = "America/Los_Angeles";
+
+  it("the schedule runs between the house's midnights, not the raw instant or UTC's", () => {
+    // Created 23:00 on Jan 12 in Los Angeles (07:00Z on the 13th): the goal
+    // opened on the house's 12th, as the desk opens it.
+    const s = storedGoalSchedule({ created_at: "2026-01-13T07:00:00Z", deadline: "2026-01-20" }, LA);
+    expect(s).toEqual({
+      start: Date.parse("2026-01-12T08:00:00Z"),
+      end: Date.parse("2026-01-20T08:00:00Z"),
+    });
+    expect(s).toEqual(goalSchedule("2026-01-12", "2026-01-20T00:00:00Z", LA));
+  });
+
+  it("no zone, no deadline or no opening day is no schedule", () => {
+    const none = { start: null, end: null };
+    expect(storedGoalSchedule({ created_at: "2026-01-13T07:00:00Z", deadline: "2026-01-20" }, null)).toEqual(none);
+    expect(storedGoalSchedule({ created_at: "2026-01-13T07:00:00Z", deadline: null }, LA)).toEqual(none);
+    expect(storedGoalSchedule({ created_at: null, deadline: "2026-01-20" }, LA)).toEqual(none);
+    expect(goalSchedule("2026-01-12", "soon", LA)).toEqual(none);
+  });
+
+  it("a reading is dated by the house's day, and today's reading carries no date", () => {
+    const at = Date.parse("2026-01-15T04:00:00Z"); // 20:00 on the 14th in Los Angeles
+    expect(readOnIfNotToday(at, LA, new Date("2026-01-16T20:00:00Z"))).toBe("2026-01-14");
+    expect(readOnIfNotToday(at, LA, new Date("2026-01-15T07:59:00Z"))).toBeNull();
+    // Without a zone the days are UTC's, as before.
+    expect(readOnIfNotToday(at, null, new Date("2026-01-15T07:59:00Z"))).toBeNull();
+    expect(readOnIfNotToday(at, null, new Date("2026-01-16T00:00:00Z"))).toBe("2026-01-15");
+  });
+});
+
+describe("the slack is a tenth of the schedule's span (fix round 2026-11-12)", () => {
+  it("a little spent in a ceiling's first hours is not on course to go over", () => {
+    // 25k a month, set at 10:00, read at 12:00 with 500 spent.
+    const start = Date.UTC(2026, 0, 1);
+    const s = scoreGoal({
+      direction: "at_most",
+      shape: "cumulative",
+      current: 500,
+      target: 25000,
+      start,
+      end: start + 30 * DAY,
+      at: start + 12 * 3600000,
+    });
+    expect(s.onTrack).toBe(true);
+  });
+
+  it("nothing yet in a target's first hours is not behind", () => {
+    expect(run({ current: 0, at: START + 2 * 3600000 }).onTrack).toBe(true);
+  });
+
+  it("a ceiling spent well ahead of its schedule still reads off pace", () => {
+    // A quarter of the month in, 60% of the ceiling gone.
+    expect(run({ direction: "at_most", current: 60, at: START + 7.5 * DAY }).onTrack).toBe(false);
   });
 });

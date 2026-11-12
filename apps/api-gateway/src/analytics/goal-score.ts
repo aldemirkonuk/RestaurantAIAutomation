@@ -24,14 +24,26 @@
  *   the pace is unknown (null), not "behind" — unless it once met the target
  *   and has since slipped past it, which is behind.
  * - No deadline, no schedule: pace null.
+ * - The slack is a tenth of the schedule's whole span, for both shapes: the
+ *   target for a running total (which runs from 0), the gap for a level. A
+ *   share of what is expected by now would be no slack at all in the first
+ *   hours, when one purchase or one quiet morning is not yet a rate (fix
+ *   round, 2026-11-12).
+ * - Every reader schedules a goal on the house's clock (`goalSchedule`): the
+ *   midnight that opened the day it was created to the midnight that opens
+ *   its deadline day (ADR 0296). The desk, the feed and the recommendations
+ *   rule pass the same start and end, so one reading gets one pace.
  *
  * Pure: no I/O, and no clock but the `at` it is given.
  */
 
+import { houseDayOf, houseToday } from "../common/house-day";
+import { localMidnight } from "../notifications/producers/service-day";
+
 export type GoalDirection = "at_least" | "at_most";
 export type GoalShape = "cumulative" | "level";
 
-/** A pace within this share of the schedule is on pace (the desk's old 10%). */
+/** A pace within this share of the schedule's span is on pace (the desk's old 10%). */
 export const PACE_SLACK = 0.1;
 
 const DAY_MS = 86400000;
@@ -114,10 +126,13 @@ export function scoreGoal(input: GoalScoreInput): GoalScore {
   if (shape === "cumulative") {
     const expected = target * frac;
     score.expectedByNow = expected;
+    // The slack is a tenth of the target, not of what is expected by now:
+    // 500 spent two hours into a 25k month is not "on course to go over".
+    const slack = target * PACE_SLACK;
     score.onTrack =
       direction === "at_most"
-        ? current <= target && current <= expected * (1 + PACE_SLACK)
-        : met || current >= expected * (1 - PACE_SLACK);
+        ? current <= target && current <= expected + slack
+        : met || current >= expected - slack;
     return score;
   }
 
@@ -177,4 +192,53 @@ export function datedReading(
   const at = Date.parse(String(shown.current_read_at ?? ""));
   if (current === null || !Number.isFinite(at)) return null;
   return { current, at };
+}
+
+/**
+ * The span a goal's pace is scheduled over, in epoch ms, on the house's clock
+ * (ADR 0296): from the midnight that opened `opensOn` (a house day) to the
+ * midnight that opens the deadline's day. Both null without a zone, an
+ * opening day or a deadline: then there is no schedule and no pace.
+ */
+export function goalSchedule(
+  opensOn: string | null | undefined,
+  deadline: unknown,
+  zone: string | null | undefined,
+): { start: number | null; end: number | null } {
+  const none = { start: null, end: null };
+  const closesOn = deadline ? String(deadline).slice(0, 10) : "";
+  const day = /^\d{4}-\d{2}-\d{2}$/;
+  if (!zone || !opensOn || !day.test(opensOn) || !day.test(closesOn)) return none;
+  const start = localMidnight(opensOn, zone).getTime();
+  const end = localMidnight(closesOn, zone).getTime();
+  return Number.isFinite(start) && Number.isFinite(end) ? { start, end } : none;
+}
+
+/**
+ * A stored goal row's schedule, for the readers of the stored row (the
+ * insight feed, the recommendations goal rule). The goal opens on the house
+ * day it was created, as the desk opens it (`GoalsService.getGoalProgress`).
+ */
+export function storedGoalSchedule(
+  row: Record<string, any>,
+  zone: string | null | undefined,
+): { start: number | null; end: number | null } {
+  const opensOn = zone ? houseDayOf(row.created_at ?? null, zone) : null;
+  return goalSchedule(opensOn, row.deadline, zone);
+}
+
+/**
+ * The house day a stored reading was taken on, when that is not the house's
+ * today; null when it is today's. Without a zone the days are UTC's, as they
+ * were before.
+ */
+export function readOnIfNotToday(
+  at: number,
+  zone: string | null | undefined,
+  now: Date = new Date(),
+): string | null {
+  const readOn =
+    (zone ? houseDayOf(new Date(at), zone) : null) ?? new Date(at).toISOString().slice(0, 10);
+  const today = zone ? houseToday(zone, now) : now.toISOString().slice(0, 10);
+  return readOn !== today ? readOn : null;
 }
