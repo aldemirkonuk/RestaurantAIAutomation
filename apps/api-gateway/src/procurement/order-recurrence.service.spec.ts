@@ -27,10 +27,12 @@ import { ProcurementService } from "./procurement.service";
  *     path calls `approveOrder` directly on `auto_approve`, with no challenge.
  *  2. THE DEDUP MERGE EATING THE CHILD. `createOrder` folds a second order for
  *     the same restaurant + inventory + provider into the existing open one. A
- *     recurrence's parent matches that by construction and sits in APPROVED,
- *     which is not one of the seven statuses the merge treats as terminal — so
- *     without `provenance.recurrence` every occurrence would have overwritten
- *     its own parent and the run would have counted a success.
+ *     recurrence's parent matches that by construction and sits in APPROVED.
+ *     Until fix/order-patch-cannot-approve the merge folded into anything not
+ *     in a seven-status denylist, APPROVED included — so without
+ *     `provenance.recurrence` every occurrence would have overwritten its own
+ *     parent and the run would have counted a success. The merge now folds
+ *     only into PENDING and NEGOTIATING; the skip stays as the first fence.
  *  3. A RUN THAT SAYS NOTHING. A generator returning `void` cannot tell "nothing
  *     was due" from "the read failed and an unknown number of standing orders
  *     were not raised".
