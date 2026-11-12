@@ -106,7 +106,7 @@ export class CalendarSummaryDto {
 export class ProcurementSpendSummaryDto {
   @ApiProperty({
     description:
-      "Total spent with vendors on delivered orders (all time). NOT revenue. Null when a delivered order carries no recorded cost: it is never summed short (`unread` says why).",
+      "Total spent with vendors on delivered orders (all time). NOT revenue. Null when an order has no recorded cost.",
     nullable: true,
     type: Number,
   })
@@ -114,7 +114,7 @@ export class ProcurementSpendSummaryDto {
 
   @ApiProperty({
     description:
-      "Vendor spend this month; null when this month holds an order with no recorded cost",
+      "Vendor spend this month; null when an order this month has no recorded cost",
     nullable: true,
     type: Number,
   })
@@ -122,13 +122,13 @@ export class ProcurementSpendSummaryDto {
 
   @ApiProperty({
     description:
-      "Delivered orders with no recorded cost, in all time and this month",
+      "Delivered orders with no recorded cost",
   })
   uncostedOrders: { total: number; thisMonth: number };
 
   @ApiProperty({
     description:
-      "The sentence for each figure withheld above; null where the figure is stated",
+      "Why each figure is null; null where stated",
   })
   unread: {
     totalProcurementSpend: string | null;
@@ -140,7 +140,7 @@ export class ProcurementSpendSummaryDto {
 
   @ApiProperty({
     description:
-      "Vendor spend by month [{month, spend, bottles, uncosted, unread}]; spend is null for a month holding an order with no recorded cost",
+      "Vendor spend by month [{month, spend, bottles, uncosted, unread}]; spend is null for a month with an uncosted order",
   })
   spendByMonth: any[];
 }
@@ -221,13 +221,13 @@ export class DashboardStatsDto {
 
   @ApiProperty({
     description:
-      "Delivered orders with no recorded cost in each spend window; a window with any has a null spend figure",
+      "Delivered orders with no recorded cost per spend window; any makes that window's spend null",
   })
   uncostedOrders: { today: number; week: number; month: number };
 
   @ApiProperty({
     description:
-      "The sentence for each spend window left null for want of a recorded cost; null where the figure is stated or withheld by role",
+      "Why each spend window is null for want of a recorded cost; null where stated or withheld by role",
   })
   unread: {
     todayProcurementSpend: string | null;
@@ -300,7 +300,7 @@ export class SalesChartPointDto {
 
   @ApiProperty({
     description:
-      "Vendor spend on orders delivered in this bucket. NOT sales revenue. Null when the bucket holds an order with no recorded cost.",
+      "Vendor spend on orders delivered in this bucket. NOT sales revenue. Null when an order in it has no recorded cost.",
     nullable: true,
     type: Number,
   })

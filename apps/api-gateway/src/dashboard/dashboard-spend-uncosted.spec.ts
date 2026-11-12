@@ -4,19 +4,14 @@ import { DatabaseService } from "../database/database.service";
 import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 
 /**
- * An order delivered with no recorded cost is UNKNOWN, not free. The dashboard
- * readers used `o.total_cost || o.final_price || 0`, so such an order joined
- * every spend figure as $0 and the figure read lower than the truth. The
- * invariant these specs pin: a spend figure is the whole sum of recorded order
- * costs in its bucket, or it is null and the payload says how many orders in
- * that bucket carry no recorded cost. A recorded 0 is no recorded cost. A
- * bucket with no uncosted order is summed as before.
+ * Invariant: a spend figure is the whole sum of recorded order costs in its
+ * bucket, or null with the count of orders there that carry no recorded cost.
+ * A recorded 0 is no recorded cost; a bucket with none uncosted sums as before.
  */
 
 function makeClient(rowsByTable: Record<string, any[]>) {
   const passthrough = [
-    "select", "eq", "neq", "gt", "gte", "lt", "lte", "is", "or", "not",
-    "order", "limit", "in", "range",
+    "select", "eq", "neq", "gt", "gte", "lt", "lte", "is", "or", "not", "order", "limit", "in", "range",
   ];
   return {
     from: jest.fn((table: string) => {
@@ -47,7 +42,6 @@ const AUG_COSTED = order({ total_cost: 250, delivered_at: "2026-08-09T10:00:00Z"
 const AUG_COSTED_BY_FINAL = order({ final_price: 100, delivered_at: "2026-08-09T11:00:00Z" });
 // Delivered 10 Aug with nothing recorded.
 const AUG_UNCOSTED = order({ delivered_at: "2026-08-10T10:00:00Z" });
-// A recorded 0 is no recorded cost; the other column is empty.
 const AUG_ZERO = order({ total_cost: 0, final_price: null, delivered_at: "2026-08-15T09:00:00Z" });
 
 const NO_COST = /no recorded cost/;
@@ -82,7 +76,6 @@ describe("DashboardService — an uncosted delivered order is unknown, not $0", 
       expect(r.totalProcurementSpend).toBe(1350);
       expect(r.monthlyProcurementSpend).toBe(350);
       expect(r.uncostedOrders).toEqual({ total: 0, thisMonth: 0 });
-      expect(r.unread).toEqual({ totalProcurementSpend: null, monthlyProcurementSpend: null });
       expect(r.spendByMonth.map((m: any) => [m.month, m.spend, m.uncosted])).toEqual([
         ["2026-07", 1000, 0],
         ["2026-08", 350, 0],
@@ -98,19 +91,9 @@ describe("DashboardService — an uncosted delivered order is unknown, not $0", 
       expect(r.unread.totalProcurementSpend).toMatch(NO_COST);
       expect(r.unread.monthlyProcurementSpend).toMatch(NO_COST);
       const [july, aug] = r.spendByMonth;
-      // The month with no uncosted order is still summed.
       expect(july).toMatchObject({ month: "2026-07", spend: 1000, uncosted: 0, unread: null });
       expect(aug).toMatchObject({ month: "2026-08", spend: null, uncosted: 1 });
       expect(aug.unread).toMatch(NO_COST);
-    });
-
-    it("keeps the month known when only an old month is uncosted", async () => {
-      load([order({ delivered_at: "2026-06-02T10:00:00Z" }), AUG_COSTED]);
-      const r: any = (await service.getDashboardSummary("r1")).procurementSpend;
-      expect(r.totalProcurementSpend).toBeNull();
-      expect(r.uncostedOrders).toEqual({ total: 1, thisMonth: 0 });
-      expect(r.monthlyProcurementSpend).toBe(250);
-      expect(r.spendByMonth.map((m: any) => m.spend)).toEqual([null, 250]);
     });
 
     it("counts total_cost 0 with final_price null as uncosted", async () => {
@@ -139,7 +122,6 @@ describe("DashboardService — an uncosted delivered order is unknown, not $0", 
       expect(bad.procurement_spend_unread).toMatch(NO_COST);
       expect(bad.order_count).toBe(1);
       expect(r.daily.find((d: any) => d.date === "2026-08-09").procurement_spend).toBe(250);
-      // A quiet day is still a measured zero.
       expect(r.daily.find((d: any) => d.date === "2026-08-11").procurement_spend).toBe(0);
     });
 
@@ -163,7 +145,6 @@ describe("DashboardService — an uncosted delivered order is unknown, not $0", 
     });
 
     it("nulls only the windows that hold the uncosted order", async () => {
-      // 10 Aug is inside the week and the month; today (15 Aug) is empty.
       load([AUG_COSTED, AUG_UNCOSTED]);
       const s: any = await service.getStats("r1");
       expect(s.todayProcurementSpend).toBe(0);

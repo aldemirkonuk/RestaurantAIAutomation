@@ -1,10 +1,8 @@
 import { orderCostOrNull, UncostedOrdersError } from "../analytics/order-cost";
 
 /**
- * A spend figure for one bucket of delivered orders: the whole sum of their
- * recorded costs, or `null` with how many carry none and a sentence saying so.
- * A figure is never summed short (ADR 0020); a recorded 0 is no recorded cost
- * (`orderCostOrNull`). A bucket with no uncosted order is summed as before.
+ * A bucket's spend: the whole sum of its recorded order costs, or null with how
+ * many orders carry none and why (ADR 0020). A recorded 0 is no recorded cost.
  */
 export interface BucketSpend {
   spend: number | null;
@@ -34,10 +32,7 @@ export function bucketSpend(
   return { spend: sum, uncosted: 0, unread: null };
 }
 
-/**
- * The summary when the orders themselves could not be read: no figure, and the
- * reason, never a $0 (ADR 0020).
- */
+/** The summary when the orders could not be read: no figure and why, never $0. */
 export const SPEND_UNREAD = {
   totalProcurementSpend: null,
   monthlyProcurementSpend: null,

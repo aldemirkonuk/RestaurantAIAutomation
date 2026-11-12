@@ -171,14 +171,11 @@ export interface CalendarDayEvent {
 /** One house day. Null is "not known", never zero (ADR 0016, DASH-G2). */
 export interface CalendarDay {
   date: string;
-  /**
-   * Delivered orders' value: money paid to vendors, not sales. Null when the
-   * day holds an order with no recorded cost: it is never summed short.
-   */
+  /** Money paid to vendors, not sales. Null when the day holds an uncosted order. */
   procurement_spend: number | null;
   /** Delivered orders on the day with no recorded cost. */
   uncosted_orders?: number;
-  /** Why `procurement_spend` is null for want of a cost; null when it is not. */
+  /** Why `procurement_spend` is null for want of a cost. */
   procurement_spend_unread?: string | null;
   /** Bottles DELIVERED by vendors (the frozen key is a misnomer). */
   bottles_sold: number | null;
@@ -874,8 +871,7 @@ export class DashboardService {
 
       const orders = delivered || [];
 
-      // Total paid to vendors: the whole sum of recorded costs, or null with
-      // the count of orders that carry none (never summed short).
+      // The whole sum of recorded costs, or null with the count that carry none.
       const totalRead = bucketSpend(orders);
       const totalProcurementSpend = totalRead.spend;
       const totalBottlesDelivered = orders.reduce(
@@ -1140,7 +1136,6 @@ export class DashboardService {
           ? cents(known.reduce((sum, d) => sum + (d.net_sales ?? 0), 0))
           : null;
 
-      // The orders filed on the month's days: what the day cells above hold.
       const monthUncosted = bucketSpend(
         dates.flatMap((date) => spend.get(date)?.orders ?? []),
       );
@@ -1153,8 +1148,7 @@ export class DashboardService {
         zone_unset: false,
         today,
         daily,
-        // One uncosted day makes the month unknown: a sum of the known days
-        // would be short.
+        // One uncosted day makes the month unknown, not a short sum.
         monthly_procurement_spend: monthUncosted.spend,
         monthly_uncosted_orders: monthUncosted.uncosted,
         monthly_procurement_spend_unread: monthUncosted.unread,
@@ -1263,8 +1257,7 @@ export class DashboardService {
       // `salesFrom` and published as todaySales/weekSales/monthSales, which the
       // web dashboard rendered as "Total Revenue" — the exact opposite of what
       // the number is. Nothing here is a sale.
-      // An order with no recorded cost makes the window's figure null, with
-      // its count and sentence beside it (never summed short).
+      // An uncosted order makes the window's figure null, with count and sentence.
       const spendWhere = (items: any[], onDay: (day: string) => boolean) =>
         bucketSpend(
           items.filter(
