@@ -428,7 +428,7 @@ export default function Registers({ data }: { data: CellarData }) {
               ? `The cellar could not be read (${data.cellarError}) — the ${tiles.length === 1 ? 'figure' : 'figures'} above ${tiles.length === 1 ? 'is' : 'are'} unknown, not zero.`
               : !data.cellarKnown
                 ? 'Counting the cellar…'
-                : 'Par is only claimed for a row that records its own minimum. Everything the cellar holds is booked against the wine library today — `restaurant_inventory` is keyed on it, so beer, spirits and cocktails can be browsed here but not yet counted as stock.'}
+                : 'Par is only claimed for a row that records its own minimum. Everything the cellar holds is booked against the wine library today, so beer, spirits and cocktails can be browsed here but not yet counted as stock.'}
             {settings.data.gazetteerMeasuresConfigured
               ? ' This house configured which measures show here — change it in Settings › Cellar.'
               : ''}

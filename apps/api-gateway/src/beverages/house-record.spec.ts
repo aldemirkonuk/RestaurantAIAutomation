@@ -290,7 +290,8 @@ describe("composeRegister", () => {
     expect(out.stocking.available).toBe(false);
     expect(out.stocking.decision).toBe("OD-113");
     expect(out.stocking.reason).toBe(STOCKING_WITHHELD);
-    expect(out.stocking.reason).toContain("master_wine_id");
+    expect(out.stocking.reason).toContain("only for wines in the wine library");
+    expect(out.stocking.reason).not.toMatch(/OD-\d|master_wine_id|restaurant_inventory/);
   });
 
   it("carries an unreadable ledger as words, never as an empty register", () => {

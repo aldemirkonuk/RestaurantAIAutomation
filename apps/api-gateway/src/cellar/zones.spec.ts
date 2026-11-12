@@ -108,6 +108,6 @@ describe("splitZones — the floor draws confirmed zones and nothing else", () =
     expect(ZONES_SCOPE_NOTE).toMatch(
       /only once somebody in this house has confirmed/,
     );
-    expect(ZONES_SCOPE_NOTE).toMatch(/current_occupancy, which disagrees/);
+    expect(ZONES_SCOPE_NOTE).toMatch(/stored occupancy figure, which disagrees/);
   });
 });

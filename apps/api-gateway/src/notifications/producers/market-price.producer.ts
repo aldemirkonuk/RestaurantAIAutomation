@@ -169,7 +169,7 @@ export class MarketPriceProducer {
     if (bought.keys.size === 0) {
       tally.withheldReason =
         bought.linesWithoutIdentity > 0
-          ? `This house has bought ${bought.linesWithoutIdentity} order line(s) that carry no library identity, so no price sighting can be joined to them. That is OD-113, the non-wine identity axis; nothing was guessed.`
+          ? `This house has bought ${bought.linesWithoutIdentity} order line(s) that carry no library identity, so no price sighting can be joined to them. Only wines carry that identity so far; nothing was guessed.`
           : "No order line with a library identity was found for this restaurant, so there is no product this house buys to watch a price for.";
       return tally;
     }
