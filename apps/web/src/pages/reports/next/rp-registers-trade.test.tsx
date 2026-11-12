@@ -19,7 +19,7 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { till, type TillWindow } from './rp-registers-trade';
+import { ahead, projectedBottles, till, type TillWindow } from './rp-registers-trade';
 import { goals, paceCaption, type GoalsRegister } from './rp-registers-goals';
 import type { GoalsDesk } from './useGoalsDesk';
 import { paceOf, toProgressRow } from '@/pages/recommendations/next/rec-masthead';
@@ -250,5 +250,41 @@ describe("a goal's pace in a house with no time zone (ADR 0296)", () => {
   it('calls it "Pace unknown" in the recommendations margin, and keeps "No deadline" for a goal with none', () => {
     expect(paceOf(toProgressRow(STOCK))).toBe('Pace unknown');
     expect(paceOf(toProgressRow(NO_DEADLINE))).toBe('No deadline');
+  });
+});
+
+describe('the forecast says bottles the way bottles are counted (browser walk 2026-11-12)', () => {
+  const payload = {
+    model: 'holt_winters',
+    modelFitted: true,
+    horizon: 14,
+    history: { dates: ['2026-11-10', '2026-11-11'], values: [14, 15] },
+    forecast: [
+      { date: '2026-11-12', value: 14.4974 },
+      { date: '2026-11-13', value: 0.4 },
+    ],
+    totalForecastDemand: 202.964,
+    accuracy: null,
+  };
+
+  it('the fortnight is "203 bottles", never "202.964", and no model key is printed', () => {
+    const view = ahead.view(ahead.select(payload), ctx);
+    const next = view.figures?.find((f) => f.label === 'Next 14 days');
+    expect(next?.value).toBe('203 bottles');
+    expect(JSON.stringify(view.figures)).not.toMatch(/holt_winters|202\.964/);
+  });
+
+  it('a day keeps one place, so a slow day is not drawn as none', () => {
+    const view = ahead.view(ahead.select(payload), ctx);
+    expect(view.table?.rows.map((r) => r.cells[1])).toEqual(['14.5', '0.4']);
+    expect(view.cats?.format?.(14.4974)).toBe('14.5');
+  });
+
+  it('a total above nothing that rounds to none is "under 1 bottle"; an unknown is the dash', () => {
+    expect(projectedBottles(0.3, 'total')).toBe('under 1 bottle');
+    expect(projectedBottles(1, 'total')).toBe('1 bottle');
+    expect(projectedBottles(1203.4, 'total')).toBe('1,203 bottles');
+    expect(projectedBottles(0, 'total')).toBe('0 bottles');
+    expect(projectedBottles(null, 'total')).toBe('—');
   });
 });
