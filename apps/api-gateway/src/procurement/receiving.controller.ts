@@ -414,15 +414,30 @@ export class ReceivingController {
 
   @Get("unverified")
   @ApiOperation({
-    summary: "Deliveries counted by case and not yet counted by bottle",
+    summary:
+      "Deliveries counted by case and not yet counted by bottle; and deliveries counted at the door with no vendor paper yet",
     description:
       "The safety net for booking stock at the door. The approximate hour after a truck arrives is fine; the delivery nobody ever went back to is how a short case becomes unexplained shrinkage two months later — at which point it is indistinguishable from theft and can no longer be claimed from the vendor. Sorted oldest first, with a severity tier that escalates with age.",
   })
   async unverified(@CurrentUser() user: AuthedUser) {
     try {
-      const items = await this.receiving.listUnverified(user.restaurantId);
+      const [items, door] = await Promise.all([
+        this.receiving.listUnverified(user.restaurantId),
+        this.receiving.listDoorCountedWithoutPaper(user.restaurantId),
+      ]);
+      // An order the order door already lists is listed once (R10).
+      const listed = new Set(items.map((i) => i.orderId));
+      const doorCounted = door.rows.filter(
+        (d) => !d.orderId || !listed.has(d.orderId),
+      );
       return {
         items,
+        // R10: deliveries counted through the document door (door-count with
+        // createDelivery) that have no vendor paper yet. They write no receipt
+        // event, so `items` never held them. `doorCountedComplete` is false
+        // when a read landed on its cap: the list is then a floor.
+        doorCounted,
+        doorCountedComplete: !door.capped,
         // A single line for the manager's queue, rather than a second stock
         // number on every screen that would train people to ignore both.
         summary: items.length
