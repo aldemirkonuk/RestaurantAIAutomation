@@ -17,7 +17,13 @@ import { feedKey, pulseKey, useOrder } from "@/api/queries";
 import { useOutbox } from "@/state/outbox";
 import { useFeedLocal } from "@/state/feedLocal";
 import { receivingCountBasis } from "@/lib/receivingCountBasis";
-import { computeMatch, money, verdictTone } from "@/lib/invoiceMatch";
+import {
+  computeMatch,
+  currencyCode,
+  money,
+  sameMoney,
+  verdictTone,
+} from "@/lib/invoiceMatch";
 
 /**
  * Receiving — the canonical WineOps invoice, phone edition.
@@ -48,6 +54,8 @@ export default function ReceivingScreen() {
     rawAgreedPrice != null && order?.pricePackSize && order?.priceUom
       ? rawAgreedPrice / order.pricePackSize
       : null;
+  // The order's own currency: the agreed price is in it, and nothing converts.
+  const poCurrency = currencyCode(order?.currency);
   const stockedQty = countBasis.prefillBottles;
   const stockedNote = countBasis.note;
 
@@ -92,6 +100,8 @@ export default function ReceivingScreen() {
         poUnitPrice,
         invoiceQty,
         invoiceUnitPrice,
+        invoiceCurrency,
+        poCurrency,
         acceptedQty,
         rejectedQty,
         priceOverrideReason,
@@ -101,6 +111,8 @@ export default function ReceivingScreen() {
       poUnitPrice,
       invoiceQty,
       invoiceUnitPrice,
+      invoiceCurrency,
+      poCurrency,
       acceptedQty,
       rejectedQty,
       priceOverrideReason,
@@ -111,6 +123,13 @@ export default function ReceivingScreen() {
     poUnitPrice != null &&
     invoiceUnitPrice != null &&
     Math.round(poUnitPrice * 100) !== Math.round(invoiceUnitPrice * 100);
+  // Billed in one stated currency, agreed in another: the two figures are
+  // shown each in its own money and never netted into one difference.
+  const billedCurrency = currencyCode(invoiceCurrency);
+  const twoCurrencies =
+    poUnitPrice != null &&
+    invoiceUnitPrice != null &&
+    !sameMoney(billedCurrency, poCurrency);
   const receivedQty = acceptedQty + rejectedQty;
 
   const onScan = useCallback(() => {
@@ -271,7 +290,7 @@ export default function ReceivingScreen() {
                     <AppText variant="footnote" tone="secondary">
                       Agreed: {orderedQty}{" "}
                       {orderedQty === 1 ? "bottle" : "bottles"}
-                      {poUnitPrice != null ? ` @ ${money(poUnitPrice)}` : ""}
+                      {poUnitPrice != null ? ` @ ${money(poUnitPrice, poCurrency)}` : ""}
                     </AppText>
                   </View>
 
@@ -586,10 +605,17 @@ export default function ReceivingScreen() {
                         <AppText variant="caption" tone="tertiary">
                           Agreed bottle price not available here
                         </AppText>
+                      ) : twoCurrencies ? (
+                        <AppText variant="caption" tone="danger">
+                          Billed in {billedCurrency}, agreed{" "}
+                          {money(poUnitPrice, poCurrency)}; nothing here
+                          converts them
+                        </AppText>
                       ) : priceDiffers ? (
                         <AppText variant="caption" tone="danger">
                           {money(
                             Math.abs((invoiceUnitPrice ?? 0) - poUnitPrice),
+                            billedCurrency,
                           )}
                           /btl{" "}
                           {(invoiceUnitPrice ?? 0) > poUnitPrice
@@ -716,7 +742,7 @@ export default function ReceivingScreen() {
                 </AppText>
                 {match.effectiveUnitCost != null ? (
                   <AppText variant="caption" tone="secondary">
-                    Real cost {money(match.effectiveUnitCost)}/btl
+                    Real cost {money(match.effectiveUnitCost, billedCurrency)}/btl
                   </AppText>
                 ) : null}
               </View>

@@ -153,6 +153,12 @@ export interface ProcurementOrder {
   negotiatedPrice?: number;
   finalPrice?: number;
   totalCost?: number;
+  /**
+   * The order's own ISO code (`procurement_orders.currency`): a code, `null`
+   * (the row names none), or the key absent (the route did not read it).
+   * Its prices are in it; nothing converts.
+   */
+  currency?: string | null;
   status: string;
   requestedAt?: string;
   approvedAt?: string;
