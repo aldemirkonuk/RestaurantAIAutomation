@@ -1736,10 +1736,22 @@ export class MenusService {
     // import could report success while linking nothing; if the single call
     // covering every wine fails, the import genuinely cannot proceed and should
     // say so rather than write a menu of unlinked items.
+    //
+    // A KITCHEN LINE NEVER REACHES THE LIBRARY (menu walk 2026-11-11). The
+    // resolver makes a provisional library row for every line it cannot match,
+    // so "Tiramisu 9" under Desserts became a wine in the shared library at
+    // import, whether or not its menu was ever chosen. A dish is not a wine:
+    // it is decided here with the same test the page and the carry use
+    // (menu-line-view.ts isKitchenLine), kept on the menu unlinked, and never
+    // sent to the resolver. No library row, so no submission either.
+    const kitchen = items.map((item) =>
+      isKitchenLine(item.category, item.raw_text, item as unknown as Record<string, unknown>),
+    );
+    const drinks = items.filter((_, idx) => !kitchen[idx]);
     let resolved: ResolvedItem[];
     try {
-      const results = await this.wineSubmissions.resolveLibraryWinesBatch(
-        items.map((item) => ({
+      const drinkResults = drinks.length === 0 ? [] : await this.wineSubmissions.resolveLibraryWinesBatch(
+        drinks.map((item) => ({
           name: item.name,
           producer: item.producer,
           vintage: item.vintage,
@@ -1759,13 +1771,18 @@ export class MenusService {
         // whose menu this is.
         restaurantId,
       );
-      resolved = items.map((item, idx) => ({
-        item,
-        masterWineId: results[idx]?.masterWineId ?? null,
-        matched: results[idx]?.matched ?? false,
-        libraryTier: results[idx]?.libraryTier ?? null,
-        confidence: results[idx]?.confidence ?? null,
-      }));
+      // Back onto every line, in the menu's order: a kitchen line is unlinked.
+      let next = 0;
+      resolved = items.map((item, idx) => {
+        const r = kitchen[idx] ? undefined : drinkResults[next++];
+        return {
+          item,
+          masterWineId: r?.masterWineId ?? null,
+          matched: r?.matched ?? false,
+          libraryTier: r?.libraryTier ?? null,
+          confidence: r?.confidence ?? null,
+        };
+      });
     } catch (err) {
       this.logger.error(`Library resolution failed for menu: ${err.message}`);
       throw new Error(
@@ -1775,10 +1792,11 @@ export class MenusService {
 
     // Unlinked items are the ones a manager has to fix by hand, so say how
     // many there are rather than leaving it to be discovered in the UI.
-    const unlinked = resolved.filter((r) => !r.masterWineId).length;
+    // A kitchen line is unlinked on purpose and is not counted.
+    const unlinked = resolved.filter((r, idx) => !r.masterWineId && !kitchen[idx]).length;
     if (unlinked > 0) {
       this.logger.error(
-        `Menu import: ${unlinked}/${resolved.length} item(s) could not be ` +
+        `Menu import: ${unlinked}/${drinks.length} drink line(s) could not be ` +
           `linked to the wine library and will have no inventory row`,
       );
     }
