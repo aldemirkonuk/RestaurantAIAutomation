@@ -1132,6 +1132,84 @@ describe("MenusService — every menu read is kept as its own version", () => {
       expect(tiramisu.status).not.toBe("discarded");
     });
 
+    it("2d: the plan lists what the current menu has and this file does not, and choosing it leaves them as they are (L12)", async () => {
+      const calls: RpcCall[] = [];
+      const tables: Record<string, Row[]> = base();
+      tables.restaurant_inventory.push(
+        { id: "inv-2", restaurant_id: "rest-1", master_wine_id: "mw-2", wine_name: "Barolo", menu_price_current: 80, menu_price_glass: null, is_active: true },
+      );
+      tables.house_price_locks = [
+        { id: "lock-1", restaurant_id: "rest-1", inventory_id: "inv-2", kind: "bottle", locked_price: 80, locked_by: "user-1", locked_at: "2026-09-01T00:00:00Z", released_at: null },
+      ];
+      const old = (id: string, over: Row) => ({ id, menu_id: "menu-old", restaurant_id: "rest-1", status: "approved", created_at: "2026-09-01T00:00:00Z", ...over });
+      tables.menu_items.push(
+        old("old-1", { name: "Opus One", wine_library_id: "mw-1", bottle_price: 60 }),
+        old("old-2", { name: "Barolo", wine_library_id: "mw-2", bottle_price: 80 }),
+        old("old-3", { name: "House red", wine_library_id: null, bottle_price: 30 }),
+        old("old-4", { name: "RAKI", wine_library_id: null, bottle_price: 40 }),
+        old("old-5", { name: "Tiramisu", category: "dessert", wine_library_id: null, bottle_price: 9 }),
+      );
+      const service = makeService(tables, {
+        wineSubmissions,
+        rpcCalls: calls,
+        rpc: makeCurrentRpc(tables),
+        scanParser: {
+          parseWithWarnings: async () => ({
+            items: [{ name: "Opus One", bottle_price: 64 }, { name: "Rakı", bottle_price: 45 }],
+            warnings: [],
+          }),
+        },
+      });
+      const read = await service.importMenu(
+        { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+        "user-1",
+      );
+      // A scan is read in the background on the #1086 chain (whenRead); here it is not.
+      await (service as any).whenRead?.(read.menuId);
+
+      const plan = await service.planFor("rest-1", read.menuId);
+      // Barolo (linked, locked) and the unlinked House red are not on this file.
+      // Opus One is (same wine); RAKI is (same name, Turkish i folded); a
+      // kitchen line is never a wine that left the list.
+      expect(plan.notOnThisFile).toEqual([
+        {
+          menuItemId: "old-2",
+          name: "Barolo",
+          producer: null,
+          vintage: null,
+          wineLibraryId: "mw-2",
+          inventoryId: "inv-2",
+          bottle: 80,
+          glass: null,
+          locked: ["bottle"],
+        },
+        expect.objectContaining({ menuItemId: "old-3", name: "House red", wineLibraryId: null, inventoryId: null, locked: [] }),
+      ]);
+
+      const r = await service.makeCurrent("rest-1", read.menuId, "user-2", plan.fingerprint);
+      expect(r.outcome).toBe("made_current");
+      // Nothing was written for Barolo: its row, price and lock stand.
+      expect(calls.filter(([fn, a]) => fn === "set_house_menu_price" && a.p_inventory_id === "inv-2")).toHaveLength(0);
+      expect(tables.restaurant_inventory.find((i) => i.id === "inv-2")).toMatchObject({ menu_price_current: 80, is_active: true });
+      expect(tables.house_price_locks[0].released_at).toBeNull();
+    });
+
+    it("2d: a menu chosen again lists nothing as 'not on this file', and the list is part of the fingerprint", async () => {
+      const { tables, service, read } = await readThenChoose([{ name: "Opus One", bottle_price: 64 }]);
+      tables.menu_items.push({ id: "old-9", menu_id: "menu-old", restaurant_id: "rest-1", name: "Barolo", wine_library_id: "mw-2", status: "approved" });
+      const before = await service.planFor("rest-1", read.menuId);
+      expect(before.notOnThisFile.map((n) => n.name)).toEqual(["Barolo"]);
+      // The current menu changes under the page: the plan it showed is no longer true.
+      tables.menu_items.push({ id: "old-10", menu_id: "menu-old", restaurant_id: "rest-1", name: "Chianti", wine_library_id: "mw-3", status: "approved" });
+      const err: any = await service
+        .makeCurrent("rest-1", read.menuId, "user-2", before.fingerprint)
+        .catch((e: unknown) => e);
+      expect(err?.getStatus?.()).toBe(409);
+      // Once current, there is nothing it replaces.
+      await choose(service, read.menuId);
+      expect((await service.planFor("rest-1", read.menuId)).notOnThisFile).toEqual([]);
+    });
+
     it("a dessert WINE under Desserts is still carried: a vintage says it is a drink", async () => {
       const { calls, service, read } = await readThenChoose([
         { name: "Sauternes", category: "dessert", vintage: "2015", bottle_price: 90 },

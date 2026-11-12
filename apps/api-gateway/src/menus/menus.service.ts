@@ -171,6 +171,42 @@ export interface DormantLock {
   active: boolean | null;
 }
 
+/**
+ * A line on the menu being replaced that this menu does not carry (2d, "not on
+ * this file"). Shown, never acted on: choosing this menu leaves its wine, its
+ * house row and its prices exactly as they are (ADR 0193 L12, "Silence changes
+ * nothing"), and a lock on it stays (L16).
+ */
+export interface NotOnThisFile {
+  /** The line on the menu being replaced. */
+  menuItemId: string;
+  name: string;
+  producer: string | null;
+  vintage: string | null;
+  wineLibraryId: string | null;
+  /** The house's own row for this wine, when it has one. */
+  inventoryId: string | null;
+  /** The house's prices now, which stay. */
+  bottle: number | null;
+  glass: number | null;
+  /** Kinds an open lock holds; they stay locked. */
+  locked: Array<"bottle" | "glass">;
+}
+
+/**
+ * A name folded for "is it on the other file": case, accents, spacing and the
+ * Turkish dotted/dotless i, so "RAKI" and "Rakı" are one name.
+ */
+export function foldMenuName(name: unknown): string {
+  return String(name ?? "")
+    .replace(/[İIı]/g, "i")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export interface MenuPlan {
   menuId: string;
   /** Whether this menu is already the current one (choosing it again changes nothing). */
@@ -196,6 +232,12 @@ export interface MenuPlan {
    * nowhere (no wine, price or stock). Not in `lines` or `counts`.
    */
   kitchenLines: Array<{ menuItemId: string; name: string }>;
+  /**
+   * Wines on the menu being replaced that this menu does not carry. Display
+   * only: they keep their price and their row (L12). Empty when this menu is
+   * already current or no menu is being replaced.
+   */
+  notOnThisFile: NotOnThisFile[];
 }
 
 function emptyPlanCounts(): Record<PlanResult, number> {
@@ -1362,6 +1404,8 @@ export class MenusService {
 
     // The wines on the menu being REPLACED (every other active menu), for L18's "returned".
     const onReplaced = new Set<string>();
+    // Every drink line of the menu being replaced, for "not on this file" (2d).
+    const replacedLines: InsertedMenuItem[] = [];
     let replacing = false;
     if (!current) {
       const { data: actives, error: activeErr } = await client
@@ -1375,6 +1419,8 @@ export class MenusService {
         replacing = true;
         for (const line of await this.readLines(m.id, restaurantId)) {
           if (line.wine_library_id) onReplaced.add(String(line.wine_library_id));
+          const row = line as unknown as InsertedMenuItem;
+          if (!isKitchenItem(row)) replacedLines.push(row);
         }
       }
     }
@@ -1464,6 +1510,43 @@ export class MenusService {
         };
       });
 
+    // NOT ON THIS FILE (2d). A replaced line is on this file when this menu
+    // carries its wine, or a line of the same name (a line either side may be
+    // unlinked). One entry per wine (or per name, unlinked), in the replaced
+    // menu's order. Nothing is written for them: L12.
+    const idsHere = new Set<string>();
+    const namesHere = new Set<string>();
+    for (const line of lines) {
+      if (isKitchenItem(line)) continue;
+      if (line.wine_library_id) idsHere.add(String(line.wine_library_id));
+      namesHere.add(foldMenuName(line.name));
+    }
+    const notOnThisFile: NotOnThisFile[] = [];
+    const seen = new Set<string>();
+    for (const line of replacedLines) {
+      const wineId = line.wine_library_id ? String(line.wine_library_id) : null;
+      const name = foldMenuName(line.name);
+      if ((wineId && idsHere.has(wineId)) || namesHere.has(name)) continue;
+      const key = wineId ? `w:${wineId}` : `n:${name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const row = wineId ? (house.get(wineId) ?? null) : null;
+      const locked = row
+        ? (["bottle", "glass"] as const).filter((k) => locks.has(`${row.id}:${k}`))
+        : [];
+      notOnThisFile.push({
+        menuItemId: line.id,
+        name: line.name,
+        producer: line.producer ?? null,
+        vintage: line.vintage ?? null,
+        wineLibraryId: wineId,
+        inventoryId: row ? String(row.id) : null,
+        bottle: row ? linePrice(row.menu_price_current) : null,
+        glass: row ? linePrice(row.menu_price_glass) : null,
+        locked: [...locked],
+      });
+    }
+
     const decisive = {
       menuId,
       lines: [...planLines]
@@ -1476,6 +1559,9 @@ export class MenusService {
         ]),
       dormant: dormantLocks.map((d) => d.lockId).sort(),
       kitchen: kitchenLines.map((k) => k.menuItemId).sort(),
+      // The person is shown which wines stay as they are; a different list is
+      // a different plan (L13), though nothing is written for them.
+      notOnThisFile: notOnThisFile.map((n) => n.menuItemId).sort(),
     };
     return {
       menuId,
@@ -1489,6 +1575,7 @@ export class MenusService {
       namesReadable: true,
       namesReason: null,
       kitchenLines,
+      notOnThisFile,
     };
   }
 
