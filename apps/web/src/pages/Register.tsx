@@ -162,9 +162,19 @@ export function Register() {
   // a 429 holds the button until the wait the gateway named has passed.
   const [signInHint, setSignInHint] = useState(false)
   const [waitUntil, setWaitUntil] = useState(0)
+  // The wait sentence names a number of seconds. When those seconds have
+  // passed and the button comes back, the sentence goes with it: a page that
+  // still says "Wait 40 seconds" beside a live button contradicts itself.
+  const waitSaid = useRef<string | null>(null)
   useEffect(() => {
     if (waitUntil <= Date.now()) return
-    const t = setTimeout(() => setWaitUntil(0), waitUntil - Date.now())
+    const t = setTimeout(() => {
+      // Read the ref now: the updater runs at render, after it is cleared.
+      const said = waitSaid.current
+      waitSaid.current = null
+      setWaitUntil(0)
+      setError((cur) => (cur !== null && cur === said ? null : cur))
+    }, waitUntil - Date.now())
     return () => clearTimeout(t)
   }, [waitUntil])
   const waiting = waitUntil > Date.now()
@@ -172,6 +182,7 @@ export function Register() {
     const r = signUpRefusal(err, where)
     setError(r.text)
     setSignInHint(r.kind === 'exists')
+    waitSaid.current = r.kind === 'wait' ? r.text : null
     if (r.kind === 'wait') setWaitUntil(Date.now() + (r.seconds ?? 60) * 1000)
   }
 

@@ -5,7 +5,7 @@
  * (Part 2, stacked on this branch, removes the email probe and the confirm field.)
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { signUpRefusal } from '../../lib/authWords'
 
@@ -68,6 +68,24 @@ describe('Register — OB-11', () => {
     expect(await screen.findByText(/Wait 42 seconds, then try again\./)).toBeInTheDocument()
     expect(screen.queryByText(/Throttler/)).toBeNull()
     expect(screen.getByRole('button', { name: /create account/i })).toBeDisabled()
+  })
+
+  it('t1b: when the wait has passed, the button comes back and the wait sentence goes', async () => {
+    h.auth.registerAccount.mockRejectedValue(
+      Object.assign(new Error('ThrottlerException: Too Many Requests'), { status: 429, retryAfter: '2' }),
+    )
+    open()
+    type(/^Full Name/, 'Ayşe Kaya')
+    type(/^Email/, 'ayse@kaya.test')
+    type(/^Password/, 'long-enough-1')
+    type(/^Confirm Password/, 'long-enough-1')
+    fireEvent.click(screen.getByRole('button', { name: /create account/i }))
+    expect(await screen.findByText(/Wait 2 seconds, then try again\./)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /create account/i })).toBeDisabled()
+    await waitFor(() => expect(screen.getByRole('button', { name: /create account/i })).toBeEnabled(), {
+      timeout: 3500,
+    })
+    expect(screen.queryByText(/Wait 2 seconds/)).toBeNull()
   })
 
   it('an address already in use offers Sign in', async () => {
