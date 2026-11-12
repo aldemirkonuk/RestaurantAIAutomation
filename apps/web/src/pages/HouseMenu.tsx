@@ -98,6 +98,15 @@ export default function HouseMenu() {
   const canManage = role === 'owner' || role === 'manager'
   const [planning, setPlanning] = useState(false)
   const [chosen, setChosen] = useState<string | null>(() => readChoice(proof?.menuId))
+  // A file read before reopens its version (one upload is one version), and
+  // that version may already be the current menu: then there is no choice to
+  // offer. Read through a wider type: the import reply says `current: true`
+  // only once the reopen path is on the branch.
+  const alreadyCurrent = (proof as { current?: boolean } | null)?.current === true
+  // Several files sent at once: each is read and kept as its own draft; the
+  // proof shows the first, and says how many others were kept.
+  const otherKeptRaw = (proof as { otherKept?: unknown } | null)?.otherKept
+  const otherKept = typeof otherKeptRaw === 'number' && otherKeptRaw > 0 ? Math.floor(otherKeptRaw) : 0
 
   const choose = (said: string) => {
     setPlanning(false)
@@ -385,7 +394,18 @@ export default function HouseMenu() {
             It is kept either way. Making it current sets the house&apos;s prices from it and puts its wines on the
             stock list; keeping it changes nothing.
           </p>
-          {chosen ? (
+          {otherKept > 0 ? (
+            <p data-testid="first-proof-other-kept" className="mt-2 max-w-2xl text-sm text-[#6d685f]">
+              {otherKept === 1
+                ? 'The other file you sent was read too and kept as its own draft, not current. It waits on the menu page.'
+                : `The ${otherKept} other files you sent were read too, each kept as its own draft, not current. They wait on the menu page.`}
+            </p>
+          ) : null}
+          {alreadyCurrent ? (
+            <p role="status" data-testid="first-proof-already-current" className="mt-4 max-w-2xl text-sm">
+              It is the current menu. This file was read before and is the menu you pour from now; nothing changed.
+            </p>
+          ) : chosen ? (
             <p role="status" data-testid="first-proof-choice-said" className="mt-4 max-w-2xl text-sm">
               {chosen}
             </p>
@@ -412,7 +432,7 @@ export default function HouseMenu() {
               An owner or a manager chooses whether it becomes the current menu. It is kept either way.
             </p>
           )}
-          {planning && !chosen ? (
+          {planning && !chosen && !alreadyCurrent ? (
             <div className="mudavym mt-4" data-testid="first-proof-plan">
               <MenuPlan
                 menuId={proof.menuId}

@@ -176,4 +176,34 @@ describe('the first proof -- the current-menu choice', () => {
       'An owner or a manager chooses whether it becomes the current menu. It is kept either way.',
     )
   })
+
+  it('a read that reopened the current menu offers no choice: it says it is the current menu', () => {
+    sessionStorage.clear()
+    writeProof({ ...PROOF, current: true } as unknown as MenuImportResult)
+    mount()
+    expect(screen.getByTestId('first-proof-already-current')).toHaveTextContent('It is the current menu.')
+    expect(screen.queryByRole('button', { name: 'Make this the current menu' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Keep it, not current' })).not.toBeInTheDocument()
+    expect(mockPlan).not.toHaveBeenCalled()
+  })
+
+  it('other files sent with it are said to be kept as drafts', () => {
+    sessionStorage.clear()
+    writeProof({ ...PROOF, otherKept: 2 } as MenuImportResult)
+    const { unmount } = mount()
+    expect(screen.getByTestId('first-proof-other-kept')).toHaveTextContent(
+      'The 2 other files you sent were read too, each kept as its own draft, not current.',
+    )
+    unmount()
+    sessionStorage.clear()
+    writeProof({ ...PROOF, otherKept: 1 } as MenuImportResult)
+    mount()
+    expect(screen.getByTestId('first-proof-other-kept')).toHaveTextContent('The other file you sent was read too')
+  })
+
+  it('one file sent says nothing about others', () => {
+    mount()
+    expect(screen.queryByTestId('first-proof-other-kept')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('first-proof-already-current')).not.toBeInTheDocument()
+  })
 })
