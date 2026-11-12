@@ -30,6 +30,7 @@ import {
   bottlesOf,
   unitsLabel,
 } from "./consumption-units";
+import { UncostedOrdersError, orderCostOrNull } from "./order-cost";
 import {
   ModelClientService,
   NfEventRef,
@@ -552,6 +553,8 @@ export class GoalsService {
           "no other restaurant's books are in this comparison: every figure here is this house against its own baseline, schedule and projection",
         units:
           "Bottles sold counts bottles by each line's own mode: a bottle line is its quantity, a glass line is its millilitres over the item's stated bottle size, or over the 750 ml stand-in the stock moves by when no size is stated; each Bottles sold goal's `units` counts the lines and items in its window resting on that stand-in; a goal whose window holds a line with no bottle figure is not scored (ADR 0297)",
+        spend:
+          "Purchasing spend sums each delivered order's recorded cost; an order with no recorded cost is not counted as $0, and a goal whose window holds one is not scored until its cost is recorded",
       },
       generatedAt: new Date().toISOString(),
     };
@@ -1177,8 +1180,17 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
           (o) => o.delivered_at || o.created_at,
         );
         rowCount = orders.length;
-        for (const { row: o, day } of orders)
-          add(day, o.total_cost || o.final_price || 0);
+        // An order with no recorded cost is unknown, never $0: summed as 0 it
+        // made a "keep purchases under" goal read lower than the truth, and
+        // so read as met (order-cost.ts). The whole window refuses instead,
+        // and the goal says how many orders wait on a cost.
+        const costed = orders.map(({ row, day }) => ({
+          day,
+          cost: orderCostOrNull(row),
+        }));
+        const uncosted = costed.filter((o) => o.cost == null).length;
+        if (uncosted > 0) throw new UncostedOrdersError(uncosted, orders.length);
+        for (const o of costed) add(o.day, o.cost as number);
       } else if (metricKey === "bottles_sold") {
         // Read whole or refused (ADR 0292): an unranged select stopped at
         // PostgREST's 1,000 rows and reported the first thousand lines as
@@ -1309,6 +1321,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       if (err instanceof WholeReadError) throw err;
       // Same for a total that would rest on a line with no bottle figure.
       if (err instanceof UncountedConsumptionError) throw err;
+      // And for a spend that would rest on an order with no recorded cost.
+      if (err instanceof UncostedOrdersError) throw err;
       this.logger.warn(`computeMetric(${metricKey}) failed: ${err?.message}`);
     }
 
