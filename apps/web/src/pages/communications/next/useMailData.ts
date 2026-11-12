@@ -13,11 +13,13 @@
  * `next` cursor; a thread pages backwards by `before`.
  */
 
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
 import { apiClient } from '../../../services/api/client';
 import type { SenderIdentity } from './Compose/useComposeData';
 import type {
+  IntakeRead,
+  MailIntakeResponse,
   MailboxReader,
   MailPeoplePage,
   MailSummary,
@@ -130,5 +132,41 @@ export function useMailSender(poll = false) {
     enabled: Boolean(house),
     staleTime: 60_000,
     refetchInterval: poll ? MAIL_POLL_MS : false,
+  });
+}
+
+const intakeKey = (house: string) => ['mail-intake', house] as const;
+
+/**
+ * GET /communications/letters/intake, read only while the intake sheet is open.
+ * A 404 or 403 (route not deployed yet, or staff) is `absent`, which the sheet
+ * words as it always did; any other error is `failed`, which it never words as
+ * "none". While the read is pending the sheet shows `absent`'s words.
+ */
+export function useMailIntake(enabled: boolean): IntakeRead {
+  const house = useHouse();
+  const q = useQuery<MailIntakeResponse>({
+    queryKey: intakeKey(house),
+    queryFn: async () => (await apiClient.get<MailIntakeResponse>('/communications/letters/intake')).data,
+    enabled: Boolean(house) && enabled,
+    retry: false,
+    staleTime: 15_000,
+  });
+  if (q.isError) {
+    const status = (q.error as { response?: { status?: unknown } } | null)?.response?.status;
+    return status === 404 || status === 403 ? { kind: 'absent' } : { kind: 'failed' };
+  }
+  return q.data ? { kind: 'known', data: q.data } : { kind: 'absent' };
+}
+
+/** POST /communications/letters/intake/read-again: offers kept letters to their homes once more. */
+export function useIntakeReadAgain() {
+  const house = useHouse();
+  const qc = useQueryClient();
+  return useMutation<{ queued: number }>({
+    mutationFn: async () => (await apiClient.post<{ queued: number }>('/communications/letters/intake/read-again')).data,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: intakeKey(house) });
+    },
   });
 }

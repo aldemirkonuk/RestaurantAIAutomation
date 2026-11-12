@@ -41,7 +41,7 @@ import {
   type MailPersonRow,
   type TestArrival,
 } from './mail-format';
-import { useMailPeople, useMailSender, useMailSummary, useMailThreads } from './useMailData';
+import { useMailIntake, useMailPeople, useMailSender, useMailSummary, useMailThreads } from './useMailData';
 import { useMailSetup } from './useMailSetup';
 
 const QUIET = { fontSize: 11.5, color: 'var(--ink-4, #665D50)' } as const;
@@ -188,8 +188,10 @@ function PersonThreads({
                     </span>
                   </span>
                   <span style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)' }}>
-                    {t.messageCount === 1 ? '1 letter' : `${t.messageCount} letters`} ·{' '}
-                    {lastWriterWords(t.lastDirection, person.name)}
+                    {t.messageCount === 0 ? null : (
+                      <>{t.messageCount === 1 ? '1 letter' : `${t.messageCount} letters`} · </>
+                    )}
+                    {lastWriterWords(t.lastDirection, person.name, t.messageCount)}
                   </span>
                 </button>
               </li>
@@ -338,6 +340,7 @@ export function MailTab({
   const summaryQ = useMailSummary(true);
   const senderQ = useMailSender(true);
   const now = Date.now();
+  const intake = useMailIntake(sheet);
 
   const summary = summaryQ.data ?? null;
   const reader: MailboxReader | null = senderQ.data?.reader ?? null;
@@ -500,6 +503,7 @@ export function MailTab({
         sender={senderQ.data ?? null}
         senderFailed={senderQ.isError}
         conversationWords={senderQ.data?.conversation?.words ?? null}
+        intake={intake}
         now={now}
       />
     </div>

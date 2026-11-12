@@ -10,8 +10,10 @@
  * - only the house mailbox keeps a record of its reads, so only it can be
  *   "reading" or "behind"; every other door is "cannot tell" until a durable
  *   cursor exists (proposal L3) — a stored letter is not proof a door is open;
- * - letters held before reaching the house are not recorded yet, and the
- *   line says so (never 0);
+ * - letters held before reaching the house come from the intake record when
+ *   the gateway serves one; when it does not (route absent, staff), the line
+ *   says "not recorded yet" (never 0), and a record that could not be read
+ *   says so and is never "none";
  * - no address is ever invented: a Mudavym address that cannot exist yet is
  *   said in words with nothing to copy, and so is an unread sender (QA M13).
  */
@@ -20,12 +22,17 @@ import { useState, type CSSProperties, type ReactNode } from 'react';
 import { Sheet } from '@/components/mudavym';
 import type { Detent } from '@/components/mudavym/Sheet';
 import { EM, MONO, SANS } from './cm-format';
+import { readFailure, writeFailureSentence } from './senders-format';
+import { useIntakeReadAgain } from './useMailData';
 import {
   houseMailboxStatus,
+  heldAtDoorWords,
   lastStoredWords,
   senderLine,
+  sharedMailboxDoor,
   unrecordedDoorStatus,
   type DoorStatus,
+  type IntakeRead,
   type MailboxReader,
   type MailSummary,
   type SenderLineInput,
@@ -107,6 +114,7 @@ export function IntakeHealthSheet({
   sender,
   senderFailed,
   conversationWords,
+  intake,
   now,
 }: {
   open: boolean;
@@ -119,11 +127,26 @@ export function IntakeHealthSheet({
   sender: SenderLineInput | null;
   senderFailed: boolean;
   conversationWords: string | null;
+  /** The intake record; `absent` while it is read or when the route is not served. */
+  intake: IntakeRead;
   now: number;
 }) {
   const [copy, setCopy] = useState<'idle' | 'copied' | 'failed'>('idle');
   const house = houseMailboxStatus(reader, { readFailed: readerFailed, now });
   const unrecorded = unrecordedDoorStatus();
+  const shared = sharedMailboxDoor(intake, now);
+  const readAgain = useIntakeReadAgain();
+  const [offered, setOffered] = useState<string | null>(null);
+  const waiting = intake.kind === 'known' ? (intake.data.intake?.waiting ?? 0) : 0;
+  const runReadAgain = async () => {
+    setOffered(null);
+    try {
+      const r = await readAgain.mutateAsync();
+      setOffered(`Offered again: ${r.queued}.`);
+    } catch (err) {
+      setOffered(writeFailureSentence('Reading again', readFailure(err)));
+    }
+  };
   const known = summary !== null;
   const lastRead =
     reader?.lastReadAt && reader.granted === true ? lastStoredWords(reader.lastReadAt, true, now) : EM;
@@ -165,8 +188,8 @@ export function IntakeHealthSheet({
           <Door
             testId="door-mudavym"
             name="Mudavym's mailbox and your Mudavym address"
-            status={unrecorded}
-            lastRead={`${EM} not recorded yet`}
+            status={shared.status}
+            lastRead={shared.lastRead}
             lastStored={lastStoredWords(summary?.doors.mudavymMail.lastStoredAt, known, now)}
           />
           <Door
@@ -177,8 +200,35 @@ export function IntakeHealthSheet({
             lastStored={lastStoredWords(summary?.doors.whatsapp.lastStoredAt, known, now)}
           />
           <p data-testid="held-at-door" style={{ ...CELL, margin: '6px 0 0' }}>
-            Letters held before reaching the house: {summary?.heldAtDoor == null ? `${EM} not recorded yet.` : summary.heldAtDoor}
+            Letters held before reaching the house: {heldAtDoorWords(intake, now)}
           </p>
+          {intake.kind === 'known' && waiting > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                data-testid="read-again"
+                disabled={readAgain.isPending}
+                onClick={() => void runReadAgain()}
+                style={{
+                  fontSize: 11.5,
+                  fontWeight: 600,
+                  padding: '3px 10px',
+                  borderRadius: 6,
+                  border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                  background: 'transparent',
+                  color: 'var(--seal-deep, #14515C)',
+                  cursor: readAgain.isPending ? 'default' : 'pointer',
+                }}
+              >
+                Read again
+              </button>
+              {offered && (
+                <span role="status" data-testid="read-again-result" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
+                  {offered}
+                </span>
+              )}
+            </div>
+          )}
         </Section>
 
         <Section title="Which address letters leave from">
