@@ -522,6 +522,20 @@ export async function markOrderDelivered(
  *
  * `adjustments` carries unlisted extras that were not on the invoice.
  */
+/**
+ * What a verified invoice price restated (the gateway's `costCorrection`,
+ * from `revalue_lot`). Present only when a price was verified.
+ * `salesSettled` counts earlier sales (one per sale per lot of this order)
+ * whose cost was settled to the invoice; it is not a bottle count.
+ */
+export interface ReceiptCostCorrection {
+  unitCost: number;
+  bottlesRevalued: number;
+  salesSettled: number;
+}
+
+export type VerifiedOrder = Order & { costCorrection?: ReceiptCostCorrection };
+
 export async function verifyOrderReceipt(
   orderId: string,
   body: {
@@ -592,8 +606,8 @@ export async function verifyOrderReceipt(
     prefilledShippedQuantityInShippedUom?: number;
     prefilledFreeGoodsQuantityInCountedUom?: number;
   }
-): Promise<Order> {
-  const response = await apiClient.post<Order>(
+): Promise<VerifiedOrder> {
+  const response = await apiClient.post<VerifiedOrder>(
     `${ORDERS_PATH}/${orderId}/verify-receipt`,
     body
   );

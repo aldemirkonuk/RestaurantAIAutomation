@@ -58,11 +58,33 @@ function setOnline(online: boolean) {
 
 const INPUT = { name: 'Kavaklıdere', paymentTerms: 'Net 30' } as never
 
-function run() {
+function run(options?: { quiet?: boolean }) {
   const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } })
-  const { result } = renderHook(() => useCreateProvider(), { wrapper: wrapper(qc) })
+  const { result } = renderHook(() => useCreateProvider(options), { wrapper: wrapper(qc) })
   return result
 }
+
+describe('useCreateProvider — quiet when the caller says the outcome itself', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setOnline(true)
+  })
+
+  it('draws no toast on a refusal or a success when quiet', async () => {
+    api.createProvider.mockRejectedValueOnce(httpError(400, 'name must not be empty'))
+    const result = run({ quiet: true })
+    await act(async () => {
+      await result.current.mutateAsync(INPUT).catch(() => undefined)
+    })
+    api.createProvider.mockResolvedValueOnce({ id: 'p-1', name: 'Kavaklıdere' })
+    await act(async () => {
+      await result.current.mutateAsync(INPUT)
+    })
+    expect(toast.error).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
+    expect(toast.info).not.toHaveBeenCalled()
+  })
+})
 
 describe('useCreateProvider — offline queueing only on a real network failure', () => {
   beforeEach(() => {

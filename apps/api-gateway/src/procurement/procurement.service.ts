@@ -50,6 +50,7 @@ import {
   OrderFilterDto,
   OrderListResponseDto,
   OrderResponseDto,
+  ReceiptCostCorrection,
   ProcurementOrderStatus,
   UpdateOrderDto,
   VerifyReceiptDto,
@@ -6001,7 +6002,7 @@ export class ProcurementService {
     reason: string,
     unitCost?: number | null,
     userId?: string | null,
-  ): Promise<void> {
+  ): Promise<ReceiptCostCorrection | null> {
     // TENANCY. `apply_stock_movement` derives restaurant_id from the inventory
     // row it is pointed at, not from the caller — so an id this method does not
     // check is an id that writes stock wherever it happens to live. The
@@ -6157,12 +6158,17 @@ export class ProcurementService {
       // is a legitimate outcome — every bottle from this delivery has already
       // been poured — but "the correction covered no bottles" and "the
       // correction covered them all" must not look identical in the log.
+      // Since a_verified_invoice_settles_sold_bottles the bottles already
+      // sold from these lots are settled to the verified cost too
+      // (draws_settled), so a sold-out delivery can still correct cost.
       const covered = (receipt as any)?.lots_revalued ?? 0;
       const matched = (receipt as any)?.lots_matched ?? 0;
+      const settled = (receipt as any)?.draws_settled ?? 0;
       if (matched === 0) {
         this.logger.warn(
           `verifyReceipt: no live lot from order ${orderId} remains for ${inventoryId}, ` +
-            `so the verified unit cost ${unitCost} was recorded on the order but corrected no stock.`,
+            `so the verified unit cost ${unitCost} corrected no stock on hand; ` +
+            `it settled ${settled} earlier sale(s) of it.`,
         );
       } else {
         this.logger.log({
@@ -6173,9 +6179,16 @@ export class ProcurementService {
           lotsMatched: matched,
           lotsRevalued: covered,
           bottlesRevalued: (receipt as any)?.bottles_revalued ?? 0,
+          salesSettled: settled,
         });
       }
+      return {
+        unitCost,
+        bottlesRevalued: Number((receipt as any)?.bottles_revalued ?? 0),
+        salesSettled: Number(settled),
+      };
     }
+    return null;
   }
 
   /**
@@ -6664,12 +6677,18 @@ export class ProcurementService {
     // the one this screen exists to catch — ledgerDelta is 0, so nothing ran
     // and the verified landed cost never reached the books. A verified price is
     // now reason enough to write, on its own.
+    // What the verified price restated, so the screen can say it (receipts
+    // walk 2026-11-11, item 5): since a_verified_invoice_settles_sold_bottles
+    // the bottles already sold from this delivery are settled to the invoice
+    // cost, and until now only the gateway log knew. Only the ordered line
+    // carries a price; the free-form extras below never revalue.
+    let costCorrection: ReceiptCostCorrection | null = null;
     if (
       match &&
       (match.ledgerDelta !== 0 || match.effectiveUnitCost != null) &&
       (orderRow as any).inventory_id
     ) {
-      await this.applyReceiptAdjustment(
+      costCorrection = await this.applyReceiptAdjustment(
         restaurantId,
         orderId,
         (orderRow as any).inventory_id,
@@ -6990,7 +7009,7 @@ export class ProcurementService {
       `Receipt verified for order ${orderId}: verdict=${match?.verdict ?? "legacy"}, ` +
         `status=${status}, adjustments=${adjustments.length}`,
     );
-    return order;
+    return costCorrection ? { ...order, costCorrection } : order;
   }
 
   /**

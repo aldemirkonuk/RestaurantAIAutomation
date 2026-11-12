@@ -193,3 +193,35 @@ const VERDICT_STYLES: Record<MatchVerdict, VerdictStyle> = {
 }
 
 export const verdictStyle = (v: MatchVerdict): VerdictStyle => VERDICT_STYLES[v]
+
+/**
+ * The sentence a verification adds when its price restated cost (receipts
+ * walk 2026-11-11, item 5). Sales made before the invoice arrived are settled
+ * to the invoice cost by `revalue_lot`; the house should hear that, not only
+ * the gateway log. Null when there is nothing to say. No amount is printed:
+ * the cost is per bottle in the order's currency, and `money` here only knows
+ * dollars.
+ */
+export function costCorrectionLine(
+  c: { bottlesRevalued: number; salesSettled: number } | null | undefined,
+): string | null {
+  if (!c) return null
+  const parts: string[] = []
+  // `salesSettled` counts sale DRAWS, one per sale per lot (revalue_lot's
+  // draws_settled), so a sale that drew from two lots counts twice. One draw
+  // is one sale; more than one is said without a number, never as that many
+  // sales (fix round 2026-11-12, finding on #1112).
+  if (c.salesSettled > 0)
+    parts.push(
+      c.salesSettled === 1
+        ? 'A sale made before the invoice arrived now carries the invoice cost.'
+        : 'Sales made before the invoice arrived now carry the invoice cost.',
+    )
+  if (c.bottlesRevalued > 0)
+    parts.push(
+      c.bottlesRevalued === 1
+        ? 'The bottle still on the shelf is costed at it too.'
+        : `The ${c.bottlesRevalued} bottles still on the shelf are costed at it too.`,
+    )
+  return parts.length ? parts.join(' ') : null
+}
