@@ -189,9 +189,11 @@ const WAIT = { timeout: 3000 }
  * words a state differently from today's page, a reach waits for either
  * wording: the state reached is the same one. Account-only create (ADR 0213)
  * titles the leaf "Your Account" off the house path and "Who keeps this
- * book?" on it.
+ * book?" on it. Today's door shows its cards; the endpaper's door is the
+ * sketch's two plain acts.
  */
 const CREATE_ACCOUNT = /^(Your Account|Who keeps this book\?)$/
+const DOOR = /^(Join Your Team|I have an invite code)$/
 
 async function loginResolved(result: {
   methods: ReturnType<typeof method>[]
@@ -232,6 +234,11 @@ function type(label: string, value: string) {
 
 async function joinAccount(emailAvailable: boolean) {
   gateway({ invite: 'valid', emailAvailable })
+  // OB-11: no address probe while typing; "taken" is the join's own refusal.
+  h.auth.joinViaInvite.mockReset()
+  if (!emailAvailable) {
+    h.auth.joinViaInvite.mockRejectedValue(Object.assign(new Error('already_member'), { status: 409 }))
+  }
   const r = renderAt(createElement(Register), '/register?invite=abcdefgh')
   await screen.findByText('Invited by', undefined, WAIT)
   fireEvent.click(screen.getByRole('button', { name: /continue/i }))
@@ -239,17 +246,26 @@ async function joinAccount(emailAvailable: boolean) {
   type('Full Name *', 'Deniz Kaya')
   type('Email *', 'deniz@house.test')
   type('Password *', 'long-enough-1')
-  type('Confirm Password *', 'long-enough-1')
-  await screen.findByText(emailAvailable ? 'Email is available' : /already registered/, undefined, WAIT)
+  if (!emailAvailable) {
+    fireEvent.click(screen.getByRole('button', { name: /join restaurant/i }))
+    await screen.findByText(/already in this house/, undefined, WAIT)
+  }
   return r.container
 }
 
 async function createAccountTaken() {
   gateway({ emailAvailable: false })
+  h.auth.registerAccount.mockReset()
+  h.auth.registerAccount.mockRejectedValue(
+    Object.assign(new Error('Email already registered'), { status: 400 }),
+  )
   const r = renderAt(createElement(Register), '/register?type=new')
   await screen.findByText(CREATE_ACCOUNT, undefined, WAIT)
+  type('Full Name *', 'Deniz Kaya')
   type('Email *', 'taken@house.test')
-  await screen.findByText(/already registered/, undefined, WAIT)
+  type('Password *', 'long-enough-1')
+  fireEvent.click(screen.getByRole('button', { name: /create account/i }))
+  await screen.findByText(/already has an account/, undefined, WAIT)
   return r.container
 }
 
@@ -292,6 +308,15 @@ const STATES: { name: string; page: 'login' | 'register'; reach: () => Promise<H
     name: 'login-nothing-works',
     page: 'login',
     reach: () => loginResolved({ methods: [] }),
+  },
+  {
+    name: 'register-selector',
+    page: 'register',
+    reach: async () => {
+      const r = renderAt(createElement(Register), '/register')
+      await screen.findByText(DOOR, undefined, WAIT)
+      return r.container
+    },
   },
   {
     name: 'register-join-code-valid',
@@ -466,10 +491,9 @@ describe('public switch ON — the house, from tokens', () => {
   it('absence is on: with no override and no env, the page wears the house', async () => {
     // No setSwitch() call at all — publicDesign.ts now resolves true unless
     // an explicit "off" override says otherwise (decision 0149 row 37).
-    // The chooser that used to open here is retired (ADR 0344); the
-    // landing's "Start free" asks for the new-house form.
-    const r = renderAt(createElement(Register), '/register?type=new')
-    await screen.findByText(CREATE_ACCOUNT, undefined, WAIT)
+    // DOOR, not 'Join Your Team': the ON door is the endpaper's (sketch 118 B).
+    const r = renderAt(createElement(Register), '/register')
+    await screen.findByText(DOOR, undefined, WAIT)
     const scopes = r.container.querySelectorAll('.mudavym')
     expect(scopes).toHaveLength(1)
     expect(scopes[0]).toBe(r.container.firstElementChild)
@@ -489,7 +513,7 @@ describe('public switch ON — the house, from tokens', () => {
 /* ── 3. Nothing moves ───────────────────────────────────────────────────── */
 
 describe('the switch changes the chrome, never the fields', () => {
-  it.each(STATES)('$name: the same controls, in the same order, both switch positions', async ({ reach }) => {
+  it.each(STATES.filter((st) => st.name !== 'register-selector'))('$name: the same controls, in the same order, both switch positions', async ({ reach }) => {
     setSwitch(false)
     const off = fieldSignature(await reach())
     cleanup()
@@ -499,19 +523,35 @@ describe('the switch changes the chrome, never the fields', () => {
   })
 
   /*
-   * The two-card chooser is retired (ADR 0344): RegisterDoor shows a bare
-   * /register the landing page, so Register is only reached with a query, and
-   * a query it does not know opens the new-house form, never a chooser, in
-   * both switch positions.
+   * The door is the one screen whose controls the founder redrew (sketch 118:
+   * two plain acts in place of the four responsive cards — two per layout,
+   * both always in the DOM). Its buttons differ by design, so what must hold
+   * is the flow: every button on it leads to one of the same two paths, and
+   * both paths are offered, in both switch positions. The endpaper's own
+   * turn (the front matter, on /register since 2026-10-09) is not a path
+   * through the door and is counted apart (§3c).
    */
-  it('register: no query opens the new-house form, both switch positions', async () => {
-    for (const on of [false, true]) {
+  it('register-selector: the door leads to the same two paths, both switch positions', async () => {
+    const doorButtons = (door: HTMLElement) =>
+      Array.from(door.querySelectorAll('button')).filter((b) => b.getAttribute('aria-label') !== 'Turn back to the front of the book')
+    const destinations = async (on: boolean) => {
       setSwitch(on)
-      renderAt(createElement(Register), '/register')
-      await screen.findByText(CREATE_ACCOUNT, undefined, WAIT)
-      expect(screen.queryByLabelText('Invite Code')).toBeNull()
+      const count = doorButtons(await STATES.find((st) => st.name === 'register-selector')!.reach()).length
       cleanup()
+      const reached = new Set<string>()
+      for (let i = 0; i < count; i++) {
+        setSwitch(on)
+        const door = await STATES.find((st) => st.name === 'register-selector')!.reach()
+        fireEvent.click(doorButtons(door)[i])
+        if (await screen.findByLabelText('Invite Code', undefined, { timeout: 500 }).catch(() => null)) reached.add('join')
+        else if (screen.queryByLabelText('Full Name *')) reached.add('create')
+        else reached.add(`button ${i}: nowhere`)
+        cleanup()
+      }
+      return [...reached].sort()
     }
+    expect(await destinations(false)).toEqual(['create', 'join'])
+    expect(await destinations(true)).toEqual(['create', 'join'])
   })
 
   it('the classifier keeps layout classes out of the paint set', () => {
@@ -549,14 +589,16 @@ describe('Google on the first page — the house path only', () => {
   })
 })
 
-/* ── 3c. The front matter — /login's endpaper only ───────────────────────── */
+/* ── 3c. The front matter — the two doors' endpapers, on the house path ──── */
 
 /*
  * The founder's Easter egg (2026-09-19): the endpaper on /login turns back to
- * the front matter. It belongs to /login's house path alone — not /register,
- * and not today's page.
+ * the front matter. On 2026-10-09 he asked for it on /register as well ("add
+ * the /login first page action to the /register as well"). It belongs to the
+ * house path alone — not today's page — and each door names the way back in
+ * its own words.
  */
-describe('the front matter — /login on the house path only', () => {
+describe('the front matter — /login and /register on the house path', () => {
   const TURN = 'Turn back to the front of the book'
   const reachOf = (name: string) => STATES.find((st) => st.name === name)!.reach
 
@@ -566,10 +608,19 @@ describe('the front matter — /login on the house path only', () => {
     expect(screen.getByRole('button', { name: TURN })).toBeInTheDocument()
   })
 
-  it('ON /register does not', async () => {
+  it('ON /register offers the turn too, and its way back says register', async () => {
     setSwitch(true)
-    await reachOf('register-create-account-taken')()
-    expect(screen.queryByRole('button', { name: TURN })).toBeNull()
+    await reachOf('register-selector')()
+    fireEvent.click(screen.getByRole('button', { name: TURN }))
+    expect(await screen.findByRole('button', { name: 'Turn back to register →' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Turn back to sign in →' })).toBeNull()
+  })
+
+  it('ON /login the way back says sign in', async () => {
+    setSwitch(true)
+    await reachOf('login-email')()
+    fireEvent.click(screen.getByRole('button', { name: TURN }))
+    expect(await screen.findByRole('button', { name: 'Turn back to sign in →' })).toBeInTheDocument()
   })
 
   it('OFF /login does not', async () => {
@@ -684,8 +735,6 @@ describe('the invite mail secret reaches the join', () => {
     type('Full Name *', 'Deniz Kaya')
     type('Email *', 'deniz@house.test')
     type('Password *', 'long-enough-1')
-    type('Confirm Password *', 'long-enough-1')
-    await screen.findByText('Email is available', undefined, WAIT)
     fireEvent.click(screen.getByRole('button', { name: 'Join Restaurant' }))
     await vi.waitFor(() => expect(h.auth.joinViaInvite).toHaveBeenCalledTimes(1))
     return h.auth.joinViaInvite.mock.calls[0][0] as Record<string, unknown>

@@ -20,6 +20,10 @@ async function bootstrap() {
     cors: {
       origin: buildCorsOrigins(),
       credentials: true,
+      // The web is on another origin, so a browser hides every response
+      // header not listed here. Retry-After is how a 429 says how long to
+      // wait; the sign-up page and the session read both use it (OB-11).
+      exposedHeaders: ["Retry-After"],
     },
   });
 
