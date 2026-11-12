@@ -149,6 +149,7 @@ export function BatchReceiveGrid({
   const { locations } = useStorageLocations()
   // The batch's cost in the house's own money, never a hard-coded `$` (r56).
   const currency = useHouseCurrency()
+  const costCode = currency.state === 'recorded' ? currency.code : null
   const bodyRef = useRef<HTMLDivElement>(null)
   const fillRef = useRef<{ quantity: string; cost: string; locationId: string }>({
     quantity: '',
@@ -377,7 +378,16 @@ export function BatchReceiveGrid({
                 />
 
                 <div className="relative">
-                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">$</span>
+                  {/* The house's code beside the cost, never a hard-coded `$`; nothing
+                      while it is read or when the house has not recorded one. */}
+                  {costCode ? (
+                    <span
+                      className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-400"
+                      data-testid="batch-cost-currency"
+                    >
+                      {costCode}
+                    </span>
+                  ) : null}
                   <input
                     type="text"
                     inputMode="decimal"
@@ -387,7 +397,10 @@ export function BatchReceiveGrid({
                     placeholder="—"
                     onChange={(e) => patchRow(row.key, { cost: e.target.value })}
                     onKeyDown={(e) => onCellKeyDown(e, 'cost', index)}
-                    className="w-full h-8 pl-5 pr-2 text-xs font-mono text-right border border-gray-200 rounded-lg outline-none focus:border-wine-500 focus:ring-2 focus:ring-wine-100 disabled:bg-gray-50 disabled:text-gray-400"
+                    className={cn(
+                      'w-full h-8 pr-2 text-xs font-mono text-right border border-gray-200 rounded-lg outline-none focus:border-wine-500 focus:ring-2 focus:ring-wine-100 disabled:bg-gray-50 disabled:text-gray-400',
+                      costCode ? 'pl-10' : 'pl-2',
+                    )}
                     aria-label={`Cost per bottle for ${row.name}`}
                   />
                 </div>
