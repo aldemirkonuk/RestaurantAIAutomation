@@ -845,6 +845,33 @@ describe('ReportsNext — days of inventory counts the goods the till sells (rep
       within(ledger).getByText(/11 of 12 on-hand goods carry a recorded cost, so the cellar at cost reads/),
     ).toBeInTheDocument();
     expect(within(ledger).getByText('486.7')).toBeInTheDocument();
+    // None of the counted goods sold nothing, so no idle note.
+    expect(within(ledger).queryByText(/sold nothing in this window/)).not.toBeInTheDocument();
+  });
+
+  it('names the counted goods that sold nothing, with their value at cost (fix round 2026-11-12)', () => {
+    hook.current = withRegister(
+      'ledger',
+      ok({
+        basis: {},
+        costCoverage: { total: 12, priced: 12, unpriced: 0, complete: true },
+        cogsCoverage: { itemsMoved: 6, itemsCosted: 6, bottlesUncosted: 0 },
+        tillStock: { value: 4000, goodsOnHand: 12, goodsOnTill: 8, uncostedOnTill: 0, idleOnTill: 3, idleOnTillValue: 900, goodsOffTill: 4, offTillValue: 200 },
+        inventoryValue: 4200,
+        cogs: 3000,
+        revenue: 9000,
+        inventoryTurnover: 0.75,
+        daysInventoryOutstanding: 486.7,
+        gmroi: 1.5,
+      }),
+    );
+    paint();
+    const ledger = screen.getByRole('region', { name: 'Figures of record' });
+    expect(
+      within(ledger).getByText(
+        '3 of the 8 goods on hand the till sells sold nothing in this window ($900 at cost). They are counted: the till can sell them, so they lengthen days of inventory.',
+      ),
+    ).toBeInTheDocument();
   });
 });
 

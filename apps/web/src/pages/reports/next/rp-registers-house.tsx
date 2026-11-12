@@ -171,6 +171,9 @@ export interface LedgerRegister {
     goodsOnHand: number;
     goodsOnTill: number;
     uncostedOnTill: number;
+    /** Of those the till sells, how many sold nothing in the window: counted, and named. */
+    idleOnTill: number;
+    idleOnTillValue: number | null;
     goodsOffTill: number;
     offTillValue: number | null;
   } | null;
@@ -224,6 +227,8 @@ const ledger = analysis<LedgerRegister>({
             goodsOnHand: num(ts.goodsOnHand) ?? 0,
             goodsOnTill: num(ts.goodsOnTill) ?? 0,
             uncostedOnTill: num(ts.uncostedOnTill) ?? 0,
+            idleOnTill: num(ts.idleOnTill) ?? 0,
+            idleOnTillValue: num(ts.idleOnTillValue),
             goodsOffTill: num(ts.goodsOffTill) ?? 0,
             offTillValue: num(ts.offTillValue),
           }
@@ -320,6 +325,12 @@ const ledger = analysis<LedgerRegister>({
     if (ts && ts.uncostedOnTill > 0)
       notes.push(
         `${figure(ts.uncostedOnTill)} of the ${figure(ts.goodsOnTill)} goods on hand the till sells carry no recorded cost, so inventory turns, days of inventory and GMROI read ${EM}.`,
+      );
+    // A mapped good that sold nothing stays in the base, since the till can
+    // sell it; named so a long days of inventory reads for what it is.
+    if (ts && ts.idleOnTill > 0)
+      notes.push(
+        `${figure(ts.idleOnTill)} of the ${figure(ts.goodsOnTill)} goods on hand the till sells sold nothing in this window${ts.idleOnTillValue != null ? ` (${money(ts.idleOnTillValue)} at cost)` : ''}. ${ts.idleOnTill === 1 ? 'It is' : 'They are'} counted: the till can sell ${ts.idleOnTill === 1 ? 'it' : 'them'}, so ${ts.idleOnTill === 1 ? 'it lengthens' : 'they lengthen'} days of inventory.`,
       );
     // Only the cellar-based figures wait on the cellar's cost; what sold,
     // what it cost and what was kept come from the till (finding 3).
