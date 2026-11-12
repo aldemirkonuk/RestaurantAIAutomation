@@ -167,10 +167,35 @@ END $$;
 -- M5: the header counts letters in today: V3's letter once and V6's, never
 -- the second copy, the bounce or the auto-reply.
 DO $$ DECLARE s record; BEGIN
-  SELECT * INTO s FROM public.mail_inbox_summary('33333333-3333-4333-8333-333333333333', true);
+  SELECT * INTO s FROM public.mail_inbox_summary('33333333-3333-4333-8333-333333333333', true, 'UTC');
   PERFORM pg_temp.ok(s.in_today = 2, 'M5 in_today counts letters, once each (got ' || s.in_today || ')');
   PERFORM pg_temp.ok(s.waiting_people = 1, 'M5b one person waiting (got ' || s.waiting_people || ')');
+  -- D6: the Letters strip's 30-day reply count is the same letters, by the
+  -- same flag, as Mail's "in" — never the bounce, the auto-reply or the copy.
+  PERFORM pg_temp.ok(s.in_30d = 2, 'M5c in_30d counts the same letters as in_today (got ' || s.in_30d || ')');
 END $$;
+
+-- M6 (D7): with no zone the house's day has no midnight, so both "today"
+-- counts are unknown (NULL), never a UTC day's count; the 30-day figure needs
+-- no zone and stays counted.
+DO $$ DECLARE s record; BEGIN
+  SELECT * INTO s FROM public.mail_inbox_summary('33333333-3333-4333-8333-333333333333', true, NULL);
+  PERFORM pg_temp.ok(s.in_today IS NULL AND s.out_today IS NULL, 'M6 no zone: today''s counts are unknown, not 0');
+  PERFORM pg_temp.ok(s.in_30d = 2, 'M6b no zone: the 30-day count is still counted (got ' || s.in_30d || ')');
+  SELECT * INTO s FROM public.mail_inbox_summary('33333333-3333-4333-8333-333333333333', true, '  ');
+  PERFORM pg_temp.ok(s.in_today IS NULL, 'M6c a blank zone is no zone');
+END $$;
+
+-- M7 (D6): a letter older than 30 days is out of the 30-day count.
+INSERT INTO public.procurement_conversations
+  (id, restaurant_id, provider_id, direction, channel, message_text, status, thread_key, message_id, received_at, created_at, email_headers) VALUES
+  ('d7000000-0000-4000-8000-000000000001', '33333333-3333-4333-8333-333333333333', 'c0000000-0000-4000-8000-000000000007',
+   'inbound', 'email', 'Old prices', 'RECEIVED', 'mid:v7', '<old@v7.example>', now() - interval '31 days', now() - interval '31 days', '{"from":"a@v7.example"}');
+DO $$ DECLARE s record; BEGIN
+  SELECT * INTO s FROM public.mail_inbox_summary('33333333-3333-4333-8333-333333333333', true, 'UTC');
+  PERFORM pg_temp.ok(s.in_30d = 2, 'M7 a 31-day-old letter is not in the 30-day count (got ' || s.in_30d || ')');
+END $$;
+DELETE FROM public.procurement_conversations WHERE id = 'd7000000-0000-4000-8000-000000000001';
 
 -- ── A vendor whose only letter has not left stays listed (QA round 16, HARM 1)
 --   V4: one letter queued in its undo window, nothing else.
