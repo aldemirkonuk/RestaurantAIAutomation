@@ -231,19 +231,24 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
             <span>
               {reg.enforcement.enforcedBy.length === 0 ? (
                 <>
+                  {/* The gateway's `enforcement.note` and `wouldBeEnforcedAt`
+                      name code (approval-thresholds.service.ts ENFORCED_AT);
+                      the page says it in the house's words (reports lane r3). */}
                   <strong>Nothing stops an order yet.</strong> These rules are
-                  recorded and read back, and no code consults them before an
-                  order is sealed: {reg.enforcement.note} Enforcement has to be
-                  added at <code style={{ fontFamily: MONO, fontSize: 11.5 }}>{reg.enforcement.wouldBeEnforcedAt}</code>.
-                  Until then this register is the house&rsquo;s written policy,
-                  not a gate, and it is shown as one.
+                  recorded and read back, and nothing checks them before an
+                  order is sealed. Until something does, this register is the
+                  house&rsquo;s written policy, not a gate, and it is shown as one.
                 </>
               ) : (
                 <>
-                  <strong>Enforced.</strong> {reg.enforcement.enforcedBy.length} code
-                  path{reg.enforcement.enforcedBy.length === 1 ? '' : 's'} consult
-                  these rules before an order can be sealed:{' '}
-                  {reg.enforcement.enforcedBy.join(', ')}.
+                  {/* `enforcedBy` lists the code paths (procurement.service.ts
+                      approveOrder → assertApprovalAllowed); the house reads
+                      what they do. */}
+                  <strong>Enforced.</strong> Every order is checked against
+                  these rules before it can be sealed. One sealed by someone
+                  the rule ranks too low is held for approval, with the rule
+                  and the number said in words, and the refusal is kept in the
+                  house&rsquo;s log.
                 </>
               )}
             </span>
@@ -285,7 +290,8 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
                         when: row.updatedAt,
                         whenUnknown: 'the rule carries no date, which should be impossible',
                         verb: row.setBy?.name ? `set by ${row.setBy.name}` : 'set',
-                        readBy: <code style={{ fontFamily: MONO }}>settings/approval-thresholds.ts:135</code>,
+                        // settings/approval-thresholds.ts:135
+                        readBy: 'the approval check on every order',
                       }
                     : undefined
                 }
@@ -343,11 +349,11 @@ export function ThresholdsSection({ data }: { data: SettingsNextData }) {
             }
           >
             <p style={{ fontFamily: SANS, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink-4)', margin: '5px 0 0' }}>
-              No switch: the rule set is closed by a database constraint
-              (<code style={{ fontFamily: MONO }}>restaurant_approval_thresholds_rule_check</code>),
-              and a fourth rule would need a row per vendor and a reader that does
-              not exist. Drawing the control before the column exists is the fake
-              toggle this page removed everywhere else.
+              {/* The rule set is closed by the database constraint
+                  restaurant_approval_thresholds_rule_check. */}
+              No switch: these are the only rules the house can record. A rule
+              per vendor would need a figure for each vendor and something that
+              reads it, and neither exists yet, so no control is drawn for it.
             </p>
           </Row>
 
