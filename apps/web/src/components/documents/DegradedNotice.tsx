@@ -25,6 +25,12 @@ export interface DegradedNoticeProps {
   verdict?: string | null
   verdictReason?: string | null
   lineCount: number
+  /**
+   * Whether the original is in storage. When it is not, "The original is
+   * beside this notice" would contradict the pane beside it, which says no
+   * original was stored. Omitted = stored (the old sentence).
+   */
+  originalStored?: boolean
 }
 
 /**
@@ -58,6 +64,7 @@ export function DegradedNotice({
   verdict,
   verdictReason,
   lineCount,
+  originalStored = true,
 }: DegradedNoticeProps) {
   if (reasons.length === 0) return null
   return (
@@ -88,7 +95,8 @@ export function DegradedNotice({
         ))}
       </ul>
       <p style={{ margin: '4px 0 0', fontSize: 10.5, color: 'var(--ink-2, #4F473C)' }}>
-        The original is beside this notice. {lineCount === 0 ? 'Until someone types the lines or a readable copy arrives, this document proves only that it exists.' : ''}
+        {originalStored ? 'The original is beside this notice. ' : 'No original was stored either. '}
+        {lineCount === 0 ? 'Until someone types the lines or a readable copy arrives, this document proves only that it exists.' : ''}
         {verdict == null && (
           <>
             {' '}

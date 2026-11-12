@@ -549,4 +549,100 @@ describe('CanonicalDocumentPage', () => {
     expect(mintCorrectMock).not.toHaveBeenCalled()
     expect(correctMock).not.toHaveBeenCalled()
   })
+  describe('what the paper says of its reader', () => {
+    const einvoice = (signed: boolean) => ({
+      kind: 'e-fatura',
+      profile: 'TICARIFATURA',
+      typeCode: 'SATIS',
+      signed,
+    })
+    const withIntake = (over: Record<string, unknown>) => {
+      const r = response()
+      r.intake = { ...r.intake, ...over } as typeof r.intake
+      return r
+    }
+
+    it('an e-invoice reads as read field by field, not as "no record" (signed)', async () => {
+      documentMock.mockResolvedValue(withIntake({ einvoice: einvoice(true) }))
+      const { container } = mount()
+      await waitFor(() => expect(screen.getByTestId('einvoice-provenance')).toBeTruthy())
+      expect(screen.getByTestId('einvoice-provenance').textContent).toBe(
+        'read from the e-fatura file as written (TICARIFATURA · SATIS); its signature is present but was not checked',
+      )
+      expect(container.textContent).not.toMatch(/no record of how it was read/)
+    })
+
+    it('an unsigned e-invoice says it carries no signature', async () => {
+      documentMock.mockResolvedValue(withIntake({ einvoice: einvoice(false) }))
+      mount()
+      await waitFor(() => expect(screen.getByTestId('einvoice-provenance')).toBeTruthy())
+      expect(screen.getByTestId('einvoice-provenance').textContent).toMatch(/it carries no signature$/)
+    })
+
+    it('a model read keeps the model on hover even when an e-invoice record is also present', async () => {
+      documentMock.mockResolvedValue(withIntake({ extractionModel: 'model-syn-1', einvoice: einvoice(false) }))
+      mount()
+      await waitFor(() => expect(screen.getByText('read automatically')).toBeTruthy())
+      expect(screen.queryByTestId('einvoice-provenance')).toBeNull()
+    })
+
+    it('lists what the reader noted, as written', async () => {
+      documentMock.mockResolvedValue(
+        withIntake({
+          warnings: [
+            'Line 2: the file counts in cases (BX) and does not say how many are in one. Set it before this paper is booked.',
+            'The file declares a DOCTYPE, so it was not read.',
+          ],
+        }),
+      )
+      mount()
+      await waitFor(() => expect(screen.getByTestId('reader-warnings')).toBeTruthy())
+      const box = screen.getByTestId('reader-warnings')
+      expect(box.textContent).toMatch(/What the reader noted/)
+      const items = Array.from(box.querySelectorAll('li')).map((li) => li.textContent)
+      expect(items).toEqual([
+        'Line 2: the file counts in cases (BX) and does not say how many are in one. Set it before this paper is booked.',
+        'The file declares a DOCTYPE, so it was not read.',
+      ])
+    })
+
+    it('shows no "noted" list when there is nothing noted (null, or empty)', async () => {
+      documentMock.mockResolvedValue(withIntake({ warnings: null }))
+      const { unmount } = mount()
+      await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+      expect(screen.queryByTestId('reader-warnings')).toBeNull()
+      unmount()
+      documentMock.mockResolvedValue(withIntake({ warnings: [] }))
+      mount()
+      await waitFor(() => expect(screen.getByTestId('received-cell')).toBeTruthy())
+      expect(screen.queryByTestId('reader-warnings')).toBeNull()
+    })
+
+    const noLines = (original: { imageUrl: string | null; reason: string | null }) => {
+      const r = response()
+      ;(r.canonical.layer1 as { lines: unknown[] }).lines = []
+      r.canonical.layer3.lines = []
+      return { ...r, original: { ...r.original, ...original } }
+    }
+
+    it('the degraded notice says no original was stored when none was', async () => {
+      documentMock.mockResolvedValue(noLines({ imageUrl: null, reason: 'no original was stored for this document' }))
+      mount()
+      await waitFor(() => expect(screen.getByTestId('degraded-notice')).toBeTruthy())
+      const t = screen.getByTestId('degraded-notice').textContent ?? ''
+      expect(t).toMatch(/No original was stored either\./)
+      expect(t).not.toMatch(/beside this notice/)
+    })
+
+    it('the degraded notice points at the original when there is one', async () => {
+      documentMock.mockResolvedValue(
+        noLines({ imageUrl: 'https://example.invalid/signed', reason: null }),
+      )
+      mount()
+      await waitFor(() => expect(screen.getByTestId('degraded-notice')).toBeTruthy())
+      const t = screen.getByTestId('degraded-notice').textContent ?? ''
+      expect(t).toMatch(/The original is beside this notice\./)
+      expect(t).not.toMatch(/No original was stored either/)
+    })
+  })
 })
