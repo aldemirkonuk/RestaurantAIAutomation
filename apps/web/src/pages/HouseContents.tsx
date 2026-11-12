@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import { addCustomProvider } from '../services/api/vendors'
+import { getOnboardingProgress } from '../services/api/menus'
 import { pencilledCount, readProof } from '../lib/firstProof'
 
 export default function HouseContents() {
@@ -12,6 +13,21 @@ export default function HouseContents() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The supplier asked here is on the house's row (vendor_added), not in this
+  // page's state: after a reload it asked "Who supplies you?" again (walk
+  // 2026-11-11). A failed or absent read leaves the ask, as before.
+  const [supplierOnBook, setSupplierOnBook] = useState(false)
+  useEffect(() => {
+    let live = true
+    getOnboardingProgress()
+      .then((progress) => {
+        if (live && progress?.vendor_added) setSupplierOnBook(true)
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [])
 
   const saveSupplier = async () => {
     if (!supplier.trim()) return
@@ -60,6 +76,13 @@ export default function HouseContents() {
 
           {saved ? (
             <p className="py-6 font-serif text-2xl">{supplier.trim()} is on the book.</p>
+          ) : supplierOnBook ? (
+            <p className="py-6 font-serif text-2xl">
+              Your supplier is on the book.{' '}
+              <Link to="/vendors" className="font-sans text-sm underline underline-offset-4">
+                See suppliers
+              </Link>
+            </p>
           ) : (
             <form
               className="py-6"

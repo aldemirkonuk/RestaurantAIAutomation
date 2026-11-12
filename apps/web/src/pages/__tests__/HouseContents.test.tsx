@@ -6,13 +6,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { addCustomProvider, updateOnboardingProgress } = vi.hoisted(() => ({
+const { addCustomProvider, updateOnboardingProgress, getOnboardingProgress } = vi.hoisted(() => ({
   addCustomProvider: vi.fn(),
   updateOnboardingProgress: vi.fn(),
+  getOnboardingProgress: vi.fn(),
 }))
 
 vi.mock('../../services/api/vendors', () => ({ addCustomProvider }))
-vi.mock('../../services/api/menus', () => ({ updateOnboardingProgress }))
+vi.mock('../../services/api/menus', () => ({ updateOnboardingProgress, getOnboardingProgress }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
 
 import HouseContents from '../HouseContents'
@@ -21,6 +22,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   addCustomProvider.mockResolvedValue({ id: 'vendor-1', name: 'Suvla' })
   updateOnboardingProgress.mockResolvedValue({})
+  getOnboardingProgress.mockResolvedValue(null)
   sessionStorage.clear()
 })
 
@@ -47,5 +49,39 @@ describe('HouseContents', () => {
     expect(await screen.findByText('Suvla is on the book.')).toBeInTheDocument()
     await waitFor(() => expect(addCustomProvider).toHaveBeenCalledTimes(1))
     expect(updateOnboardingProgress).not.toHaveBeenCalled()
+  })
+
+  // Walk 2026-11-11: after a reload the page asked "Who supplies you?" again
+  // although the supplier was on the book (vendor_added on the house's row).
+  it('a house whose supplier is on the book does not ask again after a reload', async () => {
+    getOnboardingProgress.mockResolvedValue({ vendor_added: true })
+    page()
+    expect(await screen.findByText(/Your supplier is on the book\./)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Supplier')).toBeNull()
+    expect(screen.getByRole('link', { name: 'See suppliers' })).toHaveAttribute('href', '/vendors')
+  })
+
+  it('a failed progress read keeps the ask', async () => {
+    getOnboardingProgress.mockRejectedValue(new Error('offline'))
+    page()
+    await waitFor(() => expect(getOnboardingProgress).toHaveBeenCalled())
+    expect(screen.getByLabelText('Supplier')).toBeInTheDocument()
+  })
+
+  it('counts the pencilled lines from the proof as it now stands', () => {
+    sessionStorage.setItem(
+      'mudavym:first-proof',
+      JSON.stringify({
+        menuId: 'm1',
+        itemsExtracted: 2,
+        submissionsCreated: 0,
+        items: [
+          { menuItemId: 'a', name: 'Rioja', category: 'red', matched: true, needsReview: false },
+          { menuItemId: 'b', name: 'Yakut', category: null, matched: false, needsReview: true },
+        ],
+      }),
+    )
+    page()
+    expect(screen.getByRole('button', { name: '1 pencilled' })).toBeInTheDocument()
   })
 })
