@@ -1409,6 +1409,14 @@ describe('the rest of the census: keys, realtime, POS queue, count-sheet notes (
     expect((await screen.findByTestId('inv-pos-queue')).textContent).toContain('could not be read');
   });
 
+  it('says a capped POS queue as a floor, never the total', async () => {
+    pos.lines.mockImplementation(async () => ({ summary: { open_lines: 2000, truncated: true } }));
+    mock.data = data({ rows: three() });
+    renderPage();
+    const line = (await screen.findByTestId('inv-pos-queue')).textContent ?? '';
+    expect(line).toContain('At least 2,000 POS lines rang up and moved no stock');
+  });
+
   it('says nothing about POS when the queue is read empty', async () => {
     mock.data = data({ rows: three() });
     renderPage();

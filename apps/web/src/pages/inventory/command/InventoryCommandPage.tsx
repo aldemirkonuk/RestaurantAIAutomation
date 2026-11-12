@@ -1135,6 +1135,8 @@ export function InventoryCommandPage() {
                 POS lines moving no stock{" "}
                 <b className="font-mono text-[11px]">
                   {posQueue?.summary.open_lines}
+                  {/* A capped read is a floor, never the total (ADR 0067). */}
+                  {posQueue?.summary.truncated ? '+' : ''}
                 </b>
               </>
             )}
