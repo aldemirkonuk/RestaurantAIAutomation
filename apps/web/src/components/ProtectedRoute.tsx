@@ -23,13 +23,13 @@ export function ProtectedRoute({
   requiredStudioRole,
   redirectTo = '/login',
 }: ProtectedRouteProps) {
-  const { user, loading, isAuthenticated, sessionWait, retrySessionNow } = useAuth()
+  const { user, loading, isAuthenticated, sessionWait, retrySessionNow, signOutWhileWaiting } = useAuth()
   const location = useLocation()
 
   // A stored session waiting to be read again (429, 5xx, offline) is still
   // signed in: say so, never /login.
   if (loading && sessionWait) {
-    return <SessionWaitScreen wait={sessionWait} onRetryNow={retrySessionNow} />
+    return <SessionWaitScreen wait={sessionWait} onRetryNow={retrySessionNow} onSignOut={signOutWhileWaiting} />
   }
 
   // Loading State

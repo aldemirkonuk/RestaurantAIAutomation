@@ -45,6 +45,11 @@ export function sessionWaitReason(err: unknown): SessionWaitReason | null {
     return 'server';
   }
   if (status === undefined) {
+    // A request this page cancelled (an AbortController, axios's own
+    // cancel) never reached the network's verdict: it is not "offline".
+    if (e.code === 'ERR_CANCELED' || (e as { name?: string }).name === 'CanceledError') {
+      return null;
+    }
     const network =
       e.isAxiosError === true ||
       e.code === 'ERR_NETWORK' ||

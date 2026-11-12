@@ -223,6 +223,12 @@ export interface AuthContextType {
   sessionWait?: SessionWait | null;
   /** Ask `/auth/me` again now instead of at `sessionWait.retryAt`. */
   retrySessionNow?: () => void;
+  /**
+   * Leave a session that is still waiting: sign out (the same sign-out as the
+   * account menu, unsent-work warning included) and stop waiting, so the
+   * person can reach /login and another account.
+   */
+  signOutWhileWaiting?: () => Promise<void>;
   error: string | null;
   clearError: () => void;
   activeRestaurantId: string | null;
@@ -464,14 +470,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               `Keeping the session: /auth/me failed (${reason}); asking again in ${Math.round(delay / 1000)} s.`,
             );
             setSessionWait({ reason, retryAt: Date.now() + delay, attempt: attempt + 1 });
+            // The wake handle is this wait's own: a later run of this effect
+            // (React's dev double-mount) may have put its own handle there by
+            // the time this wait ends, and clearing that one would leave its
+            // "Try now" and "Sign out" doing nothing.
+            let wake: (() => void) | null = null;
             await new Promise<void>((resolve) => {
               const timer = setTimeout(resolve, delay);
-              sessionWake.current = () => {
+              wake = () => {
                 clearTimeout(timer);
                 resolve();
               };
+              sessionWake.current = wake;
             });
-            sessionWake.current = null;
+            if (sessionWake.current === wake) sessionWake.current = null;
             continue;
           }
           console.error("Failed to load user:", err);
@@ -1187,6 +1199,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [endSession]);
 
+  // The waiting loop stops on its next turn once the token is gone; wake it
+  // now so the guard sends the person to /login without waiting the delay.
+  const signOutWhileWaiting = useCallback(async () => {
+    if (await logout()) sessionWake.current?.();
+  }, [logout]);
+
   // Delegates to the same single-flight `doRefresh` the axios interceptor and
   // `authStore.ts` use (ADR 0164, item 2/3) — this used to be a fourth,
   // independent refresh implementation with its own copy of the
@@ -1223,6 +1241,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loading,
     sessionWait,
     retrySessionNow,
+    signOutWhileWaiting,
     error,
     clearError,
     activeRestaurantId,

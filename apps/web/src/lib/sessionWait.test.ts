@@ -15,6 +15,9 @@ describe('sessionWaitReason: which /auth/me failures wait instead of signing out
     expect(sessionWaitReason({ isAxiosError: true, request: {} })).toBe('offline')
     expect(sessionWaitReason({ code: 'ERR_NETWORK' })).toBe('offline')
     expect(sessionWaitReason(new Error('Network Error'))).toBe('offline')
+    // A request this page cancelled is not the network saying anything.
+    expect(sessionWaitReason({ isAxiosError: true, code: 'ERR_CANCELED', request: {} })).toBeNull()
+    expect(sessionWaitReason({ name: 'CanceledError', request: {} })).toBeNull()
   })
 
   it('a 401, a 403, a 404 and a bug in our own code do not wait', () => {

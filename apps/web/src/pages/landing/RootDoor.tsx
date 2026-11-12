@@ -30,9 +30,9 @@ function hasStoredSession(): boolean {
 }
 
 export function RootDoor({ landing }: { landing: ReactNode }) {
-  const { loading, isAuthenticated, sessionWait, retrySessionNow } = useAuth();
+  const { loading, isAuthenticated, sessionWait, retrySessionNow, signOutWhileWaiting } = useAuth();
   if (loading && sessionWait) {
-    return <SessionWaitScreen wait={sessionWait} onRetryNow={retrySessionNow} />;
+    return <SessionWaitScreen wait={sessionWait} onRetryNow={retrySessionNow} onSignOut={signOutWhileWaiting} />;
   }
   if (loading && hasStoredSession()) return <HousePageLoader />;
   if (!isAuthenticated) return <>{landing}</>;
