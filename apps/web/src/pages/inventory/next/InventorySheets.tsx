@@ -39,6 +39,7 @@ import OrderLetter from './OrderLetter';
 import { useCellarSettings } from '../../cellar/next/useCellarNextData';
 import { fmtCount, suggestedToPar, type InvRow } from './useInventoryNextData';
 import { LANDED_EARLIER, SAFE_RETRY, failureReason, landedEarlier, writeFailure } from './iv-failure';
+import { photoRefusalWords } from '../../../lib/modelRefusalWords';
 
 /** A whole number typed as a string, or null. "2.5", "" and "-1" are null. */
 function wholeNumber(s: string): number | null {
@@ -164,7 +165,7 @@ export function CountSheet({ row, onClose }: SheetProps) {
             : `The photo gave no confident count. ${estimate.note}`,
       });
     } catch (e) {
-      setPhoto({ busy: false, note: `The photo could not be read — ${failureReason(e)}. Type the count instead.` });
+      setPhoto({ busy: false, note: `The photo could not be read — ${photoRefusalWords(failureReason(e))}. Type the count instead.` });
     }
   };
 
