@@ -13,6 +13,7 @@ import {
   readMenuDate,
   sourceWords,
   versionLabel,
+  versionLabels,
 } from './MenuVersions';
 import {
   getMenuPlan,
@@ -70,8 +71,8 @@ const mockMake = vi.mocked(makeMenuCurrent);
 const mockImport = vi.mocked(importMenu);
 
 /** A moment on this device's clock, as an ISO string: the page shows local days, so fixtures are local too. */
-function local(y: number, m: number, d: number, h: number, mi: number): string {
-  return new Date(y, m - 1, d, h, mi).toISOString();
+function local(y: number, m: number, d: number, h: number, mi: number, sec = 0, ms = 0): string {
+  return new Date(y, m - 1, d, h, mi, sec, ms).toISOString();
 }
 
 function version(over: Partial<MenuVersion> = {}): MenuVersion {
@@ -127,6 +128,53 @@ describe('the words the panel uses', () => {
   it('names a menu by the day it was read on this clock, not the UTC day, and tells two reads that day apart', () => {
     expect(versionLabel(version({ extractedAt: local(2026, 11, 11, 22, 5) }))).toBe('the menu read 2026-11-11 22:05');
     expect(versionLabel(version({ extractedAt: local(2026, 11, 11, 23, 40) }))).toBe('the menu read 2026-11-11 23:40');
+  });
+
+  it('no two kept menus share a name: the minute, then the second, then "(1 of 2)" in the order they were read (menu walk 2026-11-11)', () => {
+    const a = version({ menuId: 'a', extractedAt: local(2026, 11, 11, 22, 5, 12) });
+    const b = version({ menuId: 'b', extractedAt: local(2026, 11, 11, 22, 5, 41) });
+    const c = version({ menuId: 'c', extractedAt: local(2026, 11, 11, 23, 40) });
+    const d1 = version({ menuId: 'd1', extractedAt: local(2026, 11, 11, 22, 5, 41, 900) });
+    const legacy1 = version({ menuId: 'l1', extractedAt: null, createdAt: '2026-09-01T08:00:00Z' });
+    const legacy2 = version({ menuId: 'l2', extractedAt: null, createdAt: '2026-09-02T08:00:00Z' });
+    const dated1 = version({ menuId: 'x1', menuDate: '2026-10-15', menuDatePrecision: 'day', extractedAt: local(2026, 10, 14, 9, 0) });
+    const dated2 = version({ menuId: 'x2', menuDate: '2026-10-15', menuDatePrecision: 'day', extractedAt: local(2026, 10, 15, 9, 0) });
+
+    // One alone keeps its plain name.
+    expect(versionLabels([a, c]).get('c')).toBe('the menu read 2026-11-11 23:40');
+    expect(versionLabels([a, c]).get('a')).toBe('the menu read 2026-11-11 22:05');
+    // The same minute: the second tells them apart.
+    const sameMinute = versionLabels([a, b, c]);
+    expect([sameMinute.get('a'), sameMinute.get('b'), sameMinute.get('c')]).toEqual([
+      'the menu read 2026-11-11 22:05:12',
+      'the menu read 2026-11-11 22:05:41',
+      'the menu read 2026-11-11 23:40',
+    ]);
+    // The same second: counted in the order read, whatever the list order.
+    const sameSecond = versionLabels([d1, a, b]);
+    expect([sameSecond.get('b'), sameSecond.get('d1'), sameSecond.get('a')]).toEqual([
+      'the menu read 2026-11-11 22:05:41 (1 of 2)',
+      'the menu read 2026-11-11 22:05:41 (2 of 2)',
+      'the menu read 2026-11-11 22:05:12',
+    ]);
+    // A dated menu read twice says when each was read; menus from before reads were dated say when they were kept.
+    const more = versionLabels([dated1, dated2, legacy1, legacy2]);
+    expect(more.get('x1')).toBe('the menu for 2026-10-15, read 2026-10-14 09:00:00');
+    expect(more.get('x2')).toBe('the menu for 2026-10-15, read 2026-10-15 09:00:00');
+    expect(more.get('l1')).toMatch(/^a menu read before menus were kept \(kept 2026-09-0\d \d\d:00:00\)$/);
+    expect(more.get('l1')).not.toBe(more.get('l2'));
+    // Every name in a list is its own.
+    const all = versionLabels([a, b, c, d1, legacy1, legacy2, dated1, dated2]);
+    expect(new Set(all.values()).size).toBe(8);
+  });
+
+  it('the panel and its Make current buttons use those names', async () => {
+    const a = version({ menuId: 'a', extractedAt: local(2026, 11, 11, 22, 5, 12) });
+    const b = version({ menuId: 'b', extractedAt: local(2026, 11, 11, 22, 5, 41) });
+    mockList.mockResolvedValue({ versions: [a, b], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mount(true);
+    expect(await screen.findByRole('button', { name: 'Make the menu read 2026-11-11 22:05:12 current' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Make the menu read 2026-11-11 22:05:41 current' })).toBeInTheDocument();
   });
 
   it('says why a file was not kept once, even on a row stored with the older lead-in', () => {
@@ -306,7 +354,8 @@ describe('MenuVersions', () => {
     });
     mount(true);
     expect(await screen.findByTestId('menu-versions-standing')).toHaveTextContent(
-      'Current: the menu read 2026-09-20 10:00. Last one used: the menu read 2026-09-20 10:00.',
+      // Three menus read at the same moment are told apart, here as in the list.
+      'Current: the menu read 2026-09-20 10:00:00 (2 of 3). Last one used: the menu read 2026-09-20 10:00:00 (1 of 3).',
     );
     const rows = screen.getAllByTestId('menu-version-row');
     expect(rows).toHaveLength(3);
