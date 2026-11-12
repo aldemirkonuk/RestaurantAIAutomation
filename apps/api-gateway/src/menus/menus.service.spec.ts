@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
-import { LINE_SELECT, MenusService } from "./menus.service";
+import { LINE_SELECT, MenusService, SOURCE_NOT_TAKEN } from "./menus.service";
 import { MEMBER_LINE_KEYS, seesRawLine } from "./menu-line-view";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
@@ -37,6 +37,7 @@ function makeFakeSupabase(
   function from(table: string) {
     const filters: Array<[string, any, boolean]> = [];
     let updatePatch: Row | null = null;
+    let deleting = false;
     // ADR 0193's tests drive the whole add-a-line pipeline, which INSERTs and
     // reads the inserted rows back; the fake appends them to the table so a
     // later read sees them, same as the real write.
@@ -91,6 +92,11 @@ function makeFakeSupabase(
         updatePatch = patch;
         return api;
       },
+      // A failed background read drops the lines it had kept (`.delete().eq()`).
+      delete() {
+        deleting = true;
+        return api;
+      },
       insert(rows: Row | Row[]) {
         const list = Array.isArray(rows) ? rows : [rows];
         // `tables.__insertFails = { <table>: (rows) => "<message>" | undefined }`
@@ -98,6 +104,23 @@ function makeFakeSupabase(
         const refuse = (tables as any).__insertFails?.[table]?.(list);
         if (refuse) {
           insertError = { code: "XX000", message: refuse };
+          return api;
+        }
+        // uq_restaurant_menus_one_read_of_a_file_at_a_time: one read under way
+        // per house, file and labels (migration 20270722100000).
+        const key = (r: Row) =>
+          [r.restaurant_id, r.source_sha256, r.cadence ?? "", r.menu_date ?? "", r.menu_date_precision ?? ""].join("|");
+        if (
+          table === "restaurant_menus" &&
+          list.some(
+            (r) =>
+              r.read_state === "reading" &&
+              r.source_sha256 &&
+              (tables[table] || []).some((o) => o.read_state === "reading" && o.source_sha256 && key(o) === key(r)),
+          )
+        ) {
+          insertError = { code: "23505", message: 'duplicate key value violates unique constraint "uq_restaurant_menus_one_read_of_a_file_at_a_time"' };
+          inserted = [];
           return api;
         }
         inserted = list.map((r) => ({
@@ -127,6 +150,7 @@ function makeFakeSupabase(
         if (!updatePatch && readFails()) return resolve({ data: null, error: { message: readFails() } });
         const rows = matching();
         if (updatePatch) for (const row of rows) Object.assign(row, updatePatch);
+        if (deleting) tables[table] = (tables[table] || []).filter((r) => !rows.includes(r));
         resolve({ data: rows, error: null });
       },
     };
@@ -949,10 +973,10 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const tables: Record<string, Row[]> = { ...base(), __storageFails: ["bucket unavailable"] as any };
     const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
     const r = await service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1");
-    expect(r.source).toEqual({ kept: false, failure: "the source file was not kept: bucket unavailable" });
+    expect(r.source).toEqual({ kept: false, failure: SOURCE_NOT_TAKEN });
     const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
     expect(version.source_path).toBeNull();
-    expect(version.source_failure).toMatch(/bucket unavailable/);
+    expect(version.source_failure).toBe(SOURCE_NOT_TAKEN); // the storage error goes to the log, not the page
     expect(version.cadence).toBeNull(); // not tagged is NULL, never a default
     expect(version.menu_date).toBeNull();
   });
@@ -969,7 +993,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(parse).not.toHaveBeenCalled();
   });
 
-  it("a scan that WAITS (spend record unreadable) writes no version, and says why", async () => {
+  it("a scan that WAITS (spend record unreadable) ends as a FAILED read that says why, with no line and no onboarding mark", async () => {
     const tables = base();
     const service = makeService(tables, {
       wineSubmissions,
@@ -979,10 +1003,12 @@ describe("MenusService — every menu read is kept as its own version", () => {
         },
       },
     });
-    await expect(
-      service.importMenu({ method: "scan", data: { imageBase64: "JVBERi0=" }, restaurantId: "rest-1" } as any, "user-1"),
-    ).rejects.toThrow(/menu read is waiting/);
-    expect(tables.restaurant_menus).toHaveLength(1);
+    const r = await service.importMenu({ method: "scan", data: { imageBase64: "JVBERi0=" }, restaurantId: "rest-1" } as any, "user-1");
+    expect(r.reading).toBe(true);
+    await service.whenRead(r.menuId);
+    const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
+    expect(version).toMatchObject({ status: "draft", read_state: "failed", lines_extracted: 0 });
+    expect(version.read_failure).toMatch(/menu read is waiting/);
     expect(tables.menu_items).toHaveLength(0);
   });
 
@@ -996,13 +1022,16 @@ describe("MenusService — every menu read is kept as its own version", () => {
     });
     const pdf = Buffer.from("%PDF-1.7 fake").toString("base64");
     const r = await service.importMenu({ method: "scan", data: { imageBase64: pdf }, restaurantId: "rest-1" } as any, "user-1");
+    // Kept at once, before the read: a read cut off later still names its file.
     const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
-    expect(version).toMatchObject({ source_method: "scan", source_mime: "application/pdf" });
+    expect(version).toMatchObject({ source_method: "scan", source_mime: "application/pdf", read_state: "reading" });
     expect(version.source_path).toMatch(/^rest-1\/menus\/[0-9a-f]{64}\.pdf$/);
+    await service.whenRead(r.menuId);
+    expect(version.read_state).toBe("done");
   });
 
   // Proposal-menu step 1c: ADR 0213 #17 and ADR 0193 item 7.
-  it("a partial scan keeps WHICH pages it could not read, on the version and in the reply", async () => {
+  it("a partial scan keeps WHICH pages it could not read, on the version and in the finished read", async () => {
     const tables: Record<string, Row[]> = {
       ...base(),
       user_onboarding_progress: [{ id: "p-1", restaurant_id: "rest-1", menu_uploaded: false }],
@@ -1016,18 +1045,25 @@ describe("MenusService — every menu read is kept as its own version", () => {
     });
     const pdf = Buffer.from("%PDF-1.7 fake").toString("base64");
     const r = await service.importMenu({ method: "scan", data: { imageBase64: pdf }, restaurantId: "rest-1" } as any, "user-1");
-    expect(r.warnings).toEqual(warnings);
+    await service.whenRead(r.menuId);
+    const read = await service.readStatus("rest-1", r.menuId);
+    expect(read.state).toBe("done");
+    expect(read.reply!.warnings).toEqual(warnings);
+    expect(read.reply!.items).toEqual([expect.objectContaining({ name: "Opus One" })]);
     const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
     expect(version.read_warnings).toEqual(warnings);
     expect(version.extraction).toEqual([{ name: "Opus One", bottle_price: 62 }]);
     const listed = await service.listVersions("rest-1");
-    expect(listed.versions.find((v) => v.menuId === r.menuId)!.readWarnings).toEqual(warnings);
+    const v = listed.versions.find((x) => x.menuId === r.menuId)!;
+    expect([v.readWarnings, v.readState]).toEqual([warnings, "done"]);
     expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(true);
   });
 
   // QA B-5: a read with no line used to make a "Wine List" draft and answer 200
-  // with itemsExtracted 0. It is refused, and nothing is written.
-  it("a read that found no line is REFUSED with a sentence, and keeps no version, no file and no onboarding mark", async () => {
+  // with itemsExtracted 0. A spreadsheet or typed lines are refused, and nothing
+  // is written. A scan is read in the background, so its file and version are
+  // already kept: it ends as a FAILED read saying it read nothing.
+  it("a read that found no line: a sheet or typed lines are REFUSED and nothing is kept; a scan ends FAILED, saying so", async () => {
     const tables: Record<string, Row[]> = {
       ...base(),
       user_onboarding_progress: [{ id: "p-1", restaurant_id: "rest-1", menu_uploaded: false }],
@@ -1039,16 +1075,6 @@ describe("MenusService — every menu read is kept as its own version", () => {
       csvParser: new CsvParserService(),
       scanParser: { parseWithWarnings: async () => ({ items: [], warnings }) },
     });
-    const pdf = Buffer.from("%PDF-1.7 fake").toString("base64");
-    const err: any = await service
-      .importMenu({ method: "scan", data: { imageBase64: pdf }, restaurantId: "rest-1" } as any, "user-1")
-      .catch((e: unknown) => e);
-    expect(err?.getStatus?.()).toBe(422);
-    expect(err.getResponse()).toMatchObject({
-      message: "No line could be read from this file, so no menu was kept. Try a clearer photo or the PDF itself.",
-      warnings,
-    });
-    // A CSV with a header and no row, and a manual import with no line, are refused the same way.
     for (const data of [{ method: "csv", data: { csvContent: "name,price\n" } }, { method: "manual", data: { items: [] } }]) {
       const e: any = await service.importMenu({ ...data, restaurantId: "rest-1" } as any, "user-1").catch((x: unknown) => x);
       expect(e?.getStatus?.()).toBe(422);
@@ -1056,6 +1082,13 @@ describe("MenusService — every menu read is kept as its own version", () => {
     }
     expect(tables.restaurant_menus).toHaveLength(before);
     expect(tables.__storage ?? []).toHaveLength(0);
+
+    const pdf = Buffer.from("%PDF-1.7 fake").toString("base64");
+    const r = await service.importMenu({ method: "scan", data: { imageBase64: pdf }, restaurantId: "rest-1" } as any, "user-1");
+    await service.whenRead(r.menuId);
+    const read = await service.readStatus("rest-1", r.menuId);
+    expect(read).toMatchObject({ state: "failed", warnings, reply: null });
+    expect(read.failure).toMatch(/^No line could be read from this file\./);
     expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
   });
 
@@ -1090,6 +1123,8 @@ describe("MenusService — every menu read is kept as its own version", () => {
         { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
         "user-1",
       );
+      // A scan reads in the background; the choice is made once it is done.
+      await service.whenRead(read.menuId);
       return { calls, tables, service, read };
     }
 
@@ -1851,5 +1886,346 @@ describe("MenusService — the plan before a menu is chosen, and the locks it re
     const list = await service.listVersions("rest-1");
     expect(list.namesReadable).toBe(false);
     expect(list.namesReason).toMatch(/timeout/);
+  });
+});
+
+// Founder 2026-11-07: "Background job".
+describe("MenusService — a scan reads in the background (founder 2026-11-07)", () => {
+  const PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+  const wineSubmissions = {
+    resolveLibraryWinesBatch: async (items: unknown[]) =>
+      items.map(() => ({ masterWineId: "mw-1", matched: true, libraryTier: 1, confidence: 99 })),
+    normalizeText: (t: string | null | undefined) => (t ? t.toLowerCase() : null),
+  };
+  const base = (): Record<string, Row[]> => ({
+    restaurant_menus: [{ id: "menu-old", restaurant_id: "rest-1", status: "active" }],
+    restaurants: [{ id: "rest-1", default_threshold_min: 3 }],
+    restaurant_inventory: [],
+    menu_items: [],
+    user_onboarding_progress: [],
+    master_wine_library_submissions: [],
+  });
+  const reads = () => {
+    const seen: string[] = [];
+    return {
+      seen,
+      parser: {
+        parseWithWarnings: async (file: string) => {
+          seen.push(file);
+          return { items: [{ name: "Opus One", bottle_price: 62 }], warnings: [] };
+        },
+      },
+    };
+  };
+
+  it("answers at once with the version it is reading; the read finishes on the server", async () => {
+    const tables = base();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async () => {
+          await gate;
+          return { items: [{ name: "Opus One", bottle_price: 62 }], warnings: [] };
+        },
+      },
+    });
+    const r = await service.importMenu({ method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any, "user-1");
+    expect(r).toMatchObject({ reading: true, itemsExtracted: 0, items: [], pages: 1 });
+    expect((await service.readStatus("rest-1", r.menuId)).state).toBe("reading");
+    // Neither a plan nor a choice exists for a menu still being read.
+    await expect(service.planFor("rest-1", r.menuId)).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.makeCurrent("rest-1", r.menuId, "user-1", "fp")).rejects.toThrow(/still being read/);
+    release();
+    await service.whenRead(r.menuId);
+    const done = await service.readStatus("rest-1", r.menuId);
+    expect(done.state).toBe("done");
+    expect(done.reply).toMatchObject({ menuId: r.menuId, itemsExtracted: 1, current: false });
+    expect(tables.menu_items.filter((l) => l.menu_id === r.menuId)).toHaveLength(1);
+  });
+
+  it("several photos sent together are ONE version, read and kept as one PDF of that many pages", async () => {
+    const tables = base();
+    const { seen, parser } = reads();
+    const service = makeService(tables, { wineSubmissions, scanParser: parser });
+    const r = await service.importMenu(
+      { method: "scan", data: { images: [PNG, `data:image/png;base64,${PNG}`, PNG] }, restaurantId: "rest-1" } as any,
+      "user-1",
+    );
+    await service.whenRead(r.menuId);
+    expect(r.pages).toBe(3);
+    expect(seen).toHaveLength(1);
+    expect(seen[0].startsWith("JVBERi0")).toBe(true); // %PDF
+    const { PDFDocument } = await import("pdf-lib");
+    expect((await PDFDocument.load(Buffer.from(seen[0], "base64"))).getPageCount()).toBe(3);
+    const mine = tables.restaurant_menus.filter((m) => m.id !== "menu-old");
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ source_mime: "application/pdf", read_state: "done" });
+  });
+
+  it("refuses in words, before any read, a page that is not a photo it can join, and more than 20 pages", async () => {
+    const tables = base();
+    const { seen, parser } = reads();
+    const service = makeService(tables, { wineSubmissions, scanParser: parser });
+    const gif = Buffer.from("GIF89a....").toString("base64");
+    await expect(
+      service.importMenu({ method: "scan", data: { images: [PNG, gif] }, restaurantId: "rest-1" } as any, "user-1"),
+    ).rejects.toThrow(/Page 2 is not a JPEG or PNG photo/);
+    await expect(
+      service.importMenu({ method: "scan", data: { images: Array(21).fill(PNG) }, restaurantId: "rest-1" } as any, "user-1"),
+    ).rejects.toThrow(/at most 20 pages; this one has 21/);
+    expect(seen).toHaveLength(0);
+    expect(tables.restaurant_menus).toHaveLength(1);
+  });
+
+  it("the same bytes again reopen the read they made, not billed twice; readAgain reads them again", async () => {
+    const tables = base();
+    const { seen, parser } = reads();
+    const service = makeService(tables, { wineSubmissions, scanParser: parser });
+    const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any;
+    const first = await service.importMenu(dto, "user-1");
+    await service.whenRead(first.menuId);
+    const again = await service.importMenu(dto, "user-1");
+    expect(again.menuId).toBe(first.menuId);
+    expect(again.reopened).toBeDefined();
+    expect(again.items).toEqual([expect.objectContaining({ name: "Opus One" })]);
+    expect(seen).toHaveLength(1);
+    const fresh = await service.importMenu({ ...dto, readAgain: true }, "user-1");
+    await service.whenRead(fresh.menuId);
+    expect(fresh.menuId).not.toBe(first.menuId);
+    expect(seen).toHaveLength(2);
+  });
+
+  it("a double send while the first is still reading starts one read, not two", async () => {
+    const tables = base();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async () => {
+          calls++;
+          await gate;
+          return { items: [{ name: "Opus One" }], warnings: [] };
+        },
+      },
+    });
+    const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any;
+    const a = await service.importMenu(dto, "user-1");
+    const b = await service.importMenu(dto, "user-1");
+    expect([b.menuId, b.reading]).toEqual([a.menuId, true]);
+    release();
+    await service.whenRead(a.menuId);
+    expect(calls).toBe(1);
+  });
+
+  it("two sends of the same file AT ONCE (both pass the look-up before either keeps a version) make one version and one read", async () => {
+    const tables = base();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let calls = 0;
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async () => {
+          calls++;
+          await gate;
+          return { items: [{ name: "Opus One" }], warnings: [] };
+        },
+      },
+    });
+    const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any;
+    // Both look before either inserts: the look-up alone cannot tell them apart.
+    const look = jest.spyOn(service as any, "sameFileRead");
+    const [a, b] = await Promise.all([service.importMenu(dto, "user-1"), service.importMenu(dto, "user-1")]);
+    expect(look.mock.calls.filter((c) => !(c[3] as any)?.readingOnly)).toHaveLength(2);
+    expect(b.menuId).toBe(a.menuId);
+    expect(b.reading).toBe(true);
+    expect(tables.restaurant_menus.filter((m) => m.id !== "menu-old")).toHaveLength(1);
+    release();
+    await service.whenRead(a.menuId);
+    expect(calls).toBe(1);
+  });
+
+  it("a reopened read is said as it is NOW: a line discarded since is gone, a corrected price is the corrected one", async () => {
+    const tables = base();
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async () => ({
+          items: [
+            { name: "Opus One", bottle_price: 62 },
+            { name: "Misread Line", bottle_price: 1 },
+          ],
+          warnings: [],
+        }),
+      },
+    });
+    const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any;
+    const first = await service.importMenu(dto, "user-1");
+    await service.whenRead(first.menuId);
+    const lines = tables.menu_items.filter((l) => l.menu_id === first.menuId);
+    lines.find((l) => l.name === "Misread Line")!.status = "discarded";
+    lines.find((l) => l.name === "Opus One")!.bottle_price = 70;
+    const again = await service.importMenu(dto, "user-1");
+    expect(again.menuId).toBe(first.menuId);
+    expect(again.reopened).toBeDefined();
+    expect(again.items).toHaveLength(1);
+    expect(again.items[0]).toMatchObject({ name: "Opus One", bottlePrice: 70, matched: true });
+    // What the read found stays what it found.
+    expect(again.itemsExtracted).toBe(2);
+  });
+
+  it("the same file for another day is its own version; an upload naming no label reopens the labelled one", async () => {
+    const tables = base();
+    const { seen, parser } = reads();
+    const service = makeService(tables, { wineSubmissions, scanParser: parser });
+    const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1", menuDate: "2026-11-11" } as any;
+    const monday = await service.importMenu(dto, "user-1");
+    await service.whenRead(monday.menuId);
+    const tuesday = await service.importMenu({ ...dto, menuDate: "2026-11-12" }, "user-1");
+    await service.whenRead(tuesday.menuId);
+    expect(tuesday.menuId).not.toBe(monday.menuId);
+    expect(tuesday.reopened).toBeUndefined();
+    expect(tables.restaurant_menus.find((m) => m.id === tuesday.menuId)!.menu_date).toBe("2026-11-12");
+    expect(seen).toHaveLength(2);
+    const unlabelled = await service.importMenu({ ...dto, menuDate: undefined }, "user-1");
+    expect(unlabelled.reopened).toBeDefined();
+    expect(seen).toHaveLength(2);
+  });
+
+  it("a retired menu sent again is read as a new version; the current one reopens saying it is current", async () => {
+    const tables = base();
+    const { seen, parser } = reads();
+    const service = makeService(tables, { wineSubmissions, scanParser: parser });
+    const dto = { method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any;
+    const first = await service.importMenu(dto, "user-1");
+    await service.whenRead(first.menuId);
+    const row = tables.restaurant_menus.find((m) => m.id === first.menuId)!;
+    row.status = "active";
+    const current = await service.importMenu(dto, "user-1");
+    expect(current).toMatchObject({ menuId: first.menuId, current: true });
+    row.status = "archived";
+    const fresh = await service.importMenu(dto, "user-1");
+    await service.whenRead(fresh.menuId);
+    expect(fresh.menuId).not.toBe(first.menuId);
+    expect(fresh.reopened).toBeUndefined();
+    expect(seen).toHaveLength(2);
+  });
+
+  it("a read that breaks after its lines were kept drops them and ends FAILED in words; it can never be made current", async () => {
+    const tables = base();
+    const service = makeService(tables, { wineSubmissions, scanParser: reads().parser });
+    // Breaks after menu_items were inserted for this version.
+    jest.spyOn(service as any, "markMenuUploaded").mockRejectedValue(new Error("progress table down"));
+    const r = await service.importMenu({ method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any, "user-1");
+    await service.whenRead(r.menuId);
+    const read = await service.readStatus("rest-1", r.menuId);
+    expect(read.state).toBe("failed");
+    expect(read.failure).toBe(
+      "The read stopped with an error, and nothing from it was kept but the file: progress table down.",
+    );
+    expect(tables.menu_items.filter((l) => l.menu_id === r.menuId)).toHaveLength(0);
+    // The library submission made for its line goes with it: nothing points back to it.
+    expect(tables.master_wine_library_submissions).toHaveLength(0);
+    await expect(service.planFor("rest-1", r.menuId)).rejects.toThrow(/This read failed/);
+  });
+
+  it("a read the sweep already ended stays FAILED when it finishes late, and keeps no line or submission", async () => {
+    const tables = base();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const service = makeService(tables, {
+      wineSubmissions,
+      scanParser: {
+        parseWithWarnings: async () => {
+          await gate;
+          return { items: [{ name: "Opus One", bottle_price: 62 }], warnings: [] };
+        },
+      },
+    });
+    const r = await service.importMenu({ method: "scan", data: { imageBase64: PNG }, restaurantId: "rest-1" } as any, "user-1");
+    // Another server (or the half-hour sweep) took this read for stopped.
+    Object.assign(tables.restaurant_menus.find((m) => m.id === r.menuId)!, {
+      read_state: "failed",
+      read_failure: "The read stopped before it finished.",
+    });
+    release();
+    await service.whenRead(r.menuId);
+    const read = await service.readStatus("rest-1", r.menuId);
+    expect(read.state).toBe("failed");
+    expect(read.reply).toBeNull();
+    expect(tables.menu_items.filter((l) => l.menu_id === r.menuId)).toHaveLength(0);
+    expect(tables.master_wine_library_submissions).toHaveLength(0);
+  });
+
+  it("a read nobody is reading any more (a restart) is said to have FAILED when the house's menus are next read", async () => {
+    const tables = base();
+    tables.restaurant_menus.push({
+      id: "menu-stuck",
+      restaurant_id: "rest-1",
+      status: "draft",
+      read_state: "reading",
+      extracted_at: new Date(Date.now() - 31 * 60 * 1000).toISOString(),
+    });
+    // It had kept a line and its submission before the server stopped.
+    tables.master_wine_library_submissions.push({ id: "sub-stuck", restaurant_id: "rest-1" });
+    tables.menu_items.push({ id: "line-stuck", menu_id: "menu-stuck", restaurant_id: "rest-1", submission_id: "sub-stuck" });
+    const service = makeService(tables, { wineSubmissions });
+    const listed = await service.listVersions("rest-1");
+    const v = listed.versions.find((x) => x.menuId === "menu-stuck")!;
+    expect(v.readState).toBe("failed");
+    expect(v.readFailure).toMatch(/stopped before it finished/);
+    // A stopped read keeps no half of what it wrote, as a failed one does.
+    expect(tables.menu_items.filter((l) => l.menu_id === "menu-stuck")).toHaveLength(0);
+    expect(tables.master_wine_library_submissions).toHaveLength(0);
+  });
+});
+
+// Founder 2026-11-07 ("Background job"): a version says where its read stands,
+// and only a finished read has a plan or can be made current.
+describe("MenusService — a version says where its read stands", () => {
+  const tables = (): Record<string, Row[]> => ({
+    restaurant_menus: [
+      { id: "menu-old", restaurant_id: "rest-1", status: "active" },
+      { id: "m-reading", restaurant_id: "rest-1", status: "draft", read_state: "reading", extracted_at: new Date().toISOString() },
+      {
+        id: "m-failed",
+        restaurant_id: "rest-1",
+        status: "draft",
+        read_state: "failed",
+        read_failure: "No line could be read from this file.",
+        read_warnings: [null, { kind: "chunk_failed", pages: { first: 2, last: 2 } }],
+      },
+    ],
+    menu_items: [],
+  });
+
+  it("lists each version's read state and failure; a version read before the column is done; a null warning is dropped", async () => {
+    const service = makeService(tables());
+    const { versions } = await service.listVersions("rest-1");
+    const by = (id: string) => versions.find((v) => v.menuId === id)!;
+    expect([by("menu-old").readState, by("menu-old").readFailure]).toEqual(["done", null]);
+    expect(by("m-reading").readState).toBe("reading");
+    expect(by("m-failed")).toMatchObject({
+      readState: "failed",
+      readFailure: "No line could be read from this file.",
+      readWarnings: [{ kind: "chunk_failed", pages: { first: 2, last: 2 } }],
+    });
+  });
+
+  it.each([
+    ["m-reading", /still being read/],
+    ["m-failed", /This read failed, so it has no lines to make current\. No line could be read/],
+  ])("%s has no plan and cannot be made current (409), and nothing is written", async (id, said) => {
+    const t = tables();
+    const calls: RpcCall[] = [];
+    const service = makeService(t, { rpcCalls: calls });
+    await expect(service.planFor("rest-1", id)).rejects.toBeInstanceOf(ConflictException);
+    await expect(service.makeCurrent("rest-1", id, "user-1", "fp")).rejects.toThrow(said);
+    expect(calls).toHaveLength(0);
+    expect(t.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
   });
 });

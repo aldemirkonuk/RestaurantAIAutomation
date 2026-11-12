@@ -68,7 +68,12 @@ export interface MenuImportReviewItem {
  */
 export interface MenuImportResult {
   menuId: string
-  current?: false
+  /** False for a new read; a reopened read says whether it is current now. */
+  current?: boolean
+  /** The same file was read before: this is that read (gateway: same bytes reopen it). */
+  reopened?: { readAt: string | null }
+  /** How many photos this upload joined into the one menu. */
+  pages?: number
   itemsExtracted: number
   submissionsCreated: number
   items: MenuImportReviewItem[]
@@ -126,6 +131,10 @@ export interface MenuReadLabels {
   cadence?: MenuCadence
   /** A day (YYYY-MM-DD) or just a month (YYYY-MM). */
   menuDate?: string
+  /** Read this file again even though the house already read the same bytes. */
+  readAgain?: boolean
+  /** Told once the server has the file and is reading it in the background. */
+  onReading?: (menuId: string) => void
 }
 
 export type MenuImportSuccess = (
@@ -160,9 +169,119 @@ export interface OnboardingProgress {
 
 type MenuImportData =
   | { imageBase64: string; csvContent?: never; items?: never; fileBase64?: never }
+  /** Several photos of ONE menu, in page order: one menu, one version (at most 20). */
+  | { images: string[]; imageBase64?: never; csvContent?: never; items?: never; fileBase64?: never }
   | { csvContent: string; imageBase64?: never; items?: never; fileBase64?: never }
   | { items: WineExtractItem[]; imageBase64?: never; csvContent?: never; fileBase64?: never }
   | { fileBase64: string; imageBase64?: never; csvContent?: never; items?: never }
+
+/**
+ * A refused or failed read in words: the gateway's sentence, then one sentence
+ * per page it could not read (QA round 7a: the wizard said only the first).
+ */
+export function readRefusalWords(err: unknown, fallback: string): string {
+  const e = err as { response?: { data?: { message?: unknown; warnings?: unknown } }; message?: string }
+  const m = e?.response?.data?.message
+  const head = (typeof m === 'string' && m) || (Array.isArray(m) && m.length ? String(m[0]) : '') || e?.message || fallback
+  const w = e?.response?.data?.warnings
+  const tail = Array.isArray(w)
+    ? (w as unknown[]).filter((x): x is MenuReadWarning => !!x && typeof x === 'object').map(readWarningSentence)
+    : []
+  return [head, ...tail].join(' ')
+}
+
+/** Where a background read stands (`GET /menu-versions/:id/read`). */
+export interface MenuReadStatus {
+  menuId: string
+  state: 'reading' | 'done' | 'failed'
+  failure: string | null
+  warnings: MenuReadWarning[]
+  reply: MenuImportResult | null
+}
+
+export async function readMenuStatus(menuId: string): Promise<MenuReadStatus> {
+  const response = await apiClient.get<MenuReadStatus>(`/menu-versions/${menuId}/read`)
+  return response.data
+}
+
+/**
+ * A read that ended without a line, or with an error. Shaped like the
+ * gateway's own 422 so every caller that already says `response.data.message`
+ * and its `warnings` says this one too.
+ */
+export class MenuReadFailed extends Error {
+  readonly response: { status: number; data: { message: string; warnings: MenuReadWarning[]; menuId: string } }
+  constructor(menuId: string, message: string, warnings: MenuReadWarning[], status = 422) {
+    super(message)
+    this.name = 'MenuReadFailed'
+    this.response = { status, data: { message, warnings, menuId } }
+  }
+}
+
+/** How long the page waits on one read before it says the read goes on without it. */
+export const READ_WAIT_MS = 20 * 60 * 1000
+
+/** Polls in a row that may fail (network, 5xx, 408, 429) before the page stops waiting. */
+export const MAX_MISSED_POLLS = 8
+
+/**
+ * Whether a failed poll can never succeed by asking again: any 4xx but a
+ * timeout (408) or a throttle (429). A 401/403 (the session ended, or the
+ * person is no longer in this house) and a 404 (the read is gone) end the
+ * wait at once instead of leaving "Reading…" up for twenty minutes.
+ */
+function pollIsRefused(err: unknown): boolean {
+  const code = (err as { response?: { status?: unknown } })?.response?.status
+  return typeof code === 'number' && code >= 400 && code < 500 && code !== 408 && code !== 429
+}
+
+/** Wait on a background read until it is done or failed. Exported for tests. */
+export async function waitForRead(
+  menuId: string,
+  opts: { sleep?: (ms: number) => Promise<void>; now?: () => number } = {},
+): Promise<MenuImportResult> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
+  const now = opts.now ?? Date.now
+  const started = now()
+  let missed = 0
+  for (let i = 0; ; i++) {
+    // Quick at first (a one-page photo takes seconds), then every few seconds.
+    await sleep(i < 10 ? 1500 : 4000)
+    let status: MenuReadStatus
+    try {
+      status = await readMenuStatus(menuId)
+      missed = 0
+    } catch (err) {
+      // A refusal is said at once (the caller shows the gateway's words).
+      if (pollIsRefused(err)) throw err
+      // A missed poll is not the read's failure, but many in a row end the wait.
+      missed += 1
+      if (missed >= MAX_MISSED_POLLS || now() - started > READ_WAIT_MS) {
+        throw new MenuReadFailed(
+          menuId,
+          'Lost touch with the read: the server did not answer several times in a row. The read goes on; it shows on the menu page when it is done.',
+          [],
+          202,
+        )
+      }
+      continue
+    }
+    if (status.state === 'done') {
+      return status.reply ?? { menuId, itemsExtracted: 0, submissionsCreated: 0, items: [], warnings: status.warnings }
+    }
+    if (status.state === 'failed') {
+      throw new MenuReadFailed(menuId, status.failure ?? 'The read failed and gave no reason.', status.warnings)
+    }
+    if (now() - started > READ_WAIT_MS) {
+      throw new MenuReadFailed(
+        menuId,
+        'Still reading after 20 minutes. The read goes on; it shows on the menu page when it is done.',
+        [],
+        202,
+      )
+    }
+  }
+}
 
 export async function importMenu(
   method: 'scan' | 'csv' | 'manual',
@@ -173,15 +292,22 @@ export async function importMenu(
   // global forbidNonWhitelisted ValidationPipe — omitting it 400s before the
   // import ever runs. X-Restaurant-Id header alone is not read by the DTO.
   const restaurantId = getActiveRestaurantId()
-  const response = await apiClient.post<MenuImportResult>('/menus/import', {
+  const response = await apiClient.post<MenuImportResult & { reading?: true }>('/menus/import', {
     method,
     data,
     restaurantId,
     // Sent only when the person gave them: a missing tag stays missing.
     ...(labels.cadence ? { cadence: labels.cadence } : {}),
     ...(labels.menuDate ? { menuDate: labels.menuDate } : {}),
+    ...(labels.readAgain ? { readAgain: true } : {}),
   })
-  return response.data
+  // A scan is read in the background (founder 2026-11-07): the reply names the
+  // version being read, and the page waits on it in short polls, so no read
+  // is cut off by the client's 30-second timeout.
+  if (!response.data.reading) return response.data
+  labels.onReading?.(response.data.menuId)
+  const done = await waitForRead(response.data.menuId)
+  return { ...done, pages: response.data.pages ?? done.pages }
 }
 
 export async function reviewMenuItem(
@@ -315,6 +441,9 @@ export interface MenuVersion {
   linesExtracted: number | null
   /** null = read before warnings were recorded; [] = none of the four kinds happened. */
   readWarnings?: MenuReadWarning[] | null
+  /** Where its read stands; absent from an older gateway = done. */
+  readState?: 'reading' | 'done' | 'failed'
+  readFailure?: string | null
   extractedAt: string | null
   extractedBy: MenuPerson | null
   madeCurrentAt: string | null

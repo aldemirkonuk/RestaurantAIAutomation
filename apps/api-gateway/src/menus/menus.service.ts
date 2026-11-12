@@ -7,12 +7,14 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   InternalServerErrorException,
   UnprocessableEntityException,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
 import { ScanParserService } from "./parsers/scan-parser.service";
+import { pagesToOneFile } from "./parsers/pages-to-pdf";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { ImportMenuDto, type MenuCadence } from "./dto/import-menu.dto";
 import { AddMenuItemDto } from "./dto/add-menu-item.dto";
@@ -274,6 +276,21 @@ function yearOf(v: unknown): number | null {
   return m ? Number(m[1]) : null;
 }
 
+/**
+ * Only a finished read has a plan or can be made current (the table says the
+ * same: restaurant_menus_only_a_finished_read_is_current). 409, nothing changed.
+ */
+function assertReadFinished(row: Record<string, unknown>): void {
+  const state = (row.read_state as string | undefined) ?? "done";
+  if (state === "reading") {
+    throw new ConflictException("This menu is still being read. Its plan can be shown once the read is done; nothing was changed.");
+  }
+  if (state === "failed") {
+    const why = typeof row.read_failure === "string" ? ` ${row.read_failure}` : "";
+    throw new ConflictException(`This read failed, so it has no lines to make current.${why}`);
+  }
+}
+
 /** When a kept menu was read: `extracted_at`, or, for a menu read before menus were kept, when its row was made. */
 function readMomentOf(row: Record<string, unknown>): string | null {
   const at = row.extracted_at ?? row.created_at ?? null;
@@ -316,6 +333,13 @@ export interface MenuVersion {
   linesExtracted: number | null;
   /** null = read before this was recorded. */
   readWarnings: MenuReadWarning[] | null;
+  /**
+   * Where a read stands (founder 2026-11-07, "Background job"): reading,
+   * done, or failed with `readFailure` saying why. Every menu read before
+   * reads were backgrounded is done.
+   */
+  readState: MenuReadState;
+  readFailure: string | null;
   extractedAt: string | null;
   extractedBy: { userId: string; name: string | null } | null;
   madeCurrentAt: string | null;
@@ -325,6 +349,19 @@ export interface MenuVersion {
   createdAt: string | null;
 }
 
+export type MenuReadState = "reading" | "done" | "failed";
+
+/** What a background scan that found no line ends with (kept as its failure). */
+const EMPTY_SCAN_FAILED =
+  "No line could be read from this file. The file is kept with this read; nothing else changed. Try a clearer photo or the PDF itself.";
+
+/** What a read the server stopped hearing from ends with (the lazy sweep). */
+const STOPPED_READ_FAILED =
+  "The read stopped before it finished (the server restarted, or the read ran past half an hour). The file is kept; send it again.";
+
+/** A read still `reading` after this long is no longer being read by anyone. */
+const READ_STALE_MS = 30 * 60 * 1000;
+
 /** What `POST /menus/import` says when a read finds no line (422, nothing kept). */
 const EMPTY_READ_REFUSAL: Record<string, string> = {
   scan: "No line could be read from this file, so no menu was kept. Try a clearer photo or the PDF itself.",
@@ -332,8 +369,66 @@ const EMPTY_READ_REFUSAL: Record<string, string> = {
   manual: "No line was given, so no menu was kept.",
 };
 
+/** The labels a read is kept with; a reopened read must fit them (`sameFileRead`). */
+interface ReadLabels {
+  cadence: MenuCadence | null;
+  menuDate: { date: string; precision: "day" | "month" } | null;
+}
+
+/**
+ * The insert of a `reading` version met another read of the same file and
+ * labels still under way (uq_restaurant_menus_one_read_of_a_file_at_a_time).
+ */
+class SameFileReading extends Error {
+  constructor() {
+    super("the same file is already being read for this house");
+    this.name = "SameFileReading";
+  }
+}
+
+/** What `POST /menus/import` answers, and what a finished background read keeps (`read_reply`). */
+export interface MenuImportReply {
+  menuId: string;
+  /** Always false for a new read; a reopened read says whether it is current now. */
+  current: boolean;
+  /** A scan still being read: poll `GET /menu-versions/:menuId/read`. */
+  reading?: true;
+  /** The same bytes were read before: this is that read, not a new one. */
+  reopened?: { readAt: string | null };
+  /** How many photos the upload joined into this one menu. */
+  pages?: number;
+  itemsExtracted: number;
+  submissionsCreated: number;
+  items: MenuImportReviewItem[];
+  source: { kept: boolean; failure: string | null };
+  warnings: MenuReadWarning[];
+}
+
+/** The sentence a failed background read is kept with. A refusal keeps its own words. */
+function failureWords(err: unknown): string {
+  if (err instanceof HttpException) {
+    const body = err.getResponse() as unknown;
+    const msg =
+      typeof body === "string"
+        ? body
+        : Array.isArray((body as { message?: unknown })?.message)
+          ? ((body as { message: string[] }).message).join(" ")
+          : (body as { message?: unknown })?.message;
+    if (typeof msg === "string" && msg.trim() !== "") return msg.trim();
+  }
+  const m = (err as Error)?.message;
+  return `The read stopped with an error, and nothing from it was kept but the file: ${m && m.trim() !== "" ? m.trim() : "no reason was given"}.`;
+}
+
+/**
+ * Why a menu's file was not kept, in the house's words. The storage error
+ * itself ("name resolution failed", a bucket name) goes to the log: it is the
+ * operator's to fix, and the house can do nothing with it.
+ */
+export const SOURCE_NOT_TAKEN = "the file store did not take it";
+
 const VERSION_SELECT =
-  "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, read_warnings, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
+  "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, read_warnings, read_state, read_failure, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
 
 /**
  * The columns every line read asks for. `raw_extracted_text` is read so
@@ -512,34 +607,21 @@ export class MenusService {
   async importMenu(
     dto: ImportMenuDto,
     userId: string,
-  ): Promise<{
-    menuId: string;
-    current: false;
-    itemsExtracted: number;
-    submissionsCreated: number;
-    items: MenuImportReviewItem[];
-    source: { kept: boolean; failure: string | null };
-    warnings: MenuReadWarning[];
-  }> {
+  ): Promise<MenuImportReply> {
     const { restaurantId } = dto;
     // Checked before the billed read: a date that is not on the calendar
     // refuses the upload rather than failing after it was paid for.
     const menuDate = parseMenuDate(dto.menuDate);
 
-    // 1. Parse input → WineExtractItem[]. A scan is the billed read; its spend
-    // ceiling fails CLOSED (scan-parser.service.ts, ADR 0163 Q22).
+    // A scan (billed, slow) reads in the background; a sheet or typed lines at once.
+    if (dto.method === "scan") return this.beginScan(dto, userId, menuDate);
+
+    // 1. Parse input → WineExtractItem[].
     let items: WineExtractItem[];
-    let warnings: MenuReadWarning[] = [];
+    const warnings: MenuReadWarning[] = [];
     let sourceBytes: Buffer | null = null;
     let sourceMime: { mime: string; ext: string } | null = null;
-    if (dto.method === "scan") {
-      ({ items, warnings } = await this.scanParser.parseWithWarnings(
-        dto.data.imageBase64!,
-        restaurantId,
-      ));
-      sourceBytes = Buffer.from(dto.data.imageBase64!, "base64");
-      sourceMime = sniffMime(sourceBytes);
-    } else if (dto.method === "csv") {
+    if (dto.method === "csv") {
       if (dto.data.fileBase64) {
         items = await this.csvParser.parseExcel(dto.data.fileBase64);
         sourceBytes = Buffer.from(dto.data.fileBase64, "base64");
@@ -555,8 +637,7 @@ export class MenusService {
 
     // 1b. A read with no line is refused BEFORE anything is written: no source
     // upload, no draft version, no onboarding mark (QA B-5; ADR 0067, a failed
-    // read is never an empty one). The warnings ride along so the page can say
-    // which pages failed.
+    // read is never an empty one).
     if (items.length === 0) {
       throw new UnprocessableEntityException({
         statusCode: 422,
@@ -608,6 +689,397 @@ export class MenusService {
       items: reviewItems,
       source: { kept: !!kept?.path, failure: kept?.failure ?? null },
       warnings,
+    };
+  }
+
+  /** Background reads this process is running, by menu id (the sweep spares them). */
+  private readonly reading = new Map<string, Promise<void>>();
+
+  /** Resolves when this process's read of `menuId` has ended (tests, shutdown). */
+  async whenRead(menuId: string): Promise<void> {
+    await this.reading.get(menuId);
+  }
+
+  /**
+   * Start a scan read and answer at once (founder 2026-11-07: "Background
+   * job"; audit M12: a read past the web's 30 s "failed" while the server went
+   * on). The file and the draft are kept BEFORE the read, so a read that fails
+   * or is cut off still names its file and says why (ADR 0213 #17).
+   *
+   * Several photos sent together are one menu and one version (founder
+   * 2026-11-07, "One upload = one version"), joined into one PDF, one photo
+   * per page. The same bytes sent again reopen the read they made unless the
+   * person asks to read them again (`readAgain`): a resend is not billed
+   * twice. Two requests with the same bytes sent together (a double tap, a
+   * retry, two phones) make one read: the database keeps one `reading` row
+   * per house, file and labels (uq_restaurant_menus_one_read_of_a_file_at_a_time),
+   * and the request that loses the insert joins the read already under way.
+   */
+  private async beginScan(
+    dto: ImportMenuDto,
+    userId: string,
+    menuDate: { date: string; precision: "day" | "month" } | null,
+  ): Promise<MenuImportReply> {
+    const { restaurantId } = dto;
+    const pages = Array.isArray(dto.data?.images)
+      ? dto.data.images
+      : typeof dto.data?.imageBase64 === "string"
+        ? [dto.data.imageBase64]
+        : null;
+    if (!pages) {
+      throw new BadRequestException(
+        "A scan sends the photo or PDF it reads (data.imageBase64, or data.images for several pages). Nothing was kept.",
+      );
+    }
+    const file = await pagesToOneFile(pages);
+    const bytes = Buffer.from(file, "base64");
+    const sha256 = crypto.createHash("sha256").update(bytes).digest("hex");
+
+    const labels: ReadLabels = { cadence: dto.cadence ?? null, menuDate };
+    if (dto.readAgain !== true) {
+      const earlier = await this.sameFileRead(restaurantId, sha256, labels);
+      if (earlier) return earlier;
+    }
+
+    const kept = await this.keepSource(restaurantId, bytes, sniffMime(bytes));
+    let menu: { id: string };
+    try {
+      menu = await this.createVersion(restaurantId, userId, dto, [], [], kept, menuDate, "reading");
+    } catch (err) {
+      if (!(err instanceof SameFileReading)) throw err;
+      // Another request with these bytes and labels began its read first:
+      // this one joins it (readAgain too: reading the file twice at once
+      // would only pay twice for one answer). The source path is the file's
+      // own hash, so the upload above wrote the same object, not a second.
+      const joined = await this.sameFileRead(restaurantId, sha256, labels, { readingOnly: true });
+      if (joined) return joined;
+      // The read in the way is one nobody is reading any more: end it, then begin.
+      await this.sweepStaleReads(restaurantId);
+      try {
+        menu = await this.createVersion(restaurantId, userId, dto, [], [], kept, menuDate, "reading");
+      } catch (again) {
+        if (!(again instanceof SameFileReading)) throw again;
+        throw new ConflictException(
+          "This file is already being read for this house. Wait for that read, then look on the Menu page. Nothing new was kept.",
+        );
+      }
+    }
+    // Detached; must never reject (an unhandled rejection ends the process).
+    const run = this.finishScan(menu.id, restaurantId, file, dto, userId, kept)
+      .catch((err) => this.logger.error(`Menu read ${menu.id} could not record how it ended: ${(err as Error)?.message ?? err}`))
+      .finally(() => this.reading.delete(menu.id));
+    this.reading.set(menu.id, run);
+
+    return {
+      menuId: menu.id,
+      current: false,
+      reading: true,
+      pages: pages.length,
+      itemsExtracted: 0,
+      submissionsCreated: 0,
+      items: [],
+      source: { kept: !!kept?.path, failure: kept?.failure ?? null },
+      warnings: [],
+    };
+  }
+
+  /**
+   * The read these exact bytes already made for this house, if it is still
+   * worth reopening (founder 2026-11-07, "One upload = one version"; a resend
+   * is not billed twice). Reopened, it is said as it is NOW, never as it was
+   * frozen when the read finished (batch review of #1062):
+   *
+   * - only a read whose labels fit: a cadence or menu date the new upload
+   *   names must be the version's own. The same file for another day is its
+   *   own version, read again; an upload that names no label takes the
+   *   version's.
+   * - only a draft or the current menu. A retired menu sent again is read
+   *   as a new version, so its choice is made afresh and never rolls the
+   *   house back to an old menu under an "already read" banner.
+   * - its lines are the live ones (`reopenedReply`): a discarded line is not
+   *   offered again, a corrected name or price is the corrected one.
+   *
+   * `readingOnly` looks only for a read under way (the losing side of two
+   * imports of the same file at once).
+   */
+  private async sameFileRead(
+    restaurantId: string,
+    sha256: string,
+    labels: ReadLabels,
+    opts: { readingOnly?: boolean } = {},
+  ): Promise<MenuImportReply | null> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, status, read_state, read_reply, extracted_at, source_path, source_failure, cadence, menu_date, menu_date_precision")
+      .eq("restaurant_id", restaurantId)
+      .eq("source_sha256", sha256)
+      .eq("source_method", "scan");
+    if (error) {
+      // Not knowing costs one more read, never a lost one.
+      this.logger.warn(`Could not look for an earlier read of the same file: ${error.message}`);
+      return null;
+    }
+    const fits = (row: Record<string, any>) =>
+      (labels.cadence === null || (row.cadence ?? null) === labels.cadence) &&
+      (labels.menuDate === null ||
+        ((row.menu_date ?? null) === labels.menuDate.date && (row.menu_date_precision ?? null) === labels.menuDate.precision));
+    const rows = ((data ?? []) as Array<Record<string, any>>)
+      .filter(fits)
+      .sort((a, b) => String(b.extracted_at ?? "").localeCompare(String(a.extracted_at ?? "")));
+    const cutoff = Date.now() - READ_STALE_MS;
+    for (const row of rows) {
+      const state = (row.read_state as MenuReadState | undefined) ?? "done";
+      if (state === "reading" && (this.reading.has(row.id) || Date.parse(row.extracted_at) >= cutoff)) {
+        return {
+          menuId: row.id,
+          current: false,
+          reading: true,
+          itemsExtracted: 0,
+          submissionsCreated: 0,
+          items: [],
+          source: { kept: !!row.source_path, failure: row.source_failure ?? null },
+          warnings: [],
+        };
+      }
+      if (opts.readingOnly) continue;
+      if (
+        state === "done" &&
+        (row.status === "draft" || row.status === "active") &&
+        row.read_reply &&
+        typeof row.read_reply === "object"
+      ) {
+        const reopened = await this.reopenedReply(row, restaurantId);
+        if (reopened) return reopened;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * A finished read as it stands now: the reply it was kept with, its lines
+   * replaced by the version's live ones. A line discarded since is gone; a
+   * corrected field is the corrected value; a line added since is there. What
+   * the read did when it ran (its price-sync outcome, its match) stays as the
+   * read said it. A line read that fails gives null: the caller reads the
+   * file again rather than show lines it could not check.
+   */
+  private async reopenedReply(row: Record<string, any>, restaurantId: string): Promise<MenuImportReply | null> {
+    const reply = row.read_reply as MenuImportReply;
+    const live: Array<Record<string, any>> = [];
+    let after: string | null = null;
+    for (;;) {
+      let q = this.dbService.supabase
+        .from("menu_items")
+        .select(`${LINE_SELECT}, submission_id`)
+        .eq("menu_id", row.id)
+        .eq("restaurant_id", restaurantId)
+        .neq("status", "discarded");
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
+      if (error) {
+        this.logger.warn(`Could not read the lines of earlier read ${row.id}; reading the file again: ${error.message}`);
+        return null;
+      }
+      const page = (data ?? []) as Array<Record<string, any>>;
+      live.push(...page);
+      if (page.length < PAGE_ROWS) break;
+      after = String(page[page.length - 1].id);
+    }
+    const asRead = new Map((Array.isArray(reply.items) ? reply.items : []).map((i) => [i.menuItemId, i]));
+    const money = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number(v));
+    const items: MenuImportReviewItem[] = live.map((line) => {
+      const was = asRead.get(line.id);
+      return {
+        ...(was ?? {
+          submissionId: line.submission_id ?? null,
+          matched: !!line.wine_library_id,
+          needsReview: false,
+          rawText: line.raw_extracted_text ?? null,
+        }),
+        menuItemId: line.id,
+        inventoryItemId: line.inventory_item_id ?? null,
+        name: line.name,
+        producer: line.producer ?? null,
+        category: line.category ?? null,
+        vintage: line.vintage ?? null,
+        region: line.region ?? null,
+        grapeVariety: line.grape_variety ?? null,
+        byGlassPrice: money(line.by_glass_price),
+        bottlePrice: money(line.bottle_price),
+        priceFlag: line.price_flag ?? null,
+        priceFlagNote: line.price_flag_note ?? null,
+      };
+    });
+    return {
+      ...reply,
+      items,
+      current: row.status === "active",
+      reopened: { readAt: row.extracted_at ?? null },
+    };
+  }
+
+  /** The background half of a scan. Never rejects: every ending is written on the version. */
+  private async finishScan(
+    menuId: string,
+    restaurantId: string,
+    file: string,
+    dto: ImportMenuDto,
+    userId: string,
+    kept: { path: string | null; failure: string | null } | null,
+  ): Promise<void> {
+    const sb = this.dbService.supabase;
+    try {
+      const { items, warnings } = await this.scanParser.parseWithWarnings(file, restaurantId);
+      if (items.length === 0) {
+        await this.endRead(menuId, { read_state: "failed", read_failure: EMPTY_SCAN_FAILED, read_warnings: warnings });
+        return;
+      }
+      const { error: linesError } = await sb
+        .from("restaurant_menus")
+        .update({ extraction: items, read_warnings: warnings, lines_extracted: items.length })
+        .eq("id", menuId)
+        .eq("restaurant_id", restaurantId);
+      if (linesError) throw new Error(`the lines read could not be kept: ${linesError.message}`);
+      const reviewItems = await this.resolveAndPersistItems(items, restaurantId, menuId, userId, dto.method, false);
+      await this.markMenuUploaded(restaurantId);
+      const reply: MenuImportReply = {
+        menuId,
+        current: false,
+        itemsExtracted: items.length,
+        submissionsCreated: reviewItems.filter((r) => r.submissionId).length,
+        items: reviewItems,
+        source: { kept: !!kept?.path, failure: kept?.failure ?? null },
+        warnings,
+      };
+      const ended = await this.endRead(menuId, { read_state: "done", read_reply: reply });
+      // The sweep already said this read stopped (it ran past half an hour, or
+      // another server took it for dead): it stays failed, so it keeps no line.
+      if (ended === "not_reading") await this.dropUnfinishedRead(menuId, restaurantId);
+    } catch (err) {
+      this.logger.error(`Menu read ${menuId} failed: ${(err as Error)?.message ?? err}`);
+      // A failed read keeps no half of what it wrote: its lines and the library
+      // submissions made for them go (dropUnfinishedRead); the version says why.
+      await this.dropUnfinishedRead(menuId, restaurantId);
+      await this.endRead(menuId, {
+        read_state: "failed",
+        read_failure: failureWords(err),
+        lines_extracted: 0,
+        extraction: [],
+      });
+    }
+  }
+
+  /**
+   * Ends a read that is still `reading`. A read the sweep has already ended
+   * is left as the sweep said (`not_reading`), never turned back into done.
+   */
+  private async endRead(
+    menuId: string,
+    patch: Record<string, unknown>,
+  ): Promise<"ended" | "not_reading" | "unknown"> {
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .update(patch)
+      .eq("id", menuId)
+      .eq("read_state", "reading")
+      .select("id");
+    if (error) {
+      this.logger.error(`Menu read ${menuId} ended but could not say so: ${error.message}`);
+      return "unknown";
+    }
+    return Array.isArray(data) && data.length > 0 ? "ended" : "not_reading";
+  }
+
+  /**
+   * What a read that did not finish wrote for its version goes: its lines, and
+   * the library submissions made for them. A submission names no menu, so it
+   * is found through the line that points at it, before the lines go. Library
+   * rows the resolver added stay: they are the shared library's, matched by
+   * signature and reused by the next read of the same wine (the synchronous
+   * path left them too; PR #773's register entry). A submission whose line was
+   * never pointed at it (the process died between the two writes) is not
+   * found here either; the transaction that would close both is still owed.
+   */
+  private async dropUnfinishedRead(menuId: string, restaurantId: string): Promise<void> {
+    const sb = this.dbService.supabase;
+    const { data: lines, error: readError } = await sb
+      .from("menu_items")
+      .select("id, submission_id")
+      .eq("menu_id", menuId)
+      .eq("restaurant_id", restaurantId);
+    if (readError) this.logger.error(`Lines of unfinished read ${menuId} could not be read: ${readError.message}`);
+    const submissionIds = ((lines ?? []) as Array<{ submission_id?: string | null }>)
+      .map((l) => l.submission_id)
+      .filter((id): id is string => typeof id === "string" && id !== "");
+    const { error: dropError } = await sb.from("menu_items").delete().eq("menu_id", menuId).eq("restaurant_id", restaurantId);
+    if (dropError) {
+      // The lines still point at their submissions; removing those now would
+      // only null the pointers (ON DELETE SET NULL) and hide what is left.
+      this.logger.error(`Lines of unfinished read ${menuId} were not removed: ${dropError.message}`);
+      return;
+    }
+    if (submissionIds.length === 0) return;
+    const { error: subError } = await sb
+      .from("master_wine_library_submissions")
+      .delete()
+      .eq("restaurant_id", restaurantId)
+      .in("id", submissionIds);
+    if (subError) this.logger.error(`Submissions of unfinished read ${menuId} were not removed: ${subError.message}`);
+  }
+
+  /** A read nobody is reading any more (a restart) is said to have failed, lazily, when someone looks. */
+  private async sweepStaleReads(restaurantId: string): Promise<void> {
+    const sb = this.dbService.supabase;
+    const { data, error } = await sb
+      .from("restaurant_menus")
+      .select("id, extracted_at")
+      .eq("restaurant_id", restaurantId)
+      .eq("read_state", "reading");
+    if (error) return void this.logger.warn(`Could not look for stopped menu reads: ${error.message}`);
+    const cutoff = Date.now() - READ_STALE_MS;
+    const stale = ((data ?? []) as Array<{ id: string; extracted_at: string | null }>)
+      .filter((r) => !this.reading.has(r.id) && !(Date.parse(String(r.extracted_at)) >= cutoff))
+      .map((r) => r.id);
+    if (stale.length === 0) return;
+    const { data: ended, error: upd } = await sb
+      .from("restaurant_menus")
+      .update({ read_state: "failed", read_failure: STOPPED_READ_FAILED, lines_extracted: 0, extraction: [] })
+      .eq("restaurant_id", restaurantId)
+      .eq("read_state", "reading")
+      .in("id", stale)
+      .select("id");
+    if (upd) return void this.logger.warn(`Could not end stopped menu reads: ${upd.message}`);
+    // A stopped read keeps no half of what it wrote, as a failed one does.
+    for (const row of (ended ?? []) as Array<{ id: string }>) await this.dropUnfinishedRead(row.id, restaurantId);
+  }
+
+  /** Where one read stands, and what it found once it is done (`GET /menu-versions/:id/read`). */
+  async readStatus(
+    restaurantId: string,
+    menuId: string,
+  ): Promise<{
+    menuId: string;
+    state: MenuReadState;
+    failure: string | null;
+    warnings: MenuReadWarning[];
+    reply: MenuImportReply | null;
+  }> {
+    await this.sweepStaleReads(restaurantId);
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id, read_state, read_failure, read_warnings, read_reply")
+      .eq("id", menuId)
+      .eq("restaurant_id", restaurantId)
+      .maybeSingle();
+    if (error) throw new InternalServerErrorException(`The menu read could not be looked up: ${error.message}`);
+    if (!data) throw new NotFoundException("No menu of this restaurant by that id.");
+    const row = data as Record<string, any>;
+    return {
+      menuId,
+      state: (row.read_state as MenuReadState | undefined) ?? "done",
+      failure: row.read_failure ?? null,
+      warnings: Array.isArray(row.read_warnings) ? row.read_warnings.filter((w: unknown) => w && typeof w === "object") : [],
+      reply: row.read_reply && typeof row.read_reply === "object" ? (row.read_reply as MenuImportReply) : null,
     };
   }
 
@@ -687,16 +1159,18 @@ export class MenusService {
         .from(SOURCE_BUCKET)
         .upload(path, bytes, { contentType: type.mime, upsert: true });
       if (error) {
-        return { path: null, sha256, mime: type.mime, bytes: bytes.length, failure: `the source file was not kept: ${error.message}` };
+        this.logger.error(`Menu source ${path} was not kept: ${error.message}`);
+        return { path: null, sha256, mime: type.mime, bytes: bytes.length, failure: SOURCE_NOT_TAKEN };
       }
       return { path, sha256, mime: type.mime, bytes: bytes.length, failure: null };
     } catch (err: any) {
+      this.logger.error(`Menu source ${path} was not kept: ${err?.message ?? "unknown error"}`);
       return {
         path: null,
         sha256,
         mime: type.mime,
         bytes: bytes.length,
-        failure: `the source file was not kept: ${err?.message ?? "unknown error"}`,
+        failure: SOURCE_NOT_TAKEN,
       };
     }
   }
@@ -709,10 +1183,12 @@ export class MenusService {
     warnings: MenuReadWarning[],
     kept: { path: string | null; sha256: string; mime: string; bytes: number; failure: string | null } | null,
     menuDate: { date: string; precision: "day" | "month" } | null,
+    readState: MenuReadState = "done",
   ): Promise<{ id: string }> {
     const { data, error } = await this.dbService.supabase
       .from("restaurant_menus")
       .insert({
+        read_state: readState,
         restaurant_id: restaurantId,
         name: "Wine List",
         menu_type: "beverage",
@@ -734,6 +1210,10 @@ export class MenusService {
       })
       .select("id")
       .single();
+    if (error && (error as { code?: string }).code === "23505" && readState === "reading") {
+      // uq_restaurant_menus_one_read_of_a_file_at_a_time: the same file is already being read.
+      throw new SameFileReading();
+    }
     if (error || !data) {
       throw new InternalServerErrorException(
         `The menu was read but could not be kept, so nothing was saved: ${error?.message ?? "no row returned"}`,
@@ -1204,6 +1684,7 @@ export class MenusService {
     namesReadable: boolean;
     namesReason: string | null;
   }> {
+    await this.sweepStaleReads(restaurantId);
     const rows: Array<Record<string, any>> = [];
     let after: string | null = null;
     for (;;) {
@@ -1310,6 +1791,7 @@ export class MenusService {
    */
   async planFor(restaurantId: string, menuId: string): Promise<MenuPlan> {
     const row = await this.readVersionRow(restaurantId, menuId);
+    assertReadFinished(row);
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const plan = await this.computePlan(restaurantId, menuId, row.status === "active", lines, readMomentOf(row));
     // Names are for reading the plan; they never decide it (the fingerprint
@@ -1654,6 +2136,7 @@ export class MenusService {
     // read throws here and nothing is changed.
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const version = await this.readVersionRow(restaurantId, menuId);
+    assertReadFinished(version);
     const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
     if (plan.fingerprint !== fingerprint.trim()) {
       throw new ConflictException(
@@ -1784,7 +2267,9 @@ export class MenusService {
         failure: r.source_failure ?? null,
       },
       linesExtracted: num(r.lines_extracted),
-      readWarnings: Array.isArray(r.read_warnings) ? r.read_warnings : null,
+      readWarnings: Array.isArray(r.read_warnings) ? r.read_warnings.filter((w: unknown) => w && typeof w === "object") : null,
+      readState: (r.read_state as MenuReadState | undefined) ?? "done",
+      readFailure: r.read_failure ?? null,
       extractedAt: r.extracted_at ?? null,
       extractedBy: who(r.extracted_by),
       madeCurrentAt: r.made_current_at ?? null,

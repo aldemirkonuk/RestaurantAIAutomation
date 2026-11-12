@@ -38,6 +38,7 @@ import {
 } from '../../../services/api/menus';
 import { useAuthStore } from '../../../stores';
 import { MenuPlan } from './MenuPlan';
+import { isPhoto, pagesProblem, photoToJpegBase64, photosToPages } from '../../../lib/menuPhotos';
 
 const EM = '—';
 
@@ -71,27 +72,92 @@ export function ReadWarnings({ warnings, testId }: { warnings: MenuReadWarning[]
   );
 }
 
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * The calendar day of a moment, on this device's clock. Not the UTC day: a
+ * menu read at 22:05 in Detroit is that evening's menu, not tomorrow's.
+ */
 function day(iso: string | null): string {
-  return iso ? iso.slice(0, 10) : EM;
+  if (!iso) return EM;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** How a kept menu is named in a sentence: its own date if it has one, else when it was read. */
-export function versionLabel(v: MenuVersion): string {
+/**
+ * The day and the minute, so two menus read the same day are told apart; with
+ * `second`, the second too, for two read in the same minute.
+ */
+function moment(iso: string, second = false): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, second ? 19 : 16).replace('T', ' ');
+  return `${day(iso)} ${pad(d.getHours())}:${pad(d.getMinutes())}${second ? `:${pad(d.getSeconds())}` : ''}`;
+}
+
+/**
+ * Why a menu's file was not kept, without the gateway's older lead-in: rows
+ * stored before 2026-11-11 say "the source file was not kept: ..." themselves,
+ * and the page says it again.
+ */
+function keepFailure(failure: string): string {
+  return failure.replace(/^the source file was not kept:\s*/i, '');
+}
+
+/**
+ * How a kept menu is named in a sentence: its own date if it has one, else when
+ * it was read. `sharp` names it more closely, for when another kept menu has the
+ * same name: a read moment to the second, a dated menu with when it was read,
+ * and a menu from before reads were dated with when it was kept.
+ */
+export function versionLabel(v: MenuVersion, sharp = false): string {
+  const read = v.extractedAt ? moment(v.extractedAt, sharp) : null;
   const date = v.menuDate
-    ? v.menuDatePrecision === 'month'
-      ? `the ${v.menuDate} menu`
-      : `the menu for ${v.menuDate}`
-    : v.extractedAt
-      ? `the menu read ${day(v.extractedAt)}`
-      : 'a menu read before menus were kept';
+    ? `${v.menuDatePrecision === 'month' ? `the ${v.menuDate} menu` : `the menu for ${v.menuDate}`}${sharp && read ? `, read ${read}` : ''}`
+    : read
+      ? `the menu read ${read}`
+      : `a menu read before menus were kept${sharp && v.createdAt ? ` (kept ${moment(v.createdAt, true)})` : ''}`;
   return v.cadence && v.cadence !== 'none' ? `${date} (${v.cadence})` : date;
+}
+
+/**
+ * A name for every kept menu that no other kept menu shares (menu walk
+ * 2026-11-11: two reads in the same minute had the same name, and "Make the
+ * menu read 2026-11-11 22:05 current" could mean either). A name is said as
+ * plainly as it can be: the minute when that is enough, then the second (or,
+ * for a dated menu, when it was read); two still alike -- the same second --
+ * are counted in the order they were read, "(1 of 2)", "(2 of 2)".
+ */
+export function versionLabels(versions: MenuVersion[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const groups = (vs: MenuVersion[], name: (v: MenuVersion) => string) => {
+    const by = new Map<string, MenuVersion[]>();
+    for (const v of vs) by.set(name(v), [...(by.get(name(v)) ?? []), v]);
+    return by;
+  };
+  const when = (v: MenuVersion) => v.extractedAt ?? v.createdAt ?? '';
+  for (const [plain, alike] of groups(versions, (v) => versionLabel(v))) {
+    if (alike.length === 1) {
+      out.set(alike[0].menuId, plain);
+      continue;
+    }
+    for (const [close, still] of groups(alike, (v) => versionLabel(v, true))) {
+      if (still.length === 1) {
+        out.set(still[0].menuId, close);
+        continue;
+      }
+      const ordered = [...still].sort((a, b) => when(a).localeCompare(when(b)) || a.menuId.localeCompare(b.menuId));
+      ordered.forEach((v, i) => out.set(v.menuId, `${close} (${i + 1} of ${ordered.length})`));
+    }
+  }
+  return out;
 }
 
 /** What one kept menu's source is, in words. */
 export function sourceWords(v: MenuVersion): string {
   // A member who may not open the file (ADR 0358 D2) is still told it was kept.
   if (v.source.kept) return v.source.mime === 'application/pdf' ? 'PDF kept' : v.source.mime?.startsWith('image/') ? 'photo kept' : 'file kept';
-  if (v.source.failure) return `source not kept: ${v.source.failure}`;
+  if (v.source.failure) return `file not kept: ${keepFailure(v.source.failure)}`;
   if (v.sourceMethod === 'manual') return 'typed in, no file';
   return 'read before menus were kept, no file';
 }
@@ -159,53 +225,118 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () => void }) {
+/** How the chosen files go up: a sheet, one file as it is, or photos joined into one menu. */
+export function uploadShapeOf(files: File[]): { kind: 'csv' | 'sheet' | 'file' | 'photos'; problem: string | null } {
+  if (files.length === 0) return { kind: 'file', problem: 'Choose a photo, PDF or CSV of the menu first.' };
+  const nameOf = (f: File) => f.name.toLowerCase();
+  if (files.length === 1) {
+    const f = files[0];
+    if (nameOf(f).endsWith('.csv') || f.type === 'text/csv') return { kind: 'csv', problem: null };
+    if (nameOf(f).endsWith('.xlsx') || nameOf(f).endsWith('.xls')) return { kind: 'sheet', problem: null };
+    return { kind: isPhoto(f) ? 'photos' : 'file', problem: null };
+  }
+  const notPhoto = files.find((f) => !isPhoto(f));
+  if (notPhoto) {
+    return {
+      kind: 'photos',
+      problem: `Several files go up together only as photos of one menu; ${notPhoto.name} is not a photo. Send it on its own.`,
+    };
+  }
+  return { kind: 'photos', problem: null };
+}
+
+/** The pages of the chosen photos, ready to send. One photo the browser cannot redraw goes as it is. */
+async function pagesOf(files: File[]): Promise<{ images: string[] } | { imageBase64: string }> {
+  if (files.length === 1) {
+    try {
+      return { imageBase64: await photoToJpegBase64(files[0]) };
+    } catch {
+      return { imageBase64: await fileToBase64(files[0]) };
+    }
+  }
+  const images = await photosToPages(files);
+  const problem = pagesProblem(images);
+  if (problem) throw new Error(problem);
+  return { images };
+}
+
+/** The read that goes on without the page (the client stopped waiting, the server did not). */
+function stillReading(err: unknown): boolean {
+  return (err as { response?: { status?: number } })?.response?.status === 202;
+}
+
+export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onChosen }: {
+  canManage: boolean
+  onRead: () => void
+  /** Told when a new read begins, so a host drops what it offered for the last one. */
+  onReadStart?: () => void
+  /** Told the finished read (used by the Scan buttons on /inventory and /cellar). */
+  onReadDone?: (r: MenuImportResult) => void
+  /** Told once the read was made the current menu (prices and stock lines moved). */
+  onChosen?: () => void
+}) {
   const queryClient = useQueryClient();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [cadence, setCadence] = useState<MenuCadence | ''>('');
   const [date, setDate] = useState('');
   const [result, setResult] = useState<MenuImportResult | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
   const [planning, setPlanning] = useState(false);
+  const [readingId, setReadingId] = useState<string | null>(null);
   const dateRead = readMenuDate(date);
+  const shape = uploadShapeOf(files);
 
   const read = useMutation({
-    mutationFn: async () => {
-      if (!file) throw new Error('Choose a photo, PDF or CSV of the menu first.');
-      const labels = { ...(cadence ? { cadence } : {}), ...(dateRead.value ? { menuDate: dateRead.value } : {}) };
-      const name = file.name.toLowerCase();
-      if (name.endsWith('.csv') || file.type === 'text/csv') {
-        return importMenu('csv', { csvContent: await file.text() }, labels);
-      }
-      if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
-        return importMenu('csv', { fileBase64: await fileToBase64(file) }, labels);
-      }
-      return importMenu('scan', { imageBase64: await fileToBase64(file) }, labels);
+    mutationFn: async ({ again }: { again: boolean }) => {
+      if (shape.problem) throw new Error(shape.problem);
+      setReadingId(null);
+      const labels = {
+        ...(cadence ? { cadence } : {}),
+        ...(dateRead.value ? { menuDate: dateRead.value } : {}),
+        ...(again ? { readAgain: true } : {}),
+        onReading: (menuId: string) => {
+          setReadingId(menuId);
+          // The kept version shows in the list at once, as "being read".
+          onRead();
+        },
+      };
+      if (shape.kind === 'csv') return importMenu('csv', { csvContent: await files[0].text() }, labels);
+      if (shape.kind === 'sheet') return importMenu('csv', { fileBase64: await fileToBase64(files[0]) }, labels);
+      if (shape.kind === 'file') return importMenu('scan', { imageBase64: await fileToBase64(files[0]) }, labels);
+      return importMenu('scan', await pagesOf(files), labels);
     },
+    onMutate: () => onReadStart?.(),
     onSuccess: (r) => {
       setResult(r);
       setChosen(null);
       setPlanning(false);
+      setReadingId(null);
       onRead();
+      onReadDone?.(r);
     },
+    onError: () => onRead(),
   });
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (!dateRead.ok) return;
-    read.mutate();
+    setResult(null);
+    read.mutate({ again: false });
   };
+
+  const isCurrent = result?.current === true;
 
   return (
     <div style={{ border: '1px solid var(--paper-2)', borderRadius: 10, padding: 14, marginTop: 16 }} data-testid="menu-read-form">
       <form onSubmit={submit} style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'flex-end' }}>
         <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          Menu to read
+          Menu to read (several photos = one menu)
           <input
             type="file"
+            multiple
             accept="image/*,application/pdf,.csv,.xlsx,.xls"
             aria-label="Menu to read"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
           />
         </label>
         <label className="cl-said" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -223,32 +354,63 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
           Date (optional: a day or a month)
           <input aria-label="Menu date" placeholder="2026-10 or 2026-10-15" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
-        <button type="submit" className="cl-btn cl-focus" disabled={read.isPending || !file || !dateRead.ok}>
-          {read.isPending ? 'Reading…' : 'Read this menu'}
+        <button type="submit" className="cl-btn cl-focus" disabled={read.isPending || files.length === 0 || !dateRead.ok || shape.problem !== null}>
+          {read.isPending ? 'Reading…' : files.length > 1 ? `Read these ${files.length} pages as one menu` : 'Read this menu'}
         </button>
       </form>
+      {files.length > 0 && shape.problem ? (
+        <p role="alert" className="cl-note" data-testid="menu-read-shape">
+          {shape.problem}
+        </p>
+      ) : null}
       {dateRead.error ? (
         <p role="alert" className="cl-note">
           {dateRead.error}
         </p>
       ) : null}
-      {read.isError ? (
+      {read.isPending && readingId ? (
+        <p role="status" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-read-reading">
+          The file is kept and the server is reading it. A long menu can take a few minutes; you can leave this page,
+          and the read shows in the list below when it is done.
+        </p>
+      ) : null}
+      {read.isError && stillReading(read.error) ? (
+        <p role="status" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-read-still">
+          {reasonOf(read.error)}
+        </p>
+      ) : read.isError ? (
         <p role="alert" className="cl-said" style={{ marginTop: 8 }} data-testid="menu-read-error">
           The menu was not read: {reasonOf(read.error).replace(/\.$/, '')}.
         </p>
       ) : null}
-      {read.isError ? <ReadWarnings warnings={warningsOf(read.error)} testId="menu-read-error-warnings" /> : null}
+      {read.isError && !stillReading(read.error) ? <ReadWarnings warnings={warningsOf(read.error)} testId="menu-read-error-warnings" /> : null}
       {result ? (
         <div style={{ marginTop: 10 }} data-testid="menu-read-result">
           <p className="cl-said">
-            Read {result.itemsExtracted} line{result.itemsExtracted === 1 ? '' : 's'} and kept this menu.{' '}
+            {result.reopened
+              ? `This exact file was already read${result.reopened.readAt ? ` on ${day(result.reopened.readAt)}` : ''}; this is that read, and nothing was read again. It found ${result.itemsExtracted} line${result.itemsExtracted === 1 ? '' : 's'}. `
+              : `Read ${result.itemsExtracted} line${result.itemsExtracted === 1 ? '' : 's'}${result.pages && result.pages > 1 ? ` from ${result.pages} pages` : ''} and kept this menu. `}
             {result.source && !result.source.kept
-              ? `Its file was not kept: ${result.source.failure ?? 'no reason given'}. `
+              ? `Its file was not kept: ${result.source.failure ? keepFailure(result.source.failure) : 'no reason given'}. `
               : ''}
-            It is not the current menu, and no price has changed.
+            {isCurrent ? 'It is the current menu.' : 'It is not the current menu, and no price has changed.'}
           </p>
           <ReadWarnings warnings={result.warnings} testId="menu-read-warnings" />
-          {canManage ? (
+          {result.reopened ? (
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              style={{ marginTop: 8 }}
+              disabled={read.isPending}
+              onClick={() => {
+                setResult(null);
+                read.mutate({ again: true });
+              }}
+            >
+              Read it again
+            </button>
+          ) : null}
+          {isCurrent ? null : canManage ? (
             <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
               <button
                 type="button"
@@ -275,6 +437,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
                 setChosen(makeCurrentSentence(r));
                 void queryClient.invalidateQueries({ queryKey: ['menu'] });
                 onRead();
+                onChosen?.();
               }}
             />
           ) : null}
@@ -289,8 +452,10 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
   );
 }
 
-function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
+function VersionRow({ v, label, canManage, lastUsedId, planning, onPlan }: {
   v: MenuVersion
+  /** Its name among the house's kept menus (versionLabels): no two alike. */
+  label: string
   canManage: boolean
   lastUsedId: string | null
   planning: boolean
@@ -306,14 +471,19 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
       setLinkError(reasonOf(err));
     }
   };
-  const standing = v.current
+  const readState = v.readState ?? 'done';
+  const standing = readState === 'reading'
+    ? 'being read now'
+    : readState === 'failed'
+      ? `the read failed: ${v.readFailure ?? 'no reason was given'}`
+      : v.current
     ? `current since ${day(v.madeCurrentAt)}${v.madeCurrentBy?.name ? `, chosen by ${v.madeCurrentBy.name}` : ''}`
     : v.status === 'archived'
       ? `${v.menuId === lastUsedId ? 'last one used, ' : ''}used until ${day(v.retiredAt)}`
       : 'kept, never current';
   return (
     <tr data-testid="menu-version-row">
-      <td>{versionLabel(v)}</td>
+      <td>{label}</td>
       <td className="cl-dim">{standing}</td>
       <td className="cl-dim">
         {v.linesExtracted === null ? EM : `${v.linesExtracted} line${v.linesExtracted === 1 ? '' : 's'}`}
@@ -335,13 +505,13 @@ function VersionRow({ v, canManage, lastUsedId, planning, onPlan }: {
         ) : null}
       </td>
       <td>
-        {!v.current && canManage ? (
+        {!v.current && canManage && readState === 'done' ? (
           <button
             type="button"
             className="cl-btn cl-focus"
             data-on={planning ? 'true' : 'false'}
             onClick={() => onPlan(v.menuId)}
-            aria-label={`Make ${versionLabel(v)} current`}
+            aria-label={`Make ${label} current`}
           >
             {planning ? 'See below' : 'Make current'}
           </button>
@@ -358,8 +528,15 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
   // The house is in the key: one house's versions never stand under
   // another's name (MENU-01).
   const house = useAuthStore((s) => s.activeRestaurantId) ?? null;
-  const q = useQuery({ queryKey: ['menu', 'versions', house], queryFn: listMenuVersions });
+  const q = useQuery({
+    queryKey: ['menu', 'versions', house],
+    queryFn: listMenuVersions,
+    // A read in the background finishes on the server: look again until none is left reading.
+    refetchInterval: (query) => (query.state.data?.versions.some((v) => v.readState === 'reading') ? 5000 : false),
+  });
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu'] });
+  const labels = versionLabels(q.data?.versions ?? []);
+  const nameOf = (v: MenuVersion) => labels.get(v.menuId) ?? versionLabel(v);
 
   return (
     <section style={{ marginTop: 32 }} aria-labelledby="menu-versions-h">
@@ -387,8 +564,8 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
       ) : (
         <>
           <p className="cl-standing" style={{ marginTop: 12 }} data-testid="menu-versions-standing">
-            {q.data?.current ? `Current: ${versionLabel(q.data.current)}.` : 'No menu is current yet.'}{' '}
-            {q.data?.lastUsed ? `Last one used: ${versionLabel(q.data.lastUsed)}.` : 'No earlier menu has been used.'}
+            {q.data?.current ? `Current: ${nameOf(q.data.current)}.` : 'No menu is current yet.'}{' '}
+            {q.data?.lastUsed ? `Last one used: ${nameOf(q.data.lastUsed)}.` : 'No earlier menu has been used.'}
           </p>
           {q.data && q.data.versions.length > 0 ? (
             <>
@@ -408,6 +585,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
                     <VersionRow
                       key={v.menuId}
                       v={v}
+                      label={nameOf(v)}
                       canManage={canManage}
                       lastUsedId={q.data?.lastUsed?.menuId ?? null}
                       planning={planFor === v.menuId}

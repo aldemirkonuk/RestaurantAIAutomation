@@ -13,6 +13,7 @@ import {
   readMenuDate,
   sourceWords,
   versionLabel,
+  versionLabels,
 } from './MenuVersions';
 import {
   getMenuPlan,
@@ -23,6 +24,16 @@ import {
   type MenuPlan,
   type MenuVersion,
 } from '../../../services/api/menus';
+
+vi.mock('../../../lib/menuPhotos', async () => {
+  const actual = await vi.importActual<typeof import('../../../lib/menuPhotos')>('../../../lib/menuPhotos');
+  return {
+    ...actual,
+    // jsdom draws no canvas: the redraw itself is the browser's.
+    photoToJpegBase64: vi.fn(async (f: File) => `jpeg:${f.name}`),
+    photosToPages: vi.fn(async (fs: File[]) => fs.map((f) => `jpeg:${f.name}`)),
+  };
+});
 
 vi.mock('../../../services/api/menus', async () => {
   const actual = await vi.importActual<typeof import('../../../services/api/menus')>(
@@ -59,6 +70,11 @@ const mockList = vi.mocked(listMenuVersions);
 const mockMake = vi.mocked(makeMenuCurrent);
 const mockImport = vi.mocked(importMenu);
 
+/** A moment on this device's clock, as an ISO string: the page shows local days, so fixtures are local too. */
+function local(y: number, m: number, d: number, h: number, mi: number, sec = 0, ms = 0): string {
+  return new Date(y, m - 1, d, h, mi, sec, ms).toISOString();
+}
+
 function version(over: Partial<MenuVersion> = {}): MenuVersion {
   return {
     menuId: 'm1',
@@ -71,7 +87,7 @@ function version(over: Partial<MenuVersion> = {}): MenuVersion {
     sourceMethod: 'scan',
     source: { kept: true, mime: 'application/pdf', bytes: 1000, failure: null },
     linesExtracted: 42,
-    extractedAt: '2026-09-20T10:00:00Z',
+    extractedAt: local(2026, 9, 20, 10, 0),
     extractedBy: { userId: 'u1', name: 'Ada' },
     madeCurrentAt: null,
     madeCurrentBy: null,
@@ -105,14 +121,72 @@ describe('the words the panel uses', () => {
       'the 2026-10 menu (monthly)',
     );
     expect(versionLabel(version({ menuDate: '2026-10-15', menuDatePrecision: 'day' }))).toBe('the menu for 2026-10-15');
-    expect(versionLabel(version())).toBe('the menu read 2026-09-20');
+    expect(versionLabel(version())).toBe('the menu read 2026-09-20 10:00');
     expect(versionLabel(version({ extractedAt: null }))).toBe('a menu read before menus were kept');
+  });
+
+  it('names a menu by the day it was read on this clock, not the UTC day, and tells two reads that day apart', () => {
+    expect(versionLabel(version({ extractedAt: local(2026, 11, 11, 22, 5) }))).toBe('the menu read 2026-11-11 22:05');
+    expect(versionLabel(version({ extractedAt: local(2026, 11, 11, 23, 40) }))).toBe('the menu read 2026-11-11 23:40');
+  });
+
+  it('no two kept menus share a name: the minute, then the second, then "(1 of 2)" in the order they were read (menu walk 2026-11-11)', () => {
+    const a = version({ menuId: 'a', extractedAt: local(2026, 11, 11, 22, 5, 12) });
+    const b = version({ menuId: 'b', extractedAt: local(2026, 11, 11, 22, 5, 41) });
+    const c = version({ menuId: 'c', extractedAt: local(2026, 11, 11, 23, 40) });
+    const d1 = version({ menuId: 'd1', extractedAt: local(2026, 11, 11, 22, 5, 41, 900) });
+    const legacy1 = version({ menuId: 'l1', extractedAt: null, createdAt: '2026-09-01T08:00:00Z' });
+    const legacy2 = version({ menuId: 'l2', extractedAt: null, createdAt: '2026-09-02T08:00:00Z' });
+    const dated1 = version({ menuId: 'x1', menuDate: '2026-10-15', menuDatePrecision: 'day', extractedAt: local(2026, 10, 14, 9, 0) });
+    const dated2 = version({ menuId: 'x2', menuDate: '2026-10-15', menuDatePrecision: 'day', extractedAt: local(2026, 10, 15, 9, 0) });
+
+    // One alone keeps its plain name.
+    expect(versionLabels([a, c]).get('c')).toBe('the menu read 2026-11-11 23:40');
+    expect(versionLabels([a, c]).get('a')).toBe('the menu read 2026-11-11 22:05');
+    // The same minute: the second tells them apart.
+    const sameMinute = versionLabels([a, b, c]);
+    expect([sameMinute.get('a'), sameMinute.get('b'), sameMinute.get('c')]).toEqual([
+      'the menu read 2026-11-11 22:05:12',
+      'the menu read 2026-11-11 22:05:41',
+      'the menu read 2026-11-11 23:40',
+    ]);
+    // The same second: counted in the order read, whatever the list order.
+    const sameSecond = versionLabels([d1, a, b]);
+    expect([sameSecond.get('b'), sameSecond.get('d1'), sameSecond.get('a')]).toEqual([
+      'the menu read 2026-11-11 22:05:41 (1 of 2)',
+      'the menu read 2026-11-11 22:05:41 (2 of 2)',
+      'the menu read 2026-11-11 22:05:12',
+    ]);
+    // A dated menu read twice says when each was read; menus from before reads were dated say when they were kept.
+    const more = versionLabels([dated1, dated2, legacy1, legacy2]);
+    expect(more.get('x1')).toBe('the menu for 2026-10-15, read 2026-10-14 09:00:00');
+    expect(more.get('x2')).toBe('the menu for 2026-10-15, read 2026-10-15 09:00:00');
+    expect(more.get('l1')).toMatch(/^a menu read before menus were kept \(kept 2026-09-0\d \d\d:00:00\)$/);
+    expect(more.get('l1')).not.toBe(more.get('l2'));
+    // Every name in a list is its own.
+    const all = versionLabels([a, b, c, d1, legacy1, legacy2, dated1, dated2]);
+    expect(new Set(all.values()).size).toBe(8);
+  });
+
+  it('the panel and its Make current buttons use those names', async () => {
+    const a = version({ menuId: 'a', extractedAt: local(2026, 11, 11, 22, 5, 12) });
+    const b = version({ menuId: 'b', extractedAt: local(2026, 11, 11, 22, 5, 41) });
+    mockList.mockResolvedValue({ versions: [a, b], current: null, lastUsed: null, namesReadable: true, namesReason: null } as never);
+    mount(true);
+    expect(await screen.findByRole('button', { name: 'Make the menu read 2026-11-11 22:05:12 current' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Make the menu read 2026-11-11 22:05:41 current' })).toBeInTheDocument();
+  });
+
+  it('says why a file was not kept once, even on a row stored with the older lead-in', () => {
+    expect(
+      sourceWords(version({ source: { kept: false, mime: null, bytes: null, failure: 'the source file was not kept: the file store did not take it' } })),
+    ).toBe('file not kept: the file store did not take it');
   });
 
   it('says what happened to the source, including why it was not kept', () => {
     expect(sourceWords(version())).toBe('PDF kept');
     expect(sourceWords(version({ source: { kept: false, mime: null, bytes: null, failure: 'bucket unavailable' } }))).toBe(
-      'source not kept: bucket unavailable',
+      'file not kept: bucket unavailable',
     );
     expect(sourceWords(version({ sourceMethod: 'manual', source: { kept: false, mime: null, bytes: null, failure: null } }))).toBe(
       'typed in, no file',
@@ -167,8 +241,8 @@ describe('the words the panel uses', () => {
       flagged: 0,
       failed: [],
       held: [
-        { menuItemId: 'l1', name: 'Barolo', kind: 'bottle', lockId: 'k1', lockedPrice: 95, lockedBy: 'u1', lockedAt: '2026-09-01T00:00:00Z' },
-        { menuItemId: 'l2', name: 'Soave', kind: 'glass', lockId: 'k2', lockedPrice: 9, lockedBy: 'u1', lockedAt: '2026-09-01T00:00:00Z' },
+        { menuItemId: 'l1', name: 'Barolo', kind: 'bottle', lockId: 'k1', lockedPrice: 95, lockedBy: 'u1', lockedAt: local(2026, 9, 1, 12, 0) },
+        { menuItemId: 'l2', name: 'Soave', kind: 'glass', lockId: 'k2', lockedPrice: 9, lockedBy: 'u1', lockedAt: local(2026, 9, 1, 12, 0) },
       ],
       returned: [{ menuItemId: 'l1', name: 'Barolo' }],
     });
@@ -284,17 +358,18 @@ describe('MenuVersions', () => {
 
   it('names the current menu and the last one used, and lists every kept menu', async () => {
     mockList.mockResolvedValue({
-      current: version({ menuId: 'm2', status: 'active', current: true, madeCurrentAt: '2026-09-01T00:00:00Z', madeCurrentBy: { userId: 'u2', name: 'Bo' } }),
-      lastUsed: version({ menuId: 'm1', status: 'archived', retiredAt: '2026-09-01T00:00:00Z' }),
+      current: version({ menuId: 'm2', status: 'active', current: true, madeCurrentAt: local(2026, 9, 1, 12, 0), madeCurrentBy: { userId: 'u2', name: 'Bo' } }),
+      lastUsed: version({ menuId: 'm1', status: 'archived', retiredAt: local(2026, 9, 1, 12, 0) }),
       versions: [
         version({ menuId: 'm3' }),
-        version({ menuId: 'm2', status: 'active', current: true, madeCurrentAt: '2026-09-01T00:00:00Z', madeCurrentBy: { userId: 'u2', name: 'Bo' } }),
-        version({ menuId: 'm1', status: 'archived', retiredAt: '2026-09-01T00:00:00Z' }),
+        version({ menuId: 'm2', status: 'active', current: true, madeCurrentAt: local(2026, 9, 1, 12, 0), madeCurrentBy: { userId: 'u2', name: 'Bo' } }),
+        version({ menuId: 'm1', status: 'archived', retiredAt: local(2026, 9, 1, 12, 0) }),
       ],
     });
     mount(true);
     expect(await screen.findByTestId('menu-versions-standing')).toHaveTextContent(
-      'Current: the menu read 2026-09-20. Last one used: the menu read 2026-09-20.',
+      // Three menus read at the same moment are told apart, here as in the list.
+      'Current: the menu read 2026-09-20 10:00:00 (2 of 3). Last one used: the menu read 2026-09-20 10:00:00 (1 of 3).',
     );
     const rows = screen.getAllByTestId('menu-version-row');
     expect(rows).toHaveLength(3);
@@ -323,7 +398,7 @@ describe('MenuVersions', () => {
       failed: [],
     });
     mount(true);
-    fireEvent.click(await screen.findByRole('button', { name: 'Make the menu read 2026-09-20 current' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Make the menu read 2026-09-20 10:00 current' }));
     // The plan comes first (L13); nothing is chosen until the person confirms it.
     expect(await screen.findByTestId('menu-plan')).toBeInTheDocument();
     expect(mockMake).not.toHaveBeenCalled();
@@ -357,7 +432,11 @@ describe('MenuVersions', () => {
     fireEvent.change(screen.getByLabelText('Menu date'), { target: { value: '2026-10' } });
     fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
     await waitFor(() =>
-      expect(mockImport).toHaveBeenCalledWith('csv', { csvContent: 'name,bottle_price\nOpus,60\n' }, { cadence: 'monthly', menuDate: '2026-10' }),
+      expect(mockImport).toHaveBeenCalledWith(
+        'csv',
+        { csvContent: 'name,bottle_price\nOpus,60\n' },
+        expect.objectContaining({ cadence: 'monthly', menuDate: '2026-10' }),
+      ),
     );
     expect(await screen.findByTestId('menu-read-result')).toHaveTextContent(
       'Read 12 lines and kept this menu. It is not the current menu, and no price has changed.',
@@ -377,7 +456,9 @@ describe('MenuVersions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
     await waitFor(() => expect(mockImport).toHaveBeenCalled());
     expect(mockImport.mock.calls[0][0]).toBe('scan');
-    expect(mockImport.mock.calls[0][2]).toEqual({});
+    const { onReading, ...sent } = mockImport.mock.calls[0][2] ?? {};
+    expect(typeof onReading).toBe('function');
+    expect(sent).toEqual({});
     expect(await screen.findByText(/An owner or a manager chooses whether it becomes the current menu/)).toBeInTheDocument();
   });
 
@@ -394,5 +475,89 @@ describe('MenuVersions', () => {
     fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [file] } });
     fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
     expect(await screen.findByTestId('menu-read-error')).toHaveTextContent(/the menu read is waiting: nothing was sent/);
+  });
+});
+
+describe('a read in the background, several photos, the same file again (founder 2026-11-07)', () => {
+  const photo = (n: string) => new File(['x'], n, { type: 'image/jpeg' });
+
+  it('several photos go up as ONE menu, each redrawn as a JPEG page, in the order chosen', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockResolvedValue({ menuId: 'm7', current: false, pages: 3, itemsExtracted: 30, submissionsCreated: 0, items: [] });
+    mount(true);
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [photo('p1.jpg'), photo('p2.jpg'), photo('p3.jpg')] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read these 3 pages as one menu' }));
+    await waitFor(() => expect(mockImport).toHaveBeenCalledTimes(1));
+    expect(mockImport.mock.calls[0][0]).toBe('scan');
+    expect(mockImport.mock.calls[0][1]).toEqual({ images: ['jpeg:p1.jpg', 'jpeg:p2.jpg', 'jpeg:p3.jpg'] });
+    expect(await screen.findByTestId('menu-read-result')).toHaveTextContent('Read 30 lines from 3 pages and kept this menu.');
+  });
+
+  it('a PDF among photos is refused before anything is sent', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mount(true);
+    fireEvent.change(await screen.findByLabelText('Menu to read'), {
+      target: { files: [photo('p1.jpg'), new File(['%PDF'], 'wine.pdf', { type: 'application/pdf' })] },
+    });
+    expect(screen.getByTestId('menu-read-shape')).toHaveTextContent('wine.pdf is not a photo');
+    expect(screen.getByRole('button', { name: /Read these 2 pages/ })).toBeDisabled();
+    expect(mockImport).not.toHaveBeenCalled();
+  });
+
+  it('while the server reads, the page says the file is kept and it may be left', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockImplementation(async (_m, _d, labels) => {
+      labels?.onReading?.('m8');
+      return new Promise(() => {});
+    });
+    mount(true);
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [photo('p1.jpg')] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    expect(await screen.findByTestId('menu-read-reading')).toHaveTextContent('you can leave this page');
+  });
+
+  it('a read the page stopped waiting for is said as going on, not as failed', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport.mockRejectedValue({ response: { status: 202, data: { message: 'Still reading after 20 minutes. The read goes on.' } } });
+    mount(true);
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [photo('p1.jpg')] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    expect(await screen.findByTestId('menu-read-still')).toHaveTextContent('The read goes on');
+    expect(screen.queryByTestId('menu-read-error')).not.toBeInTheDocument();
+  });
+
+  it('the same file again reopens its read; "Read it again" asks for a fresh read; a current one offers no choice', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [] });
+    mockImport
+      .mockResolvedValueOnce({ menuId: 'm1', current: true, reopened: { readAt: '2026-11-01T09:00:00Z' }, itemsExtracted: 42, submissionsCreated: 0, items: [] })
+      .mockResolvedValueOnce({ menuId: 'm2', current: false, itemsExtracted: 43, submissionsCreated: 0, items: [] });
+    mount(true);
+    fireEvent.change(await screen.findByLabelText('Menu to read'), { target: { files: [new File(['%PDF'], 'menu.pdf', { type: 'application/pdf' })] } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }));
+    const said = await screen.findByTestId('menu-read-result');
+    expect(said).toHaveTextContent('This exact file was already read on');
+    expect(said).toHaveTextContent('nothing was read again. It found 42 lines. It is the current menu.');
+    expect(screen.queryByRole('button', { name: 'Make this the current menu' })).not.toBeInTheDocument();
+    const again = screen.getByRole('button', { name: 'Read it again' });
+    await waitFor(() => expect(again).not.toBeDisabled());
+    fireEvent.click(again);
+    await waitFor(() => expect(mockImport).toHaveBeenCalledTimes(2));
+    expect(mockImport.mock.calls[1][2]).toMatchObject({ readAgain: true });
+    expect(await screen.findByTestId('menu-read-result')).toHaveTextContent('Read 43 lines and kept this menu.');
+  });
+
+  it('a version being read or failed says so, and offers no "Make current"', async () => {
+    mockList.mockResolvedValue({
+      current: null,
+      lastUsed: null,
+      versions: [
+        version({ menuId: 'r1', readState: 'reading', linesExtracted: 0 }),
+        version({ menuId: 'f1', readState: 'failed', readFailure: 'No menu line could be read from this file.', linesExtracted: 0 }),
+      ],
+    });
+    mount(true);
+    expect(await screen.findByText('being read now')).toBeInTheDocument();
+    expect(screen.getByText('the read failed: No menu line could be read from this file.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Make .* current$/ })).not.toBeInTheDocument();
   });
 });

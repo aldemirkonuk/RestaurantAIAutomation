@@ -58,7 +58,7 @@ export class MenusController {
     summary:
       "Read a menu (scan, CSV or manual) and keep it as its own version, in draft",
     description:
-      "ADR 0193 (menu versions): every read with a line is kept -- the source file, the extracted lines, who read it and when, and the optional cadence tag and date. It does NOT become the current menu or touch the house's prices; an owner or manager chooses that with POST /menu-versions/:menuId/make-current. A scan's AI spend ceiling fails CLOSED: if the spend record cannot be read, the read waits (503) and says why. A read that finds no line is refused (422, with a sentence and the scan's warnings) and nothing is kept.",
+      "ADR 0193 (menu versions): every read with a line is kept -- the source file, the extracted lines, who read it and when, and the optional cadence tag and date. It does NOT become the current menu or touch the house's prices; an owner or manager chooses that with POST /menu-versions/:menuId/make-current. A SCAN is read in the background (founder 2026-11-07): the file and a draft version are kept at once and the reply says reading: true; poll GET /menu-versions/:menuId/read. Several photos in data.images are one menu, one version. The same bytes sent again reopen the read they made (reopened, its lines as they are now), unless readAgain is true, the upload names a cadence or menu date the earlier version does not carry, or that version is retired; two sends of the same file at once make one read. A scan that finds no line, or whose AI spend record cannot be read, ends as a failed read with its sentence. A spreadsheet or typed lines are read at once; one with no line is refused (422) and nothing is kept.",
   })
   async importMenu(
     @Body() dto: ImportMenuDto,
@@ -212,6 +212,21 @@ export class MenuVersionsController {
     @Param("menuId", new ParseUUIDPipe()) menuId: string,
   ) {
     return this.menusService.getVersion(this.house(restaurantId), menuId, { rawLine: seesRawLine(role) });
+  }
+
+  @Get(":menuId/read")
+  @ApiOperation({
+    summary: "Where a background menu read stands, and what it found once done",
+    description:
+      "state is reading, done or failed (failure says why, in words). When done, reply is what POST /menus/import would have answered had it waited; a line's raw text is sent only to a role that sees money and suppliers (ADR 0358 D2). A read the server stopped hearing from for half an hour is said to have failed.",
+  })
+  async read(
+    @CurrentUser("restaurantId") restaurantId: string,
+    @CurrentUser("role") role: string | null,
+    @Param("menuId", new ParseUUIDPipe()) menuId: string,
+  ) {
+    const status = await this.menusService.readStatus(this.house(restaurantId), menuId);
+    return status.reply ? { ...status, reply: withheldRawText(status.reply, seesRawLine(role)) } : status;
   }
 
   @Get(":menuId/source")
