@@ -123,8 +123,6 @@ describe.each([
     await expect(make(db)[method](HOUSE)).rejects.toThrow(/could not be read whole/);
   });
 
-  // Fix round: a batch that errors once is asked once more, so one transient
-  // timeout in a 1,510-item house's 32 requests does not refuse the page.
   it("asks a batch that errored once more, and prices every wine", async () => {
     const { tables } = house();
     const db = capped(tables, (t, n) => t === "inventory_lot_agreed_cost" && n === 9);
