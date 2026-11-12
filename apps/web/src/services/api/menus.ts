@@ -224,6 +224,12 @@ export interface MenuLine {
   price_flag?: 'blank_kept_last_known' | 'blank_no_house_price' | null
   price_flag_note?: string | null
   created_at: string
+  /**
+   * The gateway's kitchen split (menu-line-view.ts isKitchenLine), sent to every
+   * member: a dish on the menu, never carried to the house. Absent from an older
+   * gateway; the page then works it out with the same test.
+   */
+  kitchen_line?: boolean
 }
 
 export interface ActiveMenu {
