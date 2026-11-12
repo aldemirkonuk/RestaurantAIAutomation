@@ -79,8 +79,9 @@ const MEASURE_LABEL: Record<GazetteerMeasureId, string> = {
 const MEASURE_SOURCE: Record<GazetteerMeasureId, string> = {
   // ADR 0293 F3: "items" on these four too. Each figure is counted over
   // every item, wine or not; `par` looks only at items with a par recorded,
-  // and `parUnset` counts the items with none.
-  bottles: 'this house’s items',
+  // and `parUnset` counts the items with none. `bottles` adds only the items
+  // counted by the bottle: grams, millilitres and pieces are not bottles.
+  bottles: 'this house’s items counted by the bottle',
   titles: 'this house’s items',
   par: 'this house’s items with a par recorded, against each item’s own par',
   // ADR 0293 F2: "items", not "wine rows". The figure counts every item with
