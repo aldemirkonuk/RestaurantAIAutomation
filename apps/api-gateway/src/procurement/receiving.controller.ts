@@ -31,6 +31,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/guards/roles.guard";
 import { Roles } from "../auth/decorators/roles.decorator";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { notListedByTheOrderDoor } from "./door-counted-deliveries";
 import {
   DOOR_OUTCOMES,
   DOOR_REFUSAL_REASONS,
@@ -442,10 +443,10 @@ export class ReceivingController {
           },
         ),
       ]);
-      // An order the order door already lists is listed once (R10).
-      const listed = new Set(items.map((i) => i.orderId));
+      // An order the order door already lists is listed once (R10). The house
+      // counter reads through the same rule, so its number agrees.
       const doorCounted = door.ok
-        ? door.value.rows.filter((d) => !d.orderId || !listed.has(d.orderId))
+        ? notListedByTheOrderDoor(items, door.value.rows)
         : [];
       return {
         items,

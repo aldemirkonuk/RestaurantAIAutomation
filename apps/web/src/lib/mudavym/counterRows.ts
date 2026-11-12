@@ -69,9 +69,32 @@ function orderLine(o: CounterOrderRow, read: HouseCounterRead | null): ActLine {
   };
 }
 
+function plural(n: number, one: string): string {
+  return `${n} ${one}${n === 1 ? '' : 's'}`;
+}
+
 function deliveryLine(d: CounterDeliveryRow): ActLine {
+  if (d.door === 'document') {
+    // Counted at the document door; no vendor paper yet (R10). Named as the
+    // receipts strip names it, so the two read alike.
+    const lines = d.linesWithoutBottles ?? 0;
+    const counted =
+      lines > 0
+        ? `${plural(d.countedQtyBottles, 'bottle')} counted + ${plural(lines, 'line')} in another unit`
+        : `${plural(d.countedQtyBottles, 'bottle')} counted`;
+    const who = d.orderNumber ? `Order ${d.orderNumber}` : 'A delivery nobody ordered';
+    return {
+      id: `delivery-${d.deliveryId ?? d.orderId ?? d.countedAt}`,
+      what: `${who}${d.vendorName ? ` from ${d.vendorName}` : ''} · ${counted}`,
+      detail:
+        d.severity === 'overdue'
+          ? `no vendor paper yet · ${d.ageHours} h, overdue`
+          : `no vendor paper yet · ${d.ageHours} h`,
+      at: shortWhen(d.countedAt),
+    };
+  }
   return {
-    id: d.orderId,
+    id: d.orderId ?? EM,
     what: `Order ${d.orderNumber ?? EM} · ${d.countedQtyBottles} bottles counted by case`,
     detail:
       d.severity === 'overdue'

@@ -41,9 +41,20 @@ export interface CounterOrderRow {
 }
 
 export interface CounterDeliveryRow {
-  orderId: string;
+  /**
+   * Which door counted it (browser walk 2026-11-12). `order`: counted by case,
+   * not yet by the bottle. `document`: counted at the document door with no
+   * vendor paper yet. Absent on an answer from before it was sent: the order door.
+   */
+  door?: 'order' | 'document';
+  /** A document-door delivery may name no order. */
+  orderId: string | null;
   orderNumber: string | null;
+  deliveryId?: string | null;
+  vendorName?: string | null;
   countedQtyBottles: number;
+  /** Lines in a unit with no bottle figure (a weight, a keg), never added in. */
+  linesWithoutBottles?: number;
   countedAt: string;
   ageHours: number;
   severity: 'fresh' | 'stale' | 'overdue';
@@ -169,7 +180,7 @@ export const VERB_SHORT: Record<CounterVerb, string> = {
 /** What each register is, in the words a house reads. */
 export const REGISTER_WORD: Record<CounterRegisterKey, string> = {
   orders: 'Orders awaiting the seal',
-  deliveries: 'Deliveries counted by case',
+  deliveries: 'Deliveries counted at the door',
   credits: 'Credits promised',
   threads: 'Replies waiting',
   identities: 'Identities',
@@ -211,8 +222,13 @@ export function roomForAct(
   switch (key) {
     case 'orders':
       return { ...room, path: `/orders?order=${q((row as CounterOrderRow).id)}` };
-    case 'deliveries':
-      return { ...room, path: `/receiving?order=${q((row as CounterDeliveryRow).orderId)}` };
+    case 'deliveries': {
+      // A delivery counted at the document door waits on its paper, and its
+      // strip is on Receipts; one counted by case waits on a bottle count.
+      const d = row as CounterDeliveryRow;
+      if (d.door === 'document') return { name: 'Receipts & Credits', path: '/receipts' };
+      return d.orderId ? { ...room, path: `/receiving?order=${q(d.orderId)}` } : room;
+    }
     case 'credits':
       return { ...room, path: `/receipts?tab=credits&credit=${q((row as CounterCreditRow).id)}` };
     case 'threads': {

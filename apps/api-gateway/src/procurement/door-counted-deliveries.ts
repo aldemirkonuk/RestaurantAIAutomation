@@ -236,3 +236,19 @@ export async function readDoorCountedWithoutPaper(
     .sort((a, b) => b.ageHours - a.ageHours);
   return { rows, capped };
 }
+
+/**
+ * The door-counted deliveries that are not already listed by the order door.
+ * An order the order door lists (it has a receipt event) is counted once, there.
+ * A delivery that names no order is always its own row. The `/unverified`
+ * route and the house counter both read through this, so the strip, the
+ * sorting office and the counter's number agree (browser walk 2026-11-12: the
+ * counter counted the order door only).
+ */
+export function notListedByTheOrderDoor(
+  orderDoor: ReadonlyArray<{ orderId: string }>,
+  doorCounted: ReadonlyArray<DoorCountedDelivery>,
+): DoorCountedDelivery[] {
+  const listed = new Set(orderDoor.map((i) => i.orderId));
+  return doorCounted.filter((d) => !d.orderId || !listed.has(d.orderId));
+}

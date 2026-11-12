@@ -4,6 +4,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { actLine } from './counterRows';
 import {
   actsWaiting,
   counterHead,
@@ -125,5 +126,45 @@ describe('roomForAct — an act opens the record it names (DASH-W16e)', () => {
   });
   it('encodes the id', () => {
     expect(roomForAct('orders', { id: 'a&b=c d' } as never)?.path).toBe('/orders?order=a%26b%3Dc%20d');
+  });
+});
+
+describe('deliveries counted at the document door (browser walk 2026-11-12)', () => {
+  const doc = {
+    door: 'document' as const,
+    orderId: null,
+    orderNumber: null,
+    deliveryId: 'd-1',
+    vendorName: 'Ege Şarap Dağıtım',
+    countedQtyBottles: 6,
+    linesWithoutBottles: 2,
+    countedAt: '2026-09-21T02:00:00Z',
+    ageHours: 10,
+    severity: 'fresh' as const,
+  };
+
+  it('opens Receipts, where its strip is, and never a /receiving link with no order', () => {
+    expect(roomForAct('deliveries', doc)).toEqual({ name: 'Receipts & Credits', path: '/receipts' });
+    expect(roomForAct('deliveries', { ...doc, door: 'order', orderId: null })).toEqual({
+      name: 'Receiving',
+      path: '/receiving',
+    });
+  });
+
+  it('names who brought it and never adds the weighed lines into bottles', () => {
+    const line = actLine('deliveries', doc, null);
+    expect(line.what).toBe('A delivery nobody ordered from Ege Şarap Dağıtım · 6 bottles counted + 2 lines in another unit');
+    expect(line.detail).toBe('no vendor paper yet · 10 h');
+    expect(line.id).toBe('delivery-d-1');
+  });
+
+  it('an order-door row reads as before', () => {
+    const line = actLine(
+      'deliveries',
+      { orderId: 'o-9', orderNumber: 'ORD-9', countedQtyBottles: 36, countedAt: '2026-09-21T08:00:00Z', ageHours: 6, severity: 'fresh' },
+      null,
+    );
+    expect(line.what).toBe('Order ORD-9 · 36 bottles counted by case');
+    expect(line.id).toBe('o-9');
   });
 });
