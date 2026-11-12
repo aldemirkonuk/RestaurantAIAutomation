@@ -481,7 +481,7 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
 
   it('marks the lane counts and the at-risk total as floors when the queue window is full', async () => {
     const items = Array.from({ length: 100 }, (_, i) =>
-      queueItem({ orderId: `ord-${i}`, orderNumber: `PO-${i}` }),
+      queueItem({ orderId: `ord-${i}`, orderNumber: `PO-${i}`, currency: 'TRY' }),
     )
     get.mockResolvedValue(queuePayload({ items, totalAtRisk: 12000 }))
     harness(ManagerBody)
@@ -489,20 +489,20 @@ describe('F5 — a windowed figure renders as a floor (ADR 0051 clause 2)', () =
     // A full window is 100 rows, and the day line now mounts above them, so the
     // first paint of this case is the heaviest in the file. On a loaded CI runner
     // it crossed the 1000 ms default and the assertion read the pre-load em dash.
-    expect(await screen.findByText('≥$12,000', undefined, { timeout: 15000 })).toBeInTheDocument()
+    expect(await screen.findByText('≥TRY 12,000', undefined, { timeout: 15000 })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: /Short/ })).toHaveTextContent('≥100')
   })
 
   it('does not mark a lane count as a floor when the window came back short', async () => {
-    get.mockResolvedValue(queuePayload({ items: [queueItem()], totalAtRisk: 120 }))
+    get.mockResolvedValue(queuePayload({ items: [queueItem({ currency: 'TRY' })], totalAtRisk: 120 }))
     harness(ManagerBody)
 
-    // The header total and this fixture's one row carry the same $120 —
+    // The header total and this fixture's one row carry the same TRY 120 —
     // scoped to the header, since a bare query would also match the row.
     // RcTally sets its display via a post-commit effect, so the header can
     // lag the row's own render by a tick; waitFor settles once it catches up.
     await screen.findByText('PO-1')
-    await waitFor(() => expect(atRiskHeader().getByText('$120')).toBeInTheDocument())
+    await waitFor(() => expect(atRiskHeader().getByText('TRY 120')).toBeInTheDocument())
     const short = screen.getByRole('tab', { name: /Short/ })
     expect(short).toHaveTextContent('1')
     expect(short).not.toHaveTextContent('≥1')
@@ -626,9 +626,9 @@ describe("the owner ledger prints each claim currency on its own and never a bor
 /* ═════════════════════════════ F6 — a measured zero is not an unknown ══ */
 
 describe('F6 — $0 measured and $— unknown are different facts', () => {
-  it('renders a measured zero as $0, not as an em dash', async () => {
+  it('renders a measured zero as a zero, not as an em dash', async () => {
     get.mockResolvedValue(
-      queuePayload({ items: [queueItem({ dollarsAtRisk: 0, openClaims: 0 })], totalAtRisk: 0 }),
+      queuePayload({ items: [queueItem({ dollarsAtRisk: 0, openClaims: 0, currency: 'TRY' })], totalAtRisk: 0 }),
     )
     harness(ManagerBody)
 
@@ -638,7 +638,19 @@ describe('F6 — $0 measured and $— unknown are different facts', () => {
     // bare query would match both.
     await screen.findByText('PO-1')
     const row = screen.getByText('PO-1').closest('button') as HTMLElement
-    expect(within(row).getByText('$0')).toBeInTheDocument()
+    expect(within(row).getByText('TRY 0')).toBeInTheDocument()
+  })
+
+  it('an order with no currency says so, and never borrows a dollar sign (walk 2026-11-12)', async () => {
+    get.mockResolvedValue(
+      queuePayload({ items: [queueItem({ dollarsAtRisk: 0, openClaims: 0 })], totalAtRisk: 0 }),
+    )
+    harness(ManagerBody)
+
+    await screen.findByText('PO-1')
+    const row = screen.getByText('PO-1').closest('button') as HTMLElement
+    expect(within(row).getByText('0 (currency not recorded)')).toBeInTheDocument()
+    expect(row.textContent).not.toContain('$')
   })
 
   it('renders an absent figure as an em dash', async () => {

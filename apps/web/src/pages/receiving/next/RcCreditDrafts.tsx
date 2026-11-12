@@ -21,12 +21,16 @@ import { useState } from 'react';
 import { HoldToApprove } from '@/components/mudavym';
 import { settle, turn } from '@/lib/mudavym/motion';
 import type { ProcurementCredit } from '@/services/api/credits';
-import { EM, MONO, SANS, SERIF, capStyle, fmtDate, fmtMoney } from './rc-format';
+import { fmtMoney } from '@/lib/mudavym/format';
+import { EM, MONO, SANS, SERIF, capStyle, fmtDate, num } from './rc-format';
 import { useApproveCreditDraft, type CreditDraftsData } from './useReceivingNextData';
 
 function DraftCard({ draft }: { draft: ProcurementCredit }) {
   const approve = useApproveCreditDraft();
   const [expanded, setExpanded] = useState(false);
+  // In the claim's own currency (procurement_credits.currency), never a
+  // hardcoded dollar: a lira claim read "$120.00" on a TRY house.
+  const claimed = fmtMoney(num(draft.claimed_amount), draft.currency ?? null);
   // Bumped after a refusal so the die remounts at rest instead of staying sealed.
   const [attempt, setAttempt] = useState(0);
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -85,7 +89,7 @@ function DraftCard({ draft }: { draft: ProcurementCredit }) {
             color: 'var(--ink-1, #211C16)',
           }}
         >
-          {fmtMoney(draft.claimed_amount)}
+          {claimed}
         </span>
       </div>
 
@@ -167,7 +171,7 @@ function DraftCard({ draft }: { draft: ProcurementCredit }) {
             <span style={capStyle}>What the house knows</span>
             <p style={{ margin: '3px 0 0' }}>{draft.notes || draft.reason || EM}</p>
             <p style={{ margin: '3px 0 0', fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}>
-              claimed {fmtMoney(draft.claimed_amount)} · state {draft.state}
+              claimed {claimed} · state {draft.state}
               {draft.document_id ? ' · document attached' : ' · no document attached'}
             </p>
           </div>
@@ -177,7 +181,7 @@ function DraftCard({ draft }: { draft: ProcurementCredit }) {
       <div style={{ marginTop: 10 }}>
         <HoldToApprove
           key={`credit-${draft.id}-${attempt}`}
-          label={`Hold to send the request — ${fmtMoney(draft.claimed_amount)}`}
+          label={`Hold to send the request — ${claimed}`}
           approvedLabel="Requested — it is with the vendor now"
           disabled={approve.isPending}
           onApprove={onApprove}
