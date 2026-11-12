@@ -4,6 +4,9 @@ import {
   readBackActionsFor,
   SETTINGS_RECORDING_SINCE,
   STAFF_WITHHELD_ACTIONS,
+  TRAIL_NOT_KEPT_HERE,
+  TRAIL_NO_PERSON,
+  TRAIL_UNREACHABLE,
   SettingsAuditService,
 } from "./settings-audit.service";
 
@@ -102,7 +105,7 @@ describe("SettingsAuditService.record", () => {
       actorUserId: "",
     });
     expect(receipt.recorded).toBe(false);
-    expect(receipt.reason).toMatch(/no signed-in user/);
+    expect(receipt.reason).toBe(TRAIL_NO_PERSON);
     // An audit row whose actor is null answers the question with a shrug and
     // still counts as a record. Better to have none and say so.
     expect(inserted).toHaveLength(0);
@@ -119,16 +122,18 @@ describe("SettingsAuditService.record", () => {
   });
 
   it("never throws, and reports the failure back rather than swallowing it", async () => {
-    const { databaseService } = makeDb({}, { system_audit_log: { message: "denied" } });
+    const { databaseService } = makeDb({}, { system_audit_log: { message: "system_audit_log is unreachable" } });
     const receipt = await new SettingsAuditService(databaseService).record(CHANGE);
-    expect(receipt).toEqual({ recorded: false, reason: "denied" });
+    // In the house's words: the table's name and the database's message go
+    // to the gateway log, never to the Settings page (walk 2026-11-12).
+    expect(receipt).toEqual({ recorded: false, reason: TRAIL_UNREACHABLE });
   });
 
   it("never throws even when the client itself blows up", async () => {
     const { databaseService } = makeDb({}, {}, { throwOn: "system_audit_log" });
     const receipt = await new SettingsAuditService(databaseService).record(CHANGE);
     expect(receipt.recorded).toBe(false);
-    expect(receipt.reason).toMatch(/connection went away/);
+    expect(receipt.reason).toBe(TRAIL_UNREACHABLE);
   });
 });
 
@@ -201,7 +206,7 @@ describe("SettingsAuditService.list", () => {
     const { databaseService } = makeDb({}, { system_audit_log: { message: "connection reset" } });
     const out = await new SettingsAuditService(databaseService).list("rest-1");
     expect(out.readable).toBe(false);
-    expect(out.reason).toBe("connection reset");
+    expect(out.reason).toBe(TRAIL_UNREACHABLE);
     expect(out.entries).toEqual([]);
   });
 
@@ -212,7 +217,8 @@ describe("SettingsAuditService.list", () => {
     );
     const out = await new SettingsAuditService(databaseService).list("rest-1");
     expect(out.readable).toBe(false);
-    expect(out.reason).toContain("not present on this database");
+    expect(out.reason).toBe(TRAIL_NOT_KEPT_HERE);
+    expect(out.reason).not.toMatch(/audit table|database/);
   });
 
   it("filters to one register without hiding that it filtered", async () => {
