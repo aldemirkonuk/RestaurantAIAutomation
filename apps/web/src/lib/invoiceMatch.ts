@@ -207,11 +207,15 @@ export function costCorrectionLine(
 ): string | null {
   if (!c) return null
   const parts: string[] = []
+  // `salesSettled` counts sale DRAWS, one per sale per lot (revalue_lot's
+  // draws_settled), so a sale that drew from two lots counts twice. One draw
+  // is one sale; more than one is said without a number, never as that many
+  // sales (fix round 2026-11-12, finding on #1112).
   if (c.salesSettled > 0)
     parts.push(
       c.salesSettled === 1
         ? 'A sale made before the invoice arrived now carries the invoice cost.'
-        : `${c.salesSettled} sales made before the invoice arrived now carry the invoice cost.`,
+        : 'Sales made before the invoice arrived now carry the invoice cost.',
     )
   if (c.bottlesRevalued > 0)
     parts.push(

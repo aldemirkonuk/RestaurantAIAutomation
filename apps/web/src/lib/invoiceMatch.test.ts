@@ -152,7 +152,7 @@ describe('invoiceMatch parity with the API engine', () => {
 describe('costCorrectionLine (receipts walk item 5)', () => {
   it('names settled sales and the shelf, in that order', () => {
     expect(costCorrectionLine({ salesSettled: 2, bottlesRevalued: 4 })).toBe(
-      '2 sales made before the invoice arrived now carry the invoice cost. The 4 bottles still on the shelf are costed at it too.',
+      'Sales made before the invoice arrived now carry the invoice cost. The 4 bottles still on the shelf are costed at it too.',
     )
   })
   it('says one sale and one bottle in the singular', () => {
@@ -162,7 +162,8 @@ describe('costCorrectionLine (receipts walk item 5)', () => {
   })
   it('a sold-out delivery still says its sales were settled', () => {
     expect(costCorrectionLine({ salesSettled: 3, bottlesRevalued: 0 })).toBe(
-      '3 sales made before the invoice arrived now carry the invoice cost.',
+      // Three draws may be fewer than three sales: no number is said.
+      'Sales made before the invoice arrived now carry the invoice cost.',
     )
   })
   it('is silent with nothing restated, or no correction at all', () => {

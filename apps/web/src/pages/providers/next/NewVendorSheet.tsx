@@ -221,7 +221,9 @@ export interface NewVendorSheetProps {
 export function NewVendorSheet({ open, onClose, onAdded }: NewVendorSheetProps) {
   const { activeRestaurantId, user } = useAuth();
   const restaurantId = activeRestaurantId || user?.restaurantId || '';
-  const createProvider = useCreateProvider();
+  // The sheet says every outcome itself (saved, queued, refused, unconfirmed),
+  // so the hook's own toasts are not drawn on top of it.
+  const createProvider = useCreateProvider({ quiet: true });
   const { preferences, updatePreferences } = useUserPreferences();
 
   const [query, setQuery] = useState('');
