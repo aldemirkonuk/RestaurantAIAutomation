@@ -344,6 +344,13 @@ function failureWords(err: unknown): string {
   return `The read stopped with an error, and nothing from it was kept but the file: ${m && m.trim() !== "" ? m.trim() : "no reason was given"}.`;
 }
 
+/**
+ * Why a menu's file was not kept, in the house's words. The storage error
+ * itself ("name resolution failed", a bucket name) goes to the log: it is the
+ * operator's to fix, and the house can do nothing with it.
+ */
+export const SOURCE_NOT_TAKEN = "the file store did not take it";
+
 const VERSION_SELECT =
   "id, name, status, cadence, menu_date, menu_date_precision, source_method, source_path, source_mime, source_bytes, source_failure, lines_extracted, read_warnings, read_state, read_failure, extracted_at, extracted_by, made_current_at, made_current_by, retired_at, retired_by, created_at";
 
@@ -1075,16 +1082,18 @@ export class MenusService {
         .from(SOURCE_BUCKET)
         .upload(path, bytes, { contentType: type.mime, upsert: true });
       if (error) {
-        return { path: null, sha256, mime: type.mime, bytes: bytes.length, failure: `the source file was not kept: ${error.message}` };
+        this.logger.error(`Menu source ${path} was not kept: ${error.message}`);
+        return { path: null, sha256, mime: type.mime, bytes: bytes.length, failure: SOURCE_NOT_TAKEN };
       }
       return { path, sha256, mime: type.mime, bytes: bytes.length, failure: null };
     } catch (err: any) {
+      this.logger.error(`Menu source ${path} was not kept: ${err?.message ?? "unknown error"}`);
       return {
         path: null,
         sha256,
         mime: type.mime,
         bytes: bytes.length,
-        failure: `the source file was not kept: ${err?.message ?? "unknown error"}`,
+        failure: SOURCE_NOT_TAKEN,
       };
     }
   }

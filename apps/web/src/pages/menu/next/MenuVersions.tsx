@@ -72,8 +72,33 @@ export function ReadWarnings({ warnings, testId }: { warnings: MenuReadWarning[]
   );
 }
 
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * The calendar day of a moment, on this device's clock. Not the UTC day: a
+ * menu read at 22:05 in Detroit is that evening's menu, not tomorrow's.
+ */
 function day(iso: string | null): string {
-  return iso ? iso.slice(0, 10) : EM;
+  if (!iso) return EM;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** The day and the minute, so two menus read the same day are told apart. */
+function moment(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 16).replace('T', ' ');
+  return `${day(iso)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * Why a menu's file was not kept, without the gateway's older lead-in: rows
+ * stored before 2026-11-11 say "the source file was not kept: ..." themselves,
+ * and the page says it again.
+ */
+function keepFailure(failure: string): string {
+  return failure.replace(/^the source file was not kept:\s*/i, '');
 }
 
 /** How a kept menu is named in a sentence: its own date if it has one, else when it was read. */
@@ -83,7 +108,7 @@ export function versionLabel(v: MenuVersion): string {
       ? `the ${v.menuDate} menu`
       : `the menu for ${v.menuDate}`
     : v.extractedAt
-      ? `the menu read ${day(v.extractedAt)}`
+      ? `the menu read ${moment(v.extractedAt)}`
       : 'a menu read before menus were kept';
   return v.cadence && v.cadence !== 'none' ? `${date} (${v.cadence})` : date;
 }
@@ -92,7 +117,7 @@ export function versionLabel(v: MenuVersion): string {
 export function sourceWords(v: MenuVersion): string {
   // A member who may not open the file (ADR 0358 D2) is still told it was kept.
   if (v.source.kept) return v.source.mime === 'application/pdf' ? 'PDF kept' : v.source.mime?.startsWith('image/') ? 'photo kept' : 'file kept';
-  if (v.source.failure) return `source not kept: ${v.source.failure}`;
+  if (v.source.failure) return `file not kept: ${keepFailure(v.source.failure)}`;
   if (v.sourceMethod === 'manual') return 'typed in, no file';
   return 'read before menus were kept, no file';
 }
@@ -325,7 +350,7 @@ export function ReadMenuForm({ canManage, onRead, onReadStart, onReadDone, onCho
               ? `This exact file was already read${result.reopened.readAt ? ` on ${day(result.reopened.readAt)}` : ''}; this is that read, and nothing was read again. It found ${result.itemsExtracted} line${result.itemsExtracted === 1 ? '' : 's'}. `
               : `Read ${result.itemsExtracted} line${result.itemsExtracted === 1 ? '' : 's'}${result.pages && result.pages > 1 ? ` from ${result.pages} pages` : ''} and kept this menu. `}
             {result.source && !result.source.kept
-              ? `Its file was not kept: ${result.source.failure ?? 'no reason given'}. `
+              ? `Its file was not kept: ${result.source.failure ? keepFailure(result.source.failure) : 'no reason given'}. `
               : ''}
             {isCurrent ? 'It is the current menu.' : 'It is not the current menu, and no price has changed.'}
           </p>

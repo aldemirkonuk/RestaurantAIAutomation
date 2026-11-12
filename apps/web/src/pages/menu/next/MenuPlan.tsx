@@ -43,8 +43,13 @@ function money(n: number | null | undefined): string {
   return n === null || n === undefined ? EM : n.toFixed(2);
 }
 
+/** The calendar day on this device's clock (not the UTC day, which is tomorrow by evening in the Americas). */
 function day(iso: string | null | undefined): string {
-  return iso ? String(iso).slice(0, 10) : 'an unknown day';
+  if (!iso) return 'an unknown day';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
 /** The gateway's own words for a refusal, never a bare status. */
