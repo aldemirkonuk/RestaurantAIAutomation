@@ -132,6 +132,10 @@ function row(over: Partial<InvRow> = {}): InvRow {
     runway: 12,
     daysSinceSale: 1,
     deadStock: false,
+    usageSource: null,
+    usageSince: null,
+    usageUntil: null,
+    usageQty: null,
     bottle: 92,
     glass: 18,
     pourMl: 150,
@@ -570,6 +574,32 @@ describe('every drink, not only wine (INV-W30)', () => {
     expect([spirit.type, spirit.kind]).toEqual(['spirit', 'spirit']);
     const bare = toRow({ id: 'i2', wineId: null, stockLive: 1 } as never, null);
     expect([bare.type, bare.kind]).toEqual([null, null]);
+  });
+
+  it('carries where the pace comes from, and drops it when the pace was not read', () => {
+    const api = {
+      id: 'f1',
+      wineId: null,
+      stockLive: 8200,
+      velocityPerDay: 290,
+      daysOfCover: 28,
+      usageSource: 'counts',
+      usageSince: '2026-10-22T09:00:00Z',
+      usageUntil: '2026-11-11T09:00:00Z',
+      usageQty: 5800,
+    };
+    const r = toRow(api as never, null);
+    expect([r.usageSource, r.usageSince, r.usageUntil, r.usageQty, r.velocity, r.runway]).toEqual([
+      'counts',
+      '2026-10-22T09:00:00Z',
+      '2026-11-11T09:00:00Z',
+      5800,
+      290,
+      28,
+    ]);
+    const unread = toRow({ ...api, analyticsReadable: false } as never, null);
+    expect([unread.usageSource, unread.usageQty, unread.velocity]).toEqual([null, null, null]);
+    expect(toRow({ id: 'x', stockLive: 1, usageSource: 'guess' } as never, null).usageSource).toBeNull();
   });
 
   it('says each kind in the house words, never the key', () => {

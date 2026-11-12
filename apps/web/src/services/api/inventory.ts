@@ -104,6 +104,10 @@ export function normalizeInventoryItem(
     abcClass: item.abcClass ?? undefined,
     deadStock: item.deadStock ?? false,
     daysSinceSale: item.daysSinceSale ?? undefined,
+    usageSource: item.usageSource === 'sales' || item.usageSource === 'counts' ? item.usageSource : undefined,
+    usageSince: item.usageSince ?? undefined,
+    usageUntil: item.usageUntil ?? undefined,
+    usageQty: typeof item.usageQty === 'number' ? item.usageQty : undefined,
     analyticsReadable: item.analyticsReadable ?? true,
     locations: item.locations ?? [],
   } as InventoryItem;
