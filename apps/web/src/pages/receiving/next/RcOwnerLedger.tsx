@@ -23,7 +23,7 @@
  */
 
 import { fmtMoney } from '@/lib/mudavym/format';
-import type { RecoveryFigures } from '@/services/api/credits';
+import { claimCurrencyCode, type RecoveryFigures } from '@/services/api/credits';
 import { RcTally } from './RcTally';
 import { GE, MONO, SANS, SERIF, capStyle } from './rc-format';
 import { SERVER_WINDOWS, type RecoveryData, type RecoveryTrend } from './useReceivingNextData';
@@ -102,11 +102,18 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
   // One group per currency the claims carry. A gateway older than
   // `byCurrency` sends the combined figures only, and their currency is not
   // stated, so they print as "not recorded" rather than borrowing a symbol.
-  const groups: Array<{ code: string | null; figures: RecoveryFigures }> | null = stats
-    ? stats.byCurrency
-      ? Object.entries(stats.byCurrency).map(([code, figures]) => ({ code, figures }))
-      : [{ code: null, figures: stats }]
-    : null;
+  // The gateway keys claims with no currency "UNRECORDED"; that key is read
+  // back as null here so neither the header nor the money prints it as a code.
+  const groups: Array<{ key: string; code: string | null; figures: RecoveryFigures }> | null =
+    stats
+      ? stats.byCurrency
+        ? Object.entries(stats.byCurrency).map(([key, figures]) => ({
+            key,
+            code: claimCurrencyCode(key),
+            figures,
+          }))
+        : [{ key: '', code: null, figures: stats }]
+      : null;
   const noClaim = groups !== null && groups.length === 0;
 
   const statsFloorNote = stats?.capped
@@ -146,7 +153,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
           ) : (
             groups.map((g) => (
               <RcTally
-                key={g.code}
+                key={g.key}
                 value={g.figures.recovered}
                 format={moneyIn(g.code, floor)}
                 style={{ ...tallyStyle, fontSize: 30 }}
@@ -254,7 +261,7 @@ export function RcOwnerLedger({ data }: { data: RecoveryData }) {
               const f = g.figures;
               return (
                 <div
-                  key={g.code ?? ''}
+                  key={g.key}
                   style={{
                     marginTop: 18,
                     paddingTop: 16,
