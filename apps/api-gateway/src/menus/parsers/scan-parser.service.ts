@@ -120,6 +120,10 @@ const WINE_EXTRACTION_PROMPT =
   'Examples: [{"name":"Merlot","producer":"Duckhorn","category":"red","vintage":"2019","region":"Napa Valley","bottle_price":120},' +
   '{"name":"Pale Ale","producer":"Sierra Nevada","category":"beer","by_glass_price":9}]';
 
+/** What a house is told when this gateway has no menu reader switched on. */
+export const MENU_READER_OFF =
+  "The menu reader is not switched on here, so nothing was read. Type the lines in instead, or try again later.";
+
 @Injectable()
 export class ScanParserService {
   private readonly logger = new Logger(ScanParserService.name);
@@ -164,9 +168,10 @@ export class ScanParserService {
   ): Promise<WineExtractItem[]> {
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
-      throw new ServiceUnavailableException(
-        "Anthropic API key not configured — set ANTHROPIC_API_KEY",
-      );
+      // The operator's fix goes to the log; the house is told what it can do.
+      // The sentence is stored as the read's failure and shown on /menu.
+      this.logger.error("Menu read refused: ANTHROPIC_API_KEY is not set on this gateway");
+      throw new ServiceUnavailableException(MENU_READER_OFF);
     }
 
     // Infer image media type from base64 prefix bytes

@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
-import { LINE_SELECT, MenusService } from "./menus.service";
+import { LINE_SELECT, MenusService, SOURCE_NOT_TAKEN } from "./menus.service";
 import { MEMBER_LINE_KEYS, seesRawLine } from "./menu-line-view";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
@@ -884,10 +884,10 @@ describe("MenusService — every menu read is kept as its own version", () => {
     const tables: Record<string, Row[]> = { ...base(), __storageFails: ["bucket unavailable"] as any };
     const service = makeService(tables, { wineSubmissions, csvParser: new CsvParserService() });
     const r = await service.importMenu({ method: "csv", data: { csvContent: csv }, restaurantId: "rest-1" } as any, "user-1");
-    expect(r.source).toEqual({ kept: false, failure: "the source file was not kept: bucket unavailable" });
+    expect(r.source).toEqual({ kept: false, failure: SOURCE_NOT_TAKEN });
     const version = tables.restaurant_menus.find((m) => m.id === r.menuId)!;
     expect(version.source_path).toBeNull();
-    expect(version.source_failure).toMatch(/bucket unavailable/);
+    expect(version.source_failure).toBe(SOURCE_NOT_TAKEN); // the storage error goes to the log, not the page
     expect(version.cadence).toBeNull(); // not tagged is NULL, never a default
     expect(version.menu_date).toBeNull();
   });
