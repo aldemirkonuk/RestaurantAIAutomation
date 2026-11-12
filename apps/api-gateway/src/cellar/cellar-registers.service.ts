@@ -285,6 +285,7 @@ export class CellarRegistersService {
               confidence: live.confidence,
               inventoryRows: live.evidence.inventoryRows,
               menuRows: live.evidence.menuRows,
+              ...(live.evidence.listRows !== undefined ? { listRows: live.evidence.listRows } : {}),
               at: now,
             }
           : null,

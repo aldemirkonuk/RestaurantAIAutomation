@@ -27,7 +27,7 @@ import { AlertTriangle, Check, Loader2 } from 'lucide-react';
 import { Seal } from '@/components/mudavym';
 import RegisterNotice from './NeedsItemsNotice';
 import RegisterEvidenceLine from './RegisterEvidenceLine';
-import { REGISTER_ORDER, REGISTER_TITLE, type RegisterId } from './cellar-format';
+import { REGISTER_ORDER, REGISTER_TITLE, ownRowsOf, type RegisterId } from './cellar-format';
 import type { CellarRegistersVM } from './useCellarNextData';
 
 export interface CellarRegistersStepProps {
@@ -140,18 +140,18 @@ export default function CellarRegistersStep({
               {/* Switched on here with nothing behind it: the same ask, and
                   never dismissible during onboarding — there is nothing yet to
                   dismiss it against. */}
-              {on && (r?.evidence.inventoryRows ?? 0) === 0 && (r?.evidence.menuRows ?? 0) === 0 ? (
+              {on && ownRowsOf(r?.evidence) === 0 ? (
                 <RegisterNotice registers={[id]} variant={noticeVariant} dismissible={false} />
               ) : null}
               {/* Unticking a register the books DO hold items in, during
                   onboarding: the same symmetric state, said plainly, and never
                   a guard on the tick. */}
-              {!on && ((r?.evidence.inventoryRows ?? 0) + (r?.evidence.menuRows ?? 0)) > 0 ? (
+              {!on && ownRowsOf(r?.evidence) > 0 ? (
                 <RegisterNotice
                   kind="stranded"
                   registers={[id]}
                   counts={{
-                    [id]: (r?.evidence.inventoryRows ?? 0) + (r?.evidence.menuRows ?? 0),
+                    [id]: ownRowsOf(r?.evidence),
                   }}
                   variant={noticeVariant}
                   dismissible={false}

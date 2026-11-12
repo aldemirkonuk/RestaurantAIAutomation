@@ -186,8 +186,10 @@ function figuresFor(
   // Every other register is a shared catalogue today — `restaurant_inventory`
   // is keyed on the wine library, so nothing of the kind can be stock yet. The
   // label says "in the catalogue", never "on hand".
+  const list = readout?.evidence.listRows;
   return [
     ['Titles in the catalogue', readout?.evidence.catalogueRows ?? null],
+    ...(list !== undefined ? ([['On this house’s list', list]] as [string, number | null][]) : []),
     ['Named on this menu', readout?.evidence.menuRows ?? null],
   ];
 }

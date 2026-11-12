@@ -539,7 +539,8 @@ export class ArrivalService {
           !register ||
           register.decidedBy !== "inferred" ||
           register.carried !== input.value ||
-          !(register.evidence.inventoryRows || register.evidence.menuRows)
+          // The house's own cocktail list is evidence too (kept apart from menu lines, R2).
+          !(register.evidence.inventoryRows || register.evidence.menuRows || register.evidence.listRows)
         )
           throw new BadRequestException(
             "That proposal is not supported by this house's items or menu.",
