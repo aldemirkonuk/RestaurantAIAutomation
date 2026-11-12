@@ -4,6 +4,7 @@ import type {
   AppNotification,
   CalendarEvent,
   FeedResponse,
+  HouseCurrency,
   InventoryItem,
   NotificationPage,
   ProcurementOrder,
@@ -29,6 +30,28 @@ export function useFeed() {
     queryFn: () => api<FeedResponse>("/mobile/feed"),
     enabled,
     refetchInterval: 60_000,
+  });
+}
+
+/**
+ * The house's reporting currency (`GET /settings/currency`, open to every
+ * signed-in role). A failed read resolves to `readable: false` so screens say
+ * so instead of guessing; that answer is never kept (stale at once).
+ */
+export function useHouseCurrency() {
+  const { enabled, restaurantId } = useAuthed();
+  return useQuery({
+    queryKey: ["settings", "currency", restaurantId],
+    queryFn: async (): Promise<HouseCurrency> => {
+      try {
+        const r = await api<{ code?: string | null; readable?: boolean }>("/settings/currency");
+        return { code: r?.code ?? null, readable: r?.readable !== false };
+      } catch {
+        return { code: null, readable: false };
+      }
+    },
+    enabled,
+    staleTime: (q) => (q.state.data?.readable === false ? 0 : 60 * 60_000),
   });
 }
 

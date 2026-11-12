@@ -6,12 +6,9 @@ import { PressableScale } from "@/components/ui/PressableScale";
 import { Card } from "@/components/ui/Screen";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { color, space } from "@/design/tokens";
-import { useTodayPulse } from "@/api/queries";
+import { useHouseCurrency, useTodayPulse } from "@/api/queries";
+import { houseMoney } from "@/lib/houseMoney";
 import { resolvePulseStripView } from "./pulseStripView";
-
-function money(value: number): string {
-  return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
 
 /**
  * The glance that costs zero taps: tonight's revenue, checks, the delta
@@ -24,6 +21,8 @@ function money(value: number): string {
 export function PulseStrip() {
   const router = useRouter();
   const { data, isLoading } = useTodayPulse();
+  const house = useHouseCurrency().data;
+  const money = (value: number) => houseMoney(value, house);
 
   if (isLoading && !data) {
     return (

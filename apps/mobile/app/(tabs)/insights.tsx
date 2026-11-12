@@ -10,18 +10,16 @@ import { color, space } from "@/design/tokens";
 import {
   useGoalProgress,
   useGoals,
+  useHouseCurrency,
   useInsightFeed,
   useInventory,
   useInventorySummary,
   useTodayPulse,
 } from "@/api/queries";
 import type { InventoryItem } from "@/api/types";
+import { houseMoney } from "@/lib/houseMoney";
 
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL;
-
-function money(value: number): string {
-  return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
 
 function itemName(i: InventoryItem): string {
   return String(i.wineName ?? i.wine_name ?? "Unnamed");
@@ -43,6 +41,8 @@ const CATEGORY_LABEL: Record<string, string> = {
 export default function InsightsScreen() {
   const router = useRouter();
   const pulse = useTodayPulse();
+  const house = useHouseCurrency().data;
+  const money = (value: number) => houseMoney(value, house);
   const inventory = useInventory();
   const summary = useInventorySummary();
   const insights = useInsightFeed();

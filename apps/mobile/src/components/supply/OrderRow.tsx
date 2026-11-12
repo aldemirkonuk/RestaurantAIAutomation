@@ -4,6 +4,7 @@ import { AppText } from "@/components/ui/AppText";
 import { PressableScale } from "@/components/ui/PressableScale";
 import { color, space } from "@/design/tokens";
 import type { ProcurementOrder } from "@/api/types";
+import { orderMoney } from "@/lib/houseMoney";
 
 export const STATUS_LABEL: Record<string, string> = {
   PENDING: "Awaiting approval",
@@ -33,15 +34,11 @@ const STATUS_TONE: Record<string, string> = {
   FAILED: color.danger,
 };
 
-function money(value: number | null | undefined): string | null {
-  if (value == null || !Number.isFinite(Number(value))) return null;
-  return `$${Number(value).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
-
 export function orderAmount(order: ProcurementOrder): string | null {
-  return money(
-    order.totalCost ?? order.finalPrice ?? order.negotiatedPrice ?? order.quotedPrice,
-  );
+  const value =
+    order.totalCost ?? order.finalPrice ?? order.negotiatedPrice ?? order.quotedPrice;
+  if (value == null || !Number.isFinite(Number(value))) return null;
+  return orderMoney(Number(value), order.currency);
 }
 
 export function OrderRow({
