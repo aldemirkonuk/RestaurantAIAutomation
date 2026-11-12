@@ -61,6 +61,27 @@ export function ilikeAnyOf(columns: readonly string[], term: string): string {
   return columns.map((column) => `${column}.ilike.${value}`).join(",");
 }
 
+/**
+ * A generic name with no producer ("House Red", "House White Wine") is kept as
+ * ONE venue's own wine (ADR 0130): `provisional_for_restaurant_id` names the
+ * house. Such a row is that house's, never the shared catalogue's, so a list
+ * read shows it to its own house and to no other. Before 2026-11-12 every
+ * list read returned every venue's own rows, so one house's "House Red" sat
+ * on another house's /wines as an unattributed bottle.
+ *
+ * `restaurantId` is the session's house (the JWT's `restaurantId`). It is
+ * spliced into a PostgREST `or` filter, so anything that is not a uuid is read
+ * as "no house": the caller sees the shared catalogue only.
+ */
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function houseScopeFilter(restaurantId?: string | null): string {
+  return restaurantId && UUID_RE.test(restaurantId)
+    ? `provisional_for_restaurant_id.is.null,provisional_for_restaurant_id.eq.${restaurantId.toLowerCase()}`
+    : "provisional_for_restaurant_id.is.null";
+}
+
 const LIBRARY_READ_FAILED =
   "The wine library could not be read. That is a failed read, not an empty result.";
 
@@ -97,6 +118,12 @@ interface WineRow {
   // for the same reason the provenance fields below are: present only when
   // the query actually selected it.
   display_name?: string | null;
+  /**
+   * ADR 0130: the venue this row belongs to when it is a generic name kept as
+   * one house's own wine; null for a shared catalogue row. Optional because a
+   * narrow select may not carry it.
+   */
+  provisional_for_restaurant_id?: string | null;
   // N4 (BEVERAGE_CATALOGUE_PLAN.md) / arch §9.3, §10.6 M3: provenance,
   // carried through so a consumer can tell a recalled fact from a reasoned
   // default. 76% of the library is `inferred` (a typical profile for the
@@ -166,12 +193,22 @@ export class WinesService {
 
   constructor(private readonly dbService: DatabaseService) {}
 
-  private mapWine(row: WineRow) {
+  private mapWine(row: WineRow, viewerRestaurantId?: string | null) {
     const bottleSizeMl = row.bottle_size_ml ?? 750;
     const bottleSizeOz = Math.round((bottleSizeMl / ML_PER_OZ) * 10) / 10;
     return {
       id: row.id,
       name: row.name,
+      // ADR 0130, 2026-11-12: a generic name with no producer is the house's
+      // own wine, not a catalogue row with its producer missing. True only
+      // for the house that owns it; undefined when the column was not read
+      // or no house asked, so "not said" never reads as "not the house's".
+      houseOwn:
+        row.provisional_for_restaurant_id === undefined || !viewerRestaurantId
+          ? undefined
+          : row.provisional_for_restaurant_id !== null &&
+            row.provisional_for_restaurant_id.toLowerCase() ===
+              viewerRestaurantId.toLowerCase(),
       // Plan §1: present only when selected (same undefined-vs-null
       // discipline as the provenance block below). Callers should prefer
       // this over `name` for anything user-facing — it disambiguates
@@ -487,7 +524,7 @@ export class WinesService {
     return { processed: results.length, results };
   }
 
-  async searchWines(query: GetWinesQueryDto) {
+  async searchWines(query: GetWinesQueryDto, restaurantId?: string | null) {
     const client = this.dbService.getClient();
     let supa = client.from("master_wine_library").select("*");
 
@@ -525,6 +562,10 @@ export class WinesService {
     if (query.maxPrice !== undefined) {
       supa = supa.lte("price_reference", query.maxPrice);
     }
+
+    // A second `or` param: PostgREST ANDs every top-level filter, so this
+    // narrows whatever the search above matched to rows this house may see.
+    supa = supa.or(houseScopeFilter(restaurantId));
 
     if (query.sortBy) {
       const column =
@@ -575,7 +616,9 @@ export class WinesService {
       throw new ServiceUnavailableException(LIBRARY_READ_FAILED);
     }
 
-    return (data || []).map((row: WineRow) => this.mapWine(row));
+    return (data || []).map((row: WineRow) =>
+      this.mapWine(row, restaurantId),
+    );
   }
 
   async getWineById(wineId: string) {
@@ -634,7 +677,10 @@ export class WinesService {
     return Array.from(new Set(countries)).sort();
   }
 
-  async getWineSuggestions(query: WineSuggestionsQueryDto) {
+  async getWineSuggestions(
+    query: WineSuggestionsQueryDto,
+    restaurantId?: string | null,
+  ) {
     if (!query.text || query.text.length < 2) {
       return [];
     }
@@ -642,11 +688,12 @@ export class WinesService {
 
     const client = this.dbService.getClient();
     let suggestions = client.from("master_wine_library").select(
-      "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, abv_percent, created_at, updated_at",
+      "id, wine_id, name, display_name, producer, vintage, price_reference, retail_price_avg, primary_type, region, country, appellation, grape_variety, bottle_size_ml, abv_percent, created_at, updated_at, provisional_for_restaurant_id",
     );
     suggestions = suggestions.or(
       `name.ilike.${textValue},producer.ilike.${textValue}`,
     );
+    suggestions = suggestions.or(houseScopeFilter(restaurantId));
     const { data, error } = await suggestions.limit(query.limit || 10);
 
     if (error) {
@@ -655,15 +702,25 @@ export class WinesService {
       });
       throw new ServiceUnavailableException(LIBRARY_READ_FAILED);
     }
-    return (data || []).map((row: WineRow) => this.mapWine(row));
+    return (data || []).map((row: WineRow) =>
+      this.mapWine(row, restaurantId),
+    );
   }
 
-  async getSimilarWines(wineId: string, query: SimilarWinesQueryDto) {
+  async getSimilarWines(
+    wineId: string,
+    query: SimilarWinesQueryDto,
+    restaurantId?: string | null,
+  ) {
     const wine = await this.getWineById(wineId);
     if (!wine) return [];
 
     const client = this.dbService.getClient();
-    let supa = client.from("master_wine_library").select("*").neq("id", wineId);
+    let supa = client
+      .from("master_wine_library")
+      .select("*")
+      .neq("id", wineId)
+      .or(houseScopeFilter(restaurantId));
 
     if (wine.category) {
       supa = supa.ilike("primary_type", `%${wine.category}%`);
@@ -681,6 +738,8 @@ export class WinesService {
 
     const { data, error } = await supa.limit(query.limit || 5);
     if (error) throw error;
-    return (data || []).map((row: WineRow) => this.mapWine(row));
+    return (data || []).map((row: WineRow) =>
+      this.mapWine(row, restaurantId),
+    );
   }
 }
