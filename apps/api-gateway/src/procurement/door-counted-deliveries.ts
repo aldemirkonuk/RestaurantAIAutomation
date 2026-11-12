@@ -22,6 +22,12 @@
  *     paper, so it does not end the wait. Once an invoice is on the delivery
  *     it is in the review queue, and listing it here too would count it twice.
  *
+ * WHO BROUGHT IT. `vendorName` is the delivery's `provider_id` read from this
+ * house's own providers (browser walk 2026-11-12: two unordered deliveries
+ * read "a delivery nobody ordered" twice and could not be told apart). No
+ * provider on the delivery, or one this house does not have, is `null`, never
+ * a guess. A failed vendor read fails the list, as the order-number read does.
+ *
  * WHAT IT SAYS. `countedQtyBottles` is the door count's own `qty_bottles`, summed
  * over the lines that state one. A line in a unit with no bottle figure (a keg,
  * a liter, a weight; its `qty_bottles` is that count in its own unit) is not
@@ -68,6 +74,9 @@ export interface DoorCountedDelivery {
   /** The order it was counted against, when the door named one. */
   orderId: string | null;
   orderNumber: string | null;
+  /** The vendor on the delivery, from this house's providers; null when none is named. */
+  providerId: string | null;
+  vendorName: string | null;
   /** Bottles the door counted, from the lines that state a bottle figure. */
   countedQtyBottles: number;
   /** Lines counted in a unit with no bottle figure (a weight, a keg), not added in. */
@@ -98,7 +107,7 @@ export async function readDoorCountedWithoutPaper(
 ): Promise<{ rows: DoorCountedDelivery[]; capped: boolean }> {
   const open = await client
     .from("deliveries")
-    .select("id, order_id, delivered_at, created_at")
+    .select("id, order_id, provider_id, delivered_at, created_at")
     .eq("restaurant_id", restaurantId)
     .in("state", [...OPEN_DELIVERY_STATES])
     .order("delivered_at", { ascending: false, nullsFirst: false })
@@ -107,6 +116,7 @@ export async function readDoorCountedWithoutPaper(
   const deliveries = (open.data ?? []) as Array<{
     id: string;
     order_id: string | null;
+    provider_id?: string | null;
     delivered_at: string | null;
     created_at: string | null;
   }>;
@@ -180,6 +190,26 @@ export async function readDoorCountedWithoutPaper(
       numbers.set(o.id, o.order_number ?? null);
   }
 
+  // Vendor names, from this house's own providers only.
+  const providerIds = [
+    ...new Set(waiting.map((d) => d.provider_id).filter((x): x is string => !!x)),
+  ];
+  const vendors = new Map<string, string | null>();
+  for (const ids of chunks(providerIds, IN_CHUNK)) {
+    const providers = await client
+      .from("providers")
+      .select("id, name, company_name")
+      .eq("restaurant_id", restaurantId)
+      .in("id", ids);
+    if (providers.error) fail("The vendors on the deliveries", providers.error);
+    for (const p of (providers.data ?? []) as Array<{
+      id: string;
+      name: string | null;
+      company_name: string | null;
+    }>)
+      vendors.set(p.id, p.name?.trim() || p.company_name?.trim() || null);
+  }
+
   const rows = waiting
     .map((d): DoorCountedDelivery => {
       const at = d.delivered_at ?? d.created_at ?? new Date(now).toISOString();
@@ -189,6 +219,8 @@ export async function readDoorCountedWithoutPaper(
         deliveryId: d.id,
         orderId: d.order_id,
         orderNumber: d.order_id ? (numbers.get(d.order_id) ?? null) : null,
+        providerId: d.provider_id ?? null,
+        vendorName: d.provider_id ? (vendors.get(d.provider_id) ?? null) : null,
         countedQtyBottles: docs.reduce((n, id) => n + (bottles.get(id) ?? 0), 0),
         linesWithoutBottles: docs.reduce((n, id) => n + (unbottled.get(id) ?? 0), 0),
         countedAt: at,

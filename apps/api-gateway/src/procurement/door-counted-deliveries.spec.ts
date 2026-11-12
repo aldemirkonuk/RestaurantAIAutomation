@@ -53,7 +53,7 @@ const base = (): Tables => ({
     // Counted at the door against an order, nothing on paper: waiting.
     { id: "d1", restaurant_id: HOUSE, state: "DELIVERED", order_id: "o1", delivered_at: hoursAgo(3) },
     // Unordered, counted 60 h ago: waiting, overdue.
-    { id: "d2", restaurant_id: HOUSE, state: "DELIVERED", order_id: null, delivered_at: hoursAgo(60) },
+    { id: "d2", restaurant_id: HOUSE, state: "DELIVERED", order_id: null, provider_id: "p1", delivered_at: hoursAgo(60) },
     // Has its invoice: in the review queue, not here.
     { id: "d3", restaurant_id: HOUSE, state: "RECONCILING", order_id: null, delivered_at: hoursAgo(5) },
     // Verified: settled.
@@ -83,6 +83,10 @@ const base = (): Tables => ({
     { document_id: "c2", qty_bottles: null },
   ],
   procurement_orders: [{ id: "o1", restaurant_id: HOUSE, order_number: "PO-7" }],
+  providers: [
+    { id: "p1", restaurant_id: HOUSE, name: "Ege Şarap", company_name: null },
+    { id: "pX", restaurant_id: "h2", name: "Another house's vendor", company_name: null },
+  ],
 });
 
 describe("readDoorCountedWithoutPaper (R10)", () => {
@@ -94,6 +98,8 @@ describe("readDoorCountedWithoutPaper (R10)", () => {
     expect(d1).toMatchObject({
       orderId: "o1",
       orderNumber: "PO-7",
+      providerId: null,
+      vendorName: null,
       countedQtyBottles: 22,
       linesWithoutBottles: 1,
       severity: "fresh",
@@ -102,6 +108,8 @@ describe("readDoorCountedWithoutPaper (R10)", () => {
     expect(d2).toMatchObject({
       orderId: null,
       orderNumber: null,
+      providerId: "p1",
+      vendorName: "Ege Şarap",
       countedQtyBottles: 6,
       linesWithoutBottles: 1,
       severity: "overdue",
@@ -145,6 +153,24 @@ describe("readDoorCountedWithoutPaper (R10)", () => {
     }));
     const { capped } = await readDoorCountedWithoutPaper(fakeClient(t), HOUSE, NOW);
     expect(capped).toBe(true);
+  });
+
+  it("names the vendor only from this house's providers (browser walk 2026-11-12)", async () => {
+    const t = base();
+    // d1 names a provider id that belongs to another house: no name, never a guess.
+    t.deliveries[0].provider_id = "pX";
+    const c = fakeClient(t);
+    const { rows } = await readDoorCountedWithoutPaper(c, HOUSE, NOW);
+    expect(rows.find((r) => r.deliveryId === "d1")).toMatchObject({ providerId: "pX", vendorName: null });
+    expect(rows.find((r) => r.deliveryId === "d2")).toMatchObject({ vendorName: "Ege Şarap" });
+    const p = c.reads.find((r) => r.table === "providers")!;
+    expect(p.filters).toContainEqual(["eq", "restaurant_id", HOUSE]);
+  });
+
+  it("a failed vendor read fails the list, never an unnamed row", async () => {
+    await expect(
+      readDoorCountedWithoutPaper(fakeClient(base(), "providers"), HOUSE, NOW),
+    ).rejects.toThrow(/vendors on the deliveries could not be read/);
   });
 
   it("no open delivery reads nothing further", async () => {
