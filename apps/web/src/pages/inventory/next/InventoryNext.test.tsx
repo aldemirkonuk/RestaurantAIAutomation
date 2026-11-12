@@ -97,7 +97,7 @@ vi.mock('../../../components/inventory/RemoveFromInventoryModal', () => ({
     return <div data-testid="remove-modal" />;
   },
 }));
-vi.mock('../../../components/scanner/MenuScannerFlow', () => ({ MenuScannerFlow: () => null }));
+vi.mock('../../../components/menu/MenuReaderSheet', () => ({ MenuReaderSheet: () => <div data-testid="menu-reader-sheet" /> }));
 vi.mock('@/components/mudavym/DeliveriesToName', () => ({
   DELIVERIES_TO_NAME_KEY: ['deliveries-to-name'],
   DeliveriesToName: () => <div data-testid="deliveries-to-name" />,

@@ -39,8 +39,7 @@ import { computeAutoLocatePlan, type AutoLocateResult, type WineInput, type Wine
 import { createInventoryItem } from '../../../services/api/inventory';
 import { isUnconfirmedWrite } from '../../../services/api/client';
 import { AuctionLotStart } from '../command/AuctionLotStart';
-import { MenuScannerFlow } from '../../../components/scanner/MenuScannerFlow';
-import { summarizeMenuScanPersist } from '../../../lib/menuScannerPersistence';
+import { MenuReaderSheet } from '../../../components/menu/MenuReaderSheet';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import { queryKeys } from '../../../lib/query-keys';
 import { CellarMapView } from '../command/CellarMapView';
@@ -992,13 +991,12 @@ export default function InventoryNext() {
       </div>
 
       {/* ── panels reused from the legacy page ──────────────────────────── */}
+      {/* ADR 0358 F3: "Scan a menu" reads through the menu reader; the read is
+          kept as a draft on /menu and reaches stock only when made current. */}
       {panel === 'scanner' ? (
-        <MenuScannerFlow
-          isOpen
-          onClose={() => setPanel(null)}
-          restaurantId={data.rid ?? undefined}
-          onWinesAdded={(_wines, result) => {
-            if (result) toast.success(`Menu scan: ${summarizeMenuScanPersist(result)}`);
+        <MenuReaderSheet
+          onClose={() => {
+            setPanel(null);
             refreshStock();
           }}
         />

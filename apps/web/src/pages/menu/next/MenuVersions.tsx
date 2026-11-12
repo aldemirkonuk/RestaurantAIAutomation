@@ -22,7 +22,7 @@
  * Keep switch on each price (the founder, 2026-09-21: "add a section to that
  * where you can lock price"), then "Make it current".
  */
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   MENU_CADENCES,
@@ -157,7 +157,22 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
-function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () => void }) {
+/**
+ * The one menu reader (ADR 0358 F3): /menu draws it under "Menus kept", and
+ * the "Scan a menu" buttons on /inventory and /cellar draw it in a sheet
+ * (`components/menu/MenuReaderSheet.tsx`). Every door sends the same
+ * POST /menus/import, and every read lands as a draft version here.
+ * `after` adds what a door shows once a read is kept (the sheet's link here).
+ */
+export function MenuReadForm({
+  canManage,
+  onRead,
+  after,
+}: {
+  canManage: boolean;
+  onRead: () => void;
+  after?: (result: MenuImportResult) => ReactNode;
+}) {
   const queryClient = useQueryClient();
   const [file, setFile] = useState<File | null>(null);
   const [cadence, setCadence] = useState<MenuCadence | ''>('');
@@ -281,6 +296,7 @@ function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () =>
               {chosen}
             </p>
           ) : null}
+          {after ? after(result) : null}
         </div>
       ) : null}
     </div>
@@ -368,7 +384,7 @@ export function MenuVersions({ canManage }: { canManage: boolean }) {
         Every menu this house reads is kept: the file and the lines it found. Reading one does not change the current
         menu or any price; choosing it does.
       </p>
-      <ReadMenuForm canManage={canManage} onRead={refresh} />
+      <MenuReadForm canManage={canManage} onRead={refresh} />
       {said ? (
         <p role="status" className="cl-said" style={{ marginTop: 10 }}>
           {said}

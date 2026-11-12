@@ -45,8 +45,7 @@ import { useTypedInventorySubscription } from "../../../contexts/RealtimeContext
 import { ManualReceiptWorkspace } from "../../../components/inventory/ManualReceiptWorkspace";
 import { AddWineSelectionModal } from "../../../components/wines/AddWineSelectionModal";
 import { AuctionLotStart } from "./AuctionLotStart";
-import { MenuScannerFlow } from "../../../components/scanner/MenuScannerFlow";
-import { summarizeMenuScanPersist } from "../../../lib/menuScannerPersistence";
+import { MenuReaderSheet } from "../../../components/menu/MenuReaderSheet";
 import { ThemedSelect } from "../../../components/ui/ThemedSelect";
 import { ExportMenu } from "../../../components/ui/ExportMenu";
 import {
@@ -1646,22 +1645,16 @@ export function InventoryCommandPage() {
         subtitle="One label, a whole menu, or a delivery with many lines"
       />
 
-      {/* The flow writes the batch itself (it owns the per-row quantities), so this
-          only reports the outcome and refreshes — it must not submit again. */}
-      <MenuScannerFlow
-        isOpen={showMenuScanner}
-        onClose={() => setShowMenuScanner(false)}
-        onWinesAdded={(_wines, result) => {
-          if (!result) return;
-          toast.success(`Menu scan: ${summarizeMenuScanPersist(result)}`, {
-            description:
-              result.provisional.length > 0
-                ? `${result.provisional.map((r) => r.wineName).join(", ")} — added to the Master Wine Library as provisional entries.`
-                : undefined,
-          });
-          void refetchInventory();
-        }}
-      />
+      {/* ADR 0358 F3: a whole menu is read by the menu reader and kept as a
+          draft on /menu; it reaches inventory only when made current. */}
+      {showMenuScanner && (
+        <MenuReaderSheet
+          onClose={() => {
+            setShowMenuScanner(false);
+            void refetchInventory();
+          }}
+        />
+      )}
 
       <ManualReceiptWorkspace
         isOpen={showManualReceipt}

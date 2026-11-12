@@ -18,8 +18,7 @@ import {
 import { Wine as WineType, getWineTypeColor } from "../../data/wineData";
 import { useWines } from "../../hooks/queries";
 import { mapApiWinesToUiWines } from "../../lib/wine-library";
-import { MenuScannerFlow } from "../scanner/MenuScannerFlow";
-import { summarizeMenuScanPersist } from "../../lib/menuScannerPersistence";
+import { MenuReaderSheet } from "../menu/MenuReaderSheet";
 import { useStorageLocations } from "../../hooks/useStorageLocations";
 import {
   COMMON_BOTTLE_SIZES,
@@ -398,11 +397,12 @@ export function AddWineToInventoryModal({
                 </div>
               )}
 
-              {/* Photo Tab. Its one action is the real scanner. The "Single Wine
-                  Label Scan" beside it opened AddWineModal, which answered every
-                  photo with the same hard-coded Château Latour 2010, and its
-                  result was then filled with "dry"/"medium"/0% ABV wherever a
-                  field was missing. Deleted, not labelled (ADR 0020, ADR 0314). */}
+              {/* Photo Tab. Its one action is the menu reader (ADR 0358 F3,
+                  superseding ADR 0314's "a photo goes to the real scanner": that
+                  scanner posted to an orchestrator route nobody serves). The
+                  "Single Wine Label Scan" that once sat beside it answered every
+                  photo with the same hard-coded wine; deleted, not labelled
+                  (ADR 0020, ADR 0314). */}
               {activeTab === "photo" && (
                 <div className="flex-1 flex flex-col items-center justify-center p-8">
                   <div className="text-center max-w-md">
@@ -410,11 +410,11 @@ export function AddWineToInventoryModal({
                       <Camera className="w-10 h-10 text-wine-600" />
                     </div>
                     <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                      Scan Wine Label
+                      Read a menu
                     </h3>
                     <p className="text-gray-500 mb-6">
-                      Use AI to automatically identify wine details from a photo
-                      of the label
+                      A photo, a PDF or a spreadsheet of the menu is read and kept as a draft on the menu page.
+                      Its wines reach inventory when an owner or a manager makes it the current menu.
                     </p>
                     <div className="flex flex-col gap-3">
                       <button
@@ -424,22 +424,6 @@ export function AddWineToInventoryModal({
                         <Camera className="w-5 h-5" />
                         Open Camera / Upload Image
                       </button>
-                    </div>
-                    <div className="mt-6 p-4 bg-purple-50 border border-purple-100 rounded-xl">
-                      <div className="flex items-start gap-3">
-                        <Sparkles className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
-                        <div className="text-left">
-                          <p className="font-medium text-gray-900 text-sm">
-                            AI Menu Scanner (4-Layer Pipeline)
-                          </p>
-                          <p className="text-xs text-gray-600 mt-1">
-                            YOLOv8 detection + Multi-language OCR + Gemini Pro
-                            parser + Master Library matching. Scan full menus or
-                            individual wine labels with real-time camera
-                            detection.
-                          </p>
-                        </div>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -927,23 +911,13 @@ export function AddWineToInventoryModal({
         </motion.div>
       </AnimatePresence>
 
-      {/* Full Menu Scanner Flow - Camera + YOLO + Results */}
+      {/* The menu reader (ADR 0358 F3): the read is kept as a draft on /menu. */}
       {typeof document !== "undefined" &&
         showScannerFlow &&
         createPortal(
-          <MenuScannerFlow
-            isOpen={showScannerFlow}
-            onClose={() => setShowScannerFlow(false)}
-            onWinesAdded={(_wines, result) => {
-              // The scanner's batch step already wrote these rows; reporting is all
-              // that's left, so this must not persist a second time.
-              if (!result) return;
-              toast.success(`Menu scan: ${summarizeMenuScanPersist(result)}`, {
-                description:
-                  result.provisional.length > 0
-                    ? `${result.provisional.map((r) => r.wineName).join(", ")} — added to the Master Wine Library as provisional entries.`
-                    : undefined,
-              });
+          <MenuReaderSheet
+            onClose={() => {
+              setShowScannerFlow(false);
               queryClient.invalidateQueries({ queryKey: ["inventory"] });
             }}
           />,
