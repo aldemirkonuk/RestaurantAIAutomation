@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MenuReaderDialog } from '../scanner/MenuReaderDialog'
 import type { MenuImportResult, MenuImportReviewItem } from '../../services/api/menus'
+import { isKitchenLine } from '../../lib/firstProof'
 
 interface MenuScannerModalProps {
   isOpen: boolean
@@ -33,9 +34,24 @@ export function lineToDetected(i: MenuImportReviewItem): Record<string, unknown>
   }
 }
 
-/** The lines worth asking about in the cellar: those the library has not matched. */
+/**
+ * The lines worth asking about in the cellar: drinks the library has not
+ * matched. A kitchen line (a dish) is never one: the gateway keeps it out of
+ * the library, and an answer here would put it there by hand (menu walk
+ * 2026-11-11, "a kitchen line creates a wine-library row").
+ */
 export function unmatchedLines(r: MenuImportResult): MenuImportReviewItem[] {
-  return (r.items ?? []).filter((i) => !i.matched)
+  return (r.items ?? []).filter((i) => !i.matched && !isKitchenLine(i))
+}
+
+/**
+ * Whether the cellar can ask about a line: it drops one with no name or no
+ * producer (`readingsFrom` in pages/cellar/next/readings.ts, the same test),
+ * so offering it led to "there is nothing to ask about" (browser walk
+ * 2026-11-12, a "House Red" with no producer).
+ */
+export function askable(i: MenuImportReviewItem): boolean {
+  return (i.name ?? '').trim().length >= 3 && (i.producer ?? '').trim() !== ''
 }
 
 export function MenuScannerModal({ isOpen, onClose, onWinesDetected }: MenuScannerModalProps) {
@@ -50,7 +66,9 @@ export function MenuScannerModal({ isOpen, onClose, onWinesDetected }: MenuScann
     open.current = isOpen
     if (!isOpen) setRead(null)
   }, [isOpen])
-  const ask = read ? unmatchedLines(read) : []
+  const unknown = read ? unmatchedLines(read) : []
+  const ask = unknown.filter(askable)
+  const unnamed = unknown.length - ask.length
 
   return (
     <MenuReaderDialog
@@ -61,11 +79,20 @@ export function MenuScannerModal({ isOpen, onClose, onWinesDetected }: MenuScann
         if (open.current) setRead(r)
       }}
       footer={
-        read && ask.length > 0 ? (
+        read && ask.length === 0 && unnamed > 0 ? (
+          <p className="cl-note" style={{ marginTop: 12 }} data-testid="menu-reader-cellar-unnamed">
+            {unnamed} {unnamed === 1 ? 'line is' : 'lines are'} not in the wine library and{' '}
+            {unnamed === 1 ? 'names' : 'name'} no producer, so the cellar has nothing to ask about{' '}
+            {unnamed === 1 ? 'it' : 'them'}.
+          </p>
+        ) : read && ask.length > 0 ? (
           <div style={{ marginTop: 12 }} data-testid="menu-reader-cellar-step">
             <p className="cl-said">
               {ask.length} {ask.length === 1 ? 'line is' : 'lines are'} not in the wine library yet. The cellar can ask
               about {ask.length === 1 ? 'it' : 'them'} one at a time; nothing is written until you answer.
+              {unnamed > 0
+                ? ` ${unnamed} more ${unnamed === 1 ? 'names' : 'name'} no producer, so ${unnamed === 1 ? 'it is' : 'they are'} left out.`
+                : ''}
             </p>
             <button
               type="button"

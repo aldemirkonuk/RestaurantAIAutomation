@@ -10,8 +10,8 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { MenuScannerFlow } from '../scanner/MenuScannerFlow'
-import { MenuScannerModal, lineToDetected } from './MenuScannerModal'
-import { importMenu, type MenuImportReviewItem } from '../../services/api/menus'
+import { MenuScannerModal, lineToDetected, unmatchedLines } from './MenuScannerModal'
+import { importMenu, type MenuImportResult, type MenuImportReviewItem } from '../../services/api/menus'
 
 let role = 'manager'
 vi.mock('../../contexts/AuthContext', () => ({
@@ -116,6 +116,48 @@ describe('Scan a menu on /cellar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }))
     expect(await screen.findByText(/No line could be read/)).toBeInTheDocument()
     expect(screen.queryByTestId('menu-reader-cellar-step')).toBeNull()
+  })
+
+  it('a dish is never handed to the cellar: answering for it would put a dessert in the wine library', () => {
+    const read = {
+      items: [
+        item({ menuItemId: 'w', name: 'Barolo Cannubi' }),
+        item({ menuItemId: 'k', name: 'Tiramisu', category: 'food', producer: null, vintage: null, region: null, grapeVariety: null }),
+        item({ menuItemId: 'm', name: 'Opus One', matched: true }),
+      ],
+    } as unknown as MenuImportResult
+    expect(unmatchedLines(read).map((i) => i.menuItemId)).toEqual(['w'])
+  })
+
+  it('a line with no producer is not offered to the cellar, and the step says why (browser walk 2026-11-12)', async () => {
+    mockImport.mockResolvedValue({
+      menuId: 'm1', current: false, itemsExtracted: 2, submissionsCreated: 0,
+      items: [item({ menuItemId: 'h', name: 'House Red', producer: null, vintage: null }), item({ menuItemId: 't', name: 'Tiramisu', category: 'Desserts', producer: null, vintage: null, region: null, grapeVariety: null })],
+    })
+    mount(<MenuScannerModal isOpen onClose={() => {}} onWinesDetected={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Menu to read'), { target: { files: [new File(['%PDF'], 'menu.pdf', { type: 'application/pdf' })] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }))
+    expect(await screen.findByTestId('menu-reader-cellar-unnamed')).toHaveTextContent(
+      '1 line is not in the wine library and names no producer, so the cellar has nothing to ask about it.',
+    )
+    expect(screen.queryByTestId('menu-reader-cellar-step')).toBeNull()
+    expect(screen.queryByRole('button', { name: /in the cellar$/ })).toBeNull()
+  })
+
+  it('beside lines it can ask about, the step counts the ones it leaves out', async () => {
+    mockImport.mockResolvedValue({
+      menuId: 'm1', current: false, itemsExtracted: 2, submissionsCreated: 0,
+      items: [item({ menuItemId: 'a' }), item({ menuItemId: 'h', name: 'House Red', producer: ' ', vintage: null })],
+    })
+    const onWinesDetected = vi.fn()
+    mount(<MenuScannerModal isOpen onClose={() => {}} onWinesDetected={onWinesDetected} />)
+    fireEvent.change(screen.getByLabelText('Menu to read'), { target: { files: [new File(['%PDF'], 'menu.pdf', { type: 'application/pdf' })] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }))
+    expect(await screen.findByTestId('menu-reader-cellar-step')).toHaveTextContent(
+      '1 line is not in the wine library yet. The cellar can ask about it one at a time; nothing is written until you answer. 1 more names no producer, so it is left out.',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Ask about it in the cellar' }))
+    expect(onWinesDetected).toHaveBeenCalledWith([expect.objectContaining({ name: 'Barolo Cannubi', producer: 'Brezza' })])
   })
 
   it('a line with no producer goes over with an empty one (the cellar drops it, never guesses)', () => {
