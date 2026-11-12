@@ -33,6 +33,27 @@ export const DEFAULT_RATE_LIMITS: Record<string, RateLimitConfig> = {
 };
 
 /**
+ * The limit for a signed-in session reading itself: `GET /auth/me`,
+ * `/auth/me/role`, `/auth/me/linked-providers` and `/auth/houses`.
+ *
+ * Without it these reads fall into the `auth` bucket above only because their
+ * path contains `/auth/`: 10 a minute, keyed on the address. That bucket is
+ * for guesses at a password or a code. A session read is not a guess. It
+ * carries a token that `JwtAuthGuard` checks, and it tells a caller without
+ * one nothing. Every page load makes one, and every device in a house shares
+ * the house's address. Measured on the local stack 2026-11-12: a full load
+ * asked `/auth/me` three times (two in production), so four loads in a
+ * minute from one address answered 429, and the web sent the person to
+ * /login (#1092 handles the 429 itself; this removes the cause).
+ *
+ * So these reads get the ordinary read limit, set on each handler. Every
+ * other `/auth/` route keeps 10 a minute. A new route under `/auth/` still
+ * gets the strict limit unless someone opts it in here. Moving the path
+ * test instead would fail open.
+ */
+export const SESSION_READ_RATE_LIMIT: RateLimitConfig = DEFAULT_RATE_LIMITS.default;
+
+/**
  * Decorator to set custom rate limit for a route
  */
 export const RATE_LIMIT_KEY = "rateLimit";
