@@ -27,7 +27,15 @@ import {
 import { DayExclusionsService } from "./day-exclusions.service";
 import { RecommendationActionsService } from "../recommendation-actions.service";
 import { isSalesGatedGoal } from "../sales-gated-goals";
-import { datedReading, figureOrNull, goalShape, scoreGoal } from "../goal-score";
+import {
+  datedReading,
+  figureOrNull,
+  goalShape,
+  readOnIfNotToday,
+  scoreGoal,
+  storedGoalSchedule,
+} from "../goal-score";
+import { readHouseZone } from "../../common/house-day";
 import {
   SuppressionScope,
   buildSuppressionKey,
@@ -293,6 +301,13 @@ export const BUNDLE_READ_WORDS = {
   analytics_goals: "goals",
 } as const;
 type BundleRead = keyof typeof BUNDLE_READ_WORDS;
+
+/**
+ * The house's zone, named when its read failed and a goal's pace waited on
+ * it. The recommendations goal rule uses the same word, so the two collapse
+ * into one name there.
+ */
+const HOUSE_ZONE_WORD = "house time zone";
 
 /**
  * Whether this bundle read was refused or failed: its slice is `[]` because
@@ -854,7 +869,7 @@ export class InsightGeneratorService {
     // the loop below logs and names in `unread`: the family states no figure,
     // and the feed says which read it could not make (ADR 0292, 2026-10-07).
     const whole = (rows: unknown[]) => ({ data: rows, error: null });
-    const [cons, ords, inv, checks, tables, venue, goals] =
+    const [cons, ords, inv, checks, tables, venue, goals, houseZone] =
       await Promise.allSettled([
         readWholeWindow("The insight bundle's consumption lines", () =>
           client
@@ -916,6 +931,9 @@ export class InsightGeneratorService {
           .select("*")
           .eq("restaurant_id", restaurantId)
           .eq("status", "active"),
+        // The goals family schedules a goal on the house's clock, as the
+        // goals desk does (goal-score.ts `storedGoalSchedule`, ADR 0296).
+        readHouseZone(client, restaurantId),
       ]);
 
     // A failed slice still degrades to `[]` — one dead lens must not take the
@@ -982,6 +1000,8 @@ export class InsightGeneratorService {
           ? venue.value.data?.features || null
           : null,
       goals: ok<any>(goals),
+      zone: houseZone.status === "fulfilled" ? houseZone.value.zone : null,
+      zoneUnread: houseZone.status === "rejected",
       availability: new Set<DataRequirement>(),
       excludedDates: exclusions.dates,
       exclusionsReadable: exclusions.readable,
@@ -1906,24 +1926,27 @@ export class InsightGeneratorService {
       // the way" for every goal before (reports browser walk 2026-11-11).
       const reading = datedReading(g);
       if (!reading) continue;
-      // Judged when it was read, by the scorer the goals desk uses, so the
-      // feed and the desk cannot disagree about one goal.
-      const deadline = g.deadline
-        ? Date.parse(`${String(g.deadline).slice(0, 10)}T00:00:00Z`)
-        : NaN;
-      const start = Date.parse(String(g.created_at ?? ""));
+      // Judged when it was read, by the scorer the goals desk uses, on the
+      // desk's schedule: the house midnights that open the day the goal was
+      // created and its deadline day (ADR 0296), never the raw creation
+      // instant or UTC's midnight. Same reading, same inputs, same pace. With
+      // no zone there is no schedule, as on the desk; a zone read that failed
+      // is named in `unread` when it held a goal's pace back.
+      if (bundle.zoneUnread && g.deadline && !bundle.unread.includes(HOUSE_ZONE_WORD))
+        bundle.unread.push(HOUSE_ZONE_WORD);
+      const { start, end } = storedGoalSchedule(g, bundle.zone);
       const score = scoreGoal({
         direction: g.direction,
         shape: goalShape(g.metric_key),
         current: reading.current,
         target: figureOrNull(g.target_value),
         baseline: figureOrNull(g.baseline_value),
-        start: Number.isFinite(start) ? start : null,
-        end: Number.isFinite(deadline) ? deadline : null,
+        start,
+        end,
         at: reading.at,
       });
       if (score.progressPct === null) continue;
-      const readOn = new Date(reading.at).toISOString().slice(0, 10);
+      const readOn = readOnIfNotToday(reading.at, bundle.zone);
       const ev: InsightEvidence = {
         measureLabel: g.metric_key,
         unit: "ratio",
@@ -1933,8 +1956,8 @@ export class InsightGeneratorService {
         goalMet: score.met ?? undefined,
         goalDaysLeft: score.daysLeft ?? undefined,
         goalOnTrack: score.onTrack ?? undefined,
-        // Dated when the reading is not today's.
-        goalReadOn: readOn !== new Date().toISOString().slice(0, 10) ? readOn : undefined,
+        // Dated when the reading is not the house's today.
+        goalReadOn: readOn ?? undefined,
       };
       // How far from done: a ceiling held is done, a target reached is done.
       const effect =
@@ -2401,6 +2424,10 @@ interface Bundle {
   tables: any[];
   venueFeatures: Record<string, unknown> | null;
   goals: any[];
+  /** The house's IANA zone (`readHouseZone`); null when none is known or the read failed. */
+  zone: string | null;
+  /** True when the zone read failed (not when the house has none). */
+  zoneUnread: boolean;
   availability: Set<DataRequirement>;
   /** Business dates the manager ruled out of every baseline. */
   excludedDates: Set<string>;
