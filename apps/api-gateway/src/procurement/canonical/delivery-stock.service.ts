@@ -78,7 +78,12 @@ export interface BookingReceipt {
   documentId: string;
   booked: BookedLine[];
   notBooked: UnbookedLine[];
-  /** Bottles moved by this call. 0 with a non-empty `booked` = a retry. */
+  /**
+   * Containers moved by this call. 0 with a non-empty `booked` = a retry. A
+   * line into an item kept by weight (`kg`, `g`, `mg`) is not added in: its
+   * delta is grams or kilos, never bottles (browser walk 2026-11-12 read
+   * 3 kg of cheese and 6 bottles as "2506"). Each line's own `delta` says it.
+   */
   bottlesMoved: number;
   /**
    * Per item this call booked stock INTO that the wine library lacks: its
@@ -422,6 +427,14 @@ export class DeliveryStockService {
     );
     if (!units.ok) return units;
 
+    // Pass 1: what each line puts on the shelf, in its item's unit, and what
+    // THIS count says of each item in all. Two lines of one item in one count
+    // (two wheels of a cheese, two cases of a wine) are one count of that item
+    // and add up (browser walk 2026-11-12: 3 kg then 2.5 kg booked +3000 then
+    // -500, leaving 2500 g on the shelf for 5500 g delivered).
+    type Bookable = { line: LineRow; inventoryId: string; qty: number; weighed: boolean };
+    const bookable: Bookable[] = [];
+    const counted = new Map<string, number>();
     for (const line of lines) {
       const label = line.description ?? line.vendor_sku ?? `line ${line.line_no}`;
       if (line.line_no == null) {
@@ -448,18 +461,45 @@ export class DeliveryStockService {
         continue;
       }
 
-      const onShelf = shelfQuantity(line, units.value.get(inventoryId));
+      const itemUnit = units.value.get(inventoryId);
+      const onShelf = shelfQuantity(line, itemUnit);
       if (!onShelf.ok) {
         notBooked.push({ documentId, lineNo: line.line_no, label, reason: onShelf.reason });
         continue;
       }
-      const wanted = onShelf.qty;
+      const weighed = itemUnit === "kg" || itemUnit === "g" || itemUnit === "mg";
+      bookable.push({ line, inventoryId, qty: onShelf.qty, weighed });
+      counted.set(inventoryId, (counted.get(inventoryId) ?? 0) + onShelf.qty);
+    }
 
-      const delta = wanted - (already.value.get(inventoryId) ?? 0);
+    // Pass 2: move the difference between this count and what the delivery
+    // already put on each shelf. Each line owns its slice of the item's count
+    // (the running total before it, up to the running total after it) and
+    // books only the part of its slice above what is already booked. So a
+    // first count books every line in full, a retry books nothing, a retry
+    // after a failure part-way books only the lines that were not booked, and
+    // a corrected count higher than before books only the rise. A corrected
+    // count LOWER than before gives the difference back once, on the item's
+    // first line. The deltas of an item always add up to (this count − already
+    // booked), and each line keeps its own idempotency key.
+    const runningBefore = new Map<string, number>();
+    for (const { line, inventoryId, qty, weighed } of bookable) {
+      const lineNo = line.line_no as number;
+      const before = runningBefore.get(inventoryId) ?? 0;
+      const after = before + qty;
+      runningBefore.set(inventoryId, after);
+      const total = counted.get(inventoryId) ?? 0;
+      const booked0 = already.value.get(inventoryId) ?? 0;
+      const delta =
+        total >= booked0
+          ? Math.max(0, after - Math.max(booked0, before))
+          : before === 0
+            ? total - booked0
+            : 0;
       if (delta === 0) {
         booked.push({
           documentId,
-          lineNo: line.line_no,
+          lineNo,
           inventoryId,
           delta: 0,
           transactionId: null,
@@ -475,18 +515,15 @@ export class DeliveryStockService {
         orderId: delivery.value.orderId,
         userId,
         transactionType: delta > 0 ? "purchase" : "adjustment",
-        reason: `door count for delivery ${deliveryId}, document ${documentId} line ${line.line_no}`,
-        idempotencyKey: `delivery-line:${deliveryId}:${documentId}:${line.line_no}`,
+        reason: `door count for delivery ${deliveryId}, document ${documentId} line ${lineNo}`,
+        idempotencyKey: `delivery-line:${deliveryId}:${documentId}:${lineNo}`,
       });
       if (!moved.ok) return moved;
 
-      // The running total moves with the booking, so two lines of the SAME item
-      // in one count add up instead of each claiming the whole delta.
-      already.value.set(inventoryId, wanted);
-      bottlesMoved += delta;
+      if (!weighed) bottlesMoved += delta;
       booked.push({
         documentId,
-        lineNo: line.line_no,
+        lineNo,
         inventoryId,
         delta,
         transactionId: moved.value,

@@ -96,6 +96,77 @@ describe("DeliveryStockService — the door books stock (A1)", () => {
     expect(res.value.booked[0]).toMatchObject({ delta: 0, inventoryId: ITEM });
   });
 
+  describe("two lines of one item in one count add up (browser walk 2026-11-12)", () => {
+    const two = () => {
+      db.answers.procurement_document_lines = {
+        data: [line({ line_no: 1, qty_bottles: 6 }), line({ line_no: 2, qty_bottles: 4 })],
+        error: null,
+      };
+    };
+    const moves = () =>
+      db.rpcCalls
+        .filter((c) => c.fn === "apply_stock_movement")
+        .map((c) => [c.args.p_idempotency_key, c.args.p_delta]);
+
+    it("a first count books each line in full: 6 + 4 = 10 on the shelf", async () => {
+      two();
+      const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(moves()).toEqual([
+        [`delivery-line:${DEL}:${DOC}:1`, 6],
+        [`delivery-line:${DEL}:${DOC}:2`, 4],
+      ]);
+      expect(res.value.bottlesMoved).toBe(10);
+    });
+
+    it("a retry after both were booked moves nothing and says delta 0 for each", async () => {
+      two();
+      db.answers.inventory_transactions = { data: [{ inventory_id: ITEM, quantity_change: 10 }], error: null };
+      const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
+      expect(res.ok).toBe(true);
+      if (!res.ok) return;
+      expect(moves()).toEqual([]);
+      expect(res.value.booked.map((b) => b.delta)).toEqual([0, 0]);
+    });
+
+    it("a retry after the first line alone was booked books only the second", async () => {
+      two();
+      db.answers.inventory_transactions = { data: [{ inventory_id: ITEM, quantity_change: 6 }], error: null };
+      const res = await service.bookAtTheDoor(REST, DEL, DOC, USER);
+      expect(res.ok).toBe(true);
+      expect(moves()).toEqual([[`delivery-line:${DEL}:${DOC}:2`, 4]]);
+    });
+
+    it("a corrected count lower than before gives the difference back once", async () => {
+      db.answers.procurement_document_lines = {
+        data: [
+          line({ document_id: "recount-doc", line_no: 1, qty_bottles: 5 }),
+          line({ document_id: "recount-doc", line_no: 2, qty_bottles: 5 }),
+        ],
+        error: null,
+      };
+      db.answers.inventory_transactions = { data: [{ inventory_id: ITEM, quantity_change: 12 }], error: null };
+      const res = await service.bookAtTheDoor(REST, DEL, "recount-doc", USER);
+      expect(res.ok).toBe(true);
+      expect(moves()).toEqual([[`delivery-line:${DEL}:recount-doc:1`, -2]]);
+    });
+
+    it("a corrected count higher than before books only the rise", async () => {
+      db.answers.procurement_document_lines = {
+        data: [
+          line({ document_id: "recount-doc", line_no: 1, qty_bottles: 6 }),
+          line({ document_id: "recount-doc", line_no: 2, qty_bottles: 6 }),
+        ],
+        error: null,
+      };
+      db.answers.inventory_transactions = { data: [{ inventory_id: ITEM, quantity_change: 10 }], error: null };
+      const res = await service.bookAtTheDoor(REST, DEL, "recount-doc", USER);
+      expect(res.ok).toBe(true);
+      expect(moves()).toEqual([[`delivery-line:${DEL}:recount-doc:2`, 2]]);
+    });
+  });
+
   it("a corrected count moves the DELTA, as a new transaction (ADR 0104 D5)", async () => {
     db.answers.inventory_transactions = {
       data: [{ inventory_id: ITEM, quantity_change: 12 }],

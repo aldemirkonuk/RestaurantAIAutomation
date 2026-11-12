@@ -69,6 +69,8 @@ describe("DeliveryStockService — a weighed door count and its invoice (R8)", (
     expect(res.ok).toBe(true);
     const call = db.rpcCalls.find((c) => c.fn === "apply_stock_movement");
     expect(call?.args).toMatchObject({ p_inventory_id: ITEM, p_delta: 3000 });
+    // 3000 g are not 3000 bottles (browser walk 2026-11-12 read "2506").
+    if (res.ok) expect(res.value.bottlesMoved).toBe(0);
     // The units were read for this house only.
     expect(db.verbs).toContain("restaurant_inventory.in");
   });
