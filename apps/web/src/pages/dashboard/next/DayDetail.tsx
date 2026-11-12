@@ -26,7 +26,7 @@ import {
   type DayOrdersState,
   type MonthSales,
 } from './useDashboardNextData';
-import { DASH, dateIn, eventKindWords, eventTime, figure, longDay, money, timeAgo } from './format';
+import { DASH, dateIn, eventKindWords, eventTime, figure, longDay, money, timeAgo, uncostedSaid } from './format';
 import { SERIF } from './fonts';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -316,7 +316,13 @@ export function DayDetail({
           <MiniFig label="Net sales" value={netSalesValue(day)} note={fromChecks(day.net_checks, day.checks)} />
         )}
         {salesShown && <MiniFig label="Checks" value={figure(day.checks)} />}
-        {seesAmounts && <MiniFig label="Paid to vendors" value={money(day.procurement_spend)} />}
+        {seesAmounts && (
+          <MiniFig
+            label="Paid to vendors"
+            value={money(day.procurement_spend)}
+            note={day.procurement_spend == null ? uncostedSaid(day.uncosted_orders) : null}
+          />
+        )}
         <MiniFig label="Deliveries" value={figure(day.order_count)} />
         <MiniFig label="Bottles in" value={figure(day.bottles_sold)} />
         <MiniFig label="On the calendar" value={formatNumber(day.events.length)} />

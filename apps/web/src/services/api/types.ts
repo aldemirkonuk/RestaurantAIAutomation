@@ -651,17 +651,32 @@ export interface DashboardStats {
    * displayed as "Total Revenue" on the dashboard. Sales revenue would come
    * from POS checks and is not part of this payload.
    */
-  todayProcurementSpend?: number;
-  weekProcurementSpend?: number;
-  monthProcurementSpend?: number;
+  todayProcurementSpend?: number | null;
+  weekProcurementSpend?: number | null;
+  monthProcurementSpend?: number | null;
+  /**
+   * Delivered orders with no recorded cost, per spend window. A window with
+   * any has a null figure above: it is unknown, never summed short. Absent on
+   * a gateway older than this field.
+   */
+  uncostedOrders?: { today: number; week: number; month: number };
 }
 
 /** Vendor spend summary returned by `GET /dashboard/summary/:id`. */
 export interface ProcurementSpendSummary {
-  totalProcurementSpend: number;
-  monthlyProcurementSpend: number;
+  /** Null: a delivered order carries no recorded cost (see `unread`). */
+  totalProcurementSpend: number | null;
+  monthlyProcurementSpend: number | null;
+  uncostedOrders?: { total: number; thisMonth: number };
+  unread?: { totalProcurementSpend: string | null; monthlyProcurementSpend: string | null };
   totalBottlesDelivered: number;
-  spendByMonth: Array<{ month: string; spend: number; bottles: number }>;
+  spendByMonth: Array<{
+    month: string;
+    spend: number | null;
+    bottles: number;
+    uncosted?: number;
+    unread?: string | null;
+  }>;
 }
 
 export interface DashboardWidget {

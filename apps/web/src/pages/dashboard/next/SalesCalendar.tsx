@@ -44,7 +44,7 @@ import {
   type DayLedger,
   type MonthLedger,
 } from './useDashboardNextData';
-import { DASH, dateIn, figure, longDay, money, monthName } from './format';
+import { DASH, dateIn, figure, longDay, money, monthName, uncostedSaid } from './format';
 import { SERIF } from './fonts';
 import DayDetail from './DayDetail';
 import { TryAgain } from './TryAgain';
@@ -226,7 +226,7 @@ function cellLabel(
     if (o.seesAmounts) {
       parts.push(
         day.procurement_spend == null
-          ? 'paid to vendors unknown'
+          ? `paid to vendors unknown${day.uncosted_orders > 0 ? `, ${uncostedSaid(day.uncosted_orders)}` : ''}`
           : day.procurement_spend > 0
             ? `${money(day.procurement_spend)} paid to vendors`
             : 'no deliveries',
@@ -412,6 +412,9 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
               <span className="text-inkm-1" style={MONO_FIG}>
                 {money(ledger?.monthlySpend)}
               </span>
+              {ledger?.monthlySpend == null && uncostedSaid(ledger?.monthlyUncosted) && (
+                <span data-testid="dn-month-uncosted">{` (${uncostedSaid(ledger?.monthlyUncosted)})`}</span>
+              )}
               {' · '}
             </>
           )}

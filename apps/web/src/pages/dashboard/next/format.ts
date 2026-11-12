@@ -31,6 +31,18 @@ export function approveLabel(total: number | null | undefined): string {
     : `Hold to approve · ${formatMoney(total, 'full')}`;
 }
 
+/**
+ * Why a spend figure is not stated: delivered orders with no recorded cost.
+ * The gateway withholds the figure rather than sum it short; the page says so
+ * in words instead of drawing a $0. Null when none is uncosted.
+ */
+export function uncostedSaid(n: number | null | undefined): string | null {
+  if (!n || n < 1) return null;
+  return n === 1
+    ? '1 delivered order has no recorded cost'
+    : `${n} delivered orders have no recorded cost`;
+}
+
 /** Plain figure or the dash. */
 export function figure(v: number | null | undefined, mode: 'compact' | 'full' = 'full'): string {
   return v == null || Number.isNaN(v) ? DASH : formatNumber(v, mode);
