@@ -112,6 +112,22 @@ export interface ExtractionRunResult {
 }
 
 /**
+ * What the house reads when no model is switched on for this server. This
+ * used to be the deployment's own variable name ("ANTHROPIC_API_KEY not
+ * configured"), printed on /vendor-prices through the sweep status `detail`.
+ * The variable name goes to the log, where whoever can set it reads it.
+ */
+export const PRICE_READER_OFF =
+  "Reading prices from vendor pages is not switched on here yet, so this page was fetched but not read.";
+
+/**
+ * What the house reads when the model call fails. The model client's own
+ * error (status code, vendor name, request detail) goes to the log.
+ */
+export const PRICE_READER_DOWN =
+  "Reading prices from this page did not work just now; the next sweep tries again.";
+
+/**
  * Fetches a vendor page and turns it into price observations.
  *
  * The judgement lives in ./vendor-page-extraction, which is pure and tested.
@@ -275,7 +291,10 @@ export class VendorPageExtractorService {
 
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
-      result.skippedReason = "ANTHROPIC_API_KEY not configured";
+      this.logger.warn(
+        `Not reading ${url}: ANTHROPIC_API_KEY is not configured on this gateway.`,
+      );
+      result.skippedReason = PRICE_READER_OFF;
       return result;
     }
 
@@ -310,7 +329,10 @@ export class VendorPageExtractorService {
         (payload.content || []).find((b: any) => b.type === "text")?.text ??
         "{}";
     } catch (err: any) {
-      result.skippedReason = `Model call failed: ${err?.message ?? "unknown"}`;
+      this.logger.warn(
+        `Model call failed for ${url}: ${err?.message ?? "unknown"}`,
+      );
+      result.skippedReason = PRICE_READER_DOWN;
       return result;
     }
 
