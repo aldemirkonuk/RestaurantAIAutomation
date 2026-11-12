@@ -215,6 +215,15 @@ export interface TillStock {
   goodsOnTill: number;
   /** Of those the till reaches, how many carry no recorded cost. */
   uncostedOnTill: number;
+  /**
+   * Of those the till reaches, how many sold nothing in the window (a mapped
+   * item no line named with a sale, no bottle moved). They stay in the base:
+   * a slow or idle seller is stock the till can sell, and leaving it out
+   * would shorten days of stock. Named so the reader can tell them apart.
+   */
+  idleOnTill: number;
+  /** Their value at cost, or null when one of them has no recorded cost. */
+  idleOnTillValue: number | null;
   /** On-hand goods the till does not reach: left out of every ratio. */
   goodsOffTill: number;
   /** Their value at cost, or null when one of them has no recorded cost. */
@@ -237,6 +246,12 @@ export function tillStockOf(input: {
   const uncostedOnTill = on.filter((g) => !known(g.inventoryValue)).length;
   const sum = (gs: typeof onHand) =>
     gs.reduce((a, g) => a + (g.inventoryValue as number), 0);
+  // Sold in the window: a sale on the till, or a bottle the till moved.
+  const sold = new Set<string>();
+  for (const i of sales.items ?? []) if (num(i.sales) > 0) sold.add(String(i.inventory_id));
+  for (const i of cost?.items ?? [])
+    if (num(i.bottles_out) > 0 || num(i.bottles_back) > 0) sold.add(String(i.inventory_id));
+  const idle = on.filter((g) => !sold.has(String(g.id)));
   return {
     // No on-hand good the till reaches is "none, or no answer" (the loader
     // degrades a failed read to []), so null, never 0 days.
@@ -244,6 +259,8 @@ export function tillStockOf(input: {
     goodsOnHand: onHand.length,
     goodsOnTill: on.length,
     uncostedOnTill,
+    idleOnTill: idle.length,
+    idleOnTillValue: idle.every((g) => known(g.inventoryValue)) ? round2(sum(idle)) : null,
     goodsOffTill: off.length,
     offTillValue: off.every((g) => known(g.inventoryValue)) ? round2(sum(off)) : null,
   };
@@ -255,6 +272,12 @@ function tillStockSentence(t: TillStock | null): string {
   const parts = [`: ${t.goodsOnTill} of ${plural(t.goodsOnHand, "good")} on hand`];
   if (t.uncostedOnTill > 0)
     parts.push(`, ${t.uncostedOnTill} of them with no recorded cost`);
+  if (t.idleOnTill > 0)
+    parts.push(
+      `, ${t.idleOnTill} of them sold nothing in the window` +
+        (t.idleOnTillValue != null ? ` (${t.idleOnTillValue.toFixed(2)} at cost)` : "") +
+        ` and ${t.idleOnTill === 1 ? "stays" : "stay"} in, since the till can sell ${t.idleOnTill === 1 ? "it" : "them"}`,
+    );
   if (t.goodsOffTill > 0)
     parts.push(
       `; the ${plural(t.goodsOffTill, "good")} the till does not reach` +

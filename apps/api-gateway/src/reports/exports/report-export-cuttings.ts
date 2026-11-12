@@ -646,6 +646,11 @@ function writeLedger(payload: unknown): ExportDoc {
       ts && (num(ts.uncostedOnTill) ?? 0) > 0
         ? `${num(ts.uncostedOnTill)} of the ${num(ts.goodsOnTill) ?? 0} goods on hand the till sells carry no recorded cost, so inventory turns, days of inventory and GMROI are withheld.`
         : "",
+      // A mapped good that sold nothing stays in the base (the till can sell
+      // it), and is named so a long days of stock can be read for what it is.
+      ts && (num(ts.idleOnTill) ?? 0) > 0
+        ? `${num(ts.idleOnTill)} of the ${num(ts.goodsOnTill) ?? 0} goods on hand the till sells sold nothing in this window${num(ts.idleOnTillValue) != null ? ` (${(num(ts.idleOnTillValue) as number).toFixed(2)} at cost)` : ""}. They are counted: the till can sell them, so they lengthen days of inventory.`
+        : "",
       cc && cc.complete === false
         ? num(cc.total) === 0
           ? "No on-hand good carries a recorded cost, so the cellar at cost is withheld rather than a total assembled from nothing."
