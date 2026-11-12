@@ -36,6 +36,16 @@ export const NO_COUNT_NOTE = {
 } as const;
 export type NoteLanguage = keyof typeof NO_COUNT_NOTE;
 
+/**
+ * One clause, read inside the sheet's "The photo could not be read — …. Type
+ * the count instead." (InventorySheets.tsx), when
+ * this gateway has no photo reader switched on. The operator's fix (the model
+ * key) goes to the log, never to the house (onboarding walk 2026-11-11: the
+ * page said "set ANTHROPIC_API_KEY" to a restaurant user).
+ */
+export const PHOTO_READER_OFF =
+  "counting from a photo is not switched on here yet";
+
 /** One clause, so it reads inside the sheet's "The photo could not be read — …". */
 export const UNREADABLE_PHOTO =
   "This photo's format cannot be read here; take it as a JPEG or PNG";
@@ -101,9 +111,10 @@ export class PhotoCountService {
 
     const apiKey = this.configService.get<string>("ANTHROPIC_API_KEY");
     if (!apiKey) {
-      throw new ServiceUnavailableException(
-        "Anthropic API key not configured — set ANTHROPIC_API_KEY",
+      this.logger.error(
+        "Photo count refused: ANTHROPIC_API_KEY is not set on this gateway",
       );
+      throw new ServiceUnavailableException(PHOTO_READER_OFF);
     }
 
     try {

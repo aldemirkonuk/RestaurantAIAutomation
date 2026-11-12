@@ -1,7 +1,8 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ServiceUnavailableException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import {
   NO_COUNT_NOTE,
+  PHOTO_READER_OFF,
   PhotoCountService,
   UNREADABLE_PHOTO,
   sniffPhotoMediaType,
@@ -114,5 +115,16 @@ describe("the note says no confidence word, in the house's language (QA round 10
     await svc.estimate(PNG, "Lager", "r1", undefined, "tr");
     expect(sent(call)[1].text).toContain("no word about confidence or certainty");
     expect(sent(call)[1].text).toContain("Write the note in Turkish.");
+  });
+});
+
+describe("a gateway with no photo reader says so in the house's words", () => {
+  it("refuses a readable photo without naming the key, and calls no model", async () => {
+    const { svc, call } = service(null);
+    const err = await svc.estimate(JPEG, "House lager").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect((err as Error).message).toBe(PHOTO_READER_OFF);
+    expect((err as Error).message).not.toMatch(/ANTHROPIC|API key|configured/i);
+    expect(call).not.toHaveBeenCalled();
   });
 });
