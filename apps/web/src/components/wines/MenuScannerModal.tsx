@@ -13,6 +13,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { MenuReaderDialog } from '../scanner/MenuReaderDialog'
 import type { MenuImportResult, MenuImportReviewItem } from '../../services/api/menus'
+import { isKitchenLine } from '../../lib/firstProof'
 
 interface MenuScannerModalProps {
   isOpen: boolean
@@ -33,9 +34,14 @@ export function lineToDetected(i: MenuImportReviewItem): Record<string, unknown>
   }
 }
 
-/** The lines worth asking about in the cellar: those the library has not matched. */
+/**
+ * The lines worth asking about in the cellar: drinks the library has not
+ * matched. A kitchen line (a dish) is never one: the gateway keeps it out of
+ * the library, and an answer here would put it there by hand (menu walk
+ * 2026-11-11, "a kitchen line creates a wine-library row").
+ */
 export function unmatchedLines(r: MenuImportResult): MenuImportReviewItem[] {
-  return (r.items ?? []).filter((i) => !i.matched)
+  return (r.items ?? []).filter((i) => !i.matched && !isKitchenLine(i))
 }
 
 export function MenuScannerModal({ isOpen, onClose, onWinesDetected }: MenuScannerModalProps) {

@@ -10,8 +10,8 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
 import { MenuScannerFlow } from '../scanner/MenuScannerFlow'
-import { MenuScannerModal, lineToDetected } from './MenuScannerModal'
-import { importMenu, type MenuImportReviewItem } from '../../services/api/menus'
+import { MenuScannerModal, lineToDetected, unmatchedLines } from './MenuScannerModal'
+import { importMenu, type MenuImportResult, type MenuImportReviewItem } from '../../services/api/menus'
 
 let role = 'manager'
 vi.mock('../../contexts/AuthContext', () => ({
@@ -116,6 +116,17 @@ describe('Scan a menu on /cellar', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Read this menu' }))
     expect(await screen.findByText(/No line could be read/)).toBeInTheDocument()
     expect(screen.queryByTestId('menu-reader-cellar-step')).toBeNull()
+  })
+
+  it('a dish is never handed to the cellar: answering for it would put a dessert in the wine library', () => {
+    const read = {
+      items: [
+        item({ menuItemId: 'w', name: 'Barolo Cannubi' }),
+        item({ menuItemId: 'k', name: 'Tiramisu', category: 'food', producer: null, vintage: null, region: null, grapeVariety: null }),
+        item({ menuItemId: 'm', name: 'Opus One', matched: true }),
+      ],
+    } as unknown as MenuImportResult
+    expect(unmatchedLines(read).map((i) => i.menuItemId)).toEqual(['w'])
   })
 
   it('a line with no producer goes over with an empty one (the cellar drops it, never guesses)', () => {
