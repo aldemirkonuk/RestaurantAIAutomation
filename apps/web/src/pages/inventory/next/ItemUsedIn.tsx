@@ -13,6 +13,13 @@
  * never sums the groups into "not used anywhere". Dish recipes are not read
  * by this page at all (recipe lines live on the recipe-engine stack), so that
  * line says whether a recipe uses the item is not known here, never "no".
+ *
+ * The two drink groups answer one question from two sources (a cocktail card
+ * that names the catalogue drink, and a current recipe line linked to the
+ * item), so they are drawn so that they never contradict (r5, R7): an empty
+ * group is left out when the other one was read, a drink the recipes already
+ * list is not listed again from its card, and when both are empty one "None."
+ * is said, under the recipes. A group that could not be read always says so.
  */
 import { Link, useInRouterContext } from 'react-router-dom';
 import type { ItemMenuLine, ItemUsedIn as UsedIn, ItemUsedInGroup } from '../../../services/api/inventory';
@@ -109,6 +116,30 @@ function Group<T>({
   );
 }
 
+type UsedGroup<T> = ItemUsedInGroup<T>;
+const read = <T,>(g: UsedGroup<T> | undefined): g is UsedGroup<T> & { lines: T[] } => !!g && g.readable && g.lines !== null;
+
+/**
+ * The two drink groups, drawn so they never contradict each other (R7). Each
+ * returned group is null when it is left out.
+ */
+export function drinkGroups<C extends { cocktailId: string }, D extends { cocktailId: string }>(
+  cards: UsedGroup<C>,
+  recipes: UsedGroup<D> | undefined,
+): { cards: UsedGroup<C> | null; recipes: UsedGroup<D> | undefined | null } {
+  if (!read(cards) || !read(recipes)) {
+    // One side unread: the read side is drawn as it is, and None there is only its own.
+    return { cards, recipes };
+  }
+  const inRecipes = new Set(recipes.lines.map((d) => d.cocktailId));
+  const onlyOnCards = cards.lines.filter((c) => !inRecipes.has(c.cocktailId));
+  if (recipes.lines.length > 0) {
+    return { cards: onlyOnCards.length > 0 ? { ...cards, lines: onlyOnCards } : null, recipes };
+  }
+  // No recipe line: the cards answer alone, or one None is said under the recipes.
+  return cards.lines.length > 0 ? { cards, recipes: null } : { cards: null, recipes };
+}
+
 export default function ItemUsedIn({
   load,
   canManage,
@@ -147,10 +178,14 @@ export default function ItemUsedIn({
       </p>
     );
   } else {
-    const { soldAs, inCocktails, inDrinkRecipes, namedNotLinked } = load.data;
+    const { soldAs, namedNotLinked } = load.data;
+    const drinks = drinkGroups(load.data.inCocktails, load.data.inDrinkRecipes);
+    const inCocktails = drinks.cards;
+    const inDrinkRecipes = drinks.recipes;
     body = (
       <>
         <Group title="Sold as" testid="ivd-used-sold" group={soldAs} line={menu} />
+        {inCocktails ? (
         <Group
           title="In these cocktails"
           testid="ivd-used-cocktails"
@@ -164,6 +199,8 @@ export default function ItemUsedIn({
             side: c.quantity !== null ? `${fmtRecipeQty(c.quantity)}${c.unit ? ` ${c.unit}` : ''}` : undefined,
           })}
         />
+        ) : null}
+        {inDrinkRecipes === null ? null : (
         <Group
           title="In drink recipes"
           testid="ivd-used-drink-recipes"
@@ -177,6 +214,7 @@ export default function ItemUsedIn({
             to: drinkHref(d.cocktailId),
           })}
         />
+        )}
         <Group
           title="Named on the menu, not linked"
           testid="ivd-used-named"

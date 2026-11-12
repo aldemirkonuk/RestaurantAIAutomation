@@ -5,7 +5,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import ItemUsedIn, { DRINKS_DO_NOT_DRAW, DRINK_RECIPES_UNREAD, RECIPES_UNKNOWN, drinkHref } from './ItemUsedIn';
+import ItemUsedIn, { DRINKS_DO_NOT_DRAW, DRINK_RECIPES_UNREAD, RECIPES_UNKNOWN, drinkHref, drinkGroups } from './ItemUsedIn';
 import type { ItemUsedIn as UsedIn } from '../../../services/api/inventory';
 
 const EUR = { state: 'recorded', code: 'EUR' } as const;
@@ -198,6 +198,46 @@ describe('Used in', () => {
       const g = screen.getByTestId('ivd-used-drink-recipes');
       expect(g.textContent).toContain('could not be read here');
       expect(g.textContent).not.toContain('None');
+    });
+  });
+
+  describe('the two drink groups never contradict each other (r5, R7)', () => {
+    const d = (id: string, name: string) => ({ cocktailId: id, name, label: 'Rakı', qtyEntered: 40, unitCode: 'ml' });
+    const c = (id: string, name: string) => ({ cocktailId: id, name, quantity: 40, unit: 'ml' });
+    const draw = (over: Partial<UsedIn>) =>
+      render(<ItemUsedIn load={load(over)} canManage currency={EUR} onRetry={vi.fn()} />);
+
+    it('says no "None." above a drink the recipes list', () => {
+      draw({ inCocktails: ok([]), inDrinkRecipes: ok([d('c2', 'Lime sour')]) });
+      expect(screen.queryByTestId('ivd-used-cocktails')).toBeNull();
+      expect(screen.queryByText('None.', { selector: '[data-testid="ivd-used-cocktails-none"]' })).toBeNull();
+      expect(within(screen.getByTestId('ivd-used-drink-recipes')).getByText(/Lime sour/)).toBeTruthy();
+    });
+
+    it('says no "None." under a drink its card lists', () => {
+      draw({ inCocktails: ok([c('c1', 'Rakı sour')]), inDrinkRecipes: ok([]) });
+      expect(within(screen.getByTestId('ivd-used-cocktails')).getByText('Rakı sour')).toBeTruthy();
+      expect(screen.queryByTestId('ivd-used-drink-recipes')).toBeNull();
+    });
+
+    it('lists a drink once: its recipe line, not its card again', () => {
+      draw({ inCocktails: ok([c('c1', 'Rakı sour'), c('c3', 'Old card')]), inDrinkRecipes: ok([d('c1', 'Rakı sour')]) });
+      const cards = within(screen.getByTestId('ivd-used-cocktails')).getAllByRole('listitem');
+      expect(cards.map((li) => li.textContent)).toEqual(['Old card40 ml']);
+      expect(within(screen.getByTestId('ivd-used-drink-recipes')).getByText(/Rakı sour/)).toBeTruthy();
+    });
+
+    it('when both are empty, says one None, under the recipes', () => {
+      draw({ inCocktails: ok([]), inDrinkRecipes: ok([]) });
+      expect(screen.queryByTestId('ivd-used-cocktails')).toBeNull();
+      expect(screen.getByTestId('ivd-used-drink-recipes-none').textContent).toBe('None.');
+    });
+
+    it('never hides a group that could not be read', () => {
+      draw({ inCocktails: { readable: false, lines: null, source: 'x' }, inDrinkRecipes: ok([d('c2', 'Lime sour')]) });
+      expect(screen.getByTestId('ivd-used-cocktails').textContent).toContain('could not be read');
+      expect(drinkGroups(ok([c('c1', 'A')]), { readable: false, lines: null, source: 'x' }).recipes?.readable).toBe(false);
+      expect(drinkGroups(ok([c('c1', 'A')]), undefined)).toEqual({ cards: ok([c('c1', 'A')]), recipes: undefined });
     });
   });
 });
