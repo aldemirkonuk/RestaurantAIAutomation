@@ -167,6 +167,33 @@ describe('the code box (signed in, no link)', () => {
   })
 })
 
+// Walk 2026-11-11: the sixth digit submits, the refusal line clears, and
+// Resend moves under the pointer; its press mailed a new code to an address
+// verified 18 ms before. No resend while a code is being checked.
+describe('resend while a code is being checked', () => {
+  it('is disabled and posts nothing while the code is in flight', async () => {
+    h.post.mockReturnValue(new Promise(() => undefined))
+    mount('/verify-email')
+    const resend = screen.getByRole('button', { name: 'Resend verification email' })
+    expect(resend).toBeEnabled()
+    fireEvent.change(codeBox(), { target: { value: '123456' } })
+    expect(resend).toBeDisabled()
+    fireEvent.click(resend)
+    expect(h.post).toHaveBeenCalledTimes(1)
+    expect(h.post).toHaveBeenCalledWith('/auth/verify-email', { code: '123456' })
+  })
+
+  it('comes back after a refused code', async () => {
+    h.post.mockRejectedValueOnce({
+      response: { status: 400, data: { code: 'CODE_REFUSED', message: 'x' } },
+    })
+    mount('/verify-email')
+    fireEvent.change(codeBox(), { target: { value: '000000' } })
+    await screen.findByTestId('verify-code-refusal')
+    expect(screen.getByRole('button', { name: 'Resend verification email' })).toBeEnabled()
+  })
+})
+
 describe('the code box when storage is blocked', () => {
   it('storage that throws still renders the page, box and all', () => {
     const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {

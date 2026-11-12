@@ -229,7 +229,15 @@ export function VerifyEmail() {
     </div>
   ) : null
 
+  // Walk 2026-11-11: typing the sixth digit submits by itself, the refusal
+  // line above the buttons clears, and the Resend button moves up under a
+  // pointer that was aiming at "Verify with this code". The press landed
+  // 18 ms after the code verified and mailed a new code to a verified
+  // address. No resend while a code or link is being checked, or after.
+  const resendLocked = resending || codeBusy || verifying || verified
+
   const handleResend = async () => {
+    if (codeInFlight.current || verifyInFlight.current || verified) return
     // Rate limit: 1 per 60 seconds (T-26-05-03)
     if (lastResent && Date.now() - lastResent.getTime() < 60000) {
       toast.error('Please wait 1 minute before resending')
@@ -411,7 +419,7 @@ export function VerifyEmail() {
                       <button
                         className="mdv-btn"
                         onClick={handleResend}
-                        disabled={resending}
+                        disabled={resendLocked}
                       >
                         {resending ? 'Requesting…' : 'Send me a new link'}
                       </button>
@@ -443,7 +451,7 @@ export function VerifyEmail() {
                     <button
                       className="mdv-btn mdv-btn--seal"
                       onClick={handleResend}
-                      disabled={resending}
+                      disabled={resendLocked}
                     >
                       {resending ? 'Requesting…' : 'Resend verification email'}
                     </button>
@@ -596,7 +604,7 @@ export function VerifyEmail() {
                 className="w-full"
                 size="lg"
                 onClick={handleResend}
-                disabled={resending}
+                disabled={resendLocked}
               >
                 {resending ? 'Resending...' : 'Send me a new link'}
               </Button>
@@ -621,7 +629,7 @@ export function VerifyEmail() {
               className="w-full"
               size="lg"
               onClick={handleResend}
-              disabled={resending}
+              disabled={resendLocked}
             >
               {resending ? (
                 <>

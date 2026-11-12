@@ -1,5 +1,5 @@
 import { AuthService } from "./auth.service";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 
 /**
  * The lockout this closes was found in a stalled agent's uncommitted work and
@@ -21,6 +21,7 @@ function makeService(
     messageId?: string;
     error?: string;
   }> = async () => ({ success: true, messageId: "m1" }),
+  emailVerified = false,
 ) {
   const ordered = [...rows];
   const chain: any = {
@@ -60,7 +61,7 @@ function makeService(
     eq: () => account,
     maybeSingle: async () => ({
       data: {
-        email_verified: false,
+        email_verified: emailVerified,
         password_hash: "$2b$10$registrant",
         created_at: new Date().toISOString(),
       },
@@ -218,5 +219,39 @@ describe("resendVerification — says whether the mail left", () => {
       service.resendVerification("u1", "a@b.com"),
     ).resolves.toEqual({ sent: false, verificationMail: "not_sent" });
     expect(sent).toHaveLength(1);
+  });
+});
+
+/**
+ * Walk 2026-11-11: a resend that landed 18 ms after the code verified minted
+ * and mailed a new code to a verified account. The account row decides.
+ */
+describe("resendVerification — a verified address", () => {
+  it("refuses with ALREADY_VERIFIED and sends nothing", async () => {
+    const { service, sent, inserted } = makeService(
+      [{ id: "v0", verified_at: minutesAgo(5), created_at: minutesAgo(5) }],
+      {},
+      undefined,
+      true,
+    );
+
+    const refusal = await service
+      .resendVerification("u1", "a@b.com")
+      .catch((err: unknown) => err);
+    expect(refusal).toBeInstanceOf(ConflictException);
+    expect((refusal as ConflictException).getResponse()).toEqual(
+      expect.objectContaining({ code: "ALREADY_VERIFIED" }),
+    );
+    expect(sent).toHaveLength(0);
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("refuses even with no verification row at all", async () => {
+    const { service, sent } = makeService([], {}, undefined, true);
+
+    await expect(
+      service.resendVerification("u1", "a@b.com"),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(sent).toHaveLength(0);
   });
 });
