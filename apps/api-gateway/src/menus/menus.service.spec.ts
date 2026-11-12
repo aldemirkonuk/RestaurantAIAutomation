@@ -1454,6 +1454,7 @@ describe("MenusService.getOnboardingProgress — the self-heal counts the lines 
           api
         ),
         limit: (n: number) => ((cap = n), api),
+        order: () => api,
         update: (p: Row) => ((patch = p), api),
         maybeSingle: async () => {
           const err = read();
@@ -1545,10 +1546,11 @@ describe("MenusService.getOnboardingProgress — the self-heal counts the lines 
       [menu("m-1", "active", 0)],
       [line("i-1", "m-1", "flagged"), line("i-2", "m-1", "flagged")],
     );
-    const progress = await service.getOnboardingProgress("invitee-1");
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
     expect(progress.menu_uploaded).toBe(true);
     expect(progress.activated).toBe(true);
-    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(true);
+    // OB-1: the read writes nothing; the fact is read from the house.
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
   });
 
   it("a CSV version and a manual version each count by their lines", async () => {
@@ -1556,13 +1558,13 @@ describe("MenusService.getOnboardingProgress — the self-heal counts the lines 
       [menu("m-1", "draft", 0, "csv")],
       [line("i-1", "m-1")],
     );
-    const fromCsv = await csv.service.getOnboardingProgress("invitee-1");
+    const fromCsv = await csv.service.getOnboardingProgress("invitee-1", "rest-1");
     expect(fromCsv.menu_uploaded).toBe(true);
     const manual = serviceOn(
       [menu("m-1", "draft", null, "manual")],
       [line("i-1", "m-1", "flagged")],
     );
-    const typed = await manual.service.getOnboardingProgress("invitee-1");
+    const typed = await manual.service.getOnboardingProgress("invitee-1", "rest-1");
     expect(typed.menu_uploaded).toBe(true);
   });
 
@@ -1571,7 +1573,7 @@ describe("MenusService.getOnboardingProgress — the self-heal counts the lines 
       [menu("m-1", "active", 9)],
       [line("i-1", "m-1", "discarded"), line("i-2", "m-1", "discarded")],
     );
-    const progress = await service.getOnboardingProgress("invitee-1");
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
     expect(progress.menu_uploaded).toBe(false);
     expect(progress.activated).toBe(false);
     expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
@@ -1579,18 +1581,18 @@ describe("MenusService.getOnboardingProgress — the self-heal counts the lines 
 
   it("a version with no line at all does not count, even active and with no read count", async () => {
     const { service } = serviceOn([menu("m-1", "active", null)], []);
-    const progress = await service.getOnboardingProgress("invitee-1");
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
     expect(progress.menu_uploaded).toBe(false);
   });
 
-  it("a house holding two active versions with lines reads as uploaded, and the flag is healed", async () => {
+  it("a house holding two active versions with lines reads as uploaded, and nothing is written", async () => {
     const { service, tables } = serviceOn(
       [menu("m-1", "active", 12), menu("m-2", "active", 9)],
       [line("i-1", "m-1"), line("i-2", "m-2")],
     );
-    const progress = await service.getOnboardingProgress("invitee-1");
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
     expect(progress.menu_uploaded).toBe(true);
-    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(true);
+    expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
   });
 
   it("a draft-only house with lines reads as uploaded for an invitee", async () => {
@@ -1598,7 +1600,7 @@ describe("MenusService.getOnboardingProgress — the self-heal counts the lines 
       [menu("m-1", "draft", 7)],
       [line("i-1", "m-1")],
     );
-    const progress = await service.getOnboardingProgress("invitee-1");
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
     expect(progress.menu_uploaded).toBe(true);
   });
 
@@ -1607,7 +1609,7 @@ describe("MenusService.getOnboardingProgress — the self-heal counts the lines 
       [menu("m-1", "archived", 30), menu("m-2", "draft", 4, "scan", "rest-2")],
       [line("i-1", "m-1"), line("i-2", "m-2", "approved", "rest-2")],
     );
-    const progress = await service.getOnboardingProgress("invitee-1");
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
     expect(progress.menu_uploaded).toBe(false);
   });
 
@@ -1617,21 +1619,18 @@ describe("MenusService.getOnboardingProgress — the self-heal counts the lines 
       [line("i-1", "m-1")],
       { menu_items: "connection reset" },
     );
-    await expect(service.getOnboardingProgress("invitee-1")).rejects.toThrow(
+    await expect(service.getOnboardingProgress("invitee-1", "rest-1")).rejects.toThrow(
       /connection reset/,
     );
     expect(tables.user_onboarding_progress[0].menu_uploaded).toBe(false);
   });
 
-  it("a user whose flag is already set never reads the house's lines", async () => {
-    const { service, tables, reads } = serviceOn([], [], {
-      menu_items: "must not be read",
-      restaurant_menus: "must not be read",
-    });
+  it("a stored flag set true says nothing: a house with no line reads as not uploaded (OB-1)", async () => {
+    const { service, tables, reads } = serviceOn([], []);
     tables.user_onboarding_progress[0].menu_uploaded = true;
-    const progress = await service.getOnboardingProgress("invitee-1");
-    expect(progress.menu_uploaded).toBe(true);
-    expect(reads).not.toContain("menu_items");
-    expect(reads).not.toContain("restaurant_menus");
+    const progress = await service.getOnboardingProgress("invitee-1", "rest-1");
+    expect(progress.menu_uploaded).toBe(false);
+    expect(progress.activated).toBe(false);
+    expect(reads).toContain("menu_items");
   });
 });

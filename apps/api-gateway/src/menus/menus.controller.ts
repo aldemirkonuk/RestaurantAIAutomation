@@ -254,18 +254,35 @@ export class OnboardingController {
   ) {}
 
   @Get("progress")
-  @ApiOperation({ summary: "Get the authenticated user's onboarding progress" })
-  async getProgress(@CurrentUser() user: { userId: string }) {
-    return this.menusService.getOnboardingProgress(user.userId);
+  @ApiOperation({
+    summary: "The setup of the house this session is in",
+    description:
+      "Read from the house's own tables every time: a menu read, a menu made current, a supplier, an invite. A GET writes nothing. activated = the house has a current menu with a live line. 404 when the session is in no house.",
+  })
+  async getProgress(
+    @CurrentUser() user: { userId: string; restaurantId?: string },
+  ) {
+    return this.menusService.getOnboardingProgress(
+      user.userId,
+      user.restaurantId,
+    );
   }
 
   @Patch("progress")
-  @ApiOperation({ summary: "Update onboarding progress fields" })
+  @ApiOperation({
+    summary: "Put the setup checklist away (the person's own flag)",
+    description:
+      "Only checklist_dismissed is written. menu_uploaded, vendor_added and team_member_invited are read from the house and a body that names them changes nothing. Answers the progress read.",
+  })
   async updateProgress(
     @Body() dto: UpdateOnboardingProgressDto,
-    @CurrentUser() user: { userId: string },
+    @CurrentUser() user: { userId: string; restaurantId?: string },
   ) {
-    return this.menusService.updateOnboardingProgress(user.userId, dto);
+    return this.menusService.updateOnboardingProgress(
+      user.userId,
+      user.restaurantId,
+      dto,
+    );
   }
 
   @Patch("threshold")
