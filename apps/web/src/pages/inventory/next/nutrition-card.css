@@ -24,7 +24,7 @@
   font-variant-numeric: tabular-nums;
 }
 .ivn-fig dd[data-unknown='true'] {
-  color: var(--ink-3);
+  color: var(--ink-4);
   font-style: italic;
 }
 .ivn-allergens {

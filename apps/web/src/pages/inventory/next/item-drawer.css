@@ -61,7 +61,7 @@ button.ivd-card:hover {
   background: var(--paper-0);
 }
 .ivd-card-k {
-  color: var(--ink-3);
+  color: var(--ink-4);
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -84,12 +84,12 @@ button.ivd-card:hover {
   font-size: 12px;
 }
 .ivd-card-s {
-  color: var(--ink-3);
+  color: var(--ink-4);
   font-size: 12px;
   line-height: 1.4;
 }
 .ivd-dim {
-  color: var(--ink-3);
+  color: var(--ink-4);
 }
 .ivd-spark {
   color: var(--ink-2);
