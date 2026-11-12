@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandMark } from '../components/brand/BrandMark'
 import {
@@ -6,7 +6,13 @@ import {
   reviewMenuItem,
   type MenuImportReviewItem,
 } from '../services/api/menus'
-import { isKitchenLine, lineNeedsPencil, lineSourceCrop, readProof } from '../lib/firstProof'
+import {
+  isKitchenLine,
+  lineNeedsPencil,
+  lineSourceCrop,
+  readProof,
+  saveProofItems,
+} from '../lib/firstProof'
 
 const sectionOrder = [
   'wine',
@@ -36,6 +42,8 @@ function sectionName(value: string) {
     sparkling: 'Sparkling wine',
     spirit: 'Spirits',
     'soft drink': 'Soft drinks',
+    // The heading for lines with no section; title-casing gave "Needs A Place".
+    'needs a place': 'Needs a place',
   }
   return names[value] ?? value.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
@@ -58,7 +66,13 @@ export default function HouseMenu() {
   const [adding, setAdding] = useState(false)
   const [addName, setAddName] = useState('')
   const [addSection, setAddSection] = useState('')
+  const [placeError, setPlaceError] = useState<string | null>(null)
   const sourceImage = proof?.sourceImage ?? null
+
+  // Every placed or added line is kept for a reload and for /house's count.
+  useEffect(() => {
+    if (proof) saveProofItems(items)
+  }, [proof, items])
 
   const kitchen = items.filter(isKitchenLine)
   const drinkItems = items.filter((item) => !isKitchenLine(item))
@@ -106,12 +120,22 @@ export default function HouseMenu() {
   }
 
   const pencilled = drinkItems.filter((item) => lineNeedsPencil(item)).length
-  const absent = sectionOrder.filter(
-    (section) => !drinkItems.some((item) => item.category?.toLowerCase().trim() === section),
-  )
+  // "Not on this menu" is only said once a line has a section: with every
+  // line still needing a place, the read named no section at all, and
+  // listing Wine, Red wine, White wine as absent claimed what it did not see.
+  const anyPlaced = drinkItems.some((item) => {
+    const category = item.category?.toLowerCase().trim()
+    return Boolean(category) && category !== 'unknown'
+  })
+  const absent = anyPlaced
+    ? sectionOrder.filter(
+        (section) => !drinkItems.some((item) => item.category?.toLowerCase().trim() === section),
+      )
+    : []
 
   const place = async (item: MenuImportReviewItem, category: string) => {
     setSaving(item.menuItemId)
+    setPlaceError(null)
     try {
       await reviewMenuItem(item.menuItemId, 'category', category)
       setItems((current) =>
@@ -122,6 +146,9 @@ export default function HouseMenu() {
         ),
       )
       setOpen(null)
+    } catch {
+      // A refused PATCH used to vanish: the line stayed open, unchanged, unsaid.
+      setPlaceError('That line was not placed. Try again.')
     } finally {
       setSaving(null)
     }
@@ -131,6 +158,7 @@ export default function HouseMenu() {
     const category = addSection || absent[0]
     if (!addName.trim() || !category || !proof) return
     setSaving('add')
+    setPlaceError(null)
     try {
       const created = await addMenuItem(proof.menuId, { name: addName.trim(), category })
       setItems((current) => [
@@ -139,6 +167,8 @@ export default function HouseMenu() {
       ])
       setAddName('')
       setAdding(false)
+    } catch {
+      setPlaceError('That line was not added. Try again.')
     } finally {
       setSaving(null)
     }
@@ -172,6 +202,9 @@ export default function HouseMenu() {
           <p><strong className="block font-serif text-3xl">{pencilled}</strong><span className="text-xs uppercase tracking-wider">pencilled</span></p>
         </div>
 
+        {placeError && (
+          <p role="alert" className="mt-6 text-sm text-red-700">{placeError}</p>
+        )}
         <div className="mt-12 space-y-12">
           {grouped.map(([category, rows]) => (
             <section key={category}>
@@ -230,7 +263,11 @@ export default function HouseMenu() {
                                 <p className="mt-2 text-sm text-[#6d685f]">
                                   {sourceImage
                                     ? 'No crop of this line — the reading did not return a box.'
-                                    : 'No crop of this line — the original page was not kept.'}
+                                    : proof.source?.kept === false && !proof.source.failure
+                                      ? 'No page to crop — this line was typed, not read from a photo.'
+                                      : proof.source?.kept === false
+                                        ? 'No crop of this line — the original page was not kept.'
+                                        : 'No crop of this line — the original page is not open here.'}
                                 </p>
                               )
                             })()}

@@ -69,6 +69,25 @@ export function writeProof(result: MenuImportResult, sourceImage?: string | null
   }
 }
 
+/**
+ * Keep the lines as they now stand (walk 2026-11-11). Placing a line or
+ * adding one saved it on the gateway but only in the page's state, so a
+ * reload of /house/menu put every line back to "needs a place" and /house
+ * still counted them pencilled. The stored proof's items are rewritten;
+ * the page image (its own key) is left alone. Storage that refuses is not
+ * an error: the gateway already holds the change.
+ */
+export function saveProofItems(items: MenuImportReviewItem[]) {
+  try {
+    const value = sessionStorage.getItem(FIRST_PROOF_KEY)
+    if (!value) return
+    const proof = JSON.parse(value) as MenuImportResult
+    sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify({ ...proof, items }))
+  } catch {
+    // Blocked or full storage: the page keeps its state for this visit.
+  }
+}
+
 /** Pixel or page box the extractor already named. Never invented. */
 export type LineBox = {
   x: number
