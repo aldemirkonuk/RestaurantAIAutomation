@@ -49,6 +49,7 @@ import {
   RateLimit,
   SESSION_READ_RATE_LIMIT,
   SESSION_RENEWAL_RATE_LIMIT,
+  SESSION_END_RATE_LIMIT,
 } from "../common/rate-limit";
 import { Request } from "express";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
@@ -242,6 +243,8 @@ export class AuthController {
    */
   @Post("logout")
   @UseGuards(JwtAuthGuard)
+  // A session ending itself, not a guess (SESSION_END_RATE_LIMIT).
+  @RateLimit(SESSION_END_RATE_LIMIT)
   @AllowUnverified() // leaving must never require verifying first
   @AllowsNoHouse() // nor choosing a house
   async logout(

@@ -1,7 +1,11 @@
 import { ExecutionContext, HttpException } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
-import { RateLimitGuard, SESSION_RENEWAL_RATE_LIMIT } from "./rate-limit.guard";
+import {
+  RateLimitGuard,
+  SESSION_END_RATE_LIMIT,
+  SESSION_RENEWAL_RATE_LIMIT,
+} from "./rate-limit.guard";
 import { AuthController } from "../../auth/auth.controller";
 
 /**
@@ -123,6 +127,17 @@ describe("RateLimitGuard: a session reading itself is not a sign-in attempt", ()
         101,
       ),
     ).toBe(100);
+  });
+
+  // r5: a shift's tablets signing out together from one address. The 11th
+  // used to get 429 and stay signed in.
+  it("POST /auth/logout admits a house's 30 same-minute sign-outs, capped at 100", async () => {
+    expect(SESSION_END_RATE_LIMIT).toEqual({ limit: 100, windowSeconds: 60 });
+    expect(typeof proto.logout).toBe("function");
+    expect(await admitted(guard, proto.logout, "/api/v1/auth/logout", 30)).toBe(30);
+    expect(await admitted(guard, proto.logout, "/api/v1/auth/logout", 80)).toBe(70);
+    // Signing out never spends the sign-in bucket.
+    expect(await admitted(guard, proto.login, "/api/v1/auth/login", 11)).toBe(10);
   });
 
   it("a refresh storm does not spend the sign-in bucket", async () => {
