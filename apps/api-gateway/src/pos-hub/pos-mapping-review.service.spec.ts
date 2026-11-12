@@ -99,7 +99,11 @@ function makeDb(opts: {
           eq: () => q,
           not: () => q,
           order: () => q,
-          limit: async () => ({ data: opts.checks ?? [], error: null }),
+          // PostgREST's own cap: never more than 1,000 rows per request.
+          range: async (from: number, to: number) => ({
+            data: (opts.checks ?? []).slice(from, Math.min(to + 1, from + 1000)),
+            error: null,
+          }),
         };
         return q;
       }
@@ -259,6 +263,18 @@ describe("PosMappingReviewService.listNeedingSaleUnit — read shape", () => {
     expect(observed.latest).toBe(18);
     expect(observed.latest_at).toBe("2026-08-23T23:11:00Z");
     expect(res.checks_scanned).toBe(3);
+  });
+
+  it("scans as many checks as asked past 1,000 (readers lane r5)", async () => {
+    const many = Array.from({ length: 1800 }, (_, i) =>
+      check(
+        [{ external_item_id: "ext-1", name: "Raki", qty: 1, price: 20 }],
+        new Date(Date.UTC(2026, 7, 1) - i * 60_000).toISOString(),
+      ),
+    );
+    const { service } = makeService({ mappings: [mapping()], checks: many });
+    const res = await service.listNeedingSaleUnit(RESTAURANT, { checkLimit: 1500 });
+    expect(res.checks_scanned).toBe(1500);
   });
 
   it("falls back to an exact name match, the way the ingest resolver does", async () => {
@@ -699,7 +715,9 @@ describe("PosMappingReviewService.setSaleUnitBatch", () => {
  * see is the same as a dropped line — B20's whole point was that it must not be.
  */
 describe("PosMappingReviewService.listUnresolvedLines", () => {
-  function makeQueueService(rows: Row[], readError?: string) {
+  let pages: Array<[number, number]> = [];
+  function makeQueueService(rows: Row[], readError?: string, failFrom = 0) {
+    pages = [];
     const client: any = {
       from(table: string) {
         if (table !== "pos_unresolved_lines")
@@ -708,10 +726,13 @@ describe("PosMappingReviewService.listUnresolvedLines", () => {
           select: () => q,
           eq: () => q,
           order: () => q,
-          limit: async () =>
-            readError
-              ? { data: null, error: { message: readError } }
-              : { data: rows, error: null },
+          range: async (from: number, to: number) => {
+            pages.push([from, to]);
+            if (readError && from >= failFrom)
+              return { data: null, error: { message: readError } };
+            // PostgREST's own cap: never more than 1,000 rows per request.
+            return { data: rows.slice(from, Math.min(to + 1, from + 1000)), error: null };
+          },
         };
         return q;
       },
@@ -760,6 +781,34 @@ describe("PosMappingReviewService.listUnresolvedLines", () => {
     expect(res.summary.open_lines).toBe(3);
     expect(res.summary.unmapped).toBe(2);
     expect(res.summary.no_sale_volume).toBe(1);
+  });
+
+  // Readers lane r5: one .limit(2000) was cut at PostgREST's 1,000, so
+  // `truncated` could never be true and a floor read as a total.
+  it("reads past 1,000 open lines, whole, and is not truncated under the cap", async () => {
+    const many = Array.from({ length: 1500 }, (_, i) =>
+      line({ id: `u${i}`, external_check_id: `chk-${i}` }),
+    );
+    const res = await makeQueueService(many).listUnresolvedLines(RESTAURANT);
+    expect(res.summary.open_lines).toBe(1500);
+    expect(res.summary.truncated).toBe(false);
+    expect(pages).toEqual([[0, 999], [1000, 1999]]);
+  });
+
+  it("says truncated when the queue holds more than it reads", async () => {
+    const many = Array.from({ length: 2500 }, (_, i) =>
+      line({ id: `u${i}`, external_check_id: `chk-${i}` }),
+    );
+    const res = await makeQueueService(many).listUnresolvedLines(RESTAURANT);
+    expect(res.summary.open_lines).toBe(2000);
+    expect(res.summary.truncated).toBe(true);
+  });
+
+  it("a second page that fails fails the read, never a part queue", async () => {
+    const many = Array.from({ length: 1500 }, (_, i) => line({ id: `u${i}` }));
+    await expect(
+      makeQueueService(many, "connection reset", 1000).listUnresolvedLines(RESTAURANT),
+    ).rejects.toThrow(/connection reset/);
   });
 
   it("reports a failed read as a failed read, never as an empty queue (ADR 0067)", async () => {

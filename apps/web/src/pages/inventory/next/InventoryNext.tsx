@@ -365,6 +365,9 @@ export default function InventoryNext() {
     retry: false,
   });
   const posOpen = posQueue.data?.summary?.open_lines ?? 0;
+  // The gateway reads the newest 2,000 open lines at most; past that the
+  // count is a floor (ADR 0067's `truncated`) and is said as one.
+  const posFloor = posQueue.data?.summary?.truncated === true;
 
   const selBlocked = selectedRows.filter((r) => removeBlocked(r) !== null).length;
   const copySelectedNames = async () => {
@@ -805,6 +808,7 @@ export default function InventoryNext() {
               </p>
             ) : posOpen > 0 ? (
               <p className="iv-note" data-testid="inv-pos-queue">
+                {posFloor ? 'At least ' : ''}
                 {fmtCount(posOpen)} POS {posOpen === 1 ? 'line rang up and moved' : 'lines rang up and moved'} no stock.{' '}
                 <button type="button" className="iv-linkish iv-focus" onClick={() => setPanel('pos')}>
                   Map them

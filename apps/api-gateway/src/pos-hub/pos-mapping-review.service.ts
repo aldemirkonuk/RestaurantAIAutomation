@@ -217,6 +217,36 @@ export interface UnresolvedLinesResponse {
 const DEFAULT_CHECK_LIMIT = 500;
 const UNRESOLVED_LINE_LIMIT = 2000;
 /**
+ * PostgREST answers at most 1,000 rows per request. Both reads below ask for
+ * up to 2,000, so a single `.limit()` was silently cut at 1,000: the queue's
+ * `truncated` (rows >= 2,000) could never be true, and its counts read as a
+ * total when they were a floor; a `checkLimit` over 1,000 scanned 1,000
+ * checks and reported them as the window asked for (readers lane r5).
+ */
+const PAGE = 1000;
+
+/**
+ * Up to `limit` rows, read in pages of at most PAGE so no page meets the API's
+ * cap. Stops early on a short page. A failed page fails the whole read: a
+ * part read is never passed off as the whole (ADR 0067).
+ */
+async function readUpTo<T>(
+  limit: number,
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  while (rows.length < limit) {
+    const from = rows.length;
+    const to = Math.min(limit, from + PAGE) - 1;
+    const { data, error } = await page(from, to);
+    if (error) throw new Error(error.message);
+    const got = data ?? [];
+    rows.push(...got);
+    if (got.length < to - from + 1) break;
+  }
+  return rows;
+}
+/**
  * Inventory ids per `.in()` read. Since ADR 0281 the review reads the
  * inventory of every mapping, not only the unanswered ones, so the id list
  * grows with the house's menu. Chunked so a large menu neither outgrows the
@@ -491,17 +521,18 @@ export class PosMappingReviewService {
     const byExternalId = new Map<string, PriceAccumulator>();
     const byName = new Map<string, PriceAccumulator>();
 
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("pos_checks")
-      .select("items, closed_at")
-      .eq("restaurant_id", restaurantId)
-      .not("closed_at", "is", null)
-      .order("closed_at", { ascending: false })
-      .limit(checkLimit);
-    if (error) throw new Error(error.message);
-
-    const checks = data || [];
+    const client = this.dbService.getClient();
+    const checks = await readUpTo<any>(checkLimit, (from, to) =>
+      client
+        .from("pos_checks")
+        .select("items, closed_at")
+        .eq("restaurant_id", restaurantId)
+        .not("closed_at", "is", null)
+        .order("closed_at", { ascending: false })
+        // A tiebreak, so a page boundary never repeats or skips a check.
+        .order("id", { ascending: false })
+        .range(from, to),
+    );
     let from: string | null = null;
     let to: string | null = null;
 
@@ -709,19 +740,19 @@ export class PosMappingReviewService {
   async listUnresolvedLines(
     restaurantId: string,
   ): Promise<UnresolvedLinesResponse> {
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("pos_unresolved_lines")
-      .select("*")
-      .eq("restaurant_id", restaurantId)
-      .eq("resolved", false)
-      .order("created_at", { ascending: false })
-      .limit(UNRESOLVED_LINE_LIMIT);
-    // A failed read is never an empty queue (ADR 0067). Returning [] here
-    // would render "nothing to do" over an unknown number of stalled lines.
-    if (error) throw new Error(error.message);
-
-    const rows = data || [];
+    const client = this.dbService.getClient();
+    // A failed read is never an empty queue (ADR 0067): readUpTo throws, and
+    // returning [] would render "nothing to do" over stalled lines.
+    const rows = await readUpTo<any>(UNRESOLVED_LINE_LIMIT, (from, to) =>
+      client
+        .from("pos_unresolved_lines")
+        .select("*")
+        .eq("restaurant_id", restaurantId)
+        .eq("resolved", false)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+    );
     const groups = new Map<string, UnresolvedLineGroup>();
     for (const r of rows) {
       const reason = String(r.reason ?? "unmapped");
