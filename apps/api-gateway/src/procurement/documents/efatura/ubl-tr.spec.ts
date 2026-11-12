@@ -1,6 +1,7 @@
 import { readEinvoiceFile } from "./index";
 import { readUblTr } from "./ubl-tr";
 import { zipOf } from "./test-zip.fixture";
+import { perBottleLotCost } from "../../canonical/lot-unit-cost";
 
 /**
  * Proposal-receipt rows 2.3 and 3.3 — the e-invoice file is read as written.
@@ -145,17 +146,17 @@ describe("readUblTr — the e-invoice, field by field", () => {
   });
 
   it("an unknown unit is left unconverted with a sentence, never guessed", () => {
-    const extra = `<cac:InvoiceLine><cbc:ID>3</cbc:ID><cbc:InvoicedQuantity unitCode="KGM">4</cbc:InvoicedQuantity><cbc:LineExtensionAmount>0</cbc:LineExtensionAmount><cac:Item><cbc:Name>SYN</cbc:Name></cac:Item></cac:InvoiceLine>`;
+    const extra = `<cac:InvoiceLine><cbc:ID>3</cbc:ID><cbc:InvoicedQuantity unitCode="MTR">4</cbc:InvoicedQuantity><cbc:LineExtensionAmount>0</cbc:LineExtensionAmount><cac:Item><cbc:Name>SYN</cbc:Name></cac:Item></cac:InvoiceLine>`;
     const doc = readUblTr(invoice({ extraLine: extra }));
     expect(doc.lines[2].uom).toBe("each");
-    expect(doc.warnings.join(" ")).toMatch(/Line 3: the file counts in kilograms \(KGM\)/);
+    expect(doc.warnings.join(" ")).toMatch(/Line 3: the file counts in metres \(MTR\)/);
   });
 
   it("keeps only an unmapped unit code in printed.uom, for the cost gatekeeper", () => {
-    const extra = `<cac:InvoiceLine><cbc:ID>3</cbc:ID><cbc:InvoicedQuantity unitCode="KGM">3</cbc:InvoicedQuantity><cbc:LineExtensionAmount>0</cbc:LineExtensionAmount><cac:Item><cbc:Name>SYN</cbc:Name></cac:Item></cac:InvoiceLine><cac:InvoiceLine><cbc:ID>4</cbc:ID><cbc:InvoicedQuantity unitCode="CS">1</cbc:InvoicedQuantity><cbc:LineExtensionAmount>0</cbc:LineExtensionAmount><cac:Item><cbc:Name>SYN</cbc:Name></cac:Item></cac:InvoiceLine>`;
+    const extra = `<cac:InvoiceLine><cbc:ID>3</cbc:ID><cbc:InvoicedQuantity unitCode="MTR">3</cbc:InvoicedQuantity><cbc:LineExtensionAmount>0</cbc:LineExtensionAmount><cac:Item><cbc:Name>SYN</cbc:Name></cac:Item></cac:InvoiceLine><cac:InvoiceLine><cbc:ID>4</cbc:ID><cbc:InvoicedQuantity unitCode="CS">1</cbc:InvoicedQuantity><cbc:LineExtensionAmount>0</cbc:LineExtensionAmount><cac:Item><cbc:Name>SYN</cbc:Name></cac:Item></cac:InvoiceLine>`;
     const doc = readUblTr(invoice({ extraLine: extra }));
     expect(doc.lines[2].uom).toBe("each");
-    expect(doc.lines[2].printed.uom).toBe("KGM");
+    expect(doc.lines[2].printed.uom).toBe("MTR");
     expect(doc.lines[0].printed.uom).toBeUndefined(); // C62
     expect(doc.lines[1].printed.uom).toBeUndefined(); // BX
     expect(doc.lines[3].uom).toBe("case");
@@ -221,5 +222,69 @@ describe("readEinvoiceFile — which files are e-invoices", () => {
     expect(readEinvoiceFile(z, "prices.xlsx", "application/vnd.openxmlformats").kind).toBe(
       "not_einvoice",
     );
+  });
+});
+
+describe("a weighed e-Fatura line books by weight (R8, browser walk 2026-11-12)", () => {
+  const kgLine = (id: number, qty: string, unit: string, price: string, total: string, base = "") =>
+    `<cac:InvoiceLine><cbc:ID>${id}</cbc:ID><cbc:InvoicedQuantity unitCode="${unit}">${qty}</cbc:InvoicedQuantity>` +
+    `<cbc:LineExtensionAmount currencyID="TRY">${total}</cbc:LineExtensionAmount>` +
+    `<cac:Item><cbc:Name>Ezine peyniri</cbc:Name></cac:Item>` +
+    `<cac:Price><cbc:PriceAmount currencyID="TRY">${price}</cbc:PriceAmount>${base}</cac:Price></cac:InvoiceLine>`;
+
+  it("files KGM as kg and GRM as g, with no doubt and nothing kept aside in printed.uom", () => {
+    const doc = readUblTr(invoice({ extraLine: kgLine(3, "3", "KGM", "450", "1350") + kgLine(4, "750", "GRM", "0.5", "375") }));
+    expect(doc.lines[2]).toMatchObject({ uom: "kg", qty: 3, qtyBottles: 3, priceBaseUom: null });
+    expect(doc.lines[3]).toMatchObject({ uom: "g", qty: 750, qtyBottles: 750 });
+    expect(doc.lines[2].printed.uom).toBeUndefined();
+    expect(doc.warnings.join(" ")).not.toMatch(/KGM|GRM|kilogram|gram/);
+  });
+
+  it("is costed per gram of a cheese kept in g, as the extraction route costs it: 3 KGM @ 450 is 0.45", () => {
+    const doc = readUblTr(invoice({ extraLine: kgLine(3, "3", "KGM", "450", "1350") }));
+    const l = doc.lines[2];
+    const cost = perBottleLotCost(
+      {
+        unit_price: l.unitPrice,
+        uom: l.uom,
+        pack_size: l.packSize,
+        price_base_qty: l.priceBaseQty,
+        price_base_uom: l.priceBaseUom,
+        qty_bottles: l.qtyBottles,
+        line_total: l.lineTotal,
+        printed: l.printed,
+      },
+      { uom: "g" },
+    );
+    expect(cost).toMatchObject({ ok: true, unitCost: 0.45, per: "g" });
+  });
+
+  it("a gram line priced per kilogram says the price's own unit, so it is never 450 a gram", () => {
+    const doc = readUblTr(
+      invoice({ extraLine: kgLine(3, "3000", "GRM", "450", "1350", `<cbc:BaseQuantity unitCode="KGM">1</cbc:BaseQuantity>`) }),
+    );
+    const l = doc.lines[2];
+    expect(l).toMatchObject({ uom: "g", priceBaseUom: "kg", priceBaseQty: null });
+    const cost = perBottleLotCost(
+      {
+        unit_price: l.unitPrice,
+        uom: l.uom,
+        pack_size: l.packSize,
+        price_base_qty: l.priceBaseQty,
+        price_base_uom: l.priceBaseUom,
+        qty_bottles: l.qtyBottles,
+        line_total: l.lineTotal,
+        printed: l.printed,
+      },
+      { uom: "g" },
+    );
+    expect(cost).toMatchObject({ ok: true, unitCost: 0.45 });
+  });
+
+  it("a container line's price base keeps the line's unit, as before", () => {
+    const doc = readUblTr(
+      invoice({ extraLine: kgLine(3, "2", "CS", "264", "528", `<cbc:BaseQuantity unitCode="C62">1</cbc:BaseQuantity>`) }),
+    );
+    expect(doc.lines[2].priceBaseUom).toBeNull();
   });
 });
