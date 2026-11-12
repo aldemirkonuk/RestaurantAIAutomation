@@ -199,7 +199,14 @@ function stillReading(err: unknown): boolean {
   return (err as { response?: { status?: number } })?.response?.status === 202;
 }
 
-export function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead: () => void }) {
+export function ReadMenuForm({ canManage, onRead, onReadDone, onChosen }: {
+  canManage: boolean
+  onRead: () => void
+  /** Told the finished read (used by the Scan buttons on /inventory and /cellar). */
+  onReadDone?: (r: MenuImportResult) => void
+  /** Told once the read was made the current menu (prices and stock lines moved). */
+  onChosen?: () => void
+}) {
   const queryClient = useQueryClient();
   const [files, setFiles] = useState<File[]>([]);
   const [cadence, setCadence] = useState<MenuCadence | ''>('');
@@ -236,6 +243,7 @@ export function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead
       setPlanning(false);
       setReadingId(null);
       onRead();
+      onReadDone?.(r);
     },
     onError: () => onRead(),
   });
@@ -360,6 +368,7 @@ export function ReadMenuForm({ canManage, onRead }: { canManage: boolean; onRead
                 setChosen(makeCurrentSentence(r));
                 void queryClient.invalidateQueries({ queryKey: ['menu'] });
                 onRead();
+                onChosen?.();
               }}
             />
           ) : null}
