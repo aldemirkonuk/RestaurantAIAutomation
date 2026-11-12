@@ -102,6 +102,10 @@ function row(over: Partial<InvRow> = {}): InvRow {
     runway: 3,
     daysSinceSale: 1,
     deadStock: false,
+    usageSource: null,
+    usageSince: null,
+    usageUntil: null,
+    usageQty: null,
     bottle: 92,
     glass: 18,
     pourMl: 150,
@@ -289,6 +293,38 @@ describe('RowDropdown head facts (INV-W13, W16, W17)', () => {
     const drop = screen.getByTestId('row-dropdown');
     expect(drop.textContent).toContain('About 0.03 a day (1 sold in the last 30 days); at that pace it lasts 330 days.');
     expect(drop.textContent).not.toContain('0.0 a day');
+  });
+
+  it('a good measured by its counts says its use a day, the counts it comes from, and its runway', () => {
+    renderDrop({
+      row: row({
+        velocity: 290,
+        runway: 28,
+        usageSource: 'counts',
+        usageSince: '2026-10-22T09:00:00Z',
+        usageUntil: '2026-11-11T09:00:00Z',
+        usageQty: 5800,
+      }),
+      uom: 'g',
+      kind: 'food',
+    });
+    const t = screen.getByTestId('row-dropdown').textContent ?? '';
+    expect(t).toContain('About 290 g a day: 5.8 kg used between the counts of 22 Oct 2026 and 11 Nov 2026; at that pace, counting the use since the last count, it lasts 28 days.');
+    expect(t).not.toContain('sold in the last 30 days');
+  });
+
+  it('a food not yet counted twice says how its use will be measured', () => {
+    renderDrop({ row: row({ velocity: 0, runway: null }), uom: 'g', kind: 'food' });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('count it twice, at least 3 days apart');
+  });
+
+  it('a good carried 10 days says what it sold in those 10 days, less voids', () => {
+    renderDrop({
+      row: row({ velocity: 1, runway: 3, usageSource: 'sales', usageSince: '2026-11-02T09:00:00Z', usageUntil: '2026-11-12T09:00:00Z', usageQty: 10 }),
+    });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain(
+      'About 1.0 a day (10 bottles sold in the last 10 days, less voids); at that pace it lasts 3 days.',
+    );
   });
 
   it('says what is left in the open bottle', () => {

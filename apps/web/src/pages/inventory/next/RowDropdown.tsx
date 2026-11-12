@@ -37,6 +37,7 @@ import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
 import { amountUnit, isPoured } from './iv-amount';
+import { fmtQty, NOT_DRAWN_BY_SALES, usageWords as usageWordsOf } from './ItemCards';
 import { writeFailure } from './iv-failure';
 import { oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
 import {
@@ -348,7 +349,7 @@ export default function RowDropdown(props: RowDropdownProps) {
       {has('where') || has('pace') || has('cost') ? (
         <div className="iv-drop-cols">
           {has('where') ? <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} /> : null}
-          {has('pace') ? <HowFastItPours row={row} /> : null}
+          {has('pace') ? <HowFastItPours row={row} uom={props.uom ?? null} kind={props.kind ?? null} /> : null}
           {has('cost') ? <WhatItHasCost row={row} currency={currency} detail={detail} /> : null}
         </div>
       ) : null}
@@ -581,7 +582,7 @@ function WhereTheCountComesFrom({
 
 /* ── column 2 ──────────────────────────────────────────────────────────── */
 
-function HowFastItPours({ row }: { row: InvRow }) {
+function HowFastItPours({ row, uom, kind }: { row: InvRow; uom: string | null; kind: string | null }) {
   const record = useRowRecord(row.name);
   const pos = record.data?.books?.find((b) => b.book === 'pos') ?? null;
   const tillLines: TillLine[] = useMemo(
@@ -593,13 +594,31 @@ function HowFastItPours({ row }: { row: InvRow }) {
   const maxDay = Math.max(1, ...vel.days.map((d) => d.qty));
   const maxHour = Math.max(1, ...hours.buckets.map((b) => b.qty));
 
+  // A counted good's runway is read from what is left after the use since
+  // its last count (inventory_analytics), so the sentence says so.
+  const lasts =
+    row.runway === null
+      ? '.'
+      : `; at that pace${row.usageSource === 'counts' ? ', counting the use since the last count,' : ''} it lasts ${fmtCount(Math.round(row.runway))} day${Math.round(row.runway) === 1 ? '' : 's'}.`;
+  const between =
+    row.usageSince && row.usageUntil
+      ? `between the counts of ${shortDate(row.usageSince)} and ${shortDate(row.usageUntil)}`
+      : 'between its last counts';
   const sentence = !row.analyticsReadable
     ? 'Selling pace could not be read — the sales figures did not answer for this read. This is a read error, not a title with nothing sold.'
+    : row.usageSource === 'counts'
+      ? row.velocity !== null && row.velocity > 0
+        ? `About ${usageWordsOf(row.velocity, uom)} a day: ${row.usageQty === null ? 'what was used' : `${fmtQty(row.usageQty, uom)} used`} ${between}${lasts}`
+        : `Nothing used ${between}, so there is no runway to give.`
+      : row.usageSource === null && (kind === 'food' || kind === 'supply')
+        ? NOT_DRAWN_BY_SALES
     : row.velocity === null
       ? 'Selling pace: unmeasured — the analytics have nothing for this title yet.'
       : row.velocity === 0
         ? 'Nothing sold lately, so there is no runway to give.'
-        : `About ${fmtPace(row.velocity)} a day (${fmtCount(sold30(row.velocity))} sold in the last 30 days)${row.runway === null ? '.' : `; at that pace it lasts ${fmtCount(Math.round(row.runway))} day${Math.round(row.runway) === 1 ? '' : 's'}.`}`;
+        : row.usageSource === 'sales' && row.usageQty !== null && row.usageSince && row.usageUntil
+          ? `About ${fmtPace(row.velocity)} a day (${fmtQty(row.usageQty, uom)} sold in the last ${fmtCount(Math.max(1, Math.round((Date.parse(row.usageUntil) - Date.parse(row.usageSince)) / 86_400_000)))} days, less voids)${lasts}`
+          : `About ${fmtPace(row.velocity)} a day (${fmtCount(sold30(row.velocity))} sold in the last 30 days)${lasts}`;
 
   return (
     <section className="iv-col">

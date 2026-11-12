@@ -107,6 +107,15 @@ export interface InvRow {
   runway: number | null;
   daysSinceSale: number | null;
   deadStock: boolean;
+  /**
+   * Where `velocity` comes from: 'sales' (the till drew it), 'counts' (two
+   * counts and what moved between them), or null (neither, or unread).
+   */
+  usageSource: 'sales' | 'counts' | null;
+  /** The window the pace covers, and what was used in it (the good's own unit). */
+  usageSince: string | null;
+  usageUntil: string | null;
+  usageQty: number | null;
   /** The analytics ABC class (inventory.service.ts:169); absent when not sent. */
   abc?: 'A' | 'B' | 'C' | null;
   bottle: number | null;
@@ -240,6 +249,10 @@ export function toRow(item: ApiItem, wine?: ApiWine | null): InvRow {
     runway,
     daysSinceSale: num(r.daysSinceSale),
     deadStock: r.deadStock === true,
+    usageSource: analyticsReadable && (r.usageSource === 'sales' || r.usageSource === 'counts') ? r.usageSource : null,
+    usageSince: analyticsReadable ? text(r.usageSince) : null,
+    usageUntil: analyticsReadable ? text(r.usageUntil) : null,
+    usageQty: analyticsReadable ? num(r.usageQty) : null,
     abc: r.abcClass === 'A' || r.abcClass === 'B' || r.abcClass === 'C' ? r.abcClass : null,
     bottle: num(r.menuPriceBottle),
     glass: num(r.menuPriceGlass),
@@ -472,7 +485,11 @@ export function fmtPace(v: number): string {
   return v < 0.1 ? v.toFixed(2) : v.toFixed(1);
 }
 
-/** Bottles sold in the last 30 days, recovered from the stored pace (sold_30d / 30). */
+/**
+ * Bottles sold in the last 30 days, recovered from the stored pace (sold_30d / 30).
+ * Only a fallback for a row with no usageQty: the pace of a good carried less
+ * than 30 days is over the days it was carried, not 30.
+ */
 export function sold30(v: number): number {
   return Math.round(v * 30);
 }

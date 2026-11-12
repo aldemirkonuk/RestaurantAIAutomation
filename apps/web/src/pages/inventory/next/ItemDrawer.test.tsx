@@ -34,7 +34,7 @@ const row = (over: Partial<InvRow> = {}) =>
   ({
     id: 'i1', wineId: 'w1', name: 'Gravner Ribolla', libraryName: null, producer: 'Gravner', type: 'orange', kind: 'wine',
     vintage: 2016, grape: null, bottleSizeMl: 750, stock: 12, shadow: 0, par: 6, reorderPoint: null, analyticsReadable: true,
-    velocity: 1, runway: 12, daysSinceSale: 1, deadStock: false, bottle: 92, glass: 18, pourMl: 150, wac: 40,
+    velocity: 1, runway: 12, daysSinceSale: 1, deadStock: false, usageSource: null, usageSince: null, usageUntil: null, usageQty: null, bottle: 92, glass: 18, pourMl: 150, wac: 40,
     costProvenance: 'invoice', value: 480, lastCountedAt: '2026-09-30T10:00:00Z', openMl: null,
     zones: [{ locationId: 'z1', qty: 12 }], providerId: null, providerName: null, standing: 'above', active: true, ...over,
   }) as InvRow;
@@ -219,12 +219,53 @@ describe('the item drawer', () => {
     expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown').dataset.sections).toBe('facts,where,pace,cost,paper');
   });
 
-  it('says a food is not drawn down by sales, never "not enough history"', () => {
-    open(row({ velocity: null, runway: null, kind: 'food' }), { house: { kind: 'food', uom: 'g', displayName: 'Un' } });
-    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('Not drawn by sales');
-    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('no dish or drink recipe is taken from stock at the till');
+  it('a food its counts have not measured says how to measure it, never "not enough history"', () => {
+    open(row({ velocity: 0, runway: null, kind: 'food' }), { house: { kind: 'food', uom: 'g', displayName: 'Un' } });
+    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('Not measured yet');
+    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('count it twice, at least 3 days apart');
     expect(screen.getByTestId('ivd-card-cover').textContent).toContain('Not known');
     expect(screen.getByTestId('ivd-card-usage').textContent).not.toContain('Not enough history');
+  });
+
+  it('a food measured by its counts says its use a day, where it came from, and its days of cover', () => {
+    open(
+      row({
+        velocity: 290,
+        runway: 28,
+        stock: 8200,
+        kind: null,
+        usageSource: 'counts',
+        usageSince: '2026-10-22T09:00:00Z',
+        usageUntil: '2026-11-11T09:00:00Z',
+        usageQty: 5800,
+      }),
+      { house: { kind: 'food', uom: 'g', displayName: 'Flour' } },
+    );
+    const usage = screen.getByTestId('ivd-card-usage').textContent ?? '';
+    expect(usage).toContain('290 g');
+    expect(usage).toContain('5.8 kg used between the counts of 22 Oct 2026 and 11 Nov 2026 (20 days)');
+    expect(usage).not.toContain('Not measured yet');
+    const cover = screen.getByTestId('ivd-card-cover').textContent ?? '';
+    expect(cover).toContain('28 days');
+    expect(cover).toContain('On hand less what was used since the last count (11 Nov 2026), at its usage a day between its last counts.');
+  });
+
+  it('counts that show nothing used say so, and that it is not running down', () => {
+    open(
+      row({ velocity: 0, runway: null, usageSource: 'counts', usageSince: '2026-10-28T09:00:00Z', usageUntil: '2026-11-07T09:00:00Z', usageQty: 0 }),
+      { house: { kind: 'supply', uom: 'each', displayName: 'Napkins' } },
+    );
+    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('None used');
+    expect(screen.getByTestId('ivd-card-cover').textContent).toContain('Not running down');
+  });
+
+  it('a good the till sells says what was sold and over how many days it was carried', () => {
+    open(
+      row({ velocity: 1, runway: 10, stock: 10, usageSource: 'sales', usageSince: '2026-11-02T09:00:00Z', usageUntil: '2026-11-12T09:00:00Z', usageQty: 10 }),
+    );
+    const usage = screen.getByTestId('ivd-card-usage').textContent ?? '';
+    expect(usage).toContain('10 bottles sold in the last 10 days, from the stock ledger, less voids.');
+    expect(screen.getByTestId('ivd-card-cover').textContent).toContain('10 days');
   });
 
   it('a food whose pace could not be read stays unread, never "not drawn by sales"', () => {
