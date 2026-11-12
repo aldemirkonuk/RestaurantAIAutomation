@@ -28,7 +28,16 @@ function kindOf(bytes: Buffer): "jpeg" | "png" | null {
 
 /**
  * The pages of one upload as the base64 of one PDF. One page is returned as
- * it came (no PDF made), so a single photo is read and kept exactly as before.
+ * the gateway got it (no PDF made). The web redraws every photo before it
+ * sends it (apps/web/src/lib/menuPhotos.ts), so a single photo is not the
+ * phone's original bytes either way.
+ *
+ * The joined PDF is byte-stable: the same pages in the same order give the
+ * same bytes, so the same photos sent again hash the same and reopen the read
+ * they made (MenusService.sameFileRead) instead of being read and billed
+ * twice. pdf-lib stamps the current time as CreationDate and ModDate unless
+ * told not to (`updateMetadata: false`); with the stamp, two joins of the
+ * same photos a second apart differed (batch review of #1062, 2026-11-11).
  */
 export async function pagesToOneFile(pages: unknown): Promise<string> {
   if (!Array.isArray(pages) || pages.length === 0 || pages.some((p) => typeof p !== "string" || p.trim() === "")) {
@@ -45,7 +54,8 @@ export async function pagesToOneFile(pages: unknown): Promise<string> {
   if (bare.length === 1) return bare[0];
 
   const { PDFDocument } = await import("pdf-lib");
-  const doc = await PDFDocument.create();
+  // No time stamp, no producer: nothing in the file but the pages.
+  const doc = await PDFDocument.create({ updateMetadata: false });
   for (let i = 0; i < bare.length; i++) {
     const bytes = Buffer.from(bare[i], "base64");
     const kind = kindOf(bytes);
