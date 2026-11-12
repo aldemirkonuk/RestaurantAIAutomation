@@ -117,10 +117,20 @@ describe.each([
     expect(Math.max(...db.asked.inventory_lot_agreed_cost)).toBeLessThanOrEqual(BY_IDS_CHUNK);
   });
 
-  it("refuses when a later batch of agreed costs fails", async () => {
+  it("refuses when a later batch of agreed costs keeps failing", async () => {
+    const { tables } = house();
+    const db = capped(tables, (t, n) => t === "inventory_lot_agreed_cost" && n >= 9);
+    await expect(make(db)[method](HOUSE)).rejects.toThrow(/could not be read whole/);
+  });
+
+  // Fix round: a batch that errors once is asked once more, so one transient
+  // timeout in a 1,510-item house's 32 requests does not refuse the page.
+  it("asks a batch that errored once more, and prices every wine", async () => {
     const { tables } = house();
     const db = capped(tables, (t, n) => t === "inventory_lot_agreed_cost" && n === 9);
-    await expect(make(db)[method](HOUSE)).rejects.toThrow(/could not be read whole/);
+    const out = await make(db)[method](HOUSE);
+    expect(out).toHaveLength(N);
+    expect(out.every((r: any) => r.costBasis === "agreed_lot_wac")).toBe(true);
   });
 });
 
@@ -138,7 +148,7 @@ describe("MarginAdviceService.adviseHouse reads every wine and its agreed cost",
   it("refuses, naming the cost read, when a later batch fails", async () => {
     const { tables } = house();
     await expect(
-      advise(capped(tables, (t, n) => t === "inventory_lot_agreed_cost" && n === 9)),
+      advise(capped(tables, (t, n) => t === "inventory_lot_agreed_cost" && n >= 9)),
     ).rejects.toThrow(/recorded costs could not be read/);
   });
 });
