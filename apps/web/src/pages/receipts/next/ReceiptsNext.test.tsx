@@ -361,6 +361,23 @@ describe('ReceiptsNext', () => {
     expect(text).not.toContain('older ones may be waiting');
   });
 
+  it('a door-counted delivery names its vendor, so two unordered ones read apart (walk 2026-11-12)', async () => {
+    api.unverified = {
+      items: [],
+      doorCounted: [
+        { deliveryId: 'd1', orderId: null, orderNumber: null, providerId: 'p1', vendorName: 'Ege Şarap', countedQtyBottles: 10, linesWithoutBottles: 1, countedAt: '', ageHours: 2, severity: 'fresh' },
+        { deliveryId: 'd2', orderId: null, orderNumber: null, providerId: null, vendorName: null, countedQtyBottles: 4, linesWithoutBottles: 0, countedAt: '', ageHours: 1, severity: 'fresh' },
+      ],
+      doorCountedComplete: true,
+    };
+    render(<ReceiptsNext />, { wrapper });
+    expect(
+      await screen.findByText(/a delivery nobody ordered from Ege Şarap · 10 counted \+ 1 line in another unit · 2h ago/),
+    ).toBeInTheDocument();
+    // No vendor on the delivery: no name is made up.
+    expect(screen.getByText(/a delivery nobody ordered · 4 counted · 1h ago/)).toBeInTheDocument();
+  });
+
   it('a capped door-counted read says the strip is the newest, not all (R10)', async () => {
     api.unverified = {
       items: [],

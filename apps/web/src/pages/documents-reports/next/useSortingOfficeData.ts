@@ -269,7 +269,7 @@ export function useSortingOfficeData(): SortingOfficeData {
       rows.push({
         key: `door-delivery-${d.deliveryId}`,
         since: d.countedAt,
-        title: `${d.orderNumber ?? (d.orderId ? 'An order with no number' : 'A delivery nobody ordered')} counted at the door, no paperwork yet`,
+        title: `${d.orderNumber ?? (d.orderId ? 'An order with no number' : 'A delivery nobody ordered')}${d.vendorName ? ` from ${d.vendorName}` : ''} counted at the door, no paperwork yet`,
         detail: `${d.countedQtyBottles} counted${d.linesWithoutBottles > 0 ? ` + ${d.linesWithoutBottles} ${d.linesWithoutBottles === 1 ? 'line' : 'lines'} in another unit` : ''} · ${Math.round(d.ageHours)}h waiting`,
         href: '/receipts',
       });

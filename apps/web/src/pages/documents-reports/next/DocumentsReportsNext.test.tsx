@@ -441,6 +441,32 @@ describe('DocumentsReportsNext', () => {
     expect(screen.getByText(/10 counted \+ 1 line in another unit · 30h waiting/)).toBeTruthy();
   });
 
+  it('a door-counted delivery names its vendor (walk 2026-11-12)', async () => {
+    api.unverified = {
+      items: [],
+      doorCounted: [
+        {
+          deliveryId: 'd1',
+          orderId: null,
+          orderNumber: null,
+          providerId: 'p1',
+          vendorName: 'Ege Şarap',
+          countedQtyBottles: 10,
+          linesWithoutBottles: 0,
+          countedAt: '2026-08-25T08:00:00Z',
+          ageHours: 30,
+          severity: 'stale',
+        },
+      ],
+    };
+    renderPage();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/A delivery nobody ordered from Ege Şarap counted at the door, no paperwork yet/),
+      ).toBeTruthy(),
+    );
+  });
+
   it('a failed door-counted read is said in the banner, never shown as a clear door (R10)', async () => {
     api.unverified = { items: [], doorCounted: [], doorCountedFailed: true };
     api.reports = [report('r1')];

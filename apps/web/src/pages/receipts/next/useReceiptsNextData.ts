@@ -158,6 +158,8 @@ export interface DoorWaiting {
   orderNumber: string | null;
   /** True when the door counted goods nobody ordered. */
   unordered: boolean;
+  /** Who brought it, when the delivery names a vendor (browser walk 2026-11-12). */
+  vendorName: string | null;
   countedQtyBottles: number;
   /** Lines in a unit with no bottle figure (a weight, a keg), not added in. */
   linesWithoutBottles: number;
@@ -173,6 +175,7 @@ export function doorWaiting(data: {
       key: `order-${u.orderId}`,
       orderNumber: u.orderNumber,
       unordered: false,
+      vendorName: null,
       countedQtyBottles: u.countedQtyBottles,
       linesWithoutBottles: 0,
       ageHours: u.ageHours,
@@ -181,6 +184,7 @@ export function doorWaiting(data: {
       key: `delivery-${d.deliveryId}`,
       orderNumber: d.orderNumber,
       unordered: d.orderId == null,
+      vendorName: d.vendorName ?? null,
       countedQtyBottles: d.countedQtyBottles,
       linesWithoutBottles: d.linesWithoutBottles,
       ageHours: d.ageHours,
