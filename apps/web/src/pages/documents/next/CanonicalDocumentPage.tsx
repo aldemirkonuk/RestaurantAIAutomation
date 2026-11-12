@@ -77,6 +77,7 @@ import {
   printedVintageOf,
   sourceSentence,
 } from '../../../components/documents'
+import { ItemChooser } from '../../../components/documents/ItemChooser'
 import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
@@ -128,6 +129,8 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    */
   const [writeError, setWriteError] = useState<string | null>(null)
   const [writing, setWriting] = useState(false)
+  /** The line whose by-hand item chooser is open, or null (#347). */
+  const [choosingLineId, setChoosingLineId] = useState<string | null>(null)
   /** The gateway's words when a GATE or a proposal refused, kept apart from a
    *  correction's error so one does not overwrite the other on screen. */
   const [deliveryError, setDeliveryError] = useState<string | null>(null)
@@ -206,6 +209,12 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
     } catch (err) {
       setWriteError(messageFrom(err))
     }
+  }
+
+  /** Pair a line by hand: the one door the memory cannot learn its first pairing from. */
+  const pickItem = async (lineId: string, inventoryId: string) => {
+    await linkItem(lineId, inventoryId, 'chosen')
+    setChoosingLineId(null)
   }
 
   const fetchedAt = q.dataUpdatedAt || Date.now()
@@ -659,6 +668,18 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                 setTicking({ path, label })
               }}
               onLinkItem={linkItem}
+              onChooseItem={(lineId) => setChoosingLineId(lineId)}
+              choosingLineId={choosingLineId}
+              renderChooser={(lineId) => (
+                <ItemChooser
+                  items={itemsQ.data ?? []}
+                  itemLabel={itemName}
+                  itemsFailed={itemsQ.isError}
+                  busy={writing}
+                  onPick={(inventoryId) => void pickItem(lineId, inventoryId)}
+                  onCancel={() => setChoosingLineId(null)}
+                />
+              )}
               itemName={itemName}
               itemVintage={itemVintage}
             />
