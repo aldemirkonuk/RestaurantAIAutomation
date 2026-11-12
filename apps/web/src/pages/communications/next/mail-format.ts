@@ -88,8 +88,13 @@ export interface MailThreadPage {
 export interface MailSummary {
   waitingPeople: number;
   oldestWaitAt: string | null;
-  inToday: number;
-  outToday: number;
+  /** Null when the house has no zone (its own, nor its country's only one): unknown, never 0. */
+  inToday: number | null;
+  outToday: number | null;
+  /** The zone "today" was counted in. Absent from a server older than D6/D7. */
+  zone?: { zone: string | null; source: 'house' | 'country' | 'none' };
+  /** Letters in over the last 30 days, Mail's own count (D6). Absent from an older server. */
+  inLast30?: number;
   heldAtDoor: number | null;
   doors: {
     houseMailbox: { lastStoredAt: string | null };
@@ -166,9 +171,18 @@ export function headerSentence(
   return n === 1 ? `${lead} They have been waiting ${span}.` : `${lead} The oldest has been waiting ${span}.`;
 }
 
-/** "Today: 4 letters in, 2 out." — the house's own day, counted by the server. */
+/**
+ * "Today: 4 letters in, 2 out." — the house's own day, counted by the server
+ * in the house's zone, else its country's only zone. With neither, the day has
+ * no midnight and the server sends no count; the line says why rather than
+ * printing a UTC day's count as the house's (D7).
+ */
+export const TODAY_ZONE_UNSET =
+  "Today's letters are not counted: this house's time zone isn't set. An owner or manager can set it in Settings, under Time zone.";
+
 export function todayLine(summary: MailSummary | null): string {
   if (!summary) return `Today: ${EM}`;
+  if (summary.inToday === null || summary.outToday === null) return TODAY_ZONE_UNSET;
   return `Today: ${plural(summary.inToday, 'letter', 'letters')} in, ${summary.outToday} out.`;
 }
 

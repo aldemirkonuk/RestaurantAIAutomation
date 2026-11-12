@@ -27,6 +27,7 @@ import {
   spanWords,
   storedKindsLine,
   todayLine,
+  TODAY_ZONE_UNSET,
   unrecordedDoorStatus,
   type MailboxReader,
   type MailMessage,
@@ -111,6 +112,10 @@ describe('the today line and the tab label', () => {
   it('counts letters in and out today', () => {
     expect(todayLine(summary({ inToday: 4, outToday: 2 }))).toBe('Today: 4 letters in, 2 out.');
     expect(todayLine(summary({ inToday: 1, outToday: 0 }))).toBe('Today: 1 letter in, 0 out.');
+    // D7: a house with no zone (its own, nor its country's only one) has no
+    // day to count in; the line says so instead of a UTC day's count.
+    expect(todayLine(summary({ inToday: null, outToday: null }))).toBe(TODAY_ZONE_UNSET);
+    expect(TODAY_ZONE_UNSET).toMatch(/time zone isn't set/);
   });
 
   it('an unknown day is an em dash', () => {

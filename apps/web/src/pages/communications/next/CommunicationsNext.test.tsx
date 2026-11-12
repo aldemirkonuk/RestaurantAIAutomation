@@ -199,6 +199,7 @@ function item(over: Partial<ProcurementHistoryItem>): ProcurementHistoryItem {
 const noFailures = {
   history: false,
   drafts: false,
+  mail: false,
 };
 
 const base = {
@@ -249,6 +250,21 @@ describe('CommunicationsNext', () => {
     };
     render(<CommunicationsNext />);
     expect(screen.getByText('≥97')).toBeInTheDocument();
+    // D6: replies are the server's exact count, never a floor of the book.
+    expect(screen.queryByText('≥3')).toBeNull();
+    expect(screen.getByText('3')).toBeInTheDocument();
+  });
+
+  it('a failed count of letters in fails the replies figure alone (D6)', () => {
+    mockData.current = {
+      ...base,
+      glance: { draftsPending: 1, sentLast30: 9, repliesLast30: null },
+      failed: { ...noFailures, mail: true },
+      failedSources: ['the count of letters in'],
+    };
+    render(<CommunicationsNext />);
+    expect(screen.getByLabelText('Replies · 30 days: could not be read')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Sent · 30 days: could not be/i)).toBeNull();
   });
 
   // ── ADR 0118: the legacy builders are retired from the rebuilt page ───────
