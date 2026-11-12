@@ -128,6 +128,16 @@ export interface ResponderResult {
  */
 export const DECLINE_INTENTS = ["rejection", "declined", "out_of_stock"];
 
+/**
+ * What the house reads when no model is switched on for this server. This
+ * used to be the deployment's own variable name ("ANTHROPIC_API_KEY is not
+ * configured"), returned to the page by the redraft route
+ * (procurement.service.ts `reason: result.reason`). The variable name stays
+ * in the log line above it.
+ */
+export const REPLY_DRAFTER_OFF =
+  "Drafting replies to vendors is not switched on here yet, so no reply was drafted. You can still write one by hand.";
+
 interface Analysis {
   intent: string;
   /**
@@ -232,7 +242,7 @@ export class InboundResponderService {
         );
         return {
           drafted: false,
-          reason: "ANTHROPIC_API_KEY is not configured",
+          reason: REPLY_DRAFTER_OFF,
         };
       }
 
