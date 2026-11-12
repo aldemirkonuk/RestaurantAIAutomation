@@ -18,6 +18,7 @@ const h = vi.hoisted(() => {
       joinViaInvite: vi.fn(),
       registerAccountWithGoogle: vi.fn(),
       error: null as string | null,
+      clearError: vi.fn(),
     },
     get: vi.fn(),
     navigate: vi.fn(),
@@ -86,6 +87,9 @@ describe('Register — OB-11', () => {
       timeout: 3500,
     })
     expect(screen.queryByText(/Wait 2 seconds/)).toBeNull()
+    // The context's own sentence for the same 429 is cleared too, so nothing
+    // generic shows through once the wait sentence goes.
+    expect(h.auth.clearError).toHaveBeenCalled()
   })
 
   it('an address already in use offers Sign in', async () => {
