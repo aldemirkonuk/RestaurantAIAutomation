@@ -337,7 +337,7 @@ export class VendorSiteSweepService {
       0,
     );
     let silence: VendorSweepStatus["silence"] = null;
-    if (result.skippedReason === "Disallowed by robots.txt") {
+    if (result.skipped === "robots_forbids") {
       silence = {
         reason: "robots_forbids",
         sentence: SILENCE_SENTENCE.robots_forbids,
