@@ -211,11 +211,21 @@ export class GoalsService {
    * Store what the latest live reading found. Scoped to the house as well as
    * the id. A failed write is logged and never fails the read: the reader
    * still gets the live answer, and the stored row stays as it was.
+   *
+   * Newest reading wins, not last writer (reports lane r3). `current_read_at`
+   * is when the reading BEGAN, and the row is written only while it holds no
+   * reading or an older one, in the same UPDATE, so Postgres re-checks the
+   * condition against a row another reading has just written. A slow refusal
+   * that began before a quicker success therefore finds the success stored
+   * and leaves it. Two readings that began in the same millisecond are
+   * equally fresh, and the first stored stays. Gateways stamp from their own
+   * clocks, so two of them skewed by more than the gap between two readings
+   * could still order them wrongly.
    */
   private async recordReading(
     restaurantId: string,
     goalId: string,
-    patch: Record<string, unknown>,
+    patch: Record<string, unknown> & { current_read_at: string },
   ): Promise<void> {
     try {
       const { error } = await this.dbService
@@ -223,7 +233,10 @@ export class GoalsService {
         .from("analytics_goals")
         .update(patch)
         .eq("restaurant_id", restaurantId)
-        .eq("id", goalId);
+        .eq("id", goalId)
+        .or(
+          `current_read_at.is.null,current_read_at.lt."${patch.current_read_at}"`,
+        );
       if (error)
         this.logger.warn(`goal reading not stored for ${goalId}: ${error.message}`);
     } catch (err: any) {
@@ -601,6 +614,9 @@ export class GoalsService {
     // goal and records nothing.
     const callerRefused =
       isSalesGatedGoal(goal.metric_key) && gate.withSales !== true;
+    // When this reading began: what it observed is at least this fresh, and
+    // `recordReading` stores it only over an older one.
+    const readAt = new Date();
     let reading: Awaited<ReturnType<GoalsService["computeMetricWithSeries"]>>;
     try {
       reading = await this.computeMetricWithSeries(
@@ -615,17 +631,16 @@ export class GoalsService {
       if (!callerRefused)
         await this.recordReading(restaurantId, goalId, {
           current_unread: String(err?.message ?? "the reading failed"),
-          current_read_at: new Date().toISOString(),
+          current_read_at: readAt.toISOString(),
         });
       throw err;
     }
     const { current, dailySeries, units } = reading;
-    const readAt = new Date();
     await this.recordReading(restaurantId, goalId, {
       current_value: current,
       current_unread: null,
       current_read_at: readAt.toISOString(),
-      updated_at: readAt.toISOString(),
+      updated_at: new Date().toISOString(),
     });
 
     const target = Number(goal.target_value) || 0;

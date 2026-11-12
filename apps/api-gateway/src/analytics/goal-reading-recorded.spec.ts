@@ -35,6 +35,7 @@ function harness(dio: unknown, listed: Record<string, unknown>[] = [GOAL]) {
         return chain;
       },
       order: () => chain,
+      or: () => chain,
       update: (p: Record<string, unknown>) => {
         patch = p;
         updates.push({ patch: p, eqs });
@@ -97,5 +98,100 @@ describe("a goal's reading is recorded with when, and a refusal with why", () =>
     const rows = await service.listGoals("r1", "active", { withSales: true });
     expect(rows[0]).toMatchObject({ id: "g1", current_value: null, current_unread: "no time zone is set" });
     expect(rows[1]).toMatchObject({ id: "g2", current_value: 312.07 });
+  });
+});
+
+/**
+ * Newest reading wins, not last writer (reports lane r3). The store below
+ * applies the write's own condition, as Postgres does inside one UPDATE.
+ */
+describe("a slower, older reading never overwrites a newer one", () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  function store(initial: Record<string, unknown>) {
+    const row: Record<string, unknown> = { ...initial };
+    const conditions: string[] = [];
+    const from = () => {
+      let patch: Record<string, unknown> | null = null;
+      const eqs: Array<[string, unknown]> = [];
+      let or: string | null = null;
+      const chain: any = {
+        select: () => chain,
+        eq: (k: string, v: unknown) => (eqs.push([k, v]), chain),
+        or: (f: string) => ((or = f), conditions.push(f), chain),
+        update: (p: Record<string, unknown>) => ((patch = p), chain),
+        single: async () => ({ data: { ...row }, error: null }),
+        maybeSingle: async () => ({ data: { timezone: "America/Detroit", country: "US" }, error: null }),
+        then: (resolve: any, reject: any) => {
+          if (patch) {
+            const m = /^current_read_at\.is\.null,current_read_at\.lt\."([^"]+)"$/.exec(or ?? "");
+            const held = row.current_read_at as string | null;
+            const newer = !m || held == null || Date.parse(held) < Date.parse(m[1]);
+            if (eqs.every(([k, v]) => row[k] === v) && newer) Object.assign(row, patch);
+          }
+          return Promise.resolve(patch ? { error: null } : { data: [row], error: null }).then(resolve, reject);
+        },
+      };
+      return chain;
+    };
+    return { row, conditions, from };
+  }
+
+  function service(from: () => unknown, readings: Array<{ after: number; dio: number | null }>) {
+    let call = 0;
+    return new GoalsService(
+      { getClient: () => ({ from }) } as any,
+      { getStored: async () => [] } as any,
+      { get: () => undefined } as any,
+      {} as any,
+      verdicts,
+      {
+        getFinancialSummary: async () => {
+          const r = readings[call++];
+          await sleep(r.after);
+          return { daysInventoryOutstanding: r.dio, inventoryValue: r.dio == null ? null : 900 };
+        },
+      } as any,
+    );
+  }
+
+  it("a refusal that began first and ended last leaves the success that began after it", async () => {
+    const s = store({ ...GOAL });
+    const svc = service(s.from, [
+      { after: 60, dio: null },
+      { after: 0, dio: 28 },
+    ]);
+    const slow = svc.getGoalProgress("r1", "g1", undefined, { withSales: true });
+    await sleep(15);
+    const quick = await svc.getGoalProgress("r1", "g1", undefined, { withSales: true });
+    await expect(slow).rejects.toThrow(/Days of stock cannot be read/);
+    expect(quick.current).toBe(28);
+    expect(s.row).toMatchObject({ current_value: 28, current_unread: null, current_read_at: quick.goal.current_read_at });
+    expect(s.conditions).toHaveLength(2);
+  });
+
+  it("a success that began first and ended last leaves the refusal that began after it", async () => {
+    const s = store({ ...GOAL });
+    const svc = service(s.from, [
+      { after: 60, dio: 28 },
+      { after: 0, dio: null },
+    ]);
+    const slow = svc.getGoalProgress("r1", "g1", undefined, { withSales: true });
+    await sleep(15);
+    await expect(svc.getGoalProgress("r1", "g1", undefined, { withSales: true })).rejects.toThrow();
+    await slow;
+    expect(s.row.current_unread).toMatch(/Days of stock cannot be read/);
+    expect(s.row.current_value).toBe(312.07);
+  });
+
+  it("stamps the reading with when it began, and writes only over no reading or an older one", async () => {
+    const s = store({ ...GOAL, current_read_at: null });
+    const before = Date.now();
+    const out = await service(s.from, [{ after: 40, dio: 28 }]).getGoalProgress("r1", "g1", undefined, { withSales: true });
+    const stamped = Date.parse(out.goal.current_read_at);
+    expect(stamped).toBeGreaterThanOrEqual(before);
+    expect(stamped).toBeLessThan(before + 30);
+    expect(s.row.current_value).toBe(28);
+    expect(s.conditions[0]).toBe(`current_read_at.is.null,current_read_at.lt."${out.goal.current_read_at}"`);
   });
 });
