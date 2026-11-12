@@ -646,6 +646,61 @@ describe("DeliveryService", () => {
         expect(res.value.costNote).toMatch(/booked no stock at the door/);
     });
 
+    it("says each provisional item's own reason (QA 7c B1)", async () => {
+      db.answers.deliveries = { data: deliveryRow({ state: "AGREED" }), error: null };
+      db.updateAnswers.deliveries = { data: deliveryRow({ state: "VERIFIED", verified_by: "u1" }), error: null };
+      const spy = jest
+        .spyOn(DeliveryStockService.prototype, "finaliseAtVerified")
+        .mockResolvedValueOnce({
+          ok: true,
+          value: { finalised: [], stillProvisional: [{ inventoryId: "i1", reason: "not per bottle: why" }] },
+        } as never);
+      const res = await service.verify(REST, DEL, "u1");
+      spy.mockRestore();
+      expect(res.ok && res.value.costNote).toBe(
+        "No cost was posted: 1 item(s) stay provisional. Not per bottle: why",
+      );
+    });
+
+    it("names, once per invoice, what was left out of cost and how tax was read (lane 1.4)", async () => {
+      db.answers.deliveries = {
+        data: deliveryRow({ state: "AGREED" }),
+        error: null,
+      };
+      db.updateAnswers.deliveries = {
+        data: deliveryRow({ state: "VERIFIED", verified_by: "u1" }),
+        error: null,
+      };
+      const spy = jest
+        .spyOn(DeliveryStockService.prototype, "finaliseAtVerified")
+        .mockResolvedValueOnce({
+          ok: true,
+          value: {
+            finalised: [{ inventoryId: "i1" }, { inventoryId: "i2" }],
+            stillProvisional: [],
+            papers: [
+              {
+                documentId: "d1",
+                docNumber: "A-1",
+                leftOut: "Not cost: a deposit of 30.00.",
+                taxSaid: "Tax is unset.",
+              },
+              {
+                documentId: "d2",
+                docNumber: null,
+                leftOut: "Nothing was left out.",
+                taxSaid: "Tax is unset.",
+              },
+            ],
+          },
+        } as never);
+      const res = await service.verify(REST, DEL, "u1");
+      spy.mockRestore();
+      expect(res.ok && res.value.costNote).toBe(
+        "Cost posted for 2 item(s); 0 left provisional. On invoice A-1: Not cost: a deposit of 30.00. Tax is unset. On invoice 2 of 2: Nothing was left out. Tax is unset.",
+      );
+    });
+
     it("is idempotent — a second verify returns the first stamp and writes nothing", async () => {
       db.answers.deliveries = {
         data: deliveryRow({
@@ -666,6 +721,38 @@ describe("DeliveryService", () => {
           (w) => w.table === "deliveries" && w.verb === "update",
         ),
       ).toEqual([]);
+    });
+
+    it("a re-verify reports a printed-price lot it corrected or could not (QA 9a)", async () => {
+      db.answers.deliveries = { data: deliveryRow({ state: "VERIFIED", verified_at: "2026-08-15T11:00:00Z" }), error: null };
+      const spy = jest.spyOn(DeliveryStockService.prototype, "repairPrintedCost").mockResolvedValueOnce({
+        ok: true,
+        value: { repaired: [{ inventoryId: "i1" }], flagged: [{ inventoryId: "i2", reason: "its lot was finalised at 264: why" }] },
+      } as never);
+      const res = await service.verify(REST, DEL, "u1");
+      spy.mockRestore();
+      expect(res.ok && res.value.costNote).toBe(
+        "This delivery was already verified; a cost already posted is not posted twice. 1 item(s) had been booked at the invoice's printed price and now carry their landed cost per bottle: the price of one bottle with its share of the invoice's charges and discount. Item i2: its lot was finalised at 264: why",
+      );
+    });
+
+    it("a re-verify finishes the cost a failed post left provisional, and says so (QA round 15 (4))", async () => {
+      db.answers.deliveries = { data: deliveryRow({ state: "VERIFIED", verified_at: "2026-08-15T11:00:00Z" }), error: null };
+      const finish = jest.spyOn(DeliveryStockService.prototype, "finishProvisional").mockResolvedValueOnce({
+        ok: true,
+        value: { deliveryId: DEL, finalised: [{ inventoryId: "i2" }], stillProvisional: [] },
+      } as never);
+      const repair = jest.spyOn(DeliveryStockService.prototype, "repairPrintedCost").mockResolvedValueOnce({
+        ok: true,
+        value: { repaired: [], flagged: [] },
+      } as never);
+      const res = await service.verify(REST, DEL, "u1");
+      expect(finish).toHaveBeenCalledWith(REST, DEL, "u1");
+      finish.mockRestore();
+      repair.mockRestore();
+      expect(res.ok && res.value.costNote).toBe(
+        "This delivery was already verified; a cost already posted is not posted twice. Cost posted now for 1 item(s) whose cost had not posted at the first verify.",
+      );
     });
 
     it("is a 404 for another tenant's delivery", async () => {

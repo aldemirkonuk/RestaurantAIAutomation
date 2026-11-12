@@ -85,7 +85,18 @@ export function makeMockDb(): MockDb {
         return state.insertAnswers[table] ?? { data: null, error: null };
       if (verb === "update")
         return state.updateAnswers[table] ?? { data: null, error: null };
-      return state.answers[table] ?? { data: null, error: null };
+      // Fixtures live in a USD house reading USD papers unless they say
+      // otherwise (QA round 19 (1): an unnamed house currency costs nothing).
+      if (table === "restaurants" && !state.answers[table])
+        return { data: { currency: "USD" }, error: null };
+      const read = state.answers[table] ?? { data: null, error: null };
+      if (table !== "procurement_documents" || !Array.isArray(read.data)) return read;
+      return {
+        ...read,
+        data: (read.data as Record<string, unknown>[]).map((r) =>
+          r && typeof r === "object" && !("currency" in r) ? { ...r, currency: "USD" } : r,
+        ),
+      };
     };
 
     for (const v of [
@@ -129,7 +140,14 @@ export function makeMockDb(): MockDb {
     (chain as { then: unknown }).then = (
       resolve: (v: unknown) => unknown,
     ): unknown => {
-      const a = answer();
+      // R8: the items' units are a LIST read of restaurant_inventory, beside
+      // the single-row research read. They answer apart, from
+      // `answers["restaurant_inventory[]"]`, and default to no rows (every
+      // fixture item then books as a container, as before).
+      const a =
+        table === "restaurant_inventory" && verb === "read"
+          ? (state.answers["restaurant_inventory[]"] ?? { data: [], error: null })
+          : answer();
       return Promise.resolve({
         data: a.error ? null : (a.data ?? null),
         error: a.error,

@@ -285,6 +285,18 @@ describe("recordDoorReceipt", () => {
       });
   });
 
+  it("refuses a weight at the order door by name, writing nothing (R8)", async () => {
+    // `kg` now reads (an invoice line may be weighed), but `counted_uom` keeps
+    // the seven container units; the door says so instead of failing a CHECK.
+    const { db, calls } = makeDb({
+      order: { id: "o1", inventory_id: "inv1", quantity: 2, bottles_total: 24, quantity_received: 0 },
+    });
+    await expect(
+      new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 3, countedUom: "kg" }),
+    ).rejects.toMatchObject({ response: { reason: "unknown_counted_uom" } });
+    expect(calls.rpc).toHaveLength(0);
+  });
+
   it("never guesses a pack size of 12", async () => {
     // A guessed pack multiplies a delivery twelvefold in the ledger — far worse
     // than under-counting, and it surfaces as a phantom overage, not as a bug.
