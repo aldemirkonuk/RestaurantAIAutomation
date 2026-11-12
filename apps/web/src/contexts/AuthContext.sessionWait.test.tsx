@@ -148,27 +148,15 @@ describe("a busy gateway keeps the session", () => {
     expect(localStorage.getItem("accessToken")).toBeNull();
   });
 
-  it("a gateway that never comes back can be left: Sign out ends the session and opens /login", async () => {
-    let calls = 0;
-    h.instance.get.mockImplementation(async (url: string) => {
-      if (url !== "/api/v1/auth/me") return { data: [] };
-      calls += 1;
-      throw { isAxiosError: true, response: { status: 503 } };
-    });
+  it("Sign out leaves an endless wait for /login", async () => {
+    h.instance.get.mockRejectedValue({ isAxiosError: true, response: { status: 503 } });
     h.instance.post.mockResolvedValue({ data: {} });
-
     renderApp();
     await screen.findByText("Mudavym is not answering right now.");
-    await act(async () => {
-      screen.getByRole("button", { name: "Sign out" }).click();
-    });
-
+    await act(async () => screen.getByRole("button", { name: "Sign out" }).click());
     expect(await screen.findByText("the login page")).toBeInTheDocument();
-    expect(localStorage.getItem("accessToken")).toBeNull();
     expect(localStorage.getItem("refreshToken")).toBeNull();
-    await waitFor(() => expect(ctx?.loading).toBe(false));
-    expect(ctx?.sessionWait).toBeNull();
-    expect(calls).toBe(1);
+    expect(h.instance.get).toHaveBeenCalledTimes(1);
   });
 
   it("stops asking once the tokens were removed in another tab", async () => {

@@ -223,11 +223,7 @@ export interface AuthContextType {
   sessionWait?: SessionWait | null;
   /** Ask `/auth/me` again now instead of at `sessionWait.retryAt`. */
   retrySessionNow?: () => void;
-  /**
-   * Leave a session that is still waiting: sign out (the same sign-out as the
-   * account menu, unsent-work warning included) and stop waiting, so the
-   * person can reach /login and another account.
-   */
+  /** Sign out (as the account menu does) and stop waiting. */
   signOutWhileWaiting?: () => Promise<void>;
   error: string | null;
   clearError: () => void;
@@ -443,12 +439,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // A stored session is read until it answers or is refused. A 429, a
-      // 5xx or a dropped connection waits (Retry-After, else 1-2-4-8-15-30 s)
-      // and asks again, with `loading` still true, so no guard sends a
-      // signed-in person to /login (onboarding lane 2026-11-11: two tabs and
-      // a few reloads behind one address hit the per-address limit and the
-      // page showed /login while the tokens were still on disk).
+      // A 429, a 5xx or a dropped connection waits (lib/sessionWait.ts) and
+      // asks again with `loading` still true: never /login with tokens on disk.
       for (let attempt = 0; !cancelled; attempt++) {
         // Signed out in another tab while this one waited: stop asking.
         if (!localStorage.getItem("accessToken")) break;
@@ -470,10 +462,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               `Keeping the session: /auth/me failed (${reason}); asking again in ${Math.round(delay / 1000)} s.`,
             );
             setSessionWait({ reason, retryAt: Date.now() + delay, attempt: attempt + 1 });
-            // The wake handle is this wait's own: a later run of this effect
-            // (React's dev double-mount) may have put its own handle there by
-            // the time this wait ends, and clearing that one would leave its
-            // "Try now" and "Sign out" doing nothing.
+            // Clear only this wait's own handle, never a later run's.
             let wake: (() => void) | null = null;
             await new Promise<void>((resolve) => {
               const timer = setTimeout(resolve, delay);
@@ -1199,8 +1188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [endSession]);
 
-  // The waiting loop stops on its next turn once the token is gone; wake it
-  // now so the guard sends the person to /login without waiting the delay.
+  // With the token gone the loop stops on its next turn; wake it now.
   const signOutWhileWaiting = useCallback(async () => {
     if (await logout()) sessionWake.current?.();
   }, [logout]);
