@@ -33,6 +33,24 @@ describe('ItemChooser', () => {
     expect(screen.getAllByTestId('chooser-match')).toHaveLength(8)
     expect(screen.getByTestId('chooser-more').textContent).toMatch(/3 more/)
   })
+  it('names the size once: the sheet label already carries it', () => {
+    render(
+      <ItemChooser
+        items={items}
+        itemLabel={(id) => (id === '1' ? 'Şarap Kırmızı · 750 ml' : null)}
+        onPick={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    )
+    fireEvent.change(screen.getByTestId('chooser-input'), { target: { value: 'sarap' } })
+    const shown = screen.getAllByTestId('chooser-match').map((b) => b.textContent)
+    expect(shown).toEqual(['Şarap Kırmızı · 750 ml', 'Sarapnel'])
+  })
+  it('adds the size to a fallback name that lacks it', () => {
+    render(<ItemChooser items={items} itemLabel={() => null} onPick={vi.fn()} onCancel={vi.fn()} />)
+    fireEvent.change(screen.getByTestId('chooser-input'), { target: { value: 'raki' } })
+    expect(screen.getByTestId('chooser-match').textContent).toBe('Rakı Yeni 700 · 700 ml')
+  })
   it('says nothing matches, in words', () => {
     render(<ItemChooser items={items} itemLabel={() => null} onPick={vi.fn()} onCancel={vi.fn()} />)
     fireEvent.change(screen.getByTestId('chooser-input'), { target: { value: 'zzz' } })

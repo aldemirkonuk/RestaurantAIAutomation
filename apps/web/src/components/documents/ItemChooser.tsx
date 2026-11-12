@@ -123,7 +123,9 @@ export function ItemChooser({ items, itemLabel, onPick, onCancel, busy, itemsFai
               data-testid="chooser-match"
             >
               {chooserName(it, itemLabel)}
-              {it.bottleSizeMl ? ` · ${it.bottleSizeMl} ml` : ''}
+              {/* `itemLabel` already ends in the size; append it only to the
+                  fallback name, or the button reads "750 ml · 750 ml". */}
+              {itemLabel(it.id) == null && it.bottleSizeMl ? ` · ${it.bottleSizeMl} ml` : ''}
             </button>
           ))}
           {matches.length > shown.length && (
