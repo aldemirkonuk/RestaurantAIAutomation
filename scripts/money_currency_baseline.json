@@ -6,7 +6,6 @@
     "apps/mobile/app/(tabs)/insights.tsx": 1,
     "apps/mobile/src/components/supply/OrderRow.tsx": 1,
     "apps/mobile/src/components/today/PulseStrip.tsx": 1,
-    "apps/mobile/src/lib/invoiceMatch.ts": 1,
     "apps/web/src/components/notifications/OneTapActionCenter.tsx": 2,
     "apps/web/src/components/orders/DealApprovalModal.tsx": 3,
     "apps/web/src/components/providers/EditProviderModal.tsx": 2,

@@ -35,7 +35,10 @@ export interface MatchInput {
   poUnitPrice?: number | null;
   invoiceQty?: number | null;
   invoiceUnitPrice?: number | null;
+  /** The ISO code copied from the vendor's paper, or null when none is stated. */
   invoiceCurrency?: string | null;
+  /** The order's own ISO code (`procurement_orders.currency`), or null when it names none. */
+  poCurrency?: string | null;
   acceptedQty: number;
   rejectedQty?: number;
   priceOverrideReason?: string | null;
@@ -51,7 +54,36 @@ export interface MatchResult {
   effectiveUnitCost: number | null;
 }
 
-export const money = (n: number) => `$${n.toFixed(2)}`;
+/** A three-letter ISO code, or null: a stored value that is not one names no currency. */
+export function currencyCode(code: string | null | undefined): string | null {
+  const c = (code ?? "").trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(c) ? c : null;
+}
+
+/**
+ * A price in its own currency: "TRY 12.00". This printed a dollar sign for
+ * every invoice whatever its currency; a currency sign is a claim about the
+ * amount, so a price with no stated currency says so instead of borrowing one.
+ */
+export function money(n: number, currency: string | null | undefined): string {
+  const code = currencyCode(currency);
+  return code ? `${code} ${n.toFixed(2)}` : `${n.toFixed(2)} (currency not stated)`;
+}
+
+/**
+ * True when two prices can be read side by side on this phone: the same
+ * stated currency, or a currency missing on either side (the preview the
+ * server re-checks). Two different stated currencies are never netted or
+ * called equal here: nothing on the phone converts.
+ */
+export function sameMoney(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const x = currencyCode(a);
+  const y = currencyCode(b);
+  return x === null || y === null || x === y;
+}
 
 /** Compare as cents so 22.000000001 still equals 22. */
 const priceEquals = (a: number, b: number) =>
@@ -71,11 +103,19 @@ export function computeMatch(input: MatchInput): MatchResult {
   const invoiceUnitPrice = input.invoiceUnitPrice ?? null;
   const overrideReason = (input.priceOverrideReason ?? "").trim();
 
+  const invoiceCurrency = currencyCode(input.invoiceCurrency);
+  const poCurrency = currencyCode(input.poCurrency);
   const bothPriced = poUnitPrice != null && invoiceUnitPrice != null;
-  const priceVerified =
+  // Two different stated currencies: equal figures are not a verified price.
+  const twoCurrencies = bothPriced && !sameMoney(invoiceCurrency, poCurrency);
+  const figuresEqual =
     bothPriced &&
     priceEquals(poUnitPrice as number, invoiceUnitPrice as number);
-  const priceMismatch = bothPriced && !priceVerified;
+  const priceVerified = figuresEqual && !twoCurrencies;
+  // The override rule stays the server's (invoice-match.ts): figures that
+  // differ need a reason, whatever their currencies, or the server refuses
+  // the receipt. Only what this preview CLAIMS changes with currency.
+  const priceMismatch = bothPriced && !figuresEqual;
   const requiresOverride = priceMismatch && overrideReason.length === 0;
 
   const backorderQty = Math.max(0, orderedQty - acceptedQty);
@@ -103,9 +143,11 @@ export function computeMatch(input: MatchInput): MatchResult {
       case "matched":
         return priceVerified
           ? `All ${acceptedQty} accepted; the stated prices match.`
-          : `All ${acceptedQty} accepted; the entered quantities match. Price verification is pending.`;
+          : twoCurrencies
+            ? `All ${acceptedQty} accepted; the entered quantities match. The invoice is in ${invoiceCurrency} and the order in ${poCurrency}, so the server compares the prices.`
+            : `All ${acceptedQty} accepted; the entered quantities match. Price verification is pending.`;
       case "price_variance":
-        return `Billed ${(invoiceUnitPrice as number).toFixed(2)} against a stated ${(poUnitPrice as number).toFixed(2)} per bottle. The server will check the agreement and currency.`;
+        return `Billed ${money(invoiceUnitPrice as number, invoiceCurrency)} against an agreed ${money(poUnitPrice as number, poCurrency)} per bottle. The server will check the agreement and currency.`;
       case "qty_over":
         return `${receivedQty} arrived but only ${invoiceQty} were billed.`;
       case "qty_short":
