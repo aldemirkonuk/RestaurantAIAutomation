@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeMatch, costCorrectionLine, verdictStyle, type MatchInput } from './invoiceMatch'
+import { computeMatch, costCorrectionLine, money, verdictStyle, type MatchInput } from './invoiceMatch'
 // The backend is authoritative. Importing it directly here is the whole point: these rules are
 // duplicated across the API and the web app, and D6 exists because the same concept drifting
 // into three incompatible definitions is what broke trust last time. If someone changes one
@@ -188,5 +188,44 @@ describe('costCorrectionLine (receipts walk item 5)', () => {
     expect(costCorrectionLine({ salesSettled: 0, bottlesRevalued: 0 })).toBeNull()
     expect(costCorrectionLine(undefined)).toBeNull()
     expect(costCorrectionLine(null)).toBeNull()
+  })
+})
+
+describe('a price is printed in its own currency (browser walk 2026-11-12)', () => {
+  const tryOver: MatchInput = {
+    orderedQty: 6,
+    poUnitPrice: 20,
+    invoiceQty: 6,
+    invoiceUnitPrice: 25,
+    acceptedQty: 6,
+    poCurrency: 'TRY',
+    invoiceCurrency: 'TRY',
+  }
+
+  it('a TRY invoice never reads in dollars', () => {
+    const held = computeMatch(tryOver)
+    expect(held.summary).toBe('Billed TRY\u00a025.00 against an agreed TRY\u00a020.00.')
+    const accepted = computeMatch({ ...tryOver, priceOverrideReason: 'price rise' })
+    expect(accepted.summary).toBe('All 6 accepted at the billed TRY\u00a025.00, not the agreed TRY\u00a020.00.')
+    expect(accepted.summary).not.toMatch(/\$/)
+  })
+
+  it('dollars still read as dollars, and no code is a bare number', () => {
+    expect(money(25, 'USD')).toBe('$25.00')
+    expect(money(25, 'try')).toBe('TRY\u00a025.00')
+    expect(money(25, null)).toBe('25.00')
+    expect(money(25, '')).toBe('25.00')
+    expect(computeMatch({ ...tryOver, poCurrency: null, invoiceCurrency: null }).summary).toBe(
+      'Billed 25.00 against an agreed 20.00.',
+    )
+  })
+
+  it.each<[string, MatchInput]>([
+    ['TRY held', tryOver],
+    ['TRY overridden', { ...tryOver, priceOverrideReason: 'price rise' }],
+    ['EUR billed, TRY agreed', { ...tryOver, invoiceCurrency: 'EUR' }],
+    ['no codes', { ...tryOver, poCurrency: null, invoiceCurrency: null }],
+  ])('the gateway says the same words: %s', (_label, input) => {
+    expect(computeMatch(input).summary).toBe(computeMatchApi(input).summary)
   })
 })

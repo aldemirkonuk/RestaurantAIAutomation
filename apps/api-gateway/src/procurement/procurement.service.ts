@@ -6456,6 +6456,9 @@ export class ProcurementService {
       countedBottlesPerUnit: body.countedBottlesPerUnit ?? null,
       allocatedCharges: body.allocatedCharges ?? 0,
       priceOverrideReason: body.priceOverrideReason ?? null,
+      // Words only: the summary names each price in its own money, never "$".
+      poCurrency: typeof orderRow.currency === "string" ? orderRow.currency : null,
+      invoiceCurrency: body.invoiceCurrency ?? null,
     };
 
     let match: MatchResult | null = null;

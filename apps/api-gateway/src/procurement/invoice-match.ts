@@ -139,6 +139,12 @@ export interface MatchInput {
 
   /** Agreed unit price (final_price). PER BOTTLE. Null when the order never carried a price. */
   poUnitPrice?: number | null;
+  /**
+   * The ISO 4217 code `poUnitPrice` is in: the order's own currency. Words
+   * only; nothing is converted. Absent, the price is printed as a bare number,
+   * never as dollars (browser walk 2026-11-12: a TRY invoice read "$25.00").
+   */
+  poCurrency?: string | null;
 
   // -------------------------------------------------------------------------
   // SHIPPED (packing slip, EDI 856)
@@ -209,6 +215,8 @@ export interface MatchInput {
   // -------------------------------------------------------------------------
   /** Manager justification for accepting a price that differs from the PO. */
   priceOverrideReason?: string | null;
+  /** The ISO 4217 code `invoiceUnitPrice` is in. Same rule as `poCurrency`. */
+  invoiceCurrency?: string | null;
   /**
    * Freight, fuel surcharge and split-case fees apportioned to this line.
    * Folded into effectiveUnitCost so what lands on the books is landed cost, not
@@ -293,7 +301,27 @@ export interface MatchResult {
   effectiveUnitCost: number | null;
 }
 
-const money = (n: number) => `$${n.toFixed(2)}`;
+/**
+ * A price in the words of its own currency. Two places, as before; the code
+ * decides the sign (`$25.00` for USD, `TRY 25.00` for lira, `€25.00`). With no
+ * code the number stands alone: a bare `$` assumed dollars for every house
+ * (browser walk 2026-11-12, a TRY invoice on the legacy verify screen). A
+ * fixed locale, so the web twin prints the same characters (parity test).
+ */
+export function moneyIn(n: number, code?: string | null): string {
+  const c = typeof code === "string" ? code.trim().toUpperCase() : "";
+  if (!/^[A-Z]{3}$/.test(c)) return n.toFixed(2);
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: c,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n);
+  } catch {
+    return `${n.toFixed(2)} ${c}`;
+  }
+}
 
 /** Compare two prices as money; avoids float noise like 22.00000000001 !== 22. */
 const priceEquals = (a: number, b: number) =>
@@ -605,6 +633,8 @@ export function computeMatch(input: MatchInput): MatchResult {
   const poUnitPrice = input.poUnitPrice ?? null;
   const invoiceUnitPrice = input.invoiceUnitPrice ?? null;
   const overrideReason = (input.priceOverrideReason ?? "").trim();
+  const agreed = (n: number) => moneyIn(n, input.poCurrency);
+  const billed = (n: number) => moneyIn(n, input.invoiceCurrency);
 
   const stockedQty = operands.stockedQty ?? invoiceQty ?? orderedQty;
 
@@ -624,9 +654,9 @@ export function computeMatch(input: MatchInput): MatchResult {
     detail: !bothPriced
       ? "No price to compare"
       : priceMismatch
-        ? `Agreed ${money(poUnitPrice)} vs billed ${money(invoiceUnitPrice)}` +
+        ? `Agreed ${agreed(poUnitPrice)} vs billed ${billed(invoiceUnitPrice)}` +
           (overrideReason ? " — accepted by override" : "")
-        : `Both ${money(poUnitPrice as number)}`,
+        : `Both ${agreed(poUnitPrice as number)}`,
   });
 
   // --- bill vs PO: did they bill for what we ordered? ------------------------------------
@@ -768,6 +798,8 @@ export function computeMatch(input: MatchInput): MatchResult {
       backorderQty,
       poUnitPrice,
       invoiceUnitPrice,
+      poCurrency: input.poCurrency ?? null,
+      invoiceCurrency: input.invoiceCurrency ?? null,
     }),
     backorderQty,
     ledgerDelta: acceptedQty - stockedQty,
@@ -796,8 +828,12 @@ function summarize(
     backorderQty: number;
     poUnitPrice: number | null;
     invoiceUnitPrice: number | null;
+    poCurrency: string | null;
+    invoiceCurrency: string | null;
   },
 ): string {
+  const agreed = (n: number) => moneyIn(n, f.poCurrency);
+  const billed = (n: number) => moneyIn(n, f.invoiceCurrency);
   switch (verdict) {
     case "matched":
       return (
@@ -806,14 +842,14 @@ function summarize(
         (f.poUnitPrice != null &&
         f.invoiceUnitPrice != null &&
         !priceEquals(f.poUnitPrice, f.invoiceUnitPrice)
-          ? `All ${f.acceptedQty} accepted at the billed ${money(f.invoiceUnitPrice)}, not the agreed ${money(f.poUnitPrice)}.`
+          ? `All ${f.acceptedQty} accepted at the billed ${billed(f.invoiceUnitPrice)}, not the agreed ${agreed(f.poUnitPrice)}.`
           : `All ${f.acceptedQty} accepted at the agreed price.`) +
         (f.freeGoodsQty > 0 ? ` Includes ${f.freeGoodsQty} free.` : "")
       );
     case "overbilled_vs_ship":
       return `Their packing slip says ${f.shippedQty} but their invoice bills ${f.invoiceQty} — proven by their own paperwork.`;
     case "price_variance":
-      return `Billed ${money(f.invoiceUnitPrice as number)} against an agreed ${money(
+      return `Billed ${billed(f.invoiceUnitPrice as number)} against an agreed ${agreed(
         f.poUnitPrice as number,
       )}.`;
     case "qty_over":
