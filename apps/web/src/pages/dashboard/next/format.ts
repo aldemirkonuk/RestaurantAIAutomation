@@ -7,12 +7,43 @@
  */
 
 import { formatMoney, formatNumber } from '@/lib/utils';
+import { formatMoney as moneyInCurrency } from '@/lib/currency';
+import { unitWord } from '@/components/documents/canonical-format';
 
 export const DASH = '—';
 
 /** Money or the dash. `mode` follows lib/utils' FormatMode. */
 export function money(v: number | null | undefined, mode: 'compact' | 'full' | 'table' = 'full'): string {
   return v == null || Number.isNaN(v) ? DASH : formatMoney(v, mode);
+}
+
+/**
+ * An order's money in the currency the order was PLACED in, or the dash.
+ *
+ * `money()` above prints `$` whatever the house: a TRY house's TRY order read
+ * "$456" on the approval card (browser walk 2026-11-12). An order carries its
+ * own `currency` (`OrderResponseDto.currency`, `procurement_orders.currency`),
+ * and the bell's approval panel already prints it from there
+ * (`ApproveFromBellPanel.tsx` `money`). The two surfaces approve the same
+ * order, so they say the same thing: the order's code, and for an order that
+ * names none, the number with "(currency not recorded)" — never `$`, and never
+ * the house's code put on an order that did not state it.
+ */
+export function orderMoney(v: number | null | undefined, currency: string | null | undefined): string {
+  return v == null || !Number.isFinite(v) ? DASH : moneyInCurrency(v, currency ?? null);
+}
+
+/**
+ * "12 bottles", "1 bottle", "3 split cases". The card printed the stored unit
+ * code as it came, so twelve read "12 bottle". A unit outside the word list is
+ * printed as it came; no unit adds nothing.
+ */
+export function quantityWords(quantity: number | null | undefined, unit: string | null | undefined): string {
+  if (quantity == null || !Number.isFinite(quantity)) return DASH;
+  const n = formatNumber(quantity);
+  const code = typeof unit === 'string' ? unit.trim() : '';
+  if (!code) return n;
+  return `${n} ${unitWord(code.toLowerCase(), quantity).replace(/_/g, ' ')}`;
 }
 
 /**
@@ -24,11 +55,12 @@ export function money(v: number | null | undefined, mode: 'compact' | 'full' | '
  * so the die read "Hold to approve · $0" over every real order on the queue.
  * A dash is no better on a control this small: it reads as a rendering fault
  * rather than as an absence. With no total the die says only what it does.
+ * The total is in the order's own currency (`orderMoney`), never `$`.
  */
-export function approveLabel(total: number | null | undefined): string {
-  return total == null || Number.isNaN(total)
+export function approveLabel(total: number | null | undefined, currency?: string | null): string {
+  return total == null || !Number.isFinite(total)
     ? 'Hold to approve'
-    : `Hold to approve · ${formatMoney(total, 'full')}`;
+    : `Hold to approve · ${orderMoney(total, currency)}`;
 }
 
 /** Plain figure or the dash. */

@@ -26,7 +26,7 @@ import {
   type DayOrdersState,
   type MonthSales,
 } from './useDashboardNextData';
-import { DASH, dateIn, eventKindWords, eventTime, figure, longDay, money, timeAgo } from './format';
+import { DASH, dateIn, eventKindWords, eventTime, figure, longDay, money, orderMoney, quantityWords, timeAgo } from './format';
 import { SERIF } from './fonts';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
@@ -390,12 +390,11 @@ export function DayDetail({
                   className="ml-auto shrink-0 text-[12px] text-inkm-2"
                   style={{ fontFamily: MONO, fontVariantNumeric: 'tabular-nums' }}
                 >
-                  {formatNumber(o.quantity)}
-                  {o.unitType ? ` ${o.unitType}` : ''}
+                  {quantityWords(o.quantity, o.unitType)}
                   {seesAmounts && (
                     <>
-                      {' '}× {money(o.finalPrice)} ·{' '}
-                      <span className="text-inkm-1">{money(o.totalCost)}</span>
+                      {' '}× {orderMoney(o.finalPrice, o.currency)} ·{' '}
+                      <span className="text-inkm-1">{orderMoney(o.totalCost, o.currency)}</span>
                     </>
                   )}
                 </span>

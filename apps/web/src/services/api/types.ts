@@ -383,6 +383,12 @@ export interface Order {
   finalPrice?: number;
   /** The order's total. This is the field the old `totalPrice` meant. */
   totalCost?: number;
+  /**
+   * The ISO 4217 code the order was placed in (`OrderResponseDto.currency`).
+   * `null` = the row names none (never defaulted to the house's); absent = the
+   * route did not read the column. Every money figure on the order is in it.
+   */
+  currency?: string | null;
   status: OrderWireStatus;
   requestedAt?: string;
   approvedAt?: string;
