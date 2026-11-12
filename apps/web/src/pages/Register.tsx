@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-do
 import { readInviteMailSecret } from '../lib/inviteMailSecret'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, ChevronRight } from 'lucide-react'
+import { Wine, Users, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, ChevronRight, Eye, EyeOff } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
 import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
@@ -47,6 +47,47 @@ const HOUSE_BUTTON = 'bg-seal text-paper-0 hover:bg-seal-deep shadow-none hover:
 // The wordmark this file drew above the old single card is the endpaper's
 // now (`MarkDraws.tsx`, drawn once per page load; sketch 118).
 
+/**
+ * One password box with a show/hide toggle (OB-11). The confirm box went: a
+ * person who can see what they typed does not need to type it twice.
+ */
+function PasswordInput({
+  id,
+  value,
+  onChange,
+  on,
+}: {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  on: boolean
+}) {
+  const [shown, setShown] = useState(false)
+  return (
+    <div className="relative">
+      <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
+      <input
+        id={id}
+        type={shown ? 'text' : 'password'}
+        autoComplete="new-password"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="••••••••"
+        className={on ? 'block w-full pl-10 pr-11 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-11 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+      />
+      <button
+        type="button"
+        onClick={() => setShown((v) => !v)}
+        aria-label={shown ? 'Hide password' : 'Show password'}
+        aria-pressed={shown}
+        className={on ? 'absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-inkm-3 hover:text-inkm-2' : 'absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600'}
+      >
+        {shown ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
+    </div>
+  )
+}
+
 type Path = 'selector' | 'join' | 'create'
 type PathAStep = 1 | 2
 type PathBStep = 1 | 2
@@ -87,13 +128,11 @@ export function Register() {
   const [joinName, setJoinName] = useState('')
   const [joinEmail, setJoinEmail] = useState('')
   const [joinPassword, setJoinPassword] = useState('')
-  const [joinConfirm, setJoinConfirm] = useState('')
 
   // Path B account fields
   const [createName, setCreateName] = useState('')
   const [createEmail, setCreateEmail] = useState('')
   const [createPassword, setCreatePassword] = useState('')
-  const [createConfirm, setCreateConfirm] = useState('')
 
   // Path B restaurant fields
   const [restaurantName, setRestaurantName] = useState('')
@@ -150,9 +189,10 @@ export function Register() {
   // Restaurant form section (left-rail sub-navigation within pathBStep 2)
   const [restaurantSection, setRestaurantSection] = useState<1 | 2 | 3>(1)
 
-  // A refused sign-up is said in words (lib/authWords.ts, OB-11): "this
-  // address already has an account" offers Sign in under the sentence, and
-  // a 429 holds the button until the wait the gateway named has passed.
+  // A refused sign-up that means "this address already has an account"
+  // offers Sign in under the sentence; a 429 holds the button until the
+  // wait the gateway named has passed (OB-11). No address is probed while
+  // it is typed: the account call itself says whether it is taken.
   const [signInHint, setSignInHint] = useState(false)
   const [waitUntil, setWaitUntil] = useState(0)
   // The wait sentence names a number of seconds. When those seconds have
@@ -560,12 +600,28 @@ export function Register() {
     </motion.div>
   )
 
+  // PATH B — Step 1: make the account (no house yet; it comes after verify).
+  // No address probe first: the account call says when an address is taken.
+  const handleAccountSubmit = async () => {
+    setError(null)
+    setSignInHint(false)
+    setLoading(true)
+    try {
+      await registerAccount({
+        name: createName,
+        email: createEmail,
+        password: createPassword,
+      })
+      navigate('/verify-email', { replace: true })
+    } catch (err: unknown) {
+      sayRefusal(err, 'account')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // PATH A — Step 2: Account fields + submit
   const handleJoinSubmit = async () => {
-    if (joinPassword !== joinConfirm) {
-      setError('Passwords do not match')
-      return
-    }
     if (joinPassword.length < 8) {
       setError('Password must be at least 8 characters')
       return
@@ -619,6 +675,15 @@ export function Register() {
         </div>
       )}
       {!on && <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>}
+      {/* A form, so Enter submits (browser walk 2026-11-11: it did not). */}
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (loading || waiting || !joinName || !joinEmail || !joinPassword) return
+          void handleJoinSubmit()
+        }}
+      >
       <div className="space-y-4">
         {/* Full Name */}
         <div>
@@ -656,34 +721,8 @@ export function Register() {
         {/* Password */}
         <div>
           <label htmlFor="join-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Password *</label>
-          <div className="relative">
-            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
-            <input
-              id="join-password"
-              type="password"
-              value={joinPassword}
-              onChange={(e) => setJoinPassword(e.target.value)}
-              placeholder="••••••••"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-            />
-          </div>
+          <PasswordInput id="join-password" value={joinPassword} onChange={setJoinPassword} on={on} />
           <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Min. 8 characters</p>
-        </div>
-
-        {/* Confirm Password */}
-        <div>
-          <label htmlFor="join-confirm-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Confirm Password *</label>
-          <div className="relative">
-            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
-            <input
-              id="join-confirm-password"
-              type="password"
-              value={joinConfirm}
-              onChange={(e) => setJoinConfirm(e.target.value)}
-              placeholder="••••••••"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-            />
-          </div>
         </div>
       </div>
       {(error || authError) && (
@@ -703,9 +742,9 @@ export function Register() {
         </div>
       )}
       <Button
+        type="submit"
         className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
-        disabled={loading || waiting || !joinName || !joinEmail || !joinPassword || !joinConfirm}
-        onClick={() => void handleJoinSubmit()}
+        disabled={loading || waiting || !joinName || !joinEmail || !joinPassword}
       >
         {loading ? (
           <>
@@ -716,6 +755,7 @@ export function Register() {
           'Join Restaurant'
         )}
       </Button>
+      </form>
     </motion.div>
   )
 
@@ -746,6 +786,15 @@ export function Register() {
           <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>
         </>
       )}
+      {/* A form, so Enter submits (browser walk 2026-11-11: it did not). */}
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (loading || waiting || !createName || !createEmail || createPassword.length < 8) return
+          void handleAccountSubmit()
+        }}
+      >
       <div className="space-y-4">
         {/* Full Name */}
         <div>
@@ -783,34 +832,8 @@ export function Register() {
         {/* Password */}
         <div>
           <label htmlFor="create-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Password *</label>
-          <div className="relative">
-            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
-            <input
-              id="create-password"
-              type="password"
-              value={createPassword}
-              onChange={(e) => setCreatePassword(e.target.value)}
-              placeholder="••••••••"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-            />
-          </div>
+          <PasswordInput id="create-password" value={createPassword} onChange={setCreatePassword} on={on} />
           <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Min. 8 characters</p>
-        </div>
-
-        {/* Confirm Password */}
-        <div>
-          <label htmlFor="create-confirm-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Confirm Password *</label>
-          <div className="relative">
-            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
-            <input
-              id="create-confirm-password"
-              type="password"
-              value={createConfirm}
-              onChange={(e) => setCreateConfirm(e.target.value)}
-              placeholder="••••••••"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-            />
-          </div>
         </div>
       </div>
       {/* Step 1 had no error line at all: a refused sign-up said nothing. */}
@@ -831,41 +854,20 @@ export function Register() {
         </div>
       )}
       <Button
-        type="button"
+        type="submit"
         className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
-        disabled={
-          loading ||
-          waiting ||
-          !createName ||
-          !createEmail ||
-          createPassword.length < 8 ||
-          createPassword !== createConfirm
-        }
-        onClick={async () => {
-          if (createPassword !== createConfirm) {
-            setError('Passwords do not match')
-            return
-          }
-
-          setError(null)
-          setSignInHint(false)
-          setLoading(true)
-          try {
-            await registerAccount({
-              name: createName,
-              email: createEmail,
-              password: createPassword,
-            })
-            navigate('/verify-email', { replace: true })
-          } catch (err: unknown) {
-            sayRefusal(err, 'account')
-          } finally {
-            setLoading(false)
-          }
-        }}
+        disabled={loading || waiting || !createName || !createEmail || createPassword.length < 8}
       >
-        Create account <ArrowRight className="w-4 h-4 ml-1" />
+        {loading ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+            Creating account…
+          </>
+        ) : (
+          <>Create account <ArrowRight className="w-4 h-4 ml-1" /></>
+        )}
       </Button>
+      </form>
       <div className="my-4 flex items-center gap-3 text-xs text-gray-400">
         <span className="h-px flex-1 bg-gray-200" />
         or
