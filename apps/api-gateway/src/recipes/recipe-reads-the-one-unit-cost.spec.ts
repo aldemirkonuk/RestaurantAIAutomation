@@ -90,4 +90,11 @@ describe("a recipe reads the one unit cost", () => {
     expect(reads).not.toContain(AGREED);
     expect(reads).not.toContain("inventory_lot_rollup");
   });
+
+  it("a read without money (the staff recipe sheet) reads neither cost view and carries no lot", async () => {
+    const fake = fakeDb(rows({ agreed: [{ inventory_id: FLOUR, restaurant_id: HOUSE_A, has_agreed_cost: true, agreed_wac: 1.2, agreed_qty: 10 }] }));
+    const read = await new RecipesService(fake.db).readPricing(HOUSE_A, [FLOUR], false);
+    expect(read.lots.size).toBe(0);
+    expect(fake.reads).toEqual(["restaurant_inventory"]);
+  });
 });
