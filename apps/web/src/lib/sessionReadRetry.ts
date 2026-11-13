@@ -109,3 +109,69 @@ export function sessionReadRetryDelayMs(
   const step = Math.max(0, Math.floor(attempt));
   return Math.min(SESSION_READ_BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** step);
 }
+
+/**
+ * Why the boot read is waiting (r22, 2026-11-13), for the words on the
+ * loading screen. `busy` is a 429, `offline` is no response at all, and
+ * `server` is a 408 or a 5xx.
+ */
+export type SessionReadWaitReason = "busy" | "offline" | "server";
+
+export interface SessionReadWait {
+  reason: SessionReadWaitReason;
+  /** How long this wait lasts, from `sessionReadRetryDelayMs`. */
+  delayMs: number;
+}
+
+/** The reason for a failure `isTransientSessionReadFailure` accepts. */
+export function sessionReadWaitReason(err: unknown): SessionReadWaitReason {
+  const status = statusOf(err);
+  if (status === 429) return "busy";
+  if (!(err as FailedRead | null)?.response || typeof status !== "number") {
+    return "offline";
+  }
+  return "server";
+}
+
+/**
+ * How long the loading screen says nothing but "Loading..." before it says
+ * the read is slow. A boot read of `/auth/me` answers in well under a second;
+ * five seconds of nothing reads as broken.
+ */
+export const SESSION_READ_SLOW_AFTER_MS = 5_000;
+
+/**
+ * A wait no longer than this is "in a few seconds"; anything longer is
+ * "within a minute" (every wait is at most `SESSION_READ_MAX_DELAY_MS`).
+ * The words never count down: nothing on the house's loader counts itself
+ * (house-page-loader.css), and an upper bound stays true as time passes.
+ */
+const FEW_SECONDS_MS = 10_000;
+
+/**
+ * The line under "Loading..." while the boot read is slow or waiting, or
+ * null when there is nothing to add. A known wait says why, that the person
+ * is still signed in (a wait never ends the session), and roughly when the
+ * next read is. A read that is only slow does not claim the person is
+ * signed in: it may still come back 401.
+ */
+export function sessionWaitNote(
+  wait: SessionReadWait | null,
+  slow: boolean,
+): string | null {
+  if (wait) {
+    const when =
+      wait.delayMs <= FEW_SECONDS_MS ? "in a few seconds" : "within a minute";
+    if (wait.reason === "busy") {
+      return `Mudavym is busy for a moment. You are still signed in; we will ask again ${when}.`;
+    }
+    if (wait.reason === "offline") {
+      return `This device is not reaching Mudavym. Check the connection. You are still signed in; we will ask again ${when}, or as soon as the connection is back.`;
+    }
+    return `Mudavym is not answering right now. You are still signed in; we will ask again ${when}.`;
+  }
+  if (slow) {
+    return "Still reaching Mudavym. This is taking longer than usual.";
+  }
+  return null;
+}

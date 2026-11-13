@@ -5,6 +5,9 @@ import {
   sessionReadRetryDelayMs,
   SESSION_READ_BACKOFF_CAP_MS,
   SESSION_READ_MAX_DELAY_MS,
+  SESSION_READ_SLOW_AFTER_MS,
+  sessionReadWaitReason,
+  sessionWaitNote,
 } from "./sessionReadRetry";
 
 const failed = (
@@ -95,5 +98,60 @@ describe("sessionReadRetryDelayMs", () => {
     expect(sessionReadRetryDelayMs(failed(), 1)).toBe(2_000);
     expect(sessionReadRetryDelayMs(failed(), -3)).toBe(1_000);
     expect(sessionReadRetryDelayMs(failed(), 1.9)).toBe(2_000);
+  });
+});
+
+describe("sessionReadWaitReason (r22)", () => {
+  it("a 429 is busy", () => {
+    expect(sessionReadWaitReason(failed(429))).toBe("busy");
+  });
+  it.each([408, 500, 503, 599])("%i is the server", (s) => {
+    expect(sessionReadWaitReason(failed(s))).toBe("server");
+  });
+  it("no response, or a response with no status, is offline", () => {
+    expect(sessionReadWaitReason(failed())).toBe("offline");
+    expect(sessionReadWaitReason({ response: {} })).toBe("offline");
+    expect(sessionReadWaitReason(null)).toBe("offline");
+  });
+});
+
+describe("sessionWaitNote (r22)", () => {
+  it("says nothing for an ordinary read in its first seconds", () => {
+    expect(sessionWaitNote(null, false)).toBeNull();
+  });
+
+  it("a slow read says so, without claiming the person is signed in", () => {
+    const note = sessionWaitNote(null, true);
+    expect(note).toBe("Still reaching Mudavym. This is taking longer than usual.");
+    expect(note).not.toMatch(/signed in/);
+  });
+
+  it("the slow threshold is five seconds", () => {
+    expect(SESSION_READ_SLOW_AFTER_MS).toBe(5_000);
+  });
+
+  it("a rate limit says busy, still signed in, and when", () => {
+    expect(sessionWaitNote({ reason: "busy", delayMs: 40_250 }, false)).toBe(
+      "Mudavym is busy for a moment. You are still signed in; we will ask again within a minute.",
+    );
+  });
+
+  it("a short wait says a few seconds; ten seconds is still short, just past it is not", () => {
+    expect(sessionWaitNote({ reason: "server", delayMs: 10_000 }, false)).toBe(
+      "Mudavym is not answering right now. You are still signed in; we will ask again in a few seconds.",
+    );
+    expect(sessionWaitNote({ reason: "server", delayMs: 10_001 }, false)).toMatch(
+      /within a minute\.$/,
+    );
+  });
+
+  it("a dropped connection says check the connection, and that it asks again when it is back", () => {
+    expect(sessionWaitNote({ reason: "offline", delayMs: 2_000 }, false)).toBe(
+      "This device is not reaching Mudavym. Check the connection. You are still signed in; we will ask again in a few seconds, or as soon as the connection is back.",
+    );
+  });
+
+  it("a known wait outranks the slow line", () => {
+    expect(sessionWaitNote({ reason: "busy", delayMs: 1_000 }, true)).toMatch(/^Mudavym is busy/);
   });
 });
