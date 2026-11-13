@@ -37,7 +37,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, MessageSquarePlus, Pencil, Plus, Sparkles, Target, X } from 'lucide-react';
-import { EM, countOf, figure, inParens, money, num, ratioPct } from './rp-format';
+import { EM, countOf, figure, inParens, money, num, ratioPct, type MoneyIn } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 import type { GoalScenario, GoalScenarios } from '@/hooks/useGoalScenarios';
 import type { GoalsDesk, ScenarioRequest } from './useGoalsDesk';
@@ -89,9 +89,10 @@ export interface GoalsRegister {
 
 /**
  * A figure in its own unit — a percent is not a count is not money. Money is
- * the house's (`currency`), and bare when the house has none recorded.
+ * the house's (`currency`), bare when the house has none recorded, and the
+ * dash while the house's currency is still being read.
  */
-function inUnit(v: number | null, unit: string, currency?: string | null): string {
+function inUnit(v: number | null, unit: string, currency?: MoneyIn): string {
   if (v === null) return EM;
   if (unit === 'percent') return ratioPct(v);
   if (unit === 'currency') return money(v, 'compact', currency);
@@ -104,7 +105,7 @@ function inUnit(v: number | null, unit: string, currency?: string | null): strin
  * did not judge the pace, and the sentence is its reason (`paceUnread`, ADR
  * 0296), never "no deadline" and never "not enough history".
  */
-export function paceCaption(g: GoalRow, currency?: string | null): string {
+export function paceCaption(g: GoalRow, currency?: MoneyIn): string {
   const left = g.daysLeft !== null ? `, ${countOf(g.daysLeft, 'day', 'days')} left` : '';
   const pace =
     g.onTrack === null
@@ -612,7 +613,7 @@ function Desk({
 }: {
   reg: GoalsRegister;
   desk: GoalsDesk;
-  currency?: string | null;
+  currency?: MoneyIn;
 }) {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
