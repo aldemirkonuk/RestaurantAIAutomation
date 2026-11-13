@@ -132,8 +132,38 @@ function makeFakeSupabase(
     };
     return api;
   }
-  const rpc = async (fn: string, args: Row) => {
+  const rpc = async (fn: string, args: Row): Promise<{ data: unknown; error: unknown }> => {
     rpcCalls.push([fn, args]);
+    if (fn === "set_house_menu_prices" && rpcImpl) {
+      // The batch writer (migration 20270913140000) as the SQL runs it: the
+      // test's own set_house_menu_price for each row, in order, one refusal
+      // failing its own row. `tables.__batchWriter` overrides it:
+      // "missing" answers as a database without the function does.
+      const mode = (tables as any).__batchWriter;
+      if (mode === "missing") return { data: null, error: { code: "PGRST202", message: "Could not find the function public.set_house_menu_prices" } };
+      if (typeof mode === "function") return mode(args);
+      const out: Row[] = [];
+      for (const e of args.p_rows as Row[]) {
+        const one = await rpc("set_house_menu_price", {
+          p_restaurant_id: args.p_restaurant_id,
+          p_inventory_id: e.inventory_id,
+          p_set_bottle: "bottle" in e,
+          p_bottle_price: "bottle" in e ? e.bottle : null,
+          p_set_glass: "glass" in e,
+          p_glass_price: "glass" in e ? e.glass : null,
+          p_change_source: args.p_change_source,
+          p_changed_by: args.p_changed_by,
+          p_effective_from: args.p_effective_from,
+          p_reason: args.p_reason,
+          p_unit_cost: null,
+          p_pricing_analysis_id: null,
+          p_menu_id: args.p_menu_id,
+        });
+        const err = one.error as { code?: string; message?: string } | null;
+        out.push({ id: e.id, result: err ? { outcome: "failed", error: err.message, code: err.code ?? null } : one.data });
+      }
+      return { data: out, error: null };
+    }
     return rpcImpl ? rpcImpl(fn, args) : { data: null, error: { message: `no rpc ${fn} in this fake` } };
   };
   // The private bucket the menu read keeps its source in. Uploads land in
@@ -1111,7 +1141,8 @@ describe("MenusService — every menu read is kept as its own version", () => {
       if (fn === "make_menu_current") {
         const menu = tables.restaurant_menus.find((m) => m.id === args.p_menu_id && m.restaurant_id === args.p_restaurant_id);
         if (!menu) return { data: null, error: { code: "P0002", message: "no menu" } };
-        if (menu.status === "active") return { data: { outcome: "already_current", previous_menu_ids: [] }, error: null };
+        // As 20260922230800 answers it: the moment of the original choice.
+        if (menu.status === "active") return { data: { outcome: "already_current", previous_menu_ids: [], made_current_at: menu.made_current_at ?? null }, error: null };
         const prev = tables.restaurant_menus.filter((m) => m.restaurant_id === args.p_restaurant_id && m.status === "active");
         for (const m of prev) Object.assign(m, { status: "archived", retired_by: args.p_actor, retired_at: "2026-09-21T12:00:00Z" });
         Object.assign(menu, { status: "active", made_current_by: args.p_actor, made_current_at: "2026-09-21T12:00:00Z" });
@@ -1378,11 +1409,155 @@ describe("MenusService — every menu read is kept as its own version", () => {
         expect(n["restaurant_inventory:insert"]).toBe(1);
         expect(n["menu_items:update"] ?? 0).toBe(0);
         expect(calls.filter(([fn]) => fn === "menu_items_write_back")).toHaveLength(1);
+        // r28 G1: 300 prices in 2 round trips (250 a call), each still run
+        // through set_house_menu_price inside the database.
+        expect(calls.filter(([fn]) => fn === "set_house_menu_prices").map(([, a]) => (a.p_rows as Row[]).length)).toEqual([250, 50]);
         expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(300);
         const mine = tables.menu_items.filter((m) => m.menu_id === read.menuId);
         expect(mine.every((m) => typeof m.inventory_item_id === "string")).toBe(true);
         expect(new Set(mine.map((m) => m.inventory_item_id)).size).toBe(300);
         expect(tables.restaurant_inventory).toHaveLength(301);
+      });
+
+      /** A read menu of these lines, ready to choose (r28 G1). */
+      const readMenu = async (tables: Record<string, Row[]>, lines: Row[], calls: RpcCall[] = [], rpc = pricing(tables)) => {
+        const service = makeService(tables, {
+          wineSubmissions: each,
+          rpcCalls: calls,
+          rpc,
+          scanParser: { parseWithWarnings: async () => ({ items: lines, warnings: [] }) },
+        });
+        const read = await service.importMenu(
+          { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+          "user-1",
+        );
+        await (service as any).whenRead?.(read.menuId);
+        return { service, menuId: read.menuId as string };
+      };
+      const fingerprintOf = async (service: MenusService, menuId: string) => (await service.planFor("rest-1", menuId)).fingerprint;
+
+      it("r28 G1: each price round trip is one call for the whole menu, dated by the choice and naming the menu", async () => {
+        const calls: RpcCall[] = [];
+        const tables: Record<string, Row[]> = base();
+        const { service, menuId } = await readMenu(tables, [
+          { name: "Barolo", bottle_price: 80 },
+          { name: "Etna", by_glass_price: 12 },
+          { name: "Chablis" },
+        ], calls);
+        calls.length = 0;
+        const r = await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        const batches = calls.filter(([fn]) => fn === "set_house_menu_prices").map(([, a]) => a);
+        expect(batches).toHaveLength(1);
+        expect(batches[0]).toMatchObject({
+          p_restaurant_id: "rest-1",
+          p_change_source: "import",
+          p_changed_by: "user-2",
+          p_effective_from: "2026-09-21T12:00:00Z",
+          p_menu_id: menuId,
+          p_reason: "menu line",
+        });
+        // A line with no price is never sent; a kind the line leaves blank is not named.
+        const rows = batches[0].p_rows as Row[];
+        expect(rows).toHaveLength(2);
+        expect(rows[0]).toEqual({ id: expect.any(String), inventory_id: expect.any(String), bottle: 80 });
+        expect(rows[1]).toEqual({ id: expect.any(String), inventory_id: expect.any(String), glass: 12 });
+        expect(r.priceSync).toEqual({ changed: 2, no_price: 1 });
+      });
+
+      it("r28 G1: one row the writer refuses fails only that line, in the writer's words; the rest are carried", async () => {
+        const tables: Record<string, Row[]> = base();
+        const rpc = (fn: string, args: Row) =>
+          fn === "set_house_menu_price" && args.p_bottle_price === 81
+            ? { data: null, error: { code: "P0002", message: "no inventory item" } }
+            : pricing(tables)(fn, args);
+        const { service, menuId } = await readMenu(tables, [
+          { name: "Barolo", bottle_price: 80 },
+          { name: "Barbaresco", bottle_price: 81 },
+          { name: "Etna", bottle_price: 82 },
+        ], [], rpc);
+        const r = await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        expect(r.priceSync).toEqual({ changed: 2, failed: 1 });
+        expect(r.failed).toEqual([
+          { menuItemId: expect.any(String), name: "Barbaresco", error: "No wine of this house by that id. Nothing was changed." },
+        ]);
+      });
+
+      it("r28 G1: a refused batch call fails every priced line, said on each, and the menu is still reported current", async () => {
+        const calls: RpcCall[] = [];
+        const tables: Record<string, Row[]> = base();
+        (tables as any).__batchWriter = () => ({ data: null, error: { code: "57014", message: "canceling statement due to statement timeout" } });
+        const { service, menuId } = await readMenu(tables, [
+          { name: "Barolo", bottle_price: 80 },
+          { name: "Etna", bottle_price: 82 },
+        ], calls);
+        calls.length = 0;
+        const r = await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        expect(r.outcome).toBe("made_current");
+        expect(r.priceSync).toEqual({ failed: 2 });
+        expect(r.failed.map((f) => f.error)).toEqual([
+          "The price was not saved: canceling statement due to statement timeout",
+          "The price was not saved: canceling statement due to statement timeout",
+        ]);
+        // Never retried line by line: that is the slow path the batch replaces.
+        expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(0);
+      });
+
+      it("r28 G1: an answer that does not name a line leaves it unknown, never changed", async () => {
+        const tables: Record<string, Row[]> = base();
+        (tables as any).__batchWriter = () => ({ data: [], error: null });
+        const { service, menuId } = await readMenu(tables, [{ name: "Barolo", bottle_price: 80 }]);
+        const r = await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        expect(r.priceSync).toEqual({ failed: 1 });
+        expect(r.failed[0].error).toMatch(/whether its price changed is unknown/);
+      });
+
+      it("r28 G1: a database without the batch writer is carried one call per line, as before", async () => {
+        const calls: RpcCall[] = [];
+        const tables: Record<string, Row[]> = base();
+        (tables as any).__batchWriter = "missing";
+        const { service, menuId } = await readMenu(tables, [
+          { name: "Barolo", bottle_price: 80 },
+          { name: "Etna", bottle_price: 82 },
+        ], calls);
+        calls.length = 0;
+        const r = await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        expect(r.priceSync).toEqual({ changed: 2 });
+        expect(calls.filter(([fn]) => fn === "set_house_menu_prices")).toHaveLength(1);
+        expect(calls.filter(([fn]) => fn === "set_house_menu_price")).toHaveLength(2);
+      });
+
+      it("r28 G1: choosing the current menu again finishes its carry, dated by the first choice", async () => {
+        const calls: RpcCall[] = [];
+        const tables: Record<string, Row[]> = base();
+        (tables as any).__batchWriter = () => ({ data: null, error: { message: "connection reset" } });
+        const { service, menuId } = await readMenu(tables, [{ name: "Barolo", bottle_price: 80 }], calls);
+        const first = await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        expect(first.priceSync).toEqual({ failed: 1 });
+        // The menu is current; the make_menu_current fake now answers
+        // already_current WITH the moment of the choice, as the SQL does.
+        const menu = tables.restaurant_menus.find((m) => m.id === menuId)!;
+        expect(menu.status).toBe("active");
+        delete (tables as any).__batchWriter;
+        calls.length = 0;
+        const again = await service.makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId));
+        expect(again.outcome).toBe("already_current");
+        expect(again.lines).toBe(1);
+        expect(again.priceSync).toEqual({ changed: 1 });
+        const batch = calls.find(([fn]) => fn === "set_house_menu_prices")![1];
+        expect(batch.p_effective_from).toBe("2026-09-21T12:00:00Z");
+      });
+
+      it("r28 G1: a refusal after the switch says the menu IS current, never that nothing changed", async () => {
+        const tables: Record<string, Row[]> = base();
+        const { service, menuId } = await readMenu(tables, [{ name: "Barolo", bottle_price: 80 }]);
+        jest.spyOn(service as any, "addToInventory").mockRejectedValueOnce(new Error("pool closed"));
+        const err: any = await service
+          .makeCurrent("rest-1", menuId, "user-2", await fingerprintOf(service, menuId))
+          .catch((e: unknown) => e);
+        expect(err?.getStatus?.()).toBe(500);
+        expect(err.message).toMatch(/^This menu is now the current one, but its prices did not reach the house \(pool closed\)/);
+        expect(err.message).not.toMatch(/[Nn]othing (was|has) changed/);
+        expect(tables.restaurant_menus.find((m) => m.id === menuId)!.status).toBe("active");
       });
 
       it("two lines of one wine: the second sees the price the first just set, as the per-line read did", async () => {
@@ -1499,7 +1674,7 @@ describe("MenusService — every menu read is kept as its own version", () => {
       expect(tables.menu_items[0].price_flag).toBeNull();
     });
 
-    it("choosing the menu that is already current changes nothing and writes no price", async () => {
+    it("choosing a current menu whose choice has no moment on record writes no price", async () => {
       const calls: RpcCall[] = [];
       const tables: Record<string, Row[]> = base();
       const service = makeService(tables, { rpcCalls: calls, rpc: makeCurrentRpc(tables) });
