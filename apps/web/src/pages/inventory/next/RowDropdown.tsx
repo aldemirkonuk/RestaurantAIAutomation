@@ -37,7 +37,7 @@ import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
 import { CountSheet, OrderSheet, PourSheet, TransferSheet, WriteOffSheet } from './InventorySheets';
 import { amountUnit, isPoured } from './iv-amount';
-import { fmtQty, NOT_DRAWN_BY_SALES, usageWords as usageWordsOf } from './ItemCards';
+import { fmtQty, NOT_DRAWN_BY_SALES, perUnit, usageWords as usageWordsOf } from './ItemCards';
 import { writeFailure } from './iv-failure';
 import { oneLine, rowFilename, runExport, valuationColumns } from './iv-export';
 import {
@@ -350,7 +350,9 @@ export default function RowDropdown(props: RowDropdownProps) {
         <div className="iv-drop-cols">
           {has('where') ? <WhereTheCountComesFrom row={row} zoneName={zoneName} onCount={() => setSheet('count')} /> : null}
           {has('pace') ? <HowFastItPours row={row} uom={props.uom ?? null} kind={props.kind ?? null} /> : null}
-          {has('cost') ? <WhatItHasCost row={row} currency={currency} detail={detail} /> : null}
+          {has('cost') ? (
+          <WhatItHasCost row={row} currency={currency} detail={detail} uom={props.uom ?? null} kind={props.kind ?? null} />
+        ) : null}
         </div>
       ) : null}
 
@@ -706,18 +708,42 @@ function WhatItHasCost({
   row,
   currency,
   detail,
+  uom,
+  kind,
 }: {
   row: InvRow;
   currency: HouseCurrency;
   detail: ReturnType<typeof useRowDetail>;
+  uom: string | null;
+  kind: string | null;
 }) {
+  // A food or supply is costed, not priced (ADR 0051/0053): no btl · glass price,
+  // margin, market or auction lots, and its costs, stored a g, ml or piece
+  // (ADR 0070), read a kg, litre or piece as the drawer's cost card does
+  // (ItemCards perUnit). With no unit recorded a cost cannot say what it is a,
+  // so it reads as a dash, never as a guessed bottle. A drink is drawn as before.
+  const good = kind === 'food' || kind === 'supply' ? kind : null;
+  const money = (n: number | null): ReactNode => {
+    if (good === null) return cellMoney(n, currency);
+    if (n === null || uom === null) return EM;
+    const u = perUnit(n, uom);
+    return (
+      <>
+        {cellMoney(u.amount, currency)} <span className="iv-dim">{u.per}</span>
+      </>
+    );
+  };
   const priced = (detail.purchases ?? []).filter((l) => l.unitCost !== null);
   const last = priced[0] ?? null;
   const before = priced[1] ?? null;
   const unread = detail.purchasesError !== null;
   const reading = detail.purchases === null && !unread;
   const bought = (l: PurchaseLine | null) =>
-    reading ? EM : unread ? 'could not be read' : l === null ? 'none on the ledger' : `${cellMoney(l.unitCost, currency)} · ${shortDate(l.at)}`;
+    reading ? EM : unread ? 'could not be read' : l === null ? 'none on the ledger' : (
+      <>
+        {money(l.unitCost)} · {shortDate(l.at)}
+      </>
+    );
   const change =
     last && before && last.unitCost !== null && before.unitCost !== null && before.unitCost > 0
       ? ((last.unitCost - before.unitCost) / before.unitCost) * 100
@@ -729,7 +755,7 @@ function WhatItHasCost({
       <h4 className="iv-sec">What it has cost</h4>
       <dl>
         <KV k="Weighted average cost">
-          <span className="iv-num">{cellMoney(row.wac, currency)}</span>
+          <span className="iv-num">{money(row.wac)}</span>
           {row.wac !== null && row.costProvenance ? <span className="iv-dim"> · {row.costProvenance === 'invoice' ? 'from invoices' : 'estimated'}</span> : null}
         </KV>
         <KV k="Last bought">{bought(last)}</KV>
@@ -739,38 +765,50 @@ function WhatItHasCost({
             EM
           ) : (
             <span className="iv-num">
-              {cellMoney(before.unitCost, currency)} → {cellMoney(last.unitCost, currency)} ({change > 0 ? '+' : ''}
+              {money(before.unitCost)} → {money(last.unitCost)} ({change > 0 ? '+' : ''}
               {change.toFixed(0)}%)
             </span>
           )}
         </KV>
-        <KV k="Your price">
-          <span className="iv-num">
-            {cellMoney(row.bottle, currency)} · {cellMoney(row.glass, currency)}
-          </span>
-        </KV>
-        <KV k="Margin over cost">
-          <span className="iv-num">{margin === null ? EM : `${margin.toFixed(0)}%`}</span>
-        </KV>
-        <KV k="Market">
-          {EM} <span className="iv-dim">no market price is read</span>
-        </KV>
-        <KV k="Auction lots">
-          {detail.lotsError ? (
-            <>
-              could not be read{' '}
-              <button type="button" className="iv-linkish iv-focus" onClick={detail.rereadLots}>
-                Read again
-              </button>
-            </>
-          ) : detail.lots === null
-              ? EM
-              : detail.lots.length === 0
-                ? 'none'
-                : `${fmtCount(detail.lots.length)} lot${detail.lots.length === 1 ? '' : 's'}, the latest sold ${shortDate(
-                    detail.lots.map((l) => l.saleDate).sort().at(-1) ?? null,
-                  )}`}
-        </KV>
+        {good !== null ? (
+          <KV k="Price">
+            <span className="iv-dim" data-testid="good-not-priced">
+              {good === 'food' ? 'A food is costed, not priced: the dishes that use it carry the price.' : 'A supply is costed, not priced.'}
+            </span>
+          </KV>
+        ) : (
+          <>
+            <KV k="Your price">
+              <span className="iv-num">
+                {cellMoney(row.bottle, currency)} · {cellMoney(row.glass, currency)}
+              </span>
+            </KV>
+            <KV k="Margin over cost">
+              <span className="iv-num">{margin === null ? EM : `${margin.toFixed(0)}%`}</span>
+            </KV>
+            <KV k="Market">
+              {EM} <span className="iv-dim">no market price is read</span>
+            </KV>
+          </>
+        )}
+        {good !== null ? null : (
+          <KV k="Auction lots">
+            {detail.lotsError ? (
+              <>
+                could not be read{' '}
+                <button type="button" className="iv-linkish iv-focus" onClick={detail.rereadLots}>
+                  Read again
+                </button>
+              </>
+            ) : detail.lots === null
+                ? EM
+                : detail.lots.length === 0
+                  ? 'none'
+                  : `${fmtCount(detail.lots.length)} lot${detail.lots.length === 1 ? '' : 's'}, the latest sold ${shortDate(
+                      detail.lots.map((l) => l.saleDate).sort().at(-1) ?? null,
+                    )}`}
+          </KV>
+        )}
       </dl>
     </section>
   );
