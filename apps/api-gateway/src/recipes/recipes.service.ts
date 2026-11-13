@@ -9,7 +9,7 @@ import {
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { seesHouseAmounts } from "../dashboard/amounts-for-role";
-import { mergeAgreedLotCost } from "../analytics/inventory-cost";
+import { mergeAgreedLotCost, mergeInvoiceLotCost } from "../analytics/inventory-cost";
 import { BaseUnit, CostItem, recipeCost } from "./recipe-cost";
 import { PreviewCostDto, SaveRecipeDto } from "./dto/recipes.dto";
 import { FIGURE_KEYS, ItemFigures, ServeNutrition, serveNutrition } from "./recipe-nutrition";
@@ -229,7 +229,9 @@ export class RecipesService {
    * second one (r23 walk: flour read ₺1,20 a kg in the drawer and "no price
    * yet" on the dish). Both hand `resolveUnitCost` the rollup row with the
    * settled cost from `inventory_lot_agreed_cost` merged in by
-   * `mergeAgreedLotCost`: invoiced lot WAC, then a cost settled without an
+   * `mergeAgreedLotCost`, and the invoice figures from
+   * `inventory_lot_invoice_cost` by `mergeInvoiceLotCost`, so the invoiced
+   * cost averages invoices only (r28 gap 3): invoiced lot WAC, then a cost settled without an
    * invoice (a price the house entered, or one agreed at delivery), then the
    * last purchase price, else unknown. Before this the recipe read the rollup
    * alone, so a good costed only by hand read as unknown here and only here.
@@ -247,7 +249,7 @@ export class RecipesService {
             .select("id, display_name, kind, uom, bottle_size_ml, last_purchase_price, is_active, deleted_at")
         : client.from("restaurant_inventory").select("id, display_name, kind, uom, bottle_size_ml, is_active, deleted_at");
       const none = Promise.resolve({ data: [], error: null });
-      const [itemRead, lotRead, agreedRead] = await Promise.all([
+      const [itemRead, lotRead, agreedRead, invoiceRead] = await Promise.all([
         itemQuery.eq("restaurant_id", restaurantId).in("id", ids),
         money
           ? client
@@ -265,15 +267,28 @@ export class RecipesService {
               .eq("restaurant_id", restaurantId)
               .in("inventory_id", ids)
           : none,
+        // The invoice cost from invoices only: the rollup's `wac` averages
+        // estimated lots in and calls the result an invoice (r28 gap 3).
+        money
+          ? client
+              .from("inventory_lot_invoice_cost")
+              .select("inventory_id, invoice_wac, invoice_qty, settled_qty, stock_qty")
+              .eq("restaurant_id", restaurantId)
+              .in("inventory_id", ids)
+          : none,
       ]);
       if (itemRead.error) this.failed("item read", itemRead.error);
       if (lotRead.error) this.failed("lot read", lotRead.error);
       // A failed read of the settled cost refuses like the rollup's: priced
       // without it, a hand-costed good would read "no price yet" as if true.
       if (agreedRead.error) this.failed("agreed cost read", agreedRead.error);
+      // Refused like the others: priced without it, the serve would fall back
+      // to nothing for a good whose only cost is on an invoice.
+      if (invoiceRead.error) this.failed("invoice cost read", invoiceRead.error);
       for (const i of (itemRead.data ?? []) as any[]) items.set(i.id, i);
       for (const l of (lotRead.data ?? []) as any[]) lots.set(l.inventory_id, l);
       mergeAgreedLotCost(lots, agreedRead.data as Array<Record<string, unknown>> | null);
+      if (money) mergeInvoiceLotCost(lots, ids, invoiceRead.data as Array<Record<string, unknown>> | null);
     }
     return { items, lots };
   }

@@ -16,7 +16,7 @@ import { FLOUR, HOUSE_A, HOUSE_B, V_TART_2, fakeDb, line, twoHouses } from "./di
 
 const AGREED = "inventory_lot_agreed_cost";
 
-function rows(extra: { rollup?: any[]; agreed?: any[] } = {}) {
+function rows(extra: { rollup?: any[]; agreed?: any[]; invoice?: any[] } = {}) {
   const r = twoHouses();
   // No last purchase price: the only way to a price is the lots.
   r.restaurant_inventory = r.restaurant_inventory.map((i) => (i.id === FLOUR ? { ...i, last_purchase_price: null } : i));
@@ -32,6 +32,7 @@ function rows(extra: { rollup?: any[]; agreed?: any[] } = {}) {
     { inventory_id: FLOUR, restaurant_id: HOUSE_A, live_qty: 10, wac: 9.99, has_invoice_cost: false, wac_qty: 10 },
   ];
   r[AGREED] = extra.agreed ?? [];
+  r.inventory_lot_invoice_cost = extra.invoice ?? [];
   return r;
 }
 
@@ -65,9 +66,12 @@ describe("a recipe reads the one unit cost", () => {
   });
 
   it("an invoiced lot still comes first", async () => {
+    // The invoice figure is read from inventory_lot_invoice_cost (r28 gap 3);
+    // the rollup's blended `wac` beside it is never read.
     const d = await tart(
       rows({
-        rollup: [{ inventory_id: FLOUR, restaurant_id: HOUSE_A, live_qty: 10, wac: 2.4, has_invoice_cost: true, wac_qty: 10 }],
+        rollup: [{ inventory_id: FLOUR, restaurant_id: HOUSE_A, live_qty: 10, wac: 9.99, has_invoice_cost: true, wac_qty: 10 }],
+        invoice: [{ inventory_id: FLOUR, restaurant_id: HOUSE_A, invoice_wac: 2.4, invoice_qty: 10, settled_qty: 10, stock_qty: 10 }],
         agreed: [{ inventory_id: FLOUR, restaurant_id: HOUSE_A, has_agreed_cost: true, agreed_wac: 1.2, agreed_qty: 10 }],
       }),
     );

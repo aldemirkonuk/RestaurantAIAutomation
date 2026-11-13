@@ -40,6 +40,8 @@ const house = { id: DRINK, name: "Negroni", price: 450 };
 const shelf = {
   restaurant_inventory: [{ id: GIN, display_name: "Gin", kind: "spirit", uom: "bottle", bottle_size_ml: 700 }],
   inventory_lot_rollup: [{ inventory_id: GIN, has_invoice_cost: true, wac: 28, wac_qty: 1, live_qty: 1 }],
+  // The invoice figure a serve is costed from (r28 gap 3), one verified bottle at 28.
+  inventory_lot_invoice_cost: [{ inventory_id: GIN, invoice_wac: 28, invoice_qty: 1, settled_qty: 1, stock_qty: 1 }],
 };
 const gin50 = { role: "stocked" as const, inventoryId: GIN, qtyEntered: 50, unitCode: "ml" };
 
@@ -82,6 +84,7 @@ describe("RecipesService.previewCost: an unsaved draft priced, nothing written",
     expect(t.calls.filter((c) => c.startsWith("restaurant_inventory.eq") || c.startsWith("inventory_lot_rollup.eq"))).toEqual(
       expect.arrayContaining([`restaurant_inventory.eq("restaurant_id","${HOUSE}")`, `inventory_lot_rollup.eq("restaurant_id","${HOUSE}")`]),
     );
+    expect(t.calls).toContain(`inventory_lot_invoice_cost.eq("restaurant_id","${HOUSE}")`);
   });
 
   it("gives an item with no recorded cost a null line cost", async () => {
