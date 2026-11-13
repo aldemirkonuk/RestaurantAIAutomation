@@ -83,3 +83,16 @@ withheldForRole }` and never ask their service; GET `overview` does not read
 menu engineering or cashflow for it. An export reads the overview as a
 manager. New claim `A-MONEY-LENSES-WITHHELD-FROM-STAFF`. Bottle volumes
 (seasonality, forecast) stay open: ADR 0348 item 3 does not name them.
+
+**2026-11-13, r30 slice 3 (`fix/insight-feed-withheld-from-staff`).** GET
+`insights` keeps the sentences whose classes the caller's row sees and says
+how many it withheld (`withheldForRole`, only when above 0). A type's classes
+come from the insight catalogue: the till (`checks`) is sales, the order book
+suppliers, a currency measure money, a server people; volumes add none. A
+forced `?candidateKey=` compute of a type the role may not read is not run.
+The overview filters its stored feed the same way. Claim
+`A-POS-MONEY-ANALYTICS-ROUTES-ARE-A-HOLDERS` is resolved. Still open:
+`recommendations` (`staff_spread`, dead-stock value, spend, price advice),
+POST `goals` baselines, `financial` and `risk` money (they gate sales only),
+`inventory-science` unit cost, `consult`, the four role-less writes and
+`/toast/sales` (ADR 0348 item 5).

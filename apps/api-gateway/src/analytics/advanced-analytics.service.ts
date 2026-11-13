@@ -29,7 +29,7 @@ import { ProcurementOrderStatus } from "../procurement/dto/procurement.dto";
 import { readOverdueContext } from "../procurement/overdue-order-reads";
 import { HouseFrame, houseFrame } from "../common/house-frame";
 import { DataClass } from "../ask-readings/reading-data-classes";
-import { lensHidden } from "./role-reads";
+import { insightsForRole, lensHidden } from "./role-reads";
 
 /**
  * AdvancedAnalyticsService — the second wave of catalogue features.
@@ -879,7 +879,9 @@ export class AdvancedAnalyticsService {
       cashflow: cashHidden.length
         ? { withheldForRole: cashHidden }
         : ok(cashflow),
-      insights: ok(insights) ?? [],
+      insights: sees
+        ? insightsForRole(ok(insights) ?? [], sees).kept
+        : (ok(insights) ?? []),
       activeGoals: ok(goals) ?? [],
       computedIn: Date.now() - startedAt,
       generatedAt: new Date().toISOString(),
