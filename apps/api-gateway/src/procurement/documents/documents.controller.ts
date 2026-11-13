@@ -540,6 +540,7 @@ export class DocumentsController {
     const built = await this.canonical.buildFromDocumentId(
       user.restaurantId,
       id,
+      { door: true },
     );
     if (!built.ok) {
       // "not found" is a 404; anything else is a read that broke.
