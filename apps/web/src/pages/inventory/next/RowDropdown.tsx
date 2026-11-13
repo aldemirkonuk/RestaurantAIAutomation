@@ -447,7 +447,15 @@ export default function RowDropdown(props: RowDropdownProps) {
             >
               Export this row
             </button>
-            {row.active !== null ? (
+            {/* Taking a good off the list or out of the books is an owner's or a
+                manager's, as a write-off is; the gateway refuses it to staff too
+                (inventory r28, gap 2). */}
+            {!canManage ? (
+              <p className="iv-menu-note" data-testid="remove-is-a-managers">
+                Removing a good or marking it inactive is for owners and managers.
+              </p>
+            ) : null}
+            {canManage && row.active !== null ? (
               <button
                 type="button"
                 role="menuitem"
@@ -459,25 +467,27 @@ export default function RowDropdown(props: RowDropdownProps) {
                 {row.active ? 'Mark inactive' : 'Mark active'}
               </button>
             ) : null}
-            {toggleBlocked ? (
+            {canManage && toggleBlocked ? (
               <p className="iv-menu-note" id={`iv-inactive-why-${row.id}`} data-testid="inactive-blocked">
                 Mark inactive waits: {toggleBlocked}.
               </p>
             ) : null}
-            <button
-              type="button"
-              role="menuitem"
-              className="iv-menu-item iv-focus"
-              disabled={blocked !== null}
-              aria-describedby={blocked ? `iv-remove-why-${row.id}` : undefined}
-              onClick={() => {
-                setMoreOpen(false);
-                setRemoving(true);
-              }}
-            >
-              Remove from inventory
-            </button>
-            {blocked ? (
+            {canManage ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="iv-menu-item iv-focus"
+                disabled={blocked !== null}
+                aria-describedby={blocked ? `iv-remove-why-${row.id}` : undefined}
+                onClick={() => {
+                  setMoreOpen(false);
+                  setRemoving(true);
+                }}
+              >
+                Remove from inventory
+              </button>
+            ) : null}
+            {canManage && blocked ? (
               <p className="iv-menu-note" id={`iv-remove-why-${row.id}`} data-testid="remove-blocked">
                 Remove waits: {blocked}.
               </p>
@@ -509,7 +519,7 @@ export default function RowDropdown(props: RowDropdownProps) {
         />
       ) : null}
       {acts && sheet === 'pour' && isPoured(props.uom, props.kind) ? <PourSheet row={row} onClose={() => setSheet(null)} /> : null}
-      {removing && blocked === null ? (
+      {canManage && removing && blocked === null ? (
         <RemoveFromInventoryModal
           isOpen
           items={[removeTarget(row)]}

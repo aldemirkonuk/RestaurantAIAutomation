@@ -535,10 +535,21 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     expect(within(wine).getByRole('menuitem', { name: 'Record a pour' })).toBeTruthy();
   });
 
-  it('both acts are reachable from More, for staff as well as managers (legacy gates neither)', async () => {
-    const m = await menu({ canManage: false });
+  // Inventory r28, gap 2: legacy gated neither, and so Remove (which counts a
+  // good to zero and soft-deletes it) let staff do what Write off refuses them.
+  // Both are now an owner's or a manager's, here and at the gateway.
+  it('both acts are reachable from More for a manager, and neither for staff, who are told why', async () => {
+    const m = await menu({ canManage: true });
     expect(within(m).getByRole('menuitem', { name: 'Mark inactive' })).toBeTruthy();
     expect(within(m).getByRole('menuitem', { name: 'Remove from inventory' })).toBeTruthy();
+    expect(within(m).queryByTestId('remove-is-a-managers')).toBeNull();
+    cleanup();
+    const s = await menu({ canManage: false, row: row({ active: true, stock: 0, shadow: 0, openMl: 0 }) });
+    expect(within(s).queryByRole('menuitem', { name: 'Mark inactive' })).toBeNull();
+    expect(within(s).queryByRole('menuitem', { name: 'Remove from inventory' })).toBeNull();
+    expect(within(s).getByTestId('remove-is-a-managers').textContent).toBe(
+      'Removing a good or marking it inactive is for owners and managers.',
+    );
   });
 
   it('Mark inactive sends the legacy PATCH body to updateInventoryItem for this row and house', async () => {
