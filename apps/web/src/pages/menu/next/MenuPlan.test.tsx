@@ -373,3 +373,28 @@ describe('L2 on the plan: nothing to keep where the house has no price', () => {
     expect(screen.queryByRole('button', { name: 'Keep the bottle price of Vermentino' })).not.toBeInTheDocument();
   });
 });
+
+// Menu r21: who set a price, and when a lock was taken, are dated on the house's clock.
+describe('the plan dates on the house clock', () => {
+  it("dates the last set and the lock in the house's zone, not the device's", async () => {
+    const late = line({
+      bottle: { ...line().bottle, lastSet: { by: person('Deniz'), at: '2026-09-10T22:30:00Z', source: 'manual' } },
+    });
+    const locked = line({
+      ...BAROLO,
+      bottle: { ...BAROLO.bottle, lock: { lockId: 'lock-1', lockedPrice: 60, lockedBy: person('Aylin'), lockedAt: '2026-09-01T23:15:00Z' } },
+    });
+    mockPlan.mockResolvedValue(plan({ lines: [late, locked], timezone: 'Europe/Istanbul', timezoneReason: null }));
+    mount(true);
+    const sheet = await screen.findByTestId('menu-plan');
+    expect(sheet).toHaveTextContent('set by hand by Deniz on 2026-09-11');
+    expect(sheet).toHaveTextContent('locked by Aylin on 2026-09-02');
+    expect(screen.queryByTestId('menu-plan-clock')).not.toBeInTheDocument();
+  });
+
+  it("says when its dates are on the device's clock", async () => {
+    mockPlan.mockResolvedValue(plan({ timezone: null, timezoneReason: 'the house has no time zone set' }));
+    mount(true);
+    expect(await screen.findByTestId('menu-plan-clock')).toHaveTextContent("this device's clock: the house has no time zone set");
+  });
+});

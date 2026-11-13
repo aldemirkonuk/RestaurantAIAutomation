@@ -35,6 +35,7 @@ import {
 } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 import { countByKind, oneNounFor } from './menu-line-kind';
+import { deviceClockNote, houseDay } from './menu-clock';
 // Drawn with the cellar's classes wherever it is shown (/menu and onboarding).
 import '../../cellar/next/cellar-next.css';
 
@@ -44,13 +45,13 @@ function money(n: number | null | undefined): string {
   return n === null || n === undefined ? EM : n.toFixed(2);
 }
 
-/** The calendar day on this device's clock (not the UTC day, which is tomorrow by evening in the Americas). */
-function day(iso: string | null | undefined): string {
+/**
+ * The calendar day on the house's clock (menu-clock.ts; the device's when the
+ * plan names no zone). Not the UTC day, which is tomorrow by evening in the Americas.
+ */
+function day(iso: string | null | undefined, zone?: string | null): string {
   if (!iso) return 'an unknown day';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return String(iso).slice(0, 10);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return houseDay(String(iso), zone) ?? String(iso).slice(0, 10);
 }
 
 /** The gateway's own words for a refusal, never a bare status. */
@@ -179,7 +180,6 @@ export function planSentence(
   return more.length ? `${lead} ${more.join('; ')}.` : lead;
 }
 
-/** Who set the price that would be replaced, in words. */
 /** One wine that is not on this file, in a line: what it is and what the house keeps. */
 export function notOnFileWords(n: NonNullable<Plan['notOnThisFile']>[number]): string {
   const name = [n.name, n.vintage].filter(Boolean).join(' ');
@@ -193,11 +193,12 @@ export function notOnFileWords(n: NonNullable<Plan['notOnThisFile']>[number]): s
   return `${name}: ${gone}keeps ${kept.length ? kept.join(', ') : 'no price (it had none)'}${locked}`;
 }
 
-function setWords(k: PlanKind): string {
+/** Who set the price that would be replaced, in words. */
+function setWords(k: PlanKind, zone?: string | null): string {
   if (!k.lastSet) return '';
   const who = k.lastSet.by.name ?? (k.lastSet.by.userId ? 'someone whose name is not on record' : 'no person named');
   const how = k.lastSet.source === 'import' ? 'from a menu' : k.lastSet.source === 'agent_accepted' ? 'accepting advice' : 'by hand';
-  return `set ${how} by ${who} on ${day(k.lastSet.at)}${k.setAfterRead ? ', after this menu was read' : ''}`;
+  return `set ${how} by ${who} on ${day(k.lastSet.at, zone)}${k.setAfterRead ? ', after this menu was read' : ''}`;
 }
 
 /**
@@ -399,6 +400,10 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
           A price or a lock changed since this was shown, so nothing was changed. Here it is again.
         </p>
       ) : null}
+      {(() => {
+        const clock = plan.timezone === undefined ? null : deviceClockNote(plan.timezone, plan.timezoneReason);
+        return clock ? <p className="cl-note" data-testid="menu-plan-clock">{clock}</p> : null;
+      })()}
       {!plan.namesReadable ? (
         <p className="cl-note">Some names could not be read ({plan.namesReason}). The prices below are exact.</p>
       ) : null}
@@ -413,7 +418,7 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
           {typedAfter > 0 ? (
             <p className="cl-said" style={{ marginTop: 6 }} data-testid="menu-plan-typed-after">
               {plural(typedAfter, 'price was', 'prices were')} set by a person after this menu was read
-              {plan.readAt ? ` (${day(plan.readAt)})` : ''}. This menu would replace {typedAfter === 1 ? 'it' : 'them'}, so{' '}
+              {plan.readAt ? ` (${day(plan.readAt, plan.timezone)})` : ''}. This menu would replace {typedAfter === 1 ? 'it' : 'them'}, so{' '}
               {typedAfter === 1 ? 'it is' : 'they are'} listed first{canManage ? ': keep one to hold it' : ''}.
             </p>
           ) : null}
@@ -442,8 +447,8 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
                     <td>{money(r.k.menuPrice)}</td>
                     <td className="cl-dim">
                       {r.k.result === 'held_by_lock' && r.k.lock
-                        ? `Stays ${money(r.k.lock.lockedPrice)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt)}`
-                        : `Becomes ${money(r.k.menuPrice)}${setWords(r.k) ? `; it was ${setWords(r.k)}` : ''}`}
+                        ? `Stays ${money(r.k.lock.lockedPrice)}: locked by ${r.k.lock.lockedBy.name ?? 'someone whose name is not on record'} on ${day(r.k.lock.lockedAt, plan.timezone)}`
+                        : `Becomes ${money(r.k.menuPrice)}${setWords(r.k, plan.timezone) ? `; it was ${setWords(r.k, plan.timezone)}` : ''}`}
                     </td>
                     <td>
                       <KeepSwitch

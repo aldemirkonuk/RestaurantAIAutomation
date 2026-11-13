@@ -467,6 +467,9 @@ export interface MenuVersions {
   /** false = who read or chose these menus could not be named (the reason says why). */
   namesReadable?: boolean
   namesReason?: string | null
+  /** The house's IANA zone its menu dates are said in; null = none (the reason says why). Absent on an older gateway. */
+  timezone?: string | null
+  timezoneReason?: string | null
 }
 
 /** A kind a price lock held, and the lock (ADR 0193 round 3). */
@@ -548,6 +551,9 @@ export interface MenuPlan {
   current: boolean
   /** When this menu was read; null when it is not recorded. Optional only for an older gateway. */
   readAt?: string | null
+  /** The house's IANA zone the plan's dates are said in; null = none (the reason says why). */
+  timezone?: string | null
+  timezoneReason?: string | null
   generatedAt: string
   /** make-current requires it, and refuses (409) when the plan changed since. */
   fingerprint: string

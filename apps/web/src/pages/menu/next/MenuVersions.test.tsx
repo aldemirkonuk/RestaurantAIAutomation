@@ -616,3 +616,44 @@ describe('a read in the background, several photos, the same file again (founder
     expect(screen.queryByRole('button', { name: /^Make .* current$/ })).not.toBeInTheDocument();
   });
 });
+
+// Menu r21: the founder's goal says dates in the house's time zone. A house in
+// Istanbul read from a device in any other zone is named on Istanbul's clock.
+describe('MenuVersions -- dates on the house clock', () => {
+  const READ = '2026-11-12T03:05:09Z';
+
+  it("names each kept menu, and when it became current, in the house's zone", async () => {
+    mockList.mockResolvedValue({
+      current: version({ menuId: 'm1', status: 'active', current: true, extractedAt: READ, madeCurrentAt: '2026-11-12T21:30:00Z' }),
+      lastUsed: null,
+      versions: [version({ menuId: 'm1', status: 'active', current: true, extractedAt: READ, madeCurrentAt: '2026-11-12T21:30:00Z' })],
+      timezone: 'Europe/Istanbul',
+      timezoneReason: null,
+    });
+    mount(true);
+    expect(await screen.findByTestId('menu-versions-standing')).toHaveTextContent('Current: the menu read 2026-11-12 06:05.');
+    expect(screen.getByText(/current since 2026-11-13/)).toBeInTheDocument();
+    expect(screen.queryByTestId('menu-versions-clock')).not.toBeInTheDocument();
+  });
+
+  it("says so when the house has no zone and the device's clock is used", async () => {
+    mockList.mockResolvedValue({
+      current: null,
+      lastUsed: null,
+      versions: [version()],
+      timezone: null,
+      timezoneReason: 'the house has no time zone set',
+    });
+    mount(true);
+    expect(await screen.findByTestId('menu-versions-clock')).toHaveTextContent(
+      "Dates and times here are on this device's clock: the house has no time zone set. Set the house's time zone in Settings.",
+    );
+  });
+
+  it('an older gateway that sends no zone adds no sentence', async () => {
+    mockList.mockResolvedValue({ current: null, lastUsed: null, versions: [version()] });
+    mount(true);
+    await screen.findByTestId('menu-versions-standing');
+    expect(screen.queryByTestId('menu-versions-clock')).not.toBeInTheDocument();
+  });
+});
