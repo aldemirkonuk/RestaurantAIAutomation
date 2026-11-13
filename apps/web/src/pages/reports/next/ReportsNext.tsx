@@ -119,9 +119,10 @@ function Action({
 
 export default function ReportsNext({ ground }: ReportsNextProps) {
   const [tillDays, setTillDays] = useState(30);
-  // Which measure is the bars and which the line, by cutting id. Held here, not
-  // in the cutting, so moving a cutting about the sheet can never lose it.
-  const [comboPicks, setComboPicks] = useState<Partial<Record<AnalysisId, ComboPick>>>({});
+  // A bars-and-line pick made before the reader's own sheet is known: shown
+  // for this visit, never written (a write then could put the house sheet
+  // over theirs). Once the sheet is known the pick lives on the sheet itself.
+  const [comboHeld, setComboHeld] = useState<Partial<Record<AnalysisId, ComboPick>>>({});
   const [arranging, setArranging] = useState(false);
   const [draft, setDraft] = useState<SheetState | null>(null);
   // The fetch follows what is ON SCREEN, draft included: a cutting swapped to
@@ -238,6 +239,34 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const edit = useCallback(
     (fn: (s: SheetState) => SheetState) => setDraft((d) => (d ? fn(d) : d)),
     [],
+  );
+
+  /* Which measure is the bars and which the line is part of how the reader
+     set this sheet, like its drawing, so it is saved with it (it was page
+     state, and a reload put every cutting back to its default pair). While
+     arranging it goes into the draft and is saved on rule-off; while reading
+     it is written at once, and a refused write says so (the preferences hook
+     rolls the pick back). */
+  const onComboPick = useCallback(
+    (id: AnalysisId, pick: ComboPick) => {
+      const withPick = (s: SheetState): SheetState => ({
+        cuttings: s.cuttings.map((c) => (c.id === id ? { ...c, combo: pick } : c)),
+      });
+      if (saving) return;
+      if (draft) {
+        edit(withPick);
+        return;
+      }
+      if (!data.sheetKnown) {
+        setComboHeld((all) => ({ ...all, [id]: pick }));
+        return;
+      }
+      setSaveFailed(false);
+      data.saveSheet(withPick(data.sheet)).catch(() => {
+        if (alive.current) setSaveFailed(true);
+      });
+    },
+    [saving, draft, edit, data],
   );
 
   /* ── the keyboard's half of the canvas ──────────────────────────────────
@@ -422,8 +451,8 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         arranging={editing}
         swapOptions={swapOptions}
         arrange={arrange}
-        comboPick={comboPicks[c.id]}
-        onComboPick={(p) => setComboPicks((all) => ({ ...all, [c.id]: p }))}
+        comboPick={data.sheetKnown ? c.combo : comboHeld[c.id]}
+        onComboPick={(p) => onComboPick(c.id, p)}
         onGraph={(g) => onGraph(c.id, g)}
         onSwap={(to) => onSwap(c.id, to)}
         onRemove={() => onRemove(c.id)}
