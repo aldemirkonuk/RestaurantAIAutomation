@@ -11,7 +11,8 @@ import {
   type ProducerAudience,
   type ProducerTally,
 } from "./producer-ledger.service";
-import { clockIn, dayIn, onShiftPhrase, percent } from "./producer-copy";
+import { clockIn, dayIn, money, onShiftPhrase, percent } from "./producer-copy";
+import { readHouseCurrency } from "./house-money";
 import { ROSTER_SOURCE, rosterAt } from "./roster";
 import { localMidnight, shiftLocalDate } from "./service-day";
 
@@ -123,6 +124,8 @@ export class CeilingHeldProducer {
     let salesGated = 0;
     let tooOld = 0;
     let breached = 0;
+    // `undefined` = not read yet; `null` = read, and the figure is said bare.
+    let houseCurrency: string | null | undefined;
 
     for (const goal of goals) {
       // A days-of-stock goal is a sales holder's figure (ADR 0298 decision
@@ -197,6 +200,16 @@ export class CeilingHeldProducer {
       const label = String(progress?.metricLabel ?? goal.metric_key);
       const unit = String(progress?.unit ?? "count");
       const name = String(goal.name || "Untitled goal");
+      // Read once per sweep, and only when a money ceiling is about to be said.
+      if (unit === "currency" && houseCurrency === undefined) {
+        houseCurrency = await readHouseCurrency(
+          client,
+          restaurantId,
+          this.logger,
+          PRODUCER,
+        );
+      }
+      const currency = unit === "currency" ? (houseCurrency ?? null) : null;
 
       await this.ledger.emit(
         { restaurantId, producer: PRODUCER, audience, tally, now },
@@ -222,6 +235,7 @@ export class CeilingHeldProducer {
               closedAt,
               timeZone,
               roster,
+              currency,
             }),
             priority: "medium",
             actionUrl: "/reports",
@@ -231,6 +245,7 @@ export class CeilingHeldProducer {
               metricKey: goal.metric_key,
               metricLabel: label,
               unit,
+              currency,
               target,
               current,
               direction: "at_most",
@@ -294,14 +309,12 @@ export class CeilingHeldProducer {
     closedAt: Date;
     timeZone: string;
     roster: Array<{ name: string | null; role: string | null }>;
+    /** The house's ISO code for a money ceiling; `null` says the figure bare. */
+    currency: string | null;
   }): string {
     const shown = (v: number) =>
       input.unit === "currency"
-        ? new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-            maximumFractionDigits: 2,
-          }).format(v)
+        ? money(v, input.currency)
         : input.unit === "percent"
           ? `${(v * 100).toFixed(1)}%`
           : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(

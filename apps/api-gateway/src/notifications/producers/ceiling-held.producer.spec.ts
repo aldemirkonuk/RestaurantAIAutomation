@@ -82,6 +82,7 @@ describe("CeilingHeldProducer", () => {
   it("reports a period that closed under the ceiling, with the headroom", async () => {
     const { db, notifications, producer } = build(HELD);
     db.tables.analytics_goals.push(ceiling());
+    db.tables.restaurants.push({ id: TENANT, currency: "USD" });
     seedShift(db);
 
     const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
@@ -225,10 +226,67 @@ describe("CeilingHeldProducer", () => {
   it("[REVERT-FAILS] exactly at the ceiling is under it, not over", async () => {
     const { db, notifications, producer } = build({ ...HELD, current: 10000 });
     db.tables.analytics_goals.push(ceiling());
+    db.tables.restaurants.push({ id: TENANT, currency: "USD" });
     await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
     const call = notifications.persistForRestaurant.calls[0][1];
     expect(call.metadata.headroom).toBe(0);
     expect(call.message).toContain("stayed under by $0.00");
+  });
+
+  it("[REVERT-FAILS] a lira house reads its ceiling in lira, never in dollars", async () => {
+    const { db, notifications, producer } = build(HELD);
+    db.tables.analytics_goals.push(ceiling());
+    // Another house's row first: the read must pick this house's, by id.
+    db.tables.restaurants.push({ id: OTHER, currency: "USD" });
+    db.tables.restaurants.push({ id: TENANT, currency: "TRY" });
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain(
+      "Purchasing spend finished at ₺8,420.00 against a ceiling of ₺10,000.00",
+    );
+    expect(call.message).toContain("stayed under by ₺1,580.00");
+    expect(call.message).not.toContain("$");
+    expect(call.metadata.currency).toBe("TRY");
+  });
+
+  it("[REVERT-FAILS] a house that has not named its money reads the bare figure", async () => {
+    const { db, notifications, producer } = build(HELD);
+    db.tables.analytics_goals.push(ceiling());
+    db.tables.restaurants.push({ id: TENANT, currency: null });
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain(
+      "Purchasing spend finished at 8,420.00 against a ceiling of 10,000.00",
+    );
+    expect(call.message).not.toContain("$");
+    expect(call.metadata.currency).toBeNull();
+  });
+
+  it("[REVERT-FAILS] an unreadable house says the bare figure and still writes the line", async () => {
+    const { db, notifications, producer } = build(HELD);
+    db.tables.analytics_goals.push(ceiling());
+    db.failures.restaurants = "statement timeout";
+    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(tally.emitted).toBe(2);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("stayed under by 1,580.00");
+    expect(call.message).not.toContain("$");
+  });
+
+  it("a count ceiling carries no currency and no sign", async () => {
+    const { db, notifications, producer } = build({
+      ...HELD,
+      metricLabel: "Checks served",
+      unit: "count",
+      target: 500,
+      current: 420,
+    });
+    db.tables.analytics_goals.push(ceiling({ metric_key: "checks" }));
+    db.tables.restaurants.push({ id: TENANT, currency: "TRY" });
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("Checks served finished at 420 against a ceiling of 500");
+    expect(call.metadata.currency).toBeNull();
   });
 
   it("ignores an at-least goal — that one belongs to the crossing producer", async () => {

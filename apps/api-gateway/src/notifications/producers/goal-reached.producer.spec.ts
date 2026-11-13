@@ -249,6 +249,96 @@ describe("GoalReachedProducer", () => {
     expect(tally.withheldReason).toMatch(/No active goal is set/);
   });
 
+  it("[REVERT-FAILS] a lira house reads its goal in lira, never in dollars", async () => {
+    const { db, notifications, producer } = build(REACHED);
+    db.tables.analytics_goals.push(goalRow());
+    // Another house's row first: the read must pick this house's, by id.
+    db.tables.restaurants.push({ id: OTHER, currency: "USD" });
+    db.tables.restaurants.push({ id: TENANT, currency: "TRY" });
+    seedCrossing(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain(
+      "Wine revenue stands at ₺10,450.00 against a target of ₺10,000.00.",
+    );
+    expect(call.message).not.toContain("$");
+    expect(call.metadata.currency).toBe("TRY");
+  });
+
+  it("a dollar house reads dollars", async () => {
+    const { db, notifications, producer } = build(REACHED);
+    db.tables.analytics_goals.push(goalRow());
+    db.tables.restaurants.push({ id: TENANT, currency: "USD" });
+    seedCrossing(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain(
+      "Wine revenue stands at $10,450.00 against a target of $10,000.00.",
+    );
+  });
+
+  it("[REVERT-FAILS] a house that has not named its money reads the bare figure", async () => {
+    const { db, notifications, producer } = build(REACHED);
+    db.tables.analytics_goals.push(goalRow());
+    db.tables.restaurants.push({ id: TENANT, currency: null });
+    seedCrossing(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain(
+      "Wine revenue stands at 10,450.00 against a target of 10,000.00.",
+    );
+    expect(call.message).not.toContain("$");
+    expect(call.metadata.currency).toBeNull();
+  });
+
+  it("[REVERT-FAILS] an unreadable house says the bare figure and still writes the line", async () => {
+    const { db, notifications, producer } = build(REACHED);
+    db.tables.analytics_goals.push(goalRow());
+    db.failures.restaurants = "statement timeout";
+    seedCrossing(db);
+    const tally = await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    expect(tally.emitted).toBe(2);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("stands at 10,450.00 against a target of 10,000.00");
+    expect(call.message).not.toContain("$");
+  });
+
+  it("[REVERT-FAILS] beside a money goal, a percent goal still carries no currency", async () => {
+    const { db, notifications, goals, producer } = build(REACHED);
+    db.tables.analytics_goals.push(goalRow());
+    db.tables.analytics_goals.push(
+      goalRow({ id: "goal-2", name: "Attach", metric_key: "wine_attach_rate" }),
+    );
+    db.tables.restaurants.push({ id: TENANT, currency: "TRY" });
+    (goals as any).getGoalProgress = async (_r: string, goalId: string) =>
+      goalId === "goal-2"
+        ? { target: 0.3, current: 0.34, metricLabel: "Wine attach rate", unit: "percent" }
+        : REACHED;
+    seedCrossing(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const calls = notifications.persistForRestaurant.calls.map((c: any[]) => c[1]);
+    const attach = calls.find((c: any) => c.metadata.goalId === "goal-2");
+    const revenue = calls.find((c: any) => c.metadata.goalId === "goal-1");
+    expect(revenue.metadata.currency).toBe("TRY");
+    expect(attach.metadata.currency).toBeNull();
+    expect(attach.message).not.toContain("₺");
+  });
+
+  it("a percent goal is said as a percent, with no currency", async () => {
+    const { db, notifications, producer } = build({
+      target: 0.3,
+      current: 0.34,
+      metricLabel: "Wine attach rate",
+      unit: "percent",
+    });
+    db.tables.analytics_goals.push(goalRow({ metric_key: "wine_attach_rate" }));
+    db.tables.restaurants.push({ id: TENANT, currency: "TRY" });
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("Wine attach rate stands at 34.0% against a target of 30.0%.");
+    expect(call.metadata.currency).toBeNull();
+  });
+
   it("throws when the goals table cannot be read — never 'no goals'", async () => {
     const { db, producer } = build(REACHED);
     db.failures.analytics_goals = "statement timeout";
