@@ -30,7 +30,7 @@ import {
   weekdayIndex,
 } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
-import type { Cat, Cell } from './rp-view';
+import type { Cat, Cell, Measure } from './rp-view';
 
 /* ───────────────────────────────────────────────────── 1. the reading ──── */
 
@@ -115,8 +115,49 @@ export interface TillWindow {
   timezone: string | null;
   /** True when the house has no time zone: no day can be filed, so nothing is stated. */
   zoneUnset: boolean;
-  /** Sparse; a `null` revenue is a day the server could not state. */
-  dailySeries: Array<{ date: string; revenue: number | null }>;
+  /**
+   * Sparse; a `null` revenue is a day the server could not state. `checks` is
+   * that day's count of checks; `null` from a gateway that does not send it,
+   * and then the till offers no bars and a line.
+   */
+  dailySeries: Array<{ date: string; revenue: number | null; checks: number | null }>;
+}
+
+/**
+ * The day's checks and average check, beside the day's takings, for bars and
+ * a line (founder /goal 2026-11-07: "bar graph and their combinations"). Only
+ * when every day the gateway sent carries its count: a count missing on some
+ * days would draw those days as having none. `null` otherwise, and the
+ * drawing says it cannot be drawn that way.
+ */
+export function tillMeasures(
+  w: TillWindow,
+  shown: string[],
+  money: ReturnType<typeof moneyIn>,
+): Measure[] | undefined {
+  if (w.dailySeries.length === 0 || w.dailySeries.some((d) => d.checks == null)) return undefined;
+  const taken = new Map(w.dailySeries.map((d) => [d.date, d.revenue]));
+  const checks = new Map(w.dailySeries.map((d) => [d.date, d.checks as number]));
+  return [
+    {
+      key: 'checks',
+      label: 'Checks',
+      unit: 'checks',
+      format: (v) => figure(v),
+      values: shown.map((date) => checks.get(date) ?? null),
+    },
+    {
+      key: 'avg',
+      label: 'Average check',
+      unit: 'a check',
+      format: (v) => money(v, 'compact'),
+      values: shown.map((date) => {
+        const r = taken.get(date);
+        const c = checks.get(date);
+        return r != null && c != null && c > 0 ? r / c : null;
+      }),
+    },
+  ];
 }
 
 /** Week columns spanning [from, to] — so a week with no takings is a BLANK
@@ -156,9 +197,9 @@ const till = analysis<TillWindow>({
   answers: 'What guests actually paid, day by day',
   window: (ctx) => `the last ${ctx.days} days of POS checks`,
   path: (rid, ctx) => `/analytics/pos-revenue/${rid}?days=${ctx.days}`,
-  graphs: ['area', 'line', 'bars', 'heatmap', 'table', 'figure'],
+  graphs: ['area', 'line', 'bars', 'combo', 'heatmap', 'table', 'figure'],
   graphNote:
-    'This is the one register with a date on every row, so it is the one that can be a heat map: weekday against week. No scatter — there is only one measure per day, and a scatter needs two.',
+    'This is the one register with a date on every row, so it is the one that can be a heat map: weekday against week. Bars and a line put each day’s takings beside its checks or its average check, each on its own axis. No scatter — a day’s checks and its takings move together by construction, so a scatter would only draw that.',
   takesWindow: true,
   select: (raw) => {
     const d = obj(raw);
@@ -175,6 +216,7 @@ const till = analysis<TillWindow>({
       dailySeries: arr(d.dailySeries).map((r) => ({
         date: str(r.date),
         revenue: num(r.revenue),
+        checks: num(r.checks),
       })),
     };
   },
@@ -247,6 +289,7 @@ const till = analysis<TillWindow>({
     // a gap in the line or an empty bar slot, not a day the axis skips and
     // the line quietly bridges.
     const span = daysBetween(w.from, w.to);
+    const counted = w.dailySeries.every((d) => d.checks != null);
     const shown = span.length > 0 ? span : w.dailySeries.map((d) => d.date);
     return {
       cats: {
@@ -259,6 +302,8 @@ const till = analysis<TillWindow>({
         yLabel: 'taken',
         unit: 'taken',
         format: (v) => money(v, 'compact'),
+        measureLabel: 'Taken',
+        measures: tillMeasures(w, shown, money),
       },
       matrix: {
         rows: [...WEEKDAY_SHORT],
@@ -273,10 +318,15 @@ const till = analysis<TillWindow>({
         cols: [
           { key: 'day', label: 'Day' },
           { key: 'taken', label: 'Taken', numeric: true },
+          ...(counted ? [{ key: 'checks', label: 'Checks', numeric: true }] : []),
         ],
         rows: w.dailySeries.map((d) => ({
           key: d.date,
-          cells: [shortDay(d.date), money(d.revenue, 'table')],
+          cells: [
+            shortDay(d.date),
+            money(d.revenue, 'table'),
+            ...(counted ? [figure(d.checks)] : []),
+          ],
         })),
         more:
           w.dailySeries.length < w.days
