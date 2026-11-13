@@ -33,6 +33,7 @@ import { NamingUnread } from './NameThisWine';
 import { readView, writeView, type IvView } from './iv-url';
 import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager';
 import { PosMappingPanel } from '../../../components/inventory/PosMappingPanel';
+import type { PortionFacts } from '../../../components/inventory/posPortions';
 import { ManualReceiptWorkspace } from '../../../components/inventory/ManualReceiptWorkspace';
 import { AutoLocatePreviewModal } from '../../../components/inventory/AutoLocatePreviewModal';
 import { computeAutoLocatePlan, type AutoLocateResult, type WineInput, type WineLocationScore } from '../../../lib/autoLocateEngine';
@@ -1061,12 +1062,20 @@ export default function InventoryNext() {
           isOpen
           onClose={() => setPanel(null)}
           restaurantId={data.rid ?? undefined}
-          inventory={(rows ?? []).map((r) => ({
-            id: r.id,
-            wineName: r.name ?? undefined,
-            bottleSizeMl: r.bottleSizeMl,
-            pourSizeMl: r.pourMl,
-          }))}
+          inventory={(() => {
+            // The sale-size offers read the item's stated facts, carried raw
+            // on the gateway row (portion-facts.ts), not the display sizes.
+            const facts = new Map(
+              data.rawItems.map((i) => [i.id, (i as { portionFacts?: PortionFacts | null }).portionFacts ?? null]),
+            );
+            return (rows ?? []).map((r) => ({
+              id: r.id,
+              wineName: r.name ?? undefined,
+              bottleSizeMl: r.bottleSizeMl,
+              pourSizeMl: r.pourMl,
+              portionFacts: facts.get(r.id) ?? null,
+            }));
+          })()}
           onChanged={refreshStock}
         />
       ) : null}
