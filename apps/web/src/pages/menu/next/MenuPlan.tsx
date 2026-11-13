@@ -171,7 +171,8 @@ export function planSentence(
   const gone = plan.notOnThisFile ?? [];
   if (gone.length > 0)
     more.push(
-      `${plural(gone.length, 'wine on the current menu is', 'wines on the current menu are')} not on this file and ${gone.length === 1 ? 'keeps its' : 'keep their'} price`,
+      // A kitchen line is never in this list (computePlan keeps drinks only), and a drink is not always a wine.
+      `${plural(gone.length, 'drink on the current menu is', 'drinks on the current menu are')} not on this file and ${gone.length === 1 ? 'keeps its' : 'keep their'} price`,
     );
   if (plan.dormantLocks.length > 0)
     more.push(
@@ -180,10 +181,10 @@ export function planSentence(
   return more.length ? `${lead} ${more.join('; ')}.` : lead;
 }
 
-/** One wine that is not on this file, in a line: what it is and what the house keeps. */
+/** One drink that is not on this file, in a line: what it is and what the house keeps. */
 export function notOnFileWords(n: NonNullable<Plan['notOnThisFile']>[number]): string {
   const name = [n.name, n.vintage].filter(Boolean).join(' ');
-  if (!n.inventoryId) return `${name}: not in the house's wines, so nothing is kept for it`;
+  if (!n.inventoryId) return `${name}: not on the house's list, so nothing is kept for it`;
   const kept = [
     n.bottle !== null ? `bottle ${money(n.bottle)}` : null,
     n.glass !== null ? `glass ${money(n.glass)}` : null,

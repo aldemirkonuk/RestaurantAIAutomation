@@ -1,4 +1,4 @@
-import type { MenuImportReviewItem } from '../../../services/api/menus';
+import type { MenuImportReviewItem, MenuItemCorrection } from '../../../services/api/menus';
 
 /**
  * What an added line did to the house's own price (ADR 0193: "it could be
@@ -49,4 +49,61 @@ export function housePriceNote(
     default:
       return null;
   }
+}
+
+/** One price a person changed on a current-menu line, and what the gateway answered. */
+export interface PriceChange {
+  kind: 'bottle' | 'glass'
+  /** The price as the page shows it, in the house's money. */
+  shown: string
+  /** The gateway's answer, or the reason the change was refused. */
+  result: MenuItemCorrection | { refused: string }
+}
+
+/**
+ * What changing a price on the current menu did, in one sentence per price
+ * (menu r21: the page could add and discard a line, never change its price).
+ * The menu line always takes the new price when the gateway answers; whether
+ * the house's own price followed is said, never implied.
+ */
+export function priceChangeNote(
+  name: string,
+  dish: boolean,
+  changes: PriceChange[],
+  money: (n: number | null) => string,
+): { tone: 'alert' | 'said'; text: string } | null {
+  if (changes.length === 0) return null;
+  let alert = false;
+  const parts = changes.map((c) => {
+    const what = dish ? 'the price' : `the ${c.kind} price`;
+    if ('refused' in c.result) {
+      alert = true;
+      return `${what} was not changed (${c.result.refused})`;
+    }
+    const r = c.result;
+    const now = `${what} is now ${c.shown} on the menu`;
+    const held = (r.priceHeld ?? []).find((h) => h.kind === c.kind);
+    switch (r.priceSync) {
+      case 'changed':
+        return `${now}, and the house's own ${c.kind} price is ${c.shown} too`;
+      case 'unchanged':
+        return `${now}; the house's own ${c.kind} price was already ${c.shown}`;
+      case 'locked':
+        return `${now}, but the house's ${c.kind} price is locked${held && held.lockedPrice !== null ? ` at ${money(held.lockedPrice)}` : ''}, so it was not changed. An owner or a manager changes it under Locked prices`;
+      case 'stale':
+        return `${now}; the house kept a ${c.kind} price someone set after this line was dated`;
+      case 'kitchen_line':
+        return `${now}. A dish has no house price and no stock, so nothing else changed`;
+      case 'not_linked':
+        return `${now}. The line is not matched to anything the house stocks, so no house price changed`;
+      case 'not_current':
+        return `${now}. This menu is not the current one, so the house's own price changes when it is made current`;
+      case 'failed':
+        alert = true;
+        return `${now}, but the house's own ${c.kind} price was NOT changed (${r.priceSyncError || 'no reason was given'}). Change it on Inventory, under Your price`;
+      default:
+        return now;
+    }
+  });
+  return { tone: alert ? 'alert' : 'said', text: `${name}: ${parts.join('; ')}.` };
 }

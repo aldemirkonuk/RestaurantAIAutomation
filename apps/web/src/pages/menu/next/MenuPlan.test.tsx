@@ -168,7 +168,7 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
 
   it('counts them in the sentence and says they keep their price', () => {
     expect(planSentence(plan({ dormantLocks: [], notOnThisFile: [BAROLO_GONE, HOUSE_RED] }))).toBe(
-      'Choosing this menu will change the price of 1 wine the house already has and leave 1 wine at its locked price. 2 wines on the current menu are not on this file and keep their price.',
+      'Choosing this menu will change the price of 1 wine the house already has and leave 1 wine at its locked price. 2 drinks on the current menu are not on this file and keep their price.',
     );
     expect(planSentence(plan({ dormantLocks: [], notOnThisFile: [] }))).toBe(
       'Choosing this menu will change the price of 1 wine the house already has and leave 1 wine at its locked price.',
@@ -177,7 +177,7 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
 
   it('says each one in a line: what the house keeps, its locks, or that the house never had it', () => {
     expect(notOnFileWords(BAROLO_GONE)).toBe('Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked');
-    expect(notOnFileWords(HOUSE_RED)).toBe("House red: not in the house's wines, so nothing is kept for it");
+    expect(notOnFileWords(HOUSE_RED)).toBe("House red: not on the house's list, so nothing is kept for it");
     expect(notOnFileWords({ ...BAROLO_GONE, bottle: null, glass: null, locked: [] })).toBe('Barolo 2016: keeps no price (it had none)');
     expect(notOnFileWords({ ...BAROLO_GONE, active: false })).toBe(
       'Barolo 2016: the house no longer sells it; its row keeps bottle 80.00, glass 14.00, bottle locked',
@@ -193,7 +193,7 @@ describe('2d: not on this file -- shown, never acted on (L12)', () => {
     expect(box).toHaveTextContent('the price, the house\'s row and any lock stay');
     expect(screen.getAllByTestId('menu-plan-not-on-file-line').map((l) => l.textContent)).toEqual([
       'Barolo 2016: keeps bottle 80.00, glass 14.00, bottle locked',
-      "House red: not in the house's wines, so nothing is kept for it",
+      "House red: not on the house's list, so nothing is kept for it",
     ]);
     expect(box.querySelectorAll('button, input')).toHaveLength(0);
   });

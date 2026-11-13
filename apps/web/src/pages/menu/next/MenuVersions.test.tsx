@@ -226,7 +226,7 @@ describe('the words the panel uses', () => {
     ).toBe('The menu read 2026-11-12 01:25:06 is now the current menu: 2 lines, 2 lines priced from this menu.');
   });
 
-  it('says how many kitchen lines were kept off the wine list', () => {
+  it('says how many kitchen lines stay on the menu and are carried nowhere', () => {
     expect(
       makeCurrentSentence({
         outcome: 'made_current',
@@ -237,7 +237,7 @@ describe('the words the panel uses', () => {
         flagged: 0,
         failed: [],
       }),
-    ).toBe('This is now the current menu: 4 lines, 3 lines priced from this menu, 1 kitchen line, kept off the wine list.');
+    ).toBe('This is now the current menu: 4 lines, 3 lines priced from this menu, 1 kitchen line, on the menu and carried nowhere.');
   });
 
   it('ADR 0193 round 3 (L15): a held kind is counted AND named, a returned lock is named, and an outcome the page does not know is still printed', () => {

@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
-import { LINE_SELECT, MenusService, SOURCE_NOT_TAKEN, houseZoneOf } from "./menus.service";
+import { LINE_SELECT, MenusService, SOURCE_NOT_TAKEN, houseZoneOf, parseMenuPrice } from "./menus.service";
 import { MEMBER_LINE_KEYS, seesRawLine } from "./menu-line-view";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
@@ -685,6 +685,50 @@ describe("MenusService.reviewMenuItem — tenant isolation and the house price (
     } as any);
     expect(result.priceSync).toBe("failed");
     expect(result.priceSyncError).toMatch(/No wine of this house/);
+  });
+
+  // Menu r21: "45,50" was stored as 4550 and became the house's price.
+  it("a decimal comma is a decimal: '45,50' sets 45.5 on the line and on the house", async () => {
+    const calls: RpcCall[] = [];
+    const tables = { menu_items: [line()], restaurant_menus: [CURRENT()] };
+    const service = makeService(tables, { rpc: changed, rpcCalls: calls });
+    const result = await service.reviewMenuItem("mi-1", "user-1", "rest-1", {
+      fieldName: "bottle_price",
+      newValue: "45,50",
+    } as any);
+    expect(tables.menu_items[0].bottle_price).toBe(45.5);
+    expect(calls[0][1]).toMatchObject({ p_bottle_price: 45.5 });
+    expect(result.newValue).toBe("45.5");
+  });
+
+  it("a price it cannot read for sure is refused, and nothing is written", async () => {
+    const calls: RpcCall[] = [];
+    const tables = { menu_items: [line()], restaurant_menus: [CURRENT()] };
+    const service = makeService(tables, { rpc: changed, rpcCalls: calls });
+    for (const typed of ["-5", "1,250", "abc"]) {
+      await expect(
+        service.reviewMenuItem("mi-1", "user-1", "rest-1", { fieldName: "bottle_price", newValue: typed } as any),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    }
+    expect(tables.menu_items[0].bottle_price).toBe(60);
+    expect(tables.menu_items[0].status).toBe("approved");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a dish's price changes on its line only, and the reply says it is a kitchen line", async () => {
+    const calls: RpcCall[] = [];
+    const tables = {
+      menu_items: [{ ...line(), name: "Tiramisu", category: "Desserts", inventory_item_id: null, bottle_price: 9 }],
+      restaurant_menus: [CURRENT()],
+    };
+    const service = makeService(tables, { rpc: changed, rpcCalls: calls });
+    const result = await service.reviewMenuItem("mi-1", "user-1", "rest-1", {
+      fieldName: "bottle_price",
+      newValue: "11",
+    } as any);
+    expect(tables.menu_items[0].bottle_price).toBe(11);
+    expect(result.priceSync).toBe("kitchen_line");
+    expect(calls).toHaveLength(0);
   });
 
   it("a name correction writes no price", async () => {
@@ -2296,5 +2340,31 @@ describe("houseZoneOf -- the zone a house's menu dates are said in (menu r21)", 
     expect(zoned).toMatchObject({ timezone: "Europe/Istanbul", timezoneReason: null });
     expect(bare).toMatchObject({ timezone: null, timezoneReason: "the house has no time zone set" });
     expect(zoned.fingerprint).toBe(bare.fingerprint);
+  });
+});
+
+describe("parseMenuPrice -- a typed price is read, never guessed (menu r21)", () => {
+  const value = (raw: string) => {
+    const r = parseMenuPrice(raw);
+    return "value" in r ? r.value : null;
+  };
+  it("reads a dot or a comma decimal, thousands groups and a currency mark", () => {
+    expect(value("70")).toBe(70);
+    expect(value("45.50")).toBe(45.5);
+    expect(value("45,5")).toBe(45.5);
+    expect(value("$70")).toBe(70);
+    expect(value("45 TL")).toBe(45);
+    expect(value("₺ 1 250")).toBe(1250);
+    expect(value("1.250,00")).toBe(1250);
+    expect(value("1,250.75")).toBe(1250.75);
+    expect(value("1.250.000")).toBe(1250000);
+    expect(value("0")).toBe(0);
+  });
+  it("refuses a minus, letters, two decimals and a three-digit tail it cannot place", () => {
+    for (const raw of ["-5", "abc", "", "12.5.1", "1,2.50", "1.250,505", ".5"]) expect(value(raw)).toBeNull();
+    const r = parseMenuPrice("1,250");
+    expect("refused" in r && r.refused).toMatch(/could be 1250 or 1\.25/);
+    const k = parseMenuPrice("1.000");
+    expect("refused" in k && k.refused).toMatch(/could be 1000 or 1;/);
   });
 });
