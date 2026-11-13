@@ -65,6 +65,23 @@ function reasonOf(err: unknown): string {
   return e?.message || 'no reason was given';
 }
 
+/**
+ * Why choosing (or carrying) did not answer, in words that are true (r28 G1).
+ * A refusal (4xx) comes before the switch, so nothing changed. A 5xx says
+ * itself: after the switch the gateway says the menu IS current. No answer at
+ * all means nobody here knows whether the switch happened.
+ */
+export function chooseFailedSentence(err: unknown, current: boolean): string {
+  const e = err as { response?: { status?: number } };
+  if (!e?.response) {
+    return `No answer came back (${reasonOf(err)}), so whether this menu is now current, and how many of its prices reached the house, is not known. Its standing under Menus kept says; if it is current, Carry its prices again finishes the rest.`;
+  }
+  if ((e.response.status ?? 0) >= 500) return reasonOf(err);
+  return current
+    ? `Its prices were not carried again: ${reasonOf(err)}. Nothing has changed.`
+    : `It was not made current: ${reasonOf(err)}. Nothing has changed.`;
+}
+
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
@@ -73,8 +90,14 @@ function plural(n: number, one: string, many: string): string {
 export function planSentence(
   plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines' | 'notOnThisFile'>,
 ): string {
-  if (plan.current) return 'This is already the current menu. Choosing it again changes nothing.';
   const c = plan.counts;
+  if (plan.current) {
+    // r28 G1: a carry cut off part-way can be finished from here, so "changes
+    // nothing" is only true when no price on the house differs from the menu.
+    const differ = c.change + c.new_wine;
+    if (differ === 0) return 'This is the current menu, and every price on it already reached the house.';
+    return `This is the current menu, and ${plural(differ, 'price on the house differs', 'prices on the house differ')} from it. Carrying its prices again sets the ones its choice did not reach; a price someone set since it was chosen stays.`;
+  }
   const parts: string[] = [];
   if (c.change > 0) parts.push(`set ${plural(c.change, 'price', 'prices')} from this menu`);
   if (c.new_wine > 0) parts.push(`add ${plural(c.new_wine, 'price', 'prices')} for wines new to the house`);
@@ -247,6 +270,9 @@ export function MenuPlan({
       if (status === 409) {
         setMoved(true);
         refresh();
+      } else if (!(e as { response?: unknown })?.response || (status ?? 0) >= 500) {
+        // The switch may have happened: the standing and the plan are read again.
+        void queryClient.invalidateQueries({ queryKey: ['menu'] });
       }
     },
   });
@@ -275,7 +301,7 @@ export function MenuPlan({
   return (
     <section className="cl-panel" style={{ marginTop: 12 }} aria-labelledby={`plan-h-${menuId}`} data-testid="menu-plan">
       <h3 id={`plan-h-${menuId}`} className="cl-crumb" style={{ margin: 0 }}>
-        Before it becomes current
+        {plan.current ? 'Before its prices are carried again' : 'Before it becomes current'}
       </h3>
       <p className="cl-standing" style={{ marginTop: 6 }} data-testid="menu-plan-sentence">
         {planSentence(plan)}
@@ -436,14 +462,20 @@ export function MenuPlan({
       ) : null}
 
       <div className="cl-row-controls" style={{ marginTop: 14 }}>
-        {canManage && !plan.current ? (
+        {canManage && (!plan.current || plan.counts.change + plan.counts.new_wine > 0) ? (
           <button
             type="button"
             className="cl-btn cl-ink cl-focus"
             disabled={choose.isPending}
             onClick={() => choose.mutate(plan.fingerprint)}
           >
-            {choose.isPending ? 'Making it current…' : 'Make it current'}
+            {plan.current
+              ? choose.isPending
+                ? 'Carrying its prices…'
+                : 'Carry its prices again'
+              : choose.isPending
+                ? 'Making it current…'
+                : 'Make it current'}
           </button>
         ) : null}
         {onCancel ? (
@@ -459,7 +491,7 @@ export function MenuPlan({
       )}
       {choose.isError && !moved ? (
         <p role="alert" className="cl-said" style={{ marginTop: 8 }}>
-          It was not made current: {reasonOf(choose.error)}. Nothing has changed.
+          {chooseFailedSentence(choose.error, plan.current)}
         </p>
       ) : null}
     </section>

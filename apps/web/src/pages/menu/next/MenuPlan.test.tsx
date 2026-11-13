@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MenuPlan, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
+import { MenuPlan, chooseFailedSentence, kindWords, notOnFileWords, orderedRows, planSentence } from './MenuPlan';
 import { getMenuPlan, makeMenuCurrent, type MenuPlan as Plan, type PlanLine } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
 import { formatMoney } from '../../../lib/currency';
@@ -123,7 +123,13 @@ describe('the plan in one sentence', () => {
     expect(
       planSentence(plan({ lines: [unmatched, unpriced], counts: { change: 0, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 3, not_linked: 2, new_wine: 0 }, dormantLocks: [] })),
     ).toBe('Choosing this menu changes no price. 1 line shows no price and the house has none either (flagged); 1 line is not matched to a wine, so no price.');
-    expect(planSentence(plan({ current: true }))).toBe('This is already the current menu. Choosing it again changes nothing.');
+    // r28 G1: "changes nothing" only when no price on the house differs from the current menu.
+    expect(planSentence(plan({ current: true }))).toBe(
+      'This is the current menu, and 1 price on the house differs from it. Carrying its prices again sets the ones its choice did not reach; a price someone set since it was chosen stays.',
+    );
+    expect(planSentence(plan({ current: true, counts: { ...plan().counts, change: 0, new_wine: 0 } }))).toBe(
+      'This is the current menu, and every price on it already reached the house.',
+    );
   });
 
   it('names the kitchen lines it leaves on the menu and carries nowhere', () => {
@@ -238,6 +244,56 @@ describe('MenuPlan -- the section before the choice (L13)', () => {
     expect(await screen.findByTestId('menu-plan-moved')).toHaveTextContent('A price or a lock changed since this was shown, so nothing was changed.');
     await waitFor(() => expect(mockPlan).toHaveBeenCalledTimes(2));
     expect(onDone).not.toHaveBeenCalled();
+  });
+
+  it('r28 G1: no answer at all says the switch is not known, never that nothing changed, and reads the menus again', async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValue({ message: 'timeout of 120000ms exceeded' });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    const said = await screen.findByRole('alert');
+    expect(shown(said.textContent ?? '')).toBe(
+      'No answer came back (timeout of 120000ms exceeded), so whether this menu is now current, and how many of its prices reached the house, is not known. Its standing under Menus kept says; if it is current, Carry its prices again finishes the rest.',
+    );
+    expect(said.textContent).not.toMatch(/Nothing has changed/);
+    await waitFor(() => expect(mockPlan).toHaveBeenCalledTimes(2));
+  });
+
+  it("r28 G1: a 5xx says the gateway's own sentence (the menu IS current), and a refusal still says nothing changed", async () => {
+    mockPlan.mockResolvedValue(plan());
+    mockMake.mockRejectedValueOnce({
+      response: { status: 500, data: { message: 'This menu is now the current one, but its prices did not reach the house (pool closed). Choose it again under Menus kept to carry them; a price set since it was chosen stays.' } },
+    });
+    mount(true);
+    fireEvent.click(await screen.findByRole('button', { name: 'Make it current' }));
+    expect(shown((await screen.findByRole('alert')).textContent ?? '')).toBe(
+      'This menu is now the current one, but its prices did not reach the house (pool closed). Choose it again under Menus kept to carry them; a price set since it was chosen stays.',
+    );
+    expect(chooseFailedSentence({ response: { status: 400, data: { message: 'no fingerprint' } } }, false)).toBe(
+      'It was not made current: no fingerprint. Nothing has changed.',
+    );
+    expect(chooseFailedSentence({ response: { status: 403 } }, true)).toBe(
+      'Its prices were not carried again: only an owner or a manager can do that. Nothing has changed.',
+    );
+  });
+
+  it('r28 G1: the current menu offers "Carry its prices again" while a price differs, and none once every price arrived', async () => {
+    mockPlan.mockResolvedValue(plan({ current: true }));
+    const result = { outcome: 'already_current' as const, menuId: 'menu-new', previousMenuIds: [], lines: 2, priceSync: { changed: 1, locked: 1 }, flagged: 0, failed: [] };
+    mockMake.mockResolvedValue(result as any);
+    const { onDone } = mount(true);
+    expect(await screen.findByRole('heading', { name: 'Before its prices are carried again' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Make it current' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Carry its prices again' }));
+    await waitFor(() => expect(mockMake).toHaveBeenCalledWith('menu-new', 'fp-1'));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(result));
+  });
+
+  it('r28 G1: a current menu whose every price arrived offers nothing to carry', async () => {
+    mockPlan.mockResolvedValue(plan({ current: true, counts: { ...plan().counts, change: 0, new_wine: 0 } }));
+    mount(true);
+    expect(await screen.findByTestId('menu-plan-sentence')).toHaveTextContent('every price on it already reached the house');
+    expect(screen.queryByRole('button', { name: 'Carry its prices again' })).not.toBeInTheDocument();
   });
 
   it('a plan that cannot be worked out says so, and offers no choice', async () => {
