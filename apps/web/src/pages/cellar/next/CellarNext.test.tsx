@@ -83,10 +83,15 @@ vi.mock('./recipe/RecipeSheet', () => ({
 // The cocktail list prints through the house's money (`useHouseMoney`), which
 // reads the signed-in house; this page suite mounts no AuthProvider, so the
 // house is a lira one here. Its own behaviour is CocktailRegister.recipe.test.
+// The cost columns read the signed-in role too; here the reader sees no
+// money, so they are not drawn (CocktailRegister.cost.test covers them).
 vi.mock('./recipe/useRecipe', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useHouseMoney: () => (n: number | null | undefined) => (n == null ? '—' : `₺${n.toFixed(2)}`),
+  useCanEditRecipe: () => false,
+  useDrinkFigures: () => ({ byId: null, loading: false, error: null }),
 }));
+vi.mock('./recipe/useHousePercent', () => ({ useHousePercent: () => (p: number) => `%${p}` }));
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useCellarNextData: () => mock.current,

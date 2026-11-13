@@ -38,7 +38,10 @@ import {
 } from './cellar-format';
 import RecipeSheet from './recipe/RecipeSheet';
 import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
-import { useHouseMoney } from './recipe/useRecipe';
+import { pourCostShare } from './recipe/DrinkCards';
+import { useCanEditRecipe, useDrinkFigures, useHouseMoney } from './recipe/useRecipe';
+import { useHousePercent, type SayPercent } from './recipe/useHousePercent';
+import type { DrinkFigureRow } from '../../../services/api/recipes';
 import {
   useCocktailRegister,
   useCocktailWrites,
@@ -89,6 +92,49 @@ function Field({
   );
 }
 
+/** Said under a cost some of whose lines are priced from part of the stock only. */
+const PARTLY_INVOICED = 'partly invoiced';
+
+/** Said above the list when its costs could not be read. */
+const DRINK_COSTS_UNREAD = 'The drinks’ costs could not be read just now, so none is shown.';
+
+/**
+ * A drink's cost a serve and pour cost cells (r28 recipes audit, gap 9), as
+ * the dish list writes a dish's: an incomplete cost is "Not known", never a
+ * smaller figure; a cost priced from part of the stock says so under it.
+ * Unread figures are said once above the list, and the cells stay blank.
+ */
+function drinkCells(
+  id: string,
+  price: number | null,
+  f: DrinkFigureRow | undefined,
+  read: boolean,
+  say: (n: number | null | undefined) => string,
+  sayPct: SayPercent,
+) {
+  const dim = <span className="cl-dim">{EM}</span>;
+  if (!read || !f || !f.hasRecipe) return { cost: dim, share: dim };
+  const per = f.cost?.complete ? f.cost.perServe : null;
+  const part = f.cost?.partial ?? 0;
+  const share = pourCostShare(f.cost, price);
+  return {
+    cost:
+      per == null ? (
+        'Not known'
+      ) : part > 0 ? (
+        <>
+          {say(per)}
+          <span className="cl-dim" style={{ display: 'block', fontSize: 11 }} data-testid={`drink-partly-${id}`}>
+            {PARTLY_INVOICED}
+          </span>
+        </>
+      ) : (
+        say(per)
+      ),
+    share: 'pct' in share ? sayPct(share.pct) : 'Not known',
+  };
+}
+
 /* ── the register ───────────────────────────────────────────────────────── */
 
 export default function CocktailRegister({
@@ -105,6 +151,11 @@ export default function CocktailRegister({
   // `money()` wrote $ for every house, so a lira list read "$14.00" beside
   // cards that read "₺14.00" (r7 browser check, 2026-11-12).
   const money = useHouseMoney();
+  // Cost and pour cost are the house's money: shown, and read, only for a
+  // role that may change a recipe (the same rule as the dish list).
+  const seesCost = useCanEditRecipe();
+  const figures = useDrinkFigures(seesCost);
+  const sayPct = useHousePercent();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   // /cocktails?open=<id> opens that drink: the inventory drawer's "used in"
@@ -303,6 +354,12 @@ export default function CocktailRegister({
             </p>
           ) : null}
 
+          {seesCost && figures.error ? (
+            <p className="cl-said" role="status" style={{ marginTop: 12 }} data-testid="cocktails-costs-unread">
+              {DRINK_COSTS_UNREAD}
+            </p>
+          ) : null}
+
           {rows.length === 0 ? (
             <p className="cl-said" style={{ marginTop: 12 }} data-testid="cocktails-empty">
               {data.rows.length === 0
@@ -320,11 +377,17 @@ export default function CocktailRegister({
                     <th scope="col">Glass</th>
                     <th scope="col">Garnish</th>
                     <th scope="col" style={{ textAlign: 'right' }}>Price</th>
+                    {seesCost ? <th scope="col" style={{ textAlign: 'right' }}>Cost per serve</th> : null}
+                    {seesCost ? <th scope="col" style={{ textAlign: 'right' }}>Pour cost</th> : null}
                     <th scope="col" style={{ textAlign: 'right' }}>Kept</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((c) => (
+                  {rows.map((c) => {
+                    const fc = seesCost
+                      ? drinkCells(c.id, c.price ?? null, figures.byId?.get(c.id), Boolean(figures.byId), money, sayPct)
+                      : null;
+                    return (
                     <tr
                       key={c.id}
                       data-selected={c.id === openId}
@@ -347,11 +410,18 @@ export default function CocktailRegister({
                       <td>{c.glass ?? <span className="cl-dim">{EM}</span>}</td>
                       <td>{c.garnish ?? <span className="cl-dim">{EM}</span>}</td>
                       <td className="cl-num" style={{ textAlign: 'right' }}>{money(c.price)}</td>
+                      {fc ? (
+                        <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`drink-cost-${c.id}`}>{fc.cost}</td>
+                      ) : null}
+                      {fc ? (
+                        <td className="cl-num" style={{ textAlign: 'right' }} data-testid={`drink-share-${c.id}`}>{fc.share}</td>
+                      ) : null}
                       <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
                         {shortDate((c as { created_at?: string }).created_at)}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

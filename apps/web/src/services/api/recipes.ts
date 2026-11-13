@@ -288,6 +288,17 @@ export interface DishListRow {
   };
 }
 
+/** A drink on the house's list with its figures (GET /recipes/:rid/drinks/figures). */
+export interface DrinkFigureRow {
+  cocktailId: string;
+  /** Null for a role that does not see the house's money. */
+  price: number | null;
+  hasRecipe: boolean;
+  yieldServes: number | null;
+  lineCount: number;
+  cost: DishListRow['cost'];
+}
+
 export interface DishBody {
   name: string;
   section?: string;
@@ -316,6 +327,12 @@ export const dishesApi = {
   async list(restaurantId: string): Promise<DishListRow[]> {
     const r = await apiClient.get<DishListRow[]>(`${base(restaurantId)}/dishes`);
     return r.data;
+  },
+
+  /** Every drink on the list with its cost a serve, in one read (r28 recipes audit, gap 9). */
+  async drinkFigures(restaurantId: string): Promise<DrinkFigureRow[]> {
+    const r = await apiClient.get<{ drinks: DrinkFigureRow[] }>(`${base(restaurantId)}/drinks/figures`);
+    return r.data.drinks;
   },
 
   async create(restaurantId: string, body: DishBody): Promise<Dish> {
