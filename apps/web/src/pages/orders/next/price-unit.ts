@@ -22,6 +22,8 @@
  * bargain, and no later reader can tell them apart.
  */
 
+import { unitMany, unitOne, unitWord } from '@/lib/unit-words';
+
 /** How a figure is said: callers pass the order's own currency. Default: bare, never `$` (ADR 0117). */
 export type Say = (n: number) => string;
 const bare: Say = (n) => n.toFixed(2);
@@ -61,30 +63,13 @@ export function isOpaqueUnit(uom: PriceUom | null): boolean {
 }
 
 /** What the picker says. The stored word is the value; this is the reading. */
-export const PRICE_UOM_LABEL: Record<PriceUom, string> = {
-  bottle: 'per bottle',
-  case: 'per case',
-  keg: 'per keg',
-  pack: 'per pack',
-  split_case: 'per split case',
-  each: 'per item',
-  liter: 'per litre',
-};
+export const PRICE_UOM_LABEL = Object.fromEntries(
+  PRICE_UOMS.map((u) => [u, `per ${unitOne(u)}`]),
+) as Record<PriceUom, string>;
 
 /** A count of a unit in words: "1 bottle", "6 split cases" — never "bottle(s)" (ORD-W17). */
-const UOM_COUNT: Record<PriceUom, [string, string]> = {
-  bottle: ['bottle', 'bottles'],
-  case: ['case', 'cases'],
-  keg: ['keg', 'kegs'],
-  pack: ['pack', 'packs'],
-  split_case: ['split case', 'split cases'],
-  each: ['item', 'items'],
-  liter: ['litre', 'litres'],
-};
-
 export function uomCountWord(quantity: number | null, uom: PriceUom): string {
-  const [one, many] = UOM_COUNT[uom];
-  return quantity === 1 ? one : many;
+  return unitWord(uom, quantity);
 }
 
 /**
@@ -92,14 +77,15 @@ export function uomCountWord(quantity: number | null, uom: PriceUom): string {
  * "litre". The stored code is the database's spelling, not the page's —
  * `split_case`, `each` and `liter` printed as "per split_case", "per each" and
  * "per liter" beside rows that elsewhere say "litre" (2026-11-13 walk, r21).
+ * The words come from the one web table, `lib/unit-words.ts`.
  */
 export function uomOne(uom: PriceUom): string {
-  return UOM_COUNT[uom][0];
+  return unitOne(uom);
 }
 
 /** Several of a unit in words: "split cases", "items", "litres". */
 export function uomMany(uom: PriceUom): string {
-  return UOM_COUNT[uom][1];
+  return unitMany(uom);
 }
 
 export interface StatedPriceUnit {

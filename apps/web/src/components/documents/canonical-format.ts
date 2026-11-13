@@ -324,23 +324,11 @@ export function printedVintageOf(vintage: number | null, description: string | n
  * "6 bottles", "1 bottle", "2 split cases" (founder walk-through, 2026-10-01,
  * W6). The sentence printed the stored unit code as-is, so every quantity
  * other than one read "6 bottle" and a split case read "split_case". A unit
- * outside the gateway's `UOMS` list is printed as it came. Moved here from
- * VerdictBlock at W22 so the sheet's "per 12 bottles" uses the same words.
+ * outside the gateway's `UOMS` list is printed as it came. The words are the
+ * one web table in `lib/unit-words.ts` (2026-11-13), so an invoice line and the
+ * order it pays say "item" and "litre" alike.
  */
-const UNIT_WORDS: Record<string, readonly [string, string]> = {
-  bottle: ['bottle', 'bottles'],
-  case: ['case', 'cases'],
-  keg: ['keg', 'kegs'],
-  pack: ['pack', 'packs'],
-  split_case: ['split case', 'split cases'],
-  each: ['each', 'each'],
-  liter: ['liter', 'liters'],
-}
-export function unitWord(unit: string, qty: unknown): string {
-  const words = UNIT_WORDS[unit]
-  if (!words) return unit
-  return typeof qty === 'number' && qty === 1 ? words[0] : words[1]
-}
+export { unitWord } from '@/lib/unit-words'
 
 /**
  * Whether a line's printed name already carries its vintage (walk-through

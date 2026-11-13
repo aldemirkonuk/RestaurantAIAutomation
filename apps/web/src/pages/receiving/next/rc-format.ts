@@ -5,6 +5,8 @@
  * dash, never as a zero. A zero is a claim; a dash is an admission.
  */
 
+import { unitWord } from '@/lib/unit-words';
+
 export const EM = '—';
 
 /**
@@ -121,26 +123,17 @@ export function fmtMoneyWholeCcy(v: number | null | undefined, currency: string 
  * on the order row and is NOT re-derivable here, so this function never
  * multiplies. It only names the unit it was given.
  */
-const UNIT_PLURAL: Record<string, [string, string]> = {
-  bottle: ['bottle', 'bottles'],
-  case: ['case', 'cases'],
-  keg: ['keg', 'kegs'],
-  pack: ['pack', 'packs'],
-  split_case: ['split case', 'split cases'],
-  each: ['unit', 'units'],
-  liter: ['litre', 'litres'],
-};
-
 export function fmtUnits(qty: number | null | undefined, unitType: string | null | undefined): string {
   const n = num(qty);
   if (n === null) return EM;
   const rounded = Math.round(n);
   const key = (unitType ?? '').trim().toLowerCase();
-  const pair = UNIT_PLURAL[key];
   // An unrecognised unit is shown verbatim rather than folded into "bottles":
-  // guessing the unit is the whole defect this replaced.
-  if (!pair) return key ? `${rounded} ${key}` : `${rounded} (unit unknown)`;
-  return `${rounded} ${rounded === 1 ? pair[0] : pair[1]}`;
+  // guessing the unit is the whole defect this replaced. The words are the one
+  // web table (lib/unit-words.ts), so the door says "items" and "litres" as
+  // /orders does.
+  if (!key) return `${rounded} (unit unknown)`;
+  return `${rounded} ${unitWord(key, rounded)}`;
 }
 
 const sameYear = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });

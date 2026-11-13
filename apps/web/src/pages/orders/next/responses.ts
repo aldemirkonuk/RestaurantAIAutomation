@@ -36,6 +36,8 @@
  * panel as "nothing to worry about" rather than "nobody wrote this down".
  */
 
+import { unitWord } from '@/lib/unit-words';
+
 /**
  * The subset of `OrderConversationDto` this module reads.
  *
@@ -271,16 +273,6 @@ export function reasonIsGiven(reason: string): boolean {
 
 /* ── what was ordered, in the order's own unit ───────────────────────────── */
 
-const ORDER_UOM_PLURAL: Record<string, string> = {
-  bottle: 'bottles',
-  case: 'cases',
-  keg: 'kegs',
-  pack: 'packs',
-  split_case: 'split cases',
-  each: 'each',
-  liter: 'litres',
-};
-
 /**
  * "5 cases of 12 — 60 bottles". Null when the quantity is unknown.
  *
@@ -298,7 +290,8 @@ export function describeOrderedQuantity(order: {
 }): string | null {
   const { quantity, unitType, bottlesTotal } = order;
   if (quantity === null || !Number.isFinite(quantity)) return null;
-  const unit = unitType ? (ORDER_UOM_PLURAL[unitType] ?? `${unitType}s`) : null;
+  // "1 case", "5 cases", "2 items": the one web table (lib/unit-words.ts).
+  const unit = unitType ? unitWord(unitType, quantity) : null;
   const head = unit ? `${quantity} ${unit}` : `${quantity}`;
   if (bottlesTotal === null || !Number.isFinite(bottlesTotal) || quantity <= 0) return head;
   const pack = bottlesTotal / quantity;
