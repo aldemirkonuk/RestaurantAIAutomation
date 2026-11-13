@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { InvRow } from './useInventoryNextData';
+import { cellMoney, EM, type InvRow } from './useInventoryNextData';
 import type { Provider } from '../../../services/api/providers';
 
 // Per-test overrides for the stubbed reads (INV-W8 / INV-W9).
@@ -940,5 +940,45 @@ describe('the format reads in the house unit (RowExpansion.tsx:69,172)', () => {
     useRestaurantSettingsStore.setState({ measurementUnit: 'ml' });
     renderDrop();
     expect(screen.getByText('750ml')).toBeTruthy();
+  });
+});
+
+describe('a food or supply is costed in its own unit, with no price, margin, market or lots (#1221 follow-up)', () => {
+  const food = row({ name: 'Bread Flour', kind: 'food', bottleSizeMl: null, bottle: null, glass: null, wac: 0.009, openMl: 0 });
+  const eur = { state: 'recorded', code: 'EUR' } as const;
+
+  beforeEach(() => {
+    reads.detail = {
+      purchases: [
+        { id: 'l2', at: '2026-11-10T10:00:00Z', qty: 5000, unitCost: 0.009, orderId: null },
+        { id: 'l1', at: '2026-10-10T10:00:00Z', qty: 5000, unitCost: 0.0075, orderId: null },
+      ],
+    };
+  });
+
+  it('a food kept in g reads its costs a kg and says it is costed, not priced', () => {
+    renderDrop({ row: food, kind: 'food', uom: 'g' });
+    const drop = screen.getByTestId('row-dropdown');
+    const kg = (n: number) => `${cellMoney(n, eur)} a kg`;
+    expect(drop.textContent).toContain(`Weighted average cost${kg(9)}`);
+    expect(drop.textContent).toContain(`${kg(7.5)} → ${kg(9)} (+20%)`);
+    for (const k of ['Your price', 'Margin over cost', 'Market', 'Auction lots']) expect(within(drop).queryByText(k)).toBeNull();
+    expect(screen.getByTestId('good-not-priced')).toHaveTextContent('A food is costed, not priced');
+  });
+
+  it('a supply kept each reads each; one with no recorded unit reads a dash, never a guessed bottle', () => {
+    renderDrop({ row: food, kind: 'supply', uom: 'each' });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain(`Weighted average cost${cellMoney(0.009, eur)} each`);
+    expect(screen.getByTestId('good-not-priced')).toHaveTextContent('A supply is costed, not priced.');
+    cleanup();
+    renderDrop({ row: food, kind: 'supply', uom: null });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain(`Weighted average cost${EM}`);
+  });
+
+  it('a drink is drawn as before', () => {
+    renderDrop();
+    const drop = screen.getByTestId('row-dropdown');
+    for (const k of ['Your price', 'Margin over cost', 'Market', 'Auction lots']) expect(within(drop).getByText(k)).toBeTruthy();
+    expect(screen.queryByTestId('good-not-priced')).toBeNull();
   });
 });
