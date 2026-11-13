@@ -39,6 +39,8 @@ import {
   UpdateShiftDto,
 } from "./dto/team.dto";
 import {
+  claimRefusal,
+  ClaimCertificate,
   CLOCK_TIME,
   shiftSpan,
   shiftTimesRefusal,
@@ -1318,7 +1320,7 @@ export class ScheduleService {
 
     const { data: shift, error: shiftErr } = await this.sb
       .from("shifts")
-      .select("id, member_id, state, start_time, end_time, shift_date, schedule_id")
+      .select("id, member_id, state, start_time, end_time, shift_date, schedule_id, role")
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
@@ -1337,12 +1339,22 @@ export class ScheduleService {
     const read = { state: shift.state, memberId: shift.member_id ?? null };
 
     if (role === "staff") {
-      const { data: me } = await this.sb
+      const { data: me, error: meErr } = await this.sb
         .from("team_members")
-        .select("id")
+        .select("id, position, skills")
         .eq("restaurant_id", restaurantId)
         .eq("user_id", userId)
         .maybeSingle();
+      // A failed read is not "this shift is not yours": it was read as one.
+      if (meErr) {
+        this.logger.error(
+          `assignCover: could not read the team profile of ${userId} in ` +
+            `${restaurantId}: ${meErr.message}`,
+        );
+        throw new InternalServerErrorException(
+          "Could not read your team profile, so the shift was not claimed.",
+        );
+      }
       const isOpen = shift.state === "open" || !shift.member_id;
       if (!isOpen || !me || me.id !== dto.memberId) {
         throw new ForbiddenException(
@@ -1366,6 +1378,32 @@ export class ScheduleService {
           "This shift is in a week that is not published yet. Nothing was changed.",
         );
       }
+      // The shift's role and the person's certificates (QA round 4 B5).
+      // A manager assigning by hand is not held to these: they are the
+      // person who decides, and the hand-over shows the role as a warning.
+      const { data: certs, error: certsErr } = await this.sb
+        .from("team_certifications")
+        .select("cert_type, expires_at")
+        .eq("restaurant_id", restaurantId)
+        .eq("member_id", me.id);
+      if (certsErr) {
+        this.logger.error(
+          `assignCover: could not read the certificates of member ${me.id} ` +
+            `in ${restaurantId}: ${certsErr.message}`,
+        );
+        throw new InternalServerErrorException(
+          "Could not read your certificates, so the shift was not claimed.",
+        );
+      }
+      const refusal =
+        typeof shift.shift_date === "string"
+          ? claimRefusal(
+              { shift_date: shift.shift_date, role: shift.role },
+              { position: me.position, skills: me.skills },
+              (certs ?? []) as ClaimCertificate[],
+            )
+          : null;
+      if (refusal) throw new ForbiddenException(refusal);
     }
 
     // The claimant's own shifts that day (QA round 4 B5): the same rule as a

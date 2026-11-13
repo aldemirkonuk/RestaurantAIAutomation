@@ -600,6 +600,22 @@ export function mondayOf(iso: string): string {
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase();
 
 /**
+ * Whether a person's position or skills list a shift's role: the one rule the
+ * hand-over check and a staff member's own claim both use. Case and outer
+ * spaces do not count; a shift that names no role is anyone's.
+ */
+export function listsRole(
+  target: { position?: string | null; skills?: readonly string[] | null },
+  role: string | null | undefined,
+): boolean {
+  const want = norm(role);
+  if (!want) return true;
+  return [target?.position, ...(target?.skills ?? [])].some(
+    (r) => norm(r) === want,
+  );
+}
+
+/**
  * What the four checks say about each shift handed to `target`, keyed by the
  * shift's id (an empty list = nothing to say). `theirs` are the target's
  * other shifts (open and called-out rows are nobody's work and are skipped);
@@ -617,9 +633,6 @@ export function handoverChecks(
   const out = new Map<string, HandoverCheck[]>();
   const working = (theirs ?? []).filter(
     (s) => s && s.state !== "open" && s.state !== "callout",
-  );
-  const roles = new Set(
-    [target?.position, ...(target?.skills ?? [])].map(norm).filter((r) => r),
   );
   const approved = (leave ?? []).filter((l) => l?.status === "approved");
 
@@ -658,7 +671,7 @@ export function handoverChecks(
         message: "They have approved time off on this day.",
       });
     }
-    if (norm(g.role) && !roles.has(norm(g.role))) {
+    if (!listsRole(target, g.role)) {
       checks.push({
         code: "role",
         level: "warn",
