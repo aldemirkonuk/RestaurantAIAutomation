@@ -5,7 +5,7 @@ import { START } from './landing/doors'
 import { useAuth, LoginError } from '../contexts/AuthContext'
 import { Button } from '../components/ui'
 import { Mail, Lock, AlertCircle, ArrowRight, KeyRound, Fingerprint } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import '../components/brand/auth-house.css'
@@ -307,7 +307,7 @@ export function Login() {
         )
       })()}
       {(error || authError) && !on && (
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3"
@@ -317,7 +317,7 @@ export function Login() {
             <p className={on ? 'text-sm font-medium !text-red-900' : 'text-sm font-medium text-red-900'}>Login Failed</p>
             <p className={on ? 'text-sm !text-red-700' : 'text-sm text-red-700'}>{error || authError}</p>
           </div>
-        </motion.div>
+        </m.div>
       )}
 
       {/* ── Step 1: who are you? ─────────────────────────────────── */}

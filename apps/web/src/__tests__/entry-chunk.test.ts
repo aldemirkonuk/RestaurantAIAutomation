@@ -97,3 +97,51 @@ describe('the entry chunk every page loads', () => {
     expect(files).not.toContain(page)
   })
 })
+
+/**
+ * framer-motion's animation features (r19, 2026-11-13). The shell animates
+ * with `m` components inside App.tsx's `LazyMotion`, whose features load after
+ * the first paint (lib/motionFeatures.ts). One `motion` import in a file the
+ * entry reaches would put the whole feature set back in the entry chunk.
+ */
+describe('framer-motion in the entry chunk', () => {
+  const { files } = entryGraph()
+  const framerNames = (file: string): string[] => {
+    const sf = ts.createSourceFile(file, readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, false)
+    const names: string[] = []
+    for (const st of sf.statements) {
+      if (!ts.isImportDeclaration(st) || st.importClause?.isTypeOnly) continue
+      if ((st.moduleSpecifier as ts.StringLiteral).text !== 'framer-motion') continue
+      const b = st.importClause?.namedBindings
+      if (b && ts.isNamedImports(b)) {
+        for (const e of b.elements) if (!e.isTypeOnly) names.push((e.propertyName ?? e.name).text)
+      } else if (b) {
+        names.push('*')
+      }
+      if (st.importClause?.name) names.push('default')
+    }
+    return names
+  }
+  const ALLOWED = new Set(['m', 'AnimatePresence', 'LazyMotion', 'MotionConfig', 'useReducedMotion'])
+
+  it('the entry imports only the light framer-motion names', () => {
+    const heavy = files
+      .map((f) => [f, framerNames(join(SRC, f)).filter((n) => !ALLOWED.has(n))] as const)
+      .filter(([, names]) => names.length > 0)
+      .map(([f, names]) => `${f}: ${names.join(', ')}`)
+    expect(heavy).toEqual([])
+  })
+
+  it('still finds the shell files that animate (the check is not vacuous)', () => {
+    const animating = files.filter((f) => framerNames(join(SRC, f)).includes('m'))
+    expect(animating).toEqual(expect.arrayContaining(['components/layout/Sidebar.tsx', 'pages/Login.tsx']))
+  })
+
+  it('loads the features with import(), not with the entry', () => {
+    expect(files).not.toContain('lib/motionFeatures.ts')
+    const app = readFileSync(join(SRC, 'App.tsx'), 'utf8')
+    expect(app).toMatch(/<LazyMotion features=\{loadMotionFeatures\}>/)
+    expect(app).toMatch(/import\('\.\/lib\/motionFeatures'\)/)
+  })
+})
+

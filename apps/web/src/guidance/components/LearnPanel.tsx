@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import {
   X,
   CheckCircle2,
@@ -109,7 +109,7 @@ export function LearnPanel({
   const left = rect ? rect.right + 8 : 260
 
   return createPortal(
-    <motion.div
+    <m.div
       initial={isNarrow ? { opacity: 0, y: 24 } : { opacity: 0, x: -20 }}
       animate={isNarrow ? { opacity: 1, y: 0 } : { opacity: 1, x: 0 }}
       exit={isNarrow ? { opacity: 0, y: 24 } : { opacity: 0, x: -20 }}
@@ -274,7 +274,7 @@ export function LearnPanel({
           </button>
         </div>
       )}
-    </motion.div>,
+    </m.div>,
     document.body,
   )
 }

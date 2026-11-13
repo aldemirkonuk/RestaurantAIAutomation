@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import {
   Search,
@@ -250,7 +250,7 @@ export function Header({ title, subtitle }: HeaderProps) {
                     className="fixed inset-0 z-40"
                     onClick={() => setShowNotifications(false)}
                   />
-                  <motion.div
+                  <m.div
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -337,7 +337,7 @@ export function Header({ title, subtitle }: HeaderProps) {
                         View all notifications
                       </button>
                     </div>
-                  </motion.div>
+                  </m.div>
                 </>
               )}
             </AnimatePresence>
@@ -415,7 +415,7 @@ export function Header({ title, subtitle }: HeaderProps) {
                     className="fixed inset-0 z-40"
                     onClick={() => setShowUserMenu(false)}
                   />
-                  <motion.div
+                  <m.div
                     initial={{ opacity: 0, y: 10, scale: 0.95 }}
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -461,7 +461,7 @@ export function Header({ title, subtitle }: HeaderProps) {
                         Log Out
                       </button>
                     </div>
-                  </motion.div>
+                  </m.div>
                 </>
               )}
             </AnimatePresence>
@@ -472,14 +472,14 @@ export function Header({ title, subtitle }: HeaderProps) {
       {/* Search Modal */}
       <AnimatePresence>
         {showSearch && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-start justify-center pt-32"
             onClick={() => setShowSearch(false)}
           >
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: -20, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: -20, scale: 0.95 }}
@@ -518,8 +518,8 @@ export function Header({ title, subtitle }: HeaderProps) {
                   ))}
                 </div>
               </div>
-            </motion.div>
-          </motion.div>
+            </m.div>
+          </m.div>
         )}
       </AnimatePresence>
     </header>

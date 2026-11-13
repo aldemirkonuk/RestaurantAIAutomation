@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import { ChevronDown, MapPin } from 'lucide-react'
 import { useAuth, type RestaurantBranch } from '../../contexts/AuthContext'
 import { Popover } from '../mudavym/Sheet'
@@ -162,7 +162,7 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
         {open && !shell.on && (
           <>
             <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-            <motion.div
+            <m.div
               initial={{ opacity: 0, y: 8, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 8, scale: 0.98 }}
@@ -251,7 +251,7 @@ export function RestaurantBranchSwitcher({ compact = true, className }: Restaura
                   Manage Locations →
                 </button>
               </div>
-            </motion.div>
+            </m.div>
           </>
         )}
       </AnimatePresence>

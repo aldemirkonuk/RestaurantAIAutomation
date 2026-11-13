@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { cn } from '../../lib/utils'
 
 export interface GuidanceStripProps {
@@ -35,7 +35,7 @@ export function GuidanceStrip({
   className,
 }: GuidanceStripProps) {
   return (
-    <motion.div
+    <m.div
       role="region"
       aria-label={ariaLabel}
       aria-live="polite"
@@ -87,6 +87,6 @@ export function GuidanceStrip({
           {bodyId ? <span id={bodyId} className="sr-only">{body}</span> : null}
         </div>
       </div>
-    </motion.div>
+    </m.div>
   )
 }

@@ -44,6 +44,7 @@ function lazyWithRefresh<T extends ComponentType<any>>(
 }
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { LazyMotion } from 'framer-motion'
 import { AppToaster } from './components/mudavym/AppToaster'
 import { AuthProvider } from './contexts/AuthContext'
 import { GroundChoiceSync } from './lib/mudavym/GroundChoiceSync'
@@ -179,6 +180,12 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+// The shell animates with `m` components; their features arrive after the
+// first paint instead of riding in the entry chunk (lib/motionFeatures.ts).
+// The fetch starts as this module runs, before the first render asks for it.
+const motionFeatures = import('./lib/motionFeatures').then((mod) => mod.default)
+const loadMotionFeatures = () => motionFeatures
 
 function App() {
   return (
@@ -625,4 +632,12 @@ function App() {
   )
 }
 
-export default App
+function AppWithMotion() {
+  return (
+    <LazyMotion features={loadMotionFeatures}>
+      <App />
+    </LazyMotion>
+  )
+}
+
+export default AppWithMotion

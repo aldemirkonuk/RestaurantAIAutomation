@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
   Package,
@@ -255,7 +255,7 @@ function NavTooltip({ title, description, badgeLabel, x, y }: NavTooltipState) {
   // all, and the page's ground with it.
   if (shell.on) {
     return createPortal(
-      <motion.div
+      <m.div
         aria-hidden
         initial={{ opacity: 0, x: -4 }}
         animate={{ opacity: 1, x: 0 }}
@@ -269,13 +269,13 @@ function NavTooltip({ title, description, badgeLabel, x, y }: NavTooltipState) {
           {badgeLabel && <span className="mdv-hint__badge">{badgeLabel}</span>}
         </div>
         <p className="mdv-hint__desc">{description}</p>
-      </motion.div>,
+      </m.div>,
       document.body,
     )
   }
 
   return createPortal(
-    <motion.div
+    <m.div
       aria-hidden
       initial={{ opacity: 0, x: -4 }}
       animate={{ opacity: 1, x: 0 }}
@@ -292,7 +292,7 @@ function NavTooltip({ title, description, badgeLabel, x, y }: NavTooltipState) {
         )}
       </div>
       <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">{description}</p>
-    </motion.div>,
+    </m.div>,
     document.body,
   )
 }
@@ -522,7 +522,7 @@ export function Sidebar() {
   }
 
   return (
-    <motion.aside
+    <m.aside
       initial={false}
       animate={{ width: effectiveCollapsed ? 72 : 260 }}
       transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
@@ -550,7 +550,7 @@ export function Sidebar() {
           {effectiveCollapsed && <BrandMark variant="mark" size={22} alt="" />}
           <AnimatePresence>
             {!effectiveCollapsed && (
-              <motion.div
+              <m.div
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
                 exit={{ opacity: 0, width: 0 }}
@@ -560,7 +560,7 @@ export function Sidebar() {
                   <BrandMark size={24} alt="Mudavym" />
                 </h1>
                 <p className="text-[10px] text-gray-500 mt-0.5 tracking-wide">for restaurants</p>
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
         </NavLink>
@@ -853,7 +853,7 @@ export function Sidebar() {
           </div>
           <AnimatePresence>
             {!effectiveCollapsed && (
-              <motion.div
+              <m.div
                 initial={{ opacity: 0, width: 0 }}
                 animate={{ opacity: 1, width: 'auto' }}
                 exit={{ opacity: 0, width: 0 }}
@@ -863,7 +863,7 @@ export function Sidebar() {
                   {user?.name || 'User'}
                 </p>
                 <p className="truncate text-[10px] capitalize text-gray-500">{user?.role || 'Manager'}</p>
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
           {!effectiveCollapsed && (
@@ -892,7 +892,7 @@ export function Sidebar() {
       </button>
 
       {navTooltip && <NavTooltip {...navTooltip} />}
-    </motion.aside>
+    </m.aside>
   )
 }
 
