@@ -306,6 +306,28 @@ describe('B1 — a shift with nothing recorded has the legal minimum, assumed (a
     expect(api.updateShift.mock.calls[0][1]).toMatchObject({ breakMinutes: 30 });
   });
 
+  // r29 walk: an edit carried `scheduleId`, which `UpdateShiftDto` refuses
+  // under forbidNonWhitelisted, so no shift on a schedule could be saved here.
+  it('an edit sends only what an update takes; a new shift still names its schedule', async () => {
+    render(
+      <ShiftSheet target={{ shift: baseShift as never }} members={[]} scheduleId="sch1" onClose={() => {}} onChanged={() => {}} />,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save the shift' }));
+    await vi.waitFor(() => expect(api.updateShift).toHaveBeenCalled());
+    expect('scheduleId' in (api.updateShift.mock.calls[0][1] as object)).toBe(false);
+  });
+
+  it('a new shift is created on the week it was opened from', async () => {
+    render(
+      <ShiftSheet target={{ date: '2026-09-07' }} members={[]} scheduleId="sch1" onClose={() => {}} onChanged={() => {}} />,
+      { wrapper },
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add the shift' }));
+    await vi.waitFor(() => expect(api.createShift).toHaveBeenCalled());
+    expect(api.createShift.mock.calls[0][0]).toMatchObject({ scheduleId: 'sch1' });
+  });
+
   it('names the minimum owed for the work a short break leaves, not a different minimum for the shift', () => {
     // An 8-hour shift complies with 30 minutes (7.5 h of work); a 20-minute
     // break leaves 7h40m of work, which is owed 60. "60 for this shift" would
