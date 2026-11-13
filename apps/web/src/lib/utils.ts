@@ -8,6 +8,13 @@ export function cn(...inputs: ClassValue[]) {
 export type FormatMode = 'compact' | 'full' | 'table'
 
 /**
+ * @deprecated Prints a hardcoded `$` for every house: it takes no currency.
+ * House money goes through the house's currency (`useHouseMoney` in
+ * `pages/cellar/next/useHouseMoney.ts`), a record's money through its own code
+ * (`fmtMoney(n, code)` in `pages/receipts/next/rc2-format.ts`). Its last three
+ * callers are being moved off it by open stacks; `__tests__/no-new-dollar-
+ * formatmoney.test.ts` keeps a new one from appearing.
+ *
  * Format monetary values with context-appropriate display:
  * - compact: KPI cards, badges, calendar ($1.4K, $2.3M)
  * - full: default display ($845.50, $14,523)
