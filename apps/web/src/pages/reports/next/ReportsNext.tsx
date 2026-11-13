@@ -94,15 +94,24 @@ function Action({
   onClick,
   strong,
   tour,
+  disabled,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   strong?: boolean;
   /** The page tour's anchor (guidance/content/reports.ts). */
   tour?: string;
+  disabled?: boolean;
 }) {
   return (
-    <button type="button" className="rp-btn rp-ink rp-focus" data-strong={strong} data-tour={tour} onClick={onClick}>
+    <button
+      type="button"
+      className="rp-btn rp-ink rp-focus"
+      data-strong={strong}
+      data-tour={tour}
+      disabled={disabled}
+      onClick={onClick}
+    >
       {children}
     </button>
   );
@@ -163,10 +172,14 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const view = draft ?? data.sheet;
   const onSheet = useMemo(() => new Set(view.cuttings.map((c) => c.id)), [view]);
 
+  /* Arranging the HOUSE sheet while the reader's own is still being read —
+     or could not be read — and ruling it off would write the house sheet over
+     theirs. So the paper only opens once the sheet is known. */
   const startArranging = useCallback(() => {
+    if (!data.sheetKnown) return;
     setDraft({ cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) });
     setArranging(true);
-  }, [data.sheet]);
+  }, [data.sheet, data.sheetKnown]);
 
   const ruleOff = useCallback(() => {
     if (draft) data.saveSheet(draft);
@@ -307,6 +320,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
    */
   const placeProposed = useCallback(
     (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => {
+      // Same rule as "Arrange the sheet": no draft is built on a sheet that is
+      // not the reader's. The desk's button lives inside a cutting, and no
+      // cutting is drawn until the sheet is known; when it could not be read,
+      // the page already says arranging is off.
+      if (!data.sheetKnown) return;
       if (cut.days !== null) setTillDays(cut.days);
       setDraft((d) => {
         const base = d ?? { cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) };
@@ -324,7 +342,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       });
       setArranging(true);
     },
-    [data.sheet],
+    [data.sheet, data.sheetKnown],
   );
   placeRef.current = placeProposed;
 
@@ -416,7 +434,9 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
                 </Action>
               </>
             ) : (
-              <Action tour="reports-arrange" onClick={startArranging}>Arrange the sheet</Action>
+              <Action tour="reports-arrange" onClick={startArranging} disabled={!data.sheetKnown}>
+                Arrange the sheet
+              </Action>
             )}
           </div>
         </header>
@@ -466,11 +486,34 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
           </div>
         )}
 
+        {data.sheetUnread && data.restaurantId !== null && (
+          <p role="status" className="rp-note" style={{ marginBottom: 12 }}>
+            {data.sheetUnread}
+          </p>
+        )}
+
+        {data.sheetStale && data.restaurantId !== null && (
+          <p role="status" className="rp-note" style={{ marginBottom: 12 }}>
+            {data.sheetStale}
+          </p>
+        )}
+
         {data.restaurantId === null ? (
           <p role="status" className="rp-note">
             No restaurant is active yet, so none of these registers is addressed to anyone. Pick a
             restaurant and the sheet fills in.
           </p>
+        ) : !data.sheetKnown && !data.sheetUnread ? (
+          /* The reader's own arrangement is still on its way. Plain paper, not
+             the house sheet: drawing the house sheet first and then swapping it
+             for theirs is a layout jump, and arranging it would save it over
+             theirs. The reads behind the sheet are already in flight. */
+          <div className="rp-outlines" role="status">
+            <span className="rp-sr-only">Reading how you arranged this sheet…</span>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="rp-outline" aria-hidden />
+            ))}
+          </div>
         ) : view.cuttings.length === 0 ? (
           <p role="status" className="rp-note">
             Every cutting has been taken off this sheet. Nothing is being read — press “Arrange the
