@@ -4,11 +4,11 @@
  * be opened. ADR 0213 F6 keeps the ink / pencil words; the proof now says what
  * each mark means, and only a line worth a look is a button that says so.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('../../services/api/menus', () => ({ reviewMenuItem: vi.fn(), addMenuItem: vi.fn() }))
+vi.mock('../../services/api/menus', () => ({ reviewMenuItem: vi.fn().mockResolvedValue({}), addMenuItem: vi.fn() }))
 vi.mock('../../components/brand/BrandMark', () => ({ BrandMark: () => <span>Mudavym</span> }))
 
 import HouseMenu from '../HouseMenu'
@@ -68,5 +68,78 @@ describe('the first proof says what its marks mean', () => {
     page()
     const line = screen.getByRole('button', { name: /Mystery Pour/ })
     expect(within(line).getByText('Choose its section')).toBeInTheDocument()
+  })
+})
+
+/**
+ * r13 walk 2026-11-12: "3 READ" sat over 2 in ink + 0 in pencil (the kitchen
+ * line was read but shown in neither), and "In ink: set as read." was the only
+ * key line while the one ink line was set by the owner.
+ */
+describe('the first proof counts and keys only what is true', () => {
+  const kitchen = (id: string) => ({ menuItemId: id, name: `Pizza ${id}`, category: 'food', rawText: 'pizza', matched: false, needsReview: false })
+  const n = (id: string, row: Record<string, unknown>) => ({ ...row, menuItemId: id, name: `${String(row.name)} ${id}` })
+  const cells = () =>
+    [...screen.getByRole('group', { name: 'The reading count' }).querySelectorAll('strong')].map((cell) =>
+      Number(cell.textContent),
+    )
+
+  it('read = in ink + in pencil + set aside, for every mix of up to 2 of each', () => {
+    for (let i = 0; i <= 2; i++) for (let p = 0; p <= 2; p++) for (let r = 0; r <= 1; r++) for (let k = 0; k <= 2; k++) {
+      const rows = [
+        ...Array.from({ length: i }, (_, x) => n(`i${x}`, ink)),
+        ...Array.from({ length: p }, (_, x) => n(`p${x}`, pencil)),
+        ...Array.from({ length: r }, (_, x) => n(`r${x}`, ring)),
+        ...Array.from({ length: k }, (_, x) => kitchen(`k${x}`)),
+      ]
+      if (rows.length === 0) continue
+      sessionStorage.clear()
+      proof(rows)
+      page()
+      const [read, inInk, inPencil, setAside = 0] = cells()
+      expect([read, inInk, inPencil, setAside]).toEqual([rows.length, i, p + r, k])
+      expect(read).toBe(inInk + inPencil + setAside)
+      cleanup()
+    }
+  })
+
+  it('shows no "set aside" cell when nothing was set aside', () => {
+    proof([ink, pencil])
+    page()
+    expect(screen.getByRole('group', { name: 'The reading count' })).not.toHaveTextContent(/set aside/)
+  })
+
+  it('a line the owner placed is keyed "set by you", never "set as read"', async () => {
+    proof([ring])
+    page()
+    fireEvent.click(screen.getByRole('button', { name: /Mystery Pour/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Red wine' }))
+    const key = screen.getByRole('list', { name: 'What the marks mean' })
+    await waitFor(() => expect(within(key).getByText('In ink: set by you.')).toBeInTheDocument())
+    expect(within(key).queryByText('In ink: set as read.')).toBeNull()
+  })
+
+  it('keys both when one ink line was read and one was set by the owner, and keeps it after a reload', async () => {
+    proof([ink, ring])
+    page()
+    fireEvent.click(screen.getByRole('button', { name: /Mystery Pour/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Red wine' }))
+    await waitFor(() => expect(screen.getByText('In ink: set by you.')).toBeInTheDocument())
+    cleanup()
+    page()
+    const key = screen.getByRole('list', { name: 'What the marks mean' })
+    expect(within(key).getByText('In ink: set as read.')).toBeInTheDocument()
+    expect(within(key).getByText('In ink: set by you.')).toBeInTheDocument()
+  })
+
+  it('a typed menu keys its ink lines as typed, not read', () => {
+    sessionStorage.setItem(
+      FIRST_PROOF_KEY,
+      JSON.stringify({ menuId: 'm1', itemsExtracted: 1, submissionsCreated: 0, items: [ink], source: { kept: false, failure: null } }),
+    )
+    page()
+    const key = screen.getByRole('list', { name: 'What the marks mean' })
+    expect(within(key).getByText('In ink: set as you typed it.')).toBeInTheDocument()
+    expect(within(key).queryByText('In ink: set as read.')).toBeNull()
   })
 })
