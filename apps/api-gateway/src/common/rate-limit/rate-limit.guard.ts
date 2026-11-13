@@ -33,6 +33,84 @@ export const DEFAULT_RATE_LIMITS: Record<string, RateLimitConfig> = {
 };
 
 /**
+ * The limit for a signed-in session reading itself: `GET /auth/me`,
+ * `/auth/me/role`, `/auth/me/linked-providers`, `/auth/houses` and
+ * `/auth/verify` (the last added by #1248, which named the same budget
+ * `IDENTITY_READ_RATE_LIMIT`; one constant serves both).
+ *
+ * Without it these reads fall into the `auth` bucket above only because their
+ * path contains `/auth/`: 10 a minute, keyed on the address. That bucket is
+ * for guesses at a password or a code. A session read is not a guess. It
+ * carries a token that `JwtAuthGuard` checks, and it tells a caller without
+ * one nothing. Every page load makes one, and every device in a house shares
+ * the house's address. Measured on the local stack 2026-11-12: a full load
+ * asked `/auth/me` three times (two in production), so four loads in a
+ * minute from one address answered 429, and the web sent the person to
+ * /login (#1092 handles the 429 itself; this removes the cause).
+ *
+ * So these reads get the ordinary read limit, set on each handler. Every
+ * other `/auth/` route keeps 10 a minute. A new route under `/auth/` still
+ * gets the strict limit unless someone opts it in here. Moving the path
+ * test instead would fail open.
+ */
+export const SESSION_READ_RATE_LIMIT: RateLimitConfig = DEFAULT_RATE_LIMITS.default;
+
+/**
+ * The limit for a session renewing itself: `POST /auth/refresh` and
+ * `POST /auth/switch-restaurant` (readers lane r4, 2026-11-12).
+ *
+ * Both re-issue a token pair from a credential the caller already holds, so
+ * neither is a guess, and the `auth` bucket's 10 a minute per address buys
+ * nothing against one:
+ *
+ *   * A refresh token is a JWT signed with the refresh secret
+ *     (`refreshAccessToken`: `jwtService.verify` before any read). An invalid
+ *     one is refused on its signature, before the database is asked
+ *     anything; finding a valid one means forging an HMAC, which no request
+ *     rate brings within reach. A stolen valid one needs a single request.
+ *   * `switch-restaurant` sits behind `JwtAuthGuard` and answers only for
+ *     the caller's own memberships.
+ *
+ * What the 10 a minute did do: access tokens last 15 minutes, every device
+ * and every tab in a house refreshes on its own clock, and they all share the
+ * house's address. Tablets signed in together at the start of a shift expire
+ * together, so the eleventh refresh in a minute answered 429 and that device
+ * fell to /login, then again every fifteen minutes. The session reads above
+ * left the bucket for the same reason (#1136).
+ *
+ * So both take the ordinary limit, 100 a minute, keyed as before on address
+ * and route, so the refresh bucket is not the login bucket and loosening one
+ * does not loosen the other. `login`, the code and reset doors, `register/*`,
+ * `join` and every route not opted in here keep 10 a minute.
+ *
+ * Why 100 and not the 30 the spec measures a house needing (its tablets and
+ * tabs expiring in one minute): the session reads those devices make
+ * (`SESSION_READ_RATE_LIMIT`) are allowed 100, and a renewal capped below the
+ * reads it keeps alive would put the same devices back on /login, the fault
+ * this removes. What the 100 costs: `refresh` is `@Public()`, so one address
+ * can send it 100 tokens a minute where it could send 10. A forged or garbage
+ * token is refused by `jwtService.verify` on its signature before any read;
+ * only a validly signed token reaches the users table, and its holder already
+ * holds the session.
+ */
+export const SESSION_RENEWAL_RATE_LIMIT: RateLimitConfig =
+  DEFAULT_RATE_LIMITS.default;
+
+/**
+ * The limit for a session ending itself: `POST /auth/logout` (r5, 2026-11-12).
+ *
+ * Signing out sits behind `JwtAuthGuard`, so it carries a valid access token
+ * and guesses nothing. In the `auth` bucket it shared 10 a minute per address
+ * with every device in the house: at the end of a shift, the eleventh tablet
+ * signing out in a minute was answered 429 and stayed signed in, which is the
+ * opposite of what a shared tablet needs. It takes the ordinary limit,
+ * keyed as before on address and route, so it never spends the sign-in
+ * bucket. Rejected: no limit at all (`@SkipRateLimit`), since a sign-out
+ * writes a revocation; and keeping 10, for the reason above.
+ */
+export const SESSION_END_RATE_LIMIT: RateLimitConfig = DEFAULT_RATE_LIMITS.default;
+
+/**
  * Decorator to set custom rate limit for a route
  */
 export const RATE_LIMIT_KEY = "rateLimit";

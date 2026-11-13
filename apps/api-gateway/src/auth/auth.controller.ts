@@ -45,7 +45,12 @@ import {
 } from "./dto/password-reset.dto";
 import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
 import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
-import { RateLimit } from "../common/rate-limit";
+import {
+  RateLimit,
+  SESSION_READ_RATE_LIMIT,
+  SESSION_RENEWAL_RATE_LIMIT,
+  SESSION_END_RATE_LIMIT,
+} from "../common/rate-limit";
 import { Request } from "express";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
@@ -222,6 +227,8 @@ export class AuthController {
   // the person's; the new pair then names no house (ADR 0164, R5).
   @Public()
   @Post("refresh")
+  // A session renewing itself, not a guess (SESSION_RENEWAL_RATE_LIMIT).
+  @RateLimit(SESSION_RENEWAL_RATE_LIMIT)
   async refresh(@Body() body: { refreshToken: string }) {
     const tokens = await this.authService.refreshAccessToken(body.refreshToken);
 
@@ -236,6 +243,8 @@ export class AuthController {
    */
   @Post("logout")
   @UseGuards(JwtAuthGuard)
+  // A session ending itself, not a guess (SESSION_END_RATE_LIMIT).
+  @RateLimit(SESSION_END_RATE_LIMIT)
   @AllowUnverified() // leaving must never require verifying first
   @AllowsNoHouse() // nor choosing a house
   async logout(
@@ -258,6 +267,8 @@ export class AuthController {
    */
   @Get("me")
   @UseGuards(JwtAuthGuard)
+  // A session reading itself, not a sign-in attempt (SESSION_READ_RATE_LIMIT).
+  @RateLimit(SESSION_READ_RATE_LIMIT)
   // The web client populates `user` from here and nowhere else. Gate this and
   // an unverified session cannot discover that it is unverified — it just
   // fails to load, which is indistinguishable from a broken login.
@@ -381,6 +392,7 @@ export class AuthController {
 
   @Get("me/linked-providers")
   @UseGuards(JwtAuthGuard)
+  @RateLimit(SESSION_READ_RATE_LIMIT)
   @AllowsNoHouse()
   async getLinkedProviders(@Req() req: Request & { user: any }) {
     const linkedProviders = await this.authService.getLinkedProviders(
@@ -448,6 +460,7 @@ export class AuthController {
 
   @Get("me/role")
   @UseGuards(JwtAuthGuard)
+  @RateLimit(SESSION_READ_RATE_LIMIT)
   @AllowUnverified() // AuthContext fetches this alongside /auth/me on boot
   async getMyRole(
     @Req() req: Request & { user: any },
@@ -486,6 +499,8 @@ export class AuthController {
    */
   @Get("verify")
   @UseGuards(JwtAuthGuard)
+  // A session asking whether its token is live, not a guess (#1248).
+  @RateLimit(SESSION_READ_RATE_LIMIT)
   @AllowUnverified() // answers "is this token live?", not "may you use the app?"
   @AllowsNoHouse()
   async verifyToken() {
@@ -559,7 +574,9 @@ export class AuthController {
   }
 
   /**
-   * Verify email with the token from the verification email.
+   * Verify email with the token from the verification email, or with the
+   * six-digit code the same email carries (onboarding OB-3, founder /goal
+   * 2026-11-07): `{ token }` or `{ code }`, never both.
    *
    * Signed-in only (ADR 0229 fork 12; the founder, 2026-09-28, item 81, "Link
    * needs sign-in (Recommended)"): the link verifies only for a session of
@@ -582,16 +599,28 @@ export class AuthController {
     @Req() req: Request & { user: any },
     @Body() dto: VerifyEmailDto,
   ) {
-    const tokens = await this.authService.verifyEmail(
-      dto.token,
-      req.user?.userId ?? null,
-      req.user?.restaurantId ?? null,
-    );
+    // The mail's six-digit code (onboarding OB-3) or its link's token; the
+    // DTO admits exactly one. Same session rules, same answer.
+    const tokens =
+      dto.code !== undefined
+        ? await this.authService.verifyEmailWithCode(
+            dto.code,
+            req.user?.userId ?? null,
+            req.user?.restaurantId ?? null,
+          )
+        : await this.authService.verifyEmail(
+            dto.token as string,
+            req.user?.userId ?? null,
+            req.user?.restaurantId ?? null,
+          );
     return { success: true, ...tokens, message: "Email verified" };
   }
 
   /**
-   * Resend verification email — rate-limited to 1 per minute.
+   * Resend verification email — rate-limited to 1 per minute. Answers
+   * `verificationMail: 'sent' | 'not_sent'` as sign-up does (onboarding OB-3,
+   * round 6 #789): `success` means the request was handled, not that a mail
+   * left.
    */
   @Post("resend-verification")
   @UseGuards(JwtAuthGuard)
@@ -614,6 +643,7 @@ export class AuthController {
    */
   @Post("switch-restaurant")
   @UseGuards(JwtAuthGuard)
+  @RateLimit(SESSION_RENEWAL_RATE_LIMIT)
   @AllowsTenantChange()
   @AllowsNoHouse() // choosing a house is how a session in none gets one
   async switchRestaurant(
@@ -643,6 +673,7 @@ export class AuthController {
    */
   @Get("houses")
   @UseGuards(JwtAuthGuard)
+  @RateLimit(SESSION_READ_RATE_LIMIT)
   @AllowsNoHouse()
   async houses(@Req() req: Request & { user: any }) {
     // `held`: memberships waiting for this person to accept (ADR 0229 fork 13).

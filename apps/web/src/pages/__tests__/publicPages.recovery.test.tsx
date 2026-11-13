@@ -121,7 +121,9 @@ it('a signed-out click on a verification link is sent to sign in (or the emailed
   ).not.toBeInTheDocument()
   expect(h.post).not.toHaveBeenCalled()
 })
-it('a signed-in click whose session the server refuses turns into the sign-in path, and another account is told to switch', async () => {
+// OB-6: a signed-in person's link now runs once on its own (no click), so
+// the refusal is read from that one automatic post.
+it('a signed-in link whose session the server refuses turns into the sign-in path, and another account is told to switch', async () => {
   h.auth.user = { email: 'someone@house.test' }
   h.auth.isAuthenticated = true
   h.post.mockRejectedValueOnce({ response: { status: 401, data: {} } })
@@ -129,7 +131,6 @@ it('a signed-in click whose session the server refuses turns into the sign-in pa
     <VerifyEmail />,
     '/verify-email?token=3f2b8c1e-9a4d-4c7b-8e2f-1a2b3c4d5e6f',
   )
-  fireEvent.click(screen.getByRole('button', { name: 'Verify my email' }))
   expect(
     await screen.findByRole('link', { name: 'Sign in to verify' }),
   ).toBeInTheDocument()
@@ -142,13 +143,18 @@ it('a signed-in click whose session the server refuses turns into the sign-in pa
     <VerifyEmail />,
     '/verify-email?token=3f2b8c1e-9a4d-4c7b-8e2f-1a2b3c4d5e6f',
   )
-  fireEvent.click(screen.getByRole('button', { name: 'Verify my email' }))
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'This link is for a different account',
   )
   expect(
     screen.getByRole('button', { name: 'Sign out and sign in to that account' }),
   ).toBeInTheDocument()
+  // One automatic post per mount, each carrying the link's token.
+  expect(h.post).toHaveBeenCalledTimes(2)
+  expect(h.post.mock.calls.map((c) => c[1])).toEqual([
+    { token: '3f2b8c1e-9a4d-4c7b-8e2f-1a2b3c4d5e6f' },
+    { token: '3f2b8c1e-9a4d-4c7b-8e2f-1a2b3c4d5e6f' },
+  ])
 })
 it('does not call a failed invite preview expired and permits retry', async () => {
   h.get
