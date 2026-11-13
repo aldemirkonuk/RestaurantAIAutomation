@@ -213,7 +213,7 @@ describe('the words the panel uses', () => {
         failed: [{ menuItemId: 'l9', name: 'Barolo', error: 'timeout' }],
       }),
     ).toBe(
-      'This is now the current menu: 3 lines, 1 wine priced from this menu, 1 kept a price someone set after this menu was chosen, 1 not matched to a wine, so no price, 1 flagged for a blank price. 1 could not be priced: Barolo (timeout).',
+      'This is now the current menu: 3 lines, 1 wine priced from this menu, 1 wine kept a price someone set after this menu was chosen, 1 line not matched to a wine, so no price, 1 flagged for a blank price. 1 could not be priced: Barolo (timeout).',
     );
   });
 
@@ -242,7 +242,7 @@ describe('the words the panel uses', () => {
       returned: [{ menuItemId: 'l1', name: 'Barolo' }],
     });
     expect(s).toBe(
-      'This is now the current menu: 4 lines, 2 wines priced from this menu, 1 held by a lock, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at 95.00); Soave (glass, locked at 9.00). Back on the menu with its lock still holding: Barolo.',
+      'This is now the current menu: 4 lines, 2 wines priced from this menu, 1 wine at its locked price, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at 95.00); Soave (glass, locked at 9.00). Back on the menu with its lock still holding: Barolo.',
     );
   });
 });

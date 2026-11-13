@@ -169,13 +169,14 @@ export function sourceWords(v: MenuVersion): string {
  */
 const OUTCOME_WORDS: Record<string, (n: number) => string> = {
   // Counted by line, as the gateway tallies priceSync: one wine can carry a
-  // bottle and a glass price, and the plan counts those apart ("7 prices").
+  // bottle and a glass price. Every count names its unit, and the plan counts
+  // the same wines in the same words (MenuPlan.tsx `lineOutcome`).
   changed: (n) => `${n} wine${n === 1 ? '' : 's'} priced from this menu`,
-  unchanged: (n) => `${n} already at the menu's price`,
-  stale: (n) => `${n} kept a price someone set after this menu was chosen`,
-  locked: (n) => `${n} held by a lock`,
-  no_price: (n) => `${n} with no price on the line`,
-  not_linked: (n) => `${n} not matched to a wine, so no price`,
+  unchanged: (n) => `${n} wine${n === 1 ? '' : 's'} already at the menu's price`,
+  stale: (n) => `${n} wine${n === 1 ? '' : 's'} kept a price someone set after this menu was chosen`,
+  locked: (n) => `${n} wine${n === 1 ? '' : 's'} at ${n === 1 ? 'its' : 'their'} locked price`,
+  no_price: (n) => `${n} line${n === 1 ? '' : 's'} with no price on the menu`,
+  not_linked: (n) => `${n} line${n === 1 ? '' : 's'} not matched to a wine, so no price`,
   failed: () => '',
 };
 
