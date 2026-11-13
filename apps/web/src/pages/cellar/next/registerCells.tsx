@@ -25,10 +25,10 @@ import {
   DOOR_CHECKED_NOTE,
   EM,
   count,
-  money,
   shortDate,
   type HouseBookId,
 } from './cellar-format';
+import type { SayMoney } from './useHouseMoney';
 import type { RegisterRowVM } from './useCellarNextData';
 
 /**
@@ -90,7 +90,12 @@ export function doorCheckedMark(withInvoices = false): ReactNode {
   );
 }
 
-export function cellFor(r: RegisterRowVM, id: string): ReactNode {
+/**
+ * `money` is the house's (`useHouseMoney`), handed in by the register that
+ * draws the cell: this module is plain functions, and the cellar's `money()`
+ * printed $ for every house.
+ */
+export function cellFor(r: RegisterRowVM, id: string, money: SayMoney): ReactNode {
   const h = r.house;
   const c = r.catalogue;
   switch (id) {
