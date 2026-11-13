@@ -38,6 +38,7 @@ import { Sheet } from '../../../components/mudavym/Sheet';
 // survives here, so saving an entry clears any copy the legacy page queued for
 // it in this browser. Nothing in `pages/calendar/next/**` enqueues any more.
 import { cancelRemindersForEvent } from '../../../lib/reminder-scheduler';
+import { getErrorMessage, isUnconfirmedWrite } from '../../../services/api/client';
 import { EM, SEAL_HEX, clock, longDay } from './cal-format';
 import ReminderRegister from './ReminderRegister';
 import type { CalEvent, CalendarData, CalendarPayload, EventStatus } from './useCalendarNextData';
@@ -93,6 +94,19 @@ function enumTypeFor(name: string): string {
   const slug = name.trim().toLowerCase().replace(/\s+/g, '_');
   return ENUM_TYPES.has(slug) ? slug : 'custom';
 }
+
+/**
+ * A refusal as one sentence ending in a stop. The gateway's body can carry a
+ * list of field messages; they are joined rather than run together.
+ */
+function saidOf(failure: unknown): string {
+  const raw: unknown = getErrorMessage(failure);
+  const said = (Array.isArray(raw) ? raw.join('. ') : String(raw ?? '')).trim();
+  if (!said) return 'The calendar did not accept this.';
+  return /[.!?]$/.test(said) ? said : `${said}.`;
+}
+
+const ENDS_BEFORE = 'An entry cannot end before the day it starts. Nothing was saved.';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -185,13 +199,21 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
       color: color || undefined,
       eventTime: allDay || !startTime ? undefined : startTime,
       eventTimeEnd: allDay || !endTime ? undefined : endTime,
-      eventDateEnd: allDay || !endDate ? undefined : endDate,
+      // An all-day entry can run over several days (a closure, an event
+      // weekend), so the end day is sent for it too (QA round 4 B5).
+      eventDateEnd: endDate || undefined,
       reminderEnabled: remindOn,
       reminderDaysBefore: remindOn ? remindDays : 0,
     };
 
+    // The gateway refuses this too; saying it here spares the round trip.
+    const endsBefore = !!endDate && endDate < date;
+
     if (editing) {
       const patch: Partial<CalendarPayload> = { ...base };
+      // A cleared end day is sent as null, which the gateway reads as "no end
+      // day"; leaving it out would keep the stored one.
+      if (!endDate && editing.endDate) patch.eventDateEnd = null;
       if (storedTypeOutside && !typeTouched) delete patch.eventType;
       if (storedStatusOutside && !statusTouched) delete patch.status;
       if (editing.isOccurrence) {
@@ -211,6 +233,9 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
         }
         delete patch.eventDate;
         delete patch.eventDateEnd;
+      } else if (endsBefore) {
+        setOccurrenceRefusal(ENDS_BEFORE);
+        return;
       }
       setOccurrenceRefusal(null);
       data.update.mutate(
@@ -225,6 +250,11 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
       return;
     }
 
+    if (endsBefore) {
+      setOccurrenceRefusal(ENDS_BEFORE);
+      return;
+    }
+    setOccurrenceRefusal(null);
     data.create.mutate(
       {
         ...base,
@@ -396,7 +426,6 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
               className="cn-input"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              disabled={allDay}
             />
           </Field>
         </div>
@@ -566,8 +595,13 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
 
         {failure && (
           <p role="status" className="cn-notice" style={{ marginTop: 10 }}>
-            The gateway refused this write ({failure instanceof Error ? failure.message : 'unknown error'}).
-            Nothing was saved.
+            {/* The gateway's own sentence, never the transport's "Request
+                failed with status code 400"; and "nothing was saved" only
+                when the answer says so (a 5xx or no answer may have saved). */}
+            {saidOf(failure)}{' '}
+            {isUnconfirmedWrite(failure)
+              ? 'It may have been saved; reload the calendar to check before trying again.'
+              : 'Nothing was saved.'}
           </p>
         )}
 

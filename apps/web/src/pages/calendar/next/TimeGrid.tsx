@@ -25,6 +25,7 @@ import {
   clock,
   dayKey,
   fromMinutes,
+  longDay,
   parseDayKey,
   snapMinutes,
   startOfWeek,
@@ -57,7 +58,7 @@ export interface TimeGridProps {
 
 /** Where an event sits on the hour ruler, or null when it has no recorded time. */
 export function placed(e: CalEvent): { start: number; end: number } | null {
-  if (e.allDay) return null;
+  if (e.allDay || e.continuesFrom) return null;
   const start = toMinutes(e.startTime);
   if (start === null) return null;
   const rawEnd = toMinutes(e.endTime);
@@ -183,9 +184,15 @@ export default function TimeGrid({ data, cursor, days, onOpenEvent, onCreateAt }
                   data-spine={isDelivery(e)}
                   data-ruled={data.isRuledOff(e)}
                   onClick={() => onOpenEvent(e)}
-                  title={e.allDay ? e.title : `${e.title} — no time recorded`}
+                  title={
+                    e.continuesFrom
+                      ? `${e.title} — continues from ${longDay(e.continuesFrom)}`
+                      : e.allDay
+                        ? e.title
+                        : `${e.title} — no time recorded`
+                  }
                 >
-                  {!e.allDay && <span className="cn-ribbon-time">{EM}</span>}
+                  {!e.allDay && !e.continuesFrom && <span className="cn-ribbon-time">{EM}</span>}
                   {e.title}
                 </button>
               ))}

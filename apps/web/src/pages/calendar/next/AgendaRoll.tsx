@@ -52,7 +52,9 @@ export default function AgendaRoll({ data, onOpenEvent }: AgendaRollProps) {
                   data-ruled={data.isRuledOff(e)}
                   onClick={() => onOpenEvent(e)}
                 >
-                  <span className="cn-when">{span(e.startTime, e.endTime, e.allDay)}</span>
+                  <span className="cn-when">
+                    {e.continuesFrom ? span(null, null, true) : span(e.startTime, e.endTime, e.allDay)}
+                  </span>
                   <span className="cn-entry">
                     <b>{e.title}</b>
                     <LinkLine event={e} data={data} />

@@ -73,6 +73,24 @@ function keyOf(n: number): string {
   return new Date(n * DAY).toISOString().slice(0, 10);
 }
 
+/**
+ * The day keys an entry covers inside [from, to] (inclusive), first to last.
+ * A one-day entry, or one whose end day is unreadable or before its start,
+ * covers its start day only. Day-key arithmetic only: the browser's zone
+ * never moves a house calendar day.
+ */
+export function daysCovered(date: string, endDate: string | null, from: string, to: string): string[] {
+  const a = dayNum(date);
+  const lo = dayNum(from);
+  const hi = dayNum(to);
+  if (a === null || lo === null || hi === null) return [date];
+  const b = endDate ? dayNum(endDate) : null;
+  const last = b !== null && b > a ? b : a;
+  const out: string[] = [];
+  for (let n = Math.max(a, lo); n <= Math.min(last, hi); n++) out.push(keyOf(n));
+  return out;
+}
+
 function int(v: unknown, min: number, max: number): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= min && v <= max;
 }
