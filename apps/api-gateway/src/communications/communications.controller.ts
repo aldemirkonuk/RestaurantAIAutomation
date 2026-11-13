@@ -620,7 +620,11 @@ export class CommunicationsController {
     this.logger.log("TEST SCENARIO: Full Messaging Flow");
     this.logger.log(`Manager: ${managerEmail}`);
     this.logger.log(`Vendor: ${vendorEmail}`);
-    this.logger.log(`Wine: ${wineName} x${quantity} @ $${targetPrice}/bottle`);
+    // The target price carries no currency here, so the log names none: a
+    // `$` claimed dollars for every house.
+    this.logger.log(
+      `Wine: ${wineName} x${quantity} at ${targetPrice} a bottle (currency not stated)`,
+    );
     this.logger.log("=".repeat(60));
 
     const steps: any[] = [];
