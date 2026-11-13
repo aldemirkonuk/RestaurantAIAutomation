@@ -31,6 +31,11 @@ import { senderUnconfirmed } from "../../communications/sender-authentication";
 import { createHash, randomUUID } from "crypto";
 import { PromotionExtractorService } from "./promotion-extractor.service";
 import { ProspectsService } from "./prospects.service";
+import {
+  answeredMessageIds,
+  bareMessageId,
+  storedMessageIdShapes,
+} from "./answered-message-ids";
 import { MailIntakeService, type IntakeOutcome } from "./mail-intake.service";
 import { OWNER_AND_MANAGER } from "../tenant/live-membership";
 
@@ -1002,6 +1007,66 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
+      // 2a. Match order via the letter it answers (r28 mail audit, gap 2).
+      //     Order letters set Reply-To to the house's Mudavym address, and a
+      //     letter that arrives there carries no Gmail thread, so step 2
+      //     never ran for it and 2b filed it on the vendor's NEWEST open
+      //     order: with two open orders, a price answer to order A landed on
+      //     order B. Its In-Reply-To and References name the Message-IDs of
+      //     the letters it answers, which the send stored on their rows
+      //     (procurement.service.ts approveDraft and the auto-send sweep).
+      //     The nearest answered letter of THIS house that carries an order
+      //     gives the order, read the way step 2 reads its thread: `orderId`
+      //     takes that letter's order (the text, the notice, the responder);
+      //     `threadOrderId`, which the attachment refs take, only when that
+      //     letter is one the house sent first (outbound, no in_reply_to of
+      //     its own), since a reply's order may itself be the 2b guess. Also
+      //     runs for a Gmail-door letter whose Gmail thread names no order.
+      //     A failed read is not "nothing answered": as in step 2, 2b does
+      //     not run and the row says so (`order_match: "answer_read_failed"`).
+      let answerReadFailed = false;
+      if (!orderId && !threadReadFailed) {
+        const answered = answeredMessageIds(inReplyTo, references);
+        if (answered.length) {
+          const { data: named, error: namedError } =
+            await this.databaseService.supabase
+              .from("procurement_conversations")
+              .select(
+                "id, order_id, thread_id, direction, email_headers, message_id",
+              )
+              .eq("restaurant_id", restaurantId)
+              .in("message_id", storedMessageIdShapes(answered))
+              .order("created_at", { ascending: true })
+              .order("id", { ascending: true })
+              .limit(100);
+          if (namedError) {
+            answerReadFailed = true;
+            this.logger.error(
+              `handleInboundEmail: answered-letter read failed (${namedError.message}); storing the reply with no order and not guessing one`,
+            );
+          } else {
+            const rows = (named ?? []) as Array<Record<string, any>>;
+            for (const id of answered) {
+              const hit = rows.find(
+                (r) => r.order_id && bareMessageId(r.message_id) === id,
+              );
+              if (!hit) continue;
+              orderId = hit.order_id;
+              threadId = threadId ?? hit.thread_id ?? null;
+              threadOrderId =
+                String(hit.direction).toLowerCase() === "outbound" &&
+                !hit.email_headers?.in_reply_to
+                  ? hit.order_id
+                  : null;
+              this.logger.log(
+                `handleInboundEmail: matched order ${orderId} by the letter it answers`,
+              );
+              break;
+            }
+          }
+        }
+      }
+
       // 2b. Fallback — vendors often reply in a fresh thread/subject rather than
       // hitting "reply", so the exact gmail_thread_id match above can miss even
       // though this is clearly a continuation of an active negotiation. Without
@@ -1010,7 +1075,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
       // duplicate for what is really the same negotiation. Fall back to the
       // most recent still-open order for this vendor+restaurant. Never after a
       // failed thread read (above): a failed read must not become a guess.
-      if (!orderId && !threadReadFailed) {
+      if (!orderId && !threadReadFailed && !answerReadFailed) {
         const TERMINAL_ORDER_STATUSES = [
           "CONFIRMED",
           "IN_TRANSIT",
@@ -1101,6 +1166,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             gmail_thread_id: gmailThreadId,
             transport: transportSignals,
             ...(threadReadFailed ? { order_match: "thread_read_failed" } : {}),
+            ...(answerReadFailed ? { order_match: "answer_read_failed" } : {}),
           },
           confidence_score: orderId ? 1.0 : null,
           mirrored_by_grant_id: mirroredByGrantId,
