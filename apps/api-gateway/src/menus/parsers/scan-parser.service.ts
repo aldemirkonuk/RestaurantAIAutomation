@@ -67,9 +67,20 @@ export class MenuReadWaitingException extends ServiceUnavailableException {}
  * becomes beverage_kind='beer' and lights the Beer register, and one whose
  * category is absent or free-text becomes 'unknown' and lights nothing. See
  * MENU_CATEGORY_VOCABULARY for why the member, not the printed heading.
+ *
+ * A DISH IS READ TOO (r28 onboarding audit, gap 1, 2026-11-13). The prompt
+ * used to say "a restaurant beverage menu ... Extract EVERY drink", so a photo
+ * of a food menu came back empty, while a typed or CSV dish was kept. A dish
+ * now comes back with category exactly "food", the word the typed line sends
+ * (MenuManualEntry's "Food" kind) and a kitchen hint (menu-line-view.ts
+ * isKitchenLine). So a read dish takes the path every other dish takes: kept
+ * on the menu, set aside from the drinks, never sent to the library resolver
+ * (#1098). Its one price goes in bottle_price, as a typed dish's does. "food"
+ * is deliberately NOT a MENU_CATEGORY_VOCABULARY member: that list says what
+ * kind of drink a line is, and a dish is not one.
  */
 const CATEGORY_VOCABULARY_CLAUSE =
-  "category MUST be exactly one of: " +
+  "For a drink, category MUST be exactly one of: " +
   MENU_CATEGORY_VOCABULARY.join(", ") +
   ". Choose it from the menu's own section heading where there is one " +
   "(a line under 'Draft Beer' is beer; under 'Reds by the Glass' is red), " +
@@ -77,14 +88,25 @@ const CATEGORY_VOCABULARY_CLAUSE =
   "above, never the heading as printed, and never a word outside the list. " +
   "Omit category only when the line gives no basis at all for choosing one. ";
 
-const WINE_EXTRACTION_PROMPT =
-  "You are analyzing a restaurant beverage menu image. " +
+/** What a dish carries. See "A DISH IS READ TOO" above. */
+const DISH_CLAUSE =
+  "A dish (any food: starters, mains, sides, salads, pasta, pizza, desserts " +
+  "and anything else the kitchen serves) is not a drink: its category is " +
+  'exactly "food", whatever its section is called. Give a dish its name and ' +
+  "its one price in bottle_price, and omit producer, vintage, region, " +
+  "grape_variety and by_glass_price for it (e.g. 'Tiramisu 9' is " +
+  '{"name":"Tiramisu","category":"food","bottle_price":9}). A dessert wine, ' +
+  "port or sherry is a drink, not a dish. ";
+
+export const WINE_EXTRACTION_PROMPT =
+  "You are analyzing a restaurant menu image. " +
   "Extract EVERY drink listed, not only the wines — beer, cider, sake, " +
   "spirits, whiskey, cocktails, soft drinks and non-alcoholic listings all " +
   "count, and a menu that prints them in their own sections still prints " +
-  "them. For each item return JSON: " +
+  "them — and EVERY dish listed as well. For each item return JSON: " +
   "{ name, producer, category, vintage, region, grape_variety, by_glass_price, bottle_price }. " +
   CATEGORY_VOCABULARY_CLAUSE +
+  DISH_CLAUSE +
   "producer is the winery/estate/château name, or the brewery/distillery for " +
   "a beer or a spirit. " +
   "vintage, region and grape_variety describe wine — omit all three on a " +
