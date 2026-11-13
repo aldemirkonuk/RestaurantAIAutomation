@@ -64,15 +64,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ClipboardPaste, History, Plus, RotateCcw, Save } from 'lucide-react';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { getErrorStatus } from '../../../../services/api/client';
-import type { CocktailRecipe, RecipeLine, RecipeVersion, SaveRecipeBody } from '../../../../services/api/recipes';
+import type { CocktailRecipe, PreviewCostBody, RecipeLine, RecipeVersion, SaveRecipeBody } from '../../../../services/api/recipes';
 import LineRow, { LineRowRead, rowName, rowQty, type DraftRow } from './LineRow';
 import { draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft, type DraftMeta } from './drafts';
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
-import DrinkCards from './DrinkCards';
+import DrinkCards, { type DraftCost } from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
 import {
   useCanEditRecipe,
+  useCostPreview,
   useHouseMoney,
   useRecipe,
   useRecipeVersion,
@@ -295,6 +296,33 @@ function refusal(e: unknown): string | null {
 /** The most serves one recipe makes. Matches the gateway (recipes.service.ts MAX_YIELD_SERVES). */
 export const MAX_SERVES = 1000;
 
+/**
+ * The unsaved lines as the gateway prices them, with each line's label, or
+ * null when the draft is not whole enough to price: a stocked line with no
+ * amount, no unit or no linked item is never priced by guessing, so nothing
+ * is asked and the saved figures stay. Untracked lines cost nothing and are
+ * sent only when complete.
+ */
+export function costPreviewBody(rows: DraftRow[], serves: number): { body: PreviewCostBody; labels: string[] } | null {
+  if (!Number.isInteger(serves) || serves < 1 || serves > MAX_SERVES) return null;
+  if (rows.length > MAX_LINES) return null;
+  const lines: PreviewCostBody['lines'] = [];
+  const labels: string[] = [];
+  for (const r of rows) {
+    const q = rowQty(r);
+    const whole = q !== null && q <= MAX_LINE_QTY && r.unit !== '';
+    if (r.role === 'stocked') {
+      if (!whole || !r.inventoryId) return null;
+      lines.push({ role: 'stocked', inventoryId: r.inventoryId, qtyEntered: q, unitCode: r.unit });
+      labels.push(rowName(r));
+    } else if (whole) {
+      lines.push({ role: 'untracked', inventoryId: null, qtyEntered: q, unitCode: r.unit });
+      labels.push(rowName(r));
+    }
+  }
+  return { body: { yieldServes: serves, lines }, labels };
+}
+
 /** Why Save is off, naming the first line that stops it. */
 export function whyBlocked(rows: DraftRow[], serves: number = 1): string | null {
   if (rows.length === 0) return 'Add at least one ingredient.';
@@ -407,6 +435,22 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   const shownMeta = meta ?? metaOf(data?.current);
   const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes), [rows, shownMeta.yieldServes]);
 
+  // Money only where the server sent it, and never to a role that cannot edit.
+  const money = Boolean(canEdit && data && (data.cost !== null || data.cocktail.price !== null));
+  // An unsaved draft is priced by the gateway at today's prices, live, once it
+  // is whole. A drink never saved is priced too: the preview needs only the
+  // drink, not a saved version (#1165, `previewCost`). Its server figures
+  // cannot say whether this role sees money (no version, so no cost), so there
+  // the gate is the one the route itself keeps: owners and managers, who are
+  // the ones who edit. A refusal answers null and no draft card is shown.
+  const draftMoney = canEdit && (money || Boolean(data && !data.current));
+  const draftBody = useMemo(
+    () => (draftMoney && dirty && data && rows ? costPreviewBody(rows, shownMeta.yieldServes) : null),
+    [draftMoney, dirty, data, rows, shownMeta.yieldServes],
+  );
+  const preview = useCostPreview(cocktailId, draftBody?.body ?? null);
+  const draftCost: DraftCost | null = preview && draftBody ? { cost: preview, labels: draftBody.labels } : null;
+
   if (recipe.loading) return <p className="cl-note" role="status">Reading the recipe…</p>;
   if (!data) {
     return (
@@ -425,9 +469,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   const hasLegacy = !data.current && data.legacyLines.length > 0;
   const behind = canEdit && dirty && versionId !== openedFrom;
 
-  // Money only where the server sent it, and never to a role that cannot edit.
-  const money = Boolean(canEdit && (data.cost !== null || c.price !== null));
-  const say = money ? (n: number) => sayMoney(n) : null;
+  const say = money || draftCost ? (n: number) => sayMoney(n) : null;
 
   const edit = (next: (rs: DraftRow[]) => DraftRow[]) => {
     setDirty(true);
@@ -548,7 +590,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
       ) : null}
       {/* The drink opens on its cards, then what is in a serve, then its lines
           (founder ask: a drink shows its KPI cards, then a nutrition card). */}
-      <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} />
+      <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} draftCost={draftCost} />
       <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
 
       <header className="cl-rcp-head">
