@@ -24,6 +24,9 @@ export function menuReadNoteText(n: MenuReadNote): string {
       return 'No column was read as the name (Name, Wine, Ad, Şarap), so no line was read.'
     case 'price_column_not_read':
       return `The column ${raw} was not read: name it Bottle price / Şişe fiyatı or Glass price / Kadeh fiyatı.`
+    case 'price_column_read_as_bottle':
+      // r28 G8: the bare price column is read, as each line's one price.
+      return `The column ${raw} was read as each line's price: a drink's bottle price, a dish's price. If it holds glass prices, name it Glass price / Kadeh fiyatı and read the file again.`
     default:
       return `Line ${n.row} was not read whole.`
   }
