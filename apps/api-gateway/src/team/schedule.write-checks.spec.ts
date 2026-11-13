@@ -342,6 +342,50 @@ describe("B5 — a staff claim matches the shift's role and the person's certifi
     expect(openShift(db).member_id).toBe("m-kim");
   });
 
+  it("reads the shift's role (the shift read names the column)", async () => {
+    const db = seed();
+    await claim(db);
+    const read = db.ops.find(
+      (o: any) => o.table === "shifts" && o.op === "select" && /member_id/.test(o.columns ?? ""),
+    );
+    expect(String(read?.columns).split(",").map((c) => c.trim())).toContain("role");
+  });
+
+  it("a station no one on the roster lists is a place, not a qualification: anyone's", async () => {
+    const db = seed();
+    openShift(db).role = "Main bar";
+    kim(db).position = "Staff";
+    await claim(db);
+    expect(openShift(db).member_id).toBe("m-kim");
+  });
+
+  it("a failed read of the roster's roles claims nothing and says so", async () => {
+    const db = seed();
+    const realFrom = db.supabase.from.bind(db.supabase);
+    (db.supabase as any).from = (t: string) => {
+      const b: any = realFrom(t);
+      if (t !== "team_members") return b;
+      const realThen = b.then?.bind(b);
+      if (realThen)
+        b.then = (ok: any, bad: any) =>
+          b.columns === "position, skills"
+            ? Promise.resolve({ data: null, error: { message: "timeout" } }).then(ok, bad)
+            : realThen(ok, bad);
+      return b;
+    };
+    const err = await claim(db).catch((e) => e);
+    expect(err).toBeInstanceOf(InternalServerErrorException);
+    expect(err.message).toBe("Could not read the team's roles, so the shift was not claimed.");
+    expect(openShift(db).member_id).toBeNull();
+  });
+
+  it("a renewal added as a new row keeps the certificate good", async () => {
+    const db = seed();
+    db.tables.team_certifications.push(cert("2098-01-01"), cert("2100-01-01", { id: "c-renewed", cert_type: "Food_Handler " }));
+    await claim(db);
+    expect(openShift(db).member_id).toBe("m-kim");
+  });
+
   it("a shift that names no role is anyone's", async () => {
     const db = seed();
     kim(db).position = null;
@@ -424,30 +468,51 @@ describe("B5 — a staff claim matches the shift's role and the person's certifi
 describe("claimRefusal", () => {
   const shift = { shift_date: "2099-01-06", role: "Server" };
   const server = { position: "server", skills: [] };
+  const house = ["Server", "Bartender"];
 
   it("names the earliest lapsed certificate when there are several", () => {
     expect(
       claimRefusal(shift, server, [
         { cert_type: "alcohol-service", expires_at: "2099-01-04" },
         { cert_type: "allergen", expires_at: "2098-06-01" },
-      ]),
+      ], house),
     ).toMatch(/^Your allergen certificate on file runs out on 2098-06-01,/);
   });
 
   it("a certificate with no name still reads as a sentence", () => {
-    expect(claimRefusal(shift, server, [{ cert_type: " ", expires_at: "2099-01-01" }])).toMatch(
+    expect(claimRefusal(shift, server, [{ cert_type: " ", expires_at: "2099-01-01" }], house)).toMatch(
       /^A certificate of yours on file runs out on 2099-01-01, before this shift on 2099-01-06\./,
     );
   });
 
   it("a date that is not a date is not read as a lapse", () => {
-    expect(claimRefusal(shift, server, [{ cert_type: "x", expires_at: "soon" }])).toBeNull();
+    expect(claimRefusal(shift, server, [{ cert_type: "x", expires_at: "1999-02-30" }], house)).toBeNull();
   });
 
   it("the role is asked before the certificates", () => {
     expect(
-      claimRefusal(shift, { position: "cook" }, [{ cert_type: "x", expires_at: "2000-01-01" }]),
+      claimRefusal(shift, { position: "cook" }, [{ cert_type: "x", expires_at: "2000-01-01" }], house),
     ).toMatch(/^This shift is for Server,/);
+  });
+
+  it("a role only the house's roster lists is a qualification; one it does not is a station", () => {
+    expect(claimRefusal(shift, { position: "Staff" }, [], ["Staff"])).toBeNull();
+    expect(claimRefusal(shift, { position: "Staff" }, [], [" server "])).toMatch(/^This shift is for Server,/);
+  });
+
+  it("no expiry on any row of a type means the type never runs out", () => {
+    expect(
+      claimRefusal(shift, server, [
+        { cert_type: "allergen", expires_at: "2000-01-01" },
+        { cert_type: "Allergen", expires_at: null },
+      ], house),
+    ).toBeNull();
+    expect(
+      claimRefusal(shift, server, [
+        { cert_type: "allergen", expires_at: null },
+        { cert_type: "allergen", expires_at: "2000-01-01" },
+      ], house),
+    ).toBeNull();
   });
 });
 

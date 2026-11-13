@@ -1395,12 +1395,32 @@ export class ScheduleService {
           "Could not read your certificates, so the shift was not claimed.",
         );
       }
+      // Which roles the house records on people: a station no one lists is
+      // a place, not a qualification (see claimRefusal).
+      const { data: roster, error: rosterErr } = await this.sb
+        .from("team_members")
+        .select("position, skills")
+        .eq("restaurant_id", restaurantId);
+      if (rosterErr) {
+        this.logger.error(
+          `assignCover: could not read the roster of ${restaurantId} to ` +
+            `check the shift's role: ${rosterErr.message}`,
+        );
+        throw new InternalServerErrorException(
+          "Could not read the team's roles, so the shift was not claimed.",
+        );
+      }
+      const houseRoles = (roster ?? []).flatMap((r: any) => [
+        r.position,
+        ...((r.skills ?? []) as string[]),
+      ]);
       const refusal =
         typeof shift.shift_date === "string"
           ? claimRefusal(
               { shift_date: shift.shift_date, role: shift.role },
               { position: me.position, skills: me.skills },
               (certs ?? []) as ClaimCertificate[],
+              houseRoles,
             )
           : null;
       if (refusal) throw new ForbiddenException(refusal);

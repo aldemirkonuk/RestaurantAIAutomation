@@ -104,48 +104,75 @@ export interface ClaimCertificate {
   expires_at?: string | null;
 }
 
+const fold = (v: unknown) => String(v ?? "").trim().toLowerCase();
+
 /**
  * Why a staff member may not take an open shift for themselves, or `null`
  * when they may (QA round 4 B5, last clause). Two rules, from what the house
  * records:
  *
- *   role        - the shift names a role their position and skills do not
- *                 list (the hand-over's role rule, `listsRole`).
- *   certificate - a certificate on their file runs out before the shift's
- *                 day (`expires_at` earlier than `shift_date`; a certificate
- *                 is good through its expiry day). The stored `status` is not
- *                 read: it is worked out when the row is written and goes
- *                 stale.
+ *   role        - the shift names a role the house uses as a qualification
+ *                 (some roster row lists it as a position or a skill), and
+ *                 the person's own position and skills do not list it. The
+ *                 /team sheet labels this field "Station" ("Floor, Main bar,
+ *                 Pass"), and rows the gateway adds from access get the
+ *                 position "Staff", so a station nobody on the roster lists
+ *                 is a place, not a qualification, and is anyone's.
+ *   certificate - a certificate type on their file has run out before the
+ *                 shift's day: every row of that type has an expiry earlier
+ *                 than `shift_date` (good through its expiry day). A renewal
+ *                 added as a new row keeps the type good. The stored
+ *                 `status` is not read: it is worked out when the row is
+ *                 written and goes stale.
  *
  * A shift records no certificate it needs (no column), so "the certificate
  * this shift needs" cannot be asked; a lapsed one on file is what the house
- * can see. A manager can still give the shift to the person by hand; the
+ * records. A manager can still give the shift to the person by hand; the
  * sentence says so.
  */
 export function claimRefusal(
   shift: { shift_date: string; role?: string | null },
   member: { position?: string | null; skills?: readonly string[] | null },
   certificates: readonly ClaimCertificate[],
+  houseRoles: Iterable<string | null | undefined>,
 ): string | null {
   const askManager = "A manager can still give it to you. Nothing was changed.";
-  if (!listsRole(member, shift.role)) {
+  const role = fold(shift.role);
+  const qualification =
+    role !== "" && [...houseRoles].some((r) => fold(r) === role);
+  if (qualification && !listsRole(member, shift.role)) {
     return (
       `This shift is for ${String(shift.role).trim()}, and your position and ` +
       `skills on the team do not list it. ${askManager}`
     );
   }
   const day = String(shift.shift_date ?? "").slice(0, 10);
-  const lapsed = (certificates ?? [])
-    .filter((c) => isCalendarDate(String(c?.expires_at ?? "").slice(0, 10)))
-    .filter((c) => String(c.expires_at).slice(0, 10) < day)
-    .sort((a, b) => String(a.expires_at).localeCompare(String(b.expires_at)));
+  // The latest expiry on file per certificate type; no expiry never runs out.
+  const latest = new Map<string, { name: string; until: string | null }>();
+  for (const c of certificates ?? []) {
+    const key = fold(c?.cert_type);
+    const raw = c?.expires_at == null ? null : String(c.expires_at).slice(0, 10);
+    if (raw !== null && !isCalendarDate(raw)) continue; // not a date: not read as a lapse
+    const prev = latest.get(key);
+    const until =
+      prev === undefined
+        ? raw
+        : prev.until === null || raw === null
+          ? null
+          : prev.until > raw
+            ? prev.until
+            : raw;
+    latest.set(key, { name: String(c?.cert_type ?? ""), until });
+  }
+  const lapsed = [...latest.values()]
+    .filter((c): c is { name: string; until: string } => c.until !== null && c.until < day)
+    .sort((a, b) => a.until.localeCompare(b.until));
   if (lapsed.length > 0) {
     const c = lapsed[0];
-    const name = String(c.cert_type ?? "").replace(/_/g, " ").trim();
+    const name = c.name.replace(/_/g, " ").trim();
     return (
       (name ? `Your ${name} certificate` : "A certificate of yours") +
-      ` on file runs out on ` +
-      `${String(c.expires_at).slice(0, 10)}, before this shift on ${day}. ` +
+      ` on file runs out on ${c.until}, before this shift on ${day}. ` +
       askManager
     );
   }
