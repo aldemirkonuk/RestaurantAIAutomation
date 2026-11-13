@@ -4,7 +4,7 @@ import { SwaggerModule, DocumentBuilder } from "@nestjs/swagger";
 import { NestExpressApplication } from "@nestjs/platform-express";
 import * as fs from "fs";
 import { AppModule } from "./app.module";
-import { buildCorsOrigins } from "./cors-origins";
+import { buildCorsOptions } from "./cors-origins";
 import { maybeExportOpenApi } from "./openapi-export";
 
 async function bootstrap() {
@@ -17,10 +17,8 @@ async function bootstrap() {
     // The allow-list lives in `cors-origins.ts` so it can be tested — see the
     // header there for why (mudavym.com went live matching no entry, and the
     // whole product looked down).
-    cors: {
-      origin: buildCorsOrigins(),
-      credentials: true,
-    },
+    // A preflight answer is reused for CORS_PREFLIGHT_MAX_AGE_S.
+    cors: buildCorsOptions(),
   });
 
   // Body size limit.

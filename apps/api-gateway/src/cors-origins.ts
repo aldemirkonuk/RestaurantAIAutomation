@@ -51,3 +51,28 @@ export function isOriginAllowed(
     typeof entry === "string" ? entry === origin : entry.test(origin),
   );
 }
+
+/**
+ * How long a browser may reuse one preflight answer, in seconds.
+ *
+ * The web app calls this gateway from another origin with an Authorization
+ * header, so every call needs a preflight. With no `Access-Control-Max-Age`
+ * Chrome keeps the answer for 5 seconds, so each poll and each page change
+ * paid an OPTIONS round trip before its GET: a quiet dashboard made 6
+ * requests a minute where 3 carry data (r17 request walk, 2026-11-13).
+ *
+ * 600 s, not Chrome's 7,200 s ceiling: a cached answer only says which
+ * methods and headers may be sent (the real response still has to name the
+ * origin), and a change to that list then reaches every open tab within ten
+ * minutes.
+ */
+export const CORS_PREFLIGHT_MAX_AGE_S = 600;
+
+/** The options `NestFactory.create` takes for CORS. */
+export function buildCorsOptions(env: NodeJS.ProcessEnv = process.env) {
+  return {
+    origin: buildCorsOrigins(env),
+    credentials: true,
+    maxAge: CORS_PREFLIGHT_MAX_AGE_S,
+  };
+}
