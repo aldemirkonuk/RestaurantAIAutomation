@@ -430,7 +430,7 @@ describe("owner/manager-only notices reach no staff socket", () => {
     expect(notificationsTo(staff)).toEqual([]);
   });
 
-  it("the prospect notice links to /communications, where prospects live now (ADR 0160, Open item 3)", async () => {
+  it("the prospect notice opens Who is writing on /communications, where prospects live now (ADR 0160, Open item 3; r21)", async () => {
     const w = world();
     const manager = await w.connect(MANAGER);
     const prospects = {
@@ -471,12 +471,13 @@ describe("owner/manager-only notices reach no staff socket", () => {
 
     const got = notificationsTo(manager);
     expect(got).toHaveLength(1);
-    expect(got[0].payload.data.action_url).toBe("/communications");
+    // r21: the register opens (?senders=open); the bare page folded it.
+    expect(got[0].payload.data.action_url).toBe("/communications?senders=open");
     expect(got[0].payload.data.message).toContain("Communications");
     expect(got[0].payload.data.message).not.toContain("Promotions");
     expect(responder.persistManagerNotification).toHaveBeenCalledWith(
       HOUSE,
-      expect.objectContaining({ actionUrl: "/communications" }),
+      expect.objectContaining({ actionUrl: "/communications?senders=open" }),
     );
   });
 });
