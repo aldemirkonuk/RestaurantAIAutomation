@@ -200,7 +200,13 @@ export function makeCurrentSentence(r: MakeCurrentResult, name?: string): string
     const n = r.priceSync[k] ?? 0;
     if (n > 0) parts.push(`${n} ${k.replace(/_/g, ' ')}`);
   }
-  if (r.flagged > 0) parts.push(`${r.flagged} flagged for a blank price`);
+  // `flagged` counts lines whose menu price was blank: each carries a note
+  // (price_flag_note) that says what the house kept and where a manager
+  // changes it. Onboarding walk 2026-11-12: "flagged" was never explained.
+  if (r.flagged > 0)
+    parts.push(
+      `${r.flagged} line${r.flagged === 1 ? '' : 's'} with a blank price, noted on the line so a manager can set ${r.flagged === 1 ? 'it' : 'them'} on Inventory`,
+    );
   const held = r.held?.length
     ? ` Held by a lock, not changed: ${r.held
         .map((h) => `${h.name} (${h.kind}${h.lockedPrice === null ? '' : `, locked at ${h.lockedPrice.toFixed(2)}`})`)

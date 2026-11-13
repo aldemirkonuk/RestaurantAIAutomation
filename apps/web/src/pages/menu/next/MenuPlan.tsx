@@ -145,9 +145,9 @@ export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'curre
   }
   const lead = parts.length ? `Choosing this menu will ${listWords(parts)}.` : 'Choosing this menu changes no price.';
   const more: string[] = [];
-  if (c.blank_kept > 0) more.push(`${plural(c.blank_kept, 'price is', 'prices are')} blank on the menu, so the house keeps its own (flagged)`);
+  if (c.blank_kept > 0) more.push(`${plural(c.blank_kept, 'price is', 'prices are')} blank on the menu, so the house keeps the one it has, and the line carries a note saying so`);
   const unpriced = plan.lines.filter((l) => l.flag === 'blank_no_house_price').length;
-  if (unpriced > 0) more.push(`${plural(unpriced, 'line shows', 'lines show')} no price and the house has none either (flagged)`);
+  if (unpriced > 0) more.push(`${plural(unpriced, 'line shows', 'lines show')} no price and the house has none either, so it stays unpriced, and the line carries a note saying so`);
   const unmatched = plan.lines.filter((l) => l.bottle.result === 'not_linked').length;
   if (unmatched > 0) more.push(`${plural(unmatched, 'line is', 'lines are')} not matched to a wine, so no price`);
   if (plan.dormantLocks.length > 0)
@@ -187,9 +187,9 @@ export function kindWords(line: PlanLine, k: PlanKind): string {
     case 'held_by_lock':
       return `stays ${money(k.lock?.lockedPrice ?? k.housePrice)}, locked`;
     case 'blank_kept':
-      return `blank on the menu; the house keeps ${money(k.housePrice)} (flagged)`;
+      return `blank on the menu; the house keeps ${money(k.housePrice)} (noted on the line)`;
     case 'blank_never_priced':
-      return line.flag === 'blank_no_house_price' ? 'no price on the menu or at the house (flagged)' : EM;
+      return line.flag === 'blank_no_house_price' ? 'no price on the menu or at the house (noted on the line)' : EM;
     case 'not_linked':
       return 'not matched to a wine, so no price';
     case 'new_wine':

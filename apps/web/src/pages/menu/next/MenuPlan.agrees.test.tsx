@@ -186,3 +186,14 @@ describe('the plan comes into view when it opens', () => {
     expect(planNeedsScroll(-1, 800)).toBe(true);
   });
 });
+
+describe('"flagged" is said in words (onboarding walk 2026-11-12, r12 finding 10)', () => {
+  it('the plan and the result say what a blank-price line carries, never "flagged"', () => {
+    const blank = line(0, 'change', 'blank_kept');
+    const said = planSentence({ ...planOf([blank]), counts: { ...planOf([]).counts, blank_kept: 1 } });
+    expect(said).toContain('1 price is blank on the menu, so the house keeps the one it has, and the line carries a note saying so');
+    const done = makeCurrentSentence({ outcome: 'made_current', menuId: 'm', previousMenuIds: [], lines: 2, priceSync: { changed: 2 }, flagged: 2, failed: [] });
+    expect(done).toContain('2 lines with a blank price, noted on the line so a manager can set them on Inventory');
+    expect(`${said} ${done}`).not.toMatch(/flagged/i);
+  });
+});
