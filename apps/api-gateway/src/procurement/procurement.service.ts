@@ -24,7 +24,10 @@ import { InboundAddressService } from "../common/orchestrator/inbound-address.se
 import { GmailService } from "../communications/gmail.service";
 import type { SendRefusalKind } from "../communications/send-failure";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
-import { assertProviderTakesOrders } from "../common/tenant/assert-provider-takes-orders";
+import {
+  assertProviderTakesOrders,
+  VENDOR_REMOVED,
+} from "../common/tenant/assert-provider-takes-orders";
 import { NotificationsService } from "../notifications/notifications.service";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
 import {
@@ -4447,7 +4450,7 @@ export class ProcurementService {
       await this.databaseService.supabase
         .from("procurement_orders")
         .select(
-          "id, total_cost, provider_id, inventory_id, final_price, status",
+          "id, total_cost, provider_id, inventory_id, final_price, status, vendor:providers!left(deleted_at, is_active)",
         )
         .eq("restaurant_id", restaurantId)
         .eq("id", orderId)
@@ -4462,6 +4465,25 @@ export class ProcurementService {
       throw new NotFoundException(
         "No order with that id belongs to this restaurant, so there was nothing to approve.",
       );
+    }
+
+    // A removed vendor takes no new order (#1283), and approving is what
+    // sends one out. An order raised before the vendor was removed stays on
+    // /orders, but it is not approved now: 422 `vendor_removed`, in words.
+    // Read in the same query (the embed), by the rule #1283 uses: either
+    // column marks the vendor removed, and a NULL `is_active` is live.
+    // Many-to-one, so PostgREST answers one object; the generated types
+    // say a list, so either shape is read.
+    type Flags = { deleted_at: string | null; is_active: boolean | null };
+    const embed = (orderRow as unknown as { vendor?: Flags | Flags[] | null }).vendor;
+    const vendor = Array.isArray(embed) ? embed[0] : embed;
+    if (vendor && (vendor.deleted_at != null || vendor.is_active === false)) {
+      throw new UnprocessableEntityException({
+        reason: VENDOR_REMOVED,
+        message:
+          "This order's vendor was removed from your vendors, so the order was not approved. " +
+          "It stays on Orders; place it with another vendor instead.",
+      });
     }
 
     const readout = await this.approvalThresholds.read(restaurantId);
@@ -8541,7 +8563,7 @@ export class ProcurementService {
           await this.databaseService.supabase
             .from("procurement_orders")
             .select(
-              "id, status, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact), restaurant_inventory:inventory_id(wine_name)",
+              "id, status, ai_autonomy_paused, providers!left(contact_email, name, contact_first_name, primary_contact, deleted_at, is_active), restaurant_inventory:inventory_id(wine_name)",
             )
             .eq("id", row.order_id)
             .eq("restaurant_id", row.restaurant_id)
@@ -8576,6 +8598,15 @@ export class ProcurementService {
             `Auto-send discarded for ${row.id}: order ${row.order_id} is ${orderState}. ` +
               `Nothing was sent to the vendor.`,
           );
+          continue;
+        }
+
+        // The vendor was removed after this reply was staged: nothing goes to
+        // them on its own. Held as a draft, so a person decides whether to
+        // write to them about an order already placed.
+        const vendor = (order as any)?.providers;
+        if (vendor && (vendor.deleted_at != null || vendor.is_active === false)) {
+          await this.revertScheduledToDraft(row.id, "vendor removed");
           continue;
         }
 
