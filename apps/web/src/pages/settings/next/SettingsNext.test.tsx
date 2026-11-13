@@ -63,6 +63,20 @@ vi.mock('../../../hooks/queries/useDataTerms', () => ({
   useDataTerms: () => ({ data: undefined }),
   useInvalidateDataTerms: () => vi.fn(),
 }));
+// The target-margin block reads its own register; resolve it as a readable,
+// unset house so nothing here reaches the network.
+const pricing = vi.hoisted(() => ({
+  getTargetMargin: vi.fn(async () => ({
+    restaurantId: 'r1', bottlePct: null, glassPct: null, bandPct: null,
+    pour: { confirmed: false, ml: null, confirmedAt: null, confirmedBy: null },
+    readable: true, reason: null, statedAt: null, statedBy: null,
+  })),
+}));
+vi.mock('@/services/api/pricing', () => ({
+  getTargetMargin: pricing.getTargetMargin,
+  setTargetMargin: vi.fn(),
+  confirmPourSize: vi.fn(),
+}));
 vi.mock('@/components/team/InviteTeamDialog', () => ({ InviteTeamDialog: () => null }));
 vi.mock('@/components/team/TeamLaborSettings', () => ({ TeamLaborSettings: () => null }));
 vi.mock('@/components/team/TeamGoalsSettings', () => ({ TeamGoalsSettings: () => null }));
@@ -136,6 +150,8 @@ vi.mock('@/lib/mudavym/useMudavymDesign', () => ({
 }));
 
 import SettingsNext from './SettingsNext';
+import { isSectionId } from './st-format';
+import { handOf } from '../../recommendations/next/rec-format';
 
 function remote(data: unknown, status = 'ok') {
   return { status, data, error: status === 'error' ? 'gateway unreachable' : null, reload: vi.fn(), set: vi.fn() };
@@ -575,6 +591,57 @@ describe('SettingsNext — the editorial spine', () => {
     expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
     const scrolledTo = (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[0] as HTMLElement;
     expect(scrolledTo.id).toBe('st-section-digest');
+  });
+
+  // /inventory's price cell ("no target set", "glass waits for your pour
+  // size") and /recommendations' "Set your target" send the owner to
+  // `?tab=target-margin`. Before this block was mounted, no such id existed and
+  // nothing on the page could set a target or confirm a pour.
+  it('lands ?tab=target-margin on the margin and pour controls the price advice waits for', async () => {
+    mount('/settings?tab=target-margin');
+    const block = screen.getByTestId('st-section-target-margin');
+    expect(within(block).getByRole('heading', { name: 'What margin does it need?' })).toBeInTheDocument();
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
+    const scrolledTo = (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[0] as HTMLElement;
+    expect(scrolledTo.id).toBe('st-section-target-margin');
+    // It sits under "The house", with the other house-wide registers.
+    expect(document.getElementById('a-house')?.contains(block)).toBe(true);
+    // An owner can edit it.
+    const bottle = await within(block).findByLabelText('bottle');
+    expect(bottle).toBeEnabled();
+    expect(within(block).getByLabelText('glass')).toBeEnabled();
+    expect(within(block).getByRole('button', { name: 'Record' })).toBeInTheDocument();
+    expect(within(block).getByRole('button', { name: /Confirm/ })).toBeInTheDocument();
+    expect(within(block).queryByText(/Only managers and owners can state the margin/)).not.toBeInTheDocument();
+    expect(pricing.getTargetMargin).toHaveBeenCalledTimes(1);
+  });
+
+  it('every link that promises the target in Settings names a register that exists', () => {
+    const tabOf = (href: string) => new URL(href, 'http://x').searchParams.get('tab');
+    expect(isSectionId(tabOf(handOf('margin_target_unset', 'pricing').href))).toBe(true);
+    // HousePriceCell.tsx's two links, spelled as they are there.
+    expect(isSectionId(tabOf('/settings?tab=target-margin'))).toBe(true);
+  });
+
+  // `PUT /pricing/target-margin` and `/pricing/pour-size` refuse anyone who is
+  // not an owner or manager. Staff never reach this page; a member whose role
+  // could not be resolved does, and sees the target read-only with the reason.
+  it('shows the target read-only, with the reason, to someone who cannot manage the house', async () => {
+    mock.current = base({ canManage: false, role: null });
+    mount('/settings?tab=target-margin');
+    const block = screen.getByTestId('st-section-target-margin');
+    expect(await within(block).findByLabelText('bottle')).toBeDisabled();
+    expect(within(block).getByLabelText('glass')).toBeDisabled();
+    expect(within(block).getByRole('button', { name: 'Record' })).toBeDisabled();
+    expect(within(block).getByText(/Only managers and owners can state the margin/)).toBeInTheDocument();
+  });
+
+  it('does not read the target for staff, who are sent to a manager', () => {
+    mock.current = base({ role: 'staff' });
+    mount('/settings?tab=target-margin');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Ask a manager');
+    expect(screen.queryByTestId('st-section-target-margin')).not.toBeInTheDocument();
+    expect(pricing.getTargetMargin).not.toHaveBeenCalled();
   });
 
   it('carries the mudavym token scope on its own root, and takes a forced ground', () => {

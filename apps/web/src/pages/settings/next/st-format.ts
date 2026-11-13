@@ -126,6 +126,11 @@ export const SECTION_IDS = [
   // whether Jev reads its vendor mail. Appended, never inserted.
   'time-zone',
   'mail-reading',
+  // The house's target margin and pour size (ADR 0193). /inventory's price
+  // cell and /recommendations' "Set your target" link to `?tab=target-margin`;
+  // until this id existed those links opened the page at the top with no such
+  // control on it. A special-cased block in `SettingsNext.tsx`, like 'hours'.
+  'target-margin',
 ] as const;
 
 export type SectionId = (typeof SECTION_IDS)[number];
@@ -310,6 +315,8 @@ export const TAB_TO_ANCHOR: Record<SectionId, string> = {
   // its vendor mail is a mandate the house gives the system.
   'time-zone': 'a-house',
   'mail-reading': 'a-own',
+  // Mounted inside `group.id === 'house'` as `id="st-section-target-margin"`.
+  'target-margin': 'a-house',
 };
 
 /* ── THE COLLAPSE (founder, 2026-09-04) ──────────────────────────────────

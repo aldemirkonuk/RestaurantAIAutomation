@@ -97,6 +97,7 @@ import { CarryingCostSection } from './CarryingCostSection';
 import { TimeZoneSection } from './TimeZoneSection';
 import { MailReadingSection } from './MailReadingSection';
 import { HoursSection } from './HoursSection';
+import { TargetMarginSection } from './TargetMarginSection';
 import { DigestRow } from './DigestRow';
 import { AskTrainingSection } from './AskTrainingSection';
 import { ConsentPanelOpener } from './ConsentPanel';
@@ -424,6 +425,19 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
                       {KEPT_NOTE.restaurant}
                     </p>
                     <HoursSection data={data} />
+                  </div>
+                )}
+
+                {/* The margin and pour the price advice on /inventory and /recommendations waits for (ADR 0193). */}
+                {group.id === 'house' && (
+                  <div id="st-section-target-margin" data-testid="st-section-target-margin" style={{ margin: '0 0 28px' }}>
+                    <h3 style={{ fontFamily: SERIF, fontSize: 17, fontWeight: 600, letterSpacing: '-0.005em', margin: 0 }}>
+                      What margin does it need?
+                    </h3>
+                    <p style={{ fontFamily: SANS, fontSize: 11, lineHeight: 1.5, color: 'var(--ink-4)', margin: '4px 0 14px' }}>
+                      {KEPT_NOTE.restaurant}
+                    </p>
+                    <TargetMarginSection canManage={data.canManage} />
                   </div>
                 )}
 
