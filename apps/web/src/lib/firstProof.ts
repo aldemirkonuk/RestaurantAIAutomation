@@ -42,11 +42,55 @@ export function pencilledCount(items: MenuImportReviewItem[]) {
   return items.filter((item) => !isKitchenLine(item) && lineNeedsPencil(item)).length
 }
 
+/**
+ * Whose proof it is (r28 onboarding gap 7): the account and the house of the
+ * session that read the menu, from the access token's own claims (`sub`,
+ * `restaurantId`, auth.service.ts). The proof lives in the tab, and signing
+ * out cleared nothing, so on a shared tablet the next owner (or the same
+ * owner in another house) opened /house and /house/menu on the first
+ * owner's lines, and placing one PATCHed the first owner's menu and failed
+ * as "That line was not placed." `null` when no token can be read.
+ */
+type ProofStamp = { account: string; house: string } | null
+
+function sessionStamp(): ProofStamp {
+  try {
+    const token = localStorage.getItem('accessToken')
+    const part = token?.split('.')[1]
+    if (!part) return null
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+    const claims = JSON.parse(atob(b64 + '='.repeat((4 - (b64.length % 4)) % 4))) as {
+      sub?: unknown
+      restaurantId?: unknown
+    }
+    if (typeof claims.sub !== 'string' || !claims.sub) return null
+    if (typeof claims.restaurantId !== 'string' || !claims.restaurantId) return null
+    return { account: claims.sub, house: claims.restaurantId }
+  } catch {
+    return null
+  }
+}
+
+const sameStamp = (a: ProofStamp, b: ProofStamp) =>
+  a === null || b === null ? a === b : a.account === b.account && a.house === b.house
+
+/** The stored proof, only when this session's account and house read it. */
+function storedProof(): (MenuImportResult & { stamp?: ProofStamp }) | null {
+  const value = sessionStorage.getItem(FIRST_PROOF_KEY)
+  if (!value) return null
+  const proof = JSON.parse(value) as MenuImportResult & { stamp?: ProofStamp }
+  if (sameStamp(proof.stamp ?? null, sessionStamp())) return proof
+  // Another account's, or another house's: it is never shown, and never
+  // left in the tab for the next person either.
+  sessionStorage.removeItem(FIRST_PROOF_KEY)
+  sessionStorage.removeItem(FIRST_PROOF_SOURCE_KEY)
+  return null
+}
+
 export function readProof(): (MenuImportResult & { sourceImage?: string | null }) | null {
   try {
-    const value = sessionStorage.getItem(FIRST_PROOF_KEY)
-    if (!value) return null
-    const proof = JSON.parse(value) as MenuImportResult & { sourceImage?: string | null }
+    const proof = storedProof() as (MenuImportResult & { sourceImage?: string | null }) | null
+    if (!proof) return null
     if (!proof.sourceImage) {
       proof.sourceImage = sessionStorage.getItem(FIRST_PROOF_SOURCE_KEY)
     }
@@ -89,7 +133,7 @@ export function proofStanding(items: MenuImportReviewItem[]): ProofStanding {
  */
 export function writeProof(result: MenuImportResult, sourceImage?: string | null): boolean {
   try {
-    sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify(result))
+    sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify({ ...result, stamp: sessionStamp() }))
   } catch {
     try {
       sessionStorage.removeItem(FIRST_PROOF_KEY)
@@ -121,9 +165,9 @@ export function writeProof(result: MenuImportResult, sourceImage?: string | null
  */
 export function saveProofItems(items: MenuImportReviewItem[]) {
   try {
-    const value = sessionStorage.getItem(FIRST_PROOF_KEY)
-    if (!value) return
-    const proof = JSON.parse(value) as MenuImportResult
+    // Only this session's own proof is rewritten (gap 7).
+    const proof = storedProof()
+    if (!proof) return
     sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify({ ...proof, items }))
   } catch {
     // Blocked or full storage: the page keeps its state for this visit.
