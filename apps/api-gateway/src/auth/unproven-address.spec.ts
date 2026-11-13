@@ -1131,6 +1131,7 @@ describe("fork 12 (item 81): the verification link verifies only for a session o
     // Where dev bypass is honoured the session is exempt, as at a refresh.
     await expect(w.auth.resendVerification(id, VICTIM, true)).resolves.toEqual({
       sent: true,
+      verificationMail: "sent",
     });
 
     // Inside the window it sends (the cooldown is the only other gate).
@@ -1142,6 +1143,7 @@ describe("fork 12 (item 81): the verification link verifies only for a session o
     );
     await expect(w2.auth.resendVerification(id2, VICTIM)).resolves.toEqual({
       sent: true,
+      verificationMail: "sent",
     });
   });
 
