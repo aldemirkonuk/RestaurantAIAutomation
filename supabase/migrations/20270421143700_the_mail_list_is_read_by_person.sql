@@ -129,6 +129,9 @@
 -- The mark names a letter, never a thread key, so it follows the letter if
 -- its thread is joined to another one later (one_conversation_is_one_thread
 -- re-keys rows). A settled letter is still visible; it only stops owing.
+-- The two functions that set and take back a mark are in
+-- 20271013143000_a_letter_can_need_no_reply.sql; this file holds the table
+-- because mail_letter_rows reads it.
 --
 -- ACCESS
 -- ------
@@ -153,7 +156,7 @@ CREATE TABLE IF NOT EXISTS public.mail_letter_no_reply_marks (
 COMMENT ON TABLE public.mail_letter_no_reply_marks IS
   'A letter the house received that an owner or manager said needs no reply: it and every '
   'earlier letter of its thread stop making the thread wait (the_mail_list_is_read_by_person, '
-  'r28 mail gap 4). Written only through mail_letter_mark_no_reply.';
+  'r28 mail gap 4). Written only through mail_letter_mark_no_reply (a_letter_can_need_no_reply).';
 
 CREATE INDEX IF NOT EXISTS idx_mail_letter_no_reply_marks_restaurant
   ON public.mail_letter_no_reply_marks (restaurant_id);
@@ -819,71 +822,6 @@ COMMENT ON FUNCTION public.mail_thread_letters(uuid, text, uuid, boolean, timest
   'and whether the thread is waiting on the house. (the_mail_list_is_read_by_person)';
 
 
--- An owner's or manager's "this letter needs no reply" (gap 4). The gateway
--- decides who may; this decides what may be marked: a letter of THIS house
--- that the house received. Marking twice keeps the first mark.
-CREATE OR REPLACE FUNCTION public.mail_letter_mark_no_reply(
-  p_restaurant_id uuid,
-  p_conversation_id uuid,
-  p_marked_by uuid DEFAULT NULL::uuid
-) RETURNS text
-    LANGUAGE plpgsql VOLATILE SECURITY INVOKER
-    SET search_path = ''
-    AS $$
-DECLARE
-  v_dir text;
-BEGIN
-  SELECT lower(c.direction::text)
-    INTO v_dir
-    FROM public.procurement_conversations c
-   WHERE c.id = p_conversation_id
-     AND c.restaurant_id = p_restaurant_id;
-  IF NOT FOUND THEN
-    RETURN 'not_found';
-  END IF;
-  IF v_dir IS DISTINCT FROM 'inbound' THEN
-    RETURN 'not_received';
-  END IF;
-  INSERT INTO public.mail_letter_no_reply_marks (conversation_id, restaurant_id, marked_by)
-  VALUES (p_conversation_id, p_restaurant_id, p_marked_by)
-  ON CONFLICT (conversation_id) DO NOTHING;
-  RETURN 'marked';
-END;
-$$;
-
-COMMENT ON FUNCTION public.mail_letter_mark_no_reply(uuid, uuid, uuid) IS
-  'Marks one received letter of a house as needing no reply: not_found (no such letter in '
-  'this house), not_received (the house sent it), or marked. (the_mail_list_is_read_by_person)';
-
-
--- Taking the mark back: the thread waits again from the oldest letter the
--- mark had settled, unless another mark still covers it.
-CREATE OR REPLACE FUNCTION public.mail_letter_unmark_no_reply(
-  p_restaurant_id uuid,
-  p_conversation_id uuid
-) RETURNS text
-    LANGUAGE plpgsql VOLATILE SECURITY INVOKER
-    SET search_path = ''
-    AS $$
-BEGIN
-  PERFORM 1
-     FROM public.procurement_conversations c
-    WHERE c.id = p_conversation_id
-      AND c.restaurant_id = p_restaurant_id;
-  IF NOT FOUND THEN
-    RETURN 'not_found';
-  END IF;
-  DELETE FROM public.mail_letter_no_reply_marks k
-   WHERE k.conversation_id = p_conversation_id
-     AND k.restaurant_id = p_restaurant_id;
-  RETURN CASE WHEN FOUND THEN 'unmarked' ELSE 'not_marked' END;
-END;
-$$;
-
-COMMENT ON FUNCTION public.mail_letter_unmark_no_reply(uuid, uuid) IS
-  'Takes back the "needs no reply" mark on one letter of a house: not_found, not_marked, or '
-  'unmarked. (the_mail_list_is_read_by_person)';
-
 
 -- No new index. Measured on a 2,000-row house (PR body): one vendor's rows
 -- are found through the existing idx_procurement_conversations_provider_created
@@ -905,10 +843,6 @@ REVOKE ALL ON FUNCTION public.mail_inbox_summary(uuid, boolean)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.mail_thread_letters(uuid, text, uuid, boolean, timestamp with time zone, uuid, integer)
   FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.mail_letter_mark_no_reply(uuid, uuid, uuid)
-  FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.mail_letter_unmark_no_reply(uuid, uuid)
-  FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.mail_letter_rows(uuid, boolean, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_thread_states(uuid, boolean, uuid) TO service_role;
@@ -916,5 +850,3 @@ GRANT EXECUTE ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timest
 GRANT EXECUTE ON FUNCTION public.list_mail_threads(uuid, uuid, boolean, timestamp with time zone, text, integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_inbox_summary(uuid, boolean) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_thread_letters(uuid, text, uuid, boolean, timestamp with time zone, uuid, integer) TO service_role;
-GRANT EXECUTE ON FUNCTION public.mail_letter_mark_no_reply(uuid, uuid, uuid) TO service_role;
-GRANT EXECUTE ON FUNCTION public.mail_letter_unmark_no_reply(uuid, uuid) TO service_role;
