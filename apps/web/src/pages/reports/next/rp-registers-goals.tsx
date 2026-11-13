@@ -92,10 +92,11 @@ export interface GoalsRegister {
  * the house's (`currency`), bare when the house has none recorded, and the
  * dash while the house's currency is still being read.
  */
-function inUnit(v: number | null, unit: string, currency?: MoneyIn): string {
+export function inUnit(v: number | null, unit: string, currency?: MoneyIn): string {
   if (v === null) return EM;
   if (unit === 'percent') return ratioPct(v);
   if (unit === 'currency') return money(v, 'compact', currency);
+  if (unit === 'days') return `${figure(v, 'compact')} ${v === 1 ? 'day' : 'days'}`;
   return figure(v, 'compact');
 }
 

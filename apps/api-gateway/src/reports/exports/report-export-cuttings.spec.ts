@@ -269,6 +269,35 @@ describe("a signed change is written in percent, from the engine's 0–1 fractio
     expect(week[3]).toEqual({ n: expect.closeTo(20.689655, 6), unit: "percent" });
   });
 
+  it("against ourselves: the buying row writes the earlier window under Then and the latest under Now (r28 gap 5)", () => {
+    const doc = EXPORT_CUTTINGS.bench.write(PAYLOADS.bench, { days: null });
+    const table = doc.tables[0];
+    expect(table.columns[1].label).toMatch(/^Then/);
+    expect(table.columns[2].label).toMatch(/^Now/);
+    const [buying] = table.rows;
+    // The fixture bought 1200 in the last 30 days and 900 in the 30 before.
+    expect(buying[1]).toEqual({ n: 900, unit: "money" });
+    expect(buying[2]).toEqual({ n: 1200, unit: "money" });
+  });
+
+  it("against ourselves: a goal is written in its metric's unit, never a bare count (r28 gap 6)", () => {
+    const write = (goal: Record<string, unknown>) =>
+      EXPORT_CUTTINGS.bench.write(
+        { ...(PAYLOADS.bench as object), activeGoals: [goal] },
+        { days: null },
+      ).tables[0].rows.slice(-1)[0];
+    const base = { name: "G", baseline_value: 0.2, current_value: 0.24, target_value: 0.3 };
+    expect(write({ ...base, unit: "percent" }).slice(1)).toEqual([
+      { n: 0.2, unit: "ratio" },
+      { n: 0.24, unit: "ratio" },
+      { n: 0.3, unit: "ratio" },
+    ]);
+    expect(write({ ...base, unit: "currency" })[1]).toEqual({ n: 0.2, unit: "money" });
+    expect(write({ ...base, unit: "days" })[3]).toEqual({ n: 0.3, unit: "days" });
+    // A payload from before the overview carried units reads as it did.
+    expect(write(base)[1]).toEqual({ n: 0.2, unit: "count" });
+  });
+
   it("an unknown change stays withheld, never 0%", () => {
     const doc = EXPORT_CUTTINGS.pacing.write({ ...(PAYLOADS.pacing as object), paceDeltaPct: null }, { days: null });
     expect(isWithheld(figure(doc, "Pace"))).toBe(true);
