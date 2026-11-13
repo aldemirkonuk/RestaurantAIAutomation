@@ -193,3 +193,47 @@ describe('RowExpansion — an unknown cost is said, never $0 and never the libra
     expect(paidLine()).toHaveTextContent('$12.50')
   })
 })
+
+describe('RowExpansion — an auction lot read by staff', () => {
+  const lot = {
+    id: 'lot-1',
+    createdAt: '2026-10-01T00:00:00Z',
+    inventoryId: 'inv-1',
+    auctionHouse: "Christie's",
+    lotNumber: '12',
+    saleDate: '2026-10-01',
+    hammerPrice: 900,
+    buyersPremium: 225,
+    currency: 'GBP',
+    bottles: 6,
+    houseCurrency: 'EUR',
+    exchangeRate: 1.2,
+    houseUnitCost: null,
+    bookedUnitCost: 225,
+    recordedByName: 'Ana',
+  }
+  beforeEach(() => {
+    vi.clearAllMocks()
+    getItemActivity.mockResolvedValue({ daily: [], heat: [], totalOut28d: 0, totalIn28d: 0, includes: { out: '', in: '', window: '' } })
+    getOrders.mockResolvedValue([])
+  })
+
+  it('an owner reads what the lot was paid', async () => {
+    fetchAuctionLotRecords.mockResolvedValue([lot])
+    renderRow()
+    const line = await screen.findByTestId('auction-lot-line-lot-1')
+    expect(line.textContent).toContain('900 + 225 premium GBP, 6 bottles')
+  })
+
+  it('staff, answered without the prices, read the bottles and never "null"', async () => {
+    fetchAuctionLotRecords.mockResolvedValue([
+      { ...lot, hammerPrice: null, buyersPremium: null, exchangeRate: null, bookedUnitCost: null },
+    ])
+    renderRow()
+    const line = await screen.findByTestId('auction-lot-line-lot-1')
+    expect(line.textContent).toContain('6 bottles — recorded by Ana')
+    expect(line.textContent).not.toContain('null')
+    expect(line.textContent).not.toContain('premium')
+    expect(screen.queryByTestId('auction-lot-booked-lot-1')).toBeNull()
+  })
+})

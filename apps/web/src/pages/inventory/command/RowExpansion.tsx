@@ -337,8 +337,13 @@ export function RowExpansion({
                   <span className="text-gray-400">{lot.lotNumber ? `lot ${lot.lotNumber}` : 'lot number not stated'}</span>
                   <span className="flex-1 text-gray-500 truncate text-right">{lot.saleDate}</span>
                 </div>
-                <div className="text-[11px] text-gray-500 mt-0.5">
-                  {lot.hammerPrice} + {lot.buyersPremium} premium {lot.currency}, {lot.bottles} bottles — recorded by {lot.recordedByName}
+                <div className="text-[11px] text-gray-500 mt-0.5" data-testid={`auction-lot-line-${lot.id}`}>
+                  {/* Staff are answered without what the lot was paid (the gateway's
+                      inventory-cost-for-role.ts), so a withheld price is left out, never printed "null". */}
+                  {lot.hammerPrice != null && lot.buyersPremium != null
+                    ? `${lot.hammerPrice} + ${lot.buyersPremium} premium ${lot.currency}, `
+                    : ''}
+                  {lot.bottles} bottles — recorded by {lot.recordedByName}
                 </div>
                 {/* What the book was given, in the house's money (founder answer 10). */}
                 {lot.bookedUnitCost != null && lot.houseCurrency && (
