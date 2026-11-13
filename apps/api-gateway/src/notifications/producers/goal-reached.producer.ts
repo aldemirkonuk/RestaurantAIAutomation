@@ -1,6 +1,10 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
 import { GoalsService } from "../../analytics/goals.service";
+import {
+  isSalesGatedGoal,
+  salesGatedBit,
+} from "../../analytics/sales-gated-goals";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import {
   ProducerLedgerService,
@@ -116,10 +120,18 @@ export class GoalReachedProducer {
     }
 
     let ceilingGoals = 0;
+    let salesGated = 0;
 
     for (const goal of goals) {
       if (goal.direction === "at_most") {
         ceilingGoals += 1;
+        continue;
+      }
+      // As in ceiling-held: a days-of-stock goal is a sales holder's figure
+      // and this producer carries no sales gate yet. Counted and named, not
+      // read.
+      if (isSalesGatedGoal(goal.metric_key)) {
+        salesGated += 1;
         continue;
       }
 
@@ -220,11 +232,23 @@ export class GoalReachedProducer {
       );
     }
 
+    // Named on every run; `withheld_reason` carries only a no-op's sentence.
+    if (salesGated > 0) {
+      this.logger.log(
+        `${restaurantId}: not read: ${salesGatedBit(salesGated)}`,
+      );
+    }
+
     if (tally.emitted === 0 && tally.withheldReason === null) {
+      // A goal not read is not a goal that missed its target.
+      const read = salesGated > 0 ? " that was read" : "";
       tally.withheldReason =
         ceilingGoals > 0 && tally.considered === 0
-          ? `${goals.length} active goal(s), of which ${ceilingGoals} are 'at most' ceilings this producer does not report on — crossing a ceiling is not a success. No 'at least' goal has reached its target.`
-          : "No active goal has reached its target.";
+          ? `${goals.length} active goal(s), of which ${ceilingGoals} are 'at most' ceilings this producer does not report on — crossing a ceiling is not a success. No 'at least' goal${read} has reached its target.`
+          : `No active goal${read} has reached its target.`;
+      if (salesGated > 0) {
+        tally.withheldReason += ` Not read: ${salesGatedBit(salesGated)}.`;
+      }
     }
 
     return tally;

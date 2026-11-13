@@ -17,7 +17,7 @@
  *     order is told that rather than having their seal burned.
  */
 
-import { ForbiddenException } from "@nestjs/common";
+import { ConflictException, ForbiddenException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { SealChallengeService } from "../common/seal/seal-challenge.service";
 import { hashCallArgs, hashSealToken } from "../common/seal/seal-token";
@@ -35,6 +35,7 @@ function harness(opts: {
   seals?: Row[];
   role?: string | null;
   requiredRole?: "owner" | "manager" | null;
+  status?: string;
 }) {
   const seals = opts.seals ?? [];
   const updates: Row[] = [];
@@ -45,7 +46,7 @@ function harness(opts: {
     provider_id: "anadolu",
     inventory_id: null,
     final_price: null,
-    status: "pending",
+    status: opts.status ?? "pending",
   };
 
   const chain = (result: { data: unknown; error: null }) => {
@@ -86,11 +87,28 @@ function harness(opts: {
           return {
             ...scoped,
             update: (patch: Row) => {
-              updates.push(patch);
-              return chain({
-                data: { ...order, ...patch, inventory: null },
-                error: null,
-              });
+              // The update is a compare-and-set on the status read before
+              // it: a row whose status moved since then matches nothing.
+              let expected: unknown = undefined;
+              const upd: Record<string, unknown> = {};
+              for (const m of ["select", "is", "in", "order", "limit", "neq", "lt"]) {
+                upd[m] = () => upd;
+              }
+              upd.eq = (col: string, value: unknown) => {
+                if (col === "status") expected = value;
+                return upd;
+              };
+              const settle = () => {
+                if (expected !== undefined && expected !== order.status) {
+                  return { data: null, error: null as null };
+                }
+                updates.push(patch);
+                if (typeof patch.status === "string") order.status = patch.status;
+                return { data: { ...order, ...patch, inventory: null }, error: null as null };
+              };
+              upd.maybeSingle = () => Promise.resolve(settle());
+              upd.single = () => Promise.resolve(settle());
+              return upd;
             },
           };
         }
@@ -251,10 +269,51 @@ describe("ProcurementService.approveOrder — the seal is redeemed, not asserted
   it("refuses the same seal a second time", async () => {
     const h = harness({ seals: [unspentSeal()] });
     await h.service.approveOrder(HOUSE, ORDER, MANAGER, "tok");
+    // Put the order back where it was, so the seal is what is tested here,
+    // not the approve-once rule below.
+    h.order.status = "pending";
     await expect(
       h.service.approveOrder(HOUSE, ORDER, MANAGER, "tok"),
     ).rejects.toThrow(/already been spent/i);
     expect(h.updates).toHaveLength(1);
+  });
+
+  it("refuses an order that is already approved, keeps the seal, and writes nothing", async () => {
+    const h = harness({ status: "APPROVED", seals: [unspentSeal()] });
+    const err = await h.service
+      .approveOrder(HOUSE, ORDER, MANAGER, "tok")
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(String(err.message)).toMatch(/already approved/i);
+    expect(h.updates).toHaveLength(0);
+    expect(h.seals[0].redeemed_at).toBeNull();
+  });
+
+  it("a second approve with a fresh seal is refused, so stock is reserved once", async () => {
+    const h = harness({
+      seals: [unspentSeal(), unspentSeal({ id: "seal-2", token_hash: hashSealToken("tok2") })],
+    });
+    await h.service.approveOrder(HOUSE, ORDER, MANAGER, "tok");
+    await expect(
+      h.service.approveOrder(HOUSE, ORDER, MANAGER, "tok2"),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(h.updates).toHaveLength(1);
+  });
+
+  it("a status that moved between the read and the write matches no row, and says so", async () => {
+    const h = harness({ seals: [unspentSeal()] });
+    // Another manager approves between this call's read and its write.
+    const realRedeem = (h.service as any).redeemOrderSeal.bind(h.service);
+    (h.service as any).redeemOrderSeal = async (...args: unknown[]) => {
+      await realRedeem(...args);
+      h.order.status = "APPROVED";
+    };
+    const err = await h.service
+      .approveOrder(HOUSE, ORDER, MANAGER, "tok")
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(ConflictException);
+    expect(String(err.message)).toMatch(/changed while it was being approved/i);
+    expect(h.updates).toHaveLength(0);
   });
 
   it("refuses a seal minted before the order's total changed", async () => {

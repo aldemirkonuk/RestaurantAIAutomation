@@ -22,6 +22,10 @@ describe("InventoryLedgerService", () => {
     lte: jest.fn().mockReturnThis(),
     order: jest.fn().mockReturnThis(),
     range: jest.fn().mockReturnThis(),
+    // The key check before the RPC asks whether another house spent the key;
+    // here none has.
+    neq: jest.fn().mockReturnThis(),
+    limit: jest.fn().mockResolvedValue({ data: [], error: null }),
     single: jest.fn(),
     // ADR 0141 added two maybeSingle() reads to this path: the ownership probe
     // that runs BEFORE the RPC, and the read-back that runs after it. Both are

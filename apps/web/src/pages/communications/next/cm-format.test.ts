@@ -7,11 +7,20 @@
 import { describe, expect, it } from 'vitest';
 import { failedReadWords, failedReadsSentence, fmtAsOf, readAgainFailed } from './cm-format';
 
-const today = (h: number, m: number) => {
+/**
+ * The same wall-clock time `n` calendar days back. Subtracting n × 86,400,000
+ * ms instead lands an hour off across a clock change: on 1 Nov 2026 in the
+ * suite's zone (America/New_York, `src/__tests__/setup.ts`), 20:43 less two
+ * days of milliseconds read 21:43 on 30 Oct.
+ */
+const daysAgo = (n: number, h: number, m: number) => {
   const d = new Date();
+  d.setDate(d.getDate() - n);
   d.setHours(h, m, 0, 0);
   return d.getTime();
 };
+
+const today = (h: number, m: number) => daysAgo(0, h, m);
 
 describe('failedReadWords', () => {
   it('says the server’s words without their full stop', () => {
@@ -30,7 +39,7 @@ describe('failedReadWords', () => {
 describe('when a read was last answered', () => {
   it('today is a time; another day carries its date', () => {
     expect(fmtAsOf(today(20, 43))).toBe('at 20:43');
-    expect(fmtAsOf(today(20, 43) - 2 * 86_400_000)).toMatch(/^on \d{1,2} \w+ at 20:43$/);
+    expect(fmtAsOf(daysAgo(2, 20, 43))).toMatch(/^on \d{1,2} \w+ at 20:43$/);
     expect(fmtAsOf(0)).toBe('at a time that was not recorded');
   });
   it('a read that cannot be read again says when, with or without a subject', () => {

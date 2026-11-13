@@ -101,7 +101,7 @@ describe('head block', () => {
 });
 
 describe('registry', () => {
-  it('every public route is indexable and canonical to itself, except /terms, held noindex on purpose', () => {
+  it('every public route is indexable and canonical to itself, except /terms, held noindex on purpose, and /register, which shows the landing', () => {
     for (const r of PUBLIC_ROUTES) {
       // OD-170: /terms is held noindex, out of the sitemap, until its final
       // legal text and subprocessor list exist. A held route carries no
@@ -111,6 +111,13 @@ describe('registry', () => {
         expect(r.head.robots, r.path).toBe('noindex, nofollow');
         expect(r.sitemap, r.path).toBe(false);
         expect(r.head.canonical, r.path).toBeUndefined();
+      } else if (r.path === '/register') {
+        // ADR 0344: a bare /register renders the landing page, so its head
+        // names the root as the page it copies and is out of the sitemap.
+        expect(r.head.robots, r.path).toBe('index, follow');
+        expect(r.head.canonical, r.path).toBe(`${SITE.origin}/`);
+        expect(r.head.title, r.path).toBe(SITE.name);
+        expect(r.sitemap, r.path).toBe(false);
       } else {
         expect(r.head.robots, r.path).toBe('index, follow');
         expect(r.head.canonical, r.path).toBe(`${SITE.origin}${r.path}`);
@@ -217,8 +224,17 @@ describe('sitemap and llms.txt', () => {
     const xml = renderPagesSitemap();
     expect(xml).toContain('<loc>https://mudavym.com/login</loc>');
     expect(xml).toContain('<loc>https://mudavym.com/privacy</loc>');
-    expect(xml).not.toContain('<loc>https://mudavym.com/</loc>');
+    // The root is the landing page (ADR 0320), so it is listed; until then it
+    // redirected strangers to /login and was held out.
+    expect(xml).toContain('<loc>https://mudavym.com/</loc>');
     expect(xml).not.toContain('lastmod');
+  });
+
+  it('lists /story and leaves out /register, which copies the root (ADR 0344)', () => {
+    expect(renderPagesSitemap()).toContain('<loc>https://mudavym.com/story</loc>');
+    expect(renderLlmsTxt()).toContain('(https://mudavym.com/story)');
+    expect(renderPagesSitemap()).not.toContain('/register');
+    expect(renderLlmsTxt()).not.toContain('/register');
   });
 
   it('holds /terms out of the sitemap and llms.txt (OD-170, noindex until final text)', () => {

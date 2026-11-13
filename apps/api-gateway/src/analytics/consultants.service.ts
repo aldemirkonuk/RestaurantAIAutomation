@@ -16,7 +16,7 @@ import {
   checkGrounding,
   consultantVerdict,
 } from "./consultant-grounding";
-import { AnalyticsService } from "./analytics.service";
+import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 
 /**
@@ -114,6 +114,9 @@ export class ConsultantsService {
     restaurantId: string,
     persona: string,
     askedBy: string | null = null,
+    // The evidence pack carries the till's figures only for a caller who
+    // sees sales (ADR 0298 decision 9); absent, they are withheld.
+    gate: SalesGate = {},
   ) {
     if (!(await this.isEnabled(restaurantId))) {
       return {
@@ -134,8 +137,8 @@ export class ConsultantsService {
     // computed numbers, it never touches raw tables.
     const [financial, risk, inventoryScience, generated] =
       await Promise.allSettled([
-        this.analyticsService.getFinancialSummary(restaurantId),
-        this.analyticsService.getRiskProfile(restaurantId),
+        this.analyticsService.getFinancialSummary(restaurantId, 0, gate),
+        this.analyticsService.getRiskProfile(restaurantId, gate),
         this.analyticsService.getInventoryScience(restaurantId),
         this.insightGenerator.generate(restaurantId, { maxPerCategory: 4 }),
       ]);

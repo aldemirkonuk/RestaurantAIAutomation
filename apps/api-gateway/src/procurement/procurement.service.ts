@@ -4135,8 +4135,16 @@ export class ProcurementService {
     challenge?: string | null,
   ): Promise<OrderResponseDto> {
     await this.assertApprovalAllowed(restaurantId, orderId, userId);
+    // An order is approved once (ADR 0315, mount-line fix c). Read before the
+    // seal is spent, so an order that is already approved is told so and keeps
+    // the seal.
+    const fromStatus = await this.readApprovableStatus(restaurantId, orderId);
     await this.redeemOrderSeal(restaurantId, orderId, userId, challenge);
 
+    // Compare-and-set on the status just read. A second approve that raced
+    // this one, from another manager or a retry after an unknown outcome,
+    // matches no row instead of reserving shadow stock and asking for a
+    // vendor letter a second time.
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .update({
@@ -4146,8 +4154,9 @@ export class ProcurementService {
       })
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
+      .eq("status", fromStatus)
       .select("*, inventory:inventory_id(wine_name)")
-      .single();
+      .maybeSingle();
 
     if (error) {
       this.logger.error("Failed to approve procurement order", {
@@ -4156,6 +4165,11 @@ export class ProcurementService {
         error: error.message,
       });
       throw error;
+    }
+    if (!data) {
+      throw new ConflictException(
+        "This order changed while it was being approved, most likely approved by someone else a moment ago. Nothing more was reserved and no second letter was asked for. Look on Orders.",
+      );
     }
 
     const row = data as any;
@@ -4273,6 +4287,46 @@ export class ProcurementService {
       expiresAt: issued.expiresAt,
       act: issued.action,
     };
+  }
+
+  /**
+   * The order's stored status, if it may become APPROVED now; otherwise a 409
+   * that says why. APPROVED itself is refused: `canTransition` permits
+   * re-entering it, and the database trigger skips a same-state write, so
+   * nothing else stops a second approve from reserving the stock again.
+   */
+  private async readApprovableStatus(
+    restaurantId: string,
+    orderId: string,
+  ): Promise<string> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .select("status")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", orderId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException(
+        `The order's state could not be read, so it was not approved: ${error.message}`,
+      );
+    }
+    const raw = (data as { status?: unknown } | null)?.status;
+    const from = readOrderStatus(raw);
+    if (from === null) {
+      throw new ConflictException(
+        refuseUnreadableStatus(ProcurementOrderStatus.APPROVED, raw),
+      );
+    }
+    if (from === ProcurementOrderStatus.APPROVED) {
+      throw new ConflictException(
+        "This order is already approved. Nothing more was reserved and no second letter was asked for.",
+      );
+    }
+    const verdict = decideTransition(raw, ProcurementOrderStatus.APPROVED);
+    if (!verdict.allowed) {
+      throw new ConflictException(verdict.sentence);
+    }
+    return raw as string;
   }
 
   /**
@@ -9772,19 +9826,22 @@ export class ProcurementService {
           `${confirmSentence} ` +
           `Please send an order confirmation along with the expected delivery date.\n\n` +
           `Thank you!`;
+        const inReplyTo: string | undefined =
+          (lastInbound as any)?.message_id || inHeaders.message_id || undefined;
+        const references: string | undefined =
+          inHeaders.references || undefined;
         const ids = await this.sendProviderEmail({
           to: providerEmail,
           subject,
           html: this.buildEmailHtml(body),
           restaurantId,
           threadId: (lastInbound as any)?.gmail_thread_id || undefined,
-          inReplyTo:
-            (lastInbound as any)?.message_id ||
-            inHeaders.message_id ||
-            undefined,
-          references: inHeaders.references || undefined,
+          inReplyTo,
+          references,
           senderName: await this.resolveSenderName(restaurantId),
         });
+        const letterGmailThreadId: string | null =
+          ids.gmailThreadId || (lastInbound as any)?.gmail_thread_id || null;
         await this.databaseService.supabase
           .from("procurement_conversations")
           .insert({
@@ -9799,13 +9856,28 @@ export class ProcurementService {
             status: "SENT",
             sent_at: new Date().toISOString(),
             outbound_email_type: "ORDER_CONFIRMATION",
-            gmail_thread_id:
-              ids.gmailThreadId ||
-              (lastInbound as any)?.gmail_thread_id ||
-              null,
+            gmail_thread_id: letterGmailThreadId,
             gmail_message_id: ids.gmailMessageId || null,
             message_id: ids.rfc822MessageId || null,
-            email_headers: { subject },
+            // The reply headers this letter was sent with, recorded only when
+            // the row has a Gmail thread id. The mail bridge reads a thread
+            // from its earliest row and lets that row name an order only when
+            // it is outbound with no in_reply_to
+            // (rabbitmq-bridge.service.ts handleInboundEmail, step 2). If this
+            // send opened a new Gmail thread, this row is that thread's
+            // earliest, and without in_reply_to it would name this order for
+            // every invoice the vendor sends into it, though the order may be
+            // the bridge's guess. With no Gmail thread id, the
+            // set_conversation_thread_key trigger would derive the row's
+            // thread_key from these headers instead of its subject and move
+            // it to another /communications thread; with one, thread_key is
+            // 'gm:' plus the id either way (baseline conversation_thread_key).
+            email_headers: {
+              subject,
+              ...(letterGmailThreadId && inReplyTo
+                ? { in_reply_to: inReplyTo, references: references || null }
+                : {}),
+            },
             sent_by_user_id: userId,
             sent_under_grant_id: standing.basis === "grant" ? standing.grant.id : null,
           });

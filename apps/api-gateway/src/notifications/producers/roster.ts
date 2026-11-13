@@ -12,8 +12,8 @@ import { candidateShiftDates, onShiftAt } from "./shift-window";
  * NEVER THROWS. A missing roster degrades the sentence; it does not lose the
  * notification. An unreadable schedule and an empty one both produce `[]` and
  * are distinguished in the log — the copy says "the schedule names nobody for
- * that hour", never "nobody was working". `shifts` is a PLAN and there is no
- * clock-in table in this schema.
+ * that hour", never "nobody was working". `shifts` is a PLAN; the floor's
+ * clock-in table (`floor_punches`) is not read here.
  */
 export interface RosterEntry {
   memberId: string;

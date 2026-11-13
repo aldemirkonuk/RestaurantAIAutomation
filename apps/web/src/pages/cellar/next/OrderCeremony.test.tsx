@@ -280,3 +280,27 @@ describe('OrderCeremony — hold (DEFAULT: hold, then "are you sure?", before it
     expect(screen.queryByTestId('order-ceremony-error')).not.toBeInTheDocument();
   });
 });
+
+describe('OrderCeremony — words (INV-W20: /inventory places, it does not send)', () => {
+  it('keeps /cellar\'s words when no words are passed', () => {
+    renderCeremony({ ceremony: 'hold', label: 'Hold to order', errorMessage: 'the gateway refused it (500)' });
+    expect(screen.getByTestId('order-ceremony-error')).toHaveTextContent('Nothing was sent — the gateway refused it (500). Try again when ready.');
+    completeHoldByKeyboard(screen.getByRole('button', { name: /Hold to order/ }));
+    expect(screen.getByTestId('order-ceremony-asking')).toHaveTextContent('Send it?');
+    expect(screen.getByTestId('order-ceremony-confirm-yes')).toHaveTextContent('Yes, order');
+  });
+
+  it('says the caller\'s words in the ask and the failure line', () => {
+    renderCeremony({
+      ceremony: 'hold',
+      label: 'Hold to place',
+      errorMessage: 'the gateway refused it (500)',
+      words: { ask: 'Place it on Orders?', yes: 'Yes, place it', failedLead: 'Nothing was placed' },
+    });
+    expect(screen.getByTestId('order-ceremony-error')).toHaveTextContent('Nothing was placed — the gateway refused it (500). Try again when ready.');
+    completeHoldByKeyboard(screen.getByRole('button', { name: /Hold to place/ }));
+    expect(screen.getByTestId('order-ceremony-asking')).toHaveTextContent('Place it on Orders?');
+    expect(screen.getByTestId('order-ceremony-asking')).not.toHaveTextContent('Send it?');
+    expect(screen.getByTestId('order-ceremony-confirm-yes')).toHaveTextContent('Yes, place it');
+  });
+});

@@ -52,20 +52,35 @@ export function rowFlags(item: InventoryItem): RowFlag[] {
 
 // ── Stock gauge (3a signature) ────────────────────────────────────────────────
 
-export function StockGauge({ item, compact }: { item: InventoryItem; compact?: boolean }) {
+export function StockGauge({
+  item,
+  compact,
+  numTone,
+}: {
+  item: InventoryItem
+  compact?: boolean
+  /** The caller's own tint for the number, so it matches the tile beside it (INV-W19). */
+  numTone?: 'rose' | 'amber' | null
+}) {
+  // A count that could not be read is not 0, and a missing par is not a par of
+  // 1 (INV-W19): an unread number shows —, and no par says "no par set"
+  // instead of "/  par".
+  const read = item.liveStock != null
+  const shadowRead = item.shadowStock != null
+  const hasPar = item.threshold != null && item.threshold > 0
   const live = item.liveStock ?? 0
   const shadow = item.shadowStock ?? 0
-  const par = item.threshold > 0 ? item.threshold : 1
+  const par = hasPar ? item.threshold : 1
   const scale = Math.max(live + shadow, par * 1.5, 1)
   const status = classifyStock(item.liveStock, item.threshold)
-  const numColor =
-    status.key === 'critical' ? 'text-rose-600' : status.key === 'low' ? 'text-amber-600' : 'text-gray-900'
+  const tone = numTone !== undefined ? numTone : status.key === 'critical' ? 'rose' : status.key === 'low' ? 'amber' : null
+  const numColor = tone === 'rose' ? 'text-rose-600' : tone === 'amber' ? 'text-amber-600' : 'text-gray-900'
 
   return (
     <div>
       <div className="flex items-baseline gap-1.5 font-mono">
-        <span className={cn('text-sm font-bold', numColor)}>{live + shadow}</span>
-        <span className="text-[10px] text-gray-400">/ {item.threshold} par</span>
+        <span className={cn('text-sm font-bold', numColor)}>{read && shadowRead ? live + shadow : '—'}</span>
+        <span className="text-[10px] text-gray-400">{hasPar ? `/ ${item.threshold} par` : 'no par set'}</span>
         {shadow > 0 && (
           <span className="ml-auto text-[9px] font-bold tracking-wide text-violet-600 bg-violet-50 rounded-full px-2 py-px">
             RECONCILE
@@ -75,15 +90,17 @@ export function StockGauge({ item, compact }: { item: InventoryItem; compact?: b
       <div className="relative flex h-1.5 my-1 bg-gray-100 rounded-full">
         <div className="h-full bg-blue-600 rounded-l-full" style={{ width: `${(live / scale) * 100}%` }} />
         {shadow > 0 && <div className="h-full bg-violet-600" style={{ width: `${(shadow / scale) * 100}%` }} />}
-        <div
-          className="absolute -top-1 w-0.5 h-3.5 bg-gray-900/60 rounded"
-          style={{ left: `${Math.min((par / scale) * 100, 100)}%` }}
-        />
+        {hasPar && (
+          <div
+            className="absolute -top-1 w-0.5 h-3.5 bg-gray-900/60 rounded"
+            style={{ left: `${Math.min((par / scale) * 100, 100)}%` }}
+          />
+        )}
       </div>
       {!compact && (
         <div className="flex gap-2.5 font-mono text-[9px]">
-          <span className="text-blue-600">{live} live</span>
-          <span className={shadow > 0 ? 'text-violet-600' : 'text-gray-300'}>{shadow} shadow</span>
+          <span className="text-blue-600">{read ? live : '—'} live</span>
+          <span className={shadow > 0 ? 'text-violet-600' : 'text-gray-300'}>{shadowRead ? shadow : '—'} shadow</span>
         </div>
       )}
     </div>

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
+// A bare /register shows the landing page (ADR 0344); this link asks for the form.
+import { START } from './landing/doors'
 import { useAuth, LoginError } from '../contexts/AuthContext'
 import { Button } from '../components/ui'
 import { Mail, Lock, AlertCircle, ArrowRight, KeyRound, Fingerprint } from 'lucide-react'
@@ -665,7 +667,7 @@ export function Login() {
           <p className={on ? 'text-sm !text-inkm-4' : 'text-sm text-gray-600'}>
             Don&apos;t have an account?{' '}
             <Link
-              to="/register"
+              to={START}
               className={
                 on
                   ? 'font-semibold text-seal hover:text-seal-deep transition-colors'

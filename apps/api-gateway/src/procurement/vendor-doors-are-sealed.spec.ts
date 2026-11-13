@@ -587,6 +587,66 @@ describe("every order-keyed conversation read on the deal and reply paths is thi
     });
   });
 
+  // The mail bridge lets a Gmail thread name an order only when the thread's
+  // earliest row is outbound with no email_headers.in_reply_to
+  // (rabbitmq-bridge.service.ts handleInboundEmail, step 2). A confirmation
+  // whose send opened a new thread is that thread's earliest row, and its
+  // order may be the bridge's guess, so the row records the reply it answers.
+  it("the deal confirmation row records the reply headers it was sent with when it has a Gmail thread id", async () => {
+    const t = build();
+    const terms = { finalPrice: 190, quantity: 6, sendConfirmation: true };
+    t.db.tables.procurement_conversations.push(
+      inbound("conv-own", HOUSE, "2026-09-20T10:00:00Z", {
+        conversation_context: proposal,
+      }),
+    );
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+    );
+    await t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge);
+    const letter = t.db.tables.procurement_conversations.find(
+      (r) => r.outbound_email_type === "ORDER_CONFIRMATION",
+    );
+    expect(letter?.gmail_thread_id).toBe("thread-1");
+    expect(letter?.email_headers).toEqual({
+      subject: "Re: conv-own",
+      in_reply_to: "<conv-own@mail.example>",
+      references: "<conv-own-ref@mail.example>",
+    });
+  });
+
+  // With no Gmail thread id, set_conversation_thread_key would derive the
+  // row's thread_key from reply headers instead of its subject, which would
+  // move it to another /communications thread. Such a row is never a thread
+  // the bridge can look up, so it records only its subject, as before.
+  it("a deal confirmation row with no Gmail thread id records only its subject", async () => {
+    const t = build();
+    const terms = { finalPrice: 190, quantity: 6, sendConfirmation: true };
+    t.gmail.sendEmail = recorder(async () => ({ success: true }));
+    t.db.tables.procurement_conversations.push(
+      inbound("conv-own", HOUSE, "2026-09-20T10:00:00Z", {
+        conversation_context: proposal,
+        gmail_thread_id: null,
+      }),
+    );
+    const { challenge } = await t.service.issueConfirmDealSeal(
+      HOUSE,
+      ORDER,
+      MANAGER,
+      terms,
+    );
+    await t.service.confirmDeal(HOUSE, ORDER, MANAGER, terms, challenge);
+    expect(t.gmail.sendEmail.calls).toHaveLength(1);
+    const letter = t.db.tables.procurement_conversations.find(
+      (r) => r.outbound_email_type === "ORDER_CONFIRMATION",
+    );
+    expect(letter?.gmail_thread_id).toBeNull();
+    expect(letter?.email_headers).toEqual({ subject: "Re: conv-own" });
+  });
+
   it("another house's reply still being read does not hold this house's confirmation; this house's own does", async () => {
     const terms = { finalPrice: 190, quantity: 6, sendConfirmation: false };
     const justNow = () => new Date().toISOString();

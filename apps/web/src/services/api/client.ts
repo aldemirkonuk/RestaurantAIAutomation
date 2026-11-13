@@ -17,6 +17,7 @@
 
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { goToChooser, noteHouseEnded, storeSession } from '../../lib/houseMemory';
+import { leaveDeadSession } from '../../lib/deadSession';
 
 const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
 
@@ -92,7 +93,8 @@ function createApiClient(): AxiosInstance {
   // When the server rejects a token (expired or revoked), we:
   //   1. Start a single refresh call (or join the in-flight one)
   //   2. Retry the original request with the new token
-  //   3. If refresh fails, clear auth and redirect to /login
+  //   3. If refresh fails, clear auth and redirect to /login, or, on a public
+  //      page, reload it so it draws as it does for a stranger
   client.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {
@@ -118,9 +120,10 @@ function createApiClient(): AxiosInstance {
               // not "you are not who you said you were" (ADR 0164).
               const status = (err as AxiosError)?.response?.status;
               if (!(err instanceof HouseAccessEnded) && status === 401) {
-                localStorage.removeItem('accessToken');
-                localStorage.removeItem('refreshToken');
-                window.location.href = '/login';
+                // One reaction, shared with the auth store's boot load: a
+                // public page reloads as a stranger's, any other goes to
+                // /login (founder, 2026-10-29, ADR 0344).
+                leaveDeadSession();
               }
               throw err;
             })

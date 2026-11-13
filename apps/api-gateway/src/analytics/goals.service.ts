@@ -1,7 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { DatabaseService } from "../database/database.service";
-import { AnalyticsService } from "./analytics.service";
+import { AnalyticsService, SalesGate } from "./analytics.service";
 import * as E from "./engine";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
@@ -159,7 +159,16 @@ export class GoalsService {
   // CRUD
   // ==========================================================================
 
-  async listGoals(restaurantId: string, status = "active") {
+  /**
+   * `_gate` is the caller's sales gate (ADR 0298 decision 9). The goal
+   * methods a route calls take it so that every caller already hands it on;
+   * none reads it yet, so every caller is answered as before.
+   */
+  async listGoals(
+    restaurantId: string,
+    status = "active",
+    _gate: SalesGate = {},
+  ) {
     const q = this.dbService
       .getClient()
       .from("analytics_goals")
@@ -237,6 +246,7 @@ export class GoalsService {
        */
       sourceRuleKey?: string | null;
     },
+    _gate: SalesGate = {},
   ) {
     if (!GoalsService.SUPPORTED_METRICS[input.metricKey]) {
       throw new Error(
@@ -405,19 +415,23 @@ export class GoalsService {
    * silently applied: a house with more goals than that must see that the list
    * it is looking at is partial.
    */
-  async listGoalsWithProgress(restaurantId: string, status = "active") {
+  async listGoalsWithProgress(
+    restaurantId: string,
+    status = "active",
+    gate: SalesGate = {},
+  ) {
     // The house's zone is read once for every goal on the list (ADR 0296),
     // alongside the list itself. A failed read throws: every goal would fail
     // on it alike, and a list of six identical failures says less than one.
     const [goals, house] = await Promise.all([
-      this.listGoals(restaurantId, status),
+      this.listGoals(restaurantId, status, gate),
       readHouseZone(this.dbService.getClient(), restaurantId),
     ]);
     const computed = goals.slice(0, GoalsService.MAX_PROGRESS_GOALS);
     const progress = await Promise.all(
       computed.map(async (g: any) => {
         try {
-          return await this.getGoalProgress(restaurantId, g.id, house);
+          return await this.getGoalProgress(restaurantId, g.id, house, gate);
         } catch (err: any) {
           // One goal whose metric query broke must not blank the other five.
           // `null` progress is rendered as "this goal could not be read",
@@ -469,6 +483,7 @@ export class GoalsService {
     restaurantId: string,
     goalId: string,
     known?: HouseZone,
+    _gate: SalesGate = {},
   ) {
     const [{ data: goal, error }, house] = await Promise.all([
       this.dbService

@@ -8,10 +8,17 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  */
 
 const h = vi.hoisted(() => {
-  const handlers: { onError?: (e: unknown) => Promise<unknown> } = {};
+  const handlers: {
+    onError?: (e: unknown) => Promise<unknown>;
+    onRequest?: (c: any) => any;
+  } = {};
   const instance: any = vi.fn();
   instance.interceptors = {
-    request: { use: vi.fn() },
+    request: {
+      use: vi.fn((onRequest: (c: any) => any) => {
+        handlers.onRequest = onRequest;
+      }),
+    },
     response: {
       use: vi.fn((_ok: unknown, onError: (e: unknown) => Promise<unknown>) => {
         handlers.onError = onError;
@@ -47,25 +54,35 @@ function jwt(claims: Record<string, unknown>): string {
 }
 
 const assign = vi.fn();
+const reload = vi.fn();
 const realLocation = window.location;
 let href = "/inventory";
+let pathname = "/inventory";
+let sets: string[] = [];
 
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   vi.clearAllMocks();
   href = "/inventory";
+  pathname = "/inventory";
+  sets = [];
   Object.defineProperty(window, "location", {
     configurable: true,
     value: {
-      pathname: "/inventory",
+      get pathname() {
+        return pathname;
+      },
       assign,
+      reload,
       get href() {
         return href;
       },
       set href(v: string) {
         href = v;
+        sets.push(v);
       },
+      search: "",
     },
   });
 });
@@ -131,5 +148,71 @@ describe("apiClient and the session house", () => {
 
     expect(localStorage.getItem("refreshToken")).toBeNull();
     expect(href).toBe("/login");
+  });
+
+  const deadSession = () => {
+    localStorage.setItem("accessToken", "a");
+    localStorage.setItem("refreshToken", "r");
+    h.globalPost.mockRejectedValue({ response: { status: 401 } });
+  };
+
+  it.each(["/", "/story", "/register", "/register/"])(
+    "a refused refresh token on the public page %s ends the session and reloads that page",
+    async (page) => {
+      pathname = page;
+      href = page;
+      localStorage.setItem("auth-storage", JSON.stringify({ state: { user: { id: U } } }));
+      deadSession();
+
+      await expect(h.handlers.onError!(fail(401))).rejects.toBeDefined();
+
+      expect(localStorage.getItem("accessToken")).toBeNull();
+      expect(localStorage.getItem("refreshToken")).toBeNull();
+      // The store's persisted copy of the person goes too, so the reloaded
+      // page boots with no one to draw: `/` draws the landing.
+      expect(localStorage.getItem("auth-storage")).toBeNull();
+      expect(reload).toHaveBeenCalledTimes(1);
+      expect(sets).toEqual([]);
+    },
+  );
+
+  it("a private page clears the persisted person too on its way to /login", async () => {
+    localStorage.setItem("auth-storage", JSON.stringify({ state: { user: { id: U } } }));
+    deadSession();
+
+    await expect(h.handlers.onError!(fail(401))).rejects.toBeDefined();
+
+    expect(localStorage.getItem("auth-storage")).toBeNull();
+    expect(sets).toEqual(["/login"]);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("concurrent 401s sharing one refused refresh react once", async () => {
+    pathname = "/";
+    href = "/";
+    deadSession();
+
+    const first = h.handlers.onError!(fail(401));
+    const second = h.handlers.onError!(fail(401));
+    await expect(first).rejects.toBeDefined();
+    await expect(second).rejects.toBeDefined();
+
+    expect(h.globalPost).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("after the reload, a tokenless 401 neither refreshes nor navigates, so the reload cannot repeat", async () => {
+    pathname = "/";
+    href = "/";
+    deadSession();
+    await expect(h.handlers.onError!(fail(401))).rejects.toBeDefined();
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    // The reloaded page's requests carry no token and no refresh token.
+    await expect(h.handlers.onError!(fail(401))).rejects.toBeDefined();
+
+    expect(h.globalPost).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(sets).toEqual([]);
   });
 });

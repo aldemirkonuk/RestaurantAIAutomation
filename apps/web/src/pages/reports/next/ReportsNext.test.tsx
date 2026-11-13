@@ -32,6 +32,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
 import { DEFAULT_SLOTS } from './rp-sheet';
+import { heldBackFailure } from './rp-format';
 
 /**
  * The two registers added in the fourth pass decode heavily on the way in
@@ -1684,5 +1685,74 @@ describe('ReportsNext — an empty POS window is not an absent field (A-040)', (
     const old = seats({}).say as string;
     expect(old).toContain('does not say whether the window held any check');
     expect(old).not.toMatch(/absent/);
+  });
+});
+
+describe('ReportsNext — a register this role is not sent (ADR 0348)', () => {
+  /** The 'service' preset's money half on top of the house sheet. */
+  function withHeldBack(role: 'staff' | null) {
+    const b = base();
+    const held = {
+      data: undefined,
+      loading: false,
+      failure: heldBackFailure(['owner', 'manager'], role),
+      refetch: vi.fn(),
+    };
+    return {
+      ...b,
+      sheet: {
+        cuttings: [
+          ...b.sheet.cuttings,
+          { id: 'seats' as const, slot: { ...DEFAULT_SLOTS.seats, y: 90 }, graph: 'bars' as const },
+          { id: 'service' as const, slot: { ...DEFAULT_SLOTS.service, y: 100 }, graph: 'bars' as const },
+        ],
+      },
+      registers: { ...b.registers, seats: held, service: held },
+    };
+  }
+
+  it('says who the register is written for, claims nothing, and offers no retry', () => {
+    hook.current = withHeldBack('staff');
+    paint();
+    const room = screen.getByRole('region', { name: 'The room' });
+    expect(
+      within(room).getByText(
+        'The table register is written for owners and managers. Nothing below is claimed.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(room).queryByText('Read it again')).not.toBeInTheDocument();
+    expect(within(room).queryByText(/Your role cannot read/)).not.toBeInTheDocument();
+    expect(room.querySelectorAll('.rp-plot').length).toBe(0);
+
+    const served = screen.getByRole('region', { name: 'Who served it' });
+    expect(
+      within(served).getByText(
+        'The server register is written for owners and managers. Nothing below is claimed.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(served).queryByText('Read it again')).not.toBeInTheDocument();
+
+    // The rest of the page is still the reader's: the registers staff may read draw.
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    expect(within(till).queryByText(/Nothing below is claimed/)).not.toBeInTheDocument();
+  });
+
+  it('says the role is not known yet, rather than that it is refused', () => {
+    hook.current = withHeldBack(null);
+    paint();
+    const room = screen.getByRole('region', { name: 'The room' });
+    expect(
+      within(room).getByText(/Your role at this restaurant is not known yet/),
+    ).toBeInTheDocument();
+    expect(within(room).queryByText('Read it again')).not.toBeInTheDocument();
+  });
+
+  it('keeps a gateway refusal worded as one: the held-back line is not every 403', () => {
+    const b = withHeldBack('staff');
+    hook.current = { ...b, registers: { ...b.registers, seats: broke(403) } };
+    paint();
+    const room = screen.getByRole('region', { name: 'The room' });
+    expect(within(room).getByText(/Your role cannot read the table register/)).toBeInTheDocument();
+    expect(within(room).queryByText(/written for owners and managers/)).not.toBeInTheDocument();
   });
 });

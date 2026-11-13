@@ -123,7 +123,7 @@ describe("ReportExportsService — a report export is written, or says why not (
     expect(row.html_bytes).toBe(Buffer.byteLength(row.html as string, "utf8"));
     expect(row.withheld_count).toBe(8);
     expect(row.finished_at).not.toBeNull();
-    expect(analytics.getFinancialSummary).toHaveBeenCalledWith(HOUSE_A, 0);
+    expect(analytics.getFinancialSummary).toHaveBeenCalledWith(HOUSE_A, 0, { withSales: true });
   });
 
   it("writes the engine's nulls as withheld in both files, and the house's own currency", async () => {

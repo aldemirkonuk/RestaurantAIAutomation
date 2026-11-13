@@ -4,7 +4,8 @@ import { mockAuthState } from './auth.setup'
 test.describe('Navigation Guards', () => {
   test('all protected routes redirect unauthenticated users to /login', async ({ page }) => {
     test.setTimeout(60000)
-    const protectedRoutes = ['/', '/inventory', '/orders', '/wines', '/reports', '/settings']
+    // `/` is not here: a stranger there gets the landing page (ADR 0320/0344).
+    const protectedRoutes = ['/inventory', '/orders', '/wines', '/reports', '/settings']
 
     for (const route of protectedRoutes) {
       await page.goto(route)
@@ -22,11 +23,16 @@ test.describe('Navigation Guards', () => {
     // /register — should render without redirect
     await page.goto('/register')
     await expect(page).toHaveURL(/\/register/, { timeout: 10000 })
+
+    // / — a stranger gets the landing page, not /login (ADR 0320/0344)
+    await page.goto('/')
+    await expect(page.locator('.mdv-landing')).toBeVisible({ timeout: 10000 })
+    expect(new URL(page.url()).pathname).toBe('/')
   })
 
   test('unknown route redirects unauthenticated user to /login', async ({ page }) => {
-    // App.tsx catch-all: /* → <Navigate to="/" replace />
-    // / is protected → ProtectedRoute redirects to /login for unauthenticated users
+    // App.tsx catch-all (`*` → ShellCatchAll) sits inside the ProtectedRoute
+    // layout, which sends an unauthenticated reader to /login
     await page.goto('/this-route-does-not-exist')
     await page.waitForURL('**/login', { timeout: 10000 })
     expect(page.url()).toContain('/login')
@@ -45,14 +51,9 @@ test.describe('Navigation Guards', () => {
   })
 
   test('register page exposes account form fields', async ({ page }) => {
-    await page.goto('/register')
-    // Public design (ADR 0149 row 35 / sketch 118): two plain acts; create is
-    // "I'm opening a new house". Legacy copy "Open a Restaurant" is gone when
-    // the public switch is on (which it is in code per row 37).
-    await expect(page.getByRole('button', { name: "I'm opening a new house" })).toBeVisible({
-      timeout: 10000,
-    })
-    await page.getByRole('button', { name: "I'm opening a new house" }).click()
+    // A bare /register is the landing page (ADR 0344); the landing's "Start
+    // free" opens the create flow at `?type=new`, straight to step 1.
+    await page.goto('/register?type=new')
     // Create flow step 1 ("Your Account") inputs are reachable through their
     // associated labels (htmlFor/id) — this test guards that association.
     await expect(page.getByLabel('Full Name')).toBeVisible({ timeout: 10000 })

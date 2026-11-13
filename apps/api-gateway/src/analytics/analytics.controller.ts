@@ -21,7 +21,8 @@ import {
   ApiQuery,
   ApiResponse,
 } from "@nestjs/swagger";
-import { AnalyticsService } from "./analytics.service";
+import { AnalyticsService, SalesGate } from "./analytics.service";
+import { policyFor } from "../ask-readings/reading-data-classes";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
 import { RecommendationsService } from "./recommendations.service";
 import {
@@ -81,6 +82,20 @@ import { Persona } from "./metric-registry";
  * did not ask for.
  */
 const MAX_FORECAST_HORIZON = 365;
+
+/**
+ * Whether this caller may read the till (ADR 0298 decision 9). ADR 0290 §5's
+ * rule, as the dashboard calendar applies it: `withSales =
+ * policyFor(role).sees.includes("sales")`, ADR 0145's ROLE_POLICY (owner and
+ * manager see `sales`, staff do not; an unknown or missing role reads the
+ * staff row). The role is re-read on every request from the person's access
+ * row in the house the token names (`jwt.strategy.ts`), so a demotion closes
+ * the gate on the next request; no route receives `admin` (OD-241). The route
+ * stays open; the till's figures are withheld and named withheld.
+ */
+function salesGateFor(user?: { role?: string | null }): SalesGate {
+  return { withSales: policyFor(user?.role).sees.includes("sales") };
+}
 
 function parseHorizon(raw?: string): number | undefined {
   if (raw === undefined || raw === "") return undefined;
@@ -172,12 +187,14 @@ export class AnalyticsController {
   async getFinancial(
     @Param("restaurantId") restaurantId: string,
     @Query("labor") laborStr?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
       const labor = laborStr ? parseFloat(laborStr) : 0;
       return await this.analyticsService.getFinancialSummary(
         restaurantId,
         Number.isFinite(labor) ? labor : 0,
+        salesGateFor(user),
       );
     } catch (error) {
       throw new HttpException(
@@ -229,9 +246,15 @@ export class AnalyticsController {
       "Vendor concentration (HHI), revenue concentration (Gini), and demand risk (VaR/CVaR, Sharpe, Sortino, max drawdown).",
   })
   @ApiParam({ name: "restaurantId", description: "Restaurant UUID" })
-  async getRisk(@Param("restaurantId") restaurantId: string) {
+  async getRisk(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
     try {
-      return await this.analyticsService.getRiskProfile(restaurantId);
+      return await this.analyticsService.getRiskProfile(
+        restaurantId,
+        salesGateFor(user),
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to compute risk profile",
@@ -385,8 +408,9 @@ export class AnalyticsController {
           body.enabled,
           actor,
           body.reason ?? null,
-          // The house role the token names: `RolesGuard` above also admits
-          // the platform admin, which the service refuses (round 4, answer 7).
+          // The house role the token names. `RolesGuard` above admits exactly
+          // owner and manager (ADR 0164), so the service's own refusal of the
+          // platform admin (round 4, answer 7) is a second line, not the first.
           actorOf(user).role,
         );
       return {
@@ -563,7 +587,14 @@ export class AnalyticsController {
     return this.tableAnalytics.listTables(restaurantId);
   }
 
+  /**
+   * Owner or manager only, as the PATCH below (ADR 0303 residual 12: it
+   * carried only the class JwtAuthGuard, so any staff login of the house
+   * could add or overwrite a table). No web or mobile code calls it yet.
+   */
   @Post("tables/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Create/update a floor table",
     description:
@@ -681,7 +712,17 @@ export class AnalyticsController {
     }
   }
 
+  /**
+   * Owner or manager only (the founder, 2026-10-30: a waiter sees no figures
+   * for now). Each table's average check, revenue per seat and tip %. Until
+   * 2026-10-31 it carried only the class JwtAuthGuard, so any staff login of
+   * the house could read it; its export (`reports/exports`) was already owner
+   * or manager only. RolesGuard is exact, so admin is not admitted (ADR 0164).
+   * Pinned by `analytics-money-needs-a-manager.spec.ts`.
+   */
   @Get("table-performance/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary:
       "Per-table metrics + geometry correlations + learned driver weights",
@@ -699,7 +740,13 @@ export class AnalyticsController {
     );
   }
 
+  /**
+   * Owner or manager only, as `table-performance` above: every server's
+   * revenue, average check, tip % and peer rank, by name.
+   */
   @Get("waiters/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Waiter performance — raw and table-adjusted",
     description:
@@ -726,7 +773,13 @@ export class AnalyticsController {
     return this.tableAnalytics.getBasketAffinity(restaurantId);
   }
 
+  /**
+   * Owner or manager only, as `table-performance` above: each open check's
+   * spend so far and pace per minute, with its table and its server's name.
+   */
   @Get("hot-tables/:restaurantId")
+  @UseGuards(RolesGuard)
+  @Roles("owner", "manager")
   @ApiOperation({
     summary: "Live table surge watchlist",
     description:
@@ -845,8 +898,14 @@ export class AnalyticsController {
   async listGoals(
     @Param("restaurantId") restaurantId: string,
     @Query("status") status?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
-    return this.goalsService.listGoals(restaurantId, status || "active");
+    // The goal routes hand the token's gate on (ADR 0298 decision 9).
+    return this.goalsService.listGoals(
+      restaurantId,
+      status || "active",
+      salesGateFor(user),
+    );
   }
 
   @Post("goals/:restaurantId")
@@ -859,9 +918,14 @@ export class AnalyticsController {
   async createGoal(
     @Param("restaurantId") restaurantId: string,
     @Body() body: any,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.goalsService.createGoal(restaurantId, body || {});
+      return await this.goalsService.createGoal(
+        restaurantId,
+        body || {},
+        salesGateFor(user),
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to create goal",
@@ -880,11 +944,13 @@ export class AnalyticsController {
   async listGoalsWithProgress(
     @Param("restaurantId") restaurantId: string,
     @Query("status") status?: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
       return await this.goalsService.listGoalsWithProgress(
         restaurantId,
         status || "active",
+        salesGateFor(user),
       );
     } catch (error) {
       throw new HttpException(
@@ -956,9 +1022,15 @@ export class AnalyticsController {
   async getGoalProgress(
     @Param("restaurantId") restaurantId: string,
     @Param("goalId") goalId: string,
+    @CurrentUser() user?: { role?: string | null },
   ) {
     try {
-      return await this.goalsService.getGoalProgress(restaurantId, goalId);
+      return await this.goalsService.getGoalProgress(
+        restaurantId,
+        goalId,
+        undefined,
+        salesGateFor(user),
+      );
     } catch (error) {
       throw new HttpException(
         error.message || "Failed to compute goal progress",
@@ -1027,7 +1099,7 @@ export class AnalyticsController {
   async consult(
     @Param("restaurantId") restaurantId: string,
     @Body() body: { persona?: string },
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string | null },
   ) {
     try {
       return await this.consultantsService.consult(
@@ -1037,6 +1109,7 @@ export class AnalyticsController {
         // from the body: "who asked" is a fact about the session, and a
         // client-supplied one would be an assertion about someone else.
         typeof user?.userId === "string" ? user.userId : null,
+        salesGateFor(user),
       );
     } catch (error) {
       throw new HttpException(
@@ -1171,8 +1244,11 @@ export class AnalyticsController {
     description:
       "Financial + risk + inventory + menu engineering + seasonality + cashflow + insights + goals in one parallel call (API-bus pattern).",
   })
-  async getOverview(@Param("restaurantId") restaurantId: string) {
-    return this.advanced.getOverview(restaurantId);
+  async getOverview(
+    @Param("restaurantId") restaurantId: string,
+    @CurrentUser() user?: { role?: string | null },
+  ) {
+    return this.advanced.getOverview(restaurantId, salesGateFor(user));
   }
 
   @Get("recommendations/:restaurantId")
@@ -1185,13 +1261,14 @@ export class AnalyticsController {
   async getRecommendations(
     @Param("restaurantId") restaurantId: string,
     @Query("includeHidden") includeHidden?: string,
-    @CurrentUser() user?: { userId?: string },
+    @CurrentUser() user?: { userId?: string; role?: string },
   ) {
     try {
       return await this.recommendationsService.getRecommendations(
         restaurantId,
         {
           includeHidden: includeHidden === "true",
+          withSales: salesGateFor(user).withSales,
           // The person's own snoozes (ADR 0191 round 3) hide cards from them
           // alone; the digest calls this service with no viewer.
           viewerId: actorOf(user).userId,

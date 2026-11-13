@@ -28,6 +28,7 @@ import {
   X,
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { isUnconfirmedWrite } from '../../services/api/client'
 import { useWines } from '../../hooks/queries'
 import { useProviders } from '../../hooks/queries/useProviderQueries'
 import { useStorageLocations } from '../../hooks/useStorageLocations'
@@ -67,6 +68,10 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
   const [draft, setDraft] = useState(EMPTY_DRAFT)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // The bulk write carries no idempotency key and appends quantity to a row the
+  // house already holds, so after a 5xx or no answer saving again could count
+  // the delivery twice. Saving stays off for this opening once that happens.
+  const [outcomeUnknown, setOutcomeUnknown] = useState(false)
 
   const { data: searchResults = [], isFetching: isSearching } = useWines({
     search: search.trim().length >= 2 ? search.trim() : undefined,
@@ -157,11 +162,12 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
     setShowDraftForm(false)
     setDraft(EMPTY_DRAFT)
     setError(null)
+    setOutcomeUnknown(false)
     onClose()
   }
 
   const save = async () => {
-    if (isSaving || rows.length === 0 || issues.length > 0) return
+    if (isSaving || outcomeUnknown || rows.length === 0 || issues.length > 0) return
     setIsSaving(true)
     setError(null)
     try {
@@ -210,6 +216,14 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
         `${persisted.failed.length} of ${rows.length} line${rows.length !== 1 ? 's' : ''} could not be saved. Everything else was recorded — fix these and save again.`,
       )
     } catch (err: any) {
+      if (isUnconfirmedWrite(err)) {
+        queryClient.invalidateQueries({ queryKey: ['inventory'] })
+        setOutcomeUnknown(true)
+        setError(
+          "We couldn't tell whether this receipt was recorded. Look at the book before saving again, so the bottles are not counted twice.",
+        )
+        return
+      }
       setError(
         err?.response?.data?.message ||
           err?.message ||
@@ -487,7 +501,7 @@ export function ManualReceiptWorkspace({ isOpen, onClose, onSaved }: ManualRecei
               </button>
               <button
                 onClick={save}
-                disabled={isSaving || rows.length === 0 || issues.length > 0}
+                disabled={isSaving || outcomeUnknown || rows.length === 0 || issues.length > 0}
                 className="h-9 px-4 flex items-center gap-1.5 rounded-lg text-xs font-bold text-white bg-wine-600 hover:bg-wine-700 disabled:opacity-50"
               >
                 {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PackagePlus className="w-3.5 h-3.5" />}
