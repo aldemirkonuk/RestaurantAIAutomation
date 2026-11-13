@@ -19,9 +19,12 @@ export default defineConfig({
       '@wineops/ui': path.resolve(__dirname, '../../packages/ui/src'),
     },
   },
-  optimizeDeps: {
-    exclude: ['lucide-react'],
-  },
+  // lucide-react is pre-bundled like every other dependency. It was excluded
+  // (a scaffold default since the first commit), so the dev server served each
+  // icon as its own module: 3,110 of the 3,466 files one page load asked for,
+  // about 3,500 requests a reload (r17 request-flood walk, 2026-11-13).
+  // Production was never affected: Rollup bundles it either way.
+  // src/__tests__/devServerDeps.test.ts keeps it out of `exclude`.
   server: {
     port: 3000,
     host: '127.0.0.1',
