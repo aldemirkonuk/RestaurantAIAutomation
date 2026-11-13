@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { m, AnimatePresence } from 'framer-motion'
 import {
   Wifi,
   WifiOff,
@@ -126,7 +126,7 @@ export function SyncStatus({
   }
 
   const content = (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       className={`bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden ${className}`}
@@ -166,7 +166,7 @@ export function SyncStatus({
       {/* Expanded content */}
       <AnimatePresence>
         {isExpanded && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -223,10 +223,10 @@ export function SyncStatus({
                 )}
               </div>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </m.div>
   )
 
   // Floating mode
@@ -250,7 +250,7 @@ export function OfflineBanner() {
   if (isOnline) return null
 
   return (
-    <motion.div
+    <m.div
       initial={{ height: 0, opacity: 0 }}
       animate={{ height: 'auto', opacity: 1 }}
       exit={{ height: 0, opacity: 0 }}
@@ -263,7 +263,7 @@ export function OfflineBanner() {
           {pendingCount > 0 && ` ${pendingCount} change${pendingCount > 1 ? 's' : ''} will sync when you're back online.`}
         </span>
       </div>
-    </motion.div>
+    </m.div>
   )
 }
 

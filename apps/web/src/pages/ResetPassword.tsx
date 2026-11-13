@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import axios from 'axios'
 import { Lock, AlertCircle, CheckCircle2 } from 'lucide-react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { Button } from '../components/ui'
 import { AuthShell, AuthCard } from '../components/brand/AuthShell'
 
@@ -233,7 +233,7 @@ export function ResetPassword() {
     <AuthShell title="Mudavym" subtitle="Choose a new password">
       <AuthCard>
         {error && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start gap-3"
@@ -243,7 +243,7 @@ export function ResetPassword() {
               strokeWidth={1.75}
             />
             <p className="text-sm text-red-700">{error}</p>
-          </motion.div>
+          </m.div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">

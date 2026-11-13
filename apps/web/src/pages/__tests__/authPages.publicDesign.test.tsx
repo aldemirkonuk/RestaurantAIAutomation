@@ -121,7 +121,8 @@ vi.mock('framer-motion', async () => {
   )
   const AnimatePresence = ({ children }: { children?: unknown }) =>
     React.createElement(React.Fragment, null, children as never)
-  return { motion, AnimatePresence }
+  // The shell's light `m` components (r19) wrap the same way.
+  return { motion, m: motion, AnimatePresence }
 })
 
 /* The Places widget loads Google Maps. Its stand-in keeps the one thing the

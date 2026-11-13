@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { motion } from 'framer-motion'
+import { m } from 'framer-motion'
 import { BrandMark } from './BrandMark'
 import { cn } from '../../lib/utils'
 
@@ -75,14 +75,14 @@ export function AuthShell({
         }
       />
 
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
         className={cn('relative w-full', wide ? 'max-w-4xl' : 'max-w-md', className)}
       >
         <div className="text-center mb-8">
-          <motion.div
+          <m.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.08, type: 'spring', stiffness: 260, damping: 22 }}
@@ -99,7 +99,7 @@ export function AuthShell({
             ) : (
               <BrandMark size={22} alt="Mudavym" className={house ? HOUSE_WORDMARK : undefined} />
             )}
-          </motion.div>
+          </m.div>
           {!isBrandTitle && (
             <h1
               className={
@@ -127,7 +127,7 @@ export function AuthShell({
         <p className={house ? 'text-center text-xs !text-inkm-3 mt-8' : 'text-center text-xs text-gray-400 mt-8'}>
           © 2026 Mudavym. All rights reserved.
         </p>
-      </motion.div>
+      </m.div>
     </div>
   )
 }
