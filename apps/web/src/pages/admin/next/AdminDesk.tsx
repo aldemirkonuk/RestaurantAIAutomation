@@ -39,6 +39,8 @@ function settle<T>(previous: Read<T>, outcome: { value: T | null; error: string 
   if (outcome.error) return { value: previous.value, error: outcome.error, asOf: previous.asOf };
   return { value: outcome.value, error: null, asOf: new Date().toISOString() };
 }
+/** No reading has landed yet and none has failed: this card's read is still out. */
+const awaiting = (reading: Read<unknown>) => reading.value === null && reading.error === null;
 const stamp = (value: string | null | undefined) => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString() : 'Not recorded';
 const POLL_MS = 30_000;
 
@@ -85,6 +87,27 @@ export default function AdminDesk() {
       catch (error) { return { value: null, error: getErrorMessage(error) }; }
     }
     void (async () => {
+      // Each card settles the moment its own read lands. The desk used to wait
+      // for one Promise.all, so the Database row (a bounded read) sat on
+      // "Reading…" for as long as the slowest call — the orchestrator's agent
+      // list, which may take its whole 15 s budget (QA round 4, I4).
+      const pending: Promise<void>[] = [];
+      function land<T>(outcome: Promise<{ value: T | null; error: string | null }>, set: (update: (previous: Read<T>) => Read<T>) => void) {
+        pending.push(outcome.then(result => { if (!signal.aborted) set(previous => settle(previous, result)); }));
+      }
+      const readDesk = () => {
+        land(read<Agents>('/health/agents'), setAgents);
+        land(read<{ providers: Provider[] }>('/health/providers'), setProviders);
+        // A 503 carries a measured not-ready result; keep that evidence visible.
+        land(apiClient.get<Readiness>('/health/ready', { signal, validateStatus: status => status === 200 || status === 503 })
+          .then(response => ({ value: response.data, error: null }), error => ({ value: null, error: getErrorMessage(error) })), setReady);
+        land(read<MailWatch>('/communications/webhooks/gmail/status'), setMailWatch);
+      };
+      // An owner may read the shared rows without a platform grant (the server's
+      // OwnerOrPlatformOperatorGuard), so those reads start alongside the grant
+      // check instead of after it.
+      const owner = user?.role === 'owner';
+      if (owner) readDesk();
       // A re-read's own permission check can fail (a blip, not a real revocation) while
       // the server-enforced guards on every other route still stand. Falling back to the
       // last SUCCESSFUL grant — instead of the raw failed outcome — keeps this cycle from
@@ -95,24 +118,13 @@ export default function AdminDesk() {
       if (signal.aborted) return;
       setAccess(previous => settle(previous, permission));
       const knownOperator = permission.error ? priorOperator : permission.value?.platformOperator === true;
-      if (user?.role !== 'owner' && !knownOperator) {
-        setInitialLoading(false); setRefreshing(false); return;
-      }
-      const [health, configuration, readiness, history, watch] = await Promise.all([
-        read<Agents>('/health/agents'), read<{ providers: Provider[] }>('/health/providers'),
-        // A 503 carries a measured not-ready result; keep that evidence visible.
-        apiClient.get<Readiness>('/health/ready', { signal, validateStatus: status => status === 200 || status === 503 })
-          .then(response => ({ value: response.data, error: null }), error => ({ value: null, error: getErrorMessage(error) })),
-        knownOperator ? read<{ operations: Receipt[] }>('/health/agent-operations') : Promise.resolve({ value: null, error: null }),
-        read<MailWatch>('/communications/webhooks/gmail/status'),
-      ]);
+      setInitialLoading(false);
+      if (!owner && !knownOperator) { setRefreshing(false); return; }
+      if (!owner) readDesk();
+      if (knownOperator) land(read<{ operations: Receipt[] }>('/health/agent-operations'), setReceipts);
+      await Promise.all(pending);
       if (signal.aborted) return;
-      setAgents(previous => settle(previous, health));
-      setProviders(previous => settle(previous, configuration));
-      setReady(previous => settle(previous, readiness));
-      setMailWatch(previous => settle(previous, watch));
-      if (knownOperator) setReceipts(previous => settle(previous, history));
-      setInitialLoading(false); setRefreshing(false);
+      setRefreshing(false);
     })();
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -183,16 +195,16 @@ export default function AdminDesk() {
       <nav className="admin-desk__links" aria-label="House registers"><Link to="/settings">House settings ↗</Link><Link to="/connections">Connections ↗</Link><Link to="/logs">Activity ledger ↗</Link></nav>
       {outcome && <p role="status" className="admin-desk__notice">{outcome}</p>}
       <section aria-labelledby="desk-agents"><div className="admin-desk__section-head"><h2 id="desk-agents">The agents</h2>
-        <span>{agents.value ? `Read ${stamp(agents.asOf)}` : initialLoading ? 'Awaiting a reading' : 'No reading yet'}{agents.error && agents.value && <span className="admin-desk__stale"> · re-read failed, showing the last reading</span>}</span></div>
+        <span>{agents.value ? `Read ${stamp(agents.asOf)}` : awaiting(agents) ? 'Awaiting a reading' : 'No reading yet'}{agents.error && agents.value && <span className="admin-desk__stale"> · re-read failed, showing the last reading</span>}</span></div>
         <p>These services work across every house on Mudavym. {operator ? 'Your platform grant permits restart and stop.' : 'Health is shown here; platform operators handle restarts and stops.'} Select an agent for its counters.</p>
         {agents.error && !agents.value && <p role="alert">Agent health is unavailable. {agents.error}</p>}
         {!!agents.value?.agents.length && <div role="group" aria-label="Filter by health" className="admin-desk__filters">
           {([['all', 'All'], ['healthy', 'Healthy'], ['attention', 'Needs attention']] as const).map(([key, label]) => <button key={key} type="button" className="admin-desk__filter" aria-pressed={statusFilter === key} data-active={statusFilter === key} onClick={() => setStatusFilter(key)}>{label}</button>)}
         </div>}
-        {initialLoading ? <p role="status">Reading the agent register…</p> : agents.value?.agents.length === 0 ? <p role="status">The orchestrator answered. It reports no running agents.</p> : agents.value && (() => {
-          const visible = agents.value.agents.filter(agent => statusFilter === 'all' ? true : statusFilter === 'healthy' ? agent.healthy === true : agent.healthy === false);
+        {awaiting(agents) ? <p role="status">Reading the agent register…</p> : agents.value?.agents.length === 0 ? <p role="status">The orchestrator answered. It reports no running agents.</p> : agents.value && (() => {
+          const visible = agents.value.agents.filter(agent => statusFilter === 'all' ? true : statusFilter === 'healthy' ? agent.healthy === true : agent.healthy !== true);
           return visible.length === 0 ? <p role="status">No agent matches this filter.</p> : <div className="admin-desk__register">
-            {visible.map(agent => <article key={agent.agent_name} className="admin-desk__row" role="button" tabIndex={0} onClick={() => void openDetail(agent)} onKeyDown={event => { if (event.key === 'Enter') void openDetail(agent); }}>
+            {visible.map(agent => <article key={agent.agent_name} className="admin-desk__row" role="button" tabIndex={0} onClick={() => void openDetail(agent)} onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); void openDetail(agent); } }}>
               <div><h3>{agent.agent_name.replace(/_/g, ' ')}</h3><p>Version {agent.version ?? 'not recorded'}</p></div>
               <span className="admin-desk__state" data-state={agent.healthy === true ? 'healthy' : agent.healthy === false ? 'attention' : 'unknown'}>{agent.status} · {agent.healthy === true ? 'responding' : agent.healthy === false ? 'needs attention' : 'health unknown'}</span>
               {operator && <div className="admin-desk__actions">{(['restart', 'stop'] as const).map(action => <button key={action} type="button" disabled={sending} onClick={event => { event.stopPropagation(); setSelection({ agent, action }); setConfirmation(''); }}>{action === 'restart' ? 'Restart' : 'Stop'}</button>)}</div>}
@@ -201,19 +213,19 @@ export default function AdminDesk() {
         })()}
       </section>
       <section aria-labelledby="desk-services"><div className="admin-desk__section-head"><h2 id="desk-services">Behind the desk</h2><span>OBSERVATION & CONFIGURATION</span></div>
-        <div className="admin-desk__register"><article className="admin-desk__row"><div><h3>Database</h3><p>A bounded read from the gateway to the database.</p></div><span>{initialLoading ? 'Reading…' : ready.value?.checks?.database ?? 'Unavailable'}</span></article>
-          {!initialLoading && ready.error && !ready.value && <p role="alert">The database reading could not be fetched. {ready.error}</p>}
+        <div className="admin-desk__register"><article className="admin-desk__row"><div><h3>Database</h3><p>A bounded read from the gateway to the database.</p></div><span>{awaiting(ready) ? 'Reading…' : ready.value?.checks?.database ?? 'Unavailable'}</span></article>
+          {ready.error && !ready.value && <p role="alert">The database reading could not be fetched. {ready.error}</p>}
           <article className="admin-desk__row" data-testid="desk-mail-watch"><div><h3>Gmail inbound watch</h3><p>The deployment mailbox's Gmail credentials. A working credential lets the gateway hold the push subscription that brings vendor replies in, for every house — this reading checks the credential, not whether that subscription is actually live.</p></div>
-            <span>{mailWatch.value ? (mailWatch.value.configured ? 'Configured' : 'Not configured') : initialLoading ? 'Reading…' : mailWatch.error ? 'Unavailable' : 'No reading yet'}</span></article>
-          {!initialLoading && mailWatch.error && !mailWatch.value && <p role="alert">The Gmail watch status could not be read. {mailWatch.error}</p>}
-          {initialLoading ? <p>Reading provider configuration…</p> : providers.error && !providers.value ? <p role="alert">Provider configuration is unavailable. {providers.error}</p> : providers.value?.providers.filter(provider => provider.id !== 'supabase').map(provider => <article key={provider.id} className="admin-desk__row"><div><h3>{provider.name}</h3><p>{provider.desc}</p></div><span>{provider.status}</span></article>)}
+            <span>{mailWatch.value ? (mailWatch.value.configured ? 'Configured' : 'Not configured') : awaiting(mailWatch) ? 'Reading…' : 'Unavailable'}</span></article>
+          {mailWatch.error && !mailWatch.value && <p role="alert">The Gmail watch status could not be read. {mailWatch.error}</p>}
+          {awaiting(providers) ? <p>Reading provider configuration…</p> : providers.error && !providers.value ? <p role="alert">Provider configuration is unavailable. {providers.error}</p> : providers.value?.providers.filter(provider => provider.id !== 'supabase').map(provider => <article key={provider.id} className="admin-desk__row"><div><h3>{provider.name}</h3><p>{provider.desc}</p></div><span>{provider.status}</span></article>)}
         </div><p className="admin-desk__caption">A configured key is not a successful model call. This reading does not spend model credits.</p>
         {providers.error && providers.value && <p className="admin-desk__caption admin-desk__stale">Provider re-read failed, showing the last reading.</p>}
         {mailWatch.value && <p className="admin-desk__caption">Gmail watch read {stamp(mailWatch.asOf)}. Configured means the gateway holds working Gmail credentials, not that the push subscription is confirmed live; it does not prove a reply has arrived.{mailWatch.error && <span className="admin-desk__stale"> · Gmail watch re-read failed, showing the last reading</span>}</p>}
         {ready.value && <p className="admin-desk__caption">Gateway {ready.value.commit === 'unknown' ? 'revision not recorded' : ready.value.commit.slice(0, 12)} · started {stamp(ready.value.bootedAt)} · database read {stamp(ready.value.checkedAt)}{ready.error && <span className="admin-desk__stale"> · re-read failed, showing the last reading</span>}</p>}
       </section>
       {operator && <section aria-labelledby="desk-receipts"><div className="admin-desk__section-head"><h2 id="desk-receipts">Operation receipts</h2><span>LATEST 25 · PLATFORM</span></div>
-        {initialLoading ? <p>Reading receipts…</p> : receipts.error && !receipts.value ? <p role="alert">Operation receipts are unavailable. {receipts.error}</p> : receipts.value?.operations.length === 0 ? <p>No platform operation has been recorded.</p> : receipts.value?.operations.map(receipt => <article key={receipt.id} className="admin-desk__row"><div><h3>{receipt.action} · {receipt.agent_name}</h3><p>{stamp(receipt.requested_at)}</p>
+        {awaiting(receipts) ? <p>Reading receipts…</p> : receipts.error && !receipts.value ? <p role="alert">Operation receipts are unavailable. {receipts.error}</p> : receipts.value?.operations.length === 0 ? <p>No platform operation has been recorded.</p> : receipts.value?.operations.map(receipt => <article key={receipt.id} className="admin-desk__row"><div><h3>{receipt.action} · {receipt.agent_name}</h3><p>{stamp(receipt.requested_at)}</p>
           {/* ADR 0149 row 42: read-repair stays, and says so plainly once the orchestrator's
               own record of the request is gone — most often because it restarted. */}
           {receipt.remote === 'absent' && <p className="admin-desk__caption admin-desk__stale">The orchestrator has no record of this request any more — most likely it restarted since. This receipt will not settle further on its own.</p>}
@@ -222,13 +234,13 @@ export default function AdminDesk() {
       </section>}
     </>}
     <footer className="admin-desk__footer"><Wordmark /><span>Every reading has a time. Every action leaves a receipt.</span></footer>
-    <Sheet open={selection !== null} onClose={() => { if (!sending) setSelection(null); }} label={selection?.action === 'restart' ? 'Restart confirmation' : 'Stop confirmation'} title={selection?.action === 'restart' ? 'Restart this agent?' : 'Stop this agent?'} eyebrow="PLATFORM OPERATION" ground="charcoal">
+    <Sheet open={selection !== null} onClose={() => { if (!sending) setSelection(null); }} label={selection?.action === 'restart' ? 'Restart this agent for every house once you type its name; leaving changes nothing' : 'Stop this agent for every house once you type its name; leaving changes nothing'} title={selection?.action === 'restart' ? 'Restart this agent?' : 'Stop this agent?'} eyebrow="PLATFORM OPERATION" ground="charcoal">
       {selection && <div className="admin-desk__confirmation"><p>This will {selection.action} <strong>{selection.agent.agent_name}</strong> for <strong>every house on Mudavym</strong>. Work handled by this agent may be interrupted.{selection.action === 'stop' ? ' A stop lasts only until the next deploy or process restart, not a persistent disable.' : ''} Leaving before confirmation changes nothing.</p>
         <label htmlFor="agent-confirmation">Type {selection.agent.agent_name} to confirm</label><input id="agent-confirmation" autoComplete="off" value={confirmation} disabled={sending} onChange={event => setConfirmation(event.target.value)} />
         <button type="button" disabled={sending || confirmation !== selection.agent.agent_name} onClick={() => void operate()}>{sending ? 'Waiting for the result…' : `Confirm ${selection.action}`}</button>
       </div>}
     </Sheet>
-    <Sheet open={detail !== null} onClose={() => { detailToken.current++; setDetail(null); }} label="Agent detail" title={detail?.agent.agent_name.replace(/_/g, ' ') ?? ''} eyebrow="COUNTERS ONLY" ground="charcoal">
+    <Sheet open={detail !== null} onClose={() => { detailToken.current++; setDetail(null); }} label="This agent's counters, read once; closing changes nothing" title={detail?.agent.agent_name.replace(/_/g, ' ') ?? ''} eyebrow="COUNTERS ONLY" ground="charcoal">
       {detail && <div className="admin-desk__detail">
         {!detail.value && !detail.error && <p role="status">Reading…</p>}
         {detail.error && !detail.value && <p role="alert">This agent's counters could not be read. {detail.error}</p>}

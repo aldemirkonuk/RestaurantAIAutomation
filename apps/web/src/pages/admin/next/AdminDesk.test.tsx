@@ -161,7 +161,7 @@ describe('the operations desk', () => {
     fireEvent.keyDown(window, { key: 'r' });
     await waitFor(() => expect(mocks.get.mock.calls.length).toBeGreaterThan(callsBefore));
   });
-  it('filters the agent register by health without folding an unknown reading into either bucket', async () => {
+  it('files an agent whose health could not be read under Needs attention, never under Healthy', async () => {
     mocks.get.mockImplementation(async (path: string) => {
       if (path === '/health/access') return { data: { platformOperator: false } };
       if (path === '/health/agents') return { data: { agents: [
@@ -179,7 +179,10 @@ describe('the operations desk', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Needs attention' }));
     expect(screen.queryByText('inventory')).not.toBeInTheDocument();
     expect(screen.getByText('calendar')).toBeInTheDocument();
-    expect(screen.queryByText('buffer')).not.toBeInTheDocument();
+    // Unknown is not calm: a bad day where the orchestrator cannot read an
+    // agent's health must not answer "No agent matches this filter" (QA round 4, B10).
+    expect(screen.getByText('buffer')).toBeInTheDocument();
+    expect(screen.getByText(/idle · health unknown/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Healthy' }));
     expect(screen.getByText('inventory')).toBeInTheDocument();
     expect(screen.queryByText('calendar')).not.toBeInTheDocument();
@@ -249,3 +252,36 @@ describe('the operations desk', () => {
     expect(screen.queryByText('88.00%')).not.toBeInTheDocument();
   });
 });
+
+describe('each reading lands on its own', () => {
+  it('shows the database reading while the agent register is still being read', async () => {
+    const base = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation((path, config) => path === '/health/agents' ? new Promise(() => {}) : base(path, config));
+    open();
+    await screen.findByText('reachable');
+    expect(screen.getByText('Configured · not probed')).toBeInTheDocument();
+    expect(screen.getByText('Reading the agent register…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reading…' })).toBeDisabled();
+  });
+  it("starts an owner's readings without waiting for the platform-grant check", async () => {
+    const base = mocks.get.getMockImplementation()!;
+    mocks.get.mockImplementation((path, config) => path === '/health/access' ? new Promise(() => {}) : base(path, config));
+    open();
+    await screen.findByText('inventory');
+    expect(screen.getByText('reachable')).toBeInTheDocument();
+    expect(mocks.get.mock.calls.some(([path]) => path === '/health/agent-operations')).toBe(false);
+  });
+  it('opens an agent row from the keyboard with Space as well as Enter', async () => {
+    mocks.get.mockImplementation(async (path: string) => {
+      if (path === '/health/agents/inventory') return { data: { metrics: { messages: { received: 1, processed: 7, failed: 0, skipped: 0, success_rate: '100%' }, timing: { avg_ms: 1, min_ms: 1, max_ms: 1, p95_ms: 1 }, health: { errors: 0, circuit_breaker_trips: 0 }, activity: { uptime_seconds: 60, pause_count: 0, restart_count: 0 } }, queue_size: 0, active_tasks: 0, circuit_breaker: null } };
+      const base = { '/health/access': { platformOperator: false }, '/health/agents': { agents: [{ agent_name: 'inventory', version: '1', status: 'idle', healthy: true }], observedAt: '2026-09-13T20:00:00Z', scope: 'platform' }, '/health/providers': { providers: [] }, '/health/ready': { status: 'ready', checkedAt: '2026-09-13T20:00:00Z', bootedAt: '2026-09-13T19:00:00Z', commit: 'abc123', checks: { database: 'reachable' } }, '/communications/webhooks/gmail/status': { configured: true } } as Record<string, unknown>;
+      if (path in base) return { data: base[path] };
+      throw new Error(`Unexpected path ${path}`);
+    });
+    open();
+    const row = (await screen.findByText('inventory')).closest('article')!;
+    fireEvent.keyDown(row, { key: ' ' });
+    expect(await screen.findByText('Messages processed')).toBeInTheDocument();
+  });
+});
+
