@@ -138,6 +138,31 @@ describe('MenuManualEntry boxes are named, and a price is typed as the house wri
     expect(screen.getByLabelText('Bottle price of line 1')).toHaveAttribute('inputmode', 'decimal')
   })
 
+  it('hints the prices the way the house writes them: "14,00" in a lira house (r23 walk: "14.00")', () => {
+    render(<MenuManualEntry onSuccess={vi.fn()} currency="TRY" />)
+    expect(screen.getByLabelText('Glass price of line 1')).toHaveAttribute('placeholder', '14,00')
+    expect(screen.getByLabelText('Bottle price of line 1')).toHaveAttribute('placeholder', '68,00')
+    fireEvent.change(screen.getByLabelText('What line 1 is'), { target: { value: 'food' } })
+    expect(screen.getByLabelText('Price of line 1')).toHaveAttribute('placeholder', '24,00')
+  })
+
+  it('hints a pound house the English way', () => {
+    render(<MenuManualEntry onSuccess={vi.fn()} currency="GBP" />)
+    expect(screen.getByLabelText('Glass price of line 1')).toHaveAttribute('placeholder', '14.00')
+  })
+
+  it('a price typed exactly as its hint is read as that price, never refused', async () => {
+    render(<MenuManualEntry onSuccess={vi.fn()} currency="TRY" />)
+    fireEvent.change(screen.getByLabelText('Name of line 1'), { target: { value: 'Yakut' } })
+    for (const label of ['Glass price of line 1', 'Bottle price of line 1']) {
+      const box = screen.getByLabelText(label)
+      fireEvent.change(box, { target: { value: box.getAttribute('placeholder') } })
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1 line' }))
+    await waitFor(() => expect(importMenu).toHaveBeenCalled())
+    expect(importedItems()[0]).toMatchObject({ by_glass_price: 14, bottle_price: 68 })
+  })
+
   it('reads "24,50" on a dish as 24.50', async () => {
     render(<MenuManualEntry onSuccess={vi.fn()} />)
     fireEvent.change(screen.getByLabelText('Name of line 1'), { target: { value: 'Lamb shank' } })
