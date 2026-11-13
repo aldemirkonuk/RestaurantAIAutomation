@@ -82,6 +82,7 @@ import { draftId, draftKey, dropDraft, dropDraftsForDrink, keepDraft, takeDraft,
 import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards, { type DraftCost } from './DrinkCards';
+import { useHousePercent } from './useHousePercent';
 import WhatIsInAServe from './WhatIsInAServe';
 import { recipeWords, type RecipeWords } from './recipeWords';
 import {
@@ -434,6 +435,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
   const recipe = useRecipe(owner);
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
+  const sayPct = useHousePercent();
   const save = useSaveRecipe(owner);
   const { user, activeRestaurantId } = useAuth();
   const storeKey = draftKey(user?.userId, activeRestaurantId, dId);
@@ -687,7 +689,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
       ) : null}
       {/* The drink opens on its cards, then what is in a serve, then its lines
           (founder ask: a drink shows its KPI cards, then a nutrition card). */}
-      <DrinkCards data={data} sayMoney={say} unsaved={canEdit && dirty} draftCost={draftCost} />
+      <DrinkCards data={data} sayMoney={say} sayPct={sayPct} unsaved={canEdit && dirty} draftCost={draftCost} />
       <WhatIsInAServe data={data} unsaved={canEdit && dirty} />
 
       <header className="cl-rcp-head">
