@@ -575,6 +575,7 @@
   ],
   "GET /recipes/:restaurantId/cocktails/:cocktailId (RecipesController.getRecipe)": "open",
   "GET /recipes/:restaurantId/cocktails/:cocktailId/versions (RecipesController.listVersions)": "open",
+  "GET /recipes/:restaurantId/cocktails/:cocktailId/versions/:versionId (RecipesController.readVersion)": "open",
   "PUT /recipes/:restaurantId/cocktails/:cocktailId (RecipesController.saveRecipe)": [
     "owner",
     "manager"
