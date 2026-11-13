@@ -10,7 +10,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import type { InventoryItem } from '@/services/api/types';
 import { normalizeInventoryItem } from '@/services/api/inventory';
-import { LowStockPanel, unitWord } from './RailPanels';
+import { LowStockPanel, stockAgainstMin, unitWord } from './RailPanels';
 
 /** Rows as the gateway serves them: raw view columns, then the service normalizer. */
 function rows(raw: Array<Record<string, unknown>>): InventoryItem[] {
@@ -132,5 +132,61 @@ describe('LowStockPanel — a good nobody has counted is not running low (OD-161
     expect(lineFor('Flour').textContent).toMatch(/200\s*\/ min 500 g$/);
     const lines = screen.getAllByRole('listitem').map((li) => li.textContent ?? '');
     expect(lines[0]).toMatch(/^Flour/);
+  });
+});
+
+describe('LowStockPanel — a kilo reads as a kilo, as on the list and in Lately', () => {
+  /** The figures on a line, as one string: "2.5 / min 5 kg". */
+  const said = (stock: number | null, min: number | null, uom: string | null) => {
+    const r = stockAgainstMin(stock, min, uom);
+    return `${r.stock}${r.stockUnit ? ` ${r.stockUnit}` : ''} / min ${r.min}${r.unit ? ` ${r.unit}` : ''}`;
+  };
+
+  it('reads 1,000 or more g, ml or mg a unit up, and keeps every gram', () => {
+    expect(said(2500, 5000, 'g')).toBe('2.5 / min 5 kg');
+    expect(said(1500, 3000, 'ml')).toBe('1.5 / min 3 l');
+    expect(said(1001, 2000, 'g')).toBe('1.001 / min 2 kg');
+    expect(said(1750, 2000, 'G')).toBe('1.75 / min 2 kg');
+  });
+
+  it('gives the stock its own unit only when it reads in a different one', () => {
+    expect(said(800, 2000, 'g')).toBe('800 g / min 2 kg');
+    expect(said(999, 1000, 'g')).toBe('999 g / min 1 kg');
+    expect(said(2500, 500, 'mg')).toBe('2.5 g / min 500 mg');
+    expect(said(200, 500, 'g')).toBe('200 / min 500 g');
+  });
+
+  it('leaves bottles, units and unknown units as they are', () => {
+    expect(said(1250, 1500, 'bottle')).toBe('1,250 / min 1,500 bottles');
+    expect(said(0, 1, 'each')).toBe('0 / min 1 unit');
+    expect(said(1200, 2400, 'crate')).toBe('1,200 / min 2,400 crate');
+    expect(said(1, 3, null)).toBe('1 / min 3');
+  });
+
+  it('a missing figure is a dash and the line keeps the other figure\'s unit', () => {
+    expect(said(null, 2000, 'g')).toBe('— / min 2 kg');
+    expect(said(2500, null, 'g')).toBe('2.5 / min — kg');
+  });
+
+  it('draws the scaled line in the panel', () => {
+    render(
+      <MemoryRouter>
+        <LowStockPanel
+          items={rows([
+            { id: 'f', wine_name: 'Bread Flour', stock_live: 2500, threshold_min: 5000, kind: 'food', uom: 'g' },
+            { id: 'o', wine_name: 'Olive Oil', stock_live: 800, threshold_min: 2000, kind: 'food', uom: 'ml' },
+          ])}
+        />
+      </MemoryRouter>,
+    );
+    expect(lineFor('Bread Flour').textContent).toMatch(/2\.5\s*\/ min 5 kg$/);
+    expect(lineFor('Olive Oil').textContent).toMatch(/800 ml\s*\/ min 2 l$/);
+    expect(lineFor('Bread Flour').textContent).not.toMatch(/2,500|5,000/);
+  });
+
+  it('never takes a word from the object prototype for a unit', () => {
+    expect(unitWord('constructor', 2)).toBe('constructor');
+    expect(unitWord('__proto__', 2)).toBe('__proto__');
+    expect(said(1500, 3000, 'constructor')).toBe('1,500 / min 3,000 constructor');
   });
 });
