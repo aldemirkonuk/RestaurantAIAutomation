@@ -31,7 +31,7 @@ import {
 import { apiClient } from '../../../services/api/client';
 import { fetchProviders, type Provider } from '../../../services/api/providers';
 import { canonicalStatus } from '../../../lib/mudavym/status';
-import { expandSeries } from './expand-series';
+import { daysCovered, expandSeries } from './expand-series';
 import { rangeFor, type CalView } from './cal-format';
 
 /* ── The gateway's own shape (calendar.dto.ts CalendarEventResponseDto) ───── */
@@ -301,6 +301,12 @@ export interface CalEvent {
   /** Local `YYYY-MM-DD`. */
   date: string;
   endDate: string | null;
+  /**
+   * Set only on the copy drawn on a later day of a multi-day entry: the
+   * entry's own first day. That copy fills its day (no start time is drawn
+   * again) and cannot be dragged; the first day's line moves the entry.
+   */
+  continuesFrom?: string;
   startTime: string | null;
   endTime: string | null;
   allDay: boolean;
@@ -437,7 +443,8 @@ export interface CalendarPayload {
   title: string;
   eventType: string;
   eventDate: string;
-  eventDateEnd?: string;
+  /** `null` clears a stored end day on update. */
+  eventDateEnd?: string | null;
   allDay?: boolean;
   eventTime?: string;
   eventTimeEnd?: string;
@@ -732,12 +739,23 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
     });
   }, [events, q, typeFilter, providersById]);
 
+  /**
+   * Each entry on every day of the window it covers (QA round 4 B5): a
+   * closure from the 28th to the 3rd is on all seven days, and on the 1st to
+   * the 3rd when the window is the new month. Only the DRAWING repeats; the
+   * counts read `events`, one per entry.
+   */
   const byDay = useMemo(() => {
     const m = new Map<string, CalEvent[]>();
-    for (const e of shown) {
-      const list = m.get(e.date);
+    const put = (key: string, e: CalEvent) => {
+      const list = m.get(key);
       if (list) list.push(e);
-      else m.set(e.date, [e]);
+      else m.set(key, [e]);
+    };
+    for (const e of shown) {
+      for (const key of daysCovered(e.date, e.endDate, start, end)) {
+        put(key, key === e.date ? e : { ...e, continuesFrom: e.date });
+      }
     }
     for (const list of m.values()) {
       list.sort((a, b) => {
@@ -746,7 +764,7 @@ export function useCalendarNextData(view: CalView, cursor: Date, filter: Calenda
       });
     }
     return m;
-  }, [shown]);
+  }, [shown, start, end]);
 
   /**
    * One lookup per cell. Built from the gateway's own arrays rather than

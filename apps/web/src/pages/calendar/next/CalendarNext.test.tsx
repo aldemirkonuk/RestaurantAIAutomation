@@ -600,7 +600,102 @@ describe('CalendarNext — honesty', () => {
     draw();
     fireEvent.click(screen.getByText('Vega Sicilia crate'));
     const sheet = screen.getByRole('dialog');
-    expect(within(sheet).getByText(new RegExp(`The gateway refused this write \\(${message}\\)`))).toBeInTheDocument();
+    expect(within(sheet).getByText(`${message}. Nothing was saved.`)).toBeInTheDocument();
+  });
+});
+
+describe('CalendarNext — an entry over several days (QA round 4 B5)', () => {
+  it('lets an all-day entry carry an end day, and sends it', () => {
+    const create = mutation();
+    state.current = mkData({ create });
+    draw('/calendar?openModal=true&date=2026-09-28');
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('Title'), { target: { value: 'Autumn closure' } });
+    fireEvent.click(within(sheet).getByLabelText('All day'));
+    const ends = within(sheet).getByLabelText('Ends on (optional)');
+    expect(ends).not.toBeDisabled();
+    fireEvent.change(ends, { target: { value: '2026-10-02' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Write it in' }));
+    expect(create.mutate).toHaveBeenCalledTimes(1);
+    expect(create.mutate.mock.calls[0][0]).toMatchObject({
+      allDay: true,
+      eventDate: '2026-09-28',
+      eventDateEnd: '2026-10-02',
+    });
+  });
+
+  it('sends null when a stored end day is cleared, so the gateway drops it', () => {
+    const update = mutation();
+    state.current = mkData({
+      events: [event({ id: 'c1', title: 'Autumn closure', date: '2026-09-17', endDate: '2026-09-19', allDay: true })],
+      update,
+    });
+    draw();
+    fireEvent.click(screen.getAllByText('Autumn closure')[0]);
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('Ends on (optional)'), { target: { value: '' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Save the entry' }));
+    expect(update.mutate.mock.calls[0][0].patch.eventDateEnd).toBeNull();
+  });
+
+  it('leaves the end day out of an edit that did not touch it', () => {
+    const update = mutation();
+    state.current = mkData({
+      events: [event({ id: 'c1', title: 'Autumn closure', date: '2026-09-17', allDay: true })],
+      update,
+    });
+    draw();
+    fireEvent.click(screen.getAllByText('Autumn closure')[0]);
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save the entry' }));
+    expect(update.mutate.mock.calls[0][0].patch.eventDateEnd).toBeUndefined();
+  });
+
+  it('refuses an end day before the start in the sheet, and writes nothing', () => {
+    const create = mutation();
+    state.current = mkData({ create });
+    draw('/calendar?openModal=true&date=2026-09-28');
+    const sheet = screen.getByRole('dialog');
+    fireEvent.change(within(sheet).getByLabelText('Title'), { target: { value: 'Autumn closure' } });
+    fireEvent.change(within(sheet).getByLabelText('Ends on (optional)'), { target: { value: '2026-09-20' } });
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Write it in' }));
+    expect(create.mutate).not.toHaveBeenCalled();
+    expect(
+      within(sheet).getByText('An entry cannot end before the day it starts. Nothing was saved.'),
+    ).toBeInTheDocument();
+  });
+
+  it("prints the gateway's own sentence for a refusal, never the transport's", () => {
+    const refusal = Object.assign(new Error('Request failed with status code 400'), {
+      isAxiosError: true,
+      response: { status: 400, data: { message: 'An entry cannot end before the day it starts.' } },
+    });
+    state.current = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+      update: { mutate: vi.fn(), isPending: false, error: refusal },
+    });
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    expect(
+      within(sheet).getByText('An entry cannot end before the day it starts. Nothing was saved.'),
+    ).toBeInTheDocument();
+    expect(within(sheet).queryByText(/status code/)).toBeNull();
+  });
+
+  it('does not say nothing was saved when the server failed after it may have saved', () => {
+    const failure = Object.assign(new Error('Request failed with status code 502'), {
+      isAxiosError: true,
+      response: { status: 502, data: { message: 'The calendar could not be reached.' } },
+    });
+    state.current = mkData({
+      events: [event({ id: 'e1', title: 'Vega Sicilia crate', date: '2026-09-17' })],
+      update: { mutate: vi.fn(), isPending: false, error: failure },
+    });
+    draw();
+    fireEvent.click(screen.getByText('Vega Sicilia crate'));
+    const sheet = screen.getByRole('dialog');
+    expect(within(sheet).getByText(/It may have been saved/)).toBeInTheDocument();
+    expect(within(sheet).queryByText(/Nothing was saved/)).toBeNull();
   });
 });
 

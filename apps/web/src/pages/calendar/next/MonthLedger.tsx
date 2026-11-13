@@ -50,7 +50,9 @@ export function Ribbon({
   onDragEnd?: () => void;
   dragging?: boolean;
 }) {
-  const movable = !event.isOccurrence && !!onDragStart;
+  // A later day of a multi-day entry is not draggable: the move would be
+  // measured from the wrong day. The first day's line moves the entry.
+  const movable = !event.isOccurrence && !event.continuesFrom && !!onDragStart;
   return (
     <button
       type="button"
@@ -66,12 +68,16 @@ export function Ribbon({
         onOpen();
       }}
       title={
-        event.isOccurrence
-          ? `${event.title} — an occurrence of a repeating event; open it to edit the series`
-          : event.title
+        event.continuesFrom
+          ? `${event.title} — continues from ${longDay(event.continuesFrom)}`
+          : event.isOccurrence
+            ? `${event.title} — an occurrence of a repeating event; open it to edit the series`
+            : event.title
       }
     >
-      {!event.allDay && event.startTime && <span className="cn-ribbon-time">{clock(event.startTime)}</span>}
+      {!event.allDay && !event.continuesFrom && event.startTime && (
+        <span className="cn-ribbon-time">{clock(event.startTime)}</span>
+      )}
       {event.title}
     </button>
   );
@@ -102,6 +108,8 @@ export function LinkLine({ event, data }: { event: CalEvent; data: CalendarData 
   }
 
   if (event.isOccurrence) bits.push('occurrence of a repeating event');
+  if (event.continuesFrom) bits.push(`continues from ${longDay(event.continuesFrom)}`);
+  else if (event.endDate && event.endDate > event.date) bits.push(`until ${longDay(event.endDate)}`);
   if (bits.length === 0) return null;
   return <span className="cn-meta">{bits.join(' · ')}</span>;
 }
@@ -135,7 +143,9 @@ export function DayLedger({
       data-ruled={data.isRuledOff(e)}
       onClick={() => onOpenEvent(e)}
     >
-      <span className="cn-when">{span(e.startTime, e.endTime, e.allDay)}</span>
+      <span className="cn-when">
+        {e.continuesFrom ? span(null, null, true) : span(e.startTime, e.endTime, e.allDay)}
+      </span>
       <span className="cn-entry">
         <b>{e.title}</b>
         <LinkLine event={e} data={data} />
