@@ -85,7 +85,8 @@ describe('useCreateProvider — offline queueing only on a real network failure'
     expect(caught).toBeDefined()
     expect(sync.queueMutation).not.toHaveBeenCalled()
     expect(toast.info).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalled()
+    // One voice: the sheet shows the refusal in place; the hook does not toast it too.
+    expect(toast.error).not.toHaveBeenCalled()
   })
 
   it('a 500 rejects too — the server answered, so it is not "offline"', async () => {
@@ -112,7 +113,10 @@ describe('useCreateProvider — offline queueing only on a real network failure'
     expect(sync.queueMutation).toHaveBeenCalledTimes(1)
     expect(sync.queueMutation.mock.calls[0][0]).toMatchObject({ type: 'provider.create' })
     expect(out).toMatchObject({ _pending: true })
-    expect(toast.info).toHaveBeenCalled()
+    // The sheet says the vendor is queued; the hook neither toasts it as
+    // queued nor as added.
+    expect(toast.info).not.toHaveBeenCalled()
+    expect(toast.success).not.toHaveBeenCalled()
   })
 
   it('committed but reply lost: the queued replay carries the key the first attempt was sent with', async () => {
@@ -139,6 +143,16 @@ describe('useCreateProvider — offline queueing only on a real network failure'
     const [a, b] = api.createProvider.mock.calls.map((c) => c[1]?.idempotencyKey)
     expect(a).toBeTruthy()
     expect(a).not.toBe(b)
+  })
+
+  it('a vendor the server added is toasted once, in the house\'s words', async () => {
+    api.createProvider.mockResolvedValue({ id: 'p-1', name: 'Red Cedar Cellars' })
+    const result = run()
+    await act(async () => {
+      await result.current.mutateAsync(INPUT)
+    })
+    expect(toast.success).toHaveBeenCalledTimes(1)
+    expect(toast.success).toHaveBeenCalledWith('Vendor added', 'Red Cedar Cellars is in your vendors.')
   })
 
   it('no response while ONLINE (a timeout) rejects instead of queueing: the server may still be writing it', async () => {

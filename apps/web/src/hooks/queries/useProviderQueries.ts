@@ -205,23 +205,23 @@ export function useCreateProvider() {
       const previousProviders = queryClient.getQueryData(queryKeys.providers.lists())
       return { previousProviders }
     },
-    onSuccess: (newProvider, variables) => {
+    onSuccess: (newProvider) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.providers.lists() })
-      
-      const isPending = (newProvider as any)._pending
-      
-      if (isPending) {
-        toast.info('Provider saved offline', `${variables.name} will sync when you're back online.`)
-      } else {
-        toast.success('Provider created', `${newProvider.name} has been added to your providers.`)
+
+      // ONE VOICE (r31, 2026-11-13). The store's toasts are drawn now, and the
+      // one caller (NewVendorSheet) already says a queued create and a refusal
+      // in place, in the house's words. Toasting them too would say each twice.
+      // Only the arrival of a new vendor, which the sheet does not say after
+      // it closes, is toasted.
+      if (!(newProvider as any)._pending) {
+        toast.success('Vendor added', `${newProvider.name} is in your vendors.`)
       }
     },
-    onError: (error: any, _, context) => {
+    onError: (_error: any, _, context) => {
       if (context?.previousProviders) {
         queryClient.setQueryData(queryKeys.providers.lists(), context.previousProviders)
       }
-
-      toast.error('Failed to create provider', error.response?.data?.message || error.message)
+      // Not toasted: the sheet shows the refusal in place (see onSuccess).
     },
   })
 }
