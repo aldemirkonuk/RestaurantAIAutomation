@@ -1,5 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
+import { useSessionWaitNote } from '../hooks/useSessionWaitNote'
 import { ShieldAlert, ArrowLeft } from 'lucide-react'
 
 type HouseRole = 'owner' | 'manager' | 'staff'
@@ -24,6 +25,7 @@ export function ProtectedRoute({
 }: ProtectedRouteProps) {
   const { user, loading, isAuthenticated } = useAuth()
   const location = useLocation()
+  const waitNote = useSessionWaitNote()
 
   // Loading State
   if (loading) {
@@ -35,6 +37,16 @@ export function ProtectedRoute({
             <div className="absolute inset-0 w-12 h-12 border-3 border-brand-500 rounded-full border-t-transparent animate-spin" />
           </div>
           <p className="text-slate-500 font-medium">Loading...</p>
+          {waitNote ? (
+            <p
+              role="status"
+              aria-live="polite"
+              data-session-wait-note
+              className="mt-2 max-w-sm mx-auto px-4 text-sm text-slate-500"
+            >
+              {waitNote}
+            </p>
+          ) : null}
         </div>
       </div>
     )

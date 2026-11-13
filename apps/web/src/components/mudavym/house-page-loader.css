@@ -77,3 +77,14 @@
     animation: none;
   }
 }
+
+/* r22: why a stored session is still being read (RootDoor's note). Body
+   text, not the mono mark: it is a sentence the person reads. */
+.mdv-pageloader__note {
+  margin: 0;
+  max-width: 420px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
