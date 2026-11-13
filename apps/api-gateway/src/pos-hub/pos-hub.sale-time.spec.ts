@@ -389,10 +389,9 @@ describe("ingest dates stock and consumption by the check (A-007 / A-009)", () =
     ]);
 
     expect(calls.rpc).toHaveLength(1);
-    expect(calls.rpc[0].args).toMatchObject({
-      p_transaction_type: "return",
-      p_delta: 1,
-      p_occurred_at: AT,
+    expect(calls.rpc[0]).toMatchObject({
+      fn: "return_glass_pour",
+      args: { p_pours: 1, p_occurred_at: AT },
     });
     expect(calls.consumption).toHaveLength(0);
   });
