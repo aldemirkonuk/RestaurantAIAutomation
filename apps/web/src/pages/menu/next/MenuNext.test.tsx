@@ -418,6 +418,23 @@ describe('MenuNext — a price changes on its line', () => {
     expect(sent.bottle_price).toBeUndefined();
   });
 
+  it('a price typed before the role became staff is not sent', async () => {
+    mockGetMenu.mockResolvedValue(menu({ items: [] }));
+    mockAdd.mockResolvedValue({} as never);
+    const view = mount();
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Raki' } });
+    fireEvent.change(screen.getByLabelText('Bottle'), { target: { value: '30' } });
+    role = 'staff';
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MenuNext />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Add to menu/ }));
+    await waitFor(() => expect(mockAdd).toHaveBeenCalled());
+    expect((mockAdd.mock.calls[0][1] as { bottle_price?: number }).bottle_price).toBeUndefined();
+  });
+
   it('a manager keeps the price boxes', async () => {
     mockGetMenu.mockResolvedValue(menu({ items: [] }));
     mount();
