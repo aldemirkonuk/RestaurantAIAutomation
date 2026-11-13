@@ -10,6 +10,7 @@ import {
   HttpException,
   HttpStatus,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from "@nestjs/swagger";
 import { InventoryService } from "./inventory.service";
@@ -30,10 +31,14 @@ import {
   AuctionLotRecordResponseDto,
 } from "./dto/inventory.dto";
 import { AuctionLotRecordsService } from "./auction-lot-records.service";
+import { WithholdCostFromStaffInterceptor } from "./inventory-cost-for-role";
 
 @ApiTags("inventory")
 @Controller("inventory")
 @UseGuards(JwtAuthGuard)
+// Staff read stock, not cost: every answer here reaches a role that does not
+// see money with its cost fields null (inventory-cost-for-role.ts).
+@UseInterceptors(WithholdCostFromStaffInterceptor)
 export class InventoryController {
   constructor(
     private readonly inventoryService: InventoryService,
