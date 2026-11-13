@@ -187,6 +187,17 @@ export interface ShelfItem {
   bottleSizeMl: number | null;
 }
 
+/**
+ * One pasted label's shelf item by exact name, case and runs of spaces folded
+ * (ADR 0366 item 7). `item` is null when no live item, or more than one, has
+ * that name; `sameName` says how many do.
+ */
+export interface ShelfMatch {
+  label: string;
+  item: ShelfItem | null;
+  sameName: number;
+}
+
 const base = (restaurantId: string) => `/recipes/${encodeURIComponent(restaurantId)}`;
 
 export const recipesApi = {
@@ -223,6 +234,12 @@ export const recipesApi = {
       `${base(restaurantId)}/cocktails/${encodeURIComponent(cocktailId)}/cost-preview`,
       body,
     );
+    return r.data;
+  },
+
+  /** Proposes a shelf item for each pasted label; writes nothing. */
+  async matchShelf(restaurantId: string, labels: string[]): Promise<ShelfMatch[]> {
+    const r = await apiClient.post<ShelfMatch[]>(`${base(restaurantId)}/shelf/match`, { labels });
     return r.data;
   },
 

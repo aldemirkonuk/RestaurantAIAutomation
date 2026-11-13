@@ -36,7 +36,7 @@ vi.mock('../../../../services/api/client', () => ({
 }));
 vi.mock('../../../../contexts/AuthContext', () => ({ useAuth: () => h.auth }));
 
-import RecipeSheet, { LEGACY_NOTE, NEWER_SENTENCE, RESTORED_SENTENCE, SET_ASIDE_SENTENCE, STALE_SENTENCE } from './RecipeSheet';
+import RecipeSheet, { fromProposal, LEGACY_NOTE, NEWER_SENTENCE, RESTORED_SENTENCE, SET_ASIDE_SENTENCE, STALE_SENTENCE } from './RecipeSheet';
 import { draftKey, forgetDrafts, keepDraft } from './drafts';
 
 function line(over: Partial<RecipeLine>): RecipeLine {
@@ -1266,3 +1266,92 @@ describe('RecipeSheet: the cost of unsaved lines', () => {
   });
 });
 
+describe('a pasted line proposes its shelf item by exact name (ADR 0366 item 7)', () => {
+  const BOLS = { id: GIN, name: 'Bols Gin', kind: 'spirit', uom: 'bottle', bottleSizeMl: 700 };
+  const shelfAnswers = (answer: (labels: string[]) => Promise<unknown>) =>
+    h.post.mockImplementation((url: string, body: { labels: string[] }) =>
+      url === `/recipes/${RID}/shelf/match` ? answer(body.labels) : new Promise(() => undefined),
+    );
+  const read = async (text: string) => {
+    fireEvent.click(await screen.findByRole('button', { name: /paste a spec/i }));
+    fireEvent.change(screen.getByLabelText(/paste a spec/i), { target: { value: text } });
+    fireEvent.click(screen.getByRole('button', { name: 'Read it' }));
+    return screen.getByTestId('recipe-proposed');
+  };
+  const useAndSave = async () => {
+    fireEvent.click(within(screen.getByTestId('recipe-proposed')).getByRole('button', { name: 'Use these lines' }));
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(h.put).toHaveBeenCalledTimes(1));
+    return h.put.mock.calls[0][1].lines as Array<{ inventoryId: string | null; label: string }>;
+  };
+
+  beforeEach(() => {
+    serve(EMPTY);
+    h.put.mockResolvedValue({ data: { versionId: 'v1', version: 1, lines: [] } });
+  });
+
+  it('asks the shelf once for the counted lines, shows the link, and saves it only on Save', async () => {
+    shelfAnswers(async (labels) => ({ data: labels.map((label) => ({ label, item: label === 'Bols Gin' ? BOLS : null, sameName: label === 'Bols Gin' ? 1 : 0 })) }));
+    mount();
+    const box = await read('2 oz Bols Gin\n1 oz lime juice\nOrange twist garnish');
+    expect(await within(box).findByTestId('recipe-proposed-link')).toHaveTextContent('links to Bols Gin');
+    expect(h.post).toHaveBeenCalledTimes(1);
+    // The garnish is not counted, so it is not asked about.
+    expect(h.post.mock.calls[0][1]).toEqual({ labels: ['Bols Gin', 'lime juice'] });
+    expect(h.put).not.toHaveBeenCalled();
+    const lines = await useAndSave();
+    expect(lines.map((l) => l.inventoryId)).toEqual([GIN, null, null]);
+  });
+
+  it('"Do not link" drops the proposed link, and the line saves unlinked', async () => {
+    shelfAnswers(async () => ({ data: [{ label: 'Bols Gin', item: BOLS, sameName: 1 }] }));
+    mount();
+    const box = await read('2 oz Bols Gin');
+    fireEvent.click(await within(box).findByRole('button', { name: 'Do not link Bols Gin to Bols Gin' }));
+    expect(within(box).queryByTestId('recipe-proposed-link')).toBeNull();
+    expect((await useAndSave())[0].inventoryId).toBeNull();
+  });
+
+  it('two shelf items of one name link neither, and say how many', async () => {
+    shelfAnswers(async () => ({ data: [{ label: 'sugar syrup', item: null, sameName: 2 }] }));
+    mount();
+    const box = await read('10 ml sugar syrup');
+    expect(await within(box).findByTestId('recipe-proposed-same-name')).toHaveTextContent('2 shelf items have this name, so none is linked');
+    expect((await useAndSave())[0].inventoryId).toBeNull();
+  });
+
+  it('a shelf that cannot be read says so, and links nothing', async () => {
+    shelfAnswers(async () => {
+      throw Object.assign(new Error('down'), { response: { status: 503 } });
+    });
+    mount();
+    const box = await read('2 oz Bols Gin');
+    expect(await within(box).findByTestId('recipe-proposed-unread')).toHaveTextContent('could not be read');
+    expect((await useAndSave())[0].inventoryId).toBeNull();
+  });
+
+  it("an older paste's late answer never links the newer paste's lines", async () => {
+    const answers: Array<(v: unknown) => void> = [];
+    h.post.mockImplementation(() => new Promise((ok) => answers.push(ok)));
+    mount();
+    let box = await read('2 oz Bols Gin');
+    fireEvent.click(within(box).getByRole('button', { name: 'Change the paste' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Read it' }));
+    box = screen.getByTestId('recipe-proposed');
+    expect(answers).toHaveLength(2);
+    // The first paste's answer arrives while the second is still looking: it is dropped.
+    await act(async () => answers[0]({ data: [{ label: 'Bols Gin', item: BOLS, sameName: 1 }] }));
+    expect(within(box).queryByTestId('recipe-proposed-link')).toBeNull();
+    expect(within(box).getByTestId('recipe-proposed-looking')).toBeInTheDocument();
+    await act(async () => answers[1]({ data: [{ label: 'Bols Gin', item: null, sameName: 0 }] }));
+    expect(within(box).queryByTestId('recipe-proposed-looking')).toBeNull();
+    expect(within(box).queryByTestId('recipe-proposed-link')).toBeNull();
+  });
+
+  it('a proposed line carries only a linked item into the draft', () => {
+    const p = { qty: 2, unit: 'oz' as const, label: 'Bols Gin', role: 'stocked' as const, confirmed: false as const, flag: null };
+    expect(fromProposal({ ...p, link: { status: 'linked', item: BOLS } })).toMatchObject({ inventoryId: GIN, itemName: 'Bols Gin', itemUom: 'bottle' });
+    expect(fromProposal({ ...p, link: { status: 'same-name', n: 2 } }).inventoryId).toBeNull();
+    expect(fromProposal({ ...p, link: { status: 'looking' } }).inventoryId).toBeNull();
+  });
+});

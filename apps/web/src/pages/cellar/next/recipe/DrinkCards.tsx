@@ -10,9 +10,12 @@
  * and names that line, because a partial sum shown as the cost would read as
  * the drink costing less than it does (ADR 0051).
  *
- * No pour-cost card: the price on the list includes tax and the house's tax
- * basis is not set anywhere yet (ADR 0360 item 8, ADR 0359 open as #784), so
- * a percentage of it would be wrong in a way nobody could see.
+ * The pour-cost card (ADR 0366 item 6, superseding ADR 0360 item 8) is the
+ * cost a serve over the price, as a %, shown only when the cost is complete
+ * and the price is known and above 0; otherwise it is "Not known" and says
+ * which side is missing, never a % of a partial cost. The house's tax basis
+ * is still open (ADR 0359, #784), so the card says the % is of the price as
+ * the list has it, and that whether that price includes tax is not recorded.
  */
 import type { CocktailRecipe, CostPreview, RecipeCost, RecipeLine } from '../../../../services/api/recipes';
 import { alcoholGrams, figureAmount, figureUnknown, names } from './WhatIsInAServe';
@@ -76,6 +79,32 @@ function priceCard(data: CocktailRecipe, sayMoney: (n: number) => string): Card 
   return price != null
     ? { id: 'price', label: 'Price', figure: sayMoney(price), known: true, said: 'A serve, as your list has it.' }
     : { id: 'price', label: 'Price', figure: 'No price', known: false, said: 'Your list has no price for it.' };
+}
+
+/** Said under every pour-cost %, until the house's tax basis is set (ADR 0359). */
+export const POUR_COST_BASIS = 'Of the price as your list has it; whether that price includes tax is not recorded.';
+
+/**
+ * Cost a serve over the price, as a % to one decimal; or what is missing.
+ * Only a complete cost and a price above 0 make a %: a partial cost would
+ * read as a cheaper pour than the real one (ADR 0051).
+ */
+export function pourCostShare(cost: RecipeCost | null, price: number | null): { pct: number } | { missing: string[] } {
+  const exact = cost?.complete ? (cost.perServeExact ?? cost.perServe) : null;
+  const missing: string[] = [];
+  if (exact == null) missing.push('the cost is not complete');
+  if (price == null) missing.push('your list has no price for it');
+  else if (!(price > 0)) missing.push('the price on your list is 0');
+  if (missing.length || exact == null || price == null) return { missing };
+  return { pct: Math.round((exact / price) * 1000) / 10 };
+}
+
+function pourCostCard(cost: RecipeCost | null, price: number | null): Card {
+  const share = pourCostShare(cost, price);
+  const base = { id: 'pour-cost', label: 'Pour cost' };
+  return 'pct' in share
+    ? { ...base, figure: `${share.pct.toFixed(1)}%`, known: true, said: POUR_COST_BASIS }
+    : { ...base, figure: 'Not known', known: false, said: `${capital(share.missing.join(' and '))}.` };
 }
 
 function ingredientsCard(data: CocktailRecipe): Card | null {
@@ -162,6 +191,8 @@ export default function DrinkCards({
   // A drink never saved has no saved figures; its only card is the draft's
   // cost (and the list's price), once its lines are whole enough to price.
   if (!data.current && !draft) return null;
+  // The cost the cost card shows: the unsaved draft's once priced, else the saved recipe's.
+  const shownCost: RecipeCost | null = !sayMoney ? null : draft ? draft.cost : data.current ? data.cost : null;
   const cost = !sayMoney
     ? null
     : draft
@@ -177,6 +208,7 @@ export default function DrinkCards({
   const cards = [
     cost,
     sayMoney ? priceCard(data, sayMoney) : null,
+    sayMoney ? pourCostCard(shownCost, data.cocktail.price) : null,
     ingredientsCard(data),
     ...nutritionCards(data),
   ].filter((c): c is Card => c !== null);
