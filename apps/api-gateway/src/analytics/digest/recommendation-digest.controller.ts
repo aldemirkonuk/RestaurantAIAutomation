@@ -93,10 +93,10 @@ export class RecommendationDigestController {
   @Public()
   // Not rate-limited. An RFC 8058 one-click POST is sent by the mailbox
   // PROVIDER's servers, not the recipient's browser, so a per-IP bucket (the
-  // guard keys on the leftmost X-Forwarded-For) would be shared by every
-  // recipient on that provider and answer a real stop with a JSON 429. Nor was
-  // the limit a control: that header is client-set, and the token carries 256
-  // bits, so there is nothing to guess (review D6).
+  // guard keys on the sender's address) would be shared by every
+  // recipient on that provider and answer a real stop with a JSON 429. Nor is
+  // the limit needed as a control: the token carries 256 bits, so there is
+  // nothing to guess (review D6).
   @SkipRateLimit()
   @ApiOperation({
     summary: "Stop the digest this link was mailed with (one click)",
