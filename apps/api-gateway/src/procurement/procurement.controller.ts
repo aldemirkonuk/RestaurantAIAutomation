@@ -257,10 +257,13 @@ export class ProcurementController {
     @CurrentUser() user: { userId: string; restaurantId: string },
   ): Promise<OrderResponseDto> {
     try {
+      // The editor, so a move off an approved order is checked against them
+      // (ADR 0254 rule 4).
       return await this.procurementService.updateOrder(
         user.restaurantId,
         orderId,
         dto,
+        { actorUserId: user.userId },
       );
     } catch (error) {
       if (error instanceof HttpException) throw error;
