@@ -15,13 +15,18 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { draftKey, dropDraft } from './drafts';
-import { recipesApi, type PreviewCostBody, type SaveRecipeBody } from '../../../../services/api/recipes';
+import { draftId, draftKey, dropDraft } from './drafts';
+import { ownerOf, recipesApi, type PreviewCostBody, type RecipeOwner, type SaveRecipeBody } from '../../../../services/api/recipes';
 import { getErrorStatus } from '../../../../services/api/client';
 import { managesHouse } from '../../../communications/next/cm-format';
 
-export const recipeKey = (rid: string | null | undefined, cocktailId: string) =>
-  ['recipes', rid ?? null, cocktailId] as const;
+/** A cocktail's key is `['recipes', rid, id]`; a dish's has `'dish'` before the id. */
+export const recipeKey = (rid: string | null | undefined, owner: string | RecipeOwner) => {
+  const o = ownerOf(owner);
+  return o.kind === 'dish' ? (['recipes', rid ?? null, 'dish', o.id] as const) : (['recipes', rid ?? null, o.id] as const);
+};
+
+export const dishesKey = (rid: string | null | undefined) => ['recipes', rid ?? null, 'dishes'] as const;
 
 /** The gateway's own sentence when it sent one, else the error's message. */
 export function reason(e: unknown): string | null {
@@ -35,7 +40,7 @@ export function reason(e: unknown): string | null {
  * The drink's recipe. `data` stays the last good read when a later re-read
  * fails, and `error` then says so; the sheet decides how to show both.
  */
-export function useRecipe(cocktailId: string) {
+export function useRecipe(cocktailId: string | RecipeOwner) {
   const { activeRestaurantId } = useAuth();
   const q = useQuery({
     queryKey: recipeKey(activeRestaurantId, cocktailId),
@@ -53,7 +58,7 @@ export function useRecipe(cocktailId: string) {
   };
 }
 
-export function useRecipeVersions(cocktailId: string, enabled: boolean) {
+export function useRecipeVersions(cocktailId: string | RecipeOwner, enabled: boolean) {
   const { activeRestaurantId } = useAuth();
   const q = useQuery({
     queryKey: [...recipeKey(activeRestaurantId, cocktailId), 'versions'],
@@ -64,7 +69,7 @@ export function useRecipeVersions(cocktailId: string, enabled: boolean) {
 }
 
 /** One earlier version's lines, read only when it is opened (round 17 D8). */
-export function useRecipeVersion(cocktailId: string, versionId: string, enabled: boolean) {
+export function useRecipeVersion(cocktailId: string | RecipeOwner, versionId: string, enabled: boolean) {
   const { activeRestaurantId } = useAuth();
   const q = useQuery({
     queryKey: [...recipeKey(activeRestaurantId, cocktailId), 'versions', versionId],
@@ -87,7 +92,7 @@ export const PREVIEW_DEBOUNCE_MS = 400;
  * the draft on the sheet now. A failed or pending ask returns null, and the
  * sheet keeps showing the saved figures.
  */
-export function useCostPreview(cocktailId: string, body: PreviewCostBody | null) {
+export function useCostPreview(cocktailId: string | RecipeOwner, body: PreviewCostBody | null) {
   const { activeRestaurantId } = useAuth();
   const key = body ? JSON.stringify(body) : null;
   const [settled, setSettled] = useState<string | null>(key);
@@ -121,16 +126,18 @@ export function useShelf(search: string, enabled: boolean) {
   return { data: q.data ?? null, loading: q.isLoading && enabled, error: q.isError ? reason(q.error) : null };
 }
 
-export function useSaveRecipe(cocktailId: string) {
+export function useSaveRecipe(cocktailId: string | RecipeOwner) {
   const { activeRestaurantId, user } = useAuth();
   const qc = useQueryClient();
-  const storeKey = draftKey(user?.userId, activeRestaurantId, cocktailId);
+  const storeKey = draftKey(user?.userId, activeRestaurantId, draftId(cocktailId));
   return useMutation({
     mutationFn: (body: SaveRecipeBody) => recipesApi.save(activeRestaurantId as string, cocktailId, body),
     // Here, not in the sheet: a save that finishes after the sheet was left
     // must still clear its draft, or the leave warning fires for saved work.
     onSuccess: () => {
       dropDraft(storeKey);
+      // A dish's save moves its list row too (has a recipe, its cost).
+      if (ownerOf(cocktailId).kind === 'dish') void qc.invalidateQueries({ queryKey: dishesKey(activeRestaurantId) });
       return qc.invalidateQueries({ queryKey: recipeKey(activeRestaurantId, cocktailId) });
     },
   });

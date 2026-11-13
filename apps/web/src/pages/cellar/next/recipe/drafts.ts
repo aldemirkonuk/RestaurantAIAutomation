@@ -17,6 +17,7 @@
  * the draft stays here and is back when the drink is opened again.
  */
 import type { DraftRow } from './LineRow';
+import { ownerOf, type RecipeOwner } from '../../../../services/api/recipes';
 
 export type KeptDraft = {
   rows: DraftRow[];
@@ -33,6 +34,15 @@ export type KeptDraft = {
 export type DraftMeta = { yieldServes: number; glass: string; garnish: string; method: string };
 
 const kept = new Map<string, KeptDraft>();
+
+/**
+ * The id a draft is kept under. A dish's is `dish:<id>`, so a dish and a drink
+ * that share an id never share a draft.
+ */
+export const draftId = (owner: string | RecipeOwner) => {
+  const o = ownerOf(owner);
+  return o.kind === 'dish' ? `dish:${o.id}` : o.id;
+};
 
 export const draftKey = (userId: string | null | undefined, rid: string | null | undefined, cocktailId: string) =>
   `${userId ?? ''}|${rid ?? ''}|${cocktailId}`;

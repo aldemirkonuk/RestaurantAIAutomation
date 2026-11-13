@@ -261,3 +261,24 @@ describe('pour cost (ADR 0366 item 6)', () => {
     expect(pourCostShare(null, 12)).toEqual({ missing: ['the cost is not complete'] });
   });
 });
+
+describe('DrinkCards on a dish (ADR 0366)', () => {
+  const dish = (over: Partial<CocktailRecipe> = {}): CocktailRecipe => ({ ...gAndT({}, readable(fig(20))), kind: 'dish', ...over });
+
+  it('says plates and Food cost, and has no pure-alcohol card', () => {
+    render(<DrinkCards data={dish({ current: { ...gAndT().current!, yieldServes: 4 } })} sayMoney={say} unsaved={false} />);
+    expect(screen.getByTestId('drink-card-cost')).toHaveTextContent('Cost a plate$2.47');
+    expect(screen.getByTestId('drink-card-pour-cost').textContent).toBe(`Food cost20.6%${POUR_COST_BASIS}`);
+    expect(screen.getByTestId('drink-card-ingredients')).toHaveTextContent('Makes 4 plates; every card is per plate.');
+    expect(screen.getByTestId('drink-card-energy')).toHaveTextContent('Energy a plate');
+    expect(screen.queryByTestId('drink-card-alcohol')).toBeNull();
+    expect(screen.getByTestId('drink-cards')).toHaveAttribute('aria-label', 'This dish in figures');
+  });
+
+  it('Food cost is Not known on an incomplete cost, never a % of a partial one', () => {
+    render(<DrinkCards data={dish({ cost: { perServe: null, perServeExact: 2.47, priced: 1, of: 2, complete: false, partial: 0 } })} sayMoney={say} unsaved={false} />);
+    const card = screen.getByTestId('drink-card-pour-cost');
+    expect(card).toHaveAttribute('data-known', 'false');
+    expect(card.textContent).not.toMatch(/%/);
+  });
+});
