@@ -178,6 +178,12 @@ export interface MonthFigure {
   lastMonth: number | null;
   /** Orders inside this month whose value is unknown — stated, not silently zeroed. */
   unpricedThisMonth: number;
+  /** The code the month sums are in, set only when every priced order shares one. Nothing converts. */
+  thisCurrency: string | null;
+  lastCurrency: string | null;
+  /** Why a month's sum was withheld, in words. Null when it was not. */
+  thisWithheld: string | null;
+  lastWithheld: string | null;
 }
 
 /**
@@ -404,6 +410,39 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
   };
 }
 
+/**
+ * The sum of the priced rows, only if they share ONE recorded currency.
+ * Nothing converts: a mixed or unrecorded set is withheld, with the reason in
+ * words, rather than added into a meaningless figure.
+ */
+export function sumInOneCurrency(rows: OrderRowVM[]): {
+  total: number | null;
+  currency: string | null;
+  withheld: string | null;
+} {
+  const priced = rows.filter((r) => r.total !== null);
+  const codes = new Set(priced.map((r) => r.currency ?? null).filter((c): c is string => c !== null));
+  if (codes.size > 1) {
+    return {
+      total: null,
+      currency: null,
+      withheld: 'these orders are in more than one currency, so they are not added together',
+    };
+  }
+  if (priced.some((r) => (r.currency ?? null) === null)) {
+    return {
+      total: null,
+      currency: null,
+      withheld: 'some of these orders name no currency, so they are not added together',
+    };
+  }
+  return {
+    total: priced.reduce((s, r) => s + (r.total ?? 0), 0),
+    currency: codes.size === 1 ? [...codes][0] : null,
+    withheld: null,
+  };
+}
+
 export function useOrdersNextData(): OrdersNextData {
   const { activeRestaurantId, user } = useAuth();
   const restaurantId = activeRestaurantId || user?.restaurantId || '';
@@ -448,7 +487,15 @@ export function useOrdersNextData(): OrdersNextData {
     let recurringCount: number | null = null;
     let recurrenceReadCount: number | null = null;
     let cancelledCount: number | null = null;
-    const month: MonthFigure = { thisMonth: null, lastMonth: null, unpricedThisMonth: 0 };
+    const month: MonthFigure = {
+      thisMonth: null,
+      lastMonth: null,
+      unpricedThisMonth: 0,
+      thisCurrency: null,
+      lastCurrency: null,
+      thisWithheld: null,
+      lastWithheld: null,
+    };
 
     if (known) {
       const oneTime = rows.filter((r) => !r.recurring);
@@ -475,12 +522,16 @@ export function useOrdersNextData(): OrdersNextData {
       };
       const lastRef = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const active = rows.filter((r) => r.stage !== 'cancelled');
-      const sumKnown = (rs: OrderRowVM[]) =>
-        rs.reduce((s, r) => s + (r.total ?? 0), 0);
       const thisRows = active.filter((r) => inMonth(r.requestedAt, now));
       const lastRows = active.filter((r) => inMonth(r.requestedAt, lastRef));
-      month.thisMonth = sumKnown(thisRows);
-      month.lastMonth = sumKnown(lastRows);
+      const thisSum = sumInOneCurrency(thisRows);
+      const lastSum = sumInOneCurrency(lastRows);
+      month.thisMonth = thisSum.total;
+      month.lastMonth = lastSum.total;
+      month.thisCurrency = thisSum.currency;
+      month.lastCurrency = lastSum.currency;
+      month.thisWithheld = thisSum.withheld;
+      month.lastWithheld = lastSum.withheld;
       month.unpricedThisMonth = thisRows.filter((r) => r.total === null).length;
     }
 
