@@ -7,6 +7,7 @@ import {
 } from "@nestjs/common";
 import * as crypto from "crypto";
 import { DatabaseService } from "../database/database.service";
+import { readWholeWindow } from "../common/read-whole-window";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { CanonicalCheck, CheckChannel } from "./pos-types";
@@ -1964,15 +1965,27 @@ export class PosHubService {
   async getStatus(restaurantId: string) {
     const client = this.dbService.getClient();
     const since30 = new Date(Date.now() - 30 * 86400000).toISOString();
-    const { data, error } = await client
-      .from("pos_checks")
-      .select("source, opened_at, closed_at")
-      .eq("restaurant_id", restaurantId)
-      .gte("opened_at", since30);
-    if (error) {
+    // Read whole or refused (ADR 0292). Unranged, PostgREST stopped this at
+    // 1,000 rows, so a house past about 33 checks a day read "1000 checks"
+    // for its month, and a source whose checks sat past the thousandth row
+    // read as quiet (readers lane r4). A refusal reads as unavailable.
+    let data: any[] | null = null;
+    let failure: string | null = null;
+    try {
+      data = await readWholeWindow<any>("The month's POS checks", () =>
+        client
+          .from("pos_checks")
+          .select("id, source, opened_at, closed_at", { count: "exact" })
+          .eq("restaurant_id", restaurantId)
+          .gte("opened_at", since30),
+      );
+    } catch (err: any) {
+      failure = String(err?.message ?? err);
+    }
+    if (failure !== null || data === null) {
       this.logger.error(
         `pos_checks status read failed for r=${restaurantId} — reporting ` +
-          `UNAVAILABLE rather than "0 checks": ${error.code ?? "?"} ${error.message}`,
+          `UNAVAILABLE rather than "0 checks": ${failure}`,
       );
       return {
         windowDays: 30,
@@ -1982,7 +1995,7 @@ export class PosHubService {
         generatedAt: new Date().toISOString(),
       };
     }
-    const rows = data || [];
+    const rows = data;
     const bySource = new Map<
       string,
       { checks: number; open: number; latest: string | null }
