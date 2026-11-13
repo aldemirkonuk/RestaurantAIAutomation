@@ -8,6 +8,11 @@
  * WHAT THIS READS AND WRITES, both real, both wired in this build:
  *   GET   /menus/:restaurantId               the active menu and its lines
  *   PATCH /menus/:restaurantId/items/:id/discard   soft-remove one line
+ *   PATCH /menus/items/:id                    change one line's glass or bottle
+ *                                              price (owner or manager); on the
+ *                                              current menu it moves the house's
+ *                                              own price too, and the page says
+ *                                              what happened (priceChangeNote)
  *   POST  /menus/items                        add one line (existing route;
  *                                              its tenant check was a real
  *                                              gap — see menus.service.ts —
@@ -37,11 +42,11 @@
  * shown an empty add form that would 404 on submit.
  */
 
-import { useState, type FormEvent } from 'react';
+import { Fragment, useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { addMenuItem, discardMenuItem, getMenu, type MenuLine } from '../../../services/api/menus';
-import { housePriceNote } from './menu-price-note';
+import { addMenuItem, discardMenuItem, getMenu, reviewMenuItem, type MenuLine } from '../../../services/api/menus';
+import { housePriceNote, priceChangeNote, type PriceChange } from './menu-price-note';
 import { MenuVersions } from './MenuVersions';
 import { LockedPrices } from './LockedPrices';
 import { settingsApi } from '../../../services/api/settings';
@@ -139,7 +144,7 @@ function useActiveMenu(restaurantId: string | null) {
   return { q, discard, add };
 }
 
-function AddItemForm({ onAdd, adding, error }: {
+function AddItemForm({ onAdd, adding, error, canPrice }: {
   // The reset callback fires only on a SUCCESSFUL add. Clearing the form at
   // submit time (the prior behaviour) threw the person's typed entry away on
   // a failed POST, with no way to recover it — "a draft is not sent" cuts
@@ -150,6 +155,13 @@ function AddItemForm({ onAdd, adding, error }: {
   ) => void
   adding: boolean
   error: string | null
+  /**
+   * Whether this person may put a price on the menu. The gateway refuses a
+   * priced add from staff ("Only managers and owners can put a price on the
+   * current menu"), so staff are not handed boxes that can only be refused
+   * (r21 production-build walk).
+   */
+  canPrice: boolean
 }) {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('');
@@ -163,8 +175,8 @@ function AddItemForm({ onAdd, adding, error }: {
       {
         name: name.trim(),
         category: category.trim() || undefined,
-        by_glass_price: byGlass ? Number(byGlass) : undefined,
-        bottle_price: bottle ? Number(bottle) : undefined,
+        by_glass_price: canPrice && byGlass ? Number(byGlass) : undefined,
+        bottle_price: canPrice && bottle ? Number(bottle) : undefined,
       },
       {
         onSuccess: () => {
@@ -201,32 +213,36 @@ function AddItemForm({ onAdd, adding, error }: {
         placeholder="e.g. Reds"
         style={{ width: 120 }}
       />
-      <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-glass">
-        Glass
-      </label>
-      <input
-        id="menu-add-glass"
-        className="cl-field cl-focus cl-num"
-        type="number"
-        min={0}
-        step="0.01"
-        value={byGlass}
-        onChange={(e) => setByGlass(e.target.value)}
-        style={{ width: 80 }}
-      />
-      <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-bottle">
-        Bottle
-      </label>
-      <input
-        id="menu-add-bottle"
-        className="cl-field cl-focus cl-num"
-        type="number"
-        min={0}
-        step="0.01"
-        value={bottle}
-        onChange={(e) => setBottle(e.target.value)}
-        style={{ width: 80 }}
-      />
+      {canPrice ? (
+        <>
+          <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-glass">
+            Glass
+          </label>
+          <input
+            id="menu-add-glass"
+            className="cl-field cl-focus cl-num"
+            type="number"
+            min={0}
+            step="0.01"
+            value={byGlass}
+            onChange={(e) => setByGlass(e.target.value)}
+            style={{ width: 80 }}
+          />
+          <label className="cl-dim" style={{ fontSize: 12 }} htmlFor="menu-add-bottle">
+            Bottle
+          </label>
+          <input
+            id="menu-add-bottle"
+            className="cl-field cl-focus cl-num"
+            type="number"
+            min={0}
+            step="0.01"
+            value={bottle}
+            onChange={(e) => setBottle(e.target.value)}
+            style={{ width: 80 }}
+          />
+        </>
+      ) : null}
       <button type="submit" className="cl-btn cl-focus" disabled={adding || !name.trim()}>
         {adding ? 'Adding…' : 'Add to menu'}
       </button>
@@ -235,25 +251,85 @@ function AddItemForm({ onAdd, adding, error }: {
           {error}
         </span>
       ) : null}
+      {canPrice ? null : (
+        <span className="cl-said" data-testid="menu-add-unpriced" style={{ fontSize: 12 }}>
+          A line added here stands on the menu with no price; an owner or a manager sets it.
+        </span>
+      )}
     </form>
   );
 }
 
-function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row' }: {
+/** A price as the edit box starts it: the number the line holds, or empty. */
+function priceText(v: number | null): string {
+  return v === null || v === undefined ? '' : String(v);
+}
+
+/**
+ * Why an add was refused, in the gateway's words ("Only managers and owners
+ * can put a price on the current menu…"), never "Request failed with status
+ * code 403". Not refusalOf: its 403 line is about changing a price.
+ */
+function addRefusal(err: unknown): string {
+  const m = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+  if (typeof m === 'string' && m) return m;
+  if (Array.isArray(m) && m.length) return String(m[0]);
+  return err instanceof Error && err.message ? err.message : 'no reason given';
+}
+
+/** The gateway's own words for a refusal, never a bare status. */
+function refusalOf(err: unknown): string {
+  const e = err as { response?: { status?: number; data?: { message?: unknown } }; message?: string };
+  if (e?.response?.status === 403) return 'only an owner or a manager can change a price';
+  const m = e?.response?.data?.message;
+  if (typeof m === 'string' && m) return m;
+  if (Array.isArray(m) && m.length) return String(m[0]);
+  return e?.message || 'no reason was given';
+}
+
+/** The glass and bottle boxes of a line being re-priced. Empty keeps the price. */
+interface PriceDraft {
+  glass: string
+  bottle: string
+}
+
+function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row', edit }: {
   line: MenuLine
   currency: string | null
   testId?: string
   /** Absent for a member who may not discard (ADR 0358 D2: owner or manager only). */
   onDiscard?: () => void
   discarding: boolean
+  /** Absent for a member who may not change a price (owner or manager only, as the gateway checks). */
+  edit?: {
+    open: boolean
+    saving: boolean
+    onOpen: () => void
+    onCancel: () => void
+    onSave: (draft: PriceDraft) => void
+  }
 }) {
+  const [draft, setDraft] = useState<PriceDraft>({ glass: priceText(line.by_glass_price), bottle: priceText(line.bottle_price) });
+  const editing = !!edit?.open;
+  const box = (kind: 'glass' | 'bottle') => (
+    <input
+      className="cl-field cl-focus cl-num"
+      inputMode="decimal"
+      aria-label={`${kind === 'glass' ? 'Glass' : 'Bottle'} price of ${line.name}`}
+      data-testid={`menu-price-${kind}`}
+      value={draft[kind]}
+      placeholder="keep"
+      onChange={(e) => setDraft((d) => ({ ...d, [kind]: e.target.value }))}
+      style={{ width: 80 }}
+    />
+  );
   return (
     <tr data-testid={testId}>
       <td>{line.name}</td>
       <td className="cl-dim">{line.category ?? EM}</td>
       <td className="cl-dim">{[line.producer, line.region].filter(Boolean).join(', ') || EM}</td>
-      <td className="cl-num">{money(line.by_glass_price, currency)}</td>
-      <td className="cl-num">{money(line.bottle_price, currency)}</td>
+      <td className="cl-num">{editing ? box('glass') : money(line.by_glass_price, currency)}</td>
+      <td className="cl-num">{editing ? box('bottle') : money(line.bottle_price, currency)}</td>
       <td>
         {(() => {
           const s = lineStatusWords(line);
@@ -276,8 +352,47 @@ function MenuRow({ line, currency, onDiscard, discarding, testId = 'menu-row' }:
           </span>
         ) : null}
       </td>
-      <td>
-        {onDiscard ? (
+      <td style={{ whiteSpace: 'nowrap' }}>
+        {edit && editing ? (
+          <>
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              disabled={edit.saving}
+              onClick={() => edit.onSave(draft)}
+              data-testid="menu-price-save"
+            >
+              {edit.saving ? 'Saving…' : 'Save price'}
+            </button>{' '}
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              disabled={edit.saving}
+              onClick={() => {
+                setDraft({ glass: priceText(line.by_glass_price), bottle: priceText(line.bottle_price) });
+                edit.onCancel();
+              }}
+            >
+              Cancel
+            </button>
+          </>
+        ) : edit ? (
+          <>
+            <button
+              type="button"
+              className="cl-btn cl-focus"
+              onClick={() => {
+                setDraft({ glass: priceText(line.by_glass_price), bottle: priceText(line.bottle_price) });
+                edit.onOpen();
+              }}
+              aria-label={`Change the price of ${line.name}`}
+              data-testid="menu-price-edit"
+            >
+              Change price
+            </button>{' '}
+          </>
+        ) : null}
+        {onDiscard && !editing ? (
         <button
           type="button"
           className="cl-btn cl-focus"
@@ -303,12 +418,47 @@ export default function MenuNext() {
   const { q, discard, add } = useActiveMenu(activeRestaurantId);
   const currency = useHouseCurrency(activeRestaurantId);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const [pricing, setPricing] = useState<{ id: string; saving: boolean } | null>(null);
+  const [priceNote, setPriceNote] = useState<{ lineId: string; tone: 'alert' | 'said'; text: string } | null>(null);
   const lines = q.data?.items ?? [];
+  // One price changed at a time, field by field (the gateway corrects one field
+  // per call), and the menu is read again after, so the row shows what was stored.
+  const savePrices = async (line: MenuLine, draft: PriceDraft) => {
+    setPricing({ id: line.id, saving: true });
+    const changes: PriceChange[] = [];
+    const fields = [
+      { kind: 'bottle' as const, field: 'bottle_price' as const, typed: draft.bottle.trim(), had: priceText(line.bottle_price) },
+      { kind: 'glass' as const, field: 'by_glass_price' as const, typed: draft.glass.trim(), had: priceText(line.by_glass_price) },
+    ];
+    for (const f of fields) {
+      if (f.typed === '' || f.typed === f.had) continue;
+      try {
+        const r = await reviewMenuItem(line.id, f.field, f.typed);
+        const stored = Number(r.newValue);
+        changes.push({ kind: f.kind, shown: Number.isFinite(stored) ? money(stored, currency) : r.newValue, result: r });
+      } catch (err) {
+        changes.push({ kind: f.kind, shown: f.typed, result: { refused: refusalOf(err) } });
+      }
+    }
+    const dish = isKitchenMenuLine(line);
+    const note =
+      changes.length === 0
+        ? { tone: 'said' as const, text: `${line.name}: no price was changed.` }
+        : priceChangeNote(line.name, dish, changes, (n) => money(n, currency));
+    setPriceNote(note ? { lineId: line.id, ...note } : null);
+    const refused = changes.some((c) => 'refused' in c.result);
+    setPricing(refused ? { id: line.id, saving: false } : null);
+    if (changes.some((c) => !('refused' in c.result))) {
+      await queryClient.invalidateQueries({ queryKey: ['menu', 'active', activeRestaurantId] });
+    }
+  };
   const drinks = lines.filter((l) => !isKitchenMenuLine(l));
   const kitchen = lines.filter(isKitchenMenuLine);
+  // The answer to a price change sits right under its line, where the person clicked.
   const row = (line: MenuLine, testId?: string) => (
+    <Fragment key={line.id}>
     <MenuRow
-      key={line.id}
       line={line}
       currency={currency}
       testId={testId}
@@ -317,7 +467,36 @@ export default function MenuNext() {
         setDiscardingId(line.id);
         discard.mutate(line.id, { onSettled: () => setDiscardingId(null) });
       }}
+      edit={
+        !canManage
+          ? undefined
+          : {
+              open: pricing?.id === line.id,
+              saving: pricing?.id === line.id && pricing.saving,
+              onOpen: () => {
+                setPriceNote(null);
+                setPricing({ id: line.id, saving: false });
+              },
+              onCancel: () => setPricing(null),
+              onSave: (draft) => void savePrices(line, draft),
+            }
+      }
     />
+    {priceNote?.lineId === line.id ? (
+      <tr>
+        <td colSpan={7} style={{ paddingTop: 0 }}>
+          <p
+            role={priceNote.tone === 'alert' ? 'alert' : 'status'}
+            className="cl-said"
+            style={{ fontSize: 12, margin: 0 }}
+            data-testid="menu-price-note"
+          >
+            {priceNote.text}
+          </p>
+        </td>
+      </tr>
+    ) : null}
+    </Fragment>
   );
   const head = (
     <thead>
@@ -381,7 +560,8 @@ export default function MenuNext() {
             <div style={{ marginTop: 16 }}>
               <AddItemForm
                 adding={add.isPending}
-                error={add.isError ? (add.error instanceof Error ? add.error.message : 'no reason given') : null}
+                error={add.isError ? addRefusal(add.error) : null}
+                canPrice={canManage}
                 onAdd={(fields, opts) => add.mutate(fields, opts)}
               />
               {(() => {
@@ -458,7 +638,8 @@ export default function MenuNext() {
         >
           <p className="cl-note" style={{ margin: 0, fontSize: 11 }}>
             Discard removes a line from what guests see. What it cost and who added it is kept —
-            nothing here is a delete.
+            nothing here is a delete. Change price sets the line's glass or bottle price; on the
+            current menu the house's own price follows unless it is locked. An empty box keeps its price.
           </p>
         </footer>
       </div>
