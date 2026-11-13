@@ -337,7 +337,7 @@ export class ScheduledTasksService implements OnModuleInit {
           await this.communicationsService.sendWeeklyReport({
             recipientEmails: emails,
             restaurantId: tenant.id,
-            reportData,
+            reportData: { ...reportData, currency: tenant.currency ?? null },
           });
         } else if (!recipients.lookupFailed) {
           this.logger.log(

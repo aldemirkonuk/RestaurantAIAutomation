@@ -9,6 +9,8 @@
  * - Delivery reminders
  */
 
+import { moneyIn } from "../common/money-in";
+
 // =============================================================================
 // TYPE DEFINITIONS
 // =============================================================================
@@ -26,6 +28,8 @@ export interface LowStockAlertData {
 }
 
 export interface WeeklyReportData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   restaurantName: string;
   weekStartDate: string;
   weekEndDate: string;
@@ -43,6 +47,8 @@ export interface WeeklyReportData {
 }
 
 export interface DailySummaryData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   restaurantName: string;
   date: string;
   ordersCreated: number;
@@ -53,6 +59,8 @@ export interface DailySummaryData {
 }
 
 export interface OrderApprovalData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   orderNumber: string;
   orderId: string;
   wineName: string;
@@ -77,6 +85,8 @@ export interface DeliveryNotificationData {
 }
 
 export interface OrderInquiryData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   orderNumber: string;
   wineName: string;
   quantity: number;
@@ -89,6 +99,8 @@ export interface OrderInquiryData {
 }
 
 export interface CounterOfferData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   orderNumber: string;
   wineName: string;
   quantity: number;
@@ -102,6 +114,8 @@ export interface CounterOfferData {
 }
 
 export interface OrderConfirmationData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   orderNumber: string;
   wineName: string;
   quantity: number;
@@ -192,8 +206,8 @@ function baseLayout(title: string, content: string): string {
 </html>`;
 }
 
-function formatCurrency(amount: number): string {
-  return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function formatCurrency(amount: number, currency: string | null): string {
+  return moneyIn(amount, currency);
 }
 
 /** Format bottle volume for display: 750 → "750ml", 1500 → "1.5L" */
@@ -247,7 +261,7 @@ export function weeklyReportTemplate(data: WeeklyReportData | any): string {
   const topWinesHtml = topWines
     .map(
       (w: any) => `
-    <tr><td>${w.name}</td><td>${w.bottles || w.sold || 0}</td><td>${formatCurrency(w.revenue || 0)}</td></tr>
+    <tr><td>${w.name}</td><td>${w.bottles || w.sold || 0}</td><td>${formatCurrency(w.revenue || 0, data.currency ?? null)}</td></tr>
   `,
     )
     .join("");
@@ -289,7 +303,7 @@ export function weeklyReportTemplate(data: WeeklyReportData | any): string {
         <div style="font-size: 11px; color: #6b7280; text-transform: uppercase;">Orders</div>
       </div>
       <div style="flex: 1; background: #f9fafb; padding: 12px; border-radius: 6px; text-align: center; min-width: 100px;">
-        <div style="font-size: 24px; font-weight: 700; color: #059669;">${formatCurrency(data.totalRevenue || data.metrics?.totalValue || 0)}</div>
+        <div style="font-size: 24px; font-weight: 700; color: #059669;">${formatCurrency(data.totalRevenue || data.metrics?.totalValue || 0, data.currency ?? null)}</div>
         <div style="font-size: 11px; color: #6b7280; text-transform: uppercase;">Revenue</div>
       </div>
       <div style="flex: 1; background: #f9fafb; padding: 12px; border-radius: 6px; text-align: center; min-width: 100px;">
@@ -332,7 +346,7 @@ export function dailySummaryTemplate(data: DailySummaryData | any): string {
       <div class="info-row"><span class="info-label">Orders Created</span><span class="info-value">${data.ordersCreated ?? data.metrics?.pendingOrders ?? 0}</span></div>
       <div class="info-row"><span class="info-label">Orders Delivered</span><span class="info-value">${data.ordersDelivered ?? data.metrics?.deliveriesToday ?? 0}</span></div>
       <div class="info-row"><span class="info-label">Low Stock Alerts</span><span class="info-value">${data.lowStockAlerts ?? data.metrics?.lowStockCount ?? 0}</span></div>
-      <div class="info-row"><span class="info-label">Revenue</span><span class="info-value">${formatCurrency(data.revenue ?? data.metrics?.totalInventoryValue ?? 0)}</span></div>
+      <div class="info-row"><span class="info-label">Revenue</span><span class="info-value">${formatCurrency(data.revenue ?? data.metrics?.totalInventoryValue ?? 0, data.currency ?? null)}</span></div>
       <div class="info-row"><span class="info-label">Pending Approvals</span><span class="info-value">${data.pendingApprovals ?? data.metrics?.pendingOrders ?? 0}</span></div>
     </div>
   `,
@@ -364,7 +378,7 @@ export function orderApprovalTemplate(data: OrderApprovalData | any): string {
       <div class="info-row"><span class="info-label">Wine</span><span class="info-value">${wineNameWithFormat(wineName, data.bottleSizeMl)}</span></div>
       <div class="info-row"><span class="info-label">Quantity</span><span class="info-value">${quantity} bottles</span></div>
       <div class="info-row"><span class="info-label">Provider</span><span class="info-value">${providerName}</span></div>
-      <div class="info-row"><span class="info-label">Total Cost</span><span class="info-value">${formatCurrency(totalCost)}</span></div>
+      <div class="info-row"><span class="info-label">Total Cost</span><span class="info-value">${formatCurrency(totalCost, data.currency ?? null)}</span></div>
     </div>
 
     <div style="text-align: center; margin-top: 24px;">
@@ -442,7 +456,7 @@ export function orderInquiryTemplate(data: OrderInquiryData): string {
     <div style="background: #f9fafb; padding: 16px; border-radius: 6px; margin: 16px 0;">
       <div class="info-row"><span class="info-label">Wine</span><span class="info-value">${wineNameWithFormat(data.wineName, data.bottleSizeMl)}</span></div>
       <div class="info-row"><span class="info-label">Quantity</span><span class="info-value">${data.quantity} bottles</span></div>
-      ${data.targetPrice ? `<div class="info-row"><span class="info-label">Target Price</span><span class="info-value">${formatCurrency(data.targetPrice)}/bottle</span></div>` : ""}
+      ${data.targetPrice ? `<div class="info-row"><span class="info-label">Target Price</span><span class="info-value">${formatCurrency(data.targetPrice, data.currency ?? null)}/bottle</span></div>` : ""}
       <div class="info-row"><span class="info-label">Reference</span><span class="info-value">${data.orderNumber}</span></div>
     </div>
 
@@ -478,9 +492,9 @@ export function counterOfferTemplate(data: CounterOfferData): string {
     <div style="background: #f9fafb; padding: 16px; border-radius: 6px; margin: 16px 0;">
       <div class="info-row"><span class="info-label">Wine</span><span class="info-value">${wineNameWithFormat(data.wineName, data.bottleSizeMl)}</span></div>
       <div class="info-row"><span class="info-label">Quantity</span><span class="info-value">${data.quantity} bottles</span></div>
-      <div class="info-row"><span class="info-label">Your Price</span><span class="info-value">${formatCurrency(data.originalPrice)}/bottle</span></div>
-      <div class="info-row"><span class="info-label">Our Counter</span><span class="info-value" style="color: #722F37; font-weight: 700;">${formatCurrency(data.counterPrice)}/bottle</span></div>
-      <div class="info-row"><span class="info-label">Total</span><span class="info-value">${formatCurrency(data.counterPrice * data.quantity)}</span></div>
+      <div class="info-row"><span class="info-label">Your Price</span><span class="info-value">${formatCurrency(data.originalPrice, data.currency ?? null)}/bottle</span></div>
+      <div class="info-row"><span class="info-label">Our Counter</span><span class="info-value" style="color: #722F37; font-weight: 700;">${formatCurrency(data.counterPrice, data.currency ?? null)}/bottle</span></div>
+      <div class="info-row"><span class="info-label">Total</span><span class="info-value">${formatCurrency(data.counterPrice * data.quantity, data.currency ?? null)}</span></div>
     </div>
 
     ${data.reason ? `<p style="color: #374151;"><strong>Reason:</strong> ${data.reason}</p>` : ""}
@@ -515,8 +529,8 @@ export function orderConfirmationTemplate(data: OrderConfirmationData): string {
       <div class="info-row"><span class="info-label">Order Number</span><span class="info-value">${data.orderNumber}</span></div>
       <div class="info-row"><span class="info-label">Wine</span><span class="info-value">${wineNameWithFormat(data.wineName, data.bottleSizeMl)}</span></div>
       <div class="info-row"><span class="info-label">Quantity</span><span class="info-value">${data.quantity} bottles</span></div>
-      <div class="info-row"><span class="info-label">Price</span><span class="info-value">${formatCurrency(data.finalPrice)}/bottle</span></div>
-      <div class="info-row"><span class="info-label">Total</span><span class="info-value" style="font-weight: 700;">${formatCurrency(data.totalCost)}</span></div>
+      <div class="info-row"><span class="info-label">Price</span><span class="info-value">${formatCurrency(data.finalPrice, data.currency ?? null)}/bottle</span></div>
+      <div class="info-row"><span class="info-label">Total</span><span class="info-value" style="font-weight: 700;">${formatCurrency(data.totalCost, data.currency ?? null)}</span></div>
       ${data.expectedDeliveryDate ? `<div class="info-row"><span class="info-label">Expected Delivery</span><span class="info-value">${data.expectedDeliveryDate}</span></div>` : ""}
     </div>
 

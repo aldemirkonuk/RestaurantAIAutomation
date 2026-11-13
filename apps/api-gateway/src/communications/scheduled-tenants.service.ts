@@ -63,6 +63,11 @@ export interface ScheduledTenant {
    * RecipientResolverService.getDefaultRecipients).
    */
   isLegacyDefault: boolean;
+  /**
+   * `restaurants.currency` — the house's own books. Absent or null means the
+   * row stated none: a figure from the house's books then prints bare.
+   */
+  currency?: string | null;
 }
 
 export interface PerTenantRunSummary {
@@ -155,7 +160,7 @@ export class ScheduledTenantsService {
     // empty inbox.
     const { data: rows, error } = await client
       .from("restaurants")
-      .select("id, name, timezone")
+      .select("id, name, timezone, currency")
       .in("id", Array.from(ids))
       .eq("is_active", true)
       .is("deleted_at", null);
@@ -182,6 +187,7 @@ export class ScheduledTenantsService {
         timezone: zone,
         timezoneIsSet: zone !== TIMEZONE_NOT_SET,
         isLegacyDefault: row.id === this.legacyTenantId,
+        currency: row.currency ?? null,
       };
     });
 
