@@ -31,6 +31,10 @@ import { phoneReachability } from "./phone-reachability";
 import { RetroactiveOrderDto } from "./dto/retroactive-order.dto";
 import { ProcurementService } from "../procurement/procurement.service";
 import { resolveOrderUnits } from "../procurement/order-units";
+import {
+  settleRemovedVendorsOrders,
+  VendorRemovalOutcome,
+} from "../procurement/vendor-removal";
 import { isIso4217 } from "../common/iso-4217";
 import {
   readVendorMenuSupply,
@@ -548,6 +552,19 @@ export class ProvidersService {
 
     const provider = this.mapProviderRow(data as ProviderRow);
 
+    // Switching a vendor off is a removal for its orders (#1283 refuses a new
+    // order either way), so its standing orders are paused here too. Switching
+    // it back on resumes nothing: a person chooses which to resume.
+    if (dto.isActive === false) {
+      await settleRemovedVendorsOrders(
+        this.databaseService.supabase,
+        restaurantId,
+        providerId,
+        userId,
+        this.logger,
+      );
+    }
+
     // Emit provider_change event for cross-page sync
     if (restaurantId && userId) {
       try {
@@ -584,7 +601,7 @@ export class ProvidersService {
     providerId: string,
     restaurantId: string,
     userId?: string,
-  ): Promise<void> {
+  ): Promise<VendorRemovalOutcome> {
     // The house's own provider or a 404 (ADR 0147). This used to read with
     // `.single()` and ignore the error, so another house's id answered
     // `{ success: true }` while nothing was deleted.
@@ -606,6 +623,18 @@ export class ProvidersService {
       });
       throw error;
     }
+
+    // The vendor is removed; now its standing orders are paused and its open
+    // orders counted, and the answer says so (vendor-removal.ts). After the
+    // removal, never before: a failure here cannot leave a live vendor whose
+    // series were paused, and the order generator pauses a missed one.
+    const outcome = await settleRemovedVendorsOrders(
+      this.databaseService.supabase,
+      restaurantId,
+      providerId,
+      userId,
+      this.logger,
+    );
 
     // Emit provider_change event for cross-page sync
     if (restaurantId && userId) {
@@ -629,6 +658,7 @@ export class ProvidersService {
         });
       }
     }
+    return outcome;
   }
 
   async getProviderOrders(providerId: string, restaurantId: string) {
