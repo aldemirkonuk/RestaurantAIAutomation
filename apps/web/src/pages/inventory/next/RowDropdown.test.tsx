@@ -975,6 +975,19 @@ describe('a food or supply is costed in its own unit, with no price, margin, mar
     expect(screen.getByTestId('row-dropdown').textContent).toContain(`Weighted average cost${EM}`);
   });
 
+  it('a lira house writes the cost change and the margin the way it writes its money (r23 walk)', () => {
+    const tl = { state: 'recorded', code: 'TRY' } as const;
+    renderDrop({ row: food, kind: 'food', uom: 'g', currency: tl });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('(+%20)');
+    cleanup();
+    // 92 a bottle on a cost of 40: a margin of 57 in a hundred.
+    renderDrop({ currency: tl });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('Margin over cost%57');
+    cleanup();
+    renderDrop({ currency: { state: 'recorded', code: 'GBP' } });
+    expect(screen.getByTestId('row-dropdown').textContent).toContain('Margin over cost57%');
+  });
+
   it('a drink is drawn as before', () => {
     renderDrop();
     const drop = screen.getByTestId('row-dropdown');

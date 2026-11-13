@@ -38,6 +38,8 @@ import {
   type ItemDrinks,
 } from '../../../services/api/itemDishes';
 import { cellMoney, type HouseCurrency } from './useInventoryNextData';
+// A share in the house's form, as its money is: "%13,1" beside "₺12,00" (r23 walk).
+import { formatHousePercent } from '../../../lib/house-number';
 
 export type UsedInLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: UsedIn };
 
@@ -171,7 +173,7 @@ function RecipeBlock({
           <DishCard
             id={`${t}-${w.shareId}`}
             title={w.share}
-            value={'pct' in share ? `${share.pct.toFixed(1)}%` : 'Not known'}
+            value={'pct' in share ? formatHousePercent(share.pct, currency.code) : 'Not known'}
             sub={'pct' in share ? FOOD_COST_TAX_NOTE : share.missing.join(' and ')}
           />
         ) : null}
