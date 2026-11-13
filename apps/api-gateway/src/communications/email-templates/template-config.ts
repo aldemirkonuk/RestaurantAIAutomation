@@ -4,6 +4,8 @@
  * Supports hybrid branding: global Mudavym defaults + per-restaurant overrides
  */
 
+import { moneyIn } from "../../common/money-in";
+
 export const EMAIL_CONFIG = {
   // Brand Colors
   colors: {
@@ -204,13 +206,14 @@ export function getSeverityLabel(
 }
 
 /**
- * Format currency
+ * Format an amount in its own money. `currency` is the record's (or the
+ * house's) ISO 4217 code; null prints the figure bare, never a dollar sign.
  */
-export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(amount);
+export function formatCurrency(
+  amount: number,
+  currency: string | null,
+): string {
+  return moneyIn(amount, currency);
 }
 
 /**

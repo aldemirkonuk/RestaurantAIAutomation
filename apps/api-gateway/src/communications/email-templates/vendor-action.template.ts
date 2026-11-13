@@ -12,6 +12,8 @@ import { baseTemplate, tableRow, alertBox } from "./base-template";
 // ============================================================================
 
 export interface ManagerReviewEmailData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   orderId: string;
   conversationId: string;
   providerName: string;
@@ -84,8 +86,8 @@ export function managerReviewTemplate(data: ManagerReviewEmailData): string {
       ${tableRow("Provider", data.providerName)}
       ${tableRow("Contact", data.vendorContactName || "N/A")}
       ${tableRow("Wine", `${data.wineName} x${data.quantity}`)}
-      ${data.pricePerBottle ? tableRow("Target Price", `${formatCurrency(data.pricePerBottle)}/bottle`) : ""}
-      ${data.totalAmount ? tableRow("Est. Total", formatCurrency(data.totalAmount)) : ""}
+      ${data.pricePerBottle ? tableRow("Target Price", `${formatCurrency(data.pricePerBottle, data.currency ?? null)}/bottle`) : ""}
+      ${data.totalAmount ? tableRow("Est. Total", formatCurrency(data.totalAmount, data.currency ?? null)) : ""}
     </table>
 
     <div style="margin: 20px 0; padding: 20px; background-color: ${colors.gray[50]}; border: 1px solid ${colors.gray[200]}; border-radius: 8px;">

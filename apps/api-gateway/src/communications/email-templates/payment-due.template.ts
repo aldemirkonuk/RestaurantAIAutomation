@@ -36,6 +36,8 @@ import {
 import { baseTemplate, metricBox, tableRow, alertBox } from "./base-template";
 
 export interface PaymentDueData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   restaurantName: string;
   invoiceNumber: string;
   providerName: string;
@@ -73,7 +75,7 @@ export function paymentDueTemplate(data: PaymentDueData): string {
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin: 20px 0;">
       <tr>
         ${metricBox({
-          value: formatCurrency(data.amount),
+          value: formatCurrency(data.amount, data.currency ?? null),
           label: "Amount Due",
           backgroundColor: urgencyBg,
           textColor: urgencyColor,
@@ -107,7 +109,7 @@ export function paymentDueTemplate(data: PaymentDueData): string {
           <tr style="background-color: ${index % 2 === 0 ? "#ffffff" : colors.gray[50]};">
             <td style="padding: 12px 15px; color: ${colors.gray[900]}; font-size: 14px;">${item.name}</td>
             <td style="padding: 12px 15px; text-align: center; color: ${colors.gray[700]}; font-size: 14px;">${item.quantity}</td>
-            <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[900]}; font-size: 14px; font-weight: 600;">${formatCurrency(item.amount)}</td>
+            <td style="padding: 12px 15px; text-align: right; color: ${colors.gray[900]}; font-size: 14px; font-weight: 600;">${formatCurrency(item.amount, data.currency ?? null)}</td>
           </tr>
         `,
           )
@@ -165,7 +167,7 @@ export function paymentDueTemplate(data: PaymentDueData): string {
 
   return baseTemplate({
     title: `Payment ${urgencyLabel}: ${data.providerName}`,
-    preheader: `Invoice #${data.invoiceNumber} - ${formatCurrency(data.amount)} due ${formatDate(data.dueDate)}`,
+    preheader: `Invoice #${data.invoiceNumber} - ${formatCurrency(data.amount, data.currency ?? null)} due ${formatDate(data.dueDate)}`,
     content,
     ctaButton: {
       // No order/document id on this data shape (`invoiceNumber` is a

@@ -11,6 +11,8 @@ import {
 import { baseTemplate, metricBox, alertBox } from "./base-template";
 
 export interface InventoryAuditData {
+  /** The money these figures are in; absent or null prints them bare. */
+  currency?: string | null;
   restaurantName: string;
   scheduledDate: Date | string;
   scheduledTime?: string;
@@ -41,7 +43,7 @@ export function inventoryAuditTemplate(data: InventoryAuditData): string {
         })}
         <td width="15px"></td>
         ${metricBox({
-          value: formatCurrency(data.totalValue),
+          value: formatCurrency(data.totalValue, data.currency ?? null),
           label: "Inventory Value",
           backgroundColor: "#ecfdf5",
           textColor: colors.success,
