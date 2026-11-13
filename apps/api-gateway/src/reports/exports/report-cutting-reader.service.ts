@@ -27,6 +27,8 @@ const EXPORT_READS_SALES = { withSales: true } as const;
  * A service that throws is NOT caught here: the export service turns it into a
  * `failed` export with the reason, which is the honest outcome — an export
  * written from a read that did not answer would print its absence as figures.
+ * The one composed cutting, the bench, settles its three reads as the page
+ * does and writes a failed one as withheld by name (see `readBench`).
  */
 @Injectable()
 export class ReportCuttingReader {
@@ -87,9 +89,14 @@ export class ReportCuttingReader {
           "active",
           EXPORT_READS_SALES,
         );
-      // GET /analytics/overview/:rid
+      // The bench is composed from three registers, as `rp-registers-bench.tsx`
+      // `sources` reads them (no longer /analytics/overview, which ran eight
+      // lenses to return three — audit G9):
+      //   cashflow    GET /analytics/cashflow/:rid
+      //   seasonality GET /analytics/seasonality/:rid
+      //   goals       GET /analytics/goals/:rid?status=active — listGoals
       case "bench":
-        return this.advanced.getOverview(restaurantId, EXPORT_READS_SALES);
+        return this.readBench(restaurantId);
       // GET /analytics/cashflow/:rid
       case "pacing":
         return this.advanced.getCashflow(restaurantId);
@@ -130,5 +137,39 @@ export class ReportCuttingReader {
         throw new Error(`No reader for cutting ${String(never)}`);
       }
     }
+  }
+
+  /**
+   * The bench's three reads, settled the way the page settles them
+   * (`useReportsNextData`, `spec.sources`): a source that throws is `null`,
+   * which the written bench withholds by name — never a zero, never "no goal
+   * is running". The sheet shows the other two, so the file does too.
+   *
+   * When NONE of the three answers, the export fails with each reason instead:
+   * a file holding only "nothing could be read" is not an export of anything,
+   * and a failed export can be asked for again.
+   */
+  private async readBench(restaurantId: string) {
+    const keys = ["cashflow", "seasonality", "goals"] as const;
+    const settled = await Promise.allSettled([
+      this.advanced.getCashflow(restaurantId),
+      this.advanced.getSeasonality(restaurantId),
+      this.goals.listGoals(restaurantId, "active", EXPORT_READS_SALES),
+    ]);
+    if (settled.every((r) => r.status === "rejected"))
+      throw new Error(
+        keys
+          .map((k, i) => {
+            const r = settled[i] as PromiseRejectedResult;
+            return `${k}: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`;
+          })
+          .join("; "),
+      );
+    return Object.fromEntries(
+      keys.map((k, i) => {
+        const r = settled[i];
+        return [k, r.status === "fulfilled" ? r.value : null];
+      }),
+    ) as Record<(typeof keys)[number], unknown>;
   }
 }

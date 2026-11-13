@@ -46,7 +46,10 @@ function makeClient(rowsByTable: Rows) {
       const builder: any = {};
       for (const m of passthrough) builder[m] = jest.fn(() => builder);
       builder.maybeSingle = jest.fn(() =>
-        Promise.resolve({ data: null, error: null }),
+        Promise.resolve({
+          data: table === "restaurants" ? (rowsByTable.restaurants?.[0] ?? null) : null,
+          error: null,
+        }),
       );
       builder.then = (resolve: any, reject: any) =>
         Promise.resolve({ data: rowsByTable[table] ?? [], error: null }).then(
@@ -63,9 +66,13 @@ const RESTAURANT = "33333333-3333-3333-3333-333333333333";
 const analytics = (rows: Rows) =>
   new AnalyticsService({ getClient: () => makeClient(rows) } as any);
 
+/** Seasonality files on house days (ADR 0296), so the house states a zone. */
 const advanced = (rows: Rows) =>
   new AdvancedAnalyticsService(
-    { getClient: () => makeClient(rows) } as any,
+    {
+      getClient: () =>
+        makeClient({ restaurants: [{ id: RESTAURANT, timezone: "UTC" }], ...rows }),
+    } as any,
     { getDemandForecast: async () => ({}) } as any,
     {} as any,
     {} as any,
@@ -111,44 +118,52 @@ const consumption = (n: number, qty: (i: number) => number) =>
 // ---------------------------------------------------------------------------
 
 describe("financial never reports an empty result set as $0", () => {
-  it("returns null COGS when no delivered order came back", async () => {
+  // Since cost-math lane 3.1, `cogs` and `revenue` are the till's figures
+  // (cost-of-goods.spec.ts pins them). The two stand-ins this guard was
+  // written for keep their own names, and their own absence rule, here.
+  it("returns null delivered purchases when no delivered order came back", async () => {
     const out: any = await analytics({
       restaurant_inventory: [STOCKED],
     }).getFinancialSummary(RESTAURANT);
-    expect(out.cogs).toBeNull();
-    expect(out.cogs).not.toBe(0);
+    expect(out.deliveredPurchases).toBeNull();
+    expect(out.deliveredPurchases).not.toBe(0);
+    expect(out.basis.deliveredPurchases).toContain("no delivered order was returned");
+    expect(out.basis.deliveredPurchases).toContain("read that failed");
   });
 
-  it("says in the basis WHY the COGS is null, naming both possibilities", async () => {
-    const out: any = await analytics({
-      restaurant_inventory: [STOCKED],
-    }).getFinancialSummary(RESTAURANT);
-    // The load-bearing assertion: a null with no explanation is only half a fix.
-    expect(out.basis.cogs).toContain("no delivered order was returned");
-    expect(out.basis.cogs).toContain("read that failed");
-  });
-
-  it("returns null revenue when no inventory row came back", async () => {
+  it("returns null shelf value when no inventory row came back", async () => {
     const out: any = await analytics({}).getFinancialSummary(RESTAURANT);
-    expect(out.revenue).toBeNull();
-    expect(out.revenue).not.toBe(0);
-    expect(out.basis.revenue).toContain("no inventory row was returned");
+    expect(out.shelfValueAtMenuPrice).toBeNull();
+    expect(out.shelfValueAtMenuPrice).not.toBe(0);
+    expect(out.basis.shelfValueAtMenuPrice).toContain("no inventory row was returned");
   });
 
-  it("still reports a real COGS, and counts the orders it summed", async () => {
+  it("still reports real purchases and shelf value, which feed no ratio", async () => {
     const out: any = await analytics({
       restaurant_inventory: [STOCKED],
       procurement_orders: [DELIVERED],
     }).getFinancialSummary(RESTAURANT);
-    expect(out.cogs).toBe(480);
-    expect(out.basis.cogs).toContain("1 order summed");
-    expect(out.revenue).toBe(300); // 5 × 60
-    expect(out.basis.revenue).toContain("1 inventory row valued");
+    expect(out.deliveredPurchases).toBe(480);
+    expect(out.basis.deliveredPurchases).toContain("1 order summed");
+    expect(out.shelfValueAtMenuPrice).toBe(300); // 5 × 60
+    // Purchases are not the cost of what sold, and the shelf is not sales.
+    expect(out.cogs).toBeNull();
+    expect(out.revenue).toBeNull();
+    expect(out.cogsRatio).toBeNull();
   });
 
-  it("withholds every ratio that would divide by an absent COGS or revenue", async () => {
+  it("withholds purchases when a delivered order carries no recorded cost, never adding it as $0", async () => {
+    const out: any = await analytics({
+      restaurant_inventory: [STOCKED],
+      procurement_orders: [DELIVERED, { ...DELIVERED, id: "po-2", total_cost: null, final_price: null }],
+    }).getFinancialSummary(RESTAURANT);
+    expect(out.deliveredPurchases).toBeNull();
+    expect(out.basis.deliveredPurchases).toContain("1 of 2 delivered orders carry no recorded cost");
+  });
+
+  it("withholds every ratio that would divide by an absent cost of what sold", async () => {
     // Inventory is fully priced here, so the cost-coverage gate is OPEN — the
-    // only thing left to withhold these is the missing COGS/revenue itself.
+    // only thing left to withhold these is the missing till figure itself.
     const out: any = await analytics({
       restaurant_inventory: [STOCKED],
     }).getFinancialSummary(RESTAURANT);
@@ -156,7 +171,7 @@ describe("financial never reports an empty result set as $0", () => {
     expect(out.inventoryValue).toBe(100); // 5 × 20 — knowable, and kept
     expect(out.inventoryTurnover).toBeNull();
     expect(out.daysInventoryOutstanding).toBeNull();
-    expect(out.basis.costDerived).toContain("absent denominator");
+    expect(out.salesWithheld).toBe(true);
   });
 });
 
@@ -181,7 +196,7 @@ describe("forecast publishes nothing when there is nothing to project from", () 
       wine_consumption_log: [],
     }).getDemandForecast(RESTAURANT);
     expect(out.basis.model).toContain("reads zero");
-    expect(out.basis.total).toContain("no projection to total");
+    expect(out.basis.total).toContain("no projection to add up");
   });
 
   it("still projects, and still totals, when the log holds real movement", async () => {
@@ -193,7 +208,7 @@ describe("forecast publishes nothing when there is nothing to project from", () 
     expect(out.forecast).toHaveLength(14);
     expect(typeof out.totalForecastDemand).toBe("number");
     expect(out.totalForecastDemand).toBeGreaterThan(0);
-    expect(out.basis.model).toContain("fitted on 120 days");
+    expect(out.basis.model).toContain("fitted on 120 days of history");
   });
 });
 
@@ -249,7 +264,7 @@ describe("seasonality withholds a day it cannot separate", () => {
     expect(out.bestDay).toBeNull();
     expect(out.worstDay).toBeNull();
     expect(out.tie).toBe(true);
-    expect(out.basis.extremes).toContain("arbitrary tie-break");
+    expect(out.basis.extremes).toContain("a coin toss");
   });
 
   it("does not report the same day as both busiest and quietest", async () => {
@@ -270,5 +285,34 @@ describe("seasonality withholds a day it cannot separate", () => {
     expect(typeof out.worstDay).toBe("string");
     expect(out.bestDay).not.toBe(out.worstDay);
     expect(out.basis.extremes).toContain("single weekdays");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The working the house reads: no table name, no `$`, in every state.
+// ---------------------------------------------------------------------------
+
+describe("the financial working is said in the house's words", () => {
+  // /reports prints these under "Show the working" and the export prints them
+  // in the download (r9 left list, 2026-11-12: a lira house read
+  // "delivered procurement_orders … $0 would claim the first").
+  const CODE = /\b[a-z]+_[a-z0-9_]+\b|\$|\bqty\b|\bnull\b|\d+d\b/;
+  const states: Array<[string, Record<string, any[]>]> = [
+    ["nothing came back", {}],
+    ["priced and delivered", { restaurant_inventory: [STOCKED], procurement_orders: [DELIVERED] }],
+    [
+      "an uncosted order",
+      {
+        restaurant_inventory: [STOCKED],
+        procurement_orders: [DELIVERED, { ...DELIVERED, id: "po-2", total_cost: null, final_price: null }],
+      },
+    ],
+  ];
+  it.each(states)("%s", async (_label, rows) => {
+    const out: any = await analytics(rows).getFinancialSummary(RESTAURANT);
+    for (const key of ["deliveredPurchases", "shelfValueAtMenuPrice", "deadStock"]) {
+      expect([key, out.basis[key]]).toEqual([key, expect.any(String)]);
+      expect([key, out.basis[key]]).not.toEqual([key, expect.stringMatching(CODE)]);
+    }
   });
 });

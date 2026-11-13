@@ -1,0 +1,162 @@
+/* The /inventory item drawer (ItemDrawer.tsx). Tokens only (styles/mudavym.css);
+   the Sheet's portal carries .mudavym, so dark mode follows. Below 768px the
+   drawer is the whole screen, not the Sheet's phone bottom form or 640px sheet. */
+@media (max-width: 767px) {
+  .mdv-ovl.mdv-ovl--sheet .mdv-ovl__panel.iv-drawer,
+  .mdv-ovl.mdv-ovl--sheet[data-form='bottom'][data-detent='full'] .mdv-ovl__panel.iv-drawer {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    height: 100vh;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+}
+
+.ivd-head {
+  margin: 0 0 12px;
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+/* Two columns by four rows inside the 640px sheet; one column on a phone. */
+.ivd-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+@media (max-width: 767px) {
+  .ivd-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ivd-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+  color: var(--ink-1);
+  font: inherit;
+  text-align: left;
+}
+button.ivd-card {
+  cursor: pointer;
+}
+button.ivd-card:hover {
+  border-color: var(--ink-4);
+}
+.ivd-card[data-on='true'] {
+  border-color: var(--ink-2);
+  background: var(--paper-0);
+}
+.ivd-card-k {
+  color: var(--ink-3);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ivd-card-v {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+}
+.ivd-card-v[data-unread='true'] {
+  color: var(--warn);
+  font-size: 14px;
+}
+.ivd-card-x {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.ivd-card-s {
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.ivd-dim {
+  color: var(--ink-3);
+}
+.ivd-spark {
+  color: var(--ink-2);
+  flex: none;
+}
+.ivd-gaps {
+  margin: 2px 0 0;
+  padding-left: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ivd-evbar {
+  margin: 10px 0 0;
+}
+.ivd-evidence {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--paper-2);
+}
+/* The NutritionCard slot: one bordered card at the top of the detail card. */
+.ivd-nutrition {
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--paper-2);
+  border-radius: 8px;
+  background: var(--paper-1);
+}
+.ivd-nutrition > .iv-note {
+  margin: 0;
+}
+
+.ivd-used {
+  margin-top: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--paper-2);
+}
+.ivd-used-g {
+  margin-top: 8px;
+}
+.ivd-used-h {
+  margin: 0 0 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+.ivd-used-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ivd-used-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--paper-2);
+  font-size: 13px;
+}
+
+/* "Carry this" (CarryThis.tsx). */
+.ivc-form {
+  display: grid;
+  gap: 12px;
+}
+.ivc-label {
+  display: grid;
+  gap: 4px;
+  color: var(--ink-2);
+  font-size: 13px;
+}

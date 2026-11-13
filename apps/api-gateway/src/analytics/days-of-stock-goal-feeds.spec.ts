@@ -14,6 +14,11 @@ const behind = (id: string, metric_key: string) => ({
   metric_key,
   target_value: 10,
   current_value: 1,
+  // A dated reading: the goal rule judges only a goal read on a day (#1133's train).
+  current_read_at: new Date().toISOString(),
+  direction: "at_least",
+  // A level (days of stock) is paced from its baseline (reports lane r2).
+  baseline_value: 0,
   created_at: new Date(Date.now() - 50 * DAY).toISOString(),
   deadline: new Date(Date.now() + 10 * DAY).toISOString(),
 });
@@ -37,7 +42,8 @@ function feed(goals: unknown[] = GOALS) {
     "neq",
   ])
     b[m] = () => b;
-  b.maybeSingle = async () => ({ data: null, error: null });
+  // The house's zone: the goal rule schedules a pace on the house's clock (#1133's train).
+  b.maybeSingle = async () => ({ data: { timezone: "UTC", country: "US" }, error: null });
   b.then = (ok: any, no: any) =>
     Promise.resolve({ data: [], error: null }).then(ok, no);
   const client = { from: () => b };

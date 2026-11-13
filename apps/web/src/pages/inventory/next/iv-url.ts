@@ -5,18 +5,29 @@
  * map, the open row) survives a reload, Back, and a link sent to someone else.
  * Only what differs from the default is written, so a plain /inventory stays
  * plain. Every write replaces the history entry: typing a search is not twelve
- * Back presses.
+ * Back presses. Opening an item from a row is the one step Back undoes: it
+ * closes the drawer (InventoryNext.tsx).
  *
  * The links other places already send here are read as well:
  *   ?wine=<name>      Notifications' held band, the low-stock email and the
  *                     push action (sw.js) — the search, as the legacy page did.
  *   ?highlight=<id>   the dashboard's low-stock alert (a row id) and the one-tap
  *                     centre (a wine id) — that title, opened.
- * Both are folded into the page's own keys on the first write, so they cannot
+ *   ?filter=low-stock the low-stock alerts' inbox row, email and push (QA 9c)
+ *                     — the "Low-stock alerts" chip. The link is read rather
+ *                     than changed because rows already stored carry it.
+ * All are folded into the page's own keys on the first write, so they cannot
  * override what the person does next. Every other parameter (?name-delivery=,
  * ?rec=, ?from=, ?verify=) is left as it came; the page reads those itself.
  */
 import { CHIPS, type ChipId, type SortId } from './useInventoryNextData';
+
+export type GoodKind = 'drink' | 'food' | 'supply';
+export const KIND_CHIPS: { id: GoodKind; label: string }[] = [
+  { id: 'drink', label: 'Drinks' },
+  { id: 'food', label: 'Food' },
+  { id: 'supply', label: 'Supplies' },
+];
 
 export interface IvView {
   chip: ChipId;
@@ -25,27 +36,34 @@ export interface IvView {
   type: string;
   sort: SortId;
   view: 'table' | 'map';
+  /** What kind of good: '' every kind, else a drink, a food or a supply (KIND_CHIPS). */
+  kind: '' | GoodKind;
   /** A row id, or a wine id from ?highlight= until the rows resolve it. */
   open: string | null;
 }
 
 const SORTS: readonly SortId[] = ['needs', 'name', 'value', 'pace'];
 
-export const IV_DEFAULT: IvView = { chip: 'all', q: '', zone: '', type: '', sort: 'needs', view: 'table', open: null };
+export const IV_DEFAULT: IvView = { chip: 'all', q: '', zone: '', type: '', sort: 'needs', view: 'table', kind: '', open: null };
 
-const KEYS = ['chip', 'q', 'zone', 'type', 'sort', 'view', 'open'] as const;
-const ALIASES = ['wine', 'highlight'] as const;
+const KEYS = ['chip', 'q', 'zone', 'type', 'sort', 'view', 'kind', 'open'] as const;
+const ALIASES = ['wine', 'highlight', 'filter'] as const;
 
 export function readView(p: URLSearchParams): IvView {
   const chip = p.get('chip');
   const sort = p.get('sort');
   return {
-    chip: CHIPS.some((c) => c.id === chip) ? (chip as ChipId) : IV_DEFAULT.chip,
+    chip: CHIPS.some((c) => c.id === chip)
+      ? (chip as ChipId)
+      : p.get('filter') === 'low-stock'
+        ? 'alerts'
+        : IV_DEFAULT.chip,
     q: p.get('q') ?? p.get('wine') ?? IV_DEFAULT.q,
     zone: p.get('zone') ?? IV_DEFAULT.zone,
     type: p.get('type') ?? IV_DEFAULT.type,
     sort: SORTS.includes(sort as SortId) ? (sort as SortId) : IV_DEFAULT.sort,
     view: p.get('view') === 'map' ? 'map' : IV_DEFAULT.view,
+    kind: KIND_CHIPS.find((k) => k.id === p.get('kind'))?.id ?? IV_DEFAULT.kind,
     open: p.get('open') || p.get('highlight') || IV_DEFAULT.open,
   };
 }

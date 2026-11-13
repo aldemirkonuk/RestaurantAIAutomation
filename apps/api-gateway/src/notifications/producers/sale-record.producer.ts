@@ -1,5 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../../database/database.service";
+import { readWholeWindow } from "../../common/read-whole-window";
 import {
   ProducerLedgerService,
   emptyTally,
@@ -80,7 +81,13 @@ export class SaleRecordProducer {
    */
   static readonly RECOVERY_DAYS = 2;
 
-  /** Checks read for one day. A day past this is reported as truncated. */
+  /**
+   * Checks one day may hold. The day is read whole (ADR 0292); a day past
+   * this refuses, and no record is written from part of it. It used to be a
+   * `.limit(2001)` with a "truncated" branch past 2,000, but PostgREST stops
+   * every response at 1,000 rows, so a day of 1,500 checks was summed on its
+   * first thousand and never said so (readers lane r4).
+   */
   static readonly CHECK_CAP = 2000;
 
   constructor(
@@ -227,32 +234,33 @@ export class SaleRecordProducer {
     const from = localMidnight(localDate, timeZone);
     const to = localMidnight(shiftLocalDate(localDate, 1), timeZone);
 
-    const { data, error } = await this.databaseService
-      .getClient()
-      .from("pos_checks")
-      .select("total, covers, items, opened_at, closed_at")
-      .eq("restaurant_id", restaurantId)
-      .eq("voided", false)
-      .gte("opened_at", from.toISOString())
-      .lt("opened_at", to.toISOString())
-      .limit(SaleRecordProducer.CHECK_CAP + 1);
-
-    if (error) {
-      // Throwing hands the tenant to `runPerTenant`. Returning zeroes here would
-      // write a "0 covers" service record off the back of a failed query, which
-      // is the exact fabrication this producer exists to avoid.
-      throw new Error(`could not read pos_checks: ${error.message}`);
-    }
-
-    const rows = (data ?? []) as any[];
-    if (rows.length > SaleRecordProducer.CHECK_CAP) {
-      tally.truncated = true;
-      this.logger.warn(
-        `SALE_RECORD_CHECKS_TRUNCATED restaurant=${restaurantId} date=${localDate} ` +
-          `cap=${SaleRecordProducer.CHECK_CAP} — the day's totals are a floor, not a total.`,
+    const client = this.databaseService.getClient();
+    let checks: any[];
+    try {
+      checks = await readWholeWindow<any>(
+        "The day's POS checks",
+        () =>
+          client
+            .from("pos_checks")
+            .select("id, total, covers, items, opened_at, closed_at", {
+              count: "exact",
+            })
+            .eq("restaurant_id", restaurantId)
+            .eq("voided", false)
+            .gte("opened_at", from.toISOString())
+            .lt("opened_at", to.toISOString()),
+        { ceiling: SaleRecordProducer.CHECK_CAP },
       );
+    } catch (err: any) {
+      // Throwing hands the tenant to `runPerTenant`. Returning zeroes here would
+      // write a "0 covers" service record off the back of a failed query, and
+      // returning part of the day would write a record smaller than the day,
+      // which is the exact fabrication this producer exists to avoid.
+      this.logger.warn(
+        `SALE_RECORD_CHECKS_UNREAD restaurant=${restaurantId} date=${localDate}: ${err?.message ?? err}`,
+      );
+      throw new Error(`could not read pos_checks: ${err?.message ?? err}`);
     }
-    const checks = rows.slice(0, SaleRecordProducer.CHECK_CAP);
 
     let revenue = 0;
     let coverSum = 0;

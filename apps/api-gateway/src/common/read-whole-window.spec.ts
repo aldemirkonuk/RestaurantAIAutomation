@@ -445,6 +445,24 @@ describe("GoalsService — the till and goal progress read the whole window", ()
     expect(w.dailySeries[w.dailySeries.length - 1].date).toBe(newest);
   });
 
+  it("getPosRevenueWindow(365) at the till's measured pace reads a year whole, and pins its round trips", async () => {
+    // The /reports till offers 365 days (#1052). 3,313 checks in 90 days is
+    // the pace A-005 measured; a year of it is 13,436 checks. The read is
+    // keyset-paged at PostgREST's 1,000 rows, one page after another, so the
+    // year costs this many SEQUENTIAL round trips to the database — the figure
+    // its latency scales with. A page size or a column added here moves it.
+    const year = checks(13436, 364, 0);
+    const { db, requests } = cappedDb({ pos_checks: year, restaurants });
+    const w = await goalsOver(db).getPosRevenueWindow("r1", 365);
+    expect(w.days).toBe(365);
+    expect(w.checkCount).toBe(13436);
+    expect(w.revenue).toBe(sum(year.map((r) => r.total)));
+    expect(w.dailySeries).toHaveLength(365);
+    const pages = requests.filter((r) => r.table === "pos_checks" && r.order === "id");
+    expect(pages).toHaveLength(14);
+    for (const p of pages) expect(p.select).toBe("id, total, opened_at, closed_at");
+  });
+
   it("asks for `items` only for the metrics that read them", async () => {
     const { db, requests } = cappedDb({ pos_checks: rows, restaurants });
     await goalsOver(db).getPosRevenueWindow("r1", 90);
@@ -527,7 +545,7 @@ describe("GoalsService — the till and goal progress read the whole window", ()
     expect((stored[0].payload as any).current_value).toBe(3313);
   });
 
-  it("getGoalProgress writes no current_value from a refused read", async () => {
+  it("getGoalProgress writes no current_value from a refused read, only the refusal", async () => {
     // Request 1 is the "ever had a check" probe; request 2 is page 0.
     const { db, writes } = cappedDb(
       { pos_checks: rows, analytics_goals: [goal], restaurants },
@@ -537,7 +555,13 @@ describe("GoalsService — the till and goal progress read the whole window", ()
       .getGoalProgress("r1", "g1")
       .catch((e) => e);
     expect(err).toBeInstanceOf(WholeReadError);
-    expect(writes.filter((w) => w.table === "analytics_goals")).toEqual([]);
+    // Reports lane r2: the refusal is recorded, so the older stored value is
+    // not shown as current; no number is written from the refused read.
+    const goalWrites = writes.filter((w) => w.table === "analytics_goals");
+    expect(goalWrites).toHaveLength(1);
+    expect(goalWrites[0].op).toBe("update");
+    expect(goalWrites[0].payload).not.toHaveProperty("current_value");
+    expect((goalWrites[0].payload as any).current_unread).toBe(err.message);
   });
 });
 
@@ -634,6 +658,8 @@ describe("AdvancedAnalyticsService — menu engineering and seasonality count ev
     const { db } = cappedDb({
       restaurant_inventory: inventory,
       wine_consumption_log: lines,
+      // Weekdays are the house's (ADR 0296): a house with no zone names none.
+      restaurants: [{ id: "r1", timezone: "UTC", country: null }],
     });
     const out: any = await svc(db).getSeasonality("r1", 90);
     const units = sum(out.weekdayProfile.map((d: any) => d.mean * d.n));
@@ -825,12 +851,11 @@ describe("AnalyticsService — loadConsumption reads every line, or refuses (for
       () => controller.getForecast("r1"),
     ]) {
       const err: any = await route().catch((e) => e);
-      // The routes' own catch maps any throw to a 500 that carries the
-      // message; /reports prints "The … register could not be read (…)" for
-      // any failed status (rp-format.ts failureLine), as it does for the 503
-      // menu engineering answers.
+      // The refusal keeps its own 503 and sentence (audit G11): the routes'
+      // catch used to re-wrap it as a 500, so a window that could not be read
+      // whole looked like a crash. /reports prints the sentence itself.
       expect(err).toBeInstanceOf(HttpException);
-      expect(err.getStatus()).toBe(500);
+      expect(err.getStatus()).toBe(503);
       expect(err.message).toMatch(/could not be read whole/);
     }
   });

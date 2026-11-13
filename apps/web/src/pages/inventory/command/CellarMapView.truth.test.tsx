@@ -46,7 +46,7 @@ describe('cellar map — unknown is not healthy (INV-W19)', () => {
 
   it('the legend carries the neutral swatch, and the page can give its own words', () => {
     draw([item('h', 'Plenty', 12, 6)], [zone], { toneOf: mapTone, toneWords: MAP_WORDS })
-    for (const w of ['At or above par', 'Below par', 'Out', 'Reconcile', 'Not read, or no par set']) {
+    for (const w of ['At or above par', 'Below par', 'Out', 'Reconcile', 'Not read, not counted yet, or no par set']) {
       expect(screen.getByText(w)).toBeTruthy()
     }
     expect(screen.queryByText('Healthy')).toBeNull()

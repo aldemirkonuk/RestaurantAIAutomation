@@ -12,7 +12,7 @@
  * on the way to a chart.
  */
 
-import { formatMoney, formatNumber } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 import type { HouseRole } from './rp-spec';
 
 export const EM = '—';
@@ -28,16 +28,96 @@ export function num(v: unknown): number | null {
   return null;
 }
 
-/** Money of record, or the dash. */
-export function money(v: unknown, mode: 'compact' | 'full' | 'table' = 'full'): string {
+/** A well-formed ISO 4217 code, or null. */
+function isoCode(c: unknown): string | null {
+  return typeof c === 'string' && /^[A-Z]{3}$/.test(c) ? c : null;
+}
+
+/**
+ * What a money figure on this page is printed in.
+ *
+ * - an ISO 4217 code (`GET /settings/currency` answered one): the house's mark;
+ * - `null` or absent (never stated, or the read failed): the figure prints
+ *   BARE, and the page says once, under its date line, why;
+ * - `READING` (the read has not answered yet): every figure is the dash. A
+ *   bare `4,210` that turns into `₺4,210` a moment later reads as two amounts,
+ *   and a `$` would be a claim about the money the page cannot yet make.
+ */
+export const READING = Object.freeze({ reading: true as const });
+export type MoneyIn = string | null | undefined | typeof READING;
+
+/**
+ * Money of record in the HOUSE's currency, or the dash.
+ *
+ * It never falls back to `$`: a currency mark is a claim about the amount, and
+ * every house used to read as dollars (audit G5; the same rule as `fmtMoney`,
+ * `lib/mudavym/format.ts`).
+ *
+ * `currency` is REQUIRED on purpose (r7, 2026-11-12). Two /reports stacks edit
+ * this file; a register that calls `money(v)` without saying whose money it is
+ * would silently print bare figures on a house that has a currency. Without a
+ * default the compiler refuses that call, so a merge cannot hide it. Register
+ * views bind it once with `moneyIn(ctx.currency)`.
+ */
+export function money(
+  v: unknown,
+  mode: 'compact' | 'full' | 'table',
+  currency: MoneyIn,
+): string {
   const n = num(v);
-  return n === null ? EM : formatMoney(n, mode);
+  if (n === null) return EM;
+  if (typeof currency === 'object' && currency !== null) return EM;
+  const code = isoCode(currency);
+  if (!code)
+    return mode === 'table'
+      ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : formatNumber(n, mode === 'compact' ? 'compact' : 'full');
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      currencyDisplay: 'narrowSymbol',
+      ...(mode === 'compact'
+        ? { notation: 'compact', minimumFractionDigits: 0, maximumFractionDigits: 1 }
+        : mode === 'table'
+          ? { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+          : { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+    }).format(n);
+  } catch {
+    // A well-formed code this runtime does not know: the number is still true.
+    return `${formatNumber(n, mode === 'compact' ? 'compact' : 'full')} ${code}`;
+  }
+}
+
+/** `money` bound to one house's currency — what every register view uses. */
+export function moneyIn(currency: MoneyIn) {
+  return (v: unknown, mode: 'compact' | 'full' | 'table' = 'full') => money(v, mode, currency);
 }
 
 /** Plain figure, or the dash. */
 export function figure(v: unknown, mode: 'compact' | 'full' = 'full'): string {
   const n = num(v);
   return n === null ? EM : formatNumber(n, mode);
+}
+
+/**
+ * A plain figure to at most `digits` places, or the dash. The ledger's turns,
+ * days and GMROI are ratios the engine returns unrounded; `figure` printed
+ * them to three places ("312.067" days, cost-math walk 2026-11-11). The export
+ * prints days to one place and other figures to two
+ * (`report-export-render.ts`), so the page uses the same places.
+ */
+export function figureTo(v: unknown, digits: number): string {
+  const n = num(v);
+  return n === null ? EM : n.toLocaleString('en-US', { maximumFractionDigits: digits });
+}
+
+/**
+ * A reason sentence set inside the page's own parentheses: its closing full
+ * stop is dropped, so "(… under Time zone.)." reads "(… under Time zone)."
+ */
+export function inParens(reason: string): string {
+  return reason.replace(/[.\s]+$/, '');
 }
 
 /** A ratio the engine returns as 0–1, rendered as a percentage of record. */
@@ -75,6 +155,37 @@ export function countOf(v: unknown, one: string, many: string): string {
 }
 
 /** Parse a YYYY-MM-DD as a LOCAL date (`new Date('YYYY-MM-DD')` is UTC). */
+/**
+ * Axis labels for a row of names: at most `max` characters, never two alike.
+ * Cutting the tail alone drew "Local Check B…" under two different wines.
+ * Names whose cut collides drop the words they share instead, so the label
+ * says what tells them apart ("…Barolo 2017", "…Brut NV"); the tooltip still
+ * carries the whole name.
+ */
+export function shortLabels(names: string[], max: number): string[] {
+  const fit = (n: string) => (n.length > max ? `${n.slice(0, max - 1).trimEnd()}…` : n);
+  const cut = names.map(fit);
+  const groups = new Map<string, string[]>();
+  names.forEach((n, i) => groups.set(cut[i], [...(groups.get(cut[i]) ?? []), n]));
+  const kept = names.map((n, i) => {
+    const group = groups.get(cut[i]) ?? [];
+    if (group.length < 2 || n.length <= max) return cut[i];
+    // The words every name in the clash starts with.
+    let p = 0;
+    while (group.every((g) => g[p] === n[p] && p < n.length)) p += 1;
+    p = n.lastIndexOf(' ', p) + 1;
+    const rest = n.slice(p);
+    if (p === 0) return cut[i];
+    return rest.length + 1 > max ? `…${rest.slice(0, max - 2).trimEnd()}…` : `…${rest}`;
+  });
+  const seen = new Map<string, number>();
+  return kept.map((l) => {
+    const k = (seen.get(l) ?? 0) + 1;
+    seen.set(l, k);
+    return k === 1 ? l : `${l} ${k}`;
+  });
+}
+
 export function parseDateStr(s: string): Date {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, (m ?? 1) - 1, d ?? 1);
@@ -144,6 +255,8 @@ export interface Failure {
   message: string;
   /** 401/403 — understood and refused. */
   forbidden: boolean;
+  /** The gateway's own sentence for the refusal, when it sent one. */
+  said?: string;
   /**
    * Set when the page never sent the request: the register names its readers
    * and the reader is not one of them (`known: true`), or the reader's role at
@@ -156,9 +269,32 @@ export interface Failure {
 
 export function failureOf(error: unknown): Failure | null {
   if (!error) return null;
-  const status = num((error as { response?: { status?: unknown } })?.response?.status);
+  const response = (error as { response?: { status?: unknown; data?: unknown } })?.response;
+  const status = num(response?.status);
   const message = (error as { message?: string })?.message || 'the request failed';
-  return { status, message, forbidden: status === 403 || status === 401 };
+  const said = gatewaySentence(response?.data);
+  return { status, message, forbidden: status === 403 || status === 401, ...(said ? { said } : {}) };
+}
+
+/**
+ * The sentence the gateway refused with, in the house's words. A window that
+ * could not be read whole answers 503 with a sentence (ADR 0292); without this
+ * the page printed the HTTP client's "Request failed with status code 503".
+ * The parenthesised page/SQLSTATE detail is for the log, not for the reader.
+ */
+function gatewaySentence(data: unknown): string | null {
+  const raw = (data as { message?: unknown } | null)?.message;
+  const text = Array.isArray(raw)
+    ? raw.filter((x): x is string => typeof x === 'string').join(' ')
+    : typeof raw === 'string'
+      ? raw
+      : '';
+  // `WholeReadError`: "<what> could not be read whole: <reason> (<detail>).
+  // Nothing is reported from part of it." — the detail goes, the rest stays.
+  const clean = text.replace(/\s\(.*\)(?=\. Nothing is reported from part of it\.$)/s, '').trim();
+  // Nest's own generic words are no better than the status code.
+  if (!clean || /^(internal server error|service unavailable|bad request)$/i.test(clean)) return null;
+  return clean;
 }
 
 /** The register a reader is not sent: no status, because nothing was asked. */
@@ -195,9 +331,12 @@ export function failureLine(register: string, f: Failure): string {
     return f.heldBack.known
       ? `The ${register} is written for ${readersWords(f.heldBack.readers)}. Nothing below is claimed.`
       : `Your role at this restaurant is not known yet, so the ${register} is not read until it is. Nothing below is claimed.`;
-  return f.forbidden
-    ? `Your role cannot read the ${register}. Nothing below is claimed.`
-    : `The ${register} could not be read (${f.message}). Nothing below is claimed.`;
+  if (f.forbidden) return `Your role cannot read the ${register}. Nothing below is claimed.`;
+  if (f.said)
+    return /nothing is reported|nothing below/i.test(f.said)
+      ? `The ${register} could not be read. ${f.said}`
+      : `The ${register} could not be read. ${f.said} Nothing below is claimed.`;
+  return `The ${register} could not be read (${f.message}). Nothing below is claimed.`;
 }
 
 /* ───────────────────────────────────────────── the house serif ─────────── */

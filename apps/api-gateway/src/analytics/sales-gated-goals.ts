@@ -6,7 +6,7 @@
  * record decides to read cost of goods from the till.
  */
 export const DAYS_OF_STOCK_WITHHELD =
-  "Days of stock is an owner's or a manager's figure to see, so it is not scored here.";
+  "Days of stock cannot be read here: it is read from the till's sales, which reach owners and managers only.";
 
 /**
  * The goal metrics that are a sales holder's figure (ADR 0298 decision 9):

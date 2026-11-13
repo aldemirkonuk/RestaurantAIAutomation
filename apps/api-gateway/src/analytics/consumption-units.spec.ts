@@ -345,9 +345,10 @@ const BOTTLE = { consumption_type: "bottle", quantity: 1, volume_ml: 750 };
 /** A line with no bottle figure: a glass with no millilitres. */
 const NO_FIGURE = { consumption_type: "glass", quantity: 2, volume_ml: 0 };
 
+/** Seasonality files on house days (ADR 0296), so the house states a zone. */
 const advanced = (rows: Rows) =>
   new AdvancedAnalyticsService(
-    dbOver(rows),
+    dbOver({ restaurants: [{ id: RESTAURANT, timezone: "UTC", country: null }], ...rows }),
     {
       // A projection is always on offer, so the null below is Wine 360's own.
       getDemandForecast: async () => ({
@@ -367,7 +368,7 @@ describe("menu engineering counts bottles, not pours", () => {
     }).getMenuEngineering(RESTAURANT, 90);
     const row = out.items.find((i: any) => i.id === "inv-1");
     expect(row.velocityPerDay).toBeCloseTo(2 / 90, 12);
-    expect(out.basis.velocity).toMatch(/^bottles\/day over 90d/);
+    expect(out.basis.velocity).toMatch(/^Bottles a day over the last 90 days/);
     expect(out.unitsCoverage).toMatchObject({ lines: 10, glassLines: 10 });
   });
 
@@ -638,7 +639,7 @@ describe("Wine 360 counts bottles, not pours", () => {
     }).getWine360(RESTAURANT, "mw-1");
     expect(out.demand.mean).toBeCloseTo(2 / 90, 12);
     expect(out.daysOfCover).toBeCloseTo(6 / (2 / 90), 9);
-    expect(out.basis.demand).toMatch(/^bottles\/day over 90d/);
+    expect(out.basis.demand).toMatch(/^Bottles a day over the last 90 days/);
   });
 
   it("a wine with a line that carries no bottle figure has no demand, and says why", async () => {
@@ -983,22 +984,13 @@ describe("seasonality reads counted lines only, and names the rest", () => {
     );
   });
 
-  it("S2: a category's weekday winner needs ten counted lines; one with no figure is not one of them", async () => {
-    const red = { master_wine_library: { primary_type: "red" } };
-    const control: any = await advanced({
-      restaurant_inventory: [item(1, red)],
+  it("S2: seasonality no longer reads the inventory list, and publishes no category winners (audit G20)", async () => {
+    const out: any = await advanced({
+      restaurant_inventory: [item(1, { master_wine_library: { primary_type: "red" } })],
       wine_consumption_log: everyDay(1, 1, 10, BOTTLE),
     }).getSeasonality(RESTAURANT, 90);
-    expect(control.categoryProfiles.map((p: any) => p.type)).toEqual(["red"]);
-
-    const out: any = await advanced({
-      restaurant_inventory: [item(1, red)],
-      wine_consumption_log: [
-        ...everyDay(1, 1, 9, BOTTLE),
-        on(1, 12, NO_FIGURE),
-      ],
-    }).getSeasonality(RESTAURANT, 90);
-    expect(out.categoryProfiles).toEqual([]);
+    expect(out.categoryProfiles).toBeUndefined();
+    expect(out.zoneUnset).toBe(false);
   });
 });
 
@@ -1161,7 +1153,7 @@ describe("the demand forecast does not project one wine from a history it cannot
     expect(out.basis.model).toContain("carry no bottle figure");
     // Its demand basis does not read as a short projection (ADR 0297).
     expect(out.basis.demand).toContain(
-      "nothing is projected from this short series",
+      "nothing is projected from this short history",
     );
   });
 

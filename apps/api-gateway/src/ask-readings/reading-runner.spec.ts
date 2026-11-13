@@ -22,6 +22,11 @@ class Books {
       in: (k: string, v: any[]) => { filters.push(r => v.includes(r[k])); return q; },
       gte: (k: string, v: any) => { filters.push(r => r[k] != null && r[k] >= v); return q; },
       lt: (k: string, v: any) => { filters.push(r => r[k] != null && r[k] < v); return q; },
+      or: (expr: string) => { // only the "a.gt.N,b.gt.M" form a reader sends
+        const terms = expr.split(",").map(t => t.split("."));
+        if (terms.some(t => t[1] !== "gt")) throw new Error(`fake or() cannot read ${expr}`);
+        filters.push(r => terms.some(([k, , v]) => Number(r[k] ?? 0) > Number(v))); filterNames.push(`or(${expr})`); return q;
+      },
       order: () => { sorted = true; return q; },
       range: (a: number, b: number) => { offset = a; end = b; return q; },
       then: (resolve: any, reject: any) => {
@@ -51,6 +56,8 @@ const fixture = () => new Books({
     house("lot-2", { inventory_id: "item-a", location_id: "cellar", stock_state: "live", qty: 6 }),
     house("lot-3", { inventory_id: "item-a", location_id: null, stock_state: "shadow", qty: 3 })],
   storage_locations: [house("cellar", { name: "Cellar" })],
+  // The house's low-stock list (QA 12a): item-a only; the other house's row is filtered out.
+  v_low_stock_items: [house("item-a"), house("foreign-low", { restaurant_id: "house-b" })],
   inventory_transactions: [house("move-1", { inventory_id: "item-a", quantity_change: 12, stock_type: "live", transaction_date: "2026-09-12T11:00:00.000Z" }),
     house("move-2", { inventory_id: "item-a", quantity_change: -3, stock_type: "live", transaction_date: "2026-09-12T12:00:00.000Z" }),
     house("move-3", { inventory_id: "item-a", quantity_change: 9, stock_type: "shadow", transaction_date: "2026-09-12T13:00:00.000Z" })],
@@ -175,6 +182,19 @@ describe("ADR 0145 build task 4, per source: every relation a Reading reads refu
 });
 
 describe("proof, scope, absence and provenance regressions", () => {
+  // a_used_up_lot_is_kept (R6): a lot sold to zero stays at 0 and is not stock.
+  test("inventory.locations leaves out a used-up lot and keeps an open bottle", async () => {
+    const books = fixture();
+    books.tables.inventory_lots.push(
+      house("lot-used-up", { inventory_id: "item-a", location_id: "bar", stock_state: "live", qty: 0, open_bottle_ml: 0, status: "depleted" }),
+      house("lot-open", { inventory_id: "item-a", location_id: "cellar", stock_state: "live", qty: 0, open_bottle_ml: 300 }));
+    books.tables.storage_locations.push(house("bar", { name: "Bar" }));
+    const finding = await run(books, "inventory.locations");
+    expect(finding.outcome).toBe("read");
+    expect(value(finding, "lots:count")).toBe(4);
+    expect(value(finding, "cellar:live:qty")).toBe(10);
+    expect(finding.rows.map(r => r.key)).not.toContain("bar:live");
+  });
   test("actual multi-page reads exceed Supabase's first page without inventing a count", async () => {
     const books = fixture(); books.tables.analytics_goals = Array.from({ length: 1201 }, (_, i) => house(`g-${i.toString().padStart(4, "0")}`, { status: "active", target_value: i, metric_key: "covers" }));
     const finding = await run(books, "goals.targets");
@@ -210,6 +230,7 @@ describe("proof, scope, absence and provenance regressions", () => {
   test("items that exist with none below threshold is a read zero", async () => {
     const books = fixture();
     books.tables.restaurant_inventory = books.tables.restaurant_inventory.map(r => ({ ...r, stock_live: 50 }));
+    books.tables.v_low_stock_items = [];
     const finding = await run(books, "inventory.low_stock");
     expect(finding.outcome).toBe("read");
     expect(value(finding, "below:count")).toBe(0);
@@ -288,6 +309,22 @@ describe("proof, scope, absence and provenance regressions", () => {
     const finding = await run(fixture(), "orders.late_deliveries", { from: "2026-09-01", to: "2026-09-12" });
     expect(finding.outcome).toBe("read");
     expect(value(finding, "orders:count")).toBe(1);
+  });
+  // QA 12a: the Reading says below par with the low-stock list's one answer.
+  test("inventory.low_stock lists only what the low-stock list holds, not its own stock < par", async () => {
+    const books = fixture(); books.tables.restaurant_inventory[1].stock_live = 1;
+    const finding = await run(books, "inventory.low_stock");
+    expect(finding.outcome).toBe("read");
+    expect(value(finding, "below:count")).toBe(1);
+    expect(value(finding, "item-a:stock_live")).toBe(2);
+    expect(value(finding, "item-b:stock_live")).toBeUndefined();
+  });
+  test("inventory.low_stock refuses when the list and the inventory read straddle a write", async () => {
+    const books = fixture(); books.tables.v_low_stock_items.push(house("item-b"));
+    const finding = await run(books, "inventory.low_stock");
+    expect(finding.outcome).toBe("could_not_read");
+    expect(finding.reason).toBe("source_changed");
+    expect(finding.rows).toEqual([]);
   });
   test("null stock/volume is not zero and a default threshold remains an assumption", async () => {
     const books = fixture(); books.tables.restaurant_inventory[0].stock_live = null;

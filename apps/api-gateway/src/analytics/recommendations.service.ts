@@ -1,8 +1,25 @@
 import { Injectable, Logger, Optional } from "@nestjs/common";
+import {
+  datedReading,
+  figureOrNull,
+  goalShape,
+  readOnIfNotToday,
+  scoreGoal,
+  storedGoalSchedule,
+} from "./goal-score";
+import { readHouseZone } from "../common/house-day";
 import * as crypto from "crypto";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
-import { InsightGeneratorService } from "./insights/insight-generator.service";
+import {
+  HOUSE_CURRENCY_WORD,
+  InsightGeneratorService,
+  readHouseCurrency,
+} from "./insights/insight-generator.service";
+import {
+  CURRENCY_NOT_RECORDED_SENTENCE,
+  fmtMoneyWhole,
+} from "./insights/insight-verbalizer";
 import { GoalsService } from "./goals.service";
 import { isSalesGatedGoal } from "./sales-gated-goals";
 import { DatabaseService } from "../database/database.service";
@@ -327,6 +344,8 @@ export class RecommendationsService {
       goals,
       priceAdviceRes,
       priceLocksRes,
+      houseZoneRes,
+      houseCurrencyRes,
     ] = await Promise.allSettled([
       this.analyticsService.getFinancialSummary(restaurantId, 0, {
         withSales: opts.withSales === true,
@@ -356,6 +375,13 @@ export class RecommendationsService {
             return r;
           })
         : Promise.reject(new Error("price locks are not wired into this build")),
+      // The goal rule schedules a goal on the house's clock, as the goals
+      // desk does (goal-score.ts `storedGoalSchedule`, ADR 0296).
+      readHouseZone(this.dbService.getClient(), restaurantId),
+      // The money the dead-stock and spend-pace cards print their amount in
+      // (`sayAmount` below): an ISO 4217 code, null when none is stated, and
+      // a rejection when the read failed.
+      readHouseCurrency(this.dbService.getClient(), restaurantId),
     ]);
     const ok = (r: PromiseSettledResult<any>) =>
       r.status === "fulfilled" ? r.value : null;
@@ -417,6 +443,7 @@ export class RecommendationsService {
       goals: ok(goals) ?? [],
       priceAdvice: ok(priceAdviceRes) as HouseAdvice | null,
       priceLocks: ok(priceLocksRes) as LockReadout | null,
+      zone: (ok(houseZoneRes)?.zone ?? null) as string | null,
     };
     const priceAdviceReason =
       priceAdviceRes.status === "rejected"
@@ -438,6 +465,27 @@ export class RecommendationsService {
     };
 
     const pct = (v: number) => `${Math.abs(v * 100).toFixed(0)}%`;
+
+    // An amount in the house's money. These cards printed a fixed "$", so a
+    // lira house read "$12,345 is locked in inventory" (r8 browser check,
+    // 2026-11-12). Three states, as the insight sentences have them (r8,
+    // `insight-verbalizer.ts`): a stated code prints its mark ("₺12,345");
+    // none stated prints the bare amount and the card ends with
+    // `CURRENCY_NOT_RECORDED_SENTENCE`; a failed read prints no amount, the
+    // card keeps its advice, and "house currency" is named in
+    // `sourcesUnread` (only when a card wanted it, as the zone is below).
+    let amountWantedCurrency = false;
+    const sayAmount = (v: number): { amount: string | null; tail: string } => {
+      if (houseCurrencyRes.status === "rejected") {
+        amountWantedCurrency = true;
+        return { amount: null, tail: "" };
+      }
+      const code = houseCurrencyRes.value;
+      return {
+        amount: fmtMoneyWhole(v, code),
+        tail: code === null ? ` ${CURRENCY_NOT_RECORDED_SENTENCE}` : "",
+      };
+    };
 
     // ---- Sales / demand rules --------------------------------------------
     // A SALES dip only (ADR 0291): `overall.purchase_spend.vs_same_weekday`
@@ -515,20 +563,27 @@ export class RecommendationsService {
       "dead_stock_capital",
       (ctx.financial?.deadStockCapital ?? 0) > 0 &&
         (ctx.financial?.deadStockTop?.length ?? 0) > 0,
-      () => ({
+      () => {
         // The number behind this sentence is now a consumption join, not a
         // stock-depth test — see AnalyticsService.getFinancialSummary. Naming
         // the window keeps the claim checkable, and keeps the discount advice
         // below pointed at bottles that genuinely are not selling.
-        observation: `$${Math.round(ctx.financial.deadStockCapital).toLocaleString()} is locked in inventory that has not moved in 90 days (top: ${ctx.financial.deadStockTop[0].name}).`,
-        recommendation:
-          "Build a weekend flight or staff-pick feature from the top three idle wines; if untouched after two weeks, discount to cost and reinvest the cash in A-class movers.",
-        rationale:
-          "Idle bottles pay storage and tie up cash with zero margin velocity — GMROI rises fastest by converting them back to working capital.",
-        category: "inventory",
-        urgency: "this_month",
-        score: 2,
-      }),
+        const top = ctx.financial.deadStockTop[0].name;
+        const { amount, tail } = sayAmount(ctx.financial.deadStockCapital);
+        return {
+          observation:
+            amount === null
+              ? `Stock that has not moved in 90 days is holding cash (top: ${top}). The amount is not shown: the house's currency could not be read.`
+              : `${amount} is locked in inventory that has not moved in 90 days (top: ${top}).${tail}`,
+          recommendation:
+            "Build a weekend flight or staff-pick feature from the top three idle wines; if untouched after two weeks, discount to cost and reinvest the cash in A-class movers.",
+          rationale:
+            "Idle bottles pay storage and tie up cash with zero margin velocity — GMROI rises fastest by converting them back to working capital.",
+          category: "inventory",
+          urgency: "this_month",
+          score: 2,
+        };
+      },
     );
 
     // ---- Menu engineering rules ------------------------------------------
@@ -755,16 +810,22 @@ export class RecommendationsService {
       "spend_acceleration",
       (ctx.cashflow?.paceDeltaPct ?? 0) > 0.3 &&
         (ctx.cashflow?.spendLast30d ?? 0) > 0,
-      () => ({
-        observation: `Purchasing spend is up ${pct(ctx.cashflow.paceDeltaPct)} vs the prior 30 days ($${Math.round(ctx.cashflow.spendLast30d).toLocaleString()}).`,
-        recommendation:
-          "Audit open orders against days-of-cover before the next PO run; push slow-mover orders a cycle and consolidate to hit vendor volume breaks.",
-        rationale:
-          "Spend accelerating faster than demand converts cash into shelf risk — days-of-cover is the arbiter of which orders can wait.",
-        category: "purchasing",
-        urgency: "this_week",
-        score: 2,
-      }),
+      () => {
+        const { amount, tail } = sayAmount(ctx.cashflow.spendLast30d);
+        return {
+          observation:
+            amount === null
+              ? `Purchasing spend is up ${pct(ctx.cashflow.paceDeltaPct)} vs the prior 30 days. The amount is not shown: the house's currency could not be read.`
+              : `Purchasing spend is up ${pct(ctx.cashflow.paceDeltaPct)} vs the prior 30 days (${amount}).${tail}`,
+          recommendation:
+            "Audit open orders against days-of-cover before the next PO run; push slow-mover orders a cycle and consolidate to hit vendor volume breaks.",
+          rationale:
+            "Spend accelerating faster than demand converts cash into shelf risk — days-of-cover is the arbiter of which orders can wait.",
+          category: "purchasing",
+          urgency: "this_week",
+          score: 2,
+        };
+      },
     );
 
     // ---- Staff rules (fire only with POS check data) ----------------------
@@ -804,30 +865,47 @@ export class RecommendationsService {
       (g: { metric_key?: unknown }) =>
         opts.withSales === true || !isSalesGatedGoal(g?.metric_key),
     );
+    // A goal with a deadline and a dated reading whose pace could not be
+    // judged because the house's zone read failed: the rule's silence about
+    // it is named in `sourcesUnread`, never left to read as "on pace". Named
+    // only when it held a goal back, so a house without goals hears nothing.
+    let paceWantedZone = false;
     for (const g of goalsForViewer.slice(0, 3)) {
-      const target = Number(g.target_value) || 0;
-      const current = Number(g.current_value) || 0;
-      const behind =
-        g.deadline &&
-        target > 0 &&
-        current / target <
-          Math.max(
-            0,
-            1 -
-              Math.max(
-                0,
-                (new Date(g.deadline).getTime() - Date.now()) / 86400000,
-              ) /
-                Math.max(
-                  1,
-                  (new Date(g.deadline).getTime() -
-                    new Date(g.created_at).getTime()) /
-                    86400000,
-                ),
-          ) *
-            0.9;
-      rule(`goal_behind_${g.id}`, !!behind, () => ({
-        observation: `Goal "${g.name}" is behind its linear pace (${Math.round((current / target) * 100)}% done).`,
+      // A goal whose stored value is withheld from this caller (a
+      // days-of-stock goal without sales, GoalsService.withholdTillGoalValues),
+      // whose latest reading was refused, or which has no dated reading is not
+      // "0% done": it is left out, never called behind. A dated reading is
+      // judged when it was taken, by the scorer the goals desk uses
+      // (goal-score.ts), so a "keep at most" goal under its ceiling is not
+      // behind, and a level is paced from its baseline (reports lane r2). Its
+      // schedule is the desk's too: the house midnights that open the day it
+      // was created and its deadline day, never the raw creation instant or
+      // UTC's midnight. With no zone there is no schedule, as on the desk.
+      const reading = datedReading(g);
+      if (!reading) continue;
+      if (houseZoneRes.status === "rejected" && g.deadline) paceWantedZone = true;
+      const { start, end } = storedGoalSchedule(g, ctx.zone);
+      const score = scoreGoal({
+        direction: g.direction,
+        shape: goalShape(g.metric_key),
+        current: reading.current,
+        target: figureOrNull(g.target_value),
+        baseline: figureOrNull(g.baseline_value),
+        start,
+        end,
+        at: reading.at,
+      });
+      const behind = score.onTrack === false && score.progressPct !== null;
+      const share = Math.round((score.progressPct ?? 0) * 100);
+      const readOn = readOnIfNotToday(reading.at, ctx.zone);
+      const asOf = readOn ? `, read on ${readOn}` : "";
+      rule(`goal_behind_${g.id}`, behind, () => ({
+        observation:
+          score.direction === "at_most"
+            ? score.met === false
+              ? `Goal "${g.name}" is over its ceiling (${share}% of it${asOf}).`
+              : `Goal "${g.name}" is on course to go over its ceiling (${share}% of it used${asOf}).`
+            : `Goal "${g.name}" is behind its pace (${share}% done${asOf}).`,
         recommendation:
           "Pick the single biggest lever from the insight feed for this goal's category and commit to it for 7 days before adding anything else.",
         rationale:
@@ -837,6 +915,11 @@ export class RecommendationsService {
         score: 2.2,
       }));
     }
+
+    if (paceWantedZone && !sourcesUnread.includes("house time zone"))
+      sourcesUnread.push("house time zone");
+    if (amountWantedCurrency && !sourcesUnread.includes(HOUSE_CURRENCY_WORD))
+      sourcesUnread.push(HOUSE_CURRENCY_WORD);
 
     // ---- Merge stored manager disposition (dismiss/snooze/done/pin) --------
     const dispositions = await this.actions.readDispositions(restaurantId);
@@ -855,7 +938,21 @@ export class RecommendationsService {
     // fired in, so a one-card dismiss or done hides this firing and the card
     // returns when the rule fires in its next period. Before, its only key
     // was the bare rule — a whole-rule act staff could not make at all.
+    // The period is read on the HOUSE's clock (QA round 4 H4, 2026-11-07):
+    // in UTC, a US house's "today" rolled at 7-8pm local and a card dismissed
+    // at lunch was back by dinner. A house with no zone keeps UTC. A zone
+    // that cannot be READ also falls back to UTC, and then this list may hold
+    // a card the manager dismissed under the house-day key — so it is said
+    // through `suppressionsReadable: false` below, not presented as clean.
     const firedAt = new Date();
+    let firingZone: string | null = null;
+    let firingZoneRead = true;
+    try {
+      firingZone = (await readHouseZone(this.dbService.supabase, restaurantId)).zone;
+    } catch (err: any) {
+      firingZoneRead = false;
+      this.logger.warn(`FIRING_ZONE_UNREAD restaurant=${restaurantId}: ${err?.message}`);
+    }
     for (const r of recs) {
       const keyed = withFiring(
         {
@@ -865,6 +962,7 @@ export class RecommendationsService {
         },
         firingPeriodOf(r.urgency),
         firedAt,
+        firingZone,
       );
       r.periodKey = keyed.periodKey ?? null;
     }
@@ -995,7 +1093,7 @@ export class RecommendationsService {
       // manager already dismissed — the page has to say so rather than present
       // it as clean (ADR 0020).
       suppressed: suppressedCount,
-      suppressionsReadable: dispositions.readable,
+      suppressionsReadable: dispositions.readable && firingZoneRead,
       // ADR 0193: whether the price advice behind the pricing entries could be
       // computed at all. `false` means those entries are MISSING, not that
       // every price is on target, and the reason says why.

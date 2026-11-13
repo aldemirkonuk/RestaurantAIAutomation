@@ -27,8 +27,10 @@
  * a two-step confirm, no wax (MOTIONS.md, "Deliberate non-motions").
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AlertTriangle, Check, Pencil, Plus, Trash2, X } from 'lucide-react';
+import RecipeNutrition from '../../inventory/next/RecipeNutrition';
 import {
   BOOK_LABEL,
   BOOK_ORDER,
@@ -79,7 +81,7 @@ function Field({
 
 /* ── the recipe: the first writer cocktail_ingredients has ever had ──────── */
 
-function Recipe({ cocktailId }: { cocktailId: string }) {
+export function Recipe({ cocktailId }: { cocktailId: string }) {
   const recipe = useCocktailRecipe(cocktailId);
   const { setRecipe } = useCocktailWrites();
   const [editing, setEditing] = useState(false);
@@ -199,6 +201,17 @@ function Recipe({ cocktailId }: { cocktailId: string }) {
               </li>
             ))}
           </ol>
+          <RecipeNutrition
+            lines={recipe.data!.rows.map((l) => ({
+              name: l.free_text ?? l.freeText ?? 'a line with no name',
+              quantity: l.quantity ?? null,
+              unit: l.unit ?? '',
+              // A recipe line is a sentence, not a link to a stocked good, so there
+              // are no figures to read for it yet: it is unknown, never 0.
+              nutrition: null,
+              allergens: null,
+            }))}
+          />
           <button type="button" className="cl-btn cl-focus" onClick={start} style={{ marginTop: 8 }}>
             <Pencil size={13} aria-hidden />
             Amend the recipe
@@ -224,7 +237,16 @@ export default function CocktailRegister({
   const { create, amend, retire } = useCocktailWrites();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  // /cocktails?open=<id> opens that drink: the inventory drawer's "used in"
+  // lines link here, so a good leads to the drink that uses it.
+  const [params] = useSearchParams();
+  const openParam = params.get('open');
+  const [openId, setOpenId] = useState<string | null>(openParam);
+  // A second link followed while already on /cocktails changes only the search:
+  // the page stays mounted, so the drink it names is opened here, not at mount alone.
+  useEffect(() => {
+    if (openParam) setOpenId(openParam);
+  }, [openParam]);
   const [confirmRetire, setConfirmRetire] = useState<string | null>(null);
   const [said, setSaid] = useState<string | null>(null);
   const [query, setQuery] = useState('');

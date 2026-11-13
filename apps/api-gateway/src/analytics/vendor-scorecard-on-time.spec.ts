@@ -23,6 +23,14 @@ function client(tables: Record<string, Row[]>, failing = new Set<string>()) {
       const filters: ((r: Row) => boolean)[] = [];
       const q: any = {
         select: () => q,
+        // readWholeWindow's keyset steps (reports lane r3). With no count, a
+        // short page is the last one.
+        order: () => q,
+        limit: () => q,
+        gt: (c: string, v: string) => (
+          filters.push((r) => String(r[c]) > v),
+          q
+        ),
         eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
         gte: (c: string, v: string) => (
           filters.push((r) => r[c] != null && r[c] >= v),
@@ -32,6 +40,15 @@ function client(tables: Record<string, Row[]>, failing = new Set<string>()) {
           filters.push((r) => vs.includes(r[c])),
           q
         ),
+        // `loadOrders` reads whole (ADR 0292) and by either date: "a.gte.x,b.gte.y".
+        or: (expr: string) => {
+          const parts = expr.split(",").map((p) => p.split(".gte."));
+          filters.push((r) => parts.some(([c, v]) => r[c] != null && r[c] >= v));
+          return q;
+        },
+        order: () => q,
+        gt: () => q,
+        limit: () => q,
         maybeSingle: () =>
           Promise.resolve({
             data:
@@ -48,6 +65,9 @@ function client(tables: Record<string, Row[]>, failing = new Set<string>()) {
                   data: (tables[table] ?? []).filter((r) =>
                     filters.every((f) => f(r)),
                   ),
+                  count: (tables[table] ?? []).filter((r) =>
+                    filters.every((f) => f(r)),
+                  ).length,
                   error: null,
                 },
           ).then(res, rej),

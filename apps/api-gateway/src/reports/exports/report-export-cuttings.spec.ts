@@ -90,22 +90,51 @@ describe("the exportable cuttings (OD-81)", () => {
 });
 
 describe("a figure the engine did not compute is written as withheld, never as 0 (OD-81)", () => {
-  it("figures of record: no delivered order and an incomplete cost basis withhold COGS and every cost-derived figure", () => {
+  it("figures of record: a cost gap and an incomplete cost basis withhold what it cost and every cost-derived figure", () => {
     const doc = EXPORT_CUTTINGS.ledger.write(PAYLOADS.ledger, { days: null });
     for (const label of [
+      "What it cost (365d)",
+      "Kept",
+      "Kept, of sales",
+      "Cost of sales",
       "Cellar at cost",
-      "Cost of goods (365d)",
-      "Gross margin",
-      "COGS ratio",
       "Inventory turns",
       "Days of inventory",
       "GMROI",
+      "Bought (365d)",
       "Capital sitting still",
     ])
       expect([label, isWithheld(figure(doc, label))]).toEqual([label, true]);
-    expect(figure(doc, "Sell-price valuation")).toBe(5400);
-    expect(doc.notes.join(" ")).toContain("1 of 2 on-hand wines carry a recorded cost");
-    expect(countWithheld(doc)).toBe(8);
+    // Cost-math lane 3.1: sales are the till's, net; the shelf valuation is
+    // no longer printed as if it were sales.
+    expect(figure(doc, "Sold, net (365d)")).toBe(5400);
+    expect(doc.figures.map((x) => x.label)).not.toContain("Sell-price valuation");
+    expect(doc.notes.join(" ")).toContain("Cost known for 2 of 3 items sold; 4 bottles");
+    expect(doc.notes.join(" ")).toContain("1 of 2 on-hand goods carry a recorded cost");
+    expect(countWithheld(doc)).toBe(10);
+    // Batch review 2026-11-11: the cellar note names only the figures that
+    // wait on the cellar; the costed part and the late prices on earlier
+    // sales are said apart and divide into nothing.
+    const notes = doc.notes.join(" ");
+    expect(notes).not.toContain("every cost-derived figure");
+    expect(notes).toContain("so the cellar at cost is withheld rather than");
+    expect(notes).not.toContain("inventory turns, days of inventory and GMROI are withheld");
+    expect(notes).toContain("The 2 of 3 items sold whose every bottle carries its cost came to 310.50 at cost. That is not the cost of everything sold");
+    expect(notes).toContain("7.25 of late prices was settled in this window on bottles sold before it. It is not in what it cost");
+  });
+
+  it("figures of record: mapped goods that sold nothing are named, and counted (fix round 2026-11-12)", () => {
+    const tillStock = { value: 1000, goodsOnHand: 4, goodsOnTill: 3, uncostedOnTill: 0, idleOnTill: 2, idleOnTillValue: 400, goodsOffTill: 1, offTillValue: 50 };
+    const notes = EXPORT_CUTTINGS.ledger.write({ ...(PAYLOADS.ledger as object), tillStock }, { days: null }).notes.join(" ");
+    expect(notes).toContain("2 of the 3 goods on hand the till sells sold nothing in this window (400.00 at cost). They are counted");
+    const none = EXPORT_CUTTINGS.ledger.write({ ...(PAYLOADS.ledger as object), tillStock: { ...tillStock, idleOnTill: 0, idleOnTillValue: 0 } }, { days: null });
+    expect(none.notes.join(" ")).not.toContain("sold nothing in this window");
+  });
+
+  it("figures of record: a caller without sales sees the till's figures withheld by name", () => {
+    const doc = EXPORT_CUTTINGS.ledger.write({ ...(PAYLOADS.ledger as object), salesWithheld: true, revenue: null }, { days: null });
+    expect(isWithheld(figure(doc, "Sold, net (365d)"))).toBe(true);
+    expect(JSON.stringify(figure(doc, "What it cost (365d)"))).toContain("Owners and managers");
   });
 
   it("what's coming: an unfitted model projects nothing and claims no total", () => {
@@ -168,12 +197,35 @@ describe("a figure the engine did not compute is written as withheld, never as 0
     expect(figure(doc, "Could not be scored")).toBe(1);
   });
 
-  it("against ourselves: a lens that did not answer inside the overview is withheld by name", () => {
+  it("against ourselves: a register that could not be read is withheld by name", () => {
     const doc = EXPORT_CUTTINGS.bench.write(PAYLOADS.bench, { days: null });
     const week = figure(doc, "Trend per day, last 28 days");
     expect(isWithheld(week)).toBe(true);
-    expect((week as { why: string }).why).toBe("the weekday lens did not answer inside the overview call");
+    expect((week as { why: string }).why).toBe("the seasonality register could not be read");
     expect(figure(doc, "Bought, the last 30 days")).toBe(1200);
+    expect(figure(doc, "Goals running")).toBe(1);
+  });
+
+  it("against ourselves: a goals list that could not be read is not \"no goal is running\"", () => {
+    const doc = EXPORT_CUTTINGS.bench.write({ ...(PAYLOADS.bench as object), goals: null }, { days: null });
+    const running = figure(doc, "Goals running");
+    expect(isWithheld(running)).toBe(true);
+    expect((running as { why: string }).why).toBe("the goals list could not be read");
+    expect(doc.notes.join(" ")).toMatch(/goals list could not be read/);
+    expect(doc.notes.join(" ")).not.toMatch(/No goal is running/);
+    // An empty list that WAS read is still "no goal is running".
+    const none = EXPORT_CUTTINGS.bench.write({ ...(PAYLOADS.bench as object), goals: [] }, { days: null });
+    expect(figure(none, "Goals running")).toBe(0);
+    expect(none.notes.join(" ")).toMatch(/No goal is running/);
+  });
+
+  it("against ourselves: two zero windows are a quiet stretch, not an ambiguous zero (ADR 0292)", () => {
+    const doc = EXPORT_CUTTINGS.bench.write(
+      { ...(PAYLOADS.bench as object), cashflow: { spendLast30d: 0, spendPrev30d: 0, paceDeltaPct: null } },
+      { days: null },
+    );
+    expect(doc.notes).toContain("No delivered purchase order falls in either 30-day window.");
+    expect(JSON.stringify(doc)).not.toMatch(/ambiguous/);
   });
 
   it("the room and who served it: a table with no attributed check has no average, and a missing tip is not 0%", () => {
@@ -244,6 +296,25 @@ describe("a signed change is written in percent, from the engine's 0–1 fractio
     const doc = EXPORT_CUTTINGS.pacing.write({ ...(PAYLOADS.pacing as object), paceDeltaPct: null }, { days: null });
     expect(isWithheld(figure(doc, "Pace"))).toBe(true);
   });
+
+  it("a window withheld over an uncosted order says why, and is not 'nothing bought'", () => {
+    const why =
+      "Purchasing spend could not be summed: 1 of the 2 delivered orders in this window carries no recorded cost, so a total would be short rather than true. Record what that order cost to read it.";
+    const doc = EXPORT_CUTTINGS.pacing.write(
+      {
+        ...(PAYLOADS.pacing as object),
+        spendLast30d: null,
+        spendPrev30d: 0,
+        paceDeltaPct: null,
+        projectedNext4Weeks: null,
+        unread: { spendLast30d: why, spendPrev30d: null, projectedNext4Weeks: why, committedOpenOrders: null },
+      },
+      { days: null },
+    );
+    expect(isWithheld(figure(doc, "Paid out, the last 30 days"))).toBe(true);
+    expect(JSON.stringify(doc)).toContain("no recorded cost");
+    expect(JSON.stringify(doc)).not.toContain("No delivered purchase order falls in either 30-day window");
+  });
 });
 
 /**
@@ -312,5 +383,56 @@ describe("an empty POS window is not an absent field (A-040)", () => {
   it("a live window with attributed checks says nothing instead of drawing", () => {
     expect(EXPORT_CUTTINGS.seats.write(PAYLOADS.seats, { days: null }).say).toBeNull();
     expect(EXPORT_CUTTINGS.service.write(PAYLOADS.service, { days: null }).say).toBeNull();
+  });
+});
+
+/**
+ * Audit G7/G8 (2026-11-11). Spend and weekdays are filed on the house's day
+ * (ADR 0296): a house with no time zone gets no spend and no weekday shape,
+ * and the sheet says why, not "no delivered order" or "no consumption".
+ */
+describe("a house with no time zone is said so on spend and the week (ADR 0296)", () => {
+  const ZONE = /time zone/i;
+
+  it("pacing withholds spend, keeps what is committed, and never says no order was delivered", () => {
+    const doc = EXPORT_CUTTINGS.pacing.write(
+      { zoneUnset: true, spendLast30d: null, spendPrev30d: null, paceDeltaPct: null, projectedNext4Weeks: null, committedOpenOrders: 300, openOrderCount: 1 },
+      { days: null },
+    );
+    expect(doc.say).toMatch(ZONE);
+    expect(isWithheld(figure(doc, "Paid out, the last 30 days"))).toBe(true);
+    expect(figure(doc, "Committed, not yet delivered")).toBe(300);
+    expect(JSON.stringify(doc)).not.toMatch(/No delivered purchase order|ambiguous/);
+  });
+
+  it("a real quiet month still says no order was delivered, without calling the zero ambiguous", () => {
+    const doc = EXPORT_CUTTINGS.pacing.write(
+      { spendLast30d: 0, spendPrev30d: 0, paceDeltaPct: null, projectedNext4Weeks: null, committedOpenOrders: 0, openOrderCount: 0, basis: { uncosted: "1 delivered order carries no cost and adds nothing to spend." } },
+      { days: null },
+    );
+    expect(doc.say).toMatch(/No delivered purchase order/);
+    expect(JSON.stringify(doc)).not.toMatch(/ambiguous/);
+    expect(doc.basis).toContain("1 delivered order carries no cost and adds nothing to spend.");
+  });
+
+  it("the week says the zone is missing, not that nothing was poured", () => {
+    const doc = EXPORT_CUTTINGS.week.write({ zoneUnset: true, weekdayProfile: [], bestDay: null }, { days: null });
+    expect(doc.say).toMatch(ZONE);
+  });
+});
+
+describe("against ourselves, for a house with no time zone (ADR 0296)", () => {
+  it("withholds buying and the week's extremes with the zone as the reason", () => {
+    const doc = EXPORT_CUTTINGS.bench.write(
+      {
+        ...(PAYLOADS.bench as object),
+        cashflow: { zoneUnset: true, spendLast30d: null, spendPrev30d: null, paceDeltaPct: null },
+        seasonality: { zoneUnset: true, weekdayProfile: [], bestDay: null, worstDay: null, tie: false, trendPerDayPct: null },
+      },
+      { days: null },
+    );
+    const [buying, week] = doc.tables[0].rows;
+    expect(JSON.stringify(buying[1])).toMatch(/time zone/);
+    expect(JSON.stringify(week[1])).toMatch(/time zone/);
   });
 });

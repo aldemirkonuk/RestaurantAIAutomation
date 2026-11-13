@@ -1,10 +1,23 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
+import { readByIds } from "../common/read-by-ids";
+import {
+  HOUSE_ZONE_UNSET,
+  houseDayOf,
+  houseToday,
+  readHouseZone,
+  shiftHouseDay,
+} from "../common/house-day";
 import * as E from "./engine";
 import { AnalyticsService, SalesGate } from "./analytics.service";
 import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
+import { UncostedOrdersError, orderCostOrNull } from "./order-cost";
 import {
   COST_BASIS_LABEL,
   costBasisSentence,
@@ -60,38 +73,43 @@ export class AdvancedAnalyticsService {
   // Shared lean loaders
   // =========================================================================
 
+  /**
+   * Read whole or refused, as `AnalyticsService.loadInventory` is (ADR 0292,
+   * reports lane r3): unranged, both reads stopped at 1,000 rows. A refusal
+   * propagates; both callers read consumption beside it, which already
+   * refuses, and the overview turns a throwing lens into a null one.
+   */
   private async loadInventoryWithCost(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes] = await Promise.allSettled([
+    const inventory = await readWholeWindow<any>("The house's inventory", () =>
       client
         .from("restaurant_inventory")
         // Same schema-drift fix as AnalyticsService.loadInventory: a single
-        // unknown column 42703s the whole PostgREST query, and allSettled
-        // swallows it into an empty inventory.
+        // unknown column 42703s the whole PostgREST query.
         .select(
           "id, wine_name, stock_live, menu_price_current, last_purchase_price, master_wine_id, master_wine_library(primary_type)",
+          { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
-        )
-        .eq("restaurant_id", restaurantId),
-    ]);
-    if (invRes.status === "fulfilled" && invRes.value.error)
-      this.logQueryFailure("restaurant_inventory", invRes.value.error);
-    if (rollupRes.status === "fulfilled" && rollupRes.value.error)
-      this.logQueryFailure("inventory_lot_rollup", rollupRes.value.error);
-    const inventory =
-      invRes.status === "fulfilled" ? invRes.value.data || [] : [];
+    );
+    const lots = await readByIds<any>(
+      "The house's lot totals",
+      inventory.map((i: any) => i.id),
+      (batch) =>
+        client
+          .from("inventory_lot_rollup")
+          .select(
+            // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
+            // can tell a WAC that covers every on-hand bottle from one that
+            // covers a single invoiced bottle in twenty-one.
+            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
+          )
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", batch),
+    );
     const rollup = new Map<string, any>();
-    if (rollupRes.status === "fulfilled")
-      for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
+    for (const r of lots) rollup.set(r.inventory_id, r);
     // Same fix as AnalyticsService.loadInventory: the third branch here was
     // `unitPrice * 0.6`, an undocumented magic number that was the live path
     // for ~70 of 72 production rows while `basis.margin` below called the
@@ -163,6 +181,8 @@ export class AdvancedAnalyticsService {
         qty: bottles,
         how,
         date: (c.created_at || "").substring(0, 10),
+        /** The instant, so a lens can file the line on the house's day (ADR 0296). */
+        at: (c.created_at as string | null) ?? null,
       };
     });
   }
@@ -199,6 +219,23 @@ export class AdvancedAnalyticsService {
     return { ...houseFrame(data), read: data ? "read" : "no_record" };
   }
 
+  /**
+   * Purchase orders created OR delivered in the last `sinceDays` days, read
+   * WHOLE or refused (ADR 0292, audit G6).
+   *
+   * The unranged select this replaces stopped at PostgREST's 1,000 rows, and
+   * its error was logged and turned into `[]`, so a failed read printed as "no
+   * delivered purchase order" on /reports: absence reported as health. A
+   * refusal (`WholeReadError`, a 503) now PROPAGATES; the overview's
+   * `allSettled` turns it into a null lens, as for consumption.
+   *
+   * Selected by either date: spend is filed by `delivered_at`, and an order
+   * placed before the window and delivered inside it is spend inside it.
+   *
+   * Schema drift note kept from the old reader: `procurement_orders` has NO
+   * provider_name and NO wine_name column; the vendor label comes from the FK
+   * embed (supabase/migrations/20260805000000_baseline_from_production.sql).
+   */
   private async loadOrders(restaurantId: string, sinceDays = 365) {
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
     // Same schema-drift class as loadInventory above. `procurement_orders` has
@@ -210,22 +247,64 @@ export class AdvancedAnalyticsService {
     // list, so getVendorScorecard and getCashflow returned zeroes for every
     // restaurant, forever. The vendor label comes from the FK embed instead;
     // wine_name was selected but never read, so it is simply gone.
-    const { data, error } = await this.dbService
-      .getClient()
-      .from("procurement_orders")
-      .select(
-        "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
-      )
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", since);
-    if (error) this.logQueryFailure("procurement_orders", error);
-    return data || [];
+    //
+    // Read whole or refused (ADR 0292, reports lane r3): unranged, a window
+    // past 1,000 orders scored vendors and drew cash flow on its first
+    // thousand. A refusal propagates: the vendor scorecard and cash flow say
+    // they could not be read, and the overview's allSettled draws a null lens.
+    const client = this.dbService.getClient();
+    return readWholeWindow<any>("The orders in this window", () =>
+      client
+        .from("procurement_orders")
+        .select(
+          "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, created_at, delivered_at, expected_delivery_date, status, cancel_reason_code, cancelled_from_status",
+          { count: "exact" },
+        )
+        .eq("restaurant_id", restaurantId)
+        .or(`created_at.gte.${since},delivered_at.gte.${since}`),
+    );
   }
 
   /**
-   * A failed loader still degrades to `[]` — an analytics page that 500s
-   * because one lens is unavailable is worse than one that renders the rest.
-   * But it must never do so SILENTLY: a query that fails and returns no rows
+   * The house's zone for a lens that files rows on house days (ADR 0296). A
+   * read that fails refuses the lens (503) rather than guessing UTC days.
+   */
+  private async houseZoneFor(restaurantId: string): Promise<string | null> {
+    try {
+      return (await readHouseZone(this.dbService.getClient(), restaurantId))
+        .zone;
+    } catch (err: any) {
+      throw new ServiceUnavailableException(
+        `${err?.message ?? err}. Nothing is filed on a guessed day.`,
+      );
+    }
+  }
+
+  /**
+   * Daily totals over the `days` COMPLETE house days that end yesterday,
+   * oldest first. Today is partial, so it is left out, as before.
+   */
+  private houseDaily(
+    rows: Array<{ at: string | null; value: number }>,
+    days: number,
+    zone: string,
+  ): { dates: string[]; values: number[] } {
+    const today = houseToday(zone);
+    const dates: string[] = [];
+    for (let d = days; d >= 1; d--) dates.push(shiftHouseDay(today, -d));
+    const byDay = new Map<string, number>();
+    for (const r of rows) {
+      const day = houseDayOf(r.at, zone);
+      if (day) byDay.set(day, (byDay.get(day) || 0) + r.value);
+    }
+    return { dates, values: dates.map((d) => byDay.get(d) || 0) };
+  }
+
+  /**
+   * A loader whose rows only label something (the wine types) still degrades
+   * to none; the inventory, order and consumption loaders refuse instead, and
+   * the overview renders the other lenses around the one that refused. A
+   * degraded read must never be SILENT: a query that fails and returns no rows
    * is indistinguishable from one that succeeds with no rows, which is exactly
    * how the provider_name drift above survived unnoticed in production.
    */
@@ -343,15 +422,15 @@ export class AdvancedAnalyticsService {
 
     return {
       basis: {
-        velocity: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}`,
+        velocity: `Bottles a day over the last ${sinceDays} days — ${unitsBasisSentence(unitsCoverage)}`,
         // Was "unit_price − WAC (lot rollup)" unconditionally, for a margin
         // that came from WAC on ~2 rows in 72 and from a fabricated
         // 0.6 × menu price on the rest.
-        margin: `menu_price_current − unit cost — ${costBasisSentence(costCoverage)}`,
+        margin: `Menu price less what the bottle cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
-          "items[].marginPerBottle, items[].marginPct, items[].quadrant, items[].action and medians.marginPerBottle are null for rows with no recorded cost; those rows are counted under counts.unclassified (ADR 0051)",
+          "A wine with no recorded cost shows no margin, no square on the chart and no suggestion, and is counted as not yet placed; the middle margin is taken over priced wines only",
         unitsDerived:
-          "items[].velocityPerDay, items[].quadrant and items[].action are null for a costed wine with any line that carries no bottle figure; those rows are counted under counts.unmeasured, and medians.velocityPerDay is over the known velocities only (ADR 0297)",
+          "A priced wine with any line that carries no bottle figure shows no pace, no square and no suggestion, and is counted as not measured; the middle pace is taken over the wines whose pace is known",
       },
       costCoverage,
       unitsCoverage,
@@ -512,23 +591,35 @@ export class AdvancedAnalyticsService {
         }
       }
       const scored = counts.onTime + counts.late;
+      // An order with no recorded cost is unknown, never $0 (order-cost.ts).
+      // It gives no unit price (a $0 price dragged the mean and the trend
+      // down), and the vendor's spend is not summed short over it.
       const unitPrices = delivered
         .map((o) => {
           const bottles = o.bottles_total || o.quantity || 0;
-          const cost = o.total_cost || o.final_price || 0;
-          return bottles > 0 ? cost / bottles : null;
+          const cost = orderCostOrNull(o);
+          return bottles > 0 && cost != null ? cost / bottles : null;
         })
         .filter((p): p is number => p !== null && Number.isFinite(p));
-      const spend = delivered.reduce(
-        (s, o) => s + (o.total_cost || o.final_price || 0),
-        0,
-      );
+      const uncostedDelivered = delivered.filter(
+        (o) => orderCostOrNull(o) == null,
+      ).length;
+      const spend =
+        uncostedDelivered > 0
+          ? null
+          : delivered.reduce((s, o) => s + (orderCostOrNull(o) as number), 0);
       return {
         vendorId,
         vendorName: os[0]?.providers?.name || vendorId,
         orders: os.length,
         delivered: delivered.length,
         spend,
+        /** Delivered orders with no recorded cost; `spend` is null while any. */
+        uncostedDelivered,
+        spendUnread:
+          uncostedDelivered > 0
+            ? new UncostedOrdersError(uncostedDelivered, delivered.length).message
+            : null,
         leadTimeDays: {
           mean: E.mean(leadTimes),
           median: E.median(leadTimes),
@@ -546,8 +637,11 @@ export class AdvancedAnalyticsService {
       };
     });
 
-    vendors.sort((a, b) => b.spend - a.spend);
-    const spendShare = vendors.map((v) => v.spend);
+    // A vendor whose spend is unknown sorts last, and no share is drawn from
+    // a set that holds one: its share would be read as 0.
+    vendors.sort((a, b) => (b.spend ?? -1) - (a.spend ?? -1));
+    const spendKnown = vendors.every((v) => v.spend != null);
+    const spendShare = vendors.map((v) => v.spend as number);
     return {
       vendors,
       onTimeDeadline: {
@@ -556,11 +650,18 @@ export class AdvancedAnalyticsService {
         houseRecord: house.read,
         arrivalAnswers: overdue.ok ? "read" : "could_not_read",
       },
-      concentration: {
-        hhi: E.herfindahlIndex(spendShare),
-        effectiveVendors: E.effectiveCount(spendShare),
-      },
-      note: "Lead-time stdev feeds the King safety-stock formula (leadTimeStdev param on /inventory-science).",
+      concentration: spendKnown
+        ? {
+            hhi: E.herfindahlIndex(spendShare),
+            effectiveVendors: E.effectiveCount(spendShare),
+          }
+        : {
+            hhi: null,
+            effectiveVendors: null,
+            unread:
+              "How concentrated buying is cannot be read while a vendor's spend rests on an order with no recorded cost.",
+          },
+      note: "How much a vendor's delivery time varies widens the safety stock on the restock list.",
       generatedAt: new Date().toISOString(),
     };
   }
@@ -570,28 +671,45 @@ export class AdvancedAnalyticsService {
   // =========================================================================
 
   async getSeasonality(restaurantId: string, sinceDays = 90) {
-    const consumption = await this.loadConsumption(restaurantId, sinceDays);
+    // Two extra days are read so the oldest house day is whole in any zone.
+    const [all, zone] = await Promise.all([
+      this.loadConsumption(restaurantId, sinceDays + 2),
+      this.houseZoneFor(restaurantId),
+    ]);
+    // Weekdays are the HOUSE's weekdays (ADR 0296, audit G7): on UTC days a
+    // US house's evening sales landed on the next weekday. With no zone there
+    // is no weekday to file a line on, so nothing is stated, as the till does.
+    if (!zone)
+      return {
+        zoneUnset: true,
+        timezone: null,
+        weekdayProfile: [],
+        bestDay: null,
+        worstDay: null,
+        tie: false,
+        basis: { weekday: HOUSE_ZONE_UNSET, units: null, extremes: null },
+        weeklySeasonalFactors: null,
+        trendPerDayPct: null,
+        generatedAt: new Date().toISOString(),
+      };
+    const today = houseToday(zone);
+    const first = shiftHouseDay(today, -sinceDays);
+    const consumption = all.filter((c) => {
+      const day = houseDayOf(c.at, zone);
+      return day !== null && day >= first && day < today;
+    });
     // Counted lines only, zero-filled: a line with no bottle figure is left
     // out, so a day holding one counts only its other lines and reads 0 if
     // it has none. `basis.units` says so in those words (ADR 0297); the day
     // is short, and the basis is what keeps it from passing as a quiet one.
     const unitsCoverage = summarizeUnits(consumption);
-    const rows = consumption
-      .filter((c) => c.qty != null)
-      .map((c) => ({ date: c.date, value: c.qty as number }));
-    const byDay = new Map<string, number>();
-    for (const r of rows)
-      if (r.date) byDay.set(r.date, (byDay.get(r.date) || 0) + r.value);
-    const dates: string[] = [];
-    const values: number[] = [];
-    const today = new Date();
-    for (let d = sinceDays; d >= 1; d--) {
-      const day = new Date(today.getTime() - d * 86400000)
-        .toISOString()
-        .substring(0, 10);
-      dates.push(day);
-      values.push(byDay.get(day) || 0);
-    }
+    const { dates, values } = this.houseDaily(
+      consumption
+        .filter((c) => c.qty != null)
+        .map((c) => ({ at: c.at, value: c.qty as number })),
+      sinceDays,
+      zone,
+    );
 
     const weekday = E.dayOfWeekProfile(dates, values);
     // `weekday.best`/`.worst` break an exact tie by weekday order, so a week
@@ -601,44 +719,12 @@ export class AdvancedAnalyticsService {
     const decomposition = E.seasonalDecompose(values, 7);
     const trend28 = E.trendPerPeriodPct(values.slice(-28));
 
-    // Per-category weekday winners (which type sells on which day).
-    const byType = new Map<string, Array<{ date: string; value: number }>>();
-    const client = this.dbService.getClient();
-    const { data: inv, error: invError } = await client
-      .from("restaurant_inventory")
-      // Varietal/type lives on master_wine_library, not restaurant_inventory.
-      .select("master_wine_id, master_wine_library(primary_type)")
-      .eq("restaurant_id", restaurantId);
-    if (invError) this.logQueryFailure("restaurant_inventory", invError);
-    const typeByWine = new Map(
-      (inv || []).map((i: any) => [
-        i.master_wine_id,
-        i.master_wine_library?.primary_type || "unknown",
-      ]),
-    );
-    for (const c of consumption) {
-      if (c.qty == null) continue;
-      const t = typeByWine.get(c.wineId) || "unknown";
-      const arr = byType.get(t) || [];
-      arr.push({ date: c.date, value: c.qty });
-      byType.set(t, arr);
-    }
-    const categoryProfiles = Array.from(byType.entries())
-      .filter(([, r]) => r.length >= 10)
-      .map(([type, r]) => {
-        const dts = r.map((x) => x.date);
-        const vls = r.map((x) => x.value);
-        const p = E.dayOfWeekProfile(dts, vls);
-        const ex = E.separableExtremes(p.profiles);
-        return {
-          type,
-          bestDay: ex.best ? E.WEEKDAY_NAMES[ex.best.weekday] : null,
-          worstDay: ex.worst ? E.WEEKDAY_NAMES[ex.worst.weekday] : null,
-          tie: ex.tie,
-        };
-      });
-
+    // The per-category weekday winners (`categoryProfiles`) are gone: no page,
+    // agent or tool read them, and they cost an unbounded inventory read whose
+    // failure printed as "unknown" (audit G20).
     return {
+      zoneUnset: false,
+      timezone: zone,
       weekdayProfile: weekday.profiles.map((p) => ({
         day: E.WEEKDAY_NAMES[p.weekday],
         mean: p.mean,
@@ -650,17 +736,16 @@ export class AdvancedAnalyticsService {
       /** True when an extreme is shared, so `bestDay`/`worstDay` are withheld. */
       tie: extremes.tie,
       basis: {
-        weekday: `mean bottles per weekday over the last ${sinceDays} days of wine_consumption_log; a weekday with no observation is absent from weekdayProfile rather than reported as 0`,
+        weekday: `The average bottles poured or sold on each weekday over the last ${sinceDays} complete house days in ${zone}; a weekday with nothing recorded is left out rather than shown as 0`,
         units: unitsBasisSentence(unitsCoverage, "series"),
         extremes: extremes.tie
-          ? "bestDay/worstDay are null: more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break, not a finding"
-          : "bestDay/worstDay are the single weekdays holding the highest and lowest mean",
+          ? "No best or worst day: more than one weekday shares the top or the bottom, and naming one would be a coin toss, not a finding"
+          : "The best and worst days are the single weekdays with the highest and lowest average",
       },
       weeklySeasonalFactors: decomposition
         ? decomposition.seasonal.slice(0, 7)
         : null,
       trendPerDayPct: trend28,
-      categoryProfiles,
       generatedAt: new Date().toISOString(),
     };
   }
@@ -670,28 +755,15 @@ export class AdvancedAnalyticsService {
   // =========================================================================
 
   async getCashflow(restaurantId: string) {
-    const orders = await this.loadOrders(restaurantId, 180);
-    // Money question: PARTIALLY_RECEIVED carries PO-value columns, not
-    // received-value ones, so it is excluded here. See order-status.ts.
-    const delivered = orders.filter((o: any) =>
-      hasStatus(o.status, ORDER_SPEND_STATUSES),
-    );
-    const spendRows = delivered.map((o: any) => ({
-      date: (o.delivered_at || o.created_at || "").substring(0, 10),
-      value: o.total_cost || o.final_price || 0,
-    }));
-    const daily = this.toDaily(spendRows, 180);
-
-    const last30 = daily.slice(-30).reduce((a, b) => a + b, 0);
-    const prev30 = daily.slice(-60, -30).reduce((a, b) => a + b, 0);
-    const pace = E.periodOverPeriod(daily, 30);
-
-    // Weekly series → Holt projection 4 weeks out.
-    const weekly: number[] = [];
-    for (let i = 0; i < daily.length; i += 7)
-      weekly.push(daily.slice(i, i + 7).reduce((a, b) => a + b, 0));
-    const holt = weekly.length >= 4 ? E.holtLinear(weekly, 0.4, 0.2, 4) : null;
-
+    // Two trains met here (r21 merge-readiness): the cost train withholds a
+    // figure whose window holds an order with no recorded cost (never $0,
+    // order-cost.ts); the reports train files spend on the HOUSE's day
+    // (ADR 0296, audit G7) and projects on complete weeks only (audit G8).
+    // Both rules hold below.
+    const [orders, zone] = await Promise.all([
+      this.loadOrders(restaurantId, 182),
+      this.houseZoneFor(restaurantId),
+    ]);
     // Committed outflow: orders placed but not delivered.
     //
     // This was `["pending", "awaiting_approval", "ordered", "in_transit"]`.
@@ -708,14 +780,106 @@ export class AdvancedAnalyticsService {
     const open = orders.filter((o: any) =>
       hasStatus(o.status, ORDER_OUTSTANDING_STATUSES),
     );
-    const committed = open.reduce(
-      (s: number, o: any) => s + (o.total_cost || o.final_price || 0),
-      0,
+    // An open order with no price yet is not a $0 commitment either.
+    const uncostedOpen = open.filter((o: any) => orderCostOrNull(o) == null).length;
+    const committed =
+      uncostedOpen > 0
+        ? null
+        : open.reduce((s: number, o: any) => s + (orderCostOrNull(o) as number), 0);
+    const committedUnread =
+      uncostedOpen > 0
+        ? `${uncostedOpen} of the ${open.length} open order${open.length === 1 ? "" : "s"} ${uncostedOpen === 1 ? "carries" : "carry"} no price yet, so what is committed is not summed short. Record the price to read it.`
+        : null;
+
+    // The sentence the house reads for each withheld figure: the purchases
+    // goal's own (UncostedOrdersError), so the card and the goal agree.
+    const unread = (n: number, of: number) =>
+      n > 0 ? new UncostedOrdersError(n, of).message : null;
+
+    // Money question: PARTIALLY_RECEIVED carries PO-value columns, not
+    // received-value ones, so it is excluded here. See order-status.ts.
+    const delivered = orders.filter((o: any) =>
+      hasStatus(o.status, ORDER_SPEND_STATUSES),
     );
 
+    // Spend is filed on the HOUSE's day it was delivered (ADR 0296, audit G7).
+    // With no zone no day can be filed, so no spend figure is stated; what is
+    // committed is not a day figure and still is.
+    if (!zone)
+      return {
+        zoneUnset: true,
+        timezone: null,
+        basis: { outflow: HOUSE_ZONE_UNSET },
+        spendLast30d: null,
+        spendPrev30d: null,
+        paceDeltaPct: null,
+        projectedNext4Weeks: null,
+        committedOpenOrders: committed,
+        openOrderCount: open.length,
+        uncostedOrders: null,
+        unread: {
+          spendLast30d: null,
+          spendPrev30d: null,
+          projectedNext4Weeks: null,
+          committedOpenOrders: committedUnread,
+        },
+        generatedAt: new Date().toISOString(),
+      };
+
+    // An order with no recorded cost is unknown, never $0 (order-cost.ts,
+    // the rule the purchases goal scores by). Summed as 0 it drew a pace and
+    // a projection beside a goal that refused the same window. Each figure
+    // whose window holds an uncosted order is withheld, with the count; a
+    // window with none is still summed.
+    const dated = delivered.map((o: any) => ({
+      at: (o.delivered_at || o.created_at || null) as string | null,
+      cost: orderCostOrNull(o),
+    }));
+    const onHouseDays = (rows: Array<{ at: string | null; value: number }>) =>
+      this.houseDaily(rows, 180, zone).values;
+    const daily = onHouseDays(
+      dated
+        .filter((r) => r.cost != null)
+        .map((r) => ({ at: r.at, value: r.cost as number })),
+    );
+    const countIn = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+    const uncostedDaily = onHouseDays(
+      dated.filter((r) => r.cost == null).map((r) => ({ at: r.at, value: 1 })),
+    );
+    const deliveredDaily = onHouseDays(dated.map((r) => ({ at: r.at, value: 1 })));
+    const uncosted = {
+      last30d: countIn(uncostedDaily.slice(-30)),
+      prev30d: countIn(uncostedDaily.slice(-60, -30)),
+      window180d: countIn(uncostedDaily),
+    };
+
+    const last30 = uncosted.last30d > 0 ? null : countIn(daily.slice(-30));
+    const prev30 = uncosted.prev30d > 0 ? null : countIn(daily.slice(-60, -30));
+    const pace =
+      last30 == null || prev30 == null ? null : E.periodOverPeriod(daily, 30);
+
+    // Weekly series → Holt projection 4 weeks out, on COMPLETE weeks only,
+    // newest-aligned to yesterday (audit G8). 180 days split from the oldest
+    // end left a 5-day newest week, the very point the projection leans on
+    // most, so it ran low. The oldest remainder (180 mod 7 days) is dropped.
+    // It reads every week of the 180 days, so one uncosted order anywhere in
+    // them withholds it.
+    const whole = daily.slice(daily.length % 7);
+    const weekly: number[] = [];
+    for (let i = 0; i < whole.length; i += 7)
+      weekly.push(whole.slice(i, i + 7).reduce((a, b) => a + b, 0));
+    const holt =
+      uncosted.window180d === 0 && weekly.length >= 4
+        ? E.holtLinear(weekly, 0.4, 0.2, 4)
+        : null;
+
     return {
+      zoneUnset: false,
+      timezone: zone,
       basis: {
-        outflow: "delivered procurement_orders (revenue inflow needs POS feed)",
+        // Printed as "Outflow: …" on /reports and in the export: no table
+        // name (r11, 2026-11-12).
+        outflow: `delivered orders, filed on the house's day in ${zone} each was delivered (money coming in needs the till connected); the projection runs on ${weekly.length} complete weeks ending yesterday`,
       },
       spendLast30d: last30,
       spendPrev30d: prev30,
@@ -723,6 +887,18 @@ export class AdvancedAnalyticsService {
       projectedNext4Weeks: holt?.forecast.map((v) => Math.max(0, v)) ?? null,
       committedOpenOrders: committed,
       openOrderCount: open.length,
+      /**
+       * Orders with no recorded cost, by the window they fall in. A figure
+       * whose window holds one is null, and `unread` says why in the house's
+       * words (null where the figure was summed whole).
+       */
+      uncostedOrders: { ...uncosted, open: uncostedOpen },
+      unread: {
+        spendLast30d: unread(uncosted.last30d, countIn(deliveredDaily.slice(-30))),
+        spendPrev30d: unread(uncosted.prev30d, countIn(deliveredDaily.slice(-60, -30))),
+        projectedNext4Weeks: unread(uncosted.window180d, countIn(deliveredDaily)),
+        committedOpenOrders: committedUnread,
+      },
       generatedAt: new Date().toISOString(),
     };
   }
@@ -779,11 +955,11 @@ export class AdvancedAnalyticsService {
       // This endpoint carried no `basis` at all, so `unitCost` arrived with no
       // way to tell an invoiced number from the 0.6 × menu price fabrication.
       basis: {
-        demand: `bottles/day over 90d — ${unitsBasisSentence(myUnits)}`,
+        demand: `Bottles a day over the last 90 days — ${unitsBasisSentence(myUnits)}`,
         unitCost: item
-          ? `${COST_BASIS_LABEL[item.costBasis]}${item.unitCost == null ? " — unitCost and marginPerBottle are null (ADR 0051)" : ""}`
-          : "wine not found in active inventory",
-        unitPrice: "restaurant_inventory.menu_price_current",
+          ? `${COST_BASIS_LABEL[item.costBasis]}${item.unitCost == null ? " — so the cost and the margin are left blank" : ""}`
+          : "This wine is not in the cellar's active stock",
+        unitPrice: "The wine's menu price",
       },
       onHand: item?.qty ?? null,
       unitPrice: item?.unitPrice ?? null,

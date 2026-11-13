@@ -697,6 +697,8 @@ describe("GoalsService goal progress on the house's days (j)", () => {
     id: "g-stock",
     metric_key: "days_of_inventory",
     target_value: 30,
+    // A level is paced from where it stood when the goal was set (goal-score.ts).
+    baseline_value: 45,
     direction: "at_most",
   };
   const shelf = {
@@ -734,7 +736,8 @@ describe("GoalsService goal progress on the house's days (j)", () => {
     const progress: any = await service.getGoalProgress("r1", "g-stock", undefined, HOLDER);
 
     expect(progress.paceUnread).toBeNull();
-    // 42 days of stock against "at most 30", 31 d 20 h into a 60-day schedule.
+    // 42 days of stock against "at most 30" from 45, 31 d 20 h into a 60-day
+    // schedule: about 37 expected by now.
     expect(progress.onTrack).toBe(false);
     expect(progress.daysLeft).toBe(29);
   });
@@ -754,16 +757,9 @@ describe("GoalsService goal progress on the house's days (j)", () => {
     expect([progress.onTrack, progress.paceUnread]).toEqual([null, null]);
   });
 
-  it("(k4) does not score days of stock for a caller who does not see sales: the goal says why", async () => {
-    const { service } = makeGoals({ analytics_goals: [stock] }, {}, shelf);
-
-    const list: any = await service.listGoalsWithProgress("r1");
-
-    expect(list.goals[0]).toMatchObject({
-      unreadable: true,
-      reason: DAYS_OF_STOCK_WITHHELD,
-    });
-  });
+  // (k4) dropped in r22: a caller without sales is refused by the register
+  // read itself (cost-math 3.1, the reports goal train), pinned in
+  // days-of-inventory-goal.spec.ts "refuses, naming the gate".
 });
 
 /**

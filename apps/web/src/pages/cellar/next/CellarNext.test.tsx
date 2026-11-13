@@ -23,7 +23,7 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, render, screen, fireEvent, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { Link, MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
   BottleVM,
@@ -535,9 +535,9 @@ describe('CellarNext — "In the building tonight" (ADR 0160 sec110 item 2)', ()
   // lines say "items", not "wine rows"; the par tiles also name the items
   // their figure looks at. Labels and figures are unchanged. One case per line.
   it.each([
-    ['bottles', 'Bottles on hand', 'this house’s items'],
+    ['bottles', 'Bottles on hand', 'this house’s items counted by the bottle'],
     ['titles', 'Titles carried', 'this house’s items'],
-    ['par', 'At or under their own par', 'this house’s items with a par recorded, against each item’s own par'],
+    ['par', 'Below their own par', 'this house’s items with a par recorded, against each item’s own par'],
     ['parUnset', 'No par recorded', 'this house’s items with no par recorded'],
   ])('the %s tile names the items it was counted from, not "wine rows" (ADR 0293 F3)', (id, label, source) => {
     mock.current = {
@@ -1323,6 +1323,69 @@ describe('CellarNext — the registers that are not wines', () => {
       /empty because the extraction pass over the scanned menus never ran/,
     );
     expect(screen.getByRole('button', { name: /Write the recipe/ })).toBeEnabled();
+  });
+
+  it('/cocktails?open=<id> opens that drink, as the inventory drawer links it', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [{
+          id: 'c1', name: 'Negroni', display_name: null, menu_section: 'Aperitivo',
+          method: 'stirred', glass: 'rocks', garnish: null, price: 18, description: null,
+        }],
+        count: 1, truncated: false, referenceRows: 55, recipesAvailable: false,
+        scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    draw({ category: 'cocktails' }, '/cocktails?open=c1');
+    // Opened without a click: the recipe half is already drawn.
+    expect(screen.getByTestId('recipe-empty')).toBeInTheDocument();
+  });
+
+  it('a second ?open= link followed while on /cocktails opens that drink too', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    const drink = (id: string, name: string) => ({
+      id, name, display_name: null, menu_section: 'Aperitivo', method: 'stirred', glass: 'rocks', garnish: null, price: 18, description: null,
+    });
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [drink('c1', 'Negroni'), drink('c2', 'Americano')],
+        count: 2, truncated: false, referenceRows: 55, recipesAvailable: false,
+        scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/cocktails?open=c1']}>
+          <Link to="/cocktails?open=c2">to the Americano</Link>
+          <CellarNext category="cocktails" />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const selected = () => [...document.querySelectorAll('tr[data-selected="true"]')].map((r) => r.textContent ?? '');
+    expect(selected().join()).toContain('Negroni');
+    fireEvent.click(screen.getByRole('link', { name: 'to the Americano' }));
+    expect(selected().join()).toContain('Americano');
+    expect(selected().join()).not.toContain('Negroni');
   });
 
   it('retiring a cocktail takes two presses and never carries the seal', async () => {
