@@ -34,6 +34,7 @@ import {
   describeFees,
   describeStatedPrice,
   uomCountWord,
+  uomMany,
 } from './price-unit';
 import { STAGE_LABEL, type ApprovalGateRow, type OrderRowVM } from './useOrdersNextData';
 
@@ -511,7 +512,7 @@ export function LedgerRow({
                   row.priceUnit.stated.priceUom !== row.unitType &&
                   !(row.agreement && !row.agreement.ok) && (
                     <div data-testid="units-differ" style={{ color: 'var(--ink-4, #665D50)' }}>
-                      counted in {row.unitType}s, priced{' '}
+                      counted in {uomMany(row.unitType)}, priced{' '}
                       {PRICE_UOM_LABEL[row.priceUnit.stated.priceUom]} — that is ordinary
                     </div>
                   )}

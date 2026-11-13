@@ -67,7 +67,7 @@ export const PRICE_UOM_LABEL: Record<PriceUom, string> = {
   keg: 'per keg',
   pack: 'per pack',
   split_case: 'per split case',
-  each: 'per each',
+  each: 'per item',
   liter: 'per litre',
 };
 
@@ -85,6 +85,21 @@ const UOM_COUNT: Record<PriceUom, [string, string]> = {
 export function uomCountWord(quantity: number | null, uom: PriceUom): string {
   const [one, many] = UOM_COUNT[uom];
   return quantity === 1 ? one : many;
+}
+
+/**
+ * One unit in words, for "per …" and "in one …": "split case", "item",
+ * "litre". The stored code is the database's spelling, not the page's —
+ * `split_case`, `each` and `liter` printed as "per split_case", "per each" and
+ * "per liter" beside rows that elsewhere say "litre" (2026-11-13 walk, r21).
+ */
+export function uomOne(uom: PriceUom): string {
+  return UOM_COUNT[uom][0];
+}
+
+/** Several of a unit in words: "split cases", "items", "litres". */
+export function uomMany(uom: PriceUom): string {
+  return UOM_COUNT[uom][1];
 }
 
 export interface StatedPriceUnit {
@@ -109,7 +124,7 @@ export function describeStatedPrice(
   if (!stated) return money;
   const pack =
     stated.pricePackSize > 1 ? ` (${stated.pricePackSize} bottles)` : '';
-  return `${money} per ${stated.priceUom.replace('_', ' ')}${pack}`;
+  return `${money} per ${uomOne(stated.priceUom)}${pack}`;
 }
 
 /**
@@ -261,12 +276,12 @@ export function agreementTotal(input: {
     if (stated.priceUom === unitType) {
       return goodsOnly(
         price * quantity,
-        `${quantity} × ${say(price)} per ${unitType}.`,
+        `${quantity} × ${say(price)} per ${uomOne(unitType)}.`,
       );
     }
     return {
       ok: false,
-      message: `This order is placed in ${unitType}s and the price is stated per ${stated.priceUom}. Nothing says how many ${stated.priceUom}s a ${unitType} is, so the order's value cannot be worked out.`,
+      message: `This order is placed in ${uomMany(unitType)} and the price is stated per ${uomOne(stated.priceUom)}. Nothing says how many ${uomMany(stated.priceUom)} a ${uomOne(unitType)} is, so the order's value cannot be worked out.`,
     };
   }
 
@@ -274,8 +289,8 @@ export function agreementTotal(input: {
   return goodsOnly(
     Math.round(price * unitsBought * 100) / 100,
     stated.pricePackSize === 1
-      ? `${bottlesTotal} × ${say(price)} per ${stated.priceUom}.`
-      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsBought} ${stated.priceUom}${unitsBought === 1 ? '' : 's'} × ${say(price)}.`,
+      ? `${bottlesTotal} × ${say(price)} per ${uomOne(stated.priceUom)}.`
+      : `${bottlesTotal} bottles ÷ ${stated.pricePackSize} = ${unitsBought} ${uomCountWord(unitsBought, stated.priceUom)} × ${say(price)}.`,
   );
 }
 
@@ -326,7 +341,7 @@ export const UNSTATED_PRICE_UNIT_REFUSAL =
 
 /** The half-statement the gateway 400s on, said before the request is made. */
 export function halfStatedRefusal(uom: PriceUom): string {
-  return `A price stated "per ${uom.replace('_', ' ')}" also has to say how many bottles are in one. Half a statement cannot be converted, so it is refused rather than completed with a guess.`;
+  return `A price stated "per ${uomOne(uom)}" also has to say how many bottles are in one. Half a statement cannot be converted, so it is refused rather than completed with a guess.`;
 }
 
 /**
