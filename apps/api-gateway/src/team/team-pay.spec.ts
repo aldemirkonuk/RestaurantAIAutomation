@@ -333,6 +333,8 @@ describe("W1 — a manager's week carries hours, never money", () => {
     const updated = await svc.updateShift(MANAGER, RID, created.id, { endTime: "18:00" } as any);
     expect("labor_cost" in updated).toBe(false);
 
+    // About pay, not booking: this shift overlaps the person's own, which the owner allows here.
+    db.tables.team_settings[0].allow_double_booking = true;
     const assigned = await svc.assignCover(MANAGER, RID, "sh-open", { memberId: "m-staff" } as any);
     expect("labor_cost" in assigned).toBe(false);
 
@@ -900,11 +902,11 @@ describe("B1 — the Art. 68 minimum, keyed on worked time", () => {
       shift({ id: "sh-open", member_id: null, state: "open", end_time: "19:00", recorded_break_min: 20, labor_cost: null }),
     );
     const svc = scheduleOf(db);
-    // The second read of `shifts` is the one that prices the cover; fail only it.
+    // The third read of `shifts` prices the cover (the second reads the person's other shifts); fail only it.
     const realFrom = db.supabase.from.bind(db.supabase);
     let shiftReads = 0;
     (db.supabase as any).from = (t: string) => {
-      if (t === "shifts" && ++shiftReads === 2) db.errors["shifts:select"] = { message: "boom" };
+      if (t === "shifts" && ++shiftReads === 3) db.errors["shifts:select"] = { message: "boom" };
       return realFrom(t);
     };
     await expect(

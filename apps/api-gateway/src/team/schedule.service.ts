@@ -1101,21 +1101,47 @@ export class ScheduleService {
       "manager",
       { payAccess: true },
     );
-    const { data: original } = await this.sb
+    const { data: original, error: originalErr } = await this.sb
       .from("shifts")
       .select("*")
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
+    if (originalErr) {
+      this.logger.error(
+        `reportCallout: could not read shift ${shiftId} in ${restaurantId}: ` +
+          originalErr.message,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this shift, so no call-out was recorded.",
+      );
+    }
     if (!original) throw new NotFoundException("Shift not found");
     await this.team.assertOnTheRoster(
       restaurantId,
       original,
       "Shift not found",
     );
+    // A call-out happens once (QA round 4 B4). A second press used to mark the
+    // shift again, open a second cover shift and send the whole house a
+    // second critical notice.
+    if (original.state === "callout") {
+      throw new ConflictException(
+        "This shift is already called out, and its cover shift is open. Nothing was sent again.",
+      );
+    }
+    if (original.state === "open" || !original.member_id) {
+      throw new BadRequestException(
+        "This shift has no one on it to call out. Nothing was changed.",
+      );
+    }
+    // What the shift was, kept by value: the guard and the undo below must
+    // name the row as it was read, whatever later writes do to it.
+    const before = { state: original.state, note: original.note ?? null };
 
     // Keep the original on the caller's row as "callout" (strike-through),
-    // and open a fresh unassigned cover slot for the same window.
+    // and open a fresh unassigned cover slot for the same window. The write
+    // names the state it read, so two presses at once mark it only once.
     const { data: calloutShift, error: calloutErr } = await this.sb
       .from("shifts")
       .update({
@@ -1127,10 +1153,16 @@ export class ScheduleService {
       })
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
+      .eq("state", before.state)
       .select()
-      .single();
-    if (calloutErr || !calloutShift)
+      .maybeSingle();
+    if (calloutErr)
       throw new InternalServerErrorException("Failed to mark call-out");
+    if (!calloutShift) {
+      throw new ConflictException(
+        "This shift changed while the call-out was being recorded (it may already be called out). Nothing was sent.",
+      );
+    }
 
     const { data: openShift, error: openErr } = await this.sb
       .from("shifts")
@@ -1153,8 +1185,33 @@ export class ScheduleService {
       })
       .select()
       .single();
-    if (openErr || !openShift)
-      throw new InternalServerErrorException("Failed to open cover shift");
+    if (openErr || !openShift) {
+      // The two writes are not one transaction, so the first is undone: a
+      // shift marked called-out with no cover shift open is a gap nobody is
+      // told to fill.
+      const { error: undoErr } = await this.sb
+        .from("shifts")
+        .update({
+          state: before.state,
+          note: before.note,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", shiftId)
+        .eq("restaurant_id", restaurantId)
+        .eq("state", "callout");
+      if (undoErr) {
+        this.logger.error(
+          `reportCallout: shift ${shiftId} in ${restaurantId} is marked called out ` +
+            `but no cover shift opened, and the mark could not be undone: ${undoErr.message}`,
+        );
+        throw new InternalServerErrorException(
+          "The shift is marked called out, but its cover shift could not be opened. Open an open shift for that time by hand.",
+        );
+      }
+      throw new InternalServerErrorException(
+        "Could not open a cover shift, so the call-out was not recorded. Try again.",
+      );
+    }
 
     await this.notifications.persistForRestaurant(restaurantId, {
       type: "system",
@@ -1229,14 +1286,25 @@ export class ScheduleService {
     const { role } = viewer;
     await this.team.assertMemberInRestaurant(restaurantId, dto.memberId);
 
-    const { data: shift } = await this.sb
+    const { data: shift, error: shiftErr } = await this.sb
       .from("shifts")
-      .select("id, member_id, state, start_time, end_time")
+      .select("id, member_id, state, start_time, end_time, shift_date, schedule_id")
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
       .maybeSingle();
+    if (shiftErr) {
+      this.logger.error(
+        `assignCover: could not read shift ${shiftId} in ${restaurantId}: ` +
+          shiftErr.message,
+      );
+      throw new InternalServerErrorException(
+        "Could not read this shift, so it was not assigned.",
+      );
+    }
     if (!shift) throw new NotFoundException("Shift not found");
     await this.team.assertOnTheRoster(restaurantId, shift, "Shift not found");
+    // Who held it and in what state, kept by value for the guarded write.
+    const read = { state: shift.state, memberId: shift.member_id ?? null };
 
     if (role === "staff") {
       const { data: me } = await this.sb
@@ -1251,14 +1319,44 @@ export class ScheduleService {
           "You can only claim open shifts for yourself",
         );
       }
+      // A day already gone in every time zone is not claimed (QA round 4 B5).
+      // UTC today minus one is earlier than "today" anywhere a house can be.
+      if (
+        typeof shift.shift_date === "string" &&
+        shift.shift_date < addDays(new Date().toISOString().slice(0, 10), -1)
+      ) {
+        throw new BadRequestException(
+          `This shift was on ${shift.shift_date}, which has passed. Nothing was changed.`,
+        );
+      }
+      // Staff do not see a draft week (`getMyWeek`), so they cannot claim
+      // from one either, by id or otherwise.
+      if (!(await this.weekIsPublished(restaurantId, shift))) {
+        throw new ForbiddenException(
+          "This shift is in a week that is not published yet. Nothing was changed.",
+        );
+      }
     }
+
+    // The claimant's own shifts that day (QA round 4 B5): the same rule as a
+    // manager's hand edit.
+    if (typeof shift.shift_date === "string")
+      await this.refuseDoubleBooking(restaurantId, dto.memberId, {
+        date: shift.shift_date,
+        start: shift.start_time,
+        end: shift.end_time,
+        excludeShiftId: shiftId,
+      });
 
     const cost = await this.recomputeCostForMember(
       restaurantId,
       shiftId,
       dto.memberId,
     );
-    const { data, error } = await this.sb
+    // The write names the person and state it read, so when two people take
+    // the same open shift at once only the first is given it; the second is
+    // told, instead of silently overwriting the first (QA round 4 B5).
+    let claim = this.sb
       .from("shifts")
       .update({
         member_id: dto.memberId,
@@ -1268,10 +1366,20 @@ export class ScheduleService {
       })
       .eq("id", shiftId)
       .eq("restaurant_id", restaurantId)
+      .eq("state", read.state);
+    claim =
+      read.memberId == null
+        ? claim.is("member_id", null)
+        : claim.eq("member_id", read.memberId);
+    const { data, error } = await claim
       .select("*, shift_breaks(*)")
       .maybeSingle();
-    if (error || !data)
-      throw new InternalServerErrorException("Failed to assign cover");
+    if (error) throw new InternalServerErrorException("Failed to assign cover");
+    if (!data) {
+      throw new ConflictException(
+        "This shift changed before it could be assigned; someone else may have taken it. Nothing was changed.",
+      );
+    }
     // Only the owner sees labor_cost — it is the wage times the hours, so it
     // is the wage (ADR 0215). Staff never did; a manager no longer does.
     return shiftForViewer(data, viewer);
@@ -1603,6 +1711,34 @@ export class ScheduleService {
         `${String(clash.start_time).slice(0, 5)}–${String(clash.end_time).slice(0, 5)}, ` +
         `which overlaps this shift. Only the owner can allow double booking. Nothing was saved.`,
     );
+  }
+
+  /**
+   * Whether the week a shift belongs to is published: its schedule row, or,
+   * for a shift with no schedule id, the row of the week its date falls in
+   * (the same rule `getMyWeek` applies).
+   */
+  private async weekIsPublished(
+    restaurantId: string,
+    shift: { schedule_id?: string | null; shift_date?: string | null },
+  ): Promise<boolean> {
+    let q = this.sb
+      .from("schedules")
+      .select("status")
+      .eq("restaurant_id", restaurantId);
+    q = shift.schedule_id
+      ? q.eq("id", shift.schedule_id)
+      : q.eq("week_start", mondayOf(String(shift.shift_date)));
+    const { data, error } = await q.maybeSingle();
+    if (error) {
+      this.logger.error(
+        `weekIsPublished: could not read the week of a shift in ${restaurantId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        "Could not read whether this week is published, so the shift was not assigned.",
+      );
+    }
+    return data?.status === "published";
   }
 
   private async weekStartOfSchedule(

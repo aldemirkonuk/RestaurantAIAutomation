@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  InternalServerErrorException,
+} from "@nestjs/common";
 import { plainToInstance } from "class-transformer";
 import { validateSync } from "class-validator";
 import { ScheduleService } from "./schedule.service";
@@ -104,8 +109,139 @@ function build(db: StubDb) {
   };
 }
 
+/**
+ * Make two writers race for real: every guarded write on `table` waits until
+ * `reads` single-row reads of it have landed, so both callers have read the
+ * row before either writes. Reads answer copies, as PostgREST does, so a
+ * write cannot reach back into a row a caller already holds.
+ */
+function race(db: StubDb, table: string, reads: number): void {
+  const realFrom = db.supabase.from.bind(db.supabase);
+  let seen = 0;
+  let open!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    open = resolve;
+    setTimeout(resolve, 200); // never hang a spec on a miscount
+  });
+  (db.supabase as any).from = (t: string) => {
+    const b: any = realFrom(t);
+    if (t !== table) return b;
+    const realMaybe = b.maybeSingle.bind(b);
+    b.maybeSingle = async () => {
+      if (b.op === "update") await gate;
+      const r = await realMaybe();
+      if (b.op === "select" && ++seen >= reads) open();
+      return { ...r, data: r.data ? { ...r.data } : r.data };
+    };
+    return b;
+  };
+}
+
 const shiftsOn = (db: StubDb, date: string) =>
   db.tables.shifts.filter((s) => s.shift_date === date);
+
+describe("B4 — a call-out happens once", () => {
+  it("a second call-out is refused: one cover shift, one notice", async () => {
+    const db = seed();
+    const { svc, notifications } = build(db);
+    await svc.reportCallout(MANAGER, RID, "sh-sam", {} as any);
+    await expect(
+      svc.reportCallout(MANAGER, RID, "sh-sam", {} as any),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(shiftsOn(db, WEEK).filter((s) => s.state === "open")).toHaveLength(1);
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+  });
+
+  it("two call-outs at once mark the shift once", async () => {
+    const db = seed();
+    race(db, "shifts", 2);
+    const { svc, notifications } = build(db);
+    const results = await Promise.allSettled([
+      svc.reportCallout(MANAGER, RID, "sh-sam", {} as any),
+      svc.reportCallout(MANAGER, RID, "sh-sam", {} as any),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(shiftsOn(db, WEEK).filter((s) => s.state === "open")).toHaveLength(1);
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+  });
+
+  it("an open shift has no one to call out", async () => {
+    const db = seed();
+    await expect(
+      build(db).svc.reportCallout(MANAGER, RID, "sh-open", {} as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("when the cover shift cannot be opened, the call-out mark is undone", async () => {
+    const db = seed();
+    db.errors["shifts:insert"] = { message: "insert failed" };
+    const { svc, notifications } = build(db);
+    await expect(
+      svc.reportCallout(MANAGER, RID, "sh-sam", {} as any),
+    ).rejects.toThrow(/call-out was not recorded/);
+    expect(db.tables.shifts.find((s) => s.id === "sh-sam")?.state).toBe("scheduled");
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+
+  it("a failed read of the shift is said, not a missing shift", async () => {
+    const db = seed();
+    db.errors["shifts:select"] = { message: "timeout" };
+    await expect(
+      build(db).svc.reportCallout(MANAGER, RID, "sh-sam", {} as any),
+    ).rejects.toBeInstanceOf(InternalServerErrorException);
+  });
+});
+
+describe("B5 — an open shift is claimed once, by rules", () => {
+  it("two staff taking the same open shift at once: one gets it, the other is told", async () => {
+    const db = seed();
+    // Each claim reads the shift, then reads it again to price it.
+    race(db, "shifts", 4);
+    const { svc } = build(db);
+    const [sam, kim] = await Promise.allSettled([
+      svc.assignCover(SAM, RID, "sh-open", { memberId: "m-sam" } as any),
+      svc.assignCover(KIM, RID, "sh-open", { memberId: "m-kim" } as any),
+    ]);
+    const won = [sam, kim].filter((r) => r.status === "fulfilled");
+    const lost = [sam, kim].filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    expect(won).toHaveLength(1);
+    expect(lost).toHaveLength(1);
+    expect(lost[0].reason).toBeInstanceOf(ConflictException);
+    const row = db.tables.shifts.find((s) => s.id === "sh-open");
+    expect(row?.member_id).toBe(sam.status === "fulfilled" ? "m-sam" : "m-kim");
+  });
+
+  it("staff cannot claim a shift on a day that has passed", async () => {
+    const db = seed();
+    Object.assign(db.tables.shifts.find((s) => s.id === "sh-open")!, { shift_date: "2020-01-07" });
+    await expect(
+      build(db).svc.assignCover(SAM, RID, "sh-open", { memberId: "m-sam" } as any),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it("staff cannot claim from a week that is not published", async () => {
+    const db = seed({ weekStatus: "draft" });
+    await expect(
+      build(db).svc.assignCover(SAM, RID, "sh-open", { memberId: "m-sam" } as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(db.tables.shifts.find((s) => s.id === "sh-open")?.member_id).toBeNull();
+  });
+
+  it("staff cannot claim a shift that overlaps their own, unless the owner allows it", async () => {
+    const db = seed();
+    Object.assign(db.tables.shifts.find((s) => s.id === "sh-open")!, {
+      shift_date: WEEK,
+      start_time: "16:00",
+      end_time: "22:00",
+    });
+    await expect(
+      build(db).svc.assignCover(SAM, RID, "sh-open", { memberId: "m-sam" } as any),
+    ).rejects.toBeInstanceOf(ConflictException);
+    db.tables.team_settings[0].allow_double_booking = true;
+    const got = await build(db).svc.assignCover(SAM, RID, "sh-open", { memberId: "m-sam" } as any);
+    expect(got.member_id).toBe("m-sam");
+  });
+});
 
 describe("B6 — a hand-written shift has clock times and one person at a time", () => {
   const create = (svc: ScheduleService, over: Record<string, unknown>) =>

@@ -660,6 +660,8 @@ describe("R6 — an OWNER's pay is the owners': a manager never sees or sets it,
     const updated = await svc.updateShift(MANAGER, RID, created.id, { endTime: "18:00" } as any);
     expect("labor_cost" in updated).toBe(false);
 
+    // About pay, not booking: this shift overlaps the person's own, which the owner allows here.
+    db.tables.team_settings[0].allow_double_booking = true;
     const assigned = await svc.assignCover(MANAGER, RID, "sh-open", { memberId: "m-owner" } as any);
     expect("labor_cost" in assigned).toBe(false);
 

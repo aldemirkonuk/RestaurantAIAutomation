@@ -678,6 +678,8 @@ describe("item 71 + item 20 — a removed owner's kept shift is not reachable by
         labor_cost: null,
       }),
     );
+    // About pay, not booking: this shift overlaps the person's own, which the owner allows here.
+    db.tables.team_settings[0].allow_double_booking = true;
     const assigned = await svc.assignCover(MANAGER, RID, "sh-open", {
       memberId: "m-staff",
     } as any);
