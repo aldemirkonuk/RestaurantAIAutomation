@@ -143,6 +143,28 @@ export function rowOpensReceipt(row: Pick<OrderRowVM, 'stage'>): boolean {
   return row.stage === 'delivered';
 }
 
+/**
+ * The line an order shows when its vendor was removed (r27), or null.
+ *
+ * Only while the order is still open (pending, approved, ordered): once goods
+ * arrived or it was cancelled, the removal changes nothing about it. Two
+ * sentences because the gateway treats the two cases differently: a pending
+ * order cannot be approved (#1339), while an approved or sent order stays
+ * open to letters a person writes and only the automatic sends stop.
+ */
+export function vendorRemovedLine(
+  row: Pick<OrderRowVM, 'stage' | 'vendorRemoved'>,
+): string | null {
+  if (!row.vendorRemoved) return null;
+  if (row.stage === 'pending') {
+    return 'Vendor removed. This order cannot be approved; place it with another vendor.';
+  }
+  if (row.stage === 'approved' || row.stage === 'ordered') {
+    return 'Vendor removed. Nothing more goes to them automatically; you can still write to them about this order.';
+  }
+  return null;
+}
+
 export function LedgerRow({
   row,
   expanded,
@@ -299,6 +321,15 @@ export function LedgerRow({
                 ? ` · one occurrence of a recurring order`
                 : ''}
             </span>
+            {vendorRemovedLine(row) && (
+              <span
+                className="block break-words"
+                data-testid="row-vendor-removed"
+                style={{ fontSize: 11.5, color: 'var(--ink-4, #665D50)', marginTop: 2 }}
+              >
+                {vendorRemovedLine(row)}
+              </span>
+            )}
           </span>
           <span
             style={{
