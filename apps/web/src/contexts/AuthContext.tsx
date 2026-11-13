@@ -29,6 +29,10 @@ import {
 } from "../lib/houseMemory";
 import { doRefresh } from "../lib/sessionRefresh";
 import { leaveDeadSession } from "../lib/deadSession";
+import {
+  isTransientSessionReadFailure,
+  sessionReadRetryDelayMs,
+} from "../lib/sessionReadRetry";
 import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
@@ -416,6 +420,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Load user from token on mount
   useEffect(() => {
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const waitBeforeAskingAgain = (ms: number) =>
+      new Promise<void>((resolve) => {
+        retryTimer = setTimeout(resolve, ms);
+      });
+
     const loadUser = async () => {
       const token = localStorage.getItem("accessToken");
       if (!token) {
@@ -430,71 +441,104 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      try {
-        const response = await api.get("/api/v1/auth/me");
-        // Studio roles come from the JWT itself (app_metadata.roles), and the
-        // session's house from the token when /auth/me names none.
-        setUser(
-          userFrom(response.data.user, localStorage.getItem("accessToken")),
-        );
-      } catch (err) {
-        console.error("Failed to load user:", err);
-        // Only a 401 means the token is invalid (POS lens, absence-as-health 9).
-        //
-        // This used to delete BOTH tokens on ANY error from GET /auth/me. A 429
-        // after ordinary use — measured live on the lens run — therefore sent
-        // five page loads to /login and destroyed the refresh token, so the
-        // session could not be recovered even once the limit cleared. A rate
-        // limit, a 500, and a dropped connection all say "ask again later";
-        // none of them says "you are not who you said you were".
-        //
-        // 403 is deliberately NOT included: a token that authenticates but is
-        // not allowed here is still a valid token, and throwing it away turns
-        // a permissions problem into a login problem.
-        const status = (err as { response?: { status?: number } })?.response
-          ?.status;
-        if (status === 401) {
-          // ADR 0164, item 2/3 (round 2, 2026-09-19): by the time this catch
-          // runs, the response interceptor above has ALREADY awaited
-          // `doRefresh()` for this exact 401 — it sits between the request
-          // and this catch in the same promise chain, on this same `api`
-          // instance. `doRefresh` removes the stored refresh token only on a
-          // genuine sign-out (the refresh token itself was rejected); a
-          // `houseAccessEnded` refresh stores a fresh, no-house pair and
-          // sends the person to the chooser, and a 503 or a dropped
-          // connection while refreshing leaves the original pair untouched —
-          // both keep a session on disk. This used to delete both tokens
-          // whenever the ORIGINAL request 401'd, with no such check, which
-          // silently discarded whichever of those two `doRefresh` had just
-          // decided to keep — the ordinary way anyone reloads a page after
-          // their house access ended, not just the tab-stayed-open case.
-          if (!localStorage.getItem("refreshToken")) {
-            localStorage.removeItem("accessToken");
-            localStorage.removeItem("refreshToken");
-            // The dead session's one reaction (ADR 0344): a public page
-            // reloads as a stranger's, any other goes to /login. The auth
-            // store's own boot load used to make this call; this load is now
-            // the only boot read of `/auth/me`, so it makes it.
-            leaveDeadSession();
-          } else {
+      // r20: a failure that does not say "signed out" (429, 408, 5xx, no
+      // response) keeps `loading` true and asks again — after the server's
+      // Retry-After, else 1 s, 2 s, 4 s … up to 30 s. Ending the load with no
+      // person sent a signed-in owner to /login on about the sixth reload in
+      // a minute (lib/sessionReadRetry.ts).
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const response = await api.get("/api/v1/auth/me");
+          if (cancelled) return;
+          // Studio roles come from the JWT itself (app_metadata.roles), and
+          // the session's house from the token when /auth/me names none.
+          setUser(
+            userFrom(response.data.user, localStorage.getItem("accessToken")),
+          );
+          break;
+        } catch (err) {
+          if (cancelled) return;
+          if (isTransientSessionReadFailure(err)) {
+            const status = (err as { response?: { status?: number } })
+              ?.response?.status;
+            const delay = sessionReadRetryDelayMs(err, attempt);
             console.warn(
-              "Keeping the session: the shared refresh kept a session on " +
-                "disk (houseAccessEnded, or a transient refresh failure), " +
-                "not a sign-out.",
+              `Keeping the session: /auth/me failed with ${status ?? "no status (network)"}; ` +
+                `asking again in ${Math.round(delay / 1000)} s.`,
             );
+            await waitBeforeAskingAgain(delay);
+            if (cancelled) return;
+            // Signed out in another tab while waiting: there is no session
+            // left to ask about.
+            if (!localStorage.getItem("accessToken")) break;
+            continue;
           }
+          handleSettledFailure(err);
+          break;
+        }
+      }
+      if (!cancelled) setLoading(false);
+    };
+
+    const handleSettledFailure = (err: unknown) => {
+      console.error("Failed to load user:", err);
+      // Only a 401 means the token is invalid (POS lens, absence-as-health 9).
+      //
+      // This used to delete BOTH tokens on ANY error from GET /auth/me. A 429
+      // after ordinary use — measured live on the lens run — therefore sent
+      // five page loads to /login and destroyed the refresh token, so the
+      // session could not be recovered even once the limit cleared. A rate
+      // limit, a 500, and a dropped connection all say "ask again later";
+      // none of them says "you are not who you said you were".
+      //
+      // 403 is deliberately NOT included: a token that authenticates but is
+      // not allowed here is still a valid token, and throwing it away turns
+      // a permissions problem into a login problem.
+      const status = (err as { response?: { status?: number } })?.response
+        ?.status;
+      if (status === 401) {
+        // ADR 0164, item 2/3 (round 2, 2026-09-19): by the time this catch
+        // runs, the response interceptor above has ALREADY awaited
+        // `doRefresh()` for this exact 401 — it sits between the request
+        // and this catch in the same promise chain, on this same `api`
+        // instance. `doRefresh` removes the stored refresh token only on a
+        // genuine sign-out (the refresh token itself was rejected); a
+        // `houseAccessEnded` refresh stores a fresh, no-house pair and
+        // sends the person to the chooser, and a 503 or a dropped
+        // connection while refreshing leaves the original pair untouched —
+        // both keep a session on disk. This used to delete both tokens
+        // whenever the ORIGINAL request 401'd, with no such check, which
+        // silently discarded whichever of those two `doRefresh` had just
+        // decided to keep — the ordinary way anyone reloads a page after
+        // their house access ended, not just the tab-stayed-open case.
+        if (!localStorage.getItem("refreshToken")) {
+          localStorage.removeItem("accessToken");
+          localStorage.removeItem("refreshToken");
+          // The dead session's one reaction (ADR 0344): a public page
+          // reloads as a stranger's, any other goes to /login. The auth
+          // store's own boot load used to make this call; this load is now
+          // the only boot read of `/auth/me`, so it makes it.
+          leaveDeadSession();
         } else {
           console.warn(
-            `Keeping the session: /auth/me failed with ${status ?? "no status (network)"}, ` +
-              "which is not an authentication failure.",
+            "Keeping the session: the shared refresh kept a session on " +
+              "disk (houseAccessEnded, or a transient refresh failure), " +
+              "not a sign-out.",
           );
         }
-      } finally {
-        setLoading(false);
+      } else {
+        console.warn(
+          `Keeping the session: /auth/me failed with ${status ?? "no status (network)"}, ` +
+            "which is not an authentication failure.",
+        );
       }
     };
 
     loadUser();
+    return () => {
+      cancelled = true;
+      if (retryTimer !== undefined) clearTimeout(retryTimer);
+    };
   }, []);
 
   // Centralized branch fetch — reused by initial load and refreshBranches()
