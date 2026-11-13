@@ -35,6 +35,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
+import { ROW_WORDS_MIN_PX } from './SectionKit';
 
 const mock = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 
@@ -136,7 +137,6 @@ vi.mock('@/lib/mudavym/useMudavymDesign', () => ({
 }));
 
 import SettingsNext from './SettingsNext';
-import { ROW_WORDS_MIN_PX } from './SectionKit';
 
 function remote(data: unknown, status = 'ok') {
   return { status, data, error: status === 'error' ? 'gateway unreachable' : null, reload: vi.fn(), set: vi.fn() };
