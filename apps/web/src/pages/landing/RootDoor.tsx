@@ -19,6 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { ProtectedRoute } from '../../components/ProtectedRoute';
 import { DashboardLayout } from '../../components/layout/DashboardLayout';
 import { HousePageLoader } from '../../components/mudavym/HousePageLoader';
+import { useSessionWaitNote } from '../../hooks/useSessionWaitNote';
 
 function hasStoredSession(): boolean {
   try {
@@ -30,7 +31,8 @@ function hasStoredSession(): boolean {
 
 export function RootDoor({ landing }: { landing: ReactNode }) {
   const { loading, isAuthenticated } = useAuth();
-  if (loading && hasStoredSession()) return <HousePageLoader />;
+  const waitNote = useSessionWaitNote();
+  if (loading && hasStoredSession()) return <HousePageLoader note={waitNote} />;
   if (!isAuthenticated) return <>{landing}</>;
   return (
     <ProtectedRoute>
