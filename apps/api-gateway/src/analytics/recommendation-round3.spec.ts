@@ -136,6 +136,8 @@ describe("the generator keys a subject-less, period-less type by its firing week
     new InsightGeneratorService({} as any, {} as any, {} as any) as unknown as {
       record: (...a: unknown[]) => any;
     };
+  // The house's money, passed per call (version 17).
+  const HOUSE = { currency: "USD", currencyUnread: false, unread: [] as string[] };
   const trend = {
     measureLabel: "sales",
     unit: "currency",
@@ -147,7 +149,7 @@ describe("the generator keys a subject-less, period-less type by its firing week
     const rec = gen().record("overall.revenue.trend_direction", "sales", "trend", trend, {
       effectPct: 0.12,
       n: 28,
-    });
+    }, HOUSE);
     expect(rec.periodKey).toBe("fire:week:2026-W39");
     expect(rec.suppression.key).toBe(
       "insight:overall.revenue.trend_direction#*#fire:week:2026-W39",
@@ -161,7 +163,7 @@ describe("the generator keys a subject-less, period-less type by its firing week
       effectPct: 0.12,
       n: 28,
       periodKey: "t28:2026-09-20",
-    });
+    }, HOUSE);
     expect(rec.periodKey).toBe("t28:2026-09-20");
   });
 });

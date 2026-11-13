@@ -268,8 +268,19 @@ export const BASKET_MIN_LIFT = 1.3;
  *       spend sentence that counted an uncosted order as $0, or summed the
  *       first 1,000 orders, so it is recomputed, not served. Re-checked at
  *       merge: one past the version on `main` then.
+ *  17 — 2026-11-12 (r8): every amount prints in the house's currency, not
+ *       `$` (`insight-verbalizer.ts` `fmtMoney`); a house with none stated
+ *       gets bare amounts and "The house's currency is not recorded."; a
+ *       money sentence whose currency could not be read is withheld and
+ *       "house currency" is named unread. Every row stamps
+ *       `evidence.currency`, and the stored read refuses a money row stamped
+ *       in money the house no longer reports in (`queryStored`). A row below
+ *       17 printed `$` on a lira house ("($181)", r7 browser check), so it is
+ *       recomputed, not served. Numbered 17, not 14: open branches hold 16
+ *       (`fix/sim-w113-*`, `fix/sim-w114-*`), so this takes a gap past them.
+ *       Re-checked at merge: one past the version on `main` then.
  */
-export const INSIGHT_GENERATOR_VERSION = 13;
+export const INSIGHT_GENERATOR_VERSION = 17;
 
 /**
  * Each of the bundle's reads, in the words the house uses for it.
@@ -316,6 +327,48 @@ type BundleRead = keyof typeof BUNDLE_READ_WORDS;
  * into one name there.
  */
 const HOUSE_ZONE_WORD = "house time zone";
+
+/**
+ * The house's currency, named when its read failed and a sentence with an
+ * amount was withheld for it (`record`). Not a `BUNDLE_READ_WORDS` slice: no
+ * family is built on it, and a sentence with no amount still prints.
+ */
+export const HOUSE_CURRENCY_WORD = "house currency";
+
+/**
+ * The house's stated money: an ISO 4217 code, or null when none is stated (or
+ * the stored value is not a well-formed code). Throws on a failed read, which
+ * the bundle reports as `currencyUnread` and never as "not stated".
+ */
+async function readHouseCurrency(
+  client: any,
+  restaurantId: string,
+): Promise<string | null> {
+  const { data, error } = await client
+    .from("restaurants")
+    .select("currency")
+    .eq("id", restaurantId)
+    .maybeSingle();
+  if (error)
+    throw new Error(
+      `The house's currency could not be read: ${error.message ?? String(error)}`,
+    );
+  const code = (data as { currency?: unknown } | null)?.currency;
+  return typeof code === "string" && /^[A-Z]{3}$/.test(code) ? code : null;
+}
+
+/**
+ * Whether a stored row's amounts are in money other than `code`. Only a row
+ * whose measure is money can be; its stamp is `evidence.currency`, absent on
+ * a row whose currency could not be read when it was written.
+ */
+export function writtenInOtherMoney(
+  evidence: InsightEvidence | null | undefined,
+  code: string | null,
+): boolean {
+  if (!evidence || evidence.unit !== "currency") return false;
+  return (evidence.currency ?? null) !== code;
+}
 
 /** Days of purchasing spend the trend reads: the 90 before today (`toDaily`). */
 const SPEND_TREND_DAYS = 90;
@@ -550,7 +603,17 @@ export class InsightGeneratorService {
     // for `manual`. Same for a dismissal or a done returned to the book.
     // Bounded: at most twice the per-category cap.
     let persisted: boolean | null = null;
-    if (opts.persist && !narrowed) {
+    // A run that could not read the house's currency withheld every sentence
+    // with an amount. Storing it would replace the rows that state those
+    // amounts with a set that silently lacks them until the next cadence run,
+    // so it is not stored: the rows that stood still stand (and are refused
+    // by the stored read if they are in another money or below the version).
+    if (opts.persist && !narrowed && bundle.currencyUnread) {
+      this.logger.warn(
+        `insights for ${restaurantId} not stored: the house's currency could not be read`,
+      );
+      persisted = false;
+    } else if (opts.persist && !narrowed) {
       const shown = new Set(ranked);
       const firedPerCat = new Map<string, number>();
       const firedCapped = [...fired]
@@ -720,7 +783,13 @@ export class InsightGeneratorService {
       .order("score", { ascending: false })
       .limit(limit);
     if (categories?.length) q = q.in("category", categories);
-    const { data, error } = await q;
+    const [{ data, error }, money] = await Promise.all([
+      q,
+      readHouseCurrency(client, restaurantId).then(
+        (code) => ({ readable: true as const, code }),
+        (err: any) => ({ readable: false as const, reason: String(err?.message ?? err) }),
+      ),
+    ]);
     if (error) {
       // Includes the window between this code deploying and migration
       // `20260903130000` applying, when the column does not exist yet and
@@ -733,7 +802,31 @@ export class InsightGeneratorService {
       );
       return [];
     }
-    return data || [];
+    const rows = data || [];
+    // A money row says which money it was written in (`evidence.currency`,
+    // version 17). When the house has since stated another — a house with
+    // none recorded naming TRY, say — every amount in it is in the wrong
+    // money, so the set is treated as ABSENT, exactly as a row below the
+    // version is: the caller recomputes and replaces it. Age cannot decide
+    // this and the scheduler's sweep does not see it; only this read does.
+    // When the currency cannot be read, the rows go out as written: each was
+    // right in the money it names, and refusing them would make the
+    // recompute withhold every amount for the same unread value.
+    if (!money.readable) {
+      this.logger.warn(
+        `getStored could not read the house's currency, serving rows in the ` +
+          `money they were written in: ${money.reason}`,
+      );
+      return rows;
+    }
+    if (rows.some((r: any) => writtenInOtherMoney(r?.evidence, money.code))) {
+      this.logger.log(
+        `getStored: ${restaurantId} now reports in ${money.code ?? "no stated currency"}; ` +
+          `its stored money sentences were written in another, so they are recomputed`,
+      );
+      return [];
+    }
+    return rows;
   }
 
   /**
@@ -933,7 +1026,7 @@ export class InsightGeneratorService {
     // the loop below logs and names in `unread`: the family states no figure,
     // and the feed says which read it could not make (ADR 0292, 2026-10-07).
     const whole = (rows: unknown[]) => ({ data: rows, error: null });
-    const [cons, ords, inv, checks, tables, venue, goals, houseZone] =
+    const [cons, ords, inv, checks, tables, venue, goals, houseZone, houseMoney] =
       await Promise.allSettled([
         readWholeWindow("The insight bundle's consumption lines", () =>
           client
@@ -1003,6 +1096,8 @@ export class InsightGeneratorService {
         // The goals family schedules a goal on the house's clock, as the
         // goals desk does (goal-score.ts `storedGoalSchedule`, ADR 0296).
         readHouseZone(client, restaurantId),
+        // Every amount a sentence prints is in this money (version 17).
+        readHouseCurrency(client, restaurantId),
       ]);
 
     // A failed slice still degrades to `[]` — one dead lens must not take the
@@ -1073,6 +1168,9 @@ export class InsightGeneratorService {
       goals: ok<any>(goals),
       zone: houseZone.status === "fulfilled" ? houseZone.value.zone : null,
       zoneUnread: houseZone.status === "rejected",
+      currency:
+        houseMoney.status === "fulfilled" ? houseMoney.value : null,
+      currencyUnread: houseMoney.status === "rejected",
       availability: new Set<DataRequirement>(),
       excludedDates: exclusions.dates,
       exclusionsReadable: exclusions.readable,
@@ -1181,6 +1279,7 @@ export class InsightGeneratorService {
     );
 
     this.timeSeriesInsights({
+      bundle,
       push: (r) => push(withUnits(r, seriesUnits)),
       dates,
       values,
@@ -1252,7 +1351,7 @@ export class InsightGeneratorService {
             effectPct: bestMove.cmp.deltaPct,
             n: 14,
             entityLabel: bestMove.wine,
-          }),
+          }, bundle),
           this.unitsOf(
             bundle.consumption.filter(
               (c) => c.wineId === movedId && fortnight.has(c.date),
@@ -1295,6 +1394,7 @@ export class InsightGeneratorService {
                 effectPct: topShare - 3 / totalsByWine.length, // excess vs uniform
                 n: dates.length,
               },
+              bundle,
             ),
             this.unitsOf(counted.filter((c) => !!c.wineId)),
           ),
@@ -1337,6 +1437,7 @@ export class InsightGeneratorService {
                 effectPct: gap,
                 n: 7,
               },
+              bundle,
             ),
             seriesUnits,
           ),
@@ -1369,6 +1470,7 @@ export class InsightGeneratorService {
       );
 
       this.timeSeriesInsights({
+        bundle,
         push,
         dates,
         values,
@@ -1420,6 +1522,7 @@ export class InsightGeneratorService {
             n: bundle.orders.length,
             boost: hhi > 0.4 ? 1.4 : 1,
           },
+          bundle,
         ),
       );
     }
@@ -1521,7 +1624,7 @@ export class InsightGeneratorService {
             z: null,
             n: worst.rows,
             boost: 1.5,
-          }),
+          }, bundle),
           // Its demand's bottle basis (ADR 0297).
           this.unitsOf(
             bundle.consumption.filter((c) => c.wineId === worst.wineId),
@@ -1550,6 +1653,7 @@ export class InsightGeneratorService {
       bundle.excludedDates,
     );
     this.timeSeriesInsights({
+      bundle,
       push,
       dates,
       values,
@@ -1749,6 +1853,7 @@ export class InsightGeneratorService {
                   z: Math.abs(corr.z),
                   n: best.n,
                 },
+                bundle,
               ),
             );
           }
@@ -1810,6 +1915,7 @@ export class InsightGeneratorService {
                   effectPct: reg.r2,
                   n: fitRows.length,
                 },
+                bundle,
               ),
             );
           }
@@ -1835,7 +1941,7 @@ export class InsightGeneratorService {
               effectPct: top.pctVsMean,
               z: lead.zVsRest,
               n: lead.ranked[0].n,
-            }),
+            }, bundle),
           );
         }
       }
@@ -1890,7 +1996,7 @@ export class InsightGeneratorService {
               effectPct: top.pctVsMean,
               z: lead.zVsRest,
               n: lead.ranked[0].n,
-            }),
+            }, bundle),
           );
         }
       }
@@ -1929,7 +2035,7 @@ export class InsightGeneratorService {
             effectPct: (best.lift - 1) / 2,
             z: zOfUpperTail(best.pUpper),
             n: best.count,
-          }),
+          }, bundle),
         );
       }
     }
@@ -1987,7 +2093,7 @@ export class InsightGeneratorService {
             z,
             n: hist.length,
             boost: 1.6,
-          }),
+          }, bundle),
         );
       }
     }
@@ -2055,7 +2161,7 @@ export class InsightGeneratorService {
           n: 14,
           boost: score.onTrack === false ? 1.5 : 1,
           entityLabel: g.name,
-        }),
+        }, bundle),
       );
     }
   }
@@ -2065,6 +2171,7 @@ export class InsightGeneratorService {
   // ==========================================================================
 
   private timeSeriesInsights(params: {
+    bundle: Bundle;
     push: Push;
     dates: string[];
     values: number[];
@@ -2079,6 +2186,7 @@ export class InsightGeneratorService {
     windowLabel?: string;
   }) {
     const {
+      bundle,
       push,
       dates,
       values,
@@ -2147,6 +2255,7 @@ export class InsightGeneratorService {
                 subject: E.WEEKDAY_NAMES[weekday],
                 periodKey: dayGrain(lastDate),
               },
+              bundle,
             ),
           );
         }
@@ -2184,6 +2293,7 @@ export class InsightGeneratorService {
             n: window * 2,
             periodKey: windowGrain(window, dates[values.length - 1]),
           },
+          bundle,
         ),
       );
     }
@@ -2214,6 +2324,7 @@ export class InsightGeneratorService {
             n: trendSeries.length,
             periodKey: trendGrain(28, dates[values.length - 1]),
           },
+          bundle,
         ),
       );
     }
@@ -2245,6 +2356,7 @@ export class InsightGeneratorService {
               n: values.length,
               periodKey: dayGrain(dates[i]),
             },
+            bundle,
           ),
         );
         break; // one anomaly headline per measure
@@ -2260,7 +2372,7 @@ export class InsightGeneratorService {
     candidateKey: string,
     category: InsightCategory,
     template: string,
-    evidence: InsightEvidence,
+    unstamped: InsightEvidence,
     scoreParams: {
       effectPct?: number | null;
       z?: number | null;
@@ -2272,9 +2384,27 @@ export class InsightGeneratorService {
       /** The period it covers, at its grain ("d:2026-09-02"). */
       periodKey?: string | null;
     },
+    /** The house's money comes from here, per call: never from `this`. */
+    bundle: Pick<Bundle, "currency" | "currencyUnread" | "unread">,
   ): InsightRecord | null {
+    // Every row carries the money its amounts were written in (version 17).
+    // The bundle is passed in, not held on the service: this is a singleton,
+    // and two houses computing at once must never share a currency.
+    const evidence: InsightEvidence = bundle.currencyUnread
+      ? unstamped
+      : { ...unstamped, currency: bundle.currency };
     const sentence = verbalize(template, evidence);
-    if (!sentence) return null;
+    if (!sentence) {
+      // Withheld only because the money could not be read: say so, once, as
+      // the zone is said (`HOUSE_ZONE_WORD`), so the quiet is not a quiet week.
+      if (
+        bundle.currencyUnread &&
+        verbalize(template, { ...unstamped, currency: null }) !== null &&
+        !bundle.unread.includes(HOUSE_CURRENCY_WORD)
+      )
+        bundle.unread.push(HOUSE_CURRENCY_WORD);
+      return null;
+    }
     const subject =
       scoreParams.subject ?? scoreParams.entityLabel ?? evidence.entity ?? null;
     // "Each firing is one card" (ADR 0191 round 3, founder 2026-09-21): a
@@ -2512,6 +2642,13 @@ interface Bundle {
   zone: string | null;
   /** True when the zone read failed (not when the house has none). */
   zoneUnread: boolean;
+  /**
+   * The house's ISO 4217 code; null when none is stated or the read failed.
+   * `record` stamps it on every row's evidence.
+   */
+  currency: string | null;
+  /** True when the currency read failed (not when the house states none). */
+  currencyUnread: boolean;
   availability: Set<DataRequirement>;
   /** Business dates the manager ruled out of every baseline. */
   excludedDates: Set<string>;
