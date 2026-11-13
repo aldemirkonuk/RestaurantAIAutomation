@@ -14,6 +14,8 @@
  * so the ids must live below it, not beside it.
  */
 
+import type { ComboPick } from './rp-combo';
+
 /** Every analysis the sheet can show. The catalogue holds one entry per id. */
 export const ANALYSIS_IDS = [
   'reading',
@@ -84,6 +86,13 @@ export interface Cutting {
   id: AnalysisId;
   slot: Slot;
   graph: GraphType;
+  /**
+   * Which measure is the bars and which the line, when the reader chose one
+   * for "Bars and a line". Saved with the sheet, so the choice is still there
+   * on the next visit. Absent: the drawing's defaults (`resolvePick`). Keys
+   * this analysis does not offer are ignored there, never drawn.
+   */
+  combo?: ComboPick;
 }
 
 export interface SheetState {

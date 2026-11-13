@@ -94,15 +94,24 @@ function Action({
   onClick,
   strong,
   tour,
+  disabled,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   strong?: boolean;
   /** The page tour's anchor (guidance/content/reports.ts). */
   tour?: string;
+  disabled?: boolean;
 }) {
   return (
-    <button type="button" className="rp-btn rp-ink rp-focus" data-strong={strong} data-tour={tour} onClick={onClick}>
+    <button
+      type="button"
+      className="rp-btn rp-ink rp-focus"
+      data-strong={strong}
+      data-tour={tour}
+      disabled={disabled}
+      onClick={onClick}
+    >
       {children}
     </button>
   );
@@ -110,9 +119,10 @@ function Action({
 
 export default function ReportsNext({ ground }: ReportsNextProps) {
   const [tillDays, setTillDays] = useState(30);
-  // Which measure is the bars and which the line, by cutting id. Held here, not
-  // in the cutting, so moving a cutting about the sheet can never lose it.
-  const [comboPicks, setComboPicks] = useState<Partial<Record<AnalysisId, ComboPick>>>({});
+  // A bars-and-line pick made before the reader's own sheet is known: shown
+  // for this visit, never written (a write then could put the house sheet
+  // over theirs). Once the sheet is known the pick lives on the sheet itself.
+  const [comboHeld, setComboHeld] = useState<Partial<Record<AnalysisId, ComboPick>>>({});
   const [arranging, setArranging] = useState(false);
   const [draft, setDraft] = useState<SheetState | null>(null);
   // The fetch follows what is ON SCREEN, draft included: a cutting swapped to
@@ -132,6 +142,24 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const data = useReportsNextData(tillDays, setTillDays, showing, place);
   const [asking, setAsking] = useState(false);
   const [ruledOff, setRuledOff] = useState(false);
+  /* Ruling off is a WRITE to the reader's preferences, so the page says it is
+     ruling off until the gateway answers, and says "Ruled off." only after it
+     did. While it is in flight the paper is held still (`editing` below): an
+     edit made then would be dropped with the draft when the save lands. */
+  const [saving, setSaving] = useState(false);
+  const [saveFailed, setSaveFailed] = useState(false);
+  /* One stamp timer, restarted by every rule-off and cleared on the way out —
+     two stray timers would hide the second stamp 2.4 s after the FIRST. */
+  const stampTimer = useRef<number | null>(null);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      if (stampTimer.current !== null) window.clearTimeout(stampTimer.current);
+      stampTimer.current = null;
+    };
+  }, []);
   const headRef = useRef<HTMLElement | null>(null);
 
   /* One quiet entrance for the opening line — settle, 6px, once. */
@@ -163,24 +191,82 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   const view = draft ?? data.sheet;
   const onSheet = useMemo(() => new Set(view.cuttings.map((c) => c.id)), [view]);
 
+  /* Arranging the HOUSE sheet while the reader's own is still being read —
+     or could not be read — and ruling it off would write the house sheet over
+     theirs. So the paper only opens once the sheet is known. */
   const startArranging = useCallback(() => {
+    if (!data.sheetKnown) return;
+    setSaveFailed(false);
     setDraft({ cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) });
     setArranging(true);
-  }, [data.sheet]);
+  }, [data.sheet, data.sheetKnown]);
 
-  const ruleOff = useCallback(() => {
-    if (draft) data.saveSheet(draft);
+  const ruleOff = useCallback(async () => {
+    if (saving) return;
+    if (!draft) {
+      setArranging(false);
+      return;
+    }
+    setSaving(true);
+    setSaveFailed(false);
+    try {
+      await data.saveSheet(draft);
+    } catch {
+      // The draft and the arranging stay exactly as they were, so "Try again"
+      // is one press of the same button. No stamp: nothing was ruled off.
+      if (!alive.current) return;
+      setSaving(false);
+      setSaveFailed(true);
+      return;
+    }
+    if (!alive.current) return;
+    setSaving(false);
     setDraft(null);
     setArranging(false);
     setRuledOff(true);
-    window.setTimeout(() => setRuledOff(false), 2400);
-  }, [draft, data]);
+    if (stampTimer.current !== null) window.clearTimeout(stampTimer.current);
+    stampTimer.current = window.setTimeout(() => {
+      stampTimer.current = null;
+      setRuledOff(false);
+    }, 2400);
+  }, [draft, data, saving]);
+
+  /** The paper takes edits only while it is being arranged and not being saved. */
+  const editing = arranging && !saving;
 
   const putBack = useCallback(() => setDraft(defaultSheet()), []);
 
   const edit = useCallback(
     (fn: (s: SheetState) => SheetState) => setDraft((d) => (d ? fn(d) : d)),
     [],
+  );
+
+  /* Which measure is the bars and which the line is part of how the reader
+     set this sheet, like its drawing, so it is saved with it (it was page
+     state, and a reload put every cutting back to its default pair). While
+     arranging it goes into the draft and is saved on rule-off; while reading
+     it is written at once, and a refused write says so (the preferences hook
+     rolls the pick back). */
+  const onComboPick = useCallback(
+    (id: AnalysisId, pick: ComboPick) => {
+      const withPick = (s: SheetState): SheetState => ({
+        cuttings: s.cuttings.map((c) => (c.id === id ? { ...c, combo: pick } : c)),
+      });
+      if (saving) return;
+      if (draft) {
+        edit(withPick);
+        return;
+      }
+      if (!data.sheetKnown) {
+        setComboHeld((all) => ({ ...all, [id]: pick }));
+        return;
+      }
+      setSaveFailed(false);
+      data.saveSheet(withPick(data.sheet)).catch(() => {
+        if (alive.current) setSaveFailed(true);
+      });
+    },
+    [saving, draft, edit, data],
   );
 
   /* ── the keyboard's half of the canvas ──────────────────────────────────
@@ -196,7 +282,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     cuttings: draft?.cuttings ?? null,
     apply: applyCuttings,
     sheetRef: sheetEl,
-    arranging,
+    arranging: editing,
   });
   const holdSheetEl = useCallback((node: HTMLDivElement | null) => {
     sheetEl.current = node;
@@ -307,6 +393,14 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
    */
   const placeProposed = useCallback(
     (cut: { id: AnalysisId; graph: GraphType; days: number | null }) => {
+      // Same rule as "Arrange the sheet": no draft is built on a sheet that is
+      // not the reader's. The desk's button lives inside a cutting, and no
+      // cutting is drawn until the sheet is known; when it could not be read,
+      // the page already says arranging is off.
+      if (!data.sheetKnown) return;
+      // The paper is held still while the sheet is being saved; the desk's
+      // button is disabled then, and this keeps any other caller honest.
+      if (saving) return;
       if (cut.days !== null) setTillDays(cut.days);
       setDraft((d) => {
         const base = d ?? { cuttings: data.sheet.cuttings.map((c) => ({ ...c, slot: { ...c.slot } })) };
@@ -324,7 +418,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
       });
       setArranging(true);
     },
-    [data.sheet],
+    [data.sheet, data.sheetKnown, saving],
   );
   placeRef.current = placeProposed;
 
@@ -338,8 +432,12 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         ? READING
         : null;
   const ctx = useMemo(
-    () => ({ days: tillDays, goals: data.goalsDesk, currency: currencyMark }),
-    [data.goalsDesk, tillDays, currencyMark],
+    () => ({
+      days: tillDays,
+      goals: { ...data.goalsDesk, placeBlocked: saving },
+      currency: currencyMark,
+    }),
+    [data.goalsDesk, tillDays, currencyMark, saving],
   );
   // Said once for the whole sheet, never beside each figure (audit G5).
   const moneyLine =
@@ -358,11 +456,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         graph={c.graph}
         register={data.registers[c.id]}
         ctx={ctx}
-        arranging={arranging}
+        arranging={editing}
         swapOptions={swapOptions}
         arrange={arrange}
-        comboPick={comboPicks[c.id]}
-        onComboPick={(p) => setComboPicks((all) => ({ ...all, [c.id]: p }))}
+        comboPick={data.sheetKnown ? c.combo : comboHeld[c.id]}
+        onComboPick={(p) => onComboPick(c.id, p)}
         onGraph={(g) => onGraph(c.id, g)}
         onSwap={(to) => onSwap(c.id, to)}
         onRemove={() => onRemove(c.id)}
@@ -407,6 +505,11 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
           </div>
 
           <div className="rp-row" style={{ gap: 8 }}>
+            {saveFailed && (
+              <span className="rp-note" role="alert">
+                The sheet was not saved. Try again.
+              </span>
+            )}
             {ruledOff && (
               <span className="rp-stamp" role="status">
                 {/* The die pressed DRY — no wax. Arranging your own sheet is
@@ -418,20 +521,24 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             <Action tour="reports-ask" onClick={() => setAsking(true)}>Ask the book ⌘K</Action>
             {arranging ? (
               <>
-                <Action onClick={putBack}>Put it all back</Action>
-                <Action strong onClick={ruleOff}>
-                  Rule it off
+                <Action onClick={putBack} disabled={saving}>
+                  Put it all back
+                </Action>
+                <Action strong onClick={() => void ruleOff()} disabled={saving}>
+                  {saving ? 'Ruling off…' : 'Rule it off'}
                 </Action>
               </>
             ) : (
-              <Action tour="reports-arrange" onClick={startArranging}>Arrange the sheet</Action>
+              <Action tour="reports-arrange" onClick={startArranging} disabled={!data.sheetKnown}>
+                Arrange the sheet
+              </Action>
             )}
           </div>
         </header>
 
         <hr className="rp-rule" style={{ marginBottom: 16 }} />
 
-        {arranging && (
+        {editing && (
           <div className="rp-arrange">
             <p className="rp-note" style={{ margin: 0 }}>
               Drag a cutting anywhere on the ruling; pull its corner to resize. Each one can change
@@ -474,11 +581,34 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
           </div>
         )}
 
+        {data.sheetUnread && data.restaurantId !== null && (
+          <p role="status" className="rp-note" style={{ marginBottom: 12 }}>
+            {data.sheetUnread}
+          </p>
+        )}
+
+        {data.sheetStale && data.restaurantId !== null && (
+          <p role="status" className="rp-note" style={{ marginBottom: 12 }}>
+            {data.sheetStale}
+          </p>
+        )}
+
         {data.restaurantId === null ? (
           <p role="status" className="rp-note">
             No restaurant is active yet, so none of these registers is addressed to anyone. Pick a
             restaurant and the sheet fills in.
           </p>
+        ) : !data.sheetKnown && !data.sheetUnread ? (
+          /* The reader's own arrangement is still on its way. Plain paper, not
+             the house sheet: drawing the house sheet first and then swapping it
+             for theirs is a layout jump, and arranging it would save it over
+             theirs. The reads behind the sheet are already in flight. */
+          <div className="rp-outlines" role="status">
+            <span className="rp-sr-only">Reading how you arranged this sheet…</span>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="rp-outline" aria-hidden />
+            ))}
+          </div>
         ) : view.cuttings.length === 0 ? (
           <p role="status" className="rp-note">
             Every cutting has been taken off this sheet. Nothing is being read — press “Arrange the
@@ -487,7 +617,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         ) : (
           <Sheet
             cuttings={cuttings}
-            arranging={arranging}
+            arranging={editing}
             onMove={onMove}
             containerRef={holdSheetEl}
             ghost={arrange.origin}
