@@ -518,6 +518,10 @@ export class ProvidersController {
     @Body() dto: UpdateProviderDto,
     @CurrentUser() user: AuthUser,
   ): Promise<ProviderResponseDto> {
+    // Switching a vendor off is a removal for its orders (#1337 pauses its
+    // standing orders), so it takes the same role as DELETE. Other edits are
+    // left as they are here; who may edit a record is VEN-W30 (#688).
+    if (dto?.isActive === false) await this.assertMayRemoveVendor(user);
     try {
       return await this.providersService.updateProvider(
         providerId,
@@ -541,6 +545,7 @@ export class ProvidersController {
     @Param("id") providerId: string,
     @CurrentUser() user: AuthUser,
   ): Promise<{ success: boolean } & VendorRemovalOutcome> {
+    await this.assertMayRemoveVendor(user);
     try {
       const outcome = await this.providersService.softDeleteProvider(
         providerId,
@@ -551,6 +556,28 @@ export class ProvidersController {
     } catch (error) {
       rethrow(error, "Failed to delete provider");
     }
+  }
+
+  /**
+   * Removing a vendor pauses its standing orders and stops every new order to
+   * it (#1283, #1337), so it is a manager's or an owner's act, like stating
+   * its usual currency above. Until r27 any member could remove one: /vendors
+   * had no control, and the only caller was the offline replay. The page now
+   * shows the control to owners and managers only; this is what makes that
+   * more than a hidden button. `null` (no row, or the read failed) never
+   * passes.
+   */
+  private async assertMayRemoveVendor(user: AuthUser): Promise<void> {
+    const role = await this.organizations.resolveRestaurantRole(
+      actorOf(user),
+      houseOf(user),
+    );
+    if (!roleSatisfies(role, "manager"))
+      throw new HttpException(
+        "Removing a vendor pauses its standing orders and stops every new order to it, so it is a manager's or an owner's decision. " +
+          `${role ? `You are signed in as ${role} at this house` : "This session could not be shown to hold any role at this house"}, so the vendor was not removed. Ask a manager or an owner to remove it.`,
+        HttpStatus.FORBIDDEN,
+      );
   }
 
   // =========================================================================

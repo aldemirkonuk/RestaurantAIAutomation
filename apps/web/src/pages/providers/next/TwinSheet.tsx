@@ -38,6 +38,7 @@ import { VendorRecordEdit, businessTypeLabel } from './VendorRecordEdit';
 import { LedgerCard } from './scorecard/LedgerCard';
 import { MailTone } from './scorecard/MailTone';
 import { useAuth } from '../../../contexts/AuthContext';
+import { RemoveVendor } from './RemoveVendor';
 
 const ProviderIntelligencePanel = lazy(() =>
   import('../../../components/providers/ProviderIntelligencePanel').then((m) => ({
@@ -203,6 +204,10 @@ export function TwinSheet({ provider, onClose, focusUsualCurrency, onProviderSav
           </Suspense>
         </div>
       </div>
+
+      {/* last, and owners and managers only: removing the vendor (r27). The
+          sheet closes on success; the outcome is the gateway's sentence. */}
+      <RemoveVendor provider={provider} onRemoved={onClose} />
     </Sheet>
   );
 }
