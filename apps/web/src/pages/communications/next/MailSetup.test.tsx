@@ -63,7 +63,7 @@ const fail = (status: number, message?: string) =>
 
 function Where() {
   const l = useLocation();
-  return <output data-testid="where">{l.pathname + l.search}</output>;
+  return <output data-testid="where">{l.pathname + l.search + l.hash}</output>;
 }
 
 function mount(props: Partial<Parameters<typeof MailSetup>[0]> = {}) {
@@ -307,7 +307,8 @@ describe('which address letters leave from', () => {
     mount();
     expect((await screen.findByTestId('setup-senders-none')).textContent).toMatch(/Connect one in Connections/);
     fireEvent.click(screen.getByRole('button', { name: 'Open Connections' }));
-    expect(screen.getByTestId('where').textContent).toBe('/connections');
+    // Lands on the register that holds the Gmail rows, not the page top (r12 walk).
+    expect(screen.getByTestId('where').textContent).toBe('/connections#grants');
   });
 
   it('a failed mailbox-list read says it failed, never "none connected"', async () => {

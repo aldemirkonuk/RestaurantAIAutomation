@@ -159,6 +159,12 @@ export interface ConnectionsNextProps {
  * because the element that carries one is here, and a fragment nothing on the
  * page answers to is a link that silently does nothing.
  */
+/**
+ * Where a "Connect yours" consent comes back to: Register III, where the row
+ * it made is drawn (r12 walk, 2026-11-12).
+ */
+export const CONNECT_RETURN_PATH = '/connections#grants';
+
 export const REGISTER_ANCHORS = [
   'attached',
   'till',
@@ -1469,10 +1475,24 @@ export default function ConnectionsNext({ ground }: ConnectionsNextProps) {
                     lastLabel="Last action"
                     last={null}
                     lastDetail="Never connected by anyone here."
-                    controls={[{ label: 'Connect yours', disabled: !c.available }]}
+                    controls={[
+                      {
+                        label: 'Connect yours',
+                        disabled: !c.available,
+                        // The same per-person consent flow `/profile` opens
+                        // (r12 walk, 2026-11-12): the button used to be
+                        // enabled with nothing behind it.
+                        onClick: c.available
+                          ? () =>
+                              navigate(
+                                `/authorize/${encodeURIComponent(c.id)}?returnPath=${encodeURIComponent(CONNECT_RETURN_PATH)}`,
+                              )
+                          : undefined,
+                      },
+                    ]}
                     stopNote={
                       c.available
-                        ? 'Connecting happens on your own profile: the grant would be yours, not the house’s.'
+                        ? 'You sign in to your own account, so the grant is yours, not the house’s.'
                         : plainReason(c.unavailableReason, 'This connection is not available yet.')
                     }
                   />

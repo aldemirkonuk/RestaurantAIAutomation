@@ -73,7 +73,9 @@ function Senders({
           <p data-testid="setup-senders-none" style={TEXT}>
             No mailbox of this house is connected for sending yet. Connect one in Connections, and it can be chosen here.
           </p>
-          <button type="button" style={LINK} onClick={() => navigate('/connections')}>
+          {/* `#grants` is the register the Gmail rows are drawn in; the bare
+              page opened at its top, a long scroll above them (r12 walk). */}
+          <button type="button" style={LINK} onClick={() => navigate('/connections#grants')}>
             Open Connections
           </button>
         </>
