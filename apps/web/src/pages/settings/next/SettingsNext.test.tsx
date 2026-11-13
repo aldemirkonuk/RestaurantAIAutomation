@@ -32,8 +32,8 @@
  * assertions would pass against the scaffold this file replaced.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 
 const mock = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
@@ -150,6 +150,7 @@ vi.mock('@/lib/mudavym/useMudavymDesign', () => ({
 }));
 
 import SettingsNext from './SettingsNext';
+import { lockBodyScroll } from '@/components/mudavym/overlayState';
 import { isSectionId } from './st-format';
 import { handOf } from '../../recommendations/next/rec-format';
 
@@ -577,6 +578,75 @@ describe('SettingsNext — the editorial spine', () => {
   // (jsdom never rendering it) is not the failure mode; scrollIntoView simply
   // stayed uncalled, which is the same silent shape as the 900-second token
   // trap this repo has already been burned by once.
+  it('a ?tab= deep link under an open overlay (the theme prompt) scrolls once the overlay lets go (r26 walk)', () => {
+    const release = lockBodyScroll();
+    try {
+      mount('/settings?tab=measurement');
+      expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    } finally {
+      act(() => release());
+    }
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
+    const scrolledTo = (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[0] as HTMLElement;
+    expect(scrolledTo.id).toBe('st-section-measurement');
+  });
+
+  // r29 walk: the deep link's first jump landed while the registers above
+  // were still loading (the section at ~1,400 px, later ~3,700 px), and the
+  // theme prompt opened and closed in the same window. The arrival stays
+  // anchored: each layout change re-jumps (instantly, once no overlay holds
+  // the scroll) until the reader's own first input. Input while an overlay
+  // holds the scroll (the "Not now" press) is the overlay's.
+  describe('a ?tab= deep link stays anchored while the page settles (r29 walk)', () => {
+    let resized: (() => void) | null = null;
+    const RealRO = (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+    beforeEach(() => {
+      resized = null;
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = class {
+        constructor(cb: () => void) {
+          resized = cb;
+        }
+        observe() {}
+        disconnect() {
+          resized = null;
+        }
+      };
+    });
+    afterEach(() => {
+      (globalThis as { ResizeObserver?: unknown }).ResizeObserver = RealRO;
+    });
+    const calls = () => (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls;
+
+    it('re-jumps to the section on each layout change, as an instant jump', () => {
+      mount('/settings?tab=measurement');
+      expect(calls()).toHaveLength(1);
+      expect(calls()[0][0]).toEqual({ behavior: 'instant', block: 'start' });
+      act(() => resized?.());
+      expect(calls()).toHaveLength(2);
+      expect((Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[1]).toHaveProperty('id', 'st-section-measurement');
+    });
+
+    it('a layout change under an overlay waits for it, and the press that closes it is not the reader taking over', () => {
+      mount('/settings?tab=measurement');
+      const release = lockBodyScroll();
+      act(() => resized?.());
+      fireEvent.pointerDown(window);
+      expect(calls()).toHaveLength(1);
+      act(() => release());
+      expect(calls()).toHaveLength(2);
+    });
+
+    it("hands the page to the reader at their first input, and a contents click still glides", () => {
+      mount('/settings?tab=measurement');
+      fireEvent.wheel(window);
+      act(() => resized?.());
+      expect(calls()).toHaveLength(1);
+      fireEvent.click(within(screen.getByRole('navigation', { name: /settings registers/i })).getByText('What it carries'));
+      expect(calls()).toHaveLength(2);
+      expect(calls()[1][0]).toEqual({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
   it('honours a ?tab=hours deep link the same way — graft B lives under "The house"', () => {
     mount('/settings?tab=hours');
     expect(screen.getByTestId('st-section-hours')).toBeInTheDocument();

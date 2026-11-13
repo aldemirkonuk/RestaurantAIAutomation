@@ -13,6 +13,30 @@
    otherwise leave the page unscrollable (or unlock it while one is still up). */
 let scrollLocks = 0;
 let restoreOverflow = '';
+/** Waiting for the page to scroll again (r26 walk: a ?tab= deep link). */
+const unlockWaiters = new Set<() => void>();
+
+/**
+ * Runs `fn` now when no overlay holds the body's scroll, else once the last
+ * lock is released. A scroll asked for while an overlay has the body locked
+ * (the theme prompt over /settings?tab=…) was swallowed: it ran once, into an
+ * `overflow: hidden` body, and never again. Returns a cancel.
+ */
+export function whenBodyScrollUnlocked(fn: () => void): () => void {
+  if (scrollLocks === 0) {
+    fn();
+    return () => {};
+  }
+  unlockWaiters.add(fn);
+  return () => {
+    unlockWaiters.delete(fn);
+  };
+}
+
+/** True while any overlay holds the body's scroll; its input is the overlay's, not the page's. */
+export function isBodyScrollLocked(): boolean {
+  return scrollLocks > 0;
+}
 
 export function lockBodyScroll(): () => void {
   if (typeof document === 'undefined') return () => {};
@@ -26,7 +50,12 @@ export function lockBodyScroll(): () => void {
     if (released) return;
     released = true;
     scrollLocks = Math.max(0, scrollLocks - 1);
-    if (scrollLocks === 0) document.body.style.overflow = restoreOverflow;
+    if (scrollLocks === 0) {
+      document.body.style.overflow = restoreOverflow;
+      const waiting = Array.from(unlockWaiters);
+      unlockWaiters.clear();
+      for (const run of waiting) run();
+    }
   };
 }
 

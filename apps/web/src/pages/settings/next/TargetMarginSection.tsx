@@ -352,6 +352,21 @@ function TargetMarginBody({
                 value={pour}
                 disabled={!canManage || pourBusy}
                 onChange={(e) => setPour(e.target.value)}
+                // r26 walk: Enter confirms here as it does in the POS panel's
+                // pour box, Escape puts back the confirmed pour, and the box
+                // selects what it holds on focus, so typing replaces a
+                // confirmed 140 rather than reading "140150".
+                onKeyDown={(e) => {
+                  if (e.nativeEvent.isComposing) return;
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (canManage && !pourBusy && pourRead.canConfirm) void confirmPour();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setPour(reg.pour.ml === null ? '' : String(reg.pour.ml));
+                  }
+                }}
+                onFocus={(e) => e.currentTarget.select()}
                 className="st-ink st-focus"
                 style={{ ...fieldStyle, opacity: canManage ? 1 : 0.45, width: 76, textAlign: 'right' }}
               />
