@@ -34,7 +34,8 @@ import {
  * --------------------------------------------
  * 1. **It never sends twice.** Not by remembering, by construction: every send
  *    is preceded by an INSERT into `calendar_reminder_dispatches`, whose UNIQUE
- *    `(calendar_event_id, user_id)` index is the idempotency key. Two gateway
+ *    `(calendar_event_id, user_id, due_at)` index is the idempotency key (an
+ *    entry that moves is a new instant and is reminded again). Two gateway
  *    instances sweeping the same tenant at the same instant cannot both win the
  *    insert, so they cannot both send. `reminder_sent` is the roll-up, not the
  *    lock — a boolean read-then-written is a race, and this table is not.
@@ -338,7 +339,7 @@ export class CalendarRemindersService {
     // The roll-up. Only when nobody is still waiting: a `reminder_sent = true`
     // written while two members sit inside quiet hours would strand them.
     if (deferred === 0) {
-      await this.stampEvent(row.id, ctx.tenantId, intended);
+      await this.stampEvent(row, ctx.tenantId, intended, when.dueAt);
     }
   }
 
@@ -368,7 +369,11 @@ export class CalendarRemindersService {
     const { data, error } = await client
       .from("calendar_reminder_dispatches")
       .upsert(rows, {
-        onConflict: "calendar_event_id,user_id",
+        // One reminder per entry, per person, per instant: an entry that moves
+        // is a new instant and claims afresh, while the old instant's row
+        // still blocks a second send of it (QA round 4 B4,
+        // 20270901100000_a_moved_entry_is_reminded_again.sql).
+        onConflict: "calendar_event_id,user_id,due_at",
         ignoreDuplicates: true,
       })
       .select("id, user_id");
@@ -505,10 +510,12 @@ export class CalendarRemindersService {
    * concurrent sweep cannot double-stamp.
    */
   private async stampEvent(
-    eventId: string,
+    row: CandidateRow,
     restaurantId: string,
     intended: string[],
+    dueAt: Date,
   ): Promise<void> {
+    const eventId = row.id;
     if (intended.length === 0) {
       // Nobody wants a calendar reminder in this house. Stamping would record a
       // send that did not happen, so the row stays open and produces no work.
@@ -519,6 +526,9 @@ export class CalendarRemindersService {
       .from("calendar_reminder_dispatches")
       .select("user_id, outcome")
       .eq("calendar_event_id", eventId)
+      // Only this instant's rows: a reminder sent for the day the entry was
+      // on before it moved says nothing about the day it is on now.
+      .eq("due_at", dueAt.toISOString())
       .in("user_id", intended);
 
     if (error) {
@@ -536,7 +546,11 @@ export class CalendarRemindersService {
     );
     if (intended.some((id) => !sentTo.has(id))) return;
 
-    const { error: stampError } = await client
+    // Stamp only the entry as it was read. If it moved while this sweep was
+    // sending, the move re-armed it, and stamping now would mark the NEW
+    // instant as reminded when only the old one was. Every column the
+    // instant is computed from is matched against the value read.
+    let stamp = client
       .from("calendar_events")
       .update({
         reminder_sent: true,
@@ -545,6 +559,13 @@ export class CalendarRemindersService {
       .eq("id", eventId)
       .eq("restaurant_id", restaurantId)
       .eq("reminder_sent", false);
+    for (const col of INSTANT_COLUMNS) {
+      const value = row[col];
+      stamp = value === null || value === undefined
+        ? stamp.is(col, null)
+        : stamp.eq(col, value);
+    }
+    const { error: stampError } = await stamp;
 
     if (stampError) {
       this.logger.warn(
@@ -904,6 +925,19 @@ export interface RunTally {
   failed: number;
   truncated: boolean;
 }
+
+/**
+ * The columns a reminder's instant is computed from (`reminderDueAt`). The
+ * re-arm trigger watches the same six.
+ */
+const INSTANT_COLUMNS = [
+  "start_date",
+  "event_date",
+  "start_time",
+  "event_time",
+  "all_day",
+  "reminder_days_before",
+] as const;
 
 interface CandidateRow {
   id: string;
