@@ -187,10 +187,25 @@ export const deliveriesApi = {
   },
 
   async proposals(id: string): Promise<Proposal[]> {
+    return (await deliveriesApi.proposalThread(id)).proposals;
+  },
+
+  /**
+   * The thread with the gateway's `moneyWithheld` flag (r28 G3): true when the
+   * person does not hold the house's money, so `unit_price_proposed` and
+   * `money_at_risk` arrive null on purpose. Absent on an older gateway reads
+   * as false.
+   */
+  async proposalThread(
+    id: string,
+  ): Promise<{ proposals: Proposal[]; moneyWithheld: boolean }> {
     const { data } = await apiClient.get(
       `/procurement/deliveries/${id}/proposals`,
     );
-    return data.proposals as Proposal[];
+    return {
+      proposals: (data?.proposals ?? []) as Proposal[],
+      moneyWithheld: data?.moneyWithheld === true,
+    };
   },
 
   async propose(
