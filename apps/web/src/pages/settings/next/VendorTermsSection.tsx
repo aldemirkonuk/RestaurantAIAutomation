@@ -486,7 +486,10 @@ export function VendorTermsSection({ data }: { data: SettingsNextData }) {
               this is an empty register, not a failed one.
             </Note>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
+            // position: relative makes this scroller the containing block of the
+            // header's absolutely placed screen-reader label. Without it that label
+            // sat 756px across a 375px phone and widened the whole page (r26 walk).
+            <div data-testid="st-vendor-terms-scroll" style={{ overflowX: 'auto', position: 'relative' }}>
               <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 780 }}>
                 <thead>
                   <tr>

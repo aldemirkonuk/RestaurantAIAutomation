@@ -1375,6 +1375,15 @@ describe('SettingsNext — fits a phone', () => {
     expect(screen.getByTestId('st-page').style.overflowWrap).toBe('break-word');
   });
 
+  it('keeps the vendor-terms table and its hidden header label inside their own scroller', () => {
+    mount('/settings?tab=vendor-terms');
+    const scroller = screen.getByTestId('st-vendor-terms-scroll');
+    expect(scroller.style.overflowX).toBe('auto');
+    expect(scroller.style.position).toBe('relative');
+    const label = within(scroller).getByText('Record terms');
+    expect(label.style.position).toBe('absolute');
+  });
+
   it('breaks a stored value printed as one long string inside its record row', () => {
     mock.current = base({
       ledger: remote(ledgerRegister({
