@@ -311,6 +311,7 @@ CREATE OR REPLACE FUNCTION public.mail_thread_states(
   provider_id uuid,
   thread_key text,
   message_count bigint,
+  letter_count bigint,
   last_any_at timestamp with time zone,
   last_visible_at timestamp with time zone,
   last_direction text,
@@ -363,6 +364,10 @@ per_thread AS (
            r.thread_key,
            -- Letters only: automatic mail (a bounce, an auto-reply) is not one.
            count(*) FILTER (WHERE NOT r.automatic) AS message_count,
+           -- Letters that passed between the house and the vendor: sent or
+           -- received. A draft, a queued or a refused letter is on the thread
+           -- but is not counted as one of its letters (r28 mail gap 14).
+           count(*) FILTER (WHERE r.visible) AS letter_count,
            max(r.at) AS last_any_at,
            max(r.at) FILTER (WHERE r.visible) AS last_visible_at,
            min(r.at) FILTER (WHERE r.owes
@@ -395,6 +400,7 @@ per_thread AS (
 SELECT t.provider_id,
        t.thread_key,
        t.message_count,
+       t.letter_count,
        t.last_any_at,
        t.last_visible_at,
        t.last_direction,
@@ -427,13 +433,34 @@ COMMENT ON FUNCTION public.mail_thread_states(uuid, boolean, uuid) IS
   '(default true) removes HOUSE_DRAFT/HOUSE_CANCELLED rows before anything is counted.';
 
 
+-- Text as the Mail search compares it (r28 mail gap 16): Turkish and the
+-- common Latin accents read as their plain letter, then lower case, so
+-- "sut", "Süt" and "SÜT" find each other and "Istanbul" finds "İstanbul".
+-- translate() runs first because lower() of a dotted capital I is not "i"
+-- in every collation.
+CREATE OR REPLACE FUNCTION public.mail_fold(p_text text)
+RETURNS text
+    LANGUAGE sql IMMUTABLE PARALLEL SAFE
+    SET search_path = ''
+    AS $$
+SELECT lower(translate(p_text,
+  'İIıÇçĞğÖöŞşÜüÂâÎîÛûÁáÀàÄäÉéÈèÊêËëÍíÌìÓóÒòÔôÚúÙùÑñ',
+  'iiiccggoossuuaaiiuuaaaaaaeeeeeeeeiiiioooooouuuunn'));
+$$;
+
+COMMENT ON FUNCTION public.mail_fold(text) IS
+  'Folds Turkish and common accented letters to plain lower case for the Mail '
+  'search (the_mail_list_is_read_by_person, r28 mail gap 16).';
+
+
 CREATE OR REPLACE FUNCTION public.list_mail_people(
   p_restaurant_id uuid,
   p_withhold_house_letters boolean DEFAULT true,
   p_waiting_only boolean DEFAULT false,
   p_after_at timestamp with time zone DEFAULT NULL::timestamp with time zone,
   p_after_key text DEFAULT NULL::text,
-  p_limit integer DEFAULT 50
+  p_limit integer DEFAULT 50,
+  p_query text DEFAULT NULL::text
 ) RETURNS TABLE(
   key text,
   kind text,
@@ -558,7 +585,29 @@ SELECT k.key::text,
        k.unsent_status
 FROM keyed k
 LEFT JOIN public.providers pr ON pr.id = k.provider_id
+-- The search (r28 mail gap 16): what was typed, trimmed and cut to 100
+-- characters, folded, with LIKE's own % _ \ taken as plain characters.
+CROSS JOIN (
+    SELECT CASE WHEN NULLIF(btrim(p_query), '') IS NULL THEN NULL
+                ELSE '%' || replace(replace(replace(
+                       public.mail_fold(left(btrim(p_query), 100)),
+                       '\', '\\'), '%', '\%'), '_', '\_') || '%'
+           END AS pat
+) q
 WHERE (p_waiting_only IS NOT TRUE OR k.waiting)
+  -- A person matches by their name, a thread's subject or order number, or
+  -- the words of any letter this caller may read (a withheld letter is not
+  -- read: mail_letter_rows removed it first; a second copy is not a letter).
+  AND (q.pat IS NULL
+       OR public.mail_fold(pr.name::text) LIKE q.pat
+       OR EXISTS (SELECT 1 FROM t
+                  WHERE t.provider_id = k.provider_id
+                    AND (public.mail_fold(t.subject) LIKE q.pat
+                         OR public.mail_fold(t.order_number) LIKE q.pat))
+       OR EXISTS (SELECT 1
+                  FROM public.mail_letter_rows(p_restaurant_id, p_withhold_house_letters, k.provider_id) l
+                  WHERE NOT l.duplicate
+                    AND public.mail_fold(l.message_text) LIKE q.pat))
   AND (p_after_at IS NULL
        OR k.last_at < p_after_at
        OR (k.last_at = p_after_at AND k.key > (p_after_key COLLATE "C")))
@@ -566,10 +615,12 @@ ORDER BY k.last_at DESC, k.key ASC
 LIMIT greatest(1, least(COALESCE(p_limit, 50), 500));
 $$;
 
-COMMENT ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer) IS
+COMMENT ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer, text) IS
   'One page of the people a house has mail with, newest letter first, keyset-paged by '
   '(last_at desc, key); a vendor whose only letter has not left (queued, failed, refused, '
-  'pulled back) is listed with unsent_status. Vendors only until non-vendor mail is stored. '
+  'pulled back) is listed with unsent_status. p_query keeps only the people whose name, a '
+  'thread subject or order number, or a readable letter holds it, accents folded. Vendors '
+  'only until non-vendor mail is stored. '
   '(the_mail_list_is_read_by_person)';
 
 
@@ -584,6 +635,7 @@ CREATE OR REPLACE FUNCTION public.list_mail_threads(
   thread_key text,
   subject text,
   message_count bigint,
+  letter_count bigint,
   last_at timestamp with time zone,
   last_direction text,
   waiting boolean,
@@ -605,6 +657,7 @@ WITH t AS (
 SELECT t.thread_key,
        t.subject,
        t.message_count,
+       t.letter_count,
        t.sort_at AS last_at,
        t.last_direction,
        t.waiting,
@@ -835,7 +888,8 @@ REVOKE ALL ON FUNCTION public.mail_letter_rows(uuid, boolean, uuid)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.mail_thread_states(uuid, boolean, uuid)
   FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer)
+REVOKE ALL ON FUNCTION public.mail_fold(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer, text)
   FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.list_mail_threads(uuid, uuid, boolean, timestamp with time zone, text, integer)
   FROM PUBLIC, anon, authenticated;
@@ -846,7 +900,8 @@ REVOKE ALL ON FUNCTION public.mail_thread_letters(uuid, text, uuid, boolean, tim
 
 GRANT EXECUTE ON FUNCTION public.mail_letter_rows(uuid, boolean, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_thread_states(uuid, boolean, uuid) TO service_role;
-GRANT EXECUTE ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.mail_fold(text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.list_mail_people(uuid, boolean, boolean, timestamp with time zone, text, integer, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.list_mail_threads(uuid, uuid, boolean, timestamp with time zone, text, integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_inbox_summary(uuid, boolean) TO service_role;
 GRANT EXECUTE ON FUNCTION public.mail_thread_letters(uuid, text, uuid, boolean, timestamp with time zone, uuid, integer) TO service_role;
