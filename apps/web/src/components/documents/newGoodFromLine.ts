@@ -1,3 +1,5 @@
+import type { GoodBody } from '../../services/api/houseGoods'
+
 /**
  * A paper line whose good the house does not carry yet becomes a good here,
  * in the unit the line's cost can be read in (r21, invoices walk).
@@ -83,12 +85,44 @@ export function unitMisfit(line: LineFacts, unit: GoodUnit): string | null {
   return null
 }
 
+/**
+ * The sizes the gateway takes for one container (`CONTAINER_ML`,
+ * house-item.service.ts): a bottle by the item edit's own 50-18000 ml, a keg
+ * from 1 l to a 58.7 l half barrel. Only these two units have a size that
+ * recipe cost reads; a good kept in ml, g or by the piece has none.
+ */
+const CONTAINER_ML: Partial<Record<GoodUnit, { min: number; max: number }>> = {
+  bottle: { min: 50, max: 18000 },
+  keg: { min: 1000, max: 60000 },
+}
+
+/**
+ * The line's printed size, carried onto the good when it is kept by the bottle
+ * or the keg (r21 D2): `Tonik 200 ml` becomes a good whose bottle holds 200,
+ * so it costs per ml by 200 and is never read as a 750 ml wine bottle. The
+ * sentence says what the good will hold, or that its size stays unknown.
+ */
+export function goodSize(
+  line: LineFacts,
+  unit: GoodUnit,
+): { ml: number | null; said: string | null } {
+  const band = CONTAINER_ML[unit]
+  if (!band) return { ml: null, said: null }
+  const f = line.formatMl
+  if (f == null || !(f > 0))
+    return { ml: null, said: `The paper does not say what one ${unit} holds, so the good's size is left unknown until it is set on the item.` }
+  if (!Number.isInteger(f) || f < band.min || f > band.max)
+    return { ml: null, said: `The paper says ${f} ml, which is not a ${unit} size the house can keep (${band.min} to ${band.max} ml), so the good's size is left unknown.` }
+  return { ml: f, said: `One ${unit} holds ${f} ml, as the paper says.` }
+}
+
 /** The house-items body, or the sentence that says why there is none. */
 export function goodBody(
   name: string,
   kind: GoodKind,
   unit: GoodUnit,
-): { ok: true; body: { kind: string; uom: string; displayName: string } } | { ok: false; why: string } {
+  sizeMl: number | null = null,
+): { ok: true; body: GoodBody } | { ok: false; why: string } {
   const n = name.trim()
   if (kind === 'wine')
     return {
@@ -97,7 +131,9 @@ export function goodBody(
     }
   if (n.length < 1) return { ok: false, why: 'Give the good a name.' }
   if (n.length > 120) return { ok: false, why: 'Keep the name to 120 characters.' }
-  return { ok: true, body: { kind, uom: unit, displayName: n } }
+  const body: GoodBody = { kind, uom: unit, displayName: n }
+  if (sizeMl !== null && CONTAINER_ML[unit]) body.bottleSizeMl = sizeMl
+  return { ok: true, body }
 }
 
 /**

@@ -3,12 +3,14 @@ import {
   GOOD_KINDS,
   GOOD_UNITS,
   goodBody,
+  goodSize,
   proposeGood,
   unitMisfit,
   type GoodKind,
   type GoodUnit,
   type LineFacts,
 } from './newGoodFromLine'
+import type { GoodBody } from '../../services/api/houseGoods'
 
 /**
  * ItemChooser — a line with no remembered pairing is paired by hand (#347).
@@ -42,7 +44,7 @@ export interface ItemChooserProps {
   /** The line being paired: offered as a new good when the house does not carry it (r21). */
   line?: LineFacts
   /** Carry the line as a new good and pair it. Resolves to a sentence when it did not. */
-  onCreate?: (body: { kind: string; uom: string; displayName: string }) => Promise<string | null>
+  onCreate?: (body: GoodBody) => Promise<string | null>
 }
 
 const MAX_MATCHES = 8
@@ -98,7 +100,8 @@ function NewGood({ line, onCreate, busy }: { line: LineFacts; onCreate: NonNulla
   const [unit, setUnit] = useState<GoodUnit>(first.unit)
   const [said, setSaid] = useState<string | null>(null)
   const [sending, setSending] = useState(false)
-  const built = goodBody(name, kind, unit)
+  const size = kind === 'wine' ? { ml: null, said: null } : goodSize(line, unit)
+  const built = goodBody(name, kind, unit, size.ml)
   const misfit = kind === 'wine' ? null : unitMisfit(line, unit)
   const submit = async () => {
     if (!built.ok || sending) return
@@ -136,6 +139,7 @@ function NewGood({ line, onCreate, busy }: { line: LineFacts; onCreate: NonNulla
       )}
       {!built.ok && <span data-testid="new-good-why">{built.why}</span>}
       {misfit && <span data-testid="new-good-misfit" style={{ color: 'var(--warn, #946A1A)' }}>{misfit}</span>}
+      {built.ok && size.said && <span data-testid="new-good-size">{size.said}</span>}
       {said && <span data-testid="new-good-said">{said}</span>}
       <div>
         <button type="button" style={BTN} disabled={!built.ok || busy || sending} onClick={() => void submit()} data-testid="new-good-add">

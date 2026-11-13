@@ -80,7 +80,7 @@ import {
 import { ItemChooser } from '../../../components/documents/ItemChooser'
 import type { LineFacts } from '../../../components/documents/newGoodFromLine'
 import { goodSizeSuffix } from '../../../components/documents/newGoodFromLine'
-import { addHouseGood, carryThenPair } from '../../../services/api/houseGoods'
+import { addHouseGood, carryThenPair, type GoodBody } from '../../../services/api/houseGoods'
 import { AuthContext } from '@/contexts/AuthContext'
 import { canonicalApi } from '../../../services/api/canonical'
 import { getInventory } from '../../../services/api/inventory'
@@ -235,7 +235,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
   /** Carry the line's good, then pair the line with it (r21; rules in `carryThenPair`). */
   const createGood = async (
     lineId: string,
-    body: { kind: string; uom: string; displayName: string },
+    body: GoodBody,
   ): Promise<string | null> => {
     const out = await carryThenPair(
       body,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { goodBody, goodSizeSuffix, proposeGood, unitMisfit } from './newGoodFromLine'
+import { goodBody, goodSize, goodSizeSuffix, proposeGood, unitMisfit } from './newGoodFromLine'
 
 /**
  * r21: a paper line becomes a good in the unit its cost can be read in. Each
@@ -77,5 +77,37 @@ describe('goodSizeSuffix: the label says a size only when one was set', () => {
   })
   it('a wine says its library bottle', () => {
     expect(goodSizeSuffix({ kind: 'wine', bottleSizeMl: 750, bottle_size_ml: null })).toBe(' · 750 ml')
+  })
+})
+
+/** r21 D2: the paper's size reaches the good, so it is never costed as a 750 ml bottle. */
+describe('goodSize: the line size the good is carried with', () => {
+  const tonik = { description: 'Tonik 200 ml', uom: 'bottle', formatMl: 200 }
+  it('a 200 ml tonic kept by the bottle holds 200, and the body sends it', () => {
+    expect(goodSize(tonik, 'bottle')).toEqual({ ml: 200, said: 'One bottle holds 200 ml, as the paper says.' })
+    expect(goodBody('Tonik', 'other', 'bottle', 200)).toEqual({
+      ok: true,
+      body: { kind: 'other', uom: 'bottle', displayName: 'Tonik', bottleSizeMl: 200 },
+    })
+  })
+  it('a 30 l keg holds 30000', () => {
+    expect(goodSize({ description: 'Fıçı', uom: 'keg', formatMl: 30000 }, 'keg').ml).toBe(30000)
+  })
+  it('kept in ml, g or by the piece, a good has no container size and none is sent', () => {
+    for (const unit of ['ml', 'g', 'each'] as const) {
+      expect(goodSize(tonik, unit)).toEqual({ ml: null, said: null })
+      expect(goodBody('Tonik', 'other', unit, 200)).toEqual({ ok: true, body: { kind: 'other', uom: unit, displayName: 'Tonik' } })
+    }
+  })
+  it('no printed size is unknown, said in words, never 750', () => {
+    const out = goodSize({ ...tonik, formatMl: null }, 'bottle')
+    expect(out.ml).toBeNull()
+    expect(out.said).toMatch(/does not say what one bottle holds/)
+    expect(goodBody('Tonik', 'other', 'bottle', out.ml)).toEqual({ ok: true, body: { kind: 'other', uom: 'bottle', displayName: 'Tonik' } })
+  })
+  it('a size outside what the gateway takes is left unknown, and says the bounds', () => {
+    expect(goodSize({ ...tonik, formatMl: 20 }, 'bottle')).toMatchObject({ ml: null, said: expect.stringMatching(/50 to 18000 ml/) })
+    expect(goodSize({ ...tonik, formatMl: 187.5 }, 'bottle').ml).toBeNull()
+    expect(goodSize({ ...tonik, formatMl: 500 }, 'keg').ml).toBeNull()
   })
 })

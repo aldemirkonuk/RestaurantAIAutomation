@@ -1,11 +1,22 @@
 import { apiClient, getActiveRestaurantId } from './client'
 
+/** What `POST /inventory/:rid/house-items` takes (#862). */
+export interface GoodBody {
+  kind: string
+  uom: string
+  displayName: string
+  /** What one bottle or keg holds, from the paper (r21 D2). Absent is unknown, never 750. */
+  bottleSizeMl?: number
+}
+
 /** What `POST /inventory/:rid/house-items` hands back (#862). */
 export interface HouseGood {
   id: string
   kind: string
   uom: string
   displayName: string
+  /** The size stored on the good; null when the paper did not say (r21 D2). */
+  bottleSizeMl?: number | null
 }
 
 /**
@@ -15,7 +26,7 @@ export interface HouseGood {
  * caller pairs with instead of adding a twin.
  */
 export async function addHouseGood(
-  body: { kind: string; uom: string; displayName: string },
+  body: GoodBody,
   restaurantId?: string,
 ): Promise<HouseGood> {
   const id = restaurantId || getActiveRestaurantId()
@@ -36,8 +47,8 @@ export function existingGoodId(error: unknown): string | null {
  * pairs nothing and comes back as the sentence to show.
  */
 export async function carryThenPair(
-  body: { kind: string; uom: string; displayName: string },
-  add: (b: { kind: string; uom: string; displayName: string }) => Promise<HouseGood>,
+  body: GoodBody,
+  add: (b: GoodBody) => Promise<HouseGood>,
   pair: (goodId: string) => Promise<void>,
   why: (err: unknown) => string,
 ): Promise<{ refused: string | null; note: string | null }> {
