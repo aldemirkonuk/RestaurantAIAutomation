@@ -329,12 +329,33 @@ export function cachedHouseName(
   }
 }
 
-/** Send the person to the chooser, unless they are there or on /no-access. */
+/**
+ * Pages where a session in no house is where it should be, so a stray
+ * `HOUSE_REQUIRED` there sends nobody anywhere.
+ *
+ * Found on the r12 walk (2026-11-12): a new owner on /get-started has no
+ * house yet, an account-wide read there (the ground's preferences) answered
+ * `HOUSE_REQUIRED`, this sent the page to the chooser with a full load, and
+ * the chooser — rightly — sent a person with no house back to /get-started.
+ * The first screen reloaded every two seconds and the form could not be
+ * filled. /verify-email, /register and /invite are the same: the session
+ * there is meant to have no house yet.
+ */
+export const HOUSELESS_PATHS: readonly string[] = [
+  CHOOSER_PATH,
+  "/no-access",
+  "/login",
+  "/get-started",
+  "/verify-email",
+  "/register",
+  "/invite",
+];
+
+/** Send the person to the chooser, unless they are on a page for no house. */
 export function goToChooser(): void {
   try {
-    const here = window.location.pathname;
-    if (here === CHOOSER_PATH || here === "/no-access" || here === "/login")
-      return;
+    const here = window.location.pathname.replace(/\/+$/, "") || "/";
+    if (HOUSELESS_PATHS.includes(here)) return;
     window.location.assign(CHOOSER_PATH);
   } catch {
     /* no window */

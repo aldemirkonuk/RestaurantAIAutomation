@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest";
 import {
   LAST_HOUSE_KEY,
   forgetHouse,
+  goToChooser,
   indexEmail,
   lastHouseFor,
   lastHouseHintFor,
@@ -187,5 +188,41 @@ describe("houseMemory", () => {
     });
     // Another person's last house marks nothing for this one.
     expect(orderForChooser(houses, V).lastOpenedId).toBeNull();
+  });
+});
+
+describe("goToChooser (r12 walk, 2026-11-12)", () => {
+  const real = window.location;
+  let assign: ReturnType<typeof vi.fn>;
+  const at = (pathname: string) => {
+    assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { pathname, assign },
+    });
+  };
+  afterEach(() => {
+    Object.defineProperty(window, "location", { configurable: true, value: real });
+  });
+
+  it("leaves a new owner on /get-started: a house-less session belongs there", () => {
+    at("/get-started");
+    goToChooser();
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it.each(["/verify-email", "/register", "/invite", "/choose-house", "/no-access", "/login", "/get-started/"])(
+    "leaves %s alone",
+    (path) => {
+      at(path);
+      goToChooser();
+      expect(assign).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still sends a house page to the chooser", () => {
+    at("/inventory");
+    goToChooser();
+    expect(assign).toHaveBeenCalledWith("/choose-house");
   });
 });
