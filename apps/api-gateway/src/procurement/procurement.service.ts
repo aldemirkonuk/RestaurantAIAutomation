@@ -24,6 +24,7 @@ import { InboundAddressService } from "../common/orchestrator/inbound-address.se
 import { GmailService } from "../communications/gmail.service";
 import type { SendRefusalKind } from "../communications/send-failure";
 import { WebsocketGateway } from "../websocket/websocket.gateway";
+import { assertProviderTakesOrders } from "../common/tenant/assert-provider-takes-orders";
 import { NotificationsService } from "../notifications/notifications.service";
 import { deliveryHasBookedOrder } from "./canonical/delivery-stock.service";
 import {
@@ -955,14 +956,31 @@ export class ProcurementService {
     // now lives in `common/tenant/assert-provider-belongs-to-restaurant.ts`
     // with the same query, logs and answers, so the recurring schedule routes
     // run the same one (ADR 0249).
-    await assertProviderBelongsToRestaurant(
-      this.databaseService.supabase,
-      restaurantId,
-      dto.providerId,
-      "createOrder",
-      "no order was placed",
-      this.logger,
-    );
+    //
+    // A REMOVED VENDOR TAKES NO NEW ORDER (QA round 3b, H3): a vendor the
+    // house removed on /vendors is refused in words, not written and mailed.
+    // A retroactive order (`alreadyFulfilled`) is the record of a purchase the
+    // invoice says already happened, so it only needs the vendor to be this
+    // house's: refusing it would leave a real delivery with no order to match.
+    if (fulfilled) {
+      await assertProviderBelongsToRestaurant(
+        this.databaseService.supabase,
+        restaurantId,
+        dto.providerId,
+        "createOrder",
+        "no order was placed",
+        this.logger,
+      );
+    } else {
+      await assertProviderTakesOrders(
+        this.databaseService.supabase,
+        restaurantId,
+        dto.providerId,
+        "createOrder",
+        "no order was placed",
+        this.logger,
+      );
+    }
 
     // Guard: restaurant must have at least one active provider before placing orders
     const { count: providerCount, error: countError } =

@@ -109,6 +109,9 @@ describe("ProcurementService — draft trigger fallback (regression: Bug 2)", ()
       delete: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),
       neq: jest.fn().mockReturnThis(),
+      // The vendor-still-live filters (assertProviderTakesOrders).
+      is: jest.fn().mockReturnThis(),
+      not: jest.fn().mockReturnThis(),
       maybeSingle: jest
         .fn()
         .mockResolvedValue({ data: { id: "inv-1" }, error: null }),
