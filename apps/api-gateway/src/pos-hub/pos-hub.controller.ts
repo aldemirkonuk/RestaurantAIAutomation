@@ -13,6 +13,8 @@ import {
   UseGuards,
 } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { CurrentUser } from "../auth/decorators/current-user.decorator";
+import { OrganizationsService } from "../organizations/organizations.service";
 import { Public } from "../auth/decorators/public.decorator";
 import { ApiHeader, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { Request } from "express";
@@ -57,7 +59,29 @@ export class PosHubController {
     private readonly posHub: PosHubService,
     private readonly catalogMatcher: CatalogMatcherService,
     private readonly mappingReview: PosMappingReviewService,
+    private readonly organizations: OrganizationsService,
   ) {}
+
+  /**
+   * A mapping decides what a sale takes off the shelf, so every write to one
+   * is an owner's or a manager's (inventory r28, gap 6), the same rule as a
+   * write-off. The role is read from the house's access rows, as the
+   * inventory controller does for a price. Reads stay open to the house, and
+   * so does the CSV import, which only says what the till rang.
+   */
+  private async assertMayMap(userId: string | undefined, restaurantId: string) {
+    if (!userId) {
+      throw new HttpException(
+        "Changing what a till button takes from stock names the person who did it, and this session names nobody. Nothing was changed.",
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(
+      userId,
+      restaurantId,
+      "change what a till button takes from stock",
+    );
+  }
 
   @Get("providers")
   @ApiOperation({
@@ -168,7 +192,9 @@ export class PosHubController {
   async upsertMapping(
     @Param("restaurantId") restaurantId: string,
     @Body() body: any,
+    @CurrentUser() user?: { userId?: string },
   ) {
+    await this.assertMayMap(user?.userId, restaurantId);
     try {
       return await this.posHub.upsertItemMapping(restaurantId, body || {});
     } catch (error) {
@@ -227,7 +253,9 @@ export class PosHubController {
   async setSaleUnitBatch(
     @Param("restaurantId") restaurantId: string,
     @Body() body: SetSaleUnitBatchDto,
+    @CurrentUser() user?: { userId?: string },
   ) {
+    await this.assertMayMap(user?.userId, restaurantId);
     try {
       return await this.mappingReview.setSaleUnitBatch(
         restaurantId,
@@ -252,7 +280,9 @@ export class PosHubController {
     @Param("restaurantId") restaurantId: string,
     @Param("mappingId") mappingId: string,
     @Body() body: SetSaleUnitDto,
+    @CurrentUser() user?: { userId?: string },
   ) {
+    await this.assertMayMap(user?.userId, restaurantId);
     try {
       return await this.mappingReview.setSaleUnit(
         restaurantId,
@@ -277,7 +307,9 @@ export class PosHubController {
   async catalogMatch(
     @Param("restaurantId") restaurantId: string,
     @Body() body: { source?: string },
+    @CurrentUser() user?: { userId?: string },
   ) {
+    await this.assertMayMap(user?.userId, restaurantId);
     try {
       return await this.catalogMatcher.pullAndMatch(
         restaurantId,
@@ -311,7 +343,9 @@ export class PosHubController {
   async approveProposals(
     @Param("restaurantId") restaurantId: string,
     @Body() body: ApproveProposalsBatchDto,
+    @CurrentUser() user?: { userId?: string },
   ) {
+    await this.assertMayMap(user?.userId, restaurantId);
     try {
       return await this.catalogMatcher.approveProposalsBatch(
         restaurantId,
@@ -335,7 +369,9 @@ export class PosHubController {
     @Param("restaurantId") restaurantId: string,
     @Param("proposalId") proposalId: string,
     @Body() body: ApproveProposalDto,
+    @CurrentUser() user?: { userId?: string },
   ) {
+    await this.assertMayMap(user?.userId, restaurantId);
     try {
       return await this.catalogMatcher.approveProposal(
         restaurantId,
@@ -360,7 +396,9 @@ export class PosHubController {
   async rejectProposal(
     @Param("restaurantId") restaurantId: string,
     @Param("proposalId") proposalId: string,
+    @CurrentUser() user?: { userId?: string },
   ) {
+    await this.assertMayMap(user?.userId, restaurantId);
     try {
       return await this.catalogMatcher.rejectProposal(restaurantId, proposalId);
     } catch (error) {

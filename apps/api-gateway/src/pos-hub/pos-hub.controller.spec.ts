@@ -5,6 +5,7 @@ import { PosHubService } from "./pos-hub.service";
 import { CatalogMatcherService } from "./catalog-matcher.service";
 import { PosMappingReviewService } from "./pos-mapping-review.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { OrganizationsService } from "../organizations/organizations.service";
 import { IS_PUBLIC_KEY } from "../auth/decorators/public.decorator";
 import {
   ListSaleUnitReviewQueryDto,
@@ -30,6 +31,7 @@ const pipe = new ValidationPipe({
 });
 
 const meta = (metatype: any) => ({ type: "body", metatype }) as any;
+const manager = { userId: "u-manager" };
 
 describe("PosHubController — sale-unit review routes", () => {
   let controller: PosHubController;
@@ -52,6 +54,8 @@ describe("PosHubController — sale-unit review routes", () => {
         { provide: PosHubService, useValue: posHub },
         { provide: CatalogMatcherService, useValue: {} },
         { provide: PosMappingReviewService, useValue: mappingReview },
+        // The mapping writes are a manager's; these cases run as one.
+        { provide: OrganizationsService, useValue: { assertCanManageRestaurant: async () => undefined } },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -313,7 +317,7 @@ describe("PosHubController — sale-unit review routes", () => {
     it("delegates a valid single write to the review service", async () => {
       mappingReview.setSaleUnit.mockResolvedValue({ ok: true });
 
-      await controller.setSaleUnit("rest-1", "map-1", { sale_unit: "glass" });
+      await controller.setSaleUnit("rest-1", "map-1", { sale_unit: "glass" }, manager);
 
       expect(mappingReview.setSaleUnit).toHaveBeenCalledWith(
         "rest-1",
@@ -326,7 +330,7 @@ describe("PosHubController — sale-unit review routes", () => {
       mappingReview.setSaleUnitBatch.mockResolvedValue({ updated: 1 });
       const items = [{ mapping_id: "map-1", sale_unit: "glass" as const }];
 
-      await controller.setSaleUnitBatch("rest-1", { items });
+      await controller.setSaleUnitBatch("rest-1", { items }, manager);
 
       expect(mappingReview.setSaleUnitBatch).toHaveBeenCalledWith(
         "rest-1",
@@ -338,7 +342,7 @@ describe("PosHubController — sale-unit review routes", () => {
       mappingReview.setSaleUnit.mockRejectedValue(new Error("not found"));
 
       await expect(
-        controller.setSaleUnit("rest-1", "map-x", { sale_unit: "bottle" }),
+        controller.setSaleUnit("rest-1", "map-x", { sale_unit: "bottle" }, manager),
       ).rejects.toThrow(HttpException);
     });
   });

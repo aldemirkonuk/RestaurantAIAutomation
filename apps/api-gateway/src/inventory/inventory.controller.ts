@@ -31,6 +31,21 @@ import {
 } from "./dto/inventory.dto";
 import { AuctionLotRecordsService } from "./auction-lot-records.service";
 
+/**
+ * The PATCH fields that move stock or change what a sale takes. Exported so the
+ * spec can name each one.
+ */
+export const STOCK_FIELDS = [
+  "stockLive",
+  "shadowStock",
+  "isActive",
+  "toastItemGuid",
+  "saleType",
+  "pourSizeMl",
+  "bottleSizeMl",
+  "glassesPerBottleOverride",
+] as const satisfies readonly (keyof UpdateInventoryItemDto)[];
+
 @ApiTags("inventory")
 @Controller("inventory")
 @UseGuards(JwtAuthGuard)
@@ -62,6 +77,30 @@ export class InventoryController {
       restaurantId,
       "change a wine's price",
     );
+  }
+
+  /**
+   * The gate on every write here that changes what the books hold or what a
+   * sale takes (inventory r28, gap 2 and 6). Write-offs were already owner or
+   * manager only (`inventory-ledger.controller.ts`, ADR 0315), but removing a
+   * good, marking it inactive, setting its stock outright and changing what a
+   * till button draws were open to any member of the house, so "Remove" did
+   * what "Write off" refuses. Counts, pours, transfers and par stay open: staff
+   * do those every shift. The role is read from the house's access rows, as
+   * for a price.
+   */
+  private async assertMayManageStock(
+    userId: string | undefined,
+    restaurantId: string,
+    action: string,
+  ) {
+    if (!userId) {
+      throw new HttpException(
+        `To ${action}, the session must name the person doing it, and this session names nobody. Nothing was changed.`,
+        HttpStatus.FORBIDDEN,
+      );
+    }
+    await this.organizations.assertCanManageRestaurant(userId, restaurantId, action);
   }
 
   // ==========================================================================
@@ -365,7 +404,9 @@ export class InventoryController {
   async mapToastItem(
     @Param("restaurantId") restaurantId: string,
     @Body() dto: MapToastItemDto,
+    @CurrentUser() user?: { userId?: string },
   ) {
+    await this.assertMayManageStock(user?.userId, restaurantId, "change what a till button takes from stock");
     try {
       return await this.inventoryService.mapToastItem(restaurantId, dto);
     } catch (error) {
@@ -386,7 +427,9 @@ export class InventoryController {
   async bulkMapToastItems(
     @Param("restaurantId") restaurantId: string,
     @Body() dto: BulkMapToastItemsDto,
+    @CurrentUser() user?: { userId?: string },
   ) {
+    await this.assertMayManageStock(user?.userId, restaurantId, "change what a till button takes from stock");
     try {
       return await this.inventoryService.bulkMapToastItems(restaurantId, dto);
     } catch (error) {
@@ -403,7 +446,9 @@ export class InventoryController {
   async unmapToastItem(
     @Param("restaurantId") restaurantId: string,
     @Param("inventoryId") inventoryId: string,
+    @CurrentUser() user?: { userId?: string },
   ) {
+    await this.assertMayManageStock(user?.userId, restaurantId, "change what a till button takes from stock");
     try {
       return await this.inventoryService.unmapToastItem(
         restaurantId,
@@ -434,6 +479,16 @@ export class InventoryController {
     // price change does not half-apply the other fields beside it.
     if (dto.menuPriceBottle !== undefined || dto.menuPriceGlass !== undefined) {
       await this.assertMayPrice(user?.userId, restaurantId);
+    }
+    // Setting stock outright, taking a good off the list, and changing what a
+    // sale draws (its till link, sale type and sizes) are an owner's or a
+    // manager's. Par, supplier and the house's name for it stay open.
+    if (STOCK_FIELDS.some((f) => dto[f] !== undefined)) {
+      await this.assertMayManageStock(
+        user?.userId,
+        restaurantId,
+        "set stock, take a good off the list, or change what a sale draws",
+      );
     }
     try {
       return await this.inventoryService.updateInventoryItem(
@@ -590,7 +645,9 @@ export class InventoryController {
   async deleteInventoryItem(
     @Param("restaurantId") restaurantId: string,
     @Param("itemId") itemId: string,
+    @CurrentUser() user?: { userId?: string },
   ): Promise<{ success: boolean }> {
+    await this.assertMayManageStock(user?.userId, restaurantId, "remove a good from inventory");
     try {
       await this.inventoryService.softDeleteItem(restaurantId, itemId);
       return { success: true };
