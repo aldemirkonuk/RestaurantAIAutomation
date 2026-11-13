@@ -280,3 +280,32 @@ describe("seasonality withholds a day it cannot separate", () => {
     expect(out.basis.extremes).toContain("single weekdays");
   });
 });
+
+// ---------------------------------------------------------------------------
+// The working the house reads: no table name, no `$`, in every state.
+// ---------------------------------------------------------------------------
+
+describe("the financial working is said in the house's words", () => {
+  // /reports prints these under "Show the working" and the export prints them
+  // in the download (r9 left list, 2026-11-12: a lira house read
+  // "delivered procurement_orders … $0 would claim the first").
+  const CODE = /\b[a-z]+_[a-z0-9_]+\b|\$|\bqty\b|\bnull\b|\d+d\b/;
+  const states: Array<[string, Record<string, any[]>]> = [
+    ["nothing came back", {}],
+    ["priced and delivered", { restaurant_inventory: [STOCKED], procurement_orders: [DELIVERED] }],
+    [
+      "an uncosted order",
+      {
+        restaurant_inventory: [STOCKED],
+        procurement_orders: [DELIVERED, { ...DELIVERED, id: "po-2", total_cost: null, final_price: null }],
+      },
+    ],
+  ];
+  it.each(states)("%s", async (_label, rows) => {
+    const out: any = await analytics(rows).getFinancialSummary(RESTAURANT);
+    for (const key of ["deliveredPurchases", "shelfValueAtMenuPrice", "deadStock"]) {
+      expect([key, out.basis[key]]).toEqual([key, expect.any(String)]);
+      expect([key, out.basis[key]]).not.toEqual([key, expect.stringMatching(CODE)]);
+    }
+  });
+});
