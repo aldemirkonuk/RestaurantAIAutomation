@@ -24,6 +24,8 @@
  * confident "just now".
  */
 
+import { formatMoney } from '../currency';
+
 export const EM = '—';
 
 /* ── The vendor-terms vocabulary, spoken on two pages ─────────────────────── */
@@ -82,19 +84,13 @@ export function fmtMoney(
   currency: string | null | undefined,
 ): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return EM;
-  if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) {
-    return `${value.toLocaleString('en-GB')} (currency not recorded)`;
-  }
-  try {
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: value % 1 === 0 ? 0 : 2,
-    }).format(value);
-  } catch {
-    // A well-formed ISO code `Intl` does not know. The number is still true.
-    return `${value.toLocaleString('en-GB')} ${currency}`;
-  }
+  // The house's one formatter (r21 walk D5): the inventory drawer printed
+  // "TRY 2.25" from a hard-coded en-GB while the document sheet printed
+  // "₺2.200,00". Both now write the money in its own locale and sign, with
+  // the currency's own decimal places (so a whole ₺12 reads ₺12,00 beside
+  // ₺2,25 on the same card, not ₺12). "(currency not recorded)" is said in the
+  // same words as before.
+  return formatMoney(value, currency);
 }
 
 /** "closes 14:00, the day before" / "closes 11:00 on the day". */
