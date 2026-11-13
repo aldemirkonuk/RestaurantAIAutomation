@@ -70,6 +70,7 @@ import {
 } from './rc2-format';
 import { DOC_TYPE_LABELS, nameCarriesYear } from '../../../components/documents/canonical-format';
 import { SwipeToConfirm } from './SwipeToConfirm';
+import { costNextStep, type CostNextStep } from './cost-next-step';
 import {
   RECEIPTS_SERVER_WINDOWS,
   useActiveRestaurantId,
@@ -827,7 +828,52 @@ function CardPart({ label, first = false, children }: { label: string; first?: b
   );
 }
 
-function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: () => void }) {
+/**
+ * The paper's next cost step, as one line and a link (r28 G4). The link is
+ * drawn only where the document page is on, as the header's link is.
+ */
+function CostStepLine({
+  step,
+  linksOn,
+  testId,
+}: {
+  step: CostNextStep;
+  linksOn: boolean;
+  testId: string;
+}) {
+  return (
+    <p data-testid={testId} data-step={step.kind} style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: 0 }}>
+      {step.sentence}
+      {step.link && linksOn && (
+        <>
+          {' '}
+          <Link
+            to={step.link.to}
+            data-testid={`${testId}-link`}
+            style={{ fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+          >
+            {step.link.label} →
+          </Link>
+        </>
+      )}
+    </p>
+  );
+}
+
+/** What the page says once a paper is confirmed: which paper, and its cost step. */
+export interface ConfirmedNote {
+  documentId: string;
+  label: string;
+  step: CostNextStep | null;
+}
+
+function DocView({
+  doc,
+  onVerified,
+}: {
+  doc: ProcurementDocument;
+  onVerified: (note: ConfirmedNote) => void;
+}) {
   const qc = useQueryClient();
   const rid = useActiveRestaurantId();
   const detailKey = ['receipts-next', 'doc', rid, doc.id];
@@ -1032,7 +1078,13 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     mutationFn: (challenge?: string | null) => documentsApi.verify(doc.id, challenge),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['receipts-next'] });
-      onVerified();
+      // The card closes on a confirm; the cost step it showed goes with the
+      // page's note instead of disappearing with the card (r28 G4).
+      onVerified({
+        documentId: doc.id,
+        label: `${typeLabel(doc.doc_type)} ${doc.doc_number || EM}`,
+        step: costStep,
+      });
     },
   });
 
@@ -1052,6 +1104,15 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
     staleTime: 30_000,
   });
   const sheetVerdict = sheetQ.data?.canonical.layer3;
+  /*
+   * WHAT PUTS THESE PRICES ON COST (r28 G4). Read from the sheet's own answer:
+   * `deliveries` is null when that read failed, [] when the paper is on none.
+   * A sheet that failed outright leaves it unread, never "on no delivery".
+   */
+  const costStep = costNextStep(
+    doc.id,
+    sheetQ.isError ? null : sheetQ.data === undefined ? undefined : sheetQ.data.deliveries,
+  );
   const shownTieOut: ProcurementDocument = tieOut
     ? { ...shownDoc, ties_out: tieOut.tiesOut, tie_out_delta: tieOut.tieOutDelta }
     : sheetVerdict
@@ -1535,6 +1596,13 @@ function DocView({ doc, onVerified }: { doc: ProcurementDocument; onVerified: ()
         </div>
       </CardPart>
 
+      {/* r28 G4: the swipe settles no cost; this says what does. */}
+      {costStep && (
+        <CardPart label="Its cost">
+          <CostStepLine step={costStep} linksOn={canonicalOn} testId="cost-next-step" />
+        </CardPart>
+      )}
+
       {/* the ceremony — verify asserts the transcription, nothing more */}
       {editable && (
         <CardPart label="Confirm">
@@ -1610,11 +1678,20 @@ export default function ReceiptsNext() {
   const selectedId = searchParams.get('doc');
   const select = (id: string | null) => {
     const params = new URLSearchParams(searchParams);
+    // Opening another paper ends the last confirm's note (r28 G4).
+    if (id) setConfirmed(null);
     if (id) params.set('doc', id);
     else params.delete('doc');
     setSearchParams(params);
   };
   const [showVerified, setShowVerified] = useState(false);
+  /**
+   * THE PAPER JUST CONFIRMED, AND ITS COST STEP (r28 G4). A confirm closes the
+   * card, so the step the card showed is kept here and said where the card
+   * was, until another paper is opened or it is dismissed.
+   */
+  const [confirmed, setConfirmed] = useState<ConfirmedNote | null>(null);
+  const linksOn = useMudavymDesign('document');
   const selected =
     data.queue.find((d) => d.id === selectedId) ??
     data.clean.find((d) => d.id === selectedId) ??
@@ -2036,6 +2113,47 @@ export default function ReceiptsNext() {
 
           {/* the selected document */}
           <section aria-label="Document detail">
+            {confirmed && !selected && (
+              <div
+                data-testid="confirmed-note"
+                role="status"
+                className="mb-4 rounded-xl px-4 py-3"
+                style={{
+                  fontFamily: SANS,
+                  border: '1px solid var(--paper-2, #EAE4D8)',
+                  background: 'var(--paper-1, #F3EFE6)',
+                }}
+              >
+                <p style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink-1, #211C16)', margin: '0 0 4px' }}>
+                  Confirmed {confirmed.label}: the reading matches the paper.
+                </p>
+                {confirmed.step ? (
+                  <CostStepLine step={confirmed.step} linksOn={linksOn} testId="confirmed-next-step" />
+                ) : (
+                  <p style={{ fontSize: 12, color: 'var(--ink-2, #4F473C)', margin: 0 }}>
+                    Confirming settles no cost. Open the document to see what does.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  data-testid="confirmed-note-dismiss"
+                  onClick={() => setConfirmed(null)}
+                  className="rc-ink"
+                  style={{
+                    fontFamily: SANS,
+                    fontSize: 11.5,
+                    fontWeight: 600,
+                    color: 'var(--seal-deep, #14515C)',
+                    border: 'none',
+                    background: 'transparent',
+                    padding: '4px 0 0',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
             {selected ? (
               <>
                 <button
@@ -2080,7 +2198,14 @@ export default function ReceiptsNext() {
                     <CanonicalDocumentPage documentId={selected.id} embedded />
                   </Suspense>
                 </div>
-                <DocView key={selected.id} doc={selected} onVerified={() => select(null)} />
+                <DocView
+                  key={selected.id}
+                  doc={selected}
+                  onVerified={(note) => {
+                    setConfirmed(note);
+                    select(null);
+                  }}
+                />
               </>
             ) : selectedId && data.queueKnown && data.cleanKnown && data.verifiedKnown ? (
               /*
