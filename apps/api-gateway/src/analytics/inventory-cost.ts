@@ -174,6 +174,31 @@ export function resolveUnitCost(
   return { unitCost: null, costBasis: "unknown" };
 }
 
+/** The columns of `inventory_lot_agreed_cost` that `resolveUnitCost` reads. */
+export const AGREED_LOT_COST_SELECT = "inventory_id, has_agreed_cost, agreed_wac";
+
+/**
+ * Merge `inventory_lot_agreed_cost` rows into rollup rows keyed by
+ * inventory_id, so the lot row handed to `resolveUnitCost` carries both. The
+ * rollup does not carry a price settled at delivery; without this an item whose
+ * only cost is an agreed one reads as unknown. Mutates and returns `lots`.
+ */
+export function mergeAgreedLotCost<M extends Map<string, any>>(
+  lots: M,
+  agreedRows: ReadonlyArray<Record<string, unknown>> | null | undefined,
+): M {
+  for (const r of agreedRows ?? []) {
+    const id = String(r.inventory_id);
+    lots.set(id, {
+      ...lots.get(id),
+      inventory_id: r.inventory_id,
+      has_agreed_cost: r.has_agreed_cost,
+      agreed_wac: r.agreed_wac,
+    });
+  }
+  return lots;
+}
+
 export interface CostCoverage {
   /** Rows the caller considered (e.g. on-hand rows, for a valuation). */
   total: number;

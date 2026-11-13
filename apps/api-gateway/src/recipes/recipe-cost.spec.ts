@@ -135,7 +135,7 @@ describe("recipeCost (ADR 0360, F7)", () => {
 
     it("reads a final 'manual' lot at 20 as agreed_lot_wac, not unknown", () => {
       const c = recipeCost([line(1000, null, { lot: agreed(20), qtyBase: 10000 })], 1);
-      expect(c.lines[0]).toEqual({ status: "linked", costPerServe: 20, costBasis: "agreed_lot_wac" });
+      expect(c.lines[0]).toEqual({ status: "linked", costPerServe: 20, costPerServeExact: 20, costBasis: "agreed_lot_wac" });
       expect([c.perServe, c.complete]).toEqual([20, true]);
     });
 
@@ -148,7 +148,7 @@ describe("recipeCost (ADR 0360, F7)", () => {
     it("leaves an item with no invoice and no agreed cost unknown", () => {
       const none = { has_invoice_cost: false, wac: null, has_agreed_cost: false, agreed_wac: null };
       const c = recipeCost([line(1000, null, { lot: none })], 1);
-      expect(c.lines[0]).toEqual({ status: "linked", costPerServe: null, costBasis: "unknown" });
+      expect(c.lines[0]).toEqual({ status: "linked", costPerServe: null, costPerServeExact: null, costBasis: "unknown" });
       expect(c.perServe).toBeNull();
     });
   });
