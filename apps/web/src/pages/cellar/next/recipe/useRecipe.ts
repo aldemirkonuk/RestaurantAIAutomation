@@ -16,7 +16,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { draftId, draftKey, dropDraft } from './drafts';
-import { ownerOf, recipesApi, type PreviewCostBody, type RecipeOwner, type SaveRecipeBody } from '../../../../services/api/recipes';
+import { dishesApi, ownerOf, recipesApi, type DishBody, type PreviewCostBody, type RecipeOwner, type SaveRecipeBody } from '../../../../services/api/recipes';
 import { getErrorStatus } from '../../../../services/api/client';
 import { managesHouse } from '../../../communications/next/cm-format';
 
@@ -27,6 +27,31 @@ export const recipeKey = (rid: string | null | undefined, owner: string | Recipe
 };
 
 export const dishesKey = (rid: string | null | undefined) => ['recipes', rid ?? null, 'dishes'] as const;
+
+/** The house's dishes, by name. */
+export function useDishes() {
+  const { activeRestaurantId } = useAuth();
+  const q = useQuery({
+    queryKey: dishesKey(activeRestaurantId),
+    enabled: Boolean(activeRestaurantId),
+    queryFn: () => dishesApi.list(activeRestaurantId as string),
+  });
+  return {
+    data: q.data ?? null,
+    loading: q.isLoading,
+    error: q.isError ? reason(q.error) : null,
+    refetch: q.refetch,
+  };
+}
+
+export function useCreateDish() {
+  const { activeRestaurantId } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DishBody) => dishesApi.create(activeRestaurantId as string, body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: dishesKey(activeRestaurantId) }),
+  });
+}
 
 /** The gateway's own sentence when it sent one, else the error's message. */
 export function reason(e: unknown): string | null {
