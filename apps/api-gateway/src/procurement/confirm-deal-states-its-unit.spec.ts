@@ -125,7 +125,9 @@ describe("confirmDeal — the confirmation mail states the order's own unit", ()
         wineName: WINE,
         finalPrice: 99,
       });
-      expect(sentence).toContain(`per ${unitType}`);
+      // The unit in words: "per split case", never the stored "split_case" (r21).
+      expect(sentence).toContain(`per ${unitType.replace(/_/g, " ")}`);
+      expect(sentence).not.toContain("_");
       expect(sentence).not.toContain("per bottle");
     }
   });

@@ -105,11 +105,14 @@ import {
   embeddedOrderLines,
   foldOrderPriceUnit,
   hasStatedFees,
+  oneUnitWord,
+  perUnitWords,
   priceSeriesUnit,
   readAgreementFees,
   readStatedPriceUnit,
   resolveStatedPriceUnit,
   splitCaseOwnLineRefusal,
+  unitCountWords,
   unstatedPriceUnitSentence,
   type AgreedPriceUnitReading,
   type AgreementFees,
@@ -388,12 +391,14 @@ export function describeConfirmedOrderTerms(input: {
   currency?: string | null;
 }): string {
   const unit = (input.unitType ?? "").trim() || "unit";
-  const isBottle = unit === "bottle";
+  // A bottle or a single item ("each") holds no pack: nothing to state in
+  // brackets, nothing to ask the vendor about.
+  const isBottle = unit === "bottle" || unit === "each";
   const pack = input.bottlesPerUnit;
   const packKnown = pack != null && Number.isFinite(pack) && pack > 0;
 
   const quantityPhrase =
-    `${input.quantity} ${unit}${input.quantity === 1 ? "" : "s"}` +
+    unitCountWords(input.quantity, unit) +
     (!isBottle && packKnown
       ? ` (${pack} bottle${pack === 1 ? "" : "s"} each)`
       : "");
@@ -409,14 +414,14 @@ export function describeConfirmedOrderTerms(input: {
   const priceLine = statedPrice
     ? ` at ${statedPrice}`
     : input.finalPrice != null
-      ? ` at ${moneyIn(Number(input.finalPrice), input.currency)} per ${unit}`
+      ? ` at ${moneyIn(Number(input.finalPrice), input.currency)} ${perUnitWords(unit)}`
       : "";
 
   // Nothing to ask about when the unit IS the bottle, or when the pack is known.
   const packNote =
     isBottle || packKnown
       ? ""
-      : ` Our records do not state how many bottles are in a ${unit}, so please confirm the pack size.`;
+      : ` Our records do not state how many bottles are in a ${oneUnitWord(unit)}, so please confirm the pack size.`;
 
   return `We'd like to confirm our order: ${quantityPhrase} of ${input.wineName}${priceLine}.${packNote}`;
 }
