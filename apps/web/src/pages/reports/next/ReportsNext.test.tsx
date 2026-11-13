@@ -437,6 +437,8 @@ function base() {
     saveSheet,
     sheetKnown: true,
     currency: { state: 'stated' as const, code: 'USD' as string | null },
+    sheetUnread: null as string | null,
+    sheetStale: null as string | null,
     refetchAll: vi.fn(),
   };
 }
@@ -1900,6 +1902,43 @@ describe('ReportsNext — a register this role is not sent (ADR 0348)', () => {
     const room = screen.getByRole('region', { name: 'The room' });
     expect(within(room).getByText(/Your role cannot read the table register/)).toBeInTheDocument();
     expect(within(room).queryByText(/written for owners and managers/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ReportsNext — the sheet keeps its places', () => {
+  const region = (name: string) => screen.getByRole('region', { name });
+
+  it('shows paper outlines, and keeps Arrange shut, until the reader’s own sheet is known', () => {
+    hook.current = { ...base(), sheetKnown: false, sheetUnread: null };
+    const { container } = paint();
+    expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeDisabled();
+    expect(screen.getByText('Reading how you arranged this sheet…')).toBeInTheDocument();
+    expect(container.querySelectorAll('.rp-outline').length).toBeGreaterThan(0);
+    // The house sheet is NOT drawn first and then swapped for the reader's.
+    expect(container.querySelector('.rp-sheet')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Through the till' })).toBeNull();
+  });
+
+  it('says so when the reader’s sheet could not be read, shows the house sheet, and keeps Arrange shut', () => {
+    const unread =
+      'Your own arrangement of this sheet could not be read (boom), so the house sheet is shown. Arranging is off until it can be read.';
+    hook.current = { ...base(), sheetKnown: false, sheetUnread: unread };
+    paint();
+    expect(screen.getByText(unread)).toBeInTheDocument();
+    expect(region('Through the till')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeDisabled();
+  });
+});
+
+describe('ReportsNext — a refresh that fails after a good load', () => {
+  it('keeps the sheet on screen, Arrange open, and says the refresh failed', () => {
+    const stale = 'The sheet could not be refreshed just now; what is shown is the last one that loaded.';
+    hook.current = { ...base(), sheetKnown: true, sheetUnread: null, sheetStale: stale };
+    paint();
+    expect(screen.getByText(stale)).toBeInTheDocument();
+    expect(screen.queryByText(/so the house sheet is shown/)).toBeNull();
+    expect(screen.getByRole('region', { name: 'Through the till' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeEnabled();
   });
 });
 
