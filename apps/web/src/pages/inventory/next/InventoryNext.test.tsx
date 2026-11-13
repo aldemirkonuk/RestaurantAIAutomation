@@ -7,7 +7,7 @@
  * their own tests, and none of them is under test here.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
@@ -1094,6 +1094,31 @@ describe('INV-W38 — the view is the URL', () => {
     renderAt('/inventory?kind=bogus');
     expect(screen.getByTestId('inv-row-a')).toBeTruthy();
     expect(screen.getByTestId('inv-row-f')).toBeTruthy();
+  });
+
+  it('a house that carries goods heads the page Inventory; a drinks-only house keeps The cellar', () => {
+    mock.data = data({ rows: two() });
+    renderAt('/inventory');
+    expect(document.querySelector('.iv-crumb')!.textContent).toContain('The cellar · Inventory');
+    cleanup();
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+    });
+    renderAt('/inventory');
+    expect(document.querySelector('.iv-crumb')!.textContent).not.toContain('cellar');
+    expect(document.querySelector('.iv-crumb')!.textContent).toContain('Inventory');
+  });
+
+  it('on the Food kind the page offers Carry, never Add a bottle', () => {
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+      canManage: true,
+    });
+    renderAt('/inventory?kind=food');
+    expect(screen.queryByRole('link', { name: 'Add a bottle' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Carry a food or supply' }).length).toBeGreaterThan(0);
   });
 
   it('offers Carry to an owner or manager', () => {
