@@ -122,6 +122,10 @@ export class CalendarController {
         restaurantId: user.restaurantId,
         error: error.message,
       });
+      // A refusal the service already worded (a foreign link, an end before
+      // the start, a repeat that could not be saved) keeps its own status and
+      // sentence instead of becoming a generic 500.
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to create calendar event",
         HttpStatus.INTERNAL_SERVER_ERROR,

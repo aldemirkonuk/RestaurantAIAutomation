@@ -260,9 +260,11 @@ export class CalendarRemindersService {
   ): Promise<void> {
     const { tenantId, timeZone, now, intended, prefs, tally } = ctx;
 
-    // A row whose own status says it is off the book is not reminded about.
+    // A row whose own status says it is off the book, or already done, is
+    // not reminded about: a delivery ticked off early must not ping the day
+    // before (QA round 4 IMPROVE 5).
     const status = String(row.status ?? "").toLowerCase();
-    if (status === "cancelled" || status === "dismissed") return;
+    if (status === "cancelled" || status === "dismissed" || status === "completed") return;
 
     const when = reminderDueAt(row, timeZone);
     if (!when) {

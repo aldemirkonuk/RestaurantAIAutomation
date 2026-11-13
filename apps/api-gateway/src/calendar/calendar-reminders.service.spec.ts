@@ -326,6 +326,15 @@ describe("CalendarRemindersService — it sends once, and only once", () => {
 
     expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
   });
+
+  it("does not remind about an entry already marked done", async () => {
+    const { db, service, notifications } = build();
+    db.tables.calendar_events.push(event({ status: "completed" }));
+
+    await service.sweepTenant(TENANT, DUE);
+
+    expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
 });
 
 describe("CalendarRemindersService — quiet hours", () => {
