@@ -108,7 +108,7 @@ beforeEach(() => {
 describe('the plan in one sentence', () => {
   it('says what the choice will do, in the order a person reads it, and counts lines where lines are meant', () => {
     expect(planSentence(plan())).toBe(
-      'Choosing this menu will change the price of 1 wine the house already has and leave 1 locked price as it is. 1 locked price is not on this menu and stays locked.',
+      'Choosing this menu will change the price of 1 wine the house already has and leave 1 wine at its locked price. 1 locked price is not on this menu and stays locked.',
     );
     const unmatched = line({ menuItemId: 'n5', wineLibraryId: null, inventoryId: null, house: null, bottle: { ...line().bottle, result: 'not_linked', lastSet: null }, glass: { ...line().glass, result: 'not_linked' } });
     const unpriced = line({ menuItemId: 'n6', flag: 'blank_no_house_price', bottle: { ...line().bottle, menuPrice: null, result: 'blank_never_priced', lastSet: null } });
@@ -143,7 +143,7 @@ describe('the plan in one sentence', () => {
     expect(
       planSentence(plan({ lines: [line(), fresh('a', null), same], counts: { change: 1, unchanged: 1, held_by_lock: 0, blank_kept: 0, blank_never_priced: 3, not_linked: 0, new_wine: 1 }, dormantLocks: [] })),
     ).toBe(
-      'Choosing this menu will change the price of 1 wine the house already has, add 1 wine new to the house at its menu price and keep 1 price that already matches the menu.',
+      "Choosing this menu will change the price of 1 wine the house already has, add 1 wine new to the house at its menu price and keep 1 wine already at the menu's price.",
     );
   });
 });

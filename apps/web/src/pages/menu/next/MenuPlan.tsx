@@ -23,7 +23,7 @@
  * Simple and readable for people (the founder's Wave Four / Arrival bar): one
  * sentence first, the detail after. No motion.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getMenuPlan,
@@ -71,9 +71,34 @@ function listWords(parts: string[]): string {
   return parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
 }
 
-/** Wines (menu lines) with at least one kind in `result`. */
-function winesWith(lines: PlanLine[], result: PlanKind['result']): number {
-  return lines.filter((l) => l.bottle.result === result || l.glass.result === result).length;
+/** What one line's choice will answer, as the gateway tallies `priceSync`. */
+export type LineOutcome = 'changed' | 'unchanged' | 'locked' | 'no_price' | 'not_linked';
+
+/**
+ * The one outcome a line's choice answers, worked out from its two kinds the
+ * way the price writer decides it (`set_house_menu_price`,
+ * 20260922230800_a_house_can_hold_a_price.sql): a kind with a price on the
+ * menu is "named"; every named kind held is `locked`; any named kind changed
+ * (or new to the house) is `changed`; otherwise `unchanged`. A line with no
+ * named kind is `no_price`, and an unmatched line is `not_linked`.
+ *
+ * Onboarding walk 2026-11-12: the plan said "add 2 prices" and the result
+ * "1 price set" -- the plan counted kinds (a bottle and a glass are two) and
+ * the result counted lines. #1125 moved changed and new wines onto lines; the
+ * prices already the same were still counted per kind ("keep 2 prices that
+ * already match") against the result's per line ("1 already at the menu's
+ * price"). Both sides now count the same thing for the same words.
+ */
+export function lineOutcome(line: PlanLine): LineOutcome {
+  const kinds = [line.bottle, line.glass];
+  if (kinds.some((k) => k.result === 'not_linked')) return 'not_linked';
+  const named = kinds.filter(
+    (k) => k.result === 'change' || k.result === 'new_wine' || k.result === 'unchanged' || k.result === 'held_by_lock',
+  );
+  if (named.length === 0) return 'no_price';
+  if (named.every((k) => k.result === 'held_by_lock')) return 'locked';
+  if (named.some((k) => k.result === 'change' || k.result === 'new_wine')) return 'changed';
+  return 'unchanged';
 }
 
 /**
@@ -81,27 +106,43 @@ function winesWith(lines: PlanLine[], result: PlanKind['result']): number {
  *
  * Menu walk 2026-11-12: it said "add 7 prices for wines new to the house" (and
  * "add 1 price for wines new to the house") where the choice's own result then
- * said "4 wines priced from this menu". What the menu prices is counted in
- * wines, as the result counts it; a lock or a price already the same is a
- * single price, and is counted in prices.
+ * said "4 wines priced from this menu". Everything the result counts per wine
+ * is counted here per wine, from the same rule (`lineOutcome`): wines priced
+ * (changed or new), wines already at the menu's price, wines a lock holds. A
+ * lock on one kind of a wine the menu otherwise changes is a single price, and
+ * is counted in prices.
  */
 export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines'>): string {
   if (plan.current) return 'This is already the current menu. Choosing it again changes nothing.';
   const c = plan.counts;
   const parts: string[] = [];
-  const changed = winesWith(plan.lines, 'change');
-  const added = winesWith(plan.lines, 'new_wine');
-  // A plan's counts with no lines to count from (never sent by the gateway
-  // today) still say what they can, in prices.
-  if (changed > 0) parts.push(`change the price of ${plural(changed, 'wine', 'wines')} the house already has`);
-  else if (c.change > 0) parts.push(`change ${plural(c.change, 'price', 'prices')}`);
-  if (added > 0)
-    parts.push(`add ${plural(added, 'wine', 'wines')} new to the house at ${added === 1 ? 'its menu price' : 'their menu prices'}`);
-  else if (c.new_wine > 0) parts.push(`price the wines new to the house (${plural(c.new_wine, 'price', 'prices')})`);
-  if (c.held_by_lock > 0)
-    parts.push(`leave ${plural(c.held_by_lock, 'locked price', 'locked prices')} as ${c.held_by_lock === 1 ? 'it is' : 'they are'}`);
-  if (c.unchanged > 0)
-    parts.push(`keep ${plural(c.unchanged, 'price that already matches', 'prices that already match')} the menu`);
+  if (plan.lines.length > 0) {
+    const outcome = plan.lines.map((l) => [l, lineOutcome(l)] as const);
+    const isNew = (l: PlanLine) => l.bottle.result === 'new_wine' || l.glass.result === 'new_wine';
+    const changed = outcome.filter(([l, o]) => o === 'changed' && !isNew(l)).length;
+    const added = outcome.filter(([l, o]) => o === 'changed' && isNew(l)).length;
+    const lockedWines = outcome.filter(([, o]) => o === 'locked').length;
+    const same = outcome.filter(([, o]) => o === 'unchanged').length;
+    const heldOnChanged = outcome
+      .filter(([, o]) => o !== 'locked')
+      .reduce((n, [l]) => n + [l.bottle, l.glass].filter((k) => k.result === 'held_by_lock').length, 0);
+    if (changed > 0) parts.push(`change the price of ${plural(changed, 'wine', 'wines')} the house already has`);
+    if (added > 0)
+      parts.push(`add ${plural(added, 'wine', 'wines')} new to the house at ${added === 1 ? 'its menu price' : 'their menu prices'}`);
+    if (lockedWines > 0) parts.push(`leave ${plural(lockedWines, 'wine', 'wines')} at ${lockedWines === 1 ? 'its locked price' : 'their locked prices'}`);
+    if (heldOnChanged > 0)
+      parts.push(`keep ${plural(heldOnChanged, 'locked price', 'locked prices')} on the wines it changes`);
+    if (same > 0) parts.push(`keep ${plural(same, 'wine', 'wines')} already at the menu's price`);
+  } else {
+    // A plan's counts with no lines to count from (never sent by the gateway
+    // today) still say what they can, in prices.
+    if (c.change > 0) parts.push(`change ${plural(c.change, 'price', 'prices')}`);
+    if (c.new_wine > 0) parts.push(`price the wines new to the house (${plural(c.new_wine, 'price', 'prices')})`);
+    if (c.held_by_lock > 0)
+      parts.push(`leave ${plural(c.held_by_lock, 'locked price', 'locked prices')} as ${c.held_by_lock === 1 ? 'it is' : 'they are'}`);
+    if (c.unchanged > 0)
+      parts.push(`keep ${plural(c.unchanged, 'price that already matches', 'prices that already match')} the menu`);
+  }
   const lead = parts.length ? `Choosing this menu will ${listWords(parts)}.` : 'Choosing this menu changes no price.';
   const more: string[] = [];
   if (c.blank_kept > 0) more.push(`${plural(c.blank_kept, 'price is', 'prices are')} blank on the menu, so the house keeps its own (flagged)`);
@@ -213,22 +254,62 @@ function KeepSwitch({
   );
 }
 
-export function MenuPlan({
-  menuId,
-  canManage,
-  onDone,
-  onCancel,
-}: {
+interface MenuPlanProps {
   menuId: string;
   canManage: boolean;
   /** Called with what the choice did, once it is made. */
   onDone: (result: MakeCurrentResult) => void;
   onCancel?: () => void;
-}) {
+}
+
+/**
+ * Where an opened plan stands on the page decides whether it is brought into
+ * view: its top below 60% of the window, or above it, is out of the reader's
+ * eye. A plan that opens where the reader is already looking is left still.
+ */
+export function planNeedsScroll(top: number, viewportHeight: number): boolean {
+  return top < 0 || top > viewportHeight * 0.6;
+}
+
+/**
+ * The plan, brought to the reader. Menu walk 2026-11-12: "Make current" on a
+ * kept menu opened its plan under the list, below the fold, and nothing
+ * moved, so the click looked like it did nothing. The plan now scrolls its top
+ * into view when it opens (instantly for a reader who asked for reduced
+ * motion), and its heading takes focus once it has been worked out, so a
+ * keyboard or screen-reader user lands on it too.
+ */
+export function MenuPlan(props: MenuPlanProps) {
+  const anchor = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = anchor.current;
+    if (!el || typeof el.scrollIntoView !== 'function') return;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    if (!planNeedsScroll(el.getBoundingClientRect().top, vh)) return;
+    const reduce =
+      typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+  }, []);
+  return (
+    <div ref={anchor} data-testid="menu-plan-anchor" style={{ scrollMarginTop: 16 }}>
+      <MenuPlanSheet {...props} />
+    </div>
+  );
+}
+
+function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  const focused = useRef(false);
   const queryClient = useQueryClient();
   const [said, setSaid] = useState<string | null>(null);
   const [moved, setMoved] = useState(false);
   const q = useQuery({ queryKey: ['menu', 'plan', menuId], queryFn: () => getMenuPlan(menuId) });
+  const ready = !!q.data;
+  useEffect(() => {
+    if (!ready || focused.current || !heading.current) return;
+    focused.current = true;
+    heading.current.focus({ preventScroll: true });
+  }, [ready]);
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['menu', 'plan', menuId] });
 
   const choose = useMutation({
@@ -270,7 +351,7 @@ export function MenuPlan({
 
   return (
     <section className="cl-panel" style={{ marginTop: 12 }} aria-labelledby={`plan-h-${menuId}`} data-testid="menu-plan">
-      <h3 id={`plan-h-${menuId}`} className="cl-crumb" style={{ margin: 0 }}>
+      <h3 id={`plan-h-${menuId}`} ref={heading} tabIndex={-1} className="cl-crumb" style={{ margin: 0 }}>
         Before it becomes current
       </h3>
       <p className="cl-standing" style={{ marginTop: 6 }} data-testid="menu-plan-sentence">
