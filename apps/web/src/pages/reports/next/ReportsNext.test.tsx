@@ -27,7 +27,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
@@ -36,15 +36,15 @@ import { heldBackFailure } from './rp-format';
 
 /**
  * The two registers added in the fourth pass decode heavily on the way in
- * (`goals` reshapes a progress payload; `bench` flattens the overview's eight
- * lenses), so their fixtures go through the catalogue's own `select` — which
+ * (`goals` reshapes a progress payload; `bench` gathers three registers'
+ * payloads), so their fixtures go through the catalogue's own `select` — which
  * is what the data layer does, and which pins the decoder as well as the view.
  */
 const decode = (id: 'goals' | 'bench', raw: unknown) => CATALOGUE[id].select(raw);
 
 const hook = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 /** What the page last asked the data layer to READ — the draft included. */
-const asked = vi.hoisted(() => ({ showing: undefined as unknown }));
+const asked = vi.hoisted(() => ({ showing: undefined as unknown, place: undefined as unknown }));
 
 vi.mock('./useReportsNextData', async () => {
   const actual = await vi.importActual<typeof import('./useReportsNextData')>(
@@ -54,6 +54,7 @@ vi.mock('./useReportsNextData', async () => {
     ...actual,
     useReportsNextData: (...args: unknown[]) => {
       asked.showing = args[2];
+      asked.place = args[3];
       return hook.current;
     },
   };
@@ -77,7 +78,8 @@ function broke(status: number | null, message = 'boom') {
   };
 }
 
-const saveSheet = vi.fn();
+/** The real `saveSheet` returns the preference write's promise; this one lands. */
+const saveSheet = vi.fn((_next: unknown) => Promise.resolve());
 
 /** The export desk (OD-81), stubbed; its own render contract is ExportsShelf.test.tsx. */
 const exportStub = {
@@ -312,14 +314,14 @@ const GOALS = {
 };
 
 /**
- * `GET /analytics/overview/:rid` — the benchmark cutting's one call.
+ * The benchmark cutting's three sources, as `useReportsNextData` hands them
+ * to `select`: cashflow, seasonality and the active goals list (audit G9).
  *
  * `paceDeltaPct` and `trendPerDayPct` are the engine's 0–1 fractions (1200
  * against 900 is 0.3333). They used to be written here as percentages, the
  * same mistake `pct` made, so nothing caught +20.7% a day printing "+0.21%".
  */
 const BENCH = {
-  financial: null,
   cashflow: {
     basis: { outflow: 'delivered procurement_orders' },
     spendLast30d: 1200,
@@ -336,7 +338,7 @@ const BENCH = {
     trendPerDayPct: -0.004,
     basis: { weekday: 'mean units per weekday over 90d', extremes: 'single weekdays' },
   },
-  activeGoals: [
+  goals: [
     {
       name: 'Lift wine revenue',
       metric_key: 'wine_revenue',
@@ -436,6 +438,9 @@ function base() {
     sheet: defaultSheet(),
     saveSheet,
     sheetKnown: true,
+    currency: { state: 'stated' as const, code: 'USD' as string | null },
+    sheetUnread: null as string | null,
+    sheetStale: null as string | null,
     refetchAll: vi.fn(),
   };
 }
@@ -455,6 +460,11 @@ function paint() {
 }
 
 const arrange = () => fireEvent.click(screen.getByText('Arrange the sheet'));
+/** Press "Rule it off" and let the preference write settle, as the page waits for it. */
+const ruleItOff = () =>
+  act(async () => {
+    fireEvent.click(screen.getByText('Rule it off'));
+  });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -511,7 +521,7 @@ describe('ReportsNext — the sheet', () => {
     ).toBeInTheDocument();
   });
 
-  it('brings the drag-to-rearrange canvas back: one toggle rules the paper, one writes it', () => {
+  it('brings the drag-to-rearrange canvas back: one toggle rules the paper, one writes it', async () => {
     const { container } = paint();
     const sheet = container.querySelector('.rp-sheet') as HTMLElement;
     expect(sheet).toHaveAttribute('data-arranging', 'false');
@@ -528,10 +538,10 @@ describe('ReportsNext — the sheet', () => {
     fireEvent.click(screen.getByRole('button', { name: 'The reading' }));
     expect(screen.getByRole('region', { name: 'The reading' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     expect(saveSheet).toHaveBeenCalledTimes(1);
     expect(sheet).toHaveAttribute('data-arranging', 'false');
-    expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+    expect(await screen.findByText('Ruled off.')).toBeInTheDocument();
   });
 
   it('carries exactly one period control, and it lives inside the cutting it governs', () => {
@@ -606,14 +616,14 @@ describe('ReportsNext — the drawing is the reader’s, within what is true', (
     expect(within(ledger).getByText(/four different units/)).toBeInTheDocument();
   });
 
-  it('keeps the drawing with the layout, in the one preference', () => {
+  it('keeps the drawing with the layout, in the one preference', async () => {
     paint();
     arrange();
     const till = screen.getByRole('region', { name: 'Through the till' });
     fireEvent.change(within(till).getByLabelText('Draw Through the till as'), {
       target: { value: 'bars' },
     });
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
 
     const saved = saveSheet.mock.calls[0][0] as {
       cuttings: Array<{ id: string; graph: string; slot: unknown }>;
@@ -625,7 +635,7 @@ describe('ReportsNext — the drawing is the reader’s, within what is true', (
 });
 
 describe('ReportsNext — the subject is the reader’s too', () => {
-  it('swaps a cutting for another analysis in the same square of paper', () => {
+  it('swaps a cutting for another analysis in the same square of paper', async () => {
     paint();
     arrange();
     const quad = screen.getByRole('region', { name: 'Margin against movement' });
@@ -642,7 +652,7 @@ describe('ReportsNext — the subject is the reader’s too', () => {
     expect(asked.showing).toContain('seats');
     expect(asked.showing).not.toContain('quadrants');
 
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<{ id: string; slot: unknown }> };
     expect(saved.cuttings.find((c) => c.id === 'seats')?.slot).toEqual(DEFAULT_SLOTS.quadrants);
     expect(saved.cuttings.some((c) => c.id === 'quadrants')).toBe(false);
@@ -711,6 +721,28 @@ describe('ReportsNext — the sheet codec', () => {
     sheet.cuttings[1].graph = 'heatmap';
     const decoded = decodeSheet(encodeSheet(sheet));
     expect(decoded.cuttings).toEqual(sheet.cuttings);
+  });
+
+  it('keeps the order the reader left the sheet in, which a narrow ruling reads by', () => {
+    const sheet = defaultSheet();
+    sheet.cuttings.reverse();
+    const decoded = decodeSheet(encodeSheet(sheet));
+    expect(decoded.cuttings.map((c) => c.id)).toEqual(sheet.cuttings.map((c) => c.id));
+  });
+
+  it('reads a sheet saved before v4 in the wide reading order, not catalogue order', () => {
+    // Before v4 blocks were written in catalogue order; the order a phone read
+    // was row then column, so that is the order the list takes.
+    const decoded = decodeSheet({
+      v: 3,
+      blocks: [
+        { i: 'reading', x: 0, y: 8, w: 6, h: 4, g: 'table', on: true },
+        { i: 'till', x: 6, y: 0, w: 6, h: 8, g: 'area', on: true },
+        { i: 'goals', x: 0, y: 0, w: 6, h: 8, g: 'table', on: true },
+        { i: 'bench', on: false },
+      ],
+    });
+    expect(decoded.cuttings.map((c) => c.id)).toEqual(['goals', 'till', 'reading']);
   });
 
   it('upgrades a sheet saved by the first pass rather than discarding it', () => {
@@ -816,6 +848,74 @@ describe('ReportsNext — the palette never fabricates', () => {
   });
 });
 
+describe('ReportsNext — a cutting laid flat keeps the page behind it', () => {
+  // Audit 2026-11-07 on PR #843: with the flat view up, ⌘K opened "Ask the
+  // book" underneath it, unseen, and one Escape then closed both overlays.
+  const layFlat = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Show Through the till full screen' }));
+    return screen.getByRole('dialog', { name: 'Through the till' });
+  };
+
+  it('⌘K and Ctrl-K never open the palette under the flat view', () => {
+    paint();
+    layFlat();
+    // Asserted after EACH press: the page's key toggles, so two presses
+    // reaching it would open and shut the palette and read as a pass.
+    fireEvent.keyDown(document.activeElement as Element, { key: 'k', metaKey: true });
+    expect(screen.queryByRole('dialog', { name: 'Ask the book' })).toBeNull();
+    fireEvent.keyDown(document.activeElement as Element, { key: 'K', ctrlKey: true });
+    expect(screen.queryByRole('dialog', { name: 'Ask the book' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Through the till' })).toBeInTheDocument();
+  });
+
+  it('⌘K works again once the flat view is closed', () => {
+    paint();
+    const flat = layFlat();
+    fireEvent.click(within(flat).getByRole('button', { name: 'Back to the sheet' }));
+    expect(screen.queryByRole('dialog', { name: 'Through the till' })).toBeNull();
+    fireEvent.keyDown(document.body, { key: 'k', metaKey: true });
+    expect(screen.getByRole('dialog', { name: 'Ask the book' })).toBeInTheDocument();
+  });
+
+  it('one Escape closes only the topmost overlay', () => {
+    paint();
+    fireEvent.click(screen.getByText('Ask the book ⌘K'));
+    layFlat();
+    fireEvent.keyDown(document.activeElement as Element, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Through the till' })).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Ask the book' })).toBeInTheDocument();
+  });
+});
+
+describe('ReportsNext — money in the house’s currency (audit G5)', () => {
+  it('a Turkish house reads lira on the till, never dollars', () => {
+    hook.current = { ...base(), currency: { state: 'stated', code: 'TRY' } } as never;
+    paint();
+    const till = screen.getByRole('region', { name: 'Through the till' });
+    expect(within(till).getByText('₺4,210')).toBeInTheDocument();
+    expect(within(till).queryByText(/\$/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('rp-money-line')).not.toBeInTheDocument();
+  });
+
+  it('a house with no recorded currency prints plain numbers and says so once', () => {
+    hook.current = { ...base(), currency: { state: 'unstated', code: null } } as never;
+    paint();
+    expect(within(screen.getByRole('region', { name: 'Through the till' })).getByText('4,210')).toBeInTheDocument();
+    const line = screen.getByTestId('rp-money-line');
+    expect(line).toHaveTextContent('This house has not recorded its currency');
+    expect(within(line).getByRole('link', { name: 'Record it in Settings' })).toHaveAttribute(
+      'href',
+      '/settings?tab=currency',
+    );
+  });
+
+  it('a currency that could not be read is said as unread, not as unrecorded', () => {
+    hook.current = { ...base(), currency: { state: 'unread', code: null, pending: false } } as never;
+    paint();
+    expect(screen.getByTestId('rp-money-line')).toHaveTextContent('could not be read');
+  });
+});
+
 describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
   it('prints an em dash for a COGS the server withheld, never $0', () => {
     hook.current = withRegister(
@@ -864,7 +964,9 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     const ahead = screen.getByRole('region', { name: 'What’s coming' });
     expect(within(ahead).getByText(/no model fitted this history/i)).toBeInTheDocument();
     expect(within(ahead).queryByText('0')).not.toBeInTheDocument();
-    expect(within(ahead).getAllByText('—').length).toBeGreaterThanOrEqual(2);
+    expect(within(ahead).getAllByText('—').length).toBeGreaterThanOrEqual(1);
+    // The model's identifier is no longer a figure on the page (ADR 0104).
+    expect(within(ahead).queryByText('Model')).not.toBeInTheDocument();
   });
 
   it('withholds both weekdays when the server reports a tie, and says why', () => {
@@ -1054,7 +1156,7 @@ describe('ReportsNext — moving a cutting without a pointer', () => {
     expect(said.textContent).toContain('Shift and an arrow key resize it');
   });
 
-  it('moves one column per arrow key and resizes on Shift, and both survive the save', () => {
+  it('moves one column per arrow key and resizes on Shift, and both survive the save', async () => {
     hook.current = alone();
     paint();
     arrange();
@@ -1067,7 +1169,7 @@ describe('ReportsNext — moving a cutting without a pointer', () => {
     fireEvent.keyDown(grip, { key: 'Enter' });
     expect(grip).toHaveAttribute('aria-pressed', 'false');
 
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     expect(saveSheet).toHaveBeenCalledTimes(1);
     const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<Record<string, unknown>> };
     expect(saved.cuttings[0]).toEqual({
@@ -1101,7 +1203,7 @@ describe('ReportsNext — moving a cutting without a pointer', () => {
     expect(said).not.toContain('row 6');
   });
 
-  it('puts a cutting back where it was on Escape', () => {
+  it('puts a cutting back where it was on Escape', async () => {
     hook.current = alone();
     paint();
     arrange();
@@ -1112,24 +1214,24 @@ describe('ReportsNext — moving a cutting without a pointer', () => {
     fireEvent.keyDown(grip, { key: 'Escape' });
     expect(screen.getByRole('status', { name: '' }).textContent).toContain('Move cancelled');
 
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<{ slot: { x: number } }> };
     expect(saved.cuttings[0].slot.x).toBe(0);
   });
 
-  it('ignores arrow keys until a cutting is actually picked up', () => {
+  it('ignores arrow keys until a cutting is actually picked up', async () => {
     hook.current = alone();
     paint();
     arrange();
     const grip = gripFor('Through the till');
     fireEvent.keyDown(grip, { key: 'ArrowRight' });
     fireEvent.keyDown(grip, { key: 'ArrowRight' });
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<{ slot: { x: number } }> };
     expect(saved.cuttings[0].slot.x).toBe(0);
   });
 
-  it('offers every keystroke as a button too — WCAG 2.2 SC 2.5.7 is not the keyboard one', () => {
+  it('offers every keystroke as a button too — WCAG 2.2 SC 2.5.7 is not the keyboard one', async () => {
     hook.current = alone();
     paint();
     arrange();
@@ -1139,8 +1241,8 @@ describe('ReportsNext — moving a cutting without a pointer', () => {
     for (const name of [
       'Move Through the till left one column',
       'Move Through the till right one column',
-      'Move Through the till up one row',
-      'Move Through the till down one row',
+      'Move Through the till up past the cutting above',
+      'Move Through the till down past the cutting below',
       'Make Through the till one column wider',
       'Make Through the till one column narrower',
       'Make Through the till one row taller',
@@ -1155,18 +1257,18 @@ describe('ReportsNext — moving a cutting without a pointer', () => {
     );
     fireEvent.click(within(bar).getByRole('button', { name: 'Make Through the till one row taller' }));
     fireEvent.click(within(bar).getByRole('button', { name: 'Place it' }));
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     const saved = saveSheet.mock.calls[0][0] as { cuttings: Array<{ slot: unknown }> };
     expect(saved.cuttings[0].slot).toEqual({ x: 1, y: 0, w: 4, h: 5 });
   });
 
-  it('drops the pick-up when the sheet stops being arranged', () => {
+  it('drops the pick-up when the sheet stops being arranged', async () => {
     hook.current = alone();
     paint();
     arrange();
     fireEvent.keyDown(gripFor('Through the till'), { key: ' ' });
     expect(screen.getByRole('group', { name: 'Placing Through the till' })).toBeInTheDocument();
-    fireEvent.click(screen.getByText('Rule it off'));
+    await ruleItOff();
     expect(screen.queryByRole('group', { name: 'Placing Through the till' })).toBeNull();
   });
 });
@@ -1444,11 +1546,10 @@ describe('ReportsNext — the benchmark cutting', () => {
     ).toBeInTheDocument();
   });
 
-  it('names the ambiguity when both buying windows read zero', () => {
-    // Measured live on 2026-09-03: the dev tenant returns 0 and 0, and
-    // `getCashflow` sums a loader that degrades a failed query to `[]`. A pair
-    // of zeros is therefore "no delivered order came back", not "nothing was
-    // bought" — and the cutting must not present it as a measured standstill.
+  it('says plainly when both buying windows read zero, and no longer calls the zeros ambiguous', () => {
+    // `getCashflow` reads its orders whole now (ADR 0292, audit G6): a failed
+    // read refuses the lens, so a pair of zeros is a quiet stretch, not a read
+    // that came back empty.
     hook.current = withRegister(
       'bench',
       ok(decode('bench', { ...BENCH, cashflow: { ...BENCH.cashflow, spendLast30d: 0, spendPrev30d: 0 } })),
@@ -1456,26 +1557,80 @@ describe('ReportsNext — the benchmark cutting', () => {
     paint();
     const bench = screen.getByRole('region', { name: 'Against ourselves' });
     expect(
-      within(bench).getByText(/Both buying windows came back at zero/),
+      within(bench).getByText(/No delivered purchase order falls in either 30-day window/),
     ).toBeInTheDocument();
-    expect(within(bench).getByText(/not necessarily .nothing was bought./)).toBeInTheDocument();
+    expect(within(bench).queryByText(/ambiguous/)).toBeNull();
     // …and it draws no bars at all: two bars at zero are an empty axis.
     expect(within(bench).getByText(/no bars are drawn/)).toBeInTheDocument();
+  });
+
+  it('in bars, says only the real reason no pair is drawn, once, never the generic line above it', () => {
+    hook.current = {
+      ...withRegister(
+        'bench',
+        ok(decode('bench', { ...BENCH, cashflow: { ...BENCH.cashflow, spendLast30d: 0, spendPrev30d: 0 } })),
+      ),
+      sheet: { cuttings: [{ id: 'bench', slot: { x: 0, y: 0, w: 6, h: 11 }, graph: 'bars' }] },
+    } as never;
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).queryByText(/cannot be drawn as/)).toBeNull();
+    expect(within(bench).getAllByText(/No delivered purchase order falls in either 30-day window/)).toHaveLength(1);
+  });
+
+  it('in bars, a house with no time zone is told that, not that the register cannot be drawn', () => {
+    hook.current = {
+      ...withRegister(
+        'bench',
+        ok(
+          decode('bench', {
+            ...BENCH,
+            cashflow: { ...BENCH.cashflow, spendLast30d: null, spendPrev30d: null, zoneUnset: true },
+          }),
+        ),
+      ),
+      sheet: { cuttings: [{ id: 'bench', slot: { x: 0, y: 0, w: 6, h: 11 }, graph: 'bars' }] },
+    } as never;
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).queryByText(/cannot be drawn as/)).toBeNull();
+    expect(within(bench).getAllByText(/time zone isn’t set/)).toHaveLength(1);
+  });
+
+  it('in a table, the same reason stays among the notes', () => {
+    hook.current = {
+      ...withRegister(
+        'bench',
+        ok(decode('bench', { ...BENCH, cashflow: { ...BENCH.cashflow, spendLast30d: 0, spendPrev30d: 0 } })),
+      ),
+      sheet: { cuttings: [{ id: 'bench', slot: { x: 0, y: 0, w: 6, h: 11 }, graph: 'table' }] },
+    } as never;
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).getAllByText(/No delivered purchase order falls in either 30-day window/)).toHaveLength(1);
   });
 
   it('does not say it when the windows carry real figures', () => {
     paint();
     const bench = screen.getByRole('region', { name: 'Against ourselves' });
-    expect(within(bench).queryByText(/Both buying windows came back at zero/)).toBeNull();
+    expect(within(bench).queryByText(/No delivered purchase order falls/)).toBeNull();
   });
 
-  it('withholds every figure the overview call did not return, rather than zeroing them', () => {
+  it('withholds every figure a source did not return, rather than zeroing them', () => {
     hook.current = withRegister('bench', ok(decode('bench', { ...BENCH, cashflow: null })));
     paint();
     const bench = screen.getByRole('region', { name: 'Against ourselves' });
     expect(
-      within(bench).getByText(/The buying lens did not answer inside the overview call/),
+      within(bench).getByText(/The cashflow register could not be read, so its four figures are em dashes/),
     ).toBeInTheDocument();
+  });
+
+  it('a goals list that could not be read is not "no goal running"', () => {
+    hook.current = withRegister('bench', ok(decode('bench', { ...BENCH, goals: null })));
+    paint();
+    const bench = screen.getByRole('region', { name: 'Against ourselves' });
+    expect(within(bench).getByText(/The goals list could not be read/)).toBeInTheDocument();
+    expect(within(bench).queryByText(/No goal is running/)).toBeNull();
   });
 });
 
@@ -1754,5 +1909,387 @@ describe('ReportsNext — a register this role is not sent (ADR 0348)', () => {
     const room = screen.getByRole('region', { name: 'The room' });
     expect(within(room).getByText(/Your role cannot read the table register/)).toBeInTheDocument();
     expect(within(room).queryByText(/written for owners and managers/)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * "No bugs when switched places" (the founder's /goal, 2026-11-07). Three
+ * paths let a reader's own sheet be written over: a narrow screen, a cold
+ * load, and a save that was reported before it landed.
+ */
+describe('ReportsNext — the sheet keeps its places', () => {
+  const region = (name: string) => screen.getByRole('region', { name });
+
+  it('shows paper outlines, and keeps Arrange shut, until the reader’s own sheet is known', () => {
+    hook.current = { ...base(), sheetKnown: false, sheetUnread: null };
+    const { container } = paint();
+    expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeDisabled();
+    expect(screen.getByText('Reading how you arranged this sheet…')).toBeInTheDocument();
+    expect(container.querySelectorAll('.rp-outline').length).toBeGreaterThan(0);
+    // The house sheet is NOT drawn first and then swapped for the reader's.
+    expect(container.querySelector('.rp-sheet')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Through the till' })).toBeNull();
+  });
+
+  it('says so when the reader’s sheet could not be read, shows the house sheet, and keeps Arrange shut', () => {
+    const unread =
+      'Your own arrangement of this sheet could not be read (boom), so the house sheet is shown. Arranging is off until it can be read.';
+    hook.current = { ...base(), sheetKnown: false, sheetUnread: unread };
+    paint();
+    expect(screen.getByText(unread)).toBeInTheDocument();
+    expect(region('Through the till')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeDisabled();
+  });
+
+  it('says “Ruling off…” until the save lands, and only then stamps it', async () => {
+    let land: () => void = () => {};
+    saveSheet.mockImplementationOnce(() => new Promise<void>((r) => (land = r)));
+    paint();
+    arrange();
+    fireEvent.click(screen.getByText('Rule it off'));
+    expect(screen.getByRole('button', { name: 'Ruling off…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Put it all back' })).toBeDisabled();
+    expect(screen.queryByText('Ruled off.')).toBeNull();
+    // The paper is held still while the write is in flight: no cutting can be
+    // taken off or swapped, so no edit is made that the landing save drops.
+    expect(screen.queryByText('Take off')).toBeNull();
+    expect(screen.queryByLabelText(/^Show instead of /)).toBeNull();
+    await act(async () => land());
+    expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeEnabled();
+  });
+
+  it('holds "Put it on the sheet" while the save is in flight, and places the cutting once it has landed', async () => {
+    let land: () => void = () => {};
+    saveSheet.mockImplementationOnce(() => new Promise<void>((r) => (land = r)));
+    // Wire the stub desk to the page's real placer, as the hook does.
+    deskStub.place.mockImplementation((c: unknown) =>
+      (asked.place as (c: unknown) => void)(c),
+    );
+    deskStub.proposal = {
+      goalId: 'g1',
+      goalName: 'Lift wine revenue',
+      cutting: { id: 'seats', graph: 'bars', days: null },
+      why: null,
+      refusal: null,
+    };
+    const { container } = paint();
+    arrange();
+    fireEvent.click(within(region('The reading')).getByText('Take off'));
+    fireEvent.click(screen.getByText('Rule it off'));
+    const put = within(region('Goals')).getByRole('button', { name: 'Put it on the sheet' });
+    expect(put).toBeDisabled();
+    expect(within(region('Goals')).getByText('Ruling off…')).toBeInTheDocument();
+    fireEvent.click(put);
+    expect(deskStub.place).not.toHaveBeenCalled();
+    await act(async () => land());
+    expect(saveSheet).toHaveBeenCalledTimes(1);
+
+    // After the save, the same button works and the cutting is on the draft.
+    expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+    arrange();
+    const again = within(region('Goals')).getByRole('button', { name: 'Put it on the sheet' });
+    expect(again).toBeEnabled();
+    fireEvent.click(again);
+    expect(deskStub.place).toHaveBeenCalledWith({ id: 'seats', graph: 'bars', days: null });
+    expect(container.querySelector('.rp-sheet')).toHaveAttribute('data-arranging', 'true');
+    await ruleItOff();
+    const saved = saveSheet.mock.calls[1][0] as { cuttings: Array<{ id: string }> };
+    expect(saved.cuttings.some((c) => c.id === 'seats')).toBe(true);
+  });
+
+  it('says a failed save failed, and keeps both the draft and the arranging', async () => {
+    saveSheet.mockImplementationOnce(() => Promise.reject(new Error('Request failed with status code 503')));
+    const { container } = paint();
+    arrange();
+    fireEvent.click(within(region('The reading')).getByText('Take off'));
+    fireEvent.click(screen.getByText('Rule it off'));
+    expect(await screen.findByText('The sheet was not saved. Try again.')).toHaveAttribute(
+      'role',
+      'alert',
+    );
+    expect(screen.queryByText('Ruled off.')).toBeNull();
+    expect(container.querySelector('.rp-sheet')).toHaveAttribute('data-arranging', 'true');
+    // The draft survived: the cutting that was taken off is still off.
+    expect(screen.queryByRole('region', { name: 'The reading' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Rule it off' })).toBeEnabled();
+  });
+
+  it('keeps the stamp until 2.4 s after the LATEST rule-off, and clears its timer on the way out', async () => {
+    vi.useFakeTimers();
+    try {
+      const view = paint();
+      const ruleOnce = async () => {
+        arrange();
+        await act(async () => {
+          fireEvent.click(screen.getByText('Rule it off'));
+        });
+      };
+      await ruleOnce();
+      expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+      });
+      await ruleOnce();
+      await act(async () => {
+        vi.advanceTimersByTime(1500); // 2.5 s after the first, 1.5 s after the second
+      });
+      expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+      await act(async () => {
+        vi.advanceTimersByTime(900); // 2.4 s after the second
+      });
+      expect(screen.queryByText('Ruled off.')).toBeNull();
+
+      const set = vi.spyOn(window, 'setTimeout');
+      await ruleOnce();
+      expect(screen.getByText('Ruled off.')).toBeInTheDocument();
+      const at = set.mock.calls.findIndex((c) => c[1] === 2400);
+      expect(at).toBeGreaterThanOrEqual(0);
+      const stampTimer = set.mock.results[at].value;
+      const clear = vi.spyOn(window, 'clearTimeout');
+      view.unmount();
+      expect(clear).toHaveBeenCalledWith(stampTimer);
+      set.mockRestore();
+      clear.mockRestore();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('ReportsNext — a refresh that fails after a good load', () => {
+  it('keeps the sheet on screen, Arrange open, and says the refresh failed', () => {
+    const stale = 'The sheet could not be refreshed just now; what is shown is the last one that loaded.';
+    hook.current = { ...base(), sheetKnown: true, sheetUnread: null, sheetStale: stale };
+    paint();
+    expect(screen.getByText(stale)).toBeInTheDocument();
+    expect(screen.queryByText(/so the house sheet is shown/)).toBeNull();
+    expect(screen.getByRole('region', { name: 'Through the till' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Arrange the sheet' })).toBeEnabled();
+  });
+});
+
+/* ───────────────────────── bars and a line, together (founder /goal 2026-11-07) ── */
+
+describe('ReportsNext — bars and a line on one cutting', () => {
+  /** The default sheet with the week's shape drawn as bars-and-a-line. */
+  const weekAsCombo = () => ({
+    ...base(),
+    sheet: {
+      cuttings: defaultSheet().cuttings.map((c) =>
+        c.id === 'week' ? { ...c, graph: 'combo' as const } : c,
+      ),
+    },
+  });
+  const WORDS = /Bars: Mean per day\. Line: Spread\. Both are in bottles\/day, so they share one scale\./;
+  /** The page as the real hook serves it: a save becomes the sheet it then reads. */
+  const paintSaving = () => {
+    const page = paint();
+    saveSheet.mockImplementation(async (next: unknown) => {
+      hook.current = { ...hook.current, sheet: next };
+      page.rerender(
+        <MemoryRouter>
+          <ReportsNext />
+        </MemoryRouter>,
+      );
+    });
+    return page;
+  };
+
+  it('offers the combination only where the register has a second measure', () => {
+    paint();
+    arrange();
+    const types = (title: string) =>
+      Array.from(
+        (
+          within(screen.getByRole('region', { name: title })).getByLabelText(
+            `Draw ${title} as`,
+          ) as HTMLSelectElement
+        ).options,
+      ).map((o) => o.value);
+    expect(types('The week’s shape')).toContain('combo');
+    // Two windows are two bars; there is no second measure to lay beside them.
+    expect(types('Spend pacing')).not.toContain('combo');
+  });
+
+  it('says in words which measure is the bars, which the line, and which scale', () => {
+    hook.current = weekAsCombo();
+    paint();
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    expect(within(week).getByText(/Bars: Mean per day/)).toBeInTheDocument();
+    expect(within(week).getByLabelText('Bars show')).toBeInTheDocument();
+  });
+
+  it('is the same drawing, with the same measures, when laid full screen', async () => {
+    hook.current = weekAsCombo();
+    paintSaving();
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    await act(async () => {
+      fireEvent.change(within(week).getByLabelText('Line shows'), { target: { value: 'seen' } });
+    });
+    expect(within(week).getByText(/Line: Days seen \(days\), on the right scale/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Show The week’s shape full screen' }));
+    const flat = screen.getByRole('dialog', { name: 'The week’s shape' });
+    expect((within(flat).getByLabelText('Draw The week’s shape as') as HTMLSelectElement).value).toBe(
+      'combo',
+    );
+    // Opens on the sheet's own choice…
+    expect(within(flat).getByText(/Line: Days seen \(days\), on the right scale/)).toBeInTheDocument();
+    // …and changing it there is view-only: the sheet behind keeps its own.
+    fireEvent.change(within(flat).getByLabelText('Line shows'), { target: { value: 'spread' } });
+    expect(within(flat).getByText(WORDS)).toBeInTheDocument();
+    fireEvent.click(within(flat).getByRole('button', { name: 'Back to the sheet' }));
+    expect(
+      within(screen.getByRole('region', { name: 'The week’s shape' })).getByText(
+        /Line: Days seen \(days\), on the right scale/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('full screen keeps its own bars-and-line choice across a Draw as flip, and never hands it to the sheet', () => {
+    hook.current = weekAsCombo();
+    paint();
+    fireEvent.click(screen.getByRole('button', { name: 'Show The week’s shape full screen' }));
+    const flat = screen.getByRole('dialog', { name: 'The week’s shape' });
+    fireEvent.change(within(flat).getByLabelText('Line shows'), { target: { value: 'seen' } });
+    const drawAs = within(flat).getByLabelText('Draw The week’s shape as');
+    fireEvent.change(drawAs, { target: { value: 'bars' } });
+    expect(within(flat).queryByLabelText('Line shows')).toBeNull();
+    fireEvent.change(drawAs, { target: { value: 'combo' } });
+    // Round 20 measured this flipping back to the default; it is the view's own choice now.
+    expect((within(flat).getByLabelText('Line shows') as HTMLSelectElement).value).toBe('seen');
+    fireEvent.click(within(flat).getByRole('button', { name: 'Back to the sheet' }));
+    expect(
+      within(screen.getByRole('region', { name: 'The week’s shape' })).getByText(WORDS),
+    ).toBeInTheDocument();
+    expect(saveSheet).not.toHaveBeenCalled();
+  });
+
+  it('keeps the drawing and its measures when the cutting is moved to another place', async () => {
+    hook.current = alone('week', { x: 0, y: 0, w: 4, h: 4 }, 'combo');
+    paintSaving();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Line shows'), { target: { value: 'seen' } });
+    });
+    arrange();
+    const grip = gripFor('The week’s shape');
+    fireEvent.keyDown(grip, { key: ' ' });
+    fireEvent.keyDown(grip, { key: 'ArrowRight' });
+    fireEvent.keyDown(grip, { key: 'ArrowRight' });
+    fireEvent.keyDown(grip, { key: ' ' });
+    const week = screen.getByRole('region', { name: 'The week’s shape' });
+    expect((within(week).getByLabelText('Draw The week’s shape as') as HTMLSelectElement).value).toBe(
+      'combo',
+    );
+    expect((within(week).getByLabelText('Line shows') as HTMLSelectElement).value).toBe('seen');
+
+    // The pick was saved with the sheet the moment it was made…
+    expect(saveSheet.mock.calls[0][0]).toMatchObject({
+      cuttings: [{ id: 'week', combo: { bars: 'value', line: 'seen' } }],
+    });
+    await ruleItOff();
+    const saved = saveSheet.mock.calls.at(-1)![0] as {
+      cuttings: Array<{ id: string; graph: string; slot: { x: number }; combo?: unknown }>;
+    };
+    const moved = saved.cuttings.find((c) => c.id === 'week');
+    expect(moved?.slot.x).toBe(2);
+    expect(moved?.graph).toBe('combo');
+    // …and the move carries it into the ruled-off sheet.
+    expect(moved?.combo).toEqual({ bars: 'value', line: 'seen' });
+    expect(
+      within(screen.getByRole('region', { name: 'The week’s shape' })).getByText(/Line: Days seen/),
+    ).toBeInTheDocument();
+  });
+
+  it('opens on the pick saved with the sheet, so a reload keeps it', () => {
+    hook.current = {
+      ...base(),
+      sheet: {
+        cuttings: [
+          { id: 'week', slot: { x: 0, y: 0, w: 4, h: 4 }, graph: 'combo', combo: { bars: 'value', line: 'seen' } },
+        ],
+      },
+    };
+    paint();
+    expect((screen.getByLabelText('Line shows') as HTMLSelectElement).value).toBe('seen');
+    expect(screen.getByText(/Line: Days seen \(days\), on the right scale/)).toBeInTheDocument();
+  });
+
+  it('a pick made while reading is written once, and a refused write says so', async () => {
+    hook.current = alone('week', { x: 0, y: 0, w: 4, h: 4 }, 'combo');
+    saveSheet.mockImplementationOnce(() => Promise.reject(new Error('503')));
+    paint();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Line shows'), { target: { value: 'seen' } });
+    });
+    expect(saveSheet).toHaveBeenCalledTimes(1);
+    expect(saveSheet.mock.calls[0][0]).toMatchObject({
+      cuttings: [{ id: 'week', combo: { bars: 'value', line: 'seen' } }],
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('The sheet was not saved. Try again.');
+  });
+
+  it('a pick made while arranging waits in the draft and is saved on rule-off', async () => {
+    hook.current = alone('week', { x: 0, y: 0, w: 4, h: 4 }, 'combo');
+    paint();
+    arrange();
+    fireEvent.change(screen.getByLabelText('Line shows'), { target: { value: 'seen' } });
+    expect(saveSheet).not.toHaveBeenCalled();
+    expect((screen.getByLabelText('Line shows') as HTMLSelectElement).value).toBe('seen');
+    await ruleItOff();
+    expect(saveSheet.mock.calls[0][0]).toMatchObject({
+      cuttings: [{ id: 'week', combo: { bars: 'value', line: 'seen' } }],
+    });
+  });
+
+  it('a pick made before the reader’s sheet is known is shown, and never written', () => {
+    hook.current = {
+      ...alone('week', { x: 0, y: 0, w: 4, h: 4 }, 'combo'),
+      sheetKnown: false,
+      sheetUnread: 'Your own arrangement of this sheet could not be read (boom), so the house sheet is shown. Arranging is off until it can be read.',
+    };
+    paint();
+    fireEvent.change(screen.getByLabelText('Line shows'), { target: { value: 'seen' } });
+    expect((screen.getByLabelText('Line shows') as HTMLSelectElement).value).toBe('seen');
+    expect(saveSheet).not.toHaveBeenCalled();
+  });
+
+  it('the pick survives a save and a read of the sheet, and a malformed one is dropped', () => {
+    const sheet = {
+      cuttings: [
+        { id: 'week' as const, slot: { x: 0, y: 0, w: 4, h: 4 }, graph: 'combo' as const, combo: { bars: 'spread', line: 'value' } },
+        { id: 'seats' as const, slot: { x: 4, y: 0, w: 6, h: 8 }, graph: 'bars' as const },
+      ],
+    };
+    const decoded = decodeSheet(encodeSheet(sheet));
+    expect(decoded.cuttings[0].combo).toEqual({ bars: 'spread', line: 'value' });
+    expect(decoded.cuttings[1]).not.toHaveProperty('combo');
+    const blob = encodeSheet(sheet) as { blocks: Array<Record<string, unknown>> };
+    for (const bad of [{ b: 'value', l: 'value' }, { b: 1, l: 'seen' }, { b: 'value' }, 'value', null]) {
+      blob.blocks[0].c = bad;
+      expect(decodeSheet(blob).cuttings[0]).not.toHaveProperty('combo');
+    }
+  });
+
+  it('R-7: a swap grows the square to the new subject’s declared size, never smaller', () => {
+    paint();
+    arrange();
+    // The writing desk lies in a 12 x 3 strip; the goals desk is declared 7 x 11.
+    const desk = screen.getByRole('region', { name: 'The writing desk' });
+    fireEvent.change(within(desk).getByLabelText('Show instead of The writing desk'), {
+      target: { value: 'seats' },
+    });
+    fireEvent.click(screen.getByText('Rule it off'));
+    const saved = saveSheet.mock.calls[0][0] as {
+      cuttings: Array<{ id: string; slot: { x: number; y: number; w: number; h: number } }>;
+    };
+    const seats = saved.cuttings.find((c) => c.id === 'seats');
+    expect(seats?.slot).toMatchObject({
+      x: 0,
+      y: DEFAULT_SLOTS.writing.y,
+      w: DEFAULT_SLOTS.writing.w, // the reader's wider square is kept
+      h: DEFAULT_SLOTS.seats.h, // the strip grew to the room's height
+    });
   });
 });

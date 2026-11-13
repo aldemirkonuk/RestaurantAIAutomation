@@ -43,8 +43,28 @@ export interface Ref {
   label: string;
 }
 
+/**
+ * A second (or third) thing measured at the very same points as `data`, for
+ * the bars-and-line drawing. `values[i]` belongs to `data[i]`; `null` is a gap
+ * (no row was recorded), never a zero. The primary measure is NOT repeated
+ * here — it is `data[].value`, named by the series' own `yLabel`/`unit`.
+ */
+export interface Measure {
+  key: string;
+  /** The reader's words for it: "Days seen", "Checks". */
+  label: string;
+  /** The noun after the number. Two measures share an axis only when this is identical. */
+  unit: string;
+  format: (v: number) => string;
+  values: Array<number | null>;
+}
+
 export interface CatSeries {
   data: Cat[];
+  /** The reader's words for the primary measure in the bars-and-line picker; defaults to `yLabel`. */
+  measureLabel?: string;
+  /** More measures at the same points. Absent: this cutting cannot be bars-and-line. */
+  measures?: Measure[];
   xLabel: string;
   yLabel: string;
   /** The noun a tooltip puts after the number — "taken", "bottles/day". */
@@ -119,6 +139,14 @@ export interface AnalysisView {
   figures: Fig[];
   /** Sentences printed under the drawing — caveats, counts, what is off-plot. */
   notes: ReactNode[];
+  /**
+   * Why `cats`/`points`/`matrix` are absent, in the register's own words.
+   * When the reader's drawing needs the missing shape, this sentence is said
+   * IN PLACE of the generic "cannot be drawn as …" line, and is not repeated
+   * from `notes` below it (Cutting.tsx `Body`). Put the same value in `notes`
+   * so a table or figure drawing still says it.
+   */
+  undrawn?: ReactNode;
   /** The SERVER's own `basis` strings, verbatim. Nulls are dropped. */
   basis: Array<string | null | undefined>;
 }

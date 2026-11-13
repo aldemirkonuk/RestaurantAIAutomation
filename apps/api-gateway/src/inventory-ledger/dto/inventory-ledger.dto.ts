@@ -59,9 +59,19 @@ export class CreateInventoryTransactionDto {
   @IsUUID()
   inventoryId: string;
 
-  @ApiProperty({ description: "Wine ID" })
+  /**
+   * The library title, when the house item has one. Optional: the movement is
+   * keyed on the house item (`apply_stock_movement` reads the wine from the
+   * item itself), and a food or supply has no library title (ADR 0115). It is
+   * only carried into the change event.
+   */
+  @ApiPropertyOptional({
+    description:
+      "Library title of the item, when it has one. Not needed: the stock movement is keyed on inventoryId, and a food or supply has none.",
+  })
+  @IsOptional()
   @IsUUID()
-  wineId: string;
+  wineId?: string;
 
   @ApiProperty({ enum: TransactionType })
   @IsEnum(TransactionType)
@@ -220,8 +230,9 @@ export class InventoryTransactionResponseDto {
   @ApiProperty()
   inventoryId: string;
 
-  @ApiProperty()
-  wineId: string;
+  /** Null for a house item with no library title (a food or a supply). */
+  @ApiProperty({ nullable: true, type: String })
+  wineId: string | null;
 
   @ApiProperty({ enum: TransactionType })
   transactionType: TransactionType;

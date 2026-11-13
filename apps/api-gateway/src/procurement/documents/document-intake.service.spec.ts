@@ -1,5 +1,10 @@
 import { Test, TestingModule } from "@nestjs/testing";
-import { DocumentIntakeService } from "./document-intake.service";
+import {
+  DocumentIntakeService,
+  PAPER_READER_DOWN,
+  PAPER_READER_OFF,
+  paperReaderSaid,
+} from "./document-intake.service";
 import { DatabaseService } from "../../database/database.service";
 import { DocumentExtractorService } from "./document-extractor.service";
 import { CanonicalDocumentService } from "../canonical/canonical-document.service";
@@ -752,5 +757,36 @@ describe("DocumentIntakeService — an EDI 832 catalogue's currency", () => {
       "ST*832*0001~BCT*00*Q3-2026~CUR*SE*eur~LIN**VN*1~SE*4*0001~",
     );
     expect(doc.currency).toBe("EUR");
+  });
+});
+
+describe("a paper nobody could read says so in the house's words", () => {
+  const operator = /anthropic|api[\s_-]?key|credit balance|model/i;
+
+  it("a missing key reads as not switched on, never the key's name", () => {
+    const said = paperReaderSaid("ANTHROPIC_API_KEY is not configured");
+    expect(said).toBe(PAPER_READER_OFF);
+    expect(said).not.toMatch(operator);
+  });
+
+  it("a vendor or billing failure reads as not read just now, never the vendor's sentence", () => {
+    for (const reason of [
+      "Anthropic 400: Your credit balance is too low to access the Anthropic API",
+      "fetch failed",
+      "timeout after 30000ms",
+    ]) {
+      const said = paperReaderSaid(reason);
+      expect(said).toBe(PAPER_READER_DOWN);
+      expect(said).not.toContain(reason);
+      expect(said).not.toMatch(operator);
+    }
+  });
+
+  it("both sentences keep the paper (stored unread) and say what the house can do", () => {
+    for (const s of [PAPER_READER_OFF, PAPER_READER_DOWN]) {
+      expect(s).toMatch(/stored unread/);
+      expect(s).toMatch(/typed in by hand/);
+      expect(s).not.toMatch(operator);
+    }
   });
 });

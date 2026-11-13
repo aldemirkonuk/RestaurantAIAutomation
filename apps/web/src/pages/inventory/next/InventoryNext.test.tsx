@@ -7,11 +7,11 @@
  * their own tests, and none of them is under test here.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { InvRow } from './useInventoryNextData';
-import { fmtPace, MAP_WORDS, mapTone, sold30 } from './useInventoryNextData';
+import type { HouseCurrency, InvRow } from './useInventoryNextData';
+import { fmtPace, MAP_WORDS, mapTone, sold30, standingFor } from './useInventoryNextData';
 
 const mock = vi.hoisted(() => ({ data: {} as Record<string, unknown>, mapProps: null as Record<string, unknown> | null }));
 const exportSpy = vi.hoisted(() => vi.fn(async (_opts: unknown) => undefined));
@@ -88,6 +88,11 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
   getItemUsedIn: vi.fn(() => new Promise(() => undefined)),
   getItemNutrition: vi.fn(() => new Promise(() => undefined)),
 }));
+vi.mock('../../../services/api/itemDishes', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  getItemDishes: vi.fn(() => new Promise(() => undefined)),
+  getItemDrinks: vi.fn(() => new Promise(() => undefined)),
+}));
 vi.mock('./RowDropdown', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   default: () => <tr data-testid="row-dropdown" />,
@@ -109,7 +114,20 @@ vi.mock('@/components/mudavym/DeliveriesToName', () => ({
 import { toast } from 'sonner';
 import InventoryNext from './InventoryNext';
 import { IV_DEFAULT, readView, writeView } from './iv-url';
-import { fold, matchesSearch, needsYouFirst, readSentence, sortRows, sortWords, toRow, typeLabel, typeOf } from './useInventoryNextData';
+import {
+  chipMatch,
+  fold,
+  matchesSearch,
+  needsYouFirst,
+  readSentence as readSentenceWith,
+  severity,
+  sortRows,
+  sortWords,
+  toRow,
+  typeLabel,
+  typeOf,
+  withHouseKind,
+} from './useInventoryNextData';
 
 function row(over: Partial<InvRow> = {}): InvRow {
   return {
@@ -132,6 +150,10 @@ function row(over: Partial<InvRow> = {}): InvRow {
     runway: 12,
     daysSinceSale: 1,
     deadStock: false,
+    usageSource: null,
+    usageSince: null,
+    usageUntil: null,
+    usageQty: null,
     bottle: 92,
     glass: 18,
     pourMl: 150,
@@ -148,6 +170,11 @@ function row(over: Partial<InvRow> = {}): InvRow {
     ...over,
   };
 }
+
+/** The sentence over an alert list that names every title, for cases not about the list. */
+const EVERY = { has: () => true } as unknown as ReadonlySet<string>;
+const readSentence = (rows: InvRow[], currency: HouseCurrency, zonesReadable: boolean, uomOf?: (r: InvRow) => string | null) =>
+  readSentenceWith(rows, currency, zonesReadable, EVERY, uomOf);
 
 function data(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -185,6 +212,11 @@ function data(over: Record<string, unknown> = {}): Record<string, unknown> {
     unread: [],
     pending: [],
     rereadUnread: vi.fn(),
+    // The server's low-stock list, as the view holds it: every row below par
+    // or out, unless a test names its own list (or null, a list not read).
+    alerted: new Set(
+      ((over.rows ?? []) as InvRow[]).filter((r) => r.standing === 'below' || r.standing === 'out').map((r) => r.id),
+    ),
     ...over,
   };
 }
@@ -320,6 +352,35 @@ describe('unknown is never zero', () => {
     expect(tr.querySelector('td[data-label="Value at cost"]')!.textContent).toBe('—');
     expect(tr.querySelector('td[data-label="Zone"]')!.textContent).toBe('—');
     expect(tr.querySelector('td[data-label="Your price"]')!.textContent).toBe('— · —');
+  });
+
+  it('adds stock up within one unit only, bottles first, never grams into bottles', () => {
+    const uom = (r: InvRow) => ({ f: 'g', o: 'ml', e: 'each' } as Record<string, string>)[r.id] ?? null;
+    const rowsMixed = [
+      row({ id: 'a', stock: 10 }),
+      row({ id: 'f', stock: 12400 }),
+      row({ id: 'o', stock: 750 }),
+      row({ id: 'e', stock: 3 }),
+    ];
+    const s = readSentence(rowsMixed, { state: 'recorded', code: 'EUR' }, false, uom);
+    expect(s).toContain('4 titles, 10 bottles, 12.4 kg, 750 ml and 3 items.');
+    expect(readSentence([row({ id: 'f', stock: 400 })], { state: 'recorded', code: 'EUR' }, false, uom)).toContain('1 title, 400 g.');
+    expect(readSentence([row({ id: 'a', stock: 1 })], { state: 'recorded', code: 'EUR' }, false, uom)).toContain('1 title, 1 bottle.');
+    // Bottles lead even when a food is the first row read.
+    expect(readSentence([row({ id: 'f', stock: 2000 }), row({ id: 'a', stock: 3 })], { state: 'recorded', code: 'EUR' }, false, uom)).toContain(
+      '2 titles, 3 bottles and 2 kg.',
+    );
+  });
+
+  it('adds weight to weight and volume to volume, whatever unit each good is kept in', () => {
+    const uom = (r: InvRow) => ({ s: 'g', f: 'kg', o: 'l', y: 'ml', n: 'pack' } as Record<string, string>)[r.id] ?? null;
+    const s = readSentence(
+      [row({ id: 's', stock: 1750 }), row({ id: 'f', stock: 10 }), row({ id: 'o', stock: 4 }), row({ id: 'y', stock: 1500 }), row({ id: 'n', stock: 3 })],
+      { state: 'recorded', code: 'EUR' },
+      false,
+      uom,
+    );
+    expect(s).toContain('5 titles, 11.75 kg, 5.5 l and 3 packs.');
   });
 
   it('never says "0 bottles" when no stock was read', () => {
@@ -550,6 +611,20 @@ describe('every drink, not only wine (INV-W30)', () => {
     expect(typeOf(null, 'non_alcoholic')).toEqual({ type: 'non_alcoholic', kind: 'non_alcoholic' });
   });
 
+  it("a drink the house added itself reads the house's kind, never \"not recorded\" (r15 walk)", () => {
+    const gin = toRow({ id: 'i3', wineId: null, stockLive: 2, kind: 'spirit' } as never, null);
+    expect([gin.type, gin.kind]).toEqual(['spirit', 'spirit']);
+    const tonic = toRow({ id: 'i4', wineId: null, stockLive: 12, kind: 'soft_drink' } as never, null);
+    expect([tonic.type, typeLabel(tonic.type as string)]).toEqual(['soft_drink', 'Soft drink']);
+    // A food or supply is not a drink type: the list says Food or Supply from its own column.
+    expect(toRow({ id: 'i5', wineId: null, stockLive: 1, kind: 'food' } as never, null).type).toBeNull();
+    expect(withHouseKind({ type: null, kind: null }, 'supply')).toEqual({ type: null, kind: null });
+    // The library's word wins wherever it has one: a wine's style, or its classifier's doubt.
+    expect(withHouseKind({ type: 'red', kind: 'wine' }, 'spirit')).toEqual({ type: 'red', kind: 'wine' });
+    expect(withHouseKind({ type: 'unclassified', kind: 'unknown' }, 'beer')).toEqual({ type: 'unclassified', kind: 'unknown' });
+    expect(withHouseKind({ type: null, kind: null }, null)).toEqual({ type: null, kind: null });
+  });
+
   it('keeps "the classifier could not tell" apart from "nothing recorded"', () => {
     expect(typeOf(null, 'unknown')).toEqual({ type: 'unclassified', kind: 'unknown' });
     expect(typeOf('unknown', 'unknown')).toEqual({ type: 'unclassified', kind: 'unknown' });
@@ -570,6 +645,32 @@ describe('every drink, not only wine (INV-W30)', () => {
     expect([spirit.type, spirit.kind]).toEqual(['spirit', 'spirit']);
     const bare = toRow({ id: 'i2', wineId: null, stockLive: 1 } as never, null);
     expect([bare.type, bare.kind]).toEqual([null, null]);
+  });
+
+  it('carries where the pace comes from, and drops it when the pace was not read', () => {
+    const api = {
+      id: 'f1',
+      wineId: null,
+      stockLive: 8200,
+      velocityPerDay: 290,
+      daysOfCover: 28,
+      usageSource: 'counts',
+      usageSince: '2026-10-22T09:00:00Z',
+      usageUntil: '2026-11-11T09:00:00Z',
+      usageQty: 5800,
+    };
+    const r = toRow(api as never, null);
+    expect([r.usageSource, r.usageSince, r.usageUntil, r.usageQty, r.velocity, r.runway]).toEqual([
+      'counts',
+      '2026-10-22T09:00:00Z',
+      '2026-11-11T09:00:00Z',
+      5800,
+      290,
+      28,
+    ]);
+    const unread = toRow({ ...api, analyticsReadable: false } as never, null);
+    expect([unread.usageSource, unread.usageQty, unread.velocity]).toEqual([null, null, null]);
+    expect(toRow({ id: 'x', stockLive: 1, usageSource: 'guess' } as never, null).usageSource).toBeNull();
   });
 
   it('says each kind in the house words, never the key', () => {
@@ -1018,7 +1119,10 @@ describe('INV-W38 — the view is the URL', () => {
     expect(new URLSearchParams(seen.search).get('open')).toBe('b');
     expect(screen.getByTestId('ivd-cards')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Istanbul White' })).toBeTruthy();
-    expect(screen.queryByTestId('row-dropdown')).toBeNull();
+    // Not a row in place: the one opened block is the drawer's acts, with no evidence panel until a card asks.
+    expect(screen.getByTestId('inv-row-b').querySelector('[data-testid="row-dropdown"]')).toBeNull();
+    expect(screen.getAllByTestId('row-dropdown')).toHaveLength(1);
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
     act(() => seen.back());
     expect(screen.queryByTestId('ivd-cards')).toBeNull();
     expect(new URLSearchParams(seen.search).has('open')).toBe(false);
@@ -1068,6 +1172,31 @@ describe('INV-W38 — the view is the URL', () => {
     expect(screen.getByTestId('inv-row-f')).toBeTruthy();
   });
 
+  it('a house that carries goods heads the page Inventory; a drinks-only house keeps The cellar', () => {
+    mock.data = data({ rows: two() });
+    renderAt('/inventory');
+    expect(document.querySelector('.iv-crumb')!.textContent).toContain('The cellar · Inventory');
+    cleanup();
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+    });
+    renderAt('/inventory');
+    expect(document.querySelector('.iv-crumb')!.textContent).not.toContain('cellar');
+    expect(document.querySelector('.iv-crumb')!.textContent).toContain('Inventory');
+  });
+
+  it('on the Food kind the page offers Carry, never Add a bottle', () => {
+    mock.data = data({
+      rows: [row({ id: 'a', name: 'Ankara Red' }), row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+      canManage: true,
+    });
+    renderAt('/inventory?kind=food');
+    expect(screen.queryByRole('link', { name: 'Add a bottle' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Carry a food or supply' }).length).toBeGreaterThan(0);
+  });
+
   it('offers Carry to an owner or manager', () => {
     mock.data = data({ rows: two(), canManage: true });
     renderAt('/inventory');
@@ -1078,6 +1207,23 @@ describe('INV-W38 — the view is the URL', () => {
     mock.data = data({ rows: two(), canManage: false });
     renderAt('/inventory');
     expect(screen.queryByRole('button', { name: 'Carry a food or supply' })).toBeNull();
+  });
+
+  it('keeps each good in its own unit: the read sentence and the stock cell never add grams to bottles', () => {
+    mock.data = data({
+      rows: [
+        row({ id: 'a', name: 'Ankara Red', stock: 10, shadow: 10, par: 6 }),
+        row({ id: 'f', wineId: null, name: 'Un', type: null, kind: null, stock: 12400, shadow: 12400, par: 5000 }),
+      ],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Un' }],
+    });
+    renderAt('/inventory');
+    const said = screen.getByTestId('inventory-read-sentence').textContent ?? '';
+    expect(said).toContain('2 titles, 10 bottles and 12.4 kg');
+    expect(said).not.toContain('12,410');
+    const live = (id: string) => screen.getByTestId(`inv-row-${id}`).querySelector('td[data-label="Live / shadow · par"]')!.textContent;
+    expect(live('f')).toContain('12.4 kg / 12.4 kg · 5 kg');
+    expect(live('a')).toContain('10 / 10 · 6');
   });
 
   const closeDrawer = () => fireEvent.click(document.querySelector('.iv-drawer .mdv-ovl__close') as HTMLElement);
@@ -1152,6 +1298,67 @@ describe('INV-W38 — the view is the URL', () => {
     mock.data = data({ rows: two(), waiting: { invoices: { n: 0, failed: false }, deliveries: { n: 1, failed: false }, outbox: { n: 0, failed: false } } });
     renderAt('/inventory?name-delivery=o1');
     expect(screen.getByTestId('deliveries-to-name')).toBeTruthy();
+  });
+
+  // QA 9c item 4: the low-stock alerts link to /inventory?filter=low-stock.
+  it('lands the alerts\' ?filter=low-stock link on the wines the alerts name, and folds it into chip', () => {
+    expect(readView(new URLSearchParams('filter=low-stock')).chip).toBe('alerts');
+    expect(readView(new URLSearchParams('chip=out&filter=low-stock')).chip).toBe('out');
+    expect(writeView(new URLSearchParams('filter=low-stock'), { ...IV_DEFAULT, chip: 'alerts' }).toString()).toBe('chip=alerts');
+
+    mock.data = data({ rows: two(), alerted: new Set(['b']) });
+    const seen = renderAt('/inventory?filter=low-stock');
+    expect(screen.queryByTestId('inv-row-a')).toBeNull();
+    expect(screen.getByTestId('inv-row-b')).toBeTruthy();
+    const chip = screen.getByRole('button', { name: /Low-stock alerts/ });
+    expect(chip.getAttribute('aria-pressed')).toBe('true');
+    expect(chip.textContent).toContain('1');
+    fireEvent.click(screen.getByTestId('inv-row-b').querySelector('button[aria-expanded]')!);
+    expect(new URLSearchParams(seen.search).get('chip')).toBe('alerts');
+    expect(new URLSearchParams(seen.search).has('filter')).toBe(false);
+  });
+
+  it('shows every title, and the chip\'s count as the dash, while the alert list is unread', () => {
+    mock.data = data({ rows: two(), alerted: null });
+    renderAt('/inventory?filter=low-stock');
+    expect(screen.getByTestId('inv-row-a')).toBeTruthy();
+    expect(screen.getByTestId('inv-row-b')).toBeTruthy();
+    const chip = screen.getByRole('button', { name: /Low-stock alerts/ }) as HTMLButtonElement;
+    expect(chip.disabled).toBe(true);
+    expect(chip.textContent).toContain('—');
+    expect(chipMatch(two()[0], 'alerts', Date.now(), null)).toBe(false);
+    expect(chipMatch(two()[0], 'alerts', Date.now(), new Set(['a']))).toBe(true);
+  });
+
+  // QA 12a R1: the Below par chip counted a title in transit (and, before
+  // every_good_can_run_low, a house beer) that no alert names.
+  it('counts under Below par only the titles the low-stock list holds, as the alerts do', () => {
+    const shelf = row({ id: 'shelf', name: 'Shelf Red', stock: 1, par: 3, standing: 'below' });
+    const transit = row({ id: 'transit', name: 'Transit Red', stock: 1, par: 3, standing: 'below' });
+    const flour = row({ id: 'flour', name: 'Flour', stock: 200, par: 500, standing: 'below' });
+    mock.data = data({ rows: [shelf, transit, flour], alerted: new Set(['shelf', 'flour']) });
+    renderAt('/inventory');
+    const chips = screen.getByTestId('inventory-chips');
+    expect(within(chips).getByRole('button', { name: /^Below par 2$/ })).toBeTruthy();
+    expect(within(chips).getByRole('button', { name: /^Low-stock alerts 2$/ })).toBeTruthy();
+    expect(screen.getByText(/None is out; 2 are below par/)).toBeTruthy();
+    fireEvent.click(within(chips).getByRole('button', { name: /^Below par 2$/ }));
+    expect(screen.queryByTestId('inv-row-transit')).toBeNull();
+    expect(screen.getByTestId('inv-row-flour')).toBeTruthy();
+  });
+
+  it('never says how many are below par, nor that none are, while the low-stock list is unread', () => {
+    const low = row({ id: 'low', stock: 1, par: 3, standing: 'below' });
+    mock.data = data({ rows: [low], alerted: null });
+    renderAt('/inventory?chip=below');
+    const chip = within(screen.getByTestId('inventory-chips')).getByRole('button', { name: /^Below par/ }) as HTMLButtonElement;
+    expect(chip.disabled).toBe(true);
+    expect(chip.textContent).toContain('—');
+    expect(screen.getByTestId('inv-row-low')).toBeTruthy();
+    const s = readSentenceWith([low], { state: 'recorded', code: 'EUR' }, true, null);
+    expect(s).toContain('None is out; which titles are below par has not been read yet.');
+    expect(s).not.toMatch(/Nothing is out|0 are below par|is below par\b/);
+    expect(chipMatch(low, 'below', Date.now(), null)).toBe(false);
   });
 
   it('sends the older ?verify= link to Receiving, on that order', () => {
@@ -1610,5 +1817,115 @@ describe('the legacy velocity sort and column-header sort (round 4)', () => {
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Name');
     fireEvent.click(screen.getByRole('button', { name: 'Title' }));
     expect(screen.getByTestId('inventory-footer').textContent).toContain('sorted Needs you first');
+  });
+});
+
+describe('A title nobody counted says "Not counted yet", never Out (OD-161)', () => {
+  it('stands a never-counted row apart from Out, and a counted 0 is still Out', () => {
+    const uncounted = toRow({ id: 'u', wineId: null, stockLive: 0, thresholdMin: 3, lastCountedAt: null } as never, null);
+    const received = toRow({ id: 'r', wineId: null, stockLive: 2, thresholdMin: 3, lastCountedAt: null } as never, null);
+    const counted = toRow(
+      { id: 'c', wineId: null, stockLive: 0, thresholdMin: 3, lastCountedAt: '2026-11-01T10:00:00Z' } as never,
+      null,
+    );
+    const silent = toRow({ id: 's', wineId: null, stockLive: 0, thresholdMin: 3 } as never, null);
+    // Only the 0 is ambiguous; a received-and-sold 2 of 3 is below par, as the
+    // low-stock alert and the dashboard call it.
+    expect([uncounted.standing, received.standing, counted.standing, silent.standing]).toEqual([
+      'uncounted',
+      'below',
+      'out',
+      'out',
+    ]);
+    expect([uncounted.neverCounted, received.neverCounted, counted.neverCounted, silent.neverCounted]).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+    // The figure is kept: received minus sold is what the stock column shows.
+    expect(received.stock).toBe(2);
+  });
+
+  it('writes "Not counted yet" on a never-counted 0, with the figure beside it, and no Out', () => {
+    mock.data = data({
+      rows: [row({ id: 'n', name: 'Untouched Red', stock: 0, par: 3, lastCountedAt: null, standing: 'uncounted', neverCounted: true })],
+    });
+    renderPage();
+    const tr = screen.getByTestId('inv-row-n');
+    expect(within(tr).getByText('Not counted yet')).toBeTruthy();
+    expect(tr.querySelector('td[data-label="Live / shadow · par"]')!.textContent).toMatch(/^0/);
+    expect(tr.textContent).not.toMatch(/\bOut\b/);
+  });
+
+  it('keeps a never-counted 2 of 3 under Below par, in the order and in the sentence', () => {
+    const received = toRow(
+      { id: 'r', wineId: null, name: 'Received Red', stockLive: 2, thresholdMin: 3, lastCountedAt: null } as never,
+      null,
+    );
+    const plenty = row({ id: 'p', name: 'Plenty', stock: 12, par: 6, runway: 12 });
+    expect(chipMatch(received, 'below', Date.now(), new Set(['r']))).toBe(true);
+    expect(severity(received)).toBe(1);
+    expect([plenty, received].sort(needsYouFirst).map((r) => r.id)).toEqual(['r', 'p']);
+    const s = readSentence([plenty, received], { state: 'recorded', code: 'EUR' }, true);
+    expect(s).not.toContain('Nothing is out or below par');
+    expect(s).toContain('None is out; 1 is below par');
+
+    mock.data = data({ rows: [plenty, received] });
+    renderPage();
+    const tr = screen.getByTestId('inv-row-r');
+    expect(within(tr).getByText(/^Below par.* · not counted yet$/)).toBeTruthy();
+  });
+
+  // QA 9c: a wine received 5 and sold 5, never counted, par 3, fires a
+  // critical alert. Its row says "Not counted yet", so the sentence must not
+  // say "Nothing is out or below par" past it, and the order must not bury it.
+  it('names a never-counted 0 in the read sentence instead of saying nothing is out', () => {
+    const recvZero = toRow(
+      { id: 'z', wineId: null, name: 'Sold Out Red', stockLive: 0, thresholdMin: 3, lastCountedAt: null } as never,
+      null,
+    );
+    const plenty = row({ id: 'p', name: 'Plenty', stock: 12, par: 6, runway: 12 });
+    const eur = { state: 'recorded', code: 'EUR' } as const;
+    const alone = readSentence([plenty, recvZero], eur, true);
+    expect(alone).not.toContain('Nothing is out or below par');
+    expect(alone).toContain(
+      '1 is not counted yet, so whether it is out is not known until it is counted; nothing else is out or below par.',
+    );
+    const two = toRow({ id: 'y', wineId: null, stockLive: 0, thresholdMin: 2, lastCountedAt: null } as never, null);
+    expect(readSentence([recvZero, two], eur, true)).toContain('2 are not counted yet, so whether they are out');
+    // Beside an Out and a Below par it is still named, never folded into either.
+    const out = row({ id: 'o', name: 'Gone', stock: 0, par: 3, standing: 'out' });
+    const low = row({ id: 'l', name: 'Low', stock: 1, par: 3, standing: 'below' });
+    expect(readSentence([out, low, recvZero], eur, true)).toContain(
+      '1 is out, and 1 more is below par; 1 more is not counted yet.',
+    );
+    // It sorts after Below par and before everything else, under its own heading.
+    expect(severity(recvZero)).toBe(2);
+    expect([plenty, recvZero, low].sort(needsYouFirst).map((r) => r.id)).toEqual(['l', 'z', 'p']);
+    mock.data = data({ rows: [plenty, recvZero] });
+    renderPage();
+    const groups = [...screen.getByTestId('inventory-table').querySelectorAll('tr.iv-group')].map((g) => g.textContent);
+    expect(groups).toEqual(['Not counted yet 1', 'Everything else, by runway']);
+  });
+
+  it('decides the standing by one rule for the row and the map tile', () => {
+    expect(standingFor(0, 3, true)).toBe('uncounted');
+    expect(standingFor(2, 3, true)).toBe('below');
+    expect(standingFor(0, 3, false)).toBe('out');
+    expect(standingFor(null, 3, true)).toBe('unknown');
+    const tile = { id: 'm', liveStock: 0, threshold: 3, shadowStock: 0, lastCounted: null } as never;
+    const asRow = toRow({ id: 'm', wineId: null, stockLive: 0, thresholdMin: 3, lastCountedAt: null } as never, null);
+    expect(asRow.standing).toBe(standingFor(0, 3, true));
+    expect(mapTone(tile)).toBe('neutral');
+  });
+
+  it('tints a never-counted tile as not read, not as Out', () => {
+    const tile = { id: 'm', liveStock: 0, threshold: 3, shadowStock: 0, lastCounted: null } as never;
+    expect(mapTone(tile)).toBe('neutral');
+    expect(mapTone({ ...(tile as object), lastCounted: '2026-11-01T10:00:00Z' } as never)).toBe('rose');
+    // Above 0 the figure is real movement, so a never-counted 2 of 3 is below par.
+    expect(mapTone({ ...(tile as object), liveStock: 2 } as never)).toBe('amber');
+    expect(MAP_WORDS.neutral).toContain('not counted yet');
   });
 });

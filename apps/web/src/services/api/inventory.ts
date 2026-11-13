@@ -104,6 +104,10 @@ export function normalizeInventoryItem(
     abcClass: item.abcClass ?? undefined,
     deadStock: item.deadStock ?? false,
     daysSinceSale: item.daysSinceSale ?? undefined,
+    usageSource: item.usageSource === 'sales' || item.usageSource === 'counts' ? item.usageSource : undefined,
+    usageSince: item.usageSince ?? undefined,
+    usageUntil: item.usageUntil ?? undefined,
+    usageQty: typeof item.usageQty === 'number' ? item.usageQty : undefined,
     analyticsReadable: item.analyticsReadable ?? true,
     locations: item.locations ?? [],
   } as InventoryItem;
@@ -142,7 +146,7 @@ export async function getItemActivity(
  */
 export async function reconcileItem(
   inventoryId: string,
-  body: { wineId: string; actualCount: number; notes?: string }
+  body: { wineId?: string; actualCount: number; notes?: string }
 ): Promise<unknown> {
   const response = await apiClient.post(
     `/inventory-ledger/inventory/${inventoryId}/reconcile`,
@@ -621,8 +625,9 @@ export interface ItemUsedIn {
   item: { id: string; kind: string | null; displayName: string | null };
   soldAs: ItemUsedInGroup<ItemMenuLine>;
   inCocktails: ItemUsedInGroup<{ cocktailId: string; name: string; quantity: number | null; unit: string | null }>;
+  /** Optional: an older gateway does not send it. */
+  inDrinkRecipes?: ItemUsedInGroup<{ cocktailId: string; name: string; label: string; qtyEntered: number; unitCode: string }>;
   namedNotLinked: ItemUsedInGroup<ItemMenuLine>;
-  recipes: { recorded: false; note: string };
 }
 
 /** Under `inventory`, so every inventory write rereads them too. */

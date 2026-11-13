@@ -18,7 +18,9 @@ import { useRestaurantSettingsStore } from '../../../stores/restaurantSettingsSt
 import { cn } from '../../../lib/utils'
 import type { InventoryItem } from '../useInventoryPage'
 import { useMudavymDesign } from '../../../lib/mudavym/useMudavymDesign'
-import { fmtMoneyExact, marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
+import { marketDeltaPct, daysSinceCounted, HoursHeatmap, runwayDays } from './bits'
+import { settingsApi } from '../../../services/api/settings'
+import { EM, fmtUnitMoney, unitCostPlaces } from '../../../lib/mudavym/format'
 import { ReceiptDepth } from './ReceiptDepth'
 import { SpotCountPanel } from './SpotCountPanel'
 import { NameThisWine } from './NameThisWine'
@@ -71,6 +73,23 @@ export function RowExpansion({
   // The founder's named gap: receipt/invoice depth in the dropdown, gated so
   // the kept page renders byte-identically until the flag flips (ADR 0045 §5).
   const receiptDepthOn = useMudavymDesign('inventory')
+  // The house's own currency, read the way /inventory reads it (same cache
+  // key). The price card's costs go through fmtUnitMoney, as the fixed pages
+  // do, so a 0.035-a-gram lot no longer reads $0.04 here (QA round 14b).
+  const currencyQ = useQuery({
+    queryKey: ['settings', 'currency'],
+    queryFn: () => settingsApi.houseCurrency(),
+    staleTime: 5 * 60_000,
+  })
+  const unitCost = (v?: number | null): string => {
+    if (v == null || !Number.isFinite(v)) return '-'
+    if (currencyQ.isPending) return EM
+    // Unreadable is not "not recorded": a bare number, no claim either way.
+    if (currencyQ.isError || !currencyQ.data?.readable) {
+      return v.toLocaleString('en-GB', { maximumFractionDigits: unitCostPlaces(v) ?? 2 })
+    }
+    return fmtUnitMoney(v, currencyQ.data.code)
+  }
 
   const [delta, setDelta] = useState(0)
   const [reason, setReason] = useState('Count correction')
@@ -241,14 +260,14 @@ export function RowExpansion({
             </span>
           }
         >
-          <KV k={`Market avg (${formatVolume(item.bottleSizeMl ?? 750, measurementUnit)})`} v={fmtMoneyExact(item.marketPrice)} />
-          <KV k="You paid (WAC)" v={fmtMoneyExact(paid)} />
+          <KV k={`Market avg (${formatVolume(item.bottleSizeMl ?? 750, measurementUnit)})`} v={unitCost(item.marketPrice)} />
+          <KV k="You paid (WAC)" v={unitCost(paid)} />
           <KV
             k="Delta"
             v={delta$ == null ? 'n/a' : `${delta$ > 0 ? '+' : ''}${delta$.toFixed(0)}%${delta$ >= 15 ? ', appreciating, hold' : delta$ <= -5 ? ', re-quote vendor' : ''}`}
             tone={delta$ != null && delta$ > 0 ? 'green' : 'amber'}
           />
-          <KV k="Menu price" v={item.menuPrice ? `${fmtMoneyExact(item.menuPrice)}${paid ? ` (${(item.menuPrice / paid).toFixed(1)}x)` : ''}` : 'not set'} tone="blue" />
+          <KV k="Menu price" v={item.menuPrice ? `${unitCost(item.menuPrice)}${paid ? ` (${(item.menuPrice / paid).toFixed(1)}x)` : ''}` : 'not set'} tone="blue" />
           <p className="text-[11px] text-gray-400 mt-2 leading-relaxed">
             Alerts fire when a vendor quote exceeds market or margin slips under 1.8x.
           </p>

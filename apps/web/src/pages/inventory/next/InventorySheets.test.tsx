@@ -74,6 +74,10 @@ function row(over: Partial<InvRow> = {}): InvRow {
     runway: null,
     daysSinceSale: null,
     deadStock: false,
+    usageSource: null,
+    usageSince: null,
+    usageUntil: null,
+    usageQty: null,
     bottle: null,
     glass: null,
     pourMl: null,
@@ -306,10 +310,126 @@ describe('TransferSheet (INV-W24)', () => {
 });
 
 describe('WriteOffSheet words (INV-W30)', () => {
-  it('names the house library, not "a library wine", when a row has no library item', () => {
+  it('a row with no library item is written off by its house item, with no wineId sent', async () => {
+    api.post.mockResolvedValue({ data: { id: 't1' } });
     mount(<WriteOffSheet row={row({ wineId: null })} onClose={() => {}} />);
-    expect(document.body.textContent).toContain('This row is not tied to an item in the house’s library, and the ledger needs one');
+    expect(document.body.textContent).not.toContain('the ledger needs one');
     expect(document.body.textContent).not.toContain('library wine');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Why they left' }), { target: { value: 'breakage' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Bottles' }), { target: { value: '1' } });
+    holdByKeyboard(screen.getByRole('button', { name: 'Hold to write off 1' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const body = api.post.mock.calls[0][1] as Record<string, unknown>;
+    expect(body).toEqual(expect.objectContaining({ inventoryId: 'i1', quantityChange: -1, transactionType: 'waste' }));
+    expect('wineId' in body).toBe(false);
+  });
+});
+
+/* Every good in its own unit: flour is weighed in kg and booked in whole grams (ADR 0070). */
+describe('a good kept in grams, millilitres or items (all goods, foods included)', () => {
+  const flour = () => row({ wineId: null, name: 'Un', kind: 'food', stock: 12_400, par: 5_000, bottleSizeMl: null });
+
+  it('a count of flour is typed in kg and sent as whole grams, and the gap is said in kg', async () => {
+    api.submit.mockResolvedValue({ synced: true });
+    mount(<CountSheet row={flour()} uom="g" onClose={() => {}} />);
+    expect(screen.queryByRole('button', { name: 'Count from a photo' })).toBeNull();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Weight counted, in kg' }), { target: { value: '11,75' } });
+    expect(screen.getByTestId('iv-amount-echo').textContent).toBe('Reads as 11.75 kg.');
+    holdByKeyboard(screen.getByRole('button', { name: 'Hold to record 11.75 kg' }));
+    await waitFor(() => expect(api.submit).toHaveBeenCalledTimes(1));
+    expect(api.submit.mock.calls[0][0].body.countedQty).toBe(11_750);
+    await waitFor(() =>
+      expect(document.body.textContent).toContain('Counted 11.75 kg; the book said 12.4 kg, so the shelf is 650 g short. Un now reads 11.75 kg.'),
+    );
+  });
+
+  it('half a gram is refused, never rounded into the book', () => {
+    mount(<CountSheet row={flour()} uom="g" onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Weight counted, in kg' }), { target: { value: '2.5 g' } });
+    expect(screen.getByTestId('iv-amount-echo').textContent).toContain('Not an amount this book can hold.');
+    expect(screen.getByRole('button', { name: 'Type the count first' })).toBeDisabled();
+  });
+
+  it('a write-off of flour is sent in grams with no wineId, and said in kg', async () => {
+    api.post.mockResolvedValue({ data: { id: 't1' } });
+    mount(<WriteOffSheet row={flour()} uom="g" onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Why they left' }), { target: { value: 'breakage' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Weight, in kg' }), { target: { value: '2.25' } });
+    holdByKeyboard(screen.getByRole('button', { name: 'Hold to write off 2.25 kg' }));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    const body = api.post.mock.calls[0][1] as Record<string, unknown>;
+    expect(body).toEqual(expect.objectContaining({ inventoryId: 'i1', quantityChange: -2250 }));
+    expect('wineId' in body).toBe(false);
+    await waitFor(() => expect(document.body.textContent).toContain('Written off: 2.25 kg of Un, as breakage.'));
+  });
+
+  it('a write-off above what the book holds is refused in the good\u2019s own unit', () => {
+    mount(<WriteOffSheet row={flour()} uom="g" onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('combobox', { name: 'Why they left' }), { target: { value: 'breakage' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Weight, in kg' }), { target: { value: '13 kg' } });
+    expect(document.body.textContent).toContain('The book holds 12.4 kg; a write-off cannot take it below zero.');
+  });
+
+  it('a bare 500 for a weighed good is asked about, never booked as 500 kg', () => {
+    mount(<CountSheet row={flour()} uom="g" onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Weight counted, in kg' }), { target: { value: '500' } });
+    expect(screen.getByTestId('iv-amount-echo').textContent).toBe('Say which: 500 g or 500 kg.');
+    expect(screen.getByRole('button', { name: 'Type the count first' })).toBeDisabled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Weight counted, in kg' }), { target: { value: '500 g' } });
+    expect(screen.getByRole('button', { name: 'Hold to record 500 g' })).toBeTruthy();
+  });
+
+  it('a write-off of a weighed good starts empty, not at an ambiguous 1', () => {
+    mount(<WriteOffSheet row={flour()} uom="g" onClose={() => {}} />);
+    expect((screen.getByRole('textbox', { name: 'Weight, in kg' }) as HTMLInputElement).value).toBe('');
+  });
+
+  it('a transfer of flour reads its zones in kg and sends grams', async () => {
+    api.transfer.mockResolvedValue({});
+    mount(
+      <TransferSheet
+        row={{ ...flour(), zones: [{ locationId: 'z1', qty: 5_000 }] }}
+        uom="g"
+        onClose={() => {}}
+        locations={[{ id: 'z1', name: 'Dry store' }, { id: 'z2', name: 'Line' }] as never}
+        locationsUnavailable={false}
+      />,
+    );
+    const from = screen.getByRole('combobox', { name: 'From' }) as HTMLSelectElement;
+    expect([...from.options].map((o) => o.textContent)).toContain('Dry store · 5 kg');
+    fireEvent.change(from, { target: { value: 'z1' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'To' }), { target: { value: 'z2' } });
+    expect(screen.queryByRole('textbox', { name: 'Bottles' })).toBeNull();
+    const field = screen.getByRole('textbox', { name: 'Weight, in kg' });
+    fireEvent.change(field, { target: { value: '2' } });
+    expect(document.body.textContent).toContain('Say which: 2 g or 2 kg.');
+    fireEvent.change(field, { target: { value: '6 kg' } });
+    expect(document.body.textContent).toContain('That zone holds 5 kg.');
+    fireEvent.change(field, { target: { value: '2 kg' } });
+    holdByKeyboard(screen.getByRole('button', { name: 'Hold to move 2 kg' }));
+    await waitFor(() => expect(api.transfer).toHaveBeenCalledTimes(1));
+    expect(api.transfer.mock.calls[0][1]).toEqual(expect.objectContaining({ qty: 2000 }));
+    await waitFor(() => expect(document.body.textContent).toContain('Moved 2 kg from Dry store to Line.'));
+    expect(document.body.textContent).not.toMatch(/bottle/i);
+  });
+
+  it('a good kept in grams is not ordered in bottles from here', () => {
+    mount(<OrderSheet row={flour()} uom="g" onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" />);
+    expect(document.body.textContent).toContain('This good is kept in grams, and an order from here is placed in bottles, kegs or items');
+    // No form it could never use: no vendor picker, no amount box, no hold.
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Hold to place|Not ready to place/ })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Go to Orders' }).getAttribute('href')).toBe('/orders');
+  });
+
+  it('a good kept as items is ordered as items', async () => {
+    api.post.mockResolvedValue({ data: { id: 'o1', status: 'pending', quantity: 4, requestedAt: new Date().toISOString() } });
+    mount(<OrderSheet row={row({ wineId: null, name: 'Napkins', par: null })} uom="each" onClose={() => {}} providers={ROSSI} providersError={null} restaurantId="r1" />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Items' }), { target: { value: '4' } });
+    holdByKeyboard(screen.getByRole('button', { name: /Hold to place 4/ }));
+    await waitFor(() => expect(api.post).toHaveBeenCalled());
+    expect(api.post.mock.calls[0][1]).toEqual(expect.objectContaining({ unitType: 'each', quantity: 4 }));
   });
 });
 
@@ -374,6 +494,30 @@ describe('Failures in the house\u2019s words (INV-W31)', () => {
     const t = await alertText();
     expect(t).toContain('The server failed before it could answer, so it is not known whether the pour was recorded. Trying again is safe: it is recorded once.');
     expect(t).not.toContain('Nothing was recorded');
+  });
+
+  it('a photo reader with no key says it is not switched on, never the key or "server failed"', async () => {
+    api.photo.mockRejectedValue(answered(503, 'Anthropic API key not configured — set ANTHROPIC_API_KEY'));
+    mount(<CountSheet row={row()} onClose={() => {}} />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() =>
+      expect(document.body.textContent).toContain(
+        'The photo could not be read — counting from a photo is not switched on here yet. Type the count instead.',
+      ),
+    );
+    expect(document.body.textContent).not.toMatch(/ANTHROPIC|API key|server failed/);
+  });
+
+  it('a photo reader whose vendor is down says try again later', async () => {
+    api.photo.mockRejectedValue(answered(502, 'Anthropic 529: overloaded'));
+    mount(<CountSheet row={row()} onClose={() => {}} />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() =>
+      expect(document.body.textContent).toContain('counting from a photo is not working just now; try again later'),
+    );
+    expect(document.body.textContent).not.toMatch(/Anthropic|overloaded/);
   });
 
   it('a photo that could not be read says why in plain words', async () => {
@@ -568,7 +712,8 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
     mount(<CountSheet row={row()} onClose={() => {}} />);
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })] } });
-    await waitFor(() => expect(document.body.textContent).toContain('The photo suggests 1,240 (high confidence).'));
+    await waitFor(() => expect(document.body.textContent).toContain('The photo suggests 1,240. It only fills the field'));
+    expect(document.body.textContent?.toLowerCase()).not.toContain('confidence'); // ADR 0104, G11
     expect((screen.getByRole('textbox', { name: 'Bottles counted' }) as HTMLInputElement).value).toBe('1240');
   });
 
@@ -674,5 +819,45 @@ describe('a 409 on a keyed write means an earlier attempt landed (security findi
     expect(t).not.toMatch(/key|Nothing was recorded|nothing new/i);
     expect(reread).toHaveBeenCalled();
     reread.mockRestore();
+  });
+});
+
+describe('the photo count reads the file it got (inventory walk #7, I2: G10, G11, G22)', () => {
+  const pickPhoto = (file = new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })) => {
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+  };
+
+  // Merged with #1150 (r22): the sheet names the good's own unit, so a
+  // bottle's count says bottles and a weighed good's is never called one.
+  it('says a whole number in the good\u2019s own unit', () => {
+    mount(<CountSheet row={row()} onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Bottles counted' }), { target: { value: '2.5' } });
+    expect(document.body.textContent).toContain('A count is a whole number of bottles.');
+  });
+
+  it('offers photos only, not PDFs, to count from', () => {
+    mount(<CountSheet row={row()} onClose={() => {}} />);
+    const accept = (document.querySelector('input[type="file"]') as HTMLInputElement).accept;
+    expect(accept).toContain('.heic');
+    expect(accept).not.toMatch(/pdf/i);
+  });
+
+  it('sends the photo re-encoded as JPEG when this browser can draw it (sizes: photoToJpeg.test.ts)', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 4032, height: 3024, close: vi.fn() }));
+    const ctx = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as never);
+    const url = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,SMALL');
+    try {
+      api.photo.mockResolvedValue({ suggestedQty: 3, confidence: 'low', note: '' });
+      mount(<CountSheet row={row()} onClose={() => {}} />);
+      pickPhoto(new File(['heic'], 'IMG_0001.HEIC', { type: 'image/heic' }));
+      await waitFor(() => expect(api.photo).toHaveBeenCalledWith('i1', 'SMALL'));
+      // A count with no note says only the sheet's own sentence (QA round 10b).
+      await waitFor(() => expect(document.querySelector('.iv-note')?.textContent).toBe('The photo suggests 3. It only fills the field — check it before you seal.'));
+    } finally {
+      ctx.mockRestore();
+      url.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 });

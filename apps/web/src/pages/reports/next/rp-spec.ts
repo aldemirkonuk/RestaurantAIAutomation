@@ -18,6 +18,12 @@ export interface ViewCtx {
   /** The till window the reader picked. Only `till` takes one. */
   days: number;
   /**
+   * The house's ISO 4217 code from `GET /settings/currency`; null or absent
+   * when it was never stated, is not read yet, or could not be read. Money
+   * then prints bare, never in `$` (`money`, rp-format.ts).
+   */
+  currency?: string | null;
+  /**
    * The one register on this sheet that WRITES.
    *
    * Every other analysis is a pure function of a payload, which is what makes
@@ -39,8 +45,15 @@ export interface AnalysisSpec {
   answers: string;
   /** The window it is computed over. Shown under the title, always. */
   window: (ctx: ViewCtx) => string;
-  /** `null` for an analysis with no endpoint — the writing desk. */
+  /** `null` for an analysis with no endpoint of its own — the writing desk, or one read from `sources`. */
   path: ((rid: string, ctx: ViewCtx) => string) | null;
+  /**
+   * A register composed from other registers' endpoints, read instead of
+   * `path`. `select` receives `{ [key]: payload | null }`, null where that
+   * read failed. Each payload is cached under its URL, so a source another
+   * cutting on the sheet already reads is fetched once.
+   */
+  sources?: Record<string, (rid: string, ctx: ViewCtx) => string>;
   /** Truthful drawings, best first. `graphs[0]` is the default. */
   graphs: GraphType[];
   /** One line on what is NOT offered here, and why. */
@@ -66,6 +79,7 @@ export function analysis<T>(spec: {
   answers: string;
   window: (ctx: ViewCtx) => string;
   path: ((rid: string, ctx: ViewCtx) => string) | null;
+  sources?: Record<string, (rid: string, ctx: ViewCtx) => string>;
   graphs: GraphType[];
   graphNote: string;
   takesWindow?: boolean;
@@ -78,6 +92,11 @@ export function analysis<T>(spec: {
     select: spec.select as (raw: unknown) => unknown,
     view: spec.view as (data: unknown, ctx: ViewCtx) => AnalysisView,
   };
+}
+
+/** True when the analysis reads a register (its own endpoint or `sources`). */
+export function readsRegister(spec: Pick<AnalysisSpec, 'path' | 'sources'>): boolean {
+  return spec.path !== null || !!spec.sources;
 }
 
 /* ────────────────────────────────────────── defensive payload readers ────

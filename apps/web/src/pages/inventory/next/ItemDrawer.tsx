@@ -2,23 +2,23 @@
  * The /inventory item drawer (proposal §2 S2, §3 I13, §4 K1-K2): one item in
  * a right-side sheet over the list, the whole screen on a phone. The head says
  * what it is, where it sits and when it was last counted; then eight cards
- * (ItemCards) and the detail card any one of them opens. The detail card
- * holds the NutritionCard slot and the evidence; below them is where it is
- * used (ItemUsedIn). The evidence is the row's own
- * dropdown, unchanged, with its Count / Write off / Order acts, until each
- * card gets its own panel (I14).
+ * (ItemCards), the item's acts (Count, Order more, Write off, More) always
+ * under them, and the detail card a card opens: that card's own evidence
+ * (CARD_EVIDENCE) and the NutritionCard slot. Below them is where it is used
+ * (ItemUsedIn).
  */
 import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { getItemFigures, getItemNutrition, getItemUsedIn, inventoryItemKeys, type HouseFields } from '../../../services/api/inventory';
+import { getItemDishes, getItemDrinks } from '../../../services/api/itemDishes';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import type { Provider } from '../../../services/api/providers';
 import type { StorageLocation } from '../../../hooks/useStorageLocations';
 import ItemCards, { CARD_TITLE, type CardId, type FiguresLoad, type InsideLoad } from './ItemCards';
-import ItemUsedIn, { type UsedInLoad } from './ItemUsedIn';
+import ItemUsedIn, { type DishesLoad, type DrinksLoad, type UsedInLoad } from './ItemUsedIn';
 import WhatIsInIt from './NutritionCard';
-import RowDropdown from './RowDropdown';
+import RowDropdown, { type EvidenceSection, type SheetId } from './RowDropdown';
 import { failureReason } from './iv-failure';
 import { noZoneWord, typeLabel, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import './item-drawer.css';
@@ -32,6 +32,24 @@ const KIND_WORDS: Record<string, string> = {
 };
 
 const DRINK_UNITS = new Set(['bottle', 'case', 'keg', 'glass', 'shot']);
+
+/**
+ * What each card's own evidence is. A card opens its panel first and the
+ * nutrition card under it (founder /goal 2026-11-07: a KPI card opens the
+ * good's nutrition card); "What's in it" opens the nutrition card alone, and
+ * "All the evidence" opens every panel.
+ */
+export const CARD_EVIDENCE: Record<CardId | 'all', ReadonlyArray<EvidenceSection>> = {
+  onhand: ['where', 'facts'],
+  value: ['cost', 'paper'],
+  usage: ['pace'],
+  cover: ['pace', 'where'],
+  cost: ['cost', 'paper'],
+  waste: ['where'],
+  gap: ['where'],
+  inside: [],
+  all: ['facts', 'where', 'pace', 'cost', 'paper'],
+};
 
 /** The kind in words: a wine's style, else the house's own kind. */
 export function kindWords(row: InvRow, house: HouseFields): string {
@@ -81,12 +99,17 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const { row, house, canManage, currency, zoneName, restaurantId, onClose } = props;
   const NutritionCard = props.NutritionCard ?? WhatIsInIt;
   const [evidence, setEvidence] = useState<CardId | 'all' | null>(null);
+  // One sheet for the drawer: the evidence's "Record a count" opens the sheet the acts own.
+  const [sheet, setSheet] = useState<SheetId | null>(null);
   const detailRef = useRef<HTMLElement | null>(null);
   // On a phone the detail card opens below the fold: bring it into view.
   useEffect(() => {
     if (evidence !== null) detailRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [evidence]);
   const id = row?.id ?? '';
+  // A supply (napkins, foil) is not eaten or drunk: it has no nutrition or
+  // allergens to state, so the drawer neither reads nor offers them.
+  const hasContents = (house.kind ?? row?.kind ?? null) !== 'supply';
 
   const enabled = row !== null && restaurantId !== null;
   const figuresQ = useQuery({
@@ -100,7 +123,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
   const nutritionQ = useQuery({
     queryKey: inventoryItemKeys.nutrition(restaurantId ?? '', id),
     queryFn: () => getItemNutrition(id, restaurantId ?? undefined),
-    enabled,
+    enabled: enabled && hasContents,
     staleTime: 60_000,
     retry: false,
   });
@@ -111,10 +134,25 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     staleTime: 60_000,
     retry: false,
   });
+  const dishesQ = useQuery({
+    queryKey: [...inventoryItemKeys.usedIn(restaurantId ?? '', id), 'dishes'],
+    queryFn: () => getItemDishes(id, restaurantId ?? undefined),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
+  // The drinks that use it, with the cards a dish has (founder /goal 2026-11-07).
+  const drinksQ = useQuery({
+    queryKey: [...inventoryItemKeys.usedIn(restaurantId ?? '', id), 'drinks'],
+    queryFn: () => getItemDrinks(id, restaurantId ?? undefined),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
 
   if (row === null) {
     return (
-      <Sheet open onClose={onClose} label="This item is not on the list any more. Closing writes nothing." title="Not on the list" spine="Item" wide detents={['full']} className="iv-drawer">
+      <Sheet open onClose={onClose} label="This item is not on the list any more. Closing writes nothing." title="Not on the list" spine="Item" wide detents={['full']} className="iv-drawer" bodyClassName="iv-sheet-body">
         <p className="iv-said" data-testid="ivd-gone">
           This item is not on the list any more. It may have been removed, or the link is from another house.
           Close returns to the list.
@@ -137,6 +175,16 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     ? { status: 'failed', reason: failureReason(usedInQ.error) }
     : usedInQ.data
       ? { status: 'ready', data: usedInQ.data }
+      : { status: 'reading' };
+  const dishes: DishesLoad = dishesQ.isError
+    ? { status: 'failed', reason: failureReason(dishesQ.error) }
+    : dishesQ.data
+      ? { status: 'ready', data: dishesQ.data }
+      : { status: 'reading' };
+  const drinks: DrinksLoad = drinksQ.isError
+    ? { status: 'failed', reason: failureReason(drinksQ.error) }
+    : drinksQ.data
+      ? { status: 'ready', data: drinksQ.data }
       : { status: 'reading' };
 
   const name = row.name ?? house.displayName ?? 'Unnamed item';
@@ -163,6 +211,9 @@ export default function ItemDrawer(props: ItemDrawerProps) {
       wide
       detents={['full']}
       className="iv-drawer"
+      // The body's side gutter: without it the head, the evidence and "Used in"
+      // sat flush on the sheet's edge (browser walk 2026-11-11).
+      bodyClassName="iv-sheet-body"
     >
       <p className="ivd-head" data-testid="ivd-head">
         {head}
@@ -170,12 +221,30 @@ export default function ItemDrawer(props: ItemDrawerProps) {
       <ItemCards
         row={row}
         uom={house.uom}
+        kind={house.kind ?? row.kind}
         canManage={canManage}
         currency={currency}
         figures={figures}
         inside={inside}
         open={evidence === 'all' ? null : evidence}
         onOpen={toggle}
+      />
+      {/* The acts sit under the cards, always: a count or a write-off never waits on opening a card. */}
+      <RowDropdown
+        row={row}
+        canManage={canManage}
+        currency={currency}
+        zoneName={zoneName}
+        locations={props.locations}
+        locationsUnavailable={props.locationsUnavailable}
+        providers={props.providers}
+        providersError={props.providersError}
+        restaurantId={restaurantId}
+        uom={house.uom}
+        kind={house.kind ?? row.kind}
+        sections={[]}
+        sheet={sheet}
+        onSheet={setSheet}
       />
       <p className="ivd-evbar">
         <button
@@ -185,7 +254,7 @@ export default function ItemDrawer(props: ItemDrawerProps) {
           aria-controls={evidence !== null ? 'ivd-evidence' : undefined}
           onClick={() => toggle('all')}
         >
-          {evidence !== null ? 'Hide the evidence' : 'Evidence and actions'}
+          {evidence !== null ? 'Hide the evidence' : 'All the evidence'}
         </button>
       </p>
       {evidence !== null ? (
@@ -195,25 +264,46 @@ export default function ItemDrawer(props: ItemDrawerProps) {
           className="ivd-evidence"
           aria-label={`${name}: detail card`}
           data-testid="ivd-evidence"
+          data-card={evidence}
         >
-          <h3 className="iv-sec">{evidence === 'all' ? 'Evidence and actions' : `${CARD_TITLE[evidence]}: where it comes from`}</h3>
-          <div className="ivd-nutrition" data-slot="NutritionCard" data-testid="ivd-nutrition-slot">
-            <NutritionCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} />
-          </div>
-          <RowDropdown
-            row={row}
-            canManage={canManage}
-            currency={currency}
-            zoneName={zoneName}
-            locations={props.locations}
-            locationsUnavailable={props.locationsUnavailable}
-            providers={props.providers}
-            providersError={props.providersError}
-            restaurantId={restaurantId}
-          />
+          <h3 className="iv-sec">{evidence === 'all' ? 'All the evidence' : `${CARD_TITLE[evidence]}: where it comes from`}</h3>
+          {CARD_EVIDENCE[evidence].length > 0 ? (
+            <RowDropdown
+              row={row}
+              canManage={canManage}
+              currency={currency}
+              zoneName={zoneName}
+              locations={props.locations}
+              locationsUnavailable={props.locationsUnavailable}
+              providers={props.providers}
+              providersError={props.providersError}
+              restaurantId={restaurantId}
+              uom={house.uom}
+              kind={house.kind ?? row.kind}
+              sections={CARD_EVIDENCE[evidence]}
+              actions={false}
+              sheet={sheet}
+              onSheet={setSheet}
+            />
+          ) : null}
+          {hasContents ? (
+            <div className="ivd-nutrition" data-slot="NutritionCard" data-testid="ivd-nutrition-slot">
+              {evidence !== 'inside' ? <h4 className="ivd-used-h">{CARD_TITLE.inside}</h4> : null}
+              <NutritionCard row={row} house={house} restaurantId={restaurantId} canManage={canManage} />
+            </div>
+          ) : null}
         </section>
       ) : null}
-      <ItemUsedIn load={usedIn} canManage={canManage} currency={currency} onRetry={() => void usedInQ.refetch()} />
+      <ItemUsedIn
+        load={usedIn}
+        dishes={dishes}
+        drinks={drinks}
+        canManage={canManage}
+        currency={currency}
+        onRetry={() => void usedInQ.refetch()}
+        onRetryDishes={() => void dishesQ.refetch()}
+        onRetryDrinks={() => void drinksQ.refetch()}
+      />
     </Sheet>
   );
 }

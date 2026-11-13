@@ -11,6 +11,7 @@
  * page never writes a basis of its own.
  */
 
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import ReadingList from './ReadingList';
 import {
@@ -20,10 +21,9 @@ import {
   categoryLabel,
   countOf,
   figure,
-  money,
+  moneyIn,
   num,
   pct,
-  ratioPct,
   shortDay,
   weekLabel,
   weekStart,
@@ -115,7 +115,8 @@ export interface TillWindow {
   timezone: string | null;
   /** True when the house has no time zone: no day can be filed, so nothing is stated. */
   zoneUnset: boolean;
-  dailySeries: Array<{ date: string; revenue: number }>;
+  /** Sparse; a `null` revenue is a day the server could not state. */
+  dailySeries: Array<{ date: string; revenue: number | null }>;
 }
 
 /** Week columns spanning [from, to] — so a week with no takings is a BLANK
@@ -133,6 +134,20 @@ function weekColumns(from: string, to: string): string[] {
     cursor = weekStart(`${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`);
   }
   return cols;
+}
+
+/** Every YYYY-MM-DD from `from` to `to`, both inclusive; [] when either is unusable. */
+export function daysBetween(from: string, to: string): string[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return [];
+  const out: string[] = [];
+  const d = new Date(`${from}T12:00:00`);
+  for (let guard = 0; guard < 400; guard++) {
+    const day = `${d.getFullYear()}-${`${d.getMonth() + 1}`.padStart(2, '0')}-${`${d.getDate()}`.padStart(2, '0')}`;
+    out.push(day);
+    if (day >= to) break;
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
 }
 
 const till = analysis<TillWindow>({
@@ -156,13 +171,15 @@ const till = analysis<TillWindow>({
       days: num(d.days) ?? 0,
       timezone: str(d.timezone) || null,
       zoneUnset: d.zoneUnset === true,
+      // A day the server sent with no figure stays unknown (null), never 0.
       dailySeries: arr(d.dailySeries).map((r) => ({
         date: str(r.date),
-        revenue: num(r.revenue) ?? 0,
+        revenue: num(r.revenue),
       })),
     };
   },
-  view: (w) => {
+  view: (w, ctx) => {
+    const money = moneyIn(ctx.currency);
     if (!w.posConnected)
       return {
         say: (
@@ -182,15 +199,7 @@ const till = analysis<TillWindow>({
     // the till states no figure rather than UTC days dressed as the house's.
     if (w.zoneUnset)
       return {
-        say: (
-          <>
-            This house&rsquo;s time zone isn&rsquo;t set, so no sale can be filed on the house&rsquo;s day
-            yet — nothing is drawn here.{' '}
-            <Link to="/settings?tab=time-zone" className="rp-link rp-ink rp-focus rp-no-drag">
-              Set the time zone in Settings
-            </Link>
-          </>
-        ),
+        say: zoneUnsetSay('no sale can be filed on the house’s day yet'),
         figures: [],
         notes: [],
         basis: [],
@@ -226,6 +235,7 @@ const till = analysis<TillWindow>({
     const byDate = new Map(w.dailySeries.map((d) => [d.date, d.revenue]));
     const cells: Cell[] = [];
     for (const [date, revenue] of byDate) {
+      if (revenue == null) continue;
       cells.push({
         row: WEEKDAY_SHORT[weekdayIndex(date)],
         col: weekLabel(weekStart(date)),
@@ -233,12 +243,17 @@ const till = analysis<TillWindow>({
         title: shortDay(date),
       });
     }
+    // Every house day of the window gets its slot, so a day with no check is
+    // a gap in the line or an empty bar slot, not a day the axis skips and
+    // the line quietly bridges.
+    const span = daysBetween(w.from, w.to);
+    const shown = span.length > 0 ? span : w.dailySeries.map((d) => d.date);
     return {
       cats: {
-        data: w.dailySeries.map((d) => ({
-          label: shortDay(d.date),
-          value: d.revenue,
-          full: shortDay(d.date),
+        data: shown.map((date) => ({
+          label: shortDay(date),
+          value: byDate.get(date) ?? null,
+          full: byDate.has(date) ? shortDay(date) : `${shortDay(date)} · no check`,
         })),
         xLabel: 'day',
         yLabel: 'taken',
@@ -275,10 +290,27 @@ const till = analysis<TillWindow>({
   },
 });
 
+/**
+ * A house with no time zone has no day to file anything on (ADR 0296): the
+ * register states no figure and says so, with the way to set it.
+ */
+export function zoneUnsetSay(what: string): ReactNode {
+  return (
+    <>
+      This house&rsquo;s time zone isn&rsquo;t set, so {what} — nothing is drawn here.{' '}
+      <Link to="/settings?tab=time-zone" className="rp-link rp-ink rp-focus rp-no-drag">
+        Set the time zone in Settings
+      </Link>
+    </>
+  );
+}
+
 /* ───────────────────────────────────────────────────── 3. spend pacing ── */
 
 export interface PacingRegister {
-  basis?: { outflow?: string };
+  basis?: { outflow?: string; uncosted?: string };
+  /** True when the house has no time zone: spend is withheld, commitments are not. */
+  zoneUnset: boolean;
   spendLast30d: number | null;
   spendPrev30d: number | null;
   paceDeltaPct: number | null;
@@ -300,6 +332,7 @@ const pacing = analysis<PacingRegister>({
     const d = obj(raw);
     return {
       basis: d.basis as PacingRegister['basis'],
+      zoneUnset: d.zoneUnset === true,
       spendLast30d: num(d.spendLast30d),
       spendPrev30d: num(d.spendPrev30d),
       paceDeltaPct: num(d.paceDeltaPct),
@@ -310,7 +343,8 @@ const pacing = analysis<PacingRegister>({
       openOrderCount: num(d.openOrderCount),
     };
   },
-  view: (c) => {
+  view: (c, ctx) => {
+    const money = moneyIn(ctx.currency);
     const figures = [
       { label: 'Pace', value: pct(c.paceDeltaPct), note: 'Needs two comparable 30-day windows' },
       { label: 'Committed, not yet delivered', value: money(c.committedOpenOrders) },
@@ -332,10 +366,21 @@ const pacing = analysis<PacingRegister>({
         </>
       ),
     ];
-    const basis = [c.basis?.outflow ? `Outflow: ${c.basis.outflow}.` : null];
-    // Two invisible bars are not a chart. When both windows are empty the
-    // sentence is the honest rendering — and it names WHICH windows.
-    if ((c.spendLast30d ?? 0) === 0 && (c.spendPrev30d ?? 0) === 0)
+    const basis = [
+      c.basis?.outflow ? `Outflow: ${c.basis.outflow}.` : null,
+      c.basis?.uncosted ?? null,
+    ];
+    if (c.zoneUnset)
+      return {
+        say: zoneUnsetSay('no delivery can be filed on the house’s day yet; what is committed is still stated'),
+        figures: figures.slice(1),
+        notes: [],
+        basis: [],
+      };
+    // Two invisible bars are not a chart. The orders are read whole (ADR
+    // 0292), so two zeros are a quiet stretch, never a read that came back
+    // empty; the sentence is the honest rendering and names WHICH windows.
+    if (c.spendLast30d === 0 && c.spendPrev30d === 0)
       return {
         say: 'No delivered purchase order falls in either 30-day window, so there is no pace to draw — two bars at zero would say the same thing less clearly.',
         figures,
@@ -373,12 +418,14 @@ const pacing = analysis<PacingRegister>({
 /* ───────────────────────────────────────────────── 4. the week's shape ── */
 
 export interface WeekRegister {
-  weekdayProfile: Array<{ day: string; mean: number; stdev: number; n: number }>;
+  weekdayProfile: Array<{ day: string; mean: number; stdev: number | null; n: number }>;
   bestDay: string | null;
   worstDay: string | null;
   /** Since 2026-09-03: true when an extreme is shared and both are withheld. */
   tie: boolean | null;
   trendPerDayPct: number | null;
+  /** True when the house has no time zone: no weekday can be named. */
+  zoneUnset: boolean;
   basis?: { weekday?: string; extremes?: string };
 }
 
@@ -388,22 +435,24 @@ const week = analysis<WeekRegister>({
   answers: 'Which nights carry the week',
   window: () => 'the last 90 days of the consumption log',
   path: (rid) => `/analytics/seasonality/${rid}`,
-  graphs: ['bars', 'line', 'area', 'table'],
+  graphs: ['bars', 'combo', 'line', 'area', 'table'],
   graphNote:
-    'No heat map: seasonality returns one dimension — a mean per weekday — and a heat map needs two. No scatter, and no reference line: the endpoint publishes no median or threshold for this register, and a rule we invented is not the engine’s.',
+    'Bars and a line puts the mean beside its spread or the days seen. No heat map: seasonality returns one dimension — a mean per weekday — and a heat map needs two. No scatter, and no reference line: the endpoint publishes no median or threshold for this register, and a rule we invented is not the engine’s.',
   select: (raw) => {
     const d = obj(raw);
     return {
       weekdayProfile: arr(d.weekdayProfile).map((p) => ({
         day: str(p.day),
         mean: num(p.mean) ?? 0,
-        stdev: num(p.stdev) ?? 0,
+        // Null stays null: one observation has no sample spread (not zero).
+        stdev: num(p.stdev),
         n: num(p.n) ?? 0,
       })),
       bestDay: (d.bestDay ?? null) as string | null,
       worstDay: (d.worstDay ?? null) as string | null,
       tie: typeof d.tie === 'boolean' ? d.tie : null,
       trendPerDayPct: num(d.trendPerDayPct),
+      zoneUnset: d.zoneUnset === true,
       basis: d.basis as WeekRegister['basis'],
     };
   },
@@ -413,6 +462,13 @@ const week = analysis<WeekRegister>({
         'Mean units per weekday over the last 90 days of wine_consumption_log; a weekday with no observation is left blank rather than drawn at zero.',
       w.basis?.extremes,
     ];
+    if (w.zoneUnset)
+      return {
+        say: zoneUnsetSay('no pour can be filed on the house’s weekday yet'),
+        figures: [],
+        notes: [],
+        basis: [],
+      };
     if (w.weekdayProfile.length === 0)
       return {
         say: 'No consumption is recorded in the last 90 days, so the week has no shape yet.',
@@ -462,6 +518,26 @@ const week = analysis<WeekRegister>({
         yLabel: 'bottles/day',
         unit: 'bottles/day',
         format: (v) => figure(v),
+        measureLabel: 'Mean per day',
+        // Same points as `data`; a weekday never observed is a gap in both.
+        measures: [
+          {
+            key: 'spread',
+            label: 'Spread',
+            unit: 'bottles/day',
+            format: (v) => figure(v),
+            values: w.weekdayProfile.map((d) =>
+              d.n > 0 && d.stdev != null ? Number(d.stdev.toFixed(2)) : null,
+            ),
+          },
+          {
+            key: 'seen',
+            label: 'Days seen',
+            unit: 'days',
+            format: (v) => figure(v),
+            values: w.weekdayProfile.map((d) => (d.n > 0 ? d.n : null)),
+          },
+        ],
       },
       table: {
         cols: [
@@ -490,10 +566,43 @@ export interface AheadRegister {
   modelFitted: boolean | null;
   horizon: number;
   history: { dates: string[]; values: number[] };
-  forecast: Array<{ date: string; value: number }>;
+  forecast: Array<{ date: string; value: number | null }>;
   totalForecastDemand: number | null;
   accuracy: { mape: number | null; scoredPoints: number; basis: string } | null;
   basis?: { demand?: string; model?: string; total?: string };
+}
+
+/**
+ * How far the projection has missed in past weeks, in words (ADR 0104: people
+ * read words, not error statistics). `mape` is the server's backtest error in
+ * percent; the number itself stays in the API and in the working the server
+ * writes. The bands are the whole rule, pinned by `rp-registers-trade.test.tsx`.
+ */
+export function heldWords(mape: number | null): string {
+  if (mape == null || !Number.isFinite(mape) || mape < 0) return EM;
+  if (mape <= 15) return 'Held close in past weeks';
+  if (mape <= 35) return 'Off by a fair margin at times; read the total as rough';
+  return 'Has missed often; read it as a direction, not a number';
+}
+
+/**
+ * A projected count of bottles, said the way bottles are counted.
+ *
+ * The engine's expectation is a real number, and the sheet printed it raw:
+ * "Next 14 days 202.964" (browser walk 2026-11-12) — three decimals of a
+ * bottle, and no unit. The fortnight's total is said to the nearest bottle,
+ * with its noun ("203 bottles"); a total above nothing that rounds to none is
+ * "under 1 bottle", never "0". A single day's projection keeps one place,
+ * because a slow wine expecting 0.4 of a bottle a day is not a wine expecting
+ * none. The raw figure stays in the API.
+ */
+export function projectedBottles(v: unknown, per: 'total' | 'day'): string {
+  const n = num(v);
+  if (n === null) return EM;
+  if (per === 'day') return figure(Math.round(n * 10) / 10);
+  const whole = Math.round(n);
+  if (whole === 0 && n > 0) return 'under 1 bottle';
+  return countOf(whole, 'bottle', 'bottles');
 }
 
 const ahead = analysis<AheadRegister>({
@@ -516,7 +625,7 @@ const ahead = analysis<AheadRegister>({
         dates: Array.isArray(h.dates) ? (h.dates as string[]) : [],
         values: Array.isArray(h.values) ? (h.values as number[]) : [],
       },
-      forecast: arr(d.forecast).map((f) => ({ date: str(f.date), value: num(f.value) ?? 0 })),
+      forecast: arr(d.forecast).map((f) => ({ date: str(f.date), value: num(f.value) })),
       totalForecastDemand: num(d.totalForecastDemand),
       accuracy: (d.accuracy ?? null) as AheadRegister['accuracy'],
       basis: d.basis as AheadRegister['basis'],
@@ -538,7 +647,6 @@ const ahead = analysis<AheadRegister>({
         say: 'Nothing is projected: no model fitted this history, so no line is drawn and no total is claimed.',
         figures: [
           { label: `Next ${a.horizon} days`, value: EM, note: 'No model fitted this history' },
-          { label: 'Model', value: EM, note: 'No model fitted this history' },
         ],
         notes: [],
         basis,
@@ -567,7 +675,7 @@ const ahead = analysis<AheadRegister>({
         xLabel: 'day',
         yLabel: 'bottles',
         unit: 'bottles',
-        format: (v) => figure(v),
+        format: (v) => projectedBottles(v, 'day'),
         projectedLabel: 'projected',
         refs: seam ? [{ x: seam.label, label: 'projected from here' }] : undefined,
       },
@@ -576,17 +684,16 @@ const ahead = analysis<AheadRegister>({
           { key: 'd', label: 'Day' },
           { key: 'v', label: 'Projected', numeric: true },
         ],
-        rows: a.forecast.map((f) => ({ key: f.date, cells: [shortDay(f.date), figure(f.value)] })),
+        rows: a.forecast.map((f) => ({ key: f.date, cells: [shortDay(f.date), projectedBottles(f.value, 'day')] })),
         more: 'Every row below is the model’s expectation. None of it is trade that happened.',
       },
       figures: [
-        { label: `Next ${a.horizon} days`, value: figure(a.totalForecastDemand) },
+        { label: `Next ${a.horizon} days`, value: projectedBottles(a.totalForecastDemand, 'total') },
         {
-          label: 'Backtest error (MAPE)',
-          value: a.accuracy?.mape == null ? EM : ratioPct(a.accuracy.mape / 100, 1),
+          label: 'How it has held',
+          value: heldWords(a.accuracy?.mape ?? null),
           note: 'Not scoreable on this history',
         },
-        { label: 'Model', value: a.model || EM, note: 'No model fitted this history' },
       ],
       notes: ['The dashed run is projected. It is the model’s expectation, not trade that happened.'],
       basis,

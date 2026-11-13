@@ -22,7 +22,7 @@
  *    and the same OrderCeremony as BottleLeaf.tsx:211-225 and :544-570;
  *  - Transfer and Record a pour call `transferStock` and `recordPour`.
  */
-import { useMemo, useRef, useState, type ReactNode } from 'react';
+import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { CountInput, HoldToApprove, Select, Sheet } from '@/components/mudavym';
@@ -33,12 +33,15 @@ import type { StorageLocation } from '../../../hooks/useStorageLocations';
 import { useRecommendedProviders } from '../../../hooks/queries/useProviderQueries';
 import { queryKeys } from '../../../lib/query-keys';
 import { newClientCountId, submitSpotCount } from '../../../lib/spotCountOutbox';
-import { SCAN_ACCEPT } from '../../../lib/uploadAccept';
+import { IMAGE_ACCEPT } from '../../../lib/uploadAccept';
+import { photoToJpegBase64 } from '../../../lib/photoToJpeg';
 import OrderCeremony from '../../cellar/next/OrderCeremony';
 import OrderLetter from './OrderLetter';
 import { useCellarSettings } from '../../cellar/next/useCellarNextData';
 import { fmtCount, suggestedToPar, type InvRow } from './useInventoryNextData';
+import { amountUnit, orderUnitOf, type AmountUnit } from './iv-amount';
 import { LANDED_EARLIER, SAFE_RETRY, failureReason, landedEarlier, writeFailure } from './iv-failure';
+import { namesTheOperator, photoRefusalWords } from '../../../lib/modelRefusalWords';
 
 /** A whole number typed as a string, or null. "2.5", "" and "-1" are null. */
 function wholeNumber(s: string): number | null {
@@ -87,21 +90,90 @@ function Said({ children, alarm }: { children: ReactNode; alarm?: boolean }) {
 interface SheetProps {
   row: InvRow;
   onClose: () => void;
+  /**
+   * The good's own unit (g, ml, each, bottle…; house item `uom`). Absent or
+   * null is a bottle, as every row was before the house carried food.
+   */
+  uom?: string | null;
+}
+
+/**
+ * The amount field in the good's own unit. A counted unit keeps the stepper; a
+ * weighed or poured good takes kg or l with decimals, and says back what it
+ * read before the seal so a slip ("25" for 2.5 kg) is seen, not booked.
+ */
+function AmountField({
+  unit,
+  label,
+  value,
+  onChange,
+  min,
+  max,
+}: {
+  unit: AmountUnit;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  min: number;
+  max?: number;
+}) {
+  const id = useId();
+  if (unit.whole) return <CountInput label={label} value={value} onChange={onChange} min={min} max={max} />;
+  const n = unit.parse(value);
+  return (
+    <span className="mdv-count iv-amount">
+      <label htmlFor={id} className="mdv-count__label">
+        {label}
+      </label>
+      <input
+        id={id}
+        className="mdv-count__input iv-amount-input"
+        inputMode="decimal"
+        autoComplete="off"
+        aria-describedby={`${id}-echo`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <span id={`${id}-echo`} className="iv-note" data-testid="iv-amount-echo" aria-live="polite">
+        {value.trim() === ''
+          ? unit.hint
+          : n === null
+            ? (unit.why(value) ?? `Not an amount this book can hold. ${unit.hint}`)
+            : `Reads as ${unit.words(n)}.`}
+      </span>
+    </span>
+  );
+}
+
+/** "Bottles counted", "Weight counted, in kg", "Volume counted, in l". */
+function amountLabel(unit: AmountUnit, verb: string): string {
+  const v = verb ? ` ${verb}` : '';
+  if (unit.base === 'g') return `Weight${v}, in kg`;
+  if (unit.base === 'ml') return `Volume${v}, in l`;
+  return `${unit.fieldUnit.charAt(0).toUpperCase()}${unit.fieldUnit.slice(1)}${v}`;
 }
 
 /* ── Record a count ─────────────────────────────────────────────────────── */
 
 /** After a blind count: what the book said and how far the shelf was from it (INV-W22). */
-export function countGapSentence(book: number | null, counted: number, title: string): string {
-  const c = fmtCount(counted);
+export function countGapSentence(
+  book: number | null,
+  counted: number,
+  title: string,
+  words: (n: number) => string = fmtCount,
+): string {
+  const c = words(counted);
   if (book === null) return `Counted ${c}. The book could not be read before, so there is no gap to show; ${title} now reads ${c}.`;
   if (book === counted) return `Counted ${c}, the same as the book. ${title} still reads ${c}.`;
   const d = counted - book;
-  return `Counted ${c}; the book said ${fmtCount(book)}, so the shelf is ${fmtCount(Math.abs(d))} ${d < 0 ? 'short' : 'over'}. ${title} now reads ${c}.`;
+  return `Counted ${c}; the book said ${words(book)}, so the shelf is ${words(Math.abs(d))} ${d < 0 ? 'short' : 'over'}. ${title} now reads ${c}.`;
 }
 
-export function CountSheet({ row, onClose }: SheetProps) {
+export function CountSheet({ row, onClose, uom }: SheetProps) {
   const invalidate = useInvalidateStock();
+  const unit = amountUnit(uom);
+  // A bottle keeps the bare figure it always said; any other unit says itself.
+  const words = unit.base === 'bottle' ? fmtCount : unit.words;
   const [clientCountId] = useState(newClientCountId);
   // INV-W22 (founder, 2026-10-01): a blind count. The field starts empty and
   // the book's figure stays hidden until the seal, then the gap is said.
@@ -111,7 +183,7 @@ export function CountSheet({ row, onClose }: SheetProps) {
   const [said, setSaid] = useState<{ text: string; alarm?: boolean } | null>(null);
   const [photo, setPhoto] = useState<{ busy: boolean; note: string | null }>({ busy: false, note: null });
   const fileRef = useRef<HTMLInputElement>(null);
-  const counted = wholeNumber(qty);
+  const counted = unit.parse(qty);
 
   const count = useMutation({
     mutationFn: (countedQty: number) =>
@@ -124,8 +196,8 @@ export function CountSheet({ row, onClose }: SheetProps) {
       invalidate();
       setSaid({
         text: synced
-          ? countGapSentence(book, countedQty, titleOf(row))
-          : `Held on this device — not yet confirmed. The count of ${fmtCount(countedQty)} goes out when the connection returns; until then the book still reads what it read.`,
+          ? countGapSentence(book, countedQty, titleOf(row), words)
+          : `Held on this device — not yet confirmed. The count of ${words(countedQty)} goes out when the connection returns; until then the book still reads what it read.`,
       });
     },
     onError: (e) => {
@@ -145,26 +217,25 @@ export function CountSheet({ row, onClose }: SheetProps) {
   const readPhoto = async (file: File) => {
     setPhoto({ busy: true, note: null });
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const s = String(reader.result);
-          resolve(s.slice(s.indexOf(',') + 1));
-        };
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
+      // Shrunk to 1600 px and re-encoded as JPEG on this device, so an iPhone's
+      // HEIC arrives as a photo the model can read (G10).
+      const base64 = await photoToJpegBase64(file);
       const estimate = await estimateCountFromPhoto(row.id, base64);
       if (estimate.suggestedQty !== null) setQty(String(estimate.suggestedQty));
-      setPhoto({
-        busy: false,
-        note:
-          estimate.suggestedQty !== null
-            ? `The photo suggests ${fmtCount(estimate.suggestedQty)} (${estimate.confidence} confidence). It only fills the field — check it before you seal. ${estimate.note}`
-            : `The photo gave no confident count. ${estimate.note}`,
-      });
+      const said =
+        estimate.suggestedQty !== null
+          ? `The photo suggests ${fmtCount(estimate.suggestedQty)}. It only fills the field — check it before you seal.`
+          : 'The photo gave no count.';
+      setPhoto({ busy: false, note: estimate.note ? `${said} ${estimate.note}` : said });
     } catch (e) {
-      setPhoto({ busy: false, note: `The photo could not be read — ${failureReason(e)}. Type the count instead.` });
+      // The gateway's own message decides off from down. A 5xx reduced to
+      // failureReason's generic sentence first would say an unconfigured
+      // reader "failed", which tells the house to try again when nothing it
+      // does will help (browser check 2026-11-12: a 503 "Anthropic API key not
+      // configured" read "the server failed before it could answer").
+      const raw = (e as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
+      const said = namesTheOperator(raw) ? photoRefusalWords(raw) : failureReason(e);
+      setPhoto({ busy: false, note: `The photo could not be read — ${said}. Type the count instead.` });
     }
   };
 
@@ -182,19 +253,22 @@ export function CountSheet({ row, onClose }: SheetProps) {
         Count what is on the shelf, then hold to seal it. The book’s figure is shown after the seal, so it cannot steer the count.
       </p>
       <div className="iv-sheet-fields">
-        <CountInput label="Bottles counted" value={qty} onChange={setQty} min={0} />
-        <button
-          type="button"
-          className="iv-btn iv-focus"
-          onClick={() => fileRef.current?.click()}
-          disabled={photo.busy}
-        >
-          {photo.busy ? 'Reading the photo…' : 'Count from a photo'}
-        </button>
+        <AmountField unit={unit} label={amountLabel(unit, 'counted')} value={qty} onChange={setQty} min={0} />
+        {/* The photo counts bottles on a shelf; a weighed good is never guessed from one. */}
+        {unit.whole ? (
+          <button
+            type="button"
+            className="iv-btn iv-focus"
+            onClick={() => fileRef.current?.click()}
+            disabled={photo.busy}
+          >
+            {photo.busy ? 'Reading the photo…' : 'Count from a photo'}
+          </button>
+        ) : null}
         <input
           ref={fileRef}
           type="file"
-          accept={SCAN_ACCEPT}
+          accept={IMAGE_ACCEPT}
           capture="environment"
           hidden
           onChange={(e) => {
@@ -204,13 +278,13 @@ export function CountSheet({ row, onClose }: SheetProps) {
         />
       </div>
       {photo.note ? <p className="iv-note">{photo.note}</p> : null}
-      {qty !== '' && counted === null ? <p className="iv-note">A count is a whole number of bottles.</p> : null}
+      {unit.whole && qty !== '' && counted === null ? <p className="iv-note">A count is a whole number of {unit.fieldUnit}.</p> : null}
       <div style={{ marginTop: 14 }}>
         <HoldToApprove
           key={`count-${attempt}`}
-          label={counted === null ? 'Type the count first' : `Hold to record ${fmtCount(counted)}`}
+          label={counted === null ? 'Type the count first' : `Hold to record ${words(counted)}`}
           approvedLabel="Count recorded"
-          boundSummary={counted === null ? undefined : `${titleOf(row)}: ${fmtCount(counted)} counted`}
+          boundSummary={counted === null ? undefined : `${titleOf(row)}: ${words(counted)} counted`}
           disabled={counted === null || count.isPending || count.isSuccess}
           onApprove={() => (counted === null ? undefined : count.mutateAsync(counted))}
         />
@@ -229,24 +303,29 @@ export const WRITE_OFF_REASONS = [
   { value: 'return', label: 'Returned to the vendor', type: 'return' },
 ] as const;
 
-export function WriteOffSheet({ row, onClose }: SheetProps) {
+export function WriteOffSheet({ row, onClose, uom }: SheetProps) {
   const invalidate = useInvalidateStock();
+  const unit = amountUnit(uom);
+  const bottles = unit.base === 'bottle';
   const [idempotencyKey] = useState(() => freshKey('writeoff', row.id));
   const [reason, setReason] = useState<string>('');
-  const [qty, setQty] = useState('1');
+  // A weighed good starts empty: a bare "1" would only ask whether it is g or kg.
+  const [qty, setQty] = useState(unit.whole ? '1' : '');
   const [attempt, setAttempt] = useState(0);
   const [said, setSaid] = useState<{ text: string; alarm?: boolean } | null>(null);
-  const n = wholeNumber(qty);
+  const n = unit.parse(qty);
   // A blocked sheet never says the count, so a null one reads as nothing (INV-W33).
-  const nText = n === null ? '' : fmtCount(n);
+  const nText = n === null ? '' : bottles ? fmtCount(n) : unit.words(n);
   const kind = WRITE_OFF_REASONS.find((r) => r.value === reason) ?? null;
 
   const writeOff = useMutation({
     mutationFn: async () => {
-      if (!kind || n === null || !row.wineId) throw new Error('the write-off is not complete');
+      if (!kind || n === null) throw new Error('the write-off is not complete');
+      // The ledger moves the house item by its id; a library title is carried
+      // when there is one, and a food or supply has none (ADR 0115).
       const r = await apiClient.post('/inventory-ledger/transactions', {
         inventoryId: row.id,
-        wineId: row.wineId,
+        ...(row.wineId ? { wineId: row.wineId } : {}),
         transactionType: kind.type,
         source: 'manual',
         quantityChange: -n,
@@ -258,7 +337,11 @@ export function WriteOffSheet({ row, onClose }: SheetProps) {
     },
     onSuccess: () => {
       invalidate();
-      setSaid({ text: `Written off: ${nText} × ${titleOf(row)}, as ${kind?.label.toLowerCase()}. The last-counted date is unchanged.` });
+      setSaid({
+        text: bottles
+          ? `Written off: ${nText} × ${titleOf(row)}, as ${kind?.label.toLowerCase()}. The last-counted date is unchanged.`
+          : `Written off: ${nText} of ${titleOf(row)}, as ${kind?.label.toLowerCase()}. The last-counted date is unchanged.`,
+      });
     },
     onError: (e) => {
       setAttempt((a) => a + 1);
@@ -273,22 +356,26 @@ export function WriteOffSheet({ row, onClose }: SheetProps) {
     },
   });
 
-  const blocked = !row.wineId
-    ? 'This row is not tied to an item in the house’s library, and the ledger needs one, so it cannot be written off from here.'
-    : !kind
+  const blocked = !kind
+    ? bottles
       ? 'Choose why the bottles left.'
-      : n === null || n < 1
+      : 'Choose why it left.'
+    : n === null || n < 1
+      ? bottles
         ? 'Write off at least one whole bottle.'
-        : row.stock !== null && n > row.stock
-          ? `The book holds ${fmtCount(row.stock)}; a write-off cannot take it below zero. If the book is wrong, record a count first.`
-          : null;
+        : unit.whole
+          ? `Write off at least ${unit.words(1)}.`
+          : (unit.why(qty) ?? `Type how much left. ${unit.hint}`)
+      : row.stock !== null && n > row.stock
+        ? `The book holds ${bottles ? fmtCount(row.stock) : unit.words(row.stock)}; a write-off cannot take it below zero. If the book is wrong, record a count first.`
+        : null;
 
   return (
     <Sheet
       open
       bodyClassName="iv-sheet-body"
       onClose={onClose}
-      label={`Write off bottles of ${titleOf(row)}: breakage, a comp or a return, sealed before the ledger changes`}
+      label={`Write off ${bottles ? 'bottles of ' : ''}${titleOf(row)}: breakage, a comp or a return, sealed before the ledger changes`}
       eyebrow="Write off"
       title={titleOf(row)}
       footer={<span>Owners and managers only. A write-off is one ledger line; it never changes the last-counted date.</span>}
@@ -301,7 +388,7 @@ export function WriteOffSheet({ row, onClose }: SheetProps) {
           placeholder="Choose a reason…"
           options={WRITE_OFF_REASONS.map((r) => ({ value: r.value, label: r.label }))}
         />
-        <CountInput label="Bottles" value={qty} onChange={setQty} min={1} max={row.stock ?? 100_000} />
+        <AmountField unit={unit} label={amountLabel(unit, '')} value={qty} onChange={setQty} min={1} max={row.stock ?? 100_000} />
       </div>
       {blocked ? <p className="iv-note">{blocked}</p> : null}
       <div style={{ marginTop: 14 }}>
@@ -328,22 +415,28 @@ export function TransferSheet({
   onClose,
   locations,
   locationsUnavailable,
+  uom,
 }: SheetProps & { locations: StorageLocation[]; locationsUnavailable: boolean }) {
   const invalidate = useInvalidateStock();
+  // A zone holds the good in the book's own unit, as the total does (ADR 0070):
+  // 5,000 g of flour moves as kg, never as "bottles" that are really grams.
+  const unit = amountUnit(uom);
+  const bottles = unit.base === 'bottle';
+  const words = bottles ? fmtCount : unit.words;
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [qty, setQty] = useState('1');
+  const [qty, setQty] = useState(unit.whole ? '1' : '');
   const [attempt, setAttempt] = useState(0);
   const [said, setSaid] = useState<{ text: string; alarm?: boolean } | null>(null);
-  const n = wholeNumber(qty);
+  const n = unit.parse(qty);
   // A blocked sheet never says the count, so a null one reads as nothing (INV-W33).
-  const nText = n === null ? '' : fmtCount(n);
+  const nText = n === null ? '' : words(n);
 
   const nameOf = (id: string | null) =>
     id === null ? 'Unassigned' : (locations.find((l) => l.id === id)?.name ?? 'a zone this page cannot name');
   const fromOptions = (row.zones ?? [])
     .filter((z) => z.qty > 0)
-    .map((z) => ({ value: z.locationId ?? UNASSIGNED, label: `${nameOf(z.locationId)} · ${fmtCount(z.qty)}` }));
+    .map((z) => ({ value: z.locationId ?? UNASSIGNED, label: `${nameOf(z.locationId)} · ${words(z.qty)}` }));
   const held = (row.zones ?? []).find((z) => (z.locationId ?? UNASSIGNED) === from)?.qty ?? null;
   const toOptions = [
     ...locations.map((l) => ({ value: l.id, label: l.name })),
@@ -364,11 +457,13 @@ export function TransferSheet({
     },
     onError: (e) => {
       setAttempt((a) => a + 1);
-      // A transfer carries no key, so a second try after an unknown one can move the bottles twice.
+      // A transfer carries no key, so a second try after an unknown one can move the stock twice.
       const f = writeFailure(e, {
         refused: 'Nothing moved',
-        act: 'the bottles moved',
-        check: 'Look at where the bottles are on the page before trying again, so they do not move twice.',
+        act: bottles ? 'the bottles moved' : 'it moved',
+        check: bottles
+          ? 'Look at where the bottles are on the page before trying again, so they do not move twice.'
+          : 'Look at what each zone holds on the page before trying again, so it does not move twice.',
       });
       if (f.unknown) invalidate();
       setSaid({ text: f.text, alarm: true });
@@ -380,17 +475,25 @@ export function TransferSheet({
   const blocked = locationsUnavailable
     ? 'The storage locations could not be read, so no zone can be named and nothing can be moved.'
     : noZones
-      ? 'This house has no zones yet, so there is nowhere to move bottles to. Zones are added under Tools, in Storage locations.'
+      ? `This house has no zones yet, so there is nowhere to move ${bottles ? 'bottles' : 'it'} to. Zones are added under Tools, in Storage locations.`
       : row.zones === null
       ? 'Where this title sits could not be read, so there is nothing to move from.'
       : fromOptions.length === 0
-        ? 'No zone holds a bottle of this title.'
+        ? bottles
+          ? 'No zone holds a bottle of this title.'
+          : 'No zone holds any of this good.'
         : !from || !to
-          ? 'Choose where the bottles come from and where they go.'
+          ? bottles
+            ? 'Choose where the bottles come from and where they go.'
+            : 'Choose where it comes from and where it goes.'
           : n === null || n < 1
-            ? 'Move at least one whole bottle.'
+            ? bottles
+              ? 'Move at least one whole bottle.'
+              : unit.whole
+                ? `Move at least ${unit.words(1)}.`
+                : (unit.why(qty) ?? `Type how much moves. ${unit.hint}`)
             : held !== null && n > held
-              ? `That zone holds ${fmtCount(held)}.`
+              ? `That zone holds ${words(held)}.`
               : null;
 
   return (
@@ -398,16 +501,16 @@ export function TransferSheet({
       open
       bodyClassName="iv-sheet-body"
       onClose={onClose}
-      label={`Move bottles of ${titleOf(row)} between zones, sealed before the books change`}
+      label={`Move ${bottles ? 'bottles of ' : ''}${titleOf(row)} between zones, sealed before the books change`}
       eyebrow="Transfer"
       title={titleOf(row)}
-      footer={<span>A transfer moves bottles between zones; the total on the book does not change.</span>}
+      footer={<span>A transfer moves {bottles ? 'bottles' : 'stock'} between zones; the total on the book does not change.</span>}
     >
       {noZones ? null : (
         <div className="iv-sheet-fields">
           <Select label="From" value={from} onChange={setFrom} placeholder="Choose a zone…" options={fromOptions} disabled={fromOptions.length === 0} />
           <Select label="To" value={to} onChange={setTo} placeholder="Choose a zone…" options={toOptions} disabled={locationsUnavailable} />
-          <CountInput label="Bottles" value={qty} onChange={setQty} min={1} max={held ?? 100_000} />
+          <AmountField unit={unit} label={amountLabel(unit, '')} value={qty} onChange={setQty} min={1} max={held ?? 100_000} />
         </div>
       )}
       {blocked ? <p className="iv-note">{blocked}</p> : null}
@@ -578,8 +681,13 @@ export function OrderSheet({
   providers,
   providersError,
   restaurantId,
+  uom,
 }: SheetProps & { providers: Provider[] | null; providersError: string | null; restaurantId: string | null }) {
   const queryClient = useQueryClient();
+  // The order's unit is the book's own; a good the order vocabulary cannot
+  // state one-to-one (kg, l, a case of unknown size) is not ordered from here.
+  const orderUnit = orderUnitOf(uom);
+  const unitWords = amountUnit(uom);
   const settings = useCellarSettings();
   const recs = useRecommendedProviders(restaurantId ?? '', row.wineId ?? '');
   const [picked, setVendorId] = useState(row.providerId ?? '');
@@ -608,7 +716,7 @@ export function OrderSheet({
   const [placedAt, setPlacedAt] = useState(0);
   const order = useMutation({
     mutationFn: async (body: { inventoryId: string; providerId: string; quantity: number }) => {
-      const r = await apiClient.post('/procurement/orders', { ...body, unitType: 'bottle' });
+      const r = await apiClient.post('/procurement/orders', { ...body, unitType: orderUnit ?? 'bottle' });
       return r.data as PlacedOrder;
     },
     onSuccess: () => {
@@ -624,16 +732,18 @@ export function OrderSheet({
   const sealedLabel = merged ? 'Changed on Orders' : 'Placed on Orders';
   const vendorName = providers?.find((p) => p.id === vendorId)?.name ?? 'this vendor';
   const noVendors = !providersError && providers !== null && providers.length === 0;
-  const blocked = providersError
+  const blocked = orderUnit === null
+    ? `This good is kept in ${unitWords.base === 'g' ? 'grams' : unitWords.base === 'ml' ? 'millilitres' : unitWords.fieldUnit}, and an order from here is placed in bottles, kegs or items, so it is not ordered from this sheet. Place it on Orders, where the vendor's own unit is written down.`
+    : providersError
     ? `The vendor book could not be read — ${providersError}. No vendor can be chosen, so nothing can be ordered from here.`
     : noVendors
       ? 'This house has no vendors on file yet, so there is no one to order from.'
       : !vendorId
         ? 'Choose the vendor this order goes to.'
         : qty.trim() === ''
-          ? 'Type how many bottles to order.'
+          ? `Type how many ${unitWords.fieldUnit} to order.`
           : n === null || n < 1
-            ? 'Order at least one whole bottle.'
+            ? `Order at least ${orderUnit === 'bottle' ? 'one whole bottle' : unitWords.words(1)}.`
             : null;
 
   return (
@@ -651,6 +761,19 @@ export function OrderSheet({
         </span>
       }
     >
+      {orderUnit === null ? (
+        // A good this sheet cannot order (kept in g, ml, case or pack) gets the
+        // reason and the way to Orders, and no vendor picker or amount box it
+        // could never use (browser walk 2026-11-11: the fields sat above a
+        // refusal, a form that led nowhere).
+        <p className="iv-note" data-testid="iv-order-unit-blocked">
+          {blocked}{' '}
+          <Link to="/orders" className="iv-linkish iv-focus">
+            Go to Orders
+          </Link>
+        </p>
+      ) : (
+      <>
       <p className="iv-said">
         {toPar !== null && row.par !== null
           ? `${fmtCount(toPar)} bring it back to par (${fmtCount(row.par)}).`
@@ -672,7 +795,7 @@ export function OrderSheet({
             label: `${p.name}${recommendedIds.has(p.id) ? ' — recommended for this bottle' : ''}`,
           }))}
         />
-        <CountInput label="Bottles" value={qty} onChange={setQty} min={1} />
+        <CountInput label={amountLabel(unitWords, '')} value={qty} onChange={setQty} min={1} />
       </div>
       {recs.isError ? (
         <p className="iv-note">The vendor recommendation could not be read — the list above is the plain roster, unranked.</p>
@@ -728,6 +851,8 @@ export function OrderSheet({
         ) : null}
       </div>
       {order.isSuccess ? <Placed order={order.data} asked={n} vendorName={vendorName} merged={merged} restaurantId={restaurantId} /> : null}
+      </>
+      )}
     </Sheet>
   );
 }

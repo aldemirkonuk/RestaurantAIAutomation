@@ -124,6 +124,21 @@ export interface ExternalExtractionResult {
   vendor?: VendorResolution;
 }
 
+/**
+ * What a paper's notes say when no reader could read it (ADR 0104 D6: stored
+ * unread, never discarded). In the house's words: the model key, its vendor
+ * and its billing are the operator's, and go to the gateway log only.
+ */
+export const PAPER_READER_OFF =
+  "Reading papers automatically is not switched on here yet, so the document was stored unread. Its lines can be typed in by hand.";
+export const PAPER_READER_DOWN =
+  "The paper could not be read automatically just now, so the document was stored unread. Its lines can be typed in by hand, or it can be read again later.";
+
+/** The notes sentence for an extractor failure, by what the failure was. */
+export function paperReaderSaid(reason: string): string {
+  return /api[\s_-]?key|not configured/i.test(reason) ? PAPER_READER_OFF : PAPER_READER_DOWN;
+}
+
 @Injectable()
 export class DocumentIntakeService {
   private readonly logger = new Logger(DocumentIntakeService.name);
@@ -696,9 +711,7 @@ export class DocumentIntakeService {
     }
 
     if (!this.extractor.available())
-      return this.unreadable(
-        "No extraction model is configured, so the document was stored unread.",
-      );
+      return this.unreadable(PAPER_READER_OFF);
 
     try {
       const extracted = await this.extractor.extract(
@@ -754,9 +767,11 @@ export class DocumentIntakeService {
       this.logger.warn(
         `extraction failed, storing the document unread: ${reason}`,
       );
-      return this.unreadable(
-        `The extraction model could not be reached, so the document was stored unread: ${reason}`,
-      );
+      // The house reads the sentence; the operator reads the log above. The
+      // raw reason named the model key or the vendor's billing ("…stored
+      // unread: ANTHROPIC_API_KEY is not configured", "Anthropic 400: credit
+      // balance too low") on the paper's notes (#1095's residual, receipts lane).
+      return this.unreadable(paperReaderSaid(reason));
     }
   }
 

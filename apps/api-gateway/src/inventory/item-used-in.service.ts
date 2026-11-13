@@ -40,7 +40,16 @@ export interface CocktailLine {
   unit: string | null;
 }
 
+export interface DrinkRecipeLine {
+  cocktailId: string;
+  name: string;
+  label: string;
+  qtyEntered: number;
+  unitCode: string;
+}
+
 const PAGE = 1000;
+const CHUNK = 100;
 const LINE_COLS =
   "id, menu_id, name, by_glass_price, bottle_price, inventory_item_id, wine_library_id";
 
@@ -108,10 +117,33 @@ const failed = <T>(what: string, message: string): Group<T> => ({
 export class ItemUsedInService {
   constructor(private readonly db: DatabaseService) {}
 
+  /**
+   * Where one item is used. The menu groups are one chain (the unlinked group
+   * leaves out what the linked group found); the two drink groups are each
+   * their own reads. The three run at once, so the drawer waits for the
+   * slowest chain, not for the sum of every read.
+   */
   async usedIn(restaurantId: string, itemId: string) {
     const client = this.db.supabase;
     const item = await readHouseItem(client, restaurantId, itemId);
 
+    const [menu, inCocktails, inDrinkRecipes] = await Promise.all([
+      this.menuGroups(client, restaurantId, item),
+      this.inCocktails(client, restaurantId, item),
+      this.inDrinkRecipes(client, restaurantId, item),
+    ]);
+
+    return {
+      item: { id: item.id, kind: item.kind, displayName: item.displayName },
+      soldAs: menu.soldAs,
+      inCocktails,
+      inDrinkRecipes,
+      namedNotLinked: menu.namedNotLinked,
+    };
+  }
+
+  /** The current menu's lines linked to the item, then the lines that only carry its name. */
+  private async menuGroups(client: SupabaseClient, restaurantId: string, item: HouseItem) {
     // Only lines on the house's current (active) menus are "on the menu";
     // an archived or draft menu is not (menus.service readCurrentMenus).
     const menus = await client
@@ -132,18 +164,7 @@ export class ItemUsedInService {
       menus.error?.message,
       soldAs.lines,
     );
-    const inCocktails = await this.inCocktails(client, restaurantId, item);
-
-    return {
-      item: { id: item.id, kind: item.kind, displayName: item.displayName },
-      soldAs,
-      inCocktails,
-      namedNotLinked,
-      recipes: {
-        recorded: false,
-        note: "Recipes are not recorded yet, so no dish or drink recipe is shown here.",
-      },
-    };
+    return { soldAs, namedNotLinked };
   }
 
   private async soldAs(
@@ -272,6 +293,84 @@ export class ItemUsedInService {
           unit: r.unit ?? null,
         };
       });
+    return { readable: true, lines, source };
+  }
+
+  /**
+   * House cocktails whose CURRENT recipe version has a line linked to this item
+   * (ADR 0360: recipe_lines.inventory_id). Three plain reads, each paged or
+   * chunked so no read trusts one PostgREST page. Older versions are history.
+   */
+  private async inDrinkRecipes(
+    client: SupabaseClient,
+    restaurantId: string,
+    item: HouseItem,
+  ): Promise<Group<DrinkRecipeLine>> {
+    const what = "The drink recipes";
+    const lineRows: Array<Record<string, any>> = [];
+    let after: string | null = null;
+    for (;;) {
+      let q = client
+        .from("recipe_lines")
+        .select("id, version_id, position, label, qty_entered, unit_code")
+        .eq("restaurant_id", restaurantId)
+        .eq("inventory_id", item.id);
+      if (after) q = q.gt("id", after);
+      const { data, error } = await q.order("id", { ascending: true }).limit(PAGE);
+      if (error) return failed(what, error.message);
+      const rows = (data ?? []) as Array<Record<string, any>>;
+      lineRows.push(...rows);
+      if (rows.length < PAGE) break;
+      after = String(rows[rows.length - 1].id);
+    }
+    const source = "Drinks whose current recipe has a line linked to this item.";
+    if (lineRows.length === 0) return { readable: true, lines: [], source };
+
+    const cocktailOfVersion = new Map<string, string>();
+    const versionIds = [...new Set(lineRows.map((r) => String(r.version_id)))];
+    for (let i = 0; i < versionIds.length; i += CHUNK) {
+      const { data, error } = await client
+        .from("recipe_current")
+        .select("cocktail_id, version_id")
+        .eq("restaurant_id", restaurantId)
+        .in("version_id", versionIds.slice(i, i + CHUNK));
+      if (error) return failed(what, error.message);
+      for (const r of (data ?? []) as Array<Record<string, any>>) {
+        cocktailOfVersion.set(String(r.version_id), String(r.cocktail_id));
+      }
+    }
+    const current = lineRows.filter((r) => cocktailOfVersion.has(String(r.version_id)));
+
+    const names = new Map<string, string>();
+    const cocktailIds = [...new Set(current.map((r) => cocktailOfVersion.get(String(r.version_id))!))];
+    for (let i = 0; i < cocktailIds.length; i += CHUNK) {
+      const { data, error } = await client
+        .from("cocktails")
+        .select("id, name, display_name")
+        .in("id", cocktailIds.slice(i, i + CHUNK))
+        // NULL restaurant_id is the catalogue, not this house's.
+        .eq("restaurant_id", restaurantId)
+        .is("deleted_at", null);
+      if (error) return failed(what, error.message);
+      for (const c of (data ?? []) as Array<Record<string, any>>) {
+        names.set(String(c.id), c.display_name || c.name);
+      }
+    }
+    const lines = current
+      .filter((r) => names.has(cocktailOfVersion.get(String(r.version_id))!))
+      .map((r) => {
+        const cocktailId = cocktailOfVersion.get(String(r.version_id))!;
+        return {
+          cocktailId,
+          name: names.get(cocktailId)!,
+          label: r.label,
+          qtyEntered: Number(r.qty_entered),
+          unitCode: r.unit_code,
+          position: Number(r.position ?? 0),
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name) || a.position - b.position)
+      .map(({ position: _p, ...l }) => l);
     return { readable: true, lines, source };
   }
 }

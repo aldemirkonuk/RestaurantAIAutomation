@@ -845,6 +845,7 @@ describe("InventoryService", () => {
         // OD-59 / P3.0: a handle on that footprint row, so the suggestion can
         // be graded against the count a human commits later.
         expect.anything(),
+        "en",
       );
       expect(result).toEqual({
         suggestedQty: 7,
@@ -853,6 +854,16 @@ describe("InventoryService", () => {
       });
       // Never touches the RPC that actually moves stock.
       expect(mockRpc).not.toHaveBeenCalled();
+    });
+
+    it("asks for the note in Turkish for a house in Türkiye (QA round 10b)", async () => {
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: { wine_name: "Efes", restaurants: { country: "TR" } },
+        error: null,
+      });
+      mockEstimate.mockResolvedValueOnce({ suggestedQty: 1, confidence: "low", note: "" });
+      await service.estimateCountFromPhoto("rest-1", "inv-1", "abc123");
+      expect(mockEstimate.mock.calls[0][4]).toBe("tr");
     });
 
     it("never writes STOCK — the E46 posture is unchanged by the OD-59 grading", async () => {

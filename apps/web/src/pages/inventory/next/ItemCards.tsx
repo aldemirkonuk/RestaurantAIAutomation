@@ -15,6 +15,7 @@ import type { ItemFigures, ItemNutrition } from '../../../services/api/inventory
 import { figureWords, PER } from './nutrition-words';
 import { cellMoney, EM, fmtCount, fmtPace, type HouseCurrency, type InvRow } from './useInventoryNextData';
 import { fmtWhen } from '../../../lib/mudavym/format';
+import { shortDate } from '../../cellar/next/cellar-format';
 
 export type CardId = 'onhand' | 'value' | 'usage' | 'cover' | 'cost' | 'waste' | 'gap' | 'inside';
 
@@ -64,6 +65,15 @@ const UNIT_WORDS: Record<string, [string, string]> = {
 };
 
 /**
+ * A whole g or ml count read in kg or l keeps every gram: 1750 g is "1.75 kg",
+ * and 1755 g is "1.755 kg". fmtCount's one place would print 1750 g as "1.8 kg"
+ * right after the count sheet said "now reads 1.75 kg".
+ */
+function fmtScaled(n: number): string {
+  return n.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+}
+
+/**
  * A quantity in the item's own unit (ADR 0070: stored as whole g, ml or
  * each). 12400 g reads "12.4 kg"; 1500 ml reads "1.5 l"; each is a count.
  * A wine row with no unit on it is in bottles.
@@ -72,11 +82,11 @@ export function fmtQty(n: number, uom: string | null): string {
   const a = Math.abs(n);
   switch (uom) {
     case 'g':
-      return a >= 1000 ? `${fmtCount(n / 1000)} kg` : `${fmtCount(n)} g`;
+      return a >= 1000 ? `${fmtScaled(n / 1000)} kg` : `${fmtCount(n)} g`;
     case 'mg':
-      return a >= 1000 ? `${fmtCount(n / 1000)} g` : `${fmtCount(n)} mg`;
+      return a >= 1000 ? `${fmtScaled(n / 1000)} g` : `${fmtCount(n)} mg`;
     case 'ml':
-      return a >= 1000 ? `${fmtCount(n / 1000)} l` : `${fmtCount(n)} ml`;
+      return a >= 1000 ? `${fmtScaled(n / 1000)} l` : `${fmtCount(n)} ml`;
     case 'each':
       return fmtCount(n);
     default: {
@@ -87,16 +97,20 @@ export function fmtQty(n: number, uom: string | null): string {
 }
 
 /** A cost is per kg or per l for a weighed or poured good: per g would read 0.01. */
-function perUnit(wac: number, uom: string | null): { amount: number; per: string } {
-  if (uom === 'g') return { amount: wac * 1000, per: 'kg' };
-  if (uom === 'ml') return { amount: wac * 1000, per: 'l' };
-  if (uom === 'each') return { amount: wac, per: 'item' };
-  return { amount: wac, per: UNIT_WORDS[uom ?? 'bottle']?.[0] ?? uom ?? 'bottle' };
+export function perUnit(wac: number, uom: string | null): { amount: number; per: string } {
+  if (uom === 'g') return { amount: wac * 1000, per: 'a kg' };
+  if (uom === 'ml') return { amount: wac * 1000, per: 'a litre' };
+  // "US$0.35 each", never "US$0.35 a item"; "a litre", never "a l".
+  if (uom === 'each') return { amount: wac, per: 'each' };
+  if (uom === 'l') return { amount: wac, per: 'a litre' };
+  return { amount: wac, per: `a ${UNIT_WORDS[uom ?? 'bottle']?.[0] ?? uom ?? 'bottle'}` };
 }
 
 /** Usage a day: small paces keep two places (fmtPace), large weighed ones read in kg or l. */
-function usageWords(v: number, uom: string | null): string {
+export function usageWords(v: number, uom: string | null): string {
   if ((uom === 'g' || uom === 'ml') && v >= 1000) return fmtQty(v, uom);
+  // 290 g a day, not "290.0 g": a gram is already small, so whole ones from 10 up.
+  if ((uom === 'g' || uom === 'ml') && v >= 10) return `${fmtCount(Math.round(v))} ${uom}`;
   if (uom === 'g' || uom === 'ml') return `${fmtPace(v)} ${uom}`;
   if (uom === 'each') return fmtPace(v);
   const [one, many] = UNIT_WORDS[uom ?? 'bottle'] ?? [uom ?? 'bottle', uom ?? 'bottles'];
@@ -184,6 +198,8 @@ function Card({ id, figure, extra, source, unread, open, onOpen }: CardProps) {
 export interface ItemCardsProps {
   row: InvRow;
   uom: string | null;
+  /** The house item's kind: a food or supply is not drawn down by a sale yet. */
+  kind?: string | null;
   canManage: boolean;
   currency: HouseCurrency;
   figures: FiguresLoad;
@@ -192,12 +208,55 @@ export interface ItemCardsProps {
   onOpen: (id: CardId) => void;
 }
 
-export default function ItemCards({ row, uom, canManage, currency, figures, inside, open, onOpen }: ItemCardsProps) {
+/**
+ * A sale draws down only what the till maps to the good itself (a bottle, a
+ * glass). A drink recipe may link a food or supply (lime, syrup: "Used in"
+ * lists them), but no recipe is taken from stock at the till yet (ADR 0360:
+ * sale depletion is the next wave). So its use is measured from its counts
+ * (inventory_analytics, days_of_stock_from_real_use): until it has two, it
+ * is not "not enough history", it is not measured yet, and says how to.
+ */
+export const NOT_DRAWN_BY_SALES =
+  'A sale does not draw a food or supply down yet, so its use is measured from its counts: count it twice, at least 3 days apart and the second within the last 30 days, and what was used between them shows here.';
+
+const DAY_MS = 86_400_000;
+
+/** Whole days between two instants, at least 1. */
+function daysBetween(since: string, until: string): number {
+  return Math.max(1, Math.round((Date.parse(until) - Date.parse(since)) / DAY_MS));
+}
+
+/**
+ * Where a good's usage a day comes from, in the house's words, for the Usage
+ * card and the pace evidence. Null when the server sent no source (an older
+ * gateway, or neither sales nor counts measured it).
+ */
+export function usageSaid(row: InvRow, uom: string | null): string | null {
+  if (!row.analyticsReadable || row.usageSource === null || !row.usageSince || !row.usageUntil) return null;
+  const n = daysBetween(row.usageSince, row.usageUntil);
+  if (row.usageSource === 'counts') {
+    const used = row.usageQty === null ? 'What was used' : `${fmtQty(row.usageQty, uom)} used`;
+    return `${used} between the counts of ${shortDate(row.usageSince)} and ${shortDate(row.usageUntil)} (${n} days): the two counts, with what was received, written off and found short between them.`;
+  }
+  return row.usageQty === null
+    ? `Sold over the last ${n} days, from the stock ledger, less voids.`
+    : `${fmtQty(row.usageQty, uom)} sold in the last ${n} days, from the stock ledger, less voids.`;
+}
+
+export default function ItemCards({ row, uom, kind, canManage, currency, figures, inside, open, onOpen }: ItemCardsProps) {
+  const pace = row.analyticsReadable;
+  // Only a pace that was read can say "not drawn by sales": an unread one is
+  // null too, and stays unread rather than read as a measured answer.
+  // A food or supply with no measured use (no two counts yet) says how to
+  // measure it; one its counts measured reads like any other good.
+  const unsold =
+    pace && (kind === 'food' || kind === 'supply') && row.usageSource === null && (row.velocity === null || row.velocity === 0);
+  const counted = pace && row.usageSource === 'counts';
+  const said = usageSaid(row, uom);
   const f = figures.status === 'ready' ? figures.data : null;
   const reading = figures.status === 'reading';
   const failedWhy = figures.status === 'failed' ? `This item’s figures ${UNREAD} — ${figures.reason}.` : null;
   const money = (n: number | null) => cellMoney(n, currency);
-  const pace = row.analyticsReadable;
 
   const onHand =
     row.stock === null ? null : (
@@ -216,7 +275,7 @@ export default function ItemCards({ row, uom, canManage, currency, figures, insi
   } else {
     if (row.wac !== null) {
       const u = perUnit(row.wac, uom);
-      cost = `${money(u.amount)} a ${u.per}`;
+      cost = `${money(u.amount)} ${u.per}`;
     } else {
       cost = 'No cost yet';
     }
@@ -271,16 +330,44 @@ export default function ItemCards({ row, uom, canManage, currency, figures, insi
         open={open}
         onOpen={onOpen}
         unread={!pace}
-        figure={row.velocity === null ? 'Not enough history' : usageWords(row.velocity, uom)}
-        source="Sold over the last 30 days, from the stock ledger."
+        figure={
+          unsold
+            ? 'Not measured yet'
+            : row.velocity === null
+              ? 'Not enough history'
+              : counted && row.velocity === 0
+                ? 'None used'
+                : usageWords(row.velocity, uom)
+        }
+        source={
+          unsold
+            ? NOT_DRAWN_BY_SALES
+            : !pace
+              ? 'The sales pace could not be read, so how fast it goes is not shown.'
+              : said ?? 'Sold over the last 30 days, from the stock ledger.'
+        }
       />
       <Card
         id="cover"
         open={open}
         onOpen={onOpen}
         unread={!pace}
-        figure={row.runway === null ? 'Not enough history' : `${fmtCount(Math.round(row.runway))} days`}
-        source="On hand divided by usage a day."
+        figure={
+          unsold
+            ? 'Not known'
+            : row.runway !== null
+              ? `${fmtCount(Math.round(row.runway))} days`
+              : counted
+                ? 'Not running down'
+                : 'Not enough history'
+        }
+        source={
+          unsold
+            ? 'On hand divided by usage a day; its use is measured once it has been counted twice.'
+            : counted
+              ? `On hand less what was used since the last count${row.usageUntil ? ` (${shortDate(row.usageUntil)})` : ''}, at its usage a day between its last counts.`
+              : 'On hand divided by usage a day.'
+        }
       />
       <Card id="cost" open={open} onOpen={onOpen} figure={cost} extra={costExtra} source={costSource} />
       <Card
@@ -322,7 +409,8 @@ export default function ItemCards({ row, uom, canManage, currency, figures, insi
         }
         source={fromFigures(gap?.readable, gap?.source, 'the count gap')}
       />
-      <Card id="inside" open={open} onOpen={onOpen} {...insideCard(inside)} />
+      {/* A supply is not eaten or drunk: no "What's in it" card. */}
+      {kind !== 'supply' ? <Card id="inside" open={open} onOpen={onOpen} {...insideCard(inside)} /> : null}
     </div>
   );
 }

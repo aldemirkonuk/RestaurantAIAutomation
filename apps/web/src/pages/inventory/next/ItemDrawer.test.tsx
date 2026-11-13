@@ -9,14 +9,29 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import { ALLERGENS, type HouseFields, type ItemFigures, type ItemNutrition } from '../../../services/api/inventory';
 
-const api = vi.hoisted(() => ({ figures: vi.fn(), usedIn: vi.fn(), nutrition: vi.fn() }));
+const api = vi.hoisted(() => ({ figures: vi.fn(), usedIn: vi.fn(), nutrition: vi.fn(), dishes: vi.fn(), drinks: vi.fn() }));
+vi.mock('../../../services/api/itemDishes', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  getItemDishes: api.dishes,
+  getItemDrinks: api.drinks,
+}));
 vi.mock('../../../services/api/inventory', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   getItemFigures: api.figures,
   getItemUsedIn: api.usedIn,
   getItemNutrition: api.nutrition,
 }));
-vi.mock('./RowDropdown', () => ({ default: () => <div data-testid="row-dropdown" /> }));
+vi.mock('./RowDropdown', () => ({
+  default: (p: { sections?: string[]; actions?: boolean; uom?: string | null; kind?: string | null }) => (
+    <div
+      data-testid="row-dropdown"
+      data-sections={p.sections === undefined ? 'all' : p.sections.join(',')}
+      data-actions={String(p.actions !== false)}
+      data-uom={p.uom ?? ''}
+      data-kind={p.kind ?? ''}
+    />
+  ),
+}));
 
 import ItemDrawer, { type NutritionCardProps } from './ItemDrawer';
 
@@ -24,7 +39,7 @@ const row = (over: Partial<InvRow> = {}) =>
   ({
     id: 'i1', wineId: 'w1', name: 'Gravner Ribolla', libraryName: null, producer: 'Gravner', type: 'orange', kind: 'wine',
     vintage: 2016, grape: null, bottleSizeMl: 750, stock: 12, shadow: 0, par: 6, reorderPoint: null, analyticsReadable: true,
-    velocity: 1, runway: 12, daysSinceSale: 1, deadStock: false, bottle: 92, glass: 18, pourMl: 150, wac: 40,
+    velocity: 1, runway: 12, daysSinceSale: 1, deadStock: false, usageSource: null, usageSince: null, usageUntil: null, usageQty: null, bottle: 92, glass: 18, pourMl: 150, wac: 40,
     costProvenance: 'invoice', value: 480, lastCountedAt: '2026-09-30T10:00:00Z', openMl: null,
     zones: [{ locationId: 'z1', qty: 12 }], providerId: null, providerName: null, standing: 'above', active: true, ...over,
   }) as InvRow;
@@ -88,6 +103,10 @@ beforeEach(() => {
   api.figures.mockResolvedValue(figures());
   api.usedIn.mockReset();
   api.usedIn.mockImplementation(() => new Promise(() => undefined));
+  api.dishes.mockReset();
+  api.dishes.mockImplementation(() => new Promise(() => undefined));
+  api.drinks.mockReset();
+  api.drinks.mockImplementation(() => new Promise(() => undefined));
   api.nutrition.mockReset();
   api.nutrition.mockResolvedValue(nothingStated);
 });
@@ -151,6 +170,29 @@ describe('the item drawer', () => {
     expect(screen.getByTestId('ivd-head').textContent).not.toContain('ml bottle');
   });
 
+  it('keeps every gram a count wrote: 1750 g reads 1.75 kg, never 1.8 kg', () => {
+    open(row({ wineId: null, name: 'Sugar', type: null, kind: null, stock: 1750, wac: 0.0024 }), { house: { kind: 'food', uom: 'g', displayName: 'Sugar' } });
+    expect(screen.getByTestId('ivd-card-onhand').textContent).toContain('1.75 kg');
+    expect(screen.getByTestId('ivd-card-cost').textContent).toContain('2.40 a kg');
+  });
+
+  it('prices a good kept as items "each", never "a item"', () => {
+    open(row({ wineId: null, name: 'Lemons', type: null, kind: null, stock: 40, wac: 0.35 }), { house: { kind: 'food', uom: 'each', displayName: 'Lemons' } });
+    const cost = screen.getByTestId('ivd-card-cost').textContent ?? '';
+    expect(cost).toContain('0.35 each');
+    expect(cost).not.toContain('a item');
+  });
+
+  it('prices a good kept in litres "a litre"', () => {
+    open(row({ wineId: null, name: 'Oil', type: null, kind: null, stock: 4, wac: 9 }), { house: { kind: 'food', uom: 'l', displayName: 'Oil' } });
+    expect(screen.getByTestId('ivd-card-cost').textContent).toContain('a litre');
+  });
+
+  it('gives the drawer body its side gutter', () => {
+    open(row());
+    expect(screen.getByTestId('ivd-head').closest('.iv-sheet-body')).not.toBeNull();
+  });
+
   it('says an id not on the list is not on the list, and reads nothing', () => {
     open(null);
     expect(screen.getByTestId('ivd-gone')).toBeTruthy();
@@ -158,11 +200,97 @@ describe('the item drawer', () => {
     expect(api.figures).not.toHaveBeenCalled();
   });
 
-  it('opens the evidence under the cards from a card', () => {
+  it('keeps the acts under the cards with no card open, and no evidence panel drawn', () => {
+    open(row(), { house: { kind: 'food', uom: 'g', displayName: 'Un' } });
+    const acts = screen.getAllByTestId('row-dropdown');
+    expect(acts).toHaveLength(1);
+    expect(acts[0].dataset).toMatchObject({ sections: '', actions: 'true', uom: 'g', kind: 'food' });
+    expect(screen.queryByTestId('ivd-evidence')).toBeNull();
+  });
+
+  it('a card opens its own evidence, without a second set of acts', () => {
     open(row());
-    expect(screen.queryByTestId('row-dropdown')).toBeNull();
-    fireEvent.click(screen.getByTestId('ivd-card-gap'));
-    expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown')).toBeTruthy();
+    const opened = (id: string) => {
+      fireEvent.click(screen.getByTestId(`ivd-card-${id}`));
+      const panel = within(screen.getByTestId('ivd-evidence')).queryByTestId('row-dropdown');
+      const sections = panel?.dataset.sections ?? null;
+      if (panel) expect(panel.dataset.actions).toBe('false');
+      fireEvent.click(screen.getByTestId(`ivd-card-${id}`));
+      return sections;
+    };
+    expect(opened('gap')).toBe('where');
+    expect(opened('usage')).toBe('pace');
+    expect(opened('cost')).toBe('cost,paper');
+    expect(opened('onhand')).toBe('where,facts');
+    // "What's in it" opens the nutrition card alone.
+    expect(opened('inside')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'All the evidence' }));
+    expect(within(screen.getByTestId('ivd-evidence')).getByTestId('row-dropdown').dataset.sections).toBe('facts,where,pace,cost,paper');
+  });
+
+  it('a food its counts have not measured says how to measure it, never "not enough history"', () => {
+    open(row({ velocity: 0, runway: null, kind: 'food' }), { house: { kind: 'food', uom: 'g', displayName: 'Un' } });
+    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('Not measured yet');
+    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('count it twice, at least 3 days apart');
+    expect(screen.getByTestId('ivd-card-cover').textContent).toContain('Not known');
+    expect(screen.getByTestId('ivd-card-usage').textContent).not.toContain('Not enough history');
+  });
+
+  it('a food measured by its counts says its use a day, where it came from, and its days of cover', () => {
+    open(
+      row({
+        velocity: 290,
+        runway: 28,
+        stock: 8200,
+        kind: null,
+        usageSource: 'counts',
+        usageSince: '2026-10-22T09:00:00Z',
+        usageUntil: '2026-11-11T09:00:00Z',
+        usageQty: 5800,
+      }),
+      { house: { kind: 'food', uom: 'g', displayName: 'Flour' } },
+    );
+    const usage = screen.getByTestId('ivd-card-usage').textContent ?? '';
+    expect(usage).toContain('290 g');
+    expect(usage).toContain('5.8 kg used between the counts of 22 Oct 2026 and 11 Nov 2026 (20 days)');
+    expect(usage).not.toContain('Not measured yet');
+    const cover = screen.getByTestId('ivd-card-cover').textContent ?? '';
+    expect(cover).toContain('28 days');
+    expect(cover).toContain('On hand less what was used since the last count (11 Nov 2026), at its usage a day between its last counts.');
+  });
+
+  it('counts that show nothing used say so, and that it is not running down', () => {
+    open(
+      row({ velocity: 0, runway: null, usageSource: 'counts', usageSince: '2026-10-28T09:00:00Z', usageUntil: '2026-11-07T09:00:00Z', usageQty: 0 }),
+      { house: { kind: 'supply', uom: 'each', displayName: 'Napkins' } },
+    );
+    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('None used');
+    expect(screen.getByTestId('ivd-card-cover').textContent).toContain('Not running down');
+  });
+
+  it('a good the till sells says what was sold and over how many days it was carried', () => {
+    open(
+      row({ velocity: 1, runway: 10, stock: 10, usageSource: 'sales', usageSince: '2026-11-02T09:00:00Z', usageUntil: '2026-11-12T09:00:00Z', usageQty: 10 }),
+    );
+    const usage = screen.getByTestId('ivd-card-usage').textContent ?? '';
+    expect(usage).toContain('10 bottles sold in the last 10 days, from the stock ledger, less voids.');
+    expect(screen.getByTestId('ivd-card-cover').textContent).toContain('10 days');
+  });
+
+  it('a food whose pace could not be read stays unread, never "not drawn by sales"', () => {
+    open(row({ velocity: null, runway: null, kind: 'food', analyticsReadable: false }), {
+      house: { kind: 'food', uom: 'g', displayName: 'Un' },
+    });
+    const usage = screen.getByTestId('ivd-card-usage').textContent ?? '';
+    expect(usage).not.toContain('Not drawn by sales');
+    expect(usage).not.toContain('A sale does not draw');
+    expect(usage).toContain('The sales pace could not be read');
+    expect(screen.getByTestId('ivd-card-cover').textContent).not.toContain('not measured by sales');
+  });
+
+  it('a wine with no sales yet still says not enough history', () => {
+    open(row({ velocity: null, runway: null }));
+    expect(screen.getByTestId('ivd-card-usage').textContent).toContain('Not enough history');
   });
   it('opens the item detail card, with the NutritionCard slot, from every KPI card', () => {
     open(row());
@@ -260,5 +388,86 @@ describe('the item drawer', () => {
     expect(api.usedIn).toHaveBeenCalledTimes(1);
     fireEvent.click(within(used).getByRole('button', { name: 'Read again' }));
     await waitFor(() => expect(api.usedIn).toHaveBeenCalledTimes(2));
+  });
+  it('lists the dishes whose recipe uses a food, and keeps the nutrition slot', async () => {
+    api.dishes.mockResolvedValue({
+      dishes: [
+        {
+          dishId: 'd1', name: 'Pide', section: null, price: 10, hasRecipe: true, yieldServes: 8, lineCount: 1,
+          cost: { perServe: 2.5, perServeExact: 2.5, priced: 1, of: 1, complete: true, partial: 0 },
+          uses: [{ label: 'Flour', qtyEntered: 250, unitCode: 'g' }],
+        },
+      ],
+    });
+    open(row(), { house: { kind: 'food', uom: 'g', displayName: 'Flour' } });
+    fireEvent.click(screen.getByTestId('ivd-card-inside'));
+    const recipes = screen.getByTestId('ivd-used-recipes');
+    await waitFor(() => expect(within(recipes).getByText('Pide')).toBeTruthy());
+    expect(screen.getByTestId('ivd-nutrition-slot')).toBeTruthy();
+  });
+});
+
+describe('the drinks that use a good have their cards', () => {
+  const gin = { kind: 'spirit', uom: 'bottle', displayName: 'House Gin' } as HouseFields;
+  const usedIn = {
+    item: { id: 'i1', kind: 'spirit', displayName: 'House Gin' },
+    soldAs: { readable: true, lines: [], source: 's' },
+    inCocktails: { readable: true, lines: [], source: 's' },
+    inDrinkRecipes: { readable: true, lines: [{ cocktailId: 'c1', name: 'House G&T', label: 'Gin', qtyEntered: 50, unitCode: 'ml' }], source: 's' },
+    namedNotLinked: { readable: true, lines: [], source: 's' },
+  };
+
+  it('reads the drinks for the opened good and draws each with its pour cost', async () => {
+    api.usedIn.mockResolvedValue(usedIn);
+    api.drinks.mockResolvedValue({
+      drinks: [
+        {
+          cocktailId: 'c1', name: 'House G&T', section: null, price: 12, hasRecipe: true, yieldServes: 1, lineCount: 2,
+          cost: { perServe: 1.5, perServeExact: 1.5, priced: 1, of: 1, complete: true, partial: 0 },
+          uses: [{ label: 'Gin', qtyEntered: 50, unitCode: 'ml' }],
+        },
+      ],
+    });
+    open(row({ kind: 'spirit', name: 'House Gin' }), { house: gin });
+    expect(api.drinks).toHaveBeenCalledWith('i1', 'r1');
+    await waitFor(() => expect(screen.getByTestId('ivd-drink-c1-pour-cost').textContent).toContain('12.5%'));
+    expect(screen.getByTestId('ivd-drink-c1-per-serve').textContent).toContain('50 ml');
+  });
+
+  it('a failed drinks read keeps the drink lines, says why, and reads again on asking', async () => {
+    api.usedIn.mockResolvedValue(usedIn);
+    api.drinks.mockRejectedValueOnce(new Error('Network Error'));
+    open(row({ kind: 'spirit', name: 'House Gin' }), { house: gin });
+    const note = await screen.findByTestId('ivd-used-drink-figures-unread');
+    expect(screen.getByTestId('ivd-used-drink-recipes').textContent).toContain('House G&T — 50 ml (Gin)');
+    api.drinks.mockImplementation(() => new Promise(() => undefined));
+    fireEvent.click(within(note).getByRole('button', { name: 'Read again' }));
+    await waitFor(() => expect(api.drinks).toHaveBeenCalledTimes(2));
+  });
+});
+
+describe('a supply has nothing in it to state', () => {
+  const napkins = { kind: 'supply', uom: 'each', displayName: 'Napkins' } as HouseFields;
+
+  it('a supply shows no "What’s in it" card and never reads nutrition or allergens', async () => {
+    open(row({ kind: 'supply', name: 'Napkins', bottleSizeMl: null }), { house: napkins });
+    await waitFor(() => expect(api.figures).toHaveBeenCalled());
+    expect(screen.queryByTestId('ivd-card-inside')).toBeNull();
+    expect(screen.queryByText(/allergen/i)).toBeNull();
+    expect(api.nutrition).not.toHaveBeenCalled();
+  });
+
+  it('all the evidence for a supply has no nutrition slot', () => {
+    open(row({ kind: 'supply', name: 'Napkins', bottleSizeMl: null }), { house: napkins });
+    fireEvent.click(screen.getByRole('button', { name: 'All the evidence' }));
+    const detail = screen.getByTestId('ivd-evidence');
+    expect(within(detail).queryByTestId('ivd-nutrition-slot')).toBeNull();
+    expect(detail.textContent).not.toContain('What’s in it');
+  });
+
+  it('a food still states what is in it', async () => {
+    open(row({ kind: 'food', name: 'Bread flour', bottleSizeMl: null }), { house: { kind: 'food', uom: 'g', displayName: 'Bread flour' } });
+    await waitFor(() => expect(api.nutrition).toHaveBeenCalled());
+    expect(screen.getByTestId('ivd-card-inside')).toBeTruthy();
   });
 });
