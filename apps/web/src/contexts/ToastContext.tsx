@@ -8,6 +8,10 @@ import {
   ToastClose,
   ToastAction,
   type ToastActionElement,
+  // The primitives sub-path, not the `@wineops/ui` barrel: the barrel also
+  // re-exports the Tremor charts, and this module is in the entry chunk, so the
+  // barrel dragged Tremor and recharts into every visitor's first download
+  // (2026-11-07 bundle QA, H1). `bundle-first-paint.test.ts` pins this.
 } from '@wineops/ui/components/primitives'
 import { CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react'
 import { toast as sonnerToast } from 'sonner'

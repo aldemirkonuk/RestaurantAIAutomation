@@ -91,12 +91,16 @@ describe('the refusal note on the endpaper', () => {
     expect(await screen.findByText('That password did not match.')).toBeInTheDocument()
   })
 
-  it('a 429 reads as a pause, and names the connection, not the address', async () => {
+  it('a 429 reads as a pause and points to the emailed code, which is on the page', async () => {
     h.auth.login.mockRejectedValue(new h.LoginError('Too many requests', undefined, undefined, 429))
     await atPasswordStep()
     await submitPassword()
     expect(await screen.findByText('Too many tries — wait a moment.')).toBeInTheDocument()
-    expect(screen.getByText(/This connection has made too many sign-in attempts/)).toBeInTheDocument()
+    // QA round 21: the 429 may be a stranger filling this address's bucket,
+    // not this connection; the emailed code is the way in either way.
+    expect(screen.getByText(/email yourself a sign-in code below/)).toBeInTheDocument()
+    expect(screen.queryByText(/This connection has made/)).toBeNull()
+    expect(screen.getByRole('button', { name: /Email me a sign-in code/ })).toBeInTheDocument()
   })
 
   it('a refusal that carries a code keeps the gateway’s own words', async () => {

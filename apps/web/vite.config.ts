@@ -45,11 +45,14 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        // Only the React core is grouped by hand. A `ui` group (Tremor,
-        // framer-motion, lucide-react) used to sit here: the shell imports
-        // lucide icons, so that whole 1 MB group loaded on every page.
-        // Rollup now puts chart code in the chunks of the pages that draw
-        // charts (r18 bundle walk, 2026-11-13; vite.chunks.test.ts).
+        // Only the React core is grouped by hand. A manualChunks entry pulls
+        // the package AND everything it imports into one chunk: `@tremor/react`
+        // there carried recharts, lodash and date-fns into every visitor's
+        // first download (2026-11-07 bundle QA, H1), and a `ui` group
+        // (framer-motion, lucide-react) loaded whole on every page because the
+        // shell imports lucide icons (r18 bundle walk, 2026-11-13). Rollup keeps
+        // the rest with the lazy pages that import them.
+        // `bundle-first-paint.test.ts` and `vite.chunks.test.ts` pin this.
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
         },

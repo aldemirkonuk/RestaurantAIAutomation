@@ -15,6 +15,7 @@ import {
   Delete,
   BadRequestException,
   GoneException,
+  Optional,
 } from "@nestjs/common";
 import { AuthService, LoginCredentials } from "./auth.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
@@ -46,6 +47,14 @@ import {
 import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
 import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
 import { RateLimit } from "../common/rate-limit";
+import { clientAddress } from "../common/rate-limit/client-address";
+import {
+  foldAccount,
+  issueSignInDevice,
+  readSignInDevice,
+  signInDeviceSecret,
+} from "../common/rate-limit/sign-in-device";
+import { ConfigService } from "@nestjs/config";
 import { Request } from "express";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
@@ -53,7 +62,10 @@ import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
 
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    @Optional() private readonly config?: ConfigService,
+  ) {}
 
   /**
    * Login with email/password
@@ -61,13 +73,29 @@ export class AuthController {
   // Public by DECISION, not by omission (ADR 0096): the caller has no token yet; obtaining one is what this route is for.
   @Public()
   @Post("login")
+  // The /auth/ default (10 a minute per address), plus 10 a minute per
+  // account: an address bucket alone let one password be guessed from as
+  // many addresses as a caller has (QA round 14).
+  @RateLimit({ limit: 10, windowSeconds: 60, accountField: "email" })
   @HttpCode(HttpStatus.OK)
   async login(@Body() credentials: LoginCredentials) {
     this.logger.log(`Login attempt: ${credentials.email}`);
     const tokens = await this.authService.login(credentials);
+    // Known-device token (rate-limit/sign-in-device.ts); a valid one sent in
+    // keeps its device id.
+    const secret = signInDeviceSecret(
+      this.config?.get<string>("JWT_SECRET") ?? process.env.JWT_SECRET,
+    );
+    const folded = foldAccount(String(credentials.email ?? ""));
+    const signInDevice = issueSignInDevice(
+      secret,
+      folded,
+      readSignInDevice(secret, credentials.signInDevice, folded) ?? undefined,
+    );
     return {
       success: true,
       ...tokens,
+      signInDevice,
       message: "Login successful",
     };
   }
@@ -357,7 +385,12 @@ export class AuthController {
     @Body() body: RequestPasswordResetDto,
     @Req() req: Request,
   ) {
-    await this.authService.requestPasswordReset(body.email, req.ip || null);
+    // `req.ip` is the socket peer: without `trust proxy` that is Railway's
+    // edge, the same for every caller (R11-10).
+    await this.authService.requestPasswordReset(
+      body.email,
+      clientAddress(req),
+    );
     return {
       success: true,
       message:
@@ -559,7 +592,9 @@ export class AuthController {
   }
 
   /**
-   * Verify email with the token from the verification email.
+   * Verify email with the token from the verification email, or with the
+   * six-digit code the same email carries (onboarding OB-3, founder /goal
+   * 2026-11-07): `{ token }` or `{ code }`, never both.
    *
    * Signed-in only (ADR 0229 fork 12; the founder, 2026-09-28, item 81, "Link
    * needs sign-in (Recommended)"): the link verifies only for a session of
@@ -582,16 +617,28 @@ export class AuthController {
     @Req() req: Request & { user: any },
     @Body() dto: VerifyEmailDto,
   ) {
-    const tokens = await this.authService.verifyEmail(
-      dto.token,
-      req.user?.userId ?? null,
-      req.user?.restaurantId ?? null,
-    );
+    // The mail's six-digit code (onboarding OB-3) or its link's token; the
+    // DTO admits exactly one. Same session rules, same answer.
+    const tokens =
+      dto.code !== undefined
+        ? await this.authService.verifyEmailWithCode(
+            dto.code,
+            req.user?.userId ?? null,
+            req.user?.restaurantId ?? null,
+          )
+        : await this.authService.verifyEmail(
+            dto.token as string,
+            req.user?.userId ?? null,
+            req.user?.restaurantId ?? null,
+          );
     return { success: true, ...tokens, message: "Email verified" };
   }
 
   /**
-   * Resend verification email — rate-limited to 1 per minute.
+   * Resend verification email — rate-limited to 1 per minute. Answers
+   * `verificationMail: 'sent' | 'not_sent'` as sign-up does (onboarding OB-3,
+   * round 6 #789): `success` means the request was handled, not that a mail
+   * left.
    */
   @Post("resend-verification")
   @UseGuards(JwtAuthGuard)
