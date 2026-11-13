@@ -197,6 +197,34 @@ export function readStatedPriceUnit(
  * "per bottle (1 bottle)" is noise, and named ALWAYS for one that does, because
  * a case price without its pack is the exact number this whole ADR is about.
  */
+/**
+ * The unit a price is per, in words a vendor reads: "per case", "per split
+ * case", "each". The stored code is the database's spelling: a letter that said
+ * "$4.00 per each" or "per split_case" sent a column value to a supplier
+ * (2026-11-13 audit, r21).
+ */
+export function perUnitWords(uom: string): string {
+  const u = uom.trim().toLowerCase();
+  if (u === "each") return "each";
+  return `per ${u.replace(/_/g, " ")}`;
+}
+
+/**
+ * A count of an order's unit in words: "3 split cases", "1 keg", "20 liters".
+ * An order counted `each` is a plain count ("5"), never "5 eachs". The plural
+ * is the old sentence's own "+s", so no wording a vendor already reads moves.
+ */
+export function unitCountWords(quantity: number, unit: string): string {
+  const u = unit.trim().toLowerCase();
+  if (u === "each") return `${quantity}`;
+  return `${quantity} ${u.replace(/_/g, " ")}${quantity === 1 ? "" : "s"}`;
+}
+
+/** One of a unit in words, for "how many bottles are in a …": "split case". */
+export function oneUnitWord(unit: string): string {
+  return unit.trim().toLowerCase().replace(/_/g, " ");
+}
+
 export function describeAgreedPrice(input: {
   price: number | null | undefined;
   stated: StatedPriceUnit | null;
@@ -221,7 +249,7 @@ export function describeAgreedPrice(input: {
     pricePackSize > 1
       ? ` (${pricePackSize} bottles)`
       : "";
-  return `${money} per ${priceUom}${pack}`;
+  return `${money} ${perUnitWords(priceUom)}${pack}`;
 }
 
 export type PerBottleResolution =
