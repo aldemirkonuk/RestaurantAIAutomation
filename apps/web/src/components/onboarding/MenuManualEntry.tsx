@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Plus, Trash2, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
 import { importMenu, type WineExtractItem, type MenuImportSuccess } from '../../services/api/menus'
+import { readTypedPrice } from '../../lib/typedPrice'
 
 /**
  * What a typed line is. Drink values are exactly the gateway's
@@ -28,9 +29,22 @@ export const LINE_KINDS: ReadonlyArray<{ label: string; value: string }> = [
   { label: 'Food', value: 'food' },
 ]
 
-interface WineRow extends WineExtractItem {
+/**
+ * A typed line. Prices stay the text the person typed until Import reads them
+ * (`readTypedPrice`): a `type=number` box could not take "24,50" in a house
+ * that writes a decimal comma (onboarding r22 D6).
+ */
+interface WineRow extends Omit<WineExtractItem, 'by_glass_price' | 'bottle_price'> {
   _id: number
+  glass: string
+  bottle: string
 }
+
+type PriceField = 'glass' | 'bottle'
+type TextField = 'name' | 'producer' | 'vintage' | 'region' | PriceField
+
+/** The box a refused price came from, by row and field. */
+const refusalKey = (id: number, field: PriceField) => `${id}:${field}`
 
 let rowCounter = 0
 
@@ -41,8 +55,8 @@ function emptyRow(): WineRow {
     producer: '',
     vintage: '',
     region: '',
-    by_glass_price: undefined,
-    bottle_price: undefined,
+    glass: '',
+    bottle: '',
     category: '',
   }
 }
@@ -63,15 +77,20 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [validationError, setValidationError] = useState<string | null>(null)
+  // Price boxes Import refused, so each one says it is wrong where it stands.
+  const [refused, setRefused] = useState<Map<string, string>>(new Map())
 
-  const updateRow = (id: number, field: keyof WineRow, value: string) => {
-    setRows((prev) =>
-      prev.map((row) =>
-        row._id === id
-          ? { ...row, [field]: field.includes('price') ? (value === '' ? undefined : parseFloat(value)) : value }
-          : row
-      )
-    )
+  const updateRow = (id: number, field: TextField, value: string) => {
+    setRows((prev) => prev.map((row) => (row._id === id ? { ...row, [field]: value } : row)))
+    if (field === 'glass' || field === 'bottle') {
+      const key = refusalKey(id, field)
+      setRefused((prev) => {
+        if (!prev.has(key)) return prev
+        const next = new Map(prev)
+        next.delete(key)
+        return next
+      })
+    }
   }
 
   const setKind = (id: number, kind: string) => {
@@ -81,7 +100,7 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
           ? kind === 'food'
             ? // A dish has one price, kept on its menu line the way a read menu keeps
               // "Tiramisu 9" (bottle_price, menus.service.ts); a glass price has no meaning for it.
-              { ...row, category: kind, by_glass_price: undefined }
+              { ...row, category: kind, glass: '' }
             : { ...row, category: kind }
           : row
       )
@@ -104,13 +123,37 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
       return
     }
 
+    // Every price is read before anything is sent; one refused box sends nothing.
+    const nextRefused = new Map<string, string>()
+    const read = validRows.map((row) => {
+      const glass = row.category === 'food' ? { value: null } : readTypedPrice(row.glass)
+      const bottle = readTypedPrice(row.bottle)
+      if ('refused' in glass) nextRefused.set(refusalKey(row._id, 'glass'), glass.refused)
+      if ('refused' in bottle) nextRefused.set(refusalKey(row._id, 'bottle'), bottle.refused)
+      return {
+        row,
+        glass: 'value' in glass ? glass.value : null,
+        bottle: 'value' in bottle ? bottle.value : null,
+      }
+    })
+    setRefused(nextRefused)
+    if (nextRefused.size > 0) {
+      const n = nextRefused.size
+      setValidationError(
+        `${n === 1 ? 'One price' : `${n} prices`} could not be read. Fix ${n === 1 ? 'it' : 'them'} below; nothing was imported.`,
+      )
+      return
+    }
+
     setLoading(true)
     setError(null)
     try {
-      const items: WineExtractItem[] = validRows.map(({ _id: _discard, category, ...rest }) => {
+      const items: WineExtractItem[] = read.map(({ row, glass, bottle }) => {
+        const { _id: _discard, category, glass: _g, bottle: _b, ...rest } = row
         const item: WineExtractItem = { ...rest }
         if (category) item.category = category
-        if (category === 'food') delete item.by_glass_price
+        if (glass !== null && category !== 'food') item.by_glass_price = glass
+        if (bottle !== null) item.bottle_price = bottle
         for (const key of Object.keys(item) as Array<keyof WineExtractItem>) {
           if (item[key] === undefined) delete item[key]
         }
@@ -125,16 +168,44 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
     }
   }
 
+  // A text box, not type=number: "24,50" is typed as it is written (D6). The
+  // decimal keypad still opens on a phone.
+  const priceBox = (row: WineRow, field: PriceField, label: string, placeholder: string) => {
+    const why = refused.get(refusalKey(row._id, field))
+    const errorId = `menu-line-${row._id}-${field}-error`
+    return (
+      <>
+        <input
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          aria-label={label}
+          aria-invalid={why ? true : undefined}
+          aria-describedby={why ? errorId : undefined}
+          value={row[field]}
+          onChange={(e) => updateRow(row._id, field, e.target.value)}
+          placeholder={placeholder}
+          className={`w-full px-2 py-1.5 rounded-lg border ${why ? 'border-red-400' : 'border-transparent'} hover:border-gray-200 focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20 text-sm transition-colors`}
+        />
+        {why && (
+          <span id={errorId} className="block px-2 text-xs text-red-600">
+            {why}
+          </span>
+        )}
+      </>
+    )
+  }
+
   return (
     <div className="rounded-2xl border border-gray-200 bg-gray-50 p-6">
       {error && (
-        <div className="mb-4 flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+        <div role="alert" className="mb-4 flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
           <RotateCcw className="w-4 h-4 flex-shrink-0" />
           <span>{error}</span>
         </div>
       )}
       {validationError && (
-        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
+        <div role="alert" className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-700">
           {validationError}
         </div>
       )}
@@ -161,6 +232,7 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
                 <td className="px-2 py-1.5">
                   <input
                     type="text"
+                    aria-label={`Name of line ${idx + 1}`}
                     value={row.name}
                     onChange={(e) => updateRow(row._id, 'name', e.target.value)}
                     placeholder={idx === 0 ? 'e.g. Château Margaux 2018 or Negroni' : 'Name on the menu'}
@@ -184,6 +256,7 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
                 <td className="px-2 py-1.5">
                   <input
                     type="text"
+                    aria-label={`Producer of line ${idx + 1}`}
                     value={row.producer ?? ''}
                     onChange={(e) => updateRow(row._id, 'producer', e.target.value)}
                     placeholder="Château Margaux"
@@ -193,6 +266,7 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
                 <td className="px-2 py-1.5">
                   <input
                     type="text"
+                    aria-label={`Vintage of line ${idx + 1}`}
                     value={row.vintage ?? ''}
                     onChange={(e) => updateRow(row._id, 'vintage', e.target.value)}
                     placeholder="2018"
@@ -202,6 +276,7 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
                 <td className="px-2 py-1.5">
                   <input
                     type="text"
+                    aria-label={`Region of line ${idx + 1}`}
                     value={row.region ?? ''}
                     onChange={(e) => updateRow(row._id, 'region', e.target.value)}
                     placeholder="Bordeaux, France"
@@ -210,51 +285,28 @@ export function MenuManualEntry({ onSuccess, currency }: MenuManualEntryProps) {
                 </td>
                 {row.category === 'food' ? (
                   <td colSpan={2} className="px-2 py-1.5">
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      aria-label={`Price of line ${idx + 1}`}
-                      value={row.bottle_price ?? ''}
-                      onChange={(e) => updateRow(row._id, 'bottle_price', e.target.value)}
-                      placeholder="24.00"
-                      className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20 text-sm transition-colors"
-                    />
+                    {priceBox(row, 'bottle', `Price of line ${idx + 1}`, '24.00')}
                     <span className="block px-2 text-xs text-gray-400">The dish's price stays on the menu; no stock is made for it.</span>
                   </td>
                 ) : (
                   <>
                 <td className="px-2 py-1.5">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={row.by_glass_price ?? ''}
-                    onChange={(e) => updateRow(row._id, 'by_glass_price', e.target.value)}
-                    placeholder="14.00"
-                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20 text-sm transition-colors"
-                  />
+                  {priceBox(row, 'glass', `Glass price of line ${idx + 1}`, '14.00')}
                 </td>
                 <td className="px-2 py-1.5">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={row.bottle_price ?? ''}
-                    onChange={(e) => updateRow(row._id, 'bottle_price', e.target.value)}
-                    placeholder="68.00"
-                    className="w-full px-2 py-1.5 rounded-lg border border-transparent hover:border-gray-200 focus:border-[#1A5E6B] focus:outline-none focus:ring-2 focus:ring-[#1A5E6B]/20 text-sm transition-colors"
-                  />
+                  {priceBox(row, 'bottle', `Bottle price of line ${idx + 1}`, '68.00')}
                 </td>
                   </>
                 )}
                 <td className="px-2 py-1.5">
                   <button
+                    type="button"
+                    aria-label={`Remove line ${idx + 1}`}
                     onClick={() => removeRow(row._id)}
                     disabled={rows.length === 1}
                     className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 aria-hidden="true" className="w-4 h-4" />
                   </button>
                 </td>
               </tr>
