@@ -63,10 +63,30 @@ describe("bookAtTheDoor and the order's own door (r24)", () => {
     expect(res.ok && res.value.booked[0].delta).toBe(0);
   });
 
-  it("a failed read of the order's door books nothing", async () => {
-    db.answers.inventory_transactions = { data: null, error: { message: "boom" } };
+  it("a failed read of the order's door books nothing, though the delivery's own read worked", async () => {
+    db.answers.inventory_transactions = { data: [], error: null };
+    // Only the order's-door read (the one filtered `.is(delivery_id, null)`) fails.
+    const base = db.client.getClient;
+    db.client.getClient = () => {
+      const c = base();
+      return {
+        ...c,
+        from: (t: string) => {
+          const chain = c.from(t) as Record<string, (...a: unknown[]) => unknown>;
+          if (t !== "inventory_transactions") return chain;
+          const is = chain.is;
+          chain.is = (...a: unknown[]) => {
+            chain.then = (resolve: (v: unknown) => unknown) =>
+              Promise.resolve({ data: null, error: { message: "boom" } }).then(resolve);
+            return is(...a);
+          };
+          return chain;
+        },
+      };
+    };
     const res = await service.bookAtTheDoor(REST, DEL, DOC, "u1");
-    expect(res).toMatchObject({ ok: false });
+    expect(res).toMatchObject({ ok: false, status: 503 });
+    if (!res.ok) expect(res.error).toContain("'s own door already booked could not be read (boom)");
     expect(db.rpcCalls.filter((c) => c.fn === "apply_stock_movement")).toEqual([]);
   });
 
