@@ -213,7 +213,9 @@ export class CalendarController {
         dto,
       );
     } catch (error) {
-      if (error.status === 404) {
+      // A 404, or a refusal the service already worded (an end before the
+      // start), keeps its own status and sentence instead of a generic 500.
+      if (error instanceof HttpException || error.status === 404) {
         throw error;
       }
       this.logger.error({

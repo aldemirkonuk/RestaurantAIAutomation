@@ -269,10 +269,11 @@ export class UpdateCalendarEventDto {
   @IsOptional()
   eventDate?: string;
 
-  @ApiPropertyOptional()
+  /** `null` clears the end date: the entry becomes a one-day entry again. */
+  @ApiPropertyOptional({ nullable: true })
   @IsDateString()
   @IsOptional()
-  eventDateEnd?: string;
+  eventDateEnd?: string | null;
 
   @ApiPropertyOptional()
   @IsBoolean()
