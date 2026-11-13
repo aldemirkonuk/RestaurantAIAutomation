@@ -181,9 +181,13 @@ export class McpToolReadersService {
     args: { limit?: number; categories?: string[] },
   ): Promise<ToolPayload> {
     const readAt = this.now();
+    // Open as the financial reader below is (ADR 0298 decisions 9 and 9a;
+    // whether the MCP clause stands is OD-245): a days-of-stock goal's pace
+    // stays in.
     const stored = await this.insightGenerator.getStored(restaurantId, {
       ...(args.limit ? { limit: Math.min(100, Math.max(1, args.limit)) } : {}),
       ...(args.categories?.length ? { categories: args.categories } : {}),
+      withSales: true,
     });
     const rows = Array.isArray(stored) ? stored.length : 0;
 

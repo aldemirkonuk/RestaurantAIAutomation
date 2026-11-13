@@ -66,12 +66,12 @@ choose (`teams/product.md:108-114`).
 | Push and websocket infrastructure | [[engineering-charter]] *(Platform)* | `apps/api-gateway/src/push/expo-push.service.ts`, `websocket/websocket.gateway.ts` exist; we specify the routing, not the transport |
 | The waiter-facing screen and its motion | [[design-charter]] | We own *who is notified and how fast*; they own what it looks and feels like |
 | Guest identity on the check | [[guest-identity-consent-charter]] | We route to staff. A table is not a guest, and we never resolve one to the other |
-| Staff performance management | — **nobody, deliberately** | Check-in data is a service signal, not an HR record. See below |
+| Staff performance management | — **nobody, deliberately** | Check-in data is a service signal, not an HR record. See below [2026-10-31: to change for per-waiter floor figures under Proposed ADR 0346, not in force until it locks § Decision: his *"EVERYTHING"* (AskUserQuestion asked 2026-10-31T02:52:37Z, Q2) ships scores, rankings (a sort only, no "#1", medal or "bottom": his pick, § Decision › D5), reports and CSV. Owners and managers only is his *"Nothing for now"* for the waiter's phone (AskUserQuestion asked 2026-10-31T03:03:50Z, Q3) and the executor's reading of it for every surface (§ Decision › D2).] |
 
 **The explicit non-goal that protects the mandate:** this team does **not** produce staff
 performance scores, rankings, or disciplinary evidence. If check-in timing becomes a
 management stick, the data becomes adversarial and the product stops working. That is a
-design constraint, not a nicety.
+design constraint, not a nicety. [2026-10-31: to change under ADR 0346 § Decision (Proposed, not in force until it locks): reversed by the founder (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2). Figures by name go to owners and managers only; a waiter's phone shows none (*"Nothing for now"*, AskUserQuestion asked 2026-10-31T03:03:50Z, Q3). The management-stick risk stays: ADR 0346 § The risk the charter named, and what answers it says its mitigations do not stop a manager using a true figure as a stick.]
 
 ## Metrics it moves
 
@@ -124,12 +124,12 @@ else here.
 
 ## Entry trigger
 
-This team is **gated**. It stands up in two stages, each with an explicit trigger:
+This team is **gated**. It stands up in two stages, each with an explicit trigger: [2026-10-31: to change under Proposed [[0345-floor-checker-is-ported-into-mudavym|ADR 0345]], not in force until it locks, § Executor's calls › The service-floor charter's staged entry: the executor's call under the founder's 2026-10-31T16:57:09Z delegation (OD-242), not his pick; the port is ADR 0345. He picked *"Port in-SPA (Recommended)"* (AskUserQuestion asked 2026-10-31T03:03:50Z, Q1) and, for Food-up, *"Include it (Recommended)"* over "Leave it out for now", whose option text says "the food-up alert waits for a kitchen-ready event from the POS" (AskUserQuestion asked 2026-10-31T02:52:37Z, Q4), both 2026-10-30. Only Stage 2's yield follows from that pick. The floor runs on its own taps and Food-up is a tap, so neither Stage 1 nor Stage 2 waits for a provider. No question on these triggers was asked.]
 
 1. **Stage 0 — input audit (unblocked, start now).** Per provider in
    `apps/api-gateway/src/pos-hub/pos-provider.registry.ts`, does it emit `table_id` and
    `server_name`, and does it emit any kitchen-ready signal? Deliverable is a table. No
-   product code.
+   product code. [2026-10-31: to stop gating once ADR 0345 locks, by the executor's call under the founder's 2026-10-31T16:57:09Z delegation, as at `:127`. Its table still feeds what needs a till feed by its own option text (automatic Paid from a closed check, till vs floor mismatch; OD-64), the till-name links of ADR 0345 § Engineering rules E1-E9 › E4, and pick 9's tray (*"Builder starts from the till"*, option text "Tables the till already taught wait in a tray to be named, placed and sectioned.", AskUserQuestion asked 2026-10-31T03:41:53Z, Q3), as it says which providers send table words. It gates none of them.]
 2. **Stage 1 — check-in timing.** Trigger: **one non-simulator provider emitting
    `table_id` + `server_name` for a real restaurant.** This slice needs no kitchen-ready
    event and is the honest v0.

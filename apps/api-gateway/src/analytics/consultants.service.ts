@@ -140,7 +140,10 @@ export class ConsultantsService {
         this.analyticsService.getFinancialSummary(restaurantId, 0, gate),
         this.analyticsService.getRiskProfile(restaurantId, gate),
         this.analyticsService.getInventoryScience(restaurantId),
-        this.insightGenerator.generate(restaurantId, { maxPerCategory: 4 }),
+        this.insightGenerator.generate(restaurantId, {
+          maxPerCategory: 4,
+          withSales: gate.withSales === true,
+        }),
       ]);
     const ok = (r: PromiseSettledResult<any>) =>
       r.status === "fulfilled" ? r.value : null;

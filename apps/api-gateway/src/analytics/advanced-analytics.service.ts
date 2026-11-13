@@ -839,7 +839,10 @@ export class AdvancedAnalyticsService {
       this.getMenuEngineering(restaurantId),
       this.getSeasonality(restaurantId),
       this.getCashflow(restaurantId),
-      this.insightGenerator.getStored(restaurantId, { limit: 8 }),
+      this.insightGenerator.getStored(restaurantId, {
+        limit: 8,
+        withSales: gate.withSales === true,
+      }),
       this.goalsService.listGoals(restaurantId, "active", gate),
     ]);
     const ok = (r: PromiseSettledResult<any>) =>
