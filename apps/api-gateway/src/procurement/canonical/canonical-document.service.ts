@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { receivedAtTheDoor } from "./door-received";
 import { DatabaseService } from "../../database/database.service";
 import { normalizeUom, Uom } from "../documents/document-types";
 import { ParsedDocument } from "../documents/parsed-document";
@@ -250,6 +251,8 @@ export class CanonicalDocumentService {
   async buildFromDocumentId(
     restaurantId: string,
     documentId: string,
+    /** r24: read what the door counted of this paper into `received`. */
+    opts?: { door?: boolean },
   ): Promise<ReadResult<CanonicalDocument>> {
     const notes: string[] = [];
     let docRead: RawRead = (await this.db
@@ -321,6 +324,22 @@ export class CanonicalDocumentService {
     const lineRows = (lineRead.data ?? []) as unknown as LineRow[];
 
     let parsed = this.toParsedDocument(row, lineRows);
+
+    // r24: the door's count of THIS paper, by its own line numbers. A failed
+    // read is said, never shown as "nobody counted" without a word.
+    let spine: Record<number, { received: number }> | undefined;
+    if (opts?.door) {
+      const door = await receivedAtTheDoor(this.db.getClient(), restaurantId, documentId);
+      if (!door.ok)
+        notes.push(`What the door counted of this paper ${door.error}, so Received may read "not counted" where it was counted.`);
+      else if (door.value.size) {
+        spine = {};
+        lineRows.forEach((l, i) => {
+          const n = l.line_no == null ? undefined : door.value.get(l.line_no);
+          if (n !== undefined) spine![i] = { received: n };
+        });
+      }
+    }
 
     /**
      * The corrections a human has appended (ADR 0104 D5).
@@ -432,6 +451,7 @@ export class CanonicalDocumentService {
           }
         : {}),
       resolvedLines: resolved.value,
+      ...(spine ? { spine } : {}),
     });
 
     /**

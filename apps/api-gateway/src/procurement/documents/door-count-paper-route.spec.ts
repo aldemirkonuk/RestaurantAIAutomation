@@ -108,3 +108,21 @@ describe("door count of a paper (r24)", () => {
     expect(h.calls.create[0]).toMatchObject({ orderId: null, documents: [{ documentId: "door-1", role: "door_count" }] });
   });
 });
+
+describe("the paper's own sheet reads its door count (r24)", () => {
+  it("GET :id/canonical asks the builder for the door", async () => {
+    const calls: unknown[][] = [];
+    const canonical = {
+      buildFromDocumentId: async (...a: unknown[]) => {
+        calls.push(a);
+        return { ok: false, error: "document not found" };
+      },
+    };
+    const none = {} as never;
+    const controller = new DocumentsController(
+      none, none, canonical as never, none, none, none, none, none, none, none, none,
+    );
+    await expect(controller.canonicalDocument(PAPER, user as never)).rejects.toMatchObject({ status: 404 });
+    expect(calls).toEqual([[HOUSE, PAPER, { door: true }]]);
+  });
+});
