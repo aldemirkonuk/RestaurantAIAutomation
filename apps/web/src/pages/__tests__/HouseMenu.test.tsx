@@ -51,7 +51,7 @@ describe('HouseMenu: the first proof keeps its places', () => {
     ])
     page()
     const count = screen.getByRole('group', { name: 'The reading count' })
-    expect(count).toHaveTextContent('2read0in ink1in pencil')
+    expect(count).toHaveTextContent('2read0in ink1in pencil1set aside')
     expect(screen.getByText(/1 kitchen line set aside/)).toBeInTheDocument()
   })
 

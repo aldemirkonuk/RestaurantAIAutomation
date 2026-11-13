@@ -24,6 +24,13 @@ const sectionOrder = [
   'sake',
 ]
 
+/**
+ * A line the owner placed or added on this page. The flag lives only in the
+ * proof kept in this session (saveProofItems), never on the gateway: it is
+ * what lets the key say "set by you" instead of claiming the read set it.
+ */
+type ProofLine = MenuImportReviewItem & { setByHand?: boolean }
+
 function markFor(item: MenuImportReviewItem): 'ink' | 'pencil' | 'ring' {
   if (!lineNeedsPencil(item)) return 'ink'
   return item.category && item.category.toLowerCase() !== 'unknown' ? 'pencil' : 'ring'
@@ -55,7 +62,7 @@ function price(item: MenuImportReviewItem) {
 export default function HouseMenu() {
   const navigate = useNavigate()
   const proof = useMemo(readProof, [])
-  const [items, setItems] = useState(proof?.items ?? [])
+  const [items, setItems] = useState<ProofLine[]>(proof?.items ?? [])
   const [open, setOpen] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
   const [showOriginal, setShowOriginal] = useState(false)
@@ -116,6 +123,15 @@ export default function HouseMenu() {
   }
 
   const pencilled = drinkItems.filter((item) => lineNeedsPencil(item)).length
+  // Walk 2026-11-12 (r13): "3 READ" sat over 2 in ink + 0 in pencil, because
+  // the kitchen line was counted as read but shown in neither. The cells now
+  // add up on their own: read = in ink + in pencil + set aside.
+  const inkLines = drinkItems.filter((item) => markFor(item) === 'ink')
+  const inkByHand = inkLines.some((item) => item.setByHand)
+  const inkByRead = inkLines.some((item) => !item.setByHand)
+  // The same rule the crop sentence uses: no page kept and no failure means
+  // the lines were typed, so "set as read" would claim a reading that never ran.
+  const typed = proof.source?.kept === false && !proof.source.failure
   // "Not on this menu" is only said once a line has a section: with every
   // line still needing a place, the read named no section at all, and
   // listing Wine, Red wine, White wine as absent claimed what it did not see.
@@ -137,7 +153,7 @@ export default function HouseMenu() {
       setItems((current) =>
         current.map((row) =>
           row.menuItemId === item.menuItemId
-            ? { ...row, category, needsReview: false, matched: true }
+            ? { ...row, category, needsReview: false, matched: true, setByHand: true }
             : row,
         ),
       )
@@ -159,7 +175,7 @@ export default function HouseMenu() {
       const created = await addMenuItem(proof.menuId, { name: addName.trim(), category })
       setItems((current) => [
         ...current,
-        { ...created, category, needsReview: false, matched: true },
+        { ...created, category, needsReview: false, matched: true, setByHand: true },
       ])
       setAddName('')
       setAdding(false)
@@ -193,17 +209,27 @@ export default function HouseMenu() {
             {showOriginal ? 'Hide original' : 'Show my original'}
           </button>
         ) : null}
-        <div role="group" aria-label="The reading count" className="mt-10 grid grid-cols-3 border-y border-[#211f1b]/20 py-5">
+        <div
+          role="group"
+          aria-label="The reading count"
+          className={`mt-10 grid border-y border-[#211f1b]/20 py-5 ${kitchen.length > 0 ? 'grid-cols-2 gap-y-4 sm:grid-cols-4' : 'grid-cols-3'}`}
+        >
           <p><strong className="block font-serif text-3xl">{items.length}</strong><span className="text-xs uppercase tracking-wider">read</span></p>
           <p><strong className="block font-serif text-3xl">{drinkItems.length - pencilled}</strong><span className="text-xs uppercase tracking-wider">in ink</span></p>
           <p><strong className="block font-serif text-3xl">{pencilled}</strong><span className="text-xs uppercase tracking-wider">in pencil</span></p>
+          {kitchen.length > 0 && (
+            <p><strong className="block font-serif text-3xl">{kitchen.length}</strong><span className="text-xs uppercase tracking-wider">set aside</span></p>
+          )}
         </div>
         {/* Walk 2026-11-12: "set" and "pencilled" were never explained, and
             nothing said a line could be opened. ADR 0213 F6 keeps the ink /
             pencil words; this key says what each mark means and what to do. */}
         <ul aria-label="What the marks mean" className="mt-4 space-y-1 text-sm text-[#6d685f]">
-          {drinkItems.some((item) => markFor(item) === 'ink') && (
-            <li><span aria-hidden className="inline-block w-5 font-serif text-[#1a5e6b]">·</span>In ink: set as read.</li>
+          {inkByRead && (
+            <li><span aria-hidden className="inline-block w-5 font-serif text-[#1a5e6b]">·</span>{typed ? 'In ink: set as you typed it.' : 'In ink: set as read.'}</li>
+          )}
+          {inkByHand && (
+            <li><span aria-hidden className="inline-block w-5 font-serif text-[#1a5e6b]">·</span>In ink: set by you.</li>
           )}
           {drinkItems.some((item) => markFor(item) === 'pencil') && (
             <li><span aria-hidden className="inline-block w-5 font-serif text-[#1a5e6b]">⌁</span>In pencil: worth a second look. Tap the line to check it.</li>
