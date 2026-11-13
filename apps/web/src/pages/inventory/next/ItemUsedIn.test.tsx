@@ -419,8 +419,8 @@ describe('In drink recipes, with their cards (the same as a dish)', () => {
     expect(dt('pour-cost')).not.toMatch(/%/);
   });
 
-  it('staff see only how much of the good a serve takes', () => {
-    mountDrinks(drinksReady(drink({ price: null, cost: null })), { canManage: false });
+  it('staff see only how much of the good a serve takes, even if money came with the read', () => {
+    mountDrinks(drinksReady(drink()), { canManage: false });
     expect(dt('per-serve')).toContain('50 ml');
     expect(screen.queryByTestId('ivd-drink-c1-cost')).toBeNull();
     expect(screen.queryByTestId('ivd-drink-c1-price')).toBeNull();
