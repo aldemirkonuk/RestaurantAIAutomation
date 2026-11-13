@@ -129,19 +129,25 @@ describe("CalendarService.listEvents — repeating series (sweep row 16)", () =>
     // …except rows that do not repeat.
     expect(ev).toContainEqual({
       method: "or",
-      args: ['start_date.gte."2026-09-01",is_recurring.eq.true'],
+      args: ['start_date.gte."2026-09-01",end_date.gte."2026-09-01",is_recurring.eq.true'],
     });
     expect(ev).toContainEqual({ method: "lte", args: ["start_date", "2026-09-30"] });
   });
 
-  it("keeps the strict lower bound for callers that count rows as dated entries", async () => {
+  it("keeps repeating rows out for callers that count rows as dated entries", async () => {
     // house-day, /calendar/today and /calendar/upcoming count what comes back;
-    // a series master dated last month must not appear in "today".
+    // a series master dated last month must not appear in "today". An entry
+    // still running inside the window does (QA round 4 B5): its end date
+    // meets the lower bound.
     const db = fakeDb({ calendar_events: { data: [], error: null, count: 0 } });
     await service(db).listEvents("r-1", { startDate: "2026-09-01", endDate: "2026-09-30" });
     const ev = db.calls.calendar_events;
-    expect(ev).toContainEqual({ method: "gte", args: ["start_date", "2026-09-01"] });
-    expect(ev.some((c) => c.method === "or")).toBe(false);
+    expect(ev).toContainEqual({
+      method: "or",
+      args: ['start_date.gte."2026-09-01",end_date.gte."2026-09-01"'],
+    });
+    expect(ev).not.toContainEqual({ method: "gte", args: ["start_date", "2026-09-01"] });
+    expect(ev).toContainEqual({ method: "lte", args: ["start_date", "2026-09-30"] });
   });
 
   it("fails the read when the rules cannot be read — never a series that stops repeating", async () => {

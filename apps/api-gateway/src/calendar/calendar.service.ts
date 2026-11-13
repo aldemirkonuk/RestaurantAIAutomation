@@ -378,12 +378,20 @@ export class CalendarService {
     // for the lower bound to spare repeating rows (sweep 2026-09-28 row 16).
     // The value is quoted for PostgREST's `or` grammar; `@IsDateString`
     // already refuses commas.
+    //
+    // An entry that began before the window and is still running inside it
+    // (a closure from the 28th to the 3rd, read as the new month) belongs to
+    // the window too, so the lower bound is met by the start OR the end date
+    // (QA round 4 B5). A row with no end date is a one-day entry; its
+    // `end_date.gte` term is null and only its start date decides.
     if (query.startDate && query.includeEarlierSeries) {
       supabaseQuery = supabaseQuery.or(
-        `start_date.gte."${query.startDate}",is_recurring.eq.true`,
+        `start_date.gte."${query.startDate}",end_date.gte."${query.startDate}",is_recurring.eq.true`,
       );
     } else if (query.startDate) {
-      supabaseQuery = supabaseQuery.gte("start_date", query.startDate);
+      supabaseQuery = supabaseQuery.or(
+        `start_date.gte."${query.startDate}",end_date.gte."${query.startDate}"`,
+      );
     }
     if (query.endDate) {
       supabaseQuery = supabaseQuery.lte("start_date", query.endDate);
@@ -577,8 +585,13 @@ export class CalendarService {
       updatePayload.description = dto.description;
     if (dto.eventType !== undefined) updatePayload.event_type = dto.eventType;
     if (dto.eventDate !== undefined) updatePayload.start_date = dto.eventDate;
-    if (dto.eventDateEnd !== undefined)
+    // Both copies of the end date are written. The date-sync trigger copies
+    // `event_date_end` back into a NULL `end_date`, so clearing only
+    // `end_date` would leave the old end standing.
+    if (dto.eventDateEnd !== undefined) {
       updatePayload.end_date = dto.eventDateEnd;
+      updatePayload.event_date_end = dto.eventDateEnd;
+    }
     if (dto.allDay !== undefined) updatePayload.all_day = dto.allDay;
     if (dto.eventTime !== undefined) updatePayload.start_time = dto.eventTime;
     if (dto.eventTimeEnd !== undefined)
@@ -589,6 +602,19 @@ export class CalendarService {
       updatePayload.reminder_enabled = dto.reminderEnabled;
     if (dto.reminderDaysBefore !== undefined)
       updatePayload.reminder_days_before = dto.reminderDaysBefore;
+
+    // The entry as it will stand: a new start against the stored end, or a
+    // new end against the stored start, is the same impossible entry the
+    // create path refuses (QA round 4 B9), and the window expander would drop
+    // it unseen.
+    const nextStart = String(dto.eventDate ?? existing.eventDate ?? "").slice(0, 10);
+    const nextEnd =
+      dto.eventDateEnd !== undefined ? dto.eventDateEnd : existing.eventDateEnd;
+    if (nextEnd && nextStart && String(nextEnd).slice(0, 10) < nextStart) {
+      throw new BadRequestException(
+        "An entry cannot end before the day it starts.",
+      );
+    }
 
     // Handle recurring event updates
     if (existing.isRecurring && existing.parentEventId && dto.updateScope) {
@@ -642,7 +668,10 @@ export class CalendarService {
               : existing.description,
           event_type: dto.eventType ?? existing.eventType,
           start_date: occurrenceDate,
-          end_date: dto.eventDateEnd ?? existing.eventDateEnd ?? null,
+          end_date:
+            dto.eventDateEnd !== undefined
+              ? dto.eventDateEnd
+              : (existing.eventDateEnd ?? null),
           all_day: dto.allDay !== undefined ? dto.allDay : existing.allDay,
           start_time: dto.eventTime ?? existing.eventTime ?? null,
           end_time: dto.eventTimeEnd ?? existing.eventTimeEnd ?? null,
