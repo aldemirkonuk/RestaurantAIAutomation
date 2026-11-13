@@ -145,7 +145,7 @@ describe("the orders routes join the vendor's name", () => {
     // ONE statement against the orders table; the other reads on this route
     // are the ledger's (ADR 0192), which the received block below covers.
     expect(orderSelects).toHaveLength(1);
-    expect(orderSelects[0]).toContain("provider:provider_id(name)");
+    expect(orderSelects[0]).toContain("provider:provider_id(name, deleted_at, is_active)");
     expect(res.orders[0].providerName).toBe("Vinifera Imports");
   });
 
@@ -154,12 +154,12 @@ describe("the orders routes join the vendor's name", () => {
     expect((await service(detail.db).getOrder("rest-1", "ord-1")).providerName).toBe(
       "Vinifera Imports",
     );
-    expect(detail.selects[0]).toContain("provider:provider_id(name)");
+    expect(detail.selects[0]).toContain("provider:provider_id(name, deleted_at, is_active)");
 
     const pending = makeDb({ data: [orderRow({ status: "APPROVAL_NEEDED" })] });
     const rows = await service(pending.db).listPendingOrders("rest-1");
     expect(rows[0].providerName).toBe("Vinifera Imports");
-    expect(pending.selects[0]).toContain("provider:provider_id(name)");
+    expect(pending.selects[0]).toContain("provider:provider_id(name, deleted_at, is_active)");
   });
 
   it.each([
@@ -204,6 +204,40 @@ describe("the orders routes join the vendor's name", () => {
     const joinedWire = JSON.parse(JSON.stringify(svc.mapOrderRow(joined)));
     expect("providerName" in joinedWire).toBe(true);
     expect(joinedWire.providerName).toBeNull();
+  });
+});
+
+describe("the orders routes say when the vendor was removed (r27)", () => {
+  it.each([
+    ["a live vendor", { name: "V", deleted_at: null, is_active: true }, false],
+    ["a NULL is_active, which is live (#1283's rule)", { name: "V", deleted_at: null, is_active: null }, false],
+    ["a vendor switched off", { name: "V", deleted_at: null, is_active: false }, true],
+    ["a vendor deleted", { name: "V", deleted_at: "2026-11-13T09:00:00Z", is_active: true }, true],
+    ["a one-element array of a removed vendor", [{ name: "V", deleted_at: "2026-11-13T09:00:00Z", is_active: false }], true],
+    ["no vendor row (the FK is null)", null, null],
+    ["an embed with no flags", { name: "V" }, null],
+  ])("the list reads %s", async (_label, provider, expected) => {
+    const { db } = makeDb({ data: [orderRow({ provider })], count: 1 });
+    const res = await service(db).listOrders("rest-1", {} as any);
+    const wire = JSON.parse(JSON.stringify(res.orders[0]));
+    expect("vendorRemoved" in wire).toBe(true);
+    expect(wire.vendorRemoved).toBe(expected);
+  });
+
+  it("the detail route and the pending queue say it too", async () => {
+    const removed = { name: "V", deleted_at: null, is_active: false };
+    const detail = makeDb({ data: orderRow({ provider: removed }) });
+    expect((await service(detail.db).getOrder("rest-1", "ord-1")).vendorRemoved).toBe(true);
+    const pending = makeDb({ data: [orderRow({ status: "APPROVAL_NEEDED", provider: removed })] });
+    expect((await service(pending.db).listPendingOrders("rest-1"))[0].vendorRemoved).toBe(true);
+  });
+
+  it("a route that does not read the flags sends NO vendorRemoved key", async () => {
+    const svc: any = service(makeDb({ data: null }).db);
+    const notRead: Record<string, unknown> = { ...orderRow(), provider_name: "V" };
+    delete notRead.provider;
+    const wire = JSON.parse(JSON.stringify(svc.mapOrderRow(notRead)));
+    expect("vendorRemoved" in wire).toBe(false);
   });
 });
 
