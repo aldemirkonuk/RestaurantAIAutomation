@@ -14,6 +14,12 @@ import {
   sourceWords,
   versionLabel,
 } from './MenuVersions';
+import { formatMoney } from '../../../lib/currency';
+
+vi.mock('../../../hooks/queries/useHouseCurrencyCode', () => ({ useHouseCurrencyCode: () => 'TRY' }));
+/** A price as a lira house writes it: the page routes every price through formatMoney. */
+const m = (n: number) => formatMoney(n, 'TRY');
+
 import {
   getMenuPlan,
   importMenu,
@@ -171,9 +177,9 @@ describe('the words the panel uses', () => {
         { menuItemId: 'l2', name: 'Soave', kind: 'glass', lockId: 'k2', lockedPrice: 9, lockedBy: 'u1', lockedAt: '2026-09-01T00:00:00Z' },
       ],
       returned: [{ menuItemId: 'l1', name: 'Barolo' }],
-    });
+    }, 'TRY');
     expect(s).toBe(
-      'This is now the current menu: 4 lines, 2 prices set from this menu, 1 held by a lock, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at 95.00); Soave (glass, locked at 9.00). Back on the menu with its lock still holding: Barolo.',
+      `This is now the current menu: 4 lines, 2 prices set from this menu, 1 held by a lock, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at ${m(95)}); Soave (glass, locked at ${m(9)}). Back on the menu with its lock still holding: Barolo.`,
     );
   });
 });
