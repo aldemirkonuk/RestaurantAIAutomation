@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { FileSpreadsheet, Upload, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
 import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
+import { fitPhotoForReading } from '../../lib/fitPhoto'
 import {
   DOCUMENT_ACCEPT,
   MAX_UPLOAD_BYTES,
@@ -163,16 +164,24 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
     reader.readAsText(file)
   }
 
-  /** Import one already-read file. */
+  /**
+   * Import one already-read file. A photo is fitted for the reader first
+   * (r28 gap 12): a phone photo went up whole, past the model's 5 MB. A PDF
+   * goes as it is. `image` is what the first proof can draw (null for a PDF).
+   */
   const importOne = async (opts: {
     scan: boolean
     base64: string | null
     csv: string | null
   }) => {
-    if (opts.scan) return importMenu('scan', { imageBase64: opts.base64! })
-    return opts.base64
-      ? importMenu('csv', { fileBase64: opts.base64 })
-      : importMenu('csv', { csvContent: opts.csv! })
+    if (opts.scan) {
+      const photo = await fitPhotoForReading(opts.base64!)
+      return { result: await importMenu('scan', { imageBase64: photo.base64 }), image: photo.dataUrl }
+    }
+    const result = opts.base64
+      ? await importMenu('csv', { fileBase64: opts.base64 })
+      : await importMenu('csv', { csvContent: opts.csv! })
+    return { result, image: null }
   }
 
   const readFile = (file: File) =>
@@ -209,18 +218,19 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
       // The file already read into state, then the rest of the queue — each as
       // its own request. One failure is reported but does not abandon the
       // files after it.
-      let result = await importOne({
+      const first = await importOne({
         scan: isScanFile,
         base64: fileBase64,
         csv: csvContent,
       })
+      let result = first.result
       const failures: string[] = []
 
       for (let i = 0; i < queue.length; i++) {
         const f = queue[i]
         setProgress({ done: i + 1, total, current: f.name })
         try {
-          result = await importOne(await readFile(f))
+          result = (await importOne(await readFile(f))).result
         } catch (err: any) {
           failures.push(
             `${f.name}: ${err?.response?.data?.message || err?.message || 'import failed'}`,
@@ -233,11 +243,7 @@ export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
           `${failures.length} of ${total} file(s) failed — ${failures.join('; ')}`,
         )
       }
-      const image =
-        isScanFile && fileBase64 && !/\.pdf$/i.test(fileName || '')
-          ? `data:image/jpeg;base64,${fileBase64}`
-          : null
-      onSuccess(result, { image })
+      onSuccess(result, { image: first.image })
     } catch (e: any) {
       setError(e?.response?.data?.message || e?.message || 'Import failed. Please try again.')
     } finally {

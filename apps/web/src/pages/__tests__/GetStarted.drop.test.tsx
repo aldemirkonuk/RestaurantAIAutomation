@@ -85,6 +85,16 @@ describe('GetStarted keeps what is dropped', () => {
     expect(screen.queryByTestId('file-box')).toBeNull()
   })
 
+  it('one dropped photo goes to the reader as bare base64, and the proof keeps it as a data URL', async () => {
+    // r28 gap 12 / onboarding audit G5: the data URL went whole, prefix and
+    // all, and the gateway hands that string to the model as base64.
+    render(page())
+    await drop([new File(['a'], 'menu.jpg', { type: 'image/jpeg' })])
+    await waitFor(() => expect(importMenu).toHaveBeenCalledWith('scan', { imageBase64: 'YQ==' }))
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/house/menu', { replace: true }))
+    expect(sessionStorage.getItem('mudavym:first-proof-source')).toBe('data:image/jpeg;base64,YQ==')
+  })
+
   it('choosing "Send a file" afresh starts with no dropped file', async () => {
     render(page())
     await drop([new File(['%PDF'], 'menu.pdf', { type: 'application/pdf' })])
