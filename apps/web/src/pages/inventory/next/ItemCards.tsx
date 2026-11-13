@@ -69,7 +69,7 @@ export function fmtQty(n: number, uom: string | null): string {
 }
 
 /** A cost is per kg or per l for a weighed or poured good: per g would read 0.01. */
-export function perUnit(wac: number, uom: string | null): { amount: number; per: string } {
+function perUnit(wac: number, uom: string | null): { amount: number; per: string } {
   if (uom === 'g') return { amount: wac * 1000, per: 'kg' };
   if (uom === 'ml') return { amount: wac * 1000, per: 'l' };
   if (uom === 'each') return { amount: wac, per: 'item' };

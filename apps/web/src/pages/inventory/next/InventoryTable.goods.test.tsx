@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { InvRow } from './useInventoryNextData';
-import InventoryTable, { type InventoryTableProps } from './InventoryTable';
+import InventoryTable, { goodUnit, type InventoryTableProps } from './InventoryTable';
 
 vi.mock('../command/HousePriceCell', () => ({
   HousePriceCell: ({ wineName }: { wineName: string }) => <button type="button">Change your price for {wineName}</button>,
@@ -93,5 +93,12 @@ describe('InventoryTable: goods read in their own unit', () => {
     const cell = screen.getByTestId('inv-row-f1').querySelector('[data-label="Your price"]')!;
     expect(cell.textContent).toBe('—');
     expect(cell.textContent).not.toContain('0');
+  });
+
+  it('says a counted good "each" and a poured one "a litre", never "a item" or "a l"', () => {
+    expect(goodUnit('each')).toEqual({ factor: 1, kept: 'kept by the piece', per: 'each' });
+    expect(goodUnit('ml')).toEqual({ factor: 1000, kept: 'kept in litres', per: 'a litre' });
+    expect(goodUnit('g')).toEqual({ factor: 1000, kept: 'kept in kg', per: 'a kg' });
+    expect(goodUnit('case').per).toBe('a case');
   });
 });

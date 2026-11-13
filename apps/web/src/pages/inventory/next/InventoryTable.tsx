@@ -19,7 +19,7 @@ import { HousePriceCell, type AdviceLoad } from '../command/HousePriceCell';
 import type { RowDropdownProps } from './RowDropdown';
 import { cellMoney, EM, fmtCount, fmtPace, noZoneWord, SEVERITY_GROUP, severity, typeLabel, type InvRow, type SortId } from './useInventoryNextData';
 import { NameHint } from './NameThisWine';
-import { fmtQty, perUnit } from './ItemCards';
+import { fmtQty } from './ItemCards';
 
 export interface InventoryTableProps extends Omit<RowDropdownProps, 'row'> {
   rows: InvRow[];
@@ -50,20 +50,33 @@ const COLUMNS = ['Title', 'Type', 'Zone', 'Live / shadow · par', 'Vel/day', 'Ru
 /** The headers that sort, and the sort each one sets. */
 const HEADER_SORT: Partial<Record<string, SortId>> = { Title: 'name', 'Vel/day': 'pace', Value: 'value' };
 
-/** The word for a unit a good is kept in: kg for weight, l for volume, item for each. */
+/**
+ * How the list says a good's unit (stored as whole g, ml or each, ADR 0070):
+ * a weighed good is kept and costed by the kg, a poured one by the litre, a
+ * counted one by the piece. Kept here, not borrowed from the drawer's cards,
+ * so the two can word their own lines without breaking each other.
+ */
+export function goodUnit(uom: string): { factor: number; kept: string; per: string } {
+  if (uom === 'g') return { factor: 1000, kept: 'kept in kg', per: 'a kg' };
+  if (uom === 'ml') return { factor: 1000, kept: 'kept in litres', per: 'a litre' };
+  if (uom === 'each') return { factor: 1, kept: 'kept by the piece', per: 'each' };
+  return { factor: 1, kept: `kept by the ${uom}`, per: `a ${uom}` };
+}
+
+/** The line that says what unit a good is kept in. */
 function unitWord(uom: string | null): string {
-  return uom === null ? EM : `kept in ${perUnit(0, uom).per}`;
+  return uom === null ? EM : goodUnit(uom).kept;
 }
 
 /** A food or supply is costed, not priced: the average cost a unit, or a dash when none is known (ADR 0051/0053). */
 function costCell(row: InvRow, uom: string | null, currency: RowDropdownProps['currency']) {
   // No recorded unit means no way to say what the cost is a: a dash, never a guessed bottle.
   if (row.wac === null || uom === null) return EM;
-  const u = perUnit(row.wac, uom);
+  const u = goodUnit(uom);
   return (
     <>
       <span className="iv-dim">cost </span>
-      {cellMoney(u.amount, currency)} a {u.per}
+      {cellMoney(row.wac * u.factor, currency)} {u.per}
     </>
   );
 }
