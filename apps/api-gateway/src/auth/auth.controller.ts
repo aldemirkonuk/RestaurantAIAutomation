@@ -45,7 +45,7 @@ import {
 } from "./dto/password-reset.dto";
 import { PasswordResetThrottleGuard } from "./guards/password-reset-throttle.guard";
 import { SignInMethodsDto } from "./dto/sign-in-methods.dto";
-import { RateLimit } from "../common/rate-limit";
+import { IDENTITY_READ_RATE_LIMIT, RateLimit } from "../common/rate-limit";
 import { Request } from "express";
 import { devBypassAllowed, devBypassEnvEnabled } from "./dev-bypass.util";
 
@@ -258,6 +258,7 @@ export class AuthController {
    */
   @Get("me")
   @UseGuards(JwtAuthGuard)
+  @RateLimit(IDENTITY_READ_RATE_LIMIT) // a token read, not a credential: the read budget
   // The web client populates `user` from here and nowhere else. Gate this and
   // an unverified session cannot discover that it is unverified — it just
   // fails to load, which is indistinguishable from a broken login.
@@ -381,6 +382,7 @@ export class AuthController {
 
   @Get("me/linked-providers")
   @UseGuards(JwtAuthGuard)
+  @RateLimit(IDENTITY_READ_RATE_LIMIT) // a token read, not a credential: the read budget
   @AllowsNoHouse()
   async getLinkedProviders(@Req() req: Request & { user: any }) {
     const linkedProviders = await this.authService.getLinkedProviders(
@@ -448,6 +450,7 @@ export class AuthController {
 
   @Get("me/role")
   @UseGuards(JwtAuthGuard)
+  @RateLimit(IDENTITY_READ_RATE_LIMIT) // a token read, not a credential: the read budget
   @AllowUnverified() // AuthContext fetches this alongside /auth/me on boot
   async getMyRole(
     @Req() req: Request & { user: any },
@@ -486,6 +489,7 @@ export class AuthController {
    */
   @Get("verify")
   @UseGuards(JwtAuthGuard)
+  @RateLimit(IDENTITY_READ_RATE_LIMIT) // a token read, not a credential: the read budget
   @AllowUnverified() // answers "is this token live?", not "may you use the app?"
   @AllowsNoHouse()
   async verifyToken() {
@@ -643,6 +647,7 @@ export class AuthController {
    */
   @Get("houses")
   @UseGuards(JwtAuthGuard)
+  @RateLimit(IDENTITY_READ_RATE_LIMIT) // a token read, not a credential: the read budget
   @AllowsNoHouse()
   async houses(@Req() req: Request & { user: any }) {
     // `held`: memberships waiting for this person to accept (ADR 0229 fork 13).

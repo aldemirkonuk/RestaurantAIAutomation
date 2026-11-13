@@ -33,6 +33,24 @@ export const DEFAULT_RATE_LIMITS: Record<string, RateLimitConfig> = {
 };
 
 /**
+ * The budget for an authenticated read of who the caller is (r20,
+ * 2026-11-13): `GET /auth/me` and its sibling reads.
+ *
+ * Every path under `/auth/` falls to the `auth` tier above, 10 per minute per
+ * IP, which is sized for routes that take a credential. These reads take none:
+ * they run behind `JwtAuthGuard` and answer for the token already sent. At 10
+ * per minute per IP, the web app's one `/auth/me` read per page load ran out
+ * on about the sixth reload in a minute, and every device behind one office
+ * IP shares the same count. They get the same budget as any other
+ * authenticated read in this gateway (`default`). Routes that take a password,
+ * a code or a refresh token keep the `auth` tier: they are not decorated with
+ * this.
+ */
+export const IDENTITY_READ_RATE_LIMIT: RateLimitConfig = {
+  ...DEFAULT_RATE_LIMITS.default,
+};
+
+/**
  * Decorator to set custom rate limit for a route
  */
 export const RATE_LIMIT_KEY = "rateLimit";
