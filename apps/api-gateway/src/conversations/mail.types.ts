@@ -117,6 +117,11 @@ export interface MailMessage {
    * never counted as a letter, never the reason anyone is waiting (M-5).
    */
   automatic: boolean;
+  /**
+   * When an owner or manager said this letter needs no reply (r28 mail gap
+   * 4); null when nobody did. Only a letter the house received is marked.
+   */
+  noReplyMarkedAt: string | null;
 }
 
 export interface MailOrderRef {
@@ -134,6 +139,19 @@ export interface MailThreadPage {
   messages: MailMessage[];
   /** Pass as `before=` for the older page; null when this page is the oldest. */
   before: string | null;
+  /**
+   * The house owes this thread a reply: its newest letter is one it received
+   * that nobody has answered or marked as needing no reply. Over the whole
+   * thread, not this page.
+   */
+  waiting: boolean;
+}
+
+/** The answer to POST/DELETE /mail/letters/:id/no-reply-needed. */
+export interface MailNoReplyAnswer {
+  id: string;
+  /** True when the letter now carries the mark. */
+  marked: boolean;
 }
 
 export interface MailDoorState {
