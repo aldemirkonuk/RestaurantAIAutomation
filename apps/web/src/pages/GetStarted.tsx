@@ -10,6 +10,7 @@ import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
 import { useAuth, type User } from '../contexts/AuthContext'
 import { apiClient, getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { importMenu, type MenuImportResult } from '../services/api/menus'
+import { settingsApi } from '../services/api/settings'
 import { currencyForCountry } from '../lib/currency'
 import { getBrowserTimezone } from '../lib/browserTimezone'
 import { countryCodeFor } from '../lib/countries'
@@ -194,6 +195,31 @@ export default function GetStarted() {
   const [dropping, setDropping] = useState(false)
 
   const currency = useMemo(() => currencyForCountry(country), [country])
+  // THE HOUSE'S OWN MONEY when the house already exists (r26 walk). An owner
+  // sent back here by "Read a menu" (/house/menu, the nudge, the checklist)
+  // enters at the menu step with no country typed, so the country gave no
+  // money and the typed lines hinted "14.00" in a lira house. The stored
+  // code wins once read (it is what the house keeps its books in); a failed
+  // or unanswered read leaves the country's money, or none, never a guess.
+  const houseId = user?.restaurantId ?? null
+  const [storedCurrency, setStoredCurrency] = useState<string | null>(null)
+  useEffect(() => {
+    setStoredCurrency(null)
+    if (!houseId) return
+    let live = true
+    void (async () => {
+      try {
+        const read = await settingsApi.houseCurrency()
+        if (live && read?.readable && read.restaurantId === houseId) setStoredCurrency(read.code ?? null)
+      } catch {
+        // Unread: the country's money stands, or no code at all.
+      }
+    })()
+    return () => {
+      live = false
+    }
+  }, [houseId])
+  const menuCurrency = storedCurrency ?? currency
   const mapsOn = isMapsConfigured()
   // The house's clock comes from the place, not the browser (OB-7, F7): a
   // one-zone country names it; else the browser zone when its offset matches
@@ -611,7 +637,7 @@ export default function GetStarted() {
         <div className="mt-6">
           {menuMethod === 'photo' && <MenuScanUpload onSuccess={menuRead} />}
           {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} />}
-          {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} currency={currency} />}
+          {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} currency={menuCurrency} />}
         </div>
         <div className="mt-6 border-t border-[#211f1b]/15 pt-5">
           <button type="button" onClick={() => navigate('/house', { replace: true })} className="text-sm text-[#6d685f] underline underline-offset-4">
