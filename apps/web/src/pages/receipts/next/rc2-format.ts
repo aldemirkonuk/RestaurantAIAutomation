@@ -36,30 +36,10 @@ export function fmtMoney(
   currency: string | null | undefined,
 ): string {
   if (n == null || !Number.isFinite(Number(n))) return EM;
-  const said = formatMoney(Number(n), currency);
-  // THE SIGN, WHERE THE MONEY HAS ONE OF ITS OWN (walk-through W25,
-  // 2026-10-01): the queue printed "$547.47" beside "TRY 11,186.40". When the
-  // default display fell back to the bare code, ask for the narrow sign, and
-  // use it only when it is one character from Unicode's currency-symbol block
-  // (₺ ₽ ₴ ₸ …). A narrow "$", "kr" or "£" is shared by several monies, so
-  // ARS or SEK keep their code; a money already shown with a sign (CA$) is
-  // never touched.
-  if (currency && /^[A-Z]{3}$/.test(currency) && said.includes(currency)) {
-    try {
-      const glyph = new Intl.NumberFormat(undefined, {
-        style: 'currency',
-        currency,
-        currencyDisplay: 'narrowSymbol',
-      })
-        .formatToParts(0)
-        .find((x) => x.type === 'currency')?.value;
-      if (glyph && /^[\u20A0-\u20CF]$/.test(glyph))
-        return said.replace(currency, glyph).replace(/^(\D*?[^\d\s-])\s+(?=\d)/, '$1');
-    } catch {
-      // An engine without narrowSymbol keeps the code, which is still honest.
-    }
-  }
-  return said;
+  // The house's one formatter (r21 walk D5): the money's own locale and its
+  // own sign. The narrow-sign rule this file used to carry (W25) now lives
+  // there, so the queue and the document sheet beside it read alike.
+  return formatMoney(Number(n), currency);
 }
 
 /** A server's sentence may come without its full stop; the next one needs it. */

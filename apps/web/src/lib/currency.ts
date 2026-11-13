@@ -77,6 +77,8 @@
 // What stays here is what is about MONEY rather than about countries: the codes
 // a manager may pick, their names, and the formatter that refuses to print a
 // symbol nobody earned.
+import { countryByCode } from './countries';
+
 export { currencyForCountry } from './countries';
 
 /**
@@ -337,8 +339,79 @@ export function currencyMinorUnits(code: string | null | undefined): number | nu
 export const CURRENCY_NOT_RECORDED = 'currency not recorded'
 
 /**
+ * The locale a money is written in: the number conventions of the country
+ * that money belongs to, or `undefined` (the reader's own runtime locale) when
+ * no one country owns it.
+ *
+ * WHY ONE LOCALE PER MONEY (r21 walk D5, 2026-11-13). The same lira read three
+ * ways on one screen: the document sheet printed "₺2.200,00" (Turkish
+ * grouping, `canonical-format.ts`), the receipts queue beside it "₺300.00" (the
+ * reader's locale), and the inventory drawer "TRY 2.25" (a hard-coded en-GB).
+ * The reader cannot tell which is a thousand and which a decimal when the
+ * same page uses both. A house's money is now written the way that money is
+ * written at home, for every viewer: the owner on a Turkish phone and the
+ * walker on an English browser see the same figure, and it matches the paper
+ * on the desk.
+ *
+ * The country is the code's first two letters, accepted only when this
+ * product's own country table says that country prices in that money (TRY is
+ * Türkiye's, USD the United States'). EUR, the X-codes and anything the table
+ * does not tie to one country keep the reader's locale. A locale whose script
+ * is not Latin (JPY → ja-Jpan) also keeps the reader's: the rest of the page
+ * is English, and a figure in another script beside it reads worse, not
+ * better.
+ */
+export function moneyLocale(currency: string | null | undefined): string | undefined {
+  if (typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency)) return undefined
+  const country = countryByCode(currency.slice(0, 2))
+  if (!country || country.currency !== currency) return undefined
+  try {
+    const locale = new Intl.Locale(`und-${country.code}`).maximize()
+    return locale.script === 'Latn' ? locale.baseName : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const SIGN_BLOCK = /^[\u20A0-\u20CF]$/
+
+/** The sign `Intl` gives this money in `locale`, in the display asked for. */
+function signIn(locale: string | undefined, currency: string, display: 'symbol' | 'narrowSymbol'): string | undefined {
+  try {
+    return new Intl.NumberFormat(locale, { style: 'currency', currency, currencyDisplay: display })
+      .formatToParts(0)
+      .find((x) => x.type === 'currency')?.value
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * The sign a house's money is printed with: one that names THIS money and no
+ * other, because a queue of papers can hold several monies at once.
+ *
+ *  1. A sign from Unicode's currency-symbol block (₺ ₴ ₹ €) belongs to one
+ *     money: kept.
+ *  2. Where the locale gave the bare code, the money's narrow sign is used if
+ *     it is one of those (walk-through W25, 2026-10-01: the queue printed
+ *     "TRY 11,186.40" beside "$547.47"; carried here from the receipts queue).
+ *  3. Otherwise the sign English prints for it, which disambiguates: "$" is
+ *     the US dollar's, "CA$" Canada's, and the Swedish, Norwegian and Danish
+ *     "kr" all become their codes. A home-locale "$" or "kr" is unambiguous to
+ *     the people at home and ambiguous on a list of vendors' papers.
+ */
+function houseSign(sign: string, currency: string, locale: string | undefined): string {
+  if (SIGN_BLOCK.test(sign)) return sign
+  const narrow = signIn(locale, currency, 'narrowSymbol')
+  if (narrow && SIGN_BLOCK.test(narrow)) return narrow
+  return signIn('en', currency, 'symbol') ?? currency
+}
+
+/**
  * Money, in the currency it is actually in — or the sentence saying there is
- * none.
+ * none. THE one formatter for a house's money: written in the money's own
+ * locale (`moneyLocale`), with a sign that names it alone (`houseSign`) and its own
+ * decimal places.
  *
  * Never falls back to USD, and never to a bare `$`. That fallback is the reason
  * a house in Fethiye was shown dollars: the code assumed the one currency it
@@ -364,17 +437,32 @@ export function formatMoney(
       maximumFractionDigits: digits,
     })} (${CURRENCY_NOT_RECORDED})`
   }
+  const locale = moneyLocale(currency)
   try {
-    return new Intl.NumberFormat(undefined, {
+    const parts = new Intl.NumberFormat(locale, {
       style: 'currency',
       currency,
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
-    }).format(amount)
+    }).formatToParts(amount)
+    const at = parts.findIndex((x) => x.type === 'currency')
+    if (at >= 0) {
+      const sign = houseSign(parts[at].value, currency, locale)
+      if (sign !== parts[at].value) {
+        parts[at] = { ...parts[at], value: sign }
+        // A one-character sign sits against its number ("₺300,00"), as the
+        // code it replaced did not ("UAH 5.00").
+        const next = parts[at + 1]
+        if (sign.length === 1 && next?.type === 'literal' && /^\s+$/.test(next.value) && parts[at + 2]?.type === 'integer') {
+          parts.splice(at + 1, 1)
+        }
+      }
+    }
+    return parts.map((x) => x.value).join('')
   } catch {
     // A well-formed code `Intl` does not know still names the money. Printing
     // the number beside the code is right; falling back to dollars is not.
-    return `${amount.toLocaleString(undefined, {
+    return `${amount.toLocaleString(locale, {
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
     })} ${currency}`

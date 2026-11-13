@@ -82,13 +82,9 @@ const ORDER = {
  * survives in the expectation, the rendered NBSP does not, and a byte-identical
  * value fails the match.
  */
-const tryMoney = (v: number) =>
-  new Intl.NumberFormat(undefined, {
-    style: 'currency',
-    currency: 'TRY',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(v).replace(/\u00a0/g, ' ');
+// The lira as the house writes it, whatever locale the test runner has
+// (r21 walk D5: one locale per money, lib/currency.ts moneyLocale).
+const tryMoney = (v: number) => ({ 2400: '₺2.400,00', 12000: '₺12.000,00' })[v] ?? `unexpected ${v}`;
 
 function draw(over: Partial<React.ComponentProps<typeof ApproveFromBellPanel>> = {}) {
   render(

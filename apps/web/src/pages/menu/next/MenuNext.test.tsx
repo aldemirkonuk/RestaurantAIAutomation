@@ -163,7 +163,9 @@ describe('MenuNext — money states its own house currency', () => {
     mockGetMenu.mockResolvedValue(menu({ items: [line({ by_glass_price: 62, bottle_price: 900 })] }));
     mount();
     const row = (await screen.findAllByTestId('menu-row'))[0];
-    expect(row.textContent).toMatch(/TRY/);
+    // The lira's own sign, in the house's own locale (r21 walk D5).
+    expect(row.textContent).toContain('₺62,00');
+    expect(row.textContent).toContain('₺900,00');
     expect(row.textContent).not.toMatch(/\$62/);
   });
 

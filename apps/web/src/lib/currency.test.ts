@@ -17,7 +17,11 @@ import {
   currencyLabel,
   currencyMinorUnits,
   formatMoney,
+  moneyLocale,
 } from './currency'
+import { fmtMoney as inventoryMoney } from './mudavym/format'
+import { fmtMoney as receiptsMoney } from '../pages/receipts/next/rc2-format'
+import { fmtMoney as documentMoney } from '../components/documents/canonical-format'
 
 describe('currencyForCountry — the three rows that were wrong', () => {
   it('gives Turkiye TRY, in the spelling Google actually returns', () => {
@@ -168,5 +172,70 @@ describe('formatMoney — never a symbol nobody earned', () => {
     expect(formatMoney(1200, 'JPY', { maximumFractionDigits: 2 })).toMatch(
       /1[.,]200[.,]00/,
     )
+  })
+})
+
+/**
+ * r21 walk D5 (2026-11-13): one lira, three spellings on one screen — the
+ * document sheet "₺2.200,00", the receipts queue "₺300.00", the inventory
+ * drawer "TRY 2.25". A house's money is now written in that money's own
+ * locale, with its own sign, by every one of those formatters.
+ */
+describe('one house locale for a money', () => {
+  it('writes the lira the Turkish way, with its sign, whatever the reader runs', () => {
+    expect(moneyLocale('TRY')).toBe('tr-Latn-TR')
+    expect(formatMoney(2200, 'TRY')).toBe('₺2.200,00')
+    expect(formatMoney(2.25, 'TRY')).toBe('₺2,25')
+    expect(formatMoney(12, 'TRY')).toBe('₺12,00')
+  })
+
+  it('the queue, the drawer and the document sheet print the same lira', () => {
+    for (const n of [300, 2200, 2.25, 1234567.5]) {
+      const one = formatMoney(n, 'TRY')
+      expect(receiptsMoney(n, 'TRY')).toBe(one)
+      expect(inventoryMoney(n, 'TRY')).toBe(one)
+      expect(documentMoney(n, 'TRY')).toBe(one)
+    }
+  })
+
+  it("ties a money to a country only where this product's table does", () => {
+    expect(moneyLocale('USD')).toBe('en-Latn-US')
+    expect(moneyLocale('GBP')).toBe('en-Latn-GB')
+    // No one country owns the euro; the X-codes have none.
+    expect(moneyLocale('EUR')).toBeUndefined()
+    expect(moneyLocale('XOF')).toBeUndefined()
+    // A non-Latin locale beside English words reads worse: the reader's own.
+    expect(moneyLocale('JPY')).toBeUndefined()
+    // Not a code at all.
+    for (const bad of [null, undefined, '', 'try', 'TL']) expect(moneyLocale(bad)).toBeUndefined()
+    // US is a country, but USN is not the money it prices in.
+    expect(moneyLocale('USN')).toBeUndefined()
+  })
+
+  it('keeps the shapes the house already reads for dollars and pounds', () => {
+    expect(formatMoney(2200, 'USD')).toBe('$2,200.00')
+    expect(formatMoney(2200, 'GBP')).toBe('£2,200.00')
+  })
+
+  it('gives a money with no locale of its own its one-character sign, never a shared one', () => {
+    // UAH's home locale is Cyrillic, so the reader's applies; its narrow sign
+    // is the hryvnia's alone and replaces the bare code.
+    expect(formatMoney(5, 'UAH')).toMatch(/^₴5[.,]00$/)
+    // A narrow "$" is shared by several monies: ARS keeps its code.
+    expect(formatMoney(5, 'ARS')).not.toMatch(/^\$/)
+  })
+
+  it("never prints a home sign another money shares: Canada's \"$\", Sweden's \"kr\"", () => {
+    // en-CA writes its dollar "$" and sv-SE its krona "kr"; on a list of
+    // vendors' papers both are ambiguous, so the English sign names them.
+    expect(formatMoney(12, 'CAD')).toBe('CA$12.00')
+    expect(formatMoney(12, 'SEK').replace(/\s/g, ' ')).toBe('12,00 SEK')
+    expect(formatMoney(12, 'NOK')).toMatch(/NOK/)
+    expect(formatMoney(-180, 'TRY')).toBe('-₺180,00')
+  })
+
+  it('says a missing currency in the same words from the drawer as from the lib', () => {
+    expect(inventoryMoney(12, null)).toContain(CURRENCY_NOT_RECORDED)
+    expect(inventoryMoney(null, 'TRY')).toBe('—')
   })
 })
