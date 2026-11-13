@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { RECEIVING_PRICE_CURRENCY_RUNGS } from '../../../../../api-gateway/src/procurement/price-currency'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MemoryRouter } from 'react-router-dom'
@@ -212,6 +212,39 @@ describe('ReceivingWorkspace — canonical Mudavym invoice', () => {
       }),
     )
     expect(onClose).toHaveBeenCalled()
+  })
+
+  it('says when the verified price settled sales made before the invoice (receipts walk item 5)', async () => {
+    // The local-stack check of #1087: 2 of 6 sold before the invoice, the
+    // gateway settled them, and the toast said only "Receipt verified".
+    verifyOrderReceipt.mockResolvedValue({
+      ...order,
+      status: 'COMPLETED',
+      costCorrection: { unitCost: 22, bottlesRevalued: 22, salesSettled: 1 },
+    })
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await enterInvoice(user)
+    await user.click(submit())
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+    const [title, body] = toastSuccess.mock.calls[0]
+    expect(title).toBe('Receipt verified')
+    expect(body).toContain('A sale made before the invoice arrived now carries the invoice cost.')
+    expect(body).toContain('The 22 bottles still on the shelf are costed at it too.')
+  })
+
+  it('adds nothing when the answer carries no cost correction', async () => {
+    const user = userEvent.setup()
+    renderWorkspace()
+
+    await enterInvoice(user)
+    await user.click(submit())
+
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled())
+    const [, body] = toastSuccess.mock.calls[0]
+    expect(body).not.toMatch(/invoice cost|costed at it/)
   })
 
   it('blocks completion on a price deviation until a reason is given', async () => {
