@@ -531,6 +531,26 @@ export class ReceivingService {
         message: owned.error,
       });
 
+    // A GOOD KEPT BY VOLUME OR WEIGHT IS NOT BOOKED HERE (r26 walk). This door
+    // counts boxes and books them as bottles; into an olive oil kept in ml,
+    // "1 box" went on the shelf as 1 ml (the walk read 5.501 l), and the
+    // paper's door then refused the real 5 L as already booked here. How much
+    // one box holds is not known at this door, so nothing is converted and
+    // nothing is guessed: the count is kept as evidence, the shelf does not
+    // move, and the receiver is sent to the paper's door, which books by
+    // volume or weight. A failed read of the unit is not "no unit" (ADR 0067).
+    const kept =
+      !owned.value.booked && order.inventory_id
+        ? await this.itemMeasure(input.restaurantId, order.inventory_id)
+        : ({ ok: true, measure: null } as const);
+    if (!kept.ok)
+      throw new ServiceUnavailableException({
+        reason: "item_unit_unknown",
+        message:
+          `The count is recorded, but the unit this good is kept in could not be read ` +
+          `(${kept.error}), so nothing went on the shelf. This will be retried.`,
+      });
+
     if (owned.value.booked) {
       stockBooked = false;
       stockIssue =
@@ -561,6 +581,17 @@ export class ReceivingService {
       this.logger.warn(
         `door receipt for order ${input.orderId} has no inventory_id — ` +
           `${delta} bottles were NOT booked`,
+      );
+    } else if (kept.measure && delta !== 0) {
+      stockBooked = false;
+      stockIssue =
+        `The count is recorded, but nothing went on the shelf: this good is kept in ` +
+        `${kept.measure.uom}, by ${kept.measure.by}, and this door counts boxes, not how ` +
+        `much is in them. Count it on its paper's door, where it goes on the shelf by ` +
+        `${kept.measure.by}.`;
+      this.logger.log(
+        `door receipt for order ${input.orderId} did not book: item ` +
+          `${order.inventory_id} is kept in ${kept.measure.uom}`,
       );
     } else if (delta === 0) {
       // Genuinely nothing to move: a full refusal, or a retry that already
@@ -1401,6 +1432,33 @@ export class ReceivingService {
    * a far worse error than under-counting a case, and it would be discovered as
    * a phantom overage against the invoice rather than as a bug.
    */
+  /**
+   * Whether the order's good is kept by volume (`ml`, `l`) or by weight (`kg`,
+   * `g`, `mg`) — `restaurant_inventory.uom`, ADR 0070 — this house only. Null
+   * for a good kept in a count (or with no unit recorded), which this door
+   * books as before. A failed read is returned, never read as "no unit".
+   */
+  private async itemMeasure(
+    restaurantId: string,
+    inventoryId: string,
+  ): Promise<
+    | { ok: true; measure: { uom: string; by: "volume" | "weight" } | null }
+    | { ok: false; error: string }
+  > {
+    const { data, error } = await this.db
+      .getClient()
+      .from("restaurant_inventory")
+      .select("uom")
+      .eq("restaurant_id", restaurantId)
+      .eq("id", inventoryId)
+      .maybeSingle();
+    if (error) return { ok: false, error: error.message };
+    const uom = (data as { uom?: unknown } | null)?.uom;
+    if (uom === "ml" || uom === "l") return { ok: true, measure: { uom, by: "volume" } };
+    if (uom === "kg" || uom === "g" || uom === "mg") return { ok: true, measure: { uom, by: "weight" } };
+    return { ok: true, measure: null };
+  }
+
   private resolvePackSize(
     provided: number | null | undefined,
     order: { quantity?: number | null; bottles_total?: number | null },
