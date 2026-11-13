@@ -49,6 +49,11 @@ export interface MailThreadRow {
   key: string;
   subject: string | null;
   messageCount: number;
+  /**
+   * Letters that came or went (r28 mail gap 14): a draft or a queued letter
+   * is not one. Absent from a gateway that predates it: read messageCount.
+   */
+  letterCount?: number;
   lastAt: string;
   lastDirection: 'inbound' | 'outbound' | null;
   waiting: boolean;
@@ -662,6 +667,31 @@ export function lastWriterWords(
   if (direction === 'inbound') return `${name ?? 'The vendor'} wrote last`;
   if (direction === 'outbound') return 'The house wrote last';
   return 'Nothing on it has been sent or received yet';
+}
+
+/**
+ * "3 letters" on a thread row: the letters sent or received, never a draft
+ * or a queued one (r28 mail gap 14). Null when there are none to count.
+ */
+export function threadCountWords(t: Pick<MailThreadRow, 'messageCount' | 'letterCount'>): string | null {
+  const n = typeof t.letterCount === 'number' ? t.letterCount : t.messageCount;
+  if (!(n > 0)) return null;
+  return n === 1 ? '1 letter' : `${n} letters`;
+}
+
+/** The most the Mail search sends (the gateway refuses more). */
+export const MAIL_SEARCH_MAX = 100;
+
+/** What the search box sends: trimmed, at most 100 characters; '' for no search. */
+export function mailSearchTerm(typed: string): string {
+  return typed.trim().slice(0, MAIL_SEARCH_MAX).trim();
+}
+
+/** A search that found no one, in words, never "no mail is stored". */
+export function searchEmptyWords(term: string, opts: { waitingOnly: boolean }): string {
+  return opts.waitingOnly
+    ? `No one waiting on you matches “${term}”. The search reads names, subjects, order numbers and the words of each letter.`
+    : `No one in this house's mail matches “${term}”. The search reads names, subjects, order numbers and the words of each letter.`;
 }
 
 /** Channel glyph names, in words, for an accessible label. */

@@ -36,7 +36,7 @@ export function useHouse(): string {
 
 export const mailKeys = {
   summary: (house: string) => ['mail-summary', house] as const,
-  people: (house: string, waitingOnly: boolean) => ['mail-people', house, waitingOnly] as const,
+  people: (house: string, waitingOnly: boolean, search = '') => ['mail-people', house, waitingOnly, search] as const,
   threads: (house: string, withKey: string) => ['mail-threads', house, withKey] as const,
   thread: (house: string, key: string) => ['mail-thread', house, key] as const,
 };
@@ -53,15 +53,22 @@ export function useMailSummary(poll: boolean) {
   });
 }
 
-/** GET /mail/people, cursor-paged; "Show older people" appends the next page. */
-export function useMailPeople(waitingOnly: boolean) {
+/**
+ * GET /mail/people, cursor-paged; "Show older people" appends the next page.
+ * `search` (r28 mail gap 16) is the trimmed term, '' for none: the server
+ * searches, so a person past the first page is found too. While a new term
+ * is read, the last list stays on screen instead of "Reading the mail…".
+ */
+export function useMailPeople(waitingOnly: boolean, search = '') {
   const house = useHouse();
   return useInfiniteQuery<MailPeoplePage>({
-    queryKey: mailKeys.people(house, waitingOnly),
+    queryKey: mailKeys.people(house, waitingOnly, search),
     initialPageParam: null as string | null,
+    placeholderData: (previous) => previous,
     queryFn: async ({ pageParam }) => {
       const params: Record<string, string> = {};
       if (waitingOnly) params.waiting = '1';
+      if (search) params.q = search;
       if (pageParam) params.after = String(pageParam);
       return (await apiClient.get<MailPeoplePage>('/mail/people', { params })).data;
     },
