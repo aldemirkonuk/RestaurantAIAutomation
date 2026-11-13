@@ -768,6 +768,9 @@ export class ScheduledTasksService implements OnModuleInit {
           scheduledTime: "10:00 AM",
           totalBottles,
           totalValue,
+          // The cellar at cost is the house's own books: the house's money,
+          // bare when it has none stated (r11; never a default).
+          currency: tenant.currency ?? null,
           discrepancyCount: lowStockItems?.length || 0,
           focusAreas:
             lowStockItems?.slice(0, 3).map((item) => ({

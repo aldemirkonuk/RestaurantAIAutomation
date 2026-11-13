@@ -410,6 +410,8 @@ This is an automated alert from Mudavym.
    */
   async sendWeeklyReport(data: {
     to: string[];
+    /** The money the amounts are in (record's, else the house's own books); absent prints them bare. */
+    currency?: string | null;
     restaurantName: string;
     reportPeriod: { start: Date | string; end: Date | string };
     metrics: {
@@ -436,6 +438,8 @@ This is an automated alert from Mudavym.
    */
   async sendDailySummaryEmail(data: {
     to: string[];
+    /** The money the amounts are in (record's, else the house's own books); absent prints them bare. */
+    currency?: string | null;
     restaurantName: string;
     date: Date | string;
     metrics: {
@@ -468,6 +472,8 @@ This is an automated alert from Mudavym.
    */
   async sendOrderApprovalEmail(data: {
     to: string[];
+    /** The money the amounts are in (record's, else the house's own books); absent prints them bare. */
+    currency?: string | null;
     orderId: string;
     providerName: string;
     items: Array<{ name: string; quantity: number; unitPrice: number }>;
@@ -527,6 +533,8 @@ This is an automated alert from Mudavym.
    */
   async sendRecurringOrderReminder(data: {
     to: string[];
+    /** The money the amounts are in (record's, else the house's own books); absent prints them bare. */
+    currency?: string | null;
     restaurantName: string;
     orderName: string;
     providerName: string;
@@ -579,6 +587,8 @@ This is an automated alert from Mudavym.
    */
   async sendPaymentDueReminder(data: {
     to: string[];
+    /** The money the amounts are in (record's, else the house's own books); absent prints them bare. */
+    currency?: string | null;
     restaurantName: string;
     invoiceNumber: string;
     providerName: string;
@@ -610,6 +620,8 @@ This is an automated alert from Mudavym.
    */
   async sendInventoryAuditReminder(data: {
     to: string[];
+    /** The money the amounts are in (record's, else the house's own books); absent prints them bare. */
+    currency?: string | null;
     restaurantName: string;
     scheduledDate: Date | string;
     scheduledTime?: string;
@@ -636,6 +648,8 @@ This is an automated alert from Mudavym.
    */
   async sendEventPrepReminder(data: {
     to: string[];
+    /** The money the amounts are in (record's, else the house's own books); absent prints them bare. */
+    currency?: string | null;
     restaurantName: string;
     eventName: string;
     eventDate: Date | string;
