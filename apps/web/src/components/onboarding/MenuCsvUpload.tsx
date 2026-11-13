@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { FileSpreadsheet, Upload, RotateCcw } from 'lucide-react'
 import { Button } from '../ui/button'
 import { importMenu, type MenuImportSuccess } from '../../services/api/menus'
@@ -15,6 +15,12 @@ import {
 
 interface MenuCsvUploadProps {
   onSuccess: MenuImportSuccess
+  /**
+   * Files dropped on the page's own drop zone (r28 onboarding gap 11): a PDF
+   * or a spreadsheet dropped on "Drop the menu here" opened this box and the
+   * file was thrown away. They are staged here as if picked, once per drop.
+   */
+  droppedFiles?: File[] | null
 }
 
 interface PreviewRow {
@@ -34,7 +40,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
+export function MenuCsvUpload({ onSuccess, droppedFiles }: MenuCsvUploadProps) {
   const [csvContent, setCsvContent] = useState<string | null>(null)
   const [fileBase64, setFileBase64] = useState<string | null>(null)
   const [isExcelFile, setIsExcelFile] = useState(false)
@@ -96,14 +102,28 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target
+    const files = input.files ? Array.from(input.files) : []
+    resetFileInput(input)
+    stageFiles(files)
+  }
+
+  // A drop is staged once: the same array is never read twice.
+  const stagedDrop = useRef<File[] | null>(null)
+  useEffect(() => {
+    if (!droppedFiles || droppedFiles.length === 0 || stagedDrop.current === droppedFiles) return
+    stagedDrop.current = droppedFiles
+    stageFiles(droppedFiles)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- staged per drop, not per render
+  }, [droppedFiles])
+
+  const stageFiles = (files: File[]) => {
     // Validate size/type/count up front. Without this an oversized file is
     // only rejected at the server as a bare 413 — which arrives before the
     // auth guard and reads as a generic network error in the UI.
-    const { accepted, errors } = validateSelection(input.files, {
+    const { accepted, errors } = validateSelection(files, {
       accept: (f) => isScannable(f) || isTabular(f),
       kindLabel: 'a spreadsheet, CSV, PDF, or image',
     })
-    resetFileInput(input)
 
     if (errors.length) setError(errors.join(' '))
     else setError(null)
