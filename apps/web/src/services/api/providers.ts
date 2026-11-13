@@ -276,10 +276,38 @@ export async function updateProvider(data: UpdateProviderInput): Promise<Provide
 }
 
 /**
- * Delete a provider
+ * What removing a vendor did to its orders (gateway `VendorRemovalOutcome`,
+ * #1337). A count is `null` when that step failed; `message` already says so
+ * in the house's words, and is what the page shows.
  */
-export async function deleteProvider(id: string): Promise<void> {
-  await apiClient.delete(`/providers/${id}`)
+export interface VendorRemoval {
+  success: boolean
+  standingOrdersPaused: number | null
+  schedulesPaused: number | null
+  openOrders: number | null
+  message: string
+}
+
+/**
+ * Remove a vendor (soft delete). Its standing orders are paused and no new
+ * order can be placed with it; its open orders stay. A gateway older than
+ * #1337 answers `{ success: true }` alone, so the sentence is filled with the
+ * part that is true either way rather than left blank.
+ */
+export async function deleteProvider(id: string): Promise<VendorRemoval> {
+  const response = await apiClient.delete<Partial<VendorRemoval>>(`/providers/${id}`)
+  const data = response.data ?? {}
+  const n = (v: unknown) => (typeof v === 'number' ? v : null)
+  return {
+    success: data.success !== false,
+    standingOrdersPaused: n(data.standingOrdersPaused),
+    schedulesPaused: n(data.schedulesPaused),
+    openOrders: n(data.openOrders),
+    message:
+      typeof data.message === 'string' && data.message.trim()
+        ? data.message
+        : 'The vendor was removed. No new order can be placed with them.',
+  }
 }
 
 /**

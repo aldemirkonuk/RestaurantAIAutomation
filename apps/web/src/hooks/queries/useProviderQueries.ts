@@ -23,6 +23,7 @@ import {
   type ProviderContact,
 } from '../../services/api/providers'
 import { useNotificationStore } from '../../stores'
+import { toast as houseToast } from 'sonner'
 import { offlineStorage } from '../../lib/offline-storage'
 import { syncManager } from '../../lib/sync-manager'
 import { useAuth } from '../../contexts/AuthContext'
@@ -283,49 +284,27 @@ export function useUpdateProvider() {
 }
 
 /**
- * Hook to delete a provider
- * With offline support: queues deletion when offline
+ * Hook to remove a vendor (the /vendors sheet's "Remove vendor", r27).
+ *
+ * ONLINE ONLY. It used to queue every failure, a 403 included, as "Deletion
+ * saved offline", so a refusal read as a removal still to come. A replay
+ * would also show the gateway's sentence to no one. On success that sentence
+ * is the toast body, verbatim (the sheet closes). A refusal is not toasted:
+ * the caller shows it in place (one voice).
  */
 export function useDeleteProvider() {
   const queryClient = useQueryClient()
-  const toast = useNotificationStore()
-  
+
   return useMutation({
-    mutationFn: async (id: string) => {
-      try {
-        return await deleteProvider(id)
-      } catch (error) {
-        // Queue for offline sync
-        await syncManager.queueMutation({
-          type: 'provider.delete',
-          data: { id },
-        })
-        
-        return { deleted: true, _pending: true }
-      }
-    },
-    onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: queryKeys.providers.lists() })
-      const previousProviders = queryClient.getQueryData(queryKeys.providers.lists())
-      return { previousProviders, deletedId: id }
-    },
+    mutationFn: (id: string) => deleteProvider(id),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.providers.lists() })
-      
-      const isPending = (result as any)?._pending
-      
-      if (isPending) {
-        toast.info('Deletion saved offline', 'Will sync when you\'re back online.')
-      } else {
-        toast.success('Provider deleted', 'The provider has been removed from your list.')
-      }
-    },
-    onError: (error: any, _, context) => {
-      if (context?.previousProviders) {
-        queryClient.setQueryData(queryKeys.providers.lists(), context.previousProviders)
-      }
-
-      toast.error('Failed to delete provider', error.response?.data?.message || error.message)
+      // Its standing orders were paused: /orders must not show them running.
+      queryClient.invalidateQueries({ queryKey: queryKeys.orders.all })
+      // The house toaster (AppToaster, sonner). `useNotificationStore().success`
+      // only appends to a store list that no component draws, so the sentence
+      // would reach no one (r29 walk, 2026-11-13).
+      houseToast.success('Vendor removed', { description: result.message })
     },
   })
 }
