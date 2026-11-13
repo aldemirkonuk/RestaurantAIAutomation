@@ -42,6 +42,26 @@ export interface DeliveryGatesProps {
   repair?: CostRepair | null
   /** With `delivery.jurisdiction`, picks Turkish or English (canonical-format). */
   currency?: string | null
+  /**
+   * Whether the person looking holds the house's money (`settlesDeliveryMoney`).
+   * False hides Agree, Verify and the re-check, and says who does them, because
+   * the gateway refuses all three to anyone else (r28 invoices audit, G3).
+   */
+  settlesMoney?: boolean
+}
+
+/**
+ * WHO SETTLES WHAT A DELIVERY COST (r30, the web half of r28's G3).
+ *
+ * The gateway's `assertSettlesDeliveryMoney` admits the roles whose policy row
+ * sees money: owner, manager, and admin (which reads the owner row). Staff, an
+ * unknown role and no role do not. This mirrors that rule so the screen does
+ * not offer a button the server will refuse. It is cosmetic: the gateway still
+ * decides.
+ */
+export function settlesDeliveryMoney(role: string | null | undefined): boolean {
+  const r = (role ?? '').trim().toLowerCase()
+  return r === 'owner' || r === 'manager' || r === 'admin'
 }
 
 const AGREE_RULES: Record<string, string> = {
@@ -60,6 +80,7 @@ export function DeliveryGates({
   onRecheck,
   repair,
   currency,
+  settlesMoney = true,
 }: DeliveryGatesProps) {
   const turkish =
     delivery.jurisdiction === 'TR' || (delivery.jurisdiction !== 'US-CA' && currency === 'TRY')
@@ -142,7 +163,7 @@ export function DeliveryGates({
               </>
             )}
           </p>
-          {!agreed && onAgree && (
+          {!agreed && settlesMoney && onAgree && (
             <button
               type="button"
               data-testid="agree-button"
@@ -175,7 +196,7 @@ export function DeliveryGates({
               'Only an agreed delivery can be verified. Agreement is about the document; verification is about the goods.'
             )}
           </p>
-          {agreed && !verified && onVerify && (
+          {agreed && !verified && settlesMoney && onVerify && (
             <button
               type="button"
               data-testid="verify-button"
@@ -187,7 +208,7 @@ export function DeliveryGates({
               {busy ? 'Recording…' : 'I received these goods'}
             </button>
           )}
-          {verified && onRecheck && (
+          {verified && settlesMoney && onRecheck && (
             <button
               type="button"
               data-testid="recheck-cost-button"
@@ -212,6 +233,16 @@ export function DeliveryGates({
           )}
         </div>
       </div>
+
+      {!settlesMoney && !(agreed && verified) && (
+        <p
+          data-testid="gates-need-a-manager"
+          style={{ margin: '7px 0 0', fontSize: 11, color: 'var(--ink-2, #4F473C)' }}
+        >
+          Agreeing and verifying decide what the house pays for this delivery, so an
+          owner or a manager does them. Counting the goods at the door is still yours.
+        </p>
+      )}
 
       {error && (
         <p

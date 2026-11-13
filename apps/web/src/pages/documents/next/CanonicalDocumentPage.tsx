@@ -64,6 +64,7 @@ import {
   DegradedNotice,
   DeliveryGates,
   DeliverySpine,
+  settlesDeliveryMoney,
   DoorFrame,
   FieldVerifyDialog,
   MONO,
@@ -146,6 +147,12 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
    */
   const auth = useContext(AuthContext)
   const rid = auth?.activeRestaurantId || auth?.user?.restaurantId || null
+  /**
+   * Whether this person may agree, verify, or put a position on the delivery
+   * (r28 G3). The gateway refuses those acts to anyone who does not hold the
+   * house's money; the page stops offering them, and says who does them.
+   */
+  const settlesMoney = settlesDeliveryMoney(auth?.activeRole ?? auth?.user?.role ?? null)
 
   const q = useQuery({
     queryKey: ['canonical-document', rid, id],
@@ -235,7 +242,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
 
   const proposalsQ = useQuery({
     queryKey: ['delivery-proposals', soleDelivery?.deliveryId],
-    queryFn: () => deliveriesApi.proposals(soleDelivery!.deliveryId),
+    queryFn: () => deliveriesApi.proposalThread(soleDelivery!.deliveryId),
     enabled: !!soleDelivery,
     staleTime: 15_000,
   })
@@ -569,6 +576,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
               }
               repair={costRepair}
               currency={doc.layer1.currency.value}
+              settlesMoney={settlesMoney}
             />
           ) : (
             <p data-testid="gates-unavailable" style={{ fontSize: 11, color: 'var(--ink-4, #665D50)' }}>
@@ -579,14 +587,17 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
           )}
 
           <ProposalThread
-            proposals={proposalsQ.isError ? null : (proposalsQ.data ?? [])}
+            proposals={proposalsQ.isError ? null : (proposalsQ.data?.proposals ?? [])}
+            moneyWithheld={proposalsQ.data?.moneyWithheld ?? false}
             failedRead={proposalsQ.isError ? messageFrom(proposalsQ.error) : null}
             jurisdiction={doc.jurisdiction}
             currency={doc.layer1.currency.value}
             selectedLine={selectedLine}
             busy={writing}
             error={deliveryError}
-            onPropose={(body) =>
+            /* No handlers = read-only: putting a position on the record,
+               answering one and accepting one are money acts (r28 G3). */
+            onPropose={!settlesMoney ? undefined : (body) =>
               deliveryWrite(() =>
                 deliveriesApi.propose(soleDelivery.deliveryId, {
                   ...(body as ProposalBody),
@@ -594,7 +605,7 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                 }),
               )
             }
-            onCounter={(pid, body) =>
+            onCounter={!settlesMoney ? undefined : (pid, body) =>
               deliveryWrite(() =>
                 deliveriesApi.counter(pid, {
                   ...(body as ProposalBody),
@@ -602,7 +613,9 @@ export function CanonicalDocumentPage({ documentId, embedded = false }: Canonica
                 }),
               )
             }
-            onAccept={(pid) => deliveryWrite(() => deliveriesApi.accept(pid))}
+            onAccept={
+              !settlesMoney ? undefined : (pid) => deliveryWrite(() => deliveriesApi.accept(pid))
+            }
           />
         </div>
       )}
