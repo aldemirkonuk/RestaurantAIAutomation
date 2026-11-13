@@ -271,6 +271,83 @@ describe("MenusService.getMenu", () => {
 });
 
 /**
+ * r28 G11 (r21 defect 7): /menu showed only the printed price. A price changed
+ * on Inventory after the menu, or held by a lock, was never shown beside it.
+ */
+describe("MenusService.getMenu -- the house's own price beside each linked line (r28 G11)", () => {
+  const menu = { id: "menu-1", restaurant_id: "rest-1", name: "Wine List", status: "active" };
+  const line = (id: string, over: Row = {}): Row => ({
+    id, menu_id: "menu-1", restaurant_id: "rest-1", name: id, category: "Red", status: "approved", ...over,
+  });
+
+  it("sends bottle, glass and removed for a linked line, nothing for an unlinked one, and only this house's row", async () => {
+    const service = makeService({
+      restaurant_menus: [menu],
+      menu_items: [
+        line("mi-1", { inventory_item_id: "inv-1", bottle_price: 48, by_glass_price: 12 }),
+        line("mi-2", { inventory_item_id: null, bottle_price: 30 }),
+        line("mi-3", { inventory_item_id: "inv-other", bottle_price: 20 }),
+        line("mi-4", { inventory_item_id: "inv-gone", bottle_price: 20 }),
+        line("mi-5", { inventory_item_id: "inv-off", bottle_price: 20 }),
+      ],
+      restaurant_inventory: [
+        { id: "inv-1", restaurant_id: "rest-1", menu_price_current: "55.00", menu_price_glass: 12, is_active: true, deleted_at: null },
+        { id: "inv-other", restaurant_id: "rest-2", menu_price_current: 99, menu_price_glass: null, is_active: true, deleted_at: null },
+        { id: "inv-gone", restaurant_id: "rest-1", menu_price_current: 20, menu_price_glass: null, is_active: true, deleted_at: "2026-11-01T00:00:00Z" },
+        { id: "inv-off", restaurant_id: "rest-1", menu_price_current: null, menu_price_glass: null, is_active: false, deleted_at: null },
+      ],
+    });
+    const r: any = await service.getMenu("rest-1");
+    const by = (id: string) => r.items.find((i: any) => i.id === id);
+    expect(by("mi-1").house_price).toEqual({ bottle: 55, glass: 12, removed: false });
+    expect(by("mi-2")).not.toHaveProperty("house_price");
+    expect(by("mi-3")).not.toHaveProperty("house_price");
+    expect(by("mi-4").house_price).toEqual({ bottle: 20, glass: null, removed: true });
+    expect(by("mi-5").house_price).toEqual({ bottle: null, glass: null, removed: true });
+    expect(r).not.toHaveProperty("housePricesUnreadable");
+  });
+
+  it("reads the house's rows in chunks of 150 ids, so a 151-line menu is read whole", async () => {
+    const lines: Row[] = [];
+    const goods: Row[] = [];
+    for (let n = 0; n < 151; n++) {
+      lines.push(line(`mi-${String(n).padStart(3, "0")}`, { inventory_item_id: `inv-${n}`, bottle_price: n }));
+      goods.push({ id: `inv-${n}`, restaurant_id: "rest-1", menu_price_current: n + 1, menu_price_glass: null, is_active: true, deleted_at: null });
+    }
+    const service = makeService({ restaurant_menus: [menu], menu_items: lines, restaurant_inventory: goods });
+    const fake = (service as any).dbService.supabase;
+    const from = fake.from;
+    const sizes: number[] = [];
+    fake.from = (table: string) => {
+      const api = from(table);
+      if (table !== "restaurant_inventory") return api;
+      const inner = api.in;
+      api.in = (col: string, vals: any[]) => {
+        sizes.push(vals.length);
+        return inner(col, vals);
+      };
+      return api;
+    };
+    const r: any = await service.getMenu("rest-1");
+    expect(sizes).toEqual([150, 1]);
+    expect(r.items.every((i: any) => i.house_price && i.house_price.bottle === Number(i.inventory_item_id.slice(4)) + 1)).toBe(true);
+  });
+
+  it("says an unreadable read once on the reply, and never sends a line a house price it did not read", async () => {
+    const service = makeService({
+      restaurant_menus: [menu],
+      menu_items: [line("mi-1", { inventory_item_id: "inv-1", bottle_price: 48 })],
+      restaurant_inventory: [{ id: "inv-1", restaurant_id: "rest-1", menu_price_current: 55, is_active: true }],
+      __readFails: [{ restaurant_inventory: "pooler timeout" }] as any,
+    });
+    const r: any = await service.getMenu("rest-1");
+    expect(r.housePricesUnreadable).toBe("the house's own prices could not be read: pooler timeout");
+    expect(r.items).toHaveLength(1);
+    expect(r.items[0]).not.toHaveProperty("house_price");
+  });
+});
+
+/**
  * ADR 0309 option 1c, amended after the audit of #655 at 220e3747d (BLOCK):
  * a CSV line's raw line is the whole row, every unmapped column included
  * (csv-parser.service.ts:55), so it goes only to a role whose ROLE_POLICY row

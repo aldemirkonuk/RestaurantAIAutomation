@@ -1298,6 +1298,7 @@ export class MenusService {
     items: Array<Record<string, unknown>>;
     rawLineWithheld?: true;
     otherCurrent?: number;
+    housePricesUnreadable?: string;
   }> {
     const { data: actives, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
@@ -1321,14 +1322,66 @@ export class MenusService {
     // not keep serving it as live. Read in pages: PostgREST stops at 1000
     // rows without saying so, and a long wine list is exactly that long.
     const items = await this.readLines(menu.id, restaurantId, view);
+    const house = await this.housePricesOf(restaurantId, items);
 
     return {
       menuId: menu.id,
       name: menu.name,
       status: menu.status,
-      items,
+      items: house.items,
       ...withheld,
       ...(ordered.length > 1 ? { otherCurrent: ordered.length - 1 } : {}),
+      ...(house.unreadable ? { housePricesUnreadable: house.unreadable } : {}),
+    };
+  }
+
+  /**
+   * The house's own price beside each linked line of the current menu (r21
+   * defect 7, r28 G11). The menu line keeps the price the menu printed; the
+   * house's own price (`restaurant_inventory.menu_price_current` / `_glass`,
+   * Inventory "Your price") can differ: changed there after the menu was made
+   * current, held by a price lock, or not carried. Each line linked to a house
+   * good gets `house_price: { bottle, glass, removed }`, read in chunks of 150
+   * ids and in this house only. A line with no link gets nothing. A chunk that
+   * cannot be read is said once on the reply (`housePricesUnreadable`), never
+   * taken for "no house price".
+   */
+  private async housePricesOf(
+    restaurantId: string,
+    items: Array<Record<string, unknown>>,
+  ): Promise<{ items: Array<Record<string, unknown>>; unreadable: string | null }> {
+    const ids = [...new Set(items.map((i) => i.inventory_item_id).filter((v) => v !== null && v !== undefined && v !== "").map(String))];
+    if (ids.length === 0) return { items, unreadable: null };
+    type Row = { id: string; menu_price_current: unknown; menu_price_glass: unknown; is_active: boolean | null; deleted_at: string | null };
+    const byId = new Map<string, Row>();
+    let unreadable: string | null = null;
+    for (let at = 0; at < ids.length; at += WINE_ID_CHUNK) {
+      const chunk = ids.slice(at, at + WINE_ID_CHUNK);
+      const { data, error } = await this.dbService.supabase
+        .from("restaurant_inventory")
+        .select("id, menu_price_current, menu_price_glass, is_active, deleted_at")
+        .eq("restaurant_id", restaurantId)
+        .in("id", chunk);
+      if (error) {
+        unreadable = `the house's own prices could not be read: ${error.message}`;
+        continue;
+      }
+      for (const r of (data ?? []) as Row[]) byId.set(String(r.id), r);
+    }
+    return {
+      unreadable,
+      items: items.map((line) => {
+        const row = line.inventory_item_id ? byId.get(String(line.inventory_item_id)) : undefined;
+        if (!row) return line;
+        return {
+          ...line,
+          house_price: {
+            bottle: linePrice(row.menu_price_current),
+            glass: linePrice(row.menu_price_glass),
+            removed: row.is_active === false || !!row.deleted_at,
+          },
+        };
+      }),
     };
   }
 
