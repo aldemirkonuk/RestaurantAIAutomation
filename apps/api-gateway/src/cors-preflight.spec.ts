@@ -1,3 +1,5 @@
+import { readFileSync } from "fs";
+import { join } from "path";
 import { Controller, Get, INestApplication, Module } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
 import { buildCorsOptions, CORS_PREFLIGHT_MAX_AGE_S } from "./cors-origins";
@@ -65,5 +67,12 @@ describe("CORS preflight", () => {
   it("still names no origin it does not allow, cached or not", async () => {
     const res = await preflight("https://evil.example");
     expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("is what main.ts boots the gateway with", () => {
+    // main.ts is not imported by any test (it starts the server), so the
+    // wiring is read from its source.
+    const main = readFileSync(join(__dirname, "main.ts"), "utf8");
+    expect(main).toMatch(/cors:\s*buildCorsOptions\(\)/);
   });
 });
