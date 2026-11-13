@@ -3,7 +3,7 @@
  * store rather than a chain of `() => chain` stubs.
  *
  * WHY A REAL STORE. The whole design rests on one thing a stub cannot model:
- * the UNIQUE `(calendar_event_id, user_id)` index on
+ * the UNIQUE `(calendar_event_id, user_id, due_at)` index on
  * `calendar_reminder_dispatches`. A mock that returns "inserted" for every
  * upsert would let a broken job pass the idempotency test — so the fake below
  * enforces the constraint, and the "never twice" case is proven by running the
@@ -14,6 +14,9 @@ import { CalendarRemindersService } from "./calendar-reminders.service";
 import type { ScheduledTenant } from "../communications/scheduled-tenants.service";
 
 /* ── an in-memory store with the constraints that matter ──────────────────── */
+
+/** The unique index on calendar_reminder_dispatches, as the migration builds it. */
+const UNIQUE_DISPATCH_KEY = "calendar_event_id,user_id,due_at";
 
 type Row = Record<string, any>;
 
@@ -48,6 +51,7 @@ class FakeQuery {
   private orderKey: string | null = null;
   private orderAsc = true;
   private ignoreDuplicates = false;
+  private conflictOn: string[] = [];
   private returning = false;
 
   constructor(
@@ -66,10 +70,11 @@ class FakeQuery {
     this.payload = Array.isArray(rows) ? rows : [rows];
     return this;
   }
-  upsert(rows: Row[], opts?: { ignoreDuplicates?: boolean }) {
+  upsert(rows: Row[], opts?: { ignoreDuplicates?: boolean; onConflict?: string }) {
     this.mode = "upsert";
     this.payload = rows;
     this.ignoreDuplicates = opts?.ignoreDuplicates === true;
+    this.conflictOn = (opts?.onConflict ?? "").split(",").filter(Boolean);
     return this;
   }
   update(patch: Row) {
@@ -136,11 +141,18 @@ class FakeQuery {
           this.table === "calendar_reminder_dispatches" &&
           this.ignoreDuplicates
         ) {
-          // THE UNIQUE INDEX. Without it this whole file proves nothing.
-          const clash = rows.some(
-            (r) =>
-              r.calendar_event_id === row.calendar_event_id &&
-              r.user_id === row.user_id,
+          // THE UNIQUE INDEX. Without it this whole file proves nothing. The
+          // migration's index is (calendar_event_id, user_id, due_at); the
+          // code must name exactly that as its conflict target, or PostgREST
+          // refuses the upsert, so the fake refuses it too.
+          if (this.conflictOn.join(",") !== UNIQUE_DISPATCH_KEY) {
+            return {
+              data: null,
+              error: { message: `no unique index on (${this.conflictOn.join(",")})` },
+            };
+          }
+          const clash = rows.some((r) =>
+            this.conflictOn.every((c) => r[c] === row[c]),
           );
           if (clash) continue;
         }
@@ -175,6 +187,9 @@ class FakeQuery {
     }
     if (this.headCount) return { data: null, count: hit.length, error: null };
     if (this.limitN !== null) hit = hit.slice(0, this.limitN);
+    // A read is a copy, as it is over the wire: a later write to the stored
+    // row must not reach back into what the caller already read.
+    hit = hit.map((r) => ({ ...r }));
     return {
       data: single ? (hit[0] ?? null) : hit,
       error: null,
@@ -334,6 +349,84 @@ describe("CalendarRemindersService — it sends once, and only once", () => {
     await service.sweepTenant(TENANT, DUE);
 
     expect(notifications.persistForRestaurant).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * What the re-arm trigger does to a row when its instant moves
+ * (20270901100000_a_moved_entry_is_reminded_again.sql). The trigger itself is
+ * SQL and is exercised against Postgres; here the fake applies its effect.
+ */
+function moveTo(row: Row, day: string): void {
+  row.start_date = day;
+  row.event_date = day;
+  row.reminder_sent = false;
+  row.reminder_sent_at = null;
+}
+
+describe("CalendarRemindersService — an entry that moves is reminded again (QA r4 B4)", () => {
+  /** 2026-01-24 15:00Z = 10:00 New York, one day before the 25th. */
+  const DUE_25 = new Date("2026-01-24T15:00:00Z");
+
+  it("reminds the new day after the entry was moved, once", async () => {
+    const { db, service, notifications } = build();
+    db.tables.calendar_events.push(event());
+    await service.sweepTenant(TENANT, DUE);
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+
+    moveTo(db.tables.calendar_events[0], "2026-01-25");
+    const moved = await service.sweepTenant(TENANT, DUE_25);
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(2);
+    expect(moved.sent).toBe(2);
+    expect(db.tables.calendar_events[0].reminder_sent).toBe(true);
+
+    // The old instant's rows are still there: the ledger keeps its history.
+    const dueAts = new Set(db.tables.calendar_reminder_dispatches.map((r) => r.due_at));
+    expect(dueAts).toEqual(new Set(["2026-01-14T14:00:00.000Z", "2026-01-24T14:00:00.000Z"]));
+
+    await service.sweepTenant(TENANT, DUE_25);
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not remind the same instant twice when the entry is moved away and back", async () => {
+    const { db, service, notifications } = build();
+    db.tables.calendar_events.push(event());
+    await service.sweepTenant(TENANT, DUE);
+    moveTo(db.tables.calendar_events[0], "2026-01-25");
+    moveTo(db.tables.calendar_events[0], "2026-01-15");
+    await service.sweepTenant(TENANT, DUE);
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not mark the new day reminded when the entry moved while the old reminder was going out", async () => {
+    const { db, service, notifications } = build();
+    db.tables.calendar_events.push(event());
+    notifications.persistForRestaurant.mockImplementationOnce(
+      async (_r: string, _p: any, opts: any) => {
+        moveTo(db.tables.calendar_events[0], "2026-01-25");
+        return { inserted: opts.onlyUserIds.length };
+      },
+    );
+    await service.sweepTenant(TENANT, DUE);
+    expect(db.tables.calendar_events[0].reminder_sent).toBe(false);
+
+    await service.sweepTenant(TENANT, DUE_25);
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(2);
+    expect(db.tables.calendar_events[0].reminder_sent).toBe(true);
+  });
+
+  it("does not stamp the entry from rows that belong to the day it was on before", async () => {
+    // Everyone was served for the 15th. The entry moves to the 25th and the
+    // send for the 25th fails, so its claims are released: the roll-up must
+    // not read the 15th's `sent` rows as the 25th's.
+    const { db, service, notifications } = build();
+    db.tables.calendar_events.push(event());
+    await service.sweepTenant(TENANT, DUE);
+    moveTo(db.tables.calendar_events[0], "2026-01-25");
+    notifications.persistForRestaurant.mockResolvedValueOnce({ inserted: 0 });
+    const failed = await service.sweepTenant(TENANT, DUE_25);
+    expect(failed.failed).toBe(2);
+    expect(db.tables.calendar_events[0].reminder_sent).toBe(false);
   });
 });
 
