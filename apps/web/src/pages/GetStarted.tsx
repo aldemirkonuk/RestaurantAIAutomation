@@ -16,6 +16,7 @@ import { getBrowserTimezone } from '../lib/browserTimezone'
 import { countryCodeFor } from '../lib/countries'
 import { zoneForPlace } from '../lib/zoneForPlace'
 import { writeProof } from '../lib/firstProof'
+import { readHouseMenuStanding, type HouseMenuStanding } from '../lib/houseMenuStanding'
 import { isMapsConfigured } from '../lib/googleMaps'
 import { houseNotOpened, HOUSE_OPEN_DETAILS_LATER } from '../lib/houseOpeningWords'
 
@@ -208,6 +209,10 @@ export default function GetStarted() {
   // checklist) enters with no country on this page, so the money is read from
   // the house itself (r28 gap 9): the typed-line price boxes keep "(TRY)".
   const [keptCurrency, setKeptCurrency] = useState<string | null>(null)
+  // Where the house's menu stands, read when an owner comes back to the menu
+  // step (r28 gap 14). A house opened on this visit has no menu to read.
+  const openedHere = useRef(false)
+  const [menuStanding, setMenuStanding] = useState<HouseMenuStanding | null>(null)
   const menuCurrency = country.trim() ? currency : keptCurrency
   const mapsOn = isMapsConfigured()
   // The house's clock comes from the place, not the browser (OB-7, F7): a
@@ -269,6 +274,24 @@ export default function GetStarted() {
       live = false
     }
   }, [step, country])
+
+  // A house whose menu is already current is not offered "One last step"
+  // again (r28 gap 14): the help links to the guide all land here, and a read
+  // here made one more draft beside the current menu. It goes to /house,
+  // which says what the house holds. A kept draft is named, with the way to
+  // choose it. A read that fails leaves the menu step as it was.
+  useEffect(() => {
+    if (step !== 'menu' || openedHere.current) return
+    let live = true
+    void readHouseMenuStanding().then((standing) => {
+      if (!live) return
+      if (standing === 'current') navigate('/house', { replace: true })
+      else setMenuStanding(standing)
+    })
+    return () => {
+      live = false
+    }
+  }, [step, navigate])
 
   // B-14: `user` can arrive late; its name fills unless the person typed.
   useEffect(() => {
@@ -379,6 +402,7 @@ export default function GetStarted() {
         longitude: placePoint?.longitude,
         googlePlaceId: placePoint?.googlePlaceId,
       })
+      openedHere.current = true
       setNotice(opened.detailsLoaded ? null : HOUSE_OPEN_DETAILS_LATER)
       setStep('menu')
     } catch (cause) {
@@ -640,6 +664,13 @@ export default function GetStarted() {
           A photo, a file, or a few typed lines. Mudavym sets it out as the house&apos;s own list, and you check it on the next page.
         </p>
         {notice && <p role="status" className="mt-3 text-sm text-[#6d685f]">{notice}</p>}
+        {menuStanding === 'draft' && (
+          <p role="status" className="mt-3 text-sm text-[#6d685f]">
+            A menu read earlier is kept as a draft. Choose it on{' '}
+            <Link to="/menu" className="text-[#1a5e6b] underline underline-offset-4">Menu</Link>
+            , or read another here.
+          </p>
+        )}
         <button
           type="button"
           onClick={() => setMenuMethod(menuMethod === 'photo' ? null : 'photo')}
