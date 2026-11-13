@@ -28,6 +28,7 @@ import {
   type HouseItemResearchView,
 } from "./house-item-research";
 import { classifyStock } from "../common/stock-status";
+import { portionFactsOf } from "./portion-facts";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -126,6 +127,9 @@ export class InventoryService {
       row.master_wine_library?.retail_price_avg ?? null;
     const markupRatio: number | null = row.markup_ratio ?? null;
 
+    // Read before the library object is stripped: it names a library drink's kind.
+    const portionFacts = portionFactsOf(row);
+
     const result = { ...row };
     if (row.master_wine_library) delete result.master_wine_library;
     if (row.restaurants) delete result.restaurants;
@@ -146,6 +150,8 @@ export class InventoryService {
       pourSizeMl,
       pourSizeOz: roundOz(pourSizeMl),
       glassesPerBottle,
+      // What a POS sale of this good can be, stated facts only (portion-facts.ts).
+      portionFacts,
       saleType: row.sale_type ?? undefined,
       // Decision E41: a real column, set only by recordSpotCount — never by
       // a generic field edit — so the count-due badge measures counts, not
