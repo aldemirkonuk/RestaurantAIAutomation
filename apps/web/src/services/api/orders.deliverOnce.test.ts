@@ -134,10 +134,11 @@ describe('markOrderDelivered — the refusal reaches the screen', () => {
     )
   })
 
-  it('does not invent a sentence when the server sent none', async () => {
-    // A 502 from a proxy has no `message` in its body. Axios's own text is then
-    // the truest thing available, and it is left alone rather than replaced by
-    // something reassuring.
+  it('says a plain sentence when the server sent none, and never claims the delivery failed', async () => {
+    // A 502 from a proxy has no `message` in its body. The page says so in
+    // words rather than "Request failed with status code 502", and the words
+    // do not reassure: the delivery may have been written before the proxy
+    // gave up, so the sentence neither says "nothing was saved" nor "try again".
     http.post.mockRejectedValue(
       Object.assign(new Error('Request failed with status code 502'), {
         isAxiosError: true,
@@ -145,9 +146,12 @@ describe('markOrderDelivered — the refusal reaches the screen', () => {
       }),
     )
 
-    await expect(markOrderDelivered('order-1')).rejects.toThrow(
-      /Request failed with status code 502/,
-    )
+    const err = (await markOrderDelivered('order-1').then(
+      () => null,
+      (e: unknown) => e,
+    )) as Error
+    expect(err.message).toBe('The server ran into a problem before it could confirm that.')
+    expect(err.message).not.toMatch(/status code|nothing was|try again/i)
   })
 })
 

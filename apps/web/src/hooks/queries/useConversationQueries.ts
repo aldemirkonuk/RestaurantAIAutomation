@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { useAuth } from '../../contexts/AuthContext'
+import { sayPlainly } from '../../services/api/client'
 
 const API_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000'
 
@@ -21,6 +22,9 @@ api.interceptors.request.use((config) => {
   }
   return config
 })
+
+// A refusal says what the gateway said, as on the shared client.
+api.interceptors.response.use(undefined, (error: unknown) => Promise.reject(sayPlainly(error)))
 
 // ── Types ─────────────────────────────────────────────────────────
 

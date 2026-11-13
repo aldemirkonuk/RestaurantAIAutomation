@@ -18,6 +18,7 @@
 import axios, { AxiosInstance, AxiosError, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { goToChooser, noteHouseEnded, storeSession } from '../../lib/houseMemory';
 import { leaveDeadSession } from '../../lib/deadSession';
+import { requestFailureSentence } from './gateway-sentence';
 
 const API_GATEWAY_URL = import.meta.env.VITE_API_GATEWAY_URL || 'http://localhost:4000';
 
@@ -95,9 +96,12 @@ function createApiClient(): AxiosInstance {
   //   2. Retry the original request with the new token
   //   3. If refresh fails, clear auth and redirect to /login, or, on a public
   //      page, reload it so it draws as it does for a stranger
+  // Whatever it rejects with then carries the gateway's sentence, or a plain
+  // one, on `.message` (sayingPlainly), so every sheet and form that prints
+  // `error.message` stops printing "Request failed with status code 400".
   client.interceptors.response.use(
     (response) => response,
-    async (error: AxiosError) => {
+    sayingPlainly(async (error: AxiosError) => {
       const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
 
       if (error.response?.status === 401 && !originalRequest._retry) {
@@ -167,10 +171,32 @@ function createApiClient(): AxiosInstance {
       }
 
       return Promise.reject(error);
-    },
+    }),
   );
 
   return client;
+}
+
+/**
+ * Put the request failure's plain sentence on `.message`, keeping axios's own
+ * text on `.transportMessage` for logs. Idempotent: a retried request passes
+ * through the interceptor twice. Anything that is not a request failure (a
+ * cancellation, a throw inside the handler) is left as it is.
+ */
+export function sayPlainly<T>(error: T): T {
+  if (!axios.isAxiosError(error)) return error;
+  const marked = error as AxiosError & { transportMessage?: string };
+  if (marked.transportMessage !== undefined) return error;
+  const sentence = requestFailureSentence(error);
+  if (!sentence) return error;
+  marked.transportMessage = marked.message;
+  marked.message = sentence;
+  return error;
+}
+
+/** Wrap a response-error handler so whatever it rejects with is said plainly. */
+function sayingPlainly(handler: (error: AxiosError) => Promise<unknown>) {
+  return (error: AxiosError) => handler(error).catch((failure: unknown) => Promise.reject(sayPlainly(failure)));
 }
 
 export const apiClient = createApiClient();
@@ -182,12 +208,16 @@ export interface ApiError {
   details?: Record<string, any>;
 }
 
+/**
+ * The sentence to show for a failure: the gateway's own words, else a plain
+ * sentence for the status or the missing answer (gateway-sentence.ts), else
+ * the error's own message. Never "Request failed with status code 400", and
+ * always a string (Nest's list of field messages is joined).
+ */
 export function getErrorMessage(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    const apiError = error.response?.data as ApiError | undefined;
-    return apiError?.message || error.message || 'An unexpected error occurred';
-  }
-  if (error instanceof Error) {
+  const said = requestFailureSentence(error);
+  if (said) return said;
+  if (error instanceof Error && error.message) {
     return error.message;
   }
   return 'An unexpected error occurred';
