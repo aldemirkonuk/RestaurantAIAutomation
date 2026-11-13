@@ -1,0 +1,57 @@
+/* "What's in it" (NutritionCard.tsx, NutritionForm.tsx). Tokens only
+   (styles/mudavym.css); it sits inside the drawer's .mudavym portal. */
+.ivn {
+  display: grid;
+  gap: 8px;
+}
+.ivn-figs {
+  margin: 0;
+}
+.ivn-fig {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--paper-2);
+  font-size: 13px;
+}
+.ivn-fig dt {
+  color: var(--ink-2);
+}
+.ivn-fig dd {
+  margin: 0;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.ivn-fig dd[data-unknown='true'] {
+  color: var(--ink-3);
+  font-style: italic;
+}
+.ivn-allergens {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.ivn-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+.ivn-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+}
+@media (max-width: 767px) {
+  .ivn-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ivn-allergen-set {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}

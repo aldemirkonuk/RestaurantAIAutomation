@@ -13,6 +13,7 @@ import { OrchestratorService } from "../common/orchestrator/orchestrator.service
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { PhotoCountService } from "./photo-count.service";
+import { countryCodeOf } from "../common/house-frame";
 import { NfEventRef } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
 import { HUMAN_COUNT_BASIS, humanCountVerdict } from "./photo-count-verdict";
@@ -27,7 +28,7 @@ import {
   readHouseItemResearch,
   type HouseItemResearchView,
 } from "./house-item-research";
-import { classifyStock } from "../common/stock-status";
+import { summarizeStock } from "../common/stock-status";
 import {
   CreateInventoryItemDto,
   UpdateInventoryItemDto,
@@ -652,10 +653,13 @@ export class InventoryService {
     const client = this.dbService.getClient();
     const { data: item } = await client
       .from("restaurant_inventory")
-      .select("wine_name, master_wine_library(name)")
+      .select("wine_name, master_wine_library(name), restaurants(country)")
       .eq("restaurant_id", restaurantId)
       .eq("id", inventoryId)
       .maybeSingle();
+    // The note's language: Turkish for a house in Türkiye, else English.
+    const lang =
+      countryCodeOf((item as any)?.restaurants?.country) === "TR" ? "tr" : "en";
 
     const wineName =
       item?.wine_name ||
@@ -674,6 +678,7 @@ export class InventoryService {
       wineName,
       restaurantId,
       eventRef,
+      lang,
     );
 
     // Fire-and-forget, and deliberately: a suggestion that cannot be recorded
@@ -1503,7 +1508,8 @@ export class InventoryService {
       0,
     );
 
-    // ONE definition, from common/stock-status.ts, over the SAME rows.
+    // ONE definition, from common/stock-status.ts, over the SAME rows, and
+    // the same helper the dashboard's inventory card reads (summarizeStock).
     //
     // `criticalCount` was `stock_live === 0` — which is "out of stock", a
     // different question — so it answered 0 for the sim tenant at the exact
@@ -1512,17 +1518,18 @@ export class InventoryService {
     // (`v_low_stock_items`) whose predicate the chip did not share. Counting
     // both from one classification over one array means the three numbers on
     // the page can no longer disagree about the same wine.
-    const bands = inventory.map((item: any) =>
-      classifyStock(item.stock_live, item.threshold_min),
-    );
-    const lowStockCount = bands.filter(
-      (b) => b === "low" || b === "critical",
-    ).length;
-    const criticalCount = bands.filter((b) => b === "critical").length;
-    const atParCount = bands.filter((b) => b === "at_par").length;
-    // A wine whose stock or par we could not read is NOT healthy. Folding it
-    // into the healthy count is how an unreadable row becomes a reassuring one.
-    const unknownCount = bands.filter((b) => b === "unknown").length;
+    //
+    // OD-161: a wine nobody has counted is `unknown` unless the view holds it
+    // (receipts and sales put it below par); see `bandOfRow`. Which rows can
+    // run low is the view's answer alone, and a view not read refuses
+    // (LowStockListUnreadError) rather than count 0 low.
+    const {
+      lowStockCount,
+      criticalCount,
+      atParCount,
+      unknownCount,
+      healthyCount,
+    } = summarizeStock(inventory, rawLowStock);
 
     // `v_low_stock_items` is still read, and any disagreement with the
     // classification above is REPORTED rather than reconciled silently: the
@@ -1550,7 +1557,7 @@ export class InventoryService {
       // Was `totalItems - lowStockCount`, which counted every unreadable and
       // every at-par row as healthy. Healthy is now a band a row is IN, not
       // the remainder after subtracting the rows we noticed.
-      healthyCount: bands.filter((b) => b === "healthy").length,
+      healthyCount,
       toastMappedCount,
       toastUnmappedCount,
     };

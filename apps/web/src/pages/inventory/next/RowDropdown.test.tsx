@@ -6,7 +6,7 @@
  * stubbed; the sheets and the ceremony stub are real mounts.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
@@ -491,6 +491,14 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
     return screen.findByRole('menu');
   }
 
+  it('a food or a good weighed in grams is never offered "Record a pour"; a wine still is', async () => {
+    const food = await menu({ uom: 'g', kind: 'food' });
+    expect(within(food).queryByRole('menuitem', { name: 'Record a pour' })).toBeNull();
+    cleanup();
+    const wine = await menu();
+    expect(within(wine).getByRole('menuitem', { name: 'Record a pour' })).toBeTruthy();
+  });
+
   it('both acts are reachable from More, for staff as well as managers (legacy gates neither)', async () => {
     const m = await menu({ canManage: false });
     expect(within(m).getByRole('menuitem', { name: 'Mark inactive' })).toBeTruthy();
@@ -546,6 +554,29 @@ describe('Ported acts in the More menu: Mark inactive and Remove from inventory'
       fireEvent.click(confirm);
     });
     expect(inv.reconcile).toHaveBeenCalledWith('i1', expect.objectContaining({ wineId: 'w1', actualCount: 0 }));
+    expect(inv.del).toHaveBeenCalledWith('i1');
+  });
+
+  it('a good with no library title is removed too: zeroed with no wineId, said in its unit, then soft-deleted', async () => {
+    const m = await menu({
+      uom: 'g',
+      kind: 'food',
+      row: row({ wineId: null, name: 'Flour 00', kind: 'food', stock: 2250, shadow: 0, openMl: 0 }),
+    });
+    const item = within(m).getByRole('menuitem', { name: 'Remove from inventory' }) as HTMLButtonElement;
+    expect(item.disabled).toBe(false);
+    expect(screen.queryByTestId('remove-blocked')).toBeNull();
+    fireEvent.click(item);
+    const confirm = await screen.findByRole('button', { name: 'Remove item' });
+    expect(screen.getByText(/2\.25 kg live \/ 0 g shadow/)).toBeTruthy();
+    expect(screen.queryByText(/Wine Library/)).toBeNull();
+    await act(async () => {
+      fireEvent.click(confirm);
+    });
+    expect(inv.reconcile).toHaveBeenCalledTimes(1);
+    const body = inv.reconcile.mock.calls[0][1] as Record<string, unknown>;
+    expect(body).toEqual(expect.objectContaining({ actualCount: 0 }));
+    expect('wineId' in body).toBe(false);
     expect(inv.del).toHaveBeenCalledWith('i1');
   });
 
@@ -666,6 +697,27 @@ describe('Name this wine in the opened row (ADR 0192, ported from RowExpansion.t
   });
 });
 
+describe('the evidence-only copy the drawer mounts (actions={false})', () => {
+  it('is named apart from the opened row, draws no acts, and asks the holder for the count sheet', () => {
+    const onSheet = vi.fn();
+    renderDrop({ actions: false, sections: ['where'], onSheet, sheet: null });
+    expect(screen.queryByTestId('row-dropdown')).toBeNull();
+    const ev = screen.getByTestId('row-evidence');
+    expect(ev.getAttribute('aria-label')).toBe('Gravner Ribolla: the evidence');
+    expect(screen.queryByRole('button', { name: 'More' })).toBeNull();
+    fireEvent.click(within(ev).getByRole('button', { name: 'Record a count' }));
+    expect(onSheet).toHaveBeenCalledWith('count');
+  });
+
+  it('draws no sheet even when the shared state names one; the acts copy draws it', () => {
+    renderDrop({ actions: false, sections: ['where'], onSheet: vi.fn(), sheet: 'count' });
+    expect(screen.queryByRole('textbox', { name: 'Bottles counted' })).toBeNull();
+    cleanup();
+    renderDrop({ sections: [], onSheet: vi.fn(), sheet: 'count' });
+    expect(screen.getByRole('textbox', { name: 'Bottles counted' })).toBeTruthy();
+  });
+});
+
 describe('the rest of the legacy expansion (round 4 census)', () => {
   beforeEach(() => {
     inv.reconcile.mockReset().mockResolvedValue({});
@@ -687,6 +739,23 @@ describe('the rest of the legacy expansion (round 4 census)', () => {
     expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5, notes: 'Shadow reconciled into live' });
     expect(toasts.success.mock.calls[0][0]).toBe('Gravner Ribolla: live set to 5, the shadow bottles counted in.');
     expect(toasts.success.mock.calls[0][0]).not.toMatch(/booked|moved/);
+  });
+
+  it('a good with no library title reconciles its shadow too, and sends no wineId', async () => {
+    const m = await openMore({ row: row({ wineId: null, stock: 3, shadow: 2 }) });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2 into live' }));
+    });
+    expect(inv.reconcile).toHaveBeenCalledWith('i1', { actualCount: 5, notes: 'Shadow reconciled into live' });
+  });
+
+  it('a good kept in grams reconciles in kg, never "bottles"', async () => {
+    const m = await openMore({ row: row({ stock: 3_000, shadow: 2_500 }), uom: 'g', kind: 'food' });
+    await act(async () => {
+      fireEvent.click(within(m).getByRole('menuitem', { name: 'Reconcile 2.5 kg into live' }));
+    });
+    expect(inv.reconcile).toHaveBeenCalledWith('i1', { wineId: 'w1', actualCount: 5_500, notes: 'Shadow reconciled into live' });
+    expect(toasts.success.mock.calls[0][0]).toBe('Gravner Ribolla: live set to 5.5 kg, the shadow counted in.');
   });
 
   it('holds Reconcile while live stock is unread', async () => {
@@ -837,3 +906,47 @@ describe('the format reads in the house unit (RowExpansion.tsx:69,172)', () => {
     expect(screen.getByText('750ml')).toBeTruthy();
   });
 });
+
+describe('RowDropdown keeps a per-gram cost readable (QA round 11b, PR #839)', () => {
+  it('a lot cost below one unit of the currency keeps its places; whole figures do not grow any', async () => {
+    const { cellMoney, cellUnitCost } = await vi.importActual<typeof import('./useInventoryNextData')>('./useInventoryNextData');
+    const usd = { state: 'recorded', code: 'USD' } as const;
+    expect(cellUnitCost(0.035, usd)).toBe('US$0.035');
+    expect(cellUnitCost(0.0356667, usd)).toBe('US$0.03567');
+    expect(cellUnitCost(0.5, usd)).toBe('US$0.50');
+    expect(cellUnitCost(22, usd)).toBe('US$22');
+    expect(cellUnitCost(33.333333, usd)).toBe('US$33.33');
+    expect(cellUnitCost(0.5, { state: 'recorded', code: 'JPY' })).toBe('JP¥0.5');
+    expect(cellUnitCost(0.0125, { state: 'recorded', code: 'KWD' })).toBe('KWD\u00a00.0125');
+    expect(cellUnitCost(0.035, { state: 'not_recorded', code: null })).toBe('0.035');
+    expect(cellUnitCost(0.035, { state: 'reading', code: null })).toBe(EM_DASH);
+    // Money that is not a cost per unit reads as it did.
+    expect(cellMoney(0.035, usd)).toBe('US$0.04');
+  });
+
+  it('shows 0.035 a gram as 0.035 in the opened row, and the prices as before', () => {
+    reads.detail = {
+      purchases: [
+        { id: 'l2', at: '2026-10-20T10:00:00Z', qty: 2000, unitCost: 0.036, orderId: null },
+        { id: 'l1', at: '2026-09-20T10:00:00Z', qty: 1000, unitCost: 0.035, orderId: null },
+      ],
+      purchasesTotal: 2,
+    };
+    try {
+      renderDrop({ row: row({ wac: 0.035, bottle: 92, glass: 18 }), currency: { state: 'recorded', code: 'USD' } });
+      const drop = screen.getByTestId('row-dropdown');
+      const kv = (k: string) => within(drop).getByText(k).nextElementSibling!.textContent;
+      expect(kv('Weighted average cost')).toContain('US$0.035');
+      expect(kv('Last bought')).toContain('US$0.036');
+      expect(kv('Before that')).toContain('US$0.035');
+      expect(kv('Was → now')).toContain('US$0.035 → US$0.036');
+      expect(kv('Your price')).toBe('US$92 · US$18');
+      const units = [...drop.querySelectorAll('td[data-label="Unit"]')].map((td) => td.textContent);
+      expect(units).toEqual(['US$0.036', 'US$0.035']);
+    } finally {
+      reads.detail = {};
+    }
+  });
+});
+
+const EM_DASH = '—';

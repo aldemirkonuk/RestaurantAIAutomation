@@ -35,7 +35,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../contexts/AuthContext';
-import { useInventory } from '../../../hooks/queries/useInventoryQueries';
+import { useInventory, useLowStockItems } from '../../../hooks/queries/useInventoryQueries';
 import { useProviders } from '../../../hooks/queries/useProviderQueries';
 import { useWineSubscription } from '../../../contexts/RealtimeContext';
 import { animate, ink } from '../../../lib/mudavym/motion';
@@ -267,13 +267,18 @@ function toBottle(w: WireWine, inv: Map<string, CellarRow>): BottleVM {
 export interface BuildingVM {
   /** Rows in this tenant's cellar. Null while unknown. */
   titles: number | null;
-  /** Sum of `stockLive` across those rows. Null while unknown. */
+  /**
+   * Sum of `stockLive` across the rows counted by the bottle (`uom` 'bottle',
+   * or no unit sent, as every row read before units arrived). A good counted
+   * in grams, millilitres or pieces is a title but not bottles: 1,750 g of
+   * sugar is not 1,750 bottles. Null while unknown.
+   */
   bottles: number | null;
-  /** Rows at or under their own recorded minimum. Null while unknown. */
+  /** Rows the low-stock list holds, strictly below their own par (QA 12a). Null while unknown. */
   belowPar: number | null;
   /**
    * Rows with no `thresholdMin` recorded at all — coverage, not stock
-   * health, and a different fact from `belowPar` (at-or-under a minimum the
+   * health, and a different fact from `belowPar` (below a minimum the
    * row DOES record). ADR 0160 sec110 item 2's "one or two more" gazetteer
    * measures. Null while unknown.
    */
@@ -1304,6 +1309,52 @@ export function useCocktailRegister(enabled: boolean) {
   };
 }
 
+/**
+ * A row is counted by the bottle when its unit says so, or when no unit was
+ * sent at all (a row read from a gateway before units, which only ever held
+ * bottles). Every other unit in `restaurant_inventory_uom_check` (case, keg,
+ * pack, each, glass, shot, ml, l, mg, g, kg) is not a bottle and is never
+ * converted into one here.
+ */
+function countedByTheBottle(row: unknown): boolean {
+  const uom = (row as { uom?: unknown } | null)?.uom;
+  return typeof uom !== 'string' || uom.trim() === '' || uom.trim().toLowerCase() === 'bottle';
+}
+
+/**
+ * "In the building tonight", counted from the inventory read alone. Titles,
+ * par and off-library stay over every item (ADR 0293 F2/F3); only the bottle
+ * sum looks at the unit, so a kitchen good never adds grams to bottles.
+ */
+export function countBuilding(
+  rows: ReadonlyArray<{ id: string; stockLive?: unknown; thresholdMin?: unknown; wineId?: unknown }> | undefined | null,
+  lowStock: ReadonlySet<string> | null,
+): BuildingVM {
+  if (!rows) return { titles: null, bottles: null, belowPar: null, parUnset: null, offBook: null };
+  let bottleCount = 0;
+  let below = 0;
+  let unset = 0;
+  for (const it of rows) {
+    const stock = num(it.stockLive) ?? 0;
+    const min = num(it.thresholdMin);
+    if (countedByTheBottle(it)) bottleCount += stock;
+    if (lowStock?.has(it.id)) below += 1;
+    // Coverage, not stock health: a row with no par recorded at all is
+    // neither "below" nor "healthy" — it is unmeasured.
+    if (min === null) unset += 1;
+  }
+  return {
+    titles: rows.length,
+    bottles: bottleCount,
+    belowPar: lowStock === null ? null : below,
+    parUnset: unset,
+    // From the inventory alone, never from the library pages loaded so far
+    // (A-053): a linked row's wine is in the library by its foreign key, so
+    // the only rows off the library are the ones with no link at all.
+    offBook: rows.filter((r) => !r.wineId).length,
+  };
+}
+
 export function useCellarNextData() {
   const { activeRestaurantId, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
@@ -1382,33 +1433,18 @@ export function useCellarNextData() {
     return rows.map((w) => toBottle(w, inv));
   }, [winesQ.data, cellarByWine]);
 
-  const building: BuildingVM = useMemo(() => {
-    const rows = inventoryQ.data;
-    if (!rows) return { titles: null, bottles: null, belowPar: null, parUnset: null, offBook: null };
-    let bottleCount = 0;
-    let below = 0;
-    let unset = 0;
-    for (const it of rows) {
-      const stock = num(it.stockLive) ?? 0;
-      const min = num(it.thresholdMin);
-      bottleCount += stock;
-      // "Below par" is only claimable where the row states its own minimum.
-      if (min !== null && stock <= min) below += 1;
-      // Coverage, not stock health: a row with no par recorded at all is
-      // neither "below" nor "healthy" — it is unmeasured.
-      if (min === null) unset += 1;
-    }
-    return {
-      titles: rows.length,
-      bottles: bottleCount,
-      belowPar: below,
-      parUnset: unset,
-      // From the inventory alone, never from the library pages loaded so far
-      // (A-053): a linked row's wine is in the library by its foreign key, so
-      // the only rows off the library are the ones with no link at all.
-      offBook: rows.filter((r) => !r.wineId).length,
-    };
-  }, [inventoryQ.data]);
+  // QA 12a: below par is the low-stock list's one answer (ADR 0129, strictly
+  // below), never `stock <= min` of this page's own, so the par tile says what
+  // /inventory and the inbox say. Null while the list is unread, never 0.
+  const lowQ = useLowStockItems();
+  const lowStock = useMemo<ReadonlySet<string> | null>(
+    () => (lowQ.data ? new Set(lowQ.data.map((i) => i.id)) : null),
+    [lowQ.data],
+  );
+  const building: BuildingVM = useMemo(
+    () => countBuilding(inventoryQ.data, lowStock),
+    [inventoryQ.data, lowStock],
+  );
 
   // True while a full page has been read and there may be more the reader
   // has not asked for yet; false once a page shorter than the limit came
@@ -1440,6 +1476,8 @@ export function useCellarNextData() {
 
   return {
     activeRestaurantId,
+    /** The low-stock list's ids (QA 12a); null while unread. */
+    lowStock,
     /**
      * True while AuthContext is still resolving the session and its branches.
      * Kept separate from `activeRestaurantId === null` on purpose: on a cold

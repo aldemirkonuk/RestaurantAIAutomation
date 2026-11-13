@@ -21,6 +21,8 @@ export interface LowStockDigestWine {
   severity: LowStockSeverity;
   wineId?: string;
   recommendedQty?: number;
+  /** OD-161: the figure is received minus sold; nobody has counted the wine. */
+  notCounted?: boolean;
 }
 
 export interface LowStockDigestData {
@@ -39,6 +41,8 @@ function wineTable(title: string, wines: LowStockDigestWine[]): string {
       tableRow(
         w.wineName,
         `${w.currentStock} / ${w.threshold} bottles${
+          w.notCounted ? " &middot; not counted yet" : ""
+        }${
           w.recommendedQty ? ` &middot; reorder ~${w.recommendedQty}` : ""
         }`,
       ),

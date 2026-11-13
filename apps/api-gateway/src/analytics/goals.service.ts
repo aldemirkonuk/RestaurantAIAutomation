@@ -71,6 +71,13 @@ export type GoalReadingStored = "stored" | "superseded" | "unstored";
  * SUPPORTED_METRICS: it exists for `getPosRevenueWindow` (OD-85), and offering
  * it as a goal target is a separate product decision nobody has made.
  */
+/**
+ * What a house reads when this gateway has no model switched on for goal
+ * advice. It never names the key or the gateway (onboarding walk 2026-11-11).
+ */
+export const GOAL_ADVICE_OFF =
+  "Suggestions for this goal are not switched on here yet. Every analysis on the sheet can still be chosen by hand.";
+
 @Injectable()
 export class GoalsService {
   private readonly logger = new Logger(GoalsService.name);
@@ -846,10 +853,13 @@ export class GoalsService {
     // as an assistant's answer is exactly the fabrication this whole seam is
     // built to prevent.
     if (!this.configService.get<string>("ANTHROPIC_API_KEY")) {
+      // The operator's fix goes to the log; the house reads what it can do.
+      this.logger.warn(
+        "Goal cutting refused: ANTHROPIC_API_KEY is not set on this gateway",
+      );
       return {
         available: false,
-        reason:
-          "ANTHROPIC_API_KEY is not configured on this gateway, so no model can be asked. Every analysis on the sheet is still available to choose by hand.",
+        reason: GOAL_ADVICE_OFF,
         spec: null,
         rejected: null,
         goal: named,

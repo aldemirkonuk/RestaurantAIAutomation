@@ -425,9 +425,116 @@ describe("DashboardService — the founder walk-through, 2026-10-01", () => {
       "restaurant_inventory",
     ])("getAlerts fails when the %s read is refused", async (table) => {
       db.getClient.mockReturnValue(makeClient({}, { [table]: "refused" }));
+      // Read whole (ADR 0292): the refusal names the read, never a part list.
       await expect(service.getAlerts("r1")).rejects.toThrow(
-        /read failed: refused/,
+        /could not be read whole: .*refused/,
       );
+    });
+  });
+
+  // OD-161 (rule half): a wine nobody has counted is unknown, not zero.
+  // `v_low_stock_items` leaves it out (migration an_uncounted_wine_is_not_low_stock,
+  // proved in supabase/tests); these are the dashboard reads that do not go
+  // through the view.
+  describe("OD-161 — a wine nobody has counted is not out of stock", () => {
+    it("asks the out-of-stock read for counted rows only", async () => {
+      const client = makeClient({ restaurants: CHICAGO });
+      db.getClient.mockReturnValue(client);
+
+      await service.getAlerts("r1");
+
+      const outOfStockRead = (
+        client.filters["restaurant_inventory"] ?? []
+      ).find((asked) =>
+        asked.some(
+          (f: any[]) => f[0] === "eq" && f[1] === "stock_live" && f[2] === 0,
+        ),
+      );
+      expect(outOfStockRead).toEqual(
+        expect.arrayContaining([["not", "last_counted_at", "is", null]]),
+      );
+    });
+
+    it("counts a never-counted row neither critical nor healthy in the summary", async () => {
+      const summaryDb = db as any;
+      summaryDb.getRestaurantInventory = jest.fn().mockResolvedValue([
+        {
+          id: "inv-new",
+          stock_live: 0,
+          threshold_min: 3,
+          last_counted_at: null,
+        },
+        {
+          id: "inv-empty",
+          stock_live: 0,
+          threshold_min: 3,
+          last_counted_at: "2026-11-01T10:00:00Z",
+        },
+        {
+          id: "inv-full",
+          stock_live: 9,
+          threshold_min: 3,
+          last_counted_at: "2026-11-01T10:00:00Z",
+        },
+      ]);
+      // The view, after the migration: only the counted empty row.
+      summaryDb.getLowStockItems = jest
+        .fn()
+        .mockResolvedValue([{ id: "inv-empty" }]);
+
+      const summary = await (service as any).getInventorySummary("r1");
+
+      expect(summary).toEqual({
+        totalItems: 3,
+        totalBottles: 9,
+        lowStockCount: 1,
+        criticalCount: 1,
+        healthyCount: 1,
+      });
+    });
+
+    // Second half (a_received_wine_not_counted_yet_can_run_low): the view
+    // holds an uncounted wine once receipts and sales put it below par. The
+    // alert says the figure is not a count.
+    it("says 'not counted yet' on a low-stock alert for a wine nobody counted", async () => {
+      const client = makeClient({
+        restaurants: CHICAGO,
+        v_low_stock_items: [
+          {
+            id: "inv-received",
+            stock_live: 2,
+            threshold_min: 3,
+            wine_name: "Received Red",
+            vintage: 2021,
+            last_counted_at: null,
+          },
+          {
+            id: "inv-counted",
+            stock_live: 1,
+            threshold_min: 3,
+            wine_name: "Counted White",
+            vintage: 2022,
+            last_counted_at: "2026-11-01T10:00:00Z",
+          },
+        ],
+      });
+      db.getClient.mockReturnValue(client);
+
+      const alerts = await service.getAlerts("r1");
+
+      expect(client.selects["v_low_stock_items"][0]).toContain(
+        "last_counted_at",
+      );
+      const byId = Object.fromEntries(alerts.map((a: any) => [a.id, a]));
+      expect(byId["low-stock-inv-received"]).toMatchObject({
+        title: "Low Stock",
+        message:
+          "Received Red 2021 — 2 bottles by receipts and sales, not counted yet, you keep at least 3",
+      });
+      expect(byId["low-stock-inv-counted"].message).toBe(
+        "Counted White 2022 — 1 bottle left, you keep at least 3",
+      );
+      expect(alerts.some((a: any) => a.type === "out_of_stock")).toBe(false);
     });
   });
 });

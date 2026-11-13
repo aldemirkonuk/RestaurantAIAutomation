@@ -21,7 +21,7 @@
  * A figure that is pending or failed is "—", never 0.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, Navigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTypedInventorySubscription } from '../../../contexts/RealtimeContext';
 import { getUnresolvedLines } from '../../../services/api/posHub';
@@ -30,13 +30,13 @@ import { Select } from '@/components/mudavym';
 import { DeliveriesToName } from '@/components/mudavym/DeliveriesToName';
 import { ContextualInsights } from '@/components/insights/ContextualInsights';
 import { NamingUnread } from './NameThisWine';
-import { readView, writeView, type IvView } from './iv-url';
+import { KIND_CHIPS, readView, writeView, type GoodKind, type IvView } from './iv-url';
 import { StorageLocationManager } from '../../../components/inventory/StorageLocationManager';
 import { PosMappingPanel } from '../../../components/inventory/PosMappingPanel';
 import { ManualReceiptWorkspace } from '../../../components/inventory/ManualReceiptWorkspace';
 import { AutoLocatePreviewModal } from '../../../components/inventory/AutoLocatePreviewModal';
 import { computeAutoLocatePlan, type AutoLocateResult, type WineInput, type WineLocationScore } from '../../../lib/autoLocateEngine';
-import { createInventoryItem } from '../../../services/api/inventory';
+import { createInventoryItem, houseFieldsOf } from '../../../services/api/inventory';
 import { isUnconfirmedWrite } from '../../../services/api/client';
 import { AuctionLotStart } from '../command/AuctionLotStart';
 import { MenuScannerFlow } from '../../../components/scanner/MenuScannerFlow';
@@ -46,6 +46,8 @@ import { queryKeys } from '../../../lib/query-keys';
 import { CellarMapView } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import InventoryTable from './InventoryTable';
+import ItemDrawer from './ItemDrawer';
+import CarryThis from './CarryThis';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
 import { blank, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
@@ -177,12 +179,28 @@ export default function InventoryNext() {
   // INV-W38: the view is the URL (iv-url.ts), so a reload, Back or a sent
   // link keeps it, and the links other pages send here land where they say.
   const [params, setParams] = useSearchParams();
-  const { chip, q: query, zone, type, sort, view, open: openParam } = useMemo(() => readView(params), [params]);
+  const { chip, q: query, zone, type, sort, view, kind, open: openParam } = useMemo(() => readView(params), [params]);
   const setV = useCallback(
     (patch: Partial<IvView>) => setParams((cur) => writeView(cur, { ...readView(cur), ...patch }), { replace: true }),
     [setParams],
   );
-  const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction'>(null);
+  // A row opened here is a history step, so Back closes the drawer; one
+  // opened by a link closes in place, so Close never leaves the page.
+  const navigate = useNavigate();
+  const openedHere = useRef(false);
+  const openItem = (id: string) => {
+    openedHere.current = true;
+    setParams((cur) => writeView(cur, { ...readView(cur), open: id }));
+  };
+  const closeItem = () => {
+    if (openedHere.current) navigate(-1);
+    else setV({ open: null });
+    openedHere.current = false;
+  };
+  useEffect(() => {
+    if (openParam === null) openedHere.current = false;
+  }, [openParam]);
+  const [panel, setPanel] = useState<null | 'scanner' | 'locations' | 'pos' | 'receipt' | 'auction' | 'carry'>(null);
   const [autoLocate, setAutoLocate] = useState<AutoLocateResult | null>(null);
   const [includeAssigned, setIncludeAssigned] = useState(false);
   // The delivered-order bell links to ?name-delivery=<order>; the card opens for it.
@@ -227,13 +245,22 @@ export default function InventoryNext() {
   }, []);
 
   // A chip whose count could not be read cannot hold the list (INV-W29).
-  const activeChip: ChipId = chip === 'dead' && data.paceUnread ? 'all' : chip;
+  // The same for the alert list (QA 9c): until it is read, the alerts' link
+  // shows every title rather than an empty list that would read as none.
+  const alerted = data.alerted ?? null;
+  const activeChip: ChipId =
+    (chip === 'dead' && data.paceUnread) ||
+    (chip === 'below' && alerted === null) ||
+    (chip === 'alerts' && alerted === null) ? 'all' : chip;
   const chipCounts = useMemo(() => {
     const now = Date.now();
     const m = new Map<ChipId, number>();
-    for (const c of CHIPS) m.set(c.id, (rows ?? []).filter((r) => chipMatch(r, c.id, now)).length);
+    for (const c of CHIPS) {
+      if ((c.id === 'alerts' || c.id === 'below') && alerted === null) continue;
+      m.set(c.id, (rows ?? []).filter((r) => chipMatch(r, c.id, now, alerted)).length);
+    }
     return m;
-  }, [rows]);
+  }, [rows, alerted]);
   const chipCount = (id: ChipId) => {
     const k = chipCounts.get(id);
     return k === undefined ? EM : fmtCount(k);
@@ -265,17 +292,38 @@ export default function InventoryNext() {
     return opts;
   }, [rows, data.libraryAnswered]);
 
+  // A food or supply is a house item with its own kind (house-items, #862);
+  // every other row is a drink. The kind chips show once the house carries one.
+  const goodOf = useMemo(() => {
+    const k = new Map(data.rawItems.map((i) => [i.id, houseFieldsOf(i).kind]));
+    return (r: InvRow): GoodKind => {
+      const own = k.get(r.id) ?? r.kind;
+      return own === 'food' || own === 'supply' ? own : 'drink';
+    };
+  }, [data.rawItems]);
+  // Each good's own unit (g, ml, each, bottle…): totals and cells never add one to another.
+  const uomOf = useMemo(() => {
+    const u = new Map(data.rawItems.map((i) => [i.id, houseFieldsOf(i).uom]));
+    return (r: InvRow): string | null => u.get(r.id) ?? null;
+  }, [data.rawItems]);
+  const carriesGoods = kind !== '' || (rows ?? []).some((r) => goodOf(r) !== 'drink');
   const visible = useMemo(() => {
     if (!rows) return [];
     const now = Date.now();
     const zn = (id: string | null) => (id === null ? 'Unassigned' : (locs.list.find((l) => l.id === id)?.name ?? null));
     return sortRows(
       rows.filter(
-        (r) => chipMatch(r, activeChip, now) && inZone(r, zone) && ofType(r, type) && matchesSearch(r, query, zn),
+        (r) =>
+          chipMatch(r, activeChip, now, alerted) &&
+          (kind === '' || goodOf(r) === kind) &&
+          inZone(r, zone) &&
+          ofType(r, type) &&
+          matchesSearch(r, query, zn),
       ),
       sort,
+      data.locale,
     );
-  }, [rows, activeChip, zone, type, query, sort, locs.list]);
+  }, [rows, activeChip, kind, goodOf, zone, type, query, sort, locs.list, alerted, data.locale]);
 
   // ── Row selection, ported from the legacy page (NEW-064, InventoryCommandPage.tsx:507-531).
   // Keyed by restaurant_inventory id. A house switch or a filter change empties
@@ -573,7 +621,7 @@ export default function InventoryNext() {
     <div className="mudavym iv-page min-h-full" style={{ background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}>
       <div className="iv-wrap">
         <p className="iv-crumb">
-          The cellar · Inventory
+          {carriesGoods ? 'Inventory' : 'The cellar · Inventory'}
           {data.state === 'ready' && rows !== null
             ? crumb
               ? ` · last count ${fmtWhen(crumb)}`
@@ -676,7 +724,7 @@ export default function InventoryNext() {
           /* ── the book ───────────────────────────────────────────────── */
           <>
             <p className="iv-read" data-testid="inventory-read-sentence">
-              {readSentence(rows, data.currency, !locs.unavailable)}
+              {readSentence(rows, data.currency, !locs.unavailable, alerted, uomOf)}
             </p>
             {data.stale ? (
               <p className="iv-note" role="status">
@@ -696,6 +744,16 @@ export default function InventoryNext() {
                     className="iv-chip"
                     disabled
                     title="Whether a title is dead stock could not be read: the selling pace did not answer"
+                  >
+                    {c.label} <span className="iv-num">{EM}</span>
+                  </button>
+                ) : (c.id === 'alerts' || c.id === 'below') && alerted === null ? (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className="iv-chip"
+                    disabled
+                    title="Which titles the low-stock alerts name has not been read"
                   >
                     {c.label} <span className="iv-num">{EM}</span>
                   </button>
@@ -723,6 +781,23 @@ export default function InventoryNext() {
                 ),
               )}
             </div>
+
+            {carriesGoods ? (
+              <div className="iv-chips" role="group" aria-label="Kind" data-testid="inventory-kinds">
+                {[{ id: '' as const, label: 'Every kind' }, ...KIND_CHIPS].map((k) => (
+                  <button
+                    key={k.id || 'all'}
+                    type="button"
+                    className="iv-chip iv-focus"
+                    aria-pressed={kind === k.id}
+                    data-on={kind === k.id}
+                    onClick={() => setV({ kind: k.id })}
+                  >
+                    {k.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
 
             <div className="iv-toolbar" data-testid="inventory-toolbar">
               <label className="iv-search">
@@ -780,9 +855,17 @@ export default function InventoryNext() {
               <button type="button" className="iv-btn iv-focus" onClick={showTools}>
                 Tools
               </button>
-              <Link to="/wines" className="iv-btn iv-focus" data-seal="true" title="Opens the wine register, where a wine is brought into the cellar. Other drinks come in from a scanned menu.">
-                Add a bottle
-              </Link>
+              {kind === 'food' || kind === 'supply' ? (
+                data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" data-seal="true" onClick={() => setPanel('carry')}>
+                    Carry a food or supply
+                  </button>
+                ) : null
+              ) : (
+                <Link to="/wines" className="iv-btn iv-focus" data-seal="true" title="Opens the wine register, where a wine is brought into the cellar. Other drinks come in from a scanned menu.">
+                  Add a bottle
+                </Link>
+              )}
             </div>
             {data.unread.length > 0 ? (
               <p className="iv-note" data-testid="inv-unread">
@@ -893,12 +976,14 @@ export default function InventoryNext() {
                 onSelect={toggleSelect}
                 onSelectAll={selectAllVisible}
                 rows={visible}
+                uomOf={uomOf}
+                goodOf={goodOf}
                 libraryUnread={!data.libraryAnswered}
                 grouped={sort === 'needs'}
                 sort={sort}
                 onSort={(next) => setV({ sort: next })}
                 openId={openId}
-                onToggle={(id) => setV({ open: openId === id ? null : id })}
+                onToggle={openItem}
                 canManage={data.canManage}
                 currency={data.currency}
                 zoneName={zoneName}
@@ -932,6 +1017,11 @@ export default function InventoryNext() {
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('scanner')}>
                   Scan a menu
                 </button>
+                {data.canManage ? (
+                  <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('carry')}>
+                    Carry a food or supply
+                  </button>
+                ) : null}
                 <button type="button" className="iv-btn iv-focus" onClick={() => setPanel('locations')}>
                   Storage locations
                 </button>
@@ -1053,6 +1143,18 @@ export default function InventoryNext() {
       {panel === 'receipt' ? (
         <ManualReceiptWorkspace isOpen onClose={() => setPanel(null)} onSaved={refreshStock} />
       ) : null}
+      {panel === 'carry' ? (
+        <CarryThis
+          restaurantId={data.rid}
+          onClose={() => setPanel(null)}
+          onCarried={(item) => {
+            setPanel(null);
+            refreshStock();
+            void queryClient.invalidateQueries({ queryKey: ['inventory-next'] });
+            toast.success(`${item.displayName} is carried. Nothing is on hand until a delivery or a count.`);
+          }}
+        />
+      ) : null}
       {panel === 'auction' ? (
         <AuctionLotStart open onClose={() => setPanel(null)} onCarry={carryAuctionLot} />
       ) : null}
@@ -1068,6 +1170,22 @@ export default function InventoryNext() {
             pourSizeMl: r.pourMl,
           }))}
           onChanged={refreshStock}
+        />
+      ) : null}
+      {openId !== null && data.state === 'ready' && rows !== null ? (
+        <ItemDrawer
+          key={openId}
+          row={rows.find((r) => r.id === openId) ?? null}
+          house={houseFieldsOf(data.rawItems.find((i) => i.id === openId))}
+          canManage={data.canManage}
+          currency={data.currency}
+          zoneName={zoneName}
+          locations={locs.list}
+          locationsUnavailable={locs.unavailable}
+          providers={data.providers.list}
+          providersError={data.providers.error}
+          restaurantId={data.rid}
+          onClose={closeItem}
         />
       ) : null}
     </div>

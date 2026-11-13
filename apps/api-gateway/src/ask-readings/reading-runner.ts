@@ -77,7 +77,14 @@ export class ReadingRunner {
           const house = await sources.house();
           const thresholdStated = s.rows(house).length === 1 && s.rows(house)[0].threshold_configured === true;
           const active = s.filter(items, r => r.is_active === true);
-          resultEvidence = s.filter(active, r => isBelowPar(recordedNumber(r.stock_live), recordedNumber(r.threshold_min)));
+          // QA 12a: below par is the low-stock list's one answer, never this
+          // reading's own stock-against-par. A row the list holds that the
+          // inventory read has not active and strictly below means the two
+          // reads straddled a write, and that refuses rather than guesses.
+          const held = new Set(s.rows(await sources.lowStock()).map(r => r.id));
+          resultEvidence = s.filter(active, r => held.has(r.id));
+          if (s.rows(resultEvidence).length !== held.size || !s.rows(resultEvidence).every(r =>
+            isBelowPar(recordedNumber(r.stock_live), recordedNumber(r.threshold_min)))) throw new ReadingFailure("source_changed");
           row("coverage", [s.count(resultEvidence, "below:count", "Items below threshold", "items"),
             s.count(s.filter(active, r => recordedNumber(r.stock_live) === null || recordedNumber(r.threshold_min) === null), "unknown:count", "Items with unknown stock or threshold", "items")]);
           for (const item of s.rows(s.take(resultEvidence, 100))) row(String(item.id), [

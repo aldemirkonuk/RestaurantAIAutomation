@@ -21,7 +21,8 @@ vi.mock('../../../contexts/AuthContext', () => ({
 // Mutable so one test can give the house its own rows; every other test reads
 // an empty cellar, as before. The SAME array reference is returned on every
 // render, as TanStack Query does, so memos keyed on it stay stable.
-const inventory = vi.hoisted(() => ({ data: [] as Array<{ id: string; wineId?: string | null }> }));
+const inventory = vi.hoisted(() => ({ data: [] as Array<{ id: string; wineId?: string | null; stockLive?: number; thresholdMin?: number | null }> }));
+const low = vi.hoisted(() => ({ data: [] as Array<{ id: string }> | undefined }));
 vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
   useInventory: () => ({
     data: inventory.data,
@@ -30,6 +31,7 @@ vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
     error: null,
     refetch: vi.fn(),
   }),
+  useLowStockItems: () => ({ data: low.data }),
 }));
 vi.mock('../../../hooks/queries/useProviderQueries', () => ({
   useProviders: () => ({ data: [], isError: false, error: null }),
@@ -74,6 +76,7 @@ function wrapper({ children }: { children: ReactNode }) {
 beforeEach(() => {
   api.get.mockReset();
   inventory.data = [];
+  low.data = [];
 });
 
 describe('useCellarNextData — the book never asks for more than BOOK_READ_LIMIT in one request', () => {
@@ -193,5 +196,31 @@ describe('useCellarNextData — the off-the-library count does not depend on how
     const { result } = renderHook(() => useCellarNextData(), { wrapper });
     expect(result.current.bottles).toBeNull();
     expect(result.current.building.offBook).toBe(1);
+  });
+});
+
+// QA 12a: the par tile says below par with the low-stock list's one answer.
+describe('useCellarNextData — below par is the low-stock list, never stock <= min of its own', () => {
+  beforeEach(() => {
+    api.get.mockImplementation(() => new Promise(() => {}));
+    // i1 on the list; i2 at par; i3 under par but off the list (in transit); i4 no par.
+    inventory.data = [
+      { id: 'i1', stockLive: 1, thresholdMin: 3 },
+      { id: 'i2', stockLive: 3, thresholdMin: 3 },
+      { id: 'i3', stockLive: 0, thresholdMin: 3 },
+      { id: 'i4', stockLive: 5, thresholdMin: null },
+    ];
+  });
+
+  it('counts only the items the list holds', () => {
+    low.data = [{ id: 'i1' }];
+    const { result } = renderHook(() => useCellarNextData(), { wrapper });
+    expect(result.current.building).toMatchObject({ titles: 4, bottles: 9, belowPar: 1, parUnset: 1 });
+  });
+
+  it('says nothing about par while the list is unread, never 0', () => {
+    low.data = undefined;
+    const { result } = renderHook(() => useCellarNextData(), { wrapper });
+    expect(result.current.building).toMatchObject({ titles: 4, belowPar: null });
   });
 });
