@@ -90,6 +90,13 @@ describe("HouseMenu, the proof's prices", () => {
     expect(document.body.textContent).not.toContain('1250 bottle')
   })
 
+  it('an unreadable answer is no code, even when it carries a stale one', async () => {
+    houseCurrency.mockResolvedValue({ ...lira, readable: false, reason: 'down' })
+    writeProof(proof())
+    mount()
+    await waitFor(() => expect(document.body.textContent).toContain('(currency not recorded)'))
+  })
+
   it('a failed read says the currency is not recorded, never a guessed sign', async () => {
     houseCurrency.mockRejectedValue(new Error('down'))
     writeProof(proof())
