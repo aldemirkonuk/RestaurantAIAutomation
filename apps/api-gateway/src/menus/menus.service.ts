@@ -21,6 +21,7 @@ import { UpdateOnboardingProgressDto } from "./dto/update-onboarding-progress.dt
 import { MenuReadWarning, WineExtractItem } from "./wine-extract-item.interface";
 import { itemNeedsPencil } from "./pencil-rule";
 import { isKitchenLine, lineForViewer, type LineView } from "./menu-line-view";
+import { kindNoun } from "./house-good-match";
 import {
   setHouseMenuPrice,
   type HeldKind,
@@ -56,6 +57,9 @@ interface ResolvedItem {
 interface InsertedMenuItem {
   id: string;
   wine_library_id: string | null;
+  // The house's own good, when the line named it (a good whose row names no
+  // library wine, a house gin say, is carried by this link alone).
+  inventory_item_id?: string | null;
   name: string;
   // The menu's own prices: ADR 0193 carries them to the house's price. Dated
   // by the moment the menu was CHOSEN (round 3, L11), never by the line.
@@ -1414,6 +1418,9 @@ export class MenusService {
 
     // The house's wines, every one (keyset-paged): which line lands on which row.
     const house = new Map<string, Record<string, any>>();
+    // Every row by its id too: a line linked to a good whose row names no
+    // library wine (a house gin) is planned on that row, as the carry does.
+    const byInventory = new Map<string, Record<string, any>>();
     {
       let after: string | null = null;
       for (;;) {
@@ -1425,13 +1432,14 @@ export class MenusService {
         const { data, error } = await q.order("id", { ascending: true }).limit(PAGE_ROWS);
         if (error) fail("the house's wines", error.message);
         const rows = (data ?? []) as Array<Record<string, any>>;
-        for (const r of rows) if (r.master_wine_id) house.set(String(r.master_wine_id), r);
+        for (const r of rows) {
+          if (r.master_wine_id) house.set(String(r.master_wine_id), r);
+          byInventory.set(String(r.id), r);
+        }
         if (rows.length < PAGE_ROWS) break;
         after = String(rows[rows.length - 1].id);
       }
     }
-    const byInventory = new Map<string, Record<string, any>>();
-    for (const r of house.values()) byInventory.set(String(r.id), r);
 
     const lockRead = await readOpenLocks(client, restaurantId);
     if (lockRead.error !== null) fail("the house's price locks", lockRead.error);
@@ -1481,6 +1489,7 @@ export class MenusService {
         replacing = true;
         for (const line of await this.readLines(m.id, restaurantId)) {
           if (line.wine_library_id) onReplaced.add(String(line.wine_library_id));
+          else if (line.inventory_item_id) onReplaced.add(`good:${String(line.inventory_item_id)}`);
           const row = line as unknown as InsertedMenuItem;
           if (!isKitchenItem(row)) replacedLines.push(row);
         }
@@ -1494,7 +1503,11 @@ export class MenusService {
       .map((line) => ({ menuItemId: line.id, name: line.name }));
     const planLines: PlanLine[] = lines.filter((line) => !isKitchenItem(line)).map((line) => {
       const wineId = line.wine_library_id ?? null;
-      const row = wineId ? (house.get(wineId) ?? null) : null;
+      const row = wineId
+        ? (house.get(wineId) ?? null)
+        : line.inventory_item_id
+          ? (byInventory.get(String(line.inventory_item_id)) ?? null)
+          : null;
       if (row) onThisMenu.add(String(row.id));
       const menuB = linePrice(line.bottle_price);
       const menuG = linePrice(line.by_glass_price);
@@ -1503,7 +1516,7 @@ export class MenusService {
       const kindPlan = (kind: "bottle" | "glass", menuPrice: number | null, housePrice: number | null): PlanKind => {
         const lock = row ? (locks.get(`${row.id}:${kind}`) ?? null) : null;
         let result: PlanResult;
-        if (!wineId) result = "not_linked";
+        if (!wineId && !row) result = "not_linked";
         else if (!row) result = menuPrice === null ? "blank_never_priced" : "new_wine";
         else if (menuPrice === null) result = housePrice === null ? "blank_never_priced" : "blank_kept";
         else if (lock) result = "held_by_lock";
@@ -1527,7 +1540,7 @@ export class MenusService {
       const glass = kindPlan("glass", menuG, houseG);
       // The same rule the carry writes (carryMenuPrice): answer 3, then answer 4.
       let flag: PriceFlag | null = null;
-      if (wineId) {
+      if (wineId || row) {
         if ((menuB === null && houseB !== null) || (menuG === null && houseG !== null)) flag = "blank_kept_last_known";
         else if (menuB === null && menuG === null && houseB === null && houseG === null) flag = "blank_no_house_price";
       }
@@ -1551,7 +1564,10 @@ export class MenusService {
         bottle,
         glass,
         flag,
-        returned: !current && locked && (!replacing || !onReplaced.has(String(wineId))),
+        returned:
+          !current &&
+          locked &&
+          (!replacing || !onReplaced.has(wineId ? String(wineId) : `good:${String(line.inventory_item_id)}`)),
         vintageMismatch: locked && readYear !== null && typeof libVintage === "number" && readYear !== libVintage,
       };
     });
@@ -2177,8 +2193,12 @@ export class MenusService {
         priceSync.set(i.id, { outcome: "kitchen_line", error: null, flag: null, flagNote: null, held: [] });
       }
     }
-    const validItems = menuItems.filter((i) => i.wine_library_id && !isKitchenItem(i));
+    // A line is carried by its library wine, or -- when it names none -- by the
+    // house's own good it was linked to (a house gin whose row names no wine).
+    const validItems = menuItems.filter((i) => (i.wine_library_id || i.inventory_item_id) && !isKitchenItem(i));
     if (validItems.length === 0) return { inventoryMap: result, priceSync };
+    const keyOf = (i: InsertedMenuItem): string =>
+      i.wine_library_id ? String(i.wine_library_id) : `good:${String(i.inventory_item_id)}`;
 
     const client = this.dbService.supabase;
     const thresholdMin = await this.getDefaultThresholdMin(restaurantId);
@@ -2192,15 +2212,16 @@ export class MenusService {
 
     // 1. The house's own row for every wine on these lines. A chunk that cannot
     //    be read fails its lines, said on each, never taken for "no row".
-    const wineIds = [...new Set(validItems.map((i) => String(i.wine_library_id)))];
-    type HouseRow = { id: string; master_wine_id: string; menu_price_current: number | string | null; menu_price_glass: number | string | null };
+    const wineIds = [...new Set(validItems.filter((i) => i.wine_library_id).map((i) => String(i.wine_library_id)))];
+    type HouseRow = { id: string; master_wine_id: string | null; kind?: string | null; menu_price_current: number | string | null; menu_price_glass: number | string | null };
     const existingByWine = new Map<string, HouseRow>();
     const readFailed = new Map<string, string>();
+    const HOUSE_ROW = "id, master_wine_id, kind, menu_price_current, menu_price_glass";
     for (let at = 0; at < wineIds.length; at += WINE_ID_CHUNK) {
       const chunk = wineIds.slice(at, at + WINE_ID_CHUNK);
       const { data, error } = await client
         .from("restaurant_inventory")
-        .select("id, master_wine_id, menu_price_current, menu_price_glass")
+        .select(HOUSE_ROW)
         .eq("restaurant_id", restaurantId)
         .in("master_wine_id", chunk);
       if (error) {
@@ -2210,6 +2231,22 @@ export class MenusService {
       // One row per house and wine (the UNIQUE), so a chunk never nears the 1000-row cap.
       for (const r of (data ?? []) as HouseRow[]) existingByWine.set(String(r.master_wine_id), r);
     }
+    // The goods named by their own row, by id and in this house only. A link to
+    // a row that is gone is said on its line, never taken for a new wine.
+    const goodIds = [...new Set(validItems.filter((i) => !i.wine_library_id).map((i) => String(i.inventory_item_id)))];
+    for (let at = 0; at < goodIds.length; at += WINE_ID_CHUNK) {
+      const chunk = goodIds.slice(at, at + WINE_ID_CHUNK);
+      const { data, error } = await client
+        .from("restaurant_inventory")
+        .select(HOUSE_ROW)
+        .eq("restaurant_id", restaurantId)
+        .in("id", chunk);
+      if (error) {
+        for (const g of chunk) readFailed.set(`good:${g}`, error.message);
+        continue;
+      }
+      for (const r of (data ?? []) as HouseRow[]) existingByWine.set(`good:${String(r.id)}`, r);
+    }
 
     // 2. One insert for every wine the house has no row for, named by its first
     //    line and WITHOUT a price on purpose: the price goes through
@@ -2217,9 +2254,10 @@ export class MenusService {
     //    the person, instead of the trigger's "no person named". If the batch is
     //    refused, each wine is tried on its own so one refusal does not fail the rest.
     const firstLine = new Map<string, InsertedMenuItem>();
-    for (const i of validItems) if (!firstLine.has(String(i.wine_library_id))) firstLine.set(String(i.wine_library_id), i);
+    for (const i of validItems) if (i.wine_library_id && !firstLine.has(String(i.wine_library_id))) firstLine.set(String(i.wine_library_id), i);
     const missing = wineIds.filter((w) => !readFailed.has(w) && !existingByWine.has(w));
     const createdByWine = new Map<string, string>();
+    const createdKind = new Map<string, string | null>();
     const insertFailed = new Map<string, string>();
     if (missing.length > 0) {
       const rowFor = (w: string) => ({
@@ -2232,17 +2270,21 @@ export class MenusService {
       const { data, error } = await client
         .from("restaurant_inventory")
         .insert(missing.map(rowFor))
-        .select("id, master_wine_id");
+        .select("id, master_wine_id, kind");
       if (!error) {
-        for (const r of (data ?? []) as Array<{ id: string; master_wine_id: string }>) {
+        for (const r of (data ?? []) as Array<{ id: string; master_wine_id: string; kind?: string | null }>) {
           createdByWine.set(String(r.master_wine_id), String(r.id));
+          createdKind.set(String(r.master_wine_id), r.kind ?? null);
         }
       } else {
         this.logger.warn(`adding ${missing.length} wine(s) to the house in one go was refused (${error.message}); adding them one by one`);
         for (const w of missing) {
-          const { data: one, error: oneErr } = await client.from("restaurant_inventory").insert(rowFor(w)).select("id").single();
+          const { data: one, error: oneErr } = await client.from("restaurant_inventory").insert(rowFor(w)).select("id, kind").single();
           if (oneErr || !one?.id) insertFailed.set(w, oneErr?.message ?? "no row came back");
-          else createdByWine.set(w, String(one.id));
+          else {
+            createdByWine.set(w, String(one.id));
+            createdKind.set(w, (one as { kind?: string | null }).kind ?? null);
+          }
         }
       }
     }
@@ -2251,7 +2293,7 @@ export class MenusService {
     const carried = new Set<string>();
     const writeBacks: Array<{ id: string; inventory_item_id: string; price_flag: PriceFlag | null; price_flag_note: string | null }> = [];
     for (const item of validItems) {
-      const w = String(item.wine_library_id);
+      const w = keyOf(item);
       // A failed read is not "no row" (last-call review, 2026-09-21). Read as
       // one, it tried a duplicate INSERT (refused by the house+wine UNIQUE),
       // skipped the line in silence -- counted "not_linked" -- and decided the
@@ -2265,6 +2307,12 @@ export class MenusService {
       }
       const existing = existingByWine.get(w) ?? null;
       const inventoryId = existing?.id ?? createdByWine.get(w) ?? null;
+      if (!inventoryId && !item.wine_library_id) {
+        const message = "the house's good this line was linked to is no longer in the house's inventory, so no price was set";
+        this.logger.warn(`menu line ${item.id} ("${item.name}"): ${message}`);
+        priceSync.set(item.id, { outcome: "failed", error: message, flag: null, flagNote: null, held: [] });
+        continue;
+      }
       if (!inventoryId) {
         // Still non-fatal for the menu, but said on the line: "not_linked"
         // means the menu matched no wine, never that the house's row failed.
@@ -2299,7 +2347,8 @@ export class MenusService {
       // A row this call created is "created" on its first line only.
       if (!existing && !carried.has(w)) result.created.add(item.id);
       carried.add(w);
-      const entry = await this.carryMenuPrice(item, restaurantId, inventoryId, userId, house, dating);
+      const kind = existing ? (existing.kind ?? null) : (createdKind.get(w) ?? null);
+      const entry = await this.carryMenuPrice(item, restaurantId, inventoryId, userId, house, dating, kind);
       priceSync.set(item.id, entry);
       writeBacks.push({ id: item.id, inventory_item_id: inventoryId, price_flag: entry.flag, price_flag_note: entry.flagNote });
     }
@@ -2382,6 +2431,8 @@ export class MenusService {
     userId: string,
     house: { bottle: number | string | null; glass: number | string | null },
     dating: CarryDating,
+    // The good's kind, for the sentence: a gin is not "this wine" (r21, D4).
+    kind: string | null = null,
   ): Promise<PriceSyncEntry> {
     const price = (v: unknown): number | null => {
       if (v === null || v === undefined || v === "") return null;
@@ -2407,7 +2458,7 @@ export class MenusService {
       kept.length > 0
         ? `The menu line shows no ${kept.map((k) => k.split(" ")[0]).join(" or ")} price, so the house kept the ${kept.join(" and ")} it already had. A manager can change it on Inventory, under Your price.`
         : noPriceAnywhere
-          ? "The menu line shows no price, and the house had no price for this wine either, so it stands on the menu unpriced. A manager can set one on Inventory, under Your price."
+          ? `The menu line shows no price, and the house had no price for this ${kindNoun(kind)} either, so it stands on the menu unpriced. A manager can set one on Inventory, under Your price.`
           : null;
     if (bottle === null && glass === null) return { outcome: "no_price", error: null, flag, flagNote, held: [] };
     try {
