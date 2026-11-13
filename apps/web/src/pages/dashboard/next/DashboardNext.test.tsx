@@ -722,6 +722,118 @@ describe('DashboardNext', () => {
     });
   });
 
+  // An order placed in another currency is not in the house's money: the
+  // gateway neither adds it in nor leaves it out, it withholds the figure and
+  // counts the order by its code, and the page says so where the figure was.
+  describe('a spend figure withheld for an order in another currency', () => {
+    it('says why on the spend tiles, and draws no figure', async () => {
+      routeGets({
+        '/dashboard/stats/': {
+          totalWines: 4,
+          totalBottles: 40,
+          lowStockItems: 0,
+          pendingOrders: 0,
+          totalVolumeMl: 0,
+          totalVolumeOz: 0,
+          todayProcurementSpend: null,
+          weekProcurementSpend: null,
+          monthProcurementSpend: null,
+          uncostedOrders: { today: 0, week: 0, month: 1 },
+          notInHouseCurrency: { today: { EUR: 1 }, week: { EUR: 1 }, month: { EUR: 2, USD: 1 } },
+          houseCurrencyUnread: false,
+          todayDeliveries: 1,
+          monthBottlesIn: 18,
+          amounts: 'shown',
+          timezone: 'UTC',
+        },
+      });
+
+      mount();
+
+      const today = (await screen.findByText('Paid to vendors · today')).closest('a') as HTMLElement;
+      expect(
+        await within(today).findByText('1 delivered order is in EUR, not the house’s money'),
+      ).toBeInTheDocument();
+      const month = screen.getByText('Paid to vendors · month').closest('a') as HTMLElement;
+      expect(
+        within(month).getByText(
+          '3 delivered orders are in other currencies (2 EUR, 1 USD), not the house’s money; 1 has no recorded cost',
+        ),
+      ).toBeInTheDocument();
+      for (const tile of [today, month]) expect(within(tile).queryByText(/\$|€|₺/)).not.toBeInTheDocument();
+    });
+
+    it('says when the house’s currency could not be read', async () => {
+      routeGets({
+        '/dashboard/stats/': {
+          totalWines: 4,
+          totalBottles: 40,
+          lowStockItems: 0,
+          pendingOrders: 0,
+          totalVolumeMl: 0,
+          totalVolumeOz: 0,
+          todayProcurementSpend: null,
+          weekProcurementSpend: null,
+          monthProcurementSpend: 120,
+          uncostedOrders: { today: 0, week: 0, month: 0 },
+          notInHouseCurrency: { today: { TRY: 1 }, week: { TRY: 1 }, month: {} },
+          houseCurrencyUnread: true,
+          todayDeliveries: 1,
+          monthBottlesIn: 18,
+          amounts: 'shown',
+          timezone: 'UTC',
+        },
+      });
+
+      mount();
+
+      expect(
+        await screen.findByText('1 delivered order is in TRY and the house’s currency could not be read'),
+      ).toBeInTheDocument();
+    });
+
+    it('names the day, the day panel and the month in words', async () => {
+      vi.useFakeTimers({ toFake: ['Date'], now: new Date(2026, 8, 10, 12, 0, 0) });
+      try {
+        const ledger = monthLedger();
+        const daily: Array<Record<string, unknown>> = ledger.daily;
+        daily[0] = {
+          ...daily[0],
+          procurement_spend: null,
+          uncosted_orders: 0,
+          not_in_house_currency: { EUR: 1 },
+          order_count: 1,
+          bottles_sold: 6,
+        };
+        routeGets({
+          '/dashboard/calendar-revenue/': {
+            ...ledger,
+            monthly_procurement_spend: null,
+            monthly_uncosted_orders: 0,
+            monthly_not_in_house_currency: { EUR: 1 },
+            house_currency_unread: false,
+          },
+        });
+
+        mount();
+
+        const day = await screen.findByRole('button', {
+          name: /^Tuesday, September 1: paid to vendors unknown, 1 delivered order is in EUR, not the house’s money/,
+        });
+        expect(await screen.findByTestId('dn-month-uncosted')).toHaveTextContent(
+          '(1 delivered order is in EUR, not the house’s money)',
+        );
+        fireEvent.click(day);
+        const panel = await screen.findByTestId('dn-day-figures');
+        expect(
+          within(panel).getByText('1 delivered order is in EUR, not the house’s money'),
+        ).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   // DASH-W33 (P8): ADR 0042 / OD-112 — ink-3 is decorative only, never a
   // caption. The shared guard reads `color` keys, not Tailwind classes, so
   // this page holds the rule for its own files.

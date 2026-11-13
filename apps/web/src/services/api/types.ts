@@ -660,6 +660,18 @@ export interface DashboardStats {
    * a gateway older than this field.
    */
   uncostedOrders?: { today: number; week: number; month: number };
+  /**
+   * Delivered orders not in the house's money, per spend window, by currency
+   * code. A window with any has a null figure: nothing converts one money
+   * into another, so it is neither mixed in nor left out.
+   */
+  notInHouseCurrency?: {
+    today: Record<string, number>;
+    week: Record<string, number>;
+    month: Record<string, number>;
+  };
+  /** An order names a currency and the house's own could not be read. */
+  houseCurrencyUnread?: boolean;
 }
 
 /** Vendor spend summary returned by `GET /dashboard/summary/:id`. */
@@ -668,6 +680,7 @@ export interface ProcurementSpendSummary {
   totalProcurementSpend: number | null;
   monthlyProcurementSpend: number | null;
   uncostedOrders?: { total: number; thisMonth: number };
+  notInHouseCurrency?: { total: Record<string, number>; thisMonth: Record<string, number> };
   unread?: { totalProcurementSpend: string | null; monthlyProcurementSpend: string | null };
   totalBottlesDelivered: number;
   spendByMonth: Array<{
@@ -675,6 +688,7 @@ export interface ProcurementSpendSummary {
     spend: number | null;
     bottles: number;
     uncosted?: number;
+    notInHouseCurrency?: Record<string, number>;
     unread?: string | null;
   }>;
 }

@@ -44,7 +44,7 @@ import {
   type DayLedger,
   type MonthLedger,
 } from './useDashboardNextData';
-import { DASH, dateIn, figure, longDay, monthName, uncostedSaid, useHouseMoney, type Money } from './format';
+import { DASH, dateIn, figure, heldBackSaid, longDay, monthName, useHouseMoney, type Money } from './format';
 import { SERIF } from './fonts';
 import DayDetail from './DayDetail';
 import { TryAgain } from './TryAgain';
@@ -208,6 +208,11 @@ function monthSalesSaid(ledger: MonthLedger | null, money: Money): { figure: str
   return { figure: money(ledger.monthlyNetSales), from };
 }
 
+/** Why a day's spend is withheld, in words; null when nothing is. */
+function dayHeldBack(day: DayLedger): string | null {
+  return heldBackSaid(day.uncosted_orders, day.not_in_house_currency, day.house_currency_unread);
+}
+
 /**
  * DASH-W35: the square is named in words — the day, then what it holds — and
  * says which day is today. The figures follow ADR 0290: sales when shown,
@@ -228,7 +233,7 @@ function cellLabel(
     if (o.seesAmounts) {
       parts.push(
         day.procurement_spend == null
-          ? `paid to vendors unknown${day.uncosted_orders > 0 ? `, ${uncostedSaid(day.uncosted_orders)}` : ''}`
+          ? `paid to vendors unknown${dayHeldBack(day) ? `, ${dayHeldBack(day)}` : ''}`
           : day.procurement_spend > 0
             ? `${money(day.procurement_spend)} paid to vendors`
             : 'no deliveries',
@@ -281,6 +286,9 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
     );
   const { month, refetch: refetchMonth } = useMonthLedger(restaurantId, cursor.year, cursor.month);
   const ledger = month.state === 'ready' ? month.ledger : null;
+  const monthHeldBack = ledger
+    ? heldBackSaid(ledger.monthlyUncosted, ledger.monthlyNotInHouseCurrency, ledger.houseCurrencyUnread)
+    : null;
   useEffect(() => {
     if (ledger && ledger.today !== undefined) setSaidToday(ledger.today);
   }, [ledger]);
@@ -416,8 +424,8 @@ export function SalesCalendar({ restaurantId, alerts, activity, zone = null, see
               <span className="text-inkm-1" style={MONO_FIG}>
                 {money(ledger?.monthlySpend)}
               </span>
-              {ledger?.monthlySpend == null && uncostedSaid(ledger?.monthlyUncosted) && (
-                <span data-testid="dn-month-uncosted">{` (${uncostedSaid(ledger?.monthlyUncosted)})`}</span>
+              {ledger?.monthlySpend == null && monthHeldBack && (
+                <span data-testid="dn-month-uncosted">{` (${monthHeldBack})`}</span>
               )}
               {' · '}
             </>

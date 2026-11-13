@@ -243,6 +243,8 @@ export interface CalendarMonthDay {
   procurement_spend: number | null;
   /** Delivered orders that day with no recorded cost; any makes the spend null. */
   uncosted_orders?: number;
+  /** Delivered orders that day not in the house's money, by code; any makes the spend null. */
+  not_in_house_currency?: Record<string, number>;
   /** Bottles DELIVERED by vendors (frozen misnomer). Null: not known. */
   bottles_sold: number | null;
   order_count: number | null;
@@ -305,6 +307,10 @@ export async function getCalendarRevenue(
   monthly_procurement_spend: number | null;
   /** Delivered orders in the month with no recorded cost. */
   monthly_uncosted_orders?: number;
+  /** Delivered orders in the month not in the house's money, by code. */
+  monthly_not_in_house_currency?: Record<string, number>;
+  /** An order names a currency and the house's own could not be read. */
+  house_currency_unread?: boolean;
   monthly_bottles: number | null;
   monthly_net_sales?: number | null;
   monthly_checks?: number | null;

@@ -76,6 +76,10 @@ export interface DayLedger {
   procurement_spend: number | null;
   /** Delivered orders that day with no recorded cost: why the spend is null. */
   uncosted_orders: number;
+  /** Delivered orders that day not in the house's money, by code: also why. */
+  not_in_house_currency: Record<string, number>;
+  /** The house's currency could not be read while an order named one. */
+  house_currency_unread: boolean;
   bottles_sold: number | null; // bottles DELIVERED by vendors (frozen misnomer)
   events: RawDayEvent[];
   order_count: number | null;
@@ -103,6 +107,10 @@ export interface MonthLedger {
   monthlySpend: number | null;
   /** Delivered orders in the month with no recorded cost. */
   monthlyUncosted: number;
+  /** Delivered orders in the month not in the house's money, by code. */
+  monthlyNotInHouseCurrency: Record<string, number>;
+  /** The house's currency could not be read while an order named one. */
+  houseCurrencyUnread: boolean;
   monthlyBottles: number | null;
   /** The begun days the register counted, summed (founder 2026-10-05: "Sum, say N of M days"). */
   monthlyNetSales: number | null;
@@ -126,6 +134,16 @@ export interface MonthLedger {
 
 const num = (v: unknown): number | null =>
   typeof v === "number" && Number.isFinite(v) ? v : null;
+
+/** Orders by currency code, kept only where the count is a positive number. */
+const codeCounts = (v: unknown): Record<string, number> =>
+  v && typeof v === "object"
+    ? Object.fromEntries(
+        Object.entries(v as Record<string, unknown>).filter(
+          ([code, n]) => /^[A-Z]{3}$/.test(code) && typeof n === "number" && n > 0,
+        ) as Array<[string, number]>,
+      )
+    : {};
 
 /** What a net figure reads when checks came and not one carried a subtotal. */
 export const NOT_RECORDED = "not recorded";
@@ -340,6 +358,8 @@ export function useMonthLedger(
                 ? num(raw.procurement_spend)
                 : num(raw.revenue),
             uncosted_orders: typeof raw.uncosted_orders === "number" ? raw.uncosted_orders : 0,
+            not_in_house_currency: codeCounts(raw.not_in_house_currency),
+            house_currency_unread: res.house_currency_unread === true,
             bottles_sold: num(raw.bottles_sold),
             events: raw.events ?? [],
             order_count: num(raw.order_count),
@@ -364,6 +384,8 @@ export function useMonthLedger(
                 : summedSpend,
           monthlyUncosted:
             typeof res.monthly_uncosted_orders === "number" ? res.monthly_uncosted_orders : 0,
+          monthlyNotInHouseCurrency: codeCounts(res.monthly_not_in_house_currency),
+          houseCurrencyUnread: res.house_currency_unread === true,
           monthlyBottles: num(res.monthly_bottles),
           monthlyNetSales: num(res.monthly_net_sales),
           monthlyChecks: num(res.monthly_checks),

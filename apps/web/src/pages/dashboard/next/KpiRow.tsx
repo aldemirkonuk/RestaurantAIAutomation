@@ -13,7 +13,7 @@ import { Link } from 'react-router-dom';
 import type { DashboardStats } from '@/services/api/types';
 import { formatNumber } from '@/lib/utils';
 import CountUp from './CountUp';
-import { uncostedSaid, useHouseMoney } from './format';
+import { heldBackSaid, useHouseMoney } from './format';
 
 const MONO = "'JetBrains Mono', ui-monospace, monospace";
 
@@ -99,11 +99,16 @@ export function KpiRow({ stats, pendingCount, lowStockCount, seesAmounts = true 
   // Counts the gateway adds beside the spend (DASH-W22); a gateway older than
   // that sends neither, and an absent count is unknown, never zero.
   const counts = (s ?? {}) as { todayDeliveries?: number; monthBottlesIn?: number };
-  // A null spend with uncosted orders behind it reads as why, not as a bare
-  // dash: the gateway withholds a figure it cannot sum whole.
+  // A null spend with uncosted orders, or orders in another currency, behind
+  // it reads as why, not as a bare dash: the gateway withholds a figure it
+  // cannot sum whole in the house's money.
   const uncosted = s?.uncostedOrders;
-  const monthWhy = monthSpend === null ? uncostedSaid(uncosted?.month) : null;
-  const todayWhy = todaySpend === null ? uncostedSaid(uncosted?.today) : null;
+  const other = s?.notInHouseCurrency;
+  const houseUnread = s?.houseCurrencyUnread === true;
+  const monthWhy =
+    monthSpend === null ? heldBackSaid(uncosted?.month, other?.month, houseUnread) : null;
+  const todayWhy =
+    todaySpend === null ? heldBackSaid(uncosted?.today, other?.today, houseUnread) : null;
   const todayDeliveries = typeof counts.todayDeliveries === 'number' ? counts.todayDeliveries : null;
   const monthBottlesIn = typeof counts.monthBottlesIn === 'number' ? counts.monthBottlesIn : null;
 
