@@ -156,15 +156,16 @@ export class CocktailFieldsDto {
 
   /**
    * The price the house charges. Optional, and absent means unpriced — never
-   * zero, which on this page would read as "free".
+   * zero, which on this page would read as "free". On an amend, null takes the
+   * price off (absent leaves it as it is).
    */
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @Type(() => Number)
   @IsNumber()
   @Min(0)
   @Max(100000)
-  price?: number;
+  price?: number | null;
 
   @ApiPropertyOptional()
   @IsOptional()

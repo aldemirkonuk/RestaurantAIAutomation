@@ -37,6 +37,7 @@ import {
   type HouseBookId,
 } from './cellar-format';
 import RecipeSheet from './recipe/RecipeSheet';
+import { PRICE_UNREAD, priceText, readPrice } from './recipe/price-text';
 import { useHouseMoney } from './recipe/useRecipe';
 import {
   useCocktailRegister,
@@ -45,12 +46,17 @@ import {
   type RegisterVM,
 } from './useCellarNextData';
 
-interface Draft extends CocktailInput {
+interface Draft extends Omit<CocktailInput, 'price'> {
   name?: string;
+  /**
+   * The price box as typed. A number field read "12,50" as empty and saved the
+   * drink unpriced without a word; the text is read by `readPrice` on save.
+   */
+  priceText?: string;
 }
 
 function Field({
-  id, label, value, onChange, placeholder, type = 'text',
+  id, label, value, onChange, placeholder, type = 'text', inputMode, invalid, describedBy,
 }: {
   id: string;
   label: string;
@@ -58,6 +64,9 @@ function Field({
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
+  inputMode?: 'decimal';
+  invalid?: boolean;
+  describedBy?: string;
 }) {
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -68,6 +77,10 @@ function Field({
         id={id}
         className="cl-field cl-focus"
         type={type}
+        inputMode={inputMode}
+        autoComplete={inputMode ? 'off' : undefined}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
@@ -140,14 +153,21 @@ export default function CocktailRegister({
   });
   const openShown = Boolean(openId && rows.some((x) => x.id === openId));
 
+  const priceRead = readPrice(draft?.priceText ?? '');
+
   const submit = async () => {
-    if (!draft?.name?.trim()) return;
+    if (!draft?.name?.trim() || priceRead.bad) return;
+    const { priceText: _typed, ...fields } = draft;
     try {
       if (editId) {
-        await amend.mutateAsync({ id: editId, input: draft });
+        // An amend sends the price it reads, null included: a cleared box
+        // takes the price off (undefined was dropped from the body, so the
+        // old price stayed while the form said it was amended).
+        await amend.mutateAsync({ id: editId, input: { ...fields, price: priceRead.price } });
         setSaid(`“${draft.name.trim()}” was amended on this house’s list.`);
       } else {
-        await create.mutateAsync(draft);
+        // A new drink with no price sends none: unpriced, never 0.
+        await create.mutateAsync(priceRead.price == null ? fields : { ...fields, price: priceRead.price });
         setSaid(`“${draft.name.trim()}” is on this house’s list.`);
       }
       setDraft(null);
@@ -219,12 +239,17 @@ export default function CocktailRegister({
             <Field id="ck-glass" label="Glass" value={draft.glass ?? ''} onChange={(v) => setDraft({ ...draft, glass: v })} placeholder="Rocks" />
             <Field id="ck-garnish" label="Garnish" value={draft.garnish ?? ''} onChange={(v) => setDraft({ ...draft, garnish: v })} placeholder="Orange peel" />
             <Field
-              id="ck-price" label="Price" type="number"
-              value={draft.price === undefined ? '' : String(draft.price)}
-              onChange={(v) => setDraft({ ...draft, price: v === '' ? undefined : Number(v) })}
+              id="ck-price" label="Price" inputMode="decimal"
+              value={draft.priceText ?? ''}
+              onChange={(v) => setDraft({ ...draft, priceText: v })}
               placeholder="leave blank if unpriced"
+              invalid={priceRead.bad}
+              describedBy={priceRead.bad ? 'ck-price-said' : undefined}
             />
           </div>
+          {priceRead.bad ? (
+            <p id="ck-price-said" className="cl-note" role="alert">{PRICE_UNREAD}</p>
+          ) : null}
           <p className="cl-note">
             A blank price is unpriced — it is never recorded as zero, which on a
             list reads as “free”.
@@ -234,7 +259,7 @@ export default function CocktailRegister({
               type="button"
               className="cl-btn cl-focus"
               onClick={submit}
-              disabled={!draft.name?.trim() || create.isPending || amend.isPending}
+              disabled={!draft.name?.trim() || priceRead.bad || create.isPending || amend.isPending}
             >
               <Check size={13} aria-hidden />
               {create.isPending || amend.isPending
@@ -363,7 +388,7 @@ export default function CocktailRegister({
                                   method: c.method ?? undefined,
                                   glass: c.glass ?? undefined,
                                   garnish: c.garnish ?? undefined,
-                                  price: c.price ?? undefined,
+                                  priceText: priceText(c.price),
                                 });
                               }}
                             >
