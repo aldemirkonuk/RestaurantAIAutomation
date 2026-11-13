@@ -129,6 +129,19 @@ describe('the working says its units in words', () => {
     );
   });
 
+  it('split cases priced per litre are refused in words', () => {
+    const t = agreementTotal({
+      price: 9.5,
+      stated: { priceUom: 'liter', pricePackSize: 1 },
+      quantity: 2,
+      unitType: 'split_case',
+      bottlesPerUnit: 6,
+    });
+    expect(t && !t.ok && t.message).toBe(
+      "This order is placed in split cases and the price is stated per litre. Nothing says how many litres a split case is, so the order's value cannot be worked out.",
+    );
+  });
+
   it('an opaque unit priced in itself says "per litre"', () => {
     const t = agreementTotal({
       price: 9.5,
