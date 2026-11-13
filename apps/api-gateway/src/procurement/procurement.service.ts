@@ -32,6 +32,7 @@ import {
   type EnqueueOutcome,
 } from "../inventory/house-item-research";
 import { type DeliveryBooking, verifyNoticeMessage } from "./delivered-notice";
+import { isNoSuchOrder, orderNotFound } from "./order-not-found";
 import {
   closeDeliveryItemToNameBookedElsewhere,
   nameDeliveredItem as nameDeliveredItemAct,
@@ -3288,6 +3289,8 @@ export class ProcurementService {
       .single();
 
     if (error) {
+      // No such order in this house is a 404, not a server fault (QA 3b B2).
+      if (isNoSuchOrder(error)) throw orderNotFound();
       this.logger.error("Failed to fetch procurement order", {
         restaurantId,
         orderId,
@@ -3350,6 +3353,11 @@ export class ProcurementService {
       .maybeSingle();
 
     if (error) {
+      // An id that is not a uuid cannot name an order (22P02): the same 404
+      // as an id that names none, not a failed read.
+      if (isNoSuchOrder(error)) {
+        throw orderNotFound("there was nothing to change");
+      }
       throw new InternalServerErrorException(
         `This order's current state could not be read (${error.message}), so ` +
           `whether it may change was not decided and nothing was changed.`,
@@ -3498,6 +3506,9 @@ export class ProcurementService {
       .single();
 
     if (error) {
+      // The UPDATE is filtered by this house and the id only, so no row back
+      // means there is no such order here: a 404, and nothing was written.
+      if (isNoSuchOrder(error)) throw orderNotFound("nothing was changed");
       this.logger.error("Failed to update procurement order", {
         restaurantId,
         orderId,

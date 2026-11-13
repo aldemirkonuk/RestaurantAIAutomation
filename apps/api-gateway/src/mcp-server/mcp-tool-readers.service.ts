@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { AnalyticsService } from "../analytics/analytics.service";
 import { InsightGeneratorService } from "../analytics/insights/insight-generator.service";
 import { DistributorDiscoveryService } from "../distributor-discovery/distributor-discovery.service";
@@ -111,7 +111,14 @@ export class McpToolReadersService {
     // The service takes restaurantId as its own predicate, so an order id from
     // another house comes back as a not-found rather than as another house's
     // order. The refusal is therefore the service's, not a check layered on it.
-    const order = await this.procurement.getOrder(restaurantId, orderId);
+    // The service answers that not-found with a 404 (QA 3b B2), which is this
+    // tool's "no such order" reply, not a failed tool call.
+    const order = await this.procurement
+      .getOrder(restaurantId, orderId)
+      .catch((e: unknown) => {
+        if (e instanceof NotFoundException) return null;
+        throw e;
+      });
     if (!order) {
       return {
         value: null,

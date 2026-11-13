@@ -4,9 +4,11 @@ import {
   IsBoolean,
   IsEnum,
   IsIn,
+  IsISO8601,
   IsInt,
   IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
   IsUUID,
   Matches,
@@ -83,6 +85,38 @@ export enum ProcurementOrderStatus {
   FAILED = "FAILED",
 }
 
+/**
+ * A price sent straight to the API is above zero (QA round 3b, B1).
+ *
+ * The order sheets already refuse a zero or negative price ("A price has to be
+ * a number above zero, or be left for the vendor to answer", NewOrderSheet),
+ * but the gateway took `finalPrice: -20` and wrote `total_cost: -120`: a
+ * negative spend on the order. A price nobody named is left out, never
+ * sent as 0: an absent price is "the vendor has not answered", and a 0 would be
+ * read downstream as goods that cost nothing.
+ */
+export const ORDER_MONEY_ABOVE_ZERO = {
+  quotedPrice:
+    "A quoted price has to be above zero. Leave it out when the vendor has not named one.",
+  negotiatedPrice:
+    "A negotiated price has to be above zero. Leave it out when none was agreed.",
+  finalPrice:
+    "A price has to be above zero. Leave it out when the vendor has not named one.",
+  totalCost:
+    "An order's total has to be above zero.",
+} as const;
+
+/**
+ * The largest count an order line may carry, and the largest pack (QA 3b B1).
+ *
+ * `bottles_total` is a Postgres integer (max 2,147,483,647) and is
+ * `quantity × bottlesPerUnit`, so the two caps multiply to 1,000,000,000 and
+ * can never overflow it. Past the cap the answer was a 500 from the database
+ * that the sheet labelled "not confirmed"; now it is a sentence.
+ */
+export const MAX_ORDER_QUANTITY = 100_000;
+export const MAX_BOTTLES_PER_UNIT = 10_000;
+
 export class CreateOrderDto {
   @ApiProperty()
   @IsString()
@@ -92,9 +126,13 @@ export class CreateOrderDto {
   @IsString()
   providerId: string;
 
-  @ApiProperty()
-  @IsInt()
-  @Min(1)
+  @ApiProperty({ minimum: 1, maximum: MAX_ORDER_QUANTITY })
+  @IsInt({ message: "A quantity has to be a whole number." })
+  @Min(1, { message: "A quantity has to be at least 1." })
+  @Max(MAX_ORDER_QUANTITY, {
+    message:
+      "One order line can hold at most 100,000. Split a larger order into several lines.",
+  })
   quantity: number;
 
   @ApiPropertyOptional({
@@ -117,6 +155,9 @@ export class CreateOrderDto {
   })
   @IsInt()
   @Min(1)
+  @Max(MAX_BOTTLES_PER_UNIT, {
+    message: "A pack can hold at most 10,000 bottles.",
+  })
   @IsOptional()
   bottlesPerUnit?: number;
 
@@ -154,6 +195,9 @@ export class CreateOrderDto {
   })
   @IsInt()
   @Min(1)
+  @Max(MAX_BOTTLES_PER_UNIT, {
+    message: "A pack can hold at most 10,000 bottles.",
+  })
   @IsOptional()
   pricePackSize?: number;
 
@@ -220,23 +264,27 @@ export class CreateOrderDto {
   @IsOptional()
   freight?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ minimum: 0, exclusiveMinimum: true })
   @IsNumber()
+  @IsPositive({ message: ORDER_MONEY_ABOVE_ZERO.quotedPrice })
   @IsOptional()
   quotedPrice?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ minimum: 0, exclusiveMinimum: true })
   @IsNumber()
+  @IsPositive({ message: ORDER_MONEY_ABOVE_ZERO.negotiatedPrice })
   @IsOptional()
   negotiatedPrice?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ minimum: 0, exclusiveMinimum: true })
   @IsNumber()
+  @IsPositive({ message: ORDER_MONEY_ABOVE_ZERO.finalPrice })
   @IsOptional()
   finalPrice?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ minimum: 0, exclusiveMinimum: true })
   @IsNumber()
+  @IsPositive({ message: ORDER_MONEY_ABOVE_ZERO.totalCost })
   @IsOptional()
   totalCost?: number;
 
@@ -252,8 +300,12 @@ export class CreateOrderDto {
   @IsOptional()
   priorityLevel?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ format: "date" })
   @IsString()
+  @IsISO8601(
+    { strict: true },
+    { message: "The expected delivery date has to be a date, like 2026-11-20." },
+  )
   @IsOptional()
   expectedDeliveryDate?: string;
 
@@ -269,23 +321,27 @@ export class UpdateOrderDto {
   @IsOptional()
   status?: ProcurementOrderStatus;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ minimum: 0, exclusiveMinimum: true })
   @IsNumber()
+  @IsPositive({ message: ORDER_MONEY_ABOVE_ZERO.quotedPrice })
   @IsOptional()
   quotedPrice?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ minimum: 0, exclusiveMinimum: true })
   @IsNumber()
+  @IsPositive({ message: ORDER_MONEY_ABOVE_ZERO.negotiatedPrice })
   @IsOptional()
   negotiatedPrice?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ minimum: 0, exclusiveMinimum: true })
   @IsNumber()
+  @IsPositive({ message: ORDER_MONEY_ABOVE_ZERO.finalPrice })
   @IsOptional()
   finalPrice?: number;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ minimum: 0, exclusiveMinimum: true })
   @IsNumber()
+  @IsPositive({ message: ORDER_MONEY_ABOVE_ZERO.totalCost })
   @IsOptional()
   totalCost?: number;
 

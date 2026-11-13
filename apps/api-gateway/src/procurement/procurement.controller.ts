@@ -243,6 +243,8 @@ export class ProcurementController {
     try {
       return await this.procurementService.getOrder(user.restaurantId, orderId);
     } catch (error) {
+      // A 404 for an order that is not this house's stays a 404 (QA 3b B2).
+      if (error instanceof HttpException) throw error;
       throw new HttpException(
         error.message || "Failed to fetch order",
         HttpStatus.INTERNAL_SERVER_ERROR,
