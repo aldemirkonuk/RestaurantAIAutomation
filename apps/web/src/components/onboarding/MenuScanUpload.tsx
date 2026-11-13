@@ -57,7 +57,7 @@ export function MenuScanUpload({ onSuccess }: MenuScanUploadProps) {
         />
       </div>
       <p className="mt-3 text-xs text-center text-gray-400">
-        Take a photo with your camera or upload an image of your printed wine list
+        Take a photo with your camera or upload an image of your printed menu
       </p>
     </div>
   )

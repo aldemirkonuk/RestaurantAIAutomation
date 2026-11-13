@@ -300,7 +300,7 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
             </div>
           ) : isScanFile ? (
             <div className="mb-4 p-4 rounded-xl border border-gray-200 bg-white text-sm text-gray-600">
-              Document ready. We'll extract your wines using AI when you import.
+              Document ready. Mudavym reads every line, drinks and dishes, when you import.
             </div>
           ) : (
             preview.length > 0 && (
@@ -354,9 +354,11 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
             ) : queue.length > 0 ? (
               `Import ${queue.length + 1} files`
             ) : isExcelFile || isScanFile ? (
-              'Import wines'
+              'Import the menu'
             ) : (
-              `Import ${estimatedTotal > 0 ? estimatedTotal : ''} wines`
+              estimatedTotal > 0
+                ? `Import ${estimatedTotal} ${estimatedTotal === 1 ? 'line' : 'lines'}`
+                : 'Import lines'
             )}
           </Button>
         </div>
