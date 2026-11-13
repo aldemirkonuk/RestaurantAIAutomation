@@ -472,9 +472,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             localStorage.removeItem("accessToken");
             localStorage.removeItem("refreshToken");
             // The dead session's one reaction (ADR 0344): a public page
-            // reloads as a stranger's, any other goes to /login. This load
-            // makes it as well as the auth store's, so the reaction does not
-            // depend on the store reading `/auth/me` a second time.
+            // reloads as a stranger's, any other goes to /login. The auth
+            // store's own boot load used to make this call; this load is now
+            // the only boot read of `/auth/me`, so it makes it.
             leaveDeadSession();
           } else {
             console.warn(
