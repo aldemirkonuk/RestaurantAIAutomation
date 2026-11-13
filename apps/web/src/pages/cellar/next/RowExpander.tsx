@@ -47,7 +47,8 @@
 
 import { useMemo } from 'react';
 import { AlertTriangle, Ban, LineChart } from 'lucide-react';
-import { EM, money, shortDate, type RegisterId } from './cellar-format';
+import { EM, shortDate, type RegisterId } from './cellar-format';
+import { sayReference, useHouseMoney } from './useHouseMoney';
 import { velocity, whenItSells, type TillLine } from './rowSeries';
 import type { BookRecordVM, RegisterRowVM, RowRecordVM } from './useCellarNextData';
 
@@ -242,6 +243,9 @@ export default function RowExpander({
   const order = book(record, 'order');
   const menu = book(record, 'menu');
   const quote = book(record, 'quote');
+  // The house's money (`useHouseMoney`): the cellar's `money()` printed $ for
+  // every house, so a lira house read "$14.00" (r8 browser check, 2026-11-12).
+  const money = useHouseMoney();
 
   const tillLines: TillLine[] = useMemo(
     () => (pos?.readable ? pos.ledger : []).map((l) => ({ at: l.at, qty: l.qty, unitPrice: l.unitPrice })),
@@ -300,7 +304,9 @@ export default function RowExpander({
       >
         <KV k="Last paid, each" v={money(paidUnit)} />
         <KV k="On our list" v={money(listPrice)} />
-        <KV k="Catalogue reference" v={money(reference)} />
+        {/* The shared catalogue's market hint, not this house's money: its row
+            names no currency, so none is printed (`sayReference`). */}
+        <KV k="Catalogue reference" v={sayReference(reference)} />
         <KV k="Markup" v={markup === null ? EM : `${markup.toFixed(1)}x`} />
         <p className="cl-note" style={{ marginTop: 6 }}>
           {paidUnit === null

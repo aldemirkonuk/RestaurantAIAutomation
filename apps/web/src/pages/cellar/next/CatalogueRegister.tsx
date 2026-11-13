@@ -64,6 +64,7 @@ import {
 import { houseNamingFor } from './cellar-format';
 import { columnsFor, type CellarColumn } from './cellar-columns';
 import { cellFor, sortValueFor } from './registerCells';
+import { useHouseMoney } from './useHouseMoney';
 import { REGISTER_SOURCE } from './registerShapes';
 import {
   useRegister,
@@ -230,6 +231,9 @@ export default function CatalogueRegister({
   );
 
   const register = useRegister(id);
+  // The house's money (`useHouseMoney`) for the cells `cellFor` draws: the
+  // cellar's `money()` printed $ for every house (r8 browser check, 2026-11-12).
+  const money = useHouseMoney();
   const reg = register.data;
 
   // One read serves both the expanded row and the series a cell opens, because
@@ -494,7 +498,7 @@ export default function CatalogueRegister({
                               openSeriesFor(r.name, c);
                             }}
                           >
-                            {cellFor(r, c.id)}
+                            {cellFor(r, c.id, money)}
                           </td>
                         ))}
                       </tr>,

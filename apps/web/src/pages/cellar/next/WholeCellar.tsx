@@ -29,6 +29,7 @@ import SeriesPanel from './SeriesPanel';
 import { REGISTER_TITLE, count, type RegisterId } from './cellar-format';
 import { WHOLE_CELLAR_COLUMNS, type CellarColumn } from './cellar-columns';
 import { cellFor, sortValueFor } from './registerCells';
+import { useHouseMoney } from './useHouseMoney';
 import { useRowRecord, useWholeCellar, type WholeRowVM } from './useCellarNextData';
 
 function valueFor(r: WholeRowVM, id: string): string | number | null {
@@ -50,6 +51,9 @@ export default function WholeCellar({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  // The house's money (`useHouseMoney`) for the cells `cellFor` draws: the
+  // cellar's `money()` printed $ for every house (r8 browser check, 2026-11-12).
+  const money = useHouseMoney();
   const [query, setQuery] = useState('');
   const [facet, setFacet] = useState<RegisterId | 'all'>('all');
   const [sortKey, setSortKey] = useState<string>('books');
@@ -241,7 +245,7 @@ export default function WholeCellar({
                             setSeries({ label: r.name, column: c });
                           }}
                         >
-                          {c.id === 'register' ? REGISTER_TITLE[r.register] : cellFor(r, c.id)}
+                          {c.id === 'register' ? REGISTER_TITLE[r.register] : cellFor(r, c.id, money)}
                         </td>
                       ))}
                     </tr>
