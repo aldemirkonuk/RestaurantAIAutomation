@@ -25,6 +25,14 @@ import { signInCodeEmailTemplate } from "../communications/email-templates/sign-
  *     account (below).
  *   * `step_up` -- signed in, proving it is you before a passkey is added. The
  *     address is the account's own, read from the row, never from the body.
+ *   * `verify_email` -- the code the verification mail carries beside its link
+ *     (onboarding OB-3, founder /goal 2026-11-07, proposal §4 F3: "the mail
+ *     carries a six-digit code and the link"). Issued at sign-up and on every
+ *     resend to the address the account was registered with; checked only for
+ *     a signed-in caller against the account's own address, like the link
+ *     (ADR 0229 fork 12). The mail is sent by `AuthService`, which puts the
+ *     code and the link in one message, so `issueForEmailVerification` stores
+ *     and returns the code and sends nothing itself.
  *
  * THE RULES, and why each number:
  *   * Six digits (`randomInt`, a CSPRNG), ten minutes, single use. Six is the
@@ -58,7 +66,10 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const SWEEP_AFTER_MS = 2 * DAY_MS;
 
-export type CodePurpose = "sign_in" | "step_up";
+export type CodePurpose = "sign_in" | "step_up" | "verify_email";
+
+/** The purposes this service mails itself; `verify_email` is mailed by AuthService. */
+type MailedPurpose = Exclude<CodePurpose, "verify_email">;
 
 /** The one refusal a wrong, expired, superseded or accountless code gets. */
 export const CODE_REFUSAL =
@@ -312,6 +323,29 @@ export class SignInCodesService {
     };
   }
 
+  /**
+   * The verification mail's code (`verify_email`). Stored with the same rules
+   * as every other code -- HMAC, ten minutes, single use, five tries, and the
+   * per-address and per-source issue limits, all counted with sign-in and
+   * step-up codes for the same address -- and returned for the caller to put
+   * in the mail beside the link. Throws as `store` does (429 when the
+   * address is busy or locked for the day); the caller decides what a mail
+   * without a code says.
+   */
+  async issueForEmailVerification(
+    userId: string,
+    emailRaw: unknown,
+    source: string | null = null,
+  ): Promise<string> {
+    const email = normalizeEmail(emailRaw);
+    if (!email.includes("@") || email.length < 3 || email.length > 320) {
+      throw new BadRequestException(
+        "This account has no email address to send a code to.",
+      );
+    }
+    return this.store("verify_email", email, userId, source);
+  }
+
   private async store(
     purpose: CodePurpose,
     email: string,
@@ -390,7 +424,7 @@ export class SignInCodesService {
     email: string,
     name: string | null,
     code: string,
-    purpose: CodePurpose,
+    purpose: MailedPurpose,
   ): Promise<boolean> {
     if (!this.gmail) {
       this.logger.error(`No mail service: a ${purpose} code was not sent.`);
@@ -572,6 +606,29 @@ export class SignInCodesService {
       codeRaw,
       userId,
     );
+  }
+
+  /**
+   * The verification mail's code, typed by the signed-in person. The address
+   * is the account's own, read from the row now -- so a code mailed to an
+   * address the account has since moved away from, or to any other address,
+   * cannot match (the hash binds the address). Returns the address the code
+   * proved, for the caller's compare-and-set.
+   */
+  async verifyEmailCode(userId: string, codeRaw: unknown): Promise<string> {
+    const { data: user, error } = await this.db
+      .from("users")
+      .select("email")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (error || !user) {
+      throw new InternalServerErrorException(
+        "Your account could not be read, so the code was not checked.",
+      );
+    }
+    const email = normalizeEmail((user as { email: string | null }).email);
+    await this.verify("verify_email", email, codeRaw, userId);
+    return email;
   }
 
   private async recentForEmail(email: string, now: number): Promise<CodeRow[]> {
