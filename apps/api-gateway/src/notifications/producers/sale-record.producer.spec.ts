@@ -22,7 +22,7 @@ const AUDIENCE = { ready: [...MEMBERS], deferred: [] as string[] };
 /** 2026-09-03 12:00 UTC = 08:00 New York — past the 06:00 settle margin. */
 const NOW = new Date("2026-09-03T12:00:00Z");
 
-function build() {
+function build(currency: string | null = "USD") {
   const db = new FakeDb();
   const database = fakeDatabase(db, MEMBERS);
   const notifications = fakeNotifications(MEMBERS);
@@ -31,7 +31,11 @@ function build() {
     notifications as any,
   );
   const producer = new SaleRecordProducer(database as any, ledger);
-  db.tables.restaurants.push({ id: TENANT, operating_hours: null });
+  db.tables.restaurants.push({
+    id: TENANT,
+    operating_hours: null,
+    currency,
+  });
   return { db, notifications, producer };
 }
 
@@ -98,6 +102,27 @@ describe("SaleRecordProducer", () => {
     // A record, not a summons — low priority keeps it out of the push fan-out.
     expect(call.priority).toBe("low");
     expect(call.type).toBe("service_closed");
+  });
+
+  it("[REVERT-FAILS] a lira house reads its takings in lira, not dollars", async () => {
+    const { db, notifications, producer } = build("TRY");
+    db.tables.pos_checks.push(check());
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW, true);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("1 check, \u20ba218.40.");
+    expect(call.message).toContain("sold for \u20ba136.00.");
+    expect(call.message).not.toContain("$");
+    expect(call.metadata.currency).toBe("TRY");
+  });
+
+  it("[REVERT-FAILS] a house with no currency reads its takings bare, never as dollars", async () => {
+    const { db, notifications, producer } = build(null);
+    db.tables.pos_checks.push(check());
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW, true);
+    const call = notifications.persistForRestaurant.calls[0][1];
+    expect(call.message).toContain("1 check, 218.40.");
+    expect(call.message).not.toContain("$");
+    expect(call.metadata.currency).toBeNull();
   });
 
   it("[REVERT-FAILS] a second sweep of the same day writes nothing", async () => {

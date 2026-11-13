@@ -44,14 +44,16 @@
  * whole directory names `persistForRestaurant`.
  */
 
-/** `$1,240.50`. Whole dollars keep their `.00` — a figure of record is exact. */
-export function money(value: number, currency = "USD"): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
+import { moneyIn } from "../../common/money-in";
+
+/**
+ * An amount in its own money: `₺1,240.50`, `$1,240.50`, `CHF 1,240.50`. A
+ * whole figure keeps its `.00` — a figure of record is exact. With no currency
+ * (`null`) the figure is bare (`1,240.50`); there is no default, because an
+ * assumed dollar is a claim nobody made (ADR 0117).
+ */
+export function money(value: number, currency: string | null): string {
+  return moneyIn(value, currency);
 }
 
 /** `18%` — rounded to whole percent, which is the precision a reader can act on. */

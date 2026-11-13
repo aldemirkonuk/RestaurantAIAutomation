@@ -11,6 +11,8 @@ import {
   FeedResponse,
   TodayPulseResponse,
 } from "./dto/mobile.dto";
+import { currencyCode } from "../common/iso-4217";
+import { moneyIn } from "../common/money-in";
 
 /**
  * Composes the mobile decision feed and today-pulse from existing domain
@@ -303,7 +305,7 @@ export class MobileService {
       order.finalPrice ??
       order.negotiatedPrice ??
       order.quotedPrice;
-    if (amount != null) parts.push(this.formatMoney(amount));
+    if (amount != null) parts.push(moneyIn(Number(amount), currencyCode(order.currency), true));
     return parts.join(" · ") || "Awaiting your approval";
   }
 
@@ -333,12 +335,6 @@ export class MobileService {
 
   private truncate(text: string, max: number): string {
     return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
-  }
-
-  private formatMoney(value: number): string {
-    return `$${Number(value).toLocaleString("en-US", {
-      maximumFractionDigits: 0,
-    })}`;
   }
 
   private parseDate(iso?: string): Date | null {

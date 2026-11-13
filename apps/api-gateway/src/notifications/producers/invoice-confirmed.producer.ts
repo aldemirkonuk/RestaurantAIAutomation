@@ -1,4 +1,5 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { currencyCode } from "../../common/iso-4217";
 import { DatabaseService } from "../../database/database.service";
 import {
   ProducerLedgerService,
@@ -129,7 +130,9 @@ export class InvoiceConfirmedProducer {
       const number = doc.doc_number ? String(doc.doc_number) : null;
       const total =
         doc.total === null || doc.total === undefined ? null : Number(doc.total);
-      const currency = String(doc.currency || "USD");
+      // The document's own code, or none: a document that names no currency
+      // prints a bare figure, never dollars.
+      const currency = currencyCode(doc.currency);
 
       await this.ledger.emit(
         { restaurantId, producer: PRODUCER, audience, tally, now },
@@ -205,7 +208,7 @@ export class InvoiceConfirmedProducer {
     label: string;
     vendor: string | null;
     total: number | null;
-    currency: string;
+    currency: string | null;
     tiesOut: boolean | null;
     tieOutDelta: number | null;
     verifiedAt: Date;
