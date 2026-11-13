@@ -55,6 +55,19 @@ import {
 import { MutationError } from './tm-bits';
 import './team-next.css';
 
+/**
+ * The gateway's own sentence for a refused claim, when it sent one. A staff
+ * claim is refused for a reason the person can act on ("This shift is for
+ * Bartender, and your position and skills on the team do not list it. A
+ * manager can still give it to you. Nothing was changed."); the page's fixed
+ * line said only that it was not claimed. No sentence (offline, a list of
+ * field errors) falls back to that line.
+ */
+function refusalSaid(err: unknown): string | null {
+  const said = (err as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
+  return typeof said === 'string' && said.trim() !== '' ? said : null;
+}
+
 export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
   const rid = useActiveRestaurantId();
   const qc = useQueryClient();
@@ -175,7 +188,7 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
           Your manager was not told you have seen this week. Try again.
         </MutationError>
         <MutationError when={claim.isError}>
-          The shift was not claimed — it is still open for someone else.
+          {refusalSaid(claim.error) ?? 'The shift was not claimed — it is still open for someone else.'}
         </MutationError>
         <MutationError when={askOff.isError}>
           The request did not reach your manager. Nothing is on their desk.
