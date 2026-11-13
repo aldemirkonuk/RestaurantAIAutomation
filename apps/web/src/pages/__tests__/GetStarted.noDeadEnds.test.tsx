@@ -163,6 +163,28 @@ describe('GetStarted: no dead ends', () => {
     expect(document.body.textContent).not.toMatch(/first inscription|Not a step now|last invoice/i)
   })
 
+  // r21 production-build walk: the reader was off, the read ended `failed`
+  // (422 with the reader's sentence), and the page said "could not find a
+  // menu in that photo".
+  it('a read that failed says the reader\'s own words and the other ways', async () => {
+    auth.user = owner
+    const off = 'The menu reader is not switched on here, so nothing was read. Type the lines in instead, or try again later.'
+    importMenu.mockRejectedValue(Object.assign(new Error(off), { response: { status: 422, data: { message: off } } }))
+    render(page())
+    const photo = new File(['x'], 'menu.png', { type: 'image/png' })
+    fireEvent.drop(await screen.findByText('Drop the menu here'), { dataTransfer: { files: [photo] } })
+    expect((await screen.findByRole('alert')).textContent).toBe(`${off} You can also send a file or type a few lines below.`)
+  })
+
+  it('a 422 with no sentence keeps the photo words', async () => {
+    auth.user = owner
+    importMenu.mockRejectedValue(Object.assign(new Error('x'), { response: { status: 422, data: { message: ['imageBase64 must be a string'] } } }))
+    render(page())
+    const photo = new File(['x'], 'menu.png', { type: 'image/png' })
+    fireEvent.drop(await screen.findByText('Drop the menu here'), { dataTransfer: { files: [photo] } })
+    expect((await screen.findByRole('alert')).textContent).toBe('We could not find a menu in that photo. Try a clearer photo, or send a file.')
+  })
+
   it('a photo that is not read for another reason still names the other ways', async () => {
     auth.user = owner
     importMenu.mockRejectedValue(new Error('boom'))

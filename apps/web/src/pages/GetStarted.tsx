@@ -62,11 +62,26 @@ const OTHER_WAYS = 'or send a file or type a few lines below instead.'
  * while the photo reader is switched off, and "try again in a moment" alone
  * then sent the person round the same drop zone for good.
  */
+/** The reader's own sentence on a refused read, when it is one sentence a person can read. */
+function readerSaid(cause: unknown): string | null {
+  const m = (cause as { response?: { data?: { message?: unknown } } })?.response?.data?.message
+  if (typeof m !== 'string') return null
+  const t = m.trim()
+  return t.length > 0 && t.length <= 300 ? t : null
+}
+
 function photoNotRead(cause: unknown): string {
   const status = getErrorStatus(cause)
   if (status === 413) return 'That photo is too large to send. Try a smaller one, or send a file.'
   if (status === 429) return 'Too many tries in a short time. Wait a minute, then try again.'
   if (isUnconfirmedWrite(cause)) return `We could not read that photo just now. Try again in a moment, ${OTHER_WAYS}`
+  // A read that ended `failed` comes back as a 422 carrying the reader's own
+  // sentence (services/api/menus.ts, MenuReadFailed): "The menu reader is not
+  // switched on here…", "No line could be read from this file…". Those say
+  // why; a fixed "could not find a menu in that photo" blamed the photo when
+  // the reader was off (r21 production-build walk).
+  const said = status === 422 ? readerSaid(cause) : null
+  if (said) return `${said} You can also send a file or type a few lines below.`
   if (status === 400 || status === 422)
     return 'We could not find a menu in that photo. Try a clearer photo, or send a file.'
   return `We could not read that photo. Try again, ${OTHER_WAYS}`
