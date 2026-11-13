@@ -33,11 +33,11 @@ import {
   BOOK_ORDER,
   EM,
   count,
-  money,
   shortDate,
   type HouseBookId,
 } from './cellar-format';
 import RecipeSheet from './recipe/RecipeSheet';
+import { useHouseMoney } from './recipe/useRecipe';
 import {
   useCocktailRegister,
   useCocktailWrites,
@@ -88,6 +88,10 @@ export default function CocktailRegister({
 }) {
   const { data, loading, error } = useCocktailRegister(true);
   const { create, amend, retire } = useCocktailWrites();
+  // The house's money, as the drink's own cards print it: the cellar's
+  // `money()` wrote $ for every house, so a lira list read "$14.00" beside
+  // cards that read "₺14.00" (r7 browser check, 2026-11-12).
+  const money = useHouseMoney();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   // /cocktails?open=<id> opens that drink: the inventory drawer's "used in"
