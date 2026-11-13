@@ -120,6 +120,8 @@ describe("rows the backfill held stay reachable (R11-01, existing owners)", () =
     await expect(svc.requestPasswordReset("İlker@x.com", null)).resolves.toEqual({
       sent: true,
     });
+    // The account work runs after the answer (#925): let it finish.
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
     expect(db.tables.password_resets).toHaveLength(1);
     expect(db.tables.password_resets[0].user_id).toBe("ilker");
   });
@@ -211,6 +213,8 @@ describe("reset, sign-in-methods and the Google link find the row by the shared 
     await expect(svc.requestPasswordReset("Chef@Bistro.com", null)).resolves.toEqual({
       sent: true,
     });
+    // The account work runs after the answer (#925): let it finish.
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
     expect(db.tables.password_resets).toHaveLength(1);
     expect(db.tables.password_resets[0].user_id).toBe("owner");
   });

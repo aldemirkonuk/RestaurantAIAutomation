@@ -91,6 +91,8 @@ describe("registerRestaurant folds the address it stores (R11-01)", () => {
 
     // The reset form, typed the way the owner typed it at sign-up.
     await svc.requestPasswordReset("Chef@Bistro.com", null);
+    // The account work runs after the answer (#925): let it finish.
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
 
     expect(db.tables.password_resets).toHaveLength(1);
     expect(db.tables.password_resets[0].user_id).toBe(
