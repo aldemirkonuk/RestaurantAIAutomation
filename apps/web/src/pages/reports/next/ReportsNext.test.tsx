@@ -490,6 +490,13 @@ describe('ReportsNext — the sheet', () => {
     }
   });
 
+  it('names the forecast method in words, never the engine code (r11)', () => {
+    paint();
+    const ahead = screen.getByRole('region', { name: 'What’s coming' });
+    expect(within(ahead).getByText('Trend and weekly pattern')).toBeInTheDocument();
+    expect(within(ahead).queryByText(/holt_winters/)).not.toBeInTheDocument();
+  });
+
   it('prints the window each register speaks about, under its own title', () => {
     paint();
     // The page-level 7/30/90 selector is gone because ten of the eleven

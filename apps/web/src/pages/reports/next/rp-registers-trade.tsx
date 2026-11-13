@@ -30,6 +30,7 @@ import {
   weekdayIndex,
 } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
+import { modelInHouseWords } from './rp-working-words';
 import type { Cat, Cell } from './rp-view';
 
 /* ───────────────────────────────────────────────────── 1. the reading ──── */
@@ -586,7 +587,7 @@ const ahead = analysis<AheadRegister>({
           value: a.accuracy?.mape == null ? EM : ratioPct(a.accuracy.mape / 100, 1),
           note: 'Not scoreable on this history',
         },
-        { label: 'Model', value: a.model || EM, note: 'No model fitted this history' },
+        { label: 'Model', value: modelInHouseWords(a.model) ?? EM, note: 'No model fitted this history' },
       ],
       notes: ['The dashed run is projected. It is the model’s expectation, not trade that happened.'],
       basis,

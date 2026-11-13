@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { workingInHouseWords, workingLines } from './rp-working-words';
+import { modelInHouseWords, workingInHouseWords, workingLines } from './rp-working-words';
 
 /**
  * The working lines as the gateway writes them today (analytics.service.ts,
@@ -118,5 +118,26 @@ describe('"Show the working" says it in the house\'s words', () => {
 
   it('drops empty lines, as Working always did', () => {
     expect(workingLines([null, undefined, '  ', 'rolling_one_step_ahead'])).toHaveLength(1);
+  });
+});
+
+describe('r11: the till total and the forecast model, in the house\'s words', () => {
+  it('the till line keeps no column name after the table becomes words', () => {
+    const out = workingInHouseWords(
+      "Non-voided pos_checks.total between 2026-10-14 and 2026-11-12, each check filed on the house's day in America/Detroit by when it closed, else when it opened.",
+    );
+    expect(out).toBe(
+      "The total of every till check, voided ones left out, between 2026-10-14 and 2026-11-12, each check filed on the house's day in America/Detroit by when it closed, else when it opened.",
+    );
+    expect(out).not.toMatch(/\.total|pos_checks/);
+  });
+
+  it('the model figure names the method, never the engine code', () => {
+    expect(modelInHouseWords('holt_winters')).toBe('Trend and weekly pattern');
+    expect(modelInHouseWords('holt_linear')).toBe('Trend');
+    expect(modelInHouseWords('ses')).toBe('Smoothed average');
+    expect(modelInHouseWords('croston_sba')).toBe('Croston sba');
+    expect(modelInHouseWords(null)).toBeNull();
+    expect(modelInHouseWords('')).toBeNull();
   });
 });
