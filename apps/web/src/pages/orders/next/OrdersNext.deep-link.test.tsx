@@ -36,6 +36,12 @@ vi.mock('./useOrdersNextData', async (importOriginal) => {
   return { ...actual, useOrdersNextData: () => state.current };
 });
 
+const lookup = vi.hoisted(() => ({ getOrder: vi.fn() }));
+vi.mock('@/services/api/orders', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/api/orders')>()),
+  getOrder: lookup.getOrder,
+}));
+
 vi.mock('@/hooks/queries/useOrderQueries', () => ({
   useApproveOrder: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
   useMarkOrderDelivered: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
@@ -219,9 +225,62 @@ describe('an id the book does not have', () => {
   });
 
   it('says so, once the read has actually come back with no match', async () => {
+    lookup.getOrder.mockReturnValue(new Promise(() => {}));
     state.current = ordersData({ rows: [row({ id: 'o-1' })], hasData: true });
     harness('/orders/ghost-id');
     expect(await screen.findByTestId('target-order-missing')).toHaveTextContent('ghost-id');
+  });
+
+  // r29 walk, finding 2: not loaded is not "does not exist" — the gateway is
+  // asked, and its order_not_found 404 is said plainly.
+  const notFound = () =>
+    Object.assign(new Error('Request failed with status code 404'), {
+      response: {
+        status: 404,
+        data: { reason: 'order_not_found', message: 'No order with that id belongs to this restaurant.' },
+      },
+    });
+
+  it('asks the gateway once and, on its order_not_found 404, says no such order is this house\'s', async () => {
+    lookup.getOrder.mockRejectedValue(notFound());
+    state.current = ordersData({ rows: [row({ id: 'o-1' })], hasData: true });
+    harness('/orders/ghost-id');
+    const say = await screen.findByText(/No order with the id ghost-id belongs to this house/);
+    expect(say).toHaveTextContent('The link may be old or mistyped');
+    expect(screen.getByTestId('target-order-missing')).not.toHaveTextContent('may exist further back');
+    expect(lookup.getOrder).toHaveBeenCalledTimes(1);
+    expect(lookup.getOrder).toHaveBeenCalledWith('ghost-id');
+  });
+
+  it('an order the gateway returns is this house\'s, only older than the loaded page', async () => {
+    lookup.getOrder.mockResolvedValue({ id: 'old-1', orderNumber: 'ORD-2025-00007' });
+    state.current = ordersData({ rows: [row({ id: 'o-1' })], hasData: true });
+    harness('/orders/old-1');
+    const say = await screen.findByText(/Order ORD-2025-00007 is this house's/);
+    expect(say).toHaveTextContent('older than the 1 most recent orders');
+  });
+
+  it('a lookup that fails any other way claims nothing about the order', async () => {
+    for (const err of [
+      Object.assign(new Error('boom'), { response: { status: 500, data: { message: 'Internal server error' } } }),
+      Object.assign(new Error('Not Found'), { response: { status: 404, data: {} } }),
+    ]) {
+      lookup.getOrder.mockReset();
+      lookup.getOrder.mockRejectedValue(err);
+      state.current = ordersData({ rows: [row({ id: 'o-1' })], hasData: true });
+      const { unmount } = harness('/orders/ghost-id');
+      const say = await screen.findByText(/could not be looked up/);
+      expect(say).toHaveTextContent('whether it exists is not known');
+      expect(say).not.toHaveTextContent('belongs to this house');
+      unmount();
+    }
+  });
+
+  it('does not ask the gateway for an order the book already has', async () => {
+    state.current = ordersData({ rows: [row({ id: 'o-1' })], hasData: true });
+    harness('/orders/o-1');
+    await screen.findByTestId('order-row-o-1');
+    expect(lookup.getOrder).not.toHaveBeenCalled();
   });
 
   it('says nothing when the read itself failed — that is a different fact', async () => {
