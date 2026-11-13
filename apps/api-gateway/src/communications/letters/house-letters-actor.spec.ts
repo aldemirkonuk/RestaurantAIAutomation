@@ -36,6 +36,7 @@ import type { IntegrationsOauthService } from "../../integrations/integrations-o
 import { HouseLettersController } from "./house-letters.controller";
 import { HouseLettersService } from "./house-letters.service";
 import { GMAIL_SEND_SCOPE, HouseSenderService } from "./house-sender.service";
+import { GMAIL_READ_SCOPE } from "../inbox/house-inbox-flag";
 
 /**
  * The composer's two gates (ADR 0175 D9/D10, 2026-09-21), as stand-ins that
@@ -108,7 +109,7 @@ const oauthOk = {
 } as unknown as IntegrationsOauthService;
 
 /** `request.user` exactly as the gateway builds it for a signed-in manager. */
-async function userFromToken(): Promise<Record<string, unknown>> {
+async function userFromToken(houseRole?: string): Promise<Record<string, unknown>> {
   const strategy = new JwtStrategy({
     validateJwtPayload: jest.fn().mockResolvedValue({
       user_id: PERSON,
@@ -117,6 +118,7 @@ async function userFromToken(): Promise<Record<string, unknown>> {
       role: "manager",
       restaurant_id: HOUSE,
       email_verified: true,
+      ...(houseRole ? { house_role: houseRole } : {}),
     }),
   } as never);
   const payload: JwtPayload = {
@@ -225,6 +227,30 @@ describe("the letters routes read the caller from the token the gateway issues",
     expect(out.grant?.personUserId).toBe(PERSON);
     expect(out.grant?.connectionId).toBe("conn-mine");
     expect(out.words).toContain("your own connected mailbox");
+  });
+
+  // r21 walk D3: the role travels from the token to the sentence, so an owner
+  // is told the reading switch is theirs and a member of staff whom to ask.
+  it.each([
+    ["owner", "You can turn it on there."],
+    ["staff", "Only an owner or a manager can turn it on; ask one of them."],
+  ])("GET /sender says who may switch the reader on, to a %s", async (role, said) => {
+    const { controller } = controllerOver({
+      integration_oauth_connections: [
+        grant(PERSON, "conn-mine", "mine@house.test"),
+        { ...grant(PERSON, "conn-read", "mine@house.test"), integration_id: "gmail_read", scopes: [GMAIL_READ_SCOPE] },
+      ],
+      restaurant_feature_flags: [{ enable_house_inbox_read: false }],
+      users: [{ name: "The Manager" }],
+    });
+    const user = asNestWould("senderIdentity", await userFromToken(role));
+
+    const out = (await controller.senderIdentity(user as never)) as {
+      conversation: { words: string; receiving: { consented: unknown; switchedOn: unknown } };
+    };
+
+    expect(out.conversation.receiving).toMatchObject({ consented: true, switchedOn: false });
+    expect(out.conversation.words).toContain(said);
   });
 
   it("POST /letters writes the WRITER onto the row, and it survives serialisation", async () => {

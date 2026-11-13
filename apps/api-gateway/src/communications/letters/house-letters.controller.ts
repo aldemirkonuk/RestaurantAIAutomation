@@ -66,11 +66,15 @@ export class HouseLettersController {
     description:
       "`kind: none` means no letter may be sent and says why; `kind: unknown` means the read failed and is NOT the same answer. `conversation.where` states the whole thing in four words: `whole_conversation_here`, `letters_leave_only`, `replies_arrive_only`, `shared_mailbox` (plus `unknown` for a failed read), and `conversation.words` says it in a sentence.",
   })
-  async senderIdentity(@CurrentUser() user: TokenUser) {
+  async senderIdentity(@CurrentUser() user: TokenUser & { role?: string | null }) {
     // `userId`, never `id`: JwtStrategy.validate has no `id`, and reading one
     // made `mine` false for every caller, so nobody's own grant was preferred.
     const { userId, restaurantId } = houseActor(user);
-    const identity = await this.sender.resolve(restaurantId, userId);
+    // The role IN THIS HOUSE (jwt.strategy.ts: house_role, never users.role),
+    // so the sentence says to an owner that the reading switch is theirs.
+    const identity = await this.sender.resolve(restaurantId, userId, {
+      role: user?.role ?? null,
+    });
     return {
       ...identity,
       // Whether THIS person's hold sends (ADR 0175 D10; 2026-09-21) — read
