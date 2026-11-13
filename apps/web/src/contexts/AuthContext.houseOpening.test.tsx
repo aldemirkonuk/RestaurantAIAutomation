@@ -237,20 +237,22 @@ describe("registerRestaurant (F-006, scope item 6)", () => {
     );
   });
 
-  it("Register.tsx's house-form catch calls houseNotOpened, never the error's text (source read)", () => {
-    // A source read, not a render: the form cannot be rendered today
-    // (Register.tsx starts it at step 1 and nothing moves it on), so this
-    // checks what its catch calls, not what a person sees.
-    const src = readFileSync(
-      resolve(process.cwd(), "src/pages/Register.tsx"),
-      "utf8",
-    );
-    const start = src.indexOf("const handleCreateSubmit = async () => {");
+  it("Register.tsx opens no house; GetStarted's catch says houseNotOpened, never the error's text (source read)", () => {
+    // Register.tsx's house form could not be rendered (it started at step 1
+    // and nothing moved it on) and is gone (walk r23, register-step2): the
+    // house is opened only at /get-started, after verification (ADR 0213).
+    // So the sentence that matters is GetStarted's, and Register must not
+    // grow a second way to open a house that this read would miss.
+    const read = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
+    const register = read("src/pages/Register.tsx");
+    expect(register).not.toContain("registerRestaurant");
+    expect(register).not.toContain("createFirstHouse");
+    const arrival = read("src/pages/GetStarted.tsx");
+    const start = arrival.indexOf("await createFirstHouse(");
     expect(start).toBeGreaterThan(-1);
-    const body = src.slice(start, src.indexOf("\n  }\n", start));
-    expect(body).toContain("setError(houseNotOpened(err, 'register'))");
-    expect(body).not.toContain("err.message");
-    expect(body).not.toContain("err instanceof Error ?");
+    const after = arrival.slice(start, arrival.indexOf("\n  }\n", start));
+    expect(after).toContain("setError(houseNotOpened(cause, 'arrival'))");
+    expect(after).not.toContain(".message");
   });
 });
 
