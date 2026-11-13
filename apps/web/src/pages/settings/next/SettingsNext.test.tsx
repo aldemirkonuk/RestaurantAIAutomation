@@ -33,7 +33,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 
 const mock = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
@@ -150,6 +150,7 @@ vi.mock('@/lib/mudavym/useMudavymDesign', () => ({
 }));
 
 import SettingsNext from './SettingsNext';
+import { lockBodyScroll } from '@/components/mudavym/overlayState';
 import { isSectionId } from './st-format';
 import { handOf } from '../../recommendations/next/rec-format';
 
@@ -577,6 +578,19 @@ describe('SettingsNext — the editorial spine', () => {
   // (jsdom never rendering it) is not the failure mode; scrollIntoView simply
   // stayed uncalled, which is the same silent shape as the 900-second token
   // trap this repo has already been burned by once.
+  it('a ?tab= deep link under an open overlay (the theme prompt) scrolls once the overlay lets go (r26 walk)', () => {
+    const release = lockBodyScroll();
+    try {
+      mount('/settings?tab=measurement');
+      expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+    } finally {
+      act(() => release());
+    }
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(1);
+    const scrolledTo = (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.instances[0] as HTMLElement;
+    expect(scrolledTo.id).toBe('st-section-measurement');
+  });
+
   it('honours a ?tab=hours deep link the same way — graft B lives under "The house"', () => {
     mount('/settings?tab=hours');
     expect(screen.getByTestId('st-section-hours')).toBeInTheDocument();

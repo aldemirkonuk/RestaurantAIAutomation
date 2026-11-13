@@ -68,6 +68,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Link, Navigate, useSearchParams } from 'react-router-dom';
 import { Plug } from 'lucide-react';
 import { Wordmark } from '@/components/mudavym';
+import { whenBodyScrollUnlocked } from '@/components/mudavym/overlayState';
 import { useAuth } from '@/contexts/AuthContext';
 import { animate, ink, prefersReducedMotion, settle } from '@/lib/mudavym';
 import { useMudavymDesign } from '@/lib/mudavym/useMudavymDesign';
@@ -221,8 +222,14 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
     if (connectionsOn && isCollapsedSection(tabParam)) return; // the redirect below handles this id
     const el = document.getElementById(`st-section-${tabParam}`);
     if (!el || typeof el.scrollIntoView !== 'function') return;
-    scrolledRef.current = true;
-    el.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    // r26 walk: an overlay open on arrival (the theme prompt) holds the body
+    // at `overflow: hidden`, and the scroll asked for then never moved the
+    // page. It waits for the overlay to let go, and counts as done only once
+    // it has run.
+    return whenBodyScrollUnlocked(() => {
+      scrolledRef.current = true;
+      el.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    });
   }, [tabParam, connectionsOn, live]);
 
   // The settle-in reveal, once, on first paint — `animate` collapses to the

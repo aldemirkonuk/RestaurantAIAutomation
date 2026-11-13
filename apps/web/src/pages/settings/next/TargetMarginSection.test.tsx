@@ -108,6 +108,55 @@ describe('TargetMarginSection', () => {
     expect(screen.getByText(/costed on a/)).toHaveTextContent('125 ml')
   })
 
+  it('Enter confirms the typed pour, as the POS pour box does (r26 walk)', async () => {
+    getTargetMargin.mockResolvedValue(UNSET)
+    confirmPourSize.mockResolvedValue({
+      ...UNSET,
+      pour: { confirmed: true, ml: 140, confirmedAt: '2026-11-13T10:00:00Z', confirmedBy: { userId: 'u', name: 'Ada' } },
+    })
+    render(<TargetMarginSection canManage />)
+    const box = await screen.findByLabelText('pour')
+    fireEvent.change(box, { target: { value: '140' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    await waitFor(() => expect(confirmPourSize).toHaveBeenCalledWith(140))
+  })
+
+  it('Enter on a pour that cannot be confirmed sends nothing; Escape puts back the confirmed pour', async () => {
+    getTargetMargin.mockResolvedValue({
+      ...UNSET,
+      pour: { confirmed: true, ml: 140, confirmedAt: '2026-11-13T10:00:00Z', confirmedBy: { userId: 'u', name: 'Ada' } },
+    })
+    render(<TargetMarginSection canManage />)
+    const box = (await screen.findByLabelText('pour')) as HTMLInputElement
+    fireEvent.keyDown(box, { key: 'Enter' })
+    fireEvent.change(box, { target: { value: '9000' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(confirmPourSize).not.toHaveBeenCalled()
+    fireEvent.keyDown(box, { key: 'Escape' })
+    expect(box).toHaveValue(140)
+  })
+
+  it('focus selects the confirmed pour, so typing replaces it', async () => {
+    getTargetMargin.mockResolvedValue({
+      ...UNSET,
+      pour: { confirmed: true, ml: 140, confirmedAt: '2026-11-13T10:00:00Z', confirmedBy: { userId: 'u', name: 'Ada' } },
+    })
+    render(<TargetMarginSection canManage />)
+    const box = (await screen.findByLabelText('pour')) as HTMLInputElement
+    const select = vi.spyOn(box, 'select')
+    fireEvent.focus(box)
+    expect(select).toHaveBeenCalled()
+  })
+
+  it('staff pressing Enter confirm nothing', async () => {
+    getTargetMargin.mockResolvedValue(UNSET)
+    render(<TargetMarginSection canManage={false} />)
+    const box = await screen.findByLabelText('pour')
+    fireEvent.change(box, { target: { value: '140' } })
+    fireEvent.keyDown(box, { key: 'Enter' })
+    expect(confirmPourSize).not.toHaveBeenCalled()
+  })
+
   it('records what was typed, and nothing else', async () => {
     getTargetMargin.mockResolvedValue(UNSET)
     setTargetMargin.mockResolvedValue({ ...UNSET, bottlePct: 65, bandPct: 2, statedAt: '2026-09-21T10:00:00Z', statedBy: { userId: 'u', name: 'Ada' }, audited: true })
