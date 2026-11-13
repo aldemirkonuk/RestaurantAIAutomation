@@ -1262,6 +1262,22 @@ describe('INV-W38 — the view is the URL', () => {
     expect(cols.map((h) => cell('Ankara Red', h))).toEqual(['bottle', 750, 10, 6, '0.50', 12]);
   });
 
+  it('writes the valuation file in each good\'s counted unit too', async () => {
+    exportSpy.mockClear();
+    mock.data = data({
+      rows: [row({ id: 'f', wineId: null, name: 'Flour', type: null, kind: null, stock: 12400, wac: 0.0125 })],
+      rawItems: [{ id: 'f', kind: 'food', uom: 'g', display_name: 'Flour' }],
+      canManage: true,
+    });
+    renderAt('/inventory');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export valuation' }));
+    });
+    const file = exportSpy.mock.calls[0][0] as { rows: InvRow[]; columns: { header: string; value: (r: InvRow) => unknown }[] };
+    const cell = (h: string) => file.columns.find((c) => c.header === h)!.value(file.rows[0]);
+    expect([cell('Unit'), cell('Live'), cell('WAC')]).toEqual(['kg', 12.4, 12.5]);
+  });
+
   const closeDrawer = () => fireEvent.click(document.querySelector('.iv-drawer .mdv-ovl__close') as HTMLElement);
 
   it('(f) Close on a row opened here steps back, so the next Back leaves the page', () => {
