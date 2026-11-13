@@ -1288,6 +1288,24 @@ export class OrderResponseDto {
       "The occurrence date this child was minted for. Travels with recurrenceParentOrderId: both set or both null. A partial unique index over the pair is what stops two orders being raised for one occurrence.",
   })
   recurrenceOccurrenceOn?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Only on a verify-receipt answer that carried a price: what the verified unit cost restated. bottlesRevalued = bottles still on the shelf from this delivery now at that cost; salesSettled = earlier sales from it settled to that cost (revalue_lot's draws_settled, one per sale per lot). Absent when no price was verified.",
+  })
+  costCorrection?: ReceiptCostCorrection;
+}
+
+/**
+ * What a verified invoice price restated (`revalue_lot`'s receipt, receipts
+ * walk 2026-11-11 item 5). `salesSettled` counts sale draws — one per sale per
+ * lot of this order — the same figure the gateway log has named since
+ * a_verified_invoice_settles_sold_bottles; it is not a bottle count.
+ */
+export interface ReceiptCostCorrection {
+  unitCost: number;
+  bottlesRevalued: number;
+  salesSettled: number;
 }
 
 export class OrderListResponseDto {

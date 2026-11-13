@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeMatch, verdictStyle, type MatchInput } from './invoiceMatch'
+import { computeMatch, costCorrectionLine, verdictStyle, type MatchInput } from './invoiceMatch'
 // The backend is authoritative. Importing it directly here is the whole point: these rules are
 // duplicated across the API and the web app, and D6 exists because the same concept drifting
 // into three incompatible definitions is what broke trust last time. If someone changes one
@@ -65,6 +65,24 @@ describe('invoiceMatch (web mirror)', () => {
 
     expect(r.verdict).toBe('matched')
     expect(r.creditDue).toBe(false)
+  })
+
+  it('a differing price accepted with a reason never says "the agreed price" (walk 2026-11-12)', () => {
+    const r = computeMatch({
+      orderedQty: 6,
+      poUnitPrice: 20,
+      invoiceQty: 6,
+      invoiceUnitPrice: 25,
+      acceptedQty: 6,
+      priceOverrideReason: 'Vendor price rise, agreed by phone',
+    })
+    expect(r.requiresOverride).toBe(false)
+    expect(r.summary).not.toMatch(/agreed price/)
+    expect(r.summary).toMatch(/^All 6 accepted at the billed .*25\.00, not the agreed .*20\.00\.$/)
+    // The same price says what it always said.
+    expect(
+      computeMatch({ orderedQty: 6, poUnitPrice: 20, invoiceQty: 6, invoiceUnitPrice: 20, acceptedQty: 6 }).summary,
+    ).toBe('All 6 accepted at the agreed price.')
   })
 
   it('holds a backorder open on a partial delivery', () => {
@@ -146,5 +164,29 @@ describe('invoiceMatch parity with the API engine', () => {
     expect(web.creditAmount).toBe(api.creditAmount)
     expect(web.selfEvidenced).toBe(api.selfEvidenced)
     expect(web.effectiveUnitCost).toBe(api.effectiveUnitCost)
+  })
+})
+
+describe('costCorrectionLine (receipts walk item 5)', () => {
+  it('names settled sales and the shelf, in that order', () => {
+    expect(costCorrectionLine({ salesSettled: 2, bottlesRevalued: 4 })).toBe(
+      'Sales made before the invoice arrived now carry the invoice cost. The 4 bottles still on the shelf are costed at it too.',
+    )
+  })
+  it('says one sale and one bottle in the singular', () => {
+    expect(costCorrectionLine({ salesSettled: 1, bottlesRevalued: 1 })).toBe(
+      'A sale made before the invoice arrived now carries the invoice cost. The bottle still on the shelf is costed at it too.',
+    )
+  })
+  it('a sold-out delivery still says its sales were settled', () => {
+    expect(costCorrectionLine({ salesSettled: 3, bottlesRevalued: 0 })).toBe(
+      // Three draws may be fewer than three sales: no number is said.
+      'Sales made before the invoice arrived now carry the invoice cost.',
+    )
+  })
+  it('is silent with nothing restated, or no correction at all', () => {
+    expect(costCorrectionLine({ salesSettled: 0, bottlesRevalued: 0 })).toBeNull()
+    expect(costCorrectionLine(undefined)).toBeNull()
+    expect(costCorrectionLine(null)).toBeNull()
   })
 })

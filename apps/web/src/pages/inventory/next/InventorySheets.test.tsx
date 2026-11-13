@@ -492,6 +492,30 @@ describe('Failures in the house\u2019s words (INV-W31)', () => {
     expect(t).not.toContain('Nothing was recorded');
   });
 
+  it('a photo reader with no key says it is not switched on, never the key or "server failed"', async () => {
+    api.photo.mockRejectedValue(answered(503, 'Anthropic API key not configured — set ANTHROPIC_API_KEY'));
+    mount(<CountSheet row={row()} onClose={() => {}} />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() =>
+      expect(document.body.textContent).toContain(
+        'The photo could not be read — counting from a photo is not switched on here yet. Type the count instead.',
+      ),
+    );
+    expect(document.body.textContent).not.toMatch(/ANTHROPIC|API key|server failed/);
+  });
+
+  it('a photo reader whose vendor is down says try again later', async () => {
+    api.photo.mockRejectedValue(answered(502, 'Anthropic 529: overloaded'));
+    mount(<CountSheet row={row()} onClose={() => {}} />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() =>
+      expect(document.body.textContent).toContain('counting from a photo is not working just now; try again later'),
+    );
+    expect(document.body.textContent).not.toMatch(/Anthropic|overloaded/);
+  });
+
   it('a photo that could not be read says why in plain words', async () => {
     api.photo.mockRejectedValue(silent());
     mount(<CountSheet row={row()} onClose={() => {}} />);

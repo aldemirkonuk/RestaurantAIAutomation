@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { toast as sonnerToast } from 'sonner'
 
 export interface Toast {
   id: string
@@ -99,6 +100,20 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
       
       return { toasts }
     })
+
+    // DRAW IT (receipts walk 2026-11-11, item 5). Nothing in the app renders
+    // this store's `toasts` — the one mounted surface is sonner's
+    // `<AppToaster/>` (App.tsx) — so every `success`/`error` called through
+    // this store was silent: verifying an invoice said nothing, and neither
+    // did a failed verification. Forward to the same surface the ~27 direct
+    // sonner callers use, under the store's own id so `removeToast` (and
+    // `promise`'s loading toast) can take it down again.
+    sonnerToast[newToast.type](newToast.title, {
+      id,
+      description: newToast.description,
+      duration: newToast.duration,
+      action: newToast.action,
+    })
     
     // Auto-dismiss
     if (newToast.duration && newToast.duration > 0) {
@@ -111,12 +126,16 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
   
   removeToast: (id) => {
+    sonnerToast.dismiss(id)
     set((state) => ({
       toasts: state.toasts.filter((toast) => toast.id !== id),
     }))
   },
   
-  clearToasts: () => set({ toasts: [] }),
+  clearToasts: () => {
+    for (const t of get().toasts) sonnerToast.dismiss(t.id)
+    set({ toasts: [] })
+  },
   
   // Convenience methods
   success: (title, description, duration) => {

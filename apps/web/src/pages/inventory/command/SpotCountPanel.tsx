@@ -16,6 +16,7 @@
  * cost the count — it queues and syncs when connectivity returns.
  */
 import { useEffect, useRef, useState } from 'react'
+import { photoRefusalWords } from '../../../lib/modelRefusalWords'
 import { X, Mic, Camera, Loader2, Check } from 'lucide-react'
 import { useNotificationStore } from '../../../stores'
 import { estimateCountFromPhoto } from '../../../services/api/inventory'
@@ -169,7 +170,10 @@ export function SpotCountPanel({ item, onClose, onCommitted }: SpotCountPanelPro
         toast.error('The photo gave no count')
       }
     } catch (e: any) {
-      toast.error('Photo estimate failed', e?.response?.data?.message || e?.message)
+      // Never the operator's sentence (the model key): the house's words, or
+      // the reader's own refusal when it is one a house can act on.
+      const said = photoRefusalWords(e?.response?.data?.message || e?.message)
+      toast.error('Photo estimate failed', `${said.charAt(0).toUpperCase()}${said.slice(1)}. Type the count instead.`)
     } finally {
       setPhotoBusy(false)
     }

@@ -41,6 +41,7 @@ import { useCellarSettings } from '../../cellar/next/useCellarNextData';
 import { fmtCount, suggestedToPar, type InvRow } from './useInventoryNextData';
 import { amountUnit, orderUnitOf, type AmountUnit } from './iv-amount';
 import { LANDED_EARLIER, SAFE_RETRY, failureReason, landedEarlier, writeFailure } from './iv-failure';
+import { namesTheOperator, photoRefusalWords } from '../../../lib/modelRefusalWords';
 
 /** A whole number typed as a string, or null. "2.5", "" and "-1" are null. */
 function wholeNumber(s: string): number | null {
@@ -227,7 +228,14 @@ export function CountSheet({ row, onClose, uom }: SheetProps) {
           : 'The photo gave no count.';
       setPhoto({ busy: false, note: estimate.note ? `${said} ${estimate.note}` : said });
     } catch (e) {
-      setPhoto({ busy: false, note: `The photo could not be read — ${failureReason(e)}. Type the count instead.` });
+      // The gateway's own message decides off from down. A 5xx reduced to
+      // failureReason's generic sentence first would say an unconfigured
+      // reader "failed", which tells the house to try again when nothing it
+      // does will help (browser check 2026-11-12: a 503 "Anthropic API key not
+      // configured" read "the server failed before it could answer").
+      const raw = (e as { response?: { data?: { message?: unknown } } } | null)?.response?.data?.message;
+      const said = namesTheOperator(raw) ? photoRefusalWords(raw) : failureReason(e);
+      setPhoto({ busy: false, note: `The photo could not be read — ${said}. Type the count instead.` });
     }
   };
 

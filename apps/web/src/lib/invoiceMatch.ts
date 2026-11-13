@@ -132,7 +132,12 @@ export function computeMatch(input: MatchInput): MatchResult {
     switch (verdict) {
       case 'matched':
         return (
-          `All ${acceptedQty} accepted at the agreed price.` +
+          // A price that differs, accepted with a reason, is not "the agreed
+          // price" (browser walk 2026-11-12: billed 25 against an agreed 20,
+          // accepted with an override, and the toast said "at the agreed price").
+          (priceMismatch
+            ? `All ${acceptedQty} accepted at the billed ${money(invoiceUnitPrice as number)}, not the agreed ${money(poUnitPrice as number)}.`
+            : `All ${acceptedQty} accepted at the agreed price.`) +
           (freeGoodsQty > 0 ? ` Includes ${freeGoodsQty} free.` : '')
         )
       case 'overbilled_vs_ship':
@@ -193,3 +198,35 @@ const VERDICT_STYLES: Record<MatchVerdict, VerdictStyle> = {
 }
 
 export const verdictStyle = (v: MatchVerdict): VerdictStyle => VERDICT_STYLES[v]
+
+/**
+ * The sentence a verification adds when its price restated cost (receipts
+ * walk 2026-11-11, item 5). Sales made before the invoice arrived are settled
+ * to the invoice cost by `revalue_lot`; the house should hear that, not only
+ * the gateway log. Null when there is nothing to say. No amount is printed:
+ * the cost is per bottle in the order's currency, and `money` here only knows
+ * dollars.
+ */
+export function costCorrectionLine(
+  c: { bottlesRevalued: number; salesSettled: number } | null | undefined,
+): string | null {
+  if (!c) return null
+  const parts: string[] = []
+  // `salesSettled` counts sale DRAWS, one per sale per lot (revalue_lot's
+  // draws_settled), so a sale that drew from two lots counts twice. One draw
+  // is one sale; more than one is said without a number, never as that many
+  // sales (fix round 2026-11-12, finding on #1112).
+  if (c.salesSettled > 0)
+    parts.push(
+      c.salesSettled === 1
+        ? 'A sale made before the invoice arrived now carries the invoice cost.'
+        : 'Sales made before the invoice arrived now carry the invoice cost.',
+    )
+  if (c.bottlesRevalued > 0)
+    parts.push(
+      c.bottlesRevalued === 1
+        ? 'The bottle still on the shelf is costed at it too.'
+        : `The ${c.bottlesRevalued} bottles still on the shelf are costed at it too.`,
+    )
+  return parts.length ? parts.join(' ') : null
+}
