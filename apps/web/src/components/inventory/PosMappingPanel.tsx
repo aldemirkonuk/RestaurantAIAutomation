@@ -47,9 +47,15 @@ import {
   type UnresolvedLineGroup,
   type UnresolvedLinesResponse,
 } from "../../services/api/posHub";
-import { getTargetMargin } from "../../services/api/pricing";
+import {
+  confirmPourSize,
+  confirmWinePour,
+  getTargetMargin,
+  type TargetMarginReadout,
+} from "../../services/api/pricing";
 import { cn } from "../../lib/utils";
-import { portionsFor, type PortionFacts } from "./posPortions";
+import { portionsFor, type PortionFacts, type PortionOffer } from "./posPortions";
+import { PourBox } from "./PourBox";
 
 interface Props {
   isOpen: boolean;
@@ -67,6 +73,31 @@ interface Props {
   }>;
   /** Called after any write that could have moved stock into a mappable state. */
   onChanged?: () => void;
+  /**
+   * Owner or manager of this house: may confirm a pour here (r26). The gateway
+   * refuses anyone else on its own; without it the panel only says who can.
+   */
+  canManage?: boolean;
+}
+
+/**
+ * The house's glass of wine as the panel knows it. A read that failed is not
+ * an unconfirmed pour (ADR 0067), and an unconfirmed pour is the database's
+ * 150 default, which is never offered as a size.
+ */
+type HousePour =
+  | { state: "reading" }
+  | { state: "unread"; reason: string }
+  | { state: "unconfirmed" }
+  | { state: "confirmed"; ml: number; by: string | null };
+
+function housePourFrom(r: TargetMarginReadout | null | undefined): HousePour {
+  if (!r) return { state: "unread", reason: "no answer was given" };
+  if (r.readable === false) return { state: "unread", reason: r.reason ?? "no reason was given" };
+  const ml = Number(r.pour?.ml);
+  return r.pour?.confirmed && ml > 0
+    ? { state: "confirmed", ml, by: r.pour.confirmedBy?.name ?? null }
+    : { state: "unconfirmed" };
 }
 
 /**
@@ -105,6 +136,7 @@ export function PosMappingPanel({
   restaurantId,
   inventory,
   onChanged,
+  canManage = false,
 }: Props) {
   const [proposals, setProposals] =
     useState<LoadState<PosMatchProposal[]>>(emptyState);
@@ -116,20 +148,28 @@ export function PosMappingPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [matching, setMatching] = useState(false);
-  // The house's CONFIRMED pour. Null when unconfirmed or unreadable: a wine's
-  // glass then says its size is not known rather than pouring the 150 default.
-  const [housePourMl, setHousePourMl] = useState<number | null>(null);
+  // The house's pour. Only a CONFIRMED one is a size: unconfirmed or unread,
+  // a wine's glass says its size is not known rather than pouring 150.
+  const [housePour, setHousePour] = useState<HousePour>({ state: "reading" });
+  const housePourMl = housePour.state === "confirmed" ? housePour.ml : null;
+  // r26: pours confirmed in this panel, by item, so a row's glass or shot can
+  // be picked at once rather than after the inventory is read again.
+  const [ownPour, setOwnPour] = useState<Record<string, number>>({});
+  // Which pour box is open: "house", or "item:<row key>". One at a time.
+  const [pourOpen, setPourOpen] = useState<string | null>(null);
 
   const invById = useMemo(() => {
     const m = new Map<string, { name: string; facts: PortionFacts | null }>();
     for (const i of inventory || []) {
+      const facts = i.portionFacts ?? null;
+      const mine = ownPour[i.id];
       m.set(i.id, {
         name: i.wineName || i.wine_name || "Unnamed row",
-        facts: i.portionFacts ?? null,
+        facts: facts && mine != null ? { ...facts, pourMl: mine } : facts,
       });
     }
     return m;
-  }, [inventory]);
+  }, [inventory, ownPour]);
 
   const load = useCallback(async () => {
     setProposals((s) => ({ ...s, loading: true }));
@@ -144,10 +184,10 @@ export function PosMappingPanel({
       getItemMappings(restaurantId),
       getTargetMargin(),
     ]);
-    setHousePourMl(
-      t.status === "fulfilled" && t.value?.pour?.confirmed && Number(t.value.pour.ml) > 0
-        ? Number(t.value.pour.ml)
-        : null,
+    setHousePour(
+      t.status === "fulfilled"
+        ? housePourFrom(t.value)
+        : { state: "unread", reason: errText(t.reason) },
     );
     setProposals(
       p.status === "fulfilled"
@@ -299,6 +339,72 @@ export function PosMappingPanel({
     }
   };
 
+  // r26: a glass or a shot waits for a confirmed pour, and nothing on
+  // /inventory could confirm one (TargetMarginSection is mounted nowhere). The
+  // pour is now confirmed here, next to the button that waits for it.
+  const confirmHousePour = async (ml: number) => {
+    const r = await confirmPourSize(ml);
+    setHousePour(housePourFrom(r));
+    setPourOpen(null);
+    toast.success(`The house's glass of wine is now ${ml} ml.`);
+  };
+
+  const confirmItemPour = async (
+    inventoryId: string,
+    name: string,
+    word: string,
+    ml: number,
+  ) => {
+    await confirmWinePour(inventoryId, ml);
+    setOwnPour((p) => ({ ...p, [inventoryId]: ml }));
+    setPourOpen(null);
+    toast.success(`${name}: one ${word} is now ${ml} ml.`);
+    onChanged?.();
+  };
+
+  /**
+   * The "Confirm a shot size" ask for a row whose pour offer waits only for a
+   * confirmed pour (not for a bottle size, not for a pour that does not fit).
+   * Nothing is picked for the person after it is confirmed: the size becomes
+   * choosable, and choosing stays theirs (ADR 0011, B36).
+   */
+  const pourAsk = (
+    key: string,
+    inventoryId: string | null | undefined,
+    offers: PortionOffer[],
+  ) => {
+    const waiting = offers.find((o) => o.shape === "pour" && o.needs === "pour");
+    const item = inventoryId ? invById.get(inventoryId) : undefined;
+    if (!canManage || !waiting || !inventoryId || !item) {
+      return { button: null, box: null };
+    }
+    const open = pourOpen === `item:${key}`;
+    const word = waiting.saleUnit;
+    const isWine = item.facts?.kind === "wine";
+    return {
+      button: open ? null : (
+        <button
+          type="button"
+          onClick={() => setPourOpen(`item:${key}`)}
+          className="h-7 px-2 rounded-md text-[11px] font-semibold text-wine-700 hover:underline"
+        >
+          Confirm a {word} size
+        </button>
+      ),
+      box: open ? (
+        <PourBox
+          label={`One ${word} of ${item.name}, in ml`}
+          startMl={null}
+          sentence={(ml) =>
+            `Confirm records one ${word} of ${item.name} as ${ml} ml. A ${word} sale of it then removes ${ml} ml from its open bottle${isWine ? ", and its glass price advice uses the same pour" : ""}.`
+          }
+          onConfirm={(ml) => confirmItemPour(inventoryId, item.name, word, ml)}
+          onCancel={() => setPourOpen(null)}
+        />
+      ) : null,
+    };
+  };
+
   const summary = unresolved.data?.summary;
 
   return (
@@ -378,6 +484,68 @@ export function PosMappingPanel({
         </div>
 
         <div className="p-5 space-y-6 max-h-[65vh] overflow-y-auto">
+          {/* ── 0. the house's glass of wine (r26) ── */}
+          <section aria-label="The house's glass of wine" data-testid="house-pour">
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              {housePour.state === "reading" && (
+                <span className="text-gray-400">
+                  Reading the house's glass of wine…
+                </span>
+              )}
+              {housePour.state === "unread" && (
+                <span className="font-semibold text-amber-700">
+                  The house's glass of wine could not be read (
+                  {housePour.reason}). A wine's glass waits below; this is not
+                  the same as a pour nobody confirmed.
+                </span>
+              )}
+              {housePour.state === "unconfirmed" && (
+                <span className="text-gray-700">
+                  <b>The house's glass of wine is not confirmed.</b> A wine's
+                  glass can be picked below once it is, or once that wine has a
+                  pour of its own.
+                  {!canManage &&
+                    " Only an owner or a manager can confirm it."}
+                </span>
+              )}
+              {housePour.state === "confirmed" && (
+                <span className="text-gray-700">
+                  A glass of wine pours the house's{" "}
+                  <b className="font-mono">{housePour.ml} ml</b>
+                  {housePour.by ? `, confirmed by ${housePour.by}` : ""}, unless
+                  the wine has a pour of its own.
+                </span>
+              )}
+              {canManage &&
+                (housePour.state === "unconfirmed" ||
+                  housePour.state === "confirmed") &&
+                pourOpen !== "house" && (
+                  <button
+                    type="button"
+                    onClick={() => setPourOpen("house")}
+                    className="h-7 px-2.5 rounded-md border border-gray-200 bg-white text-[11px] font-bold text-gray-700 hover:border-gray-300"
+                  >
+                    {housePour.state === "confirmed"
+                      ? "Change the house glass"
+                      : "Confirm the house glass"}
+                  </button>
+                )}
+            </div>
+            {pourOpen === "house" && (
+              <div className="mt-2 max-w-xl">
+                <PourBox
+                  label="The house's glass of wine, in ml"
+                  startMl={housePourMl}
+                  sentence={(ml) =>
+                    `Confirm records the house's glass of wine as ${ml} ml. A wine with no pour of its own then sells a ${ml} ml glass, and glass price advice uses the same pour. Buttons already saved keep the size they were saved with.`
+                  }
+                  onConfirm={confirmHousePour}
+                  onCancel={() => setPourOpen(null)}
+                />
+              </div>
+            )}
+          </section>
+
           {/* ── 1. proposals: identity + unit in one step ── */}
           <section>
             <div className="flex items-center justify-between mb-2">
@@ -425,6 +593,11 @@ export function PosMappingPanel({
                 // (posPortions.ts). A soda has no glass; an unsized bottle says
                 // so; a pour needs a stated bottle and a confirmed pour.
                 const portions = cand ? portionsFor(cand.facts, housePourMl) : null;
+                const ask = pourAsk(
+                  `p:${p.id}`,
+                  p.candidate_inventory_id,
+                  portions?.offers ?? [],
+                );
                 return (
                   <div
                     key={p.id}
@@ -480,6 +653,7 @@ export function PosMappingPanel({
                           }
                           disabled={o.blocked !== null}
                           title={o.blocked ?? undefined}
+                          aria-pressed={a?.label === o.saleUnit}
                           className={cn(
                             "h-7 px-2.5 rounded-md text-[11px] font-bold border",
                             a?.label === o.saleUnit
@@ -491,6 +665,7 @@ export function PosMappingPanel({
                           {o.text}
                         </button>
                       ))}
+                      {ask.button}
                       {portions?.note && (
                         <span className="text-[11px] text-gray-500 max-w-[220px]">
                           {portions.note}
@@ -504,6 +679,7 @@ export function PosMappingPanel({
                         Not this
                       </button>
                     </div>
+                    {ask.box}
                   </div>
                 );
               })}
@@ -539,10 +715,13 @@ export function PosMappingPanel({
                               ...o,
                               blocked:
                                 "This answer pours the item's own pour, and that is not confirmed. Confirm the pour on the item first; until then this button's sales keep queueing.",
+                              needs: "pour" as const,
                             }
                           : o,
                       )
                     : [];
+                  const queuedKey = `q:${g.source}:${g.external_item_id}:${g.item_name}`;
+                  const ask = pourAsk(queuedKey, m?.inventory_id, offers);
                   return (
                     <div
                       key={`${g.source}:${g.external_item_id}:${g.item_name}`}
@@ -576,6 +755,7 @@ export function PosMappingPanel({
                               {o.text}
                             </button>
                           ))}
+                          {ask.button}
                         </div>
                       ) : (
                         <span className="text-[11px] font-semibold text-amber-700">
@@ -589,6 +769,7 @@ export function PosMappingPanel({
                                 : "its item is not in this list — cannot offer an answer here"}
                         </span>
                       )}
+                      {ask.box}
                     </div>
                   );
                 })}
