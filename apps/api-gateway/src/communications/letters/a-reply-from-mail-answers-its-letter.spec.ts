@@ -133,6 +133,14 @@ describe("a reply queued from Mail names the letter it answers", () => {
     expect(inserts[0].email_headers.references).toBeNull();
   });
 
+  it("its own id already in its References is not said twice", async () => {
+    const { run, inserts } = await queue([
+      theirLetter({ email_headers: { references: "<o-1@mail.gmail.com> <v-1@fikritarim.com>" } }),
+    ]);
+    await run;
+    expect(inserts[0].email_headers.references).toBe("<o-1@mail.gmail.com> <v-1@fikritarim.com>");
+  });
+
   it("References keep the last ten, its own id last", async () => {
     const prior = Array.from({ length: 12 }, (_, i) => `<r-${i}@x.example>`).join(" ");
     const { run, inserts } = await queue([theirLetter({ email_headers: { references: prior } })]);
