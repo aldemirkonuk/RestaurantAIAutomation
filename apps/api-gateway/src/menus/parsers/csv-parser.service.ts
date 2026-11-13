@@ -17,7 +17,8 @@ const ALIASES: Array<[keyof WineExtractItem, string]> = [
     "by_glass_price",
     "by_glass glass glass_price by_glass_price kadeh kadeh_fiyati",
   ],
-  // No bare "price"/"fiyat": which price it is is not decided.
+  // A bare "price"/"fiyat" is not an alias: it is read as the bottle price
+  // only where no bottle column is named (fieldMap, r28 G8).
   ["bottle_price", "bottle bottle_price sise sise_fiyati"],
 ];
 const HEADER_MAP = new Map(
@@ -40,8 +41,18 @@ export interface CsvRowIssue {
   reason:
     | "no_name"
     | "no_name_column"
-    /** A bare `Price` / `Fiyat` header: bottle or glass is not decided, so it is not read. */
+    /**
+     * A bare `Price` / `Fiyat` header that is NOT read: the file names a bottle
+     * column too, or an earlier bare price column was read.
+     */
     | "price_column_not_read"
+    /**
+     * A bare `Price` / `Fiyat` header read as each line's one price, in
+     * `bottle_price`: the price a dish line keeps (#1261) and a single-price
+     * drink is sold at. Said once, on the header, so a glass price can be
+     * renamed and read again (r28 G8).
+     */
+    | "price_column_read_as_bottle"
     /** A spreadsheet error value (`#N/A`, `#REF!`) where a value was expected. */
     | "cell_error"
     | Exclude<MenuPriceReason, "empty">;
@@ -244,21 +255,42 @@ export class CsvParserService {
   }
 
   private fieldMap(headers: string[]): Array<keyof WineExtractItem | null> {
-    return Array.from(
+    const map = Array.from(
       headers,
       (h) => HEADER_MAP.get(headerKey(h ?? "")) ?? null,
     );
+    const bare = this.barePriceRead(headers);
+    if (bare !== null) map[bare] = "bottle_price";
+    return map;
   }
 
-  /** A bare price header names no field (bottle or glass), so it is said, not read. */
+  /**
+   * The column a bare Price / Fiyat header is read from, or null. A file with
+   * a single price column (the common menu sheet: name, price) was read with
+   * every line unpriced (r28 G8). The FIRST bare price column is read as the
+   * bottle price, and only when no column is already the bottle price; a glass
+   * column beside it stays the glass price.
+   */
+  private barePriceRead(headers: string[]): number | null {
+    const keys = Array.from(headers, (h) => headerKey(h ?? ""));
+    if (keys.some((k) => HEADER_MAP.get(k) === "bottle_price")) return null;
+    const at = keys.findIndex((k) => BARE_PRICE_HEADERS.has(k));
+    return at === -1 ? null : at;
+  }
+
+  /** Each bare price header, said: the one read as the bottle price, and any other, not read. */
   private headerIssues(headers: string[], row: number): CsvRowIssue[] {
-    return headers
-      .filter((h) => BARE_PRICE_HEADERS.has(headerKey(h ?? "")))
-      .map((h) => ({
+    const read = this.barePriceRead(headers);
+    const issues: CsvRowIssue[] = [];
+    Array.from(headers).forEach((h, i) => {
+      if (!BARE_PRICE_HEADERS.has(headerKey(h ?? ""))) return;
+      issues.push({
         row,
-        reason: "price_column_not_read" as const,
-        raw: h.trim(),
-      }));
+        reason: i === read ? "price_column_read_as_bottle" : "price_column_not_read",
+        raw: (h ?? "").trim(),
+      });
+    });
+    return issues;
   }
 
   /**
