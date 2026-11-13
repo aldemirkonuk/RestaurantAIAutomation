@@ -51,7 +51,7 @@ describe('HouseMenu: the first proof keeps its places', () => {
     ])
     page()
     const count = screen.getByRole('group', { name: 'The reading count' })
-    expect(count).toHaveTextContent('2read0set1pencilled')
+    expect(count).toHaveTextContent('2read0in ink1in pencil')
     expect(screen.getByText(/1 kitchen line set aside/)).toBeInTheDocument()
   })
 
@@ -66,13 +66,13 @@ describe('HouseMenu: the first proof keeps its places', () => {
     cleanup()
     page()
     expect(screen.getByRole('heading', { name: 'Red wine' })).toBeInTheDocument()
-    expect(screen.queryByText('Needs a place', { selector: 'span' })).toBeNull()
+    expect(screen.queryByText('No section yet', { selector: 'span' })).toBeNull()
   })
 
-  it('heads unplaced lines "Needs a place" and claims no absent section while none is placed', () => {
+  it('heads unplaced lines "No section yet" and claims no absent section while none is placed', () => {
     typedProof([unplaced('a', 'Kavaklidere Yakut')])
     page()
-    expect(screen.getByRole('heading', { name: 'Needs a place' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'No section yet' })).toBeInTheDocument()
     expect(screen.queryByText(/Not on this menu/)).toBeNull()
   })
 

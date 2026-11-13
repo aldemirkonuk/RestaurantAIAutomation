@@ -67,7 +67,9 @@ export default function HouseContents() {
                 onClick={() => navigate('/house/menu')}
                 className="mt-2 block text-left font-serif text-2xl"
               >
-                {pencilled === 0 ? 'The first proof is set.' : `${pencilled} pencilled`}
+                {pencilled === 0
+                  ? 'The first proof is set in ink.'
+                  : `${pencilled} ${pencilled === 1 ? 'line' : 'lines'} in pencil, worth a second look`}
               </button>
             ) : (
               <p className="mt-2 font-serif text-2xl text-[#6d685f]">No menu read yet.</p>

@@ -82,6 +82,6 @@ describe('HouseContents', () => {
       }),
     )
     page()
-    expect(screen.getByRole('button', { name: '1 pencilled' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '1 line in pencil, worth a second look' })).toBeInTheDocument()
   })
 })

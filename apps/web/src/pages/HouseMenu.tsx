@@ -37,8 +37,9 @@ function sectionName(value: string) {
     sparkling: 'Sparkling wine',
     spirit: 'Spirits',
     'soft drink': 'Soft drinks',
-    // The heading for lines with no section; title-casing gave "Needs A Place".
-    'needs a place': 'Needs a place',
+    // The heading for lines with no section (walk 2026-11-12: "Needs a place"
+    // read as jargon; title-casing once gave "Needs A Place").
+    'needs a place': 'No section yet',
   }
   return names[value] ?? value.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
@@ -180,7 +181,8 @@ export default function HouseMenu() {
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">House menu · first proof</p>
         <h1 className="mt-3 font-serif text-5xl">Your menu, set by Mudavym.</h1>
         <p className="mt-4 max-w-2xl text-[#6d685f]">
-          It&apos;s a first proof — we&apos;ve pencilled the lines worth a second look.
+          It&apos;s a first proof. Lines in ink are set; a line in pencil is worth a second look. Tap it to
+          see what was read and choose its section.
         </p>
         {sourceImage ? (
           <button
@@ -193,9 +195,23 @@ export default function HouseMenu() {
         ) : null}
         <div role="group" aria-label="The reading count" className="mt-10 grid grid-cols-3 border-y border-[#211f1b]/20 py-5">
           <p><strong className="block font-serif text-3xl">{items.length}</strong><span className="text-xs uppercase tracking-wider">read</span></p>
-          <p><strong className="block font-serif text-3xl">{drinkItems.length - pencilled}</strong><span className="text-xs uppercase tracking-wider">set</span></p>
-          <p><strong className="block font-serif text-3xl">{pencilled}</strong><span className="text-xs uppercase tracking-wider">pencilled</span></p>
+          <p><strong className="block font-serif text-3xl">{drinkItems.length - pencilled}</strong><span className="text-xs uppercase tracking-wider">in ink</span></p>
+          <p><strong className="block font-serif text-3xl">{pencilled}</strong><span className="text-xs uppercase tracking-wider">in pencil</span></p>
         </div>
+        {/* Walk 2026-11-12: "set" and "pencilled" were never explained, and
+            nothing said a line could be opened. ADR 0213 F6 keeps the ink /
+            pencil words; this key says what each mark means and what to do. */}
+        <ul aria-label="What the marks mean" className="mt-4 space-y-1 text-sm text-[#6d685f]">
+          {drinkItems.some((item) => markFor(item) === 'ink') && (
+            <li><span aria-hidden className="inline-block w-5 font-serif text-[#1a5e6b]">·</span>In ink: set as read.</li>
+          )}
+          {drinkItems.some((item) => markFor(item) === 'pencil') && (
+            <li><span aria-hidden className="inline-block w-5 font-serif text-[#1a5e6b]">⌁</span>In pencil: worth a second look. Tap the line to check it.</li>
+          )}
+          {drinkItems.some((item) => markFor(item) === 'ring') && (
+            <li><span aria-hidden className="inline-block w-5 font-serif text-[#1a5e6b]">○</span>No section yet: tap the line to choose one.</li>
+          )}
+        </ul>
 
         <div className="mt-12 space-y-12">
           {grouped.map(([category, rows]) => (
@@ -204,38 +220,52 @@ export default function HouseMenu() {
               <div>
                 {rows.map((item) => {
                   const expanded = open === item.menuItemId
+                  const mark = markFor(item)
+                  const opens = lineNeedsPencil(item)
+                  const markSpan = (
+                    <span
+                      aria-label={mark === 'ink' ? 'In ink' : mark === 'ring' ? 'No section yet' : 'In pencil'}
+                      className="font-serif text-xl text-[#1a5e6b]"
+                    >
+                      {mark === 'ink' ? '·' : mark === 'ring' ? '○' : '⌁'}
+                    </span>
+                  )
+                  const nameSpan = (
+                    <strong className="block font-serif text-xl font-normal">
+                      {[item.producer, item.name, item.vintage].filter(Boolean).join(' · ')}
+                    </strong>
+                  )
                   return (
                     <article key={item.menuItemId} className="border-b border-[#211f1b]/15">
-                      <button
-                        type="button"
-                        onClick={() => lineNeedsPencil(item) && setOpen(expanded ? null : item.menuItemId)}
-                        className="grid w-full grid-cols-[24px_1fr_auto] items-start gap-3 py-5 text-left"
-                      >
-                        <span
-                          aria-label={
-                            markFor(item) === 'ink'
-                              ? 'Set in ink'
-                              : markFor(item) === 'ring'
-                                ? 'Needs a place'
-                                : 'Pencilled'
-                          }
-                          className="font-serif text-xl text-[#1a5e6b]"
+                      {opens ? (
+                        // Only a line worth a look opens, and it says so: a
+                        // visible cue and aria-expanded (walk 2026-11-12:
+                        // nothing showed that a line could be clicked).
+                        <button
+                          type="button"
+                          aria-expanded={expanded}
+                          onClick={() => setOpen(expanded ? null : item.menuItemId)}
+                          className="grid w-full grid-cols-[24px_1fr_auto] items-start gap-3 py-5 text-left hover:bg-white"
                         >
-                          {markFor(item) === 'ink' ? '·' : markFor(item) === 'ring' ? '○' : '⌁'}
-                        </span>
-                        <span>
-                          <strong className="block font-serif text-xl font-normal">
-                            {[item.producer, item.name, item.vintage].filter(Boolean).join(' · ')}
-                          </strong>
-                          {markFor(item) === 'pencil' && (
-                            <span className="mt-1 block text-xs italic text-[#6d685f]">Worth a second look</span>
-                          )}
-                          {markFor(item) === 'ring' && (
-                            <span className="mt-1 block text-xs italic text-[#6d685f]">Needs a place</span>
-                          )}
-                        </span>
-                        <span className="font-mono text-sm">{price(item)}</span>
-                      </button>
+                          {markSpan}
+                          <span>
+                            {nameSpan}
+                            <span className="mt-1 block text-xs italic text-[#6d685f]">
+                              {mark === 'ring' ? 'No section yet' : 'Worth a second look'}
+                            </span>
+                            <span className="mt-1 block text-xs text-[#1a5e6b] underline underline-offset-4">
+                              {expanded ? 'Close' : mark === 'ring' ? 'Choose its section' : 'Check this line'}
+                            </span>
+                          </span>
+                          <span className="font-mono text-sm">{price(item)}</span>
+                        </button>
+                      ) : (
+                        <div className="grid w-full grid-cols-[24px_1fr_auto] items-start gap-3 py-5 text-left">
+                          {markSpan}
+                          <span>{nameSpan}</span>
+                          <span className="font-mono text-sm">{price(item)}</span>
+                        </div>
+                      )}
                       {expanded && (
                         <div className="mb-5 ml-9 grid gap-5 border-l border-dashed border-[#1a5e6b] bg-white p-5 sm:grid-cols-2">
                           <div>
@@ -273,7 +303,7 @@ export default function HouseMenu() {
                             </p>
                           </div>
                           <div>
-                            <p className="text-xs uppercase tracking-wider text-[#6d685f]">Place this line</p>
+                            <p className="text-xs uppercase tracking-wider text-[#6d685f]">Choose its section</p>
                             <div className="mt-3 flex flex-wrap gap-2">
                               {sectionOrder.map((choice) => (
                                 <button
