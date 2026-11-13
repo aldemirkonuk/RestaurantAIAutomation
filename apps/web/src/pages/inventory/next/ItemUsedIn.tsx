@@ -40,6 +40,7 @@ import {
 import { cellMoney, type HouseCurrency } from './useInventoryNextData';
 // A share in the house's form, as its money is: "%13,1" beside "₺12,00" (r23 walk).
 import { formatHousePercent } from '../../../lib/house-number';
+import { ivNumber } from './iv-number';
 
 export type UsedInLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: UsedIn };
 
@@ -87,7 +88,7 @@ export const DRINKS_DO_NOT_DRAW =
 
 /** A recipe quantity as a person writes it: 0.30000000000000004 reads 0.3, 29.5735295625 reads 29.57. */
 export function fmtRecipeQty(n: number): string {
-  return n.toLocaleString('en-GB', { maximumFractionDigits: 2 });
+  return ivNumber(n, { max: 2 });
 }
 
 function DishCard({ id, title, value, sub }: { id: string; title: string; value: string; sub?: string }) {

@@ -67,7 +67,8 @@ vi.mock('../../../lib/spotCountOutbox', () => ({
   watchSpotCountOutbox: () => () => undefined,
 }));
 
-import { useInventoryNextData } from './useInventoryNextData';
+import { fmtCount, useInventoryNextData } from './useInventoryNextData';
+import { inventoryNumberLocale } from './iv-number';
 
 function mount() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -223,5 +224,26 @@ describe('useInventoryNextData — side reads that did not answer (INV-W28)', ()
     await waitFor(() => expect(m.docs.mock.calls.length).toBe(before.docs + 1));
     // The delivered lines answered, so they are not read again.
     expect(m.deliveries.mock.calls.length).toBe(before.deliveries);
+  });
+});
+
+describe('useInventoryNextData — counts in the house’s form (inventory r28 gap 7)', () => {
+  it('writes counts the Turkish way once a lira house’s money is read, and en-GB again when the page goes', async () => {
+    m.currency.mockResolvedValue({ readable: true, code: 'TRY' });
+    const { result, unmount } = mount();
+    expect(fmtCount(1240)).toBe('1,240');
+    await waitFor(() => expect(result.current.currency.state).toBe('recorded'));
+    expect(fmtCount(1240)).toBe('1.240');
+    unmount();
+    expect(inventoryNumberLocale()).toBe('en-GB');
+    expect(fmtCount(1240)).toBe('1,240');
+  });
+
+  it('keeps en-GB where the house’s money could not be read', async () => {
+    m.currency.mockRejectedValue(new Error('down'));
+    const { result, unmount } = mount();
+    await waitFor(() => expect(result.current.currency.state).toBe('unreadable'), { timeout: 4000 });
+    expect(fmtCount(1240)).toBe('1,240');
+    unmount();
   });
 });

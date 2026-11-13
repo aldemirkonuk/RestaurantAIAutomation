@@ -4,6 +4,7 @@
  * known", never 0, and an allergen nobody stated is never read as "free".
  */
 import type { Allergen, ItemNutrition, NutritionBasis, StoredNutrition } from '../../../services/api/inventory';
+import { ivNumber } from './iv-number';
 
 export const ALLERGEN_WORDS: Record<Allergen, string> = {
   gluten: 'gluten',
@@ -27,7 +28,7 @@ export const PER: Record<NutritionBasis, string> = { '100g': 'Per 100 g', '100ml
 /** A figure in words: "not known" for null, never 0. */
 export function figureWords(v: number | null, unit: 'kcal' | 'g' | '%'): string {
   if (v === null) return 'not known';
-  const n = v.toLocaleString('en-GB', { maximumFractionDigits: unit === 'kcal' ? 0 : 1 });
+  const n = ivNumber(v, { max: unit === 'kcal' ? 0 : 1 });
   return unit === '%' ? `${n} %` : `${n} ${unit}`;
 }
 

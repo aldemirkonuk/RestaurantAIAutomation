@@ -17,6 +17,7 @@ import { cellMoney, EM, fmtCount, fmtPace, type HouseCurrency, type InvRow } fro
 import { fmtWhen } from '../../../lib/mudavym/format';
 import { shortDate } from '../../cellar/next/cellar-format';
 import { formatHousePercent } from '../../../lib/house-number';
+import { ivNumber } from './iv-number';
 
 export type CardId = 'onhand' | 'value' | 'usage' | 'cover' | 'cost' | 'waste' | 'gap' | 'inside';
 
@@ -71,7 +72,7 @@ const UNIT_WORDS: Record<string, [string, string]> = {
  * right after the count sheet said "now reads 1.75 kg".
  */
 function fmtScaled(n: number): string {
-  return n.toLocaleString('en-GB', { maximumFractionDigits: 3 });
+  return ivNumber(n, { max: 3 });
 }
 
 /**
