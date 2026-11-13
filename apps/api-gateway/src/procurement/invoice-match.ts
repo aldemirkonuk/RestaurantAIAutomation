@@ -288,9 +288,11 @@ export interface MatchResult {
    */
   selfEvidenced: boolean;
   /**
-   * What each bottle in hand actually cost: (amount billed + allocated charges)
-   * / units accepted. Handles free goods ("11 for the price of 10" -> 10x$22/11
-   * = $20). Null when unpriced or nothing accepted. THIS is what must be written
+   * What each bottle in hand actually cost: (amount billed + allocated charges
+   * - the credit claimed for units not usably received) / units accepted.
+   * Handles free goods ("11 for the price of 10" -> 10x$22/11 = $20), and never
+   * charges a broken or missing bottle to the good ones while also claiming it
+   * back (r28 G6). Null when unpriced or nothing accepted. THIS is what must be written
    * to the stock lot — the whole match is theatre if the books keep the PO price.
    */
   effectiveUnitCost: number | null;
@@ -758,10 +760,24 @@ export function computeMatch(input: MatchInput): MatchResult {
       ? Math.round(unitsOwed * invoiceUnitPrice * 100) / 100
       : null;
 
+  // A BOTTLE CLAIMED BACK IS NOT ALSO A COST (r28 invoices audit, G6). The
+  // credit above claims the billed price of every unit not usably received.
+  // Charging the whole bill to the good bottles as well counted that money
+  // twice: 12 billed at 10.00, 2 broken, gave a lot cost of 12.00 a bottle AND
+  // a credit of 20.00. The good bottles carry the bill and the charges less
+  // what is claimed back, which is the price each good bottle was billed at
+  // (plus its share of charges) - the same figure the delivery path settles.
+  // Free goods still lower the cost: nothing is claimed for them.
+  const claimedBack =
+    hasInvoice && invoiceUnitPrice != null ? unitsOwed * invoiceUnitPrice : 0;
   const effectiveUnitCost =
     hasInvoice && invoiceUnitPrice != null && acceptedQty > 0
-      ? ((invoiceQty as number) * invoiceUnitPrice + allocatedCharges) /
-        acceptedQty
+      ? Math.max(
+          0,
+          (invoiceQty as number) * invoiceUnitPrice +
+            allocatedCharges -
+            claimedBack,
+        ) / acceptedQty
       : null;
 
   return {
