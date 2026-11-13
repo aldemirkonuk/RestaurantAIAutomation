@@ -1180,6 +1180,41 @@ describe("markDelivered — an item with no master wine is booked, and queued fo
       "The receiving door already booked this order's stock; nothing was booked twice. Confirm the physical count against the vendor invoice.",
     );
   });
+
+  // r29 walk (2026-11-13): "Mark delivered" booked the order's count of boxes
+  // into a good kept in ml — 1 box became 1 ml. Same call as the order's door
+  // (#1367): book nothing, do not convert, say where it is counted.
+  it("a good kept by volume books nothing, stays delivered, and says to count it on its paper's door", async () => {
+    const { db, calls, store } = makeDb({ order: { ...baseOrder }, item: { uom: "ml" } });
+    const { svc, notice } = withNotices(db);
+    const out = await svc.markDelivered(REST, ORDER, USER_A);
+    expect(out.status).toBe(ProcurementOrderStatus.DELIVERED);
+    expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toHaveLength(0);
+    expect((store as any).inventory_transactions).toHaveLength(0);
+    expect((store as any).inventory_events).toHaveLength(0);
+    expect((store as any).procurement_orders[0].status).toBe(ProcurementOrderStatus.DELIVERED);
+    expect(notice().message).toBe(
+      "No stock was booked: this good is kept in ml, by volume, and an order counts packs, not how much is in them; count it on its paper's door, where it goes on the shelf by volume. Confirm the physical count against the vendor invoice.",
+    );
+  });
+
+  it("a good kept by weight books nothing either (1 box was 1 g)", async () => {
+    const { db, calls } = makeDb({ order: { ...baseOrder }, item: { uom: "kg" } });
+    const { svc, notice } = withNotices(db);
+    const out = await svc.markDelivered(REST, ORDER, USER_A);
+    expect(out.status).toBe(ProcurementOrderStatus.DELIVERED);
+    expect(liveMovements(calls)).toHaveLength(0);
+    expect(notice().message).toMatch(/^No stock was booked: this good is kept in kg, by weight,/);
+  });
+
+  it("a good kept in bottles (or with no unit recorded) still books its count", async () => {
+    for (const uom of ["bottle", null]) {
+      const { db, calls } = makeDb({ order: { ...baseOrder }, item: { uom } });
+      const { svc } = withNotices(db);
+      await svc.markDelivered(REST, ORDER, USER_A);
+      expect(liveMovements(calls).map((c) => c.args.p_delta)).toEqual([12]);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

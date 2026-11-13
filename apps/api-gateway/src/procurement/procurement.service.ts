@@ -5384,12 +5384,23 @@ export class ProcurementService {
         // allowed.
         let masterWineId: string | null = null;
         let itemName: string | null = null;
+        // KEPT BY VOLUME OR WEIGHT: BOOK NOTHING, DO NOT CONVERT (r29 walk,
+        // 2026-11-13; the same call as the order's door, #1367). An order's
+        // quantity is a count of packs; for a good kept in ml or g it says
+        // nothing about how much is in them (one box can be one 5 l tin or four
+        // 1.25 l tins). Booking `receivedBottles` here put "1" into a good kept
+        // in ml, i.e. 1 ml. The arrival itself is true, so the order stays
+        // DELIVERED (like an order that names no item, founder 2026-09-22:
+        // "Deliver, flag"), nothing moves, and the notice says where it is
+        // counted. Not a refusal: nothing failed, and putting the order back
+        // would deny an arrival that happened.
+        let keptByMeasure: string | null = null;
         try {
           const { data: item, error: itemError } =
             await this.databaseService.supabase
               .from("restaurant_inventory")
               .select(
-                "master_wine_id, wine_name, display_name, shadow_stock, in_transit_quantity",
+                "master_wine_id, wine_name, display_name, shadow_stock, in_transit_quantity, uom",
               )
               .eq("restaurant_id", restaurantId)
               .eq("id", inventoryId)
@@ -5401,6 +5412,15 @@ export class ProcurementService {
           } else if (!item) {
             bookingRefused = true;
             stockNotMoved = "the order's item is not an item of this house";
+          } else if (measureOfUom((item as Record<string, any>).uom)) {
+            const measure = measureOfUom((item as Record<string, any>).uom)!;
+            keptByMeasure =
+              `this good is kept in ${measure.uom}, by ${measure.by}, and an order counts ` +
+              `packs, not how much is in them; count it on its paper's door, where it goes ` +
+              `on the shelf by ${measure.by}`;
+            this.logger.log(
+              `markDelivered: order ${orderId} did not book: item ${inventoryId} is kept in ${measure.uom}`,
+            );
           } else {
             const itemRow = item as Record<string, any>;
             masterWineId = itemRow.master_wine_id ?? null;
@@ -5520,6 +5540,10 @@ export class ProcurementService {
           );
           // Unused: the refusal below throws before the notice is written.
           booking = { kind: "nothing", why: stockNotMoved ?? "the booking was refused" };
+        } else if (keptByMeasure) {
+          // Delivered, nothing on the shelf, no `order_delivered` event (it
+          // records a quantity that moved) and no research ask.
+          booking = { kind: "nothing", why: keptByMeasure };
         } else {
           booking = { kind: "booked", bottles: receivedBottles };
 
@@ -10547,4 +10571,18 @@ export class ProcurementService {
     }
     return out;
   }
+}
+
+/**
+ * Whether a good is kept by volume (`ml`, `l`) or by weight (`kg`, `g`, `mg`),
+ * from `restaurant_inventory.uom` (ADR 0070). Null for a count (bottle, case,
+ * glass…) or no unit recorded, which `markDelivered` books as before. The same
+ * classes as the order's door (`receiving.service.ts` `itemMeasure`, #1367).
+ */
+export function measureOfUom(
+  uom: unknown,
+): { uom: string; by: "volume" | "weight" } | null {
+  if (uom === "ml" || uom === "l") return { uom, by: "volume" };
+  if (uom === "kg" || uom === "g" || uom === "mg") return { uom, by: "weight" };
+  return null;
 }
