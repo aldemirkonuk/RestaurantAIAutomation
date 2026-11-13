@@ -177,6 +177,25 @@ export const bench = analysis<BenchRegister>({
       b.spendPrev30d !== null &&
       (b.spendLast30d !== 0 || b.spendPrev30d !== 0);
 
+    // The real reason no pair is drawn, said ONCE: in place of the generic
+    // "cannot be drawn as bars" line when the reader picked bars, and among the
+    // notes otherwise (r56: bars mode printed the generic line above it).
+    const zeroNote =
+      'No delivered purchase order falls in either 30-day window, so no bars are drawn — two bars at zero would say the same thing less clearly.';
+    const zoneNote =
+      'This house’s time zone isn’t set, so spend and weekdays cannot be filed on the house’s day; those figures are em dashes until it is set in Settings, under Time zone.';
+    const cashflowNote =
+      'The cashflow register could not be read, so its four figures are em dashes rather than zeros.';
+    const whyNoBars = bothWindows
+      ? undefined
+      : b.cashflowMissing
+        ? cashflowNote
+        : b.zoneUnset
+          ? zoneNote
+          : b.spendLast30d === 0 && b.spendPrev30d === 0
+            ? zeroNote
+            : 'One of the two 30-day windows has no figure, so the pair is not drawn — one bar alone is not a comparison.';
+
     const rows: Array<{ key: string; cells: string[] }> = [];
     rows.push({
       key: 'buying',
@@ -244,19 +263,14 @@ export const bench = analysis<BenchRegister>({
         rows,
       },
       figures,
+      undrawn: whyNoBars,
       notes: [
         noPeers,
         // The cashflow lens reads its orders whole now (ADR 0292): a failed
         // read refuses the lens, so a pair of zeros is a quiet stretch.
-        b.spendLast30d === 0 && b.spendPrev30d === 0
-          ? 'No delivered purchase order falls in either 30-day window, so no bars are drawn — two bars at zero would say the same thing less clearly.'
-          : null,
-        b.zoneUnset
-          ? 'This house’s time zone isn’t set, so spend and weekdays cannot be filed on the house’s day; those figures are em dashes until it is set in Settings, under Time zone.'
-          : null,
-        b.cashflowMissing
-          ? 'The cashflow register could not be read, so its four figures are em dashes rather than zeros.'
-          : null,
+        b.spendLast30d === 0 && b.spendPrev30d === 0 ? zeroNote : null,
+        b.zoneUnset ? zoneNote : null,
+        b.cashflowMissing ? cashflowNote : null,
         b.seasonalityMissing
           ? 'The seasonality register could not be read, so the week’s extremes are em dashes.'
           : null,
