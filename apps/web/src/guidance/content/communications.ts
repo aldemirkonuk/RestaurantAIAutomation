@@ -11,6 +11,13 @@ export const communicationsTip = {
 
 export const communicationsTour: TourDefinition = {
   pageId: 'communications',
+  // r23 walk (2026-11-13): the page has two tabs, and Letters' two steps are
+  // not drawn on Mail. Started from Mail (where the notices and ?tab=mail land),
+  // the tour shrank to "1/1" and the tip was then marked done, so the reader
+  // never saw the rest. Each tab now has its own steps after the shared first
+  // one; TourEngine leaves out the other tab's, because their elements are not
+  // on the page. Mail's list shows 4 steps, a person, a thread or the setup 2,
+  // Letters 3.
   steps: [
     {
       // 2026-11-07: the conversation book became the Mail tab; the step
@@ -20,6 +27,28 @@ export const communicationsTour: TourDefinition = {
       description:
         'Mail is every letter between you and your vendors, by person and by thread. Letters is what waits to be sent and what you write.',
     },
+    // Mail: drawn only while the Mail tab is open.
+    {
+      // The status line is drawn on every Mail view: the list, a person, a
+      // thread and the setup.
+      element: '[data-tour="mail-status"]',
+      title: 'Whether mail reaches the house',
+      description:
+        'This line says whether the house\'s mail is connected and when a letter last came. "How mail reaches the house" shows each way a letter comes in.',
+    },
+    {
+      element: 'section[aria-label="People"]',
+      title: 'Mail by person',
+      description:
+        'Everyone the house has mail with. Open a person to read their threads; "Waiting on you" keeps only the ones waiting on a reply.',
+    },
+    {
+      element: 'section[aria-label="Who is writing"]',
+      title: 'Who is writing',
+      description:
+        'Strangers, and letters held because their sender could not be confirmed, wait here, with the senders the house trusts.',
+    },
+    // Letters: drawn only while the Letters tab is open.
     {
       // COMMS-W38 (founder: "#571's order, step 2 widened"): the whole waiting
       // region, which is always drawn; "Drafts waiting" is drawn only while a
@@ -35,12 +64,6 @@ export const communicationsTour: TourDefinition = {
       title: 'Write a letter',
       description:
         "Write to a vendor from scratch, or start from one of the house's templates.",
-    },
-    {
-      element: 'section[aria-label="Who is writing"]',
-      title: 'Know who is writing',
-      description:
-        'People who wrote to the house. An owner or a manager can trust one, or add them as a vendor.',
     },
   ],
 }

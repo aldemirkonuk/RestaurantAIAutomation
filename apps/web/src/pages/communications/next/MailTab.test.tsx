@@ -27,6 +27,7 @@ vi.mock('./QueuedPullBack', () => ({
 }));
 
 import { MailTab } from './MailTab';
+import { communicationsTour } from '../../../guidance/content/communications';
 import type { MailMessage, MailSummary } from './mail-format';
 
 const SUMMARY: MailSummary = {
@@ -126,7 +127,12 @@ function mount(at: string | string[] = '/communications?tab=mail', props: Partia
   render(
     <MemoryRouter initialEntries={entries} initialIndex={entries.length - 1}>
       <QueryClientProvider client={qc}>
-        <MailTab draftedOrderIds={new Set<string>()} onOpenReply={onOpenReply} {...props} />
+        <MailTab
+          draftedOrderIds={new Set<string>()}
+          onOpenReply={onOpenReply}
+          whoIsWriting={<section aria-label="Who is writing" data-testid="who-is-writing" />}
+          {...props}
+        />
         <Where />
         <BrowserBack />
       </QueryClientProvider>
@@ -169,12 +175,28 @@ describe('the list', () => {
     expect(within(rows[0]).getByRole('img', { name: 'waiting on you' })).toBeInTheDocument();
     expect(within(rows[1]).queryByRole('img', { name: 'waiting on you' })).toBeNull();
     expect(within(rows[0]).getByRole('img', { name: 'mail' })).toBeInTheDocument();
-    expect(screen.getByTestId('stored-kinds')).toHaveTextContent('Only vendor mail reaches Mudavym for now');
+    expect(screen.getByTestId('stored-kinds')).toHaveTextContent('are under Who is writing, below');
     // Two chips only: All and Waiting on you.
     expect(within(screen.getByRole('group', { name: 'Show' })).getAllByRole('button').map((b) => b.textContent)).toEqual([
       'All',
       'Waiting on you',
     ]);
+  });
+
+  // r21: strangers and held letters are mail too. "Who is writing" sits
+  // under the people list, and only there: a person's threads, a thread and
+  // the setup are their own views.
+  it('draws "Who is writing" under the people, and not inside a person, a thread or the setup', async () => {
+    mount();
+    await screen.findAllByTestId('mail-person');
+    const people = screen.getByRole('region', { name: 'People' });
+    const who = screen.getByTestId('who-is-writing');
+    expect(people.compareDocumentPosition(who) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it.each([['with=vendor%3Ap1'], ['thread=gm%3Aabc'], ['setup=1']])('no "Who is writing" at ?%s', (q) => {
+    mount(`/communications?tab=mail&${q}`);
+    expect(screen.queryByTestId('who-is-writing')).toBeNull();
   });
 
   it('Waiting on you asks for only the waiting people', async () => {
@@ -231,6 +253,34 @@ describe('the list', () => {
     expect(await screen.findByTestId('people-unread')).toHaveTextContent(
       'The people this house has mail with could not be read (The mail could not be read). That does not mean there are none.',
     );
+  });
+});
+
+// r23 walk: the page tour has steps for each tab. Started from Mail it showed
+// "1/1", since both later steps were Letters' own. Mail's steps must be drawn
+// by the real tab: the status line in every view, the people and "Who is
+// writing" in the list.
+describe('the tour on the Mail tab', () => {
+  const mailSteps = communicationsTour.steps
+    .map((s) => s.element)
+    .filter((el) => el !== 'nav[aria-label="Mail and letters"]');
+  const drawn = () => mailSteps.filter((el) => document.querySelector(el));
+
+  it('the list draws three steps of its own', async () => {
+    mount();
+    await screen.findAllByTestId('mail-person');
+    expect(drawn()).toEqual([
+      '[data-tour="mail-status"]',
+      'section[aria-label="People"]',
+      'section[aria-label="Who is writing"]',
+    ]);
+  });
+
+  it.each([['with=vendor%3Ap1'], ['thread=gm%3Aabc'], ['setup=1']])('?%s still draws the status step', async (q) => {
+    mount(`/communications?tab=mail&${q}`);
+    await screen.findByTestId('mail-status');
+    expect(drawn()).toEqual(['[data-tour="mail-status"]']);
+    expect(document.querySelector('[data-tour="mail-status"]')).toContainElement(screen.getByTestId('mail-status'));
   });
 });
 
@@ -430,6 +480,19 @@ describe('the setup path', () => {
     fireEvent.click(screen.getByTestId('browser-back'));
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications\?tab=mail$/);
     expect(await screen.findAllByTestId('mail-person')).toHaveLength(2);
+  });
+
+  // r21 walk: the house has a Mudavym address, so the status line reads
+  // "Connected · …"; its own reader is switched off, and the setup must still
+  // offer the switch.
+  it('a switched-off reader under a connected line still offers the switch', async () => {
+    routes['/communications/letters/sender'] = () => ({
+      ...SENDER,
+      reader: { ...SENDER.reader, enabled: false, lastReadAt: new Date(Date.now() - 60_000).toISOString() },
+    });
+    mount(['/communications?tab=mail&setup=1']);
+    await waitFor(() => expect(screen.getByTestId('setup-status')).toHaveTextContent(/reading your mailbox is switched off/));
+    expect(await screen.findByRole('button', { name: 'Open the switch in Settings' })).toBeInTheDocument();
   });
 
   it('the in-app Back on a setup link opened cold stays on the page', async () => {

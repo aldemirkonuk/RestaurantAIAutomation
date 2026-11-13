@@ -296,7 +296,7 @@ describe('a letter in a thread', () => {
 describe('the list around the people', () => {
   it('says which kinds of mail are not stored', () => {
     expect(storedKindsLine(['vendor'])).toBe(
-      'Only vendor mail reaches Mudavym for now; mail from your team and guests is not read yet.',
+      "Vendor mail is listed here by person and thread. A stranger's letter, and a letter held because its sender could not be confirmed, are under Who is writing, below. Mail from your team and guests is not read yet.",
     );
   });
 

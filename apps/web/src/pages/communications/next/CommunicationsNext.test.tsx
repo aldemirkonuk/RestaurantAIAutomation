@@ -149,11 +149,20 @@ vi.mock('./useMailData', () => ({
   useMailSummary: () => mockMailSummary.current,
 }));
 vi.mock('./MailTab', () => ({
-  MailTab: ({ draftedOrderIds, onOpenReply }: { draftedOrderIds: ReadonlySet<string>; onOpenReply: (id: string) => void }) => (
+  MailTab: ({
+    draftedOrderIds,
+    onOpenReply,
+    whoIsWriting,
+  }: {
+    draftedOrderIds: ReadonlySet<string>;
+    onOpenReply: (id: string) => void;
+    whoIsWriting?: React.ReactNode;
+  }) => (
     <section aria-label="Mail" data-testid="mail-tab-stub" data-drafted={[...draftedOrderIds].join(',')}>
       <button type="button" onClick={() => onOpenReply([...draftedOrderIds][0] ?? '')}>
         stub open reply
       </button>
+      {whoIsWriting}
     </section>
   ),
 }));
@@ -332,9 +341,13 @@ describe('CommunicationsNext', () => {
   });
 
   // ── ADR 0160 §113, Open item 3: senders and strangers moved here ──────────
-  it('mounts the who-is-writing section (trust and add-vendor moved here from /promotions)', () => {
+  // r21 (2026-11-13): "Who is writing" moved into the Mail tab, so the tab
+  // reaches strangers and held letters too. MailTab mounts it (MailTab.test).
+  it('Letters no longer carries "Who is writing"; Mail does', () => {
     render(<CommunicationsNext />);
-    expect(screen.getByTestId('who-is-writing')).toBeInTheDocument();
+    expect(screen.queryByTestId('who-is-writing')).toBeNull();
+    render(<CommunicationsNext />, '/communications?tab=mail');
+    expect(within(screen.getByTestId('mail-tab-stub')).getByTestId('who-is-writing')).toBeInTheDocument();
   });
 
   /**
@@ -983,19 +996,34 @@ describe('the tour finds every step (COMMS-W38)', () => {
     mockDrafts.current = { drafts: [], failed: false, error: null, refetch: () => {} };
   });
 
-  it('every step’s element is on the page with nothing drafted', () => {
+  it('every Letters step’s element is on the page with nothing drafted, and no Mail step’s', () => {
     const { container } = render(<CommunicationsNext />);
     expect(container.querySelector('section[aria-label="Drafts waiting"]')).toBeNull();
-    expect(communicationsTour.steps.map((s) => s.element)).toEqual([
+    const found = communicationsTour.steps.map((s) => s.element).filter((el) => container.querySelector(el));
+    expect(found).toEqual([
       'nav[aria-label="Mail and letters"]',
       'section[aria-label="To send"]',
       '[data-tour="comms-write"]',
-      'section[aria-label="Who is writing"]',
     ]);
-    for (const step of communicationsTour.steps) {
-      expect(container.querySelector(step.element), step.element).not.toBeNull();
-    }
     expect(container.querySelector('[data-tour="comms-write"]')?.textContent).toMatch(/Write a letter/);
+  });
+
+  // r23 walk: started from Mail, the tour kept only its first step ("1/1"),
+  // because both later steps are Letters' own. Mail's steps are proved on the
+  // real tab in MailTab.test.tsx; here, Letters' steps must not be drawn on
+  // Mail, and the shared first step must be.
+  it('on Mail, the shared step is drawn and none of Letters’ steps', () => {
+    const { container } = render(<CommunicationsNext />, '/communications?tab=mail');
+    const letters = ['section[aria-label="To send"]', '[data-tour="comms-write"]'];
+    expect(container.querySelector('nav[aria-label="Mail and letters"]')).not.toBeNull();
+    for (const el of letters) expect(container.querySelector(el), el).toBeNull();
+    expect(communicationsTour.steps.map((s) => s.element)).toEqual([
+      'nav[aria-label="Mail and letters"]',
+      '[data-tour="mail-status"]',
+      'section[aria-label="People"]',
+      'section[aria-label="Who is writing"]',
+      ...letters,
+    ]);
   });
 });
 
@@ -1048,7 +1076,7 @@ describe('Mail and Letters', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/communications?tab=mail');
   });
 
-  it.each([['?tab=mail'], ['?with=vendor%3Ap1'], ['?thread=gm%3Aabc'], ['?setup=1']])('%s opens on Mail', (q) => {
+  it.each([['?tab=mail'], ['?with=vendor%3Ap1'], ['?thread=gm%3Aabc'], ['?setup=1'], ['?senders=open']])('%s opens on Mail', (q) => {
     at(`/communications${q}`);
     expect(screen.getByTestId('mail-tab-stub')).toBeInTheDocument();
     expect(tabs()[0]).toHaveAttribute('aria-current', 'page');
@@ -1110,8 +1138,8 @@ describe('Mail and Letters', () => {
     expect(tabs()[0]).toHaveTextContent('Mail · 3');
   });
 
-  it('Letters leaves the person, thread and mail setup behind', () => {
-    at('/communications?tab=mail&with=vendor%3Ap1&thread=gm%3Aabc&setup=1');
+  it('Letters leaves the person, thread, mail setup and the senders register behind', () => {
+    at('/communications?tab=mail&with=vendor%3Ap1&thread=gm%3Aabc&setup=1&senders=open');
     fireEvent.click(tabs()[1]);
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/communications$/);
     expect(screen.getByText('Replies · 30 days')).toBeInTheDocument();

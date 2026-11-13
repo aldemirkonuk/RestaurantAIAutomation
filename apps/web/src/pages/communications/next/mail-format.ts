@@ -592,7 +592,7 @@ export function storedKindsLine(storedKinds: readonly string[] | null): string {
   if (storedKinds && storedKinds.some((k) => k !== 'vendor')) {
     return `Mail from ${storedKinds.join(', ')} reaches Mudavym.`;
   }
-  return 'Only vendor mail reaches Mudavym for now; mail from your team and guests is not read yet.';
+  return "Vendor mail is listed here by person and thread. A stranger's letter, and a letter held because its sender could not be confirmed, are under Who is writing, below. Mail from your team and guests is not read yet.";
 }
 
 /**
