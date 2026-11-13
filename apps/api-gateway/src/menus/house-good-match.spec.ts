@@ -1,4 +1,4 @@
-import { kindFits, kindNoun, lineFamily, matchHouseGoods, matchLine, nameParts, type HouseGood } from "./house-good-match";
+import { foldName, kindFits, kindNoun, lineFamily, matchHouseGoods, matchLine, nameParts, type HouseGood } from "./house-good-match";
 
 const g = (over: Partial<HouseGood> & { id: string }): HouseGood => ({
   display_name: null,
@@ -15,11 +15,45 @@ describe("nameParts: a name folded, with a year and a size at its end read off",
     ["Château Margaux 2015 75cl", "chateau margaux", "2015", 750],
     ["Château Margaux 75 cl (2015)", "chateau margaux", "2015", 750],
     ["Tonik 200 ml", "tonik", null, 200],
-    ["Rakı 1,5 L", "rak", null, 1500],
+    ["Rakı 1,5 L", "raki", null, 1500],
     ["  House   London-Dry  Gin ", "house london dry gin", null, null],
     ["Chivas 18", "chivas 18", null, null],
   ])("%s", (raw, key, vintage, sizeMl) => {
     expect(nameParts(raw)).toEqual({ key, vintage, sizeMl });
+  });
+});
+
+describe("r28 G6: the dotless ı is read as i, here and not in the library's fold", () => {
+  it("folds Rakı and RAKI the same, and İ too", () => {
+    expect(foldName("Yeni Rakı")).toBe("yeni raki");
+    expect(foldName("Yeni RAKI")).toBe("yeni raki");
+    expect(foldName("İSTANBUL Kırmızı")).toBe("istanbul kirmizi");
+    expect(nameParts("Yeni Rakı 70cl").key).toBe("yeni raki");
+  });
+
+  it("a RAKI line finds the house's Rakı, under a Rakı section", () => {
+    const goods = [g({ id: "r1", display_name: "Yeni Rakı", kind: "spirit" })];
+    expect(matchLine({ name: "Yeni RAKI", category: "RAKI" }, goods)).toMatchObject({ outcome: "one", good: { id: "r1" } });
+    expect(matchLine({ name: "Yeni Rakı 70cl", category: "Rakılar" }, goods)).toMatchObject({ outcome: "one", good: { id: "r1" } });
+    // The producer, when the library states it, is folded the same way.
+    expect(
+      matchLine({ name: "Yaş Üzüm", producer: "Tekirdağ RAKISI" }, [g({ id: "r2", display_name: "Yaş Üzüm", kind: "spirit", producer: "Tekirdağ Rakısı" })]),
+    ).toMatchObject({ outcome: "one", good: { id: "r2" } });
+  });
+
+  it("reads a Turkish drink section's kind", () => {
+    expect(lineFamily("Biralar")).toBe("beer");
+    expect(lineFamily("Kokteyller")).toBe("cocktail");
+    expect(lineFamily("Alkolsüz İçecekler")).toBe("soft");
+    expect(lineFamily("Meşrubatlar")).toBe("soft");
+    expect(lineFamily("RAKILAR")).toBe("spirit");
+    expect(lineFamily("Rakılar")).toBe("spirit");
+    expect(lineFamily("Rakı")).toBe("spirit");
+    expect(lineFamily("Viskiler")).toBe("spirit");
+    expect(lineFamily("Kırmızı Şaraplar")).toBe("wine");
+    expect(lineFamily("Köpüklü")).toBe("wine");
+    // A Turkish beer line does not take the house's wine of the same name.
+    expect(matchLine({ name: "Efes", category: "Biralar" }, [g({ id: "w", display_name: "Efes", kind: "wine" })])).toEqual({ outcome: "none" });
   });
 });
 
@@ -123,6 +157,38 @@ describe("matchHouseGoods: the reads", () => {
     master_wine_id: null,
     bottle_size_ml: null,
     ...over,
+  });
+
+  it("r28 G5: each good's name is read once per index, not once per line", async () => {
+    const goods = 300;
+    let reads = 0;
+    const rows = Array.from({ length: goods }, (_, i) => {
+      const row = live(i);
+      Object.defineProperty(row, "display_name", { enumerable: true, get: () => (reads++, `Good ${i}`) });
+      return row;
+    });
+    const client = pagingClient({ restaurant_inventory: rows });
+    const lines = Array.from({ length: 200 }, (_, i) => ({ name: i % 2 ? `Good ${i}` : `Not stocked ${i}`, category: "red" }));
+    const out = await matchHouseGoods(client, "rest-1", lines);
+    expect(out[1]).toMatchObject({ outcome: "one", good: { id: "inv-00001" } });
+    expect(out[0]).toEqual({ outcome: "none" });
+    expect(out.filter((m) => m.outcome === "one")).toHaveLength(100);
+    // One fold per good, plus the named goods copied once with their library
+    // details and indexed again: never lines x goods (60,000).
+    expect(reads).toBeLessThanOrEqual(goods + 3 * 100);
+  });
+
+  it("r28 G5: two goods of one name answer 'many' in the order the house lists them", () => {
+    const goods = [
+      g({ id: "b", display_name: "Barolo 2019" }),
+      g({ id: "x", display_name: "Chianti" }),
+      g({ id: "a", display_name: "Barolo", wine_name: "Barolo 2018" }),
+    ];
+    expect(matchLine({ name: "Barolo" }, goods)).toEqual({ outcome: "many", goods: [goods[0], goods[2]] });
+    expect(matchLine({ name: "Barolo 2018" }, goods)).toEqual({ outcome: "one", good: goods[2] });
+    // The producer-and-name form finds an earlier good than the name alone: still list order.
+    const two = [g({ id: "c1", display_name: "Caymus Cabernet" }), g({ id: "c2", display_name: "Cabernet" })];
+    expect(matchLine({ name: "Cabernet", producer: "Caymus" }, two)).toEqual({ outcome: "many", goods: two });
   });
 
   it("reads past the 1000-row cap: a good on the second page is found", async () => {

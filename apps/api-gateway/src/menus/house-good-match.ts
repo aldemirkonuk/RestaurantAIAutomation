@@ -54,6 +54,19 @@ export interface MatchableLine {
   vintage?: string | number | null;
 }
 
+/**
+ * Text folded for comparison here: the library's fold (`normalizeSignatureText`:
+ * case, accents, punctuation, spacing), with the Turkish dotless ı read as i
+ * first (r28 G6). The library fold has no decomposition for ı, so it dropped
+ * the letter: "Yeni Rakı" folded to "yeni rak" while "Yeni RAKI" folded to
+ * "yeni raki", and the same raki on two menus were two goods. The shared fold
+ * is left alone: it keys stored signature hashes, and changing it would
+ * re-key the library.
+ */
+export function foldName(value: string | null | undefined): string {
+  return normalizeSignatureText(value ? value.replace(/ı/g, "i") : value);
+}
+
 const PAGE_ROWS = 1000;
 const ID_CHUNK = 150;
 
@@ -98,32 +111,33 @@ export function nameParts(raw: string | null | undefined): { key: string; vintag
     }
     break;
   }
-  return { key: normalizeSignatureText(s), vintage, sizeMl };
+  return { key: foldName(s), vintage, sizeMl };
 }
 
 type Family = "wine" | "beer" | "cider" | "sake" | "cocktail" | "spirit" | "soft";
 
 // Checked in this order, so "non-alcoholic beer" is a soft drink and
-// "dessert wine" is a wine.
+// "dessert wine" is a wine. The words are folded (foldName), Turkish ones
+// too: "Alkolsüz İçecekler" is "alkolsuz icecekler", "Şaraplar" is "saraplar".
 const FAMILY_WORDS: Array<[Family, string[]]> = [
-  ["soft", ["non alcoholic", "alcohol free", "soft drink", "soft drinks", "soft", "juice", "juices", "soda", "sodas", "water"]],
-  ["cocktail", ["cocktail", "cocktails"]],
-  ["beer", ["beer", "beers", "lager", "ale", "ales"]],
+  ["soft", ["non alcoholic", "alcohol free", "soft drink", "soft drinks", "soft", "juice", "juices", "soda", "sodas", "water", "alkolsuz", "mesrubat", "mesrubatlar", "meyve suyu"]],
+  ["cocktail", ["cocktail", "cocktails", "kokteyl", "kokteyller"]],
+  ["beer", ["beer", "beers", "lager", "ale", "ales", "bira", "biralar"]],
   ["cider", ["cider", "ciders"]],
   ["sake", ["sake"]],
   [
     "spirit",
-    ["spirit", "spirits", "whiskey", "whisky", "whiskies", "liqueur", "liqueurs", "gin", "vodka", "rum", "tequila", "mezcal", "brandy", "cognac", "raki", "rak"],
+    ["spirit", "spirits", "whiskey", "whisky", "whiskies", "liqueur", "liqueurs", "gin", "vodka", "rum", "tequila", "mezcal", "brandy", "cognac", "raki", "rakilar", "viski", "viskiler", "likor", "likorler", "votka", "cin", "konyak"],
   ],
   [
     "wine",
-    ["wine", "wines", "red", "reds", "white", "whites", "rose", "roses", "sparkling", "champagne", "orange", "dessert", "fortified", "port", "sherry"],
+    ["wine", "wines", "red", "reds", "white", "whites", "rose", "roses", "sparkling", "champagne", "orange", "dessert", "fortified", "port", "sherry", "sarap", "saraplar", "kirmizi", "beyaz", "roze", "kopuklu"],
   ],
 ];
 
 /** What a menu line's category says it is, or null when it says nothing known. */
 export function lineFamily(category: string | null | undefined): Family | null {
-  const words = ` ${normalizeSignatureText(category)} `;
+  const words = ` ${foldName(category)} `;
   if (words.trim() === "") return null;
   for (const [family, list] of FAMILY_WORDS) {
     if (list.some((w) => words.includes(` ${w} `))) return family;
@@ -155,41 +169,77 @@ export function kindFits(family: Family | null, kind: string | null | undefined)
   return k === family;
 }
 
-function nameFits(line: MatchableLine, good: HouseGood, withLibrary: boolean): boolean {
-  if (withLibrary) {
-    const a = normalizeSignatureText(line.producer);
-    const b = normalizeSignatureText(good.producer);
-    if (a && b && a !== b) return false;
-  }
-  const forms = [line.name, line.producer ? `${line.producer} ${line.name}` : null];
-  return forms.some((form) => form !== null && formFits(form, line, good, withLibrary));
+/** A good's names, each folded once (r28 G5), keyed by the folded name. */
+interface GoodName {
+  good: HouseGood;
+  /** The good's place in the list it came from, so hits keep that order. */
+  at: number;
+  parts: ReturnType<typeof nameParts>;
+}
+export type GoodIndex = Map<string, GoodName[]>;
+
+/**
+ * The goods by folded name: each good's display name and wine name are folded
+ * once here, not once per line. Matching a line is then a lookup of its own
+ * folded name, so a menu of L lines against a house of G goods costs about
+ * L + G folds, where it cost L x G (r28 G5: 485 lines x 1,500 goods was over
+ * 700,000 folds inside one request).
+ */
+export function indexGoods(goods: HouseGood[]): GoodIndex {
+  const index: GoodIndex = new Map();
+  goods.forEach((good, at) => {
+    const seen = new Set<string>();
+    for (const n of [good.display_name, good.wine_name]) {
+      if (!n) continue;
+      const parts = nameParts(n);
+      if (!parts.key || seen.has(`${parts.key}|${parts.vintage}|${parts.sizeMl}`)) continue;
+      seen.add(`${parts.key}|${parts.vintage}|${parts.sizeMl}`);
+      const list = index.get(parts.key) ?? [];
+      list.push({ good, at, parts });
+      index.set(parts.key, list);
+    }
+  });
+  return index;
 }
 
-function formFits(form: string, line: MatchableLine, good: HouseGood, withVintage: boolean): boolean {
-  const lp = nameParts(form);
-  if (!lp.key) return false;
-  const lineVintage = statedVintage(line.vintage) ?? lp.vintage;
-  return [good.display_name, good.wine_name].some((n) => {
-    if (!n) return false;
-    const gp = nameParts(n);
-    if (gp.key !== lp.key) return false;
-    if (withVintage) {
-      const goodVintage = gp.vintage ?? statedVintage(good.vintage);
-      if (lineVintage && goodVintage && lineVintage !== goodVintage) return false;
+/** The goods a line's name fits, in their list order: kind, producer, name, vintage and size. */
+function goodsFitting(line: MatchableLine, index: GoodIndex, withLibrary: boolean): HouseGood[] {
+  const family = lineFamily(line.category);
+  const lineProducer = withLibrary ? foldName(line.producer) : "";
+  const hits = new Map<number, HouseGood>();
+  const forms = [line.name, line.producer ? `${line.producer} ${line.name}` : null];
+  for (const form of forms) {
+    if (form === null) continue;
+    const lp = nameParts(form);
+    if (!lp.key) continue;
+    const lineVintage = statedVintage(line.vintage) ?? lp.vintage;
+    for (const { good, at, parts: gp } of index.get(lp.key) ?? []) {
+      if (!kindFits(family, good.kind)) continue;
+      if (withLibrary) {
+        const goodProducer = foldName(good.producer);
+        if (lineProducer && goodProducer && lineProducer !== goodProducer) continue;
+        const goodVintage = gp.vintage ?? statedVintage(good.vintage);
+        if (lineVintage && goodVintage && lineVintage !== goodVintage) continue;
+      }
+      const goodSize = good.bottle_size_ml ?? gp.sizeMl;
+      if (lp.sizeMl && goodSize && lp.sizeMl !== goodSize) continue;
+      hits.set(at, good);
     }
-    const goodSize = good.bottle_size_ml ?? gp.sizeMl;
-    if (lp.sizeMl && goodSize && lp.sizeMl !== goodSize) return false;
-    return true;
-  });
+  }
+  return [...hits.entries()].sort((a, b) => a[0] - b[0]).map(([, g]) => g);
+}
+
+/** The house's goods that fit one line, read from an index built once. */
+export function matchLineIn(line: MatchableLine, index: GoodIndex): HouseMatch {
+  const hits = goodsFitting(line, index, true);
+  if (hits.length === 0) return { outcome: "none" };
+  if (hits.length === 1) return { outcome: "one", good: hits[0] };
+  return { outcome: "many", goods: hits };
 }
 
 /** The house's goods that fit one line. Pure: the goods are already read. */
 export function matchLine(line: MatchableLine, goods: HouseGood[]): HouseMatch {
-  const family = lineFamily(line.category);
-  const hits = goods.filter((g) => kindFits(family, g.kind) && nameFits(line, g, true));
-  if (hits.length === 0) return { outcome: "none" };
-  if (hits.length === 1) return { outcome: "one", good: hits[0] };
-  return { outcome: "many", goods: hits };
+  return matchLineIn(line, indexGoods(goods));
 }
 
 /** The noun a sentence uses for a good of this kind. */
@@ -250,11 +300,11 @@ export async function matchHouseGoods(
   // 2. The library vintage and producer of each good some line names, so a
   //    2019 line does not take the house's 2020, nor Caymus the house's
   //    Duckhorn. Read only for the goods a name already fits.
+  const byName = indexGoods(goods);
   const named = new Set<HouseGood>();
   for (const line of lines) {
     if (!line) continue;
-    const family = lineFamily(line.category);
-    for (const g of goods) if (kindFits(family, g.kind) && nameFits(line, g, false)) named.add(g);
+    for (const g of goodsFitting(line, byName, false)) named.add(g);
   }
   const wineIds = [...new Set([...named].map((g) => g.master_wine_id).filter((w): w is string => !!w))];
   const library = new Map<string, { vintage: string | number | null; producer: string | null }>();
@@ -271,5 +321,6 @@ export async function matchHouseGoods(
     return { ...g, vintage: lib?.vintage ?? null, producer: lib?.producer ?? null };
   });
 
-  return lines.map((line) => (line ? matchLine(line, candidates) : none));
+  const byCandidate = indexGoods(candidates);
+  return lines.map((line) => (line ? matchLineIn(line, byCandidate) : none));
 }
