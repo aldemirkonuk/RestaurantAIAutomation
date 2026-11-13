@@ -1,7 +1,9 @@
 import {
+  ConflictException,
   ForbiddenException,
   InternalServerErrorException,
   NotFoundException,
+  ServiceUnavailableException,
 } from "@nestjs/common";
 import { MembersService } from "./members.service";
 import {
@@ -241,6 +243,27 @@ describe("MembersService.addMember — a manager adds a manager or staff, never 
     await service(db).addMember(ACTOR, RID, NEW_EMAIL, "owner");
 
     expect(addedRows(db).map((r) => r.role)).toEqual(["owner"]);
+  });
+
+  it("held twins (QA r17 gap 1): nobody is added, and it says why", async () => {
+    const db = seedAdd("owner");
+    db.tables.users.push(
+      { user_id: "twin-a", email: "Twin@example.test", email_folded: "twin@example.test" },
+      { user_id: "twin-b", email: "TWIN@example.test", email_folded: "twin@example.test" },
+    );
+    await expect(
+      service(db).addMember(ACTOR, RID, "twin@example.test", "staff"),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(db.tables.user_restaurant_access).toHaveLength(1);
+  });
+
+  it("a failed users read is a 503, never 'user not found'", async () => {
+    const db = seedAdd("owner");
+    db.errors["users:select"] = { message: "down" };
+    await expect(
+      service(db).addMember(ACTOR, RID, NEW_EMAIL, "staff"),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(addedRows(db)).toEqual([]);
   });
 
   it("gives a role the rule does not know nothing to grant", async () => {

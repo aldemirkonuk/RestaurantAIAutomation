@@ -612,9 +612,14 @@ function TeamNextManager({
           <section aria-label="Credentials" className="tm-panel">
             <h2 className="tm-panel__title">Credentials to check</h2>
             {data.certsFailed ? (
-              <p className="tm-note" role="alert">
-                The credentials file could not be read — exposure is unknown, not absent.
-              </p>
+              <div className="tm-banner" role="alert">
+                <span>
+                  The credentials file could not be read — exposure is unknown, not absent.
+                </span>
+                <button type="button" className="tm-ctl" onClick={data.refetch}>
+                  Try again
+                </button>
+              </div>
             ) : !data.certsKnown && !data.isError ? (
               <p className="tm-quiet">Reaching the gateway…</p>
             ) : data.certsOnFile === 0 ? (

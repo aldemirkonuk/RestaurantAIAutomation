@@ -8,8 +8,10 @@ import {
   Logger,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
   forwardRef,
 } from "@nestjs/common";
+import { findUserBySignInAddress } from "../passkeys/sign-in-codes.service";
 import { DatabaseService } from "../database/database.service";
 import { AccessChangeReceipt, recordAccessChange } from "../team/access-audit";
 import { grantRefusal } from "../auth/role-grant";
@@ -595,12 +597,26 @@ export class MembersService {
       throw new ForbiddenException(refusal);
     }
 
-    const { data: targetUser } = await this.databaseService.supabase
-      .from("users")
-      .select("user_id")
-      .ilike("email", email.trim())
-      .maybeSingle();
-
+    // The shared lookup (QA r17 gap 1), not `ilike`: `_` and `%` in a typed
+    // address were wildcards, and a failed read read as "no such user".
+    const {
+      user: targetUser,
+      error: lookupError,
+      ambiguous,
+    } = await findUserBySignInAddress<{ user_id: string }>(
+      () => this.databaseService.supabase.from("users").select("user_id"),
+      email,
+    );
+    if (lookupError) {
+      throw new ServiceUnavailableException(
+        "Could not check that address, so nobody was added. Try again.",
+      );
+    }
+    if (ambiguous) {
+      throw new ConflictException(
+        "More than one account answers to that address, so nobody was added. Ask them which spelling they sign in with.",
+      );
+    }
     if (!targetUser) {
       throw new NotFoundException(
         "User not found. Send them an invite link to create an account first.",
