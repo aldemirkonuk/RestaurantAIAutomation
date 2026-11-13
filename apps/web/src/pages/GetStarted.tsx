@@ -10,7 +10,8 @@ import { MenuManualEntry } from '../components/onboarding/MenuManualEntry'
 import { useAuth, type User } from '../contexts/AuthContext'
 import { apiClient, getErrorStatus, isUnconfirmedWrite } from '../services/api/client'
 import { importMenu, type MenuImportResult } from '../services/api/menus'
-import { currencyForCountry } from '../lib/currency'
+import { CURRENCY_CODES, currencyForCountry, currencyLabel, currencyToRecord } from '../lib/currency'
+import { settingsApi } from '../services/api/settings'
 import { getBrowserTimezone } from '../lib/browserTimezone'
 import { countryCodeFor } from '../lib/countries'
 import { zoneForPlace } from '../lib/zoneForPlace'
@@ -193,7 +194,18 @@ export default function GetStarted() {
   const [saving, setSaving] = useState(false)
   const [dropping, setDropping] = useState(false)
 
-  const currency = useMemo(() => currencyForCountry(country), [country])
+  // The house's money (r28 onboarding gap 4, ADR 0117 Q25: "ask each house in
+  // onboarding, set a default from location"). The country offers a default;
+  // the owner can change it or leave it unset, and a pick is undone when the
+  // country changes, as the clock's is. `null` follows the country.
+  const [currencyChoice, setCurrencyChoice] = useState<string | null>(null)
+  const countryCurrency = useMemo(() => currencyForCountry(country), [country])
+  const currency = currencyToRecord(currencyChoice, countryCurrency)
+  // An owner sent back to the menu step (/house, the setup strip, the
+  // checklist) enters with no country on this page, so the money is read from
+  // the house itself (r28 gap 9): the typed-line price boxes keep "(TRY)".
+  const [keptCurrency, setKeptCurrency] = useState<string | null>(null)
+  const menuCurrency = country.trim() ? currency : keptCurrency
   const mapsOn = isMapsConfigured()
   // The house's clock comes from the place, not the browser (OB-7, F7): a
   // one-zone country names it; else the browser zone when its offset matches
@@ -215,6 +227,7 @@ export default function GetStarted() {
 
   const changeCountry = (next: string) => {
     setCountry(next)
+    setCurrencyChoice(null)
     const nextCode = countryCodeFor(next)?.toUpperCase() ?? null
     if (placeCountryCode && nextCode !== placeCountryCode.toUpperCase()) {
       setPlaceCountryCode(null)
@@ -236,6 +249,23 @@ export default function GetStarted() {
       setEntered(true)
     }
   }, [loading, navigate, user])
+
+  // Read once per entry to the menu step, only when this visit did not open
+  // the house (and so holds no country). A read that fails leaves the boxes
+  // without a currency, as before: never a guessed one.
+  useEffect(() => {
+    if (step !== 'menu' || country.trim()) return
+    let live = true
+    settingsApi
+      .houseCurrency()
+      .then((read) => {
+        if (live && read?.readable && read.code) setKeptCurrency(read.code)
+      })
+      .catch(() => undefined)
+    return () => {
+      live = false
+    }
+  }, [step, country])
 
   // B-14: `user` can arrive late; its name fills unless the person typed.
   useEffect(() => {
@@ -545,7 +575,26 @@ export default function GetStarted() {
                 {timezone && (zone.source === 'country' ? ' (from the country)' : ' (from this browser)')}
               </span>
             )}
-            <span>Currency · {currency ?? 'Not inferred yet'}</span>
+            <label className="inline-flex flex-wrap items-center gap-2">
+              <span>Currency ·</span>
+              <select
+                aria-label="The house's money"
+                value={currency ?? ''}
+                onChange={(event) => setCurrencyChoice(event.target.value)}
+                className="border-b border-[#211f1b]/25 bg-transparent"
+              >
+                <option value="">{countryCurrency ? 'Not set yet' : 'Choose…'}</option>
+                {CURRENCY_CODES.map((code) => (
+                  <option key={code} value={code}>
+                    {currencyLabel(code)}
+                  </option>
+                ))}
+              </select>
+              {currency && currencyChoice === null && <span>(from the country)</span>}
+              {!currency && country.trim() && !countryCurrency && (
+                <span>Not known from the country: choose it, or set it later in Settings › Currency.</span>
+              )}
+            </label>
           </div>
         </div>
         {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
@@ -611,7 +660,7 @@ export default function GetStarted() {
         <div className="mt-6">
           {menuMethod === 'photo' && <MenuScanUpload onSuccess={menuRead} />}
           {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} />}
-          {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} currency={currency} />}
+          {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} currency={menuCurrency} />}
         </div>
         <div className="mt-6 border-t border-[#211f1b]/15 pt-5">
           <button type="button" onClick={() => navigate('/house', { replace: true })} className="text-sm text-[#6d685f] underline underline-offset-4">
