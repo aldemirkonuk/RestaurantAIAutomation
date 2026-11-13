@@ -107,6 +107,12 @@ type OrderWire = Order & {
   freight?: number | null;
   /** ISO code; `null` = row names none, key absent = route did not read it. */
   currency?: string | null;
+  /**
+   * r27 (gateway #1351): the order's vendor was removed from this house's
+   * vendors. `null` = no vendor row; key absent = an older gateway or a route
+   * that does not read it. Joins the shared type when the DTO lands on main.
+   */
+  vendorRemoved?: boolean | null;
 };
 
 export interface OrderRowVM {
@@ -115,6 +121,12 @@ export interface OrderRowVM {
   wineName: string | null;
   producer: string | null;
   providerName: string | null;
+  /**
+   * The vendor was removed (r27). True ONLY when the route said so: `null` or
+   * an absent key is "not known", which shows nothing rather than a claim.
+   * Optional so a row built by hand (a fixture) reads as "not removed".
+   */
+  vendorRemoved?: boolean;
   quantity: number | null;
   /**
    * The AGREED price, stated per `priceUom` — not necessarily per bottle. Read
@@ -387,6 +399,7 @@ export function toRow(o: OrderWire, providerNameById: Map<string, string>): Orde
       (typeof o.providerName === 'string' && o.providerName.trim() ? o.providerName : null) ??
       providerNameById.get(o.providerId) ??
       null,
+    vendorRemoved: o.vendorRemoved === true,
     quantity,
     unitPrice,
     bottlesTotal,
