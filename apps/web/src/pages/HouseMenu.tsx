@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { saveProofItems } from '../lib/firstProof'
 import { BrandMark } from '../components/brand/BrandMark'
+import { NoProofInThisTab } from '../components/onboarding/NoProofInThisTab'
 import {
   addMenuItem,
   reviewMenuItem,
@@ -93,19 +94,8 @@ export default function HouseMenu() {
     )
   }, [drinkItems])
 
-  if (!proof) {
-    return (
-      <div className="min-h-screen bg-[#fbfaf7] px-6 py-16 text-[#211f1b]">
-        <div className="mx-auto max-w-2xl">
-          <BrandMark size={24} alt="Mudavym" />
-          <h1 className="mt-8 font-serif text-4xl">No menu has been read yet.</h1>
-          <button onClick={() => navigate('/get-started')} className="mt-6 text-[#1a5e6b] underline">
-            Read a menu
-          </button>
-        </div>
-      </div>
-    )
-  }
+  // No proof in this tab: the house's record says whether a menu is kept.
+  if (!proof) return <NoProofInThisTab />
 
   if (proof.itemsExtracted === 0 && items.length === 0) {
     return (

@@ -17,13 +17,22 @@ export default function HouseContents() {
   // page's state: after a reload it asked "Who supplies you?" again (walk
   // 2026-11-11). A failed or absent read leaves the ask, as before.
   const [supplierOnBook, setSupplierOnBook] = useState(false)
+  // The same read answers the menu row when this tab holds no first proof
+  // (r21): "No menu read yet." was said, with nothing to press, to a house
+  // whose menu was read in another tab, and after "Skip for now" the row
+  // had no way back to reading one. Null until the read is in.
+  const [menuKept, setMenuKept] = useState<boolean | null>(null)
   useEffect(() => {
     let live = true
     getOnboardingProgress()
       .then((progress) => {
-        if (live && progress?.vendor_added) setSupplierOnBook(true)
+        if (!live) return
+        if (progress?.vendor_added) setSupplierOnBook(true)
+        setMenuKept(Boolean(progress?.menu_uploaded))
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (live) setMenuKept(false)
+      })
     return () => {
       live = false
     }
@@ -54,7 +63,7 @@ export default function HouseContents() {
         <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[#6d685f]">The house</span>
       </header>
       <main className="mx-auto max-w-2xl px-5 py-12 sm:py-16">
-        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">Contents</p>
+        <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">The house is open</p>
         <h1 className="mt-3 font-serif text-5xl">Your house.</h1>
         <p className="mt-4 text-[#6d685f]">One thing at a time. The rest can wait.</p>
 
@@ -71,16 +80,28 @@ export default function HouseContents() {
                   ? 'The first proof is set in ink.'
                   : `${pencilled} ${pencilled === 1 ? 'line' : 'lines'} in pencil, worth a second look`}
               </button>
+            ) : menuKept === null ? null : menuKept ? (
+              <p className="mt-2 font-serif text-2xl">
+                Your menu is read and kept.{' '}
+                <Link to="/menu" className="font-sans text-sm underline underline-offset-4">
+                  See it on Menu
+                </Link>
+              </p>
             ) : (
-              <p className="mt-2 font-serif text-2xl text-[#6d685f]">No menu read yet.</p>
+              <p className="mt-2 font-serif text-2xl text-[#6d685f]">
+                No menu read yet.{' '}
+                <Link to="/get-started" className="font-sans text-sm text-[#1a5e6b] underline underline-offset-4">
+                  Read your menu
+                </Link>
+              </p>
             )}
           </div>
 
           {saved ? (
-            <p className="py-6 font-serif text-2xl">{supplier.trim()} is on the book.</p>
+            <p className="py-6 font-serif text-2xl">{supplier.trim()} is saved as your supplier.</p>
           ) : supplierOnBook ? (
             <p className="py-6 font-serif text-2xl">
-              Your supplier is on the book.{' '}
+              Your supplier is saved.{' '}
               <Link to="/vendors" className="font-sans text-sm underline underline-offset-4">
                 See suppliers
               </Link>
@@ -93,7 +114,7 @@ export default function HouseContents() {
                 void saveSupplier()
               }}
             >
-              <p className="text-xs uppercase tracking-wider text-[#1a5e6b]">The one ask · optional</p>
+              <p className="text-xs uppercase tracking-wider text-[#1a5e6b]">Optional</p>
               <label className="mt-2 block">
                 <span className="font-serif text-2xl">Who supplies you?</span>
                 <input
@@ -128,14 +149,14 @@ export default function HouseContents() {
           </p>
 
           <p className="py-6 font-serif text-2xl text-[#b7b2a8]">
-            <span className="block text-xs uppercase tracking-[0.12em]">Later · not a first-run step</span>
-            <span className="mt-2 block">Cellar registers · later</span>
+            <span className="block text-xs uppercase tracking-[0.12em]">Later · not required</span>
+            <span className="mt-2 block">Which drinks the house pours: wine, beer, spirits, cocktails.</span>
             <button
               type="button"
               onClick={() => navigate('/settings?tab=cellar')}
               className="mt-2 font-sans text-sm underline underline-offset-4"
             >
-              Open later
+              Set it in Settings
             </button>
           </p>
         </div>

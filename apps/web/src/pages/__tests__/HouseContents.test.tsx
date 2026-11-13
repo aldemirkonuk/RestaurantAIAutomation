@@ -46,7 +46,7 @@ describe('HouseContents', () => {
     page()
     fireEvent.change(screen.getByLabelText('Supplier'), { target: { value: 'Suvla' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add this supplier' }))
-    expect(await screen.findByText('Suvla is on the book.')).toBeInTheDocument()
+    expect(await screen.findByText('Suvla is saved as your supplier.')).toBeInTheDocument()
     await waitFor(() => expect(addCustomProvider).toHaveBeenCalledTimes(1))
     expect(updateOnboardingProgress).not.toHaveBeenCalled()
   })
@@ -56,7 +56,7 @@ describe('HouseContents', () => {
   it('a house whose supplier is on the book does not ask again after a reload', async () => {
     getOnboardingProgress.mockResolvedValue({ vendor_added: true })
     page()
-    expect(await screen.findByText(/Your supplier is on the book\./)).toBeInTheDocument()
+    expect(await screen.findByText(/Your supplier is saved\./)).toBeInTheDocument()
     expect(screen.queryByLabelText('Supplier')).toBeNull()
     expect(screen.getByRole('link', { name: 'See suppliers' })).toHaveAttribute('href', '/vendors')
   })
