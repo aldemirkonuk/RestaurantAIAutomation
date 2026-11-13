@@ -574,11 +574,15 @@ describe("a failed thread read is not an empty thread, and does not become a gue
     expect(w.store.chains.some((c) => c.table === "procurement_orders")).toBe(
       false,
     );
-    // No order, so no responder draft and no order link on the notice.
+    // No order, so no responder draft and no order link on the notice; the
+    // notice opens the vendor's mail instead (r21; this fake store sets no
+    // thread_key, so the vendor's threads, not one thread).
     expect(w.responder.analyzeAndDraftReply).not.toHaveBeenCalled();
     expect(w.gateway.emitRestaurantNotification).toHaveBeenCalledWith(
       HOUSE,
-      expect.objectContaining({ action_url: undefined }),
+      expect.objectContaining({
+        action_url: `/communications?tab=mail&with=vendor%3A${PROVIDER}`,
+      }),
     );
     // The invoice reaches intake with no order, so only autoLink can file it.
     expect(w.attachmentOrders()).toEqual([null]);

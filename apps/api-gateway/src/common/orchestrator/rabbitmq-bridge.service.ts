@@ -111,6 +111,25 @@ export function notificationAudience(
   );
 }
 
+/**
+ * Where a notice about a stranger or a held letter opens: /communications
+ * with "Who is writing" open (`?senders=open`, read by WhoIsWriting.tsx). Since
+ * r21 the same key also selects the Mail tab, where the register now lives;
+ * no `tab=` is named, so the link works whichever of the two lands first. The
+ * bare "/communications" opened Letters with the register folded at the foot.
+ */
+export const WHO_IS_WRITING_URL = "/communications?senders=open";
+
+/** A vendor's letter in Mail: `?with=vendor:<id>`, and `&thread=` when known. */
+export function mailThreadUrl(
+  providerId: string,
+  threadKey: string | null,
+): string {
+  const q = new URLSearchParams({ tab: "mail", with: `vendor:${providerId}` });
+  if (threadKey && threadKey.trim()) q.set("thread", threadKey.trim());
+  return `/communications?${q.toString()}`;
+}
+
 @Injectable()
 export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RabbitMqBridgeService.name);
@@ -849,7 +868,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
             // at a tab that no longer exists, on a page staff are refused.
             // The audience is unchanged: GET /prospects is open to any member
             // (prospects.controller.ts).
-            const message = `${label} reached out${attachments.length ? " with an attachment" : ""}. Review it in Communications, under Who is writing.`;
+            const message = `${label} reached out${attachments.length ? " with an attachment" : ""}. Review it in Communications, on the Mail tab under Who is writing.`;
             this.websocketGateway.emitRestaurantNotification(
               result.restaurantId,
               {
@@ -857,7 +876,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
                 title: `New vendor prospect: ${label}`,
                 message,
                 type: "info",
-                action_url: "/communications",
+                action_url: WHO_IS_WRITING_URL,
               },
             );
             void this.inboundResponder.persistManagerNotification(
@@ -867,7 +886,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
                 title: `New vendor prospect: ${label}`,
                 message,
                 priority: "low",
-                actionUrl: "/communications",
+                actionUrl: WHO_IS_WRITING_URL,
                 metadata: { kind: "prospect", domain: result.domain },
               },
             );
@@ -1086,7 +1105,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           confidence_score: orderId ? 1.0 : null,
           mirrored_by_grant_id: mirroredByGrantId,
         })
-        .select("id")
+        .select("id, thread_key")
         .single();
 
       if (error) {
@@ -1140,7 +1159,13 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
         title: `New vendor email: ${subject.substring(0, 60)}`,
         message: `Reply received from ${senderEmail}`,
         type: "info",
-        action_url: orderId ? `/orders?order=${orderId}` : undefined,
+        // A reply on an order opens the order, as before. A reply on no
+        // order used to carry no link at all; it now opens the letter's
+        // thread in Mail (r21), or the vendor's threads when the row has no
+        // thread key.
+        action_url: orderId
+          ? `/orders?order=${orderId}`
+          : mailThreadUrl(provider.id, (inserted as any).thread_key ?? null),
       });
 
       if (orderId) {
@@ -1336,14 +1361,14 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           : "A letter whose sender could not be read";
       const message =
         letter.heldReason === "sender_unconfirmed"
-          ? `The receiving mail server could not confirm ${letter.senderEmail} sent "${letter.subject.slice(0, 80)}". It was not filed with that vendor. Review it in Communications, under Who is writing.`
-          : `"${letter.subject.slice(0, 80)}" arrived with a From that names no single address. It was not filed with any vendor. Review it in Communications, under Who is writing.`;
+          ? `The receiving mail server could not confirm ${letter.senderEmail} sent "${letter.subject.slice(0, 80)}". It was not filed with that vendor. Review it in Communications, on the Mail tab under Who is writing.`
+          : `"${letter.subject.slice(0, 80)}" arrived with a From that names no single address. It was not filed with any vendor. Review it in Communications, on the Mail tab under Who is writing.`;
       this.websocketGateway.emitRestaurantNotification(letter.restaurantId, {
         id: `held-${letter.restaurantId}-${Date.now()}`,
         title,
         message,
         type: "warning",
-        action_url: "/communications",
+        action_url: WHO_IS_WRITING_URL,
       });
       void this.inboundResponder.persistManagerNotification(
         letter.restaurantId,
@@ -1353,7 +1378,7 @@ export class RabbitMqBridgeService implements OnModuleInit, OnModuleDestroy {
           message,
           priority:
             letter.heldReason === "sender_unconfirmed" ? "high" : "low",
-          actionUrl: "/communications",
+          actionUrl: WHO_IS_WRITING_URL,
           metadata: { kind: "held_letter", held_reason: letter.heldReason },
         },
       );
