@@ -193,6 +193,9 @@ export default function GetStarted() {
   const [notice, setNotice] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [dropping, setDropping] = useState(false)
+  // What was dropped that the photo reader does not take at once (a PDF, a
+  // spreadsheet, several files): staged in the file box, never thrown away.
+  const [droppedFiles, setDroppedFiles] = useState<File[] | null>(null)
 
   // The house's money (r28 onboarding gap 4, ADR 0117 Q25: "ask each house in
   // onboarding, set a default from location"). The country offers a default;
@@ -425,11 +428,24 @@ export default function GetStarted() {
     navigate('/house/menu', { replace: true })
   }
 
-  const ingestDroppedImage = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      setMenuMethod('file')
+  /**
+   * One dropped photo is read at once. Anything else dropped (a PDF, a
+   * spreadsheet, a CSV, several files) used to open the file box with the
+   * file thrown away and not a word said (r28 onboarding gap 11); it is now
+   * staged there, named, with "Import the menu", as if picked.
+   */
+  const ingestDrop = (files: File[]) => {
+    if (files.length === 0) return
+    if (files.length === 1 && files[0].type.startsWith('image/')) {
+      void ingestDroppedImage(files[0])
       return
     }
+    setError(null)
+    setDroppedFiles(files)
+    setMenuMethod('file')
+  }
+
+  const ingestDroppedImage = async (file: File) => {
     setSaving(true)
     setError(null)
     try {
@@ -636,8 +652,7 @@ export default function GetStarted() {
           onDrop={(event) => {
             event.preventDefault()
             setDropping(false)
-            const file = event.dataTransfer.files?.[0]
-            if (file) void ingestDroppedImage(file)
+            ingestDrop(Array.from(event.dataTransfer.files ?? []))
           }}
           className={`mt-10 flex min-h-[220px] w-full flex-col items-center justify-center border border-dashed px-6 text-center ${
             dropping ? 'border-[#1a5e6b] bg-white' : 'border-[#211f1b]/25 bg-[#fbfaf7]'
@@ -645,12 +660,19 @@ export default function GetStarted() {
         >
           <span className="font-serif text-3xl">Drop the menu here</span>
           <span className="mt-3 text-sm text-[#6d685f]">
-            {saving ? 'Reading…' : 'A photo, or click to photograph.'}
+            {saving ? 'Reading…' : 'A photo, a PDF or a spreadsheet. Or click to photograph.'}
           </span>
         </button>
         {error && <p role="alert" className="mt-5 text-sm text-red-700">{error}</p>}
         <div className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-          <button type="button" onClick={() => setMenuMethod(menuMethod === 'file' ? null : 'file')} className="text-[#1a5e6b] underline underline-offset-4">
+          <button
+            type="button"
+            onClick={() => {
+              setDroppedFiles(null)
+              setMenuMethod(menuMethod === 'file' ? null : 'file')
+            }}
+            className="text-[#1a5e6b] underline underline-offset-4"
+          >
             Send a file
           </button>
           <button type="button" onClick={() => setMenuMethod(menuMethod === 'typed' ? null : 'typed')} className="flex items-center gap-1 text-[#1a5e6b] underline underline-offset-4">
@@ -659,7 +681,7 @@ export default function GetStarted() {
         </div>
         <div className="mt-6">
           {menuMethod === 'photo' && <MenuScanUpload onSuccess={menuRead} />}
-          {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} />}
+          {menuMethod === 'file' && <MenuCsvUpload onSuccess={menuRead} droppedFiles={droppedFiles} />}
           {menuMethod === 'typed' && <MenuManualEntry onSuccess={menuRead} currency={menuCurrency} />}
         </div>
         <div className="mt-6 border-t border-[#211f1b]/15 pt-5">
