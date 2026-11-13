@@ -46,7 +46,36 @@ import { EDITABLE_MENU_ITEM_FIELDS, type EditableMenuItemField } from "./dto/rev
  * "Side Car" or a wine called "Main Street" is not taken for a dish. 'grill'
  * is whole-word, so the Grillo grape is not one.
  */
-export const KITCHEN_HINTS = ["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad", "mains", "main course", "appetizer", "appetiser", "sides", "soup", "meze", "mezze", "grill", "small plate", "snack", "tapas", "pizza", "burger", "sandwich"];
+export const KITCHEN_HINTS = ["food", "kitchen", "dish", "starter", "dessert", "entree", "entrée", "pasta", "salad", "mains", "main course", "appetizer", "appetiser", "sides", "soup", "meze", "mezze", "grill", "small plate", "snack", "tapas", "pizza", "burger", "sandwich", "ana yemek", "yemekler", "ara sicak", "corba", "izgara", "kebap", "kebab", "salata", "baslangic", "pide", "lahmacun", "makarna", "kahvalti", "aperatif", "sandvic", "kofte", "manti", "borek", "doner"];
+
+/**
+ * TURKISH COURSES (r28 menu audit G3). The founder's own house writes its
+ * sections in Turkish, and every one of "Ana yemekler", "Tatlılar",
+ * "Çorbalar", "Mezeler", "Kebaplar" failed the test above, so those dishes
+ * went to the wine library and, once the menu was current, became bottles of
+ * wine priced at the dish price. The Turkish hints are written FOLDED (no
+ * dots, no cedillas: "corba" for "çorba"), because the text they are tested
+ * against is folded first (`foldForHints`): "ÇORBALAR".toLowerCase() is
+ * "çorbalar" but "TATLILAR".toLowerCase() is "tatlilar", not "tatlılar", so
+ * only a folded form matches both ways a menu prints a word. The ending may
+ * be a Turkish plural (-ler/-lar) or possessive (-si, -i, -leri/-lari: "Mercimek
+ * Çorbası", "İskender Kebabı") as well as an English plural.
+ *
+ * Left out on purpose: "tatlı" (dessert, but also "sweet", as in "tatlı
+ * şarap", a sweet wine) is not a hint; a section named "Tatlı"/"Tatlılar" is
+ * weighed exactly like "dessert" (DESSERT_SECTIONS). "Yemek" alone is not a
+ * hint ("yemek şarabı", a food wine); "balık" (fish) is not either, because a
+ * rakı line says "balık yanına". "Dürüm" folds to "durum", a common word.
+ */
+export const DESSERT_SECTIONS = ["dessert", "desserts", "tatli", "tatlilar"];
+
+/**
+ * Lowercase, with every accent and dot taken off and the dotless ı read as i
+ * (the uppercase I lowercases to i, so "TATLILAR" and "Tatlılar" meet).
+ */
+export function foldForHints(text: string): string {
+  return text.toLowerCase().normalize("NFD").replace(/\p{M}+/gu, "").replace(/ı/g, "i");
+}
 
 /** The raw line's column. Sent only when the caller's view allows it. */
 export const RAW_LINE_COLUMN = "raw_extracted_text";
@@ -106,18 +135,21 @@ export interface LineView {
 }
 
 /** A hint as a whole word (plural allowed): "pasta" trips it, "Pastaio" and "dishwasher" do not. */
-const HINT_WORDS = new RegExp(`(^|[^\\p{L}\\p{N}])(${KITCHEN_HINTS.join("|")})(s|es)?(?=$|[^\\p{L}\\p{N}])`, "u");
+const HINT_WORDS = new RegExp(`(^|[^\\p{L}\\p{N}])(${KITCHEN_HINTS.join("|")})(s|es|ler|lar|leri|lari|si|i)?(?=$|[^\\p{L}\\p{N}])`, "u");
 
 /**
  * Words that make a line in the 'dessert' section a dessert wine and not a
  * course. The same list as the web's `DESSERT_WINE_CUES`
  * (`apps/web/src/lib/firstProof.ts`); a CLAIMS row keeps the two equal.
+ * The last four are Turkish, folded (r28 G3): wine, its "of" form ("şarabı"),
+ * glass ("kadeh"), bottle ("şişe").
  */
 export const DESSERT_WINE_CUES = [
   "wine", "vin", "vino", "glass", "bottle", "sauternes", "barsac", "tokaji", "tokay", "port", "porto",
   "moscato", "muscat", "moscatel", "eiswein", "icewine", "ice wine", "late harvest", "vin santo",
   "vin doux", "pedro ximenez", "pedro ximénez", "madeira", "sherry", "oloroso", "banyuls", "maury",
   "passito", "recioto", "auslese", "beerenauslese", "trockenbeerenauslese", "noble rot",
+  "sarap", "sarabi", "kadeh", "sise",
 ];
 
 /** A cue as a whole word, a vintage year, or a pour size ("75cl", "100 ml"). */
@@ -147,14 +179,14 @@ const filled = (v: unknown) => (typeof v === "string" ? v.trim() !== "" : v !== 
 export function isKitchenLine(category: unknown, raw: unknown, line?: Record<string, unknown>): boolean {
   const section = typeof category === "string" ? category.toLowerCase().trim() : "";
   const text = typeof raw === "string" ? raw : "";
-  if (section === "dessert") {
+  if (DESSERT_SECTIONS.includes(foldForHints(section))) {
     if (line && DRINK_FIELDS.some((k) => filled(line[k]))) return false;
     const name = line && typeof line.name === "string" ? line.name : "";
-    return !DESSERT_WINE_WORDS.test(`${name} ${text}`.toLowerCase());
+    return !DESSERT_WINE_WORDS.test(foldForHints(`${name} ${text}`));
   }
   // "wine" too, as the web's VOCABULARY holds it.
   if (section === "wine" || (MENU_CATEGORY_VOCABULARY as readonly string[]).includes(section)) return false;
-  const hay = `${section} ${text}`.toLowerCase();
+  const hay = foldForHints(`${section} ${text}`);
   return HINT_WORDS.test(hay);
 }
 
