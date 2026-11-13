@@ -108,7 +108,8 @@ const OUTCOME_WORDS: Record<string, (n: number) => string> = {
   locked: (n) => `${n} held by a lock`,
   no_price: (n) => `${n} with no price on the line`,
   not_linked: (n) => `${n} not matched to a wine, so no price`,
-  kitchen_line: (n) => `${n} kitchen line${n === 1 ? '' : 's'}, kept off the wine list`,
+  // The page's own words for a dish (MenuNext "From the kitchen": on the menu, and carried nowhere).
+  kitchen_line: (n) => `${n} kitchen line${n === 1 ? '' : 's'}, on the menu and carried nowhere`,
   failed: () => '',
 };
 
