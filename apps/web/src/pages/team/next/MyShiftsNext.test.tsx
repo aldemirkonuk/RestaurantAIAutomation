@@ -122,4 +122,45 @@ describe('MyShiftsNext', () => {
     expect(await screen.findAllByText('Off')).toHaveLength(7);
     expect(screen.queryByText('Not published yet')).toBeNull();
   });
+
+  // r29 walk: the gateway sends a cover shift's note to staff ("Cover for Sam
+  // Rivera, who called out"; the call-out reason stays on the original), but
+  // the list of open shifts never printed it.
+  it('an open shift a staff member can pick up shows its own note', async () => {
+    api.myWeek = async () => ({
+      member,
+      schedule: { id: 's1', week_start: WEEK, status: 'published' },
+      mine: [],
+      open: [
+        {
+          id: 'sh-cover',
+          shift_date: WEEK,
+          start_time: '17:00',
+          end_time: '23:00',
+          role: 'Floor',
+          shift_type: 'open',
+          state: 'open',
+          note: 'Cover for Sam Rivera, who called out',
+          draft: false,
+        },
+        {
+          id: 'sh-plain',
+          shift_date: WEEK,
+          start_time: '12:00',
+          end_time: '16:00',
+          role: 'Patio',
+          shift_type: 'open',
+          state: 'open',
+          note: null,
+          draft: false,
+        },
+      ],
+      acknowledged: true,
+      published: true,
+      draftsWithheld: false,
+    });
+    wrap(<MyShiftsNext />);
+    expect(await screen.findByText('Cover for Sam Rivera, who called out')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Take it' })).toHaveLength(2);
+  });
 });

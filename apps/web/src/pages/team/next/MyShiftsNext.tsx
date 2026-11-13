@@ -325,6 +325,15 @@ export function MyShiftsNext({ ground }: { ground?: 'charcoal' }) {
                     {fmtTime(s.start_time)}–{fmtTime(s.end_time)}
                     {s.role ? ` · ${s.role}` : ''}
                     {s.draft ? ' · draft' : ''}
+                    {/* The shift's own note, e.g. "Cover for Sam Rivera, who
+                        called out". The gateway writes the cover's note
+                        without the reason, so a staff member reads who it
+                        covers and never why. */}
+                    {s.note ? (
+                      <span className="tm-note" style={{ display: 'block', margin: 0 }}>
+                        {s.note}
+                      </span>
+                    ) : null}
                   </span>
                   <button
                     type="button"
