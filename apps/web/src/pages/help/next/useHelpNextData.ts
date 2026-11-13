@@ -57,6 +57,24 @@ import type {
   ReminderStatusRaw,
 } from './hp-readiness';
 
+/**
+ * A list read answers a list. Anything else (an empty body, an object, a proxy
+ * page) is a read that did not answer, and it fails so the row says "Could not
+ * be read". It used to become `[]`, which the page printed as "nothing
+ * waiting": an unread register reported as a calm one.
+ */
+export function listOrUnread<T>(data: unknown): T[] {
+  if (Array.isArray(data)) return data as T[];
+  throw new Error('the answer held no list');
+}
+
+/** The pending-order count, or a failure. A missing count used to read as 0. */
+export function pendingCountOrUnread(data: unknown): { count: number } {
+  const count = (data as { count?: unknown } | null | undefined)?.count;
+  if (typeof count === 'number' && Number.isInteger(count) && count >= 0) return { count };
+  throw new Error('the answer held no count');
+}
+
 function toFetched<T>(q: UseQueryResult<T, unknown>): Fetched<T> {
   if (q.isPending) return { status: 'loading' };
   if (q.isError) {
@@ -104,7 +122,7 @@ export function useHelpNextData(): HelpNextData {
     queryKey: ['help-next-mcp', rid],
     queryFn: async (): Promise<McpConnectionRaw[]> => {
       const { data } = await apiClient.get<McpConnectionRaw[]>('/mcp-connections');
-      return Array.isArray(data) ? data : [];
+      return listOrUnread<McpConnectionRaw>(data);
     },
     enabled: !!rid,
     staleTime: 30_000,
@@ -120,7 +138,9 @@ export function useHelpNextData(): HelpNextData {
         }>('/integrations/oauth/house-grants');
         return {
           scope: 'house',
-          rows: (data.grants ?? []).map((g) => ({
+          rows: listOrUnread<{ integrationId: string; ownerName: string | null; connectedAt: string | null }>(
+            data?.grants,
+          ).map((g) => ({
             integrationId: g.integrationId,
             connected: true,
             connectedAt: g.connectedAt,
@@ -134,7 +154,9 @@ export function useHelpNextData(): HelpNextData {
       }>('/integrations/oauth/connections');
       return {
         scope: 'own',
-        rows: (data.connections ?? []).map((c) => ({
+        rows: listOrUnread<{ integrationId: string; connected: boolean; connectedAt: string | null }>(
+          data?.connections,
+        ).map((c) => ({
           integrationId: c.integrationId,
           connected: c.connected,
           connectedAt: c.connectedAt,
@@ -168,7 +190,7 @@ export function useHelpNextData(): HelpNextData {
     queryKey: ['help-next-one-tap', rid],
     queryFn: async (): Promise<OneTapActionRaw[]> => {
       const { data } = await apiClient.get<OneTapActionRaw[]>('/one-tap-actions/pending');
-      return Array.isArray(data) ? data : [];
+      return listOrUnread<OneTapActionRaw>(data);
     },
     enabled: !!rid,
     staleTime: 15_000,
@@ -178,7 +200,7 @@ export function useHelpNextData(): HelpNextData {
     queryKey: ['help-next-orders-pending', rid],
     queryFn: async (): Promise<{ count: number }> => {
       const { data } = await apiClient.get<{ count: number }>('/procurement/orders/pending/count');
-      return { count: typeof data.count === 'number' ? data.count : 0 };
+      return pendingCountOrUnread(data);
     },
     enabled: !!rid,
     staleTime: 15_000,
