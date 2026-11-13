@@ -552,7 +552,7 @@ const week = analysis<WeekRegister>({
     const notes = ranked
       ? []
       : [
-          'Busiest and quietest read — because more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break rather than a finding.',
+          'Busiest and quietest are left blank because more than one weekday shares the extreme, and naming one of them would be an arbitrary tie-break rather than a finding.',
         ];
     if (data.every((b) => (b.value ?? 0) === 0))
       return {

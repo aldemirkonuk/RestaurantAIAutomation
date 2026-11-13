@@ -27,11 +27,11 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { decodeSheet, defaultSheet, encodeSheet } from './useReportsNextData';
 import { CATALOGUE } from './rp-catalogue';
-import { DEFAULT_SLOTS } from './rp-sheet';
+import { DEFAULT_SLOTS, SHEET_MIN_H, SHEET_MIN_W } from './rp-sheet';
 import { heldBackFailure } from './rp-format';
 
 /**
@@ -44,7 +44,11 @@ const decode = (id: 'goals' | 'bench', raw: unknown) => CATALOGUE[id].select(raw
 
 const hook = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
 /** What the page last asked the data layer to READ — the draft included. */
-const asked = vi.hoisted(() => ({ showing: undefined as unknown, place: undefined as unknown }));
+const asked = vi.hoisted(() => ({
+  showing: undefined as unknown,
+  place: undefined as unknown,
+  days: undefined as unknown,
+}));
 
 vi.mock('./useReportsNextData', async () => {
   const actual = await vi.importActual<typeof import('./useReportsNextData')>(
@@ -53,6 +57,7 @@ vi.mock('./useReportsNextData', async () => {
   return {
     ...actual,
     useReportsNextData: (...args: unknown[]) => {
+      asked.days = args[0];
       asked.showing = args[2];
       asked.place = args[3];
       return hook.current;
@@ -451,12 +456,19 @@ function withRegister(id: string, value: unknown) {
   return { ...b, registers: { ...b.registers, [id]: value } };
 }
 
-function paint() {
+function paint(at = '/reports') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[at]}>
       <ReportsNext />
+      <LinkProbe />
     </MemoryRouter>,
   );
+}
+
+/** Prints the page link's query, so a test can read what the page wrote. */
+function LinkProbe() {
+  const { search } = useLocation();
+  return <span data-testid="link">{search}</span>;
 }
 
 const arrange = () => fireEvent.click(screen.getByText('Arrange the sheet'));
@@ -993,6 +1005,9 @@ describe('ReportsNext — the three gateway shapes fixed on 2026-09-03', () => {
     const best = within(week).getByText('Busiest day').closest('.rp-fig');
     expect(within(best as HTMLElement).getByText('—')).toBeInTheDocument();
     expect(within(week).getByText(/arbitrary tie-break rather than a finding/)).toBeInTheDocument();
+    expect(
+      within(week).getByText(/^Busiest and quietest are left blank because more than one weekday shares the extreme/),
+    ).toBeInTheDocument();
     // Sunday-as-both-busiest-and-quietest was the pre-fix payload.
     expect(within(week).queryByText('Sunday')).not.toBeInTheDocument();
   });
@@ -1649,7 +1664,7 @@ describe('ReportsNext — written up (OD-81)', () => {
   it('asks for the till over the window the till cutting is set to', () => {
     paint();
     const till = screen.getByRole('region', { name: 'Through the till' });
-    fireEvent.click(within(till).getByRole('button', { name: '7d' }));
+    fireEvent.click(within(till).getByRole('button', { name: '7 days' }));
     const shelf = screen.getByRole('region', { name: 'Written up' });
     fireEvent.change(within(shelf).getByLabelText('Cutting to write up'), { target: { value: 'till' } });
     expect(within(shelf).getByText('over the last 7 days, as the till is set')).toBeInTheDocument();
@@ -2292,5 +2307,45 @@ describe('ReportsNext — bars and a line on one cutting', () => {
       w: DEFAULT_SLOTS.writing.w, // the reader's wider square is kept
       h: DEFAULT_SLOTS.seats.h, // the strip grew to the room's height
     });
+  });
+});
+
+describe('the till window is kept in the page link (audit gap 16)', () => {
+  beforeEach(() => {
+    hook.current = base();
+  });
+  const tillChip = (name: string) =>
+    within(screen.getByRole('region', { name: 'Through the till' })).getByRole('button', { name });
+
+  it('[REVERT-FAILS] opens on the window the link names, so a reload or Back keeps it', () => {
+    paint('/reports?days=90');
+    expect(asked.days).toBe(90);
+    expect(tillChip('90 days')).toHaveAttribute('aria-pressed', 'true');
+    expect(tillChip('30 days')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('a window the page does not offer, or no number at all, reads as the 30-day default', () => {
+    paint('/reports?days=14');
+    expect(asked.days).toBe(30);
+    cleanup();
+    paint('/reports?days=lots');
+    expect(asked.days).toBe(30);
+  });
+
+  it('[REVERT-FAILS] picking a window writes it to the link; the default leaves the link clean', () => {
+    paint('/reports?keep=1');
+    fireEvent.click(tillChip('7 days'));
+    expect(screen.getByTestId('link').textContent).toBe('?keep=1&days=7');
+    expect(asked.days).toBe(7);
+    fireEvent.click(tillChip('30 days'));
+    expect(screen.getByTestId('link').textContent).toBe('?keep=1');
+    expect(asked.days).toBe(30);
+  });
+
+  it('a saved block narrower than the grid allows is read at the grid floor, never under it', () => {
+    const sheet = decodeSheet({ v: 4, blocks: [{ i: 'till', x: 0, y: 0, w: 2, h: 1, g: 'bar' }] });
+    const till = sheet.cuttings.find((c) => c.id === 'till');
+    expect(till?.slot.w).toBe(SHEET_MIN_W);
+    expect(till?.slot.h).toBe(SHEET_MIN_H);
   });
 });
