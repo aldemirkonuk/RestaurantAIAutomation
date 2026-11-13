@@ -222,7 +222,11 @@ export function useReportExports({ queryRoot }: { queryRoot: string }): ExportDe
     nextPage,
     loading: list.isLoading && list.fetchStatus !== 'idle',
     // The gateway's own sentence, not the transport's "status code 500".
-    listFailure: list.error ? { ...(failureOf(list.error) as Failure), message: reasonOf(list.error) } : null,
+    // The shelf prints its own reason in parentheses, so the register-sheet
+    // sentence (`said`) is left off here.
+    listFailure: list.error
+      ? { ...(failureOf(list.error) as Failure), said: undefined, message: reasonOf(list.error) }
+      : null,
     refetch: () => void list.refetch(),
     busy,
     error,

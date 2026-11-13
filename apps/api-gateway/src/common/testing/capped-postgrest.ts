@@ -28,6 +28,19 @@ export function cappedPostgrest(
         lte: (c: string, v: string) => keep((r) => r[c] != null && r[c] <= v),
         lt: (c: string, v: string) => keep((r) => r[c] != null && r[c] < v),
         gt: (c: string, v: string) => keep((r) => r[c] != null && String(r[c]) > v),
+        // PostgREST's `or=(a.gte.x,b.gte.y)`: a row passes when any clause does.
+        or: (expr: string) =>
+          keep((r) =>
+            expr.split(",").some((clause) => {
+              const [c, op, ...rest] = clause.split(".");
+              const v = rest.join(".");
+              if (r[c] == null) return false;
+              if (op === "gte") return r[c] >= v;
+              if (op === "lte") return r[c] <= v;
+              if (op === "eq") return String(r[c]) === v;
+              throw new Error(`cappedPostgrest: or() does not know ${op}`);
+            }),
+          ),
         order: (c: string) => ((orderBy = c), q),
         limit: (n: number) => ((limit = n), q),
         then: (res: any, rej: any) => {

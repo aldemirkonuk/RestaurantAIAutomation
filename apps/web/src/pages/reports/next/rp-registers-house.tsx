@@ -12,7 +12,7 @@
 
 import { Link } from 'react-router-dom';
 import { FigureRow } from './rp-plot';
-import { EM, MONO, countOf, figure, figureTo, moneyIn, num, ratioPct } from './rp-format';
+import { EM, MONO, countOf, figure, figureTo, moneyIn, num, ratioPct, shortLabels } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 
 /* ────────────────────────────────────────── 6. margin against movement ── */
@@ -91,6 +91,11 @@ const quadrants = analysis<QuadrantRegister>({
     const ranked = [...priced].sort(
       (a, b) => (b.marginPerBottle as number) - (a.marginPerBottle as number),
     );
+    const topWines = ranked.slice(0, 12);
+    const wineLabels = shortLabels(
+      topWines.map((i) => i.name),
+      14,
+    );
     return {
       points: {
         data: priced.map((i) => ({
@@ -106,8 +111,8 @@ const quadrants = analysis<QuadrantRegister>({
         refY: q.medians.marginPerBottle,
       },
       cats: {
-        data: ranked.slice(0, 12).map((i) => ({
-          label: i.name.length > 14 ? `${i.name.slice(0, 13)}…` : i.name,
+        data: topWines.map((i, k) => ({
+          label: wineLabels[k],
           value: i.marginPerBottle,
           full: i.name,
         })),
@@ -455,7 +460,7 @@ const seats = analysis<SeatsRegister>({
   path: (rid) => `/analytics/table-performance/${rid}?sinceDays=90`,
   // The endpoint's @Roles (ADR 0348): staff keep the page, not this register.
   readers: ['owner', 'manager'],
-  graphs: ['bars', 'scatter', 'table'],
+  graphs: ['bars', 'combo', 'scatter', 'table'],
   graphNote:
     'The scatter puts seats against average check, which is the question this register exists for. No line, area or heat map: tables are not a sequence and the endpoint returns no per-day grain.',
   select: (raw) => {
@@ -550,9 +555,10 @@ const seats = analysis<SeatsRegister>({
       };
     }
     const withCheck = served.filter((t) => t.avgCheck != null && t.seats != null);
+    const shownTables = served.slice(0, 14);
     return {
       cats: {
-        data: served.slice(0, 14).map((t) => ({
+        data: shownTables.map((t) => ({
           label: t.label,
           value: t.revenue,
           full: `${t.label}${t.zone ? ` · ${t.zone}` : ''}`,
@@ -561,6 +567,23 @@ const seats = analysis<SeatsRegister>({
         yLabel: 'taken',
         unit: 'taken',
         format: (v) => money(v, 'compact'),
+        measureLabel: 'Taken',
+        measures: [
+          {
+            key: 'checks',
+            label: 'Checks',
+            unit: 'checks',
+            format: (v) => figure(v),
+            values: shownTables.map((t) => t.checks),
+          },
+          {
+            key: 'avg',
+            label: 'Average check',
+            unit: 'per check',
+            format: (v) => money(v, 'compact'),
+            values: shownTables.map((t) => t.avgCheck),
+          },
+        ],
       },
       points: {
         data: withCheck.map((t) => ({
@@ -624,6 +647,17 @@ export interface ServiceRegister extends PosWindow {
   }>;
 }
 
+/**
+ * How well the table-adjusted fit explains the servers' checks, in words
+ * (ADR 0104). `r2` is the server's 0–1 fit; the number stays in the API.
+ */
+export function fitWords(r2: number | null): string {
+  if (r2 == null || !Number.isFinite(r2)) return EM;
+  if (r2 >= 0.5) return 'The tables explain much of it; the ranking holds';
+  if (r2 >= 0.2) return 'The tables explain some of it; read the ranking loosely';
+  return 'The tables explain little; the ranking is rough';
+}
+
 const service = analysis<ServiceRegister>({
   title: 'Who served it',
   register: 'server register',
@@ -632,9 +666,9 @@ const service = analysis<ServiceRegister>({
   path: (rid) => `/analytics/waiters/${rid}?sinceDays=90`,
   // The endpoint's @Roles (ADR 0348): staff keep the page, not this register.
   readers: ['owner', 'manager'],
-  graphs: ['bars', 'table'],
+  graphs: ['bars', 'combo', 'table'],
   graphNote:
-    'Bars rank one measure; the table carries all five. No scatter — the endpoint publishes no second axis a server can be placed on without a fixed effect, and its own adjusted model is a fit, not a coordinate.',
+    'Bars rank one measure, and bars and a line sets it beside checks or the average check; the table carries all five. No scatter — the endpoint publishes no second axis a server can be placed on without a fixed effect, and its own adjusted model is a fit, not a coordinate.',
   select: (raw) => {
     const d = obj(raw);
     const adj = d.adjusted ? obj(d.adjusted) : null;
@@ -663,8 +697,8 @@ const service = analysis<ServiceRegister>({
     const figures = [
       { label: 'Servers with a check', value: figure(s.waiters.length) },
       {
-        label: 'Table-adjusted fit (R²)',
-        value: s.adjusted?.r2 == null ? EM : ratioPct(s.adjusted.r2, 2),
+        label: 'Allowing for the tables',
+        value: fitWords(s.adjusted?.r2 ?? null),
         note: 'Needs 10 checks across at least two tables before a server can be separated from their section',
       },
     ];
@@ -685,10 +719,15 @@ const service = analysis<ServiceRegister>({
         basis,
       };
     }
+    const shownServers = s.waiters.slice(0, 14);
+    const serverLabels = shortLabels(
+      shownServers.map((w) => w.name),
+      12,
+    );
     return {
       cats: {
-        data: s.waiters.slice(0, 14).map((w) => ({
-          label: w.name.length > 12 ? `${w.name.slice(0, 11)}…` : w.name,
+        data: shownServers.map((w, k) => ({
+          label: serverLabels[k],
           value: w.revenue,
           full: `${w.name} · ${countOf(w.checks, 'check', 'checks')}`,
         })),
@@ -696,6 +735,23 @@ const service = analysis<ServiceRegister>({
         yLabel: 'taken',
         unit: 'taken',
         format: (v) => money(v, 'compact'),
+        measureLabel: 'Taken',
+        measures: [
+          {
+            key: 'checks',
+            label: 'Checks',
+            unit: 'checks',
+            format: (v) => figure(v),
+            values: shownServers.map((w) => w.checks),
+          },
+          {
+            key: 'avg',
+            label: 'Average check',
+            unit: 'per check',
+            format: (v) => money(v, 'compact'),
+            values: shownServers.map((w) => w.avgCheck),
+          },
+        ],
       },
       table: {
         cols: [
@@ -778,9 +834,9 @@ const restock = analysis<RestockRegister>({
   answers: 'What is about to run out, and how likely it is to run out first',
   window: () => 'demand over the last 90 days, at the service level in the params',
   path: (rid) => `/analytics/inventory-science/${rid}`,
-  graphs: ['table', 'bars'],
+  graphs: ['table', 'bars', 'combo'],
   graphNote:
-    'The table is first because a reorder list is read row by row, not skimmed as a shape. Bars rank the same rows by stockout probability. No line, area or scatter: this is a list at one moment, not a series.',
+    'The table is first because a reorder list is read row by row, not skimmed as a shape. Bars rank the same rows by stockout probability, and bars and a line sets the days of cover beside them. No line, area or scatter: this is a list at one moment, not a series.',
   select: (raw) => {
     const d = obj(raw);
     const p = obj(d.params);
@@ -826,10 +882,15 @@ const restock = analysis<RestockRegister>({
         notes: [],
         basis,
       };
+    const restock = barsKeepingTies(r.reorderList, 14);
+    const restockLabels = shortLabels(
+      restock.map((s) => s.name),
+      12,
+    );
     return {
       cats: {
-        data: barsKeepingTies(r.reorderList, 14).map((s) => ({
-          label: s.name.length > 12 ? `${s.name.slice(0, 11)}…` : s.name,
+        data: restock.map((s, k) => ({
+          label: restockLabels[k],
           value: s.stockoutProbability,
           full: `${s.name} · ${figure(s.onHand)} on hand`,
         })),
@@ -837,6 +898,17 @@ const restock = analysis<RestockRegister>({
         yLabel: 'stockout risk',
         unit: 'chance of running out before the delivery',
         format: (v) => ratioPct(v, 0),
+        measureLabel: 'Stockout risk',
+        measures: [
+          {
+            key: 'cover',
+            label: 'Days of cover',
+            unit: 'days',
+            format: (v) => figure(v),
+            // Same cut as the bars (ADR 0272), so the line sits on the same wines.
+            values: barsKeepingTies(r.reorderList, 14).map((s) => s.daysOfCover),
+          },
+        ],
       },
       table: {
         cols: [

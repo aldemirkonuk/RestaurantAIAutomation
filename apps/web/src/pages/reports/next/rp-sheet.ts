@@ -46,6 +46,7 @@ export function isAnalysisId(v: unknown): v is AnalysisId {
 export const GRAPH_TYPES = [
   'line',
   'bars',
+  'combo',
   'area',
   'heatmap',
   'scatter',
@@ -63,6 +64,7 @@ export function isGraphType(v: unknown): v is GraphType {
 export const GRAPH_LABEL: Record<GraphType, string> = {
   line: 'Line',
   bars: 'Bars',
+  combo: 'Bars and a line',
   area: 'Area',
   heatmap: 'Heat map',
   scatter: 'Scatter',
@@ -237,4 +239,24 @@ export function packSlots(ids: AnalysisId[], cols = SHEET_COLS): Record<string, 
     rowHeight = Math.max(rowHeight, h);
   }
   return slots;
+}
+
+/**
+ * The square of paper a cutting keeps when the reader changes its subject
+ * ("Show instead"). Position stays; size is never LESS than the new analysis
+ * is declared at.
+ *
+ * Why: a swap used to keep the old size whole, so the three-row writing desk
+ * swapped for the goals desk (eleven rows) left a table crushed into a strip
+ * that scrolls inside itself. A reader who made the square BIGGER than the new
+ * subject's declared size keeps their size — the sheet only ever grows a swap
+ * to the floor, it never takes room the reader gave. A wider square is pulled
+ * left so it stays on the ruling; the grid's vertical compaction moves
+ * whatever it now overlaps.
+ */
+export function swapSlot(old: Slot, to: AnalysisId, cols = SHEET_COLS): Slot {
+  const want = DEFAULT_SLOTS[to];
+  const w = Math.min(cols, Math.max(old.w, want.w));
+  const h = Math.max(old.h, want.h);
+  return { x: Math.max(0, Math.min(old.x, cols - w)), y: old.y, w, h };
 }

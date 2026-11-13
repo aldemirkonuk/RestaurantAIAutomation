@@ -40,6 +40,18 @@ function client(tables: Record<string, Row[]>, failing = new Set<string>()) {
           filters.push((r) => vs.includes(r[c])),
           q
         ),
+        // PostgREST's `or=(a.gte.x,b.gte.y)`: any clause passes the row.
+        or: (expr: string) => (
+          filters.push((r) =>
+            expr.split(",").some((clause) => {
+              const [c, op, ...rest] = clause.split(".");
+              const v = rest.join(".");
+              if (op !== "gte") throw new Error(`fake or() does not know ${op}`);
+              return r[c] != null && r[c] >= v;
+            }),
+          ),
+          q
+        ),
         maybeSingle: () =>
           Promise.resolve({
             data:

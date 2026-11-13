@@ -36,6 +36,7 @@ import { settingsApi } from '@/services/api/settings';
 import { useUserPreferences } from '@/hooks/useUserPreferences';
 import { failureOf, heldBackFailure, num, type Failure } from './rp-format';
 import { CATALOGUE, defaultGraph, graphOrDefault, type ReadingRow } from './rp-catalogue';
+import { readsRegister } from './rp-spec';
 import { useGoalsDesk, type GoalsDesk } from './useGoalsDesk';
 import { useReportExports, type ExportDesk } from './useReportExports';
 import {
@@ -96,8 +97,9 @@ const SHEET_PREF_KEY = 'reportsSheet';
  * sheet last week still gets the goals desk the founder asked to be visible,
  * without a reader who deliberately took a cutting off having it forced back.
  */
-const SHEET_PREF_KEY_VERSIONS = [1, 2, 3];
-const SHEET_VERSION = 3;
+const SHEET_PREF_KEY_VERSIONS = [1, 2, 3, 4];
+/** v4: block order is the narrow reading order (`projectCuttings`). */
+const SHEET_VERSION = 4;
 
 interface StoredBlock {
   i?: unknown;
@@ -166,7 +168,7 @@ export function decodeSheet(stored: unknown): SheetState {
   // An analysis introduced after this blob was written was never offered to
   // this reader, so its absence is not a decision. It lands at the foot, where
   // it cannot appear underneath something already being read.
-  if (Number(s.v) < SHEET_VERSION) {
+  if (Number(s.v) < 3) {
     let foot = cuttings.reduce((m, c) => Math.max(m, c.slot.y + c.slot.h), 0);
     for (const id of IDS_ADDED_IN_V3) {
       if (seen.has(id)) continue;
@@ -175,19 +177,34 @@ export function decodeSheet(stored: unknown): SheetState {
       foot += slot.h;
     }
   }
+  // Before v4 the blocks were written in catalogue order, which says nothing;
+  // the reading order then was the wide sheet's, row then column.
+  if (Number(s.v) < 4) cuttings.sort((a, b) => a.slot.y - b.slot.y || a.slot.x - b.slot.x);
   return { cuttings };
 }
 
 export function encodeSheet(state: SheetState): StoredSheet {
-  const byId = new Map(state.cuttings.map((c) => [c.id, c]));
+  const on = new Set(state.cuttings.map((c) => c.id));
   return {
     v: SHEET_VERSION,
-    // Every id is written, on or off, so "I took that one off" is a stored
-    // fact rather than an absence a later release could read as "never seen".
-    blocks: ANALYSIS_IDS.map((id) => {
-      const c = byId.get(id);
-      return c ? { i: id, ...c.slot, g: c.graph, on: true } : { i: id, on: false };
-    }),
+    // The cuttings go first and in the sheet's own order: on a narrow ruling
+    // two row-mates are clamped to the same column and the grid breaks the tie
+    // by list order, so the order is the phone's reading order and must
+    // survive a save (`liftCuttings`). Every id is still written, on or off,
+    // so "I took that one off" is a stored fact rather than an absence a later
+    // release could read as "never seen".
+    blocks: [
+      ...state.cuttings.map((c) => ({
+        i: c.id,
+        ...c.slot,
+        g: c.graph,
+        on: true,
+      })),
+      ...ANALYSIS_IDS.filter((id) => !on.has(id)).map((id) => ({
+        i: id,
+        on: false,
+      })),
+    ],
   };
 }
 
@@ -259,7 +276,7 @@ export function useReportsNextData(
    *  the palette needs. The writing desk has no path and is never fetched. */
   const active = useMemo<AnalysisId[]>(() => {
     const ids = (showing ?? sheet.cuttings.map((c) => c.id)).filter(
-      (id) => CATALOGUE[id].path !== null,
+      (id) => readsRegister(CATALOGUE[id]),
     );
     return ids.includes('reading') ? ids : ['reading', ...ids];
   }, [sheet, showing]);
@@ -282,6 +299,18 @@ export function useReportsNextData(
     return out;
   }, [active, activeRole]);
 
+  /**
+   * One raw payload per URL, shared by every register that reads it, so the
+   * bench and spend pacing (both on /analytics/cashflow) cost one request
+   * (audit G9). Same freshness as the registers.
+   */
+  const readRaw = (url: string) =>
+    qc.fetchQuery({
+      queryKey: [ROOT, 'raw', url],
+      queryFn: async () => (await apiClient.get<unknown>(url)).data,
+      staleTime: 60_000,
+    });
+
   const results = useQueries({
     queries: active.map((id) => {
       const spec = CATALOGUE[id];
@@ -291,8 +320,25 @@ export function useReportsNextData(
         staleTime: 60_000,
         retry: 1,
         queryFn: async () => {
-          const { data } = await apiClient.get<unknown>(spec.path!(rid as string, { days: tillDays }));
-          return spec.select(data);
+          const ctx = { days: tillDays };
+          if (spec.sources) {
+            // A composed register (the bench): each source read once per
+            // minute however many cuttings share it; a failed source is null,
+            // which the register says, never a zero.
+            const keys = Object.keys(spec.sources);
+            const settled = await Promise.allSettled(
+              keys.map((k) => readRaw(spec.sources![k](rid as string, ctx))),
+            );
+            return spec.select(
+              Object.fromEntries(
+                keys.map((k, i) => {
+                  const r = settled[i];
+                  return [k, r.status === 'fulfilled' ? r.value : null];
+                }),
+              ),
+            );
+          }
+          return spec.select(await readRaw(spec.path!(rid as string, ctx)));
         },
       };
     }),

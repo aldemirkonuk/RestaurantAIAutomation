@@ -37,7 +37,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, MessageSquarePlus, Pencil, Plus, Sparkles, Target, X } from 'lucide-react';
-import { EM, countOf, figure, inParens, money, num, ratioPct, type MoneyIn } from './rp-format';
+import { EM, countOf, figure, inParens, money, num, ratioPct, shortLabels, type MoneyIn } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 import type { GoalScenario, GoalScenarios } from '@/hooks/useGoalScenarios';
 import type { GoalsDesk, ScenarioRequest } from './useGoalsDesk';
@@ -856,6 +856,10 @@ export const goals = analysis<GoalsRegister>({
   },
   view: (reg, ctx: ViewCtx) => {
     const scored = reg.goals.filter((g) => !g.unreadable && g.progressPct !== null);
+    const goalLabels = shortLabels(
+      scored.map((g) => g.name),
+      16,
+    );
     const onTrack = reg.goals.filter((g) => g.onTrack === true).length;
     const behind = reg.goals.filter((g) => g.onTrack === false).length;
 
@@ -889,8 +893,8 @@ export const goals = analysis<GoalsRegister>({
       cats:
         scored.length > 0
           ? {
-              data: scored.map((g) => ({
-                label: g.name.length > 16 ? `${g.name.slice(0, 15)}…` : g.name,
+              data: scored.map((g, k) => ({
+                label: goalLabels[k],
                 value: Math.round((g.progressPct as number) * 1000) / 10,
                 full: g.name,
               })),

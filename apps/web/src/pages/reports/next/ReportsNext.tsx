@@ -68,6 +68,7 @@ import {
   HOUSE_LAYOUT_NOTE,
   HOUSE_LAYOUT_TITLE,
   packSlots,
+  swapSlot,
   type AnalysisId,
   type Cutting as SheetSlotCutting,
   type GraphType,
@@ -75,6 +76,7 @@ import {
   type SheetState,
   type Slot,
 } from './rp-sheet';
+import type { ComboPick } from './rp-combo';
 import ExportsShelf from './ExportsShelf';
 import Sheet, { type SheetCutting } from './Sheet';
 import { defaultSheet, useReportsNextData } from './useReportsNextData';
@@ -108,6 +110,9 @@ function Action({
 
 export default function ReportsNext({ ground }: ReportsNextProps) {
   const [tillDays, setTillDays] = useState(30);
+  // Which measure is the bars and which the line, by cutting id. Held here, not
+  // in the cutting, so moving a cutting about the sheet can never lose it.
+  const [comboPicks, setComboPicks] = useState<Partial<Record<AnalysisId, ComboPick>>>({});
   const [arranging, setArranging] = useState(false);
   const [draft, setDraft] = useState<SheetState | null>(null);
   // The fetch follows what is ON SCREEN, draft included: a cutting swapped to
@@ -216,10 +221,22 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   );
 
   const onMove = useCallback(
-    (slots: Partial<Record<AnalysisId, Slot>>) =>
-      edit((d) => ({
-        cuttings: d.cuttings.map((c) => (slots[c.id] ? { ...c, slot: slots[c.id] as Slot } : c)),
-      })),
+    (slots: Partial<Record<AnalysisId, Slot>>, order?: AnalysisId[]) =>
+      edit((d) => {
+        const moved = d.cuttings.map((c) =>
+          slots[c.id] ? { ...c, slot: slots[c.id] as Slot } : c,
+        );
+        if (!order) return { cuttings: moved };
+        // A narrow ruling draws row-mates in list order, so a drag there that
+        // changes who comes first is a change of list order (`liftCuttings`).
+        const rank = new Map(order.map((id, i) => [id, i]));
+        const last = order.length;
+        return {
+          cuttings: [...moved].sort(
+            (a, b) => (rank.get(a.id) ?? last) - (rank.get(b.id) ?? last),
+          ),
+        };
+      }),
     [edit],
   );
 
@@ -245,9 +262,10 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
     [edit],
   );
 
-  /** Change of subject, same square of paper: the slot is kept, the drawing
+  /** Change of subject, same square of paper: the position is kept, the drawing
    *  resets to the new analysis's own default because the old one may not be
-   *  true of the new data. */
+   *  true of the new data, and the square grows to the new analysis's declared
+   *  size if it is smaller (`swapSlot`) so the new subject is not crushed. */
   const onSwap = useCallback(
     (from: AnalysisId, to: AnalysisId) =>
       edit((d) =>
@@ -255,7 +273,7 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
           ? d
           : {
               cuttings: d.cuttings.map((c) =>
-                c.id === from ? { id: to, slot: c.slot, graph: defaultGraph(to) } : c,
+                c.id === from ? { id: to, slot: swapSlot(c.slot, to), graph: defaultGraph(to) } : c,
               ),
             },
       ),
@@ -343,6 +361,8 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
         arranging={arranging}
         swapOptions={swapOptions}
         arrange={arrange}
+        comboPick={comboPicks[c.id]}
+        onComboPick={(p) => setComboPicks((all) => ({ ...all, [c.id]: p }))}
         onGraph={(g) => onGraph(c.id, g)}
         onSwap={(to) => onSwap(c.id, to)}
         onRemove={() => onRemove(c.id)}
