@@ -96,7 +96,7 @@ const unresolvedLinesBody = {
  * the list" from "reject everything" apart. Classify first, then route by
  * the classification — every other endpoint below is unambiguous.
  */
-type Route = 'inventory-list' | 'inventory-summary' | 'inventory-low-stock' | 'inventory-research' | 'items-to-name' | 'orders' | 'pos-unresolved' | 'storage-locations' | 'pricing-advice' | 'other';
+type Route = 'inventory-list' | 'inventory-summary' | 'inventory-low-stock' | 'inventory-research' | 'items-to-name' | 'orders' | 'pos-unresolved' | 'storage-locations' | 'pricing-advice' | 'house-currency' | 'other';
 
 function classify(url: string): Route {
   // The research list the "name this wine" flag reads (founder, 2026-09-21);
@@ -104,6 +104,8 @@ function classify(url: string): Route {
   if (url.endsWith('/inventory/research')) return 'inventory-research';
   // Deliveries waiting for their item (founder, 2026-09-22).
   if (url.endsWith('/procurement/items-to-name')) return 'items-to-name';
+  // The house's own currency (browser walk 2026-11-12): money is never `$`.
+  if (url.endsWith('/settings/currency')) return 'house-currency';
   if (url.includes('/inventory/')) {
     if (url.endsWith('/low-stock')) return 'inventory-low-stock';
     if (url.endsWith('/summary')) return 'inventory-summary';
@@ -117,6 +119,11 @@ function classify(url: string): Route {
   return 'other';
 }
 
+/** `GET /settings/currency` as the gateway answers it. */
+function house(code: string | null, readable = true) {
+  return { restaurantId: 'rest-A', code, country: null, readable, reason: null, statedAt: null };
+}
+
 /** Route every GET by its classification; `overrides` replaces one route's default. */
 function routeGets(overrides: Partial<Record<Route, 'reject' | unknown>> = {}) {
   api.get.mockImplementation((url: string) => {
@@ -128,6 +135,8 @@ function routeGets(overrides: Partial<Record<Route, 'reject' | unknown>> = {}) {
         : Promise.resolve({ data: value });
     }
     switch (route) {
+      case 'house-currency':
+        return Promise.resolve({ data: house('USD') });
       case 'inventory-low-stock':
         return Promise.resolve({ data: [] });
       case 'inventory-summary':
@@ -493,8 +502,46 @@ describe('InventoryCommandPage — value on hand never sums an unknown cost as $
 
     const label = await screen.findByText('Value on hand');
     const card = label.closest('div')?.parentElement as HTMLElement;
-    await waitFor(() => expect(card).toHaveTextContent('$60 + 1 wine whose cost is not known yet'));
+    await waitFor(() => expect(card).toHaveTextContent('US$60 + 1 wine whose cost is not known yet'));
     const row = (await screen.findAllByText('No cost yet'))[0].closest('[data-inv-row]') as HTMLElement;
     expect(row).toHaveTextContent('cost not known yet');
+  });
+});
+
+describe('InventoryCommandPage — money is in the house currency, never a borrowed $ (browser walk 2026-11-12)', () => {
+  const list = [
+    { id: 'row-1', wineId: 'wine-1', wineName: 'Known cost', stockLive: 6, shadowStock: 0, thresholdMin: 2, wac: 10, costProvenance: 'invoice', menuPriceBottle: 160 },
+  ];
+
+  it('a TRY house reads TRY on the value card, the row value and the price cell', async () => {
+    routeGets({ 'house-currency': house('TRY'), 'inventory-list': list });
+    mount();
+    const label = await screen.findByText('Value on hand');
+    const card = label.closest('div')?.parentElement as HTMLElement;
+    await waitFor(() => expect(card).toHaveTextContent(/TRY\s?60/));
+    expect(card.textContent).not.toMatch(/\$/);
+    const row = (await screen.findAllByText('Known cost'))[0].closest('[data-inv-row]') as HTMLElement;
+    expect(row.textContent).toMatch(/TRY\s?160\.00/);
+    expect(row.textContent).toMatch(/TRY\s?60(?!\.)/);
+    expect(row.textContent).not.toMatch(/\$/);
+    expect(screen.queryByTestId('inventory-currency-note')).toBeNull();
+  });
+
+  it('a house with no currency recorded reads plain numbers and says why once', async () => {
+    routeGets({ 'house-currency': house(null), 'inventory-list': list });
+    mount();
+    const label = await screen.findByText('Value on hand');
+    const card = label.closest('div')?.parentElement as HTMLElement;
+    await waitFor(() => expect(card).toHaveTextContent(/^Value on hand60(?![\d.,])/));
+    expect(card.textContent).not.toMatch(/\$|USD/);
+    expect(await screen.findByTestId('inventory-currency-note')).toHaveTextContent(/has not recorded its currency/);
+  });
+
+  it('an unreadable currency is not dollars either', async () => {
+    routeGets({ 'house-currency': 'reject', 'inventory-list': list });
+    mount();
+    expect(await screen.findByTestId('inventory-currency-note')).toHaveTextContent(/could not be read/);
+    const row = (await screen.findAllByText('Known cost'))[0].closest('[data-inv-row]') as HTMLElement;
+    expect(row.textContent).not.toMatch(/\$/);
   });
 });

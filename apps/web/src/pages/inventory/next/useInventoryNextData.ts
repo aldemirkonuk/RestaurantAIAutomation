@@ -50,6 +50,7 @@ import { num, text } from '../../cellar/next/cellar-format';
 import type { MapTone } from '../command/CellarMapView';
 import type { InventoryItem as LegacyItem } from '../useInventoryPage';
 import { COUNT_DUE_DAYS } from '../command/bits';
+import { houseCurrencyKey } from '../command/house-money';
 import type { AdviceLoad } from '../command/HousePriceCell';
 
 export const EM = '—';
@@ -616,7 +617,8 @@ export function useInventoryNextData() {
   );
 
   const currencyQ = useQuery({
-    queryKey: ['settings', 'currency'],
+    // One house's currency never prices another's figures (house-money.ts).
+    queryKey: houseCurrencyKey(rid),
     queryFn: () => settingsApi.houseCurrency(),
     staleTime: 5 * 60_000,
   });

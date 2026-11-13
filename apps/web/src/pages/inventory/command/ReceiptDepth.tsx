@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { documentsApi, dashNull, type ProcurementDocument } from '../../../services/api/documents'
 import { cn } from '../../../lib/utils'
+import { formatMoney } from '../../../lib/currency'
 
 const TYPE_LABELS: Record<ProcurementDocument['doc_type'], string> = {
   invoice: 'Invoice',
@@ -29,8 +30,16 @@ const TYPE_LABELS: Record<ProcurementDocument['doc_type'], string> = {
   unknown: 'Document',
 }
 
-function money(v: number | null): string {
-  return v == null ? '—' : `$${v.toFixed(2)}`
+/**
+ * A document's money in the document's own currency (`procurement_documents.
+ * currency`), never a hard-coded `$`. A document the gateway holds as unpriced
+ * (`moneyState.priced === false`) prints its number with "(currency not
+ * recorded)" rather than the column's defaulted code.
+ */
+function money(v: number | null, doc: ProcurementDocument): string {
+  if (v == null) return '—'
+  const code = doc.moneyState && doc.moneyState.priced === false ? null : (doc.currency ?? null)
+  return formatMoney(v, code)
 }
 
 function TieOut({ doc }: { doc: ProcurementDocument }) {
@@ -38,7 +47,7 @@ function TieOut({ doc }: { doc: ProcurementDocument }) {
   if (doc.ties_out) return <span className="font-mono font-semibold text-emerald-600">ties out</span>
   return (
     <span className="font-mono font-semibold text-amber-600">
-      off by {doc.tie_out_delta == null ? '—' : `$${Math.abs(doc.tie_out_delta).toFixed(2)}`}
+      off by {doc.tie_out_delta == null ? '—' : money(Math.abs(doc.tie_out_delta), doc)}
     </span>
   )
 }
@@ -116,7 +125,7 @@ export function ReceiptDepth({
                   : '—'}
               </span>
               {orderNumber && <span className="font-mono text-[10px] text-gray-400">{orderNumber}</span>}
-              <span className="ml-auto font-mono font-semibold text-gray-700">{money(doc.total)}</span>
+              <span className="ml-auto font-mono font-semibold text-gray-700">{money(doc.total, doc)}</span>
               <TieOut doc={doc} />
               <span
                 className={cn(

@@ -73,11 +73,11 @@ import {
   runwayDays,
   marketDeltaPct,
   daysSinceCounted,
-  fmtMoney,
   COUNT_DUE_DAYS,
   type RowFlag,
 } from "./bits";
 import { RowExpansion } from "./RowExpansion";
+import { houseCurrencyNote, houseMoney, useHouseCurrency } from "./house-money";
 import {
   COST_NOT_KNOWN,
   stockValue,
@@ -203,6 +203,15 @@ export function InventoryCommandPage() {
   const canEditPrice =
     ((activeRole ?? user?.role ?? null) as string | null) === "owner" ||
     ((activeRole ?? user?.role ?? null) as string | null) === "manager";
+
+  // Every money figure on this page is in the house's own currency, never a
+  // hard-coded `$` (browser walk 2026-11-12: a TRY house read "Value on hand
+  // $0" and "Your price $160.00"). Totals are whole; a unit price keeps the
+  // currency's own decimal places.
+  const houseCurrency = useHouseCurrency();
+  const moneyWhole = (n: number | null) => houseMoney(n, houseCurrency, "whole");
+  const moneyExact = (n: number | null) => houseMoney(n, houseCurrency, "exact");
+  const currencyNote = houseCurrencyNote(houseCurrency);
 
   // Per-wine advice toward the house's target margin (ADR 0193). A failed
   // read is shown as "advice unavailable" on each row, never as no advice.
@@ -1063,13 +1072,13 @@ export function InventoryCommandPage() {
           value={
             figuresUnknown
               ? UNKNOWN
-              : totalStockValueText(kpis.valueOnHand, fmtMoney)
+              : totalStockValueText(kpis.valueOnHand, moneyWhole)
           }
           sub={
             figuresUnknown
               ? UNKNOWN
               : kpis.menuPotential > 0
-                ? `${fmtMoney(kpis.menuPotential)} menu`
+                ? `${moneyWhole(kpis.menuPotential)} menu`
                 : "cost basis"
           }
           tone="green"
@@ -1090,6 +1099,11 @@ export function InventoryCommandPage() {
           tone="red"
         />
       </div>
+      {currencyNote && (
+        <p className="-mt-2 mb-3.5 text-xs text-gray-500" role="note" data-testid="inventory-currency-note">
+          {currencyNote}
+        </p>
+      )}
 
       {/* deliveries that booked nothing wait for their item (founder, 2026-09-22) */}
       <DeliveriesToName items={inventory} />
@@ -1515,6 +1529,7 @@ export function InventoryCommandPage() {
                           glass={item.menuPriceGlass ?? null}
                           advice={adviceLoad}
                           canEdit={canEditPrice}
+                          money={moneyExact}
                           onChanged={() => {
                             void refetchInventory();
                             void refetchAdvice();
@@ -1535,7 +1550,7 @@ export function InventoryCommandPage() {
                             : `${delta > 0 ? "+" : ""}${delta.toFixed(0)}%`}
                         </div>
                         <div className="text-right font-mono text-xs font-semibold text-gray-700">
-                          {stockValueText(value, fmtMoney)}
+                          {stockValueText(value, moneyWhole)}
                         </div>
                         <div>
                           <StatusChip item={item} />
@@ -1555,7 +1570,7 @@ export function InventoryCommandPage() {
                         </div>
                       </div>
                       {isOpen && (
-                        <RowExpansion item={item} locations={locations} />
+                        <RowExpansion item={item} locations={locations} money={moneyExact} />
                       )}
                     </div>
                   );
