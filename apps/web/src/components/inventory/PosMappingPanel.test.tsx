@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PosMappingPanel } from "./PosMappingPanel";
+import type { PortionFacts } from "./posPortions";
+import { toast } from "sonner";
 
 const getMatchProposals = vi.hoisted(() => vi.fn());
 const getUnresolvedLines = vi.hoisted(() => vi.fn());
@@ -10,6 +12,7 @@ const approveProposals = vi.hoisted(() => vi.fn());
 const rejectProposal = vi.hoisted(() => vi.fn());
 const runCatalogMatch = vi.hoisted(() => vi.fn());
 const setSaleUnits = vi.hoisted(() => vi.fn());
+const getTargetMargin = vi.hoisted(() => vi.fn());
 
 vi.mock("../../services/api/posHub", () => ({
   getMatchProposals,
@@ -20,6 +23,7 @@ vi.mock("../../services/api/posHub", () => ({
   runCatalogMatch,
   setSaleUnits,
 }));
+vi.mock("../../services/api/pricing", () => ({ getTargetMargin }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
@@ -30,6 +34,14 @@ const inventory = [
     wineName: "Alvear Solera 1927",
     bottleSizeMl: 750,
     pourSizeMl: 60,
+    portionFacts: { kind: "wine", uom: "bottle", bottleMl: 750, pourMl: 60 },
+  },
+];
+const good = (facts: Partial<PortionFacts>) => [
+  {
+    id: "inv-1",
+    wineName: "Good",
+    portionFacts: { kind: null, uom: "bottle", bottleMl: null, pourMl: null, ...facts },
   },
 ];
 
@@ -67,6 +79,8 @@ beforeEach(() => {
   getMatchProposals.mockResolvedValue([proposal()]);
   getUnresolvedLines.mockResolvedValue(queue());
   getItemMappings.mockResolvedValue([]);
+  // Unconfirmed: the house's pour is the database default, not a stated one.
+  getTargetMargin.mockResolvedValue({ pour: { confirmed: false, ml: 150 } });
   approveProposals.mockResolvedValue({
     requested: 1,
     approved: 1,
@@ -106,50 +120,120 @@ describe("PosMappingPanel", () => {
     );
   });
 
-  it("a good with no stated size offers no bottle answer, and never a 750 one (r21 D2)", async () => {
+  it("a soda is offered a bottle or can at its size, never a glass (r24)", async () => {
+    getTargetMargin.mockResolvedValue({ pour: { confirmed: true, ml: 150 } });
     const user = userEvent.setup();
     render(
-      <PosMappingPanel
-        isOpen
-        onClose={() => {}}
-        inventory={[{ id: "inv-1", wineName: "Tonik", bottleSizeMl: null, pourSizeMl: 60 }]}
-      />,
+      <PosMappingPanel isOpen onClose={() => {}} inventory={good({ kind: "soft_drink", bottleMl: 200 })} />,
     );
 
     await screen.findByText("ext-1");
-    expect(screen.queryByRole("button", { name: /750/ })).toBeNull();
-    const bottle = screen.getByRole("button", { name: "Bottle: size not known" });
-    expect(bottle).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Glass/ })).toBeNull();
     await user.click(screen.getByLabelText("Confirm Alvear Solera 1927"));
-    await user.click(bottle);
+    await user.click(screen.getByRole("button", { name: "Bottle or can 200ml" }));
+    await user.click(screen.getByRole("button", { name: /Confirm 1/ }));
+
+    // A whole bottle is one unit off the shelf: no volume, so a later size
+    // correction cannot turn it into a part pour.
+    await waitFor(() => expect(approveProposals).toHaveBeenCalled());
+    expect(approveProposals.mock.calls[0][0]).toEqual([
+      { proposal_id: "prop-1", sale_unit: "bottle", sale_volume_ml: null },
+    ]);
+    // Answered, so no "will queue" warning for a whole bottle sent without a volume.
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
+  it("an unconfirmed house pour is not a glass size (ADR 0193 F7)", async () => {
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={good({ kind: "wine", bottleMl: 750 })} />);
+    await screen.findByText("ext-1");
+    expect(screen.queryByRole("button", { name: "Glass 150ml" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Glass: size not known" })).toBeDisabled();
+  });
+
+  it("an unsized wine says its size is not known and offers no 750, and its glass waits", async () => {
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={good({ kind: "wine", pourMl: 125 })} />);
+
+    await screen.findByText("ext-1");
+    expect(screen.queryByRole("button", { name: /750/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Glass: size not known" })).toBeDisabled();
+    await user.click(screen.getByLabelText("Confirm Alvear Solera 1927"));
+    await user.click(screen.getByRole("button", { name: "Bottle · size not known" }));
     await user.click(screen.getByRole("button", { name: /Confirm 1/ }));
 
     await waitFor(() => expect(approveProposals).toHaveBeenCalled());
     expect(approveProposals.mock.calls[0][0]).toEqual([
-      { proposal_id: "prop-1", sale_unit: null, sale_volume_ml: null },
+      { proposal_id: "prop-1", sale_unit: "bottle", sale_volume_ml: null },
     ]);
   });
 
-  it("a stated size is the bottle answer: 200 ml is sent as 200", async () => {
+  it("a wine's glass is the house's confirmed pour, and only once confirmed", async () => {
+    getTargetMargin.mockResolvedValue({ pour: { confirmed: true, ml: 140 } });
     const user = userEvent.setup();
-    render(
-      <PosMappingPanel
-        isOpen
-        onClose={() => {}}
-        inventory={[{ id: "inv-1", wineName: "Tonik", bottleSizeMl: 200, pourSizeMl: 60 }]}
-      />,
-    );
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={good({ kind: "wine", bottleMl: 750 })} />);
 
     await screen.findByText("ext-1");
     await user.click(screen.getByLabelText("Confirm Alvear Solera 1927"));
-    await user.click(screen.getByRole("button", { name: "Bottle 200ml" }));
+    await user.click(screen.getByRole("button", { name: "Glass 140ml" }));
     await user.click(screen.getByRole("button", { name: /Confirm 1/ }));
-
     await waitFor(() => expect(approveProposals).toHaveBeenCalled());
-    expect(approveProposals).toHaveBeenCalledWith(
-      [{ proposal_id: "prop-1", sale_unit: "bottle", sale_volume_ml: 200 }],
-      undefined,
+    expect(approveProposals.mock.calls[0][0]).toEqual([
+      { proposal_id: "prop-1", sale_unit: "glass", sale_volume_ml: 140 },
+    ]);
+  });
+
+  it("a spirit is offered a shot, not a glass", async () => {
+    render(
+      <PosMappingPanel isOpen onClose={() => {}} inventory={good({ kind: "spirit", bottleMl: 700, pourMl: 40 })} />,
     );
+    await screen.findByText("ext-1");
+    expect(screen.getByRole("button", { name: "Shot 40ml" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Glass/ })).toBeNull();
+  });
+
+  it("a queued soda is answered as one unit; it has no glass answer", async () => {
+    getMatchProposals.mockResolvedValue([]);
+    const user = userEvent.setup();
+    getUnresolvedLines.mockResolvedValue(
+      queue({
+        items: [
+          { source: "simpos", external_item_id: "ext-9", item_name: "Gazoz", reason: "no_sale_volume", occurrences: 3, qty_total: 3 },
+        ],
+      }),
+    );
+    getItemMappings.mockResolvedValue([
+      { id: "map-9", source: "simpos", external_item_id: "ext-9", item_name: "Gazoz", is_wine: true, inventory_id: "inv-1", master_wine_id: null, sale_unit: null, sale_volume_ml: null, updated_at: null },
+    ]);
+    setSaleUnits.mockResolvedValue({ results: [{ mapping_id: "map-9", ok: true }] });
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={good({ kind: "soft_drink" })} />);
+
+    await screen.findByText("Gazoz");
+    expect(screen.queryByRole("button", { name: /One glass|Glass/ })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Bottle or can · size not known" }));
+    await waitFor(() =>
+      expect(setSaleUnits).toHaveBeenCalledWith([{ mapping_id: "map-9", sale_unit: "bottle" }], undefined),
+    );
+  });
+
+  it("a queued wine's glass waits when only the house's pour is confirmed", async () => {
+    getMatchProposals.mockResolvedValue([]);
+    getTargetMargin.mockResolvedValue({ pour: { confirmed: true, ml: 150 } });
+    getUnresolvedLines.mockResolvedValue(
+      queue({
+        items: [
+          { source: "simpos", external_item_id: "ext-9", item_name: "Rioja", reason: "no_sale_volume", occurrences: 1, qty_total: 1 },
+        ],
+      }),
+    );
+    getItemMappings.mockResolvedValue([
+      { id: "map-9", source: "simpos", external_item_id: "ext-9", item_name: "Rioja", is_wine: true, inventory_id: "inv-1", master_wine_id: null, sale_unit: null, sale_volume_ml: null, updated_at: null },
+    ]);
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={good({ kind: "wine", bottleMl: 750 })} />);
+
+    await screen.findByText("Rioja");
+    expect(screen.getByRole("button", { name: "Glass 150ml" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Bottle 750ml" })).toBeEnabled();
   });
 
   it("approves with an explicit null unit rather than defaulting to bottle", async () => {

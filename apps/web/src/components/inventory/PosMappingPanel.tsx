@@ -47,7 +47,9 @@ import {
   type UnresolvedLineGroup,
   type UnresolvedLinesResponse,
 } from "../../services/api/posHub";
+import { getTargetMargin } from "../../services/api/pricing";
 import { cn } from "../../lib/utils";
+import { portionsFor, type PortionFacts } from "./posPortions";
 
 interface Props {
   isOpen: boolean;
@@ -60,6 +62,8 @@ interface Props {
     wine_name?: string;
     bottleSizeMl?: number | null;
     pourSizeMl?: number | null;
+    /** What a sale of the good can be (inventory read, portion-facts.ts). The offers are built from this alone. */
+    portionFacts?: PortionFacts | null;
   }>;
   /** Called after any write that could have moved stock into a mappable state. */
   onChanged?: () => void;
@@ -112,17 +116,16 @@ export function PosMappingPanel({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [matching, setMatching] = useState(false);
+  // The house's CONFIRMED pour. Null when unconfirmed or unreadable: a wine's
+  // glass then says its size is not known rather than pouring the 150 default.
+  const [housePourMl, setHousePourMl] = useState<number | null>(null);
 
   const invById = useMemo(() => {
-    const m = new Map<
-      string,
-      { name: string; bottleMl: number | null; pourMl: number | null }
-    >();
+    const m = new Map<string, { name: string; facts: PortionFacts | null }>();
     for (const i of inventory || []) {
       m.set(i.id, {
         name: i.wineName || i.wine_name || "Unnamed row",
-        bottleMl: i.bottleSizeMl ?? null,
-        pourMl: i.pourSizeMl ?? null,
+        facts: i.portionFacts ?? null,
       });
     }
     return m;
@@ -135,11 +138,17 @@ export function PosMappingPanel({
 
     // Each read reports its own outcome. One failing must not blank the others,
     // and none of them may report a failure as "nothing here".
-    const [p, u, m] = await Promise.allSettled([
+    const [p, u, m, t] = await Promise.allSettled([
       getMatchProposals(restaurantId, "pending"),
       getUnresolvedLines(restaurantId),
       getItemMappings(restaurantId),
+      getTargetMargin(),
     ]);
+    setHousePourMl(
+      t.status === "fulfilled" && t.value?.pour?.confirmed && Number(t.value.pour.ml) > 0
+        ? Number(t.value.pour.ml)
+        : null,
+    );
     setProposals(
       p.status === "fulfilled"
         ? { data: p.value, error: null, loading: false }
@@ -224,7 +233,8 @@ export function PosMappingPanel({
     setBusy(true);
     try {
       const res = await approveProposals(items, restaurantId);
-      const unanswered = items.filter((i) => i.sale_volume_ml == null).length;
+      // A whole bottle is answered with no volume, so "unanswered" is no unit.
+      const unanswered = items.filter((i) => i.sale_unit == null).length;
       if (res.failed > 0) {
         // Partial failure is reported per row, never rounded to "done".
         toast.error(
@@ -254,6 +264,7 @@ export function PosMappingPanel({
   const answerQueuedUnit = async (
     mappingId: string,
     unit: "glass" | "bottle",
+    word: string,
   ) => {
     setBusy(true);
     try {
@@ -265,7 +276,7 @@ export function PosMappingPanel({
       if (bad) toast.error(`Could not record the unit: ${bad.error}`);
       else
         toast.success(
-          `Recorded — sales of this button now remove one ${unit}.`,
+          `Recorded — sales of this button now remove one ${word}.`,
         );
       await load();
       onChanged?.();
@@ -410,11 +421,10 @@ export function PosMappingPanel({
                   ? invById.get(p.candidate_inventory_id)
                   : null;
                 const a = answers[p.id];
-                // r21 D2: no stated size is unknown, never 750. A 750 here
-                // was saved as the sale size, so a 200 ml tonic would remove
-                // three and a half bottles a sale once its size was set.
-                const bottleMl = cand?.bottleMl ?? null;
-                const pourMl = cand?.pourMl ?? null;
+                // r24: the offers follow the good's kind and stated sizes
+                // (posPortions.ts). A soda has no glass; an unsized bottle says
+                // so; a pour needs a stated bottle and a confirmed pour.
+                const portions = cand ? portionsFor(cand.facts, housePourMl) : null;
                 return (
                   <div
                     key={p.id}
@@ -461,39 +471,31 @@ export function PosMappingPanel({
                     </div>
                     {/* the second question, asked here */}
                     <div className="flex items-center gap-1">
-                      <button
-                        onClick={() =>
-                          bottleMl !== null && setAnswer(p.id, "bottle", bottleMl)
-                        }
-                        disabled={bottleMl === null}
-                        title={
-                          bottleMl === null
-                            ? "This item does not say what one bottle holds. Set its bottle size on the item first; until then a bottle sale queues and moves no stock."
-                            : undefined
-                        }
-                        className={cn(
-                          "h-7 px-2.5 rounded-md text-[11px] font-bold border",
-                          a?.label === "bottle"
-                            ? "border-wine-600 bg-wine-600 text-white"
-                            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300",
-                          bottleMl === null && "opacity-60 cursor-not-allowed",
-                        )}
-                      >
-                        {bottleMl === null
-                          ? "Bottle: size not known"
-                          : `Bottle ${bottleMl}ml`}
-                      </button>
-                      <button
-                        onClick={() => setAnswer(p.id, "glass", pourMl ?? 150)}
-                        className={cn(
-                          "h-7 px-2.5 rounded-md text-[11px] font-bold border",
-                          a?.label === "glass"
-                            ? "border-wine-600 bg-wine-600 text-white"
-                            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300",
-                        )}
-                      >
-                        Glass {pourMl ?? 150}ml
-                      </button>
+                      {(portions?.offers ?? []).map((o) => (
+                        <button
+                          key={o.shape}
+                          onClick={() =>
+                            o.blocked === null &&
+                            setAnswer(p.id, o.saleUnit, o.saleVolumeMl)
+                          }
+                          disabled={o.blocked !== null}
+                          title={o.blocked ?? undefined}
+                          className={cn(
+                            "h-7 px-2.5 rounded-md text-[11px] font-bold border",
+                            a?.label === o.saleUnit
+                              ? "border-wine-600 bg-wine-600 text-white"
+                              : "border-gray-200 bg-white text-gray-600 hover:border-gray-300",
+                            o.blocked !== null && "opacity-60 cursor-not-allowed",
+                          )}
+                        >
+                          {o.text}
+                        </button>
+                      ))}
+                      {portions?.note && (
+                        <span className="text-[11px] text-gray-500 max-w-[220px]">
+                          {portions.note}
+                        </span>
+                      )}
                       <button
                         onClick={() => reject(p.id)}
                         disabled={busy}
@@ -525,6 +527,22 @@ export function PosMappingPanel({
               <div className="space-y-1.5">
                 {noSaleVolume.map((g) => {
                   const m = mappingForQueued(g);
+                  const item = m?.inventory_id ? invById.get(m.inventory_id) : undefined;
+                  // This route takes a unit only: "bottle" books one unit, and
+                  // "glass" pours the item's own pour_size_ml. So a pour is
+                  // offered here only when that column is the confirmed pour;
+                  // the house's pour does not reach this route.
+                  const offers = item
+                    ? portionsFor(item.facts, housePourMl).offers.map((o) =>
+                        o.shape === "pour" && o.blocked === null && item.facts?.pourMl == null
+                          ? {
+                              ...o,
+                              blocked:
+                                "This answer pours the item's own pour, and that is not confirmed. Confirm the pour on the item first; until then this button's sales keep queueing.",
+                            }
+                          : o,
+                      )
+                    : [];
                   return (
                     <div
                       key={`${g.source}:${g.external_item_id}:${g.item_name}`}
@@ -539,28 +557,36 @@ export function PosMappingPanel({
                           removed from stock
                         </div>
                       </div>
-                      {m ? (
+                      {m && offers.length > 0 ? (
                         <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => answerQueuedUnit(m.id, "bottle")}
-                            disabled={busy}
-                            className="h-7 px-2.5 rounded-md text-[11px] font-bold border border-gray-200 bg-white text-gray-600 hover:border-gray-300 disabled:opacity-50"
-                          >
-                            One bottle
-                          </button>
-                          <button
-                            onClick={() => answerQueuedUnit(m.id, "glass")}
-                            disabled={busy}
-                            className="h-7 px-2.5 rounded-md text-[11px] font-bold border border-gray-200 bg-white text-gray-600 hover:border-gray-300 disabled:opacity-50"
-                          >
-                            One glass
-                          </button>
+                          {offers.map((o) => (
+                            <button
+                              key={o.shape}
+                              onClick={() =>
+                                answerQueuedUnit(
+                                  m.id,
+                                  o.shape === "whole" ? "bottle" : "glass",
+                                  o.shape === "whole" ? "unit" : o.saleUnit,
+                                )
+                              }
+                              disabled={busy || o.blocked !== null}
+                              title={o.blocked ?? undefined}
+                              className="h-7 px-2.5 rounded-md text-[11px] font-bold border border-gray-200 bg-white text-gray-600 hover:border-gray-300 disabled:opacity-50"
+                            >
+                              {o.text}
+                            </button>
+                          ))}
                         </div>
                       ) : (
                         <span className="text-[11px] font-semibold text-amber-700">
                           {mappings.error
                             ? "mappings could not be read — cannot offer an answer here"
-                            : "no mapping row found for this button"}
+                            : !m
+                              ? "no mapping row found for this button"
+                              : item
+                                ? (portionsFor(item.facts, housePourMl).note ??
+                                  "no sale size fits this item")
+                                : "its item is not in this list — cannot offer an answer here"}
                         </span>
                       )}
                     </div>
