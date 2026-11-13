@@ -45,9 +45,13 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
+        // Only the React core is grouped by hand. A `ui` group (Tremor,
+        // framer-motion, lucide-react) used to sit here: the shell imports
+        // lucide icons, so that whole 1 MB group loaded on every page.
+        // Rollup now puts chart code in the chunks of the pages that draw
+        // charts (r18 bundle walk, 2026-11-13; vite.chunks.test.ts).
         manualChunks: {
           vendor: ['react', 'react-dom', 'react-router-dom'],
-          ui: ['@tremor/react', 'framer-motion', 'lucide-react'],
         },
       },
     },

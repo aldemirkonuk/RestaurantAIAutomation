@@ -66,17 +66,28 @@ import { ProtectedRoute } from './components/ProtectedRoute'
 
 // Critical pages (loaded immediately)
 import { Login } from './pages/Login'
-import { Register } from './pages/Register'
 import { ForgotPassword } from './pages/ForgotPassword'
 import { ResetPassword } from './pages/ResetPassword'
 import { VerifyEmail } from './pages/VerifyEmail'
 import { InviteLanding } from './pages/InviteLanding'
 import { NoAccess } from './pages/NoAccess'
 import { ChooseHouse } from './pages/ChooseHouse'
-import { InventoryCommandPage } from './pages/inventory/command/InventoryCommandPage'
-import { InventoryRoute } from './pages/inventory/next/InventoryRoute'
 import { PageGate } from './components/mudavym'
 import { ShellCatchAll } from './components/mudavym/ShellCatchAll'
+
+// `/inventory`'s two pages. They were eager imports, so every page of the app,
+// the landing page and /login included, shipped the whole legacy command page
+// and the inventory sheet graph in the entry chunk (r18 bundle walk,
+// 2026-11-13). Lazy, they load only when /inventory is opened.
+const InventoryCommandPage = lazyWithRefresh(() =>
+  import('./pages/inventory/command/InventoryCommandPage').then((m) => ({ default: m.InventoryCommandPage })),
+)
+const InventoryRoute = lazyWithRefresh(() => import('./pages/inventory/next/InventoryRoute'))
+
+// The sign-up form is lazy: it carries the phone-number stack
+// (libphonenumber-js and react-phone-number-input, about 230 KB with the form)
+// that no other page needs.
+const Register = lazyWithRefresh(() => import('./pages/Register').then((m) => ({ default: m.Register })))
 
 // Onboarding pages (lazy loaded)
 // Mudavym redesign variants (ADR 0044) — reachable only behind their per-page flag
