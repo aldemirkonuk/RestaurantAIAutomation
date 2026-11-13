@@ -52,6 +52,7 @@ import {
   encodeMailCursor,
   mailDirectionOf as direction,
   mailDoorOf,
+  mailSearchOf,
   personRef,
   stripSubjectLine,
   withholdsHouseLetters,
@@ -104,10 +105,17 @@ export class MailService {
   async listPeople(
     houseId: string,
     callerRole: string | null | undefined,
-    opts: { waitingOnly?: boolean; after?: string; limit?: string | number },
+    opts: {
+      waitingOnly?: boolean;
+      after?: string;
+      limit?: string | number;
+      /** r28 mail gap 16: a name, subject, order number or a letter's words. */
+      query?: unknown;
+    },
   ): Promise<MailPeoplePage> {
     const limit = clampMailLimit(opts.limit);
     const after = opts.after ? decodeMailCursor(opts.after) : null;
+    const query = mailSearchOf(opts.query);
     const { data, error } = await this.db.rpc("list_mail_people", {
       p_restaurant_id: houseId,
       p_withhold_house_letters: withholdsHouseLetters(callerRole),
@@ -116,6 +124,9 @@ export class MailService {
       p_after_key: after?.key ?? null,
       // One extra row says whether another page exists.
       p_limit: limit + 1,
+      // Named only when there is a search, so a list with none is the same
+      // call as before the search existed.
+      ...(query ? { p_query: query } : {}),
     });
     if (error) this.failed("people", error);
     const rows = (data ?? []) as any[];
@@ -206,6 +217,9 @@ export class MailService {
           key: t.thread_key,
           subject: t.subject ?? null,
           messageCount: Number(t.message_count ?? 0),
+          // A database without letter_count (older than gap 14) falls back to
+          // the old count rather than claiming a thread has no letters.
+          letterCount: Number(t.letter_count ?? t.message_count ?? 0),
           lastAt: t.last_at,
           lastDirection: direction(t.last_direction),
           waiting: t.waiting === true,
