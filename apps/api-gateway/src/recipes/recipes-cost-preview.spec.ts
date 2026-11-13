@@ -50,7 +50,7 @@ describe("RecipesService.previewCost: an unsaved draft priced, nothing written",
     const t = fakeDb({ cocktail: house, rows: shelf });
     const out = await new RecipesService(t.db).previewCost(HOUSE, DRINK, { yieldServes: 1, lines: [gin50] });
     expect(out).toMatchObject({ perServe: 2, perServeExact: 2, priced: 1, of: 1, complete: true, partial: 0 });
-    expect(out.lines).toEqual([{ status: "linked", costPerServe: 2, costBasis: expect.any(String) }]);
+    expect(out.lines).toEqual([{ status: "linked", costPerServe: 2, costBasis: expect.any(String), needs: null }]);
   });
 
   it("divides by the serves the draft makes", async () => {

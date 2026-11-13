@@ -60,6 +60,13 @@ export type WhatIsIn = ({ readable: true } & ServeNutrition) | { readable: false
 export const MAX_LINE_QTY = 100_000;
 export const MAX_YIELD_SERVES = 1_000;
 
+/** A stated weight from the database (numeric arrives as a string), or null. */
+function grams(v: unknown): number | null {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /**
  * A cocktail's recipe: the current version, its lines linked to house items,
  * and its cost per serve at today's prices (ADR 0360). Writes go through ONE
@@ -251,8 +258,10 @@ export class RecipesService {
       const itemQuery = money
         ? client
             .from("restaurant_inventory")
-            .select("id, display_name, kind, uom, bottle_size_ml, last_purchase_price, is_active, deleted_at")
-        : client.from("restaurant_inventory").select("id, display_name, kind, uom, bottle_size_ml, is_active, deleted_at");
+            .select("id, display_name, kind, uom, bottle_size_ml, piece_grams, ml_grams, last_purchase_price, is_active, deleted_at")
+        : client
+            .from("restaurant_inventory")
+            .select("id, display_name, kind, uom, bottle_size_ml, piece_grams, ml_grams, is_active, deleted_at");
       const none = Promise.resolve({ data: [], error: null });
       const [itemRead, lotRead, agreedRead, invoiceRead] = await Promise.all([
         itemQuery.eq("restaurant_id", restaurantId).in("id", ids),
@@ -380,6 +389,10 @@ export class RecipesService {
           itemKind: item?.kind ?? null,
           itemUom: item?.uom ?? null,
           itemGone: !item ? null : item.deleted_at ? "deleted" : item.is_active === false ? "archived" : null,
+          // The weights the house stated for the good (r28 gap 7), so the
+          // sheet can show them and offer the one a line waits for.
+          itemPieceGrams: grams(item?.piece_grams),
+          itemMlGrams: grams(item?.ml_grams),
           qtyEntered: Number(l.qty_entered),
           unitCode: l.unit_code,
           qtyBase: Number(l.qty_base),
@@ -388,6 +401,7 @@ export class RecipesService {
           costPerServe: money ? priced.lines[i].costPerServe : null,
           costPerServeExact: money ? priced.lines[i].costPerServeExact : null,
           costBasis: money ? priced.lines[i].costBasis : null,
+          needs: money ? (priced.lines[i].needs ?? null) : null,
         };
       }),
     };
@@ -494,7 +508,7 @@ export class RecipesService {
       of: priced.of,
       complete: priced.complete,
       partial: priced.partial,
-      lines: priced.lines.map((l) => ({ status: l.status, costPerServe: l.costPerServe, costBasis: l.costBasis })),
+      lines: priced.lines.map((l) => ({ status: l.status, costPerServe: l.costPerServe, costBasis: l.costBasis, needs: l.needs ?? null })),
     };
   }
 
