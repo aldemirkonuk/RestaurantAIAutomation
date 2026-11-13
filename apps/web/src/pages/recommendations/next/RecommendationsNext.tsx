@@ -734,6 +734,7 @@ export default function RecommendationsNext({ ground }: RecommendationsNextProps
             onSelect={setDay}
             pos={data.pos}
             posProblem={data.posProblem}
+            houseCurrency={data.houseCurrency}
             exclusionsReadable={data.exclusions === undefined ? undefined : data.exclusions.readable}
             exclusionsProblem={data.exclusions?.problem ?? null}
             onExclude={(date, reason) => void data.ruleOutDay(date, reason)}
