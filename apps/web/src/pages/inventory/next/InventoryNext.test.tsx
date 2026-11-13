@@ -88,6 +88,10 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
   getItemUsedIn: vi.fn(() => new Promise(() => undefined)),
   getItemNutrition: vi.fn(() => new Promise(() => undefined)),
 }));
+vi.mock('../../../services/api/itemDishes', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  getItemDishes: vi.fn(() => new Promise(() => undefined)),
+}));
 vi.mock('./RowDropdown', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   default: () => <tr data-testid="row-dropdown" />,

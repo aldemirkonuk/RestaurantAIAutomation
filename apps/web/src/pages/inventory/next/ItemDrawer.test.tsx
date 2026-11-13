@@ -9,7 +9,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import { ALLERGENS, type HouseFields, type ItemFigures, type ItemNutrition } from '../../../services/api/inventory';
 
-const api = vi.hoisted(() => ({ figures: vi.fn(), usedIn: vi.fn(), nutrition: vi.fn() }));
+const api = vi.hoisted(() => ({ figures: vi.fn(), usedIn: vi.fn(), nutrition: vi.fn(), dishes: vi.fn() }));
+vi.mock('../../../services/api/itemDishes', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  getItemDishes: api.dishes,
+}));
 vi.mock('../../../services/api/inventory', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   getItemFigures: api.figures,
@@ -98,6 +102,8 @@ beforeEach(() => {
   api.figures.mockResolvedValue(figures());
   api.usedIn.mockReset();
   api.usedIn.mockImplementation(() => new Promise(() => undefined));
+  api.dishes.mockReset();
+  api.dishes.mockImplementation(() => new Promise(() => undefined));
   api.nutrition.mockReset();
   api.nutrition.mockResolvedValue(nothingStated);
 });
@@ -379,5 +385,21 @@ describe('the item drawer', () => {
     expect(api.usedIn).toHaveBeenCalledTimes(1);
     fireEvent.click(within(used).getByRole('button', { name: 'Read again' }));
     await waitFor(() => expect(api.usedIn).toHaveBeenCalledTimes(2));
+  });
+  it('lists the dishes whose recipe uses a food, and keeps the nutrition slot', async () => {
+    api.dishes.mockResolvedValue({
+      dishes: [
+        {
+          dishId: 'd1', name: 'Pide', section: null, price: 10, hasRecipe: true, yieldServes: 8, lineCount: 1,
+          cost: { perServe: 2.5, perServeExact: 2.5, priced: 1, of: 1, complete: true, partial: 0 },
+          uses: [{ label: 'Flour', qtyEntered: 250, unitCode: 'g' }],
+        },
+      ],
+    });
+    open(row(), { house: { kind: 'food', uom: 'g', displayName: 'Flour' } });
+    fireEvent.click(screen.getByTestId('ivd-card-inside'));
+    const recipes = screen.getByTestId('ivd-used-recipes');
+    await waitFor(() => expect(within(recipes).getByText('Pide')).toBeTruthy());
+    expect(screen.getByTestId('ivd-nutrition-slot')).toBeTruthy();
   });
 });

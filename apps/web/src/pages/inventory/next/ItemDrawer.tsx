@@ -11,11 +11,12 @@ import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { getItemFigures, getItemNutrition, getItemUsedIn, inventoryItemKeys, type HouseFields } from '../../../services/api/inventory';
+import { getItemDishes } from '../../../services/api/itemDishes';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import type { Provider } from '../../../services/api/providers';
 import type { StorageLocation } from '../../../hooks/useStorageLocations';
 import ItemCards, { CARD_TITLE, type CardId, type FiguresLoad, type InsideLoad } from './ItemCards';
-import ItemUsedIn, { type UsedInLoad } from './ItemUsedIn';
+import ItemUsedIn, { type DishesLoad, type UsedInLoad } from './ItemUsedIn';
 import WhatIsInIt from './NutritionCard';
 import RowDropdown, { type EvidenceSection, type SheetId } from './RowDropdown';
 import { failureReason } from './iv-failure';
@@ -130,6 +131,13 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     staleTime: 60_000,
     retry: false,
   });
+  const dishesQ = useQuery({
+    queryKey: [...inventoryItemKeys.usedIn(restaurantId ?? '', id), 'dishes'],
+    queryFn: () => getItemDishes(id, restaurantId ?? undefined),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
 
   if (row === null) {
     return (
@@ -156,6 +164,11 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     ? { status: 'failed', reason: failureReason(usedInQ.error) }
     : usedInQ.data
       ? { status: 'ready', data: usedInQ.data }
+      : { status: 'reading' };
+  const dishes: DishesLoad = dishesQ.isError
+    ? { status: 'failed', reason: failureReason(dishesQ.error) }
+    : dishesQ.data
+      ? { status: 'ready', data: dishesQ.data }
       : { status: 'reading' };
 
   const name = row.name ?? house.displayName ?? 'Unnamed item';
@@ -263,7 +276,14 @@ export default function ItemDrawer(props: ItemDrawerProps) {
           </div>
         </section>
       ) : null}
-      <ItemUsedIn load={usedIn} canManage={canManage} currency={currency} onRetry={() => void usedInQ.refetch()} />
+      <ItemUsedIn
+        load={usedIn}
+        dishes={dishes}
+        canManage={canManage}
+        currency={currency}
+        onRetry={() => void usedInQ.refetch()}
+        onRetryDishes={() => void dishesQ.refetch()}
+      />
     </Sheet>
   );
 }
