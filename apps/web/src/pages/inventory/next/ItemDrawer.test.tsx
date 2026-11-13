@@ -9,10 +9,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { InvRow } from './useInventoryNextData';
 import { ALLERGENS, type HouseFields, type ItemFigures, type ItemNutrition } from '../../../services/api/inventory';
 
-const api = vi.hoisted(() => ({ figures: vi.fn(), usedIn: vi.fn(), nutrition: vi.fn(), dishes: vi.fn() }));
+const api = vi.hoisted(() => ({ figures: vi.fn(), usedIn: vi.fn(), nutrition: vi.fn(), dishes: vi.fn(), drinks: vi.fn() }));
 vi.mock('../../../services/api/itemDishes', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   getItemDishes: api.dishes,
+  getItemDrinks: api.drinks,
 }));
 vi.mock('../../../services/api/inventory', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
@@ -104,6 +105,8 @@ beforeEach(() => {
   api.usedIn.mockImplementation(() => new Promise(() => undefined));
   api.dishes.mockReset();
   api.dishes.mockImplementation(() => new Promise(() => undefined));
+  api.drinks.mockReset();
+  api.drinks.mockImplementation(() => new Promise(() => undefined));
   api.nutrition.mockReset();
   api.nutrition.mockResolvedValue(nothingStated);
 });
@@ -401,6 +404,46 @@ describe('the item drawer', () => {
     const recipes = screen.getByTestId('ivd-used-recipes');
     await waitFor(() => expect(within(recipes).getByText('Pide')).toBeTruthy());
     expect(screen.getByTestId('ivd-nutrition-slot')).toBeTruthy();
+  });
+});
+
+describe('the drinks that use a good have their cards', () => {
+  const gin = { kind: 'spirit', uom: 'bottle', displayName: 'House Gin' } as HouseFields;
+  const usedIn = {
+    item: { id: 'i1', kind: 'spirit', displayName: 'House Gin' },
+    soldAs: { readable: true, lines: [], source: 's' },
+    inCocktails: { readable: true, lines: [], source: 's' },
+    inDrinkRecipes: { readable: true, lines: [{ cocktailId: 'c1', name: 'House G&T', label: 'Gin', qtyEntered: 50, unitCode: 'ml' }], source: 's' },
+    namedNotLinked: { readable: true, lines: [], source: 's' },
+    recipes: { recorded: false, note: 'n' },
+  };
+
+  it('reads the drinks for the opened good and draws each with its pour cost', async () => {
+    api.usedIn.mockResolvedValue(usedIn);
+    api.drinks.mockResolvedValue({
+      drinks: [
+        {
+          cocktailId: 'c1', name: 'House G&T', section: null, price: 12, hasRecipe: true, yieldServes: 1, lineCount: 2,
+          cost: { perServe: 1.5, perServeExact: 1.5, priced: 1, of: 1, complete: true, partial: 0 },
+          uses: [{ label: 'Gin', qtyEntered: 50, unitCode: 'ml' }],
+        },
+      ],
+    });
+    open(row({ kind: 'spirit', name: 'House Gin' }), { house: gin });
+    expect(api.drinks).toHaveBeenCalledWith('i1', 'r1');
+    await waitFor(() => expect(screen.getByTestId('ivd-drink-c1-pour-cost').textContent).toContain('12.5%'));
+    expect(screen.getByTestId('ivd-drink-c1-per-serve').textContent).toContain('50 ml');
+  });
+
+  it('a failed drinks read keeps the drink lines, says why, and reads again on asking', async () => {
+    api.usedIn.mockResolvedValue(usedIn);
+    api.drinks.mockRejectedValueOnce(new Error('Network Error'));
+    open(row({ kind: 'spirit', name: 'House Gin' }), { house: gin });
+    const note = await screen.findByTestId('ivd-used-drink-figures-unread');
+    expect(screen.getByTestId('ivd-used-drink-recipes').textContent).toContain('House G&T — 50 ml (Gin)');
+    api.drinks.mockImplementation(() => new Promise(() => undefined));
+    fireEvent.click(within(note).getByRole('button', { name: 'Read again' }));
+    await waitFor(() => expect(api.drinks).toHaveBeenCalledTimes(2));
   });
 });
 

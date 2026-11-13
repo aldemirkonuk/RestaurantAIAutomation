@@ -11,12 +11,12 @@ import { useEffect, useRef, useState, type ComponentType } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Sheet } from '@/components/mudavym';
 import { getItemFigures, getItemNutrition, getItemUsedIn, inventoryItemKeys, type HouseFields } from '../../../services/api/inventory';
-import { getItemDishes } from '../../../services/api/itemDishes';
+import { getItemDishes, getItemDrinks } from '../../../services/api/itemDishes';
 import { fmtWhen } from '../../../lib/mudavym/format';
 import type { Provider } from '../../../services/api/providers';
 import type { StorageLocation } from '../../../hooks/useStorageLocations';
 import ItemCards, { CARD_TITLE, type CardId, type FiguresLoad, type InsideLoad } from './ItemCards';
-import ItemUsedIn, { type DishesLoad, type UsedInLoad } from './ItemUsedIn';
+import ItemUsedIn, { type DishesLoad, type DrinksLoad, type UsedInLoad } from './ItemUsedIn';
 import WhatIsInIt from './NutritionCard';
 import RowDropdown, { type EvidenceSection, type SheetId } from './RowDropdown';
 import { failureReason } from './iv-failure';
@@ -141,6 +141,14 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     staleTime: 60_000,
     retry: false,
   });
+  // The drinks that use it, with the cards a dish has (founder /goal 2026-11-07).
+  const drinksQ = useQuery({
+    queryKey: [...inventoryItemKeys.usedIn(restaurantId ?? '', id), 'drinks'],
+    queryFn: () => getItemDrinks(id, restaurantId ?? undefined),
+    enabled,
+    staleTime: 60_000,
+    retry: false,
+  });
 
   if (row === null) {
     return (
@@ -172,6 +180,11 @@ export default function ItemDrawer(props: ItemDrawerProps) {
     ? { status: 'failed', reason: failureReason(dishesQ.error) }
     : dishesQ.data
       ? { status: 'ready', data: dishesQ.data }
+      : { status: 'reading' };
+  const drinks: DrinksLoad = drinksQ.isError
+    ? { status: 'failed', reason: failureReason(drinksQ.error) }
+    : drinksQ.data
+      ? { status: 'ready', data: drinksQ.data }
       : { status: 'reading' };
 
   const name = row.name ?? house.displayName ?? 'Unnamed item';
@@ -284,10 +297,12 @@ export default function ItemDrawer(props: ItemDrawerProps) {
       <ItemUsedIn
         load={usedIn}
         dishes={dishes}
+        drinks={drinks}
         canManage={canManage}
         currency={currency}
         onRetry={() => void usedInQ.refetch()}
         onRetryDishes={() => void dishesQ.refetch()}
+        onRetryDrinks={() => void drinksQ.refetch()}
       />
     </Sheet>
   );
