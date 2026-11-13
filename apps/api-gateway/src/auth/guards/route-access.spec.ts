@@ -145,6 +145,9 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
     // sale units and catalog-match approve/reject -- name owner AND manager.
     // The HMAC webhook stays @Public and every GET stays open to the house.
     // Pinned by pos-hub/pos-hub-writes-need-a-manager.spec.ts.
+    // RecipesController (ADR 0360, F13) names owner AND manager on its one
+    // write, the recipe save; its three reads stay "open" (staff read a
+    // recipe without money, which the service withholds, not the guard).
     expect(controllersWithRoles()).toEqual([
       "analytics/analytics.controller.ts",
       "ask-ai/ask-ai.controller.ts",
@@ -165,6 +168,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "procurement/documents/credits.controller.ts",
       "procurement/receiving.controller.ts",
       "promotions/promotions.controller.ts",
+      "recipes/recipes.controller.ts",
       "reports/exports/report-exports.controller.ts",
       "vendor-intel/vendor-intel.controller.ts",
     ]);

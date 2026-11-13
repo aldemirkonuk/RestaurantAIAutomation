@@ -31,6 +31,7 @@ import { doRefresh } from "../lib/sessionRefresh";
 import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
 import { flushSpotCountOutbox } from "../lib/spotCountOutbox";
+import { forgetDrafts } from "../pages/cellar/next/recipe/drafts";
 import { currentQueueOwner, signOutWarning } from "../lib/queue-owner";
 import { offlineStorage } from "../lib/offline-storage";
 import { ensurePersisted } from "../lib/deviceStorage";
@@ -1097,6 +1098,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // it is the next person's to see.
       forgetHouseReads(queryClient);
       queryClient?.getMutationCache().clear();
+      // Unsaved recipe lines are the signed-out person's, not the next one's.
+      forgetDrafts();
       delete api.defaults.headers.common["Authorization"];
       delete api.defaults.headers.common["X-Restaurant-Id"];
       setUser(null);

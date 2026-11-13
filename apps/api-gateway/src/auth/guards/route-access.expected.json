@@ -573,6 +573,17 @@
     "owner",
     "manager"
   ],
+  "GET /recipes/:restaurantId/cocktails/:cocktailId (RecipesController.getRecipe)": "open",
+  "GET /recipes/:restaurantId/cocktails/:cocktailId/versions (RecipesController.listVersions)": "open",
+  "PUT /recipes/:restaurantId/cocktails/:cocktailId (RecipesController.saveRecipe)": [
+    "owner",
+    "manager"
+  ],
+  "POST /recipes/:restaurantId/cocktails/:cocktailId/cost-preview (RecipesController.previewCost)": [
+    "owner",
+    "manager"
+  ],
+  "GET /recipes/:restaurantId/shelf (RecipesController.shelf)": "open",
   "POST /reports/exports (ReportExportsController.request)": [
     "owner",
     "manager"
