@@ -236,8 +236,9 @@ describe("CeilingHeldProducer", () => {
   it("[REVERT-FAILS] a lira house reads its ceiling in lira, never in dollars", async () => {
     const { db, notifications, producer } = build(HELD);
     db.tables.analytics_goals.push(ceiling());
-    db.tables.restaurants.push({ id: TENANT, currency: "TRY" });
+    // Another house's row first: the read must pick this house's, by id.
     db.tables.restaurants.push({ id: OTHER, currency: "USD" });
+    db.tables.restaurants.push({ id: TENANT, currency: "TRY" });
     await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
     const call = notifications.persistForRestaurant.calls[0][1];
     expect(call.message).toContain(

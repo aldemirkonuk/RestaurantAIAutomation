@@ -252,8 +252,9 @@ describe("GoalReachedProducer", () => {
   it("[REVERT-FAILS] a lira house reads its goal in lira, never in dollars", async () => {
     const { db, notifications, producer } = build(REACHED);
     db.tables.analytics_goals.push(goalRow());
-    db.tables.restaurants.push({ id: TENANT, currency: "TRY" });
+    // Another house's row first: the read must pick this house's, by id.
     db.tables.restaurants.push({ id: OTHER, currency: "USD" });
+    db.tables.restaurants.push({ id: TENANT, currency: "TRY" });
     seedCrossing(db);
     await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
     const call = notifications.persistForRestaurant.calls[0][1];
@@ -300,6 +301,27 @@ describe("GoalReachedProducer", () => {
     const call = notifications.persistForRestaurant.calls[0][1];
     expect(call.message).toContain("stands at 10,450.00 against a target of 10,000.00");
     expect(call.message).not.toContain("$");
+  });
+
+  it("[REVERT-FAILS] beside a money goal, a percent goal still carries no currency", async () => {
+    const { db, notifications, goals, producer } = build(REACHED);
+    db.tables.analytics_goals.push(goalRow());
+    db.tables.analytics_goals.push(
+      goalRow({ id: "goal-2", name: "Attach", metric_key: "wine_attach_rate" }),
+    );
+    db.tables.restaurants.push({ id: TENANT, currency: "TRY" });
+    (goals as any).getGoalProgress = async (_r: string, goalId: string) =>
+      goalId === "goal-2"
+        ? { target: 0.3, current: 0.34, metricLabel: "Wine attach rate", unit: "percent" }
+        : REACHED;
+    seedCrossing(db);
+    await producer.sweepTenant(TENANT, ZONE, AUDIENCE, NOW);
+    const calls = notifications.persistForRestaurant.calls.map((c: any[]) => c[1]);
+    const attach = calls.find((c: any) => c.metadata.goalId === "goal-2");
+    const revenue = calls.find((c: any) => c.metadata.goalId === "goal-1");
+    expect(revenue.metadata.currency).toBe("TRY");
+    expect(attach.metadata.currency).toBeNull();
+    expect(attach.message).not.toContain("₺");
   });
 
   it("a percent goal is said as a percent, with no currency", async () => {
