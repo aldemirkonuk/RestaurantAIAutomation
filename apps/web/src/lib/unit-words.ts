@@ -38,10 +38,13 @@ export const UNIT_WORDS = {
 
 export type StoredUnit = keyof typeof UNIT_WORDS;
 
-function wordsOf(unit: string): readonly [string, string] | null {
-  return Object.prototype.hasOwnProperty.call(UNIT_WORDS, unit)
-    ? UNIT_WORDS[unit as StoredUnit]
-    : null;
+/**
+ * The pair for a code, or nothing. An inherited name ("constructor",
+ * "__proto__") finds a function or an object here, never a pair, so its
+ * `[0]` is undefined and the callers' `?? unit` prints it as it came.
+ */
+function wordsOf(unit: string): readonly [string, string] | undefined {
+  return (UNIT_WORDS as Record<string, readonly [string, string] | undefined>)[unit];
 }
 
 /** One of a unit in words: "split case", "item", "litre". Unknown: as it came. */
