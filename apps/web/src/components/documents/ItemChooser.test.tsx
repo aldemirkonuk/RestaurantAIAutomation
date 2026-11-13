@@ -75,6 +75,30 @@ describe('ItemChooser: add the line as a new good (r21)', () => {
     await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ kind: 'food', uom: 'ml', displayName: 'Zeytinyağı' }))
   })
 
+  it('a 200 ml tonic is added with its size, and says it (r21 D2)', async () => {
+    const onCreate = vi.fn().mockResolvedValue(null)
+    const tonik = { description: 'Tonik 200 ml', uom: 'bottle', formatMl: 200 }
+    render(<ItemChooser items={items} itemLabel={() => null} onPick={vi.fn()} onCancel={vi.fn()} line={tonik} onCreate={onCreate} />)
+    fireEvent.click(screen.getByTestId('new-good-open'))
+    expect((screen.getByTestId('new-good-unit') as HTMLSelectElement).value).toBe('bottle')
+    expect(screen.getByTestId('new-good-size').textContent).toBe('One bottle holds 200 ml, as the paper says.')
+    fireEvent.click(screen.getByTestId('new-good-add'))
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith({ kind: 'other', uom: 'bottle', displayName: 'Tonik 200 ml', bottleSizeMl: 200 }),
+    )
+  })
+
+  it('kept in ml instead, the tonic is sent with no container size', async () => {
+    const onCreate = vi.fn().mockResolvedValue(null)
+    const tonik = { description: 'Tonik 200 ml', uom: 'bottle', formatMl: 200 }
+    render(<ItemChooser items={items} itemLabel={() => null} onPick={vi.fn()} onCancel={vi.fn()} line={tonik} onCreate={onCreate} />)
+    fireEvent.click(screen.getByTestId('new-good-open'))
+    fireEvent.change(screen.getByTestId('new-good-unit'), { target: { value: 'ml' } })
+    expect(screen.queryByTestId('new-good-size')).toBeNull()
+    fireEvent.click(screen.getByTestId('new-good-add'))
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ kind: 'other', uom: 'ml', displayName: 'Tonik 200 ml' }))
+  })
+
   it('says when the picked unit does not fit the line', () => {
     render(<ItemChooser items={items} itemLabel={() => null} onPick={vi.fn()} onCancel={vi.fn()} line={line} onCreate={vi.fn()} />)
     fireEvent.click(screen.getByTestId('new-good-open'))
