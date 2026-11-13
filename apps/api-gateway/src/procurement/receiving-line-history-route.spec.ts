@@ -20,6 +20,7 @@ import { RolesGuard } from "../auth/guards/roles.guard";
 import { ROLES_KEY } from "../auth/decorators/roles.decorator";
 import { ReceivingController } from "./receiving.controller";
 import { ReceivingService } from "./receiving.service";
+import { ORDER_IS_HERE_DB } from "./testing/order-is-here-db";
 
 const HOUSE = "12823c23-277c-5ae9-b49b-e17d33704e04";
 const ORDER = "11111111-1111-4111-8111-111111111111";
@@ -34,6 +35,7 @@ describe("GET /procurement/receiving/orders/:id/history", () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [ReceivingController],
       providers: [
+        ORDER_IS_HERE_DB,
         {
           provide: ReceivingService,
           useValue: {
@@ -113,9 +115,11 @@ describe("GET /procurement/receiving/orders/:id/history", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("refuses an order id that is not a uuid with 400", async () => {
+  // An id that cannot name an order is the not-found every `orders/:id` route
+  // gives (order-in-house.interceptor.ts), before the route's own uuid pipe.
+  it("refuses an order id that is not a uuid with the 404", async () => {
     const res = await get(`/procurement/receiving/orders/not-an-id/history`, "manager");
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(404);
     expect(calls).toHaveLength(0);
   });
 });

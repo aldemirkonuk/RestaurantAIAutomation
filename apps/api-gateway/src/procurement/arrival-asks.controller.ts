@@ -9,7 +9,9 @@ import {
   Param,
   Post,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
+import { OrderInHouseInterceptor } from "./order-in-house.interceptor";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -43,6 +45,9 @@ function who(user: AuthUser | null | undefined): {
 @ApiTags("procurement")
 @Controller("procurement")
 @UseGuards(JwtAuthGuard)
+// Every `orders/:id` route answers an id that names no order of this house
+// with one 404 in words (order-in-house.interceptor.ts).
+@UseInterceptors(OrderInHouseInterceptor)
 export class ArrivalAsksController {
   constructor(private readonly asks: ArrivalAsksService) {}
 

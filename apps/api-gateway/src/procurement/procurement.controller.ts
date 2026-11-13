@@ -16,7 +16,9 @@ import {
   Post,
   Query,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
+import { OrderInHouseInterceptor } from "./order-in-house.interceptor";
 import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
@@ -117,6 +119,9 @@ export function readDeliveredQuantity(
 @ApiTags("procurement")
 @Controller("procurement")
 @UseGuards(JwtAuthGuard)
+// Every `orders/:id` route answers an id that names no order of this house
+// with one 404 in words (order-in-house.interceptor.ts).
+@UseInterceptors(OrderInHouseInterceptor)
 export class ProcurementController {
   constructor(private readonly procurementService: ProcurementService) {}
 

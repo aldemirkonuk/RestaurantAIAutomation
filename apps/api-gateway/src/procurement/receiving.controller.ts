@@ -9,7 +9,9 @@ import {
   Post,
   Query,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
+import { OrderInHouseInterceptor } from "./order-in-house.interceptor";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
@@ -252,6 +254,9 @@ export class DoorReceiptDto {
 @ApiTags("procurement-receiving")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
+// Every `orders/:id` route answers an id that names no order of this house
+// with one 404 in words (order-in-house.interceptor.ts).
+@UseInterceptors(OrderInHouseInterceptor)
 @Controller("procurement/receiving")
 export class ReceivingController {
   constructor(private readonly receiving: ReceivingService) {}

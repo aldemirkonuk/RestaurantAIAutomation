@@ -31,6 +31,7 @@ import { AddressInfo } from "net";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ProcurementController } from "./procurement.controller";
 import { ProcurementService } from "./procurement.service";
+import { ORDER_IS_HERE_DB } from "./testing/order-is-here-db";
 
 const HOUSE = "11111111-1111-4111-8111-111111111111";
 const ORDER = "22222222-2222-4222-8222-222222222222";
@@ -71,7 +72,7 @@ async function post(
 beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({
     controllers: [ProcurementController],
-    providers: [{ provide: ProcurementService, useValue: service }],
+    providers: [{ provide: ProcurementService, useValue: service }, ORDER_IS_HERE_DB],
   })
     .overrideGuard(JwtAuthGuard)
     .useValue({
