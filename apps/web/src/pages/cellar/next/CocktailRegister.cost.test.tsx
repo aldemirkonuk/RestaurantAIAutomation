@@ -60,7 +60,8 @@ import CocktailRegister from './CocktailRegister';
 
 const figures = [
   { cocktailId: GT, price: 12, hasRecipe: true, yieldServes: 1, lineCount: 2, cost: cost({}) },
-  { cocktailId: SOUR, price: 10, hasRecipe: true, yieldServes: 2, lineCount: 2, cost: cost({ complete: false, perServe: null, perServeExact: null, of: 2 }) },
+// Incomplete: the lines priced so far add to 0.80, which is never the cost.
+  { cocktailId: SOUR, price: 10, hasRecipe: true, yieldServes: 2, lineCount: 2, cost: cost({ complete: false, perServe: 0.8, perServeExact: 0.8, of: 2 }) },
   { cocktailId: BARE, price: 9, hasRecipe: false, yieldServes: null, lineCount: 0, cost: null },
   { cocktailId: PART, price: null, hasRecipe: true, yieldServes: 1, lineCount: 1, cost: cost({ perServe: 2, perServeExact: 2, partial: 1 }) },
 ];
