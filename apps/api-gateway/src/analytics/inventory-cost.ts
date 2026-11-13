@@ -62,10 +62,12 @@ export interface ResolvedUnitCost {
 
 /** Human-readable source for each basis, for `basis` payload strings. */
 export const COST_BASIS_LABEL: Record<CostBasis, string> = {
-  invoice_lot_wac: "invoiced lot WAC (inventory_lot_rollup.wac)",
+  // Printed on /reports, in the export and on the price advice, so it is said
+  // in the house's words: no table or column name (r12, 2026-11-12).
+  invoice_lot_wac: "the invoiced price, averaged over the lots on hand",
   invoice_lot_wac_partial:
-    "invoiced lot WAC covering only part of the on-hand quantity (inventory_lot_rollup.wac)",
-  last_purchase_price: "restaurant_inventory.last_purchase_price",
+    "the invoiced price, averaged over lots that cover only part of what is on hand",
+  last_purchase_price: "the last price paid",
   unknown: "no recorded cost",
 };
 
@@ -199,12 +201,13 @@ export function summarizeCostBasis(
  * covered, so it is built from the coverage rather than written by hand.
  */
 export function costBasisSentence(coverage: CostCoverage): string {
-  if (coverage.total === 0) return "no inventory rows in scope";
+  if (coverage.total === 0) return "nothing in stock to price";
+  const items = (k: number) => `${k} item${k === 1 ? "" : "s"}`;
   const parts = (Object.keys(coverage.byBasis) as CostBasis[])
     .filter((b) => coverage.byBasis[b] > 0)
-    .map((b) => `${COST_BASIS_LABEL[b]} (${coverage.byBasis[b]})`);
-  const head = `per row — ${parts.join("; ")}`;
+    .map((b) => `${COST_BASIS_LABEL[b]} for ${items(coverage.byBasis[b])}`);
+  const head = `item by item — ${parts.join("; ")}`;
   return coverage.complete
-    ? `${head}; every row in scope has a recorded cost`
-    : `${head}; ${coverage.unpriced} of ${coverage.total} row(s) have no recorded cost, so any figure needing a complete valuation is null`;
+    ? `${head}; every item has a recorded cost`
+    : `${head}; ${coverage.unpriced} of ${items(coverage.total)} ${coverage.unpriced === 1 ? "has" : "have"} no recorded cost, so a figure that needs every item priced is left blank`;
 }
