@@ -52,6 +52,16 @@ function sectionName(value: string) {
   return names[value] ?? value.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
+/**
+ * A dish's one figure (r28 gap 1, slice 2). The readers keep a dish's price in
+ * `bottlePrice`, and "24 bottle" beside grilled octopus says a thing that is
+ * not so: a dish says its figure alone.
+ */
+export function dishPrice(item: Pick<MenuImportReviewItem, 'byGlassPrice' | 'bottlePrice'>) {
+  const n = item.bottlePrice ?? item.byGlassPrice
+  return n == null ? '' : String(n)
+}
+
 function price(item: MenuImportReviewItem) {
   const parts = [
     item.byGlassPrice != null ? `${item.byGlassPrice} glass` : null,
@@ -185,11 +195,25 @@ export default function HouseMenu() {
       <main className={`mx-auto px-5 py-12 sm:py-16 ${showOriginal && sourceImage ? 'grid max-w-6xl gap-10 lg:grid-cols-2' : 'max-w-4xl'}`}>
         <div>
         <p className="font-mono text-xs uppercase tracking-[0.16em] text-[#1a5e6b]">House menu · first proof</p>
-        <h1 className="mt-3 font-serif text-5xl">Your menu, set by Mudavym.</h1>
-        <p className="mt-4 max-w-2xl text-[#6d685f]">
-          It&apos;s a first proof. Lines in ink are set; a line in pencil is worth a second look. Tap it to
-          see what was read and choose its section.
-        </p>
+        {drinkItems.length === 0 && kitchen.length > 0 ? (
+          <>
+            {/* r28 gap 6, this page's half: "set by Mudavym" over sections
+                with no drink in them, when every line read was a dish. */}
+            <h1 className="mt-3 font-serif text-5xl">Your dishes, read by Mudavym.</h1>
+            <p className="mt-4 max-w-2xl text-[#6d685f]">
+              Every line read is a dish. They are kept on your menu as read. This page sets out drinks, and no
+              drink was read.
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="mt-3 font-serif text-5xl">Your menu, set by Mudavym.</h1>
+            <p className="mt-4 max-w-2xl text-[#6d685f]">
+              It&apos;s a first proof. Lines in ink are set; a line in pencil is worth a second look. Tap it to
+              see what was read and choose its section.
+            </p>
+          </>
+        )}
         {sourceImage ? (
           <button
             type="button"
@@ -208,7 +232,7 @@ export default function HouseMenu() {
           <p><strong className="block font-serif text-3xl">{drinkItems.length - pencilled}</strong><span className="text-xs uppercase tracking-wider">in ink</span></p>
           <p><strong className="block font-serif text-3xl">{pencilled}</strong><span className="text-xs uppercase tracking-wider">in pencil</span></p>
           {kitchen.length > 0 && (
-            <p><strong className="block font-serif text-3xl">{kitchen.length}</strong><span className="text-xs uppercase tracking-wider">set aside</span></p>
+            <p><strong className="block font-serif text-3xl">{kitchen.length}</strong><span className="text-xs uppercase tracking-wider">{kitchen.length === 1 ? 'dish' : 'dishes'}</span></p>
           )}
         </div>
         {/* Walk 2026-11-12: "set" and "pencilled" were never explained, and
@@ -346,10 +370,31 @@ export default function HouseMenu() {
         {placeError && (
           <p role="alert" className="mt-6 text-sm text-red-700">{placeError}</p>
         )}
+        {/* r28 gap 1, slice 2: a dish was counted, then hidden behind "set
+            aside — not Mudavym's job yet", so a kitchen that read its menu
+            saw none of it. Each dish is listed with its figure, and the page
+            says what is and is not done with it. */}
         {kitchen.length > 0 && (
-          <p className="mt-10 text-sm text-[#6d685f]">
-            {kitchen.length} kitchen {kitchen.length === 1 ? 'line' : 'lines'} set aside — not Mudavym&apos;s job yet.
-          </p>
+          <section className="mt-12" aria-labelledby="house-menu-dishes">
+            <h2 id="house-menu-dishes" className="border-b border-[#211f1b]/20 pb-3 font-serif text-3xl">
+              Dishes
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm text-[#6d685f]">
+              {kitchen.length} {kitchen.length === 1 ? 'dish' : 'dishes'} kept on your menu as read, apart from
+              the drinks. A dish is not carried to stock or prices yet.
+            </p>
+            <ul>
+              {kitchen.map((item) => (
+                <li
+                  key={item.menuItemId}
+                  className="grid grid-cols-[1fr_auto] items-baseline gap-3 border-b border-[#211f1b]/15 py-4"
+                >
+                  <span className="font-serif text-xl">{item.name || item.rawText}</span>
+                  <span className="font-mono text-sm">{dishPrice(item)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
         {absent.length > 0 && (
           <div className="mt-12 border-t border-[#211f1b]/20 pt-6 text-sm text-[#6d685f]">

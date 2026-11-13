@@ -386,8 +386,8 @@ describe('approved arrival flow', () => {
       }),
     )
     render(<MemoryRouter><HouseMenu /></MemoryRouter>)
-    expect(screen.getByText(/1 kitchen line set aside/)).toBeInTheDocument()
-    expect(screen.queryByText('Grilled octopus')).not.toBeInTheDocument()
+    expect(screen.getByText(/1 dish kept on your menu as read, apart from the drinks/)).toBeInTheDocument()
+    expect(screen.getByText('Grilled octopus')).toBeInTheDocument()
   })
 
   it('says the file could not be read instead of printing an empty proof', () => {
