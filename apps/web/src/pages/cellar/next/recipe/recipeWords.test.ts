@@ -78,4 +78,9 @@ describe('recipeWords', () => {
     expect(recipeWords('cocktail').units).toContain('barspoon');
     expect(recipeWords(null).units).toHaveLength(11);
   });
+
+  it('a fresh dish line starts in grams; a fresh drink line in ml', () => {
+    expect(recipeWords('dish').newLineUnit).toBe('g');
+    expect(recipeWords('cocktail').newLineUnit).toBe('ml');
+  });
 });

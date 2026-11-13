@@ -45,6 +45,8 @@ export interface RecipeWords {
    * keeps it (LineRow adds it back), so nothing saved is hidden.
    */
   units: readonly RecipeUnit[];
+  /** The unit a fresh line starts in: a bar pours by the ml, a kitchen weighs by the gram. */
+  newLineUnit: RecipeUnit;
 }
 
 /** A kitchen measures by weight, volume, the spoon and the piece. */
@@ -64,6 +66,7 @@ const DRINK: RecipeWords = {
   notCountedPlaceholder: 'Orange twist',
   alcohol: true,
   units: RECIPE_UNITS,
+  newLineUnit: 'ml',
 };
 
 const DISH: RecipeWords = {
@@ -81,6 +84,7 @@ const DISH: RecipeWords = {
   notCountedPlaceholder: 'Chopped parsley',
   alcohol: false,
   units: DISH_UNITS,
+  newLineUnit: 'g',
 };
 
 /** The words for a recipe's kind. Anything but a dish reads as a drink, as before. */

@@ -887,7 +887,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
             onClick={() =>
               edit((rs) => [
                 ...rs,
-                { key: nextKey(), role: 'stocked', inventoryId: null, itemName: null, itemKind: null, label: '', qtyText: '', unit: 'ml', saved: null },
+                { key: nextKey(), role: 'stocked', inventoryId: null, itemName: null, itemKind: null, label: '', qtyText: '', unit: words.newLineUnit, saved: null },
               ])
             }
           >
