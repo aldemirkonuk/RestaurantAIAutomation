@@ -116,6 +116,31 @@ describe('the first proof -- the current-menu choice', () => {
     expect(screen.queryByRole('button', { name: 'Make this the current menu' })).not.toBeInTheDocument()
   })
 
+  // #1220 (the result names the menu's kind) met #1053 (this caller): the
+  // plan's lines reach makeCurrentSentence, so a cocktail menu is not "lines".
+  it('the result names the kind of the lines the plan showed', async () => {
+    mockPlan.mockResolvedValue({
+      menuId: 'm9', current: false, generatedAt: '2026-11-11T12:00:00Z', fingerprint: 'fp-m9',
+      lines: [
+        {
+          menuItemId: 'i1', name: 'Negroni', producer: null, vintage: null, wineLibraryId: null, inventoryId: 'inv-1',
+          category: 'Cocktail', house: null,
+          bottle: { kind: 'bottle', menuPrice: 12, housePrice: 10, result: 'change', lastSet: null, lock: null },
+          glass: { kind: 'glass', menuPrice: null, housePrice: null, result: 'blank_never_priced', lastSet: null, lock: null },
+          flag: null, returned: false, vintageMismatch: false,
+        },
+      ],
+      counts: { change: 1, unchanged: 0, held_by_lock: 0, blank_kept: 0, blank_never_priced: 1, not_linked: 0, new_wine: 0 },
+      dormantLocks: [], namesReadable: true, namesReason: null,
+    } as Awaited<ReturnType<typeof getMenuPlan>>)
+    mockMake.mockResolvedValue({ outcome: 'made_current', menuId: 'm9', previousMenuIds: [], lines: 1, priceSync: { changed: 1 }, flagged: 0, failed: [] })
+    mount()
+    await chooseThroughThePlan()
+    expect(await screen.findByTestId('first-proof-choice-said')).toHaveTextContent(
+      'This is now the current menu: 1 line, 1 cocktail priced from this menu.',
+    )
+  })
+
   it('a price that failed in the switch is said by name', async () => {
     mockMake.mockResolvedValue({
       outcome: 'made_current', menuId: 'm9', previousMenuIds: [], lines: 2,
