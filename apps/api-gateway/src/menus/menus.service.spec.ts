@@ -1995,4 +1995,15 @@ describe("a line linked to a good with no library wine is planned and carried by
     expect(r.failed[0].error).toMatch(/no longer in the house's inventory/);
     expect(tables.restaurant_inventory).toHaveLength(1);
   });
+
+  it("a link to another house's good is never followed: its price is not touched", async () => {
+    const calls: RpcCall[] = [];
+    const theirs = { ...gin, id: "inv-theirs", restaurant_id: "rest-2" };
+    const tables = house([{ name: "House London Dry Gin", bottle_price: 40, inventory_item_id: "inv-theirs" }], [{ ...gin }, theirs]);
+    const service = makeService(tables, { rpcCalls: calls, rpc: priceRpc(tables) });
+    const plan = await service.planFor("rest-1", "menu-new");
+    const r = await service.makeCurrent("rest-1", "menu-new", "user-2", plan.fingerprint);
+    expect(calls.filter(([fn, a]) => fn === "set_house_menu_price" && a.p_inventory_id === "inv-theirs")).toHaveLength(0);
+    expect(r.priceSync).toEqual({ failed: 1 });
+  });
 });
