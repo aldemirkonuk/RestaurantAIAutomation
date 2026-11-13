@@ -411,6 +411,8 @@ describe("item 71 end to end — ownerMemberIds decides whose pay a pay-access m
     expect(week.labor.totalCost).toBe(337.5);
     expect(week.labor.ownerShiftsLeftOut).toBe(1);
 
+    // About pay, not booking: this shift overlaps the person's own, which the owner allows here.
+    db.tables.team_settings[0].allow_double_booking = true;
     const created = await svc.createShift(MANAGER, RID, {
       memberId: "m-owner",
       shiftDate: WEEK,

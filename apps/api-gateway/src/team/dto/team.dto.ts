@@ -11,11 +11,21 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
+  MaxLength,
   Min,
   ValidateNested,
 } from "class-validator";
 import { Type } from "class-transformer";
+import { CLOCK_TIME } from "../shift-input";
+
+/** A wage above this is a typing slip in any currency. */
+export const HOURLY_WAGE_MAX = 100_000;
+/** The longest crew message one broadcast may push to phones. */
+export const BROADCAST_MAX_CHARS = 1000;
+
+const CLOCK = { message: "$property must be a clock time like 09:00" };
 
 // ── Members ────────────────────────────────────────────────────────────────
 export class CreateTeamMemberDto {
@@ -27,7 +37,7 @@ export class CreateTeamMemberDto {
   @IsIn(["full_time", "part_time", "trial", "borrowed"])
   employmentType?: string;
   @IsOptional() @IsString() homeLocation?: string;
-  @IsOptional() @IsNumber() @Min(0) hourlyWage?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(HOURLY_WAGE_MAX) hourlyWage?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) skills?: string[];
   @IsOptional() @IsDateString() hireDate?: string;
   @IsOptional() @IsString() notes?: string;
@@ -42,7 +52,7 @@ export class UpdateTeamMemberDto {
   @IsIn(["full_time", "part_time", "trial", "borrowed"])
   employmentType?: string;
   @IsOptional() @IsString() homeLocation?: string;
-  @IsOptional() @IsNumber() @Min(0) hourlyWage?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(HOURLY_WAGE_MAX) hourlyWage?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) skills?: string[];
   @IsOptional() @IsDateString() hireDate?: string;
   @IsOptional() @IsIn(["active", "inactive", "trial"]) status?: string;
@@ -54,8 +64,8 @@ export class CreateShiftDto {
   @IsOptional() @IsUUID() scheduleId?: string;
   @IsOptional() @IsUUID() memberId?: string; // null = open shift
   @IsDateString() shiftDate: string;
-  @IsString() startTime: string;
-  @IsString() endTime: string;
+  @IsString() @Matches(CLOCK_TIME, CLOCK) startTime: string;
+  @IsString() @Matches(CLOCK_TIME, CLOCK) endTime: string;
   @IsOptional() @IsString() role?: string;
   @IsOptional()
   @IsIn(["am", "pm", "double", "split", "training", "borrowed", "open"])
@@ -72,8 +82,8 @@ export class CreateShiftDto {
 export class UpdateShiftDto {
   @IsOptional() @IsUUID() memberId?: string;
   @IsOptional() @IsDateString() shiftDate?: string;
-  @IsOptional() @IsString() startTime?: string;
-  @IsOptional() @IsString() endTime?: string;
+  @IsOptional() @IsString() @Matches(CLOCK_TIME, CLOCK) startTime?: string;
+  @IsOptional() @IsString() @Matches(CLOCK_TIME, CLOCK) endTime?: string;
   @IsOptional() @IsString() role?: string;
   @IsOptional()
   @IsIn(["am", "pm", "double", "split", "training", "borrowed", "open"])
@@ -194,7 +204,7 @@ export class IngestSalesBatchDto {
 
 // ── Broadcast ──────────────────────────────────────────────────────────────
 export class BroadcastDto {
-  @IsString() message: string;
+  @IsString() @IsNotEmpty() @MaxLength(BROADCAST_MAX_CHARS) message: string;
   /**
    * The members to reach. Mutually exclusive with `audience: "everyone"`, and
    * exactly one of the two is REQUIRED: an omitted `memberIds` used to mean

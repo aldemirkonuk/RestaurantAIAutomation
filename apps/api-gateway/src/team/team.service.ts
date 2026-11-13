@@ -16,6 +16,7 @@ import { ExpoPushService } from "../push/expo-push.service";
 import { cancelPendingInvitesFrom } from "../auth/cancel-house-invites";
 import { markMembershipLeft } from "../auth/membership-ended";
 import { noticeToHouseLeads, recordAccessChange } from "./access-audit";
+import { timeOffRefusal } from "./shift-input";
 import { recordOwnWageChange, type OwnWageReceipt } from "./own-wage-notice";
 import {
   formerOwnerPeriods,
@@ -1752,7 +1753,7 @@ export class TeamService {
   }
 
   /** The owner's double-booking setting; off when never set (ADR 0215 item 27). */
-  private async doubleBookingAllowed(
+  async doubleBookingAllowed(
     restaurantId: string,
     refuse: (what: string, err: { message: string }) => never,
   ): Promise<boolean> {
@@ -2291,6 +2292,10 @@ export class TeamService {
         );
       }
     }
+    // Days that run forwards, a year at most (QA round 4 B7). The table has
+    // no CHECK, so a request ending before it started used to be filed.
+    const daysRefusal = timeOffRefusal(dto.startDate, dto.endDate);
+    if (daysRefusal) throw new BadRequestException(daysRefusal);
 
     const { data, error } = await this.sb
       .from("time_off_requests")

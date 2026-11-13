@@ -24,6 +24,7 @@ import { NotesService } from "./notes.service";
 import { Handover, TeamService } from "./team.service";
 import { HANDOVER_CHECK_CODES } from "./pay-rules";
 import { ScheduleService } from "./schedule.service";
+import { weekStartFromQuery } from "./shift-input";
 import { PerformanceService } from "./performance.service";
 import { AwayHoldService } from "./away-hold.service";
 import { heldDetail, splitForAway } from "./away-hold";
@@ -185,7 +186,7 @@ export class TeamController {
     @Param("restaurantId") rid: string,
     @Query("weekStart") ws: string,
   ) {
-    return this.schedule.getWeek(this.uid(req), rid, ws);
+    return this.schedule.getWeek(this.uid(req), rid, weekStartFromQuery(ws));
   }
 
   @Get("my-week")
@@ -194,7 +195,7 @@ export class TeamController {
     @Param("restaurantId") rid: string,
     @Query("weekStart") ws: string,
   ) {
-    return this.schedule.getMyWeek(this.uid(req), rid, ws);
+    return this.schedule.getMyWeek(this.uid(req), rid, weekStartFromQuery(ws));
   }
 
   @Post("schedules")
