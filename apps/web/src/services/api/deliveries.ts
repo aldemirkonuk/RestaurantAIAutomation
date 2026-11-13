@@ -56,6 +56,15 @@ export interface DeliveryEvent {
   amendedAt: string | null;
 }
 
+/**
+ * Whether a closed delivery's door stock went back (r28 G2, gateway #1388).
+ * `bottlesReturned` sums each good's quantity in its own unit, so it is only
+ * read as "more than nothing", never printed as a count.
+ */
+export type StockReturn =
+  | { returned: true; bottlesReturned: number }
+  | { returned: false; error: string };
+
 export interface Proposal {
   id: string;
   delivery_id: string;
@@ -211,7 +220,12 @@ export const deliveriesApi = {
   async propose(
     id: string,
     body: ProposalBody,
-  ): Promise<{ proposalId: string; delivery: Record<string, unknown> }> {
+  ): Promise<{
+    proposalId: string;
+    delivery: Record<string, unknown>;
+    /** Only on a rejection: whether the door's stock went back. */
+    stockReturn?: StockReturn;
+  }> {
     const { data } = await apiClient.post(
       `/procurement/deliveries/${id}/proposals`,
       body,
@@ -233,6 +247,20 @@ export const deliveriesApi = {
   async accept(proposalId: string): Promise<{ status: string }> {
     const { data } = await apiClient.post(
       `/procurement/deliveries/proposals/${proposalId}/accept`,
+      {},
+    );
+    return data;
+  },
+
+  /**
+   * Give a REJECTED or CANCELLED delivery's door stock back again (r28 G2).
+   * Safe to repeat; 409 for a delivery that is still open.
+   */
+  async returnStock(
+    id: string,
+  ): Promise<{ deliveryId: string; stockReturn: StockReturn }> {
+    const { data } = await apiClient.post(
+      `/procurement/deliveries/${id}/return-stock`,
       {},
     );
     return data;
