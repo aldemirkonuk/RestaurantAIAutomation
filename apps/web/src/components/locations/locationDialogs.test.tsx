@@ -145,6 +145,20 @@ describe('with a Mudavym page on screen — the house shape', () => {
     expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
   });
 
+  it('Add location: the country list is in the flow, and Country, Street Address and Phone are named by their labels', () => {
+    render(<AddLocationDialog open onClose={() => {}} />);
+    const country = screen.getByLabelText(/^Country/);
+    expect(country).toHaveAttribute('role', 'combobox');
+    expect(country).toHaveAccessibleName('Country');
+    fireEvent.focus(country);
+    // Walk r23: the Sheet body scrolls and clipped a floating list to about
+    // two rows. In the flow the body grows or scrolls to hold it.
+    expect(screen.getByRole('listbox', { name: 'Countries' })).not.toHaveClass('absolute');
+    fireEvent.change(country, { target: { value: 'Turkey' } });
+    expect(screen.getByLabelText(/^Street Address/)).toHaveAccessibleName('Street Address');
+    expect(screen.getByLabelText('Phone').tagName).toBe('INPUT');
+  });
+
   it('CreateChainDialog is a Sheet — it authors one object', () => {
     render(
       <CreateChainDialog open onClose={() => {}} onCreated={() => {}} standaloneLocations={STANDALONE} />,

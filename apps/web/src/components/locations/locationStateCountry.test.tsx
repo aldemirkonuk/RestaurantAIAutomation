@@ -222,3 +222,12 @@ describe('the legacy dialog stays as origin/main has it', () => {
     expect(screen.queryByText(/state and country/i)).toBeNull();
   });
 });
+
+describe('the country list (walk r23, Add a location)', () => {
+  it('opens in the flow, so the scrolling sheet body cannot clip it', async () => {
+    open();
+    const country = await screen.findByRole('combobox', { name: 'Country' });
+    fireEvent.focus(country);
+    expect(screen.getByRole('listbox', { name: 'Countries' })).not.toHaveClass('absolute');
+  });
+});

@@ -311,9 +311,10 @@ export function EditLocationChainDialog({
             Country
           </label>
           {/* `.mdv-adopt`: a shared legacy control, repainted not rewritten
-              (locations-mudavym.css). */}
+              (locations-mudavym.css). `inline`: the Sheet body scrolls and
+              would clip a floating list (walk r23, Add a location). */}
           <div className="mdv-adopt">
-            <CountryCombobox id="mdv-loc-country" value={country} onChange={setCountry} />
+            <CountryCombobox id="mdv-loc-country" value={country} onChange={setCountry} inline />
           </div>
         </div>
         <div>

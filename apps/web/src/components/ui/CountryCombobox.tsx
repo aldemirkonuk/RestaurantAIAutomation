@@ -13,6 +13,14 @@ interface CountryComboboxProps {
    * "Country" when no `id` is given: with no id, no label can be tied to the box.
    */
   ariaLabel?: string
+  /**
+   * Draw the list in the flow, under the box, instead of floating over what
+   * follows. For a box inside a scrolling panel (a Sheet or a dialog body): the
+   * panel clips a floating list at its own bottom edge, and Add a location
+   * showed about two countries (walk r23). In the flow the list takes its room,
+   * the panel grows or scrolls, and the list is scrolled into view as it opens.
+   */
+  inline?: boolean
 }
 
 /**
@@ -21,7 +29,7 @@ interface CountryComboboxProps {
  * box and never the list). Arrow keys move through the list, Enter picks,
  * Escape closes; the list says which country is chosen.
  */
-export function CountryCombobox({ value, onChange, className, id, ariaLabel }: CountryComboboxProps) {
+export function CountryCombobox({ value, onChange, className, id, ariaLabel, inline = false }: CountryComboboxProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState(value)
   const [active, setActive] = useState(-1)
@@ -49,6 +57,12 @@ export function CountryCombobox({ value, onChange, className, id, ariaLabel }: C
     document.addEventListener('mousedown', onOutside)
     return () => document.removeEventListener('mousedown', onOutside)
   }, [])
+
+  // In the flow, the list opens below the panel's fold as often as not; bring
+  // the whole list into view once, as it opens.
+  useEffect(() => {
+    if (inline && shown) listRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [inline, shown])
 
   // The active option stays in view as the arrow keys move it.
   useEffect(() => {
@@ -98,33 +112,37 @@ export function CountryCombobox({ value, onChange, className, id, ariaLabel }: C
 
   return (
     <div ref={containerRef} className={`relative ${className ?? ''}`}>
-      <Globe aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
-      <input
-        id={id}
-        type="text"
-        role="combobox"
-        aria-label={ariaLabel ?? (id ? undefined : 'Country')}
-        aria-autocomplete="list"
-        aria-expanded={shown}
-        aria-controls={listId}
-        aria-activedescendant={shown && active >= 0 ? optionId(active) : undefined}
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value)
-          onChange(e.target.value)
-          setOpen(true)
-          setActive(-1)
-        }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={onKeyDown}
-        placeholder="United States, Turkey, UK…"
-        autoComplete="off"
-        className="block w-full pl-10 pr-8 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none text-sm"
-      />
-      <ChevronDown
-        aria-hidden="true"
-        className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
-      />
+      {/* The box and its two marks have their own frame, so the marks stay
+          centred on the box when an in-flow list makes the outer frame taller. */}
+      <div className="relative">
+        <Globe aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none z-10" />
+        <input
+          id={id}
+          type="text"
+          role="combobox"
+          aria-label={ariaLabel ?? (id ? undefined : 'Country')}
+          aria-autocomplete="list"
+          aria-expanded={shown}
+          aria-controls={listId}
+          aria-activedescendant={shown && active >= 0 ? optionId(active) : undefined}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            onChange(e.target.value)
+            setOpen(true)
+            setActive(-1)
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          placeholder="United States, Turkey, UK…"
+          autoComplete="off"
+          className="block w-full pl-10 pr-8 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none text-sm"
+        />
+        <ChevronDown
+          aria-hidden="true"
+          className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none transition-transform duration-150 ${open ? 'rotate-180' : ''}`}
+        />
+      </div>
 
       {shown && (
         <ul
@@ -132,7 +150,11 @@ export function CountryCombobox({ value, onChange, className, id, ariaLabel }: C
           id={listId}
           role="listbox"
           aria-label="Countries"
-          className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-56 overflow-y-auto"
+          className={
+            inline
+              ? 'mt-1 bg-white border border-gray-200 rounded-xl max-h-56 overflow-y-auto'
+              : 'absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-56 overflow-y-auto'
+          }
         >
           {filtered.map((country, i) => (
             <li
