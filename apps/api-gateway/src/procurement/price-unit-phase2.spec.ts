@@ -214,14 +214,14 @@ describe("Q3 — allowance, deposit and freight are named on the agreement", () 
     if (!after.ok) throw new Error("unreachable");
     expect(after.goods).toBe(2100);
     expect(after.total).toBe(2078);
-    expect(after.working).toContain("Goods $2100.00");
-    expect(after.working).toContain("less allowance $100.00");
-    expect(after.working).toContain("plus deposit $30.00");
-    expect(after.working).toContain("plus freight $48.00");
+    expect(after.working).toContain("Goods 2100.00");
+    expect(after.working).toContain("less allowance 100.00");
+    expect(after.working).toContain("plus deposit 30.00");
+    expect(after.working).toContain("plus freight 48.00");
     // And it STOPS there: every caller prints the figure itself, and a working
     // that carried the total printed it twice on the ledger row.
-    expect(after.working).not.toContain("= $2078.00");
-    expect(after.working.trim().endsWith("plus freight $48.00.")).toBe(true);
+    expect(after.working).not.toContain("= 2078.00");
+    expect(after.working.trim().endsWith("plus freight 48.00.")).toBe(true);
   });
 
   it("keeps the goods figure separately, so a fee can never be read as a price rise", () => {
@@ -248,7 +248,7 @@ describe("Q3 — allowance, deposit and freight are named on the agreement", () 
       ...fiveCasesOfTwelve,
       fees: { allowance: null, deposit: 0, freight: null },
     });
-    expect(zero.ok && zero.working).toContain("plus deposit $0.00");
+    expect(zero.ok && zero.working).toContain("plus deposit 0.00");
   });
 
   it("reads a garbled fee as ABSENT rather than as zero", () => {

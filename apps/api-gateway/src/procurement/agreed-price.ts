@@ -200,6 +200,12 @@ export function readStatedPriceUnit(
 export function describeAgreedPrice(input: {
   price: number | null | undefined;
   stated: StatedPriceUnit | null;
+  /**
+   * Says the figure in its own money. This function is not told the
+   * agreement's currency, so by default the figure is bare; the one caller that
+   * holds the currency (the vendor's order confirmation) passes it.
+   */
+  say?: (n: number) => string;
 }): string | null {
   // `Number(null)` is 0 and `Number.isFinite(0)` is true, so the absence has to
   // be tested before the coercion. Without this line an order with no price
@@ -208,7 +214,7 @@ export function describeAgreedPrice(input: {
   if (input.price == null) return null;
   const price = Number(input.price);
   if (!Number.isFinite(price)) return null;
-  const money = `$${price.toFixed(2)}`;
+  const money = input.say ? input.say(price) : price.toFixed(2);
   if (!input.stated) return money;
   const { priceUom, pricePackSize } = input.stated;
   const pack =
@@ -351,7 +357,7 @@ export function agreedOrderTotal(input: {
       return {
         ok: true,
         total: safePrice * input.quantity,
-        note: `Totalled as ${input.quantity} × $${safePrice.toFixed(2)} per ${priceUom}.`,
+        note: `Totalled as ${input.quantity} × ${safePrice.toFixed(2)} per ${priceUom}.`,
       };
     }
     return {
@@ -367,8 +373,8 @@ export function agreedOrderTotal(input: {
     total: Math.round(safePrice * priceUnitsBought * 100) / 100,
     note:
       pricePackSize === 1
-        ? `Totalled as ${input.bottlesTotal} × $${safePrice.toFixed(2)} per ${priceUom}.`
-        : `Totalled as ${input.bottlesTotal} bottles ÷ ${pricePackSize} = ${priceUnitsBought} ${priceUom}(s) × $${safePrice.toFixed(2)}.`,
+        ? `Totalled as ${input.bottlesTotal} × ${safePrice.toFixed(2)} per ${priceUom}.`
+        : `Totalled as ${input.bottlesTotal} bottles ÷ ${pricePackSize} = ${priceUnitsBought} ${priceUom}(s) × ${safePrice.toFixed(2)}.`,
   };
 }
 
@@ -604,10 +610,10 @@ export function agreementLineTotal(input: {
       (goods - (allowance ?? 0) + (deposit ?? 0) + (freight ?? 0)) * 100,
     ) / 100;
 
-  const parts: string[] = [`Goods $${goods.toFixed(2)}`];
-  if (allowance !== null) parts.push(`less allowance $${allowance.toFixed(2)}`);
-  if (deposit !== null) parts.push(`plus deposit $${deposit.toFixed(2)}`);
-  if (freight !== null) parts.push(`plus freight $${freight.toFixed(2)}`);
+  const parts: string[] = [`Goods ${goods.toFixed(2)}`];
+  if (allowance !== null) parts.push(`less allowance ${allowance.toFixed(2)}`);
+  if (deposit !== null) parts.push(`plus deposit ${deposit.toFixed(2)}`);
+  if (freight !== null) parts.push(`plus freight ${freight.toFixed(2)}`);
 
   // NO trailing "= $total" here. Both callers print the figure themselves —
   // the sheet above the working, the ledger row after it — and a sentence that

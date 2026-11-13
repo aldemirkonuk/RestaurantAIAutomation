@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
+import { moneyIn } from "../common/money-in";
 
 export interface SmsOptions {
   to: string;
@@ -189,13 +190,15 @@ Check Mudavym for details.`;
     wineName: string;
     quantity: number;
     totalPrice: number;
+    /** The order's own currency; absent prints the total bare. */
+    currency?: string | null;
     orderId: string;
   }): Promise<SmsResult> {
     // "Reply YES to approve or NO to decline" was removed 2026-09-02, for the
     // same reason as the REORDER prompt above: nothing in this repository
     // receives an inbound SMS. This one was the more dangerous of the two —
     // a manager who replied YES believed they had approved a purchase.
-    const message = `🍷 Order Request: ${data.quantity}x ${data.wineName} ($${data.totalPrice.toFixed(0)})
+    const message = `🍷 Order Request: ${data.quantity}x ${data.wineName} (${moneyIn(data.totalPrice, data.currency, true)})
 Approve or decline it in Mudavym.
 Order #${data.orderId.substring(0, 8)}`;
 

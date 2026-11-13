@@ -1,4 +1,4 @@
-import { ForbiddenException } from "@nestjs/common";
+import { ForbiddenException, Logger } from "@nestjs/common";
 import { ProcurementService } from "./procurement.service";
 import {
   parseDeliveredQuantity,
@@ -1497,5 +1497,63 @@ describe("verifyReceipt — a repeated identical 'Counts match' tap writes nothi
     ).rejects.toThrow(/could not be checked.*nothing was changed/);
     expect(calls.receiptEvents).toEqual([]);
     expect(calls.orderUpdates).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The agreement's fees are said in the agreement's own money
+// ---------------------------------------------------------------------------
+describe("verifyReceipt — the fee sentence on a price variance prints the agreement's currency", () => {
+  const line = (currency: string | null) => ({
+    id: "line",
+    unit_type: "bottle",
+    bottles_per_unit: 1,
+    price_uom: "bottle",
+    price_pack_size: 1,
+    final_unit_price: 40,
+    allowance: 5,
+    deposit: 2,
+    freight: 3,
+    currency,
+  });
+  const notesFor = async (currency: string | null) => {
+    const log = jest.spyOn(Logger.prototype, "log").mockImplementation();
+    const { db } = makeDb({
+      orderRow: deliveredOrder,
+      orderLineRow: line(currency),
+    });
+    await service(db).verifyReceipt(REST, ORDER, USER, {
+      invoiceQuantity: 10,
+      invoiceUnitPrice: 55,
+      invoiceCurrency: currency ?? "USD",
+      acceptedQuantity: 10,
+      priceOverrideReason: "vendor raised the price",
+    } as any);
+    const said = log.mock.calls
+      .map((c) => String(c[0]))
+      .find((m) => m.startsWith("Receipt price comparison"));
+    log.mockRestore();
+    // Only the fee sentence is this change's: the verdict's own summary is
+    // `invoice-match.ts`'s, and is not under test here.
+    return String(said).slice(String(said).indexOf("The agreement also names"));
+  };
+
+  it("a lira agreement names its allowance, deposit and freight in lira, with no dollar sign", async () => {
+    const notes = await notesFor("TRY");
+    expect(notes).toContain("an allowance of ₺5.00");
+    expect(notes).toContain("a deposit of ₺2.00");
+    expect(notes).toContain("freight of ₺3.00");
+    expect(notes).not.toContain("$");
+  });
+
+  it("an agreement that names no currency prints the figures bare, never a dollar sign", async () => {
+    const notes = await notesFor(null);
+    expect(notes).toContain("an allowance of 5.00, a deposit of 2.00, freight of 3.00.");
+    expect(notes).not.toContain("$");
+  });
+
+  it("a dollar agreement still reads in dollars", async () => {
+    const notes = await notesFor("USD");
+    expect(notes).toContain("an allowance of $5.00");
   });
 });
