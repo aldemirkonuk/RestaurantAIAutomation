@@ -23,8 +23,13 @@ import {
   ProposeDto,
   RunClocksDto,
 } from "./dto/deliveries.dto";
+import {
+  assertSettlesDeliveryMoney,
+  proposalsForRole,
+} from "./delivery-money-gate";
 
-type AuthedUser = { userId: string; restaurantId: string };
+/** `role` is the token's role at this house (`JwtStrategy`); null is none. */
+type AuthedUser = { userId: string; restaurantId: string; role?: string | null };
 
 /**
  * The delivery — the commercial event of ADR 0103 D1 / ADR 0104 D7.
@@ -53,6 +58,14 @@ type AuthedUser = { userId: string; restaurantId: string };
  * lots provisional and unpriced. `verify` is where the COST is settled — the
  * agreed price is written onto the lots this delivery booked — and it never
  * moves a quantity.
+ *
+ * WHO SETTLES MONEY (r28 invoices audit, G3). Propose, counter, accept,
+ * accept-as-billed, agree and verify decide what the house pays, so each is an
+ * owner's or a manager's act (`assertSettlesDeliveryMoney`, the same `money`
+ * row the documents controller reads). Reading, creating a delivery and
+ * attaching a paper stay open to every member: they are door work. The
+ * proposal thread is read by everyone, with its money fields withheld from a
+ * role that does not hold the house's money.
  */
 @ApiTags("procurement-deliveries")
 @ApiBearerAuth()
@@ -136,7 +149,7 @@ export class DeliveriesController {
   @ApiOperation({
     summary: "The proposal thread on one delivery (ADR 0103 D7)",
     description:
-      "Every position either side put on the record, oldest first, each with its reason class, evidence and the proposal it answers. An empty array means nobody has disputed anything; a failed read throws rather than saying so.",
+      "Every position either side put on the record, oldest first, each with its reason class, evidence and the proposal it answers. An empty array means nobody has disputed anything; a failed read throws rather than saying so. A role that does not hold the house's money (staff) reads `unit_price_proposed` and `money_at_risk` as null, and `moneyWithheld: true` says they were withheld, not absent.",
   })
   async proposals(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
     const res = await this.deliveries.proposalsFor(user.restaurantId, id);
@@ -147,7 +160,7 @@ export class DeliveriesController {
           ? HttpStatus.NOT_FOUND
           : HttpStatus.INTERNAL_SERVER_ERROR,
       );
-    return { proposals: res.value };
+    return proposalsForRole(user.role, res.value);
   }
 
   @Post(":id/documents")
@@ -182,6 +195,7 @@ export class DeliveriesController {
     @Body() body: ProposeDto,
     @CurrentUser() user: AuthedUser,
   ) {
+    assertSettlesDeliveryMoney(user, "propose");
     const res = await this.deliveries.propose(
       user.restaurantId,
       id,
@@ -203,6 +217,7 @@ export class DeliveriesController {
     @Body() body: ProposeDto,
     @CurrentUser() user: AuthedUser,
   ) {
+    assertSettlesDeliveryMoney(user, "counter");
     const res = await this.deliveries.counter(
       user.restaurantId,
       pid,
@@ -220,6 +235,7 @@ export class DeliveriesController {
       "Accepting a substitution, a vintage change or a price move above threshold is never automated. Idempotent: accepting twice returns the first acceptance rather than moving its timestamp.",
   })
   async accept(@Param("pid") pid: string, @CurrentUser() user: AuthedUser) {
+    assertSettlesDeliveryMoney(user, "accept");
     const res = await this.deliveries.accept(
       user.restaurantId,
       pid,
@@ -252,6 +268,7 @@ export class DeliveriesController {
     @Body() body: AcceptAsBilledDto,
     @CurrentUser() user: AuthedUser,
   ) {
+    assertSettlesDeliveryMoney(user, "accept_as_billed");
     const res = await this.deliveries.acceptAsBilled(
       user.restaurantId,
       id,
@@ -269,6 +286,7 @@ export class DeliveriesController {
       "Refuses unless the restaurant's position AND the vendor's position are both recorded with nothing left open, OR this vendor's `signed_ticket_is_final` is true and a signed door document is attached. **And, before either rule (ADR 0103 A11), every recorded difference — door count against paperwork, or invoice against PO — must be answered by an accepted proposal or an explicit accept-as-billed;** a refusal names the unanswered lines. The response names WHICH rule fired. Vendor silence never becomes agreement here, whatever the law deems.",
   })
   async agree(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    assertSettlesDeliveryMoney(user, "agree");
     const res = await this.deliveries.agree(user.restaurantId, id, user.userId);
     if (!res.ok) throw new HttpException(res.error, res.status);
     return res.value;
@@ -281,6 +299,7 @@ export class DeliveriesController {
       "Only from AGREED: agreement is about the document, verification is about the goods and the books, and ADR 0103 D1 never collapses them. Idempotent — a second verify returns the first one's stamp and only re-checks a cost booked at the invoice's printed price. Moves NO stock: the door count already booked it. Settles the COST: the agreed price becomes the cost of the lots this delivery booked, and an item with no usable price stays provisional. `costNote` says in words what was settled and what was not.",
   })
   async verify(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
+    assertSettlesDeliveryMoney(user, "verify");
     const res = await this.deliveries.verify(
       user.restaurantId,
       id,
