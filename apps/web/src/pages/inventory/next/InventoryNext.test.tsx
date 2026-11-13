@@ -108,7 +108,7 @@ vi.mock('@/components/mudavym/DeliveriesToName', () => ({
 import { toast } from 'sonner';
 import InventoryNext from './InventoryNext';
 import { IV_DEFAULT, readView, writeView } from './iv-url';
-import { fold, matchesSearch, needsYouFirst, readSentence, sortRows, sortWords, toRow, typeLabel, typeOf } from './useInventoryNextData';
+import { fold, matchesSearch, needsYouFirst, readSentence, sortRows, sortWords, toRow, typeLabel, typeOf, withHouseKind } from './useInventoryNextData';
 
 function row(over: Partial<InvRow> = {}): InvRow {
   return {
@@ -576,6 +576,20 @@ describe('every drink, not only wine (INV-W30)', () => {
     expect(typeOf(undefined, 'spirit')).toEqual({ type: 'spirit', kind: 'spirit' });
     expect(typeOf('red', 'Beer')).toEqual({ type: 'beer', kind: 'beer' });
     expect(typeOf(null, 'non_alcoholic')).toEqual({ type: 'non_alcoholic', kind: 'non_alcoholic' });
+  });
+
+  it("a drink the house added itself reads the house's kind, never \"not recorded\" (r15 walk)", () => {
+    const gin = toRow({ id: 'i3', wineId: null, stockLive: 2, kind: 'spirit' } as never, null);
+    expect([gin.type, gin.kind]).toEqual(['spirit', 'spirit']);
+    const tonic = toRow({ id: 'i4', wineId: null, stockLive: 12, kind: 'soft_drink' } as never, null);
+    expect([tonic.type, typeLabel(tonic.type as string)]).toEqual(['soft_drink', 'Soft drink']);
+    // A food or supply is not a drink type: the list says Food or Supply from its own column.
+    expect(toRow({ id: 'i5', wineId: null, stockLive: 1, kind: 'food' } as never, null).type).toBeNull();
+    expect(withHouseKind({ type: null, kind: null }, 'supply')).toEqual({ type: null, kind: null });
+    // The library's word wins wherever it has one: a wine's style, or its classifier's doubt.
+    expect(withHouseKind({ type: 'red', kind: 'wine' }, 'spirit')).toEqual({ type: 'red', kind: 'wine' });
+    expect(withHouseKind({ type: 'unclassified', kind: 'unknown' }, 'beer')).toEqual({ type: 'unclassified', kind: 'unknown' });
+    expect(withHouseKind({ type: null, kind: null }, null)).toEqual({ type: null, kind: null });
   });
 
   it('keeps "the classifier could not tell" apart from "nothing recorded"', () => {
