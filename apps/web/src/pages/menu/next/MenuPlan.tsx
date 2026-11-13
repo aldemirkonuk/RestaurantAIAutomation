@@ -288,7 +288,9 @@ export function MenuPlan(props: MenuPlanProps) {
     if (!planNeedsScroll(el.getBoundingClientRect().top, vh)) return;
     const reduce =
       typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    el.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+    // 'instant', not 'auto': globals.css puts `scroll-smooth` on <html>,
+    // so 'auto' would still glide for a reader who asked for reduced motion.
+    el.scrollIntoView({ block: 'start', behavior: reduce ? 'instant' : 'smooth' });
   }, []);
   return (
     <div ref={anchor} data-testid="menu-plan-anchor" style={{ scrollMarginTop: 16 }}>
