@@ -30,6 +30,9 @@ import { HouseLettersController } from "./letters/house-letters.controller";
 import { HouseLettersService } from "./letters/house-letters.service";
 import { HouseLettersCron } from "./letters/house-letters.cron";
 import { HouseSenderService } from "./letters/house-sender.service";
+// W25 / ADR 0313 (4a-i) — the order-request letter's renderer and its service door.
+import { OrderRequestController } from "./letters/order-request.controller";
+import { OrderRequestService } from "./letters/order-request.service";
 import { HouseInboxService } from "./inbox/house-inbox.service";
 import { HouseInboxCron } from "./inbox/house-inbox.cron";
 import { RelayEmailController } from "./relay/relay-email.controller";
@@ -65,6 +68,8 @@ import { OrganizationsService } from "../organizations/organizations.service";
     HouseLettersController,
     // ADR 0149 #19 — POST /communications/email, two locked doors.
     RelayEmailController,
+    // W25 / ADR 0313 — POST /internal/letters/order-request, ServiceKeyGuard only.
+    OrderRequestController,
   ],
   providers: [
     GmailService,
@@ -142,6 +147,7 @@ import { OrganizationsService } from "../organizations/organizations.service";
     // window) rather than sending immediately. This is what actually sends
     // it once the window closes — see relay-email.cron.ts.
     RelayEmailCron,
+    OrderRequestService,
   ],
   exports: [
     GmailService,

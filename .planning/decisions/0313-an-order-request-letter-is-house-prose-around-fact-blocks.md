@@ -1,0 +1,87 @@
+# 0313 — An order-request letter is house prose around fact blocks
+
+- **Status:** Proposed. Decided by executor R2 under the founder's 2026-10-07T20:04:10Z delegation ("Do not ask me questions, I allow and approve for you to decide on your own. If its a decision question then research deep, find answers"). It is the coordinator lane's call, not the founder's pick, and he may override it. F3 (the default words, number-word lists, TR/EN) and F9 stay his. [2026-10-08: F3's English half is answered and LOCKED; the Turkish default is DRAFT until he approves it. See "F3, answered" below.] [2026-10-08, later: the Turkish words are LOCKED too; he picked "Approve as drafted". Only the number-word lists stay open in F3.]
+- **Date:** 2026-10-08
+- **Decider:** executor R2 (coordinator d3's lane), under the delegation above; the founder's override stands over it
+- **Keywords:** W25, F5, order_request, LETTER_CATEGORIES, renderer, fact blocks, prose predicate, PR-4a, ORDER_REQUEST
+- **Links:** [[0266-an-orders-vendor-letter-is-staged-once]] (F2, F4, F5 at :37, the PR split), [[0173]] D2/D4 (template guardrails, roles), [[0260-communications-walk-through-r2-rulings]] (W25). Research: `p4-scratch/review-snap-2/research/w25-f106-design-2026-10-02.md` §3; `w25-pr4a-f5-rescope-2026-10-08.md`; `w25-pr4a-f5-adversary-2026-10-08.md`.
+
+## Context
+
+ADR 0266 F5: the founder ruled "Editable now" against the recommendation. The order request becomes a sixth `LETTER_CATEGORIES` purpose (`house-letters.service.ts:156-165`), and its template writes get an owner/manager guard and 0173 D2's guardrails. The 2026-10-02 design (§3) had a deterministic renderer with no house editing, so PR-4a had to be re-scoped.
+
+Measured at c4005eb09 (the re-scope, confirmed by the adversary):
+- There is no server merge engine. The composer pastes a template verbatim, and the queue refuses any `{{…}}` left in it (`ComposeSheet.tsx:221-228`, `composer-guardrails.ts:101-108`).
+- None of 0173 D2's guardrails are in code: no versions, no draft or publish step, no preview, no reset.
+- Template writes have no role guard. `house-letters-drafts-roles.spec.ts:186-200` pins the five purposes open to staff.
+- `procurement_orders.created_by` is NULL on recurring orders.
+- A no-price order stores `final_price = 0` (`procurement.service.ts:1076`).
+
+## Options considered
+
+1. **A — fixed prose slots.** The house edits a few named sentences, and the renderer places them around the facts. Safest, but it is close to read-only. It does not meet "Editable now" as F5 was asked: "a sixth purpose", edited like the other five.
+2. **B — house prose around block tokens (chosen).** The house writes the body. A closed set of tokens each stand for a whole block, never a single figure:
+   - required: `{{greeting}}`, `{{order_lines}}`, `{{ask}}`, `{{signer}}`;
+   - optional: deliver-to, needed-by, payment terms, the courtesy line.
+
+   There is no price, quantity or order-number token. The renderer owns the subject and the Mudavym line (F4), and the facts hash covers every fact any template can show.
+3. **C — full body plus a checker.** The house writes everything, and a validator compares the figures. This gives the house the most freedom and is the hardest to make safe; a missed figure reaches a vendor. (F2 at 0266:35 rejected the *AI* writing the whole body. That is a different author, so it is not cited against C.)
+4. **Do nothing.** F5 stays unbuilt and PR-4b drafts from fixed words. That goes against a founder ruling.
+
+## Decision
+
+B, with the adversary's eleven required changes.
+
+- **Predicate on the house's prose** (everything outside the tokens), run at save and at publish:
+  - Normalise first: NFKC, then strip `\p{Cf}`.
+  - Refuse any `\p{N}` and any `\p{Sc}`, ISO currency codes and currency words, any URL or bare domain, and any `{` `}` `<` `>` left after the tokens are removed.
+  - Refuse an unknown or missing required token.
+  - Refuse money-and-terms words in EN and TR: price/fiyat, free/bedava, discount/indirim, payment/ödeme/vade.
+  - Refuse the commitment patterns.
+  - Weekdays, months and Turkish number words are not refused by list, because they collide with everyday words (bir, on, Pazar, Ocak, May). Number words are part of F3: EN "two" and up plus dozen/hundred are proposed; TR refuses a number word only when it is followed by a unit or currency noun. 4a-i enforces this proposal as written (fail-safe while F3 is open; it changes only what a house may save in 4a-ii and which courtesy lines are dropped). Email addresses (`@`) are refused with links.
+- **The invariant is stated narrowly:** no numeral, currency symbol, link or figure token outside the blocks. It is not "by construction". Figures by reference ("same price as last time", "free delivery" in a language not listed, "by Friday") can still get through. The house's own reading is the backstop, as 0173:48 already accepts.
+- **Price comes from the order line** (`procurement_order_items`: `final_unit_price`, then negotiated, then quoted, the price already told under W12c F7), and only when the placer is an owner or manager (W12b F6). A header price of 0 with no positive line price means "no price on file": `{{ask}}` then asks for a price and never says "confirm". [Corrected 2026-10-08 at build: this first cited `readAgreedLine` (`procurement.service.ts:2497`). It is private to `ProcurementService`, reads `final_unit_price` only, and maps a NULL price to 0 (`Number(null)`), so 4a-i reads the line itself and treats NULL or 0 as no price.] A NULL `created_by`, or a placer with no role, fails closed: quantities only, and the house alone as signer.
+- **Guard scope (fork R2): only `order_request`.** Writes to it need owner or manager, and the role is checked against the *stored* category, so staff cannot switch a row's purpose to get around the guard (`TemplateSheet.tsx:403-414`, HLS `:1532-1549`). The five composer purposes stay as they are. They are a decided, working feature that the spec pins open, and 0173 D4 is about the catalogue, while 0173:60 leaves vendor-letter storage open. An OD row asks whether D4 reaches them.
+- **Split:**
+  - **4a-i** (`feat/w25-order-request-renderer`) ships no template write. It holds the renderer, the internal door, the `ORDER_REQUEST` kind and the default words.
+  - **4a-ii** (`feat/w25-order-request-editable`) adds `order_request` to `LETTER_CATEGORIES`, plus the predicate on writes, versions, publish, preview, reset and the role guard. It never auto-publishes a body saved earlier, and it refuses a duplicate `order_request` row by name. [2026-10-08, at the 4a-ii audit: as built, it refuses ANY second `order_request` row for the house, whatever its name. The 409 names the existing letter. The migration's unique index is per house.]
+  - **4a-ii as built (2026-10-08).** Migration `a_house_letter_has_versions`: `letter_template_versions` is append-only (trigger), tenant-bound to its template, numbered per (template, locale) with R4's `locale` (`en`|`tr`, default `en`), and kind `publish`|`reset`. `communication_templates.published_version_id` may point only at its own template's version. A partial unique index allows one `order_request` letter per house, and a house already holding two is named and the migration stops. No statement writes the pointer, so nothing saved earlier is published. Saving (`POST templates`) writes the draft only. It checks the role against the stored category, refuses a subject (R7), refuses a purpose change either way, and returns each refused sentence's class. Preview renders the saved draft over a priced and an unpriced example and returns a hash of renderer version, locale and body. Publish takes only that hash, matched against the draft as it is now. Reset publishes the house-language default as a version and puts it in the draft. Restore copies a version into the draft and publishes nothing. The four routes are `@Roles("owner","manager")` and re-checked in the service. `GET templates/order-request` is open, so staff can read it. The renderer reads only the published version in the house's locale; a version in the other locale gives the default. A failed read or a foreign pointer is a 500, never the default. The staged row names the version id and its hash. The legacy settings CRUD (`PATCH`/`DELETE /restaurants/:restaurantId/templates/:templateId`, open to every member) reads the stored row and refuses the order letter, so no member can overwrite its draft or change its `type` there, which would make vendors silently get the default. That door was found at the pre-push audit (B1), and no other writer of `communication_templates` exists. The read shows the newest 50 versions and fetches the live one by its id, so a long history never hides what is published. R8 is enforced on the server: the composer's purposes and the template library leave out `order_request`, and the TemplateSheet's own panel edits it. This replaced the plan's ComposeSheet filter. **Not built:** R13's notice that the default changed since a house published. It is owed before PR-4b. CLAIMS rows: `W25-TEMPLATE-WRITES-OWNER-MANAGER`, `W25-TEMPLATE-VERSIONS-LOCKED-DOWN` and `W25-ORDER-LETTER-NOT-IN-LEGACY-CRUD` sit in the 4a-i claims file to hold the PR to 15 files, and `W25-ORDER-REQUEST-IS-A-PURPOSE` is resolved. `ADR-0230-DRAFTS-DISCARD-REFUSE-STAFF` now counts six gated routes, and `ADR-0164-ROLES-EXACT-MANAGERS-KEPT` counts a 205-row census.
+  - **PR-4b's flag** waits for both F3 and 4a-ii.
+- **Other forks, decided on evidence:**
+  - R3: versions go in a new append-only `letter_template_versions` table.
+  - R5: a template edit does not make a waiting letter stale; only the facts hash does.
+  - R7: the renderer owns the subject.
+  - R8: `order_request` is kept out of the composer's template picker.
+  - R11: this decision gets a new ADR rather than an amendment to 0266.
+  - R13: a published house version is never touched when the default changes; a notice is shown instead.
+  - R4 (a `locale` key on versions, default `en`) is part of F3. It is built now, and he may change it. [2026-10-08: correction. It is not in 4a-i. 4a-i has no versions, so the key lands with 4a-ii. 4a-i's locale is the house-country rule under "F3, answered".]
+- **F3, answered 2026-10-08** (the founder, AskUserQuestion). He picked **"Approve + Turkish now"**, whose text read: *"Lock the English words, and I draft a Turkish default for you to approve before PR-4b. Tuzlu is a Turkish house, so its vendors would get Turkish first."* What he approved is the English sample in `p4-scratch/review-snap-2/research/w25-f3-rendered-samples-2026-10-08.txt`.
+  - **English: LOCKED.** The renderer's English words (subject, greeting, block texts, both asks, the F4 line) and `DEFAULT_ORDER_REQUEST_TEMPLATE` are those words. The render of the same facts is byte-identical to the approved sample, apart from that sample's own fixture. One render fix was needed so stored data produces those words: `unit_type` is stored singular (`case`, `bottle`, …; migration `order_line_capture_and_units`), so the line unit is now written from a unit-word table ("3 cases", "1 case"). Before this fix, a real row would have rendered "3 case". Renderer version is `order_request/2`.
+  - **Turkish: LOCKED 2026-10-08.** [Was: DRAFT until he approves it, before PR-4b.] He was shown the Tuzlu sample (`w25-f3-tr-rendered-samples-2026-10-08.txt`: owner letter, the no-price ask, the staff letter with no prices) and picked **"Approve as drafted (Recommended)"**. The rejected options were "Approve with 2 tweaks" ("ürün kodunuz" for "sizdeki kod", and "Teslim edebileceğiniz tarihi bize bildirir misiniz?" for the date ask) and "I'll give my own words". `DEFAULT_ORDER_REQUEST_TEMPLATE_TR` and the Turkish block words use "siz" forms. The subject is `Sipariş {no} — {house}`. Figures use a decimal comma and a thousands dot ("1.250,50 TRY"), and dates are written dd.mm.yyyy. Units are translated (case→koli, bottle→şişe, keg→fıçı, pack→paket, split_case→karışık koli, each→adet, liter→litre), and an unknown unit is written as stored. No suffix is put on a fact value: the sentence carries it on a word the renderer owns (`PO-1042 sipariş numarasını`, `{house} adına`). The F4 line is the brief's wording: "Bu mesaj Mudavym tarafından {house} adına hazırlanmıştır."
+  - The courtesy-line and prose-predicate rules are the same for both locales.
+  - Neither pick names the **number-word lists**. They stay as proposed and enforced, and they are the one part of F3 still open.
+  - **The locale comes from the house's country (decided on evidence).** No locale column exists on `restaurants` or `providers`. `houseLocale(restaurants.country)` normalises the value: trim, lower-case with the `tr` locale, fold diacritics, and read dotless ı as i. The result `tr`, `turkey` or `turkiye` (so "Türkiye") gives `tr`. Anything else, NULL included, gives `en`. The locale is part of the facts hash. R4's per-version `locale` key still lands with 4a-ii's versions, and the country rule is the default it falls back to. CLAIMS row `W25-ORDER-REQUEST-LOCALE-FROM-COUNTRY`.
+- **The internal door** (`POST /internal/letters/order-request`, `@Public()` + `ServiceKeyGuard`) takes `restaurant_id` from the order row, never from the request body. `check_route_exposure.py` reports it as "public", so a mutation-tested CLAIMS row is its real guard.
+
+## Consequences
+
+- The house writes its own order letter, and no figure it types reaches a vendor; figures come only from the facts blocks.
+- Some legitimate prose is refused: a digit in "2 days", or "free" in a sentence. The refusal names the class.
+- The commitment patterns have no Turkish entries (`commitment-patterns.ts:30-50`), so that check does nothing for the Turkish house. Adding Turkish patterns is a separate lane.
+- ServiceKeyGuard is the founder's `ADMIN_API_KEY`. The precedent is `ux-optimizer.controller.ts:66-79`.
+- **PR-4b must retire the approval-time `ORDER_CONFIRMATION` writer for the order.** `stage_order_letter` dedupes within one kind only, and the pending-draft trigger (ADR 0266) is kind-blind and settles newest-wins. A second writer of a different kind would therefore replace the order request, and F-106's two-letter shape would come back as a replacement. Found at the PR-4a-i audit (N4).
+- **Revisit when:**
+  - F3's number-word lists are answered (the English and Turkish words were both locked 2026-10-08);
+  - a vendor letter is reported carrying a figure the order does not hold;
+  - the OD on 0173 D4's reach is answered;
+  - Turkish commitment patterns land.
+
+## Review trail
+
+| Date | Reviewer | Outcome |
+|---|---|---|
+| 2026-10-08 | — | Created, executor R2, branch feat/w25-order-request-renderer (4a-i). Re-scope by one research agent; an adversary pass upheld B with 11 required changes, and all are adopted above |
+| 2026-10-08 | founder (AskUserQuestion) | F3 answered: "Approve + Turkish now". English words LOCKED; Turkish default drafted as DRAFT; locale from `restaurants.country` decided on evidence (follow-up on feat/w25-order-request-renderer, #674) |
+| 2026-10-08 | founder (AskUserQuestion) | Turkish default approved: "Approve as drafted (Recommended)". Turkish words LOCKED; the number-word lists stay open (#674) |
+| 2026-10-08 | — | 4a-ii built, branch feat/w25-order-request-editable (stacked on #674): versions, publish, preview, reset, restore, the owner/manager guard against the stored category, the TemplateSheet order-letter panel. R13 notice not built (owed before PR-4b) |
+| 2026-10-08 | — | 4a-ii pre-push audit FAIL (B1: the legacy `/restaurants/:id/templates` CRUD could write the order letter). Fixed on the same branch: the legacy CRUD refuses the stored order letter; the claims were tightened (D1); the live version is read by its id (D2); wording corrected |
