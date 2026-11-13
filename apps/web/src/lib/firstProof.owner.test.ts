@@ -103,6 +103,13 @@ describe('the first proof is the account’s and the house’s (gap 7)', () => {
     expect(readProof()).toBeNull()
   })
 
+  it('two tokens of the same house that both lack the account match by the house', () => {
+    signIn({ restaurantId: 'house-A', iat: 1 })
+    writeProof(result)
+    signIn({ restaurantId: 'house-A', iat: 2 })
+    expect(readProof()?.menuId).toBe('m-A')
+  })
+
   it('reads a token whose claims use the URL-safe letters (- and _)', () => {
     // '?>>' and '~~~' encode to '/' and '+' in plain base64, '_' and '-' here.
     const claims = { ...ownerA, name: '?>>?>>~~~' }
