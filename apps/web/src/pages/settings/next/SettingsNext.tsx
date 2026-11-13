@@ -226,9 +226,16 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
     // at `overflow: hidden`, and the scroll asked for then never moved the
     // page. It waits for the overlay to let go, and counts as done only once
     // it has run.
+    // The arrival is a jump, never an animation (r29 walk): on a full load the
+    // theme prompt can open a few hundred ms AFTER this runs, and its scroll
+    // lock cut a smooth scroll off partway, leaving the page about a third of
+    // the way down. An instant scroll is done before any overlay can lock the
+    // body, and `overflow: hidden` keeps the position it lands on. A browser's
+    // own #fragment arrival is instant too; a contents click (below) still
+    // glides.
     return whenBodyScrollUnlocked(() => {
       scrolledRef.current = true;
-      el.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+      el.scrollIntoView({ behavior: 'auto', block: 'start' });
     });
   }, [tabParam, connectionsOn, live]);
 

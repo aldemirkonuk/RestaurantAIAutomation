@@ -591,6 +591,21 @@ describe('SettingsNext — the editorial spine', () => {
     expect(scrolledTo.id).toBe('st-section-measurement');
   });
 
+  // r29 walk: on a full load the theme prompt opened ~400 ms after the deep
+  // link had already asked for its scroll, and the prompt's lock cut a SMOOTH
+  // scroll off partway (the page stopped about a third of the way down). The
+  // arrival is an instant jump, so it is finished before any lock can land;
+  // only a contents click glides.
+  it('a ?tab= deep link arrives with an instant jump, and a contents click still glides (r29 walk)', () => {
+    mount('/settings?tab=measurement');
+    const calls = (Element.prototype.scrollIntoView as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toEqual({ behavior: 'auto', block: 'start' });
+    fireEvent.click(within(screen.getByRole('navigation', { name: /settings registers/i })).getByText('What it carries'));
+    expect(calls).toHaveLength(2);
+    expect(calls[1][0]).toEqual({ behavior: 'smooth', block: 'start' });
+  });
+
   it('honours a ?tab=hours deep link the same way — graft B lives under "The house"', () => {
     mount('/settings?tab=hours');
     expect(screen.getByTestId('st-section-hours')).toBeInTheDocument();
