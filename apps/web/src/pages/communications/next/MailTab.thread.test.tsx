@@ -239,6 +239,41 @@ describe('a thread', () => {
     expect(screen.queryByText('Open the drafted reply')).toBeNull();
   });
 
+  // r28 gap 3: a thread with a vendor can be answered by hand.
+  const VENDOR_THREAD = () => ({
+    ...THREAD,
+    person: { key: 'vendor:p1', kind: 'vendor', providerId: 'p1', name: 'Bodega Álvaro' },
+    messages: [...THREAD.messages, letter({ id: 'm6', direction: 'inbound', door: 'house_mailbox', receivedAt: '2026-11-07T09:00:00Z', sentAt: null })],
+  });
+
+  it('an owner or manager can write a reply to the newest letter, beside the drafted one', async () => {
+    routes['/mail/thread'] = VENDOR_THREAD;
+    const onAnswer = vi.fn();
+    const { onOpenReply } = mount('/communications?thread=gm%3Aabc', { draftedOrderIds: new Set(['o1']), onAnswer });
+    fireEvent.click(await screen.findByTestId('write-thread-reply'));
+    expect(onAnswer).toHaveBeenCalledWith({ providerId: 'p1', answers: 'm6', subject: 'Re: Standing order' });
+    expect(onOpenReply).not.toHaveBeenCalled();
+    expect(screen.getByTestId('open-thread-reply')).toHaveTextContent('Open the drafted reply');
+  });
+
+  it('a thread with no vendor offers no reply to write', async () => {
+    const onAnswer = vi.fn();
+    mount('/communications?thread=gm%3Aabc', { onAnswer });
+    await screen.findAllByTestId('mail-letter');
+    expect(screen.queryByTestId('write-thread-reply')).toBeNull();
+  });
+
+  it.each([
+    ['staff', { user: { role: 'staff', restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: 'staff' }],
+    ['an unknown role', { user: { restaurantId: 'r1' }, activeRestaurantId: 'r1', activeRole: null }],
+  ])('%s sees no "Write a reply"', async (_who, a) => {
+    auth.current = a;
+    routes['/mail/thread'] = VENDOR_THREAD;
+    mount('/communications?thread=gm%3Aabc', { onAnswer: vi.fn() });
+    await screen.findAllByTestId('mail-letter');
+    expect(screen.queryByTestId('write-thread-reply')).toBeNull();
+  });
+
   it('a thread that is not this house\'s says so', async () => {
     routes['/mail/thread'] = () => ({ key: 'gm:zzz', subject: null, person: null, order: null, messages: [], before: null });
     mount('/communications?thread=gm%3Azzz');

@@ -8,16 +8,18 @@
  * (prc-02). A letter whose original was removed under the retention rule says
  * so; its facts stay.
  *
- * The reply act is the existing drafted reply and its sealed approve: an owner
- * or manager sees "Open the drafted reply" when this thread's order has one
- * waiting; staff and an unknown role see no composer act (ADR 0357 answer 3,
- * proposal F6).
+ * The reply acts: an owner or manager sees "Open the drafted reply" when this
+ * thread's order has one waiting (its sealed approve), and "Write a reply" on
+ * any thread with a vendor, which opens the composer on an answer to the
+ * thread's newest letter (r28 gap 3: it joins this thread and carries
+ * In-Reply-To). Staff and an unknown role see no composer act (ADR 0357
+ * answer 3, proposal F6).
  */
 
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './cm-format';
-import { letterAt, letterLook, type MailMessage } from './mail-format';
+import { answerFor, letterAt, letterLook, type MailAnswer, type MailMessage } from './mail-format';
 import { QueuedPullBack } from './QueuedPullBack';
 import { useMailThread } from './useMailData';
 
@@ -132,6 +134,7 @@ export function MailThread({
   canReply,
   draftedOrderIds,
   onOpenReply,
+  onAnswer,
   bookFacts,
 }: {
   threadKey: string;
@@ -143,6 +146,8 @@ export function MailThread({
   /** Orders with a drafted reply waiting (useCommsNextData's drafts). */
   draftedOrderIds: ReadonlySet<string>;
   onOpenReply: (orderId: string) => void;
+  /** Opens the composer on a reply to this thread's newest letter (gap 3). */
+  onAnswer?: (answer: MailAnswer) => void;
   bookFacts?: ReadonlyMap<string, LetterFacts>;
 }) {
   const q = useMailThread(threadKey);
@@ -156,6 +161,9 @@ export function MailThread({
   const vendor = head?.person?.name ?? 'The vendor';
   const order = head?.order ?? null;
   const replyOrder = canReply && order && draftedOrderIds.has(order.id) ? order.id : null;
+  // Any thread with a vendor can be answered by hand, order or not; the
+  // drafted reply, when there is one, stays the first act.
+  const answer = canReply && onAnswer ? answerFor(head, letters) : null;
 
   return (
     <section aria-label="Thread" className="grid gap-3" style={{ fontFamily: SANS }}>
@@ -249,25 +257,46 @@ export function MailThread({
             </p>
           )}
 
-          {replyOrder && (
-            <div>
-              <button
-                type="button"
-                data-testid="open-thread-reply"
-                onClick={() => onOpenReply(replyOrder)}
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
-                  background: 'var(--seal-tint, rgba(26,94,107,.1))',
-                  color: 'var(--seal-deep, #14515C)',
-                  cursor: 'pointer',
-                }}
-              >
-                Open the drafted reply
-              </button>
+          {(replyOrder || answer) && (
+            <div className="flex flex-wrap gap-2">
+              {replyOrder && (
+                <button
+                  type="button"
+                  data-testid="open-thread-reply"
+                  onClick={() => onOpenReply(replyOrder)}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    border: '1px solid var(--seal-ring, rgba(26,94,107,.32))',
+                    background: 'var(--seal-tint, rgba(26,94,107,.1))',
+                    color: 'var(--seal-deep, #14515C)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Open the drafted reply
+                </button>
+              )}
+              {answer && (
+                <button
+                  type="button"
+                  data-testid="write-thread-reply"
+                  onClick={() => onAnswer?.(answer)}
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    border: '1px solid var(--rule, rgba(33,28,22,.14))',
+                    background: 'transparent',
+                    color: 'var(--seal-deep, #14515C)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Write a reply
+                </button>
+              )}
             </div>
           )}
         </>

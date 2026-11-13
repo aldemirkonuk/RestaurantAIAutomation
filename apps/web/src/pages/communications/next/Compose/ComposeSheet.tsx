@@ -88,6 +88,8 @@ export interface HeldLetter {
   body: string;
   insights: InsightSentence[];
   templateId: string;
+  /** The house's letter this one answers, when it was opened from Mail's "Write a reply". */
+  answers?: string;
 }
 
 export interface ComposeSheetProps {
@@ -119,6 +121,12 @@ export interface ComposeSheetProps {
      * body above are a person's held changes to it; blank for a new letter.
      */
     baseline?: { subject: string; body: string; to: string | null };
+    /**
+     * The house's letter this one answers (Mail's "Write a reply", r28 gap 3).
+     * The gateway files the reply in that letter's thread and sends it with
+     * In-Reply-To. With no `to`, the vendor's own address in the book is chosen.
+     */
+    answers?: string;
   } | null;
   /** Called once a draft was discarded, so the page can drop it. */
   onDiscarded?: () => void;
@@ -141,6 +149,20 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
     );
     if (hit) setTo({ providerId: hit.providerId, providerName: hit.providerName, email: hit.email });
   }, [to, booked?.id, booked?.email, data.book]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A reply opened from Mail names its vendor, not an address: the vendor's
+  // own address in the book first, else its first contact. Chosen once, so
+  // "Change" leaves the recipient free to choose.
+  const answers = prefill?.answers;
+  const replyVendor = answers && !prefill?.to ? prefill?.providerId ?? null : null;
+  const replyChosen = useRef(false);
+  useEffect(() => {
+    if (replyChosen.current || to || !replyVendor || !data.book) return;
+    const theirs = data.book.filter((e) => e.providerId === replyVendor);
+    const hit = theirs.find((e) => e.source === 'provider') ?? theirs[0];
+    if (!hit) return;
+    replyChosen.current = true;
+    setTo({ providerId: hit.providerId, providerName: hit.providerName, email: hit.email });
+  }, [to, replyVendor, data.book]);
   const [subject, setSubject] = useState(prefill?.subject ?? '');
   const [body, setBody] = useState(prefill?.body ?? '');
   const [chosen, setChosen] = useState<InsightSentence[]>(prefill?.insights ?? []);
@@ -214,7 +236,7 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
     body.trim() !== base.body.trim();
   const dirty = !gone && changed;
   const leave = () => {
-    if (dirty) onHold?.({ to, subject, body, insights: chosen, templateId });
+    if (dirty) onHold?.({ to, subject, body, insights: chosen, templateId, answers });
     onClose();
   };
 
@@ -252,13 +274,15 @@ export function ComposeSheet({ open, onClose, onHold, prefill, onDiscarded }: Co
             // the gateway checks it is still this house's draft to this vendor.
             draftId: draftId || undefined,
             templateId: templateId || undefined,
+            // A reply names the letter it answers, and only to that letter's vendor.
+            answers: answers && to.providerId === prefill?.providerId ? answers : undefined,
             insights: chosen.map((c) => ({
               candidateKey: c.candidateKey,
               sentence: c.sentence,
             })),
           }
         : null,
-    [to, subject, body, draftId, templateId, chosen],
+    [to, subject, body, draftId, templateId, chosen, answers, prefill?.providerId],
   );
 
   /**
