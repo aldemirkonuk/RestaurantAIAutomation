@@ -168,6 +168,17 @@ describe('the plan comes into view when it opens', () => {
     expect(spy.mock.calls[0][0]).toMatchObject({ block: 'start' });
   });
 
+  it('a reader who asked for reduced motion is moved at once, not glided (<html> scrolls smooth by CSS)', () => {
+    const real = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: q.includes('reduce'), media: q, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+    try {
+      const spy = mountAt(window.innerHeight + 900);
+      expect(spy.mock.calls[0][0]).toMatchObject({ block: 'start', behavior: 'instant' });
+    } finally {
+      window.matchMedia = real;
+    }
+  });
+
   it('already where the reader is looking, it stays still', () => {
     const spy = mountAt(40);
     expect(spy).not.toHaveBeenCalled();
