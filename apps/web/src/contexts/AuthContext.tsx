@@ -32,6 +32,8 @@ import { leaveDeadSession } from "../lib/deadSession";
 import {
   isTransientSessionReadFailure,
   sessionReadRetryDelayMs,
+  sessionReadWaitReason,
+  type SessionReadWait,
 } from "../lib/sessionReadRetry";
 import { syncManager } from "../lib/sync-manager";
 import { flushDoorOutbox } from "../lib/doorOutbox";
@@ -215,6 +217,12 @@ export interface HouseOpened {
 export interface AuthContextType {
   user: User | null;
   loading: boolean;
+  /**
+   * While `loading`, the boot read of `/auth/me` is waiting to ask again
+   * after a 429, a 408/5xx or no response, and why (r22). Null otherwise.
+   * The loading screens say it in words (`sessionWaitNote`).
+   */
+  sessionWait: SessionReadWait | null;
   error: string | null;
   clearError: () => void;
   activeRestaurantId: string | null;
@@ -365,6 +373,9 @@ function userFrom(
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionWait, setSessionWait] = useState<SessionReadWait | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [activeRestaurantId, setActiveRestaurantIdState] = useState<
     string | null
@@ -421,10 +432,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Load user from token on mount
   useEffect(() => {
     let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    const waitBeforeAskingAgain = (ms: number) =>
+    let stopWaiting: (() => void) | undefined;
+    // r22: a wait for a dropped connection also ends when the browser says
+    // it is back online, so the page does not sit out the rest of a 30 s
+    // backoff after the Wi-Fi returns. A rate limit or a server error is not
+    // mended by that event, so those waits run their full length.
+    const waitBeforeAskingAgain = (ms: number, wakeOnOnline: boolean) =>
       new Promise<void>((resolve) => {
-        retryTimer = setTimeout(resolve, ms);
+        const done = () => {
+          clearTimeout(timer);
+          window.removeEventListener("online", done);
+          stopWaiting = undefined;
+          resolve();
+        };
+        const timer = setTimeout(done, ms);
+        if (wakeOnOnline) window.addEventListener("online", done);
+        stopWaiting = done;
       });
 
     const loadUser = async () => {
@@ -462,11 +485,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const status = (err as { response?: { status?: number } })
               ?.response?.status;
             const delay = sessionReadRetryDelayMs(err, attempt);
+            const reason = sessionReadWaitReason(err);
             console.warn(
               `Keeping the session: /auth/me failed with ${status ?? "no status (network)"}; ` +
                 `asking again in ${Math.round(delay / 1000)} s.`,
             );
-            await waitBeforeAskingAgain(delay);
+            setSessionWait({ reason, delayMs: delay });
+            await waitBeforeAskingAgain(delay, reason === "offline");
             if (cancelled) return;
             // Signed out in another tab while waiting: there is no session
             // left to ask about.
@@ -477,7 +502,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           break;
         }
       }
-      if (!cancelled) setLoading(false);
+      if (!cancelled) {
+        setSessionWait(null);
+        setLoading(false);
+      }
     };
 
     const handleSettledFailure = (err: unknown) => {
@@ -537,7 +565,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     loadUser();
     return () => {
       cancelled = true;
-      if (retryTimer !== undefined) clearTimeout(retryTimer);
+      stopWaiting?.();
     };
   }, []);
 
@@ -1227,6 +1255,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value: AuthContextType = {
     user,
     loading,
+    sessionWait,
     error,
     clearError,
     activeRestaurantId,

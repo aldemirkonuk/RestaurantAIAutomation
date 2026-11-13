@@ -40,6 +40,7 @@ const syncNoop = () => {}
 export const mockAuthValue: AuthContextType = {
   user: MOCK_USER,
   loading: false,
+  sessionWait: null,
   error: null,
   clearError: syncNoop,
   activeRestaurantId: MOCK_USER.restaurantId,
