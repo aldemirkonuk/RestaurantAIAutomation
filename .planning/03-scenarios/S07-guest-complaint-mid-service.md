@@ -61,7 +61,7 @@ All aspirational until the routing contract is built.
 - **Satisfiability check:** these need the `table→server` join + a complaint feed, **neither of
   which exists** — so the owner sees none today. And by charter this is a **service signal, not
   a performance score** ([[service-floor-charter|service-floor]] non-goals): the moment it becomes a management stick,
-  the floor defeats it and the data goes adversarial.
+  the floor defeats it and the data goes adversarial. [2026-10-31: to change in part under [ADR 0346](../decisions/0346-waiter-scores-and-rankings-ship-to-managers.md) (Proposed, not in force until it locks) § Decision: the charter non-goal was reversed for the floor's per-waiter figures (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2), which go to owners and managers only. Complaint figures by server are not among ADR 0346's figures and are not ruled. Until it locks, what it brackets holds.]
 
 ## 7. Decisions
 Human decides the recovery — waiter acts, manager authorizes a comp. System **proposes**
@@ -101,7 +101,7 @@ reused — what is missing is the routing that turns a complaint into *one perso
 
 **Boundary that outranks the tier cut:** by charter this is a **service signal, not a
 performance score**. A Plus or Pro tier packaged as complaint analytics-per-server turns the
-floor adversarial and the data goes false-clean. The constraint survives any pricing decision.
+floor adversarial and the data goes false-clean. The constraint survives any pricing decision. [2026-10-31: to change in part under ADR 0346 (Proposed, not in force until it locks) § Decision: the charter line behind it was reversed for the floor's per-waiter figures (*"EVERYTHING"*, AskUserQuestion asked 2026-10-31T02:52:37Z, Q2), shown to owners and managers only. Complaint analytics per server is not among ADR 0346's figures and is not ruled. Until it locks, what it brackets holds.]
 
 ## 11. Evolution feedback
 Where recovery works vs stalls teaches the recovery playbook; where routing is ambiguous
