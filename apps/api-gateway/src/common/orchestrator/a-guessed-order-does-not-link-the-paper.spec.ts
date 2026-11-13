@@ -143,7 +143,16 @@ function threadStore(
     chains.push({ table, calls });
     let insertedRow: Row | null = null;
     const b: any = {};
-    for (const m of ["select", "ilike", "eq", "not", "order", "limit"]) {
+    for (const m of [
+      "select",
+      "ilike",
+      "eq",
+      "is",
+      "in",
+      "not",
+      "order",
+      "limit",
+    ]) {
       b[m] = (...args: unknown[]) => {
         if (m !== "select" || !insertedRow) calls.push([m, ...args]);
         return b;
