@@ -39,6 +39,7 @@ import {
   emptyListWords,
   headerSentence,
   lastWriterWords,
+  houseMailboxStatus,
   mailStatusLine,
   storedKindsLine,
   todayLine,
@@ -466,6 +467,7 @@ export function MailTab({
           sender={senderQ.data ?? null}
           senderFailed={senderQ.isError}
           conversationWords={senderQ.data?.conversation?.words ?? null}
+          mailboxSwitchedOff={houseMailboxStatus(reader, { readFailed: readerFailed, now }).state === 'switched_off'}
           onBack={() => back({ setup: null })}
         />
       ) : threadKey ? (

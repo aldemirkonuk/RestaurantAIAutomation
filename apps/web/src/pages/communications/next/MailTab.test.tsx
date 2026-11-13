@@ -453,6 +453,19 @@ describe('the setup path', () => {
     expect(await screen.findAllByTestId('mail-person')).toHaveLength(2);
   });
 
+  // r21 walk: the house has a Mudavym address, so the status line reads
+  // "Connected · …"; its own reader is switched off, and the setup must still
+  // offer the switch.
+  it('a switched-off reader under a connected line still offers the switch', async () => {
+    routes['/communications/letters/sender'] = () => ({
+      ...SENDER,
+      reader: { ...SENDER.reader, enabled: false, lastReadAt: new Date(Date.now() - 60_000).toISOString() },
+    });
+    mount(['/communications?tab=mail&setup=1']);
+    await waitFor(() => expect(screen.getByTestId('setup-status')).toHaveTextContent(/reading your mailbox is switched off/));
+    expect(await screen.findByRole('button', { name: 'Open the switch in Settings' })).toBeInTheDocument();
+  });
+
   it('the in-app Back on a setup link opened cold stays on the page', async () => {
     mount(['/orders', '/communications?tab=mail&setup=1']);
     fireEvent.click(await screen.findByRole('button', { name: '← Back to the mail' }));

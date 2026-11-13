@@ -174,10 +174,18 @@ export function MailSetup({
   sender,
   senderFailed,
   conversationWords,
+  mailboxSwitchedOff = false,
   onBack,
 }: {
   /** The tab's own status line, so the two never disagree. */
   status: MailStatus;
+  /**
+   * The house reader's OWN state is "switched off". The tab's status line says
+   * `switched_off` only when nothing else proves the mail (no Mudavym address,
+   * no test letter); a house with an address reads "Connected · … · reading
+   * your mailbox is switched off", so the line alone cannot carry the switch.
+   */
+  mailboxSwitchedOff?: boolean;
   sender: SenderLineInput | null;
   senderFailed: boolean;
   /** `conversation.words` from the sender read, the intake sheet's sentence; null when not read. */
@@ -207,7 +215,7 @@ export function MailSetup({
           {/* r21: "switched off" had no way forward from Mail. The switch is
               the house's, in Settings (FeaturesSection, "Read this house's
               mailbox"); `?tab=features` scrolls to that register. */}
-          {status.state === 'switched_off' && (
+          {(status.state === 'switched_off' || mailboxSwitchedOff) && (
             <p data-testid="setup-switched-off" style={TEXT}>
               A mailbox is connected for reading, but the house&rsquo;s &ldquo;Read this house&rsquo;s mailbox&rdquo;
               switch in Settings is off, so nothing is read from it.{' '}

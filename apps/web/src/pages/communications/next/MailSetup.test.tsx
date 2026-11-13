@@ -136,6 +136,20 @@ describe('the setup page itself', () => {
     expect(screen.queryByRole('button', { name: 'Open the switch in Settings' })).toBeNull();
   });
 
+  // r21 walk: a house with a Mudavym address and a switched-off reader reads
+  // "Connected · … · reading your mailbox is switched off"; the switch must
+  // still be offered.
+  it('switched off under a connected line: still opens the switch', async () => {
+    answer(view());
+    mount({
+      status: { state: 'connected', words: 'Connected · the test letter arrived 3 days ago · reading your mailbox is switched off', tone: 'warn' },
+      mailboxSwitchedOff: true,
+    });
+    expect((await screen.findByTestId('setup-switched-off')).textContent).toMatch(/switch in Settings is off/);
+    fireEvent.click(screen.getByRole('button', { name: 'Open the switch in Settings' }));
+    expect(screen.getByTestId('where').textContent).toBe('/settings?tab=features');
+  });
+
   it('no switched-off line while the reader is connected', async () => {
     answer(view());
     mount();
