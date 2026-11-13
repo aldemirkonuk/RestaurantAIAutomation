@@ -214,6 +214,67 @@ export function lastHouseHintFor(
   return use ? { userId, ...use } : null;
 }
 
+// ---------------------------------------------------------------------------
+// Known-device tokens for the login rate limit (QA round 19, #906)
+//
+// A password login returns `signInDevice`; sending it back on the next login
+// for the same email gives this device its own rate-limit bucket, so a
+// stranger filling the account's shared one cannot lock the owner out. It is
+// a device credential for rate limiting only, never a session: it is NOT
+// cleared on sign-out. The newest five are kept.
+
+const SIGN_IN_DEVICES_KEY = "mudavym.signInDevices";
+const SIGN_IN_DEVICES_KEPT = 5;
+
+/** Folded the way the gateway folds an account (NFKC, no zero-width, trim, lower-case). */
+export function foldEmail(email: string): string {
+  return email
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function readSignInDevices(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(SIGN_IN_DEVICES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === "string") out[k] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** The token this device holds for exactly this email, if any. */
+export function signInDeviceFor(email: string | null | undefined): string | null {
+  if (!email) return null;
+  return readSignInDevices()[foldEmail(email)] ?? null;
+}
+
+/** Remember the token a login returned for this email; keeps the newest five. */
+export function rememberSignInDevice(email: string, token: unknown): void {
+  if (!email || typeof token !== "string" || !token) return;
+  try {
+    const all = readSignInDevices();
+    delete all[foldEmail(email)];
+    all[foldEmail(email)] = token;
+    const newest = Object.entries(all).slice(-SIGN_IN_DEVICES_KEPT);
+    window.localStorage.setItem(
+      SIGN_IN_DEVICES_KEY,
+      JSON.stringify(Object.fromEntries(newest)),
+    );
+  } catch {
+    /* the next login just sends none and shares the untrusted bucket */
+  }
+}
+
 export interface TokenClaims {
   sub?: string;
   email?: string | null;

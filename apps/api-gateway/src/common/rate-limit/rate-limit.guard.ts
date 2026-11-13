@@ -8,6 +8,18 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
+import {
+  PEER_LIMIT_FACTOR,
+  UNTRUSTED_PEER_FACTOR,
+  bucketAddress,
+  requestAddresses,
+} from "./client-address";
+import {
+  accountDigest,
+  foldAccount,
+  readSignInDevice,
+  signInDeviceSecret,
+} from "./sign-in-device";
 
 /**
  * Rate limit configuration
@@ -19,6 +31,13 @@ export interface RateLimitConfig {
   windowSeconds: number;
   /** Key prefix for storage */
   keyPrefix?: string;
+  /**
+   * A body field naming the account the request acts on (`email` on
+   * /auth/login). When set, the account gets its own bucket at `limit`, so
+   * guessing one account's password from many addresses is held to the
+   * route's limit however many addresses are used (QA round 14).
+   */
+  accountField?: string;
 }
 
 /**
@@ -244,7 +263,47 @@ export class RateLimitGuard implements CanActivate {
     const key = this.generateKey(request, config.keyPrefix);
 
     // Check rate limit
-    const result = this.store.check(key, config.limit, config.windowSeconds);
+    let result = this.store.check(key, config.limit, config.windowSeconds);
+
+    // R11-10: the key above uses the address the caller may have written
+    // (client-address.ts). A second, looser bucket on the address Railway's
+    // edge saw bounds a caller who invents a fresh one per request; it is
+    // sized for a shared egress (QA round 14). A route that names an account
+    // field also counts the account, whatever address the try came from.
+    if (result.allowed) {
+      const peerKey = this.peerKey(request, config.keyPrefix);
+      if (peerKey) {
+        const peer = this.store.check(
+          peerKey,
+          config.limit * PEER_LIMIT_FACTOR,
+          config.windowSeconds,
+        );
+        if (!peer.allowed) result = peer;
+      }
+    }
+    // Untrusted: a tighter peer bucket too; then the account bucket.
+    const account = this.accountScope(request, config);
+    if (result.allowed && account) {
+      if (!account.deviceId) {
+        const untrustedPeerKey = this.peerKey(request, config.keyPrefix, "untrusted");
+        if (untrustedPeerKey) {
+          const peer = this.store.check(
+            untrustedPeerKey,
+            config.limit * UNTRUSTED_PEER_FACTOR,
+            config.windowSeconds,
+          );
+          if (!peer.allowed) result = peer;
+        }
+      }
+    }
+    if (result.allowed && account?.key) {
+      const counted = this.store.check(
+        account.key,
+        config.limit,
+        config.windowSeconds,
+      );
+      if (!counted.allowed) result = counted;
+    }
 
     // Set rate limit headers
     const response = context.switchToHttp().getResponse();
@@ -376,15 +435,61 @@ export class RateLimitGuard implements CanActivate {
   }
 
   /**
-   * Get client IP address
+   * The caller's address as best known (client-address.ts): behind Vercel the
+   * browser, on a direct call whatever the caller wrote. It used to be the
+   * LEFT-MOST `x-forwarded-for` entry and then `x-real-ip`, both writable.
    */
   private getClientIp(request: any): string {
-    return (
-      request.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
-      request.headers["x-real-ip"] ||
-      request.connection?.remoteAddress ||
-      request.ip ||
-      "unknown"
+    return bucketAddress(requestAddresses(request).client) || "unknown";
+  }
+
+  /**
+   * The bucket for the address Railway's edge saw, when it differs from the
+   * client key's address; null when they are the same (a direct call with no
+   * forwarded header, or an authenticated key that is not an address).
+   */
+  private peerKey(
+    request: any,
+    prefix?: string,
+    scope?: string,
+  ): string | null {
+    if (request.user?.userId || request.user?.restaurantId) return null;
+    const addresses = requestAddresses(request);
+    const peer = bucketAddress(addresses.peer);
+    const client = bucketAddress(addresses.client);
+    if (!peer || peer === client) return null;
+    const route = request.route?.path || request.url.split("?")[0];
+    return [prefix, `peer:${peer}`, scope, `route:${route}`]
+      .filter(Boolean)
+      .join(":");
+  }
+
+  /** The account bucket (`accountField`): the known device's own, else the shared untrusted one. */
+  private accountScope(
+    request: any,
+    config: RateLimitConfig,
+  ): { key: string | null; deviceId: string | null } | null {
+    if (!config.accountField) return null;
+    const raw = request.body?.[config.accountField];
+    const folded = typeof raw === "string" ? foldAccount(raw) : "";
+    if (!folded) return { key: null, deviceId: null };
+    const secret = signInDeviceSecret(this.configService?.get?.("JWT_SECRET"));
+    const deviceId = readSignInDevice(
+      secret,
+      request.body?.signInDevice,
+      folded,
     );
+    const route = request.route?.path || request.url.split("?")[0];
+    const digest = accountDigest(folded);
+    return {
+      key: [
+        config.keyPrefix,
+        `account:${digest}:${deviceId ? `device:${deviceId}` : "untrusted"}`,
+        `route:${route}`,
+      ]
+        .filter(Boolean)
+        .join(":"),
+      deviceId,
+    };
   }
 }

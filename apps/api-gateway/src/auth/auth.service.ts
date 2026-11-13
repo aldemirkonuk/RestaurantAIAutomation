@@ -342,6 +342,8 @@ export interface LoginCredentials {
    * `[{ userId, houseId, usedAt }]`. A hint only; see `house-choice.ts`.
    */
   lastHouses?: unknown;
+  /** A known-device token from an earlier login (rate limit only; never a session). */
+  signInDevice?: string;
 }
 
 /** "Google", "Google and Microsoft", "Google, Microsoft and Apple". */

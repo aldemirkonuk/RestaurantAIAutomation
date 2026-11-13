@@ -65,6 +65,33 @@ export class EmailCodeVerifyDto {
   })
   @IsOptional()
   lastHouses?: unknown;
+
+  @ApiPropertyOptional({
+    description:
+      "The known-device token this device holds for THIS email (rate limit only; never a session). A valid one keeps its device id.",
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  signInDevice?: string;
+}
+
+/** POST /auth/email-code/link: the token from a sign-in mail (QA round 23). */
+export class EmailCodeLinkDto {
+  @ApiProperty({ description: "The `t` value from the mail's /login/code link." })
+  @IsString()
+  @MaxLength(200)
+  token!: string;
+
+  @ApiPropertyOptional({ description: "As on /auth/email-code/verify." })
+  @IsOptional()
+  lastHouses?: unknown;
+
+  @ApiPropertyOptional({ description: "As on /auth/email-code/verify." })
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  signInDevice?: string;
 }
 
 export class FinishPasskeyRegistrationDto {
