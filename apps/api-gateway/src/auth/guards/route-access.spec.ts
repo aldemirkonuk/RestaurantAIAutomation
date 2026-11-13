@@ -153,6 +153,7 @@ describe("no route's access changed except as decided (ADR 0164)", () => {
       "common/orchestrator/prospects.controller.ts",
       "common/orchestrator/sender-trust.controller.ts",
       "communications/archive/house-mail-archive.controller.ts",
+      "communications/designs/letter-designs.controller.ts",
       "communications/letters/house-letters.controller.ts",
       "conversations/conversations.controller.ts",
       "distributor-feed/distributor-feed.controller.ts",
