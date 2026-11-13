@@ -1,4 +1,4 @@
-import { LogsTimelineService } from "./logs-timeline.service";
+import { LogsTimelineService, stockChangeWords } from "./logs-timeline.service";
 import { DatabaseService } from "../database/database.service";
 
 import { BadRequestException } from "@nestjs/common";
@@ -25,9 +25,16 @@ interface Asked {
   order: Array<[string, any]>;
   limit: number | null;
   or: string[];
+  /** The length of each `.in()` list, so a spec can bound a URL's id count. */
+  inSizes: number[];
 }
 
-function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
+function makeFakeClient(
+  tables: Record<string, Row[]>,
+  asked: Asked[] = [],
+  /** Tables whose read answers an error instead of rows. */
+  failing: string[] = [],
+) {
   return {
     from(table: string) {
       const filters: Array<[string, any]> = [];
@@ -36,7 +43,7 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
       const notInFilters: Array<[string, string[]]> = [];
       // `.is(col, null)` → [col, true]; `.not(col, "is", null)` → [col, false].
       const nullChecks: Array<[string, boolean]> = [];
-      const rec: Asked = { table, order: [], limit: null, or: [] };
+      const rec: Asked = { table, order: [], limit: null, or: [], inSizes: [] };
       asked.push(rec);
       const api: any = {
         select() {
@@ -52,6 +59,7 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
         },
         in(col: string, vals: any[]) {
           inFilters.push([col, vals]);
+          rec.inSizes.push(vals.length);
           return api;
         },
         // `.not(col, "in", "(a,b)")` — the ADR 0218 round-4 Away filter. Only
@@ -90,6 +98,10 @@ function makeFakeClient(tables: Record<string, Row[]>, asked: Asked[] = []) {
           return api;
         },
         then(resolve: any) {
+          if (failing.includes(table)) {
+            resolve({ data: null, error: { message: `${table} read failed` } });
+            return;
+          }
           let rows = tables[table] || [];
           rows = rows.filter((r) => filters.every(([c, v]) => r[c] === v));
           for (const [col, obj] of containsFilters) {
@@ -860,5 +872,123 @@ describe("LogsTimelineService.getTimeline", () => {
       expect(page.hasMore).toBe(true);
       expect(page.nextCursor).toBe("2026-09-20T08:00:00Z");
     });
+  });
+});
+
+/**
+ * ADR 0070: a quantity states its own unit, and the unit is the item's
+ * (`restaurant_inventory.uom`). The stock row used to print its bare integer.
+ */
+describe("LogsTimelineService — a stock movement says its unit", () => {
+  function tx(id: string, inventoryId: string, change: number, at: string): Row {
+    return {
+      id,
+      restaurant_id: "r1",
+      inventory_id: inventoryId,
+      transaction_type: "sale",
+      source: "pos",
+      quantity_change: change,
+      transaction_date: at,
+      metadata: {},
+    };
+  }
+  const empty = {
+    pos_checks: [],
+    decision_log: [],
+    procurement_documents: [],
+    system_audit_log: [],
+    event_store: [],
+  };
+
+  it("prints the item's unit beside the number, singular and plural", async () => {
+    const client = makeFakeClient({
+      ...empty,
+      inventory_transactions: [
+        tx("t1", "wine", -1, "2026-08-05T11:03:00Z"),
+        tx("t2", "wine", 3, "2026-08-05T11:02:00Z"),
+        tx("t3", "flour", -250, "2026-08-05T11:01:00Z"),
+      ],
+      restaurant_inventory: [
+        { id: "wine", restaurant_id: "r1", uom: "bottle" },
+        { id: "flour", restaurant_id: "r1", uom: "g" },
+      ],
+    });
+    const service = new LogsTimelineService({ getClient: () => client } as unknown as DatabaseService);
+    const { events, failedSources } = await service.getTimeline("r1");
+    expect(events.map((e) => e.summary)).toEqual([
+      "Stock sale (pos): -1 bottle",
+      "Stock sale (pos): +3 bottles",
+      "Stock sale (pos): -250 g",
+    ]);
+    expect(events[0].detail).toMatchObject({ quantityChange: -1, uom: "bottle", unitRead: true });
+    expect(failedSources).toEqual([]);
+  });
+
+  it("reads units in this house only, and says when an item has none", async () => {
+    const client = makeFakeClient({
+      ...empty,
+      inventory_transactions: [
+        tx("t1", "inv-a", -2, "2026-08-05T11:03:00Z"),
+        tx("t2", "inv-b", -1, "2026-08-05T11:02:00Z"),
+      ],
+      restaurant_inventory: [
+        // Another house's row under the same id: never its unit.
+        { id: "inv-a", restaurant_id: "r2", uom: "kg" },
+        { id: "inv-b", restaurant_id: "r1", uom: null },
+      ],
+    });
+    const service = new LogsTimelineService({ getClient: () => client } as unknown as DatabaseService);
+    const { events } = await service.getTimeline("r1");
+    expect(events.map((e) => e.summary)).toEqual([
+      "Stock sale (pos): -2 (no unit on the item)",
+      "Stock sale (pos): -1 (no unit on the item)",
+    ]);
+  });
+
+  it("a failed unit read keeps the rows and says the unit was not read", async () => {
+    const client = makeFakeClient(
+      {
+        ...empty,
+        inventory_transactions: [tx("t1", "wine", -1, "2026-08-05T11:03:00Z")],
+        restaurant_inventory: [{ id: "wine", restaurant_id: "r1", uom: "bottle" }],
+      },
+      [],
+      ["restaurant_inventory"],
+    );
+    const service = new LogsTimelineService({ getClient: () => client } as unknown as DatabaseService);
+    const { events, failedSources } = await service.getTimeline("r1");
+    expect(events).toHaveLength(1);
+    expect(events[0].summary).toBe("Stock sale (pos): -1 (unit could not be read)");
+    expect(events[0].detail).toMatchObject({ uom: null, unitRead: false });
+    // The ledger rows were read; only their units were not.
+    expect(failedSources).toEqual([]);
+  });
+
+  it("reads a full page of distinct items in bounded id lists", async () => {
+    const asked: Asked[] = [];
+    const rows: Row[] = [];
+    const items: Row[] = [];
+    for (let i = 0; i < 120; i++) {
+      const id = `inv-${String(i).padStart(3, "0")}`;
+      rows.push(tx(`t${i}`, id, -1, `2026-08-05T11:${String(i % 60).padStart(2, "0")}:00Z`));
+      items.push({ id, restaurant_id: "r1", uom: "each" });
+    }
+    const client = makeFakeClient(
+      { ...empty, inventory_transactions: rows, restaurant_inventory: items },
+      asked,
+    );
+    const service = new LogsTimelineService({ getClient: () => client } as unknown as DatabaseService);
+    const { events } = await service.getTimeline("r1", { limit: 200 });
+    expect(events).toHaveLength(120);
+    expect(events.every((e) => e.summary.endsWith("-1 each"))).toBe(true);
+    const unitReads = asked.filter((a) => a.table === "restaurant_inventory");
+    expect(unitReads.length).toBe(3);
+    expect(Math.max(...unitReads.flatMap((a) => a.inSizes))).toBeLessThanOrEqual(50);
+  });
+
+  it("words: an unknown unit prints as stored; zero is plural", () => {
+    expect(stockChangeWords(2, "crate", true)).toBe("+2 crate");
+    expect(stockChangeWords(0, "keg", true)).toBe("0 kegs");
+    expect(stockChangeWords(-1, "glass", true)).toBe("-1 glass");
   });
 });

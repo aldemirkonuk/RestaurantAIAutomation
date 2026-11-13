@@ -312,21 +312,81 @@ export class LogsTimelineService {
       }
       const { data, error } = await q;
       if (error) throw error;
-      return (data || []).map((r: any) => ({
-        id: r.id,
-        source: "inventory_transactions" as const,
-        occurredAt: r.transaction_date ?? null,
-        correlationId: r.metadata?.correlation_id ?? null,
-        summary: `Stock ${r.transaction_type} (${r.source}): ${r.quantity_change > 0 ? "+" : ""}${r.quantity_change}`,
-        detail: {
-          inventoryId: r.inventory_id,
-          transactionType: r.transaction_type,
-          source: r.source,
-          quantityChange: r.quantity_change,
-          reason: r.reason,
-        },
-      }));
+      const rows: any[] = data || [];
+      // ADR 0070: a quantity states its own unit, and the unit belongs to the
+      // ITEM (`restaurant_inventory.uom`), not the ledger row. The row's bare
+      // integer used to print alone ("-1"), so a bottle, a keg and 250 g all
+      // read the same.
+      const units = await this.unitsOfItems(
+        db,
+        restaurantId,
+        rows.map((r) => r.inventory_id),
+      );
+      return rows.map((r) => {
+        const uom = units.read ? (units.byItem.get(r.inventory_id) ?? null) : null;
+        return {
+          id: r.id,
+          source: "inventory_transactions" as const,
+          occurredAt: r.transaction_date ?? null,
+          correlationId: r.metadata?.correlation_id ?? null,
+          summary: `Stock ${r.transaction_type} (${r.source}): ${stockChangeWords(r.quantity_change, uom, units.read)}`,
+          detail: {
+            inventoryId: r.inventory_id,
+            transactionType: r.transaction_type,
+            source: r.source,
+            quantityChange: r.quantity_change,
+            // `null` with `unitRead: false` is "not read", never "no unit".
+            uom,
+            unitRead: units.read,
+            reason: r.reason,
+          },
+        };
+      });
     });
+  }
+
+  /**
+   * Each stock item's unit, read in this house only. A failed read does not
+   * fail the stock register (its rows are still true); it marks every unit as
+   * not read, and the row says so instead of printing a bare number.
+   * Read in chunks so a full page of distinct items never makes one URL long
+   * enough for the proxy to refuse.
+   */
+  private async unitsOfItems(
+    db: any,
+    restaurantId: string,
+    inventoryIds: Array<string | null | undefined>,
+  ): Promise<{ read: boolean; byItem: Map<string, string | null> }> {
+    const byItem = new Map<string, string | null>();
+    const ids = Array.from(
+      new Set(inventoryIds.filter((id): id is string => !!id)),
+    );
+    if (ids.length === 0) return { read: true, byItem };
+    const chunks: string[][] = [];
+    for (let i = 0; i < ids.length; i += UNIT_READ_CHUNK) {
+      chunks.push(ids.slice(i, i + UNIT_READ_CHUNK));
+    }
+    try {
+      const answers = await Promise.all(
+        chunks.map((chunk) =>
+          db
+            .from("restaurant_inventory")
+            .select("id, uom")
+            .eq("restaurant_id", restaurantId)
+            .in("id", chunk),
+        ),
+      );
+      for (const { data, error } of answers as Array<{ data: any[] | null; error: any }>) {
+        if (error) throw error;
+        for (const item of data || []) byItem.set(item.id, item.uom ?? null);
+      }
+      return { read: true, byItem };
+    } catch (err: any) {
+      this.logger.warn(
+        `inventory_transactions: could not read the items' units: ${err?.message ?? "unknown error"}`,
+      );
+      return { read: false, byItem: new Map() };
+    }
   }
 
   private fetchDocuments(
@@ -532,6 +592,48 @@ export class LogsTimelineService {
       unprovableTypes,
     };
   }
+}
+
+/** At most this many item ids per `restaurant_inventory` read (see `unitsOfItems`). */
+const UNIT_READ_CHUNK = 50;
+
+/**
+ * The words for one unit of `restaurant_inventory.uom` (its CHECK vocabulary,
+ * migration `20260903171000_the_house_item_is_the_ledgers_key`), singular and
+ * plural. Mass and volume symbols do not take a plural.
+ */
+const UNIT_WORDS: Record<string, readonly [string, string]> = {
+  bottle: ["bottle", "bottles"],
+  case: ["case", "cases"],
+  keg: ["keg", "kegs"],
+  pack: ["pack", "packs"],
+  each: ["each", "each"],
+  glass: ["glass", "glasses"],
+  shot: ["shot", "shots"],
+  ml: ["ml", "ml"],
+  l: ["l", "l"],
+  mg: ["mg", "mg"],
+  g: ["g", "g"],
+  kg: ["kg", "kg"],
+};
+
+/**
+ * A ledger movement with its unit: `+3 bottles`, `-250 g`. When the unit is
+ * not known the number still prints, followed by why, so a bare integer never
+ * passes for a count of anything in particular (ADR 0070).
+ */
+export function stockChangeWords(
+  change: number,
+  uom: string | null | undefined,
+  unitRead: boolean,
+): string {
+  const n = Number(change);
+  const signed = `${n > 0 ? "+" : ""}${change}`;
+  if (!unitRead) return `${signed} (unit could not be read)`;
+  if (!uom) return `${signed} (no unit on the item)`;
+  const words = UNIT_WORDS[uom];
+  if (!words) return `${signed} ${uom}`;
+  return `${signed} ${Math.abs(n) === 1 ? words[0] : words[1]}`;
 }
 
 /* ── The window, and walking it ──────────────────────────────────────────
