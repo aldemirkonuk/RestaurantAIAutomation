@@ -8,7 +8,7 @@ import {
   ToastClose,
   ToastAction,
   type ToastActionElement,
-} from '@wineops/ui'
+} from '@wineops/ui/components/primitives'
 import { CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react'
 import { toast as sonnerToast } from 'sonner'
 import { useMudavymDesign } from '../lib/mudavym/useMudavymDesign'
