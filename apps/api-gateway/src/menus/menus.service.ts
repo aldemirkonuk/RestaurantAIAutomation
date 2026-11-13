@@ -263,6 +263,34 @@ export interface MenuPlan {
   notOnThisFile: NotOnThisFile[];
 }
 
+/** An active menu row as getMenu reads it. */
+export interface CurrentMenuRow {
+  id: string;
+  name: string | null;
+  status: string | null;
+  made_current_at?: string | null;
+  created_at?: string | null;
+}
+
+/**
+ * Active menus, the one a person made current last first: by made_current_at
+ * (a menu never chosen, from before ADR 0193, has none and comes after every
+ * chosen one), then created_at, then id, so the same rows always give the same
+ * order (r28 G20).
+ */
+export function newestCurrentFirst(rows: CurrentMenuRow[]): CurrentMenuRow[] {
+  const t = (v: string | null | undefined): number => {
+    const n = v ? Date.parse(v) : NaN;
+    return Number.isFinite(n) ? n : -Infinity;
+  };
+  return [...rows].sort(
+    (a, b) =>
+      t(b.made_current_at) - t(a.made_current_at) ||
+      t(b.created_at) - t(a.created_at) ||
+      String(a.id).localeCompare(String(b.id)),
+  );
+}
+
 function emptyPlanCounts(): Record<PlanResult, number> {
   return {
     change: 0,
@@ -1251,6 +1279,14 @@ export class MenusService {
    * restaurant's active menu with its items, newest first within category.
    * A line's raw line is sent only when `view.rawLine` says so (default: not);
    * a reply without it says `rawLineWithheld: true`.
+   *
+   * SEVERAL CURRENT MENUS (r28 G20). Production can hold more than one active
+   * menu for a house (no unique index; see readCurrentMenus), and this read
+   * used `.maybeSingle()`, which PostgREST answers with an error for two rows,
+   * so the whole /menu page failed for that house. It now reads them all and
+   * shows the one made current last (then the one read last); `otherCurrent`
+   * says how many more are marked current, so the page can say so. Choosing a
+   * menu (make_menu_current) archives every other one, which settles it.
    */
   async getMenu(
     restaurantId: string,
@@ -1261,17 +1297,24 @@ export class MenusService {
     status: string | null;
     items: Array<Record<string, unknown>>;
     rawLineWithheld?: true;
+    otherCurrent?: number;
   }> {
-    const { data: menu, error: menuErr } = await this.dbService.supabase
+    const { data: actives, error: menuErr } = await this.dbService.supabase
       .from("restaurant_menus")
-      .select("id, name, status")
+      .select("id, name, status, made_current_at, created_at")
       .eq("restaurant_id", restaurantId)
-      .eq("status", "active")
-      .maybeSingle();
+      .eq("status", "active");
 
     if (menuErr) throw new Error(`Failed to load menu: ${menuErr.message}`);
     const withheld = view.rawLine ? {} : { rawLineWithheld: true as const };
+    const ordered = newestCurrentFirst((actives ?? []) as CurrentMenuRow[]);
+    const menu = ordered[0] ?? null;
     if (!menu) return { menuId: null, name: null, status: null, items: [], ...withheld };
+    if (ordered.length > 1) {
+      this.logger.warn(
+        `Restaurant ${restaurantId} has ${ordered.length} active menus; /menu shows ${menu.id}, made current last`,
+      );
+    }
 
     // A discarded line (migration 20260922230100, ADR 0160 sec110 item 7) is
     // a soft remove: the row stays for the record, but this read path must
@@ -1285,6 +1328,7 @@ export class MenusService {
       status: menu.status,
       items,
       ...withheld,
+      ...(ordered.length > 1 ? { otherCurrent: ordered.length - 1 } : {}),
     };
   }
 
@@ -1492,7 +1536,7 @@ export class MenusService {
   async planFor(restaurantId: string, menuId: string): Promise<MenuPlan> {
     const row = await this.readVersionRow(restaurantId, menuId);
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
-    const plan = await this.computePlan(restaurantId, menuId, row.status === "active", lines, readMomentOf(row));
+    const plan = await this.computePlan(restaurantId, menuId, await this.isOnlyCurrent(restaurantId, menuId, row), lines, readMomentOf(row));
     // Names are for reading the plan; they never decide it (the fingerprint
     // leaves them out). A failed read is said.
     const ids = new Set<string>();
@@ -1847,7 +1891,7 @@ export class MenusService {
     // read throws here and nothing is changed.
     const lines = (await this.readLines(menuId, restaurantId)) as unknown as InsertedMenuItem[];
     const version = await this.readVersionRow(restaurantId, menuId);
-    const plan = await this.computePlan(restaurantId, menuId, version.status === "active", lines, readMomentOf(version));
+    const plan = await this.computePlan(restaurantId, menuId, await this.isOnlyCurrent(restaurantId, menuId, version), lines, readMomentOf(version));
     if (plan.fingerprint !== fingerprint.trim()) {
       throw new ConflictException(
         "What choosing this menu would do has changed since it was shown (a price or a lock moved). Nothing was changed; look at the plan again.",
@@ -1959,6 +2003,27 @@ export class MenusService {
       held,
       returned,
     };
+  }
+
+  /**
+   * Whether this menu is the house's ONLY current menu (r28 G20). A menu marked
+   * current beside another one is planned as a menu being chosen: choosing it
+   * sets the others aside (make_menu_current archives every other active menu
+   * and answers made_current), so the plan lists what they carry and this one
+   * does not, and offers the choice. Planned as "already current", the plan
+   * offered no choice when no price differed, and the house could not settle
+   * which menu is current. A failed read is a 5xx, never a guess.
+   */
+  private async isOnlyCurrent(restaurantId: string, menuId: string, row: Record<string, any>): Promise<boolean> {
+    if (row.status !== "active") return false;
+    const { data, error } = await this.dbService.supabase
+      .from("restaurant_menus")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "active")
+      .neq("id", menuId);
+    if (error) throw new InternalServerErrorException(`The house's current menus could not be read: ${error.message}`);
+    return ((data ?? []) as unknown[]).length === 0;
   }
 
   private async readVersionRow(restaurantId: string, menuId: string): Promise<Record<string, any>> {

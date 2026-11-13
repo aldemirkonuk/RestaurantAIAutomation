@@ -658,3 +658,27 @@ describe('MenuNext — discard words (r28 G15, G17)', () => {
     expect(foot).toHaveTextContent("a dish's one price");
   });
 });
+
+// r28 G20: a house with two menus marked current got an error for the whole page.
+describe('MenuNext — more than one menu marked current (r28 G20)', () => {
+  it('says how many more are marked current, which one the page shows, and how to settle it', async () => {
+    mockGetMenu.mockResolvedValue(menu({ otherCurrent: 1 }));
+    mount();
+    const note = await screen.findByTestId('menu-other-current');
+    expect(note).toHaveTextContent(
+      '1 other menu is also marked current at this house, from before choosing a menu set the others aside. This page shows the one made current last. Open the one you sell from under Menus kept and make it current: the others are set aside, and nothing is deleted.',
+    );
+    expect(screen.getAllByTestId('menu-row')).toHaveLength(1);
+  });
+
+  it('counts two or more in the plural, and says nothing when there is one', async () => {
+    mockGetMenu.mockResolvedValue(menu({ otherCurrent: 2 }));
+    const { unmount } = mount();
+    expect(await screen.findByTestId('menu-other-current')).toHaveTextContent(/^2 other menus are also marked current/);
+    unmount();
+    mockGetMenu.mockResolvedValue(menu());
+    mount();
+    await screen.findAllByTestId('menu-row');
+    expect(screen.queryByTestId('menu-other-current')).not.toBeInTheDocument();
+  });
+});

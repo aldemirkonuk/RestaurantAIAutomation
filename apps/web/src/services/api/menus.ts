@@ -260,6 +260,12 @@ export interface ActiveMenu {
   name: string | null
   status: string | null
   items: MenuLine[]
+  /**
+   * How many MORE menus of this house are marked current (r28 G20): a house
+   * can hold several from before choosing a menu archived the rest, and the
+   * gateway shows the one made current last. Absent when there is one.
+   */
+  otherCurrent?: number
 }
 
 /**
