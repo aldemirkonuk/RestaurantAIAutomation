@@ -20,7 +20,8 @@ begin
   -- c: invoiced at 0 beside invoiced at 30
   -- d: samples, shadow, empty and hand-entered lots around one invoice
   -- e: invoiced at 0 only
-  for r in select x from unnest(array['a','b','c','d','e']) x loop
+  -- f: a fractional average (six places kept)
+  for r in select x from unnest(array['a','b','c','d','e','f']) x loop
     insert into public.master_wine_library (id, wine_id, name, primary_type)
       values (pg_temp.u('1' || r.x), 'IC-TEST-' || upper(r.x), 'Invoice cost wine ' || upper(r.x), 'red');
     insert into public.restaurant_inventory (id, restaurant_id, master_wine_id, bottle_size_ml, pour_size_ml)
@@ -39,7 +40,9 @@ begin
     (pg_temp.u('1'), pg_temp.u('2d'), pg_temp.u('1d'), 'shadow', 7, 5.00, 'invoice', 'final'),
     (pg_temp.u('1'), pg_temp.u('2d'), pg_temp.u('1d'), 'live', 0, 99.00, 'invoice', 'final'),
     (pg_temp.u('1'), pg_temp.u('2d'), pg_temp.u('1d'), 'live', 1, 40.00, 'manual', 'final'),
-    (pg_temp.u('1'), pg_temp.u('2e'), pg_temp.u('1e'), 'live', 4, 0.00, 'invoice', 'final');
+    (pg_temp.u('1'), pg_temp.u('2e'), pg_temp.u('1e'), 'live', 4, 0.00, 'invoice', 'final'),
+    (pg_temp.u('1'), pg_temp.u('2f'), pg_temp.u('1f'), 'live', 1, 10.00, 'invoice', 'final'),
+    (pg_temp.u('1'), pg_temp.u('2f'), pg_temp.u('1f'), 'live', 2, 10.01, 'invoice', 'final');
 end $$;
 
 do $$
@@ -69,11 +72,14 @@ begin
   assert r.invoice_wac is null and r.invoice_qty = 0 and r.stock_qty = 4,
     format('I5 FAIL wac=%s invoice_qty=%s stock_qty=%s, wanted null / 0 / 4', r.invoice_wac, r.invoice_qty, r.stock_qty);
 
+  select * into r from public.inventory_lot_invoice_cost where inventory_id = pg_temp.u('2f');
+  assert r.invoice_wac = 10.006667, format('I8 FAIL invoice_wac=%s, wanted 10.006667 (six places kept)', r.invoice_wac);
+
   assert (select reloptions::text from pg_class where oid = 'public.inventory_lot_invoice_cost'::regclass) like '%security_invoker=true%',
     'I6 FAIL view is not security_invoker';
   assert not has_table_privilege('anon', 'public.inventory_lot_invoice_cost', 'select'), 'I7 FAIL anon can read the view';
   assert not has_table_privilege('authenticated', 'public.inventory_lot_invoice_cost', 'select'), 'I7 FAIL authenticated can read the view';
-  raise notice 'PASS invoice-cost I1-I7';
+  raise notice 'PASS invoice-cost I1-I8';
 end $$;
 
 rollback;
