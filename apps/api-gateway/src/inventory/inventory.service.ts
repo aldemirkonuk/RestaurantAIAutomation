@@ -39,7 +39,9 @@ import {
 
 const ML_PER_OZ = 29.5735;
 
-function roundOz(ml: number): number {
+// Null in, null out: an unknown size has no ounces either (r21 D2).
+function roundOz(ml: number | null): number | null {
+  if (ml === null) return null;
   return Math.round((ml / ML_PER_OZ) * 10) / 10;
 }
 
@@ -86,11 +88,20 @@ export class InventoryService {
   ): Record<string, any> {
     const wineBottleMl = row.master_wine_library?.bottle_size_ml ?? 750;
     const defaultPourMl = row.restaurants?.default_pour_ml ?? 150;
-    const effectiveBottleSizeMl = row.bottle_size_ml ?? wineBottleMl;
+    // r21 D2. The row's own size when it states one (positive only, the rule
+    // pos-hub's inventoryVolumesFromRow reads by). A library wine falls back to
+    // its library bottle and then the 750 stand-in (ADR 0297). A good with no
+    // library row (house-declared, a beer, a tonic, a jar of oil) has nothing
+    // to fall back to: its size is null, unknown, never 750. A 750 here was
+    // read as the good's container by the POS sale-size answer and the item
+    // label, so a 200 ml tonic would deplete and cost as a wine bottle.
+    const ownBottleMl = Number(row.bottle_size_ml) > 0 ? Number(row.bottle_size_ml) : null;
+    const effectiveBottleSizeMl: number | null =
+      ownBottleMl ?? (row.master_wine_id || row.master_wine_library ? wineBottleMl : null);
     const pourSizeMl = row.pour_size_ml ?? defaultPourMl;
     const glassesPerBottle =
       row.glasses_per_bottle_override ??
-      (pourSizeMl > 0
+      (pourSizeMl > 0 && effectiveBottleSizeMl !== null
         ? Math.floor(effectiveBottleSizeMl / pourSizeMl)
         : undefined);
 

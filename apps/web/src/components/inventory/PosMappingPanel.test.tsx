@@ -106,6 +106,52 @@ describe("PosMappingPanel", () => {
     );
   });
 
+  it("a good with no stated size offers no bottle answer, and never a 750 one (r21 D2)", async () => {
+    const user = userEvent.setup();
+    render(
+      <PosMappingPanel
+        isOpen
+        onClose={() => {}}
+        inventory={[{ id: "inv-1", wineName: "Tonik", bottleSizeMl: null, pourSizeMl: 60 }]}
+      />,
+    );
+
+    await screen.findByText("ext-1");
+    expect(screen.queryByRole("button", { name: /750/ })).toBeNull();
+    const bottle = screen.getByRole("button", { name: "Bottle: size not known" });
+    expect(bottle).toBeDisabled();
+    await user.click(screen.getByLabelText("Confirm Alvear Solera 1927"));
+    await user.click(bottle);
+    await user.click(screen.getByRole("button", { name: /Confirm 1/ }));
+
+    await waitFor(() => expect(approveProposals).toHaveBeenCalled());
+    expect(approveProposals.mock.calls[0][0]).toEqual([
+      { proposal_id: "prop-1", sale_unit: null, sale_volume_ml: null },
+    ]);
+  });
+
+  it("a stated size is the bottle answer: 200 ml is sent as 200", async () => {
+    const user = userEvent.setup();
+    render(
+      <PosMappingPanel
+        isOpen
+        onClose={() => {}}
+        inventory={[{ id: "inv-1", wineName: "Tonik", bottleSizeMl: 200, pourSizeMl: 60 }]}
+      />,
+    );
+
+    await screen.findByText("ext-1");
+    await user.click(screen.getByLabelText("Confirm Alvear Solera 1927"));
+    await user.click(screen.getByRole("button", { name: "Bottle 200ml" }));
+    await user.click(screen.getByRole("button", { name: /Confirm 1/ }));
+
+    await waitFor(() => expect(approveProposals).toHaveBeenCalled());
+    expect(approveProposals).toHaveBeenCalledWith(
+      [{ proposal_id: "prop-1", sale_unit: "bottle", sale_volume_ml: 200 }],
+      undefined,
+    );
+  });
+
   it("approves with an explicit null unit rather than defaulting to bottle", async () => {
     const user = userEvent.setup();
     render(<PosMappingPanel isOpen onClose={() => {}} inventory={inventory} />);

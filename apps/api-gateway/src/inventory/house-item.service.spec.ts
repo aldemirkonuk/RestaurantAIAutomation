@@ -76,4 +76,50 @@ describe("HouseItemService: carry this (proposal S2)", () => {
     expect(dup.status).toBe(409);
     expect(dup.getResponse()).toMatchObject({ message: "This house already carries UN", existingId: first.id });
   });
+
+  describe("r21 D2: the paper's size travels with the good", () => {
+    it("a 200 ml tonic kept by the bottle is stored with bottle_size_ml 200", async () => {
+      const { db, svc } = seed();
+      const out = await svc.carry(H, { kind: "other", uom: "bottle", displayName: "Tonik", bottleSizeMl: 200 });
+      expect(db.tables.restaurant_inventory[0].bottle_size_ml).toBe(200);
+      expect(out.bottleSizeMl).toBe(200);
+    });
+
+    it("no size given is stored as NULL, never 750", async () => {
+      const { db, svc } = seed();
+      const out = await svc.carry(H, { kind: "other", uom: "bottle", displayName: "Tonik" });
+      expect(db.tables.restaurant_inventory[0].bottle_size_ml).toBeNull();
+      expect(out.bottleSizeMl).toBeNull();
+    });
+
+    it("a 30 l keg is carried; a keg's bounds are not a bottle's", async () => {
+      const { db, svc } = seed();
+      await svc.carry(H, { kind: "beer", uom: "keg", displayName: "Efes fıçı", bottleSizeMl: 30000 });
+      expect(db.tables.restaurant_inventory[0].bottle_size_ml).toBe(30000);
+    });
+
+    it("refuses a size on a good kept in ml, g or by the piece, and adds nothing", async () => {
+      const { db, svc } = seed();
+      for (const uom of ["ml", "g", "each"]) {
+        await expect(
+          svc.carry(H, { kind: "food", uom, displayName: "Zeytinyağı", bottleSizeMl: 1000 }),
+        ).rejects.toMatchObject({ status: 400, message: expect.stringContaining("has none") });
+      }
+      expect(db.tables.restaurant_inventory).toHaveLength(0);
+    });
+
+    it("refuses a bottle outside 50-18000 ml and a fractional size", async () => {
+      const { db, svc } = seed();
+      for (const ml of [49, 18001, 187.5]) {
+        await expect(
+          svc.carry(H, { kind: "other", uom: "bottle", displayName: "Tonik", bottleSizeMl: ml }),
+        ).rejects.toMatchObject({ status: 400, message: expect.stringContaining("from 50 to 18000") });
+      }
+      await expect(
+        svc.carry(H, { kind: "beer", uom: "keg", displayName: "Fıçı", bottleSizeMl: 500 }),
+      ).rejects.toMatchObject({ status: 400 });
+      expect(db.tables.restaurant_inventory).toHaveLength(0);
+    });
+  });
 });
+

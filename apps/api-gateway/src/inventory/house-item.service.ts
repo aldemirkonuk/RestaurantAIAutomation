@@ -17,6 +17,15 @@ export const HOUSE_ITEM_UOMS = [
 ] as const;
 // ADR 0070: integer quantities in the smallest unit (proposal K6).
 const BIG_UNIT: Record<string, string> = { kg: "store it in g", l: "store it in ml" };
+// r21 D2: what one container holds. Only a bottle or a keg has a size that
+// recipe-cost.ts (CONTAINERS) reads; a case or pack is counted by the bottle
+// inside it. Bottle bounds are the item edit's own (inventory.dto.ts
+// bottleSizeMl, 50-18000), so a size carried here can be edited there; a keg
+// runs from a 1 l mini keg to a 58.7 l US half barrel.
+export const CONTAINER_ML: Record<string, { min: number; max: number }> = {
+  bottle: { min: 50, max: 18000 },
+  keg: { min: 1000, max: 60000 },
+};
 
 @Injectable()
 export class HouseItemService {
@@ -39,6 +48,20 @@ export class HouseItemService {
     if (name.length < 1 || name.length > 120) {
       throw new BadRequestException("Give the item a name of 1 to 120 characters.");
     }
+    const size = dto.bottleSizeMl ?? null;
+    if (size !== null) {
+      const band = CONTAINER_ML[dto.uom];
+      if (!band) {
+        throw new BadRequestException(
+          `A size is what one bottle or keg holds; a good kept in ${dto.uom} has none. Nothing was added.`,
+        );
+      }
+      if (!Number.isInteger(size) || size < band.min || size > band.max) {
+        throw new BadRequestException(
+          `A ${dto.uom} holds a whole number of ml from ${band.min} to ${band.max}; ${String(size)} is not one. Nothing was added.`,
+        );
+      }
+    }
 
     const client = this.db.supabase;
     const { data, error } = await client
@@ -55,10 +78,13 @@ export class HouseItemService {
         identity_provenance: "house_declared",
         // Absent par is 0, no par; never the column's DEFAULT 3 (#801).
         threshold_min: dto.thresholdMin ?? 0,
+        // The paper's own size, or NULL: unknown, never the 750 a wine read
+        // falls back to (r21 D2). A 200 ml tonic costs per ml by 200.
+        bottle_size_ml: size,
         is_active: true,
         // stock_live is left to its DEFAULT 0: stock arrives only as a lot.
       })
-      .select("id, kind, uom, display_name, threshold_min")
+      .select("id, kind, uom, display_name, threshold_min, bottle_size_ml")
       .single();
 
     if (error?.code === "23505") {
@@ -92,6 +118,7 @@ export class HouseItemService {
       uom: data.uom,
       displayName: data.display_name,
       thresholdMin: data.threshold_min,
+      bottleSizeMl: data.bottle_size_ml ?? null,
     };
   }
 }

@@ -26,4 +26,13 @@ export class CreateHouseItemDto {
   @IsInt()
   @Min(0)
   thresholdMin?: number;
+
+  @ApiPropertyOptional({
+    description:
+      "What one bottle or keg holds, in ml, when the paper states it (r21 D2). Only for a good kept by the bottle or the keg; absent means the size is not known, never 750",
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  bottleSizeMl?: number;
 }

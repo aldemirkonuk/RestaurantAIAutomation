@@ -410,7 +410,10 @@ export function PosMappingPanel({
                   ? invById.get(p.candidate_inventory_id)
                   : null;
                 const a = answers[p.id];
-                const bottleMl = cand?.bottleMl ?? 750;
+                // r21 D2: no stated size is unknown, never 750. A 750 here
+                // was saved as the sale size, so a 200 ml tonic would remove
+                // three and a half bottles a sale once its size was set.
+                const bottleMl = cand?.bottleMl ?? null;
                 const pourMl = cand?.pourMl ?? null;
                 return (
                   <div
@@ -459,15 +462,26 @@ export function PosMappingPanel({
                     {/* the second question, asked here */}
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => setAnswer(p.id, "bottle", bottleMl)}
+                        onClick={() =>
+                          bottleMl !== null && setAnswer(p.id, "bottle", bottleMl)
+                        }
+                        disabled={bottleMl === null}
+                        title={
+                          bottleMl === null
+                            ? "This item does not say what one bottle holds. Set its bottle size on the item first; until then a bottle sale queues and moves no stock."
+                            : undefined
+                        }
                         className={cn(
                           "h-7 px-2.5 rounded-md text-[11px] font-bold border",
                           a?.label === "bottle"
                             ? "border-wine-600 bg-wine-600 text-white"
                             : "border-gray-200 bg-white text-gray-600 hover:border-gray-300",
+                          bottleMl === null && "opacity-60 cursor-not-allowed",
                         )}
                       >
-                        Bottle {bottleMl}ml
+                        {bottleMl === null
+                          ? "Bottle: size not known"
+                          : `Bottle ${bottleMl}ml`}
                       </button>
                       <button
                         onClick={() => setAnswer(p.id, "glass", pourMl ?? 150)}
