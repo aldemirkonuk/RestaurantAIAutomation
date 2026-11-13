@@ -1,5 +1,7 @@
 import { createHash } from "crypto";
 
+import { foldUndecomposableLetters } from "../common/fold-letters";
+
 /**
  * The master-library dedup key: one wine, one hash, one place it is defined.
  *
@@ -126,9 +128,10 @@ const ABBREVIATIONS: ReadonlyArray<readonly [RegExp, string]> = [
 /**
  * Fold a source string down to comparable letters and digits.
  *
- * NFD + diacritic strip so "Château" and "Chateau" agree. Punctuation becomes a
- * space rather than being deleted so "Blanc de Blancs" and "Blanc-de-Blancs"
- * agree. Trade abbreviations expand before the punctuation pass, because the
+ * NFD + diacritic strip so "Château" and "Chateau" agree, and the dotless
+ * "ı" NFD cannot reach folds to "i" so "Kavaklıdere" and "KAVAKLIDERE" agree.
+ * Punctuation becomes a space rather than being deleted so "Blanc de Blancs"
+ * and "Blanc-de-Blancs" agree. Trade abbreviations expand before the punctuation pass, because the
  * period they end on is the thing that identifies them as abbreviations.
  *
  * Writes master_wine_library.normalized_name / normalized_producer and the
@@ -136,7 +139,12 @@ const ABBREVIATIONS: ReadonlyArray<readonly [RegExp, string]> = [
  */
 export function normalizeSignatureText(value?: string | null): string {
   if (!value) return "";
-  let s = value.normalize("NFD").replace(DIACRITICS, "").toLowerCase();
+  // Letters NFD cannot reach (Turkish dotless "ı") fold after the strip and
+  // before lowercasing, as public.wine_normalize_text() does. One table for
+  // TypeScript, SQL and Python: common/fold-letters.ts.
+  let s = foldUndecomposableLetters(
+    value.normalize("NFD").replace(DIACRITICS, ""),
+  ).toLowerCase();
   for (const [pattern, expansion] of ABBREVIATIONS) {
     s = s.replace(pattern, expansion);
   }

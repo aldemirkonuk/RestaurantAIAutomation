@@ -1,5 +1,7 @@
 import { createHash } from "crypto";
 
+import { foldUndecomposableLetters } from "../common/fold-letters";
+
 /**
  * Cross-source identity for a bottle.
  *
@@ -42,12 +44,37 @@ import { createHash } from "crypto";
  * becomes a space rather than being deleted so "Blanc de Blancs" and
  * "Blanc-de-Blancs" agree while "StEmilion" does not silently become a word
  * that never existed.
+ *
+ * Letters NFD cannot reach fold after the strip and before lowercasing, from
+ * the table the library normaliser uses (common/fold-letters.ts): Turkish
+ * dotless "ı" otherwise became a space, so a page's "Kavaklıdere" and a price
+ * list's "KAVAKLIDERE" hashed apart and the ladder showed one vendor each.
  */
 export function normalizeIdentityText(value?: string | null): string {
+  return normalizeWith(value, true);
+}
+
+/**
+ * The normaliser as it was before the fold: "Kavaklıdere" -> "kavakl dere".
+ *
+ * READ-SIDE ONLY. Nothing may write a key built from this. It exists because
+ * vendor_price_observations.signature_hash and beverage_identities.identity_key
+ * were stored under it, and neither can be recomputed in SQL: an observation
+ * keeps no producer column, and "kavakl dere" cannot be told apart from a
+ * name that really had a space there. So a read that finds a bottle also asks
+ * for the key that bottle was stored under before, rather than orphaning it.
+ */
+export function normalizeIdentityTextBeforeFold(value?: string | null): string {
+  return normalizeWith(value, false);
+}
+
+function normalizeWith(
+  value: string | null | undefined,
+  fold: boolean,
+): string {
   if (!value) return "";
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+  const stripped = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return (fold ? foldUndecomposableLetters(stripped) : stripped)
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
@@ -68,13 +95,14 @@ export interface WineIdentity {
  * unusable here: it lets a missing producer shift the name into the producer
  * slot, so "unknown producer, Chablis 2019" collides with "Chablis, no name".
  */
-export function buildWineIdentity(input: WineIdentity): string {
-  const producer = normalizeIdentityText(
+export function buildWineIdentity(
+  input: WineIdentity,
+  normalize: (value?: string | null) => string = normalizeIdentityText,
+): string {
+  const producer = normalize(
     typeof input.producer === "string" ? input.producer : null,
   );
-  const name = normalizeIdentityText(
-    typeof input.name === "string" ? input.name : null,
-  );
+  const name = normalize(typeof input.name === "string" ? input.name : null);
   // Non-vintage is a real, common answer for Champagne and most sparkling, and
   // it is a different bottle from a vintage-dated one. "nv" is that answer;
   // an empty string would mean "we do not know", which is not the same.
@@ -103,6 +131,26 @@ export function hashWineIdentity(input: WineIdentity): string | null {
   );
   if (!name) return null;
   return createHash("sha256").update(key).digest("hex");
+}
+
+/**
+ * The hash this bottle was stored under before the dotless-ı fold, or null
+ * when it is the same as `hashWineIdentity` (no letter the fold changes) or
+ * when there is no name.
+ *
+ * READ-SIDE ONLY: a lookup key, never a value to write. A reader that asks
+ * for both keeps the observations stored under the old rule in the ladder
+ * instead of starting the bottle's price history over.
+ */
+export function hashWineIdentityBeforeFold(input: WineIdentity): string | null {
+  const current = buildWineIdentity(input);
+  const before = buildWineIdentity(input, normalizeIdentityTextBeforeFold);
+  if (before === current) return null;
+  const name = normalizeIdentityTextBeforeFold(
+    typeof input.name === "string" ? input.name : null,
+  );
+  if (!name) return null;
+  return createHash("sha256").update(before).digest("hex");
 }
 
 /**

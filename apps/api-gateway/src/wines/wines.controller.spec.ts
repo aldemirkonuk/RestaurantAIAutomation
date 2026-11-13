@@ -24,6 +24,7 @@ function build(allowlist = ADMIN) {
   const winesService = {} as any;
   const wineSubmissionsService = {
     processPendingSubmissions: jest.fn().mockResolvedValue({ processed: 3, results: [] }),
+    listRefoldReview: jest.fn().mockResolvedValue({ pairs: [], complete: true }),
   };
   const configService = { get: jest.fn().mockReturnValue(allowlist) };
   const controller = new WinesController(winesService, wineSubmissionsService as any, configService as any);
@@ -60,5 +61,35 @@ describe("POST /wines/submissions/process is platform admin only", () => {
     await expect(
       t.controller.processSubmissions({ limit: 10 } as any, { userId: OWNER, restaurantId: HOUSE }),
     ).resolves.toBeDefined();
+  });
+});
+
+/**
+ * GET /wines/library/refold-review — the pairs the dotless-ı refold held
+ * back (QA round 10c F3). The library is shared across houses, so the list is
+ * platform admin only, behind the same allowlist as the worker above.
+ */
+describe("GET /wines/library/refold-review is platform admin only", () => {
+  it("a platform admin reads it, with the limit passed through", async () => {
+    const t = build();
+    const out = await t.controller.listRefoldReview({ limit: 20 } as any, { userId: ADMIN, restaurantId: HOUSE });
+    expect(out).toEqual({ pairs: [], complete: true });
+    expect(t.wineSubmissionsService.listRefoldReview).toHaveBeenCalledWith(20);
+  });
+
+  it("an ordinary owner is refused, and the table is never read", async () => {
+    const t = build();
+    await expect(
+      t.controller.listRefoldReview({} as any, { userId: OWNER, restaurantId: HOUSE }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(t.wineSubmissionsService.listRefoldReview).not.toHaveBeenCalled();
+  });
+
+  it("an unset allowlist fails closed", async () => {
+    const t = build("");
+    await expect(
+      t.controller.listRefoldReview({} as any, { userId: ADMIN, restaurantId: HOUSE }),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(t.wineSubmissionsService.listRefoldReview).not.toHaveBeenCalled();
   });
 });

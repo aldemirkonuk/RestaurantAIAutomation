@@ -1,3 +1,5 @@
+import { createHash } from "crypto";
+
 import { NOT_CONTRIBUTED_ONLY } from "../price-register/visibility";
 import { VendorComparisonService } from "./vendor-comparison.service";
 import { MIN_OUTLIER_SAMPLE } from "./vendor-site-sighting";
@@ -114,6 +116,8 @@ const defaultWine = {
 };
 
 const WINE_ID = "11111111-2222-3333-4444-555555555555";
+
+const sha256 = (key: string) => createHash("sha256").update(key).digest("hex");
 
 const row = (over: Record<string, any> = {}) => ({
   provider_id: null,
@@ -370,6 +374,33 @@ describe("VendorComparisonService", () => {
       expect(productOrs[0]).toMatch(/signature_hash\.eq\.[0-9a-f]{64}/);
     });
 
+    it("also asks for the hash a row was stored under before the dotless-ı fold", async () => {
+      // A scrape of "Kavaklıdere Yakut" stored before the fold holds
+      // sha256("kavakl dere|yakut|2019"); the library row now hashes to
+      // "kavaklidere|...". Without the second key those sightings leave the
+      // ladder (QA round 5, #785).
+      const { svc, calls } = makeService([row()], null, {
+        wine: { producer: "Kavaklıdere", name: "Yakut", vintage: 2019 },
+      });
+      await svc.compare({ masterWineId: WINE_ID });
+
+      const productOrs = calls.or.filter((c) => !c.startsWith("visibility."));
+      expect(productOrs).toHaveLength(1);
+      expect(productOrs[0]).toContain(
+        `signature_hash.eq.${sha256("kavaklidere|yakut|2019")}`,
+      );
+      expect(productOrs[0]).toContain(
+        `signature_hash.eq.${sha256("kavakl dere|yakut|2019")}`,
+      );
+    });
+
+    it("asks for no second hash when the fold changes nothing", async () => {
+      const { svc, calls } = makeService([row()]);
+      await svc.compare({ masterWineId: WINE_ID });
+      const productOrs = calls.or.filter((c) => !c.startsWith("visibility."));
+      expect(productOrs[0].match(/signature_hash\.eq\./g)).toHaveLength(1);
+    });
+
     it("falls back to the id alone when the wine is not in the library", async () => {
       const { svc, calls } = makeService([row()], null, { wine: null });
       await svc.compare({ masterWineId: WINE_ID });
@@ -541,6 +572,31 @@ describe("VendorComparisonService", () => {
       // invoices and tier-4 scrapes both took the test.
       const quoted = (price: number) =>
         row({ source_type: "quote", raw_price: price, pack_size: 1 });
+
+      it("reads priors stored before the dotless-ı fold for an off-catalogue bottle", async () => {
+        // No library wine: the typed name is the key. Sightings stored under
+        // the pre-fold hash must still count toward the five-value floor.
+        const { svc, calls } = makeService([quoted(20)]);
+        await svc.recordManualObservation({
+          ...base,
+          masterWineId: undefined,
+          producer: "Kavaklıdere",
+          productName: "Yakut",
+          vintage: 2019,
+          sourceType: "quote",
+          price: 20,
+          packSize: 1,
+          unitVolumeMl: 750,
+        });
+        expect(calls.or).toContain(
+          `signature_hash.eq.${sha256("kavaklidere|yakut|2019")},` +
+            `signature_hash.eq.${sha256("kavakl dere|yakut|2019")}`,
+        );
+        // ...and writes the NEW hash only.
+        expect(calls.inserted[0].signature_hash).toBe(
+          sha256("kavaklidere|yakut|2019"),
+        );
+      });
 
       it("flags a typed price that is deviant against its own class", async () => {
         const { svc, calls } = makeService([

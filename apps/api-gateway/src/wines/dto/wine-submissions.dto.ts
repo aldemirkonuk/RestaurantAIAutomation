@@ -88,6 +88,15 @@ export class SubmissionListQueryDto {
   limit?: number;
 }
 
+export class RefoldReviewQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  limit?: number;
+}
+
 export class ProcessSubmissionsDto {
   @IsOptional()
   @Transform(({ value }) => Number(value))

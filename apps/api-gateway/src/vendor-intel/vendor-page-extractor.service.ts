@@ -26,7 +26,7 @@ import {
   readBottleSize,
   readPageSizeEvidence,
 } from "./bottle-size";
-import { hashWineIdentity } from "./wine-identity";
+import { hashWineIdentity, hashWineIdentityBeforeFold } from "./wine-identity";
 import {
   SsrfBlockedError,
   assertPublicHttpTarget,
@@ -511,14 +511,18 @@ export class VendorPageExtractorService {
     const warnings: string[] = [];
     const volumeSources: Record<string, number> = {};
 
-    const candidates = items.map((item) => ({
-      item,
-      signatureHash: hashWineIdentity({
+    const candidates = items.map((item) => {
+      const identity = {
         producer: item.producer,
         name: item.name,
         vintage: item.vintage,
-      }),
-    }));
+      };
+      return {
+        item,
+        signatureHash: hashWineIdentity(identity),
+        signatureHashBeforeFold: hashWineIdentityBeforeFold(identity),
+      };
+    });
 
     // Priors for the outlier test, read ONCE for the whole page rather than per
     // row. `isOutlierAgainstPriors` is imported from the own-paper writer, not
@@ -527,6 +531,14 @@ export class VendorPageExtractorService {
     const priors = await this.loadPriorUnitPrices(
       candidates.map((c) => c.signatureHash).filter((h): h is string => !!h),
       ctx.restaurantId ?? null,
+      new Map(
+        candidates
+          .filter((c) => c.signatureHash && c.signatureHashBeforeFold)
+          .map((c) => [
+            c.signatureHashBeforeFold as string,
+            c.signatureHash as string,
+          ]),
+      ),
     );
 
     const rows: Record<string, unknown>[] = [];
@@ -684,9 +696,17 @@ export class VendorPageExtractorService {
   private async loadPriorUnitPrices(
     signatureHashes: string[],
     restaurantId: string | null,
+    /**
+     * Pre-fold hash -> current hash. A sighting stored before the dotless-ı
+     * fold carries the old hash; it is read and counted under the new one, so
+     * the group is not thinned below MIN_OUTLIER_SAMPLE by a spelling rule.
+     */
+    beforeFold: Map<string, string> = new Map(),
   ): Promise<Map<string, number[]>> {
     const out = new Map<string, number[]>();
-    const unique = Array.from(new Set(signatureHashes));
+    const unique = Array.from(
+      new Set([...signatureHashes, ...beforeFold.keys()]),
+    );
     if (unique.length === 0) return out;
 
     const query = scopePriceRegisterRead(
@@ -713,9 +733,10 @@ export class VendorPageExtractorService {
     for (const r of (data ?? []) as any[]) {
       const v = Number(r.normalized_unit_price);
       if (!r.signature_hash || !Number.isFinite(v)) continue;
-      const bucket = out.get(r.signature_hash) ?? [];
+      const key = beforeFold.get(r.signature_hash) ?? r.signature_hash;
+      const bucket = out.get(key) ?? [];
       bucket.push(v);
-      out.set(r.signature_hash, bucket);
+      out.set(key, bucket);
     }
     return out;
   }

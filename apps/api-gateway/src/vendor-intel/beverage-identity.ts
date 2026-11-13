@@ -1,4 +1,8 @@
-import { normalizeIdentityText, wineDisplayLabel } from "./wine-identity";
+import {
+  normalizeIdentityText,
+  normalizeIdentityTextBeforeFold,
+  wineDisplayLabel,
+} from "./wine-identity";
 
 /**
  * What a bottle IS, as a key several sources can agree on — the pure half.
@@ -113,11 +117,14 @@ const MAX_VINTAGE = 2100;
  * into "the bottle does not have one", which is this repo's standing fault in
  * one line.
  */
-export function readIdentity(input: IdentityInput): IdentityReading {
-  const producerNormalised = normalizeIdentityText(
+export function readIdentity(
+  input: IdentityInput,
+  normalize: (value?: string | null) => string = normalizeIdentityText,
+): IdentityReading {
+  const producerNormalised = normalize(
     typeof input.producer === "string" ? input.producer : null,
   );
-  const nameNormalised = normalizeIdentityText(
+  const nameNormalised = normalize(
     typeof input.name === "string" ? input.name : null,
   );
 
@@ -220,6 +227,100 @@ export function buildIdentityKey(parts: IdentityParts): string {
     parts.sizeMl === null ? "size?" : String(parts.sizeMl),
     parts.pack === null ? "pack?" : String(parts.pack),
   ].join("|");
+}
+
+/**
+ * The key this bottle was asserted under before the dotless-ı fold, or null
+ * when it is the same as `buildIdentityKey(readIdentity(input))` or the
+ * pre-fold reading refuses.
+ *
+ * READ-SIDE ONLY: a lookup key, never one to write. beverage_identities rows
+ * asserted before the fold hold "kavakl dere" in producer_normalised, and that
+ * cannot be refolded in SQL ("kavakl dere" may be a real space). Looking the
+ * old key up stops a second assertion of the same bottle making a second row.
+ */
+export function identityKeyBeforeFold(input: IdentityInput): string | null {
+  const now = readIdentity(input);
+  const before = readIdentity(input, normalizeIdentityTextBeforeFold);
+  if (!before.ok) return null;
+  const key = buildIdentityKey(before);
+  return now.ok && buildIdentityKey(now) === key ? null : key;
+}
+
+/**
+ * Whether `stored` could be the pre-fold form of `folded`: some of its "i"s
+ * were "ı" and became spaces, collapsed and trimmed ("kavaklidere" ->
+ * "kavakl dere", "isik" -> "s k"). Every choice is tried, memoised.
+ */
+export function couldBeBeforeFold(folded: string, stored: string): boolean {
+  if (folded === stored) return true;
+  // a, b: next char of folded / stored; pending: a space is owed.
+  const seen = new Set<string>();
+  const walk = (a: number, b: number, pending: boolean): boolean => {
+    if (a === folded.length) return b === stored.length; // trailing space trims
+    const memo = `${a},${b},${pending ? 1 : 0}`;
+    if (seen.has(memo)) return false;
+    seen.add(memo);
+    const c = folded[a];
+    const options = c === "i" ? ["i", " "] : [c];
+    for (const out of options) {
+      if (out === " ") {
+        if (walk(a + 1, b, b > 0)) return true;
+        continue;
+      }
+      let at = b;
+      if (pending) {
+        if (stored[at] !== " ") continue;
+        at += 1;
+      }
+      if (stored[at] === out && walk(a + 1, at + 1, false)) return true;
+    }
+    return false;
+  };
+  return walk(0, 0, false);
+}
+
+/** LIKE prefilter for pre-fold forms (runs of "i"/space become "%"); null when it would not narrow. */
+export function likePatternBeforeFold(folded: string): string | null {
+  if (!folded.includes("i")) return null;
+  const pattern = folded.replace(/[i ]+/g, "%");
+  return /[^%]/.test(pattern) ? pattern : null;
+}
+
+export interface StoredIdentityRow {
+  producer_normalised: string;
+  name_normalised: string;
+  vintage_text: string;
+  size_ml: number | null;
+  pack: number | null;
+  display_label: string;
+}
+
+/**
+ * Whether a row stored before the dotless-ı fold is this bottle: same vintage,
+ * size and pack; producer and name are pre-fold forms of these; and the typed
+ * display label folds to this one, which keeps "Domaine Al" and a real space
+ * ("Kavakl Dere") from passing for "Domaine Ali" and "Kavaklidere".
+ */
+export function storedRowIsBeforeFold(
+  subject: IdentityInput,
+  reading: IdentityParts,
+  row: StoredIdentityRow,
+): boolean {
+  if (row.vintage_text !== reading.vintageText) return false;
+  const size = row.size_ml === null ? null : Number(row.size_ml);
+  const pack = row.pack === null ? null : Number(row.pack);
+  if (size !== reading.sizeMl || pack !== reading.pack) return false;
+  if (!couldBeBeforeFold(reading.producerNormalised, row.producer_normalised)) {
+    return false;
+  }
+  if (!couldBeBeforeFold(reading.nameNormalised, row.name_normalised)) {
+    return false;
+  }
+  return (
+    normalizeIdentityText(row.display_label) ===
+    normalizeIdentityText(identityDisplayLabel(subject, reading))
+  );
 }
 
 /** How a person should see this identity. */

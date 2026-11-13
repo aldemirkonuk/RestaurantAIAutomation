@@ -5,7 +5,11 @@ import {
   Logger,
 } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
-import { hashWineIdentity, wineDisplayLabel } from "./wine-identity";
+import {
+  hashWineIdentity,
+  hashWineIdentityBeforeFold,
+  wineDisplayLabel,
+} from "./wine-identity";
 import { isIso4217 } from "../common/iso-4217";
 import {
   BelowAverageResult,
@@ -183,6 +187,20 @@ export interface VendorComparison {
  * is in the pure engine. This service only fetches rows and hands them over,
  * which is why the interesting behaviour is unit-tested without a database.
  */
+/** A library wine's comparison keys, or all null when it could not be read. */
+interface ResolvedWine {
+  identityHash: string | null;
+  /** Read-side only: the hash it was stored under before the dotless-ı fold. */
+  identityHashBeforeFold: string | null;
+  label: string | null;
+}
+
+const NO_WINE: ResolvedWine = {
+  identityHash: null,
+  identityHashBeforeFold: null,
+  label: null,
+};
+
 @Injectable()
 export class VendorComparisonService {
   private readonly logger = new Logger(VendorComparisonService.name);
@@ -204,9 +222,7 @@ export class VendorComparisonService {
    * valid master_wine_id to query on, and one missing library row should
    * narrow the answer, not fail the request.
    */
-  private async resolveWine(
-    masterWineId: string,
-  ): Promise<{ identityHash: string | null; label: string | null }> {
+  private async resolveWine(masterWineId: string): Promise<ResolvedWine> {
     const { data, error } = await this.databaseService.supabase
       .from("master_wine_library")
       .select("producer, name, vintage")
@@ -217,9 +233,9 @@ export class VendorComparisonService {
       this.logger.warn(
         `Could not resolve identity for master wine ${masterWineId}: ${error.message}`,
       );
-      return { identityHash: null, label: null };
+      return NO_WINE;
     }
-    if (!data) return { identityHash: null, label: null };
+    if (!data) return NO_WINE;
 
     const row = data as {
       producer: string | null;
@@ -228,6 +244,7 @@ export class VendorComparisonService {
     };
     return {
       identityHash: hashWineIdentity(row),
+      identityHashBeforeFold: hashWineIdentityBeforeFold(row),
       label: wineDisplayLabel(row),
     };
   }
@@ -254,6 +271,8 @@ export class VendorComparisonService {
     masterWineId?: string;
     signatureHash?: string;
     identityHash?: string | null;
+    /** Read-side only: the key observations were stored under before the fold. */
+    identityHashBeforeFold?: string | null;
     restaurantId?: string | null;
     windowDays?: number;
   }) {
@@ -296,6 +315,13 @@ export class VendorComparisonService {
     if (identityHash) keys.push(["signature_hash", identityHash]);
     if (signatureHash && signatureHash !== identityHash) {
       keys.push(["signature_hash", signatureHash]);
+    }
+    // Rows a scrape stored before the dotless-ı fold carry the old hash, and
+    // nothing can recompute it in SQL (no producer column). Asking for it too
+    // keeps them in this bottle's ladder (QA round 5, #785).
+    const before = params.identityHashBeforeFold ?? null;
+    if (before && !keys.some(([, v]) => v === before)) {
+      keys.push(["signature_hash", before]);
     }
 
     if (keys.length === 1) {
@@ -397,7 +423,7 @@ export class VendorComparisonService {
 
     const wine = params.masterWineId
       ? await this.resolveWine(params.masterWineId)
-      : { identityHash: null, label: null };
+      : NO_WINE;
 
     // Fork 6(a): refuse a paper, line, message or person that is not this
     // house's BEFORE anything is written. The database would refuse another
@@ -413,13 +439,15 @@ export class VendorComparisonService {
     // Fall back to what the user typed when no library wine was picked, so an
     // off-catalogue bottle is still comparable against other observations of
     // the same off-catalogue bottle.
-    const identityHash =
-      wine.identityHash ??
-      hashWineIdentity({
-        producer: params.producer,
-        name: params.productName,
-        vintage: params.vintage,
-      });
+    const typed = {
+      producer: params.producer,
+      name: params.productName,
+      vintage: params.vintage,
+    };
+    const identityHash = wine.identityHash ?? hashWineIdentity(typed);
+    const identityHashBeforeFold = wine.identityHash
+      ? wine.identityHashBeforeFold
+      : hashWineIdentityBeforeFold(typed);
 
     if (!params.masterWineId && !identityHash) {
       throw new BadRequestException(
@@ -478,6 +506,7 @@ export class VendorComparisonService {
             restaurantId: params.restaurantId,
             masterWineId: params.masterWineId ?? null,
             signatureHash: identityHash,
+            signatureHashBeforeFold: identityHashBeforeFold,
             sourceClass: comparisonClassOf(sourceType),
           });
 
@@ -583,6 +612,7 @@ export class VendorComparisonService {
     restaurantId: string;
     masterWineId: string | null;
     signatureHash: string | null;
+    signatureHashBeforeFold?: string | null;
     sourceClass: ReturnType<typeof comparisonClassOf>;
   }): Promise<number[]> {
     if (!args.masterWineId && !args.signatureHash) return [];
@@ -598,9 +628,17 @@ export class VendorComparisonService {
       )
         .order("observed_at", { ascending: false })
         .limit(200);
+      // Priors stored before the dotless-ı fold carry the old hash; leaving
+      // them out would thin the group below MIN_OUTLIER_SAMPLE and judge
+      // nothing. Both hashes are server-computed hex, safe in .or().
+      const before = args.signatureHashBeforeFold;
       q = args.masterWineId
         ? q.eq("master_wine_id", args.masterWineId)
-        : q.eq("signature_hash", args.signatureHash as string);
+        : before && before !== args.signatureHash
+          ? q.or(
+              `signature_hash.eq.${args.signatureHash},signature_hash.eq.${before}`,
+            )
+          : q.eq("signature_hash", args.signatureHash as string);
 
       const { data, error } = await q;
       if (error) throw new Error(error.message);
@@ -695,11 +733,12 @@ export class VendorComparisonService {
   }): Promise<VendorComparison> {
     const wine = params.masterWineId
       ? await this.resolveWine(params.masterWineId)
-      : { identityHash: null, label: null };
+      : NO_WINE;
 
     const rows = await this.loadObservations({
       ...params,
       identityHash: wine.identityHash,
+      identityHashBeforeFold: wine.identityHashBeforeFold,
     });
 
     const observations: PriceObservation[] = rows.map((r: any) => ({

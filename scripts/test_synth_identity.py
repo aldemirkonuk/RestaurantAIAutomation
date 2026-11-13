@@ -116,6 +116,21 @@ def test_normalize_matches_sql_on_every_vector(fx):
             assert wine_normalize_text(v["in"][k]) == v["norm"][k], (k, v["in"][k])
 
 
+def test_normalize_folds_turkish_dotless_i_like_sql():
+    # Outputs of wine_normalize_text() as redefined by
+    # 20270311100000_wine_names_fold_turkish_dotless_i, run in PGlite on
+    # 2026-11-07 (not production). Before it, "ı" became a space and the
+    # menu's "Kavaklıdere" and the invoice's "KAVAKLIDERE" keyed apart.
+    for raw, sql in (
+        ("Kavaklıdere", "kavaklidere"),
+        ("KAVAKLIDERE", "kavaklidere"),
+        ("Kalecik Karası", "kalecik karasi"),
+        ("İstanbul Şarapları", "istanbul saraplari"),
+        ("Dom. Kavaklıdere", "domaine kavaklidere"),
+    ):
+        assert wine_normalize_text(raw) == sql, raw
+
+
 def test_hash_matches_sql_on_every_vector(fx):
     for v in fx["vectors"]:
         i = v["in"]

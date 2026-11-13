@@ -26,6 +26,28 @@ describe("normalizeSignatureText", () => {
     );
   });
 
+  it("folds Turkish dotless ı so a menu's and an invoice's spelling agree", () => {
+    // U+0131 has no NFD decomposition; before the fold it became a space and
+    // "Kavaklıdere" keyed apart from the invoice's "KAVAKLIDERE".
+    expect(normalizeSignatureText("Kavaklıdere")).toBe(
+      normalizeSignatureText("KAVAKLIDERE"),
+    );
+    expect(normalizeSignatureText("Kalecik Karası")).toBe("kalecik karasi");
+    expect(
+      hashWineSignature({
+        producer: "Kavaklıdere",
+        name: "Yakut",
+        vintage: 2021,
+      }),
+    ).toBe(
+      hashWineSignature({
+        producer: "KAVAKLIDERE",
+        name: "YAKUT",
+        vintage: 2021,
+      }),
+    );
+  });
+
   it("treats punctuation as a word break, not as deletion", () => {
     expect(normalizeSignatureText("Blanc-de-Blancs")).toBe(
       normalizeSignatureText("Blanc de Blancs"),
@@ -207,9 +229,9 @@ describe("wineSignatureHashOrNull", () => {
         region: "Champagne",
       },
     };
-    expect(
-      wineSignatureHashOrNull(wineSignatureInputFromPayload(camel)),
-    ).toBe(wineSignatureHashOrNull(wineSignatureInputFromPayload(snake)));
+    expect(wineSignatureHashOrNull(wineSignatureInputFromPayload(camel))).toBe(
+      wineSignatureHashOrNull(wineSignatureInputFromPayload(snake)),
+    );
   });
 });
 

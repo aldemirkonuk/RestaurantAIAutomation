@@ -9,6 +9,8 @@
  * price thirty times a month.
  */
 
+import { createHash } from "crypto";
+
 import {
   PRICES_NOT_SAVED,
   VendorPageExtractorService,
@@ -229,6 +231,28 @@ describe("the outlier flag", () => {
     expect(second.captured.rows).toHaveLength(1);
     expect(second.captured.rows[0].is_outlier).toBe(true);
     expect(out.written).toBe(1);
+  });
+
+  it("counts priors stored under the pre-fold hash toward the same bottle", async () => {
+    // Sightings of "Kavaklıdere Yakut" written before the dotless-ı fold
+    // carry sha256("kavakl dere|yakut|2019"). They are the same bottle; left
+    // out, the group falls below the floor and a wild price is not judged
+    // (QA round 5, #785).
+    const sha = (k: string) => createHash("sha256").update(k).digest("hex");
+    const before = sha("kavakl dere|yakut|2019");
+    const priced = (v: number) => ({
+      signature_hash: before,
+      normalized_unit_price: v,
+    });
+    const { service, captured } = makeService({
+      priors: [priced(42), priced(42.1), priced(41.9), priced(42.05)],
+    });
+    const out = await write(service, [
+      item({ producer: "Kavaklıdere", name: "Yakut", price: 4200 }),
+    ]);
+    expect(captured.rows[0].signature_hash).toBe(sha("kavaklidere|yakut|2019"));
+    expect(out.flaggedOutliers).toBe(1);
+    expect(captured.rows[0].is_outlier).toBe(true);
   });
 
   it("does not flag below the five-value sample floor", async () => {

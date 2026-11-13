@@ -59,6 +59,9 @@ DIACRITICS = re.compile(
     "\\^`\u00a8\u00af\u00b4\u00b7\u00b8\u02b0-\u02ff"
     "\u0374\u0375\u037a\u0384\u0385]"
 )
+# Mirrors wine-signature.ts UNDECOMPOSABLE / the translate() in
+# wine_normalize_text: Turkish dotless "ı" has no NFD decomposition.
+UNDECOMPOSABLE = str.maketrans({"\u0131": "i"})
 ABBREV = [
     (re.compile(r"\baz\.\s*agr\.\s*"), "azienda agricola "),
     (re.compile(r"\bdom\.\s*"), "domaine "),
@@ -79,7 +82,8 @@ ABBREV = [
 def normalize(value) -> str:
     if not value:
         return ""
-    s = DIACRITICS.sub("", unicodedata.normalize("NFD", str(value))).lower()
+    s = DIACRITICS.sub("", unicodedata.normalize("NFD", str(value)))
+    s = s.translate(UNDECOMPOSABLE).lower()
     for pat, rep in ABBREV:
         s = pat.sub(rep, s)
     return re.sub(r"[^a-z0-9]+", " ", s).strip()

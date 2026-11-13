@@ -29,9 +29,19 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 EVAL = ROOT / "datasets/merge_eval/entries.json"
 
 
+#: Letters NFD cannot reach, folded after the mark strip and before lower(),
+#: as public.fold_undecomposable_letters() does inside beverage_normalize_text
+#: (byte parity: scripts/check_beverage_identity_parity.py). Twin of
+#: UNDECOMPOSABLE_LETTERS in apps/api-gateway/src/common/fold-letters.ts;
+#: fold-letters.spec.ts fails if this table drifts from it. Turkish dotless "ı"
+#: has no decomposition, so without it "Kavaklıdere" and "KAVAKLIDERE" key apart.
+UNDECOMPOSABLE = str.maketrans({"\u0131": "i"})
+
+
 def norm(value) -> str:
     s = unicodedata.normalize("NFD", str(value or ""))
     s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    s = s.translate(UNDECOMPOSABLE)
     return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
 
 

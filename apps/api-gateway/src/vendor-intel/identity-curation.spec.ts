@@ -25,6 +25,8 @@ function makeService(opts: {
   identityAfter?: any;
   identityError?: any;
   existing?: any;
+  /** When set, `existing` is found only under this identity_key. */
+  existingKey?: string;
   libraryRow?: any;
   libraryError?: any;
   queueRows?: any[];
@@ -48,6 +50,7 @@ function makeService(opts: {
       order: () => b,
       limit: () => b,
       in: () => b,
+      like: () => b,
       upsert: (payload: any) => {
         rec.inserts.push({ table, payload });
         return Promise.resolve({ data: null, error: null });
@@ -76,8 +79,11 @@ function makeService(opts: {
         if (table === "master_wine_library") {
           return { data: opts.libraryRow ?? null, error: opts.libraryError ?? null };
         }
-        if (filters.some(([c]) => c === "identity_key")) {
-          return { data: opts.existing ?? null, error: null };
+        const keyFilter = filters.find(([c]) => c === "identity_key");
+        if (keyFilter) {
+          const found =
+            opts.existingKey === undefined || keyFilter[1] === opts.existingKey;
+          return { data: found ? (opts.existing ?? null) : null, error: null };
         }
         identityReads += 1;
         // The second read of the identity is the one `promote` does AFTER the
@@ -166,6 +172,52 @@ describe("a house's assertion is provisional and queued", () => {
     expect(out.id).toBe("ident-0");
     expect(out.standing).toBe("library");
     expect(rec.inserts.filter((i) => i.table === "beverage_identities")).toHaveLength(0);
+  });
+});
+
+describe("a bottle asserted before the dotless-ı fold (QA round 5, #785)", () => {
+  const subject = {
+    producer: "Kavaklıdere",
+    name: "Kalecik Karası",
+    sizeMl: 750,
+    pack: 1,
+  };
+
+  it("finds the row under its old key rather than asserting it twice", async () => {
+    const { svc, rec } = makeService({
+      existing: {
+        id: "ident-old",
+        standing: "provisional",
+        curation_state: "queued",
+      },
+      existingKey: "kavakl dere|kalecik karas|unstated|750|1",
+    });
+    const out = await svc.assertIdentity({
+      subject,
+      userId: "user-1",
+      restaurantId: "house-1",
+    });
+    expect(out.created).toBe(false);
+    expect(out.id).toBe("ident-old");
+    expect(out.identityKey).toBe("kavakl dere|kalecik karas|unstated|750|1");
+    expect(
+      rec.inserts.filter((i) => i.table === "beverage_identities"),
+    ).toHaveLength(0);
+  });
+
+  it("writes a new row under the folded key when neither key exists", async () => {
+    const { svc, rec } = makeService({ existingKey: "nothing-here" });
+    const out = await svc.assertIdentity({
+      subject,
+      userId: "user-1",
+      restaurantId: "house-1",
+    });
+    expect(out.created).toBe(true);
+    const written = rec.inserts.find(
+      (i) => i.table === "beverage_identities",
+    )!;
+    expect(written.payload.producer_normalised).toBe("kavaklidere");
+    expect(written.payload.name_normalised).toBe("kalecik karasi");
   });
 });
 

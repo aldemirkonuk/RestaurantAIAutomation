@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, ServiceUnavailableException } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
 import { CreateWineSubmissionDto } from "./dto/wine-submissions.dto";
@@ -21,6 +21,25 @@ type SubmissionRow = {
   status: string;
   matched_master_id?: string | null;
 };
+
+/** One side of a held-back refold pair. */
+export interface RefoldReviewSide {
+  id: string;
+  label: string;
+  deleted: boolean;
+  /** The venue a provisional library row or a roster row belongs to. */
+  restaurantId: string | null;
+}
+
+export interface RefoldReviewPair {
+  id: string;
+  table: "master_wine_library" | "restaurant_wine_roster";
+  held: RefoldReviewSide | { id: string; missing: true };
+  heldBy: RefoldReviewSide | { id: string; missing: true };
+  storedHash: string;
+  foldedHash: string;
+  recordedAt: string;
+}
 
 /**
  * Structural subset shared by CreateWineSubmissionDto and menu-import items.
@@ -178,6 +197,100 @@ export class WineSubmissionsService {
     }
 
     return data;
+  }
+
+  /**
+   * The pairs the dotless-ı signature refold held back, oldest first
+   * (migration 20270405100000_wine_signatures_refold_dotless_i, QA round 10c F3).
+   *
+   * Each pair is a merge decision for a person (merge_library_wines), never an
+   * UPDATE, so this only reads: the held row, the row holding its folded hash,
+   * and both labels so the pair can be judged without a second query. A row
+   * the labels read cannot find is returned as `missing`, not dropped.
+   * `complete` is false when there were more than `limit` pairs.
+   */
+  async listRefoldReview(limit = 100): Promise<{
+    pairs: RefoldReviewPair[];
+    complete: boolean;
+  }> {
+    const db = this.dbService.supabase;
+    const { data, error } = await db
+      .from("wine_signature_refold_review")
+      .select("id, table_name, row_id, held_by, stored_hash, folded_hash, recorded_at")
+      .is("resolved_at", null)
+      .order("recorded_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(limit + 1);
+    if (error) {
+      throw new ServiceUnavailableException(
+        "The refold review list could not be read. This is unknown, not an empty list.",
+      );
+    }
+    const rows = ((data ?? []) as any[]).slice(0, limit);
+    const ids = (table: string) => [
+      ...new Set(
+        rows
+          .filter((r) => r.table_name === table)
+          .flatMap((r) => [r.row_id, r.held_by]),
+      ),
+    ];
+    const libraryIds = ids("master_wine_library");
+    const rosterIds = ids("restaurant_wine_roster");
+
+    const labels = new Map<string, RefoldReviewSide>();
+    if (libraryIds.length) {
+      const lib = await db
+        .from("master_wine_library")
+        .select("id, producer, name, vintage, deleted_at, provisional_for_restaurant_id")
+        .in("id", libraryIds);
+      if (lib.error) {
+        throw new ServiceUnavailableException(
+          "The library rows of the refold review could not be read.",
+        );
+      }
+      for (const w of (lib.data ?? []) as any[]) {
+        labels.set(w.id, {
+          id: w.id,
+          label: [w.producer, w.name, w.vintage].filter(Boolean).join(" "),
+          deleted: w.deleted_at !== null && w.deleted_at !== undefined,
+          restaurantId: w.provisional_for_restaurant_id ?? null,
+        });
+      }
+    }
+    if (rosterIds.length) {
+      const roster = await db
+        .from("restaurant_wine_roster")
+        .select("id, restaurant_id, wine_name")
+        .in("id", rosterIds);
+      if (roster.error) {
+        throw new ServiceUnavailableException(
+          "The roster rows of the refold review could not be read.",
+        );
+      }
+      for (const w of (roster.data ?? []) as any[]) {
+        labels.set(w.id, {
+          id: w.id,
+          label: w.wine_name ?? "",
+          deleted: false,
+          restaurantId: w.restaurant_id ?? null,
+        });
+      }
+    }
+    const side = (id: string): RefoldReviewSide | { id: string; missing: true } =>
+      labels.get(id) ?? { id, missing: true };
+
+    return {
+      pairs: rows.map((r) => ({
+        id: r.id,
+        table: r.table_name,
+        held: side(r.row_id),
+        heldBy: side(r.held_by),
+        storedHash: r.stored_hash,
+        foldedHash: r.folded_hash,
+        recordedAt: r.recorded_at,
+      })),
+      complete: ((data ?? []) as any[]).length <= limit,
+    };
   }
 
   async listSubmissions(status?: string, limit = 50) {
