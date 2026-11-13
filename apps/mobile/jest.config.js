@@ -13,6 +13,12 @@
  */
 module.exports = {
   testEnvironment: "node",
+  // Every suite runs on a Turkish phone's clock (UTC+3), the house's home
+  // market. A date printed through UTC is then a day off near midnight, so a
+  // test catches it; on a UTC runner (CI) the two dates are always equal and
+  // the bug cannot show. Set here, not in a test file: jest hands each test a
+  // copy of process.env, so assigning TZ inside a test changes nothing.
+  globalSetup: "<rootDir>/jest.tz.js",
   // Two tiny suites: in-band is faster, and it avoids ts-jest's worker
   // holding the TS program open past the run ("failed to exit gracefully").
   maxWorkers: 1,

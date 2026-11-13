@@ -11,6 +11,7 @@ import type {
   TodayPulse,
 } from "./types";
 import { useSession } from "@/state/session";
+import { weekStartOf } from "@/lib/weekStart";
 
 export const feedKey = ["mobile", "feed"] as const;
 export const pulseKey = ["mobile", "pulse"] as const;
@@ -186,11 +187,7 @@ export function useUpcomingSchedule() {
 
 /** Monday of the current week, YYYY-MM-DD (the Team domain's week key). */
 export function currentWeekStart(): string {
-  const d = new Date();
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  return d.toISOString().slice(0, 10);
+  return weekStartOf(new Date());
 }
 
 export function useTeamWeek() {
