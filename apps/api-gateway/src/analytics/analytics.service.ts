@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { readWholeWindow } from "../common/read-whole-window";
+import { readByIds } from "../common/read-by-ids";
 import * as E from "./engine";
 import { METRIC_REGISTRY, MetricDefinition, Persona } from "./metric-registry";
 import {
@@ -17,6 +18,13 @@ import {
 } from "./consumption-units";
 import { ORDER_SPEND_STATUSES } from "../procurement/order-status";
 import { houseDayBounds } from "../common/house-day";
+import {
+  TillCostRead,
+  TillSalesRead,
+  tillFigures,
+  tillStockOf,
+  withheldTillFigures,
+} from "./cost-of-goods";
 
 /**
  * AnalyticsService — the quantitative heart of WineOps.
@@ -75,6 +83,49 @@ export interface SalesGate {
   withSales?: boolean;
 }
 
+/** A recorded money figure above 0, else null (never a fabricated 0). */
+function positiveOrNull(v: unknown): number | null {
+  const n = typeof v === "string" ? Number(v) : (v as number);
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Said for an inventory row that carries no name anywhere. Never its id. */
+export const UNNAMED_ITEM = "An item with no name";
+
+/**
+ * What the house calls an inventory row: its own `wine_name`, then its
+ * `display_name` (a good that is not a wine), then the library's name. Blank
+ * strings are not names.
+ */
+export function houseItemName(row: {
+  wine_name?: unknown;
+  display_name?: unknown;
+  master_wine_library?: { name?: unknown } | null;
+}): string {
+  for (const v of [
+    row.wine_name,
+    row.display_name,
+    row.master_wine_library?.name,
+  ]) {
+    if (typeof v === "string" && v.trim() !== "") return v.trim();
+  }
+  return UNNAMED_ITEM;
+}
+
+/**
+ * The forecast's model in the house's words. `model` stays the engine's code
+ * (tests, the page and the export read it); the basis sentence, which the
+ * export prints as it is, names it as #1205 does on the page (r12).
+ */
+const FORECAST_MODEL_WORDS: Record<string, string> = {
+  holt_winters: "Trend and weekly pattern",
+  holt_linear: "Trend",
+  ses: "Smoothed average",
+};
+export function forecastModelInWords(model: string): string {
+  return FORECAST_MODEL_WORDS[model] ?? "A trend reading";
+}
+
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
@@ -117,58 +168,54 @@ export class AnalyticsService {
     );
   }
 
-  /** The allSettled variant: a rejection is a failure too. */
-  private reportSlice(table: string, r: PromiseSettledResult<any>) {
-    if (r.status === "rejected")
-      this.logger.error(`analytics query on ${table} rejected: ${r.reason}`);
-    else if (r.value?.error) this.logQueryFailure(table, r.value.error);
-  }
-
+  /**
+   * Every active inventory row, each with its lot rollup, read whole or
+   * refused (ADR 0292). Unranged, both reads stopped at PostgREST's 1,000
+   * rows, so a cellar past that was valued, turned and reordered on its first
+   * thousand rows, and a row past the rollup's thousandth fell back to its
+   * last purchase price (reports lane r3).
+   *
+   * A refusal (`WholeReadError`, a 503) PROPAGATES, as `loadConsumption`'s
+   * does (ADR 0292 fork 3): every caller reads both in one `Promise.all`, so
+   * each lens already refuses whole on a consumption read it could not make.
+   * The rollup is read for the ids in hand (`readByIds`): it has no unique
+   * column to page on.
+   */
   private async loadInventory(restaurantId: string) {
     const client = this.dbService.getClient();
-    const [invRes, rollupRes] = await Promise.allSettled([
+    // Column names must match the live schema exactly. PostgREST rejects the
+    // WHOLE query with 42703 on a single unknown column. There is no
+    // wine_type/unit_price/unit_cost/reorder_point on this table: the menu
+    // price is `menu_price_current`, cost is `last_purchase_price`, the
+    // reorder trigger is `threshold_min`, and the varietal/type lives on
+    // master_wine_library.
+    const inventory = await readWholeWindow<any>("The house's inventory", () =>
       client
         .from("restaurant_inventory")
-        // Column names must match the live schema exactly. PostgREST rejects
-        // the WHOLE query with 42703 on a single unknown column, and the
-        // allSettled + `data || []` below turns that rejection into an empty
-        // inventory rather than an error — so every metric downstream
-        // (inventory value, COGS ratio, turnover, GMROI, reorder science)
-        // silently reported 0/null for every restaurant. There is no
-        // wine_type/unit_price/unit_cost/reorder_point on this table: the
-        // menu price is `menu_price_current`, cost is `last_purchase_price`,
-        // the reorder trigger is `threshold_min`, and the varietal/type
-        // lives on master_wine_library.
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type)",
+          "id, wine_name, display_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type, name)",
+          { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
         .eq("is_active", true),
-      client
-        .from("inventory_lot_rollup")
-        .select(
-          // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
-          // can tell a WAC that covers every on-hand bottle from one that
-          // covers a single invoiced bottle in twenty-one.
-          "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
-        )
-        .eq("restaurant_id", restaurantId),
-    ]);
-
-    // allSettled makes a REJECTION invisible and `{ data, error }` makes a
-    // FAILED QUERY invisible; both land as `[]` here, which every metric below
-    // reads as "this restaurant has no inventory". Its sibling
-    // advanced-analytics.service.ts was hardened with logQueryFailure and this
-    // file, same directory and same tables, was not. See ADR 0067.
-    this.reportSlice("restaurant_inventory", invRes);
-    this.reportSlice("inventory_lot_rollup", rollupRes);
-
-    const inventory =
-      invRes.status === "fulfilled" ? invRes.value.data || [] : [];
+    );
+    const lots = await readByIds<any>(
+      "The house's lot totals",
+      inventory.map((i: any) => i.id),
+      (batch) =>
+        client
+          .from("inventory_lot_rollup")
+          .select(
+            // wac_qty / live_qty added 2026-09-02 (ADR 0079) so resolveUnitCost
+            // can tell a WAC that covers every on-hand bottle from one that
+            // covers a single invoiced bottle in twenty-one.
+            "inventory_id, live_qty, wac, has_invoice_cost, wac_qty",
+          )
+          .eq("restaurant_id", restaurantId)
+          .in("inventory_id", batch),
+    );
     const rollup = new Map<string, any>();
-    if (rollupRes.status === "fulfilled") {
-      for (const r of rollupRes.value.data || []) rollup.set(r.inventory_id, r);
-    }
+    for (const r of lots) rollup.set(r.inventory_id, r);
 
     // Unit cost: invoiced lot WAC → recorded last purchase price → UNKNOWN.
     // The third branch used to be `unitPrice * 0.6`, a magic number with no
@@ -181,7 +228,12 @@ export class AnalyticsService {
       const qty = lot?.live_qty ?? i.stock_live ?? 0;
       return {
         id: i.id,
-        name: i.wine_name || i.master_wine_id || i.id,
+        // The house's own name, then the library's (`inventory.service.ts`
+        // names a row the same way). It fell back to `master_wine_id`, then
+        // the row id, so the dead-stock card read "top: 10ca1c4e-…" for a
+        // bottle whose name lives only on its library row (r9 browser check,
+        // 2026-11-12). An id is never a name: a row with none says so.
+        name: houseItemName(i),
         type: i.master_wine_library?.primary_type || "unknown",
         qty,
         unitCost,
@@ -203,24 +255,58 @@ export class AnalyticsService {
   private async loadDeliveredOrders(restaurantId: string, sinceDays = 365) {
     const client = this.dbService.getClient();
     const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
-    const { data, error } = await client
-      .from("procurement_orders")
-      .select(
-        "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
-      )
-      .eq("restaurant_id", restaurantId)
-      .in("status", ORDER_SPEND_STATUSES)
-      .gte("delivered_at", since);
     // Every spend, COGS-ratio and vendor-concentration figure is built on this
     // list. Discarding the error made a failed read report a restaurant that
-    // bought nothing all year — the exact shape ADR 0053 named for cost.
-    if (error) this.logQueryFailure("procurement_orders", error);
-    return (data || []).map((o: any) => ({
+    // bought nothing all year — the exact shape ADR 0053 named for cost. Read
+    // whole or refused (ADR 0292): unranged, a year past 1,000 delivered
+    // orders was summed on its first thousand (reports lane r3).
+    const data = await readWholeWindow<any>(
+      "The delivered orders in this window",
+      () =>
+        client
+          .from("procurement_orders")
+          .select(
+            "id, provider_id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+            { count: "exact" },
+          )
+          .eq("restaurant_id", restaurantId)
+          .in("status", ORDER_SPEND_STATUSES)
+          .gte("delivered_at", since),
+    );
+    return data.map((o: any) => ({
       providerId: o.provider_id || "unknown",
-      cost: o.total_cost || o.final_price || 0,
+      // A delivered order with no recorded cost is an unknown, never 0: the
+      // purchases total below withholds rather than counting it as free.
+      cost: positiveOrNull(o.total_cost) ?? positiveOrNull(o.final_price),
       bottles: o.bottles_total || o.quantity || 0,
       date: (o.delivered_at || o.created_at || "").substring(0, 10),
     }));
+  }
+
+  /**
+   * The till's two reads for the cost of what sold (cost-math lane 3.1): net
+   * sales of stocked items and the cost their bottles carried when they left.
+   * Each is one jsonb value from a function, so no row cap cuts it. A failed
+   * read is null (logged), never an empty till: the figures it feeds go null.
+   */
+  private async loadTill(
+    restaurantId: string,
+    sinceDays: number,
+  ): Promise<{ sales: TillSalesRead | null; cost: TillCostRead | null }> {
+    const client = this.dbService.getClient();
+    const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
+    const args = { p_restaurant_id: restaurantId, p_since: since };
+    const [sales, cost] = await Promise.all([
+      client.rpc("pos_item_sales", args),
+      client.rpc("pos_cost_of_goods", args),
+    ]);
+    if (sales?.error) this.logQueryFailure("pos_item_sales", sales.error);
+    if (cost?.error) this.logQueryFailure("pos_cost_of_goods", cost.error);
+    const asObject = (r: any) =>
+      !r || r.error || r.data == null || typeof r.data !== "object"
+        ? null
+        : r.data;
+    return { sales: asObject(sales), cost: asObject(cost) };
   }
 
   private async loadConsumption(restaurantId: string, sinceDays = 90) {
@@ -463,20 +549,23 @@ export class AnalyticsService {
     opts: SalesGate = {},
   ) {
     const DEAD_STOCK_WINDOW_DAYS = 90;
-    const [inventory, orders, consumption] = await Promise.all([
+    const TILL_WINDOW_DAYS = 365;
+    const withSales = opts.withSales === true;
+    const [inventory, orders, consumption, till] = await Promise.all([
       this.loadInventory(restaurantId),
       this.loadDeliveredOrders(restaurantId, 365),
       this.loadConsumption(restaurantId, DEAD_STOCK_WINDOW_DAYS),
+      // ADR 0298 d9: the till is not read at all for a caller without sales.
+      withSales ? this.loadTill(restaurantId, TILL_WINDOW_DAYS) : null,
     ]);
 
     // A row holding no bottles contributes 0 to the valuation whatever it
     // cost, so it cannot block the total. Only ON-HAND rows need a cost.
     const onHand = inventory.filter((i) => i.qty > 0);
     // NB `complete` is false for an EMPTY on-hand set, so an empty cellar
-    // reports null rather than $0. That is deliberate: `loadInventory` above
-    // degrades a failed PostgREST query to `[]` (see its comment), so `[]` is
-    // "no rows or no answer", and $0 for a dead query is precisely the silent
-    // zero this endpoint has already been burned by once.
+    // reports null rather than $0. `loadInventory` now refuses a read it
+    // could not make whole rather than answering `[]`, but $0 for a cellar
+    // with nothing on hand would still read as a valuation, and it is not one.
     const costCoverage = summarizeCostBasis(onHand);
     // A total assembled from 2 of 72 SKUs is not "inventory value" — it is a
     // different, much smaller number wearing that label. ADR 0051: say we do
@@ -486,53 +575,44 @@ export class AnalyticsService {
       ? E.stats.sum(onHand.map((i) => i.inventoryValue as number))
       : null;
 
-    // `E.stats.sum([])` is 0, and BOTH loaders above degrade a failed query to
-    // `[]` (see their comments), so an unconditional sum reported "the query
-    // failed" and "this restaurant bought nothing in a year" as the same $0 —
-    // absence rendered as a fact. An empty result set is not a measured zero:
-    // it is the absence of any row to measure, so it is null and the basis
-    // says which. A restaurant that genuinely placed orders still gets its
-    // real total, including a real 0 if every order carried no cost.
-    const cogs =
-      orders.length === 0 ? null : E.stats.sum(orders.map((o) => o.cost));
+    // Cost of goods is what SOLD, not what was bought (cost-math lane 3.1,
+    // ADR 0298 with its cost source moved to the stamped draws). It used to
+    // be the sum of delivered orders, so a month with a big buy and few sales
+    // printed the buy, and the ratios divided today's stock by a shelf
+    // valuation. The till's figures replace both; the old two keep their own
+    // names (`deliveredPurchases`, `shelfValueAtMenuPrice`) and feed no ratio.
+    // Turns, days of stock and GMROI divide by the stock of the goods the
+    // till reaches, not the whole cellar: the cost of what sold holds only
+    // those goods (tillStockOf, reports lane r2).
+    const tillStock = till
+      ? tillStockOf({ onHand, sales: till.sales, cost: till.cost })
+      : null;
+    const t = till
+      ? tillFigures({
+          sales: till.sales,
+          cost: till.cost,
+          tillStock,
+          labor,
+          now: new Date(),
+          windowDays: TILL_WINDOW_DAYS,
+        })
+      : withheldTillFigures(TILL_WINDOW_DAYS);
 
-    // Revenue basis: sell-price valuation of purchased bottles (proxy until a
-    // POS revenue feed lands). Menu price is recorded, so this survives an
-    // unknown cost — it is the cost-derived fields below that go null.
-    const revenue =
+    // `E.stats.sum([])` is 0, and the loader degrades a failed query to `[]`,
+    // so an empty list is "none, or no answer": null, never $0. An order with
+    // no recorded cost withholds the total rather than adding 0 for it.
+    const ordersUncosted = orders.filter((o) => o.cost == null).length;
+    const deliveredPurchases =
+      orders.length === 0 || ordersUncosted > 0
+        ? null
+        : E.stats.sum(orders.map((o) => o.cost as number));
+
+    // Sell-price valuation of the bottles on hand. Not revenue: nothing here
+    // was sold. Kept under its own name for whoever reads it.
+    const shelfValueAtMenuPrice =
       inventory.length === 0
         ? null
         : E.stats.sum(inventory.map((i) => i.unitPrice * (i.qty || 0)));
-    const marginDollars =
-      inventoryValue == null || revenue == null ? null : revenue - inventoryValue;
-
-    // Every one of these takes inventory value as its cost input, and the two
-    // ratios take revenue as their denominator. A null on either side makes
-    // them unknown, not zero and not infinite.
-    const turnover =
-      inventoryValue == null || cogs == null
-        ? null
-        : E.inventory.inventoryTurnover(cogs, inventoryValue);
-    const dio =
-      inventoryValue == null || cogs == null
-        ? null
-        : E.inventory.daysInventoryOutstanding(cogs, inventoryValue);
-    const gmroi =
-      inventoryValue == null || marginDollars == null
-        ? null
-        : E.inventory.gmroi(marginDollars, inventoryValue);
-    const grossMargin =
-      inventoryValue != null && revenue != null && revenue > 0
-        ? E.finance.grossMargin(inventoryValue, revenue)
-        : null;
-    const cogsRatioVal =
-      inventoryValue != null && revenue != null && revenue > 0
-        ? E.finance.cogsRatio(inventoryValue, revenue)
-        : null;
-    const primeCost =
-      inventoryValue != null && revenue != null && revenue > 0
-        ? E.finance.primeCostRatio(inventoryValue, labor, revenue)
-        : null;
 
     // Dead stock: on hand, but NOT MOVING. The previous definition was a
     // depth test (`qty > max(thresholdMin*3, 12)`) with no consumption join at
@@ -599,34 +679,57 @@ export class AnalyticsService {
         : null;
 
     return {
+      // These three sentences are read by the house: /reports prints them
+      // under "Show the working" and the report export prints them in the
+      // download. They name no table and no `$` (r9 left list, 2026-11-12:
+      // "procurement_orders" and "$0 would claim the first" reached a lira
+      // house). A zero is a claim in no currency, so it is said as "a zero".
       basis: {
-        cogs:
+        cogs: t.basis.cogs,
+        revenue: t.basis.revenue,
+        deliveredPurchases:
           orders.length === 0
-            ? "delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window, which is either no purchasing or a read that failed, and $0 would claim the first"
-            : `delivered procurement_orders (trailing 365d) — ${orders.length} order${orders.length === 1 ? "" : "s"} summed`,
-        revenue:
+            ? "Delivered orders over the last 365 days — left blank: no delivered order was returned for this window, which is either no purchasing or a read that failed, and a zero would claim the first"
+            : ordersUncosted > 0
+              ? `Delivered orders over the last 365 days — left blank: ${ordersUncosted} of ${orders.length} delivered order${orders.length === 1 ? "" : "s"} carry no recorded cost, and counting them as zero would understate what was bought`
+              : `Delivered orders over the last 365 days — ${orders.length} order${orders.length === 1 ? "" : "s"} summed. What was bought, not what sold: it feeds no ratio`,
+        shelfValueAtMenuPrice:
           inventory.length === 0
-            ? "unit_price × on-hand qty (POS-revenue proxy) — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"
-            : `unit_price × on-hand qty (POS-revenue proxy) — ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} valued`,
+            ? "The menu price × the bottles on hand — left blank: no inventory row was returned, which is either an empty cellar or a read that failed, and a zero would claim the first"
+            : `The menu price × the bottles on hand — ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} valued at menu price. Not sales: it feeds no ratio`,
         // This string used to read "on-hand qty × WAC (lot rollup)"
         // unconditionally while ~70 of 72 rows were valued off a fabricated
         // 0.6 × menu price. A basis now describes the rows it covered.
-        inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
-        deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
-        costDerived:
-          "inventoryValue, grossMarginDollars, grossMargin, cogsRatio, primeCostRatio, inventoryTurnover, daysInventoryOutstanding, gmroi and deadStockCapital are null unless every on-hand row carries a recorded cost (ADR 0051); inventoryTurnover and daysInventoryOutstanding are null again when cogs is null, and the three ratios again when revenue is null, because a ratio over an absent denominator is not a ratio",
+        inventoryValue: `Bottles on hand × what each cost — ${costBasisSentence(costCoverage)}`,
+        deadStock: `Bottles on hand with nothing poured or sold in ${DEAD_STOCK_WINDOW_DAYS} days; left blank when the house records no pouring or sales at all, or when any idle line has no recorded cost`,
+        costDerived: t.basis.costDerived,
       },
       costCoverage,
       inventoryValue,
-      cogs,
-      revenue,
-      grossMarginDollars: marginDollars,
-      grossMargin,
-      cogsRatio: cogsRatioVal,
-      primeCostRatio: primeCost,
-      inventoryTurnover: turnover,
-      daysInventoryOutstanding: dio,
-      gmroi,
+      // What the ratios' stock base covered; null without sales or when the
+      // till's sales could not be read.
+      tillStock,
+      salesWithheld: !withSales,
+      cogs: t.cogs,
+      cogsCoverage: t.cogsCoverage,
+      cogsSettledAfterSale: t.settledAfterSale,
+      // Named apart, feeding no ratio (batch review 2026-11-11): late prices
+      // settled in the window on bottles sold before it, and, while cogs is
+      // withheld, the exact cost of the items whose every bottle is costed.
+      settledOnEarlierSales: t.settledOnEarlierSales,
+      costOfCostedItems: t.costOfCostedItems,
+      cogsWindow: t.cogsWindow,
+      revenue: t.revenue,
+      salesCoverage: t.salesCoverage,
+      grossMarginDollars: t.grossMarginDollars,
+      grossMargin: t.grossMargin,
+      cogsRatio: t.cogsRatio,
+      primeCostRatio: t.primeCostRatio,
+      inventoryTurnover: t.inventoryTurnover,
+      daysInventoryOutstanding: t.daysInventoryOutstanding,
+      gmroi: t.gmroi,
+      deliveredPurchases,
+      shelfValueAtMenuPrice,
       deadStockCapital,
       deadStockTop: deadStock.slice(0, 10),
       generatedAt: new Date().toISOString(),
@@ -759,6 +862,8 @@ export class AnalyticsService {
       .filter((s) => s.needsReorder)
       .sort(E.byStockoutRisk);
 
+    /** "95 restocks in 100": the service level as the house says it. */
+    const servicePct = Math.round(serviceLevel * 100);
     return {
       params: {
         serviceLevel,
@@ -768,11 +873,11 @@ export class AnalyticsService {
       // This endpoint carried no `basis` at all, which made its cost-derived
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
-        demand: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
-        reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost`,
-        inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
+        demand: `Bottles a day over the last ${sinceDays} days — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} item${unassessed === 1 ? " has" : "s have"} no reading of what sells, so ${unassessed === 1 ? "its" : "their"} demand, days of cover, reorder point and run-out risk are left blank and ${unassessed === 1 ? "it is" : "they are"} never put on the reorder list` : ""}`,
+        reorderScience: `A safety stock sized so ${servicePct} restocks in 100 arrive before the shelf runs out, with orders taking ${leadTime} day${leadTime === 1 ? "" : "s"} to arrive — read from what sells, not from what it cost`,
+        inventoryValue: `Bottles on hand × what each cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
-          "skus[].inventoryValue, skus[].unitCost and skus[].eoq are null for any row with no recorded cost; skus[].abcClass is null for EVERY row unless the whole cellar is priced, because ABC cuts on share of a total (ADR 0051)",
+          "An item with no recorded cost shows no value, cost or order size; the A/B/C grade is left blank for every item until the whole cellar is priced, because it ranks each item's share of the total",
       },
       costCoverage,
       unitsCoverage,
@@ -816,11 +921,15 @@ export class AnalyticsService {
 
     // Vendor concentration (HHI on spend share).
     const spendByVendor = new Map<string, number>();
-    for (const o of orders)
+    // An order with no recorded cost carries no spend weight (as before the
+    // purchases total stopped reading it as 0); it is left out, not priced.
+    for (const o of orders) {
+      if (o.cost == null) continue;
       spendByVendor.set(
         o.providerId,
         (spendByVendor.get(o.providerId) || 0) + o.cost,
       );
+    }
     const vendorWeights = Array.from(spendByVendor.values());
     const hhi = E.finance.herfindahlIndex(vendorWeights);
     const effectiveVendors = E.finance.effectiveCount(vendorWeights);
@@ -857,7 +966,7 @@ export class AnalyticsService {
 
     return {
       basis: {
-        demand: `demandRisk is over bottles/day across 90d — ${unitsBasisSentence(unitsCoverage, "series")}`,
+        demand: `How steady demand is, read from bottles a day over the last 90 days — ${unitsBasisSentence(unitsCoverage, "series")}`,
       },
       vendorConcentration: {
         hhi,
@@ -1045,17 +1154,17 @@ export class AnalyticsService {
         ? E.stats.sum(projection.forecast.map((v) => Math.max(0, v)))
         : null,
       basis: {
-        demand: `bottles/day over ${sinceDays}d, zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage, "series")}${unmeasuredWine ? "; nothing is projected from this short series" : ""}`,
+        demand: `Bottles a day over the last ${sinceDays} days, a day with nothing recorded counted as 0 — ${unitsBasisSentence(unitsCoverage, "series")}${unmeasuredWine ? "; nothing is projected from this short history" : ""}`,
         model: projection
-          ? `${model} fitted on ${values.length} days of history`
+          ? `${forecastModelInWords(model)}, fitted on ${values.length} days of history`
           : unmeasuredWine
-            ? "no model fitted — this wine has lines that carry no bottle figure, so its history is short by an unknown amount and nothing is projected from it"
+            ? "Nothing projected — this wine has lines that carry no bottle figure, so its history is short by an unknown amount"
             : hasObservation
-              ? "no model fitted — Holt-Winters, Holt and SES each refused this history, so no line is projected and no total is claimed"
-              : `no model fitted — every one of the ${values.length} days of history reads zero, so there is no demand signal to project from`,
+              ? "Nothing projected — none of the three ways of reading a trend fits this history, so no line is drawn and no total is claimed"
+              : `Nothing projected — every one of the ${values.length} days of history reads zero, so there is nothing to project from`,
         total: projection
-          ? `sum of the ${horizon}-day forecast, each day floored at 0`
-          : "null — there is no projection to total",
+          ? `The ${horizon} days ahead added up, a day below zero counted as 0`
+          : "Left blank — there is no projection to add up",
       },
       accuracy,
       generatedAt: new Date().toISOString(),

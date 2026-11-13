@@ -221,9 +221,12 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     const out = await build([UNPRICED, RECORDED]).getFinancialSummary(
       RESTAURANT,
     );
-    // 10 × 100 + 5 × 60 — menu price is recorded for both rows.
-    expect(out.revenue).toBe(1300);
-    expect(out.basis.revenue).toContain("2 inventory rows valued");
+    // 10 × 100 + 5 × 60 — menu price is recorded for both rows. Since
+    // cost-math lane 3.1 this shelf valuation keeps its own name; `revenue`
+    // is the till's net sales and is withheld from a caller without sales.
+    expect(out.shelfValueAtMenuPrice).toBe(1300);
+    expect(out.basis.shelfValueAtMenuPrice).toContain("2 inventory rows valued");
+    expect(out.revenue).toBeNull();
   });
 
   it("withholds COGS when no delivered order came back at all", async () => {
@@ -236,7 +239,8 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     );
     expect(out.cogs).toBeNull();
     expect(out.cogs).not.toBe(0);
-    expect(out.basis.cogs).toContain("null");
+    expect(out.deliveredPurchases).toBeNull();
+    expect(out.basis.deliveredPurchases).toContain("left blank");
   });
 
   it("stops the basis claiming WAC for a value that never touched WAC", async () => {
@@ -265,7 +269,7 @@ describe("getFinancialSummary tells the truth about an uncosted cellar", () => {
     expect(out.inventoryValue).toBe(100); // 5 × 20
     expect(out.costCoverage.complete).toBe(true);
     expect(out.basis.inventoryValue).toContain(
-      "every row in scope has a recorded cost",
+      "every item has a recorded cost",
     );
   });
 
@@ -453,6 +457,6 @@ describe("getWine360", () => {
     const out = await svc.getWine360(RESTAURANT, RECORDED.master_wine_id);
     expect(out.unitCost).toBe(20);
     expect(out.marginPerBottle).toBe(40);
-    expect(out.basis.unitCost).toContain("last_purchase_price");
+    expect(out.basis.unitCost).toContain("the last price paid");
   });
 });

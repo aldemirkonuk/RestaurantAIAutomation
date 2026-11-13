@@ -22,6 +22,11 @@ class Books {
       in: (k: string, v: any[]) => { filters.push(r => v.includes(r[k])); return q; },
       gte: (k: string, v: any) => { filters.push(r => r[k] != null && r[k] >= v); return q; },
       lt: (k: string, v: any) => { filters.push(r => r[k] != null && r[k] < v); return q; },
+      or: (expr: string) => { // only the "a.gt.N,b.gt.M" form a reader sends
+        const terms = expr.split(",").map(t => t.split("."));
+        if (terms.some(t => t[1] !== "gt")) throw new Error(`fake or() cannot read ${expr}`);
+        filters.push(r => terms.some(([k, , v]) => Number(r[k] ?? 0) > Number(v))); filterNames.push(`or(${expr})`); return q;
+      },
       order: () => { sorted = true; return q; },
       range: (a: number, b: number) => { offset = a; end = b; return q; },
       then: (resolve: any, reject: any) => {
@@ -175,6 +180,19 @@ describe("ADR 0145 build task 4, per source: every relation a Reading reads refu
 });
 
 describe("proof, scope, absence and provenance regressions", () => {
+  // a_used_up_lot_is_kept (R6): a lot sold to zero stays at 0 and is not stock.
+  test("inventory.locations leaves out a used-up lot and keeps an open bottle", async () => {
+    const books = fixture();
+    books.tables.inventory_lots.push(
+      house("lot-used-up", { inventory_id: "item-a", location_id: "bar", stock_state: "live", qty: 0, open_bottle_ml: 0, status: "depleted" }),
+      house("lot-open", { inventory_id: "item-a", location_id: "cellar", stock_state: "live", qty: 0, open_bottle_ml: 300 }));
+    books.tables.storage_locations.push(house("bar", { name: "Bar" }));
+    const finding = await run(books, "inventory.locations");
+    expect(finding.outcome).toBe("read");
+    expect(value(finding, "lots:count")).toBe(4);
+    expect(value(finding, "cellar:live:qty")).toBe(10);
+    expect(finding.rows.map(r => r.key)).not.toContain("bar:live");
+  });
   test("actual multi-page reads exceed Supabase's first page without inventing a count", async () => {
     const books = fixture(); books.tables.analytics_goals = Array.from({ length: 1201 }, (_, i) => house(`g-${i.toString().padStart(4, "0")}`, { status: "active", target_value: i, metric_key: "covers" }));
     const finding = await run(books, "goals.targets");

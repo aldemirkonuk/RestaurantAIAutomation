@@ -23,6 +23,14 @@ function client(tables: Record<string, Row[]>, failing = new Set<string>()) {
       const filters: ((r: Row) => boolean)[] = [];
       const q: any = {
         select: () => q,
+        // readWholeWindow's keyset steps (reports lane r3). With no count, a
+        // short page is the last one.
+        order: () => q,
+        limit: () => q,
+        gt: (c: string, v: string) => (
+          filters.push((r) => String(r[c]) > v),
+          q
+        ),
         eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
         gte: (c: string, v: string) => (
           filters.push((r) => r[c] != null && r[c] >= v),

@@ -346,6 +346,8 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
       const out = await svc.getCashflow(RESTAURANT);
       expect(client.schemaErrors).toEqual([]);
       expect(out.spendLast30d).toBe(2000);
+      // Printed as "Outflow: …" on /reports and in the export (r11).
+      expect(out.basis.outflow).toBe("delivered orders (money coming in needs the till connected)");
     });
 
     // ADR 0058 fixed the nine `=== "delivered"` sites and the four literals on
@@ -405,9 +407,11 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
       expect(out.spendLast30d).toBe(2000);
     });
 
-    it("logs, rather than swallows, a query that really does fail", async () => {
-      // A column that does not exist anywhere: the loader must still degrade to
-      // an empty lens (one dead query must not 500 the page) but must say so.
+    it("refuses, rather than swallows, a query that really does fail", async () => {
+      // A column that does not exist anywhere. The loader used to degrade to an
+      // empty lens with a log line; it now reads whole or refuses (ADR 0292,
+      // reports lane r3), so cash flow says it could not be read, with the
+      // database's code, and the overview draws that one lens as null.
       const client = makeClient({ procurement_orders: ORDER_ROWS });
       const realFrom = client.from;
       client.from = jest.fn((table: string) => {
@@ -424,16 +428,9 @@ describe("analytics selects only columns that exist (42703 regression)", () => {
         {} as any,
         {} as any,
       );
-      const spy = jest
-        .spyOn((svc as any).logger, "error")
-        .mockImplementation(() => undefined);
-      const out = await svc.getCashflow(RESTAURANT);
-      expect(out.spendLast30d).toBe(0);
-      expect(spy).toHaveBeenCalledWith(
-        expect.stringContaining("procurement_orders"),
+      await expect(svc.getCashflow(RESTAURANT)).rejects.toThrow(
+        /The orders in this window could not be read whole[\s\S]*42703/,
       );
-      expect(spy.mock.calls[0][0]).toContain("42703");
-      spy.mockRestore();
     });
   });
 

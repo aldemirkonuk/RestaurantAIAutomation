@@ -12,7 +12,7 @@
  * on the way to a chart.
  */
 
-import { formatMoney, formatNumber } from '@/lib/utils';
+import { formatNumber } from '@/lib/utils';
 import type { HouseRole } from './rp-spec';
 
 export const EM = '—';
@@ -28,16 +28,96 @@ export function num(v: unknown): number | null {
   return null;
 }
 
-/** Money of record, or the dash. */
-export function money(v: unknown, mode: 'compact' | 'full' | 'table' = 'full'): string {
+/** A well-formed ISO 4217 code, or null. */
+function isoCode(c: unknown): string | null {
+  return typeof c === 'string' && /^[A-Z]{3}$/.test(c) ? c : null;
+}
+
+/**
+ * What a money figure on this page is printed in.
+ *
+ * - an ISO 4217 code (`GET /settings/currency` answered one): the house's mark;
+ * - `null` or absent (never stated, or the read failed): the figure prints
+ *   BARE, and the page says once, under its date line, why;
+ * - `READING` (the read has not answered yet): every figure is the dash. A
+ *   bare `4,210` that turns into `₺4,210` a moment later reads as two amounts,
+ *   and a `$` would be a claim about the money the page cannot yet make.
+ */
+export const READING = Object.freeze({ reading: true as const });
+export type MoneyIn = string | null | undefined | typeof READING;
+
+/**
+ * Money of record in the HOUSE's currency, or the dash.
+ *
+ * It never falls back to `$`: a currency mark is a claim about the amount, and
+ * every house used to read as dollars (audit G5; the same rule as `fmtMoney`,
+ * `lib/mudavym/format.ts`).
+ *
+ * `currency` is REQUIRED on purpose (r7, 2026-11-12). Two /reports stacks edit
+ * this file; a register that calls `money(v)` without saying whose money it is
+ * would silently print bare figures on a house that has a currency. Without a
+ * default the compiler refuses that call, so a merge cannot hide it. Register
+ * views bind it once with `moneyIn(ctx.currency)`.
+ */
+export function money(
+  v: unknown,
+  mode: 'compact' | 'full' | 'table',
+  currency: MoneyIn,
+): string {
   const n = num(v);
-  return n === null ? EM : formatMoney(n, mode);
+  if (n === null) return EM;
+  if (typeof currency === 'object' && currency !== null) return EM;
+  const code = isoCode(currency);
+  if (!code)
+    return mode === 'table'
+      ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : formatNumber(n, mode === 'compact' ? 'compact' : 'full');
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: code,
+      currencyDisplay: 'narrowSymbol',
+      ...(mode === 'compact'
+        ? { notation: 'compact', minimumFractionDigits: 0, maximumFractionDigits: 1 }
+        : mode === 'table'
+          ? { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+          : { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+    }).format(n);
+  } catch {
+    // A well-formed code this runtime does not know: the number is still true.
+    return `${formatNumber(n, mode === 'compact' ? 'compact' : 'full')} ${code}`;
+  }
+}
+
+/** `money` bound to one house's currency — what every register view uses. */
+export function moneyIn(currency: MoneyIn) {
+  return (v: unknown, mode: 'compact' | 'full' | 'table' = 'full') => money(v, mode, currency);
 }
 
 /** Plain figure, or the dash. */
 export function figure(v: unknown, mode: 'compact' | 'full' = 'full'): string {
   const n = num(v);
   return n === null ? EM : formatNumber(n, mode);
+}
+
+/**
+ * A plain figure to at most `digits` places, or the dash. The ledger's turns,
+ * days and GMROI are ratios the engine returns unrounded; `figure` printed
+ * them to three places ("312.067" days, cost-math walk 2026-11-11). The export
+ * prints days to one place and other figures to two
+ * (`report-export-render.ts`), so the page uses the same places.
+ */
+export function figureTo(v: unknown, digits: number): string {
+  const n = num(v);
+  return n === null ? EM : n.toLocaleString('en-US', { maximumFractionDigits: digits });
+}
+
+/**
+ * A reason sentence set inside the page's own parentheses: its closing full
+ * stop is dropped, so "(… under Time zone.)." reads "(… under Time zone)."
+ */
+export function inParens(reason: string): string {
+  return reason.replace(/[.\s]+$/, '');
 }
 
 /** A ratio the engine returns as 0–1, rendered as a percentage of record. */
