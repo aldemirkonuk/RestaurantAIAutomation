@@ -1,4 +1,5 @@
 import { Logger } from "@nestjs/common";
+import { moneyIn } from "../common/money-in";
 
 /**
  * A manager who set their own wage tells the owner, and the trail says so
@@ -48,10 +49,13 @@ export interface OwnWageReceipt {
   ownersFound: number | null;
 }
 
+/**
+ * A wage in the bell's shape (`moneyIn`): the money's own sign, grouped, in
+ * its own places ("₺1,240.50"). No currency: the grouped figure alone.
+ */
 function money(v: number | null, currency: string | null): string {
   if (v == null) return "no wage";
-  const n = Number(v).toFixed(2);
-  return currency ? `${n} ${currency}` : n;
+  return moneyIn(Number(v), currency);
 }
 
 export async function recordOwnWageChange(

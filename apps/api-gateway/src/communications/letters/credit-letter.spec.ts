@@ -219,13 +219,28 @@ describe("composeCreditLetter", () => {
   it("carries the claim's facts in its own currency", () => {
     const l = composeCreditLetter(facts);
     expect(l.subject).toBe("Credit request — invoice INV-77");
-    expect(l.body).toContain("84.50 EUR");
+    expect(l.body).toContain("€84.50");
     expect(l.body).toContain("Invoice: INV-77");
     expect(l.body).toContain("Order: PO-1042");
     expect(l.body).toContain("Bottles concerned: 2");
     expect(l.body).toContain("Invoice says 12, we counted 10.");
     expect(l.body).toContain("2026-09-20");
     expect(l.category).toBe("invoice_mismatch");
+  });
+
+  it("says the amount as the bell does: its own sign, grouped, its own places", () => {
+    expect(
+      composeCreditLetter({ ...facts, claimedAmount: 1240.5, currency: "TRY" })
+        .body,
+    ).toContain("₺1,240.50");
+    expect(
+      composeCreditLetter({ ...facts, claimedAmount: 5000, currency: "JPY" })
+        .body,
+    ).toContain("credit of ¥5,000 because");
+    expect(
+      composeCreditLetter({ ...facts, claimedAmount: 1240.5, currency: null })
+        .body,
+    ).toContain("Amount asked: 1,240.50");
   });
 
   it("leaves out what the claim does not carry, and invents nothing", () => {
@@ -293,7 +308,7 @@ describe("HouseLettersService.draftForCredit", () => {
     expect(headers.credit_id).toBe(CREDIT);
     expect(headers.drafted_by).toBe(PERSON);
     expect(headers.subject).toBe("Credit request — invoice INV-77");
-    expect(String(row.message_text)).toContain("84.50 EUR");
+    expect(String(row.message_text)).toContain("€84.50");
     expect(String(row.message_text)).toContain("Hello Vinoteca Sur team,");
   });
 
