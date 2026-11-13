@@ -10,6 +10,7 @@ import {
   buildSuppressionKey,
   dateOfGrain,
   firingGrain,
+  onHouseClock,
   isFiringGrain,
   isoWeekOf,
   withFiring,
@@ -802,6 +803,8 @@ function feed(opts: {
   dismissed?: string[];
   personal?: string[];
   personalReadable?: boolean;
+  /** The house's `restaurants.timezone`; an Error makes that read fail. */
+  zone?: string | null | Error;
 }) {
   const map = new Map<string, RecommendationActionRow>();
   for (const key of opts.dismissed ?? [])
@@ -830,6 +833,11 @@ function feed(opts: {
       for (const m of ["select", "order", "limit", "insert", "eq"]) b[m] = () => b;
       b.then = (resolve: any, reject: any) =>
         Promise.resolve({ data: [], error: null }).then(resolve, reject);
+      // The house's own row (`readHouseZone`).
+      b.maybeSingle = async () =>
+        opts.zone instanceof Error
+          ? { data: null, error: { message: opts.zone.message } }
+          : { data: { timezone: opts.zone ?? null, country: null }, error: null };
       return b;
     },
   };
@@ -920,6 +928,134 @@ describe("the feed keys a subject-less rule by its firing", () => {
     const { svc } = feed({ personalReadable: false });
     const out = await svc.getRecommendations(RID, { viewerId: "u-staff" });
     expect(out.personalSnoozesReadable).toBe(false);
+  });
+});
+
+// QA round 4 H4 (2026-11-07): the firing period was read in UTC, so for a
+// US house the day, week and month rolled in the local evening and a card
+// dismissed earlier that day came straight back.
+describe("a firing is read on the house's clock (QA round 4 H4)", () => {
+  // 22:00 on Wednesday 30 September in New York is 02:00Z on 1 October.
+  const NY_EVENING = Date.parse("2026-10-01T02:00:00.000Z");
+  beforeAll(() => {
+    jest.useFakeTimers({ doNotFake: ["nextTick", "setImmediate"] });
+    jest.setSystemTime(NY_EVENING);
+  });
+  afterAll(() => jest.useRealTimers());
+
+  it("names the house's day, week and month, not UTC's", () => {
+    const NY = "America/New_York";
+    expect(firingGrain("day", onHouseClock(new Date("2026-09-22T01:00:00Z"), NY))).toBe("fire:day:2026-09-21");
+    expect(firingGrain("day", onHouseClock(new Date("2026-09-22T01:00:00Z"), null))).toBe("fire:day:2026-09-22");
+    // Sunday 21:00 in New York is already Monday, ISO week 40, in UTC.
+    expect(firingGrain("week", onHouseClock(new Date("2026-09-28T01:00:00Z"), NY))).toBe("fire:week:2026-W39");
+    expect(firingGrain("month", onHouseClock(new Date(NY_EVENING), NY))).toBe("fire:month:2026-09");
+    expect(withFiring({ ruleId: RULE } as { ruleId: string; periodKey?: string }, "month", new Date(NY_EVENING), NY).periodKey).toBe(
+      "fire:month:2026-09",
+    );
+  });
+
+  it("a card dismissed at lunch is still dismissed at 10pm the same house day", async () => {
+    const { svc } = feed({ dismissed: [FIRING], zone: "America/New_York" });
+    const out = await svc.getRecommendations(RID);
+    expect(out.recommendations.map((r) => r.ruleKey)).not.toContain(RULE);
+    expect(out.suppressed).toBe(1);
+    expect(out.suppressionsReadable).toBe(true);
+  });
+
+  it("a house with no zone keeps the UTC month, and says nothing is wrong", async () => {
+    const { svc } = feed({ zone: null });
+    const out = await svc.getRecommendations(RID);
+    const card = out.recommendations.find((r) => r.ruleKey === RULE)!;
+    expect(card.periodKey).toBe("fire:month:2026-10");
+    expect(out.suppressionsReadable).toBe(true);
+  });
+
+  it("a zone that cannot be read falls back to UTC and says the list may hold a dismissed card", async () => {
+    const { svc } = feed({ dismissed: [FIRING], zone: new Error("boom") });
+    const out = await svc.getRecommendations(RID);
+    expect(out.recommendations.map((r) => r.ruleKey)).toContain(RULE);
+    expect(out.suppressionsReadable).toBe(false);
+  });
+
+  it("the generator re-keys its weekly firings on the house's clock", async () => {
+    // Sunday 27 September, 21:00 in New York = Monday 28 September 01:00Z.
+    jest.setSystemTime(Date.parse("2026-09-28T01:00:00.000Z"));
+    try {
+      const run = async (zone: string | null | Error, dismissed: string[] = []) => {
+        const db = {
+          supabase: {
+            from: () => ({
+              select: () => ({
+                eq: () => ({
+                  maybeSingle: async () =>
+                    zone instanceof Error
+                      ? { data: null, error: { message: zone.message } }
+                      : { data: { timezone: zone, country: null }, error: null },
+                }),
+              }),
+            }),
+          },
+        };
+        const gen: any = new InsightGeneratorService(
+          db as any,
+          {} as any,
+          {
+            readState: async () => ({
+              book: stateBookFrom(
+                dismissed.map((k) => ({ ruleKey: k, status: "dismissed", reason: "disagree", snoozeUntil: null })),
+                Date.now(),
+              ),
+              readable: true,
+            }),
+          } as any,
+        );
+        gen.loadBundle = async () => ({
+          availability: new Set(),
+          excludedDates: new Set(),
+          exclusionsReadable: true,
+          consumption: [],
+          unread: [],
+        });
+        gen.computeConsumptionFamily = (_b: unknown, push: (r: unknown) => void) =>
+          push(
+            gen.record(
+              "overall.revenue.trend_direction",
+              "sales",
+              "trend",
+              { measureLabel: "sales", unit: "currency", trendPctPerWeek: 0.12, n: 28 },
+              { effectPct: 0.12, n: 28 },
+            ),
+          );
+        for (const f of ["computeOrdersFamily", "computeInventoryFamily", "computeChecksFamily", "computeGoalsFamily"])
+          gen[f] = () => undefined;
+        return gen.generate(RID);
+      };
+      const ny = await run("America/New_York");
+      expect(ny.insights[0].periodKey).toBe("fire:week:2026-W39");
+      expect(ny.suppressionsReadable).toBe(true);
+      const unset = await run(null);
+      expect(unset.insights[0].periodKey).toBe("fire:week:2026-W40");
+      const unread = await run(new Error("boom"));
+      expect(unread.insights[0].periodKey).toBe("fire:week:2026-W40");
+      expect(unread.suppressionsReadable).toBe(false);
+
+      // QA round 10b (#826): the keys the catalogue dismisses with are the
+      // ones the insight carries. They must name the house week too, or a
+      // dismissal made on Sunday evening in New York never matches and the
+      // insight comes straight back.
+      const again = await run("America/New_York", [ny.insights[0].suppression.key]);
+      expect(again.insights).toHaveLength(0);
+      expect(again.suppressed).toBe(1);
+      expect(ny.insights[0].suppression.key).toContain("fire:week:2026-W39");
+      expect(ny.insights[0].suppression.keys.insight).toBe(ny.insights[0].suppression.key);
+      // A house with no zone keeps its UTC key, and that key still holds.
+      expect(unset.insights[0].suppression.key).toContain("fire:week:2026-W40");
+      const unsetAgain = await run(null, [unset.insights[0].suppression.key]);
+      expect(unsetAgain.insights).toHaveLength(0);
+    } finally {
+      jest.setSystemTime(NY_EVENING);
+    }
   });
 });
 

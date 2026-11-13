@@ -6,6 +6,7 @@ import { InsightGeneratorService } from "./insights/insight-generator.service";
 import { GoalsService } from "./goals.service";
 import { isSalesGatedGoal } from "./sales-gated-goals";
 import { DatabaseService } from "../database/database.service";
+import { readHouseZone } from "../common/house-day";
 import {
   RecommendationActionsService,
   RecommendationStatus,
@@ -855,7 +856,21 @@ export class RecommendationsService {
     // fired in, so a one-card dismiss or done hides this firing and the card
     // returns when the rule fires in its next period. Before, its only key
     // was the bare rule — a whole-rule act staff could not make at all.
+    // The period is read on the HOUSE's clock (QA round 4 H4, 2026-11-07):
+    // in UTC, a US house's "today" rolled at 7-8pm local and a card dismissed
+    // at lunch was back by dinner. A house with no zone keeps UTC. A zone
+    // that cannot be READ also falls back to UTC, and then this list may hold
+    // a card the manager dismissed under the house-day key — so it is said
+    // through `suppressionsReadable: false` below, not presented as clean.
     const firedAt = new Date();
+    let firingZone: string | null = null;
+    let firingZoneRead = true;
+    try {
+      firingZone = (await readHouseZone(this.dbService.supabase, restaurantId)).zone;
+    } catch (err: any) {
+      firingZoneRead = false;
+      this.logger.warn(`FIRING_ZONE_UNREAD restaurant=${restaurantId}: ${err?.message}`);
+    }
     for (const r of recs) {
       const keyed = withFiring(
         {
@@ -865,6 +880,7 @@ export class RecommendationsService {
         },
         firingPeriodOf(r.urgency),
         firedAt,
+        firingZone,
       );
       r.periodKey = keyed.periodKey ?? null;
     }
@@ -995,7 +1011,7 @@ export class RecommendationsService {
       // manager already dismissed — the page has to say so rather than present
       // it as clean (ADR 0020).
       suppressed: suppressedCount,
-      suppressionsReadable: dispositions.readable,
+      suppressionsReadable: dispositions.readable && firingZoneRead,
       // ADR 0193: whether the price advice behind the pricing entries could be
       // computed at all. `false` means those entries are MISSING, not that
       // every price is on target, and the reason says why.
