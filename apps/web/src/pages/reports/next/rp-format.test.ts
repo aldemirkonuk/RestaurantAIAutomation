@@ -38,7 +38,12 @@ describe('pct — a 0–1 fraction, printed as a signed percentage', () => {
 
 describe('money — in the house’s currency, never an assumed $ (audit G5)', () => {
   it('prints the house’s own mark', () => {
-    expect(money(1234, 'full', 'TRY')).toBe('₺1,234');
+    // A lira house writes its money the Turkish way (r29 walk, finding 4):
+    // "₺4,302" and "₺112,736.56" were English grouping beside /inventory's "₺545,10".
+    expect(money(1234, 'full', 'TRY')).toBe('₺1.234');
+    expect(money(4302, 'full', 'TRY')).toBe('₺4.302');
+    expect(money(112736.56, 'table', 'TRY')).toBe('₺112.736,56');
+    expect(money(1234.5, 'full', 'USD')).toBe('$1,234.5');
     expect(money(12345, 'compact', 'EUR')).toBe('€12.3K');
     expect(money(4.5, 'table', 'GBP')).toBe('£4.50');
   });

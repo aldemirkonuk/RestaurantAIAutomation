@@ -13,6 +13,7 @@
  */
 
 import { formatNumber } from '@/lib/utils';
+import { houseNumberLocale } from '@/lib/house-number';
 import type { HouseRole } from './rp-spec';
 
 export const EM = '—';
@@ -73,7 +74,11 @@ export function money(
       ? n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       : formatNumber(n, mode === 'compact' ? 'compact' : 'full');
   try {
-    return new Intl.NumberFormat('en-US', {
+    // In the HOUSE's number form, not always English: a lira house read
+    // "₺4,302" and "₺112,736.56" here while /inventory printed "₺545,10"
+    // (r29 walk, finding 4). The locale is the one country that owns the
+    // money (`houseNumberLocale`, #1303), so two readers see one figure.
+    return new Intl.NumberFormat(houseNumberLocale(code), {
       style: 'currency',
       currency: code,
       currencyDisplay: 'narrowSymbol',
