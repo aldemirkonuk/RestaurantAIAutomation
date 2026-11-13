@@ -67,6 +67,40 @@ describe('RecipeSheet on a dish', () => {
     expect(screen.getByTestId('drink-cards')).toHaveAttribute('aria-label', 'This dish in figures');
   });
 
+  it('speaks of food: the paste example, garnish and method are a kitchen\'s, and Paste says recipe', async () => {
+    serve();
+    render(<RecipeSheet dishId={ID} />, { wrapper: wrapper() });
+    await screen.findByTestId('recipe-sheet');
+    expect(screen.getByLabelText('Garnish')).toHaveAttribute('placeholder', 'Chopped parsley');
+    expect(screen.getByLabelText('Method').getAttribute('placeholder')).toMatch(/^Bake at 180/);
+    fireEvent.click(screen.getByRole('button', { name: 'Paste a recipe' }));
+    const box = screen.getByLabelText('Paste a recipe, one ingredient per line');
+    expect(box.getAttribute('placeholder')).toBe('250 g bread flour\n2 lemons\n100 ml olive oil\nChopped parsley garnish');
+    expect(document.body.textContent).not.toMatch(/Angostura|Orange peel|Stir with ice|Paste a spec/);
+  });
+
+  it('its nutrition card is per plate and has no pure-alcohol row, even when the gateway sends one', async () => {
+    const fig = (value: number | null) => ({ value, atLeast: false, missing: value === null ? ['Lamb shoulder'] : [] });
+    serve({
+      ...DISH_ANSWER,
+      whatIsIn: {
+        readable: true,
+        figures: {
+          energyKcal: fig(410), fatG: fig(20), saturatesG: fig(8), carbohydrateG: fig(3),
+          sugarsG: fig(1), proteinG: fig(48), saltG: fig(1.2), alcoholMl: fig(null),
+        },
+        notCounted: [],
+        allergens: {},
+      },
+    });
+    render(<RecipeSheet dishId={ID} />, { wrapper: wrapper() });
+    const card = await screen.findByTestId('recipe-whatisin');
+    expect(card).toHaveAttribute('aria-label', 'What is in a plate');
+    expect(screen.getByText('What is in a plate')).toBeInTheDocument();
+    expect(screen.queryByTestId('recipe-whatisin-alcoholMl')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Pure alcohol|a serve/);
+  });
+
   it('Save PUTs to /dishes/<id> with no glass key, even when a glass is carried', async () => {
     serve({ ...DISH_ANSWER, current: { ...CUR, glass: 'Rocks' } }, [
       { id: GIN, name: 'Lamb shoulder', kind: 'food', uom: 'kg', bottleSizeMl: null },

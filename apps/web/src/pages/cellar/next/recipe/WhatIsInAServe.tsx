@@ -10,6 +10,7 @@
  * allergen-free because nothing was recorded (the round-20 rule).
  */
 import type { CocktailRecipe, ServeFigure, ServeFigureKey } from '../../../../services/api/recipes';
+import { recipeWords } from './recipeWords';
 
 const ROWS: Array<[ServeFigureKey, string, string]> = [
   ['energyKcal', 'Energy', 'kcal'],
@@ -93,18 +94,21 @@ function Allergens({ w }: { w: Extract<NonNullable<CocktailRecipe['whatIsIn']>, 
 
 export default function WhatIsInAServe({ data, unsaved }: { data: CocktailRecipe; unsaved: boolean }) {
   if (!data.current) return null;
+  const words = recipeWords(data.kind);
+  const title = `What is in a ${words.unit}`;
   const w = data.whatIsIn;
   if (w === undefined || w === null || !w.readable) {
     return (
       <p className="cl-note" role="status" data-testid="recipe-whatisin-unread">
-        {w && !w.readable ? w.sentence : 'What is in a serve was not read here, so nothing about it is shown as known.'}
+        {w && !w.readable ? w.sentence : `${title} was not read here, so nothing about it is shown as known.`}
       </p>
     );
   }
-  const alcohol = w.figures.alcoholMl;
+  // A dish has no pure-alcohol row: cooking drives off an unknown share (recipeWords.ts).
+  const alcohol = words.alcohol ? w.figures.alcoholMl : undefined;
   return (
-    <section className="cl-rcp-nutrition" data-testid="recipe-whatisin" aria-label="What is in a serve">
-      <h5 className="cl-sec" style={{ margin: '0 0 4px' }}>What is in a serve</h5>
+    <section className="cl-rcp-nutrition" data-testid="recipe-whatisin" aria-label={title}>
+      <h5 className="cl-sec" style={{ margin: '0 0 4px' }}>{title}</h5>
       {unsaved ? <p className="cl-note">This is the saved recipe. Save to count your changes.</p> : null}
       <Allergens w={w} />
       <dl style={{ margin: '6px 0 0', fontSize: 12.5, lineHeight: 1.7 }}>

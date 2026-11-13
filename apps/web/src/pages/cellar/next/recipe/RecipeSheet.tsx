@@ -83,6 +83,7 @@ import { parseLine, parseSpec, type ProposedLine } from './parseSpec';
 import { amountWithUnit, qtyText, readsAsThousandAmbiguous } from './units';
 import DrinkCards, { type DraftCost } from './DrinkCards';
 import WhatIsInAServe from './WhatIsInAServe';
+import { recipeWords, type RecipeWords } from './recipeWords';
 import {
   useCanEditRecipe,
   useCostPreview,
@@ -386,10 +387,10 @@ export function costPreviewBody(rows: DraftRow[], serves: number): { body: Previ
 }
 
 /** Why Save is off, naming the first line that stops it. */
-export function whyBlocked(rows: DraftRow[], serves: number = 1): string | null {
+export function whyBlocked(rows: DraftRow[], serves: number = 1, words: RecipeWords = recipeWords('cocktail')): string | null {
   if (rows.length === 0) return 'Add at least one ingredient.';
   if (!Number.isInteger(serves) || serves < 1 || serves > MAX_SERVES) {
-    return `Say how many serves it makes: a whole number from 1 to ${MAX_SERVES.toLocaleString('en-US')}.`;
+    return `Say how many ${words.unit}s it makes: a whole number from 1 to ${MAX_SERVES.toLocaleString('en-US')}.`;
   }
   if (rows.length > MAX_LINES) return tooMany(rows.length);
   const named = (i: number) => {
@@ -429,6 +430,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
   const cocktailId = owner.id;
   const dId = draftId(owner);
   const isDish = owner.kind === 'dish';
+  const words = recipeWords(owner.kind);
   const recipe = useRecipe(owner);
   const canEdit = useCanEditRecipe();
   const sayMoney = useHouseMoney();
@@ -528,7 +530,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
   }, [data, versionId, dirty, seed]);
 
   const shownMeta = meta ?? metaOf(data?.current);
-  const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes), [rows, shownMeta.yieldServes]);
+  const blocked = useMemo(() => whyBlocked(rows ?? [], shownMeta.yieldServes, words), [rows, shownMeta.yieldServes, words]);
 
   // Money only where the server sent it, and never to a role that cannot edit.
   const money = Boolean(canEdit && data && (data.cost !== null || data.cocktail.price !== null));
@@ -657,7 +659,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
   // something else (it once read "₺0.00" where the card said "Under ₺0.01").
   const footer =
     !data.current && lines.length === 0 && !hasLegacy
-      ? canEdit ? 'No recipe yet. Add what goes in it, or paste a spec.' : 'No recipe yet.'
+      ? canEdit ? `No recipe yet. Add what goes in it, or paste a ${words.pasteWord}.` : 'No recipe yet.'
       : null;
 
   // The same good on more than one counted line: said, not merged; a split pour is real.
@@ -706,6 +708,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
                 say={say}
                 onChange={(p) => patch(r.key, p)}
                 onRemove={() => edit((rs) => rs.filter((x) => x.key !== r.key))}
+                kind={owner.kind}
               />
             ) : (
               <LineRowRead key={r.key} row={r} />
@@ -716,7 +719,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
 
       {canEdit && repeated.length > 0 ? (
         <p className="cl-note" data-testid="recipe-repeated">
-          {repeated.map(([name, n]) => `${name} is on ${n} lines; a serve takes all of them.`).join(' ')}
+          {repeated.map(([name, n]) => `${name} is on ${n} lines; a ${words.unit} takes all of them.`).join(' ')}
         </p>
       ) : null}
 
@@ -744,11 +747,11 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
           )}
           <label>
             Garnish
-            <input className="cl-field cl-focus" value={shownMeta.garnish} maxLength={200} placeholder={c.garnish ?? 'Orange peel'} onChange={(e) => setField({ garnish: e.target.value })} />
+            <input className="cl-field cl-focus" value={shownMeta.garnish} maxLength={200} placeholder={c.garnish ?? words.garnishPlaceholder} onChange={(e) => setField({ garnish: e.target.value })} />
           </label>
           <label className="cl-rcp-method">
             Method
-            <textarea className="cl-field cl-focus" rows={2} value={shownMeta.method} maxLength={4000} placeholder="Stir with ice, strain over a large cube" onChange={(e) => setField({ method: e.target.value })} />
+            <textarea className="cl-field cl-focus" rows={2} value={shownMeta.method} maxLength={4000} placeholder={words.methodPlaceholder} onChange={(e) => setField({ method: e.target.value })} />
           </label>
         </div>
       ) : !canEdit && data.current?.method ? (
@@ -849,7 +852,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
       {canEdit && pasteOpen && !proposed ? (
         <div className="cl-rcp-paste">
           <label htmlFor={`rcp-paste-${cocktailId}`} className="cl-note" style={{ display: 'block', marginTop: 0 }}>
-            Paste a spec, one ingredient per line
+            Paste a {words.pasteWord}, one ingredient per line
           </label>
           <textarea
             id={`rcp-paste-${cocktailId}`}
@@ -857,7 +860,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
             rows={4}
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
-            placeholder={'1½ oz gin\n2 dashes Angostura\n1 egg white\nOrange twist garnish'}
+            placeholder={words.pastePlaceholder}
             style={{ width: '100%', height: 'auto', padding: 8, lineHeight: 1.5 }}
           />
           <span style={{ display: 'inline-flex', gap: 6, marginTop: 6 }}>
@@ -894,7 +897,7 @@ function Sheet({ owner }: { owner: RecipeOwner }) {
           {!pasteOpen && !proposed ? (
             <button type="button" className="cl-btn cl-focus" onClick={() => setPasteOpen(true)}>
               <ClipboardPaste size={13} aria-hidden />
-              Paste a spec
+              Paste a {words.pasteWord}
             </button>
           ) : null}
           <button
