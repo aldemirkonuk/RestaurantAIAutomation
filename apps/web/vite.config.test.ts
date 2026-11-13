@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest'
-import config from '../../vite.config'
+import config from './vite.config'
 
 /**
  * The dev server pre-bundles lucide-react into one file. Excluded, every icon

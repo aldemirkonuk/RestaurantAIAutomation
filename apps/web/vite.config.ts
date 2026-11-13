@@ -24,7 +24,7 @@ export default defineConfig({
   // icon as its own module: 3,110 of the 3,466 files one page load asked for,
   // about 3,500 requests a reload (r17 request-flood walk, 2026-11-13).
   // Production was never affected: Rollup bundles it either way.
-  // src/__tests__/devServerDeps.test.ts keeps it out of `exclude`.
+  // vite.config.test.ts keeps it out of `exclude`.
   server: {
     port: 3000,
     host: '127.0.0.1',
