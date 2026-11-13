@@ -206,8 +206,8 @@ function invoiceLotCost(lot: LotRollupRow): ResolvedUnitCost | null {
   if (!Number.isFinite(wac) || wac <= 0 || !Number.isFinite(covered) || covered <= 0) return null;
   const settled = Number(lot.settled_qty);
   const stock = Number(lot.stock_qty);
-  const whole =
-    lot.settled_qty != null && lot.stock_qty != null && Number.isFinite(settled) && Number.isFinite(stock) && settled >= stock;
+  // Number(null) is 0, so an unstated stock is never "all settled".
+  const whole = Number.isFinite(settled) && Number.isFinite(stock) && stock > 0 && settled >= stock;
   return { unitCost: wac, costBasis: whole ? "invoice_lot_wac" : "invoice_lot_wac_partial" };
 }
 
@@ -230,9 +230,9 @@ export function mergeInvoiceLotCost<M extends Map<string, any>>(
       inventory_id: id,
       invoice_cost_read: true,
       invoice_wac: r?.invoice_wac ?? null,
-      invoice_qty: r?.invoice_qty ?? 0,
-      settled_qty: r?.settled_qty ?? 0,
-      stock_qty: r?.stock_qty ?? 0,
+      invoice_qty: r?.invoice_qty ?? null,
+      settled_qty: r?.settled_qty ?? null,
+      stock_qty: r?.stock_qty ?? null,
     });
   }
   return lots;

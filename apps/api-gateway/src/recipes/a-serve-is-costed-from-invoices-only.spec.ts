@@ -115,6 +115,17 @@ describe("resolveUnitCost with the invoice view read", () => {
     });
   });
 
+  it("counts the view could not state are partial, never whole", () => {
+    expect(resolveUnitCost(null, read({ invoice_wac: 100, invoice_qty: 10, settled_qty: null, stock_qty: null }))).toEqual({
+      unitCost: 100,
+      costBasis: "invoice_lot_wac_partial",
+    });
+    expect(resolveUnitCost(null, read({ invoice_wac: 100, invoice_qty: 10, settled_qty: 0, stock_qty: 0 }))).toEqual({
+      unitCost: 100,
+      costBasis: "invoice_lot_wac_partial",
+    });
+  });
+
   it("an invoice average of 0 is no price", () => {
     expect(resolveUnitCost(null, read({ invoice_wac: 0, invoice_qty: 10, settled_qty: 10, stock_qty: 10 }))).toEqual({
       unitCost: null,
