@@ -51,6 +51,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
@@ -58,7 +59,7 @@ import Cutting from './Cutting';
 import { ArrangeAnnouncer, ArrangeHelp } from './Placing';
 import { useArrange } from './rp-arrange';
 import { CATALOGUE, defaultGraph } from './rp-catalogue';
-import { failureLine } from './rp-format';
+import { READING, failureLine, type MoneyIn } from './rp-format';
 import {
   ANALYSIS_IDS,
   DEFAULT_SLOTS,
@@ -309,10 +310,26 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   );
   placeRef.current = placeProposed;
 
+  // While the house's currency is still being read every money figure is the
+  // dash: never a `$`, and never a bare number that becomes "₺4,210" a moment
+  // later (r7, 2026-11-12; the dashboard's rule, #1181).
+  const currencyMark: MoneyIn =
+    data.currency?.state === 'stated'
+      ? data.currency.code
+      : data.currency?.state === 'unread' && data.currency.pending
+        ? READING
+        : null;
   const ctx = useMemo(
-    () => ({ days: tillDays, goals: data.goalsDesk }),
-    [data.goalsDesk, tillDays],
+    () => ({ days: tillDays, goals: data.goalsDesk, currency: currencyMark }),
+    [data.goalsDesk, tillDays, currencyMark],
   );
+  // Said once for the whole sheet, never beside each figure (audit G5).
+  const moneyLine =
+    data.currency?.state === 'unstated'
+      ? 'This house has not recorded its currency, so money is printed as plain numbers.'
+      : data.currency?.state === 'unread' && !data.currency.pending
+        ? 'The house’s currency could not be read, so money is printed as plain numbers.'
+        : null;
 
   const cuttings: SheetCutting[] = view.cuttings.map((c) => ({
     id: c.id,
@@ -357,6 +374,16 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
             {/* Fraunces speaks only what the ENGINE said — verbatim, or the truth
                 about why it said nothing. This page never writes a sentence. */}
             <p className="rp-voice">{opening}</p>
+            {moneyLine && (
+              <p className="rp-cap" data-testid="rp-money-line">
+                {moneyLine}{' '}
+                {data.currency?.state === 'unstated' && (
+                  <Link to="/settings?tab=currency" className="rp-link rp-ink rp-focus">
+                    Record it in Settings
+                  </Link>
+                )}
+              </p>
+            )}
           </div>
 
           <div className="rp-row" style={{ gap: 8 }}>

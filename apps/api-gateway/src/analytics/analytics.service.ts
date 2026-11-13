@@ -89,6 +89,43 @@ function positiveOrNull(v: unknown): number | null {
   return typeof n === "number" && Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/** Said for an inventory row that carries no name anywhere. Never its id. */
+export const UNNAMED_ITEM = "An item with no name";
+
+/**
+ * What the house calls an inventory row: its own `wine_name`, then its
+ * `display_name` (a good that is not a wine), then the library's name. Blank
+ * strings are not names.
+ */
+export function houseItemName(row: {
+  wine_name?: unknown;
+  display_name?: unknown;
+  master_wine_library?: { name?: unknown } | null;
+}): string {
+  for (const v of [
+    row.wine_name,
+    row.display_name,
+    row.master_wine_library?.name,
+  ]) {
+    if (typeof v === "string" && v.trim() !== "") return v.trim();
+  }
+  return UNNAMED_ITEM;
+}
+
+/**
+ * The forecast's model in the house's words. `model` stays the engine's code
+ * (tests, the page and the export read it); the basis sentence, which the
+ * export prints as it is, names it as #1205 does on the page (r12).
+ */
+const FORECAST_MODEL_WORDS: Record<string, string> = {
+  holt_winters: "Trend and weekly pattern",
+  holt_linear: "Trend",
+  ses: "Smoothed average",
+};
+export function forecastModelInWords(model: string): string {
+  return FORECAST_MODEL_WORDS[model] ?? "A trend reading";
+}
+
 @Injectable()
 export class AnalyticsService {
   private readonly logger = new Logger(AnalyticsService.name);
@@ -156,7 +193,7 @@ export class AnalyticsService {
       client
         .from("restaurant_inventory")
         .select(
-          "id, wine_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type)",
+          "id, wine_name, display_name, stock_live, menu_price_current, last_purchase_price, threshold_min, master_wine_id, master_wine_library(primary_type, name)",
           { count: "exact" },
         )
         .eq("restaurant_id", restaurantId)
@@ -191,7 +228,12 @@ export class AnalyticsService {
       const qty = lot?.live_qty ?? i.stock_live ?? 0;
       return {
         id: i.id,
-        name: i.wine_name || i.master_wine_id || i.id,
+        // The house's own name, then the library's (`inventory.service.ts`
+        // names a row the same way). It fell back to `master_wine_id`, then
+        // the row id, so the dead-stock card read "top: 10ca1c4e-…" for a
+        // bottle whose name lives only on its library row (r9 browser check,
+        // 2026-11-12). An id is never a name: a row with none says so.
+        name: houseItemName(i),
         type: i.master_wine_library?.primary_type || "unknown",
         qty,
         unitCost,
@@ -637,24 +679,29 @@ export class AnalyticsService {
         : null;
 
     return {
+      // These three sentences are read by the house: /reports prints them
+      // under "Show the working" and the report export prints them in the
+      // download. They name no table and no `$` (r9 left list, 2026-11-12:
+      // "procurement_orders" and "$0 would claim the first" reached a lira
+      // house). A zero is a claim in no currency, so it is said as "a zero".
       basis: {
         cogs: t.basis.cogs,
         revenue: t.basis.revenue,
         deliveredPurchases:
           orders.length === 0
-            ? "delivered procurement_orders (trailing 365d) — null: no delivered order was returned for this window, which is either no purchasing or a read that failed, and $0 would claim the first"
+            ? "Delivered orders over the last 365 days — left blank: no delivered order was returned for this window, which is either no purchasing or a read that failed, and a zero would claim the first"
             : ordersUncosted > 0
-              ? `delivered procurement_orders (trailing 365d) — null: ${ordersUncosted} of ${orders.length} delivered order${orders.length === 1 ? "" : "s"} carry no recorded cost, and counting them as $0 would understate what was bought`
-              : `delivered procurement_orders (trailing 365d) — ${orders.length} order${orders.length === 1 ? "" : "s"} summed. What was bought, not what sold: it feeds no ratio`,
+              ? `Delivered orders over the last 365 days — left blank: ${ordersUncosted} of ${orders.length} delivered order${orders.length === 1 ? "" : "s"} carry no recorded cost, and counting them as zero would understate what was bought`
+              : `Delivered orders over the last 365 days — ${orders.length} order${orders.length === 1 ? "" : "s"} summed. What was bought, not what sold: it feeds no ratio`,
         shelfValueAtMenuPrice:
           inventory.length === 0
-            ? "unit_price × on-hand qty — null: no inventory row was returned, which is either an empty cellar or a read that failed, and $0 would claim the first"
-            : `unit_price × on-hand qty — ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} valued at menu price. Not sales: it feeds no ratio`,
+            ? "The menu price × the bottles on hand — left blank: no inventory row was returned, which is either an empty cellar or a read that failed, and a zero would claim the first"
+            : `The menu price × the bottles on hand — ${inventory.length} inventory row${inventory.length === 1 ? "" : "s"} valued at menu price. Not sales: it feeds no ratio`,
         // This string used to read "on-hand qty × WAC (lot rollup)"
         // unconditionally while ~70 of 72 rows were valued off a fabricated
         // 0.6 × menu price. A basis now describes the rows it covered.
-        inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
-        deadStock: `on-hand qty > 0 with zero wine_consumption_log movement in ${DEAD_STOCK_WINDOW_DAYS}d; null when the restaurant records no movement at all, or when any idle row has no recorded cost`,
+        inventoryValue: `Bottles on hand × what each cost — ${costBasisSentence(costCoverage)}`,
+        deadStock: `Bottles on hand with nothing poured or sold in ${DEAD_STOCK_WINDOW_DAYS} days; left blank when the house records no pouring or sales at all, or when any idle line has no recorded cost`,
         costDerived: t.basis.costDerived,
       },
       costCoverage,
@@ -815,6 +862,8 @@ export class AnalyticsService {
       .filter((s) => s.needsReorder)
       .sort(E.byStockoutRisk);
 
+    /** "95 restocks in 100": the service level as the house says it. */
+    const servicePct = Math.round(serviceLevel * 100);
     return {
       params: {
         serviceLevel,
@@ -824,11 +873,11 @@ export class AnalyticsService {
       // This endpoint carried no `basis` at all, which made its cost-derived
       // columns unreadable: nothing said where `inventoryValue` came from.
       basis: {
-        demand: `bottles/day over ${sinceDays}d — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} row(s) are unassessed (skus[].demandUnknown): their demand, cover, reorder point and stockout risk are null and they are never put on the reorder list` : ""}`,
-        reorderScience: `King safety stock at serviceLevel ${serviceLevel}, lead time ${leadTime}d — demand-derived, unaffected by cost`,
-        inventoryValue: `on-hand qty × unit cost — ${costBasisSentence(costCoverage)}`,
+        demand: `Bottles a day over the last ${sinceDays} days — ${unitsBasisSentence(unitsCoverage)}${unassessed > 0 ? `; ${unassessed} item${unassessed === 1 ? " has" : "s have"} no reading of what sells, so ${unassessed === 1 ? "its" : "their"} demand, days of cover, reorder point and run-out risk are left blank and ${unassessed === 1 ? "it is" : "they are"} never put on the reorder list` : ""}`,
+        reorderScience: `A safety stock sized so ${servicePct} restocks in 100 arrive before the shelf runs out, with orders taking ${leadTime} day${leadTime === 1 ? "" : "s"} to arrive — read from what sells, not from what it cost`,
+        inventoryValue: `Bottles on hand × what each cost — ${costBasisSentence(costCoverage)}`,
         costDerived:
-          "skus[].inventoryValue, skus[].unitCost and skus[].eoq are null for any row with no recorded cost; skus[].abcClass is null for EVERY row unless the whole cellar is priced, because ABC cuts on share of a total (ADR 0051)",
+          "An item with no recorded cost shows no value, cost or order size; the A/B/C grade is left blank for every item until the whole cellar is priced, because it ranks each item's share of the total",
       },
       costCoverage,
       unitsCoverage,
@@ -917,7 +966,7 @@ export class AnalyticsService {
 
     return {
       basis: {
-        demand: `demandRisk is over bottles/day across 90d — ${unitsBasisSentence(unitsCoverage, "series")}`,
+        demand: `How steady demand is, read from bottles a day over the last 90 days — ${unitsBasisSentence(unitsCoverage, "series")}`,
       },
       vendorConcentration: {
         hhi,
@@ -1105,17 +1154,17 @@ export class AnalyticsService {
         ? E.stats.sum(projection.forecast.map((v) => Math.max(0, v)))
         : null,
       basis: {
-        demand: `bottles/day over ${sinceDays}d, zero-filled to a dense daily series — ${unitsBasisSentence(unitsCoverage, "series")}${unmeasuredWine ? "; nothing is projected from this short series" : ""}`,
+        demand: `Bottles a day over the last ${sinceDays} days, a day with nothing recorded counted as 0 — ${unitsBasisSentence(unitsCoverage, "series")}${unmeasuredWine ? "; nothing is projected from this short history" : ""}`,
         model: projection
-          ? `${model} fitted on ${values.length} days of history`
+          ? `${forecastModelInWords(model)}, fitted on ${values.length} days of history`
           : unmeasuredWine
-            ? "no model fitted — this wine has lines that carry no bottle figure, so its history is short by an unknown amount and nothing is projected from it"
+            ? "Nothing projected — this wine has lines that carry no bottle figure, so its history is short by an unknown amount"
             : hasObservation
-              ? "no model fitted — Holt-Winters, Holt and SES each refused this history, so no line is projected and no total is claimed"
-              : `no model fitted — every one of the ${values.length} days of history reads zero, so there is no demand signal to project from`,
+              ? "Nothing projected — none of the three ways of reading a trend fits this history, so no line is drawn and no total is claimed"
+              : `Nothing projected — every one of the ${values.length} days of history reads zero, so there is nothing to project from`,
         total: projection
-          ? `sum of the ${horizon}-day forecast, each day floored at 0`
-          : "null — there is no projection to total",
+          ? `The ${horizon} days ahead added up, a day below zero counted as 0`
+          : "Left blank — there is no projection to add up",
       },
       accuracy,
       generatedAt: new Date().toISOString(),

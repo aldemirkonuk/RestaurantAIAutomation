@@ -163,7 +163,7 @@ describe("deadStockCapital measures movement, not depth", () => {
     const out = await svc.getFinancialSummary(RESTAURANT);
     expect(out.deadStockCapital).toBeNull();
     expect(out.deadStockTop).toEqual([]);
-    expect(out.basis.deadStock).toContain("wine_consumption_log");
+    expect(out.basis.deadStock).toContain("nothing poured or sold in 90 days");
   });
 
   it("keeps the recommendation from firing on a null", async () => {
@@ -174,5 +174,65 @@ describe("deadStockCapital measures movement, not depth", () => {
     });
     const out = await svc.getFinancialSummary(RESTAURANT);
     expect((out.deadStockCapital ?? 0) > 0).toBe(false);
+  });
+});
+
+/**
+ * The card names its top bottle in the house's words (r9 browser check,
+ * 2026-11-12: "top: 10ca1c4e-…"). A row whose own name is empty is named by
+ * its library row; a row with no name anywhere says so, never its id.
+ */
+describe("dead stock names its top bottle, never an id", () => {
+  const LIBRARY_ONLY = {
+    id: "inv-lib",
+    wine_name: null,
+    stock_live: 12,
+    menu_price_current: 80,
+    last_purchase_price: 40,
+    threshold_min: 2,
+    master_wine_id: "mw-lib",
+    master_wine_library: { primary_type: "red", name: "Library Rioja" },
+  };
+  const NAMELESS = {
+    id: "inv-nameless",
+    wine_name: "  ",
+    display_name: null,
+    stock_live: 5,
+    menu_price_current: 20,
+    last_purchase_price: 10,
+    threshold_min: 1,
+    master_wine_id: null,
+  };
+  const KITCHEN = {
+    id: "inv-kitchen",
+    wine_name: null,
+    display_name: "Saffron",
+    stock_live: 3,
+    menu_price_current: 0,
+    last_purchase_price: 5,
+    threshold_min: 1,
+    master_wine_id: null,
+  };
+
+  it("uses the library name, the display name, then says it has none", async () => {
+    const svc = build({
+      restaurant_inventory: [FAST_MOVER, LIBRARY_ONLY, NAMELESS, KITCHEN],
+      wine_consumption_log: [
+        {
+          inventory_id: FAST_MOVER.id,
+          quantity: 6,
+          created_at: recently,
+          restaurant_inventory: { master_wine_id: FAST_MOVER.master_wine_id },
+        },
+      ],
+    });
+
+    const out = await svc.getFinancialSummary(RESTAURANT);
+    const names = out.deadStockTop.map((d: any) => d.name);
+
+    expect(names).toEqual(["Library Rioja", "An item with no name", "Saffron"]);
+    for (const n of names) {
+      expect(n).not.toMatch(/inv-|mw-/);
+    }
   });
 });

@@ -18,6 +18,7 @@ import {
 } from "./insight-verbalizer";
 import { ORDER_SPEND_STATUSES } from "../../procurement/order-status";
 import { readWholeWindow } from "../../common/read-whole-window";
+import { UncostedOrdersError, orderCostOrNull } from "../order-cost";
 import {
   BottleHow,
   UnitsLabel,
@@ -265,8 +266,26 @@ export const BASKET_MIN_LIFT = 1.3;
  *       [2026-10-08, merge of `origin/main` at 8b22448dc: #626 (ADR 0297)
  *       landed 11 on `main` first, so this change is 12, one past every
  *       value on `main`; no row was ever written at 11 for this change.]
+ *  13 — 2026-11-12 (readers lane r4): an order with no recorded cost is
+ *       unknown, never $0. The purchasing family (spend trend, vendor share)
+ *       says nothing while any order in the bundle waits on a cost, and the
+ *       bundle reads its orders whole (ADR 0292). A row below 13 may hold a
+ *       spend sentence that counted an uncosted order as $0, or summed the
+ *       first 1,000 orders, so it is recomputed, not served. Re-checked at
+ *       merge: one past the version on `main` then.
+ *  17 — 2026-11-12 (r8): every amount prints in the house's currency, not
+ *       `$` (`insight-verbalizer.ts` `fmtMoney`); a house with none stated
+ *       gets bare amounts and "The house's currency is not recorded."; a
+ *       money sentence whose currency could not be read is withheld and
+ *       "house currency" is named unread. Every row stamps
+ *       `evidence.currency`, and the stored read refuses a money row stamped
+ *       in money the house no longer reports in (`queryStored`). A row below
+ *       17 printed `$` on a lira house ("($181)", r7 browser check), so it is
+ *       recomputed, not served. Numbered 17, not 14: open branches hold 16
+ *       (`fix/sim-w113-*`, `fix/sim-w114-*`), so this takes a gap past them.
+ *       Re-checked at merge: one past the version on `main` then.
  */
-export const INSIGHT_GENERATOR_VERSION = 12;
+export const INSIGHT_GENERATOR_VERSION = 17;
 
 /**
  * Each of the bundle's reads, in the words the house uses for it.
@@ -313,6 +332,99 @@ type BundleRead = keyof typeof BUNDLE_READ_WORDS;
  * into one name there.
  */
 const HOUSE_ZONE_WORD = "house time zone";
+
+/**
+ * The house's currency, named when its read failed and a sentence with an
+ * amount was withheld for it (`record`). Not a `BUNDLE_READ_WORDS` slice: no
+ * family is built on it, and a sentence with no amount still prints.
+ */
+export const HOUSE_CURRENCY_WORD = "house currency";
+
+/**
+ * The house's stated money: an ISO 4217 code, or null when none is stated (or
+ * the stored value is not a well-formed code). Throws on a failed read, which
+ * the bundle reports as `currencyUnread` and never as "not stated".
+ */
+export async function readHouseCurrency(
+  client: any,
+  restaurantId: string,
+): Promise<string | null> {
+  const { data, error } = await client
+    .from("restaurants")
+    .select("currency")
+    .eq("id", restaurantId)
+    .maybeSingle();
+  if (error)
+    throw new Error(
+      `The house's currency could not be read: ${error.message ?? String(error)}`,
+    );
+  const code = (data as { currency?: unknown } | null)?.currency;
+  return typeof code === "string" && /^[A-Z]{3}$/.test(code) ? code : null;
+}
+
+/**
+ * Whether a stored row's amounts are in money other than `code`. Only a row
+ * whose measure is money can be; its stamp is `evidence.currency`, absent on
+ * a row whose currency could not be read when it was written.
+ */
+export function writtenInOtherMoney(
+  evidence: InsightEvidence | null | undefined,
+  code: string | null,
+): boolean {
+  if (!evidence || evidence.unit !== "currency") return false;
+  return (evidence.currency ?? null) !== code;
+}
+
+/** Days of purchasing spend the trend reads: the 90 before today (`toDaily`). */
+const SPEND_TREND_DAYS = 90;
+
+/** What a purchasing insight holds back, and why. */
+interface SpendHeld {
+  uncostedOrders: number;
+  orders: number;
+  reason: string;
+}
+
+function heldOver(orders: Bundle["orders"]): SpendHeld | null {
+  const uncosted = orders.filter((o) => o.cost == null).length;
+  if (uncosted === 0) return null;
+  return {
+    uncostedOrders: uncosted,
+    orders: orders.length,
+    reason: new UncostedOrdersError(uncosted, orders.length).message,
+  };
+}
+
+/**
+ * Which purchasing insights an order with no recorded cost holds back, each
+ * judged over the orders that insight reads (readers lane r4 fix round). One
+ * uncosted order anywhere in the 180 days used to silence the whole family
+ * for up to six months, trend and vendor share alike, though the trend reads
+ * only the 90 days before today:
+ *
+ *   * `trend`: the 90 days of the daily series (`toDaily` drops today and
+ *     anything older). An uncosted order outside them is never on the series.
+ *   * `vendorShare`: every order in the bundle (180 days), which is what the
+ *     share and the HHI are summed over. Not judged per vendor: the top share
+ *     is one vendor's total over everyone's, so any vendor's unknown makes
+ *     the denominator unknown.
+ *
+ * Null when neither is held back.
+ */
+function spendWithheld(
+  bundle: Bundle,
+  now: number = Date.now(),
+): { trend: SpendHeld | null; vendorShare: SpendHeld | null } | null {
+  const day = (back: number) =>
+    new Date(now - back * 86400000).toISOString().substring(0, 10);
+  const first = day(SPEND_TREND_DAYS);
+  const last = day(1);
+  const trend = heldOver(
+    bundle.orders.filter((o) => !!o.date && o.date >= first && o.date <= last),
+  );
+  const vendorShare = heldOver(bundle.orders);
+  return trend || vendorShare ? { trend, vendorShare } : null;
+}
 
 /**
  * Whether this bundle read was refused or failed: its slice is `[]` because
@@ -427,7 +539,8 @@ export class InsightGeneratorService {
 
     let insights: InsightRecord[] = [];
     const push = (r: InsightRecord | null) => {
-      if (r && r.sentence) insights.push(r);
+      const said = r && r.sentence ? inHouseMoney(r, bundle) : null;
+      if (said) insights.push(said);
     };
 
     // ---- family executors (each guards on its own data) -------------------
@@ -539,7 +652,17 @@ export class InsightGeneratorService {
     // for `manual`. Same for a dismissal or a done returned to the book.
     // Bounded: at most twice the per-category cap.
     let persisted: boolean | null = null;
-    if (opts.persist && !narrowed) {
+    // A run that could not read the house's currency withheld every sentence
+    // with an amount. Storing it would replace the rows that state those
+    // amounts with a set that silently lacks them until the next cadence run,
+    // so it is not stored: the rows that stood still stand (and are refused
+    // by the stored read if they are in another money or below the version).
+    if (opts.persist && !narrowed && bundle.currencyUnread) {
+      this.logger.warn(
+        `insights for ${restaurantId} not stored: the house's currency could not be read`,
+      );
+      persisted = false;
+    } else if (opts.persist && !narrowed) {
       const shown = new Set(ranked);
       const firedPerCat = new Map<string, number>();
       const firedCapped = [...fired]
@@ -594,6 +717,11 @@ export class InsightGeneratorService {
       // carry no bottle figure (ADR 0297). Each record built on them carries
       // its own count in `evidence.units`.
       units: this.unitsOf(bundle.consumption),
+      // Orders with no recorded cost, per purchasing insight, over the
+      // orders that insight reads: the trend (90 days) or the vendor share
+      // (the bundle's 180 days) says nothing while one stands in its window
+      // rather than count it as $0. Null when neither is held back.
+      spendWithheld: spendWithheld(bundle),
       // The bundle's reads that were refused or failed, in house words
       // (`BUNDLE_READ_WORDS`). Empty = every read answered, rows or none. A
       // name here means every insight that reads it said nothing because
@@ -712,7 +840,13 @@ export class InsightGeneratorService {
       .order("score", { ascending: false })
       .limit(limit);
     if (categories?.length) q = q.in("category", categories);
-    const { data, error } = await q;
+    const [{ data, error }, money] = await Promise.all([
+      q,
+      readHouseCurrency(client, restaurantId).then(
+        (code) => ({ readable: true as const, code }),
+        (err: any) => ({ readable: false as const, reason: String(err?.message ?? err) }),
+      ),
+    ]);
     if (error) {
       // Includes the window between this code deploying and migration
       // `20260903130000` applying, when the column does not exist yet and
@@ -725,7 +859,27 @@ export class InsightGeneratorService {
       );
       return [];
     }
-    return data || [];
+    const rows = data || [];
+    // A money row names the money it was written in (`evidence.currency`,
+    // version 17). If the house has since stated another, the set is ABSENT,
+    // as a row below the version is: the caller recomputes and replaces it.
+    // The sweep cannot see this; only this read does. An unreadable currency
+    // serves the rows as written: each was right in the money it names.
+    if (!money.readable) {
+      this.logger.warn(
+        `getStored could not read the house's currency, serving rows in the ` +
+          `money they were written in: ${money.reason}`,
+      );
+      return rows;
+    }
+    if (rows.some((r: any) => writtenInOtherMoney(r?.evidence, money.code))) {
+      this.logger.log(
+        `getStored: ${restaurantId} now reports in ${money.code ?? "no stated currency"}; ` +
+          `its stored money sentences were written in another, so they are recomputed`,
+      );
+      return [];
+    }
+    return rows;
   }
 
   /**
@@ -925,7 +1079,7 @@ export class InsightGeneratorService {
     // the loop below logs and names in `unread`: the family states no figure,
     // and the feed says which read it could not make (ADR 0292, 2026-10-07).
     const whole = (rows: unknown[]) => ({ data: rows, error: null });
-    const [cons, ords, inv, checks, tables, venue, goals, houseZone] =
+    const [cons, ords, inv, checks, tables, venue, goals, houseZone, houseMoney] =
       await Promise.allSettled([
         readWholeWindow("The insight bundle's consumption lines", () =>
           client
@@ -938,19 +1092,24 @@ export class InsightGeneratorService {
             .eq("restaurant_id", restaurantId)
             .gte("created_at", since90),
         ).then(whole),
-        client
-          .from("procurement_orders")
-          // NO provider_name column on procurement_orders (see
-          // supabase/migrations/20260805000000_baseline_from_production.sql:4514-4568)
-          // — naming it 42703s the whole query, `ok()` below turned that into
-          // an empty order list, and the entire purchasing insight family went
-          // permanently silent. The vendor label comes from the provider_id FK.
-          .select(
-            "provider_id, providers(name), total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
-          )
-          .eq("restaurant_id", restaurantId)
-          .in("status", ORDER_SPEND_STATUSES)
-          .gte("delivered_at", since180),
+        // Whole or refused, like the two above (ADR 0292): unranged, 180 days
+        // of orders past 1,000 summed their first thousand as the spend.
+        readWholeWindow("The insight bundle's delivered orders", () =>
+          client
+            .from("procurement_orders")
+            // NO provider_name column on procurement_orders (see
+            // supabase/migrations/20260805000000_baseline_from_production.sql:4514-4568)
+            // — naming it 42703s the whole query, `ok()` below turned that into
+            // an empty order list, and the entire purchasing insight family went
+            // permanently silent. The vendor label comes from the provider_id FK.
+            .select(
+              "id, provider_id, providers(name), total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+              { count: "exact" },
+            )
+            .eq("restaurant_id", restaurantId)
+            .in("status", ORDER_SPEND_STATUSES)
+            .gte("delivered_at", since180),
+        ).then(whole),
         client
           .from("restaurant_inventory")
           .select(
@@ -990,6 +1149,8 @@ export class InsightGeneratorService {
         // The goals family schedules a goal on the house's clock, as the
         // goals desk does (goal-score.ts `storedGoalSchedule`, ADR 0296).
         readHouseZone(client, restaurantId),
+        // Every amount a sentence prints is in this money (version 17).
+        readHouseCurrency(client, restaurantId),
       ]);
 
     // A failed slice still degrades to `[]` — one dead lens must not take the
@@ -1045,7 +1206,9 @@ export class InsightGeneratorService {
       orders: ok<any>(ords).map((o: any) => ({
         vendorId: o.provider_id || "unknown",
         vendorName: o.providers?.name || o.provider_id || "unknown vendor",
-        cost: o.total_cost || o.final_price || 0,
+        // Unknown, never $0 (order-cost.ts): the spend insights withhold
+        // while any order in the bundle carries no recorded cost.
+        cost: orderCostOrNull(o),
         date: (o.delivered_at || o.created_at || "").substring(0, 10),
       })),
       inventory: ok<any>(inv),
@@ -1058,6 +1221,9 @@ export class InsightGeneratorService {
       goals: ok<any>(goals),
       zone: houseZone.status === "fulfilled" ? houseZone.value.zone : null,
       zoneUnread: houseZone.status === "rejected",
+      currency:
+        houseMoney.status === "fulfilled" ? houseMoney.value : null,
+      currencyUnread: houseMoney.status === "rejected",
       availability: new Set<DataRequirement>(),
       excludedDates: exclusions.dates,
       exclusionsReadable: exclusions.readable,
@@ -1336,32 +1502,44 @@ export class InsightGeneratorService {
 
   private computeOrdersFamily(bundle: Bundle, push: Push) {
     if (!bundle.availability.has("orders")) return;
-    const rows = bundle.orders.map((o) => ({ date: o.date, value: o.cost }));
-    const { dates, values, observed } = this.toDaily(
-      rows,
-      90,
-      bundle.excludedDates,
-    );
+    // Every insight here is a sum of what was bought: the spend's trend and
+    // which vendor holds the most of it. An order with no recorded cost used
+    // to join both as $0, so a week holding one read as a drop in spend and
+    // its vendor as a smaller share than it is. Each insight now says nothing
+    // while an uncosted order stands in the window it reads, and `generate()`
+    // says why (`spendWithheld`).
+    const held = spendWithheld(bundle);
+    if (!held?.trend) {
+      const rows = bundle.orders
+        .filter((o) => o.cost != null)
+        .map((o) => ({ date: o.date, value: o.cost as number }));
+      const { dates, values, observed } = this.toDaily(
+        rows,
+        SPEND_TREND_DAYS,
+        bundle.excludedDates,
+      );
 
-    this.timeSeriesInsights({
-      push,
-      dates,
-      values,
-      observed,
-      measure: "purchase_spend",
-      measureLabel: "purchasing spend",
-      unit: "currency",
-      dimension: "overall",
-      category: "purchasing",
-      periodWindow: 30,
-      windowLabel: "30 days",
-    });
+      this.timeSeriesInsights({
+        push,
+        dates,
+        values,
+        observed,
+        measure: "purchase_spend",
+        measureLabel: "purchasing spend",
+        unit: "currency",
+        dimension: "overall",
+        category: "purchasing",
+        periodWindow: 30,
+        windowLabel: "30 days",
+      });
+    }
+    if (held?.vendorShare) return;
 
     // Vendor concentration + peer rank.
     const byVendor = new Map<string, { name: string; total: number }>();
     for (const o of bundle.orders) {
       const e = byVendor.get(o.vendorId) || { name: o.vendorName, total: 0 };
-      e.total += o.cost;
+      e.total += o.cost as number;
       byVendor.set(o.vendorId, e);
     }
     const weights = Array.from(byVendor.values()).map((v) => v.total);
@@ -2246,7 +2424,8 @@ export class InsightGeneratorService {
       periodKey?: string | null;
     },
   ): InsightRecord | null {
-    const sentence = verbalize(template, evidence);
+    // Bare amounts here; `inHouseMoney` renders it again in the house's money.
+    const sentence = verbalize(template, { ...evidence, currency: null });
     if (!sentence) return null;
     const subject =
       scoreParams.subject ?? scoreParams.entityLabel ?? evidence.entity ?? null;
@@ -2288,6 +2467,7 @@ export class InsightGeneratorService {
       },
       periodStart: null,
       periodEnd: null,
+      [TEMPLATE]: template,
     };
   }
 }
@@ -2295,6 +2475,30 @@ export class InsightGeneratorService {
 // ---------------------------------------------------------------------------
 
 type Push = (r: InsightRecord | null) => void;
+
+/** The template a record was rendered from, so `inHouseMoney` can render it again. */
+const TEMPLATE = Symbol("template");
+
+/**
+ * The record rendered in the house's money and stamped with it (version 17),
+ * or null when it prints an amount and the money could not be read; then
+ * "house currency" is named unread, once, as the zone is. The bundle comes
+ * from the one `generate()` call: this service is a singleton, and two houses
+ * computing at once must never share a currency.
+ */
+function inHouseMoney(
+  r: InsightRecord,
+  bundle: Pick<Bundle, "currency" | "currencyUnread" | "unread">,
+): InsightRecord | null {
+  const evidence: InsightEvidence = bundle.currencyUnread
+    ? r.evidence
+    : { ...r.evidence, currency: bundle.currency };
+  const sentence = verbalize(r[TEMPLATE] ?? "", evidence);
+  if (sentence) return { ...r, evidence, sentence };
+  if (bundle.currencyUnread && !bundle.unread.includes(HOUSE_CURRENCY_WORD))
+    bundle.unread.push(HOUSE_CURRENCY_WORD);
+  return null;
+}
 
 /** The record with the bottle basis of the lines it rests on (ADR 0297). */
 function withUnits(
@@ -2425,6 +2629,8 @@ export interface InsightRecord {
   candidateKey: string;
   category: InsightCategory;
   sentence: string;
+  /** Never stored or sent: a symbol key, read by `inHouseMoney` only. */
+  [TEMPLATE]?: string;
   score: number;
   effectPct: number | null;
   z: number | null;
@@ -2472,7 +2678,8 @@ interface Bundle {
   orders: Array<{
     vendorId: string;
     vendorName: string;
-    cost: number;
+    /** Null when the order carries no recorded cost (order-cost.ts). */
+    cost: number | null;
     date: string;
   }>;
   inventory: any[];
@@ -2484,6 +2691,13 @@ interface Bundle {
   zone: string | null;
   /** True when the zone read failed (not when the house has none). */
   zoneUnread: boolean;
+  /**
+   * The house's ISO 4217 code; null when none is stated or the read failed.
+   * `record` stamps it on every row's evidence.
+   */
+  currency: string | null;
+  /** True when the currency read failed (not when the house states none). */
+  currencyUnread: boolean;
   availability: Set<DataRequirement>;
   /** Business dates the manager ruled out of every baseline. */
   excludedDates: Set<string>;

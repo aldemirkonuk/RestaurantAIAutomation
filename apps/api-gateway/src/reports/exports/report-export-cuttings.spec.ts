@@ -273,6 +273,25 @@ describe("a signed change is written in percent, from the engine's 0–1 fractio
     const doc = EXPORT_CUTTINGS.pacing.write({ ...(PAYLOADS.pacing as object), paceDeltaPct: null }, { days: null });
     expect(isWithheld(figure(doc, "Pace"))).toBe(true);
   });
+
+  it("a window withheld over an uncosted order says why, and is not 'nothing bought'", () => {
+    const why =
+      "Purchasing spend could not be summed: 1 of the 2 delivered orders in this window carries no recorded cost, so a total would be short rather than true. Record what that order cost to read it.";
+    const doc = EXPORT_CUTTINGS.pacing.write(
+      {
+        ...(PAYLOADS.pacing as object),
+        spendLast30d: null,
+        spendPrev30d: 0,
+        paceDeltaPct: null,
+        projectedNext4Weeks: null,
+        unread: { spendLast30d: why, spendPrev30d: null, projectedNext4Weeks: why, committedOpenOrders: null },
+      },
+      { days: null },
+    );
+    expect(isWithheld(figure(doc, "Paid out, the last 30 days"))).toBe(true);
+    expect(JSON.stringify(doc)).toContain("no recorded cost");
+    expect(JSON.stringify(doc)).not.toContain("No delivered purchase order falls in either 30-day window");
+  });
 });
 
 /**

@@ -11,7 +11,15 @@ import { readHouseZone } from "../common/house-day";
 import * as crypto from "crypto";
 import { AnalyticsService } from "./analytics.service";
 import { AdvancedAnalyticsService } from "./advanced-analytics.service";
-import { InsightGeneratorService } from "./insights/insight-generator.service";
+import {
+  HOUSE_CURRENCY_WORD,
+  InsightGeneratorService,
+  readHouseCurrency,
+} from "./insights/insight-generator.service";
+import {
+  CURRENCY_NOT_RECORDED_SENTENCE,
+  fmtMoneyWhole,
+} from "./insights/insight-verbalizer";
 import { GoalsService } from "./goals.service";
 import { isSalesGatedGoal } from "./sales-gated-goals";
 import { DatabaseService } from "../database/database.service";
@@ -338,6 +346,7 @@ export class RecommendationsService {
       priceAdviceRes,
       priceLocksRes,
       houseZoneRes,
+      houseCurrencyRes,
     ] = await Promise.allSettled([
       this.analyticsService.getFinancialSummary(restaurantId, 0, {
         withSales: opts.withSales === true,
@@ -370,6 +379,10 @@ export class RecommendationsService {
       // The goal rule schedules a goal on the house's clock, as the goals
       // desk does (goal-score.ts `storedGoalSchedule`, ADR 0296).
       readHouseZone(this.dbService.getClient(), restaurantId),
+      // The money the dead-stock and spend-pace cards print their amount in
+      // (`sayAmount` below): an ISO 4217 code, null when none is stated, and
+      // a rejection when the read failed.
+      readHouseCurrency(this.dbService.getClient(), restaurantId),
     ]);
     const ok = (r: PromiseSettledResult<any>) =>
       r.status === "fulfilled" ? r.value : null;
@@ -454,6 +467,27 @@ export class RecommendationsService {
 
     const pct = (v: number) => `${Math.abs(v * 100).toFixed(0)}%`;
 
+    // An amount in the house's money. These cards printed a fixed "$", so a
+    // lira house read "$12,345 is locked in inventory" (r8 browser check,
+    // 2026-11-12). Three states, as the insight sentences have them (r8,
+    // `insight-verbalizer.ts`): a stated code prints its mark ("₺12,345");
+    // none stated prints the bare amount and the card ends with
+    // `CURRENCY_NOT_RECORDED_SENTENCE`; a failed read prints no amount, the
+    // card keeps its advice, and "house currency" is named in
+    // `sourcesUnread` (only when a card wanted it, as the zone is below).
+    let amountWantedCurrency = false;
+    const sayAmount = (v: number): { amount: string | null; tail: string } => {
+      if (houseCurrencyRes.status === "rejected") {
+        amountWantedCurrency = true;
+        return { amount: null, tail: "" };
+      }
+      const code = houseCurrencyRes.value;
+      return {
+        amount: fmtMoneyWhole(v, code),
+        tail: code === null ? ` ${CURRENCY_NOT_RECORDED_SENTENCE}` : "",
+      };
+    };
+
     // ---- Sales / demand rules --------------------------------------------
     // A SALES dip only (ADR 0291): `overall.purchase_spend.vs_same_weekday`
     // (category purchasing) also carries the comparator's name, and a soft
@@ -530,20 +564,27 @@ export class RecommendationsService {
       "dead_stock_capital",
       (ctx.financial?.deadStockCapital ?? 0) > 0 &&
         (ctx.financial?.deadStockTop?.length ?? 0) > 0,
-      () => ({
+      () => {
         // The number behind this sentence is now a consumption join, not a
         // stock-depth test — see AnalyticsService.getFinancialSummary. Naming
         // the window keeps the claim checkable, and keeps the discount advice
         // below pointed at bottles that genuinely are not selling.
-        observation: `$${Math.round(ctx.financial.deadStockCapital).toLocaleString()} is locked in inventory that has not moved in 90 days (top: ${ctx.financial.deadStockTop[0].name}).`,
-        recommendation:
-          "Build a weekend flight or staff-pick feature from the top three idle wines; if untouched after two weeks, discount to cost and reinvest the cash in A-class movers.",
-        rationale:
-          "Idle bottles pay storage and tie up cash with zero margin velocity — GMROI rises fastest by converting them back to working capital.",
-        category: "inventory",
-        urgency: "this_month",
-        score: 2,
-      }),
+        const top = ctx.financial.deadStockTop[0].name;
+        const { amount, tail } = sayAmount(ctx.financial.deadStockCapital);
+        return {
+          observation:
+            amount === null
+              ? `Stock that has not moved in 90 days is holding cash (top: ${top}). The amount is not shown: the house's currency could not be read.`
+              : `${amount} is locked in inventory that has not moved in 90 days (top: ${top}).${tail}`,
+          recommendation:
+            "Build a weekend flight or staff-pick feature from the top three idle wines; if untouched after two weeks, discount to cost and reinvest the cash in A-class movers.",
+          rationale:
+            "Idle bottles pay storage and tie up cash with zero margin velocity — GMROI rises fastest by converting them back to working capital.",
+          category: "inventory",
+          urgency: "this_month",
+          score: 2,
+        };
+      },
     );
 
     // ---- Menu engineering rules ------------------------------------------
@@ -770,16 +811,22 @@ export class RecommendationsService {
       "spend_acceleration",
       (ctx.cashflow?.paceDeltaPct ?? 0) > 0.3 &&
         (ctx.cashflow?.spendLast30d ?? 0) > 0,
-      () => ({
-        observation: `Purchasing spend is up ${pct(ctx.cashflow.paceDeltaPct)} vs the prior 30 days ($${Math.round(ctx.cashflow.spendLast30d).toLocaleString()}).`,
-        recommendation:
-          "Audit open orders against days-of-cover before the next PO run; push slow-mover orders a cycle and consolidate to hit vendor volume breaks.",
-        rationale:
-          "Spend accelerating faster than demand converts cash into shelf risk — days-of-cover is the arbiter of which orders can wait.",
-        category: "purchasing",
-        urgency: "this_week",
-        score: 2,
-      }),
+      () => {
+        const { amount, tail } = sayAmount(ctx.cashflow.spendLast30d);
+        return {
+          observation:
+            amount === null
+              ? `Purchasing spend is up ${pct(ctx.cashflow.paceDeltaPct)} vs the prior 30 days. The amount is not shown: the house's currency could not be read.`
+              : `Purchasing spend is up ${pct(ctx.cashflow.paceDeltaPct)} vs the prior 30 days (${amount}).${tail}`,
+          recommendation:
+            "Audit open orders against days-of-cover before the next PO run; push slow-mover orders a cycle and consolidate to hit vendor volume breaks.",
+          rationale:
+            "Spend accelerating faster than demand converts cash into shelf risk — days-of-cover is the arbiter of which orders can wait.",
+          category: "purchasing",
+          urgency: "this_week",
+          score: 2,
+        };
+      },
     );
 
     // ---- Staff rules (fire only with POS check data) ----------------------
@@ -872,6 +919,8 @@ export class RecommendationsService {
 
     if (paceWantedZone && !sourcesUnread.includes("house time zone"))
       sourcesUnread.push("house time zone");
+    if (amountWantedCurrency && !sourcesUnread.includes(HOUSE_CURRENCY_WORD))
+      sourcesUnread.push(HOUSE_CURRENCY_WORD);
 
     // ---- Merge stored manager disposition (dismiss/snooze/done/pin) --------
     const dispositions = await this.actions.readDispositions(restaurantId);

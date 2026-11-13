@@ -267,8 +267,22 @@ export function tillStockOf(input: {
 }
 
 /** What the stock base of turns, days of stock and GMROI covered. */
+/*
+ * The working the house reads under "Show the working" and in the report
+ * export (which prints it verbatim). It names each figure by the label the
+ * page gives it, never by its field name, and says "left blank" for an
+ * unknown: no camelCase, no `null`, no `$`, no "365d" (r11, 2026-11-12).
+ */
+function days(n: number): string {
+  return `${n} ${n === 1 ? "day" : "days"}`;
+}
+const COST_DERIVED_RATIOS =
+  "Kept, kept of sales, cost of sales and prime cost divide the cost of what the till sold by its net sales of the same items, and are left blank when either is. ";
+const COST_DERIVED_APART =
+  "Late prices settled in the window on bottles sold before it, the cost of the items whose cost is known, what was bought, and the shelf at menu price are each shown apart and feed no ratio.";
+
 function tillStockSentence(t: TillStock | null): string {
-  if (t == null) return ": null, since the till's sales could not be read and the goods it reaches are unknown";
+  if (t == null) return ": left blank, since the till's sales could not be read and the goods it reaches are unknown";
   const parts = [`: ${t.goodsOnTill} of ${plural(t.goodsOnHand, "good")} on hand`];
   if (t.uncostedOnTill > 0)
     parts.push(`, ${t.uncostedOnTill} of them with no recorded cost`);
@@ -282,7 +296,7 @@ function tillStockSentence(t: TillStock | null): string {
     parts.push(
       `; the ${plural(t.goodsOffTill, "good")} the till does not reach` +
         (t.offTillValue != null ? `, ${t.offTillValue.toFixed(2)} at cost,` : "") +
-        " are left out (tillStock), since nothing they sell reaches the cost of what sold",
+        " are left out, since nothing they sell reaches the cost of what sold",
     );
   return parts.join("");
 }
@@ -314,7 +328,7 @@ export function tillFigures(input: {
   const firstMoveAt = cost?.first_move_at ?? null;
   if (cost == null) {
     cogsBasis =
-      "cost of what the till sold — null: the till's movements could not be read";
+      "Cost of what the till sold — left blank: the till's movements could not be read";
   } else {
     cogsCoverage = cogsCoverageOf(cost);
     const c = cogsCoverage;
@@ -323,7 +337,7 @@ export function tillFigures(input: {
     const earlier = num(cost.settled_on_earlier_sales);
     settledOnEarlierSales = Number.isFinite(earlier) ? round2(earlier) : null;
     if (c.itemsMoved === 0) {
-      cogsBasis = `cost of what the till sold (${windowDays}d) — null: the till moved no stocked item in the window, and $0 would claim it sold nothing`;
+      cogsBasis = `Cost of what the till sold (${days(windowDays)}) — left blank: the till moved no stocked item in the window, and a zero would claim it sold nothing`;
     } else if (c.itemsCosted < c.itemsMoved) {
       const why: string[] = [];
       if (c.rowsUnstamped > 0)
@@ -335,7 +349,7 @@ export function tillFigures(input: {
           `${plural(c.bottlesBackUncosted, "bottle")} a void gave back named no sale to take its cost from`,
         );
       cogsBasis =
-        `cost of what the till sold (${windowDays}d) — withheld: cost known for ${c.itemsCosted} of ${plural(c.itemsMoved, "item")} sold; ` +
+        `Cost of what the till sold (${days(windowDays)}) — left blank: cost known for ${c.itemsCosted} of ${plural(c.itemsMoved, "item")} sold; ` +
         `${plural(c.bottlesUncosted, "bottle")} left or came back with no invoice cost yet` +
         (why.length ? ` (${why.join("; ")})` : "") +
         ". A smaller number under this label would be a guess.";
@@ -345,19 +359,19 @@ export function tillFigures(input: {
           items: c.itemsCosted,
           of: c.itemsMoved,
         };
-        cogsBasis += ` The ${plural(c.itemsCosted, "item")} whose every bottle carries its cost came to ${costOfCostedItems.amount.toFixed(2)} at cost (costOfCostedItems): exact for those items, not the cost of goods, and divided by nothing.`;
+        cogsBasis += ` The ${plural(c.itemsCosted, "item")} whose every bottle carries its cost came to ${costOfCostedItems.amount.toFixed(2)} at cost: exact for those items, not the cost of goods, and divided by nothing.`;
       }
     } else {
       const total = num(cost.cost);
       if (!Number.isFinite(total)) {
         cogsBasis =
-          "cost of what the till sold — null: the cost total did not read as a number";
+          "Cost of what the till sold — left blank: the cost total did not read as a number";
       } else {
         cogs = round2(total);
         const settled = num(cost.settled_after_sale);
         settledAfterSale = Number.isFinite(settled) ? round2(settled) : null;
         cogsBasis =
-          `cost of what the till sold (${windowDays}d): each bottle at the cost it carried when it left its lot, voids given back at their sale's cost — ` +
+          `Cost of what the till sold (${days(windowDays)}): each bottle at the cost it carried when it left its lot, voids given back at their sale's cost — ` +
           `${plural(c.itemsMoved, "item")}, ${plural(c.bottlesOut - c.bottlesBack, "bottle")} net` +
           (settledAfterSale != null && settledAfterSale !== 0
             ? `, of which ${settledAfterSale.toFixed(2)} is late prices on these sales, settled by invoices verified after the bottles sold`
@@ -366,7 +380,7 @@ export function tillFigures(input: {
       }
     }
     if (settledOnEarlierSales != null && settledOnEarlierSales !== 0)
-      cogsBasis += ` Late prices settled in the window on bottles sold before it, ${settledOnEarlierSales.toFixed(2)}, are named apart (settledOnEarlierSales) and are not in it: those sales are not in this window's net sales.`;
+      cogsBasis += ` Late prices settled in the window on bottles sold before it, ${settledOnEarlierSales.toFixed(2)}, are named apart and are not in it: those sales are not in this window's net sales.`;
   }
 
   // ---- net sales of stocked items ---------------------------------------
@@ -374,7 +388,7 @@ export function tillFigures(input: {
   let salesCoverage: SalesCoverage | null = null;
   let revenueBasis: string;
   if (sales == null) {
-    revenueBasis = "net till sales of stocked items — null: the till could not be read";
+    revenueBasis = "Net till sales of stocked items — left blank: the till could not be read";
   } else {
     const items = sales.items ?? [];
     const mine = items.filter((i) => i.in_house !== false);
@@ -387,15 +401,15 @@ export function tillFigures(input: {
     };
     const total = mine.reduce((s, i) => s + num(i.sales), 0);
     if (salesCoverage.checks === 0) {
-      revenueBasis = `net till sales of stocked items (${windowDays}d) — null: no closed check in the window`;
+      revenueBasis = `Net till sales of stocked items (${days(windowDays)}) — left blank: no closed check in the window`;
     } else if (salesCoverage.unreadableLines > 0) {
-      revenueBasis = `net till sales of stocked items (${windowDays}d) — null: ${plural(salesCoverage.unreadableLines, "till line")} could not be read, so a total would be a floor`;
+      revenueBasis = `Net till sales of stocked items (${days(windowDays)}) — left blank: ${plural(salesCoverage.unreadableLines, "till line")} could not be read, so a total would be a floor`;
     } else if (!Number.isFinite(total)) {
-      revenueBasis = `net till sales of stocked items (${windowDays}d) — null: a line's sales did not read as a number`;
+      revenueBasis = `Net till sales of stocked items (${days(windowDays)}) — left blank: a line's sales did not read as a number`;
     } else {
       revenue = round2(total);
       revenueBasis =
-        `net till sales of stocked items (${windowDays}d), before tax and surcharge — ${plural(salesCoverage.checks, "check")}` +
+        `Net till sales of stocked items (${days(windowDays)}), before tax and surcharge — ${plural(salesCoverage.checks, "check")}` +
         (salesCoverage.unmappedLines > 0
           ? `; ${plural(salesCoverage.unmappedLines, "line")} naming no stocked item (food, unmapped) not in it`
           : "") +
@@ -459,11 +473,11 @@ export function tillFigures(input: {
       cogs: cogsBasis,
       revenue: revenueBasis,
       costDerived:
-        "grossMarginDollars, grossMargin, cogsRatio and primeCostRatio divide the cost of what the till sold by its net sales of the same items, and are null when either is; " +
-        `inventoryTurnover, daysInventoryOutstanding and gmroi annualise the span the till covers (null under ${MIN_SPAN_DAYS} days) against today's stock at cost of the goods the till reaches (mapped to a till item, or sold or moved by it in the window), which is null unless every one of them on hand carries a recorded cost (ADR 0051; a row whose invoiced cost covers only part of its bottles is valued at that cost, as the cellar's basis names)` +
+        COST_DERIVED_RATIOS +
+        `Inventory turns, days of inventory and GMROI scale the days the till covers to a year (left blank under ${MIN_SPAN_DAYS} days) and set that against today's stock at cost of the goods the till reaches (mapped to a till item, or sold or moved by it in the window), which is left blank unless every one of them on hand carries a recorded cost (a row whose invoiced cost covers only part of its bottles is valued at that cost, as the cellar's working says)` +
         tillStockSentence(tillStock) +
         ". " +
-        "settledOnEarlierSales (late prices settled in the window on bottles sold before it), costOfCostedItems, deliveredPurchases and shelfValueAtMenuPrice keep their own names and feed no ratio.",
+        COST_DERIVED_APART,
     },
   };
 }
@@ -488,9 +502,9 @@ export function withheldTillFigures(windowDays: number): TillFigures {
     salesCoverage: null,
     cogsWindow: { firstMoveAt: null, spanDays: null },
     basis: {
-      cogs: `cost of what the till sold (${windowDays}d) — ${w}`,
-      revenue: `net till sales of stocked items (${windowDays}d) — ${w}`,
-      costDerived: `every figure divided by sales or by the cost of what sold — ${w}`,
+      cogs: `Cost of what the till sold (${days(windowDays)}) — ${w}`,
+      revenue: `Net till sales of stocked items (${days(windowDays)}) — ${w}`,
+      costDerived: `Every figure divided by sales or by the cost of what sold — ${w}`,
     },
   };
 }

@@ -41,7 +41,7 @@
  * a duplicate, not a comparison.
  */
 
-import { EM, countOf, figure, money, num, pct } from './rp-format';
+import { EM, countOf, figure, moneyIn, num, pct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 
 export interface BenchGoalRow {
@@ -67,6 +67,11 @@ export interface BenchRegister {
   tie: boolean;
   weekdays: Array<{ day: string; mean: number | null; n: number | null }>;
   goals: BenchGoalRow[];
+  /**
+   * Why a buying window is withheld: an order in it carries no recorded cost
+   * (the cashflow lens's `unread`, the purchases goal's own sentence).
+   */
+  spendUnread: string | null;
   /** True when the whole cashflow lens failed inside the parallel call. */
   cashflowMissing: boolean;
   seasonalityMissing: boolean;
@@ -94,6 +99,13 @@ export const bench = analysis<BenchRegister>({
       spendPrev30d: num(cf.spendPrev30d),
       paceDeltaPct: num(cf.paceDeltaPct),
       committed: num(cf.committedOpenOrders),
+      spendUnread: (() => {
+        const u = obj(cf.unread);
+        const first = [u.spendLast30d, u.spendPrev30d].find(
+          (v) => typeof v === 'string' && v.trim() !== '',
+        );
+        return first == null ? null : String(first);
+      })(),
       openOrderCount: num(cf.openOrderCount),
       trendPerDayPct: num(se.trendPerDayPct),
       bestDay: se.bestDay == null ? null : str(se.bestDay),
@@ -123,7 +135,8 @@ export const bench = analysis<BenchRegister>({
       >,
     };
   },
-  view: (b) => {
+  view: (b, ctx) => {
+    const money = moneyIn(ctx.currency);
     const noPeers =
       'No other house is in this comparison. Mudavym holds only this restaurant’s books, so there is no market median to stand beside these figures — every one of them is this house against its own past. The one median the engine does publish, over this house’s own list, is drawn as the crosshair on “Margin against movement”.';
 
@@ -131,7 +144,11 @@ export const bench = analysis<BenchRegister>({
       {
         label: 'Bought, last 30 days',
         value: money(b.spendLast30d),
-        note: b.cashflowMissing ? 'the cashflow lens did not answer' : undefined,
+        note: b.cashflowMissing
+          ? 'the cashflow lens did not answer'
+          : b.spendLast30d === null && b.spendUnread
+            ? 'an order in this window has no recorded cost'
+            : undefined,
       },
       { label: 'Bought, the 30 before', value: money(b.spendPrev30d) },
       {
@@ -251,6 +268,7 @@ export const bench = analysis<BenchRegister>({
         b.cashflowMissing
           ? 'The buying lens did not answer inside the overview call, so its four figures are em dashes rather than zeros.'
           : null,
+        b.spendUnread,
         b.seasonalityMissing
           ? 'The weekday lens did not answer inside the overview call.'
           : null,
