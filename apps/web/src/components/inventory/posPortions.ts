@@ -41,6 +41,12 @@ export interface PortionOffer {
   shape: "whole" | "pour";
   /** null when it can be chosen; otherwise why it cannot. */
   blocked: string | null;
+  /**
+   * What would unblock it (r26): "pour" when only a confirmed pour is missing,
+   * so the panel can ask for one right there; "size" when the item's own
+   * bottle size is missing; "fit" when the pour is more than the bottle holds.
+   */
+  needs: "pour" | "size" | "fit" | null;
 }
 
 export interface Portions {
@@ -105,9 +111,10 @@ export function portionsFor(
       saleVolumeMl: null,
       shape: "whole",
       blocked: null,
+      needs: null,
     });
   } else if (uom === "each") {
-    offers.push({ text: "One piece", saleUnit: "bottle", saleVolumeMl: null, shape: "whole", blocked: null });
+    offers.push({ text: "One piece", saleUnit: "bottle", saleVolumeMl: null, shape: "whole", blocked: null, needs: null });
   }
 
   const pourWord = POUR_WORD[kind];
@@ -118,14 +125,18 @@ export function portionsFor(
     const container = uom === "keg" ? "keg" : "bottle";
     const pourMl = positive(facts.pourMl) ?? (kind === "wine" ? positive(housePourMl) : null);
     let blocked: string | null = null;
+    let needs: PortionOffer["needs"] = null;
     if (bottleMl === null) {
+      needs = "size";
       blocked = `This item does not say what one ${container} holds. A ${pourWord} is poured out of one, so set its size on the item first; until then a ${pourWord} sale queues and moves no stock.`;
     } else if (pourMl === null) {
+      needs = "pour";
       blocked =
         kind === "wine"
           ? "Neither this wine's pour nor the house's pour is confirmed. Confirm the pour first; until then a glass sale queues and moves no stock."
           : `This item's ${pourWord} size is not confirmed. Confirm its pour on the item first; until then a ${pourWord} sale queues and moves no stock.`;
     } else if (pourMl > bottleMl) {
+      needs = "fit";
       blocked = `The confirmed pour (${pourMl}ml) is more than one ${container} holds (${bottleMl}ml).`;
     }
     offers.push({
@@ -134,6 +145,7 @@ export function portionsFor(
       saleVolumeMl: blocked === null ? pourMl : null,
       shape: "pour",
       blocked,
+      needs,
     });
   }
 

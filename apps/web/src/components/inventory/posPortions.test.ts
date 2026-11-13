@@ -15,7 +15,7 @@ describe("portionsFor (r24 pos-portions)", () => {
   it("a soda is a bottle or can at its size, and never a glass", () => {
     const p = portionsFor(f({ kind: "soft_drink", bottleMl: 330, pourMl: 150 }), 150);
     expect(p.offers).toEqual([
-      { text: "Bottle or can 330ml", saleUnit: "bottle", saleVolumeMl: null, shape: "whole", blocked: null },
+      { text: "Bottle or can 330ml", saleUnit: "bottle", saleVolumeMl: null, shape: "whole", blocked: null, needs: null },
     ]);
   });
 
@@ -70,6 +70,14 @@ describe("portionsFor (r24 pos-portions)", () => {
     expect(ml.offers).toEqual([]);
     expect(ml.note).toMatch(/kept by volume/);
     expect(portionsFor(f({ kind: "wine", uom: "case" }), 150).note).toMatch(/kept by the case/);
+  });
+
+  it("r26: a blocked pour says what would unblock it, so the panel can ask for only that", () => {
+    expect(portionsFor(f({ bottleMl: 750 }), null).offers[1].needs).toBe("pour");
+    expect(portionsFor(f({ kind: "spirit", bottleMl: 700 }), null).offers[1].needs).toBe("pour");
+    expect(portionsFor(f({ pourMl: 125 }), null).offers[1].needs).toBe("size");
+    expect(portionsFor(f({ kind: "spirit", bottleMl: 50, pourMl: 60 }), null).offers[1].needs).toBe("fit");
+    expect(portionsFor(f({ bottleMl: 750 }), 150).offers.map((o) => o.needs)).toEqual([null, null]);
   });
 
   it("unread facts offer nothing and say why", () => {
