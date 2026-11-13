@@ -4,7 +4,7 @@ import { Reflector } from "@nestjs/core";
 import { AuthController } from "./auth.controller";
 import {
   DEFAULT_RATE_LIMITS,
-  IDENTITY_READ_RATE_LIMIT,
+  SESSION_READ_RATE_LIMIT,
   RateLimitGuard,
 } from "../common/rate-limit";
 
@@ -14,8 +14,11 @@ import {
  *
  * The global RateLimitGuard puts every `/auth/` path on 10 per minute per IP.
  * `GET /auth/me` and its sibling reads take no credential, so they now carry
- * the default authenticated-read budget. Every route that takes a password, a
- * code or a refresh token must still resolve to the `auth` tier.
+ * the default authenticated-read budget. Every route that takes a password or
+ * a code must still resolve to the `auth` tier. `refresh` and
+ * `switch-restaurant` are not listed here: #1148 gives a session renewing
+ * itself the ordinary limit (SESSION_RENEWAL_RATE_LIMIT, with its own spec in
+ * rate-limit.guard.spec.ts), and that call stands.
  */
 
 type Handler = keyof AuthController;
@@ -77,7 +80,7 @@ describe("auth routes: identity reads vs credential routes", () => {
   });
 
   it("the identity-read budget is the default authenticated-read budget, wider than the auth tier", () => {
-    expect(IDENTITY_READ_RATE_LIMIT).toEqual({ limit: 100, windowSeconds: 60 });
+    expect(SESSION_READ_RATE_LIMIT).toEqual({ limit: 100, windowSeconds: 60 });
     expect(DEFAULT_RATE_LIMITS.auth).toEqual({ limit: 10, windowSeconds: 60 });
   });
 
@@ -102,7 +105,6 @@ describe("auth routes: identity reads vs credential routes", () => {
     ["registerAccountWithGoogle", "/api/v1/auth/register/google"],
     ["loginWithGoogle", "/api/v1/auth/oauth/google"],
     ["loginWithMicrosoft", "/api/v1/auth/oauth/microsoft"],
-    ["refresh", "/api/v1/auth/refresh"],
     ["changePassword", "/api/v1/auth/me/password"],
     ["updateProfile", "/api/v1/auth/me"],
     ["deleteAccount", "/api/v1/auth/me"],
@@ -111,7 +113,6 @@ describe("auth routes: identity reads vs credential routes", () => {
     ["joinViaInvite", "/api/v1/auth/join"],
     ["getInvitePreview", "/api/v1/auth/invite/:code"],
     ["checkEmail", "/api/v1/auth/check-email"],
-    ["switchRestaurant", "/api/v1/auth/switch-restaurant"],
   ])("%s keeps the auth tier: 10 a minute from one IP", async (handler, path) => {
     expect(await allowedOf(guard, handler, path, 11)).toBe(10);
   });

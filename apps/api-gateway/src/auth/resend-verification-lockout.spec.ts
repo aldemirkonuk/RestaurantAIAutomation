@@ -1,5 +1,5 @@
 import { AuthService } from "./auth.service";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 
 /**
  * The lockout this closes was found in a stalled agent's uncommitted work and
@@ -16,6 +16,12 @@ import { BadRequestException } from "@nestjs/common";
 function makeService(
   rows: Array<Record<string, unknown>>,
   configOverrides: Record<string, unknown> = {},
+  mailer: (m: any) => Promise<{
+    success: boolean;
+    messageId?: string;
+    error?: string;
+  }> = async () => ({ success: true, messageId: "m1" }),
+  emailVerified = false,
 ) {
   const ordered = [...rows];
   const chain: any = {
@@ -55,7 +61,7 @@ function makeService(
     eq: () => account,
     maybeSingle: async () => ({
       data: {
-        email_verified: false,
+        email_verified: emailVerified,
         password_hash: "$2b$10$registrant",
         created_at: new Date().toISOString(),
       },
@@ -69,7 +75,7 @@ function makeService(
   const gmail = {
     sendEmail: async (m: any) => {
       sent.push(m);
-      return { success: true, messageId: "m1" };
+      return mailer(m);
     },
   } as any;
 
@@ -92,7 +98,7 @@ describe("resendVerification — an account with no verification row", () => {
 
     await expect(
       service.resendVerification("u1", "a@b.com"),
-    ).resolves.toEqual({ sent: true });
+    ).resolves.toEqual({ sent: true, verificationMail: "sent" });
     expect(sent).toHaveLength(1);
   });
 
@@ -105,7 +111,7 @@ describe("resendVerification — an account with no verification row", () => {
 
     await expect(
       service.resendVerification("u1", "a@b.com"),
-    ).resolves.toEqual({ sent: true });
+    ).resolves.toEqual({ sent: true, verificationMail: "sent" });
     expect(sent).toHaveLength(1);
   });
 
@@ -153,7 +159,7 @@ describe("resendVerification — an account with no verification row", () => {
 
     await expect(
       service.resendVerification("u1", "a@b.com"),
-    ).resolves.toEqual({ sent: true });
+    ).resolves.toEqual({ sent: true, verificationMail: "sent" });
     expect(sent).toHaveLength(1);
   });
 
@@ -171,6 +177,81 @@ describe("resendVerification — an account with no verification row", () => {
     await expect(
       service.resendVerification("u1", "a@b.com"),
     ).rejects.toBeInstanceOf(BadRequestException);
+    expect(sent).toHaveLength(0);
+  });
+});
+
+/**
+ * Round 2 B-5, round 6 #789: a resend said `{ sent: true }` even when the
+ * mailer refused or threw, so the page told a person whose first mail was
+ * lost to check their inbox again. It now answers what `sendEmail` said, in
+ * the shape sign-up answers (`verificationMail`).
+ */
+describe("resendVerification — says whether the mail left", () => {
+  const pending = () => [
+    {
+      id: "v1",
+      verified_at: null,
+      resend_count: 0,
+      last_resent_at: null,
+      created_at: minutesAgo(30),
+    },
+  ];
+
+  it("answers not_sent when the mailer refuses a pending row's resend", async () => {
+    const { service, sent } = makeService(pending(), {}, async () => ({
+      success: false,
+      error: "provider down",
+    }));
+
+    await expect(
+      service.resendVerification("u1", "a@b.com"),
+    ).resolves.toEqual({ sent: false, verificationMail: "not_sent" });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("answers not_sent when the mailer throws and no row existed", async () => {
+    const { service, sent } = makeService([], {}, async () => {
+      throw new Error("socket hang up");
+    });
+
+    await expect(
+      service.resendVerification("u1", "a@b.com"),
+    ).resolves.toEqual({ sent: false, verificationMail: "not_sent" });
+    expect(sent).toHaveLength(1);
+  });
+});
+
+/**
+ * Walk 2026-11-11: a resend that landed 18 ms after the code verified minted
+ * and mailed a new code to a verified account. The account row decides.
+ */
+describe("resendVerification — a verified address", () => {
+  it("refuses with ALREADY_VERIFIED and sends nothing", async () => {
+    const { service, sent, inserted } = makeService(
+      [{ id: "v0", verified_at: minutesAgo(5), created_at: minutesAgo(5) }],
+      {},
+      undefined,
+      true,
+    );
+
+    const refusal = await service
+      .resendVerification("u1", "a@b.com")
+      .catch((err: unknown) => err);
+    expect(refusal).toBeInstanceOf(ConflictException);
+    expect((refusal as ConflictException).getResponse()).toEqual(
+      expect.objectContaining({ code: "ALREADY_VERIFIED" }),
+    );
+    expect(sent).toHaveLength(0);
+    expect(inserted).toHaveLength(0);
+  });
+
+  it("refuses even with no verification row at all", async () => {
+    const { service, sent } = makeService([], {}, undefined, true);
+
+    await expect(
+      service.resendVerification("u1", "a@b.com"),
+    ).rejects.toBeInstanceOf(ConflictException);
     expect(sent).toHaveLength(0);
   });
 });
