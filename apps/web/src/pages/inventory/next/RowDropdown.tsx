@@ -80,6 +80,8 @@ export interface RowDropdownProps {
   providers: Provider[] | null;
   providersError: string | null;
   restaurantId: string | null;
+  /** The good's own unit (g, ml, each…), so "Export this row" says it; absent is a bottle. */
+  uom?: string | null;
 }
 
 type SheetId = 'count' | 'order' | 'writeoff' | 'transfer' | 'pour';
@@ -388,7 +390,7 @@ export default function RowDropdown(props: RowDropdownProps) {
               onClick={() => {
                 setMoreOpen(false);
                 // Legacy's right-click "Export this row": the valuation columns, as CSV, named after the title.
-                void runExport([row], valuationColumns(currency.code ?? null), rowFilename(row), title);
+                void runExport([row], valuationColumns(currency.code ?? null, () => props.uom ?? null), rowFilename(row), title);
               }}
             >
               Export this row

@@ -50,7 +50,7 @@ import ItemDrawer from './ItemDrawer';
 import CarryThis from './CarryThis';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
-import { blank, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
+import { blank, bottleSizeCell, countUnit, daysSinceCountedCell, inCountUnit, oneLine, paceInCountUnit, runExport, today, valuationColumns, wacInCountUnit } from './iv-export';
 import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
@@ -573,22 +573,25 @@ export default function InventoryNext() {
         { header: 'Producer', value: (r) => r.producer ?? '' },
         { header: 'Vintage', value: (r) => blank(r.vintage) },
         { header: 'Type', value: (r) => (r.type === null ? '' : typeLabel(r.type)) },
-        { header: 'Bottle size (ml)', value: (r) => blank(r.bottleSizeMl) },
-        { header: 'System qty (live)', value: (r) => blank(r.stock) },
-        { header: 'System qty (shadow)', value: (r) => blank(r.shadow) },
-        { header: 'Par', value: (r) => blank(r.par) },
+        // Every quantity below is in this row's Unit (kg, l, bottle…), so a
+        // counter writes the count in the unit printed beside it (r28, gap 3).
+        { header: 'Unit', value: (r) => countUnit(uomOf(r)).unit },
+        { header: 'Bottle size (ml)', value: (r) => bottleSizeCell(r, uomOf(r)) },
+        { header: 'System qty (live)', value: (r) => inCountUnit(r.stock, uomOf(r)) },
+        { header: 'System qty (shadow)', value: (r) => inCountUnit(r.shadow, uomOf(r)) },
+        { header: 'Par', value: (r) => inCountUnit(r.par, uomOf(r)) },
         { header: 'Counted qty', value: () => '' },
         { header: 'Variance', value: () => '' },
         // Legacy's columns (InventoryCommandPage.tsx:605-660), with Last counted kept
         // beside Days since counted. An unread figure stays blank, never a 0.
         { header: 'Days since counted', value: (r) => daysSinceCountedCell(r.lastCountedAt) },
         { header: 'Last counted', value: (r) => r.lastCountedAt ?? '' },
-        { header: 'Velocity/day', value: (r) => (r.velocity === null ? '' : r.velocity.toFixed(2)) },
+        { header: 'Velocity/day', value: (r) => paceInCountUnit(r.velocity, uomOf(r)) },
         { header: 'Runway d', value: (r) => (r.runway === null ? '' : Math.round(r.runway)) },
         // Cost is an owner's and a manager's; staff export the counts alone.
         ...(data.canManage
           ? [
-              { header: 'WAC', value: (r: InvRow) => blank(r.wac) },
+              { header: 'WAC', value: (r: InvRow) => wacInCountUnit(r.wac, uomOf(r)) },
               { header: 'Value', value: (r: InvRow) => (r.value === null ? '' : r.value.toFixed(2)) },
             ]
           : []),
@@ -598,7 +601,7 @@ export default function InventoryNext() {
       'Inventory count sheet',
     );
 
-  const valuation = valuationColumns(data.currency.code ?? null);
+  const valuation = valuationColumns(data.currency.code ?? null, uomOf);
 
   const exportValuation = () =>
     runExport(visible, valuation, `inventory-valuation-${today()}`, 'Inventory valuation');
