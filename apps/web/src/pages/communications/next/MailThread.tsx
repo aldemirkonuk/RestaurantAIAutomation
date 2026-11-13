@@ -14,14 +14,28 @@
  * thread's newest letter (r28 gap 3: it joins this thread and carries
  * In-Reply-To). Staff and an unknown role see no composer act (ADR 0357
  * answer 3, proposal F6).
+ *
+ * "No reply needed" (r28 gap 4): while the thread waits, an owner or manager
+ * can say its newest received letter needs no answer — a "Thanks!", or a
+ * reply given by phone or from Gmail. That letter and the earlier ones stop
+ * waiting; a later letter waits again. The marked letter says so, and the
+ * mark can be taken back from it. Staff see the mark, never the acts.
  */
 
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { EM, MONO, SANS, SERIF, failedReadWords, fmtWhen, heldBecause } from './cm-format';
-import { answerFor, letterAt, letterLook, type MailAnswer, type MailMessage } from './mail-format';
+import {
+  answerFor,
+  letterAt,
+  letterLook,
+  noReplyFailWords,
+  noReplyTarget,
+  type MailAnswer,
+  type MailMessage,
+} from './mail-format';
 import { QueuedPullBack } from './QueuedPullBack';
-import { useMailThread } from './useMailData';
+import { useMailThread, useNoReplyMark } from './useMailData';
 
 const QUIET = { fontSize: 11, color: 'var(--ink-4, #665D50)' } as const;
 
@@ -37,7 +51,20 @@ export interface LetterFacts {
   constraintFlags: { hard: readonly string[] } | null;
 }
 
-function Letter({ m, vendor, facts }: { m: MailMessage; vendor: string; facts: LetterFacts | undefined }) {
+function Letter({
+  m,
+  vendor,
+  facts,
+  onTakeBack,
+  takingBack,
+}: {
+  m: MailMessage;
+  vendor: string;
+  facts: LetterFacts | undefined;
+  /** Set only on the newest marked letter, for an owner or manager. */
+  onTakeBack?: () => void;
+  takingBack?: boolean;
+}) {
   const look = letterLook(m);
   const inbound = m.direction === 'inbound';
   const held = facts?.constraintFlags?.hard ?? [];
@@ -122,6 +149,22 @@ function Letter({ m, vendor, facts }: { m: MailMessage; vendor: string; facts: L
         </p>
       )}
       {look.queued && <QueuedPullBack id={m.id} />}
+      {inbound && m.noReplyMarkedAt && (
+        <p data-testid="letter-no-reply" className="flex flex-wrap items-baseline gap-2" style={{ ...QUIET, margin: 0 }}>
+          <span>Marked as needing no reply, {fmtWhen(m.noReplyMarkedAt)}.</span>
+          {onTakeBack && (
+            <button
+              type="button"
+              data-testid="letter-no-reply-undo"
+              onClick={onTakeBack}
+              disabled={takingBack}
+              style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 11, fontWeight: 600, color: 'var(--seal-deep, #14515C)' }}
+            >
+              {takingBack ? 'Taking it back…' : 'It needs a reply after all'}
+            </button>
+          )}
+        </p>
+      )}
     </li>
   );
 }
@@ -164,6 +207,13 @@ export function MailThread({
   // Any thread with a vendor can be answered by hand, order or not; the
   // drafted reply, when there is one, stays the first act.
   const answer = canReply && onAnswer ? answerFor(head, letters) : null;
+  const noReply = useNoReplyMark();
+  const settleId = canReply ? noReplyTarget(head, letters) : null;
+  // Only the newest marked letter offers to take its mark back: an older
+  // mark is behind it in the thread, and taking it back changes nothing.
+  const undoId = canReply
+    ? (letters.filter((m) => m.direction === 'inbound' && m.noReplyMarkedAt).slice(-1)[0]?.id ?? null)
+    : null;
 
   return (
     <section aria-label="Thread" className="grid gap-3" style={{ fontFamily: SANS }}>
@@ -247,7 +297,14 @@ export function MailThread({
 
           <ul className="grid gap-2" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {letters.map((m) => (
-              <Letter key={m.id} m={m} vendor={vendor} facts={bookFacts?.get(m.id)} />
+              <Letter
+                key={m.id}
+                m={m}
+                vendor={vendor}
+                facts={bookFacts?.get(m.id)}
+                onTakeBack={m.id === undoId ? () => noReply.mutate({ id: m.id, marked: false }) : undefined}
+                takingBack={noReply.isPending && noReply.variables?.marked === false}
+              />
             ))}
           </ul>
 
@@ -257,7 +314,13 @@ export function MailThread({
             </p>
           )}
 
-          {(replyOrder || answer) && (
+          {noReply.isError && (
+            <p role="alert" data-testid="no-reply-failed" style={{ margin: 0, fontSize: 12, color: 'var(--alarm-deep, #8C3322)' }}>
+              {noReplyFailWords(noReply.error, noReply.variables?.marked !== false)}
+            </p>
+          )}
+
+          {(replyOrder || answer || settleId) && (
             <div className="flex flex-wrap gap-2">
               {replyOrder && (
                 <button
@@ -295,6 +358,27 @@ export function MailThread({
                   }}
                 >
                   Write a reply
+                </button>
+              )}
+              {settleId && (
+                <button
+                  type="button"
+                  data-testid="thread-no-reply"
+                  onClick={() => noReply.mutate({ id: settleId, marked: true })}
+                  disabled={noReply.isPending}
+                  title="The newest letter and the ones before it stop waiting. A later letter waits again."
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: '6px 12px',
+                    borderRadius: 8,
+                    border: '1px solid var(--rule, rgba(33,28,22,.14))',
+                    background: 'transparent',
+                    color: 'var(--ink-2, #4F473C)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {noReply.isPending && noReply.variables?.marked ? 'Saving…' : 'No reply needed'}
                 </button>
               )}
             </div>

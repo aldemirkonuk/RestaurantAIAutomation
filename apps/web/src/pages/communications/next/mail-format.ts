@@ -74,6 +74,13 @@ export interface MailMessage {
   createdAt: string;
   rawDeletedAt: string | null;
   door: MailDoor;
+  /** A bounce or an auto-reply: on the thread, never a letter anyone owes. */
+  automatic?: boolean;
+  /**
+   * When an owner or manager said this letter needs no reply (r28 mail gap
+   * 4). Absent from a gateway that predates the mark: read as not marked.
+   */
+  noReplyMarkedAt?: string | null;
 }
 
 export interface MailThreadPage {
@@ -83,6 +90,11 @@ export interface MailThreadPage {
   order: { id: string; number: string | null; status: string | null } | null;
   messages: MailMessage[];
   before: string | null;
+  /**
+   * The house owes this thread a reply, over the whole thread. Absent from a
+   * gateway that predates it: then the page offers no "No reply needed".
+   */
+  waiting?: boolean;
 }
 
 export interface MailSummary {
@@ -720,4 +732,38 @@ export function answerFor(
     answers: last.id,
     subject: subject === '' ? '' : /^re\s*:/i.test(subject) ? subject : `Re: ${subject}`,
   };
+}
+
+/**
+ * The letter "No reply needed" marks (r28 mail audit, gap 4): the thread's
+ * newest letter that arrived and is not automatic mail, when the gateway says
+ * the thread waits. The mark settles that letter and every earlier one of the
+ * thread; naming the letter the page shows (never "now") means a letter that
+ * arrives meanwhile still waits. Null when nothing is owed.
+ */
+export function noReplyTarget(
+  head: Pick<MailThreadPage, 'waiting'> | null,
+  letters: readonly MailMessage[],
+): string | null {
+  if (head?.waiting !== true) return null;
+  const last = letters
+    .filter((m) => m.direction === 'inbound' && m.automatic !== true)
+    .reduce<MailMessage | null>((best, m) => (best === null || letterAt(m) >= letterAt(best) ? m : best), null);
+  return last?.id ?? null;
+}
+
+/**
+ * Why a "needs no reply" mark, or taking it back, did not hold. The page reads
+ * only the status and says every case in words written here; a failure never
+ * reads as done.
+ */
+export function noReplyFailWords(err: unknown, marking: boolean): string {
+  const status = (err as { response?: { status?: unknown } } | null)?.response?.status;
+  if (typeof status !== 'number') return 'No answer. Check the connection; nothing was changed.';
+  if (status === 403) return "Only the house's owner or a manager can say a letter needs no reply.";
+  if (status === 404) return "That letter is no longer in this house's mail. Nothing was changed.";
+  if (status === 409) return 'Only a letter the house received can be marked as needing no reply.';
+  return marking
+    ? 'It could not be marked just now, so nothing changed. Try again.'
+    : 'The mark could not be taken back just now; it still holds. Try again.';
 }
