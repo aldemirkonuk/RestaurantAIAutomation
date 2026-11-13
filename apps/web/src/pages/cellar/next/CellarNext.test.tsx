@@ -23,7 +23,7 @@
 
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { act, render, screen, fireEvent, within } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { Link, MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type {
   BottleVM,
@@ -1332,6 +1332,73 @@ describe('CellarNext — the registers that are not wines', () => {
     fireEvent.click(screen.getByText('Negroni'));
     // The opened cocktail carries its recipe sheet.
     expect(screen.getByTestId('recipe-sheet-mounted')).toHaveTextContent('c1');
+  });
+
+  it('/cocktails?open=<id> opens that drink, as the inventory drawer links it', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [{
+          id: 'c1', name: 'Negroni', display_name: null, menu_section: 'Aperitivo',
+          method: 'stirred', glass: 'rocks', garnish: null, price: 18, description: null,
+        }],
+        count: 1, truncated: false, referenceRows: 55, recipesAvailable: false,
+        scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    draw({ category: 'cocktails' }, '/cocktails?open=c1');
+    // Opened without a click: the drink's row is the open one. (The recipe
+    // stack's sheet replaced the inline Recipe whose 'recipe-empty' this case
+    // first looked for; the sheet reads its own hook, so the row is the mark.
+    // r21 resolution.)
+    const selected = [...document.querySelectorAll('tr[data-selected="true"]')].map((r) => r.textContent ?? '');
+    expect(selected.join()).toContain('Negroni');
+  });
+
+  it('a second ?open= link followed while on /cocktails opens that drink too', () => {
+    mock.current = { ...base, registers: readout() };
+    mock.register = { data: registerVM({ register: 'cocktails', rows: [], counts: { total: 0, houseRows: 0, matched: 0, matchedLoosely: 0, catalogueOnly: 0 } }), loading: false, error: null, refetch: () => {} };
+    mock.recipe = { data: { cocktailId: 'c1', rows: [], count: 0, writable: true }, loading: false, error: null };
+    mock.writes = {
+      create: { mutateAsync: vi.fn(), isPending: false },
+      amend: { mutateAsync: vi.fn(), isPending: false },
+      retire: { mutateAsync: vi.fn(), isPending: false },
+      setRecipe: { mutateAsync: vi.fn(), isPending: false },
+    };
+    const drink = (id: string, name: string) => ({
+      id, name, display_name: null, menu_section: 'Aperitivo', method: 'stirred', glass: 'rocks', garnish: null, price: 18, description: null,
+    });
+    mock.cocktails = {
+      loading: false, error: null,
+      data: {
+        rows: [drink('c1', 'Negroni'), drink('c2', 'Americano')],
+        count: 2, truncated: false, referenceRows: 55, recipesAvailable: false,
+        scopeNote: 'Only cocktails this restaurant owns.',
+      },
+    };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={['/cocktails?open=c1']}>
+          <Link to="/cocktails?open=c2">to the Americano</Link>
+          <CellarNext category="cocktails" />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const selected = () => [...document.querySelectorAll('tr[data-selected="true"]')].map((r) => r.textContent ?? '');
+    expect(selected().join()).toContain('Negroni');
+    fireEvent.click(screen.getByRole('link', { name: 'to the Americano' }));
+    expect(selected().join()).toContain('Americano');
+    expect(selected().join()).not.toContain('Negroni');
   });
 
   it('retiring a cocktail takes two presses and never carries the seal', async () => {
