@@ -13,6 +13,7 @@ import { OrchestratorService } from "../common/orchestrator/orchestrator.service
 import { LowStockAlertsService } from "../notifications/low-stock-alerts.service";
 import { WineSubmissionsService } from "../wines/wine-submissions.service";
 import { PhotoCountService } from "./photo-count.service";
+import { countryCodeOf } from "../common/house-frame";
 import { NfEventRef } from "../common/model-client/model-client.service";
 import { NfVerdictService } from "../common/model-client/nf-verdict.service";
 import { HUMAN_COUNT_BASIS, humanCountVerdict } from "./photo-count-verdict";
@@ -652,10 +653,13 @@ export class InventoryService {
     const client = this.dbService.getClient();
     const { data: item } = await client
       .from("restaurant_inventory")
-      .select("wine_name, master_wine_library(name)")
+      .select("wine_name, master_wine_library(name), restaurants(country)")
       .eq("restaurant_id", restaurantId)
       .eq("id", inventoryId)
       .maybeSingle();
+    // The note's language: Turkish for a house in Türkiye, else English.
+    const lang =
+      countryCodeOf((item as any)?.restaurants?.country) === "TR" ? "tr" : "en";
 
     const wineName =
       item?.wine_name ||
@@ -674,6 +678,7 @@ export class InventoryService {
       wineName,
       restaurantId,
       eventRef,
+      lang,
     );
 
     // Fire-and-forget, and deliberately: a suggestion that cannot be recorded

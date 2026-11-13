@@ -684,7 +684,8 @@ describe('counts read with grouped digits, as money does (INV-W33)', () => {
     mount(<CountSheet row={row()} onClose={() => {}} />);
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: [new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })] } });
-    await waitFor(() => expect(document.body.textContent).toContain('The photo suggests 1,240 (high confidence).'));
+    await waitFor(() => expect(document.body.textContent).toContain('The photo suggests 1,240. It only fills the field'));
+    expect(document.body.textContent?.toLowerCase()).not.toContain('confidence'); // ADR 0104, G11
     expect((screen.getByRole('textbox', { name: 'Bottles counted' }) as HTMLInputElement).value).toBe('1240');
   });
 
@@ -790,5 +791,45 @@ describe('a 409 on a keyed write means an earlier attempt landed (security findi
     expect(t).not.toMatch(/key|Nothing was recorded|nothing new/i);
     expect(reread).toHaveBeenCalled();
     reread.mockRestore();
+  });
+});
+
+describe('the photo count reads the file it got (inventory walk #7, I2: G10, G11, G22)', () => {
+  const pickPhoto = (file = new File(['x'], 'shelf.jpg', { type: 'image/jpeg' })) => {
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+  };
+
+  // Merged with #1150 (r22): the sheet names the good's own unit, so a
+  // bottle's count says bottles and a weighed good's is never called one.
+  it('says a whole number in the good\u2019s own unit', () => {
+    mount(<CountSheet row={row()} onClose={() => {}} />);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Bottles counted' }), { target: { value: '2.5' } });
+    expect(document.body.textContent).toContain('A count is a whole number of bottles.');
+  });
+
+  it('offers photos only, not PDFs, to count from', () => {
+    mount(<CountSheet row={row()} onClose={() => {}} />);
+    const accept = (document.querySelector('input[type="file"]') as HTMLInputElement).accept;
+    expect(accept).toContain('.heic');
+    expect(accept).not.toMatch(/pdf/i);
+  });
+
+  it('sends the photo re-encoded as JPEG when this browser can draw it (sizes: photoToJpeg.test.ts)', async () => {
+    vi.stubGlobal('createImageBitmap', vi.fn().mockResolvedValue({ width: 4032, height: 3024, close: vi.fn() }));
+    const ctx = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as never);
+    const url = vi.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,SMALL');
+    try {
+      api.photo.mockResolvedValue({ suggestedQty: 3, confidence: 'low', note: '' });
+      mount(<CountSheet row={row()} onClose={() => {}} />);
+      pickPhoto(new File(['heic'], 'IMG_0001.HEIC', { type: 'image/heic' }));
+      await waitFor(() => expect(api.photo).toHaveBeenCalledWith('i1', 'SMALL'));
+      // A count with no note says only the sheet's own sentence (QA round 10b).
+      await waitFor(() => expect(document.querySelector('.iv-note')?.textContent).toBe('The photo suggests 3. It only fills the field — check it before you seal.'));
+    } finally {
+      ctx.mockRestore();
+      url.mockRestore();
+      vi.unstubAllGlobals();
+    }
   });
 });

@@ -33,7 +33,8 @@ import type { StorageLocation } from '../../../hooks/useStorageLocations';
 import { useRecommendedProviders } from '../../../hooks/queries/useProviderQueries';
 import { queryKeys } from '../../../lib/query-keys';
 import { newClientCountId, submitSpotCount } from '../../../lib/spotCountOutbox';
-import { SCAN_ACCEPT } from '../../../lib/uploadAccept';
+import { IMAGE_ACCEPT } from '../../../lib/uploadAccept';
+import { photoToJpegBase64 } from '../../../lib/photoToJpeg';
 import OrderCeremony from '../../cellar/next/OrderCeremony';
 import OrderLetter from './OrderLetter';
 import { useCellarSettings } from '../../cellar/next/useCellarNextData';
@@ -215,24 +216,16 @@ export function CountSheet({ row, onClose, uom }: SheetProps) {
   const readPhoto = async (file: File) => {
     setPhoto({ busy: true, note: null });
     try {
-      const base64 = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const s = String(reader.result);
-          resolve(s.slice(s.indexOf(',') + 1));
-        };
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
+      // Shrunk to 1600 px and re-encoded as JPEG on this device, so an iPhone's
+      // HEIC arrives as a photo the model can read (G10).
+      const base64 = await photoToJpegBase64(file);
       const estimate = await estimateCountFromPhoto(row.id, base64);
       if (estimate.suggestedQty !== null) setQty(String(estimate.suggestedQty));
-      setPhoto({
-        busy: false,
-        note:
-          estimate.suggestedQty !== null
-            ? `The photo suggests ${fmtCount(estimate.suggestedQty)} (${estimate.confidence} confidence). It only fills the field — check it before you seal. ${estimate.note}`
-            : `The photo gave no confident count. ${estimate.note}`,
-      });
+      const said =
+        estimate.suggestedQty !== null
+          ? `The photo suggests ${fmtCount(estimate.suggestedQty)}. It only fills the field — check it before you seal.`
+          : 'The photo gave no count.';
+      setPhoto({ busy: false, note: estimate.note ? `${said} ${estimate.note}` : said });
     } catch (e) {
       setPhoto({ busy: false, note: `The photo could not be read — ${failureReason(e)}. Type the count instead.` });
     }
@@ -267,7 +260,7 @@ export function CountSheet({ row, onClose, uom }: SheetProps) {
         <input
           ref={fileRef}
           type="file"
-          accept={SCAN_ACCEPT}
+          accept={IMAGE_ACCEPT}
           capture="environment"
           hidden
           onChange={(e) => {
