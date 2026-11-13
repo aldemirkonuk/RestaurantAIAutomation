@@ -158,8 +158,10 @@ export default function DrinkCards({
    */
   draftCost?: DraftCost | null;
 }) {
-  if (!data.current) return null;
   const draft = unsaved && draftCost ? draftCost : null;
+  // A drink never saved has no saved figures; its only card is the draft's
+  // cost (and the list's price), once its lines are whole enough to price.
+  if (!data.current && !draft) return null;
   const cost = !sayMoney
     ? null
     : draft
@@ -169,7 +171,9 @@ export default function DrinkCards({
           sayMoney,
           true,
         )
-      : costCard(data.cost, unpricedNames(data.current.lines), sayMoney, false);
+      : data.current
+        ? costCard(data.cost, unpricedNames(data.current.lines), sayMoney, false)
+        : null;
   const cards = [
     cost,
     sayMoney ? priceCard(data, sayMoney) : null,
@@ -180,9 +184,11 @@ export default function DrinkCards({
     <section className="cl-rcp-kpis" data-testid="drink-cards" aria-label="This drink in figures">
       {unsaved ? (
         <p className="cl-note">
-          {draft
-            ? 'The cost is your unsaved lines. The other figures are the saved recipe’s; save to count them.'
-            : 'These are the saved recipe’s figures. Save to count your changes.'}
+          {draft && !data.current
+            ? 'The cost is your unsaved lines. Nothing else is counted until the recipe is saved.'
+            : draft
+              ? 'The cost is your unsaved lines. The other figures are the saved recipe’s; save to count them.'
+              : 'These are the saved recipe’s figures. Save to count your changes.'}
         </p>
       ) : null}
       <ul className="cl-rcp-cards">

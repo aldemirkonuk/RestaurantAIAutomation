@@ -437,10 +437,16 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
 
   // Money only where the server sent it, and never to a role that cannot edit.
   const money = Boolean(canEdit && data && (data.cost !== null || data.cocktail.price !== null));
-  // An unsaved draft is priced by the gateway at today's prices, live, once it is whole.
+  // An unsaved draft is priced by the gateway at today's prices, live, once it
+  // is whole. A drink never saved is priced too: the preview needs only the
+  // drink, not a saved version (#1165, `previewCost`). Its server figures
+  // cannot say whether this role sees money (no version, so no cost), so there
+  // the gate is the one the route itself keeps: owners and managers, who are
+  // the ones who edit. A refusal answers null and no draft card is shown.
+  const draftMoney = canEdit && (money || Boolean(data && !data.current));
   const draftBody = useMemo(
-    () => (money && dirty && data?.current && rows ? costPreviewBody(rows, shownMeta.yieldServes) : null),
-    [money, dirty, data?.current, rows, shownMeta.yieldServes],
+    () => (draftMoney && dirty && data && rows ? costPreviewBody(rows, shownMeta.yieldServes) : null),
+    [draftMoney, dirty, data, rows, shownMeta.yieldServes],
   );
   const preview = useCostPreview(cocktailId, draftBody?.body ?? null);
   const draftCost: DraftCost | null = preview && draftBody ? { cost: preview, labels: draftBody.labels } : null;
@@ -463,7 +469,7 @@ function Sheet({ cocktailId }: { cocktailId: string }) {
   const hasLegacy = !data.current && data.legacyLines.length > 0;
   const behind = canEdit && dirty && versionId !== openedFrom;
 
-  const say = money ? (n: number) => sayMoney(n) : null;
+  const say = money || draftCost ? (n: number) => sayMoney(n) : null;
 
   const edit = (next: (rs: DraftRow[]) => DraftRow[]) => {
     setDirty(true);

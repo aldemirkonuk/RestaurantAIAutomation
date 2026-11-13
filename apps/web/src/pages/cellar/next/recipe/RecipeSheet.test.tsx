@@ -1223,6 +1223,40 @@ describe('RecipeSheet: the cost of unsaved lines', () => {
     expect(screen.getByTestId('drink-cards')).toHaveTextContent('Save to count your changes.');
   });
 
+  it('a drink never saved, even with no price on the list, shows its draft cost once its lines are whole', async () => {
+    serve({ ...EMPTY, cocktail: { ...EMPTY.cocktail, price: null } }, [
+      { id: GIN, name: 'Tanqueray gin', kind: 'spirit', uom: 'bottle', bottleSizeMl: 700 },
+    ]);
+    h.post.mockResolvedValue({
+      data: { ...previewAnswer, perServe: 30, perServeExact: 30, priced: 1, of: 1, lines: [previewAnswer.lines[0]] },
+    });
+    mount();
+    // Before anything is typed, a never-saved drink has no cards at all.
+    fireEvent.click(await screen.findByRole('button', { name: /add an ingredient/i }));
+    expect(screen.queryByTestId('drink-cards')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /link it to your shelf/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Tanqueray gin/ }));
+    fireEvent.change(screen.getByLabelText('Amount'), { target: { value: '30' } });
+    await waitFor(() => expect(h.post).toHaveBeenCalledTimes(1));
+    const [url, body] = h.post.mock.calls[0];
+    expect(url).toBe(PREVIEW_URL);
+    expect(body).toEqual({ yieldServes: 1, lines: [{ role: 'stocked', inventoryId: GIN, qtyEntered: 30, unitCode: 'ml' }] });
+    await waitFor(() => expect(screen.getByTestId('drink-card-cost')).toHaveTextContent("Your unsaved lines, at today's prices."));
+    expect(screen.getByTestId('drink-card-cost')).toHaveTextContent('30');
+    expect(screen.getByTestId('drink-cards')).toHaveTextContent('Nothing else is counted until the recipe is saved.');
+    expect(screen.getByTestId('drink-card-price')).toHaveTextContent('No price');
+    expect(h.put).not.toHaveBeenCalled();
+  });
+
+  it('staff never ask about a drink never saved either', async () => {
+    h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { role: 'staff' } };
+    serve({ ...EMPTY, cocktail: { ...EMPTY.cocktail, price: null } });
+    mount();
+    await screen.findByTestId('recipe-sheet');
+    expect(h.post).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('drink-cards')).toBeNull();
+  });
+
   it('staff never ask: they see no money', async () => {
     h.auth = { activeRestaurantId: RID, activeRole: 'staff', user: { role: 'staff' } };
     serve(negroni({ cost: null, cocktail: { ...negroni().cocktail, price: null } }));

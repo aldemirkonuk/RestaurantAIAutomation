@@ -169,6 +169,19 @@ describe('DrinkCards: the cost of unsaved lines', () => {
     expect(screen.getByTestId('drink-cards').textContent).toContain('These are the saved recipe\u2019s figures. Save to count your changes.');
   });
 
+  it('a drink never saved shows only its draft cost and its price, and says nothing else is counted yet', () => {
+    render(<DrinkCards data={gAndT({ current: null, cost: null })} sayMoney={say} unsaved draftCost={draft({})} />);
+    expect(screen.getByTestId('drink-card-cost').textContent).toBe("Cost a serve$3.10Your unsaved lines, at today's prices.");
+    expect(screen.getByTestId('drink-card-price')).toBeInTheDocument();
+    expect(screen.queryByTestId('drink-card-ingredients')).toBeNull();
+    expect(screen.getByTestId('drink-cards').textContent).toContain('Nothing else is counted until the recipe is saved.');
+  });
+
+  it('a drink never saved, with no draft priced yet, still shows nothing', () => {
+    const { container } = render(<DrinkCards data={gAndT({ current: null, cost: null })} sayMoney={say} unsaved draftCost={null} />);
+    expect(container.innerHTML).toBe('');
+  });
+
   it('ignores a draft cost once the sheet is not unsaved', () => {
     render(<DrinkCards data={gAndT({}, readable(fig(20)))} sayMoney={say} unsaved={false} draftCost={draft({})} />);
     expect(screen.getByTestId('drink-card-cost').textContent).toContain('$2.47');
