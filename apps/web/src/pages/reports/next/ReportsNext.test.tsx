@@ -2342,6 +2342,19 @@ describe('the till window is kept in the page link (audit gap 16)', () => {
     expect(asked.days).toBe(30);
   });
 
+  it('[REVERT-FAILS] a window picked full screen is still the window once the view is closed', () => {
+    paint('/reports');
+    fireEvent.click(screen.getByRole('button', { name: 'Show Through the till full screen' }));
+    const dialog = screen.getByRole('dialog', { name: 'Through the till' });
+    fireEvent.click(
+      within(within(dialog).getByRole('group', { name: 'Till window' })).getByRole('button', { name: '90 days' }),
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Back to the sheet' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByTestId('link').textContent).toBe('?days=90');
+    expect(asked.days).toBe(90);
+  });
+
   it('a saved block narrower than the grid allows is read at the grid floor, never under it', () => {
     const sheet = decodeSheet({ v: 4, blocks: [{ i: 'till', x: 0, y: 0, w: 2, h: 1, g: 'bar' }] });
     const till = sheet.cuttings.find((c) => c.id === 'till');

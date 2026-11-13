@@ -51,7 +51,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Seal, Wordmark } from '@/components/mudavym';
 import { animate, settle } from '@/lib/mudavym';
 import AskTheBook from './AskTheBook';
@@ -121,13 +121,13 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
   // The till window lives in the page link (`?days=90`), so a reload, Back,
   // full screen and a shared link all open on the window the reader picked.
   // Not the sheet: a window is a way of looking, and a sheet write here would
-  // race the arranging save. Replaced in place, and the history entry's own
-  // state is carried, so a full-screen view opened by this page still closes
-  // back through history.
+  // race the arranging save. Replaced in place, and the entry's state is
+  // deliberately NOT carried: a full-screen view that this page opened closes
+  // by going back one entry, and that entry predates the pick, so carrying
+  // the mark would close onto the old window. Without it the view closes in
+  // place and keeps the window; Back still returns to the window before.
   const [params, setParams] = useSearchParams();
-  const location = useLocation();
   const tillDays = tillDaysOf(params.get(DAYS_PARAM));
-  const entryState = location.state;
   const setTillDays = useCallback(
     (d: number) =>
       setParams(
@@ -137,9 +137,9 @@ export default function ReportsNext({ ground }: ReportsNextProps) {
           else next.set(DAYS_PARAM, String(d));
           return next;
         },
-        { replace: true, state: entryState },
+        { replace: true },
       ),
-    [setParams, entryState],
+    [setParams],
   );
   // A bars-and-line pick made before the reader's own sheet is known: shown
   // for this visit, never written (a write then could put the house sheet
