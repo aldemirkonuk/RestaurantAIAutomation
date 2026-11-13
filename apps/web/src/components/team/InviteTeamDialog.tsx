@@ -40,7 +40,10 @@ const EMAIL_HINT =
 
 export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRosterOnly }: InviteTeamDialogProps) {
   const [targetEmail, setTargetEmail] = useState('')
-  const [role, setRole] = useState<'manager' | 'staff'>('manager')
+  // Least privilege (QA round 4 H3): an owner who generates without touching
+  // the picker mints a staff invite, never a manager's. The server's rules
+  // (ADR 0162) still decide who may mint which.
+  const [role, setRole] = useState<'manager' | 'staff'>('staff')
   const [isGenerating, setIsGenerating] = useState(false)
   const [invite, setInvite] = useState<GeneratedInvite | null>(null)
   const [copied, setCopied] = useState(false)
@@ -70,9 +73,19 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
   }
 
   // Copy-able invite URL: `/invite/:code` landing (sign-in or register from there)
-  const handleCopy = () => {
+  // "Copied" only once the browser says it copied. The write is refused in an
+  // insecure context or without permission, and the toast used to say
+  // "copied" anyway.
+  const handleCopy = async () => {
     if (!invite) return
-    navigator.clipboard.writeText(invite.inviteUrl)
+    try {
+      // No clipboard at all (an insecure context) throws here too.
+      await navigator.clipboard.writeText(invite.inviteUrl)
+    } catch {
+      setCopied(false)
+      toast.error('The link was not copied. Select it and copy it by hand.')
+      return
+    }
     setCopied(true)
     toast.success('Invite URL copied to clipboard!')
     setTimeout(() => setCopied(false), 2000)
@@ -81,7 +94,7 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
   const handleClose = () => {
     setInvite(null)
     setTargetEmail('')
-    setRole('manager')
+    setRole('staff')
     setCopied(false)
     onClose()
   }
@@ -122,8 +135,8 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
               value={role}
               onChange={(e) => setRole(e.target.value as 'manager' | 'staff')}
             >
-              <option value="manager">Manager</option>
               <option value="staff">Staff</option>
+              <option value="manager">Manager</option>
             </select>
             <p className="mdv-hintline">You can change their role later in Settings → Team.</p>
           </div>
@@ -271,8 +284,8 @@ export function InviteTeamDialog({ open, onClose, restaurantId, anchorRef, onRos
                       onChange={(e) => setRole(e.target.value as 'manager' | 'staff')}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-wine-500 focus:outline-none"
                     >
-                      <option value="manager">Manager</option>
                       <option value="staff">Staff</option>
+                      <option value="manager">Manager</option>
                     </select>
                     <p className="text-xs text-gray-400 mt-1">You can change their role later in Settings → Team.</p>
                   </div>
