@@ -55,7 +55,8 @@ describe('MenuManualEntry takes any line', () => {
     render(<MenuManualEntry onSuccess={vi.fn()} />)
     fireEvent.change(nameInput(1), { target: { value: 'Lamb shank' } })
     fireEvent.change(screen.getByLabelText('What line 1 is'), { target: { value: 'food' } })
-    expect(screen.queryAllByRole('spinbutton')).toHaveLength(1)
+    expect(screen.queryByLabelText('Glass price of line 1')).toBeNull()
+    expect(screen.queryByLabelText('Bottle price of line 1')).toBeNull()
     expect(screen.getByText("The dish's price stays on the menu; no stock is made for it.")).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Price of line 1'), { target: { value: '24.5' } })
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 line' }))
@@ -78,7 +79,7 @@ describe('MenuManualEntry takes any line', () => {
     render(<MenuManualEntry onSuccess={vi.fn()} />)
     fireEvent.change(nameInput(1), { target: { value: 'Efes draft' } })
     fireEvent.change(screen.getByLabelText('What line 1 is'), { target: { value: 'beer' } })
-    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '6' } })
+    fireEvent.change(screen.getByLabelText('Glass price of line 1'), { target: { value: '6' } })
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 line' }))
     await waitFor(() => expect(importMenu).toHaveBeenCalled())
     expect(importedItems()[0]).toMatchObject({ name: 'Efes draft', category: 'beer', by_glass_price: 6 })
@@ -87,10 +88,10 @@ describe('MenuManualEntry takes any line', () => {
   it('a priced row switched to Food keeps its price as the dish price and drops the glass price', async () => {
     render(<MenuManualEntry onSuccess={vi.fn()} />)
     fireEvent.change(nameInput(1), { target: { value: 'Mystery' } })
-    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '12' } })
-    fireEvent.change(screen.getAllByRole('spinbutton')[1], { target: { value: '40' } })
+    fireEvent.change(screen.getByLabelText('Glass price of line 1'), { target: { value: '12' } })
+    fireEvent.change(screen.getByLabelText('Bottle price of line 1'), { target: { value: '40' } })
     fireEvent.change(screen.getByLabelText('What line 1 is'), { target: { value: 'food' } })
-    expect(screen.getByLabelText('Price of line 1')).toHaveValue(40)
+    expect(screen.getByLabelText('Price of line 1')).toHaveValue('40')
     fireEvent.click(screen.getByRole('button', { name: 'Import 1 line' }))
     await waitFor(() => expect(importMenu).toHaveBeenCalled())
     expect(importedItems()[0]).toMatchObject({ bottle_price: 40 })
@@ -110,5 +111,78 @@ describe('MenuManualEntry takes any line', () => {
     expect(values).toEqual(GATEWAY_VOCABULARY)
     expect(LINE_KINDS[0]).toEqual({ label: 'Choose…', value: '' })
     expect(LINE_KINDS.at(-1)).toEqual({ label: 'Food', value: 'food' })
+  })
+})
+
+// Onboarding r22 D6: the typed lines had no names for a screen reader (only the
+// dish price box did), and a `type=number` price box could not take "24,50".
+describe('MenuManualEntry boxes are named, and a price is typed as the house writes it', () => {
+  beforeEach(() => {
+    vi.mocked(importMenu).mockReset()
+    vi.mocked(importMenu).mockResolvedValue({} as never)
+  })
+  const importedItems = () => (vi.mocked(importMenu).mock.calls[0][1] as unknown as { items: Array<Record<string, unknown>> }).items
+
+  it('names every box and the remove button by its line', () => {
+    render(<MenuManualEntry onSuccess={vi.fn()} currency="TRY" />)
+    fireEvent.click(screen.getByRole('button', { name: /Add another line/ }))
+    for (const n of [1, 2]) {
+      for (const name of [`Name of line ${n}`, `Producer of line ${n}`, `Vintage of line ${n}`, `Region of line ${n}`, `Glass price of line ${n}`, `Bottle price of line ${n}`]) {
+        expect(screen.getByRole('textbox', { name })).toBeInTheDocument()
+      }
+      expect(screen.getByRole('combobox', { name: `What line ${n} is` })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: `Remove line ${n}` })).toBeInTheDocument()
+    }
+    // A price box is text with the decimal keypad, never a number box.
+    expect(screen.queryAllByRole('spinbutton')).toHaveLength(0)
+    expect(screen.getByLabelText('Bottle price of line 1')).toHaveAttribute('inputmode', 'decimal')
+  })
+
+  it('reads "24,50" on a dish as 24.50', async () => {
+    render(<MenuManualEntry onSuccess={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Name of line 1'), { target: { value: 'Lamb shank' } })
+    fireEvent.change(screen.getByLabelText('What line 1 is'), { target: { value: 'food' } })
+    fireEvent.change(screen.getByLabelText('Price of line 1'), { target: { value: '24,50' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1 line' }))
+    await waitFor(() => expect(importMenu).toHaveBeenCalled())
+    expect(importedItems()[0]).toMatchObject({ name: 'Lamb shank', category: 'food', bottle_price: 24.5 })
+  })
+
+  it('reads a comma glass price and a grouped bottle price on a drink', async () => {
+    render(<MenuManualEntry onSuccess={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Name of line 1'), { target: { value: 'Kavaklidere Yakut' } })
+    fireEvent.change(screen.getByLabelText('Glass price of line 1'), { target: { value: '45,50' } })
+    fireEvent.change(screen.getByLabelText('Bottle price of line 1'), { target: { value: '1.250,00 TL' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1 line' }))
+    await waitFor(() => expect(importMenu).toHaveBeenCalled())
+    expect(importedItems()[0]).toMatchObject({ by_glass_price: 45.5, bottle_price: 1250 })
+  })
+
+  it('refuses "1,250", says why at the box, and imports nothing until it is fixed', async () => {
+    render(<MenuManualEntry onSuccess={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Name of line 1'), { target: { value: 'Raki' } })
+    const bottle = screen.getByLabelText('Bottle price of line 1')
+    fireEvent.change(bottle, { target: { value: '1,250' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1 line' }))
+    expect(screen.getByRole('alert').textContent).toBe('One price could not be read. Fix it below; nothing was imported.')
+    expect(importMenu).not.toHaveBeenCalled()
+    expect(bottle).toHaveAttribute('aria-invalid', 'true')
+    expect(bottle).toHaveAccessibleDescription('"1,250" is not a price: it could be 1250 or 1.25; write it as 1250 or 1.25.')
+    // Typing in the box takes the mark away; the fixed price is sent.
+    fireEvent.change(bottle, { target: { value: '1250' } })
+    expect(bottle).not.toHaveAttribute('aria-invalid')
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1 line' }))
+    await waitFor(() => expect(importMenu).toHaveBeenCalled())
+    expect(importedItems()[0]).toMatchObject({ bottle_price: 1250 })
+  })
+
+  it('refuses a minus and letters, counting each refused box', () => {
+    render(<MenuManualEntry onSuccess={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText('Name of line 1'), { target: { value: 'Efes' } })
+    fireEvent.change(screen.getByLabelText('Glass price of line 1'), { target: { value: '-5' } })
+    fireEvent.change(screen.getByLabelText('Bottle price of line 1'), { target: { value: 'ten' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Import 1 line' }))
+    expect(screen.getByRole('alert').textContent).toBe('2 prices could not be read. Fix them below; nothing was imported.')
+    expect(importMenu).not.toHaveBeenCalled()
   })
 })
