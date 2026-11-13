@@ -13,7 +13,10 @@
  *                     push action (sw.js) — the search, as the legacy page did.
  *   ?highlight=<id>   the dashboard's low-stock alert (a row id) and the one-tap
  *                     centre (a wine id) — that title, opened.
- * Both are folded into the page's own keys on the first write, so they cannot
+ *   ?filter=low-stock the low-stock alerts' inbox row, email and push (QA 9c)
+ *                     — the "Low-stock alerts" chip. The link is read rather
+ *                     than changed because rows already stored carry it.
+ * All are folded into the page's own keys on the first write, so they cannot
  * override what the person does next. Every other parameter (?name-delivery=,
  * ?rec=, ?from=, ?verify=) is left as it came; the page reads those itself.
  */
@@ -44,13 +47,17 @@ const SORTS: readonly SortId[] = ['needs', 'name', 'value', 'pace'];
 export const IV_DEFAULT: IvView = { chip: 'all', q: '', zone: '', type: '', sort: 'needs', view: 'table', kind: '', open: null };
 
 const KEYS = ['chip', 'q', 'zone', 'type', 'sort', 'view', 'kind', 'open'] as const;
-const ALIASES = ['wine', 'highlight'] as const;
+const ALIASES = ['wine', 'highlight', 'filter'] as const;
 
 export function readView(p: URLSearchParams): IvView {
   const chip = p.get('chip');
   const sort = p.get('sort');
   return {
-    chip: CHIPS.some((c) => c.id === chip) ? (chip as ChipId) : IV_DEFAULT.chip,
+    chip: CHIPS.some((c) => c.id === chip)
+      ? (chip as ChipId)
+      : p.get('filter') === 'low-stock'
+        ? 'alerts'
+        : IV_DEFAULT.chip,
     q: p.get('q') ?? p.get('wine') ?? IV_DEFAULT.q,
     zone: p.get('zone') ?? IV_DEFAULT.zone,
     type: p.get('type') ?? IV_DEFAULT.type,
