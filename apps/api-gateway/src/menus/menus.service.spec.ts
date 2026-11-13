@@ -5,7 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
-import { LINE_SELECT, MenusService, SOURCE_NOT_TAKEN } from "./menus.service";
+import { LINE_SELECT, MenusService, SOURCE_NOT_TAKEN, houseZoneOf } from "./menus.service";
 import { MEMBER_LINE_KEYS, seesRawLine } from "./menu-line-view";
 import { DatabaseService } from "../database/database.service";
 import { CsvParserService } from "./parsers/csv-parser.service";
@@ -1164,6 +1164,28 @@ describe("MenusService — every menu read is kept as its own version", () => {
     expect(r.versions.find((v) => v.menuId === "m4")!.source.kept).toBe(true);
   });
 
+  // Menu r21: dates in the house's time zone, never the viewing device's.
+  it("names the house's own time zone with the list, and only this house's", async () => {
+    const tables: Record<string, Row[]> = {
+      restaurant_menus: [{ id: "m1", restaurant_id: "rest-1", status: "active", extracted_at: "2026-11-12T03:05:00Z" }],
+      restaurants: [
+        { id: "rest-2", timezone: "America/Detroit" },
+        { id: "rest-1", timezone: "Europe/Istanbul" },
+      ],
+    };
+    const r = await makeService(tables).listVersions("rest-1");
+    expect(r).toMatchObject({ timezone: "Europe/Istanbul", timezoneReason: null });
+  });
+
+  it("a house with no zone is said to have none, never given a default", async () => {
+    const tables: Record<string, Row[]> = {
+      restaurant_menus: [{ id: "m1", restaurant_id: "rest-1", status: "active" }],
+      restaurants: [{ id: "rest-1", timezone: null }],
+    };
+    const r = await makeService(tables).listVersions("rest-1");
+    expect(r).toMatchObject({ timezone: null, timezoneReason: "the house has no time zone set" });
+  });
+
   it("a kept source gets a short link; one never kept says why", async () => {
     const tables: Record<string, Row[]> = {
       restaurant_menus: [
@@ -1836,5 +1858,37 @@ describe("MenusService — a version says where its read stands", () => {
     await expect(service.makeCurrent("rest-1", id, "user-1", "fp")).rejects.toThrow(said);
     expect(calls).toHaveLength(0);
     expect(t.restaurant_menus.find((m) => m.id === "menu-old")!.status).toBe("active");
+  });
+});
+
+describe("houseZoneOf -- the zone a house's menu dates are said in (menu r21)", () => {
+  it("keeps a real IANA zone and says why there is none otherwise", () => {
+    expect(houseZoneOf("Europe/Istanbul", null)).toEqual({ timezone: "Europe/Istanbul", timezoneReason: null });
+    expect(houseZoneOf(" America/Detroit ", null)).toEqual({ timezone: "America/Detroit", timezoneReason: null });
+    expect(houseZoneOf(null, null)).toEqual({ timezone: null, timezoneReason: "the house has no time zone set" });
+    expect(houseZoneOf("", null).timezone).toBeNull();
+    expect(houseZoneOf("Mars/Olympus", null)).toEqual({
+      timezone: null,
+      timezoneReason: 'the house\'s time zone "Mars/Olympus" is not one this page knows',
+    });
+    expect(houseZoneOf("Europe/Istanbul", "timeout")).toEqual({
+      timezone: null,
+      timezoneReason: "the house's time zone could not be read (timeout)",
+    });
+  });
+
+  it("the plan says the house's zone, and the zone never moves its fingerprint", async () => {
+    const tables = (timezone: string | null): Record<string, Row[]> => ({
+      restaurant_menus: [{ id: "menu-1", restaurant_id: "rest-1", status: "draft", extracted_at: "2026-11-12T03:05:00Z" }],
+      menu_items: [
+        { id: "mi-1", menu_id: "menu-1", restaurant_id: "rest-1", name: "Barolo", category: "red", bottle_price: 120, wine_library_id: null, status: "approved" },
+      ],
+      restaurants: [{ id: "rest-1", timezone }],
+    });
+    const zoned = await makeService(tables("Europe/Istanbul")).planFor("rest-1", "menu-1");
+    const bare = await makeService(tables(null)).planFor("rest-1", "menu-1");
+    expect(zoned).toMatchObject({ timezone: "Europe/Istanbul", timezoneReason: null });
+    expect(bare).toMatchObject({ timezone: null, timezoneReason: "the house has no time zone set" });
+    expect(zoned.fingerprint).toBe(bare.fingerprint);
   });
 });
