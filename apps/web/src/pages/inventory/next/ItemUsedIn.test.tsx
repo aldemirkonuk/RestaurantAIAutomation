@@ -5,8 +5,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import ItemUsedIn, { DRINKS_DO_NOT_DRAW, DRINK_RECIPES_UNREAD, drinkHref, drinkGroups, foodCostShare, type DishesLoad } from './ItemUsedIn';
-import type { ItemDish } from '../../../services/api/itemDishes';
+import ItemUsedIn, {
+  DRINKS_DO_NOT_DRAW,
+  DRINK_RECIPES_UNREAD,
+  drinkHref,
+  drinkGroups,
+  foodCostShare,
+  type DishesLoad,
+  type DrinksLoad,
+} from './ItemUsedIn';
+import type { ItemDish, ItemDrink } from '../../../services/api/itemDishes';
 import type { ItemUsedIn as UsedIn } from '../../../services/api/inventory';
 
 const EUR = { state: 'recorded', code: 'EUR' } as const;
@@ -351,5 +359,109 @@ describe('foodCostShare', () => {
   });
   it('names both when both are missing', () => {
     expect(foodCostShare(c({ complete: false }), 0)).toEqual({ missing: ['the cost is not complete', 'the dish has no price'] });
+  });
+});
+
+const drink = (over: Partial<ItemDrink> = {}): ItemDrink => ({
+  cocktailId: 'c1', name: 'House G&T', section: 'Highballs', price: 12, hasRecipe: true, yieldServes: 1, lineCount: 2,
+  cost: { perServe: 1.5, perServeExact: 1.5, priced: 1, of: 1, complete: true, partial: 0 },
+  uses: [{ label: 'Gin', qtyEntered: 50, unitCode: 'ml' }],
+  ...over,
+});
+const drinksReady = (...drinks: ItemDrink[]): DrinksLoad => ({ status: 'ready', data: { drinks } });
+const textLine = { cocktailId: 'c1', name: 'House G&T', label: 'Gin', qtyEntered: 50, unitCode: 'ml' };
+const mountDrinks = (drinks: DrinksLoad | undefined, opts: { canManage?: boolean; over?: Partial<UsedIn>; onRetryDrinks?: () => void } = {}) =>
+  render(
+    <MemoryRouter>
+      <ItemUsedIn
+        load={load({ inCocktails: ok([]), inDrinkRecipes: ok([textLine]), ...opts.over })}
+        dishes={NO_DISHES}
+        drinks={drinks}
+        canManage={opts.canManage ?? true}
+        currency={EUR}
+        onRetry={vi.fn()}
+        onRetryDishes={vi.fn()}
+        onRetryDrinks={opts.onRetryDrinks}
+      />
+    </MemoryRouter>,
+  );
+const dt = (s: string, id = 'c1') => screen.getByTestId(`ivd-drink-${id}-${s}`).textContent ?? '';
+
+describe('In drink recipes, with their cards (the same as a dish)', () => {
+  it('draws a drink as a link with this good a serve, cost a serve, price and pour cost', () => {
+    mountDrinks(drinksReady(drink()));
+    const g = screen.getByTestId('ivd-used-drink-recipes');
+    expect(g.textContent).toContain(DRINKS_DO_NOT_DRAW);
+    expect(within(screen.getByTestId('ivd-drink-c1')).getByRole('link', { name: 'House G&T' }).getAttribute('href')).toBe(drinkHref('c1'));
+    expect(dt('per-serve')).toContain('This good a serve');
+    expect(dt('per-serve')).toContain('50 ml');
+    expect(dt('cost')).toContain('Cost a serve');
+    expect(dt('cost')).toMatch(/1\.50/);
+    expect(dt('price')).toContain('€12');
+    expect(dt('pour-cost')).toContain('Pour cost');
+    expect(dt('pour-cost')).toContain('12.5%');
+    // The used-in line is not drawn a second time under the cards.
+    expect(g.textContent).not.toContain('House G&T — 50 ml (Gin)');
+  });
+
+  it('a batch drink says a serve of it and the batch', () => {
+    mountDrinks(drinksReady(drink({ yieldServes: 10, uses: [{ label: 'Gin', qtyEntered: 700, unitCode: 'ml' }] })));
+    expect(dt('per-serve')).toContain('70 ml');
+    expect(dt('per-serve')).toContain('in a batch of 10');
+  });
+
+  it('an incomplete cost and no price name both, and never show a %', () => {
+    mountDrinks(drinksReady(drink({ price: null, cost: { perServe: null, perServeExact: null, priced: 1, of: 2, complete: false, partial: 0 } })));
+    expect(dt('cost')).toContain('Not known');
+    expect(dt('cost')).toContain('1 of 2 lines priced');
+    expect(dt('price')).toContain('Not on the drink');
+    expect(dt('pour-cost')).toContain('the cost is not complete and the drink has no price');
+    expect(dt('pour-cost')).not.toMatch(/%/);
+  });
+
+  it('staff see only how much of the good a serve takes', () => {
+    mountDrinks(drinksReady(drink({ price: null, cost: null })), { canManage: false });
+    expect(dt('per-serve')).toContain('50 ml');
+    expect(screen.queryByTestId('ivd-drink-c1-cost')).toBeNull();
+    expect(screen.queryByTestId('ivd-drink-c1-price')).toBeNull();
+    expect(screen.queryByTestId('ivd-drink-c1-pour-cost')).toBeNull();
+  });
+
+  it('while the cards are read, the drink is its used-in line', () => {
+    mountDrinks({ status: 'reading' });
+    expect(screen.getByTestId('ivd-used-drink-recipes').textContent).toContain('House G&T — 50 ml (Gin)');
+    expect(screen.queryByTestId('ivd-drink-c1')).toBeNull();
+  });
+
+  it('a failed read keeps the used-in line, says the cards could not be read, and reads again', () => {
+    const retry = vi.fn();
+    mountDrinks({ status: 'failed', reason: 'the gateway is down' }, { onRetryDrinks: retry });
+    const g = screen.getByTestId('ivd-used-drink-recipes');
+    expect(g.textContent).toContain('House G&T — 50 ml (Gin)');
+    const note = screen.getByTestId('ivd-used-drink-figures-unread');
+    expect(note.textContent).toContain('could not be read — the gateway is down');
+    fireEvent.click(within(note).getByRole('button', { name: 'Read again' }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('the figured list is the list: an empty one says one None under the recipes', () => {
+    mountDrinks(drinksReady());
+    expect(screen.getByTestId('ivd-used-drink-recipes-none').textContent).toBe('None.');
+    expect(screen.queryByText(/House G&T/)).toBeNull();
+  });
+
+  it('a drink with cards is not listed again from its cocktail card', () => {
+    mountDrinks(drinksReady(drink()), {
+      over: { inCocktails: ok([{ cocktailId: 'c1', name: 'House G&T', quantity: 50, unit: 'ml' }, { cocktailId: 'c3', name: 'Old card', quantity: 1, unit: 'ml' }]) },
+    });
+    const cards = within(screen.getByTestId('ivd-used-cocktails')).getAllByRole('listitem');
+    expect(cards.map((li) => li.textContent)).toEqual(['Old card1 ml']);
+    expect(screen.getByTestId('ivd-drink-c1')).toBeTruthy();
+  });
+});
+
+describe('foodCostShare for a drink', () => {
+  it('names the drink when the price is missing', () => {
+    expect(foodCostShare(null, null, 'drink')).toEqual({ missing: ['the cost is not complete', 'the drink has no price'] });
   });
 });
