@@ -86,6 +86,25 @@ function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/**
+ * Lines whose house row the house removed (set inactive or deleted). The carry
+ * still writes their price, onto that removed row: one row per house and wine
+ * (the UNIQUE) leaves no other row to write, and silence changes nothing (L12),
+ * so the choice does not bring the row back. The page says it, so a removed
+ * wine is never sold off a menu with nothing on Inventory saying so (r28 G9).
+ */
+export function removedLines(lines: PlanLine[]): PlanLine[] {
+  return lines.filter((l) => l.house?.active === false);
+}
+
+/** What a removed row's lines mean, in a clause; null when there are none. */
+export function removedClause(lines: PlanLine[]): string | null {
+  const n = removedLines(lines).length;
+  if (n === 0) return null;
+  const one = n === 1;
+  return `${plural(n, 'line is', 'lines are')} a good the house removed from Inventory; ${one ? 'its' : 'their'} price is kept on the removed row and ${one ? 'it stays' : 'they stay'} removed (${removedLines(lines).map((l) => l.name).join(', ')}). Bring ${one ? 'it' : 'them'} back on Inventory to sell ${one ? 'it' : 'them'} from there`;
+}
+
 /** The plan in one sentence, in the order a person reads a menu change. */
 export function planSentence(
   plan: Pick<Plan, 'counts' | 'dormantLocks' | 'current' | 'lines' | 'kitchenLines' | 'notOnThisFile'>,
@@ -95,8 +114,10 @@ export function planSentence(
     // r28 G1: a carry cut off part-way can be finished from here, so "changes
     // nothing" is only true when no price on the house differs from the menu.
     const differ = c.change + c.new_wine;
-    if (differ === 0) return 'This is the current menu, and every price on it already reached the house.';
-    return `This is the current menu, and ${plural(differ, 'price on the house differs', 'prices on the house differ')} from it. Carrying its prices again sets the ones its choice did not reach; a price someone set since it was chosen stays.`;
+    const removed = removedClause(plan.lines);
+    const tail = removed ? ` ${removed}.` : '';
+    if (differ === 0) return `This is the current menu, and every price on it already reached the house.${tail}`;
+    return `This is the current menu, and ${plural(differ, 'price on the house differs', 'prices on the house differ')} from it. Carrying its prices again sets the ones its choice did not reach; a price someone set since it was chosen stays.${tail}`;
   }
   const parts: string[] = [];
   if (c.change > 0) parts.push(`set ${plural(c.change, 'price', 'prices')} from this menu`);
@@ -116,6 +137,8 @@ export function planSentence(
     more.push(
       `${plural(kitchen.length, 'kitchen line stays', 'kitchen lines stay')} on the menu and ${kitchen.length === 1 ? 'is' : 'are'} not carried (${kitchen.map((k) => k.name).join(', ')})`,
     );
+  const removed = removedClause(plan.lines);
+  if (removed) more.push(removed);
   const gone = plan.notOnThisFile ?? [];
   if (gone.length > 0)
     more.push(
@@ -188,6 +211,16 @@ export function kindWords(line: PlanLine, k: PlanKind, currency: string | null =
 export interface Row {
   line: PlanLine;
   k: PlanKind;
+}
+
+/** Beside a line's name when its house row is removed (r28 G9). */
+function RemovedMark({ line }: { line: PlanLine }) {
+  if (line.house?.active !== false) return null;
+  return (
+    <span className="cl-note" style={{ display: 'block' }} data-testid="menu-plan-removed">
+      removed from Inventory; it stays removed
+    </span>
+  );
 }
 
 function KeepSwitch({
@@ -348,7 +381,10 @@ export function MenuPlan({
                     data-testid="menu-plan-row"
                     data-after-read={r.k.setAfterRead === true ? 'true' : 'false'}
                   >
-                    <td>{r.line.name}</td>
+                    <td>
+                      {r.line.name}
+                      <RemovedMark line={r.line} />
+                    </td>
                     <td className="cl-dim">{r.k.kind}</td>
                     <td>{money(r.k.housePrice, currency)}</td>
                     <td>{money(r.k.menuPrice, currency)}</td>
@@ -413,6 +449,7 @@ export function MenuPlan({
                     <td>
                       {l.name}
                       {l.vintage ? ` ${l.vintage}` : ''}
+                      <RemovedMark line={l} />
                     </td>
                     <td className="cl-dim">{kindWords(l, l.bottle, currency)}</td>
                     <td className="cl-dim">{kindWords(l, l.glass, currency)}</td>
