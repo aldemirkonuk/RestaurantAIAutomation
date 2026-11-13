@@ -117,6 +117,32 @@ describe('the setup page itself', () => {
     expect(screen.queryByText(/cannot tell/i)).toBeNull();
   });
 
+  // r21: a switched-off reader names the switch and, for an owner or a
+  // manager, opens it; staff are told who can.
+  it('switched off: names the Settings switch and opens it', async () => {
+    answer(view());
+    mount({ status: { state: 'switched_off', words: 'Connected, but reading is switched off for this house.', tone: 'warn' } });
+    expect((await screen.findByTestId('setup-switched-off')).textContent).toMatch(
+      /“Read this house’s mailbox” switch in Settings is off/,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open the switch in Settings' }));
+    expect(screen.getByTestId('where').textContent).toBe('/settings?tab=features');
+  });
+
+  it('switched off, staff: says who can turn it on, with no button', async () => {
+    answer(view({ canChange: false }));
+    mount({ status: { state: 'switched_off', words: 'Connected, but reading is switched off for this house.', tone: 'warn' } });
+    expect((await screen.findByTestId('setup-switched-off')).textContent).toMatch(/An owner or a manager can turn it on\./);
+    expect(screen.queryByRole('button', { name: 'Open the switch in Settings' })).toBeNull();
+  });
+
+  it('no switched-off line while the reader is connected', async () => {
+    answer(view());
+    mount();
+    await screen.findByTestId('setup-sender-line');
+    expect(screen.queryByTestId('setup-switched-off')).toBeNull();
+  });
+
   it('a failed read says it failed and that it does not mean nothing is set up', async () => {
     api.get.mockRejectedValue(fail(503, 'upstream connect error or disconnect/reset before headers'));
     mount();
