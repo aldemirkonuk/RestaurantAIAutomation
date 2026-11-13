@@ -1,15 +1,16 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useSearchParams, useLocation, Link } from 'react-router-dom'
 import { readInviteMailSecret } from '../lib/inviteMailSecret'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../contexts/AuthContext'
-import { Wine, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User } from 'lucide-react'
+import { Wine, Building2, ArrowRight, ArrowLeft, Check, X, Loader2, AlertCircle, Mail, Lock, User, Eye, EyeOff } from 'lucide-react'
 import { BrandMark } from '../components/brand/BrandMark'
 import { PhoneNumberInput } from '../components/ui/PhoneNumberInput'
 import { countryToPhoneDefault, isValidPhone, toE164 } from '../lib/phone'
 import { currencyForCountry, currencyToRecord } from '../lib/currency'
 import { getBrowserTimezone } from '../lib/browserTimezone'
 import { houseNotOpened } from '../lib/houseOpeningWords'
+import { signUpRefusal } from '../lib/authWords'
 import { CurrencyStep } from '../components/onboarding/CurrencyStep'
 import { EndpaperShell } from '../components/brand/EndpaperShell'
 import { Button } from '../components/ui'
@@ -46,11 +47,45 @@ const HOUSE_BUTTON = 'bg-seal text-paper-0 hover:bg-seal-deep shadow-none hover:
 // The wordmark this file drew above the old single card is the endpaper's
 // now (`MarkDraws.tsx`, drawn once per page load; sketch 118).
 
-// Email availability check result
-type EmailAvailability = {
-  checking: boolean
-  available: boolean | null
-  error: string | null
+/**
+ * One password box with a show/hide toggle (OB-11). The confirm box went: a
+ * person who can see what they typed does not need to type it twice.
+ */
+function PasswordInput({
+  id,
+  value,
+  onChange,
+  on,
+}: {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  on: boolean
+}) {
+  const [shown, setShown] = useState(false)
+  return (
+    <div className="relative">
+      <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
+      <input
+        id={id}
+        type={shown ? 'text' : 'password'}
+        autoComplete="new-password"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="••••••••"
+        className={on ? 'block w-full pl-10 pr-11 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-11 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
+      />
+      <button
+        type="button"
+        onClick={() => setShown((v) => !v)}
+        aria-label={shown ? 'Hide password' : 'Show password'}
+        aria-pressed={shown}
+        className={on ? 'absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-inkm-3 hover:text-inkm-2' : 'absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-gray-600'}
+      >
+        {shown ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+      </button>
+    </div>
+  )
 }
 
 type Path = 'join' | 'create'
@@ -74,7 +109,7 @@ export function Register() {
   // /invite/<code> as a fragment. Sent with the join; without it the new
   // account is unverified.
   const inviteMailSecret = readInviteMailSecret(useLocation().hash)
-  const { registerAccount, registerRestaurant, joinViaInvite, error: authError } = useAuth()
+  const { registerAccount, registerRestaurant, joinViaInvite, error: authError, clearError: clearAuthError } = useAuth()
   const on = usePublicDesign()
 
   // Read the address before the first paint. The two-card chooser is retired
@@ -102,13 +137,11 @@ export function Register() {
   const [joinName, setJoinName] = useState('')
   const [joinEmail, setJoinEmail] = useState('')
   const [joinPassword, setJoinPassword] = useState('')
-  const [joinConfirm, setJoinConfirm] = useState('')
 
   // Path B account fields
   const [createName, setCreateName] = useState('')
   const [createEmail, setCreateEmail] = useState('')
   const [createPassword, setCreatePassword] = useState('')
-  const [createConfirm, setCreateConfirm] = useState('')
 
   // Path B restaurant fields
   const [restaurantName, setRestaurantName] = useState('')
@@ -165,55 +198,39 @@ export function Register() {
   // Restaurant form section (left-rail sub-navigation within pathBStep 2)
   const [restaurantSection, setRestaurantSection] = useState<1 | 2 | 3>(1)
 
-  // Email availability checking state
-  const [joinEmailCheck, setJoinEmailCheck] = useState<EmailAvailability>({ checking: false, available: null, error: null })
-  const [createEmailCheck, setCreateEmailCheck] = useState<EmailAvailability>({ checking: false, available: null, error: null })
-  const emailDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  // Email availability check — returns true=available, false=taken, null=error/unknown
-  const checkEmailAvailability = useCallback(async (
-    email: string,
-    setEmailCheck: (check: EmailAvailability) => void,
-  ): Promise<boolean | null> => {
-    if (!email || !email.includes('@')) {
-      setEmailCheck({ checking: false, available: null, error: null })
-      return null
-    }
-
-    setEmailCheck({ checking: true, available: null, error: null })
-
-    try {
-      const { data } = await apiClient.get<{ available: boolean; email: string }>(
-        `/auth/check-email?email=${encodeURIComponent(email)}`,
-      )
-      setEmailCheck({
-        checking: false,
-        available: data.available,
-        error: data.available ? null : 'This email is already registered. Please sign in instead.',
-      })
-      return data.available
-    } catch {
-      // Network / server error — don't block registration, let the backend validate
-      setEmailCheck({ checking: false, available: null, error: null })
-      return null
-    }
-  }, [])
-
-  // Debounced email check for Path A (join)
-  const debouncedCheckJoinEmail = useCallback((email: string) => {
-    if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current)
-    emailDebounceRef.current = setTimeout(() => {
-      checkEmailAvailability(email, setJoinEmailCheck)
-    }, 400)
-  }, [checkEmailAvailability])
-
-  // Debounced email check for Path B (create)
-  const debouncedCheckCreateEmail = useCallback((email: string) => {
-    if (emailDebounceRef.current) clearTimeout(emailDebounceRef.current)
-    emailDebounceRef.current = setTimeout(() => {
-      checkEmailAvailability(email, setCreateEmailCheck)
-    }, 400)
-  }, [checkEmailAvailability])
+  // A refused sign-up that means "this address already has an account"
+  // offers Sign in under the sentence; a 429 holds the button until the
+  // wait the gateway named has passed (OB-11). No address is probed while
+  // it is typed: the account call itself says whether it is taken.
+  const [signInHint, setSignInHint] = useState(false)
+  const [waitUntil, setWaitUntil] = useState(0)
+  // The wait sentence names a number of seconds. When those seconds have
+  // passed and the button comes back, the sentence goes with it: a page that
+  // still says "Wait 40 seconds" beside a live button contradicts itself.
+  const waitSaid = useRef<string | null>(null)
+  useEffect(() => {
+    if (waitUntil <= Date.now()) return
+    const t = setTimeout(() => {
+      // Read the ref now: the updater runs at render, after it is cleared.
+      const said = waitSaid.current
+      waitSaid.current = null
+      setWaitUntil(0)
+      setError((cur) => (cur !== null && cur === said ? null : cur))
+    }, waitUntil - Date.now())
+    return () => clearTimeout(t)
+  }, [waitUntil])
+  const waiting = waitUntil > Date.now()
+  const sayRefusal = (err: unknown, where: 'account' | 'join') => {
+    const r = signUpRefusal(err, where)
+    // This page words the refusal itself. The auth context's own sentence for
+    // the same failure ("Too many requests. Please try again later.") would
+    // otherwise show through `error || authError` once this one is cleared.
+    clearAuthError?.()
+    setError(r.text)
+    setSignInHint(r.kind === 'exists')
+    waitSaid.current = r.kind === 'wait' ? r.text : null
+    if (r.kind === 'wait') setWaitUntil(Date.now() + (r.seconds ?? 60) * 1000)
+  }
 
   // Auto-route from URL params on mount (D-09):
   // ?invite=CODE  → Path A (join) with code pre-filled
@@ -446,17 +463,34 @@ export function Register() {
     </motion.div>
   )
 
+  // PATH B — Step 1: make the account (no house yet; it comes after verify).
+  // No address probe first: the account call says when an address is taken.
+  const handleAccountSubmit = async () => {
+    setError(null)
+    setSignInHint(false)
+    setLoading(true)
+    try {
+      await registerAccount({
+        name: createName,
+        email: createEmail,
+        password: createPassword,
+      })
+      navigate('/verify-email', { replace: true })
+    } catch (err: unknown) {
+      sayRefusal(err, 'account')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // PATH A — Step 2: Account fields + submit
   const handleJoinSubmit = async () => {
-    if (joinPassword !== joinConfirm) {
-      setError('Passwords do not match')
-      return
-    }
     if (joinPassword.length < 8) {
       setError('Password must be at least 8 characters')
       return
     }
     setError(null)
+    setSignInHint(false)
     setLoading(true)
     try {
       await joinViaInvite({
@@ -468,7 +502,7 @@ export function Register() {
       })
       navigate('/', { replace: true })
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to join restaurant')
+      sayRefusal(err, 'join')
     } finally {
       setLoading(false)
     }
@@ -504,6 +538,15 @@ export function Register() {
         </div>
       )}
       {!on && <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>}
+      {/* A form, so Enter submits (browser walk 2026-11-11: it did not). */}
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (loading || waiting || !joinName || !joinEmail || !joinPassword) return
+          void handleJoinSubmit()
+        }}
+      >
       <div className="space-y-4">
         {/* Full Name */}
         <div>
@@ -521,7 +564,7 @@ export function Register() {
           </div>
         </div>
 
-        {/* Email with availability check */}
+        {/* Email */}
         <div>
           <label htmlFor="join-email" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Email *</label>
           <div className="relative">
@@ -529,138 +572,53 @@ export function Register() {
             <input
               id="join-email"
               type="email"
+              autoComplete="email"
               value={joinEmail}
-              onChange={(e) => {
-                setJoinEmail(e.target.value)
-                debouncedCheckJoinEmail(e.target.value)
-              }}
+              onChange={(e) => setJoinEmail(e.target.value)}
               placeholder="jane@restaurant.com"
-              className={[
-                on
-                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all'
-                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
-                joinEmailCheck.available === false
-                  ? (on ? 'border-red-400' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20')
-                  : joinEmailCheck.available === true
-                    ? (on ? 'border-seal' : 'border-green-400 focus:border-green-500 focus:ring-green-500/20')
-                    : (on ? 'border-paper-2' : 'border-gray-300 focus:border-wine-500 focus:ring-wine-500/20')
-              ].join(' ')}
+              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
-            {/* Status icon */}
-            {joinEmailCheck.checking && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin' : 'w-4 h-4 text-gray-400 animate-spin'} />
-              </div>
-            )}
-            {!joinEmailCheck.checking && joinEmailCheck.available === true && (
-              <div className={on ? 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-seal flex items-center justify-center' : 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center'}>
-                <Check className={on ? 'w-3 h-3 text-paper-0 stroke-[3]' : 'w-3 h-3 text-white stroke-[3]'} />
-              </div>
-            )}
-            {!joinEmailCheck.checking && joinEmailCheck.available === false && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
-                <X className="w-3 h-3 text-white stroke-[3]" />
-              </div>
-            )}
           </div>
-          {/* Availability message */}
-          <AnimatePresence mode="wait">
-            {joinEmailCheck.available === false && joinEmailCheck.error && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                className="mt-2 flex items-center gap-2 text-sm text-red-600"
-              >
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{joinEmailCheck.error}</span>
-                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
-                  Sign in
-                </Link>
-              </motion.div>
-            )}
-            {joinEmailCheck.available === true && (
-              <motion.p
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                className={on ? 'mt-1 text-xs !text-seal' : 'mt-1 text-xs text-green-600'}
-              >
-                Email is available
-              </motion.p>
-            )}
-          </AnimatePresence>
         </div>
 
         {/* Password */}
         <div>
           <label htmlFor="join-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Password *</label>
-          <div className="relative">
-            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
-            <input
-              id="join-password"
-              type="password"
-              value={joinPassword}
-              onChange={(e) => setJoinPassword(e.target.value)}
-              placeholder="••••••••"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-            />
-          </div>
+          <PasswordInput id="join-password" value={joinPassword} onChange={setJoinPassword} on={on} />
           <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Min. 8 characters</p>
-        </div>
-
-        {/* Confirm Password */}
-        <div>
-          <label htmlFor="join-confirm-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Confirm Password *</label>
-          <div className="relative">
-            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
-            <input
-              id="join-confirm-password"
-              type="password"
-              value={joinConfirm}
-              onChange={(e) => setJoinConfirm(e.target.value)}
-              placeholder="••••••••"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-            />
-          </div>
         </div>
       </div>
       {(error || authError) && (
         <div role={on ? 'alert' : undefined} className={on ? 'mdv-ep-note mt-4 border-red-700' : 'mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2'}>
           {!on && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
-          <p className={on ? 'mdv-ep-note-title !text-red-800' : 'text-sm text-red-700'}>{error || authError}</p>
+          <p className={on ? 'mdv-ep-note-title !text-red-800' : 'text-sm text-red-700'}>
+            {error || authError}
+            {signInHint && (
+              <>
+                {' '}
+                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
+                  Sign in
+                </Link>
+              </>
+            )}
+          </p>
         </div>
       )}
       <Button
+        type="submit"
         className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
-        disabled={loading || joinEmailCheck.checking || !joinName || !joinEmail || !joinPassword || !joinConfirm || joinEmailCheck.available === false}
-        onClick={async () => {
-          // If debounced check hasn't settled, run immediately before submitting
-          let available = joinEmailCheck.available
-          if (available === null && joinEmail && joinEmail.includes('@')) {
-            available = await checkEmailAvailability(joinEmail, setJoinEmailCheck)
-          }
-          if (available === false) {
-            setError('This email is already registered. Please sign in instead.')
-            return
-          }
-          handleJoinSubmit()
-        }}
+        disabled={loading || waiting || !joinName || !joinEmail || !joinPassword}
       >
         {loading ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin mr-2" />
             Joining...
           </>
-        ) : joinEmailCheck.checking ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            Checking email…
-          </>
         ) : (
           'Join Restaurant'
         )}
       </Button>
+      </form>
     </motion.div>
   )
 
@@ -691,6 +649,15 @@ export function Register() {
           <h2 className="text-xl font-bold text-gray-900 mb-5">Your Account</h2>
         </>
       )}
+      {/* A form, so Enter submits (browser walk 2026-11-11: it did not). */}
+      <form
+        noValidate
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (loading || waiting || !createName || !createEmail || createPassword.length < 8) return
+          void handleAccountSubmit()
+        }}
+      >
       <div className="space-y-4">
         {/* Full Name */}
         <div>
@@ -708,7 +675,7 @@ export function Register() {
           </div>
         </div>
 
-        {/* Email with availability check */}
+        {/* Email */}
         <div>
           <label htmlFor="create-email" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Email *</label>
           <div className="relative">
@@ -716,155 +683,54 @@ export function Register() {
             <input
               id="create-email"
               type="email"
+              autoComplete="email"
               value={createEmail}
-              onChange={(e) => {
-                setCreateEmail(e.target.value)
-                debouncedCheckCreateEmail(e.target.value)
-              }}
+              onChange={(e) => setCreateEmail(e.target.value)}
               placeholder="john@myrestaurant.com"
-              className={[
-                on
-                  ? 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-paper-0 focus:outline-none transition-all'
-                  : 'block w-full pl-10 pr-10 py-3 border rounded-lg bg-white/80 focus:ring-2 focus:outline-none transition-all',
-                createEmailCheck.available === false
-                  ? (on ? 'border-red-400' : 'border-red-400 focus:border-red-500 focus:ring-red-500/20')
-                  : createEmailCheck.available === true
-                    ? (on ? 'border-seal' : 'border-green-400 focus:border-green-500 focus:ring-green-500/20')
-                    : (on ? 'border-paper-2' : 'border-gray-300 focus:border-wine-500 focus:ring-wine-500/20')
-              ].join(' ')}
+              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
             />
-            {/* Status icon */}
-            {createEmailCheck.checking && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className={on ? 'w-4 h-4 text-inkm-3 animate-spin' : 'w-4 h-4 text-gray-400 animate-spin'} />
-              </div>
-            )}
-            {!createEmailCheck.checking && createEmailCheck.available === true && (
-              <div className={on ? 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-seal flex items-center justify-center' : 'absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center'}>
-                <Check className={on ? 'w-3 h-3 text-paper-0 stroke-[3]' : 'w-3 h-3 text-white stroke-[3]'} />
-              </div>
-            )}
-            {!createEmailCheck.checking && createEmailCheck.available === false && (
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-red-500 flex items-center justify-center">
-                <X className="w-3 h-3 text-white stroke-[3]" />
-              </div>
-            )}
           </div>
-          {/* Availability message */}
-          <AnimatePresence mode="wait">
-            {createEmailCheck.available === false && createEmailCheck.error && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                className="mt-2 flex items-center gap-2 text-sm text-red-600"
-              >
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                <span>{createEmailCheck.error}</span>
-                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
-                  Sign in
-                </Link>
-              </motion.div>
-            )}
-            {createEmailCheck.available === true && (
-              <motion.p
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -4 }}
-                className={on ? 'mt-1 text-xs !text-seal' : 'mt-1 text-xs text-green-600'}
-              >
-                Email is available
-              </motion.p>
-            )}
-          </AnimatePresence>
         </div>
 
         {/* Password */}
         <div>
           <label htmlFor="create-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Password *</label>
-          <div className="relative">
-            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
-            <input
-              id="create-password"
-              type="password"
-              value={createPassword}
-              onChange={(e) => setCreatePassword(e.target.value)}
-              placeholder="••••••••"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-            />
-          </div>
+          <PasswordInput id="create-password" value={createPassword} onChange={setCreatePassword} on={on} />
           <p className={on ? 'text-xs !text-inkm-3 mt-1' : 'text-xs text-gray-400 mt-1'}>Min. 8 characters</p>
         </div>
-
-        {/* Confirm Password */}
-        <div>
-          <label htmlFor="create-confirm-password" className={on ? 'block text-sm font-medium text-inkm-2 mb-1' : 'block text-sm font-medium text-gray-700 mb-1'}>Confirm Password *</label>
-          <div className="relative">
-            <Lock className={on ? 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-inkm-3' : 'absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'} />
-            <input
-              id="create-confirm-password"
-              type="password"
-              value={createConfirm}
-              onChange={(e) => setCreateConfirm(e.target.value)}
-              placeholder="••••••••"
-              className={on ? 'block w-full pl-10 pr-3 py-3 border border-paper-2 rounded-lg bg-paper-0 focus:outline-none' : 'block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg bg-white/80 focus:ring-2 focus:ring-wine-500 focus:outline-none'}
-            />
-          </div>
-        </div>
       </div>
+      {/* Step 1 had no error line at all: a refused sign-up said nothing. */}
+      {(error || authError) && (
+        <div role="alert" className={on ? 'mdv-ep-note mt-4 border-red-700' : 'mt-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2'}>
+          {!on && <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />}
+          <p className={on ? 'mdv-ep-note-title !text-red-800' : 'text-sm text-red-700'}>
+            {error || authError}
+            {signInHint && (
+              <>
+                {' '}
+                <Link to="/login" className={on ? 'text-seal hover:text-seal-deep font-medium underline' : 'text-wine-600 hover:text-wine-700 font-medium underline'}>
+                  Sign in
+                </Link>
+              </>
+            )}
+          </p>
+        </div>
+      )}
       <Button
-        type="button"
+        type="submit"
         className={on ? `w-full h-12 mt-5 ${HOUSE_BUTTON}` : 'w-full h-12 mt-5'}
-        disabled={
-          !createName ||
-          !createEmail ||
-          createPassword.length < 8 ||
-          createPassword !== createConfirm ||
-          createEmailCheck.available === false ||
-          createEmailCheck.checking
-        }
-        onClick={async () => {
-          if (createPassword !== createConfirm) {
-            setError('Passwords do not match')
-            return
-          }
-
-          // If the debounced check hasn't settled, run it immediately now
-          let available = createEmailCheck.available
-          if (available === null && createEmail && createEmail.includes('@')) {
-            available = await checkEmailAvailability(createEmail, setCreateEmailCheck)
-          }
-
-          if (available === false) {
-            setError('This email is already registered. Please sign in instead.')
-            return
-          }
-
-          setError(null)
-          setLoading(true)
-          try {
-            await registerAccount({
-              name: createName,
-              email: createEmail,
-              password: createPassword,
-            })
-            navigate('/verify-email', { replace: true })
-          } catch (err: unknown) {
-            setError(err instanceof Error ? err.message : 'Registration failed')
-          } finally {
-            setLoading(false)
-          }
-        }}
+        disabled={loading || waiting || !createName || !createEmail || createPassword.length < 8}
       >
-        {createEmailCheck.checking ? (
+        {loading ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin mr-2" />
-            Checking email…
+            Creating account…
           </>
         ) : (
           <>Create account <ArrowRight className="w-4 h-4 ml-1" /></>
         )}
       </Button>
+      </form>
       <div className="my-4 flex items-center gap-3 text-xs text-gray-400">
         <span className="h-px flex-1 bg-gray-200" />
         or
@@ -1427,6 +1293,8 @@ export function Register() {
     return (
       <EndpaperShell
         kicker="A new set of books"
+        frontMatter
+        backLabel="Turn back to register"
         houseLine={ep.houseLine}
         tag={ep.tag}
         folio={ep.folio}

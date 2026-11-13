@@ -232,6 +232,11 @@ function type(label: string, value: string) {
 
 async function joinAccount(emailAvailable: boolean) {
   gateway({ invite: 'valid', emailAvailable })
+  // OB-11: no address probe while typing; "taken" is the join's own refusal.
+  h.auth.joinViaInvite.mockReset()
+  if (!emailAvailable) {
+    h.auth.joinViaInvite.mockRejectedValue(Object.assign(new Error('already_member'), { status: 409 }))
+  }
   const r = renderAt(createElement(Register), '/register?invite=abcdefgh')
   await screen.findByText('Invited by', undefined, WAIT)
   fireEvent.click(screen.getByRole('button', { name: /continue/i }))
@@ -239,17 +244,26 @@ async function joinAccount(emailAvailable: boolean) {
   type('Full Name *', 'Deniz Kaya')
   type('Email *', 'deniz@house.test')
   type('Password *', 'long-enough-1')
-  type('Confirm Password *', 'long-enough-1')
-  await screen.findByText(emailAvailable ? 'Email is available' : /already registered/, undefined, WAIT)
+  if (!emailAvailable) {
+    fireEvent.click(screen.getByRole('button', { name: /join restaurant/i }))
+    await screen.findByText(/already in this house/, undefined, WAIT)
+  }
   return r.container
 }
 
 async function createAccountTaken() {
   gateway({ emailAvailable: false })
+  h.auth.registerAccount.mockReset()
+  h.auth.registerAccount.mockRejectedValue(
+    Object.assign(new Error('Email already registered'), { status: 400 }),
+  )
   const r = renderAt(createElement(Register), '/register?type=new')
   await screen.findByText(CREATE_ACCOUNT, undefined, WAIT)
+  type('Full Name *', 'Deniz Kaya')
   type('Email *', 'taken@house.test')
-  await screen.findByText(/already registered/, undefined, WAIT)
+  type('Password *', 'long-enough-1')
+  fireEvent.click(screen.getByRole('button', { name: /create account/i }))
+  await screen.findByText(/already has an account/, undefined, WAIT)
   return r.container
 }
 
@@ -549,14 +563,16 @@ describe('Google on the first page — the house path only', () => {
   })
 })
 
-/* ── 3c. The front matter — /login's endpaper only ───────────────────────── */
+/* ── 3c. The front matter — the two doors' endpapers, on the house path ──── */
 
 /*
  * The founder's Easter egg (2026-09-19): the endpaper on /login turns back to
- * the front matter. It belongs to /login's house path alone — not /register,
- * and not today's page.
+ * the front matter. On 2026-10-09 he asked for it on /register as well ("add
+ * the /login first page action to the /register as well"). It belongs to the
+ * house path alone — not today's page — and each door names the way back in
+ * its own words.
  */
-describe('the front matter — /login on the house path only', () => {
+describe('the front matter — /login and /register on the house path', () => {
   const TURN = 'Turn back to the front of the book'
   const reachOf = (name: string) => STATES.find((st) => st.name === name)!.reach
 
@@ -566,10 +582,19 @@ describe('the front matter — /login on the house path only', () => {
     expect(screen.getByRole('button', { name: TURN })).toBeInTheDocument()
   })
 
-  it('ON /register does not', async () => {
+  it('ON /register offers the turn too, and its way back says register', async () => {
     setSwitch(true)
     await reachOf('register-create-account-taken')()
-    expect(screen.queryByRole('button', { name: TURN })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: TURN }))
+    expect(await screen.findByRole('button', { name: 'Turn back to register →' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Turn back to sign in →' })).toBeNull()
+  })
+
+  it('ON /login the way back says sign in', async () => {
+    setSwitch(true)
+    await reachOf('login-email')()
+    fireEvent.click(screen.getByRole('button', { name: TURN }))
+    expect(await screen.findByRole('button', { name: 'Turn back to sign in →' })).toBeInTheDocument()
   })
 
   it('OFF /login does not', async () => {
@@ -684,8 +709,6 @@ describe('the invite mail secret reaches the join', () => {
     type('Full Name *', 'Deniz Kaya')
     type('Email *', 'deniz@house.test')
     type('Password *', 'long-enough-1')
-    type('Confirm Password *', 'long-enough-1')
-    await screen.findByText('Email is available', undefined, WAIT)
     fireEvent.click(screen.getByRole('button', { name: 'Join Restaurant' }))
     await vi.waitFor(() => expect(h.auth.joinViaInvite).toHaveBeenCalledTimes(1))
     return h.auth.joinViaInvite.mock.calls[0][0] as Record<string, unknown>

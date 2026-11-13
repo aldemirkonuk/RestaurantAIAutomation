@@ -69,6 +69,17 @@ describe("CORS preflight", () => {
     expect(res.headers.get("access-control-allow-origin")).toBeNull();
   });
 
+  it("lets the web read Retry-After on an answer to an allowed origin", async () => {
+    const res = await fetch(`${base}/probe`, {
+      headers: { Origin: "https://mudavym.com" },
+    });
+    expect(res.status).toBe(200);
+    const exposed = (res.headers.get("access-control-expose-headers") ?? "")
+      .split(",")
+      .map((h) => h.trim().toLowerCase());
+    expect(exposed).toContain("retry-after");
+  });
+
   it("is what main.ts boots the gateway with", () => {
     // main.ts is not imported by any test (it starts the server), so the
     // wiring is read from its source.

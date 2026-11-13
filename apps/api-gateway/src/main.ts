@@ -17,7 +17,8 @@ async function bootstrap() {
     // The allow-list lives in `cors-origins.ts` so it can be tested — see the
     // header there for why (mudavym.com went live matching no entry, and the
     // whole product looked down).
-    // A preflight answer is reused for CORS_PREFLIGHT_MAX_AGE_S.
+    // A preflight answer is reused for CORS_PREFLIGHT_MAX_AGE_S, and
+    // Retry-After is exposed so a 429 can say how long to wait (OB-11).
     cors: buildCorsOptions(),
   });
 
