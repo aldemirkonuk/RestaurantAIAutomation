@@ -189,7 +189,7 @@ describe("forecast publishes nothing when there is nothing to project from", () 
       wine_consumption_log: [],
     }).getDemandForecast(RESTAURANT);
     expect(out.basis.model).toContain("reads zero");
-    expect(out.basis.total).toContain("no projection to total");
+    expect(out.basis.total).toContain("no projection to add up");
   });
 
   it("still projects, and still totals, when the log holds real movement", async () => {
@@ -201,7 +201,7 @@ describe("forecast publishes nothing when there is nothing to project from", () 
     expect(out.forecast).toHaveLength(14);
     expect(typeof out.totalForecastDemand).toBe("number");
     expect(out.totalForecastDemand).toBeGreaterThan(0);
-    expect(out.basis.model).toContain("fitted on 120 days");
+    expect(out.basis.model).toContain("fitted on 120 days of history");
   });
 });
 
@@ -257,7 +257,7 @@ describe("seasonality withholds a day it cannot separate", () => {
     expect(out.bestDay).toBeNull();
     expect(out.worstDay).toBeNull();
     expect(out.tie).toBe(true);
-    expect(out.basis.extremes).toContain("arbitrary tie-break");
+    expect(out.basis.extremes).toContain("a coin toss");
   });
 
   it("does not report the same day as both busiest and quietest", async () => {
