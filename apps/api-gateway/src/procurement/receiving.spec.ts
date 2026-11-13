@@ -36,6 +36,8 @@ function makeDb(opts: {
   rpcError?: { message: string } | null;
   /** The order's house item, as `restaurant_inventory` answers a read by id. */
   item?: Row | null;
+  /** Fail the read of the order's house item (its unit), to prove it is not "no unit". */
+  itemReadError?: { message: string } | null;
   /**
    * Refuse an order write, by its payload — to prove neither order write's
    * error is swallowed any more (ADR 0286).
@@ -129,7 +131,9 @@ function makeDb(opts: {
           if (tableName === "procurement_orders")
             return { data: opts.order ?? null, error: null };
           if (tableName === "restaurant_inventory")
-            return { data: opts.item ?? null, error: null };
+            return opts.itemReadError
+              ? { data: null, error: opts.itemReadError }
+              : { data: opts.item ?? null, error: null };
           if (tableName === "procurement_receipt_events") {
             // The idempotency-key read-back on the 23505 path.
             const hit = table.find((r) =>
@@ -295,6 +299,86 @@ describe("recordDoorReceipt", () => {
       new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 3, countedUom: "kg" }),
     ).rejects.toMatchObject({ response: { reason: "unknown_counted_uom" } });
     expect(calls.rpc).toHaveLength(0);
+  });
+
+  describe("a good kept by volume or weight (r26 walk)", () => {
+    // R23-VOL-PO: 5 liters of olive oil, its good kept in ml. The door counts
+    // boxes; "1 box in" used to book 1 ml (the walk read 5.501 l).
+    const volumeOrder = {
+      id: "o1",
+      order_number: "R23-VOL-PO",
+      inventory_id: "inv1",
+      quantity: 5,
+      bottles_total: 5,
+      unit_type: "liter",
+      quantity_received: 0,
+    };
+
+    it("books nothing into an ml good, keeps the count, and sends the receiver to the paper's door", async () => {
+      const { db, calls } = makeDb({ order: volumeOrder, item: { id: "inv1", uom: "ml" } });
+      const r = await new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 1, countedUom: "case" });
+      expect(calls.rpc.filter((c) => c.name === "apply_stock_movement")).toHaveLength(0);
+      expect(r.stockBooked).toBe(false);
+      expect(r.stockDelta).toBeNull();
+      expect(r.stockIssue).toBe(
+        "The count is recorded, but nothing went on the shelf: this good is kept in ml, by volume, " +
+          "and this door counts boxes, not how much is in them. Count it on its paper's door, " +
+          "where it goes on the shelf by volume.",
+      );
+      // The door's evidence is still written.
+      expect(calls.eventInserts).toHaveLength(1);
+      expect(calls.eventInserts[0].counted_qty).toBe(1);
+      // Nothing booked, so nothing is queued for research.
+      expect(calls.tableInserts.filter((i) => i.table === "house_item_research")).toHaveLength(0);
+    });
+
+    it("says weight for a good kept in kg, and books nothing", async () => {
+      const { db, calls } = makeDb({ order: volumeOrder, item: { id: "inv1", uom: "kg" } });
+      const r = await new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 3, countedUom: "case" });
+      expect(calls.rpc).toHaveLength(0);
+      expect(r.stockBooked).toBe(false);
+      expect(r.stockIssue).toContain("kept in kg, by weight");
+      expect(r.stockIssue).toContain("goes on the shelf by weight.");
+    });
+
+    it.each(["l", "g", "mg"])("books nothing into a good kept in %s", async (uom) => {
+      const { db, calls } = makeDb({ order: volumeOrder, item: { id: "inv1", uom } });
+      const r = await new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 2, countedUom: "case" });
+      expect(calls.rpc).toHaveLength(0);
+      expect(r.stockBooked).toBe(false);
+      expect(r.stockIssue).toContain(`kept in ${uom}, by`);
+    });
+
+    it("still books a good kept in bottles", async () => {
+      const { db, calls } = makeDb({
+        order: { id: "o1", order_number: "PO-1", inventory_id: "inv1", quantity: 2, bottles_total: 24, quantity_received: 0 },
+        item: { id: "inv1", uom: "bottle" },
+      });
+      const r = await new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 2, countedUom: "case" });
+      expect(calls.rpc[0].args.p_delta).toBe(24);
+      expect(r.stockBooked).toBe(true);
+      expect(r.stockIssue).toBeUndefined();
+    });
+
+    it("a failed read of the unit books nothing and is retryable, never read as no unit", async () => {
+      const { db, calls } = makeDb({ order: volumeOrder, itemReadError: { message: "timeout" } });
+      await expect(
+        new ReceivingService(db).recordDoorReceipt({ ...base, countedQty: 1, countedUom: "case" }),
+      ).rejects.toMatchObject({ response: { reason: "item_unit_unknown" } });
+      expect(calls.rpc).toHaveLength(0);
+    });
+
+    it("a refused delivery of an ml good moves nothing and says nothing more", async () => {
+      const { db, calls } = makeDb({ order: volumeOrder, item: { id: "inv1", uom: "ml" } });
+      const r = await new ReceivingService(db).recordDoorReceipt({
+        ...base,
+        countedQty: 1,
+        countedUom: "case",
+        rejectedQtyInCountedUom: 1,
+      });
+      expect(calls.rpc).toHaveLength(0);
+      expect(r.stockIssue).toBeUndefined();
+    });
   });
 
   it("never guesses a pack size of 12", async () => {
