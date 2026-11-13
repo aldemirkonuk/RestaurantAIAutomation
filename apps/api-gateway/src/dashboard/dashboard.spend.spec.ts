@@ -136,11 +136,12 @@ describe("DashboardService — procurement spend is not revenue", () => {
       totalProcurementSpend: 1250,
       monthlyProcurementSpend: 250,
       uncostedOrders: { total: 0, thisMonth: 0 },
+      notInHouseCurrency: { total: {}, thisMonth: {} },
       unread: { totalProcurementSpend: null, monthlyProcurementSpend: null },
       totalBottlesDelivered: 18,
       spendByMonth: [
-        { month: "2026-07", spend: 1000, bottles: 12, uncosted: 0, unread: null },
-        { month: "2026-08", spend: 250, bottles: 6, uncosted: 0, unread: null },
+        { month: "2026-07", spend: 1000, bottles: 12, uncosted: 0, notInHouseCurrency: {}, unread: null },
+        { month: "2026-08", spend: 250, bottles: 6, uncosted: 0, notInHouseCurrency: {}, unread: null },
       ],
     });
   });

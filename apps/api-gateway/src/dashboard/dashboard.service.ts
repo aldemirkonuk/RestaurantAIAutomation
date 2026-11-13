@@ -24,7 +24,7 @@ import {
   hasStatus,
 } from "../procurement/order-status";
 import { houseFrame } from "../common/house-frame";
-import { bucketSpend, SPEND_UNREAD } from "./uncosted-spend";
+import { bucketSpend, spendHouseFor, SPEND_UNREAD } from "./uncosted-spend";
 import {
   localDateIn,
   localMidnight,
@@ -175,7 +175,9 @@ export interface CalendarDay {
   procurement_spend: number | null;
   /** Delivered orders on the day with no recorded cost. */
   uncosted_orders?: number;
-  /** Why `procurement_spend` is null for want of a cost. */
+  /** Delivered orders on the day not in the house's money, by code. */
+  not_in_house_currency?: Record<string, number>;
+  /** Why `procurement_spend` is null: no recorded cost, or other money. */
   procurement_spend_unread?: string | null;
   /** Bottles DELIVERED by vendors (the frozen key is a misnomer). */
   bottles_sold: number | null;
@@ -207,6 +209,10 @@ export interface CalendarMonth {
   monthly_procurement_spend: number | null;
   /** Delivered orders in the month with no recorded cost. */
   monthly_uncosted_orders?: number;
+  /** Delivered orders in the month not in the house's money, by code. */
+  monthly_not_in_house_currency?: Record<string, number>;
+  /** True when an order names a currency and the house's could not be read. */
+  house_currency_unread?: boolean;
   monthly_procurement_spend_unread?: string | null;
   monthly_bottles: number | null;
   /**
@@ -855,7 +861,7 @@ export class DashboardService {
       const { data: delivered, error } = await client
         .from("procurement_orders")
         .select(
-          "final_price, total_cost, bottles_total, quantity, delivered_at, created_at, status",
+          "final_price, total_cost, currency, bottles_total, quantity, delivered_at, created_at, status",
         )
         .eq("restaurant_id", restaurantId)
         .in("status", ORDER_SPEND_STATUSES);
@@ -870,9 +876,12 @@ export class DashboardService {
       }
 
       const orders = delivered || [];
+      // Spend is summed in the house's money only; an order in another is
+      // counted by its code and withholds the figure, never converted.
+      const house = await spendHouseFor(client, restaurantId, orders);
 
       // The whole sum of recorded costs, or null with the count that carry none.
-      const totalRead = bucketSpend(orders);
+      const totalRead = bucketSpend(orders, house);
       const totalProcurementSpend = totalRead.spend;
       const totalBottlesDelivered = orders.reduce(
         (sum, o) => sum + (o.bottles_total || o.quantity || 0),
@@ -887,6 +896,7 @@ export class DashboardService {
           const orderDate = o.delivered_at || o.created_at;
           return orderDate && orderDate.startsWith(currentMonth);
         }),
+        house,
       );
       const monthlyProcurementSpend = monthlyRead.spend;
 
@@ -896,6 +906,7 @@ export class DashboardService {
         spend: number | null;
         bottles: number;
         uncosted: number;
+        notInHouseCurrency: Record<string, number>;
         unread: string | null;
       }[] = [];
       const monthMap = new Map<
@@ -915,12 +926,13 @@ export class DashboardService {
 
       // Sort by month and take last 12
       for (const [month, data] of Array.from(monthMap.entries()).sort()) {
-        const read = bucketSpend(data.orders);
+        const read = bucketSpend(data.orders, house);
         spendByMonth.push({
           month,
           spend: read.spend,
           bottles: data.bottles,
           uncosted: read.uncosted,
+          notInHouseCurrency: read.notInHouseCurrency,
           unread: read.unread,
         });
       }
@@ -931,6 +943,10 @@ export class DashboardService {
         uncostedOrders: {
           total: totalRead.uncosted,
           thisMonth: monthlyRead.uncosted,
+        },
+        notInHouseCurrency: {
+          total: totalRead.notInHouseCurrency,
+          thisMonth: monthlyRead.notInHouseCurrency,
         },
         unread: {
           totalProcurementSpend: totalRead.unread,
@@ -1051,7 +1067,7 @@ export class DashboardService {
           let q = client
             .from("procurement_orders")
             .select(
-              "id, final_price, total_cost, bottles_total, quantity, delivered_at",
+              "id, final_price, total_cost, currency, bottles_total, quantity, delivered_at",
             )
             .eq("restaurant_id", restaurantId)
             .in("status", ORDER_SPEND_STATUSES)
@@ -1065,6 +1081,8 @@ export class DashboardService {
           : Promise.resolve(null),
       ]);
 
+      // The month's orders in the house's money only (`bucketSpend`).
+      const house = await spendHouseFor(client, restaurantId, orders);
       const spend = new Map<
         string,
         { orders: any[]; bottles: number; count: number }
@@ -1098,11 +1116,12 @@ export class DashboardService {
         // includes today until its first check lands, and every day ahead.
         const counted =
           since !== null && until !== null && date >= since && date <= until;
-        const read = bucketSpend(s?.orders ?? []);
+        const read = bucketSpend(s?.orders ?? [], house);
         return {
           date,
           procurement_spend: read.spend === null ? null : cents(read.spend),
           uncosted_orders: read.uncosted,
+          not_in_house_currency: read.notInHouseCurrency,
           procurement_spend_unread: read.unread,
           bottles_sold: s?.bottles ?? 0,
           order_count: s?.count ?? 0,
@@ -1138,6 +1157,7 @@ export class DashboardService {
 
       const monthUncosted = bucketSpend(
         dates.flatMap((date) => spend.get(date)?.orders ?? []),
+        house,
       );
 
       return {
@@ -1151,6 +1171,8 @@ export class DashboardService {
         // One uncosted day makes the month unknown, not a short sum.
         monthly_procurement_spend: monthUncosted.spend,
         monthly_uncosted_orders: monthUncosted.uncosted,
+        monthly_not_in_house_currency: monthUncosted.notInHouseCurrency,
+        house_currency_unread: house.unread,
         monthly_procurement_spend_unread: monthUncosted.unread,
         monthly_bottles: daily.reduce(
           (sum, d) => sum + (d.bottles_sold ?? 0),
@@ -1214,7 +1236,7 @@ export class DashboardService {
             .eq("restaurant_id", restaurantId),
           client
             .from("procurement_orders")
-            .select("id, status, total_cost, final_price, bottles_total, quantity, delivered_at")
+            .select("id, status, total_cost, final_price, currency, bottles_total, quantity, delivered_at")
             .eq("restaurant_id", restaurantId),
           this.houseZone(client, restaurantId),
         ]);
@@ -1258,6 +1280,12 @@ export class DashboardService {
       // web dashboard rendered as "Total Revenue" — the exact opposite of what
       // the number is. Nothing here is a sale.
       // An uncosted order makes the window's figure null, with count and sentence.
+      const deliveredOrders = orders.filter((o) =>
+        hasStatus(o.status, ORDER_SPEND_STATUSES),
+      );
+      // Summed in the house's money only; an order in another withholds the
+      // window's figure and is counted by its code.
+      const house = await spendHouseFor(client, restaurantId, deliveredOrders);
       const spendWhere = (items: any[], onDay: (day: string) => boolean) =>
         bucketSpend(
           items.filter(
@@ -1265,11 +1293,8 @@ export class DashboardService {
               o.delivered_at &&
               onDay(localDateIn(new Date(o.delivered_at), zone)),
           ),
+          house,
         );
-
-      const deliveredOrders = orders.filter((o) =>
-        hasStatus(o.status, ORDER_SPEND_STATUSES),
-      );
       // DASH-W22: the counts staff read in place of the two money cards, on
       // the same days and the same orders as the spend.
       const deliveredOn = (onDay: (day: string) => boolean) =>
@@ -1304,6 +1329,12 @@ export class DashboardService {
           week: weekRead.uncosted,
           month: monthRead.uncosted,
         },
+        notInHouseCurrency: {
+          today: todayRead.notInHouseCurrency,
+          week: weekRead.notInHouseCurrency,
+          month: monthRead.notInHouseCurrency,
+        },
+        houseCurrencyUnread: house.unread,
         unread: {
           todayProcurementSpend: todayRead.unread,
           weekProcurementSpend: weekRead.unread,
@@ -1600,7 +1631,7 @@ export class DashboardService {
         client
           .from("procurement_orders")
           .select(
-            "id, total_cost, final_price, bottles_total, quantity, delivered_at, created_at, status",
+            "id, total_cost, final_price, currency, bottles_total, quantity, delivered_at, created_at, status",
           )
           .eq("restaurant_id", restaurantId)
           .in("status", ORDER_SPEND_STATUSES)
@@ -1629,6 +1660,8 @@ export class DashboardService {
       if (consumptionResult.status !== "fulfilled")
         throw consumptionResult.reason;
       const consumption = consumptionResult.value;
+      // Each point's spend in the house's money only (`bucketSpend`).
+      const house = await spendHouseFor(client, restaurantId, orders);
 
       const buckets = new Map<
         string,
@@ -1661,11 +1694,12 @@ export class DashboardService {
       return Array.from(buckets.entries())
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([date, data]) => {
-          const read = bucketSpend(data.orders);
+          const read = bucketSpend(data.orders, house);
           return {
             date,
             procurementSpend: read.spend,
             uncosted: read.uncosted,
+            notInHouseCurrency: read.notInHouseCurrency,
             unread: read.unread,
             bottles: data.bottles,
             glasses: data.glasses,
