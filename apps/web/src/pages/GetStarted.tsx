@@ -517,7 +517,7 @@ export default function GetStarted() {
               <input aria-label="City" onKeyDown={submitOnEnter(() => void createHouse())} value={city} onChange={(e) => setCity(e.target.value)} className="mt-2 w-full bg-transparent text-lg outline-none" />
             </label>
             <div>
-              <span className="text-xs uppercase tracking-wider">Country · required</span>
+              <label htmlFor="arrival-country" className="text-xs uppercase tracking-wider">Country · required</label>
               <CountryCombobox id="arrival-country" value={country} onChange={changeCountry} />
             </div>
           </div>
