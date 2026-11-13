@@ -589,27 +589,76 @@ function writeLedger(payload: unknown): ExportDoc {
   const d = obj(payload);
   const b = obj(d.basis);
   const cc = d.costCoverage == null ? null : obj(d.costCoverage);
-  const costBasis = "Needs a complete cost basis";
+  const cg = d.cogsCoverage == null ? null : obj(d.cogsCoverage);
+  const withheld = d.salesWithheld === true ? "Owners and managers see the till's figures" : null;
+  const both = withheld ?? "Needs what sold and what it cost";
+  const span = "Needs the till's goods at cost, what it cost, and 28 days of the till";
+  const ts = d.tillStock == null ? null : obj(d.tillStock);
+  const moved = num(cg?.itemsMoved);
+  const costed = num(cg?.itemsCosted);
+  const costGap =
+    moved != null && costed != null && moved > 0 && costed < moved
+      ? `Cost known for ${costed} of ${moved} items sold`
+      : null;
+  const uncosted = num(cg?.bottlesUncosted) ?? 0;
+  const settled = num(d.cogsSettledAfterSale);
+  const earlier = num(d.settledOnEarlierSales);
+  const kp = d.costOfCostedItems == null ? null : obj(d.costOfCostedItems);
+  const kpAmount = num(kp?.amount);
+  const kpItems = num(kp?.items) ?? 0;
   return doc({
     figures: [
+      // Cost-math lane 3.1: what sold and what it cost come from the till;
+      // what was bought keeps its own name and feeds no ratio.
+      f("Sold, net (365d)", figure(d.revenue, withheld ?? "No closed check, or a till line could not be read"), "money"),
+      f("What it cost (365d)", figure(d.cogs, withheld ?? costGap ?? "The till moved no stocked item, or its movements could not be read"), "money"),
+      f("Kept", figure(d.grossMarginDollars, both), "money"),
+      f("Kept, of sales", figure(d.grossMargin, both), "ratio"),
+      f("Cost of sales", figure(d.cogsRatio, both), "ratio"),
       f("Cellar at cost", figure(d.inventoryValue, "Not every on-hand row carries a recorded cost"), "money"),
-      f("Cost of goods (365d)", figure(d.cogs, "No delivered order came back for the window — which is either no buying or a read that failed"), "money"),
-      f("Sell-price valuation", figure(d.revenue, "No inventory row came back"), "money"),
-      f("Gross margin", figure(d.grossMargin, costBasis), "ratio"),
-      f("COGS ratio", figure(d.cogsRatio, costBasis), "ratio"),
-      f("Inventory turns", figure(d.inventoryTurnover, `${costBasis} and a year of delivered orders`), "count"),
-      f("Days of inventory", figure(d.daysInventoryOutstanding, `${costBasis} and a year of delivered orders`), "days"),
-      f("GMROI", figure(d.gmroi, costBasis), "count"),
+      f("Inventory turns", figure(d.inventoryTurnover, span), "count"),
+      f("Days of inventory", figure(d.daysInventoryOutstanding, span), "days"),
+      f("GMROI", figure(d.gmroi, span), "count"),
+      f("Bought (365d)", figure(d.deliveredPurchases, "No delivered order came back, or one carries no recorded cost"), "money"),
       f("Capital sitting still", figure(d.deadStockCapital, "No movement signal recorded, or an idle row has no cost"), "money"),
     ],
     notes: [
+      costGap
+        ? `${costGap}; ${uncosted} bottle${uncosted === 1 ? "" : "s"} left or came back with no invoice cost yet, so what it cost is withheld rather than a smaller number.`
+        : "",
+      // Batch review 2026-11-11: the known part apart (finding 2), the late
+      // prices on earlier sales apart (finding 1), the cellar note scoped to
+      // the figures that wait on the cellar (finding 3).
+      costGap && kpAmount != null && kpItems > 0
+        ? `The ${kpItems} of ${num(kp?.of) ?? 0} items sold whose every bottle carries its cost came to ${kpAmount.toFixed(2)} at cost. That is not the cost of everything sold, and no figure above divides by it.`
+        : "",
+      settled != null && settled !== 0
+        ? `${settled.toFixed(2)} of what it cost is late prices on this window's sales, settled when invoices were verified after the bottles sold.`
+        : "",
+      earlier != null && earlier !== 0
+        ? `${earlier.toFixed(2)} of late prices was settled in this window on bottles sold before it. It is not in what it cost: those sales are not in this window's sales.`
+        : "",
+      // Turns, days and GMROI divide by the goods the till reaches (reports
+      // lane r2); the whole cellar's cost gates only the cellar at cost.
+      ts && (num(ts.goodsOffTill) ?? 0) > 0
+        ? `Inventory turns, days of inventory and GMROI count the ${num(ts.goodsOnTill) ?? 0} of ${num(ts.goodsOnHand) ?? 0} goods on hand the till sells. The ${num(ts.goodsOffTill)} not on the till${num(ts.offTillValue) != null ? `, ${(num(ts.offTillValue) as number).toFixed(2)} at cost,` : ""} are left out: nothing they sell reaches what it cost.`
+        : "",
+      ts && (num(ts.uncostedOnTill) ?? 0) > 0
+        ? `${num(ts.uncostedOnTill)} of the ${num(ts.goodsOnTill) ?? 0} goods on hand the till sells carry no recorded cost, so inventory turns, days of inventory and GMROI are withheld.`
+        : "",
+      // A mapped good that sold nothing stays in the base (the till can sell
+      // it), and is named so a long days of stock can be read for what it is.
+      ts && (num(ts.idleOnTill) ?? 0) > 0
+        ? `${num(ts.idleOnTill)} of the ${num(ts.goodsOnTill) ?? 0} goods on hand the till sells sold nothing in this window${num(ts.idleOnTillValue) != null ? ` (${(num(ts.idleOnTillValue) as number).toFixed(2)} at cost)` : ""}. They are counted: the till can sell them, so they lengthen days of inventory.`
+        : "",
       cc && cc.complete === false
         ? num(cc.total) === 0
-          ? "No on-hand wine carries a recorded cost, so every cost-derived figure above is withheld rather than a total assembled from nothing."
-          : `${num(cc.priced) ?? 0} of ${num(cc.total) ?? 0} on-hand wines carry a recorded cost, so every cost-derived figure above is withheld rather than a total assembled from part of the cellar.`
+          ? "No on-hand good carries a recorded cost, so the cellar at cost is withheld rather than a total assembled from nothing."
+          : `${num(cc.priced) ?? 0} of ${num(cc.total) ?? 0} on-hand goods carry a recorded cost, so the cellar at cost is withheld rather than a total assembled from part of the cellar.`
         : "",
+      "Before tax. Bought is what was bought, not what sold: it feeds no ratio.",
     ],
-    basis: sentences(b.revenue, b.cogs, b.inventoryValue, b.deadStock, b.costDerived),
+    basis: sentences(b.revenue, b.cogs, b.inventoryValue, b.deliveredPurchases, b.deadStock, b.costDerived),
   });
 }
 
@@ -866,6 +915,8 @@ function writeBench(payload: unknown): ExportDoc {
     baseline: num(g.baseline_value),
     current: num(g.current_value),
     target: num(g.target_value),
+    // Set when the goal's latest reading was refused; current is then null.
+    unread: typeof g.current_unread === "string" && g.current_unread ? g.current_unread : null,
   }));
   const last = num(cf.spendLast30d);
   const prev = num(cf.spendPrev30d);
@@ -894,7 +945,13 @@ function writeBench(payload: unknown): ExportDoc {
     ...goals.map((g): Cell[] => [
       `${g.name} — baseline, now, target`,
       typed(g.baseline, "count", "no baseline recorded when the goal was set"),
-      typed(g.current, "count", "the goal's current value was not recorded"),
+      typed(
+        g.current,
+        "count",
+        g.unread
+          ? `its latest reading was refused: ${g.unread.replace(/\.$/, "")}`
+          : "the goal's current value was not recorded",
+      ),
       typed(g.target, "count", "no target recorded"),
     ]),
   ];
@@ -1057,7 +1114,7 @@ export const EXPORT_CUTTINGS: Readonly<Record<ExportableCutting, CuttingSpec>> =
     week: { title: "The week’s shape", window: () => "the last 90 days of the consumption log", takesWindow: false, write: writeWeek },
     ahead: { title: "What’s coming", window: () => "120 days of history, 14 days ahead", takesWindow: false, write: writeAhead },
     quadrants: { title: "Margin against movement", window: () => "the list as it stands, against 90 days of movement", takesWindow: false, write: writeQuadrants },
-    ledger: { title: "Figures of record", window: () => "365 days of COGS; the cellar as it stands today", takesWindow: false, write: writeLedger },
+    ledger: { title: "Figures of record", window: () => "365 days of the till; the cellar as it stands today", takesWindow: false, write: writeLedger },
     seats: { title: "The room", window: () => "the last 90 days of POS checks", takesWindow: false, write: writeSeats },
     service: { title: "Who served it", window: () => "the last 90 days of POS checks", takesWindow: false, write: writeService },
     restock: { title: "What to buy back", window: () => "demand over the last 90 days, at the service level in the params", takesWindow: false, write: writeRestock },

@@ -37,7 +37,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, MessageSquarePlus, Pencil, Plus, Sparkles, Target, X } from 'lucide-react';
-import { EM, countOf, figure, num, ratioPct } from './rp-format';
+import { EM, countOf, figure, inParens, num, ratioPct } from './rp-format';
 import { analysis, arr, obj, str } from './rp-spec';
 import type { GoalScenario, GoalScenarios } from '@/hooks/useGoalScenarios';
 import type { GoalsDesk, ScenarioRequest } from './useGoalsDesk';
@@ -693,7 +693,7 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
 
                 {g.unreadable ? (
                   <p className="rp-cap" role="status">
-                    This goal could not be scored ({g.unreadable}). Nothing below it is claimed.
+                    This goal could not be scored ({inParens(g.unreadable)}). Nothing below it is claimed.
                     {/* The same link as beside the pace reason below. */}
                     {g.zoneUnset && (
                       <>
@@ -724,7 +724,7 @@ function Desk({ reg, desk }: { reg: GoalsRegister; desk: GoalsDesk }) {
                       <div
                         className="rp-bar"
                         role="img"
-                        aria-label={`${ratioPct(Math.min(1, g.progressPct))} of the target`}
+                        aria-label={`${ratioPct(Math.min(1, g.progressPct))} of the ${g.direction === 'at_most' ? 'ceiling' : 'target'}`}
                       >
                         <span style={{ width: `${Math.min(100, Math.max(0, g.progressPct * 100))}%` }} />
                       </div>

@@ -16,7 +16,14 @@ import {
   shiftHouseDay,
   type HouseZone,
 } from "../common/house-day";
-import { localMidnight } from "../notifications/producers/service-day";
+import { isSalesGatedGoal } from "./sales-gated-goals";
+import {
+  figureOrNull,
+  goalSchedule,
+  goalShape,
+  presentStoredReading,
+  scoreGoal,
+} from "./goal-score";
 import {
   UncountedConsumptionError,
   UnitsLabel,
@@ -42,6 +49,9 @@ import {
   type CuttingSpec,
   type SpecRejection,
 } from "./report-cuttings";
+
+/** What became of a goal reading's write (`recordReading`). */
+export type GoalReadingStored = "stored" | "superseded" | "unstored";
 
 /**
  * GoalsService — metric-linked goals with AI assistance.
@@ -160,14 +170,104 @@ export class GoalsService {
   // ==========================================================================
 
   /**
-   * `_gate` is the caller's sales gate (ADR 0298 decision 9). The goal
-   * methods a route calls take it so that every caller already hands it on;
-   * none reads it yet, so every caller is answered as before.
+   * The goal rows a caller without sales may read (ADR 0298 decision 9).
+   *
+   * A days-of-stock goal is scored from the till, so `getGoalProgress` refuses
+   * it without sales. Its STORED `current_value` and `baseline_value` are the
+   * same ratio, written when an owner or manager last read it, and the row
+   * went back to staff unchanged on every route that returns a goal: the
+   * refusal's number, read beside it (cost-math walk 2026-11-11: staff saw
+   * `current_value` 312.07 under "cannot be read here"). With cellar at cost
+   * on the stock routes, days of stock gives the cost of what sold. So both
+   * are withheld (null) for such a caller; the target and the dates are the
+   * house's own setting and stay. Which metrics are gated is
+   * `isSalesGatedGoal`, the test the goal producers already use; every other
+   * metric is answered as before (the gate covers only what ADR 0298 moved
+   * onto the till).
+   */
+  static withholdTillGoalValues<T extends Record<string, any> | null>(
+    row: T,
+    gate: SalesGate = {},
+  ): T {
+    if (!row || gate.withSales === true) return row;
+    if (!isSalesGatedGoal(row.metric_key)) return row;
+    return { ...row, current_value: null, baseline_value: null };
+  }
+
+  /** `goal-score.ts` `presentStoredReading`, where the insight feed reads it too. */
+  static presentStoredReading<T extends Record<string, any> | null>(row: T): T {
+    return presentStoredReading(row);
+  }
+
+  /** Both rules a stored row goes out under: the refusal, then the sales gate. */
+  static presentGoalRow<T extends Record<string, any> | null>(
+    row: T,
+    gate: SalesGate = {},
+  ): T {
+    return GoalsService.withholdTillGoalValues(
+      GoalsService.presentStoredReading(row),
+      gate,
+    );
+  }
+
+  /**
+   * Store what the latest live reading found. Scoped to the house as well as
+   * the id. A failed write is logged and never fails the read: the reader
+   * still gets the live answer, and the stored row stays as it was.
+   *
+   * Newest reading wins, not last writer (reports lane r3). `current_read_at`
+   * is when the reading BEGAN, and the row is written only while it holds no
+   * reading or an older one, in the same UPDATE, so Postgres re-checks the
+   * condition against a row another reading has just written. A slow refusal
+   * that began before a quicker success therefore finds the success stored
+   * and leaves it. Two readings that began in the same millisecond are
+   * equally fresh, and the first stored stays. Gateways stamp from their own
+   * clocks, so two of them skewed by more than the gap between two readings
+   * could still order them wrongly.
+   *
+   * Says what became of the write (fix round on #1133): `stored` when the row
+   * now holds this reading, `superseded` when the condition matched no row
+   * because a newer reading is already stored, `unstored` when the write
+   * failed or the store did not say. The caller still answers with its own
+   * live reading; this only tells it whether the stored row agrees.
+   */
+  private async recordReading(
+    restaurantId: string,
+    goalId: string,
+    patch: Record<string, unknown> & { current_read_at: string },
+  ): Promise<GoalReadingStored> {
+    try {
+      const { data, error } = await this.dbService
+        .getClient()
+        .from("analytics_goals")
+        .update(patch)
+        .eq("restaurant_id", restaurantId)
+        .eq("id", goalId)
+        .or(
+          `current_read_at.is.null,current_read_at.lt."${patch.current_read_at}"`,
+        )
+        .select("id");
+      if (error) {
+        this.logger.warn(`goal reading not stored for ${goalId}: ${error.message}`);
+        return "unstored";
+      }
+      if (!Array.isArray(data)) return "unstored";
+      return data.length > 0 ? "stored" : "superseded";
+    } catch (err: any) {
+      this.logger.warn(`goal reading not stored for ${goalId}: ${err?.message ?? err}`);
+      return "unstored";
+    }
+  }
+
+  /**
+   * `gate` is the caller's sales gate (ADR 0298 decision 9). Without sales a
+   * days-of-stock goal's stored values are withheld
+   * (`withholdTillGoalValues`); every other row is answered as before.
    */
   async listGoals(
     restaurantId: string,
     status = "active",
-    _gate: SalesGate = {},
+    gate: SalesGate = {},
   ) {
     const q = this.dbService
       .getClient()
@@ -178,7 +278,9 @@ export class GoalsService {
     const { data, error } =
       status === "all" ? await q : await q.eq("status", status);
     if (error) throw new Error(error.message);
-    return data || [];
+    return (data || []).map((g: any) =>
+      GoalsService.presentGoalRow(g, gate),
+    );
   }
 
   /**
@@ -246,7 +348,7 @@ export class GoalsService {
        */
       sourceRuleKey?: string | null;
     },
-    _gate: SalesGate = {},
+    gate: SalesGate = {},
   ) {
     if (!GoalsService.SUPPORTED_METRICS[input.metricKey]) {
       throw new Error(
@@ -276,6 +378,7 @@ export class GoalsService {
       input.metricKey,
       house.zone ? this.periodStart(input.period, house.zone) : null,
       house.zone,
+      gate,
     );
     const { data, error } = await this.dbService
       .getClient()
@@ -287,6 +390,8 @@ export class GoalsService {
         target_value: input.targetValue,
         baseline_value: baseline,
         current_value: baseline,
+        // The baseline is a live reading too, taken now.
+        current_read_at: new Date().toISOString(),
         direction: input.direction ?? "at_least",
         period: input.period ?? "custom",
         deadline: input.deadline ?? null,
@@ -299,7 +404,12 @@ export class GoalsService {
     return data;
   }
 
-  async updateGoalStatus(restaurantId: string, goalId: string, status: string) {
+  async updateGoalStatus(
+    restaurantId: string,
+    goalId: string,
+    status: string,
+    gate: SalesGate = {},
+  ) {
     const allowed = ["active", "achieved", "missed", "archived"];
     if (!allowed.includes(status)) throw new Error("Invalid status");
     const { data, error } = await this.dbService
@@ -311,7 +421,7 @@ export class GoalsService {
       .select()
       .single();
     if (error) throw new Error(error.message);
-    return data;
+    return GoalsService.presentGoalRow(data, gate);
   }
 
   /**
@@ -338,6 +448,7 @@ export class GoalsService {
       direction?: "at_least" | "at_most";
       period?: string;
     },
+    gate: SalesGate = {},
   ) {
     const patch: Record<string, unknown> = {};
 
@@ -394,7 +505,7 @@ export class GoalsService {
     if (error) throw new Error(error.message);
     if (!data)
       throw new Error("No goal with that id belongs to this restaurant.");
-    return data;
+    return GoalsService.presentGoalRow(data, gate);
   }
 
   // ==========================================================================
@@ -442,8 +553,10 @@ export class GoalsService {
           // `zoneUnset` says the reason is the house's missing zone, so the
           // reports goal card can link it to Settings, as it does the pace
           // reason (ADR 0296 §5), without matching the sentence's words.
+          // The reading was just refused, so the stored number is not where
+          // the goal stands (presentStoredReading).
           return {
-            goal: g,
+            goal: { ...g, current_value: null },
             unreadable: true,
             reason: String(err?.message ?? ""),
             zoneUnset: err?.message === HOUSE_ZONE_UNSET,
@@ -483,7 +596,7 @@ export class GoalsService {
     restaurantId: string,
     goalId: string,
     known?: HouseZone,
-    _gate: SalesGate = {},
+    gate: SalesGate = {},
   ) {
     const [{ data: goal, error }, house] = await Promise.all([
       this.dbService
@@ -507,58 +620,80 @@ export class GoalsService {
       ? (houseDayOf(goal.created_at, zone) ??
         this.periodStart(goal.period, zone))
       : null;
-    const { current, dailySeries, units } = await this.computeMetricWithSeries(
-      restaurantId,
-      goal.metric_key,
-      periodStart,
-      undefined,
-      zone,
-    );
-
-    // Refresh stored current_value (cheap side effect, keeps insights honest).
-    await this.dbService
-      .getClient()
-      .from("analytics_goals")
-      .update({ current_value: current, updated_at: new Date().toISOString() })
-      .eq("id", goalId);
+    // The live reading, and what the stored row records about it (reports
+    // lane r2). A reading refused because of the house's data (no zone, a
+    // good without a cost, a read that failed) is recorded as refused, so no
+    // reader of the stored row shows the last good number as where the goal
+    // stands now (`presentStoredReading`). A refusal that is about this
+    // caller (days of stock for someone without sales) says nothing about the
+    // goal and records nothing.
+    const callerRefused =
+      isSalesGatedGoal(goal.metric_key) && gate.withSales !== true;
+    // When this reading began: what it observed is at least this fresh, and
+    // `recordReading` stores it only over an older one.
+    const readAt = new Date();
+    let reading: Awaited<ReturnType<GoalsService["computeMetricWithSeries"]>>;
+    try {
+      reading = await this.computeMetricWithSeries(
+        restaurantId,
+        goal.metric_key,
+        periodStart,
+        undefined,
+        zone,
+        gate,
+      );
+    } catch (err: any) {
+      if (!callerRefused)
+        await this.recordReading(restaurantId, goalId, {
+          current_unread: String(err?.message ?? "the reading failed"),
+          current_read_at: readAt.toISOString(),
+        });
+      throw err;
+    }
+    const { current, dailySeries, units } = reading;
+    const readingStored = await this.recordReading(restaurantId, goalId, {
+      current_value: current,
+      current_unread: null,
+      current_read_at: readAt.toISOString(),
+      updated_at: new Date().toISOString(),
+    });
 
     const target = Number(goal.target_value) || 0;
-    const progressPct = target > 0 ? current / target : 0;
 
-    // Pace vs linear schedule.
-    let daysLeft: number | null = null;
-    let expectedByNow: number | null = null;
-    let onTrack: boolean | null = null;
-    let projected: number | null = null;
-    let paceUnread: string | null = null;
-    // The schedule runs from the midnight that opened the goal's first day to
-    // the midnight that opens its deadline day — both on the house's clock
-    // (ADR 0296), as both were on UTC's before. With no zone the deadline has
-    // no midnight to count to, so the pace is not computed and `paceUnread`
+    // Pace vs schedule, by the one scorer every goal reader shares
+    // (goal-score.ts): it reads the direction, and a level's schedule runs
+    // from its baseline, not from 0. The schedule runs from the midnight that
+    // opened the goal's first day to the midnight that opens its deadline day,
+    // both on the house's clock (ADR 0296). With no zone the deadline has no
+    // midnight to count to, so the pace is not computed and `paceUnread`
     // carries the reason: the reports desk prints it, the goals export
     // withholds the pace with it, and the recommendations margin says "Pace
     // unknown" rather than "No deadline". Only days of stock gets here with no
     // zone; every other metric has already thrown HOUSE_ZONE_UNSET.
+    let paceUnread: string | null = null;
     if (goal.deadline && !zone) paceUnread = HOUSE_ZONE_UNSET_PACE;
-    if (goal.deadline && zone && periodStart) {
-      const start = localMidnight(periodStart, zone).getTime();
-      const end = localMidnight(
-        String(goal.deadline).slice(0, 10),
-        zone,
-      ).getTime();
-      const totalDays = Math.max(1, (end - start) / 86400000);
-      const elapsed = Math.min(
-        totalDays,
-        Math.max(0, (Date.now() - start) / 86400000),
-      );
-      daysLeft = Math.max(0, Math.ceil((end - Date.now()) / 86400000));
-      expectedByNow = target * (elapsed / totalDays);
-      onTrack =
-        goal.direction === "at_most"
-          ? current <= expectedByNow * 1.1
-          : current >= expectedByNow * 0.9;
-
-      // Projection: Holt trend on the cumulative series → deadline.
+    // The one schedule every goal reader passes (goal-score.ts
+    // `goalSchedule`); the feed and the recommendations rule reach it through
+    // `storedGoalSchedule`, which opens the goal on the same house day.
+    const schedule = goalSchedule(periodStart, goal.deadline, zone);
+    const scheduled = schedule.start !== null && schedule.end !== null;
+    const score = scoreGoal({
+      direction: goal.direction,
+      shape: goalShape(goal.metric_key),
+      current,
+      target,
+      baseline: figureOrNull(goal.baseline_value),
+      start: schedule.start,
+      end: schedule.end,
+      at: readAt.getTime(),
+    });
+    // An unknown target is no progress, never 0% (the desk draws no bar).
+    const progressPct = score.progressPct;
+    const { daysLeft, expectedByNow, onTrack } = score;
+    let projected: number | null = null;
+    if (scheduled && daysLeft !== null) {
+      // Projection: Holt trend on the cumulative series → deadline. Levels
+      // carry no daily series, so none is drawn for them.
       if (dailySeries.length >= 7) {
         const cumulative: number[] = [];
         let acc = 0;
@@ -579,12 +714,19 @@ export class GoalsService {
     });
 
     return {
-      goal: { ...goal, current_value: current },
+      goal: {
+        ...goal,
+        current_value: current,
+        current_unread: null,
+        current_read_at: readAt.toISOString(),
+      },
       metricLabel: spec?.label ?? goal.metric_key,
       unit: spec?.unit ?? "count",
       current,
       target,
       progressPct,
+      /** Whether the reading meets the target, by the goal's direction. */
+      met: score.met,
       expectedByNow,
       onTrack,
       daysLeft,
@@ -606,6 +748,13 @@ export class GoalsService {
         category: s.category,
         score: s.score,
       })),
+      /**
+       * Whether the stored row now holds this reading (fix round on #1133).
+       * Every figure above is this live reading. `superseded` means a newer
+       * reading, begun after this one, is already stored, so the next list
+       * read shows that one rather than `goal.current_value` here.
+       */
+      readingStored,
       generatedAt: new Date().toISOString(),
     };
   }
@@ -884,6 +1033,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     metricKey: string,
     sinceDate: string | null,
     zone: string | null,
+    gate: SalesGate = {},
   ): Promise<number> {
     const { current } = await this.computeMetricWithSeries(
       restaurantId,
@@ -891,6 +1041,7 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
       sinceDate,
       undefined,
       zone,
+      gate,
     );
     return current;
   }
@@ -911,6 +1062,13 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     sinceDate: string | null,
     untilDate: string | undefined,
     zone: string | null,
+    /**
+     * The caller's sales gate (ADR 0298 d9). Days of stock is the cost of
+     * what the till sold over today's stock at cost (cost-math lane 3.1), so
+     * it is read only for a caller who sees sales; anyone else gets the
+     * withheld sentence below.
+     */
+    gate: SalesGate = {},
   ): Promise<{
     current: number;
     dailySeries: number[];
@@ -927,8 +1085,8 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
      * `0` — the shape that lets a failed query read as "this house bought
      * nothing". The other six metrics have lived with it since before this
      * change and repairing them is its own piece of work (since ADR 0292 the
-     * check and consumption reads refuse through it with `WholeReadError`;
-     * `purchase_spend` still falls through); what must not happen
+     * check, consumption and, since reports lane r3, order reads refuse
+     * through it with `WholeReadError`); what must not happen
      * is a NEW metric inheriting it, because a days-of-stock goal reading
      * "0 days" is not a light cellar, it is an unread one.
      *
@@ -948,11 +1106,39 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
     if (metricKey === "days_of_inventory") {
       const financial: any = await this.analyticsService.getFinancialSummary(
         restaurantId,
+        0,
+        { withSales: gate.withSales === true },
       );
       const dio = financial?.daysInventoryOutstanding;
       if (typeof dio !== "number" || !Number.isFinite(dio)) {
+        // Still a refusal, not a number: a days-of-stock built on the costed
+        // part of what sold would be a guess under the goal's name. It is
+        // caught per goal (listGoalsWithProgress) and shown as "could not be
+        // scored (<reason>)", so the reason names which input is missing
+        // (batch review 2026-11-11, finding 2).
+        const missing: string[] = [];
+        const cov = financial?.cogsCoverage;
+        if (financial?.cogs == null && cov && cov.itemsMoved > 0)
+          missing.push(
+            `the cost of what the till sold is known for ${cov.itemsCosted} of ${cov.itemsMoved} items sold`,
+          );
+        const stock = financial?.tillStock;
+        if (stock && stock.uncostedOnTill > 0)
+          missing.push(
+            `${stock.uncostedOnTill} of the ${stock.goodsOnTill} goods on hand the till sells ${stock.uncostedOnTill === 1 ? "has" : "have"} no recorded cost`,
+          );
+        else if (stock && stock.goodsOnTill === 0)
+          missing.push("no good on hand is one the till sells");
+        else if (!stock && financial?.inventoryValue == null)
+          missing.push("a good on hand has no recorded cost");
+        const span = financial?.cogsWindow?.spanDays;
+        if (typeof span === "number" && span < 28)
+          missing.push(`the till covers ${span} of the 28 days it needs`);
         throw new Error(
-          "Days of stock cannot be read for this restaurant yet: it is cost of goods over inventory value, and inventory value is only known when every bottle on hand carries a recorded cost.",
+          gate.withSales === true
+            ? "Days of stock cannot be read for this restaurant yet: it is today's stock at cost of the goods the till sells over the cost of what the till sold, so it is only known when every such good on hand has a recorded cost, every bottle sold carries its cost, and the till covers 28 days." +
+              (missing.length ? ` Here ${missing.join("; ")}.` : "")
+            : "Days of stock cannot be read here: it is read from the till's sales, which reach owners and managers only.",
         );
       }
       return { current: dio, dailySeries: [], dailyDates: [], rowCount: 1 };
@@ -1004,16 +1190,27 @@ OUTPUT — respond with ONLY valid JSON, no prose, no code fence:
 
     try {
       if (metricKey === "purchase_spend") {
-        let q = client
-          .from("procurement_orders")
-          .select("total_cost, final_price, delivered_at, created_at, status")
-          .eq("restaurant_id", restaurantId)
-          .in("status", ORDER_SPEND_STATUSES)
-          .gte("delivered_at", sinceIso);
-        if (untilIso) q = q.lte("delivered_at", untilIso);
-        const { data } = await q;
+        // Read whole or refused (ADR 0292, reports lane r3). This read kept
+        // neither the cap nor its error: a failed read summed no orders, and
+        // a "keep purchases under" goal then read as met.
+        const data = await readWholeWindow<any>(
+          "The delivered orders in this window",
+          () => {
+            let q = client
+              .from("procurement_orders")
+              .select(
+                "id, total_cost, final_price, delivered_at, created_at, status",
+                { count: "exact" },
+              )
+              .eq("restaurant_id", restaurantId)
+              .in("status", ORDER_SPEND_STATUSES)
+              .gte("delivered_at", sinceIso);
+            if (untilIso) q = q.lte("delivered_at", untilIso);
+            return q;
+          },
+        );
         const orders = fileByHouseDay(
-          (data || []) as any[],
+          data,
           (o) => o.delivered_at || o.created_at,
         );
         rowCount = orders.length;

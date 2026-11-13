@@ -40,6 +40,26 @@ export function figure(v: unknown, mode: 'compact' | 'full' = 'full'): string {
   return n === null ? EM : formatNumber(n, mode);
 }
 
+/**
+ * A plain figure to at most `digits` places, or the dash. The ledger's turns,
+ * days and GMROI are ratios the engine returns unrounded; `figure` printed
+ * them to three places ("312.067" days, cost-math walk 2026-11-11). The export
+ * prints days to one place and other figures to two
+ * (`report-export-render.ts`), so the page uses the same places.
+ */
+export function figureTo(v: unknown, digits: number): string {
+  const n = num(v);
+  return n === null ? EM : n.toLocaleString('en-US', { maximumFractionDigits: digits });
+}
+
+/**
+ * A reason sentence set inside the page's own parentheses: its closing full
+ * stop is dropped, so "(… under Time zone.)." reads "(… under Time zone)."
+ */
+export function inParens(reason: string): string {
+  return reason.replace(/[.\s]+$/, '');
+}
+
 /** A ratio the engine returns as 0–1, rendered as a percentage of record. */
 export function ratioPct(v: unknown, digits = 1): string {
   const n = num(v);
