@@ -152,9 +152,11 @@ describe('the Currency register — what it writes', () => {
   });
 
   it('a country with no default in the table offers nothing and says nothing is recorded', () => {
-    // `lib/countries.ts` deliberately does not cover every country. A country
-    // it has no currency for gets NO default, which is the honest outcome.
-    mount({ houseCurrency: remote(reg({ country: 'Bahamas' })) });
+    // `lib/countries.ts` deliberately leaves a country without a default when
+    // no single answer is true (Zimbabwe: ZWG by ISO, USD in practice). Such a
+    // country gets NO default, which is the honest outcome. (It was Bahamas
+    // until the table named every other country's money, 2026-11-13.)
+    mount({ houseCurrency: remote(reg({ country: 'Zimbabwe' })) });
     expect(screen.getByRole('combobox')).toHaveValue('');
     expect(screen.getByText(/Nothing is recorded yet\./)).toBeInTheDocument();
   });
