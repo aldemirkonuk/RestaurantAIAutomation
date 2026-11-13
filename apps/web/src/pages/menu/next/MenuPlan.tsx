@@ -34,6 +34,7 @@ import {
   type PlanLine,
 } from '../../../services/api/menus';
 import { lockPrice, releasePriceLock } from '../../../services/api/pricing';
+import { countByKind, oneNounFor } from './menu-line-kind';
 // Drawn with the cellar's classes wherever it is shown (/menu and onboarding).
 import '../../cellar/next/cellar-next.css';
 
@@ -117,22 +118,29 @@ export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'curre
   const c = plan.counts;
   const parts: string[] = [];
   if (plan.lines.length > 0) {
+    // Each group is named by its lines' kinds ("1 wine and 1 cocktail"), from
+    // the section the line was read or set into (r13 walk: a Negroni was a "wine").
     const outcome = plan.lines.map((l) => [l, lineOutcome(l)] as const);
     const isNew = (l: PlanLine) => l.bottle.result === 'new_wine' || l.glass.result === 'new_wine';
-    const changed = outcome.filter(([l, o]) => o === 'changed' && !isNew(l)).length;
-    const added = outcome.filter(([l, o]) => o === 'changed' && isNew(l)).length;
-    const lockedWines = outcome.filter(([, o]) => o === 'locked').length;
-    const same = outcome.filter(([, o]) => o === 'unchanged').length;
-    const heldOnChanged = outcome
-      .filter(([, o]) => o !== 'locked')
-      .reduce((n, [l]) => n + [l.bottle, l.glass].filter((k) => k.result === 'held_by_lock').length, 0);
-    if (changed > 0) parts.push(`change the price of ${plural(changed, 'wine', 'wines')} the house already has`);
-    if (added > 0)
-      parts.push(`add ${plural(added, 'wine', 'wines')} new to the house at ${added === 1 ? 'its menu price' : 'their menu prices'}`);
-    if (lockedWines > 0) parts.push(`leave ${plural(lockedWines, 'wine', 'wines')} at ${lockedWines === 1 ? 'its locked price' : 'their locked prices'}`);
+    const changed = outcome.filter(([l, o]) => o === 'changed' && !isNew(l)).map(([l]) => l);
+    const added = outcome.filter(([l, o]) => o === 'changed' && isNew(l)).map(([l]) => l);
+    const lockedLines = outcome.filter(([, o]) => o === 'locked').map(([l]) => l);
+    const same = outcome.filter(([, o]) => o === 'unchanged').map(([l]) => l);
+    const heldOn = outcome.filter(([l, o]) => o !== 'locked' && [l.bottle, l.glass].some((k) => k.result === 'held_by_lock'));
+    const heldOnChanged = heldOn.reduce(
+      (n, [l]) => n + [l.bottle, l.glass].filter((k) => k.result === 'held_by_lock').length,
+      0,
+    );
+    if (changed.length > 0) parts.push(`change the price of ${countByKind(changed)} the house already has`);
+    if (added.length > 0)
+      parts.push(`add ${countByKind(added)} new to the house at ${added.length === 1 ? 'its menu price' : 'their menu prices'}`);
+    if (lockedLines.length > 0)
+      parts.push(`leave ${countByKind(lockedLines)} at ${lockedLines.length === 1 ? 'its locked price' : 'their locked prices'}`);
     if (heldOnChanged > 0)
-      parts.push(`keep ${plural(heldOnChanged, 'locked price', 'locked prices')} on the wines it changes`);
-    if (same > 0) parts.push(`keep ${plural(same, 'wine', 'wines')} already at the menu's price`);
+      parts.push(
+        `keep ${plural(heldOnChanged, 'locked price', 'locked prices')} on the ${oneNounFor(heldOn.map(([l]) => l))[heldOn.length === 1 ? 0 : 1]} it changes`,
+      );
+    if (same.length > 0) parts.push(`keep ${countByKind(same)} already at the menu's price`);
   } else {
     // A plan's counts with no lines to count from (never sent by the gateway
     // today) still say what they can, in prices.
@@ -148,8 +156,10 @@ export function planSentence(plan: Pick<Plan, 'counts' | 'dormantLocks' | 'curre
   if (c.blank_kept > 0) more.push(`${plural(c.blank_kept, 'price is', 'prices are')} blank on the menu, so the house keeps the one it has, and the line carries a note saying so`);
   const unpriced = plan.lines.filter((l) => l.flag === 'blank_no_house_price').length;
   if (unpriced > 0) more.push(`${plural(unpriced, 'line shows', 'lines show')} no price and the house has none either, so it stays unpriced, and the line carries a note saying so`);
-  const unmatched = plan.lines.filter((l) => l.bottle.result === 'not_linked').length;
-  if (unmatched > 0) more.push(`${plural(unmatched, 'line is', 'lines are')} not matched to a wine, so no price`);
+  const unmatchedLines = plan.lines.filter((l) => l.bottle.result === 'not_linked');
+  const unmatched = unmatchedLines.length;
+  if (unmatched > 0)
+    more.push(`${plural(unmatched, 'line is', 'lines are')} not matched to a ${oneNounFor(unmatchedLines)[0]}, so no price`);
   if (plan.dormantLocks.length > 0)
     more.push(
       `${plural(plan.dormantLocks.length, 'locked price is', 'locked prices are')} not on this menu and ${plan.dormantLocks.length === 1 ? 'stays' : 'stay'} locked`,
@@ -257,8 +267,8 @@ function KeepSwitch({
 interface MenuPlanProps {
   menuId: string;
   canManage: boolean;
-  /** Called with what the choice did, once it is made. */
-  onDone: (result: MakeCurrentResult) => void;
+  /** Called with what the choice did, once it is made, and the plan's lines (to name them by kind). */
+  onDone: (result: MakeCurrentResult, lines: PlanLine[]) => void;
   onCancel?: () => void;
 }
 
@@ -319,7 +329,7 @@ function MenuPlanSheet({ menuId, canManage, onDone, onCancel }: MenuPlanProps) {
     onSuccess: (r) => {
       void queryClient.invalidateQueries({ queryKey: ['menu'] });
       void queryClient.invalidateQueries({ queryKey: ['pricing', 'locks'] });
-      onDone(r);
+      onDone(r, q.data?.lines ?? []);
     },
     onError: (e) => {
       const status = (e as { response?: { status?: number } })?.response?.status;

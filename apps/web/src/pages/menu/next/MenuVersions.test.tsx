@@ -213,7 +213,7 @@ describe('the words the panel uses', () => {
         failed: [{ menuItemId: 'l9', name: 'Barolo', error: 'timeout' }],
       }),
     ).toBe(
-      'This is now the current menu: 3 lines, 1 wine priced from this menu, 1 wine kept a price someone set after this menu was chosen, 1 line not matched to a wine, so no price, 1 line with a blank price, noted on the line so a manager can set it on Inventory. 1 could not be priced: Barolo (timeout).',
+      'This is now the current menu: 3 lines, 1 line priced from this menu, 1 line kept a price someone set after this menu was chosen, 1 line not matched to anything on the house\'s list, so no price, 1 line with a blank price, noted on the line so a manager can set it on Inventory. 1 could not be priced: Barolo (timeout).',
     );
   });
 
@@ -223,7 +223,7 @@ describe('the words the panel uses', () => {
         { outcome: 'made_current', menuId: 'm1', previousMenuIds: [], lines: 2, priceSync: { changed: 2 }, flagged: 0, failed: [] },
         'the menu read 2026-11-12 01:25:06',
       ),
-    ).toBe('The menu read 2026-11-12 01:25:06 is now the current menu: 2 lines, 2 wines priced from this menu.');
+    ).toBe('The menu read 2026-11-12 01:25:06 is now the current menu: 2 lines, 2 lines priced from this menu.');
   });
 
   it('ADR 0193 round 3 (L15): a held kind is counted AND named, a returned lock is named, and an outcome the page does not know is still printed', () => {
@@ -242,7 +242,7 @@ describe('the words the panel uses', () => {
       returned: [{ menuItemId: 'l1', name: 'Barolo' }],
     });
     expect(s).toBe(
-      'This is now the current menu: 4 lines, 2 wines priced from this menu, 1 wine at its locked price, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at 95.00); Soave (glass, locked at 9.00). Back on the menu with its lock still holding: Barolo.',
+      'This is now the current menu: 4 lines, 2 lines priced from this menu, 1 line at its locked price, 1 something new. Held by a lock, not changed: Barolo (bottle, locked at 95.00); Soave (glass, locked at 9.00). Back on the menu with its lock still holding: Barolo.',
     );
   });
 });
@@ -401,7 +401,7 @@ describe('MenuVersions', () => {
     await waitFor(() => expect(mockMake).toHaveBeenCalledWith('m1', 'fp-m1'));
     // Named, and said under the list it is about (menu walk 2026-11-12).
     expect(await screen.findByTestId('menu-list-choice-said')).toHaveTextContent(
-      /^The menu read 2026-09-20 10:00 is now the current menu: 42 lines, 40 wines priced from this menu, 2 lines with a blank price, noted on the line/,
+      /^The menu read 2026-09-20 10:00 is now the current menu: 42 lines, 40 lines priced from this menu, 2 lines with a blank price, noted on the line/,
     );
   });
 

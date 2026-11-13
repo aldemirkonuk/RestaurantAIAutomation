@@ -76,7 +76,7 @@ describe('MenuReviewScreen — the current-menu choice after a read', () => {
     render(<MenuReviewScreen result={RESULT} onConfirm={onConfirm} onSkip={vi.fn()} />)
     await chooseThroughThePlan()
     expect(await screen.findByText(/^This is now the current menu/)).toHaveTextContent(
-      /This is now the current menu: 2 lines, 1 wine priced from this menu, 1 line with a blank price, noted on the line so a manager can set it on Inventory\. 1 could not be priced: Opus One \(the price was not saved\)\./,
+      /This is now the current menu: 2 lines, 1 line priced from this menu, 1 line with a blank price, noted on the line so a manager can set it on Inventory\. 1 could not be priced: Opus One \(the price was not saved\)\./,
     )
     expect(onConfirm).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
