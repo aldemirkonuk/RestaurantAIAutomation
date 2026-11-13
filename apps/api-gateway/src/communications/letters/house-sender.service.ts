@@ -91,6 +91,14 @@ import {
 export const GMAIL_SEND_DEFINITION = INTEGRATION_DEFINITIONS.gmail_send;
 
 /**
+ * The house-inbox switch as an owner sees it: the label of its row in
+ * Settings (apps/web/src/pages/settings/next/FeaturesSection.tsx, "Read this
+ * house's mailbox"). The sentence names this, never the flag key
+ * (HOUSE_INBOX_FLAG), which is a column name nobody in a restaurant reads.
+ */
+export const HOUSE_INBOX_SWITCH_LABEL = "Read this house's mailbox";
+
+/**
  * The Gmail scope that permits sending as the granting account.
  *
  * Asserted against the catalogue in the spec rather than trusted: this constant
@@ -592,7 +600,7 @@ export class HouseSenderService {
       return {
         where: "unknown",
         words:
-          "Where this house's conversation lives could not be read, so neither half is stated. This is a failed read, not an answer: the house may well have both a sending and a reading grant. Retry before concluding anything.",
+          "Which mailbox this house's letters use could not be read just now, so nothing is said about it. This is a failed read, not an answer: the house may well have both mailbox connections. Try again before concluding anything.",
         sending,
         receiving,
       };
@@ -602,9 +610,12 @@ export class HouseSenderService {
     // The reason reading is off, when a person has in fact agreed to it. Said
     // in the same breath, because "connect the reading grant" is useless advice
     // to a house that already has one.
+    // In the house's words (r21, 2026-11-13): the switch is named by its
+    // Settings label, never by its flag key, and the Connections page by its
+    // name, never by its path. `receiving.switch` still carries the key.
     const readCaveat = readConsented
-      ? ` Somebody here has consented to reading, but ${HOUSE_INBOX_FLAG} is off for this restaurant, so nothing is being read; the consent is not the switch.`
-      : ` Connect "${INTEGRATION_DEFINITIONS.gmail_read.label}" on /connections — it asks for one permission and reads only mail from the vendors already in this house's book.`;
+      ? ` Somebody here has consented to reading, but the house's "${HOUSE_INBOX_SWITCH_LABEL}" switch in Settings is off, so nothing is being read; the consent is not the switch. An owner or a manager can turn it on.`
+      : ` Connect "${INTEGRATION_DEFINITIONS.gmail_read.label}" on the Connections page — it asks for one permission and reads only mail from the vendors already in this house's book.`;
     const from = sendAddress ? ` ${sendAddress}` : " this house's own mailbox";
 
     if (sendGranted && reading) {
@@ -619,7 +630,7 @@ export class HouseSenderService {
     if (sendGranted && !reading) {
       return {
         where: "letters_leave_only",
-        words: `Half of it. Letters leave from${from}, so a vendor sees this house's own address — but replies still arrive through ${deploymentAddress}, the mailbox every restaurant on this deployment shares, and are filed from there.${readCaveat}`,
+        words: `Letters leave from${from}, so a vendor sees this house's own address — but replies still arrive through ${deploymentAddress}, the mailbox every restaurant on this deployment shares, and are filed from there.${readCaveat}`,
         sending,
         receiving,
       };
@@ -628,7 +639,7 @@ export class HouseSenderService {
     if (!sendGranted && reading) {
       return {
         where: "replies_arrive_only",
-        words: `The other half. A vendor's reply to this house is read from its own mailbox and filed in the book, so nothing arrives only in one person's inbox — but no letter may leave from it, because nobody here has consented to sending. Connect "${GMAIL_SEND_DEFINITION.label}" on /connections; it asks for one permission, to send, and cannot read a single message.`,
+        words: `A vendor's reply to this house is read from its own mailbox and filed in the book, so nothing arrives only in one person's inbox — but no letter may leave from it, because nobody here has consented to sending. Order letters leave from ${deploymentAddress}, the address every restaurant on this deployment shares, and a letter written here to a vendor cannot leave until a mailbox is connected for sending. Connect "${GMAIL_SEND_DEFINITION.label}" on the Connections page; it asks for one permission, to send, and cannot read a single message.`,
         sending,
         receiving,
       };

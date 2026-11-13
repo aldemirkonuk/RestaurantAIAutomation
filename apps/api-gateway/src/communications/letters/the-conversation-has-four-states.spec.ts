@@ -140,6 +140,10 @@ describe("the four states of a house's conversation", () => {
       "read from its own mailbox and filed in the book",
     );
     expect(identity.conversation.words).toContain("no letter may leave");
+    // r21: like STATE 4, order letters still leave, from the shared address.
+    expect(identity.conversation.words).toContain(
+      "Order letters leave from notifications@mudavym.com",
+    );
     expect(identity.conversation.words).toContain("Gmail — sending only");
     // And the sending half stays exactly as honest as it was.
     expect(identity.kind).toBe("none");
@@ -183,6 +187,12 @@ describe("a consent is not a switch", () => {
       "Somebody here has consented to reading",
     );
     expect(identity.conversation.words).toContain("the consent is not the switch");
+    // r21: the switch is named as the owner sees it in Settings; the flag
+    // key stays a field, never a word on the page.
+    expect(identity.conversation.words).toContain(
+      `"Read this house's mailbox" switch in Settings is off`,
+    );
+    expect(identity.conversation.words).not.toContain("enable_house_inbox_read");
     expect(identity.conversation.receiving.switch).toBe(
       "enable_house_inbox_read",
     );
@@ -195,6 +205,30 @@ describe("a consent is not a switch", () => {
       "Somebody here has consented",
     );
     expect(identity.conversation.words).toContain("Connect");
+  });
+});
+
+/**
+ * r21 (2026-11-13): the sentence is shown to an owner on /communications
+ * (Mail setup and the intake sheet). It carries no flag key, no route path,
+ * and no "Half of it." / "The other half." openers that point at a sentence
+ * the owner never saw.
+ */
+describe("the sentence is in the house's words", () => {
+  const arrangements: [string, Record<string, unknown>[], Record<string, unknown>[]][] = [
+    ["both", [sendGrant, readGrant], READER_ON],
+    ["send, reader off", [sendGrant, readGrant], READER_OFF],
+    ["send only", [sendGrant], READER_ON],
+    ["read only", [readGrant], READER_ON],
+    ["read consented, switch off", [readGrant], READER_OFF],
+    ["neither", [], READER_OFF],
+  ];
+  it.each(arrangements)("%s: no flag key, no path, no half", async (_n, grants, flags) => {
+    const identity = await resolveWith(grants, flags);
+    const words = identity.conversation.words;
+    expect(words).not.toMatch(/enable_[a-z_]+/);
+    expect(words).not.toMatch(/(^|\s)\/[a-z]/);
+    expect(words).not.toMatch(/\bhalf\b/i);
   });
 });
 
