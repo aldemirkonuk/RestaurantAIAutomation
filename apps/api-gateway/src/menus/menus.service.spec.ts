@@ -1547,6 +1547,45 @@ describe("MenusService — every menu read is kept as its own version", () => {
         expect(batch.p_effective_from).toBe("2026-09-21T12:00:00Z");
       });
 
+      it("r28 G1: a later round reads the house's rows again, never reusing the first read", async () => {
+        const tables: Record<string, Row[]> = base();
+        // A writer that REPLACES the row (as a database read would return a
+        // new one), so a stale first read cannot pass for the price just set.
+        const rpc = (fn: string, args: Row) => {
+          if (fn === "set_house_menu_price") {
+            const at = tables.restaurant_inventory.findIndex((i) => i.id === args.p_inventory_id);
+            const inv = { ...tables.restaurant_inventory[at] };
+            if (args.p_set_bottle) inv.menu_price_current = args.p_bottle_price;
+            if (args.p_set_glass) inv.menu_price_glass = args.p_glass_price;
+            tables.restaurant_inventory[at] = inv;
+            return { data: { outcome: "changed", held: [] }, error: null };
+          }
+          return pricing(tables)(fn, args);
+        };
+        const service = makeService(tables, {
+          wineSubmissions: {
+            ...wineSubmissions,
+            resolveLibraryWinesBatch: async (items: unknown[]) =>
+              items.map(() => ({ masterWineId: "mw-1", matched: true, libraryTier: 1, confidence: 99 })),
+          },
+          rpc,
+          scanParser: {
+            parseWithWarnings: async () => ({
+              items: [{ name: "Opus One", bottle_price: 64 }, { name: "Opus One by the glass", by_glass_price: 15 }],
+              warnings: [],
+            }),
+          },
+        });
+        const read = await service.importMenu(
+          { method: "scan", data: { imageBase64: Buffer.from("%PDF").toString("base64") }, restaurantId: "rest-1" } as any,
+          "user-1",
+        );
+        await (service as any).whenRead?.(read.menuId);
+        await service.makeCurrent("rest-1", read.menuId, "user-2", await fingerprintOf(service, read.menuId));
+        const second = tables.menu_items.find((m) => m.name === "Opus One by the glass")!;
+        expect(second.price_flag_note).toMatch(/kept the bottle price 64\.00/);
+      });
+
       it("r28 G1: a refusal after the switch says the menu IS current, never that nothing changed", async () => {
         const tables: Record<string, Row[]> = base();
         const { service, menuId } = await readMenu(tables, [{ name: "Barolo", bottle_price: 80 }]);
