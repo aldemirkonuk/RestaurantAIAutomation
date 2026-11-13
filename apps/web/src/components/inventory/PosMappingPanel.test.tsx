@@ -13,6 +13,8 @@ const rejectProposal = vi.hoisted(() => vi.fn());
 const runCatalogMatch = vi.hoisted(() => vi.fn());
 const setSaleUnits = vi.hoisted(() => vi.fn());
 const getTargetMargin = vi.hoisted(() => vi.fn());
+const confirmPourSize = vi.hoisted(() => vi.fn());
+const confirmWinePour = vi.hoisted(() => vi.fn());
 
 vi.mock("../../services/api/posHub", () => ({
   getMatchProposals,
@@ -23,7 +25,7 @@ vi.mock("../../services/api/posHub", () => ({
   runCatalogMatch,
   setSaleUnits,
 }));
-vi.mock("../../services/api/pricing", () => ({ getTargetMargin }));
+vi.mock("../../services/api/pricing", () => ({ getTargetMargin, confirmPourSize, confirmWinePour }));
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
@@ -272,5 +274,151 @@ describe("PosMappingPanel", () => {
     expect(
       screen.getByText(/not a claim that the\s+queue is empty/i),
     ).toBeInTheDocument();
+  });
+});
+
+/**
+ * r26 (menu-pos-mount): a glass or a shot waits for a confirmed pour, and no
+ * screen confirmed one (TargetMarginSection is mounted nowhere). The pour is
+ * confirmed in the panel, beside the button that waits for it.
+ */
+describe("PosMappingPanel — a pour is confirmed where the size waits for it", () => {
+  const queuedRioja = () => {
+    getMatchProposals.mockResolvedValue([]);
+    getUnresolvedLines.mockResolvedValue(
+      queue({
+        items: [
+          { source: "simpos", external_item_id: "ext-9", item_name: "Rioja", reason: "no_sale_volume", occurrences: 1, qty_total: 1 },
+        ],
+      }),
+    );
+    getItemMappings.mockResolvedValue([
+      { id: "map-9", source: "simpos", external_item_id: "ext-9", item_name: "Rioja", is_wine: true, inventory_id: "inv-1", master_wine_id: null, sale_unit: null, sale_volume_ml: null, updated_at: null },
+    ]);
+  };
+
+  it("an owner confirms the house glass with Enter, and a wine's glass can then be picked", async () => {
+    confirmPourSize.mockResolvedValue({
+      readable: true,
+      reason: null,
+      pour: { confirmed: true, ml: 140, confirmedAt: "2026-11-13T10:00:00Z", confirmedBy: { userId: "u1", name: "Aylin" } },
+    });
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} canManage inventory={good({ kind: "wine", bottleMl: 750 })} />);
+
+    await screen.findByText("ext-1");
+    expect(screen.getByTestId("house-pour")).toHaveTextContent("The house's glass of wine is not confirmed.");
+    expect(screen.getByRole("button", { name: "Glass: size not known" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Confirm the house glass" }));
+    const box = screen.getByLabelText("The house's glass of wine, in ml");
+    // It never starts from the database's 150 default.
+    expect(box).toHaveValue("");
+    expect(box).toHaveFocus();
+    await user.type(box, "140");
+    expect(screen.getByTestId("pour-box")).toHaveTextContent("Confirm records the house's glass of wine as 140 ml.");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(confirmPourSize).toHaveBeenCalledWith(140));
+    expect(await screen.findByRole("button", { name: "Glass 140ml" })).toBeEnabled();
+    expect(screen.getByTestId("house-pour")).toHaveTextContent("pours the house's 140 ml, confirmed by Aylin");
+    expect(screen.queryByTestId("pour-box")).toBeNull();
+    // Confirming a pour picks nothing for the person.
+    expect(screen.getByRole("button", { name: "Glass 140ml" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("staff are told who can confirm it, with no box", async () => {
+    render(<PosMappingPanel isOpen onClose={() => {}} inventory={good({ kind: "wine", bottleMl: 750 })} />);
+    await screen.findByText("ext-1");
+    expect(screen.getByTestId("house-pour")).toHaveTextContent("Only an owner or a manager can confirm it.");
+    expect(screen.queryByRole("button", { name: /Confirm the house glass|Confirm a glass size/ })).toBeNull();
+  });
+
+  it("a house pour that could not be read says so, and offers no confirm", async () => {
+    getTargetMargin.mockRejectedValue(new Error("network down"));
+    render(<PosMappingPanel isOpen onClose={() => {}} canManage inventory={good({ kind: "wine", bottleMl: 750 })} />);
+    await screen.findByText("ext-1");
+    expect(screen.getByTestId("house-pour")).toHaveTextContent("could not be read (network down)");
+    expect(screen.queryByRole("button", { name: /house glass/ })).toBeNull();
+  });
+
+  it("an unreadable answer is not an unconfirmed pour", async () => {
+    getTargetMargin.mockResolvedValue({ readable: false, reason: "the house row could not be read", pour: { confirmed: false, ml: null } });
+    render(<PosMappingPanel isOpen onClose={() => {}} canManage inventory={good({ kind: "wine", bottleMl: 750 })} />);
+    await screen.findByText("ext-1");
+    expect(screen.getByTestId("house-pour")).toHaveTextContent("could not be read (the house row could not be read)");
+  });
+
+  it("a spirit's shot is confirmed on its row; the shot is then choosable, not chosen", async () => {
+    confirmWinePour.mockResolvedValue({ inventoryId: "inv-1", pour: { confirmed: true, ml: 40 } });
+    const onChanged = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <PosMappingPanel isOpen onClose={() => {}} canManage onChanged={onChanged} inventory={good({ kind: "spirit", bottleMl: 700 })} />,
+    );
+    await screen.findByText("ext-1");
+    expect(screen.getByRole("button", { name: "Shot: size not known" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Confirm a shot size" }));
+    await user.type(screen.getByLabelText("One shot of Good, in ml"), "40");
+    await user.click(screen.getByRole("button", { name: "Confirm pour" }));
+
+    await waitFor(() => expect(confirmWinePour).toHaveBeenCalledWith("inv-1", 40));
+    const shot = await screen.findByRole("button", { name: "Shot 40ml" });
+    expect(shot).toBeEnabled();
+    expect(shot).toHaveAttribute("aria-pressed", "false");
+    expect(onChanged).toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith("Good: one shot is now 40 ml.");
+    await user.click(shot);
+    expect(shot).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("a refused pour keeps the box open and says why; nothing becomes choosable", async () => {
+    confirmWinePour.mockRejectedValue({ response: { status: 403, data: { message: "nope" } } });
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} canManage inventory={good({ kind: "spirit", bottleMl: 700 })} />);
+    await screen.findByText("ext-1");
+    await user.click(screen.getByRole("button", { name: "Confirm a shot size" }));
+    await user.type(screen.getByLabelText("One shot of Good, in ml"), "40{Enter}");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The pour was not confirmed: only an owner or a manager can confirm a pour. Nothing was recorded.",
+    );
+    expect(screen.getByTestId("pour-box")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Shot: size not known" })).toBeDisabled();
+  });
+
+  it("Escape closes the box and sends nothing", async () => {
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} canManage inventory={good({ kind: "spirit", bottleMl: 700 })} />);
+    await screen.findByText("ext-1");
+    await user.click(screen.getByRole("button", { name: "Confirm a shot size" }));
+    await user.type(screen.getByLabelText("One shot of Good, in ml"), "40{Escape}");
+    expect(screen.queryByTestId("pour-box")).toBeNull();
+    expect(confirmWinePour).not.toHaveBeenCalled();
+  });
+
+  it("a wine with no bottle size is not asked for a pour: its size is what is missing", async () => {
+    render(<PosMappingPanel isOpen onClose={() => {}} canManage inventory={good({ kind: "wine" })} />);
+    await screen.findByText("ext-1");
+    expect(screen.getByRole("button", { name: "Glass: size not known" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Confirm a glass size" })).toBeNull();
+  });
+
+  it("a queued wine's glass waits for its own pour, which is confirmed on the queued row", async () => {
+    queuedRioja();
+    getTargetMargin.mockResolvedValue({ pour: { confirmed: true, ml: 150 } });
+    confirmWinePour.mockResolvedValue({ inventoryId: "inv-1", pour: { confirmed: true, ml: 125 } });
+    setSaleUnits.mockResolvedValue({ results: [{ mapping_id: "map-9", ok: true }] });
+    const user = userEvent.setup();
+    render(<PosMappingPanel isOpen onClose={() => {}} canManage inventory={good({ kind: "wine", bottleMl: 750 })} />);
+
+    await screen.findByText("Rioja");
+    expect(screen.getByRole("button", { name: "Glass 150ml" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Confirm a glass size" }));
+    expect(screen.getByTestId("pour-box")).toHaveTextContent(/glass price advice uses the same pour|Type a pour/);
+    await user.type(screen.getByLabelText("One glass of Good, in ml"), "125{Enter}");
+    await waitFor(() => expect(confirmWinePour).toHaveBeenCalledWith("inv-1", 125));
+    await user.click(await screen.findByRole("button", { name: "Glass 125ml" }));
+    await waitFor(() =>
+      expect(setSaleUnits).toHaveBeenCalledWith([{ mapping_id: "map-9", sale_unit: "glass" }], undefined),
+    );
   });
 });

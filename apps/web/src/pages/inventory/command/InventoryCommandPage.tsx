@@ -1633,6 +1633,7 @@ export function InventoryCommandPage() {
           void refetchPosQueue();
           void refetchInventory();
         }}
+        canManage={canEditPrice}
       />
 
       <AddWineSelectionModal

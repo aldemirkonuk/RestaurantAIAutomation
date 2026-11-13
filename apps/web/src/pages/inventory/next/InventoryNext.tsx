@@ -1077,6 +1077,7 @@ export default function InventoryNext() {
             }));
           })()}
           onChanged={refreshStock}
+          canManage={data.canManage}
         />
       ) : null}
     </div>
