@@ -4,8 +4,9 @@
  * `bits.tsx` prints every figure with a hard-coded `$`, so a TRY house read
  * "Value on hand $0" and "Your price $160.00" (browser walk 2026-11-12). The
  * new page already reads the house's code once (`useInventoryNextData`,
- * `cellMoney`); this is the same read, under the same query key so the two
- * pages share one fetch, and the same four states:
+ * `cellMoney`); this is the same read, under the same query key
+ * (`houseCurrencyKey`) so the two pages share one fetch, and the same four
+ * states:
  *
  *  - reading       the dash, until the code is known — never a borrowed `$`;
  *  - recorded      the house's code, with the currency's own decimal places;
@@ -18,6 +19,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { settingsApi } from '../../../services/api/settings'
 import { currencyMinorUnits } from '../../../lib/currency'
+import { useAuthStore } from '../../../stores/authStore'
 
 export type HouseCurrencyState =
   | { state: 'reading'; code: null }
@@ -31,9 +33,21 @@ const LOT_COST_PLACES = 6
 /** The legacy page's dash for a figure it does not have. */
 const NONE = '-'
 
+/**
+ * The cache key for one house's currency. The house is IN the key, as on the
+ * dashboard, /menu and /reports: a switch already forgets every read
+ * (`forgetHouseReads`, AuthContext), but a read still in flight when it does
+ * would land under a house-less key and price the next house's figures in the
+ * last house's money. Keyed by house, it can only ever answer for its own.
+ */
+export function houseCurrencyKey(restaurantId: string | null | undefined) {
+  return ['settings', 'currency', restaurantId ?? null] as const
+}
+
 export function useHouseCurrency(): HouseCurrencyState {
+  const house = useAuthStore((s) => s.activeRestaurantId)
   const q = useQuery({
-    queryKey: ['settings', 'currency'],
+    queryKey: houseCurrencyKey(house),
     queryFn: () => settingsApi.houseCurrency(),
     staleTime: 5 * 60_000,
   })

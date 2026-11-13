@@ -30,6 +30,8 @@ import {
   pickDocuments,
 } from '../../../services/api/documents'
 import { settingsApi } from '../../../services/api/settings'
+import { useAuthStore } from '../../../stores/authStore'
+import { houseCurrencyKey } from './house-money'
 import { useNotificationStore } from '../../../stores'
 import { CURRENCY_CODES } from '../../../lib/currency'
 /*
@@ -392,8 +394,10 @@ export function ReceivingWorkspace({ order, items, onClose, readOnly = false }: 
    * USD. `readable: false` is a third state again — a failed read is never
    * rendered as "no currency recorded" (ADR 0083).
    */
+  const activeHouse = useAuthStore((s) => s.activeRestaurantId)
   const { data: house } = useQuery({
-    queryKey: ['settings', 'currency'],
+    // Keyed by house: a read in flight at a house switch answers only for its own.
+    queryKey: houseCurrencyKey(activeHouse),
     queryFn: () => settingsApi.houseCurrency(),
     staleTime: 5 * 60_000,
   })
