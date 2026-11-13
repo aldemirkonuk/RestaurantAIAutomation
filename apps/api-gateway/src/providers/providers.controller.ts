@@ -42,6 +42,7 @@ import {
 } from "./vendor-wine-search";
 import { OrganizationsService } from "../organizations/organizations.service";
 import { roleSatisfies } from "../procurement/order-approval-gate";
+import { VendorRemovalOutcome } from "../procurement/vendor-removal";
 import {
   readVendorCurrency,
   usualCurrencyCoverageSentence,
@@ -531,18 +532,22 @@ export class ProvidersController {
 
   @Delete(":id")
   @ApiOperation({ summary: "Soft delete provider" })
-  @ApiResponse({ status: 200, description: "Provider deleted" })
+  @ApiResponse({
+    status: 200,
+    description:
+      "Provider removed. Its standing orders are paused and its open orders counted; `message` says so in words.",
+  })
   async deleteProvider(
     @Param("id") providerId: string,
     @CurrentUser() user: AuthUser,
-  ): Promise<{ success: boolean }> {
+  ): Promise<{ success: boolean } & VendorRemovalOutcome> {
     try {
-      await this.providersService.softDeleteProvider(
+      const outcome = await this.providersService.softDeleteProvider(
         providerId,
         houseOf(user),
         user?.userId,
       );
-      return { success: true };
+      return { success: true, ...outcome };
     } catch (error) {
       rethrow(error, "Failed to delete provider");
     }
