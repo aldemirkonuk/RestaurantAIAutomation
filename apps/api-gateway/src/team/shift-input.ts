@@ -108,27 +108,16 @@ const fold = (v: unknown) => String(v ?? "").trim().toLowerCase();
 
 /**
  * Why a staff member may not take an open shift for themselves, or `null`
- * when they may (QA round 4 B5, last clause). Two rules, from what the house
- * records:
+ * (QA round 4 B5). A manager can still assign it; the sentence says so.
  *
- *   role        - the shift names a role the house uses as a qualification
- *                 (some roster row lists it as a position or a skill), and
- *                 the person's own position and skills do not list it. The
- *                 /team sheet labels this field "Station" ("Floor, Main bar,
- *                 Pass"), and rows the gateway adds from access get the
- *                 position "Staff", so a station nobody on the roster lists
- *                 is a place, not a qualification, and is anyone's.
- *   certificate - a certificate type on their file has run out before the
- *                 shift's day: every row of that type has an expiry earlier
- *                 than `shift_date` (good through its expiry day). A renewal
- *                 added as a new row keeps the type good. The stored
- *                 `status` is not read: it is worked out when the row is
- *                 written and goes stale.
- *
- * A shift records no certificate it needs (no column), so "the certificate
- * this shift needs" cannot be asked; a lapsed one on file is what the house
- * records. A manager can still give the shift to the person by hand; the
- * sentence says so.
+ * role: refused when the shift's role is one some roster row in the house
+ *   lists (position or skill) and the person's own do not. /team labels the
+ *   field "Station" and auto-added rows read "Staff", so a station nobody
+ *   lists is a place, not a qualification.
+ * certificate: refused when a type's latest expiry on file is before the
+ *   shift's day (good through its expiry day; no expiry never lapses; a
+ *   renewal row keeps the type good). Stored `status` goes stale; not read.
+ *   Shifts record no certificate they need, so only a lapse can be asked.
  */
 export function claimRefusal(
   shift: { shift_date: string; role?: string | null },

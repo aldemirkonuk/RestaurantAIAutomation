@@ -1378,9 +1378,7 @@ export class ScheduleService {
           "This shift is in a week that is not published yet. Nothing was changed.",
         );
       }
-      // The shift's role and the person's certificates (QA round 4 B5).
-      // A manager assigning by hand is not held to these: they are the
-      // person who decides, and the hand-over shows the role as a warning.
+      // Role and certificates (QA round 4 B5); a manager is not held to them.
       const { data: certs, error: certsErr } = await this.sb
         .from("team_certifications")
         .select("cert_type, expires_at")
@@ -1395,8 +1393,7 @@ export class ScheduleService {
           "Could not read your certificates, so the shift was not claimed.",
         );
       }
-      // Which roles the house records on people: a station no one lists is
-      // a place, not a qualification (see claimRefusal).
+      // The roles the house records on people (see claimRefusal).
       const { data: roster, error: rosterErr } = await this.sb
         .from("team_members")
         .select("position, skills")

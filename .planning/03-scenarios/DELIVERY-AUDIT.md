@@ -132,7 +132,7 @@ reads as *"nothing to report"* forever.
 | Fixed on `fix/swallowed-read-errors-and-guard` | 8 | 5 |
 | **Remaining, baselined and non-growing** | **191 of 215** | 42 |
 
-> **143 as of 2026-11-13, on `fix/team-claim-checks-role-and-certificate`** (`check_read_errors_not_swallowed.py` on that tree: 1749 files scanned, 143 sites, 143 baselined, 0 allowlisted, PASS). QA round 4 B5: `ScheduleService.assignCover` binds the error on the staff member's own profile read and refuses with a 500 in words, because a failed read was answered "You can only claim open shifts for yourself"; this retires `schedule.service.ts` team_members/me. Re-measure before citing.
+> **143 as of 2026-11-13, on `fix/team-claim-checks-role-and-certificate`** (guard: 1749 files, 143 sites, 143 baselined, PASS). QA r4 B5: `assignCover` binds its own-profile read error; retires `schedule.service.ts` team_members/me. Re-measure before citing.
 
 > **144 as of 2026-11-07, on `fix/team-reads-fail-closed-and-drafts-hidden` (origin/main `7221901d6` plus the fix)** (`check_read_errors_not_swallowed.py` on that tree: 1748 files scanned, 144 sites, 144 baselined, 0 allowlisted, PASS). QA round 4 B1: `ScheduleService.getMyWeek` binds the error on its four reads and refuses with a 500 in words, because a failed shifts read printed seven days of "Off" on the staff week; this retires `schedule.service.ts` team_members/member, schedules/schedule, shifts/shifts and schedule_receipts/receipt. Re-measure before citing.
 

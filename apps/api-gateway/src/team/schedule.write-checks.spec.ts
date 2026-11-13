@@ -321,7 +321,7 @@ describe("B5 — a staff claim matches the shift's role and the person's certifi
     ...extra,
   });
 
-  it("a shift for a role the person's position and skills do not list is refused, in words", async () => {
+  it("a role the person's position and skills do not list is refused, in words", async () => {
     const db = seed();
     kim(db).position = "Bartender";
     const err = await claim(db).catch((e) => e);
@@ -351,7 +351,7 @@ describe("B5 — a staff claim matches the shift's role and the person's certifi
     expect(String(read?.columns).split(",").map((c) => c.trim())).toContain("role");
   });
 
-  it("a station no one on the roster lists is a place, not a qualification: anyone's", async () => {
+  it("a station no one on the roster lists is anyone's", async () => {
     const db = seed();
     openShift(db).role = "Main bar";
     kim(db).position = "Staff";
@@ -398,7 +398,7 @@ describe("B5 — a staff claim matches the shift's role and the person's certifi
     expect(openShift(db).member_id).toBeNull();
   });
 
-  it("another house's roster does not make this house's station a qualification", async () => {
+  it("another house's roster does not count", async () => {
     const db = seed();
     openShift(db).role = "Main bar";
     kim(db).position = "Staff";
@@ -448,7 +448,7 @@ describe("B5 — a staff claim matches the shift's role and the person's certifi
     expect(openShift(db).member_id).toBe("m-kim");
   });
 
-  it("the stored status is not read: an 'expired' label with a later date does not refuse", async () => {
+  it("the stored status is not read", async () => {
     const db = seed();
     db.tables.team_certifications.push(cert("2100-01-01", { status: "expired" }));
     await claim(db);
