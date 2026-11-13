@@ -192,6 +192,62 @@ describe("B4 — a call-out happens once", () => {
   });
 });
 
+describe("S4 — the cover shift names who called out, not their id", () => {
+  const coverNote = (db: StubDb) =>
+    shiftsOn(db, WEEK).find((s) => s.state === "open")?.note;
+
+  it("the open cover shift says the person's name", async () => {
+    const db = seed();
+    await build(db).svc.reportCallout(MANAGER, RID, "sh-sam", {} as any);
+    expect(coverNote(db)).toBe("Cover for Sam, who called out");
+    expect(coverNote(db)).not.toContain("m-sam");
+  });
+
+  it("the reason stays on the called-out row; the cover note does not copy it", async () => {
+    const db = seed();
+    await build(db).svc.reportCallout(MANAGER, RID, "sh-sam", { reason: "fever" } as any);
+    expect(coverNote(db)).toBe("Cover for Sam, who called out");
+    expect(db.tables.shifts.find((s) => s.id === "sh-sam")?.note).toBe("Call-out: fever");
+  });
+
+  it("the name is read from this house's roster only", async () => {
+    const db = seed();
+    // The same member id in another house, listed first: an unscoped read
+    // would print its name (or fail on two rows).
+    const sam = db.tables.team_members.find((m) => m.id === "m-sam")!;
+    db.tables.team_members.unshift({ ...sam, restaurant_id: "other-house", display_name: "Elsewhere" });
+    await build(db).svc.reportCallout(MANAGER, RID, "sh-sam", {} as any);
+    expect(coverNote(db)).toBe("Cover for Sam, who called out");
+  });
+
+  it("a blank name reads as a plain call-out", async () => {
+    const db = seed();
+    db.tables.team_members.find((m) => m.id === "m-sam")!.display_name = "   ";
+    await build(db).svc.reportCallout(MANAGER, RID, "sh-sam", {} as any);
+    expect(coverNote(db)).toBe("Cover for a call-out");
+  });
+
+  it("a failed name read still records the call-out, in plain words", async () => {
+    const db = seed();
+    const realFrom = db.supabase.from.bind(db.supabase);
+    (db.supabase as any).from = (t: string) => {
+      const b: any = realFrom(t);
+      if (t !== "team_members") return b;
+      const realMaybe = b.maybeSingle.bind(b);
+      b.maybeSingle = async () =>
+        b.columns === "display_name"
+          ? { data: null, error: { message: "timeout" } }
+          : realMaybe();
+      return b;
+    };
+    const { svc, notifications } = build(db);
+    await svc.reportCallout(MANAGER, RID, "sh-sam", {} as any);
+    expect(coverNote(db)).toBe("Cover for a call-out");
+    expect(db.tables.shifts.find((s) => s.id === "sh-sam")?.state).toBe("callout");
+    expect(notifications.persistForRestaurant).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("B5 — an open shift is claimed once, by rules", () => {
   it("two staff taking the same open shift at once: one gets it, the other is told", async () => {
     const db = seed();
