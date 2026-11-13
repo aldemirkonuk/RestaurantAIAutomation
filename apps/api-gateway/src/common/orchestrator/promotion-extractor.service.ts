@@ -3,7 +3,7 @@ import { Cron, CronExpression } from "@nestjs/schedule";
 import { DatabaseService } from "../../database/database.service";
 import { WebsocketGateway } from "../../websocket/websocket.gateway";
 import { looksPromotional, TransportSignals } from "./email-triage";
-import { extractPromotion } from "./promo-extract";
+import { amountIn, extractPromotion } from "./promo-extract";
 import { computePriority } from "./priority";
 import { InboundResponderService } from "./inbound-responder.service";
 import { OWNER_AND_MANAGER } from "../tenant/live-membership";
@@ -283,7 +283,7 @@ export class PromotionExtractorService {
     let offer = "";
     if (dv.percent != null) offer = `${dv.percent}% off`;
     else if (dv.amount != null)
-      offer = `${dv.currency === "EUR" ? "€" : dv.currency === "GBP" ? "£" : "$"}${dv.amount} off`;
+      offer = `${amountIn(dv.amount, dv.currency)} off`;
     else if (dv.free_shipping) offer = "free shipping";
     else if (row?.promo_type) offer = String(row.promo_type).replace(/_/g, " ");
     return offer ? `${provider} — ${offer}` : provider;

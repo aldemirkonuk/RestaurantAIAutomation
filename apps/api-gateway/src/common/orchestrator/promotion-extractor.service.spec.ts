@@ -98,3 +98,28 @@ describe("PromotionExtractorService.extractAndStore", () => {
     expect(row.discount_value).toMatchObject({ amount: 15, amount_unit: "case", pack_size: 12, currency: "USD" });
   });
 });
+
+/**
+ * The digest line says the money the stored offer names, or none: the
+ * fallback for anything not EUR or GBP was `$`, so a lira offer, or one that
+ * named no currency, read as dollars (r9 left list, 2026-11-12).
+ */
+describe("a digest line never borrows a dollar sign", () => {
+  const line = (dv: Record<string, unknown>) =>
+    (service().svc as any).digestLine({ providers: { name: "Acme" }, discount_value: dv });
+
+  it("names a stated EUR, GBP or USD by its sign", () => {
+    expect(line({ amount: 15, currency: "EUR" })).toBe("Acme — €15 off");
+    expect(line({ amount: 15, currency: "GBP" })).toBe("Acme — £15 off");
+    expect(line({ amount: 15, currency: "USD" })).toBe("Acme — $15 off");
+  });
+
+  it("puts another stated code after the figure", () => {
+    expect(line({ amount: 200, currency: "TRY" })).toBe("Acme — 200 TRY off");
+  });
+
+  it("prints the figure bare when the offer names no currency", () => {
+    expect(line({ amount: 15, currency: null })).toBe("Acme — 15 off");
+    expect(line({ amount: 15 })).not.toContain("$");
+  });
+});

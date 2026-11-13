@@ -333,6 +333,27 @@ function classifyPromoType(text: string): PromoType {
  * Extract a structured promotion from a promotional email. Returns null when nothing
  * promotional is detectable (no discount, no free-shipping, no promo keywords).
  */
+
+/**
+ * An amount as the mail wrote it, with the sign of the money the mail named.
+ * The fallback for anything not EUR or GBP used to be `$`, so a mail that
+ * named no currency was summarised in dollars on the house's promo list and
+ * digest (r9 left list, 2026-11-12). Now: € £ $ only when the mail named
+ * EUR, GBP or USD; another stated code follows the figure; no currency named
+ * prints the figure bare. The figure keeps the mail's own digits (no
+ * rounding, no added decimals), which is why this is not `moneyIn`.
+ */
+export function amountIn(
+  amount: number | string,
+  currency: string | null | undefined,
+): string {
+  const c = typeof currency === "string" ? currency.trim().toUpperCase() : "";
+  if (c === "EUR") return `€${amount}`;
+  if (c === "GBP") return `£${amount}`;
+  if (c === "USD") return `$${amount}`;
+  return /^[A-Z]{3}$/.test(c) ? `${amount} ${c}` : `${amount}`;
+}
+
 export function extractPromotion(
   subject: string | null | undefined,
   body: string | null | undefined,
@@ -435,13 +456,13 @@ export function extractPromotion(
   if (discount_pct != null) parts.push(`${discount_pct}% off`);
   if (discount_amount != null)
     parts.push(
-      `${currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"}${discount_amount} off${amount_unit ? ` per ${amount_unit}` : ""}`,
+      `${amountIn(discount_amount, currency)} off${amount_unit ? ` per ${amount_unit}` : ""}`,
     );
   if (free_shipping) parts.push("free shipping");
   if (threshold_qty != null) parts.push(`on ${threshold_qty}+`);
   if (threshold_amount != null)
     parts.push(
-      `over ${currency === "EUR" ? "€" : currency === "GBP" ? "£" : "$"}${threshold_amount}`,
+      `over ${amountIn(threshold_amount, currency)}`,
     );
   if (valid_until) parts.push(ended ? `ended ${valid_until}` : `until ${valid_until}`);
   const summary = parts.length
