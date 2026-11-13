@@ -209,6 +209,15 @@ export class LogsTimelineService {
     }
   }
 
+  /**
+   * A check is dated by the moment it reached: its close, or its open while it
+   * is still open. The window has to page on that same moment. It used to page
+   * every check on `opened_at` while dating it by `closed_at`, so in a house
+   * with more checks than the window, a check opened early and closed late was
+   * not read with the page its close time belonged to and surfaced on a later
+   * page, below events older than it. Two reads keep the column and the date
+   * the same: closed checks paged on `closed_at`, open checks on `opened_at`.
+   */
   private fetchPosChecks(
     db: any,
     restaurantId: string,
@@ -216,28 +225,37 @@ export class LogsTimelineService {
     cursor: Cursor,
   ): Promise<SourceResult> {
     return this.guard("pos_checks", async () => {
-      let q = db
-        .from("pos_checks")
-        .select(
-          "id, external_check_id, source, closed_at, opened_at, correlation_id, items",
-        )
-        .eq("restaurant_id", restaurantId);
-      q = windowed(q, "opened_at", cursor);
-      if (correlationId) q = q.eq("correlation_id", correlationId);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data || []).map((r: any) => ({
-        id: r.id,
-        source: "pos_checks" as const,
-        occurredAt: r.closed_at || r.opened_at || null,
-        correlationId: r.correlation_id ?? null,
-        summary: `POS check ${r.external_check_id}${r.closed_at ? " closed" : " opened"} (${r.source})`,
-        detail: {
-          externalCheckId: r.external_check_id,
-          source: r.source,
-          itemCount: Array.isArray(r.items) ? r.items.length : 0,
-        },
-      }));
+      const checks = () => {
+        let q = db
+          .from("pos_checks")
+          .select(
+            "id, external_check_id, source, closed_at, opened_at, correlation_id, items",
+          )
+          .eq("restaurant_id", restaurantId);
+        if (correlationId) q = q.eq("correlation_id", correlationId);
+        return q;
+      };
+      const [closed, open] = await Promise.all([
+        windowed(checks().not("closed_at", "is", null), "closed_at", cursor),
+        windowed(checks().is("closed_at", null), "opened_at", cursor),
+      ]);
+      if (closed.error) throw closed.error;
+      if (open.error) throw open.error;
+      const seen = new Set<string>();
+      return [...(closed.data || []), ...(open.data || [])]
+        .filter((r: any) => (seen.has(r.id) ? false : (seen.add(r.id), true)))
+        .map((r: any) => ({
+          id: r.id,
+          source: "pos_checks" as const,
+          occurredAt: r.closed_at || r.opened_at || null,
+          correlationId: r.correlation_id ?? null,
+          summary: `POS check ${r.external_check_id}${r.closed_at ? " closed" : " opened"} (${r.source})`,
+          detail: {
+            externalCheckId: r.external_check_id,
+            source: r.source,
+            itemCount: Array.isArray(r.items) ? r.items.length : 0,
+          },
+        }));
     });
   }
 
