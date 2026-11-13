@@ -133,8 +133,8 @@ function useActiveMenu(restaurantId: string | null) {
       vintage?: string
       region?: string
       grape_variety?: string
-      by_glass_price?: number
-      bottle_price?: number
+      by_glass_typed?: string
+      bottle_typed?: string
     }) => {
       if (!q.data?.menuId) throw new Error('No active menu to add to');
       return addMenuItem(q.data.menuId, fields);
@@ -151,7 +151,7 @@ function AddItemForm({ onAdd, adding, error }: {
   // a failed POST, with no way to recover it — "a draft is not sent" cuts
   // both ways: a failure must not erase it either.
   onAdd: (
-    fields: { name: string; category?: string; by_glass_price?: number; bottle_price?: number },
+    fields: { name: string; category?: string; by_glass_typed?: string; bottle_typed?: string },
     opts: { onSuccess: () => void },
   ) => void
   adding: boolean
@@ -169,8 +169,11 @@ function AddItemForm({ onAdd, adding, error }: {
       {
         name: name.trim(),
         category: category.trim() || undefined,
-        by_glass_price: byGlass ? Number(byGlass) : undefined,
-        bottle_price: bottle ? Number(bottle) : undefined,
+        // Sent as typed: the gateway reads "45,50" and "1.250,00" the way the
+        // Change price boxes are read (parseMenuPrice), and refuses what is
+        // not a price instead of adding the line unpriced (r28 G7).
+        by_glass_typed: byGlass.trim() || undefined,
+        bottle_typed: bottle.trim() || undefined,
       },
       {
         onSuccess: () => {
@@ -213,9 +216,8 @@ function AddItemForm({ onAdd, adding, error }: {
       <input
         id="menu-add-glass"
         className="cl-field cl-focus cl-num"
-        type="number"
-        min={0}
-        step="0.01"
+        inputMode="decimal"
+        autoComplete="off"
         value={byGlass}
         onChange={(e) => setByGlass(e.target.value)}
         style={{ width: 80 }}
@@ -226,9 +228,8 @@ function AddItemForm({ onAdd, adding, error }: {
       <input
         id="menu-add-bottle"
         className="cl-field cl-focus cl-num"
-        type="number"
-        min={0}
-        step="0.01"
+        inputMode="decimal"
+        autoComplete="off"
         value={bottle}
         onChange={(e) => setBottle(e.target.value)}
         style={{ width: 80 }}
@@ -571,7 +572,7 @@ export default function MenuNext() {
             <div style={{ marginTop: 16 }}>
               <AddItemForm
                 adding={add.isPending}
-                error={add.isError ? (add.error instanceof Error ? add.error.message : 'no reason given') : null}
+                error={add.isError ? refusalOf(add.error) : null}
                 onAdd={(fields, opts) => add.mutate(fields, opts)}
               />
               {(() => {

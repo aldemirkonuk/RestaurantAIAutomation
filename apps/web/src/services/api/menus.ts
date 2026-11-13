@@ -209,7 +209,9 @@ export async function reviewMenuItem(
 
 export async function addMenuItem(
   menuId: string,
-  item: WineExtractItem
+  // by_glass_typed / bottle_typed: a price as the person typed it, read by the
+  // gateway's parseMenuPrice (r28 G7). Send these or the numbers, not both.
+  item: WineExtractItem & { by_glass_typed?: string; bottle_typed?: string }
 ): Promise<MenuImportReviewItem> {
   const response = await apiClient.post<MenuImportReviewItem>('/menus/items', {
     menuId,
