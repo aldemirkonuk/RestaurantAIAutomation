@@ -44,15 +44,15 @@ beforeEach(() => {
 })
 
 describe('HouseMenu: the first proof keeps its places', () => {
-  it('counts a kitchen line as set aside, never as set (read = set + pencilled + set aside)', () => {
+  it('counts a kitchen line as a dish, never as set (read = set + pencilled + dishes)', () => {
     typedProof([
       unplaced('a', 'House Red'),
       { menuItemId: 'k', name: 'Tiramisu', category: 'dessert', matched: false, needsReview: false, kitchen_line: true },
     ])
     page()
     const count = screen.getByRole('group', { name: 'The reading count' })
-    expect(count).toHaveTextContent('2read0in ink1in pencil1set aside')
-    expect(screen.getByText(/1 kitchen line set aside/)).toBeInTheDocument()
+    expect(count).toHaveTextContent('2read0in ink1in pencil1dish')
+    expect(screen.getByText(/1 dish kept on your menu as read/)).toBeInTheDocument()
   })
 
   it('a placed line stays placed after a reload', async () => {
