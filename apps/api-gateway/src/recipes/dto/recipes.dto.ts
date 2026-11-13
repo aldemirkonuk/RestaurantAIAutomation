@@ -123,3 +123,62 @@ export class ShelfQueryDto {
   @Min(1)
   limit?: number;
 }
+
+/** A new dish (ADR 0366). A price is the menu price as listed; none is null, never 0. */
+export class CreateDishDto {
+  @ApiProperty() @IsString() @MaxLength(200) name!: string;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(200)
+  section?: string | null;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(9_999_999_999)
+  price?: number | null;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(4000)
+  description?: string | null;
+}
+
+/** A change to a dish; a field left out is left as it is, a null clears it (not the name). */
+export class UpdateDishDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) name?: string;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(200)
+  section?: string | null;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(9_999_999_999)
+  price?: number | null;
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @ValidateIf((_o, v) => v !== null)
+  @IsString()
+  @MaxLength(4000)
+  description?: string | null;
+}
+
+/** The pasted labels to look up on the shelf by exact folded name (ADR 0366 item 7). */
+export class ShelfMatchDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(60)
+  @IsString({ each: true })
+  @MaxLength(200, { each: true })
+  labels!: string[];
+}
