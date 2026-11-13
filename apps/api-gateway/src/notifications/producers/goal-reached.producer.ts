@@ -12,7 +12,14 @@ import {
   type ProducerAudience,
   type ProducerTally,
 } from "./producer-ledger.service";
-import { clockIn, dayIn, earliness, onShiftPhrase } from "./producer-copy";
+import {
+  clockIn,
+  dayIn,
+  earliness,
+  money,
+  onShiftPhrase,
+} from "./producer-copy";
+import { readHouseCurrency } from "./house-money";
 import { ROSTER_SOURCE, rosterAt } from "./roster";
 
 /**
@@ -121,6 +128,8 @@ export class GoalReachedProducer {
 
     let ceilingGoals = 0;
     let salesGated = 0;
+    // `undefined` = not read yet; `null` = read, and the figure is said bare.
+    let houseCurrency: string | null | undefined;
 
     for (const goal of goals) {
       if (goal.direction === "at_most") {
@@ -172,6 +181,16 @@ export class GoalReachedProducer {
       const label = String(progress?.metricLabel ?? goal.metric_key);
       const unit = String(progress?.unit ?? "count");
       const name = String(goal.name || "Untitled goal");
+      // Read once per sweep, and only when a money goal is about to be said.
+      if (unit === "currency" && houseCurrency === undefined) {
+        houseCurrency = await readHouseCurrency(
+          client,
+          restaurantId,
+          this.logger,
+          PRODUCER,
+        );
+      }
+      const currency = unit === "currency" ? (houseCurrency ?? null) : null;
 
       const message = this.sentence({
         label,
@@ -183,6 +202,7 @@ export class GoalReachedProducer {
         timeZone,
         early,
         roster,
+        currency,
       });
 
       await this.ledger.emit(
@@ -209,6 +229,7 @@ export class GoalReachedProducer {
               metricKey: goal.metric_key,
               metricLabel: label,
               unit,
+              currency,
               target,
               current,
               direction: goal.direction ?? "at_least",
@@ -339,6 +360,8 @@ export class GoalReachedProducer {
     timeZone: string;
     early: { days: number; phrase: string } | null;
     roster: Array<{ name: string | null; role: string | null }>;
+    /** The house's ISO code for a currency goal; `null` says the figure bare. */
+    currency: string | null;
   }): string {
     const {
       label,
@@ -350,15 +373,12 @@ export class GoalReachedProducer {
       timeZone,
       early,
       roster,
+      currency,
     } = input;
 
     const shown = (v: number) =>
       unit === "currency"
-        ? new Intl.NumberFormat("en-US", {
-            style: "currency",
-            currency: "USD",
-            maximumFractionDigits: 2,
-          }).format(v)
+        ? money(v, currency)
         : unit === "percent"
           ? `${(v * 100).toFixed(1)}%`
           : new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(
