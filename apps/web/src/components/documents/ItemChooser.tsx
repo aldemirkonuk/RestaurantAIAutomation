@@ -1,4 +1,14 @@
 import { useState } from 'react'
+import {
+  GOOD_KINDS,
+  GOOD_UNITS,
+  goodBody,
+  proposeGood,
+  unitMisfit,
+  type GoodKind,
+  type GoodUnit,
+  type LineFacts,
+} from './newGoodFromLine'
 
 /**
  * ItemChooser — a line with no remembered pairing is paired by hand (#347).
@@ -29,6 +39,10 @@ export interface ItemChooserProps {
   busy?: boolean
   /** The house's items could not be read. */
   itemsFailed?: boolean
+  /** The line being paired: offered as a new good when the house does not carry it (r21). */
+  line?: LineFacts
+  /** Carry the line as a new good and pair it. Resolves to a sentence when it did not. */
+  onCreate?: (body: { kind: string; uom: string; displayName: string }) => Promise<string | null>
 }
 
 const MAX_MATCHES = 8
@@ -76,8 +90,65 @@ const BTN: React.CSSProperties = {
   color: 'inherit',
 }
 
-export function ItemChooser({ items, itemLabel, onPick, onCancel, busy, itemsFailed }: ItemChooserProps) {
+/** "Add as a new good": name, kind and unit proposed from the line, then carried and paired. */
+function NewGood({ line, onCreate, busy }: { line: LineFacts; onCreate: NonNullable<ItemChooserProps['onCreate']>; busy?: boolean }) {
+  const first = proposeGood(line)
+  const [name, setName] = useState(first.name)
+  const [kind, setKind] = useState<GoodKind>(first.kind)
+  const [unit, setUnit] = useState<GoodUnit>(first.unit)
+  const [said, setSaid] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
+  const built = goodBody(name, kind, unit)
+  const misfit = kind === 'wine' ? null : unitMisfit(line, unit)
+  const submit = async () => {
+    if (!built.ok || sending) return
+    setSending(true)
+    setSaid(null)
+    try {
+      setSaid(await onCreate(built.body))
+    } finally {
+      setSending(false)
+    }
+  }
+  return (
+    <div data-testid="new-good" style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <span>Name</span>
+        <input type="text" value={name} onChange={(e) => setName(e.target.value)} style={{ fontSize: 11, flex: 1, minWidth: 0 }} data-testid="new-good-name" />
+      </label>
+      <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <span>Kind</span>
+        <select value={kind} onChange={(e) => setKind(e.target.value as GoodKind)} style={{ fontSize: 11 }} data-testid="new-good-kind">
+          {GOOD_KINDS.map((k) => (
+            <option key={k.value} value={k.value}>{k.label}</option>
+          ))}
+        </select>
+      </label>
+      {kind !== 'wine' && (
+        <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span>Kept</span>
+          <select value={unit} onChange={(e) => setUnit(e.target.value as GoodUnit)} style={{ fontSize: 11 }} data-testid="new-good-unit">
+            {GOOD_UNITS.map((u) => (
+              <option key={u.value} value={u.value}>{u.label}</option>
+            ))}
+          </select>
+        </label>
+      )}
+      {!built.ok && <span data-testid="new-good-why">{built.why}</span>}
+      {misfit && <span data-testid="new-good-misfit" style={{ color: 'var(--warn, #946A1A)' }}>{misfit}</span>}
+      {said && <span data-testid="new-good-said">{said}</span>}
+      <div>
+        <button type="button" style={BTN} disabled={!built.ok || busy || sending} onClick={() => void submit()} data-testid="new-good-add">
+          {sending ? 'Adding…' : 'Add and pair'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+export function ItemChooser({ items, itemLabel, onPick, onCancel, busy, itemsFailed, line, onCreate }: ItemChooserProps) {
   const [filter, setFilter] = useState('')
+  const [adding, setAdding] = useState(false)
 
   if (itemsFailed) {
     return (
@@ -108,7 +179,7 @@ export function ItemChooser({ items, itemLabel, onPick, onCancel, busy, itemsFai
       </label>
       {filter.trim() !== '' && shown.length === 0 && (
         <div data-testid="chooser-empty" style={{ marginTop: 3 }}>
-          No item matches “{filter.trim()}”. Add it on /inventory first.
+          No item matches “{filter.trim()}”.{line && onCreate ? ' Add it as a new good below.' : ' Add it on /inventory first.'}
         </div>
       )}
       {shown.length > 0 && (
@@ -133,6 +204,15 @@ export function ItemChooser({ items, itemLabel, onPick, onCancel, busy, itemsFai
           )}
         </div>
       )}
+      {line && onCreate && (adding ? (
+        <NewGood line={line} onCreate={onCreate} busy={busy} />
+      ) : (
+        <div style={{ marginTop: 3 }}>
+          <button type="button" style={BTN} disabled={busy} onClick={() => setAdding(true)} data-testid="new-good-open">
+            The house does not carry it: add as a new good
+          </button>
+        </div>
+      ))}
       <div style={{ marginTop: 3 }}>
         <button type="button" style={BTN} onClick={onCancel} data-testid="chooser-cancel">
           Cancel
