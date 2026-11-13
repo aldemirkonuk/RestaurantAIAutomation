@@ -23,10 +23,13 @@
 --   derives from the row alone, as before.
 -- * Update that gives the row its Gmail thread (the send), and does not set a
 --   key itself: the key of the house's earliest other letter in that Gmail
---   thread. With none, a key no other letter carries becomes "gm:<thread>",
---   so the answer that arrives later in that Gmail thread finds it. A key
---   another letter carries stays.
--- * A key the writer sets is kept, on insert and on update.
+--   thread; else the key of the letter it answers; else "gm:<thread>", so the
+--   answer that arrives later in that Gmail thread, or through the Mudavym
+--   address naming this letter's Message-ID, finds it. A subject key shared
+--   with another letter is not a link (two order letters can share a
+--   subject), so it does not hold the letter back.
+-- * A key the writer sets in a write is kept in that write. No product
+--   writer sets one today (grep of apps/ and services/, 2026-11-13).
 --
 -- Every lookup is inside the row's own house (restaurant_id): two houses never
 -- share a thread through this rule.
@@ -178,16 +181,17 @@ BEGIN
       AND NULLIF(btrim(COALESCE(c.thread_key, '')), '') IS NOT NULL
     ORDER BY c.created_at ASC NULLS LAST, c.id ASC
     LIMIT 1;
-    IF v_key IS NOT NULL THEN
-      NEW.thread_key := v_key;
-    ELSIF NOT EXISTS (
-      SELECT 1 FROM public.procurement_conversations c
-      WHERE c.thread_key = OLD.thread_key
-        AND c.restaurant_id = NEW.restaurant_id
-        AND c.id <> NEW.id
-    ) THEN
-      NEW.thread_key := 'gm:' || v_gm;
+    IF v_key IS NULL THEN
+      -- No letter of the house holds that Gmail thread yet. A letter that
+      -- answers one of the house's letters stays in (or moves to) that
+      -- letter's thread; any other key (its subject, its own id) moves to
+      -- the Gmail thread, which the answer will carry.
+      v_key := COALESCE(
+        public.mail_joined_thread_key(NEW.id, NEW.restaurant_id, NULL, NEW.email_headers),
+        'gm:' || v_gm
+      );
     END IF;
+    NEW.thread_key := v_key;
   END IF;
 
   IF NEW.order_id IS NOT NULL AND NEW.order_number_snapshot IS NULL THEN

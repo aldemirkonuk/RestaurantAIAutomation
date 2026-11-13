@@ -96,30 +96,49 @@ SELECT pg_temp.ok(pg_temp.key('13000000-0000-4000-8000-000000000002') = 'manual:
                   'T3b an update that sets a key keeps it');
 
 -- ── T4: a letter sent into a Gmail thread the house already holds ─────────
+-- The question already joined an older thread, so its key is not gm:aa11.
 SELECT pg_temp.letter('14000000-0000-4000-8000-000000000001', 'A', 'INBOUND', 'aa11', '<q-1@vendor.example>', '{}',
-                      'A vendor question', NULL, '2026-11-02 09:00+00');
+                      'A vendor question', 'k:q', '2026-11-02 09:00+00');
 SELECT pg_temp.letter('14000000-0000-4000-8000-000000000002', 'A', 'OUTBOUND', NULL, NULL, '{}',
                       'Our answer, staged with no headers', NULL, '2026-11-02 09:05+00');
 SELECT pg_temp.ok(pg_temp.key('14000000-0000-4000-8000-000000000002') LIKE 'msg:%',
                   'T4a a staged letter with nothing to join keys itself');
 UPDATE public.procurement_conversations SET gmail_thread_id = 'aa11'
  WHERE id = '14000000-0000-4000-8000-000000000002';
-SELECT pg_temp.ok(pg_temp.key('14000000-0000-4000-8000-000000000002') = 'gm:aa11',
+SELECT pg_temp.ok(pg_temp.key('14000000-0000-4000-8000-000000000002') = 'k:q',
                   'T4b sent into the vendor''s Gmail thread, it joins that thread');
 
--- ── T5: a key other letters carry is not moved by the send ───────────────
+-- ── T5: a subject is not a link; an answer is ──────────────────────────
+-- Two order letters to one vendor share a subject key while staged.
 SELECT pg_temp.letter('15000000-0000-4000-8000-000000000001', 'A', 'OUTBOUND', NULL, NULL, '{}',
                       E'Subject: Price list\nfirst', NULL, '2026-11-03 09:00+00');
 SELECT pg_temp.letter('15000000-0000-4000-8000-000000000002', 'A', 'OUTBOUND', NULL, NULL, '{}',
                       E'Subject: Price list\nsecond', NULL, '2026-11-03 09:01+00');
+SELECT pg_temp.ok(pg_temp.key('15000000-0000-4000-8000-000000000002') = pg_temp.key('15000000-0000-4000-8000-000000000001'),
+                  'T5a staged, the two share their subject key, as before');
 UPDATE public.procurement_conversations SET gmail_thread_id = 'bb22'
  WHERE id = '15000000-0000-4000-8000-000000000002';
-SELECT pg_temp.ok(pg_temp.key('15000000-0000-4000-8000-000000000002') = pg_temp.key('15000000-0000-4000-8000-000000000001'),
-                  'T5a the send keeps a key another letter carries');
+SELECT pg_temp.ok(pg_temp.key('15000000-0000-4000-8000-000000000002') = 'gm:bb22'
+                  AND pg_temp.key('15000000-0000-4000-8000-000000000001') LIKE 'subj:%',
+                  'T5b sent, the second leaves the shared subject for its own Gmail thread');
 SELECT pg_temp.letter('15000000-0000-4000-8000-000000000003', 'A', 'INBOUND', 'bb22', NULL, '{}',
                       'Their answer', NULL, '2026-11-03 10:00+00');
-SELECT pg_temp.ok(pg_temp.key('15000000-0000-4000-8000-000000000003') = pg_temp.key('15000000-0000-4000-8000-000000000002'),
-                  'T5b and the answer in that Gmail thread joins it');
+SELECT pg_temp.ok(pg_temp.key('15000000-0000-4000-8000-000000000003') = 'gm:bb22',
+                  'T5c the answer in that Gmail thread joins it');
+-- The house answers a relay letter (no Gmail thread) and its send opens a new
+-- Gmail thread: it stays with the letter it answers.
+SELECT pg_temp.letter('15000000-0000-4000-8000-000000000004', 'A', 'INBOUND', NULL, '<relay-q@vendor.example>', '{}',
+                      E'Subject: Delivery day\nThursday?', 'k:relay', '2026-11-03 11:00+00');
+SELECT pg_temp.letter('15000000-0000-4000-8000-000000000005', 'A', 'OUTBOUND', NULL, NULL,
+                      '{"in_reply_to":"<relay-q@vendor.example>"}', 'Thursday is fine', NULL, '2026-11-03 11:05+00');
+UPDATE public.procurement_conversations SET gmail_thread_id = 'ee55', message_id = '<ans@mail.gmail.com>'
+ WHERE id = '15000000-0000-4000-8000-000000000005';
+SELECT pg_temp.ok(pg_temp.key('15000000-0000-4000-8000-000000000005') = 'k:relay',
+                  'T5d a sent answer stays in the thread of the letter it answers');
+SELECT pg_temp.letter('15000000-0000-4000-8000-000000000006', 'A', 'INBOUND', 'ee55', NULL, '{}',
+                      'Their reply in the new Gmail thread', NULL, '2026-11-03 12:00+00');
+SELECT pg_temp.ok(pg_temp.key('15000000-0000-4000-8000-000000000006') = 'k:relay',
+                  'T5e and the reply in that new Gmail thread joins it too');
 
 -- ── T6: In-Reply-To is nearer than References ─────────────────────────────
 SELECT pg_temp.letter('16000000-0000-4000-8000-000000000001', 'A', 'OUTBOUND', NULL, '<r-1@house.example>', '{}',
