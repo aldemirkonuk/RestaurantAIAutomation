@@ -8,6 +8,7 @@ import {
   GetCalendarEventsQueryDto,
   CalendarEventResponseDto,
   CalendarEventsListResponseDto,
+  CalendarLinkedOrderDto,
   RecurrenceRuleResponseDto,
   GenerateOccurrencesResponseDto,
   EventTypeResponseDto,
@@ -323,8 +324,11 @@ export class CalendarService {
       supabaseQuery = supabaseQuery.is("parent_event_id", null);
     }
 
+    // `id` breaks ties so a window read page by page never repeats or skips
+    // a row that shares its start date with the page boundary.
     const { data, error, count } = await supabaseQuery
       .order("start_date", { ascending: true })
+      .order("id", { ascending: true })
       .range(fromIndex, toIndex);
 
     if (error) {
@@ -355,13 +359,66 @@ export class CalendarService {
       durationMs: Date.now() - startTime,
     });
 
+    const linked = query.withOrders
+      ? await this.readLinkedOrders(restaurantId, rows)
+      : null;
+
     return {
       events,
       total,
       page,
       limit,
       hasMore: fromIndex + events.length < total,
+      ...(linked
+        ? { linkedOrders: linked.orders, linkedOrdersReadable: linked.readable }
+        : {}),
     };
+  }
+
+  /**
+   * The orders a page of rows links to, read from this house's book only, a
+   * chunk of ids at a time. A failed read does NOT fail the calendar: the
+   * events are still true, and `readable: false` tells the page it cannot say
+   * whether those orders have arrived.
+   */
+  private async readLinkedOrders(
+    restaurantId: string,
+    rows: CalendarEventRow[],
+  ): Promise<{ orders: CalendarLinkedOrderDto[]; readable: boolean }> {
+    const ids = [
+      ...new Set(
+        rows.map((r) => r.order_id).filter((id): id is string => !!id),
+      ),
+    ];
+    const orders: CalendarLinkedOrderDto[] = [];
+    const CHUNK = 100;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const { data, error } = await this.databaseService.supabase
+        .from("procurement_orders")
+        .select("id, order_number, status")
+        .eq("restaurant_id", restaurantId)
+        .in("id", ids.slice(i, i + CHUNK));
+      if (error) {
+        this.logger.error({
+          message: "Failed to read linked orders for calendar list",
+          restaurantId,
+          error: error.message,
+        });
+        return { orders: [], readable: false };
+      }
+      for (const o of (data || []) as Array<{
+        id: string;
+        order_number: string | null;
+        status: string | null;
+      }>) {
+        orders.push({
+          id: o.id,
+          orderNumber: o.order_number || null,
+          status: o.status ?? "",
+        });
+      }
+    }
+    return { orders, readable: true };
   }
 
   /**

@@ -95,4 +95,13 @@ describe("GetCalendarEventsQueryDto (query-string coercion)", () => {
       pipe.transform({ includeEarlierSeries: "maybe" }, meta),
     ).rejects.toThrow();
   });
+
+  it("accepts ?withOrders=true as boolean true and ?withOrders=false as false", async () => {
+    expect((await pipe.transform({ withOrders: "true" }, meta)).withOrders).toBe(true);
+    expect((await pipe.transform({ withOrders: "false" }, meta)).withOrders).toBe(false);
+  });
+
+  it("still rejects a ?withOrders= that is not a boolean", async () => {
+    await expect(pipe.transform({ withOrders: "yes" }, meta)).rejects.toThrow();
+  });
 });
