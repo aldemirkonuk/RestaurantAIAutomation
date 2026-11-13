@@ -20,23 +20,42 @@
  * group is left out when the other one was read, a drink the recipes already
  * list is not listed again from its card, and when both are empty one "None."
  * is said, under the recipes. A group that could not be read always says so.
+ *
+ * A drink in a recipe gets the cards a dish gets (founder /goal 2026-11-07:
+ * "the same for drinks and their recipes"): this good a serve, cost a serve,
+ * price and pour cost, from GET /recipes/:rid/items/:id/drinks. Until that
+ * read answers, or when it fails, the drink is the used-in read's one line,
+ * and a failed read says its cards could not be read, with Read again.
  */
 import { Link, useInRouterContext } from 'react-router-dom';
 import type { ItemMenuLine, ItemUsedIn as UsedIn, ItemUsedInGroup } from '../../../services/api/inventory';
-import { dishHref, type ItemDish, type ItemDishCost, type ItemDishes } from '../../../services/api/itemDishes';
+import {
+  dishHref,
+  type ItemDish,
+  type ItemDishCost,
+  type ItemDishes,
+  type ItemDrink,
+  type ItemDrinks,
+} from '../../../services/api/itemDishes';
 import { cellMoney, type HouseCurrency } from './useInventoryNextData';
 
 export type UsedInLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: UsedIn };
 
 export type DishesLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: ItemDishes };
 
+export type DrinksLoad = { status: 'reading' } | { status: 'failed'; reason: string } | { status: 'ready'; data: ItemDrinks };
+
 export const FOOD_COST_TAX_NOTE = 'of the price as your list has it; whether that price includes tax is not recorded';
 
-/** Food cost as a share of the price: only from a complete cost and a price above zero. */
-export function foodCostShare(cost: ItemDishCost | null, price: number | null): { pct: number } | { missing: string[] } {
+/** Food (or pour) cost as a share of the price: only from a complete cost and a price above zero. */
+export function foodCostShare(
+  cost: ItemDishCost | null,
+  price: number | null,
+  noun: 'dish' | 'drink' = 'dish',
+): { pct: number } | { missing: string[] } {
   const missing: string[] = [];
   if (!(cost?.complete === true && cost.perServeExact !== null)) missing.push('the cost is not complete');
-  if (!(price !== null && price > 0)) missing.push('the dish has no price');
+  if (!(price !== null && price > 0)) missing.push(`the ${noun} has no price`);
   if (missing.length > 0 || cost === null || cost.perServeExact === null || price === null) return { missing };
   return { pct: Math.round((cost.perServeExact / price) * 1000) / 10 };
 }
@@ -79,50 +98,113 @@ function DishCard({ id, title, value, sub }: { id: string; title: string; value:
   );
 }
 
-function DishBlock({ dish, canManage, currency }: { dish: ItemDish; canManage: boolean; currency: HouseCurrency }) {
-  const t = `ivd-dish-${dish.dishId}`;
-  const y = dish.yieldServes;
+/** What a recipe's cards call themselves: a dish is a plate and a food cost, a drink a serve and a pour cost. */
+const RECIPE_WORDS = {
+  dish: { per: 'This good a plate', perId: 'per-plate', cost: 'Cost a plate', share: 'Food cost', shareId: 'food-cost', noPrice: 'Not on the dish' },
+  drink: { per: 'This good a serve', perId: 'per-serve', cost: 'Cost a serve', share: 'Pour cost', shareId: 'pour-cost', noPrice: 'Not on the drink' },
+} as const;
+
+/** One dish or drink that uses the good: its name as a link, then its cards. */
+function RecipeBlock({
+  kind,
+  id,
+  name,
+  section,
+  href,
+  yieldServes: y,
+  uses,
+  cost,
+  price,
+  canManage,
+  currency,
+}: {
+  kind: 'dish' | 'drink';
+  id: string;
+  name: string;
+  section: string | null;
+  href: string;
+  yieldServes: number | null;
+  uses: ItemDish['uses'];
+  cost: ItemDishCost | null;
+  price: number | null;
+  canManage: boolean;
+  currency: HouseCurrency;
+}) {
+  const w = RECIPE_WORDS[kind];
+  const t = `ivd-${kind}-${id}`;
   const known = y !== null && y > 0;
-  const perPlate = known ? dish.uses.map((u) => `${fmtRecipeQty(u.qtyEntered / y)} ${u.unitCode}`).join(' + ') : '';
-  const share = foodCostShare(dish.cost, dish.price);
+  const perServe = known ? uses.map((u) => `${fmtRecipeQty(u.qtyEntered / y)} ${u.unitCode}`).join(' + ') : '';
+  const share = foodCostShare(cost, price, kind);
   return (
-    <div className="ivd-dish" data-testid={t}>
+    <div className={`ivd-dish ivd-${kind}`} data-testid={t}>
       <p className="ivd-dish-h">
-        <LineLink to={dishHref(dish.dishId)}>{dish.name}</LineLink>
-        {dish.section ? <span className="ivd-dim"> · {dish.section}</span> : null}
+        <LineLink to={href}>{name}</LineLink>
+        {section ? <span className="ivd-dim"> · {section}</span> : null}
       </p>
       <div className="ivd-cards">
         <DishCard
-          id={`${t}-per-plate`}
-          title="This good a plate"
-          value={known && perPlate ? perPlate : 'Not known'}
+          id={`${t}-${w.perId}`}
+          title={w.per}
+          value={known && perServe ? perServe : 'Not known'}
           sub={known && y > 1 ? `in a batch of ${y}` : undefined}
         />
-        {canManage && dish.cost !== null ? (
+        {canManage && cost !== null ? (
           <DishCard
             id={`${t}-cost`}
-            title="Cost a plate"
-            value={dish.cost.complete ? cellMoney(dish.cost.perServe, currency) : 'Not known'}
-            sub={dish.cost.complete ? undefined : `${dish.cost.priced} of ${dish.cost.of} lines priced`}
+            title={w.cost}
+            value={cost.complete ? cellMoney(cost.perServe, currency) : 'Not known'}
+            sub={cost.complete ? undefined : `${cost.priced} of ${cost.of} lines priced`}
           />
         ) : null}
         {canManage ? (
-          <DishCard
-            id={`${t}-price`}
-            title="Price"
-            value={dish.price !== null ? cellMoney(dish.price, currency) : 'Not on the dish'}
-          />
+          <DishCard id={`${t}-price`} title="Price" value={price !== null ? cellMoney(price, currency) : w.noPrice} />
         ) : null}
         {canManage ? (
           <DishCard
-            id={`${t}-food-cost`}
-            title="Food cost"
+            id={`${t}-${w.shareId}`}
+            title={w.share}
             value={'pct' in share ? `${share.pct.toFixed(1)}%` : 'Not known'}
             sub={'pct' in share ? FOOD_COST_TAX_NOTE : share.missing.join(' and ')}
           />
         ) : null}
       </div>
     </div>
+  );
+}
+
+function DishBlock({ dish, canManage, currency }: { dish: ItemDish; canManage: boolean; currency: HouseCurrency }) {
+  return (
+    <RecipeBlock
+      kind="dish"
+      id={dish.dishId}
+      name={dish.name}
+      section={dish.section}
+      href={dishHref(dish.dishId)}
+      yieldServes={dish.yieldServes}
+      uses={dish.uses}
+      cost={dish.cost}
+      price={dish.price}
+      canManage={canManage}
+      currency={currency}
+    />
+  );
+}
+
+function DrinkBlock({ drink, canManage, currency }: { drink: ItemDrink; canManage: boolean; currency: HouseCurrency }) {
+  return (
+    <RecipeBlock
+      kind="drink"
+      id={drink.cocktailId}
+      name={drink.name}
+      section={drink.section}
+      href={drinkHref(drink.cocktailId)}
+      yieldServes={drink.yieldServes}
+      uses={drink.uses}
+      cost={drink.cost}
+      price={drink.price}
+      canManage={canManage}
+      currency={currency}
+    />
   );
 }
 
@@ -208,20 +290,27 @@ export function drinkGroups<C extends { cocktailId: string }, D extends { cockta
   return cards.lines.length > 0 ? { cards, recipes: null } : { cards: null, recipes };
 }
 
+export const DRINK_RECIPES_SOURCE = 'Drinks whose current recipe has a line linked to this item.';
+
 export default function ItemUsedIn({
   load,
   dishes,
+  drinks,
   canManage,
   currency,
   onRetry,
   onRetryDishes,
+  onRetryDrinks,
 }: {
   load: UsedInLoad;
   dishes: DishesLoad;
+  /** The drinks with their figures; absent, the drinks are the used-in read's lines alone. */
+  drinks?: DrinksLoad;
   canManage: boolean;
   currency: HouseCurrency;
   onRetry: () => void;
   onRetryDishes: () => void;
+  onRetryDrinks?: () => void;
 }) {
   // Menu prices are money: owners and managers only, as on every card above.
   const menu = (l: ItemMenuLine) => ({
@@ -251,9 +340,27 @@ export default function ItemUsedIn({
     );
   } else {
     const { soldAs, namedNotLinked } = load.data;
-    const drinks = drinkGroups(load.data.inCocktails, load.data.inDrinkRecipes);
-    const inCocktails = drinks.cards;
-    const inDrinkRecipes = drinks.recipes;
+    // Once the drinks' figures are read they are the list; until then, or when
+    // that read failed, the used-in read's lines are (one rule, two reads).
+    const figured = drinks?.status === 'ready' ? drinks.data.drinks : null;
+    const recipeSource =
+      figured !== null ? { readable: true, lines: figured, source: DRINK_RECIPES_SOURCE } : load.data.inDrinkRecipes;
+    // A figured drink stands in for a used-in line here only to be grouped; it is drawn by DrinkBlock.
+    const groups = drinkGroups(load.data.inCocktails, recipeSource as UsedIn['inDrinkRecipes']);
+    const inCocktails = groups.cards;
+    const inDrinkRecipes = groups.recipes;
+    const figuredRecipes = figured !== null && inDrinkRecipes !== null ? figured : null;
+    const drinksFailed =
+      drinks?.status === 'failed' ? (
+        <p className="iv-note" role="alert" data-testid="ivd-used-drink-figures-unread">
+          Their cost, price and pour cost could not be read — {drinks.reason}.{' '}
+          {onRetryDrinks ? (
+            <button type="button" className="iv-linkish iv-focus" onClick={onRetryDrinks}>
+              Read again
+            </button>
+          ) : null}
+        </p>
+      ) : null;
     body = (
       <>
         <Group title="Sold as" testid="ivd-used-sold" group={soldAs} line={menu} />
@@ -272,7 +379,16 @@ export default function ItemUsedIn({
           })}
         />
         ) : null}
-        {inDrinkRecipes === null ? null : (
+        {figuredRecipes !== null && figuredRecipes.length > 0 ? (
+          <section className="ivd-used-g" data-testid="ivd-used-drink-recipes">
+            <h4 className="ivd-used-h">In drink recipes</h4>
+            <p className="iv-note">{DRINKS_DO_NOT_DRAW}</p>
+            {figuredRecipes.map((d) => (
+              <DrinkBlock key={d.cocktailId} drink={d} canManage={canManage} currency={currency} />
+            ))}
+          </section>
+        ) : inDrinkRecipes === null ? null : (
+        <>
         <Group
           title="In drink recipes"
           testid="ivd-used-drink-recipes"
@@ -286,6 +402,8 @@ export default function ItemUsedIn({
             to: drinkHref(d.cocktailId),
           })}
         />
+        {drinksFailed}
+        </>
         )}
         <Group
           title="Named on the menu, not linked"

@@ -91,6 +91,7 @@ vi.mock('../../../services/api/inventory', async (orig) => ({
 vi.mock('../../../services/api/itemDishes', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   getItemDishes: vi.fn(() => new Promise(() => undefined)),
+  getItemDrinks: vi.fn(() => new Promise(() => undefined)),
 }));
 vi.mock('./RowDropdown', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
