@@ -403,3 +403,29 @@ describe('the item drawer', () => {
     expect(screen.getByTestId('ivd-nutrition-slot')).toBeTruthy();
   });
 });
+
+describe('a supply has nothing in it to state', () => {
+  const napkins = { kind: 'supply', uom: 'each', displayName: 'Napkins' } as HouseFields;
+
+  it('a supply shows no "What’s in it" card and never reads nutrition or allergens', async () => {
+    open(row({ kind: 'supply', name: 'Napkins', bottleSizeMl: null }), { house: napkins });
+    await waitFor(() => expect(api.figures).toHaveBeenCalled());
+    expect(screen.queryByTestId('ivd-card-inside')).toBeNull();
+    expect(screen.queryByText(/allergen/i)).toBeNull();
+    expect(api.nutrition).not.toHaveBeenCalled();
+  });
+
+  it('all the evidence for a supply has no nutrition slot', () => {
+    open(row({ kind: 'supply', name: 'Napkins', bottleSizeMl: null }), { house: napkins });
+    fireEvent.click(screen.getByRole('button', { name: 'All the evidence' }));
+    const detail = screen.getByTestId('ivd-evidence');
+    expect(within(detail).queryByTestId('ivd-nutrition-slot')).toBeNull();
+    expect(detail.textContent).not.toContain('What’s in it');
+  });
+
+  it('a food still states what is in it', async () => {
+    open(row({ kind: 'food', name: 'Bread flour', bottleSizeMl: null }), { house: { kind: 'food', uom: 'g', displayName: 'Bread flour' } });
+    await waitFor(() => expect(api.nutrition).toHaveBeenCalled());
+    expect(screen.getByTestId('ivd-card-inside')).toBeTruthy();
+  });
+});

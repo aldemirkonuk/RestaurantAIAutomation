@@ -409,7 +409,8 @@ export default function ItemCards({ row, uom, kind, canManage, currency, figures
         }
         source={fromFigures(gap?.readable, gap?.source, 'the count gap')}
       />
-      <Card id="inside" open={open} onOpen={onOpen} {...insideCard(inside)} />
+      {/* A supply is not eaten or drunk: no "What's in it" card. */}
+      {kind !== 'supply' ? <Card id="inside" open={open} onOpen={onOpen} {...insideCard(inside)} /> : null}
     </div>
   );
 }
