@@ -54,7 +54,7 @@ import { useProviders } from '@/hooks/queries/useProviderQueries';
 import { CURRENCY_CODES, currencyLabel } from '@/lib/currency';
 import { queryKeys } from '@/lib/query-keys';
 import { EM, MONO, SANS, SERIF } from './format';
-import { PRICE_UOMS, PRICE_UOM_LABEL, isMultiplying, type PriceUom } from './price-unit';
+import { PRICE_UOMS, PRICE_UOM_LABEL, isMultiplying, uomOne, type PriceUom } from './price-unit';
 
 /** What the new route answers. Four states, never collapsed into fewer. */
 export interface LastAgreementVM {
@@ -601,7 +601,7 @@ export function NewOrderSheet({ open, onClose, onNoVendors, onPlaced }: NewOrder
                   {isMultiplying(line.unitType) && (
                     <div className="col-span-2">
                       <label style={labelStyle} htmlFor={`${line.key}-pack`}>
-                        Bottles in one {line.unitType.replace('_', ' ')}
+                        Bottles in one {uomOne(line.unitType)}
                       </label>
                       <input
                         id={`${line.key}-pack`}
