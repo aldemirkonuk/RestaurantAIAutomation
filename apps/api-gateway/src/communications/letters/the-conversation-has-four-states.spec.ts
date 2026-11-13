@@ -93,13 +93,14 @@ const READER_OFF = [{ enable_house_inbox_read: false }];
 function resolveWith(
   grants: Record<string, unknown>[] | { error: { message: string } },
   flags: Record<string, unknown>[],
+  viewer?: { role?: string | null },
 ) {
   const db = build({
     integration_oauth_connections: grants,
     restaurant_feature_flags: flags,
     users: [{ name: "Aldemir" }],
   });
-  return new HouseSenderService(db, NO_CONFIG).resolve(HOUSE, PERSON);
+  return new HouseSenderService(db, NO_CONFIG).resolve(HOUSE, PERSON, viewer);
 }
 
 describe("the four states of a house's conversation", () => {
@@ -205,6 +206,49 @@ describe("a consent is not a switch", () => {
       "Somebody here has consented",
     );
     expect(identity.conversation.words).toContain("Connect");
+  });
+});
+
+/**
+ * r21 walk D3 (2026-11-13): the switch sentence told an OWNER "An owner or a
+ * manager can turn it on", about a switch the owner holds. Who may turn it on
+ * is now said to the person reading; with no role the plain rule stays.
+ */
+describe("the switch sentence knows who is reading", () => {
+  const offButConsented = () => [[sendGrant, readGrant], READER_OFF] as const;
+
+  it.each(["owner", "manager", " Owner "])(
+    "%s: is told the switch is theirs",
+    async (role) => {
+      const [g, f] = offButConsented();
+      const words = (await resolveWith([...g], [...f], { role })).conversation.words;
+      expect(words).toContain("the consent is not the switch. You can turn it on there.");
+      expect(words).not.toContain("An owner or a manager can turn it on");
+    },
+  );
+
+  it("staff: is told who can, and to ask", async () => {
+    const [g, f] = offButConsented();
+    const words = (await resolveWith([...g], [...f], { role: "staff" })).conversation.words;
+    expect(words).toContain(
+      "Only an owner or a manager can turn it on; ask one of them.",
+    );
+    expect(words).not.toContain("You can turn it on");
+  });
+
+  it("no role given (the dispatcher's read): the plain rule, no 'you'", async () => {
+    const [g, f] = offButConsented();
+    for (const viewer of [undefined, {}, { role: null }, { role: "  " }]) {
+      const words = (await resolveWith([...g], [...f], viewer)).conversation.words;
+      expect(words).toContain("the consent is not the switch. An owner or a manager can turn it on.");
+      expect(words).not.toContain("You can");
+    }
+  });
+
+  it("the shared-mailbox arrangement carries the same per-reader clause", async () => {
+    const identity = await resolveWith([readGrant], READER_OFF, { role: "owner" });
+    expect(identity.conversation.where).toBe("shared_mailbox");
+    expect(identity.conversation.words).toContain("You can turn it on there.");
   });
 });
 

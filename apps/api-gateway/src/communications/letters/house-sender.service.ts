@@ -99,6 +99,18 @@ export const GMAIL_SEND_DEFINITION = INTEGRATION_DEFINITIONS.gmail_send;
 export const HOUSE_INBOX_SWITCH_LABEL = "Read this house's mailbox";
 
 /**
+ * Whether a person with this house role may turn the switch on: owners and
+ * managers, the same rule PUT /settings/feature-flags enforces
+ * (assertManagerOrOwner). `null` when no role was given, so the sentence
+ * falls back to the rule itself rather than guessing at the reader.
+ */
+export function mayTurnTheReaderOn(role: string | null | undefined): boolean | null {
+  if (typeof role !== "string" || role.trim() === "") return null;
+  const r = role.trim().toLowerCase();
+  return r === "owner" || r === "manager";
+}
+
+/**
  * The Gmail scope that permits sending as the granting account.
  *
  * Asserted against the catalogue in the spec rather than trusted: this constant
@@ -272,12 +284,19 @@ export class HouseSenderService {
    *
    * `userId` is the person asking. It is used only to attribute a grant the
    * house may use; it never widens what the house may do.
+   *
+   * `viewer.role` is the asker's role in this house, when the caller has it
+   * (the sender read does; the dispatcher does not). It changes only who the
+   * sentence says may turn the reading switch on (r21 walk D3: an owner was
+   * told "An owner or a manager can turn it on", about a switch they hold).
    */
   async resolve(
     restaurantId: string,
     userId: string,
+    viewer: { role?: string | null } = {},
   ): Promise<HouseSenderIdentity> {
     const base = this.base();
+    const viewerMaySwitch = mayTurnTheReaderOn(viewer.role);
 
     // BOTH axes come from ONE read of the same rows. The house's Google grants
     // answer "may a letter leave?" and "may a reply be read?" together, and
@@ -330,6 +349,7 @@ export class HouseSenderService {
           sendAddress: `siparis@${domain}`,
           readConsented,
           readSwitchedOn,
+          viewerMaySwitch,
           deploymentAddress: base.deployment.address,
         }),
       };
@@ -372,6 +392,7 @@ export class HouseSenderService {
           sendAddress: null,
           readConsented,
           readSwitchedOn,
+          viewerMaySwitch,
           deploymentAddress: base.deployment.address,
         }),
       };
@@ -441,6 +462,7 @@ export class HouseSenderService {
         sendAddress: address,
         readConsented,
         readSwitchedOn,
+        viewerMaySwitch,
         deploymentAddress: base.deployment.address,
       }),
     };
@@ -579,6 +601,8 @@ export class HouseSenderService {
     sendAddress: string | null;
     readConsented: boolean | "unknown";
     readSwitchedOn: boolean;
+    /** May the person reading this sentence turn the switch on? `null`: not known. */
+    viewerMaySwitch?: boolean | null;
     deploymentAddress: string;
   }): HouseConversationState {
     const {
@@ -586,6 +610,7 @@ export class HouseSenderService {
       sendAddress,
       readConsented,
       readSwitchedOn,
+      viewerMaySwitch = null,
       deploymentAddress,
     } = params;
 
@@ -613,8 +638,18 @@ export class HouseSenderService {
     // In the house's words (r21, 2026-11-13): the switch is named by its
     // Settings label, never by its flag key, and the Connections page by its
     // name, never by its path. `receiving.switch` still carries the key.
+    // Who may turn it on is said to the person reading (r21 walk D3): the
+    // switch is owners' and managers' (settings.controller.ts PUT
+    // feature-flags, assertManagerOrOwner), so they are told it is theirs,
+    // and anybody else is told whom to ask. Unknown keeps the plain rule.
+    const whoSwitches =
+      viewerMaySwitch === true
+        ? "You can turn it on there."
+        : viewerMaySwitch === false
+          ? "Only an owner or a manager can turn it on; ask one of them."
+          : "An owner or a manager can turn it on.";
     const readCaveat = readConsented
-      ? ` Somebody here has consented to reading, but the house's "${HOUSE_INBOX_SWITCH_LABEL}" switch in Settings is off, so nothing is being read; the consent is not the switch. An owner or a manager can turn it on.`
+      ? ` Somebody here has consented to reading, but the house's "${HOUSE_INBOX_SWITCH_LABEL}" switch in Settings is off, so nothing is being read; the consent is not the switch. ${whoSwitches}`
       : ` Connect "${INTEGRATION_DEFINITIONS.gmail_read.label}" on the Connections page — it asks for one permission and reads only mail from the vendors already in this house's book.`;
     const from = sendAddress ? ` ${sendAddress}` : " this house's own mailbox";
 
