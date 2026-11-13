@@ -118,6 +118,8 @@ describe('GetStarted: the house names its money', () => {
     render(page())
     fill('Türkiye')
     fireEvent.change(money(), { target: { value: '' } })
+    // The country's money is known; it is only not chosen, so nothing says otherwise.
+    expect(screen.queryByText(/Not known from the country/)).not.toBeInTheDocument()
     await open()
     expect(createFirstHouse).toHaveBeenCalledWith(expect.objectContaining({ currency: undefined }))
   })
@@ -173,6 +175,16 @@ describe('GetStarted: an owner sent back to the menu step (gap 9)', () => {
   it('guesses no money when the house’s money cannot be read', async () => {
     who.current = { name: 'Selin Kaya', restaurantId: 'r1', role: 'owner', emailVerified: true }
     houseCurrency.mockRejectedValue(new Error('Network Error'))
+    render(page())
+    await screen.findByRole('heading', { name: 'Your menu' })
+    fireEvent.click(screen.getByRole('button', { name: /Type a few lines/ }))
+    await waitFor(() => expect(houseCurrency).toHaveBeenCalled())
+    expect(screen.getByTestId('typed-money')).toHaveTextContent('none')
+  })
+
+  it('takes no money from a read the gateway says it could not vouch for', async () => {
+    who.current = { name: 'Selin Kaya', restaurantId: 'r1', role: 'owner', emailVerified: true }
+    houseCurrency.mockResolvedValue({ restaurantId: 'r1', code: 'USD', country: 'TR', readable: false, reason: 'read failed', statedAt: null })
     render(page())
     await screen.findByRole('heading', { name: 'Your menu' })
     fireEvent.click(screen.getByRole('button', { name: /Type a few lines/ }))

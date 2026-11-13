@@ -591,7 +591,7 @@ export default function GetStarted() {
                 ))}
               </select>
               {currency && currencyChoice === null && <span>(from the country)</span>}
-              {!currency && country.trim() && currencyChoice === null && (
+              {!currency && country.trim() && !countryCurrency && (
                 <span>Not known from the country: choose it, or set it later in Settings › Currency.</span>
               )}
             </label>
