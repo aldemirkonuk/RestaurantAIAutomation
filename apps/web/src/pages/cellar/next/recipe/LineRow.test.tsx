@@ -94,7 +94,8 @@ describe('LineRow', () => {
       </ol>,
     );
     expect(container.querySelector('input, select')).toBeNull();
-    expect(container.textContent).toBe('30 mlgin');
+    // The line, and the link to its good (no money in it).
+    expect(container.textContent).toBe('30 mlginOpen in inventory');
   });
 
   it('round 17 D7: staff read an unlinked or archived line with no warning they cannot act on', () => {
