@@ -172,9 +172,8 @@ export function sourceWords(v: MenuVersion): string {
 const OUTCOME_WORDS: Record<string, (n: number, noun: KindNoun) => string> = {
   // Counted by line, as the gateway tallies priceSync: one wine can carry a
   // bottle and a glass price. Every count names its unit, and the plan counts
-  // the same lines in the same words (MenuPlan.tsx `lineOutcome`). The noun is
-  // the menu's one kind when every line shares it ("wines"), else "drinks"
-  // (r13 walk: a Negroni was counted as a wine); with no plan lines, "lines".
+  // the same lines in the same words (MenuPlan.tsx `lineOutcome`), named by
+  // menu-line-kind `oneNounFor`.
   changed: (n, k) => `${n} ${k[n === 1 ? 0 : 1]} priced from this menu`,
   unchanged: (n, k) => `${n} ${k[n === 1 ? 0 : 1]} already at the menu's price`,
   stale: (n, k) => `${n} ${k[n === 1 ? 0 : 1]} kept a price someone set after this menu was chosen`,
