@@ -285,18 +285,11 @@ export function useUpdateProvider() {
 /**
  * Hook to remove a vendor (the /vendors sheet's "Remove vendor", r27).
  *
- * ONLINE ONLY. It used to catch every failure, a 403 or a 404 included, queue
- * it for offline sync and say "Deletion saved offline", so a refusal read as
- * a removal that would happen later and never did. Removing a vendor pauses
- * its standing orders and the gateway says what happened to its orders in one
- * sentence; a replay from the queue would show that sentence to no one. So a
- * removal is never queued: with no connection it rejects and the caller says
- * nothing was removed.
- *
- * On success the gateway's sentence is the toast body, verbatim: the sheet
- * that asked closes, so the toast is the only place left to say it. A refusal
- * is NOT toasted here; the caller shows it in place, where the person is
- * still looking (one voice, as `useCreateProvider({ quiet })` learned).
+ * ONLINE ONLY. It used to queue every failure, a 403 included, as "Deletion
+ * saved offline", so a refusal read as a removal still to come. A replay
+ * would also show the gateway's sentence to no one. On success that sentence
+ * is the toast body, verbatim (the sheet closes). A refusal is not toasted:
+ * the caller shows it in place (one voice).
  */
 export function useDeleteProvider() {
   const queryClient = useQueryClient()

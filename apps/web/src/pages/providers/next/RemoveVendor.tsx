@@ -1,21 +1,13 @@
 /**
- * "Remove vendor" at the foot of the vendor sheet (r27, vendor-remove-ui).
+ * "Remove vendor" at the foot of the vendor sheet (r27). No page could remove
+ * a vendor before, so #1337's sentence reached no one.
  *
- * Until now no page could remove a vendor: `useDeleteProvider` had no caller,
- * so the sentence #1337 returns ("…2 standing orders were paused. 2 open
- * orders stay on Orders…") reached no one.
- *
- * - OWNERS AND MANAGERS ONLY, read the way this sheet already reads it for
- *   "How their mail reads" (`activeRole ?? user.role`). The gateway refuses
- *   anyone else with a 403 in words (r27); hiding it only keeps staff from
- *   asking.
- * - A CONFIRMATION BEFORE, in the house's `Panel` (ADR 0112: centered, an ask
- *   or a confirmation). Removal is not on F10's undo-after list, and nothing
- *   on any page restores a removed vendor, so it is asked first. The ask says
- *   what will happen before it happens: no new order, standing orders paused,
- *   open orders stay and can still be written about.
- * - THE OUTCOME is the gateway's sentence in a toast (the hook), because the
- *   sheet closes. A refusal stays in the panel, which stays open.
+ * - Owners and managers only, read as this sheet reads it for "How their mail
+ *   reads". The gateway refuses anyone else with a 403 in words.
+ * - Asked first, in the house `Panel` (ADR 0112: a confirmation). Removal is
+ *   not on F10's undo-after list and no page restores a vendor.
+ * - The outcome is the gateway's sentence in a toast (the sheet closes). A
+ *   refusal stays in the panel, which stays open.
  */
 import { useState } from 'react';
 import { Panel } from '../../../components/mudavym';
