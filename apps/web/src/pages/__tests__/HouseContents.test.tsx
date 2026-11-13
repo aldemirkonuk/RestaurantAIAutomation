@@ -84,4 +84,52 @@ describe('HouseContents', () => {
     page()
     expect(screen.getByRole('button', { name: '1 line in pencil, worth a second look' })).toBeInTheDocument()
   })
+
+  // r28 onboarding gap 6: a proof that read only dishes counted 0 in pencil
+  // (kitchen lines are not counted) and was called "set in ink".
+  it('never calls a proof of only dishes "set in ink"', () => {
+    sessionStorage.setItem(
+      'mudavym:first-proof',
+      JSON.stringify({
+        menuId: 'm1',
+        itemsExtracted: 2,
+        submissionsCreated: 0,
+        items: [
+          { menuItemId: 'a', name: 'Tiramisu', category: 'food', matched: false, needsReview: false },
+          { menuItemId: 'b', name: 'Adana kebab', category: 'food', matched: false, needsReview: false },
+        ],
+      }),
+    )
+    page()
+    expect(
+      screen.getByRole('button', { name: '2 dishes read, set aside from the drinks. No drink was read.' }),
+    ).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('set in ink')
+  })
+
+  it('still says "set in ink" when every drink on the proof is certain', () => {
+    sessionStorage.setItem(
+      'mudavym:first-proof',
+      JSON.stringify({
+        menuId: 'm1',
+        itemsExtracted: 2,
+        submissionsCreated: 0,
+        items: [
+          { menuItemId: 'a', name: 'Rioja', category: 'red', matched: true, needsReview: false },
+          { menuItemId: 'b', name: 'Tiramisu', category: 'food', matched: false, needsReview: false },
+        ],
+      }),
+    )
+    page()
+    expect(screen.getByRole('button', { name: 'The first proof is set in ink.' })).toBeInTheDocument()
+  })
+
+  it('says a proof with no lines holds none', () => {
+    sessionStorage.setItem(
+      'mudavym:first-proof',
+      JSON.stringify({ menuId: 'm1', itemsExtracted: 0, submissionsCreated: 0, items: [] }),
+    )
+    page()
+    expect(screen.getByRole('button', { name: 'The first proof holds no lines yet.' })).toBeInTheDocument()
+  })
 })

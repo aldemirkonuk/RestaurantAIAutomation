@@ -56,8 +56,49 @@ export function readProof(): (MenuImportResult & { sourceImage?: string | null }
   }
 }
 
-export function writeProof(result: MenuImportResult, sourceImage?: string | null) {
-  sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify(result))
+/**
+ * What the first proof holds, said the way /house says it (r28 onboarding
+ * gap 6). `pencilledCount` skips kitchen lines, so a proof that read only
+ * dishes counted 0 in pencil and /house called it "set in ink" over no drink
+ * at all. A proof with no drink line is said as what it is.
+ */
+export type ProofStanding =
+  | { kind: 'empty' }
+  | { kind: 'dishes-only'; dishes: number }
+  | { kind: 'ink' }
+  | { kind: 'pencil'; lines: number }
+
+export function proofStanding(items: MenuImportReviewItem[]): ProofStanding {
+  const drinks = items.filter((item) => !isKitchenLine(item))
+  if (drinks.length === 0) {
+    return items.length === 0 ? { kind: 'empty' } : { kind: 'dishes-only', dishes: items.length }
+  }
+  const lines = drinks.filter(lineNeedsPencil).length
+  return lines === 0 ? { kind: 'ink' } : { kind: 'pencil', lines }
+}
+
+/**
+ * Keep the proof in this tab. Returns false when the browser refuses storage
+ * (private mode, a full quota, storage switched off) — never throws (r28
+ * onboarding gap 8). The menu is already kept on the gateway when this runs,
+ * so a throw here made the page say the photo could not be read, and the
+ * owner read it again into a second draft. On a refusal any older proof in
+ * the tab is removed too, so /house/menu never shows an earlier menu's lines
+ * for this one (placing them would change that earlier menu): it finds no
+ * proof and says the menu is read and kept, with the way to Menu.
+ */
+export function writeProof(result: MenuImportResult, sourceImage?: string | null): boolean {
+  try {
+    sessionStorage.setItem(FIRST_PROOF_KEY, JSON.stringify(result))
+  } catch {
+    try {
+      sessionStorage.removeItem(FIRST_PROOF_KEY)
+      sessionStorage.removeItem(FIRST_PROOF_SOURCE_KEY)
+    } catch {
+      // Storage that cannot be reached holds no earlier proof either.
+    }
+    return false
+  }
   if (sourceImage) {
     try {
       sessionStorage.setItem(FIRST_PROOF_SOURCE_KEY, sourceImage)
@@ -67,6 +108,7 @@ export function writeProof(result: MenuImportResult, sourceImage?: string | null
   } else {
     sessionStorage.removeItem(FIRST_PROOF_SOURCE_KEY)
   }
+  return true
 }
 
 /**
