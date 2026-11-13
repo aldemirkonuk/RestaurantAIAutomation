@@ -116,6 +116,10 @@ import {
   type StatedPriceUnit,
 } from "./agreed-price";
 import {
+  readOpenOrdersByVendor,
+  type OpenOrdersByVendor,
+} from "./open-orders-by-vendor";
+import {
   agreementCurrencyClaim,
   invoiceCurrencyClaim,
   priceCurrency,
@@ -7224,6 +7228,17 @@ export class ProcurementService {
    */
   async countPendingOrders(restaurantId: string): Promise<number> {
     return (await this.readPendingOrderRows(restaurantId)).length;
+  }
+
+  /**
+   * `GET /procurement/orders/open/by-vendor` — /vendors' open-order count per
+   * card, over the whole book (`open-orders-by-vendor.ts`). A read that cannot
+   * be made whole is a 503, never a count from the newest fifty.
+   */
+  async countOpenOrdersByVendor(
+    restaurantId: string,
+  ): Promise<OpenOrdersByVendor> {
+    return readOpenOrdersByVendor(this.databaseService.supabase, restaurantId);
   }
 
   /**

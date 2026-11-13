@@ -200,6 +200,29 @@ export class ProcurementController {
     }
   }
 
+  @Get("orders/open/by-vendor")
+  @ApiOperation({
+    summary: "Count every open order per vendor, over the whole order book",
+  })
+  @ApiResponse({ status: 200 })
+  async countOpenOrdersByVendor(
+    @CurrentUser() user: { userId: string; restaurantId: string },
+  ): Promise<{ byVendor: Record<string, number>; total: number }> {
+    try {
+      return await this.procurementService.countOpenOrdersByVendor(
+        user.restaurantId,
+      );
+    } catch (error) {
+      // A book that could not be read whole is a 503 with its sentence
+      // (`WholeReadError`), never re-wrapped as a 500 and never a zero.
+      if (error instanceof HttpException) throw error;
+      throw new HttpException(
+        "The house's open orders could not be counted",
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
+    }
+  }
+
   @Get("orders/pending")
   @ApiOperation({ summary: "Get pending procurement orders" })
   @ApiResponse({ status: 200, type: [OrderResponseDto] })

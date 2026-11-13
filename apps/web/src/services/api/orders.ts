@@ -611,6 +611,34 @@ export async function getPendingOrdersCount(restaurantId?: string): Promise<numb
   return response.data.count;
 }
 
+/** Open orders per vendor over the whole book, as `GET /procurement/orders/open/by-vendor` answers. */
+export interface OpenOrdersByVendor {
+  byVendor: Record<string, number>;
+  total: number;
+}
+
+/**
+ * Every open order in the house, counted per vendor by the gateway over the
+ * whole order book (r21, 2026-11-13). /vendors used to count the rows of
+ * `getOrders()`, the newest 50, so a vendor whose open orders were older read
+ * "0". A refused read (503) or an answer in any other shape THROWS: the card
+ * then shows a dash, never a count it was not given.
+ */
+export async function getOpenOrdersByVendor(): Promise<OpenOrdersByVendor> {
+  const response = await apiClient.get<OpenOrdersByVendor>(`${ORDERS_PATH}/open/by-vendor`);
+  const body = response.data as Partial<OpenOrdersByVendor> | null | undefined;
+  const isCount = (n: unknown): n is number =>
+    typeof n === 'number' && Number.isInteger(n) && n >= 0;
+  const by = body?.byVendor;
+  if (!body || !isCount(body.total) || !by || typeof by !== 'object' || Array.isArray(by)) {
+    throw new Error('The open-order count came back in a shape that cannot be read');
+  }
+  for (const n of Object.values(by)) {
+    if (!isCount(n)) throw new Error('The open-order count came back in a shape that cannot be read');
+  }
+  return { byVendor: by, total: body.total };
+}
+
 /**
  * Get orders needing approval
  */
@@ -672,6 +700,7 @@ export const ordersApi = {
   openNeverArrivedCreditClaim,
   markOrderDelivered,
   getPendingOrdersCount,
+  getOpenOrdersByVendor,
   getOrdersNeedingApproval,
   getOrderHistory,
 };

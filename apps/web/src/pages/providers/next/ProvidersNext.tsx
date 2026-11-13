@@ -454,8 +454,10 @@ export default function ProvidersNext() {
               margin: "0 0 10px",
             }}
           >
-            The orders book hasn’t answered yet — open-order counts show {EM}{" "}
-            until it does.
+            {data.ordersFailed
+              ? <>The open orders could not be counted — open-order counts show {EM}. </>
+              : <>The orders book hasn’t answered yet — open-order counts show {EM}{" "}
+            until it does.</>}
           </p>
         )}
 
