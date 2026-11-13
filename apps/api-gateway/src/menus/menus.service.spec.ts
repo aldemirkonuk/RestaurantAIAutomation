@@ -2133,6 +2133,17 @@ describe("a menu line finds the house's own good before the library (r21 D1)", (
     expect(tables.menu_items).toHaveLength(0);
   });
 
+  it("a kitchen line is never matched: adding a dish does not even read the house's goods", async () => {
+    const lib = spyLibrary();
+    const tables = house([good({ id: "inv-x", master_wine_id: null, display_name: "Tiramisu", kind: "other" })]);
+    (tables as any).__readFails = [{ restaurant_inventory: "connection reset" }];
+    const service = makeService(tables, { wineSubmissions: lib, rpc: priceRpc });
+    const item = await service.addMenuItem({ menuId: "menu-1", name: "Tiramisu", category: "dessert", bottle_price: 9 } as any, "user-1", "rest-1", true);
+    expect(item.priceSync).toBe("kitchen_line");
+    expect(tables.menu_items[0].inventory_item_id ?? null).toBeNull();
+    expect(lib.sent).toHaveLength(0);
+  });
+
   it("a kept menu's line keeps its link; the plan and the choice carry its price onto the house's gin", async () => {
     const lib = spyLibrary();
     const calls: RpcCall[] = [];
