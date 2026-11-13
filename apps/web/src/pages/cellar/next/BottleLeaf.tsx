@@ -41,11 +41,11 @@ import {
   handlingSentence,
   knowledgeLabel,
   knowledgeNote,
-  money,
   tanninTicks,
   volume,
   year,
 } from './cellar-format';
+import { sayReference, useHouseMoney } from './useHouseMoney';
 import OrderCeremony from './OrderCeremony';
 import PriceLockNote from './PriceLockNote';
 import { useCellarSettings, type BottleVM, type WineStructureVM } from './useCellarNextData';
@@ -201,6 +201,10 @@ export default function BottleLeaf({
   const bringIn = useCreateInventoryItem();
   const recs = useRecommendedProviders(restaurantId ?? '', bottle.id);
   const settings = useCellarSettings();
+  // The house's money (`useHouseMoney`) for this house's own prices; the
+  // library's figures are reference prices that name no currency
+  // (`sayReference`). The cellar's `money()` printed $ for both, every house.
+  const money = useHouseMoney();
 
   const recommendedIds = useMemo(() => {
     const s = new Set<string>();
@@ -257,10 +261,10 @@ export default function BottleLeaf({
           <span className="cl-num">{volume(bottle.bottleSizeMl)}</span>
         </Fact>
         <Fact label="Market average">
-          <span className="cl-num">{money(bottle.listPrice)}</span>
+          <span className="cl-num">{sayReference(bottle.listPrice)}</span>
         </Fact>
         <Fact label="Market price">
-          <span className="cl-num">{money(bottle.marketPrice)}</span>
+          <span className="cl-num">{sayReference(bottle.marketPrice)}</span>
         </Fact>
       </dl>
 
@@ -432,7 +436,7 @@ export default function BottleLeaf({
                   )}
                 </Fact>
                 <Fact label="Market average (bottle)">
-                  <span className="cl-num">{money(bottle.listPrice)}</span>
+                  <span className="cl-num">{sayReference(bottle.listPrice)}</span>
                 </Fact>
               </dl>
               {/* ADR 0193 round 3, L8: a locked price is said wherever the price is shown. */}
