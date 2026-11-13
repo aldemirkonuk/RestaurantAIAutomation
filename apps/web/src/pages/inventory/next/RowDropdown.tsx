@@ -32,6 +32,8 @@ import type { ProcurementDocument } from '../../../services/api/documents';
 import type { Provider } from '../../../services/api/providers';
 import type { StorageLocation } from '../../../hooks/useStorageLocations';
 import { fmtWhen } from '../../../lib/mudavym/format';
+// Shares in the house's form, as its money is (r23 walk: "13.1%" beside "₺12,00").
+import { formatHousePercent } from '../../../lib/house-number';
 import { shortDate, volume } from '../../cellar/next/cellar-format';
 import { useRowRecord } from '../../cellar/next/useCellarNextData';
 import { velocity, whenItSells, type TillLine } from '../../cellar/next/rowSeries';
@@ -765,8 +767,8 @@ function WhatItHasCost({
             EM
           ) : (
             <span className="iv-num">
-              {money(before.unitCost)} → {money(last.unitCost)} ({change > 0 ? '+' : ''}
-              {change.toFixed(0)}%)
+              {money(before.unitCost)} → {money(last.unitCost)} (
+              {formatHousePercent(change, currency.code, { digits: 0, signed: true })})
             </span>
           )}
         </KV>
@@ -784,7 +786,7 @@ function WhatItHasCost({
               </span>
             </KV>
             <KV k="Margin over cost">
-              <span className="iv-num">{margin === null ? EM : `${margin.toFixed(0)}%`}</span>
+              <span className="iv-num">{margin === null ? EM : formatHousePercent(margin, currency.code, { digits: 0 })}</span>
             </KV>
             <KV k="Market">
               {EM} <span className="iv-dim">no market price is read</span>

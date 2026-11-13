@@ -371,7 +371,7 @@ const drink = (over: Partial<ItemDrink> = {}): ItemDrink => ({
 });
 const drinksReady = (...drinks: ItemDrink[]): DrinksLoad => ({ status: 'ready', data: { drinks } });
 const textLine = { cocktailId: 'c1', name: 'House G&T', label: 'Gin', qtyEntered: 50, unitCode: 'ml' };
-const mountDrinks = (drinks: DrinksLoad | undefined, opts: { canManage?: boolean; over?: Partial<UsedIn>; onRetryDrinks?: () => void } = {}) =>
+const mountDrinks = (drinks: DrinksLoad | undefined, opts: { canManage?: boolean; over?: Partial<UsedIn>; onRetryDrinks?: () => void; code?: string } = {}) =>
   render(
     <MemoryRouter>
       <ItemUsedIn
@@ -379,7 +379,7 @@ const mountDrinks = (drinks: DrinksLoad | undefined, opts: { canManage?: boolean
         dishes={NO_DISHES}
         drinks={drinks}
         canManage={opts.canManage ?? true}
-        currency={EUR}
+        currency={opts.code ? { state: 'recorded', code: opts.code } : EUR}
         onRetry={vi.fn()}
         onRetryDishes={vi.fn()}
         onRetryDrinks={opts.onRetryDrinks}
@@ -405,6 +405,17 @@ describe('In drink recipes, with their cards (the same as a dish)', () => {
     expect(dt('pour-cost')).toContain('12.5%');
     // The used-in line is not drawn a second time under the cards.
     expect(g.textContent).not.toContain('House G&T — 50 ml (Gin)');
+  });
+
+  it('a lira house writes the pour cost the way it writes its money: "%12,5", never "12.5%" (r23 walk)', () => {
+    mountDrinks(drinksReady(drink()), { code: 'TRY' });
+    expect(dt('pour-cost')).toContain('%12,5');
+    expect(dt('pour-cost')).not.toContain('12.5%');
+  });
+
+  it('a pound house writes it the English way', () => {
+    mountDrinks(drinksReady(drink()), { code: 'GBP' });
+    expect(dt('pour-cost')).toContain('12.5%');
   });
 
   it('a batch drink says a serve of it and the batch', () => {
