@@ -36,7 +36,8 @@ import {
   type BottleVM,
   type CellarData,
 } from './useCellarNextData';
-import { byWhom, EM, houseNamingFor, money, volume, year } from './cellar-format';
+import { byWhom, EM, houseNamingFor, volume, year } from './cellar-format';
+import { sayReference } from './useHouseMoney';
 import IsThisTheBottlePanel, { type BottleReading } from './IsThisTheBottlePanel';
 import { readingsFrom } from './readings';
 
@@ -583,7 +584,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
                   <span className="cl-dim cl-index-row-meta">
                     <span>{[b.style, year(b.vintage)].filter(Boolean).join(' · ') || EM}</span>
                     <span className="cl-num">
-                      {b.cellar ? `${b.cellar.stockLive} on hand` : money(b.listPrice)}
+                      {b.cellar ? `${b.cellar.stockLive} on hand` : sayReference(b.listPrice, false)}
                     </span>
                   </span>
                 </button>
@@ -635,7 +636,7 @@ export default function WineRegister({ data }: { data: CellarData }) {
                   </span>
                   <span className="cl-num" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
                     <span>{year(b.vintage)}</span>
-                    <span>{money(b.listPrice)}</span>
+                    <span>{sayReference(b.listPrice, false)}</span>
                     <span>{b.cellar ? `${b.cellar.stockLive} on hand` : EM}</span>
                   </span>
                 </button>
@@ -695,10 +696,10 @@ export default function WineRegister({ data }: { data: CellarData }) {
                         {volume(b.bottleSizeMl)}
                       </td>
                       <td className="cl-num" style={{ textAlign: 'right' }}>
-                        {money(b.listPrice)}
+                        {sayReference(b.listPrice, false)}
                       </td>
                       <td className="cl-num cl-dim" style={{ textAlign: 'right' }}>
-                        {money(b.marketPrice)}
+                        {sayReference(b.marketPrice, false)}
                       </td>
                       <td className="cl-num" style={{ textAlign: 'right' }}>
                         {!data.cellarKnown ? (
@@ -717,6 +718,16 @@ export default function WineRegister({ data }: { data: CellarData }) {
           )}
         </div>
       )}
+
+      {/* Every price on this register is the library's reference, not this
+          house's money, and its row names no currency: printing the house's
+          sign would turn a menu's 62 into 62 lira, and the old "$" claimed a
+          currency nobody stated (r9, 2026-11-12). Said once here, not in
+          every cell. */}
+      <p className="cl-note" data-testid="wine-reference-note">
+        List and Market are the wine library’s reference prices, not this
+        house’s. Their rows name no currency, so none is printed beside them.
+      </p>
 
       {/* The live path, said out loud. A page that claims to be realtime and
           does not say what it measured is claiming, not reporting. Always

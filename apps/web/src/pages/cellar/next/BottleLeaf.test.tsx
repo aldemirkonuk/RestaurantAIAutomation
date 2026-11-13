@@ -43,6 +43,18 @@ vi.mock('../../../services/api/pricing', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   listPriceLocks: () => listPriceLocks(),
 }));
+// The cellar prints its money through `useHouseMoney`, which reads the
+// signed-in house; this suite mounts no AuthProvider, so the house here is a
+// dollar one and the figures below read in dollars. The lira house is pinned
+// in useHouseMoney.test.tsx.
+vi.mock('./useHouseMoney', async (orig) => {
+  const { fmtMoney } = await import('../../receipts/next/rc2-format');
+  return {
+    ...(await orig<Record<string, unknown>>()),
+    useHouseMoney: () => (n: number | null | undefined) =>
+      n == null || !Number.isFinite(n) ? '—' : fmtMoney(n, 'USD'),
+  };
+});
 vi.mock('./useCellarNextData', async (orig) => ({
   ...(await orig<Record<string, unknown>>()),
   useCellarSettings: () => ({
@@ -161,7 +173,9 @@ describe('BottleLeaf — bottle price vs. the library\'s market average', () => 
     // The library figure is still shown too, under its own, different label —
     // this house's price never replaces it, and the two numbers differ.
     const marketAvgDd = within(facts).getByText('Market average (bottle)').nextElementSibling!;
-    expect(marketAvgDd).toHaveTextContent('$62.00');
+    // A reference price, not this house's money: its row names no currency,
+    // so it is printed bare and says so, never with the house's sign or "$".
+    expect(marketAvgDd).toHaveTextContent('62.00 (currency not stated)');
   });
 
   it('shows the em dash, and the "set one in Inventory" note, when no bottle price is recorded', () => {

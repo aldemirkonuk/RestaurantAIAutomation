@@ -29,6 +29,18 @@ vi.mock('../../../hooks/queries/useInventoryQueries', () => ({
 vi.mock('../../../hooks/queries/useProviderQueries', () => ({
   useRecommendedProviders: () => ({ data: undefined, isError: false }),
 }));
+// The cellar prints its money through `useHouseMoney`, which reads the
+// signed-in house; this suite mounts no AuthProvider, so the house here is a
+// dollar one and the figures below read in dollars. The lira house is pinned
+// in useHouseMoney.test.tsx.
+vi.mock('./useHouseMoney', async (orig) => {
+  const { fmtMoney } = await import('../../receipts/next/rc2-format');
+  return {
+    ...(await orig<Record<string, unknown>>()),
+    useHouseMoney: () => (n: number | null | undefined) =>
+      n == null || !Number.isFinite(n) ? '—' : fmtMoney(n, 'USD'),
+  };
+});
 // BottleLeaf reads cellar settings for the order-hold ceremony; only that one
 // export is faked, everything else in the module (including WineRegister's
 // own imports from it) stays real — same idiom as BottleLeaf.test.tsx.

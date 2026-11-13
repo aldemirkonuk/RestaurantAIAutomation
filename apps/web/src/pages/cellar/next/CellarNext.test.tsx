@@ -105,6 +105,19 @@ vi.mock('../../../hooks/useStorageLocations', () => ({
   useZoneSetupAccess: () => ({ maySetUp: true, unknown: false, loading: false, assigned: [] }),
 }));
 
+// The cellar prints its money through `useHouseMoney`, which reads the
+// signed-in house; this suite mounts no AuthProvider, so the house here is a
+// dollar one and the figures below read in dollars. The lira house is pinned
+// in useHouseMoney.test.tsx.
+vi.mock('./useHouseMoney', async (orig) => {
+  const { fmtMoney } = await import('../../receipts/next/rc2-format');
+  return {
+    ...(await orig<Record<string, unknown>>()),
+    useHouseMoney: () => (n: number | null | undefined) =>
+      n == null || !Number.isFinite(n) ? '—' : fmtMoney(n, 'USD'),
+  };
+});
+
 import CellarNext from './CellarNext';
 import type { CellarNextProps } from './CellarNext';
 
@@ -575,7 +588,10 @@ describe('CellarNext — the wine register', () => {
     expect(cells.getByText('2016')).toBeInTheDocument();
     expect(cells.getByText('Friuli, Italy')).toBeInTheDocument();
     expect(cells.getByText('750ml')).toBeInTheDocument();
-    expect(cells.getByText('$92.00')).toBeInTheDocument();
+    // the library's reference price: bare, its currency said once under the
+    // table (`wine-reference-note`), never "$" in a lira house
+    expect(cells.getByText('92.00')).toBeInTheDocument();
+    expect(screen.getByTestId('wine-reference-note')).toHaveTextContent(/name no currency/);
     // market price has no producer — a dash, never a number, never a zero
     expect(cells.getByText('—')).toBeInTheDocument();
     // and a catalogue-only bottle is not given a fabricated stock of 0
