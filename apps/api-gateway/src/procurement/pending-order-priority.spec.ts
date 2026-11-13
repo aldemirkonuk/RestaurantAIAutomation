@@ -269,7 +269,7 @@ describe("the pending queue is oldest first, flagged first", () => {
 
   it("still joins the vendor, and does not send the stock join", async () => {
     const { out, log } = await list({ pending: [row("a", 1)] });
-    expect(log.listSelects[0]).toContain("provider:provider_id(name)");
+    expect(log.listSelects[0]).toContain("provider:provider_id(name, deleted_at, is_active)");
     expect(log.listSelects[0]).toContain(
       "inventory:inventory_id(wine_name, stock_live, threshold_min)",
     );

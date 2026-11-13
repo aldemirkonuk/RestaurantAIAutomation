@@ -449,6 +449,12 @@ interface ProcurementOrderRow {
    */
   provider_name?: string | null;
   /**
+   * Whether the order's vendor was removed (r27), read off the same embed as
+   * `provider_name` and by the same key test: absent = this route did not read
+   * the vendor's flags. See `embeddedVendorRemoved`.
+   */
+  vendor_removed?: boolean | null;
+  /**
    * The recurrence rule this order carries, and the occurrence it was minted
    * for (ADR 0125's addendum, 2026-09-05). All six are OPTIONAL and read
    * through the key test, for exactly the reason `provider_name` is: a route
@@ -495,6 +501,23 @@ function embeddedProviderName(embed: unknown): string | null {
   if (!one || typeof one !== "object") return null;
   const name = (one as { name?: unknown }).name;
   return typeof name === "string" && name.trim() !== "" ? name : null;
+}
+
+/**
+ * Whether an order's vendor was removed, off the same `provider:provider_id(…)`
+ * embed as its name (r27). The rule is #1283's: removed when `deleted_at` is
+ * set or `is_active` is false; a NULL `is_active` is live. Every shape
+ * `embeddedProviderName` reads is read here too.
+ *
+ * `null`: the join found no vendor row (the FK is null), or the embed did not
+ * carry the two flags, so nothing is known, which is not "live".
+ */
+export function embeddedVendorRemoved(embed: unknown): boolean | null {
+  const one = Array.isArray(embed) ? (embed[0] ?? null) : embed;
+  if (!one || typeof one !== "object") return null;
+  const v = one as { deleted_at?: unknown; is_active?: unknown };
+  if (!("deleted_at" in v) && !("is_active" in v)) return null;
+  return v.deleted_at != null || v.is_active === false;
 }
 
 /**
@@ -3203,7 +3226,7 @@ export class ProcurementService {
     let supabaseQuery = this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "*, inventory:inventory_id(wine_name), provider:provider_id(name), procurement_order_items(price_uom, price_pack_size, allowance, deposit, freight)",
+        "*, inventory:inventory_id(wine_name), provider:provider_id(name, deleted_at, is_active), procurement_order_items(price_uom, price_pack_size, allowance, deposit, freight)",
         { count: "exact" },
       )
       .eq("restaurant_id", restaurantId);
@@ -3257,6 +3280,7 @@ export class ProcurementService {
         // that succeeded, so a missing name is the vendor's absence and not
         // this query's silence.
         provider_name: embeddedProviderName(row.provider),
+        vendor_removed: embeddedVendorRemoved(row.provider),
       };
       // `read: true` unconditionally, because the embed above is part of the
       // same statement: if it had failed, `error` was thrown four lines up and
@@ -3302,7 +3326,7 @@ export class ProcurementService {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "*, inventory:inventory_id(wine_name), provider:provider_id(name)",
+        "*, inventory:inventory_id(wine_name), provider:provider_id(name, deleted_at, is_active)",
       )
       .eq("restaurant_id", restaurantId)
       .eq("id", orderId)
@@ -3323,6 +3347,7 @@ export class ProcurementService {
       wine_name:
         row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
       provider_name: embeddedProviderName(row.provider),
+        vendor_removed: embeddedVendorRemoved(row.provider),
     };
 
     // The route the door, the phone and the desk read: it states what the
@@ -7291,7 +7316,7 @@ export class ProcurementService {
     const { data, error } = await this.databaseService.supabase
       .from("procurement_orders")
       .select(
-        "*, inventory:inventory_id(wine_name, stock_live, threshold_min), provider:provider_id(name)",
+        "*, inventory:inventory_id(wine_name, stock_live, threshold_min), provider:provider_id(name, deleted_at, is_active)",
       )
       .eq("restaurant_id", restaurantId)
       .in("status", [
@@ -7322,6 +7347,7 @@ export class ProcurementService {
       wine_name:
         row.inventory?.wine_name || (row.inventory as any)?.wine?.name || null,
       provider_name: embeddedProviderName(row.provider),
+        vendor_removed: embeddedVendorRemoved(row.provider),
     };
     return this.mapOrderRow(orderRow);
   }
@@ -7398,6 +7424,10 @@ export class ProcurementService {
       // row rather than on a reading argument.
       providerName:
         "provider_name" in row ? (row.provider_name ?? null) : undefined,
+      // r27: the vendor was removed. Key test as for `providerName`: absent
+      // means this route did not read the vendor's flags.
+      vendorRemoved:
+        "vendor_removed" in row ? (row.vendor_removed ?? null) : undefined,
       // What the stock ledger booked for this order (ADR 0192), or undefined
       // on a route that did not read it. `readable:false` travels as itself.
       received,

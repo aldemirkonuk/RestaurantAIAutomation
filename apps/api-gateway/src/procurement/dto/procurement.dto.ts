@@ -1070,6 +1070,23 @@ export class OrderResponseDto {
   providerName?: string | null;
 
   /**
+   * The order's vendor was removed from this house's vendors (r27): it takes
+   * no new order and no approval (#1283, #1339), and the order stays on
+   * /orders for a person to settle. Read off the same embed as `providerName`
+   * and by #1283's rule (`deleted_at` set or `is_active` false; NULL is live).
+   * `null` = the join found no vendor row. Key ABSENT = this route does not
+   * read it (today only `GET /procurement/orders`, `/orders/pending` and
+   * `/orders/:id` do).
+   */
+  @ApiPropertyOptional({
+    type: Boolean,
+    nullable: true,
+    description:
+      "The vendor was removed from this house's vendors. null = no vendor row was found. Key ABSENT = this route does not read it.",
+  })
+  vendorRemoved?: boolean | null;
+
+  /**
    * What this order RECEIVED — ADR 0192 (founder, 2026-09-21): the bottles the
    * stock ledger booked onto the shelf for this order's item, in the item's
    * stock unit, never rounded, with the door's rejections and anything counted
