@@ -11,7 +11,7 @@ vi.mock('@/hooks/queries/useOrderQueries', () => ({
 import { LedgerRow } from './LedgerRow';
 import { fmtMoney } from './format';
 import { describeFees } from './price-unit';
-import { toRow, type OrderRowVM } from './useOrdersNextData';
+import { sumInOneCurrency, toRow, type OrderRowVM } from './useOrdersNextData';
 
 const NO_PROVIDERS = new Map<string, string>();
 
@@ -94,4 +94,30 @@ describe('the order row speaks the order’s own money', () => {
     expect(describeFees(fees)).toBe('an allowance of 25.00');
   });
 
+});
+
+describe('a month in more than one currency is not added together', () => {
+  const r = (total: number | null, currency: string | null) =>
+    ({ total, currency }) as unknown as OrderRowVM;
+
+  it('sums rows that share one currency and names it', () => {
+    expect(sumInOneCurrency([r(100, 'TRY'), r(50, 'TRY'), r(null, 'EUR')])).toEqual({
+      total: 150,
+      currency: 'TRY',
+      withheld: null,
+    });
+  });
+
+  it('withholds the sum of a two-currency month, in words', () => {
+    const s = sumInOneCurrency([r(100, 'TRY'), r(50, 'EUR')]);
+    expect(s.total).toBeNull();
+    expect(s.currency).toBeNull();
+    expect(s.withheld).toMatch(/more than one currency/);
+  });
+
+  it('withholds the sum when a priced order names no currency', () => {
+    const s = sumInOneCurrency([r(100, 'TRY'), r(50, null)]);
+    expect(s.total).toBeNull();
+    expect(s.withheld).toMatch(/name no currency/);
+  });
 });

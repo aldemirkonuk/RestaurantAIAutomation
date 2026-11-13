@@ -103,7 +103,15 @@ function ordersData(rows: OrderRowVM[]): OrdersNextData {
     recurringCount: 0,
     recurrenceReadCount: 0,
     cancelledCount: 0,
-    month: { thisMonth: 0, lastMonth: null, unpricedThisMonth: 0 },
+    month: {
+      thisMonth: 0,
+      lastMonth: null,
+      unpricedThisMonth: 0,
+      thisCurrency: null,
+      lastCurrency: null,
+      thisWithheld: null,
+      lastWithheld: null,
+    },
     hasData: true,
     isLoading: false,
     isError: false,
@@ -116,8 +124,10 @@ function ordersData(rows: OrderRowVM[]): OrdersNextData {
   };
 }
 
-function mount(r: OrderRowVM) {
-  state.current = ordersData([r]);
+function mount(r: OrderRowVM, month: Partial<OrdersNextData['month']> = {}) {
+  const data = ordersData([r]);
+  data.month = { ...data.month, ...month };
+  state.current = data;
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
@@ -238,5 +248,26 @@ describe('what the keyboard reaches is what the click shows', () => {
     expect(body.hasAttribute('inert')).toBe(true);
     fireEvent.click(btn);
     expect(body.hasAttribute('inert')).toBe(false);
+  });
+});
+
+describe('the month figure', () => {
+  it('withholds a two-currency sum in words and prints no dollar sign', () => {
+    mount(row(), {
+      thisMonth: null,
+      thisWithheld: 'these orders are in more than one currency, so they are not added together',
+    });
+    expect(screen.getByTestId('month-withheld').textContent).toMatch(/more than one currency/);
+    // The masthead shows a dash for the withheld sum, never a figure.
+    const masthead = screen.getByTestId('month-withheld').parentElement?.parentElement;
+    expect(masthead?.textContent).toContain('—');
+    expect(masthead?.textContent).not.toMatch(/\d/);
+  });
+
+  it('prints a one-currency month in that currency, not dollars', () => {
+    mount(row(), { thisMonth: 12480, thisCurrency: 'TRY' });
+    expect(document.body.textContent).toMatch(/12,480/);
+    expect(document.body.textContent).not.toMatch(/\$12,480/);
+    expect(document.body.textContent).toMatch(/TRY/);
   });
 });
