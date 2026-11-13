@@ -48,9 +48,11 @@ type AuthedUser = { userId: string; restaurantId: string };
  * The one exception is `clocks/run`, which works EVERY house's due clocks and
  * is therefore a platform act, not a house one; see its own comment.
  *
- * NO ROUTE HERE WRITES STOCK OR COST. See `DeliveryService`'s header: the
- * columns ADR 0103 A1 will use have no writer on this build, and `verify` is
- * deliberately not the first one.
+ * WHERE STOCK AND COST ARE WRITTEN (ADR 0103 A1). No route here books stock:
+ * the door count does (`documents.controller.ts`, `bookAtTheDoor`), with the
+ * lots provisional and unpriced. `verify` is where the COST is settled — the
+ * agreed price is written onto the lots this delivery booked — and it never
+ * moves a quantity.
  */
 @ApiTags("procurement-deliveries")
 @ApiBearerAuth()
@@ -276,7 +278,7 @@ export class DeliveriesController {
   @ApiOperation({
     summary: "VERIFIED — a person asserts they received the goods (D6)",
     description:
-      "Only from AGREED: agreement is about the document, verification is about the goods and the books, and ADR 0103 D1 never collapses them. Idempotent — a second verify returns the first one's stamp. Writes NO stock and NO cost on this build, and the response says so in words.",
+      "Only from AGREED: agreement is about the document, verification is about the goods and the books, and ADR 0103 D1 never collapses them. Idempotent — a second verify returns the first one's stamp and only re-checks a cost booked at the invoice's printed price. Moves NO stock: the door count already booked it. Settles the COST: the agreed price becomes the cost of the lots this delivery booked, and an item with no usable price stays provisional. `costNote` says in words what was settled and what was not.",
   })
   async verify(@Param("id") id: string, @CurrentUser() user: AuthedUser) {
     const res = await this.deliveries.verify(

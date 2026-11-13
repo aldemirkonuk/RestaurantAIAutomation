@@ -582,8 +582,9 @@ export class DeliveryClockService {
       {
         type: "delivery_lapsed",
         title: `A delivery lapsed: ${this.clockName(timer.clock)} expired`,
-        // INVENTORY DID NOT MOVE, and the sentence says so — D9 clause 4.
-        message: `${deemed} Nothing was posted to inventory or cost: a lapse records what the law deems, never that anyone here agreed. A late credit memo or corrected invoice still attaches to this delivery.`,
+        // THE LAPSE MOVES NOTHING, and the sentence says so — D9 clause 4.
+        // What the door count booked stays booked, unpriced (ADR 0103 A1).
+        message: `${deemed} The lapse itself posted nothing to inventory or cost: anything counted at the door stays on the shelf with its cost unsettled, and a lapse records what the law deems, never that anyone here agreed. A late credit memo or corrected invoice still attaches to this delivery.`,
         priority: "high",
         actionUrl: `/deliveries/${timer.delivery_id}`,
         actionLabel: "Open the delivery",
