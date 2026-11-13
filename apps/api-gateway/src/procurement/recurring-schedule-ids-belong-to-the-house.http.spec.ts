@@ -49,6 +49,7 @@ const VENDOR_A = "a1a1a1a1-1111-4111-8111-000000000001";
 const VENDOR_A2 = "a1a1a1a1-1111-4111-8111-000000000002";
 const VENDOR_B = "b2b2b2b2-1111-4111-8111-000000000001";
 const VENDOR_NO_HOUSE = "c3c3c3c3-1111-4111-8111-000000000001";
+const VENDOR_A_REMOVED = "a1a1a1a1-1111-4111-8111-000000000003";
 const SCHEDULE_A = "5c5c5c5c-0000-4000-8000-000000000001";
 
 type Row = Record<string, any>;
@@ -96,6 +97,13 @@ function freshTables(): Record<string, Row[]> {
       { id: VENDOR_A2, restaurant_id: HOUSE_A, name: "A's second vendor" },
       { id: VENDOR_B, restaurant_id: HOUSE_B, name: "B's vendor" },
       { id: VENDOR_NO_HOUSE, restaurant_id: null, name: "Houseless vendor" },
+      {
+        id: VENDOR_A_REMOVED,
+        restaurant_id: HOUSE_A,
+        name: "A's removed vendor",
+        is_active: false,
+        deleted_at: "2026-11-01T00:00:00Z",
+      },
     ],
     recurring_orders: [storedScheduleA()],
     calendar_events: [],
@@ -188,6 +196,15 @@ const client = {
       },
       eq: (c: string, v: unknown) => {
         filters.push((r) => r[c] === v);
+        return builder;
+      },
+      // The two filters `assertProviderTakesOrders` reads a live vendor with.
+      is: (c: string, v: unknown) => {
+        filters.push((r) => (r[c] ?? null) === v);
+        return builder;
+      },
+      not: (c: string, _op: "is", v: unknown) => {
+        filters.push((r) => (r[c] ?? null) !== v);
         return builder;
       },
       lte: () => builder,
@@ -468,5 +485,52 @@ describe("PUT /recurring-orders/:restaurantId/:id — a new item or vendor is th
     expect(res.status).toBe(200);
     expect(reads).not.toContain("restaurant_inventory");
     expect(reads).toContain("providers");
+  });
+});
+
+describe("a removed vendor's schedule is not saved running (#1283, r25)", () => {
+  const REFUSED =
+    "This vendor was removed from your vendors, so the schedule was not saved. Choose another vendor.";
+
+  it("refuses a new running schedule naming a removed vendor with 422, and stores nothing", async () => {
+    const res = await createIn(schedule({ provider_id: VENDOR_A_REMOVED }));
+    expect(res.status).toBe(422);
+    expect(res.body.message).toBe(REFUSED);
+    expectNothingCreated();
+  });
+
+  it("refuses moving a running schedule to a removed vendor, and writes nothing", async () => {
+    const res = await updateA({ provider_id: VENDOR_A_REMOVED });
+    expect(res.status).toBe(422);
+    expect(res.body.message).toBe(REFUSED);
+    expect(writes).toEqual([]);
+  });
+
+  it("refuses resuming a paused schedule whose vendor was removed", async () => {
+    Object.assign(tables.recurring_orders[0], { active: false, provider_id: VENDOR_A_REMOVED });
+    const res = await updateA({ active: true });
+    expect(res.status).toBe(422);
+    expect(res.body.message).toBe(REFUSED);
+    expect(tables.recurring_orders[0].active).toBe(false);
+  });
+
+  it("lets a person pause a removed vendor's schedule, even naming the vendor again", async () => {
+    tables.recurring_orders[0].provider_id = VENDOR_A_REMOVED;
+    const res = await updateA({ active: false, provider_id: VENDOR_A_REMOVED, notes: "vendor gone" });
+    expect(res.status).toBe(200);
+    expect(tables.recurring_orders[0]).toMatchObject({ active: false, notes: "vendor gone" });
+  });
+
+  it("lets a paused schedule be edited without reading the vendor", async () => {
+    Object.assign(tables.recurring_orders[0], { active: false, provider_id: VENDOR_A_REMOVED });
+    const res = await updateA({ notes: "call them first" });
+    expect(res.status).toBe(200);
+    expect(reads).not.toContain("providers");
+  });
+
+  it("still saves a paused schedule created for a removed vendor", async () => {
+    const res = await createIn(schedule({ provider_id: VENDOR_A_REMOVED, active: false }));
+    expect(res.status).toBe(201);
+    expect(tables.recurring_orders[1]).toMatchObject({ active: false });
   });
 });

@@ -5,7 +5,9 @@ import {
   RECURRENCE_ACTS,
   isUniqueViolation,
 } from "./order-recurrence.service";
+import { UnprocessableEntityException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
+import { VENDOR_REMOVED } from "../common/tenant/assert-provider-takes-orders";
 import { ProcurementService } from "./procurement.service";
 
 /**
@@ -101,6 +103,10 @@ function makeDb(opts: {
             // The conditional advance selects "id" and resolves as a LIST.
             if (sawNextDueEq && shape === "list") {
               return { data: opts.advanceMatched ?? [{ id: PARENT.id }], error: null };
+            }
+            // The removed-vendor pause selects "id" and resolves as a LIST.
+            if (shape === "list" && payload && "recurrence_status" in payload) {
+              return { data: [{ id: (opts.order ?? PARENT).id }], error: null };
             }
             return {
               data: { ...(opts.order ?? PARENT), ...(payload ?? {}) },
@@ -639,6 +645,53 @@ describe("the generator", () => {
     expect(calls.orderUpdates).toHaveLength(0);
   });
 
+  it("pauses a series whose vendor was removed, says so in the run, and does not advance it", async () => {
+    const { service, calls } = makeService(
+      { dueRows: [DUE], order: DUE },
+      {
+        createOrder: async () => {
+          throw new UnprocessableEntityException({
+            reason: VENDOR_REMOVED,
+            message: "This vendor was removed from your vendors, so no order was placed.",
+          });
+        },
+      },
+    );
+    const out = await service.generateDueRecurrences(at("2026-09-08"));
+    expect(out.pausedVendorRemoved).toBe(1);
+    expect(out.failed).toBe(0);
+    expect(out.created).toBe(0);
+    expect(calls.orderUpdates).toHaveLength(1);
+    expect(calls.orderUpdates[0]).toMatchObject({
+      recurrence_status: "paused",
+      recurrence_status_by: null,
+    });
+    expect(calls.orderUpdates[0].recurrence_next_due_on).toBeUndefined();
+    const audit = calls.auditInserts.flat();
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({
+      actor_type: "system",
+      action: "order_recurrence_paused",
+      entity_id: DUE.id,
+      changes: { from: "active", to: "paused", detail: { cause: "vendor_removed" } },
+    });
+  });
+
+  it("still counts any other 422 from createOrder as a failure", async () => {
+    const { service, calls } = makeService(
+      { dueRows: [DUE], order: DUE },
+      {
+        createOrder: async () => {
+          throw new UnprocessableEntityException({ reason: "units_unresolved", message: "x" });
+        },
+      },
+    );
+    const out = await service.generateDueRecurrences(at("2026-09-08"));
+    expect(out.failed).toBe(1);
+    expect(out.pausedVendorRemoved).toBe(0);
+    expect(calls.orderUpdates).toHaveLength(0);
+  });
+
   it("reports a failed read as a failed read, never as 'nothing was due'", async () => {
     const { service, calls } = makeService({
       dueError: { message: "statement timeout" },
@@ -663,6 +716,7 @@ describe("the generator", () => {
       collided: 0,
       failed: 0,
       drifted: 0,
+      pausedVendorRemoved: 0,
       queryFailed: false,
       error: null,
     });

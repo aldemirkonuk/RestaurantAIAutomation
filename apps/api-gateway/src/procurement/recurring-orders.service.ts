@@ -18,6 +18,10 @@ import { OrchestratorService } from "../common/orchestrator/orchestrator.service
 import { resolveOrderUnits } from "./order-units";
 import { assertInventoryBelongsToRestaurant } from "../common/tenant/assert-inventory-belongs-to-restaurant";
 import { assertProviderBelongsToRestaurant } from "../common/tenant/assert-provider-belongs-to-restaurant";
+import {
+  assertProviderTakesOrders,
+  isVendorRemoved,
+} from "../common/tenant/assert-provider-takes-orders";
 
 /**
  * The five schedule shapes `recurring_orders_frequency_check` accepts.
@@ -408,6 +412,15 @@ export class RecurringOrdersService {
       },
       "createRecurringOrder",
     );
+    // A schedule that will run names a vendor that still takes orders (#1283);
+    // a removed vendor's would be refused every morning at 08:00.
+    if (template.active !== false) {
+      await this.assertScheduleVendorTakesOrders(
+        restaurantId,
+        template.provider_id,
+        "createRecurringOrder",
+      );
+    }
 
     const { data, error } = await this.databaseService.supabase
       .from("recurring_orders")
@@ -584,6 +597,29 @@ export class RecurringOrdersService {
       "updateRecurringOrder",
     );
 
+    let current: any;
+    const readCurrent = async () =>
+      (current ??= await this.getRecurringOrder(restaurantId, id));
+
+    // Resuming a schedule, or giving a running one a vendor, needs a vendor
+    // that still takes orders (#1283). Pausing one, and any other edit, does
+    // not: that is what a person does with a removed vendor's schedule, and an
+    // edit that names no vendor and no resume reads no vendor (ADR 0249). A
+    // running schedule whose vendor was removed is switched off by the removal
+    // and, failing that, by the 08:00 run.
+    const resumes = patch.active === true;
+    const namesVendor = patch.provider_id !== undefined && patch.active !== false;
+    if (resumes || namesVendor) {
+      const vendor = patch.provider_id ?? (await readCurrent()).provider_id;
+      if (resumes || (await readCurrent()).active) {
+        await this.assertScheduleVendorTakesOrders(
+          restaurantId,
+          vendor,
+          "updateRecurringOrder",
+        );
+      }
+    }
+
     // Units are re-resolved whenever any of the three inputs moves.
     //
     // A CHANGED unit does not inherit the stored pack size. `resolveOrderUnits`
@@ -598,7 +634,7 @@ export class RecurringOrdersService {
       patch.unit_type !== undefined ||
       patch.bottles_per_unit !== undefined
     ) {
-      const current = await this.getRecurringOrder(restaurantId, id);
+      const current = await readCurrent();
       const unitChanged =
         patch.unit_type !== undefined && patch.unit_type !== current.unit_type;
       const units = resolveOrderUnits({
@@ -681,6 +717,21 @@ export class RecurringOrdersService {
     }
   }
 
+  private async assertScheduleVendorTakesOrders(
+    restaurantId: string,
+    providerId: string,
+    context: string,
+  ): Promise<void> {
+    await assertProviderTakesOrders(
+      this.databaseService.supabase,
+      restaurantId,
+      providerId,
+      context,
+      "the schedule was not saved",
+      this.logger,
+    );
+  }
+
   async deleteRecurringOrder(restaurantId: string, id: string) {
     const { error } = await this.databaseService.supabase
       .from("recurring_orders")
@@ -743,10 +794,34 @@ export class RecurringOrdersService {
           this.logger.error(
             `Failed to execute recurring order ${recurringOrder.id}: ${err?.message}`,
           );
+          // Its vendor was removed: switch the schedule off, so it is not
+          // refused again every morning. Removing the vendor does this too
+          // (vendor-removal.ts); this catches one that step missed.
+          if (isVendorRemoved(err)) {
+            await this.switchOffForRemovedVendor(recurringOrder);
+          }
         }
       }
     } catch (err) {
       this.logger.error(`Recurring order cron failed: ${err?.message}`);
+    }
+  }
+
+  private async switchOffForRemovedVendor(row: RecurringOrderRow): Promise<void> {
+    const { error } = await this.databaseService.supabase
+      .from("recurring_orders")
+      .update({ active: false, updated_at: new Date().toISOString() })
+      .eq("restaurant_id", row.restaurant_id)
+      .eq("id", row.id)
+      .eq("active", true);
+    if (error) {
+      this.logger.error(
+        `Recurring order ${row.id} names a removed vendor and could not be switched off: ${error.message}`,
+      );
+    } else {
+      this.logger.warn(
+        `Recurring order ${row.id} switched off: its vendor was removed`,
+      );
     }
   }
 
