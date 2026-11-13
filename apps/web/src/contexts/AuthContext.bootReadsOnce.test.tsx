@@ -54,7 +54,7 @@ beforeEach(() => {
   vi.resetModules();
 });
 
-async function bootPage() {
+async function bootPage({ timeout }: { timeout?: number } = {}) {
   // The store boots when it is first imported, as it does in main.tsx's graph.
   await import("../stores/authStore");
   const { AuthProvider, useAuth } = await import("./AuthContext");
@@ -73,7 +73,7 @@ async function bootPage() {
       </AuthProvider>
     </React.StrictMode>,
   );
-  await waitFor(() => expect(loading).toBe(false));
+  await waitFor(() => expect(loading).toBe(false), timeout ? { timeout } : undefined);
   return () => user as { userId?: string } | null;
 }
 
@@ -149,7 +149,7 @@ describe("a page load asks /auth/me once", () => {
     expect(localStorage.getItem("accessToken")).toBe(NEW);
   });
 
-  it("a 429 is not asked again by the second client; the session is kept", async () => {
+  it("a 429 is not asked again by the second client; the session is kept and waits", async () => {
     localStorage.setItem("accessToken", jwt({ userId: U, restaurantId: A }));
     localStorage.setItem("refreshToken", "r");
     h.instance.get.mockImplementation(async (url: string) =>
@@ -158,9 +158,50 @@ describe("a page load asks /auth/me once", () => {
         : { data: [] },
     );
 
-    await bootPage();
+    // #1092: a 429 no longer ends the load; the provider waits and asks again
+    // (lib/sessionWait.ts). Before that first wait ends, the store's read and
+    // both StrictMode mounts have made one request between them.
+    await import("../stores/authStore");
+    const { AuthProvider, useAuth } = await import("./AuthContext");
+    let wait: { reason?: string } | null | undefined;
+    let loading = false;
+    function Probe() {
+      const a = useAuth();
+      wait = a.sessionWait;
+      loading = a.loading;
+      return null;
+    }
+    render(
+      <React.StrictMode>
+        <AuthProvider>
+          <Probe />
+        </AuthProvider>
+      </React.StrictMode>,
+    );
+    await waitFor(() => expect(wait?.reason).toBe("busy"), { timeout: 900 });
 
     expect(meCalls()).toHaveLength(1);
+    expect(loading).toBe(true);
     expect(localStorage.getItem("refreshToken")).toBe("r");
+  });
+  it("after the first wait, the next ask reaches the gateway instead of replaying the 429", async () => {
+    localStorage.setItem("accessToken", jwt({ userId: U, restaurantId: A }));
+    localStorage.setItem("refreshToken", "r");
+    let busy = true;
+    h.instance.get.mockImplementation(async (url: string) => {
+      if (url !== "/api/v1/auth/me") return { data: [] };
+      if (busy) {
+        busy = false;
+        return Promise.reject({ response: { status: 429 } });
+      }
+      return { data: { user: { userId: U, email: "o@x.test", role: "owner", restaurantId: A } } };
+    });
+
+    // The first wait is 1 s. A settled 429 shared for 5 s would make the asks
+    // at 1 s and 3 s replays, and the person would wait about 7 s.
+    const user = await bootPage({ timeout: 2500 });
+
+    await waitFor(() => expect(user()?.userId).toBe(U));
+    expect(meCalls()).toHaveLength(2);
   });
 });
