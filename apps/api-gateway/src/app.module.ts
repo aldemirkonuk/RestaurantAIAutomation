@@ -7,6 +7,7 @@ import { LivenessController } from "./health/liveness.controller";
 import { ReadinessController } from "./health/readiness.controller";
 import { AuthModule } from "./auth/auth.module";
 import { InventoryModule } from "./inventory/inventory.module";
+import { ItemNutritionModule } from "./item-nutrition/item-nutrition.module";
 import { ProcurementModule } from "./procurement/procurement.module";
 import { NotificationsModule } from "./notifications/notifications.module";
 import { ReportsModule } from "./reports/reports.module";
@@ -120,6 +121,7 @@ import { HouseModule } from "./house/house.module";
     OneTapActionsModule, // One-tap actions with backend persistence
     ToastModule, // Toast POS API integration
     InventoryModule,
+    ItemNutritionModule, // What a good is made of: nutrition + the 14 allergens
     InventoryLedgerModule, // Immutable inventory transaction ledger
     ProcurementModule,
     NotificationsModule,
