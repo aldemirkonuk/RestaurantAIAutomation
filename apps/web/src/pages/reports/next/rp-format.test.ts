@@ -44,6 +44,10 @@ describe('money — in the house’s currency, never an assumed $ (audit G5)', (
     expect(money(4302, 'full', 'TRY')).toBe('₺4.302');
     expect(money(112736.56, 'table', 'TRY')).toBe('₺112.736,56');
     expect(money(1234.5, 'full', 'USD')).toBe('$1,234.5');
+    // Compact keeps the page's English suffix with the house's marks: the
+    // Turkish compact form "₺12,3 B" (bin) reads as billions on this page.
+    expect(money(12345, 'compact', 'TRY')).toBe('₺12,3K');
+    expect(money(12345678, 'compact', 'TRY')).toBe('₺12,3M');
     expect(money(12345, 'compact', 'EUR')).toBe('€12.3K');
     expect(money(4.5, 'table', 'GBP')).toBe('£4.50');
   });

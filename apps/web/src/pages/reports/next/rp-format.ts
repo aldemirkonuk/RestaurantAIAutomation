@@ -78,20 +78,43 @@ export function money(
     // "₺4,302" and "₺112,736.56" here while /inventory printed "₺545,10"
     // (r29 walk, finding 4). The locale is the one country that owns the
     // money (`houseNumberLocale`, #1303), so two readers see one figure.
-    return new Intl.NumberFormat(houseNumberLocale(code), {
+    const locale = houseNumberLocale(code);
+    if (mode === 'compact') return compactInHouseMarks(n, code, locale);
+    return new Intl.NumberFormat(locale, {
       style: 'currency',
       currency: code,
       currencyDisplay: 'narrowSymbol',
-      ...(mode === 'compact'
-        ? { notation: 'compact', minimumFractionDigits: 0, maximumFractionDigits: 1 }
-        : mode === 'table'
-          ? { minimumFractionDigits: 2, maximumFractionDigits: 2 }
-          : { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+      ...(mode === 'table'
+        ? { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+        : { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
     }).format(n);
   } catch {
     // A well-formed code this runtime does not know: the number is still true.
     return `${formatNumber(n, mode === 'compact' ? 'compact' : 'full')} ${code}`;
   }
+}
+
+/**
+ * A compact amount ("₺12,3K") with the HOUSE's decimal and group marks but
+ * the page's own English suffix. The house locale's own compact words are
+ * wrong on an English page: Turkish writes 12.3 thousand as "₺12,3 B" (bin),
+ * which an English reader takes for billions.
+ */
+function compactInHouseMarks(n: number, code: string, locale: string | undefined): string {
+  const marks = new Intl.NumberFormat(locale).formatToParts(12345.6);
+  const decimal = marks.find((p) => p.type === 'decimal')?.value ?? '.';
+  const group = marks.find((p) => p.type === 'group')?.value ?? ',';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: code,
+    currencyDisplay: 'narrowSymbol',
+    notation: 'compact',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  })
+    .formatToParts(n)
+    .map((p) => (p.type === 'decimal' ? decimal : p.type === 'group' ? group : p.value))
+    .join('');
 }
 
 /** `money` bound to one house's currency — what every register view uses. */
