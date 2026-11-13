@@ -2164,6 +2164,8 @@ export class MenusService {
    * counts). A supplier counts whoever added it -- the person, a promoted
    * prospect, or a seller read off the house's own invoice.
    * A failed read throws; it is never taken for "not yet".
+   * `next_steps` (readNextSteps) are read alongside and never throw: each
+   * gives null when its own read fails.
    */
   async getOnboardingProgress(userId: string, restaurantId: string | null | undefined) {
     if (!restaurantId) {
@@ -2177,7 +2179,7 @@ export class MenusService {
         `Could not read this house's ${what} for its setup: ${message}`,
       );
 
-    const [own, menuRead, menuCurrent, supplier, invite, house] =
+    const [own, menuRead, menuCurrent, supplier, invite, house, nextSteps] =
       await Promise.all([
         supabase
           .from("user_onboarding_progress")
@@ -2205,6 +2207,7 @@ export class MenusService {
           .select("threshold_configured")
           .eq("id", restaurantId)
           .maybeSingle(),
+        this.readNextSteps(restaurantId),
       ]);
     if (own.error) throw fail("setup row", own.error.message);
     if (supplier.error) throw fail("suppliers", supplier.error.message);
@@ -2234,6 +2237,97 @@ export class MenusService {
       completed_at: completedAt,
       threshold_configured: !!house.data?.threshold_configured,
       activated: menuCurrent !== null,
+      next_steps: nextSteps,
+    };
+  }
+
+  /**
+   * What leads past the menu to the house's costs (r28 onboarding gap 3, the
+   * session's call under the 2026-11-07 /goal): the first goods on the list,
+   * the house's mailbox, and the first invoice checked. These are the next
+   * steps, not setup: they never decide `completed_at` or `activated`, so a
+   * house that finished setup is not sent back into it.
+   *
+   * Each fact is read on its own. A read that fails gives `null` (not read),
+   * never `false`: the setup above still answers, and the panel says the step
+   * could not be read instead of calling it not done (absence is not health,
+   * and a failed read is not absence).
+   *
+   * - goods_listed: an active good on the house's list (the desk's count).
+   * - mailbox_connected: a live Gmail grant held for this house, to send or
+   *   to read (the only mailbox a house can connect today).
+   * - invoice: "checked" once an invoice is verified (its costs are applied),
+   *   else "waiting" while one is in and not yet checked, else "none".
+   *   A rejected or superseded paper is neither.
+   */
+  private async readNextSteps(restaurantId: string): Promise<{
+    goods_listed: boolean | null;
+    mailbox_connected: boolean | null;
+    invoice: "none" | "waiting" | "checked" | null;
+  }> {
+    const supabase = this.dbService.supabase;
+    // A read that throws or rejects (a dropped connection) is a failed read
+    // like any other: it gives this fact `null` and never fails the setup.
+    const settle = (
+      query: () => PromiseLike<{ data: unknown[] | null; error: unknown }>,
+    ): Promise<{ data: unknown[] | null; error: unknown }> =>
+      new Promise<PromiseLike<{ data: unknown[] | null; error: unknown }>>(
+        (resolve) => resolve(query()),
+      ).then(
+        (read) => read,
+        (error: unknown) => ({ data: null, error: error ?? "rejected" }),
+      );
+    const [goods, mailbox, checked, waiting] = await Promise.all([
+      settle(() =>
+        supabase
+          .from("restaurant_inventory")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .is("deleted_at", null)
+          .eq("is_active", true)
+          .limit(1),
+      ),
+      settle(() =>
+        supabase
+          .from("integration_oauth_connections")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .in("integration_id", ["gmail_send", "gmail_read"])
+          .is("revoked_at", null)
+          .limit(1),
+      ),
+      settle(() =>
+        supabase
+          .from("procurement_documents")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .eq("doc_type", "invoice")
+          .eq("status", "verified")
+          .limit(1),
+      ),
+      settle(() =>
+        supabase
+          .from("procurement_documents")
+          .select("id")
+          .eq("restaurant_id", restaurantId)
+          .eq("doc_type", "invoice")
+          .in("status", ["received", "extracting", "needs_review"])
+          .limit(1),
+      ),
+    ]);
+    const held = (read: { data: unknown[] | null; error: unknown }) =>
+      read.error ? null : (read.data ?? []).length > 0;
+    const isChecked = held(checked);
+    const isWaiting = held(waiting);
+    let invoice: "none" | "waiting" | "checked" | null;
+    if (isChecked === true) invoice = "checked";
+    else if (isChecked === null) invoice = null;
+    else if (isWaiting === null) invoice = null;
+    else invoice = isWaiting ? "waiting" : "none";
+    return {
+      goods_listed: held(goods),
+      mailbox_connected: held(mailbox),
+      invoice,
     };
   }
 

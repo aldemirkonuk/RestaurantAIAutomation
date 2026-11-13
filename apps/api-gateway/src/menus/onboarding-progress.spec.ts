@@ -45,6 +45,7 @@ function fakeDb(
       eq: (c: string, v: any) => (preds.push((r) => col(r, c) === v), api),
       neq: (c: string, v: any) => (preds.push((r) => col(r, c) !== undefined && col(r, c) !== v), api),
       is: (c: string, v: null) => (preds.push((r) => (r[c] ?? null) === v), api),
+      in: (c: string, vs: any[]) => (preds.push((r) => vs.includes(col(r, c))), api),
       // PostgREST `or`: "col.not.is.null" and "col.gt.<value>" terms.
       or: (expr: string) => {
         const terms = expr.split(",").map((t) => {
@@ -312,5 +313,157 @@ describe("onboarding progress is read from the session's house (OB-1)", () => {
         value: { user_id: "invitee-9", restaurant_id: houseA, checklist_dismissed: true },
       },
     ]);
+  });
+});
+
+// r28 onboarding gap 3: the setup stopped at a menu. The next steps lead on to
+// the house's costs: goods on the list, the house's mailbox, the first invoice
+// checked. Each is read from the house, and a failed read is null, never false.
+describe("next steps lead past the menu to the house's costs (r28 gap 3)", () => {
+  function withValue(): Record<string, Row[]> {
+    const tables = twoHouses();
+    tables.restaurant_inventory = [
+      { id: "g-A", restaurant_id: houseA, deleted_at: null, is_active: true },
+    ];
+    tables.integration_oauth_connections = [
+      { id: "c-A", restaurant_id: houseA, integration_id: "gmail_send", revoked_at: null },
+    ];
+    tables.procurement_documents = [
+      { id: "d-A", restaurant_id: houseA, doc_type: "invoice", status: "verified" },
+    ];
+    return tables;
+  }
+
+  it("a house with no goods, no mailbox and no invoice says so, and its setup still answers", async () => {
+    const a = await serviceOn(twoHouses()).service.getOnboardingProgress("u-1", houseA);
+    expect(a.next_steps).toEqual({ goods_listed: false, mailbox_connected: false, invoice: "none" });
+    expect(a.menu_current).toBe(true);
+  });
+
+  it("house A's good, grant and checked invoice count for A and never for B", async () => {
+    const { service } = serviceOn(withValue());
+    const a = await service.getOnboardingProgress("u-1", houseA);
+    expect(a.next_steps).toEqual({ goods_listed: true, mailbox_connected: true, invoice: "checked" });
+    const b = await service.getOnboardingProgress("u-1", houseB);
+    expect(b.next_steps).toEqual({ goods_listed: false, mailbox_connected: false, invoice: "none" });
+  });
+
+  it("a good put away or deleted is not on the list", async () => {
+    const tables = withValue();
+    tables.restaurant_inventory[0].is_active = false;
+    expect((await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).next_steps.goods_listed).toBe(false);
+    tables.restaurant_inventory[0].is_active = true;
+    tables.restaurant_inventory[0].deleted_at = "2026-01-05T00:00:00+00:00";
+    expect((await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).next_steps.goods_listed).toBe(false);
+  });
+
+  it("only a live Gmail grant held for this house is its mailbox; reading counts as well as sending", async () => {
+    const tables = withValue();
+    const mailbox = async () =>
+      (await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).next_steps.mailbox_connected;
+    tables.integration_oauth_connections[0].revoked_at = "2026-01-05T00:00:00+00:00";
+    expect(await mailbox()).toBe(false);
+    tables.integration_oauth_connections[0] = { id: "c-D", restaurant_id: houseA, integration_id: "google_drive", revoked_at: null };
+    expect(await mailbox()).toBe(false);
+    tables.integration_oauth_connections[0] = { id: "c-B", restaurant_id: houseB, integration_id: "gmail_send", revoked_at: null };
+    expect(await mailbox()).toBe(false);
+    tables.integration_oauth_connections[0] = { id: "c-R", restaurant_id: houseA, integration_id: "gmail_read", revoked_at: null };
+    expect(await mailbox()).toBe(true);
+  });
+
+  it("an invoice in and not checked is waiting; a rejected one, or a checked credit memo, is no invoice", async () => {
+    const tables = withValue();
+    const invoice = async () =>
+      (await serviceOn(tables).service.getOnboardingProgress("u-1", houseA)).next_steps.invoice;
+    tables.procurement_documents[0].status = "needs_review";
+    expect(await invoice()).toBe("waiting");
+    tables.procurement_documents[0].status = "received";
+    expect(await invoice()).toBe("waiting");
+    tables.procurement_documents[0].status = "rejected";
+    expect(await invoice()).toBe("none");
+    tables.procurement_documents[0] = { id: "d-C", restaurant_id: houseA, doc_type: "credit_memo", status: "verified" };
+    expect(await invoice()).toBe("none");
+    tables.procurement_documents.push(
+      { id: "d-W", restaurant_id: houseA, doc_type: "invoice", status: "extracting" },
+      { id: "d-V", restaurant_id: houseA, doc_type: "invoice", status: "verified" },
+    );
+    expect(await invoice()).toBe("checked");
+  });
+
+  it("a failed read is null for that step only, never false, and the setup still answers", async () => {
+    for (const [table, key] of [
+      ["restaurant_inventory", "goods_listed"],
+      ["integration_oauth_connections", "mailbox_connected"],
+      ["procurement_documents", "invoice"],
+    ] as const) {
+      const a = await serviceOn(withValue(), { [table]: "statement timeout" }).service.getOnboardingProgress("u-1", houseA);
+      expect(a.next_steps[key]).toBeNull();
+      expect(a.menu_current).toBe(true);
+      expect(a.completed_at).not.toBeNull();
+      const others = Object.entries(a.next_steps).filter(([k]) => k !== key);
+      expect(others.every(([, v]) => v !== null)).toBe(true);
+    }
+  });
+
+  it("a read that rejects (a dropped connection) is null too; the setup read does not fail", async () => {
+    const { service } = serviceOn(withValue());
+    const db = (service as any).dbService.supabase;
+    const from = db.from;
+    db.from = (table: string) => {
+      const q = from(table);
+      if (table !== "integration_oauth_connections") return q;
+      const thenable: any = new Proxy(q, {
+        get: (target, prop) =>
+          prop === "then"
+            ? (_ok: any, fail: any) => Promise.reject(new Error("socket hang up")).then(_ok, fail)
+            : typeof target[prop] === "function"
+              ? (...args: any[]) => (target[prop](...args), thenable)
+              : target[prop],
+      });
+      return thenable;
+    };
+    const a = await service.getOnboardingProgress("u-1", houseA);
+    expect(a.next_steps.mailbox_connected).toBeNull();
+    expect(a.next_steps.goods_listed).toBe(true);
+    expect(a.activated).toBe(true);
+  });
+
+  it("a read that throws while it is built is null too", async () => {
+    const { service } = serviceOn(withValue());
+    const db = (service as any).dbService.supabase;
+    const from = db.from;
+    db.from = (table: string) => {
+      if (table === "procurement_documents") throw new Error("client gone");
+      return from(table);
+    };
+    const a = await service.getOnboardingProgress("u-1", houseA);
+    expect(a.next_steps.invoice).toBeNull();
+    expect(a.next_steps.mailbox_connected).toBe(true);
+  });
+
+  it("no checked invoice and an unread waiting list is null, never 'none'", async () => {
+    const tables = withValue();
+    tables.procurement_documents = [];
+    const { service } = serviceOn(tables);
+    const db = (service as any).dbService.supabase;
+    const from = db.from;
+    let papers = 0;
+    db.from = (table: string) => {
+      // The second read of the papers is the waiting one.
+      if (table === "procurement_documents" && ++papers === 2) throw new Error("client gone");
+      return from(table);
+    };
+    expect((await service.getOnboardingProgress("u-1", houseA)).next_steps.invoice).toBeNull();
+  });
+
+  it("the next steps never decide setup: all held with no supplier leaves completed_at null; with no menu, not activated", async () => {
+    const tables = withValue();
+    tables.providers = [];
+    const a = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
+    expect(a.next_steps).toEqual({ goods_listed: true, mailbox_connected: true, invoice: "checked" });
+    expect(a.completed_at).toBeNull();
+    tables.menu_items = [];
+    const b = await serviceOn(tables).service.getOnboardingProgress("u-1", houseA);
+    expect(b.activated).toBe(false);
   });
 });

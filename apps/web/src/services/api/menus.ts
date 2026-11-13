@@ -127,6 +127,21 @@ export interface OnboardingProgress {
   threshold_configured: boolean
   /** The house has a current menu with a live line: stock and prices come from it. */
   activated: boolean
+  /**
+   * What leads past the menu to the house's costs (r28 gap 3). Never part of
+   * setup: they decide neither `completed_at` nor `activated`. `null` = that
+   * read failed (not "not done"). Absent from an older gateway.
+   */
+  next_steps?: OnboardingNextSteps
+}
+
+export interface OnboardingNextSteps {
+  /** An active good on the house's list. */
+  goods_listed: boolean | null
+  /** A live Gmail grant held for this house (sending or reading). */
+  mailbox_connected: boolean | null
+  /** "checked" once an invoice is verified, "waiting" while one is in, else "none". */
+  invoice: 'none' | 'waiting' | 'checked' | null
 }
 
 type MenuImportData =
