@@ -28,12 +28,12 @@ const blank: DraftRow = {
 };
 
 let last: DraftRow = blank;
-function Harness({ start, say = null }: { start: DraftRow; say?: ((n: number) => string) | null }) {
+function Harness({ start, say = null, kind }: { start: DraftRow; say?: ((n: number) => string) | null; kind?: 'cocktail' | 'dish' }) {
   const [row, setRow] = useState(start);
   last = row;
   return (
     <ol>
-      <LineRow row={row} say={say} onChange={(p) => setRow((r) => ({ ...r, ...p }))} onRemove={() => {}} />
+      <LineRow row={row} say={say} kind={kind} onChange={(p) => setRow((r) => ({ ...r, ...p }))} onRemove={() => {}} />
     </ol>
   );
 }
@@ -254,5 +254,28 @@ describe('LineRow', () => {
     rerender();
     await waitFor(() => expect(result.current.data?.[0]?.name).toBe('House B gin'));
     expect(h.get).toHaveBeenCalledWith(`/recipes/${RID_B}/shelf`, expect.anything());
+  });
+});
+
+describe('LineRow unit picker by recipe kind', () => {
+  const options = () =>
+    Array.from((screen.getByLabelText('Unit') as HTMLSelectElement).options)
+      .map((o) => o.textContent)
+      .filter((t) => t !== 'unit');
+
+  it('a dish line offers kitchen units, never a bar measure', () => {
+    mount(<Harness start={{ ...blank, qtyText: '250', unit: 'g' }} kind="dish" />);
+    expect(options()).toEqual(['g', 'kg', 'ml', 'l', 'tsp', 'tbsp', 'each']);
+  });
+
+  it('a drink line still offers every unit, the bar measures included', () => {
+    mount(<Harness start={{ ...blank, qtyText: '2', unit: 'dash' }} kind="cocktail" />);
+    expect(options()).toEqual(['ml', 'cl', 'l', 'US oz', 'tsp', 'tbsp', 'dashes', 'barspoons', 'g', 'kg', 'each']);
+  });
+
+  it('a dish line that already reads in a bar unit keeps it chosen', () => {
+    mount(<Harness start={{ ...blank, qtyText: '1', unit: 'oz' }} kind="dish" />);
+    expect(options()).toEqual(['g', 'kg', 'ml', 'l', 'tsp', 'tbsp', 'each', 'US oz']);
+    expect((screen.getByLabelText('Unit') as HTMLSelectElement).value).toBe('oz');
   });
 });
