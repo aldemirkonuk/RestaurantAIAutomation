@@ -281,8 +281,8 @@ const isUuid = (value: string) =>
 
 // ── 401 Interceptor: auto-refresh with deduplication ───────────────
 // The refresh itself lives in `lib/sessionRefresh.ts` — the one
-// implementation this interceptor, `refreshTokenFn` below, and
-// `stores/authStore.ts`'s `loadUser` all call, so a 401 on this axios
+// implementation this interceptor, `refreshTokenFn` below, and the API
+// client (`services/api/client.ts`) all call, so a 401 on this axios
 // instance and a concurrent refresh started from a different module share
 // one in-flight request and one outcome rather than racing (ADR 0164, item
 // 2/3: three separate refresh implementations used to disagree on whether a
@@ -1150,7 +1150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [endSession]);
 
   // Delegates to the same single-flight `doRefresh` the axios interceptor and
-  // `authStore.ts` use (ADR 0164, item 2/3) — this used to be a fourth,
+  // the API client use (ADR 0164, item 2/3) — this used to be a fourth,
   // independent refresh implementation with its own copy of the
   // houseAccessEnded/503 rules, and could fire its own `POST /auth/refresh`
   // at the same moment the interceptor did.

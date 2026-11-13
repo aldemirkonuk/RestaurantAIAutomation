@@ -43,6 +43,7 @@ beforeEach(() => {
 describe("the auth store does no network work of its own", () => {
   it("importing it with a stored token asks nothing", () => {
     // The module above was imported once; a boot read would have fired then.
+    expect(net.create).not.toHaveBeenCalled();
     expect(net.get).not.toHaveBeenCalled();
     expect(net.post).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
