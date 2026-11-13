@@ -140,13 +140,18 @@ function Entry({ entry }: { entry: LedgerEntry }) {
             {EM} the row carries no before-and-after, so what moved is not recorded.
           </p>
         ) : (
-          <ul style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'grid', gap: 2 }}>
+          // A stored value can be one long unbroken string (an object is
+          // printed as JSON). One column that may shrink to the row, and
+          // `anywhere`, so it breaks inside the row instead of running past
+          // the right edge of a phone.
+          <ul style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 2 }}>
             {fields.map(([key, change]) => (
               <li
                 key={key}
+                data-testid="st-ledger-field"
                 style={{
                   fontFamily: MONO, fontSize: 11.5, color: 'var(--ink-2)',
-                  fontVariantNumeric: 'tabular-nums',
+                  fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere',
                 }}
               >
                 <span style={{ color: 'var(--ink-4)' }}>{key}</span>{' '}

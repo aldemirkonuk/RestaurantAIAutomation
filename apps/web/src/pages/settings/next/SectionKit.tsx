@@ -57,7 +57,17 @@ export const fieldStyle: CSSProperties = {
   border: '1px solid var(--paper-2)',
   background: 'var(--paper-0)',
   color: 'var(--ink-1)',
+  // A select is as wide as its longest option; a long time-zone or currency
+  // name must not make it wider than the row it sits in.
+  maxWidth: '100%',
 };
+
+/**
+ * The narrowest the words of a Row get before its control moves under them.
+ * 220px keeps a label and its sentence readable; at a 375px screen it leaves
+ * room for a switch or a short button beside them, and anything wider wraps.
+ */
+export const ROW_WORDS_MIN_PX = 220;
 
 /**
  * A write that did not go through, said where the reader is looking.
@@ -278,16 +288,24 @@ export function Row({
   /** Sketch 109A's certainty stamp for this row — the page's filter key. */
   cert?: Certainty;
 }) {
+  // On a phone the control drops under the words instead of pushing the page
+  // sideways. The control used to sit beside the words and never shrink, so a
+  // wide one (the digest's four fields, three notification choices, a long
+  // currency name) took the whole row, squeezed the words to nothing and ran
+  // past the right edge of a 375px screen.
+  // Now the words keep at least ROW_WORDS_MIN_PX, the control may wrap onto
+  // its own line, and it is never wider than the row.
   return (
     <div
       data-cert={cert}
+      data-testid="st-row"
       style={{
-        display: 'flex', alignItems: 'flex-start', gap: 16, padding: '13px 0',
+        display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', columnGap: 16, rowGap: 8, padding: '13px 0',
         borderTop: '1px solid var(--paper-2)',
         background: tone === 'grave' ? 'var(--seal-tint)' : undefined,
       }}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: `1 1 ${ROW_WORDS_MIN_PX}px`, minWidth: 0 }}>
         <p style={{ fontFamily: SANS, fontSize: 13.5, fontWeight: 600, color: 'var(--ink-1)', margin: 0 }}>
           {cert && <CertaintyTag value={cert} />} {label}
         </p>
@@ -297,7 +315,7 @@ export function Row({
         {provenance && <ProvenanceLine {...provenance} />}
         {children}
       </div>
-      {control && <div style={{ flexShrink: 0, paddingTop: 2 }}>{control}</div>}
+      {control && <div data-testid="st-row-control" style={{ flexShrink: 0, maxWidth: '100%', paddingTop: 2 }}>{control}</div>}
     </div>
   );
 }

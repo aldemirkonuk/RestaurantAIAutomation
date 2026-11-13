@@ -263,7 +263,10 @@ function SettingsNextLoaded({ ground }: SettingsNextProps) {
     <div
       className="mudavym"
       data-ground={ground}
-      style={{ minHeight: '100vh', background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS }}
+      // break-word: a long unbroken string (a mail address, a stored value)
+      // breaks onto the next line instead of widening the page on a phone.
+      style={{ minHeight: '100vh', background: 'var(--paper-0)', color: 'var(--ink-1)', fontFamily: SANS, overflowWrap: 'break-word' }}
+      data-testid="st-page"
     >
       <style>{CSS}</style>
       <div style={{ maxWidth: 1080, margin: '0 auto', padding: '26px 18px 64px' }}>
