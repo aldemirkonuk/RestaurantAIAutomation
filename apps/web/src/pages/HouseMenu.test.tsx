@@ -2,12 +2,18 @@
  * The first proof says which parts of the file a scan could not read
  * (ADR 0213 #17), one plain sentence each, under the reading count.
  */
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import HouseMenu from './HouseMenu'
 import { writeProof } from '../lib/firstProof'
 import type { MenuImportResult } from '../services/api/menus'
+
+// The proof asks who is reading to decide whether to offer the current-menu
+// choice (HouseMenu.makeCurrent.test.tsx covers that choice).
+vi.mock('../contexts/AuthContext', () => ({
+  useAuth: () => ({ activeRole: 'staff', user: { role: 'staff' } }),
+}))
 
 function proof(over: Partial<MenuImportResult> = {}): MenuImportResult {
   return {

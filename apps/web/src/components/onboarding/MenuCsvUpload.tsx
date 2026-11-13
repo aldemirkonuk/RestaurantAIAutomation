@@ -191,18 +191,23 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
       // The file already read into state, then the rest of the queue — each as
       // its own request. One failure is reported but does not abandon the
       // files after it.
-      let result = await importOne({
+      // The proof shows the first file, the one whose photo this form holds;
+      // every other file read is its own draft, counted so the proof can say
+      // so (it used to show the last file's lines beside the first file's photo).
+      const result = await importOne({
         scan: isScanFile,
         base64: fileBase64,
         csv: csvContent,
       })
       const failures: string[] = []
+      let otherKept = 0
 
       for (let i = 0; i < queue.length; i++) {
         const f = queue[i]
         setProgress({ done: i + 1, total, current: f.name })
         try {
-          result = await importOne(await readFile(f))
+          await importOne(await readFile(f))
+          otherKept += 1
         } catch (err: any) {
           failures.push(
             `${f.name}: ${readRefusalWords(err, 'import failed')}`,
@@ -219,7 +224,8 @@ export function MenuCsvUpload({ onSuccess }: MenuCsvUploadProps) {
         isScanFile && fileBase64 && !/\.pdf$/i.test(fileName || '')
           ? `data:image/jpeg;base64,${fileBase64}`
           : null
-      onSuccess(result, { image })
+      const shown = otherKept > 0 ? { ...result, otherKept } : result
+      onSuccess(shown, { image })
     } catch (e: any) {
       setError(readRefusalWords(e, 'Import failed. Please try again.'))
     } finally {

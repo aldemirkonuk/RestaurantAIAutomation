@@ -8,6 +8,36 @@ import {
   type MenuImportReviewItem,
 } from '../services/api/menus'
 import { isKitchenLine, lineNeedsPencil, lineSourceCrop, readProof } from '../lib/firstProof'
+import { useAuth } from '../contexts/AuthContext'
+import { MenuPlan } from './menu/next/MenuPlan'
+import { makeCurrentSentence } from './menu/next/MenuVersions'
+
+/**
+ * What the person chose for this read, kept for the browser session so a
+ * reload of the proof does not offer the choice again after it was made.
+ * Per menu id: a second read in the same session gets its own choice.
+ */
+const choiceKey = (menuId: string) => `mudavym:first-proof-choice:${menuId}`
+
+function readChoice(menuId: string | undefined): string | null {
+  if (!menuId) return null
+  try {
+    return sessionStorage.getItem(choiceKey(menuId))
+  } catch {
+    return null
+  }
+}
+
+function keepChoice(menuId: string, said: string) {
+  try {
+    sessionStorage.setItem(choiceKey(menuId), said)
+  } catch {
+    // A browser that refuses storage still shows the sentence on this screen.
+  }
+}
+
+const KEPT_NOT_CURRENT =
+  'Kept, not current. No price or stock changed. It waits on the menu page until an owner or a manager makes it current.'
 
 const sectionOrder = [
   'wine',
@@ -60,6 +90,29 @@ export default function HouseMenu() {
   const [addName, setAddName] = useState('')
   const [addSection, setAddSection] = useState('')
   const sourceImage = proof?.sourceImage ?? null
+  // ADR 0193 item 7 (Locked): after a read the person chooses whether it
+  // becomes the current menu; either way it is kept. The choice is an owner's
+  // or a manager's (the gateway refuses anyone else regardless of this page).
+  const { activeRole, user } = useAuth()
+  const role = (activeRole ?? user?.role ?? null) as string | null
+  const canManage = role === 'owner' || role === 'manager'
+  const [planning, setPlanning] = useState(false)
+  const [chosen, setChosen] = useState<string | null>(() => readChoice(proof?.menuId))
+  // A file read before reopens its version (one upload is one version), and
+  // that version may already be the current menu: then there is no choice to
+  // offer. Read through a wider type: the import reply says `current: true`
+  // only once the reopen path is on the branch.
+  const alreadyCurrent = (proof as { current?: boolean } | null)?.current === true
+  // Several files sent at once: each is read and kept as its own draft; the
+  // proof shows the first, and says how many others were kept.
+  const otherKeptRaw = (proof as { otherKept?: unknown } | null)?.otherKept
+  const otherKept = typeof otherKeptRaw === 'number' && otherKeptRaw > 0 ? Math.floor(otherKeptRaw) : 0
+
+  const choose = (said: string) => {
+    setPlanning(false)
+    setChosen(said)
+    if (proof) keepChoice(proof.menuId, said)
+  }
 
   const kitchen = items.filter(isKitchenLine)
   const drinkItems = items.filter((item) => !isKitchenLine(item))
@@ -329,6 +382,67 @@ export default function HouseMenu() {
             )}
           </div>
         )}
+        <section
+          aria-labelledby="first-proof-choice-h"
+          data-testid="first-proof-choice"
+          className="mt-12 border-t border-[#211f1b]/20 pt-6"
+        >
+          <h2 id="first-proof-choice-h" className="font-serif text-2xl">
+            Is this the menu you pour from now?
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm text-[#6d685f]">
+            It is kept either way. Making it current sets the house&apos;s prices from it and puts its wines on the
+            stock list; keeping it changes nothing.
+          </p>
+          {otherKept > 0 ? (
+            <p data-testid="first-proof-other-kept" className="mt-2 max-w-2xl text-sm text-[#6d685f]">
+              {otherKept === 1
+                ? 'The other file you sent was read too and kept as its own draft, not current. It waits on the menu page.'
+                : `The ${otherKept} other files you sent were read too, each kept as its own draft, not current. They wait on the menu page.`}
+            </p>
+          ) : null}
+          {alreadyCurrent ? (
+            <p role="status" data-testid="first-proof-already-current" className="mt-4 max-w-2xl text-sm">
+              It is the current menu. This file was read before and is the menu you pour from now; nothing changed.
+            </p>
+          ) : chosen ? (
+            <p role="status" data-testid="first-proof-choice-said" className="mt-4 max-w-2xl text-sm">
+              {chosen}
+            </p>
+          ) : canManage ? (
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                disabled={planning}
+                onClick={() => setPlanning(true)}
+                className="border border-[#211f1b]/40 px-4 py-2 text-sm disabled:opacity-40"
+              >
+                Make this the current menu
+              </button>
+              <button
+                type="button"
+                onClick={() => choose(KEPT_NOT_CURRENT)}
+                className="border border-[#211f1b]/40 px-4 py-2 text-sm disabled:opacity-40"
+              >
+                Keep it, not current
+              </button>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-[#6d685f]">
+              An owner or a manager chooses whether it becomes the current menu. It is kept either way.
+            </p>
+          )}
+          {planning && !chosen && !alreadyCurrent ? (
+            <div className="mudavym mt-4" data-testid="first-proof-plan">
+              <MenuPlan
+                menuId={proof.menuId}
+                canManage={canManage}
+                onCancel={() => setPlanning(false)}
+                onDone={(r, lines) => choose(makeCurrentSentence(r, undefined, lines))}
+              />
+            </div>
+          ) : null}
+        </section>
         <button type="button" onClick={() => navigate('/house')} className="mt-10 bg-[#1a5e6b] px-6 py-3 text-white">
           Open the house
         </button>
