@@ -50,7 +50,7 @@ import ItemDrawer from './ItemDrawer';
 import CarryThis from './CarryThis';
 import { removeBlocked, removeTarget } from './RowDropdown';
 import { RemoveFromInventoryModal } from '../../../components/inventory/RemoveFromInventoryModal';
-import { blank, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
+import { blank, costColumnsFor, daysSinceCountedCell, oneLine, runExport, today, valuationColumns } from './iv-export';
 import { COUNT_DUE_DAYS } from '../command/bits';
 import {
   CHIPS,
@@ -914,7 +914,7 @@ export default function InventoryNext() {
                     type="button"
                     className="iv-btn iv-focus"
                     onClick={() =>
-                      void runExport(selectedRows, valuation, `inventory-selected-${today()}`, 'Inventory selection')
+                      void runExport(selectedRows, costColumnsFor(valuation, data.canManage), `inventory-selected-${today()}`, 'Inventory selection')
                     }
                   >
                     Export selected
