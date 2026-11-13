@@ -628,7 +628,6 @@ export interface ItemUsedIn {
   /** Optional: an older gateway does not send it. */
   inDrinkRecipes?: ItemUsedInGroup<{ cocktailId: string; name: string; label: string; qtyEntered: number; unitCode: string }>;
   namedNotLinked: ItemUsedInGroup<ItemMenuLine>;
-  recipes: { recorded: false; note: string };
 }
 
 /** Under `inventory`, so every inventory write rereads them too. */

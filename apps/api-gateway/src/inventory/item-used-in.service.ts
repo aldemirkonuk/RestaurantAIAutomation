@@ -117,10 +117,33 @@ const failed = <T>(what: string, message: string): Group<T> => ({
 export class ItemUsedInService {
   constructor(private readonly db: DatabaseService) {}
 
+  /**
+   * Where one item is used. The menu groups are one chain (the unlinked group
+   * leaves out what the linked group found); the two drink groups are each
+   * their own reads. The three run at once, so the drawer waits for the
+   * slowest chain, not for the sum of every read.
+   */
   async usedIn(restaurantId: string, itemId: string) {
     const client = this.db.supabase;
     const item = await readHouseItem(client, restaurantId, itemId);
 
+    const [menu, inCocktails, inDrinkRecipes] = await Promise.all([
+      this.menuGroups(client, restaurantId, item),
+      this.inCocktails(client, restaurantId, item),
+      this.inDrinkRecipes(client, restaurantId, item),
+    ]);
+
+    return {
+      item: { id: item.id, kind: item.kind, displayName: item.displayName },
+      soldAs: menu.soldAs,
+      inCocktails,
+      inDrinkRecipes,
+      namedNotLinked: menu.namedNotLinked,
+    };
+  }
+
+  /** The current menu's lines linked to the item, then the lines that only carry its name. */
+  private async menuGroups(client: SupabaseClient, restaurantId: string, item: HouseItem) {
     // Only lines on the house's current (active) menus are "on the menu";
     // an archived or draft menu is not (menus.service readCurrentMenus).
     const menus = await client
@@ -141,20 +164,7 @@ export class ItemUsedInService {
       menus.error?.message,
       soldAs.lines,
     );
-    const inCocktails = await this.inCocktails(client, restaurantId, item);
-    const inDrinkRecipes = await this.inDrinkRecipes(client, restaurantId, item);
-
-    return {
-      item: { id: item.id, kind: item.kind, displayName: item.displayName },
-      soldAs,
-      inCocktails,
-      inDrinkRecipes,
-      namedNotLinked,
-      recipes: {
-        recorded: false,
-        note: "Dish recipes are not recorded yet, so no dish recipe is shown here.",
-      },
-    };
+    return { soldAs, namedNotLinked };
   }
 
   private async soldAs(

@@ -415,7 +415,6 @@ describe('the drinks that use a good have their cards', () => {
     inCocktails: { readable: true, lines: [], source: 's' },
     inDrinkRecipes: { readable: true, lines: [{ cocktailId: 'c1', name: 'House G&T', label: 'Gin', qtyEntered: 50, unitCode: 'ml' }], source: 's' },
     namedNotLinked: { readable: true, lines: [], source: 's' },
-    recipes: { recorded: false, note: 'n' },
   };
 
   it('reads the drinks for the opened good and draws each with its pour cost', async () => {
