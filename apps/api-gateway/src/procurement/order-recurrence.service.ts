@@ -53,6 +53,8 @@ import {
 } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { DatabaseService } from "../database/database.service";
+import { isVendorRemoved } from "../common/tenant/assert-provider-takes-orders";
+import { fileVendorRemovedPauses } from "./vendor-removal";
 import { CreateOrderDto } from "./dto/procurement.dto";
 import { ProcurementService, asUuid } from "./procurement.service";
 import {
@@ -142,6 +144,11 @@ export interface RecurrenceRunOutcome {
    * series was left alone rather than minted against a date nothing produced.
    */
   drifted: number;
+  /**
+   * The series' vendor was removed, so the order was refused (#1283) and the
+   * series was paused rather than tried again every morning. Not advanced.
+   */
+  pausedVendorRemoved: number;
   /** The query itself failed. `due` is not a count of anything. */
   queryFailed: boolean;
   /** Why, when it failed. Never swallowed. */
@@ -500,6 +507,7 @@ export class OrderRecurrenceService {
       collided: 0,
       failed: 0,
       drifted: 0,
+      pausedVendorRemoved: 0,
       queryFailed: false,
       error: null,
     };
@@ -560,6 +568,7 @@ export class OrderRecurrenceService {
     const line =
       `Recurrence generator ${out.runFor}: due=${out.due} created=${out.created} ` +
       `collided=${out.collided} drifted=${out.drifted} failed=${out.failed} ` +
+      `pausedVendorRemoved=${out.pausedVendorRemoved} ` +
       `queryFailed=${out.queryFailed}`;
     if (out.queryFailed || out.failed > 0 || out.drifted > 0) {
       this.logger.error(line + (out.error ? ` — ${out.error}` : ""));
@@ -581,7 +590,7 @@ export class OrderRecurrenceService {
   private async mintOccurrence(
     row: RecurrenceRow,
     runFor: string,
-  ): Promise<"created" | "collided" | "failed" | "drifted"> {
+  ): Promise<"created" | "collided" | "failed" | "drifted" | "pausedVendorRemoved"> {
     const frequency = readRecurrenceFrequency(row.recurrence_frequency);
     const occurrenceOn = row.recurrence_next_due_on;
 
@@ -690,6 +699,14 @@ export class OrderRecurrenceService {
         );
         await this.advanceParent(row, advanced.value);
         return "collided";
+      }
+      // The vendor was removed (#1283 refused the order). Pause the series so
+      // it is not refused again every morning; removing the vendor does this
+      // too (vendor-removal.ts), and this catches one that step missed. A
+      // pause that fails to write is a failure, and the next run tries again.
+      if (isVendorRemoved(err)) {
+        await this.pauseForRemovedVendor(row);
+        return "pausedVendorRemoved";
       }
       throw err;
     }
@@ -817,6 +834,33 @@ export class OrderRecurrenceService {
    * register and a reader should not have to learn two schemas to read the life
    * of one order.
    */
+  private async pauseForRemovedVendor(row: RecurrenceRow): Promise<void> {
+    const { data, error } = await this.databaseService.supabase
+      .from("procurement_orders")
+      .update({
+        recurrence_status: "paused",
+        recurrence_status_by: null,
+        recurrence_status_at: new Date().toISOString(),
+      })
+      .eq("restaurant_id", row.restaurant_id)
+      .eq("id", row.id)
+      .eq("recurrence_status", "active")
+      .select("id");
+    if (error) throw error;
+    const ids = (data ?? []).map((r: { id: string }) => r.id);
+    this.logger.warn(
+      `Recurring order ${row.order_number} was paused: its vendor was removed, so it can place no order.`,
+    );
+    await fileVendorRemovedPauses(
+      this.databaseService.supabase,
+      row.restaurant_id,
+      row.provider_id,
+      ids,
+      null,
+      this.logger,
+    );
+  }
+
   private async fileRecurrenceAudit(record: {
     restaurantId: string;
     orderId: string;

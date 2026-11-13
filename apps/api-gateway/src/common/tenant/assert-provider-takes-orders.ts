@@ -8,6 +8,13 @@ import { assertProviderBelongsToRestaurant } from "./assert-provider-belongs-to-
 /** The reason a removed vendor's order is refused with, for clients that branch on it. */
 export const VENDOR_REMOVED = "vendor_removed";
 
+/** True for the refusal `assertProviderTakesOrders` gives a removed vendor, and nothing else. */
+export function isVendorRemoved(err: unknown): boolean {
+  if (!(err instanceof UnprocessableEntityException)) return false;
+  const body = err.getResponse();
+  return typeof body === "object" && body !== null && (body as any).reason === VENDOR_REMOVED;
+}
+
 /**
  * A REMOVED VENDOR TAKES NO NEW ORDERS (QA round 3b, H3).
  *

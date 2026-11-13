@@ -1,8 +1,15 @@
+import { UnprocessableEntityException } from "@nestjs/common";
 import { DatabaseService } from "../database/database.service";
 import { EventsService } from "../events/events.service";
+import { OrchestratorService } from "../common/orchestrator/orchestrator.service";
 import { ProvidersService } from "../providers/providers.service";
 import { ProvidersController } from "../providers/providers.controller";
 import { ProcurementService } from "./procurement.service";
+import { RecurringOrdersService } from "./recurring-orders.service";
+import {
+  isVendorRemoved,
+  VENDOR_REMOVED,
+} from "../common/tenant/assert-provider-takes-orders";
 import { removalSentence, settleRemovedVendorsOrders } from "./vendor-removal";
 
 /**
@@ -268,5 +275,56 @@ describe("removing a vendor on /vendors", () => {
     await providers(s).updateProvider(VENDOR, { isActive: true, name: "K" } as any, HOUSE, PERSON);
     expect(status(s.tables, "o-active-1")).toBe("active");
     expect(s.tables.recurring_orders.find((r) => r.id === "s-on")!.active).toBe(true);
+  });
+});
+
+describe("isVendorRemoved", () => {
+  it("is true only for the vendor_removed refusal", () => {
+    expect(isVendorRemoved(new UnprocessableEntityException({ reason: VENDOR_REMOVED, message: "m" }))).toBe(true);
+    expect(isVendorRemoved(new UnprocessableEntityException({ reason: "other", message: "m" }))).toBe(false);
+    expect(isVendorRemoved(new UnprocessableEntityException("vendor_removed"))).toBe(false);
+    expect(isVendorRemoved(Object.assign(new Error("x"), { reason: VENDOR_REMOVED }))).toBe(false);
+  });
+});
+
+describe("the legacy 08:00 run switches off a schedule whose vendor was removed", () => {
+  function legacy(createOrder: () => Promise<any>) {
+    const s = makeStore({
+      recurring_orders: [
+        {
+          id: "s-1",
+          restaurant_id: HOUSE,
+          provider_id: VENDOR,
+          inventory_id: "inv-1",
+          quantity: 6,
+          unit_type: "bottle",
+          frequency: "weekly",
+          active: true,
+          next_order_date: "2026-11-01",
+        },
+      ],
+    });
+    const svc = new RecurringOrdersService(
+      { supabase: s.client } as unknown as DatabaseService,
+      { createOrder: jest.fn(createOrder) } as unknown as ProcurementService,
+      { publishEvent: jest.fn() } as unknown as OrchestratorService,
+    );
+    return { s, svc };
+  }
+
+  it("on a vendor_removed refusal", async () => {
+    const { s, svc } = legacy(async () => {
+      throw new UnprocessableEntityException({ reason: VENDOR_REMOVED, message: "removed" });
+    });
+    await svc.executeDueRecurringOrders();
+    expect(s.tables.recurring_orders[0].active).toBe(false);
+  });
+
+  it("and leaves it running on any other failure, for the next run", async () => {
+    const { s, svc } = legacy(async () => {
+      throw new UnprocessableEntityException({ reason: "units_unresolved", message: "x" });
+    });
+    await svc.executeDueRecurringOrders();
+    expect(s.tables.recurring_orders[0].active).toBe(true);
   });
 });
