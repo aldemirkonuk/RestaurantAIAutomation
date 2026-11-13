@@ -140,7 +140,15 @@ export default function EventSheet({ data, target, onClose }: EventSheetProps) {
   const [color, setColor] = useState(editing?.color ?? '');
   const [date, setDate] = useState(editing?.date ?? (target.mode === 'create' ? target.date : ''));
   const [endDate, setEndDate] = useState(editing?.endDate ?? '');
-  const [allDay, setAllDay] = useState(editing?.allDay ?? false);
+  // A NEW ENTRY IS ALL DAY UNLESS IT WAS OPENED ON AN HOUR (r29 walk, finding
+  // 5). It used to start timed with no time, so a closure over several days
+  // needed the box ticked first, and an entry saved without touching it was
+  // "timed" with no time at all. An hour slot in the week grid hands a start
+  // time over, and that entry opens timed on that hour. The gateway's own
+  // default is all day too (`allDay ?? true`, calendar.service.ts).
+  const [allDay, setAllDay] = useState(
+    editing ? editing.allDay : target.mode === 'create' ? !target.startTime : false,
+  );
   const [startTime, setStartTime] = useState(
     editing ? clock(editing.startTime).replace(EM, '') : (target.mode === 'create' ? (target.startTime ?? '') : ''),
   );
